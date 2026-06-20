@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support process
+    url: https://github.com/j-w9/arduconfigurator/blob/main/SUPPORT.md
+    about: Use this for general support and issue-filing guidance.
+  - name: Security policy
+    url: https://github.com/j-w9/arduconfigurator/blob/main/SECURITY.md
+    about: Use this for private vulnerability reporting guidance.

@@ -1,0 +1,12 @@
+Accelerometer calibration pose images in this directory are copied from QGroundControl:
+https://github.com/mavlink/qgroundcontrol
+
+Original source paths:
+- src/AutoPilotPlugins/PX4/Images/VehicleDown.png
+- src/AutoPilotPlugins/PX4/Images/VehicleLeft.png
+- src/AutoPilotPlugins/PX4/Images/VehicleRight.png
+- src/AutoPilotPlugins/PX4/Images/VehicleNoseDown.png
+- src/AutoPilotPlugins/PX4/Images/VehicleTailDown.png
+- src/AutoPilotPlugins/PX4/Images/VehicleUpsideDown.png
+
+QGroundControl uses these same assets for accelerometer/orientation calibration in its ArduPilot and PX4 setup flows.

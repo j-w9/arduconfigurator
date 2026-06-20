@@ -1,0 +1,89 @@
+import type { ReactNode } from 'react'
+import { Panel, StatusBadge } from '@arduconfig/ui-kit'
+
+export type TuningStatusTone = 'neutral' | 'success' | 'warning' | 'danger'
+
+export type TuningTaskId = 'rates' | 'pid-gains' | 'filters' | 'profiles' | 'review'
+
+export interface TuningTaskCard {
+  id: TuningTaskId
+  label: string
+  value: string
+  detail: string
+  tone: TuningStatusTone
+}
+
+export interface TuningViewProps {
+  taskCards: readonly TuningTaskCard[]
+  activeTaskId: TuningTaskId
+  activeTask: TuningTaskCard
+  onSelectTask: (taskId: TuningTaskId) => void
+  taskBodySlot: ReactNode
+  overviewSlot: ReactNode
+  noticeSlot?: ReactNode
+}
+
+export function TuningView(props: TuningViewProps) {
+  const { taskCards, activeTaskId, activeTask, onSelectTask, taskBodySlot, overviewSlot, noticeSlot } = props
+
+  return (
+    <section className="grid one-up tuning-page">
+      <Panel
+        title="Tuning"
+        subtitle="Curated ArduPilot rate, gain, and filter tuning."
+      >
+        <div className="telemetry-stack telemetry-stack--tuning">
+          <div className="tuning-summary-grid">
+            {taskCards.map((task) => (
+              <button
+                key={task.id}
+                type="button"
+                data-testid={`tuning-summary-${task.id}`}
+                className={`tuning-summary-card${task.id === activeTaskId ? ' is-active' : ''}`}
+                onClick={() => onSelectTask(task.id)}
+              >
+                <div className="tuning-summary-card__header">
+                  <span>{task.label}</span>
+                  <StatusBadge tone={task.tone}>{task.value}</StatusBadge>
+                </div>
+                <p>{task.detail}</p>
+              </button>
+            ))}
+          </div>
+
+          {noticeSlot}
+
+          <div className="tuning-workspace tuning-workspace--task-deck">
+            <div className="tuning-workspace__task tuning-task-deck">
+              <div className="tuning-task-deck__header">
+                <div>
+                  <h3>{activeTask.label}</h3>
+                  <p>{activeTask.detail}</p>
+                </div>
+                <StatusBadge tone={activeTask.tone}>{activeTask.value}</StatusBadge>
+              </div>
+
+              <div className="tuning-task-nav" data-testid="tuning-task-nav">
+                {taskCards.map((task) => (
+                  <button
+                    key={`tuning-task-nav:${task.id}`}
+                    type="button"
+                    className={`tuning-task-nav__button${task.id === activeTaskId ? ' is-active' : ''}`}
+                    onClick={() => onSelectTask(task.id)}
+                  >
+                    <span>{task.label}</span>
+                    <small>{task.value}</small>
+                  </button>
+                ))}
+              </div>
+
+              {taskBodySlot}
+            </div>
+
+            <div className="tuning-workspace__overview tuning-overview">{overviewSlot}</div>
+          </div>
+        </div>
+      </Panel>
+    </section>
+  )
+}

@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/transport" },
+    { "path": "../../packages/sitl-harness" },
+    { "path": "../../packages/protocol-mavlink" },
+    { "path": "../../packages/param-metadata" },
+    { "path": "../../packages/ardupilot-core" },
+    { "path": "../../packages/firmware-flash" }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "name": "@arduconfig/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "description": "ArduConfigurator desktop app — offline ArduPilot configuration + firmware flashing.",
+  "author": "ArduConfigurator",
+  "type": "module",
+  "main": "dist/electron-main.js",
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "typecheck": "tsc -b tsconfig.json --pretty false",
+    "app": "electron dist/electron-main.js",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "bridge:websocket": "npm run build && node dist/bridge-websocket.js",
+    "probe:serial": "npm run build && node dist/probe-serial.js",
+    "probe:ftplog": "npm run build && node dist/probe-ftplog.js",
+    "runtime:serial": "npm run build && node dist/runtime-serial.js",
+    "runtime:sitl": "npm run build && node dist/runtime-sitl.js"
+  },
+  "dependencies": {
+    "@arduconfig/firmware-flash": "1.0.0",
+    "@arduconfig/sitl-harness": "1.0.0",
+    "@arduconfig/transport": "1.0.0",
+    "serialport": "^13.0.0"
+  },
+  "devDependencies": {
+    "electron": "^42.0.1",
+    "electron-builder": "26.8.1"
+  },
+  "build": {
+    "appId": "com.arduconfigurator.app",
+    "productName": "ArduConfigurator",
+    "electronVersion": "42.0.1",
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/serialport/**",
+      "**/node_modules/@serialport/**",
+      "**/*.node"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "web/dist",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Development"
+    },
+    "publish": null,
+    "npmRebuild": false
+  }
+}

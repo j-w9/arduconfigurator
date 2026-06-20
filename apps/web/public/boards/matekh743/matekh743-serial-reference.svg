@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="title desc">
+  <title id="title">Matek H743 serial reference</title>
+  <desc id="desc">Reference table mapping Matek H743 serial parameters to hardware ports and common connector names.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#151d19" />
+      <stop offset="100%" stop-color="#090d0b" />
+    </linearGradient>
+    <style>
+      .title { fill: #edf5ef; font: 700 24px 'IBM Plex Sans', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
+      .copy { fill: #bdcac0; font: 16px 'IBM Plex Sans', sans-serif; }
+      .head { fill: #98d0ae; font: 700 15px 'IBM Plex Sans', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+      .cell { fill: #e5ede8; font: 16px 'IBM Plex Sans', sans-serif; }
+      .muted { fill: #9db0a2; font: 15px 'IBM Plex Sans', sans-serif; }
+    </style>
+  </defs>
+  <rect width="960" height="600" fill="url(#bg)" />
+  <text x="64" y="74" class="title">Matek H743 Serial Roles</text>
+  <text x="64" y="108" class="copy">Family-level cheat sheet used when `uarts.txt` exposes the shared H743 ordering.</text>
+
+  <rect x="64" y="150" width="832" height="54" rx="16" fill="#122019" stroke="#385042" />
+  <text x="96" y="184" class="head">Parameter</text>
+  <text x="266" y="184" class="head">Hardware Port</text>
+  <text x="466" y="184" class="head">Named Connector</text>
+  <text x="724" y="184" class="head">Typical Use</text>
+
+  <g transform="translate(64 216)">
+    <rect width="832" height="308" rx="22" fill="#0f1713" stroke="#2f4337" />
+    <g class="cell">
+      <text x="30" y="42">SERIAL0</text><text x="200" y="42">OTG1</text><text x="400" y="42">USB</text><text x="646" y="42">Setup, MAVLink, firmware</text>
+      <text x="30" y="80">SERIAL1</text><text x="200" y="80">USART1</text><text x="400" y="80">Telem 2</text><text x="646" y="80">Second telemetry or companion</text>
+      <text x="30" y="118">SERIAL2</text><text x="200" y="118">USART2</text><text x="400" y="118">GPS 1</text><text x="646" y="118">Primary GNSS</text>
+      <text x="30" y="156">SERIAL3</text><text x="200" y="156">USART3</text><text x="400" y="156">GPS 2</text><text x="646" y="156">Secondary GNSS or compass</text>
+      <text x="30" y="194">SERIAL4</text><text x="200" y="194">UART4</text><text x="400" y="194">User / ESC Telemetry</text><text x="646" y="194">Spare serial or ESC sensor</text>
+      <text x="30" y="232">SERIAL5</text><text x="200" y="232">UART6</text><text x="400" y="232">RC</text><text x="646" y="232">CRSF, ELRS, SBUS</text>
+      <text x="30" y="270">SERIAL6</text><text x="200" y="270">UART7</text><text x="400" y="270">Telem 1</text><text x="646" y="270">Primary radio telemetry</text>
+      <text x="30" y="308">SERIAL7</text><text x="200" y="308">UART8</text><text x="400" y="308">User</text><text x="646" y="308">Peripheral or spare serial</text>
+    </g>
+    <g stroke="#24362c" stroke-width="1">
+      <line x1="24" y1="56" x2="808" y2="56" />
+      <line x1="24" y1="94" x2="808" y2="94" />
+      <line x1="24" y1="132" x2="808" y2="132" />
+      <line x1="24" y1="170" x2="808" y2="170" />
+      <line x1="24" y1="208" x2="808" y2="208" />
+      <line x1="24" y1="246" x2="808" y2="246" />
+      <line x1="24" y1="284" x2="808" y2="284" />
+    </g>
+  </g>
+
+  <text x="64" y="560" class="muted">Exact connector names vary by H743 sub-variant, but the serial ordering is stable enough for rapid lookup.</text>
+</svg>

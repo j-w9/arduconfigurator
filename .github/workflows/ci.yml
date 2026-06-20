@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+# Least-privilege default token (the gate only checks out + builds/tests).
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install chromium --with-deps
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Unit tests (web)
+        run: npm run test:unit --workspace @arduconfig/web
+
+      - name: E2E
+        run: npm run test:e2e
+
+      # The production rolldown build resolves workspace deps differently
+      # from the dev server / esbuild used by typecheck+test+e2e above, so a
+      # broken production build (e.g. a workspace package missing from the
+      # Vite source-alias map, #163) used to pass this gate and only fail
+      # afterwards in Web Deploy. Run the exact Pages build command here so
+      # it is a required merge check.
+      - name: Production build (web)
+        run: npm run build --workspace @arduconfig/web
+        env:
+          ARDUCONFIG_WEB_BASE: /ArduConfigurator/
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-results
+          path: |
+            test-results
+            playwright-report
+            tests/e2e/__screenshots__
+          retention-days: 7
+          if-no-files-found: ignore

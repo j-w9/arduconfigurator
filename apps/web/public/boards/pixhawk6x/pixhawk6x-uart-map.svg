@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="title desc">
+  <title id="title">Pixhawk 6X UART map</title>
+  <desc id="desc">Bundled UART reference card for the Holybro Pixhawk 6X family.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#131922" />
+      <stop offset="100%" stop-color="#090d13" />
+    </linearGradient>
+    <style>
+      .title { fill: #eef4f8; font: 700 24px 'IBM Plex Sans', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
+      .copy { fill: #c0ccd4; font: 16px 'IBM Plex Sans', sans-serif; }
+      .pill { fill: #10212f; stroke: #4e7085; stroke-width: 1.5; }
+      .head { fill: #8ec3d4; font: 700 15px 'IBM Plex Sans', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+      .cell { fill: #e7edf1; font: 16px 'IBM Plex Sans', sans-serif; }
+    </style>
+  </defs>
+  <rect width="960" height="600" fill="url(#bg)" />
+  <text x="64" y="72" class="title">Pixhawk 6X UART Quick Reference</text>
+  <text x="64" y="106" class="copy">Holybro family mapping used by the board catalog when the controller reports board type 53.</text>
+
+  <g transform="translate(64 150)">
+    <rect width="832" height="364" rx="26" fill="#0f171f" stroke="#314754" />
+    <rect x="28" y="26" width="190" height="54" rx="16" class="pill" />
+    <text x="54" y="60" class="head">USB + Virtual USB</text>
+    <text x="54" y="92" class="copy">SERIAL0 = OTG1, SERIAL8 = OTG2 / SLCAN</text>
+
+    <rect x="246" y="26" width="190" height="54" rx="16" class="pill" />
+    <text x="272" y="60" class="head">Telem</text>
+    <text x="272" y="92" class="copy">UART7, UART5, USART2</text>
+
+    <rect x="464" y="26" width="166" height="54" rx="16" class="pill" />
+    <text x="490" y="60" class="head">GNSS</text>
+    <text x="490" y="92" class="copy">USART1, UART8</text>
+
+    <rect x="658" y="26" width="146" height="54" rx="16" class="pill" />
+    <text x="684" y="60" class="head">User + Debug</text>
+    <text x="684" y="92" class="copy">UART4, USART3</text>
+
+    <g class="cell">
+      <text x="34" y="154">SERIAL0</text><text x="180" y="154">OTG1</text><text x="308" y="154">USB</text><text x="480" y="154">Primary setup link</text>
+      <text x="34" y="194">SERIAL1</text><text x="180" y="194">UART7</text><text x="308" y="194">Telem 1</text><text x="480" y="194">Telemetry radio</text>
+      <text x="34" y="234">SERIAL2</text><text x="180" y="234">UART5</text><text x="308" y="234">Telem 2</text><text x="480" y="234">Secondary telemetry</text>
+      <text x="34" y="274">SERIAL3</text><text x="180" y="274">USART1</text><text x="308" y="274">GPS 1</text><text x="480" y="274">Main GNSS</text>
+      <text x="34" y="314">SERIAL4</text><text x="180" y="314">UART8</text><text x="308" y="314">GPS 2</text><text x="480" y="314">Second GNSS</text>
+      <text x="34" y="354">SERIAL5</text><text x="180" y="354">USART2</text><text x="308" y="354">Telem 3</text><text x="480" y="354">Companion or spare radio</text>
+      <text x="34" y="394">SERIAL6</text><text x="180" y="394">UART4</text><text x="308" y="394">User</text><text x="480" y="394">Peripheral or RC workaround</text>
+      <text x="34" y="434">SERIAL7</text><text x="180" y="434">USART3</text><text x="308" y="434">Debug</text><text x="480" y="434">Console</text>
+      <text x="34" y="474">SERIAL8</text><text x="180" y="474">OTG2</text><text x="308" y="474">USB Virtual</text><text x="480" y="474">MAVLink or SLCAN</text>
+    </g>
+  </g>
+</svg>

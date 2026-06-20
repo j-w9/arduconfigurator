@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1014" />
+    <!-- Defense-in-depth that carries zero functional risk: block plugins,
+         <base> hijacking and clickjacking. A full default-src/connect-src
+         policy is intentionally NOT set here — it would have to enumerate
+         the user-configurable WebSocket endpoint + the firmware CORS-proxy
+         hosts + analytics, and an over-tight one silently breaks real
+         features; that complete policy is a separate, tested change. -->
+    <!-- frame-ancestors is intentionally NOT in this meta CSP: browsers ignore
+         it in a <meta> (it only works as an HTTP header) and log a warning.
+         It's served as a real header via vercel.json (web) and the desktop's
+         web-ui-server instead. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="object-src 'none'; base-uri 'self'"
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>ArduConfigurator</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- SW registration moved to apps/web/src/sw-update.ts (invoked from
+         main.tsx) so the same module that registers can also drive the
+         "New version available" prompt via a React hook. -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+  </html>

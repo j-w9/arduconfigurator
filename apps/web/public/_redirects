@@ -1,0 +1,3 @@
+# SPA fallback: client-side routing serves index.html for any path that
+# isn't a built asset, so deep links and reloads don't 404.
+/*  /index.html  200

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="title desc">
+  <title id="title">CUAV-7-Nano UART map</title>
+  <desc id="desc">Bundled serial mapping summary for the CUAV-7-Nano flight controller.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#161616" />
+      <stop offset="100%" stop-color="#0b0c0d" />
+    </linearGradient>
+    <style>
+      .title { fill: #f1f4f6; font: 700 24px 'IBM Plex Sans', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
+      .copy { fill: #c3c8cc; font: 16px 'IBM Plex Sans', sans-serif; }
+      .accent { fill: #a9c4d2; font: 700 15px 'IBM Plex Sans', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+      .cell { fill: #eceff1; font: 16px 'IBM Plex Sans', sans-serif; }
+    </style>
+  </defs>
+  <rect width="960" height="600" fill="url(#bg)" />
+  <text x="64" y="72" class="title">CUAV-7-Nano UART Quick Reference</text>
+  <text x="64" y="106" class="copy">Compact mapping for the CUAV reserved board ID range beginning at 7000.</text>
+
+  <rect x="64" y="150" width="832" height="376" rx="28" fill="#111315" stroke="#34383c" />
+  <text x="96" y="192" class="accent">Field notes</text>
+  <text x="96" y="220" class="copy">TELEM1 and TELEM2 are the main radio ports. GPS1 often carries the safety switch harness.</text>
+
+  <g class="cell">
+    <text x="96" y="286">SERIAL0</text><text x="240" y="286">OTG1</text><text x="382" y="286">USB-C</text><text x="556" y="286">Setup, firmware, MAVLink</text>
+    <text x="96" y="326">SERIAL1</text><text x="240" y="326">UART7</text><text x="382" y="326">Telem 1</text><text x="556" y="326">Primary telemetry radio</text>
+    <text x="96" y="366">SERIAL2</text><text x="240" y="366">UART5</text><text x="382" y="366">Telem 2</text><text x="556" y="366">Secondary telemetry</text>
+    <text x="96" y="406">SERIAL3</text><text x="240" y="406">USART1</text><text x="382" y="406">GPS 1 / Safety</text><text x="556" y="406">Primary GNSS harness</text>
+    <text x="96" y="446">SERIAL4</text><text x="240" y="446">UART8</text><text x="382" y="446">GPS 2</text><text x="556" y="446">Secondary GNSS or spare</text>
+    <text x="96" y="486">SERIAL5</text><text x="240" y="486">USART3</text><text x="382" y="486">Debug</text><text x="556" y="486">Console / diagnostics</text>
+  </g>
+</svg>

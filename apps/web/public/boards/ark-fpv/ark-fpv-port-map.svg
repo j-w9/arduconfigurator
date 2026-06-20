@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="title desc">
+  <title id="title">ARK FPV port map</title>
+  <desc id="desc">Reference illustration of the ARK FPV board with the main USB, telem, GPS, VTX, RC, and debug connectors called out.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#14202a" />
+      <stop offset="100%" stop-color="#091017" />
+    </linearGradient>
+    <linearGradient id="board" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#1f2f3e" />
+      <stop offset="100%" stop-color="#121b24" />
+    </linearGradient>
+    <style>
+      .label { fill: #e9f0f4; font: 700 20px 'IBM Plex Sans', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
+      .copy { fill: #b7c4cd; font: 16px 'IBM Plex Sans', sans-serif; }
+      .tiny { fill: #8ea1ad; font: 14px 'IBM Plex Sans', sans-serif; }
+      .callout { fill: #0e151c; stroke: #405564; stroke-width: 1.5; rx: 16; }
+      .wire { fill: none; stroke: #d2b06e; stroke-width: 3; stroke-linecap: round; }
+      .chip { fill: #10171d; stroke: #344754; stroke-width: 1.5; }
+      .port { fill: #243746; stroke: #8ec3d4; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect width="960" height="600" fill="url(#bg)" />
+  <text x="70" y="76" class="label">ARK FPV</text>
+  <text x="70" y="108" class="copy">Bundled connector map for the board-aware Ports sidebar.</text>
+
+  <g transform="translate(320 118)">
+    <rect width="320" height="360" rx="30" fill="url(#board)" stroke="#6d8ea2" stroke-width="2.5" />
+    <rect x="104" y="84" width="112" height="72" rx="10" class="chip" />
+    <rect x="78" y="180" width="164" height="92" rx="14" class="chip" />
+    <rect x="96" y="292" width="128" height="28" rx="8" class="chip" />
+
+    <rect x="120" y="-18" width="80" height="24" rx="8" class="port" />
+    <rect x="-16" y="70" width="24" height="72" rx="8" class="port" />
+    <rect x="-16" y="154" width="24" height="72" rx="8" class="port" />
+    <rect x="312" y="70" width="24" height="72" rx="8" class="port" />
+    <rect x="312" y="154" width="24" height="72" rx="8" class="port" />
+    <rect x="92" y="354" width="50" height="24" rx="8" class="port" />
+    <rect x="146" y="354" width="50" height="24" rx="8" class="port" />
+    <rect x="200" y="354" width="50" height="24" rx="8" class="port" />
+
+    <text x="160" y="126" text-anchor="middle" class="tiny">IMU / MCU stack</text>
+    <text x="160" y="234" text-anchor="middle" class="tiny">Power, OSD, VTX routing</text>
+    <text x="160" y="311" text-anchor="middle" class="tiny">Bottom edge I/O bank</text>
+  </g>
+
+  <path class="wire" d="M440 118 C440 74 370 76 284 76" />
+  <rect x="68" y="48" width="208" height="72" class="callout" />
+  <text x="92" y="78" class="label" font-size="18">USB / SERIAL0</text>
+  <text x="92" y="102" class="copy">OTG1 used for setup, bench power, and primary MAVLink.</text>
+
+  <path class="wire" d="M320 224 C224 224 178 202 118 180" />
+  <rect x="54" y="140" width="220" height="88" class="callout" />
+  <text x="78" y="172" class="label" font-size="18">TELEM 1</text>
+  <text x="78" y="198" class="copy">UART7 / SERIAL1 for radio telemetry or USB bridge fallback.</text>
+
+  <path class="wire" d="M320 308 C228 316 192 346 126 384" />
+  <rect x="54" y="352" width="232" height="92" class="callout" />
+  <text x="78" y="384" class="label" font-size="18">TELEM 2 / VTX</text>
+  <text x="78" y="410" class="copy">UART5 / SERIAL2 often paired with MSP DisplayPort or VTX control.</text>
+
+  <path class="wire" d="M640 224 C726 220 768 198 838 172" />
+  <rect x="676" y="136" width="230" height="88" class="callout" />
+  <text x="700" y="168" class="label" font-size="18">GPS</text>
+  <text x="700" y="194" class="copy">USART1 / SERIAL3 for GNSS, compass, and safety switch harnesses.</text>
+
+  <path class="wire" d="M640 308 C734 306 786 328 846 356" />
+  <rect x="674" y="324" width="232" height="92" class="callout" />
+  <text x="698" y="356" class="label" font-size="18">GPS2 / TELEM 3</text>
+  <text x="698" y="382" class="copy">UART8 / SERIAL4 plus USART2 / SERIAL5 for secondary GNSS or peripherals.</text>
+
+  <path class="wire" d="M452 472 C430 524 344 540 256 540" />
+  <rect x="70" y="492" width="250" height="72" class="callout" />
+  <text x="94" y="522" class="label" font-size="18">UART4 / PWM</text>
+  <text x="94" y="546" class="copy">Bottom-edge aux connector for user serial or ESC telemetry.</text>
+
+  <path class="wire" d="M536 472 C566 520 654 540 786 540" />
+  <rect x="644" y="492" width="250" height="72" class="callout" />
+  <text x="668" y="522" class="label" font-size="18">Debug / RC</text>
+  <text x="668" y="546" class="copy">USART3 / SERIAL7 and USART6 / SERIAL8 handle debug and RC input.</text>
+</svg>

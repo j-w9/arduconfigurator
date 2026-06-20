@@ -1,0 +1,11 @@
+The header status icons in this directory (cf_icon_*.svg, sensor_*.png) are
+copied from the Betaflight Configurator project:
+https://github.com/betaflight/betaflight-configurator
+
+They are used here for the connection header's sensor/status row (gyro,
+accelerometer, magnetometer, barometer, GPS, RC link, rangefinder, arming,
+failsafe).
+
+Betaflight Configurator is licensed under GPL-3.0, which is compatible with
+this project's GPL-3.0-only license. These assets remain subject to their
+upstream redistribution terms.

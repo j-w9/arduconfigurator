@@ -1,0 +1,228 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Re-running the same tag (or a manual dispatch) shouldn't stack three-OS
+# installer builds — cancel an in-flight run for the same ref.
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pin electron-builder so build output is deterministic across runners.
+  ELECTRON_BUILDER_VERSION: 26.0.12
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    name: Build macOS installer
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web bundle
+        run: npm run build -w @arduconfig/web
+
+      - name: Build desktop dist
+        run: npm run -w @arduconfig/desktop build
+
+      - name: Package macOS installer (unsigned)
+        working-directory: apps/desktop
+        env:
+          # Explicitly disable signing/notarization for this hobbyist build.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx --yes electron-builder@${{ env.ELECTRON_BUILDER_VERSION }} --mac --publish never
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: desktop-mac
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.dmg.blockmap
+          if-no-files-found: error
+          retention-days: 14
+
+  build-windows:
+    name: Build Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web bundle
+        run: npm run build -w @arduconfig/web
+
+      - name: Build desktop dist
+        run: npm run -w @arduconfig/desktop build
+
+      - name: Package Windows installer (unsigned)
+        working-directory: apps/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx --yes electron-builder@${{ env.ELECTRON_BUILDER_VERSION }} --win --publish never
+
+      - name: Verify the app icon + metadata are embedded
+        shell: pwsh
+        working-directory: apps/desktop
+        run: |
+          # The packaged exe must carry our branding, not Electron's default.
+          # rcedit embeds the icon and the version metadata in the same pass
+          # (gated by win.signAndEditExecutable). Asserting ProductName proves
+          # that pass ran, which is the guard against the "Windows app shows the
+          # default Electron icon" regression.
+          $exe = "release/win-unpacked/ArduConfigurator.exe"
+          if (-not (Test-Path $exe)) { Write-Error "Unpacked exe not found: $exe"; exit 1 }
+          $vi = (Get-Item $exe).VersionInfo
+          Write-Host "ProductName     = $($vi.ProductName)"
+          Write-Host "FileDescription = $($vi.FileDescription)"
+          Write-Host "ProductVersion  = $($vi.ProductVersion)"
+          if (($vi.ProductName).Trim() -ne "ArduConfigurator") {
+            Write-Error "Expected ProductName 'ArduConfigurator' (rcedit must run to embed the icon + metadata); got '$($vi.ProductName)'. Check win.signAndEditExecutable."
+            exit 1
+          }
+          try {
+            Add-Type -AssemblyName System.Drawing
+            $ico = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path $exe))
+            Write-Host "Embedded icon   = $($ico.Width)x$($ico.Height)"
+          } catch {
+            Write-Host "Icon extraction skipped: $($_.Exception.Message)"
+          }
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: desktop-windows
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.exe.blockmap
+          if-no-files-found: error
+          retention-days: 14
+
+  build-linux:
+    name: Build Linux installer
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web bundle
+        run: npm run build -w @arduconfig/web
+
+      - name: Build desktop dist
+        run: npm run -w @arduconfig/desktop build
+
+      - name: Package Linux installer (unsigned)
+        working-directory: apps/desktop
+        run: npx --yes electron-builder@${{ env.ELECTRON_BUILDER_VERSION }} --linux --publish never
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: desktop-linux
+          path: |
+            apps/desktop/release/*.AppImage
+          if-no-files-found: error
+          retention-days: 14
+
+  attach-release:
+    name: Attach installers to GitHub release
+    needs:
+      - build-mac
+      - build-windows
+      - build-linux
+    runs-on: ubuntu-latest
+    # Publish only on version tags; each tag gets exactly one release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 10
+
+    steps:
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: desktop-mac
+          path: dist/mac
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: desktop-windows
+          path: dist/windows
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: desktop-linux
+          path: dist/linux
+
+      - name: List downloaded installers
+        run: ls -R dist
+
+      - name: Attach installers to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job only downloads artifacts (no checkout), so gh can't infer
+          # the repo from a git remote — point it explicitly.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=()
+          for f in dist/mac/* dist/windows/* dist/linux/*; do
+            [ -f "$f" ] || continue
+            assets+=("$f")
+          done
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No installer artifacts found to upload." >&2
+            exit 1
+          fi
+          # A tag push creates the tag but not a GitHub release, so create the
+          # release on first run, then clobber-upload (idempotent for re-runs).
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --notes "Unsigned desktop installers for ${GITHUB_REF_NAME}." \
+              --target "${GITHUB_SHA}" \
+              || echo "Could not create '${GITHUB_REF_NAME}' (likely already exists); reusing it."
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber

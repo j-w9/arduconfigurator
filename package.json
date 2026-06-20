@@ -1,0 +1,48 @@
+{
+  "name": "arduconfigurator-workspace",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/j-w9/arduconfigurator.git"
+  },
+  "homepage": "https://arduconfigurator.com",
+  "packageManager": "npm@11.4.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @arduconfig/firmware-flash && npm run build --workspace @arduconfig/mock-sitl && npm run build --workspace @arduconfig/sitl-harness && npm run build --workspace @arduconfig/web && npm run build --workspace @arduconfig/desktop",
+    "typecheck": "npm run typecheck --workspace @arduconfig/transport && npm run typecheck --workspace @arduconfig/firmware-flash && npm run typecheck --workspace @arduconfig/protocol-mavlink && npm run typecheck --workspace @arduconfig/param-metadata && npm run typecheck --workspace @arduconfig/ardupilot-core && npm run typecheck --workspace @arduconfig/mock-sitl && npm run typecheck --workspace @arduconfig/sitl-harness && npm run typecheck --workspace @arduconfig/web && npm run typecheck --workspace @arduconfig/desktop",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:e2e": "npm run build && playwright test",
+    "test:e2e:headed": "npm run build && playwright test --headed",
+    "test:guided-setup": "npm run build && node --test tests/guided-setup.test.mjs",
+    "test:sitl": "npm run build && node --test tests/runtime.sitl.test.mjs",
+    "dev:web": "npm run dev --workspace @arduconfig/web",
+    "build:web": "npm run build --workspace @arduconfig/web",
+    "build:desktop": "npm run build --workspace @arduconfig/desktop",
+    "desktop:app": "npm run build:web && npm run build:desktop && npm run app --workspace @arduconfig/desktop",
+    "desktop:app:dev": "ARDUCONFIG_DESKTOP_DEV_SERVER_URL=http://127.0.0.1:5173 npm run build:desktop && npm run app --workspace @arduconfig/desktop",
+    "desktop:pack": "npm run build:web && npm run build:desktop && npm run pack --workspace @arduconfig/desktop",
+    "desktop:dist": "npm run build:web && npm run build:desktop && npm run dist --workspace @arduconfig/desktop",
+    "desktop:dist:mac": "npm run build:web && npm run build:desktop && npm run dist:mac --workspace @arduconfig/desktop",
+    "desktop:dist:win": "npm run build:web && npm run build:desktop && npm run dist:win --workspace @arduconfig/desktop",
+    "desktop:dist:linux": "npm run build:web && npm run build:desktop && npm run dist:linux --workspace @arduconfig/desktop",
+    "bridge:websocket": "npm run bridge:websocket --workspace @arduconfig/desktop"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.7.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.12",
+    "vitest": "^3.2.6"
+  }
+}

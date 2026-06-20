@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="title desc">
+  <title id="title">ARKV6X UART map</title>
+  <desc id="desc">Bundled UART reference card for the ARKV6X flight controller family.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#121920" />
+      <stop offset="100%" stop-color="#090d12" />
+    </linearGradient>
+    <style>
+      .title { fill: #eef4f8; font: 700 24px 'IBM Plex Sans', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
+      .copy { fill: #c0ccd4; font: 16px 'IBM Plex Sans', sans-serif; }
+      .cell { fill: #e7edf1; font: 16px 'IBM Plex Sans', sans-serif; }
+      .accent { fill: #8ec3d4; font: 700 15px 'IBM Plex Sans', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+    </style>
+  </defs>
+  <rect width="960" height="600" fill="url(#bg)" />
+  <text x="64" y="72" class="title">ARKV6X UART Quick Reference</text>
+  <text x="64" y="106" class="copy">Default no-IOMCU serial ordering published by ARK Electronics and reflected in the Ports sidebar.</text>
+
+  <rect x="64" y="146" width="832" height="390" rx="28" fill="#101821" stroke="#304654" />
+  <text x="96" y="186" class="accent">Key difference</text>
+  <text x="96" y="214" class="copy">SERIAL8 is exposed as USART6 when the board is used without an IOMCU carrier.</text>
+
+  <g class="cell">
+    <text x="96" y="270">SERIAL0</text><text x="236" y="270">OTG1</text><text x="370" y="270">USB-C</text><text x="544" y="270">Bench setup and MAVLink</text>
+    <text x="96" y="308">SERIAL1</text><text x="236" y="308">UART7</text><text x="370" y="308">Telem 1</text><text x="544" y="308">Primary telemetry radio</text>
+    <text x="96" y="346">SERIAL2</text><text x="236" y="346">UART5</text><text x="370" y="346">Telem 2</text><text x="544" y="346">Secondary telemetry</text>
+    <text x="96" y="384">SERIAL3</text><text x="236" y="384">USART1</text><text x="370" y="384">GPS</text><text x="544" y="384">Primary GNSS</text>
+    <text x="96" y="422">SERIAL4</text><text x="236" y="422">UART8</text><text x="370" y="422">GPS 2</text><text x="544" y="422">Second GNSS or spare serial</text>
+    <text x="96" y="460">SERIAL5</text><text x="236" y="460">USART2</text><text x="370" y="460">Telem 3</text><text x="544" y="460">Companion or extra telemetry</text>
+    <text x="96" y="498">SERIAL6</text><text x="236" y="498">UART4</text><text x="370" y="498">UART4 / I2C</text><text x="544" y="498">Peripheral or ESC telemetry</text>
+    <text x="96" y="536">SERIAL7</text><text x="236" y="536">USART3</text><text x="370" y="536">Debug Console</text><text x="544" y="536">Logs and debug</text>
+    <text x="96" y="574">SERIAL8</text><text x="236" y="574">USART6</text><text x="370" y="574">PX4IO / RC</text><text x="544" y="574">Carrier-dependent RC path</text>
+  </g>
+</svg>

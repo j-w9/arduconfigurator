@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a defect, regression, or broken workflow.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is broken?
+      placeholder: Describe the defect clearly and concretely.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Web app
+        - Desktop shell
+        - Shared runtime
+        - Transport / MAVLink
+        - Test harness / SITL
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: input
+    id: transport
+    attributes:
+      label: Transport / environment
+      description: Demo, Web Serial, WebSocket, desktop shell, SITL, live FC, etc.
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation already tried
+      description: Note `typecheck`, `test`, `test:e2e`, `test:sitl`, or live-FC checks you ran.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Paste relevant console output, status text, or attach screenshots.

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="title desc">
+  <title id="title">Matek H743 connector layout</title>
+  <desc id="desc">Bundled board reference showing the Matek H743 family serial connectors and common roles.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#161d18" />
+      <stop offset="100%" stop-color="#0a0f0c" />
+    </linearGradient>
+    <linearGradient id="board" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#294437" />
+      <stop offset="100%" stop-color="#17241d" />
+    </linearGradient>
+    <style>
+      .label { fill: #ecf5ee; font: 700 20px 'IBM Plex Sans', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; }
+      .copy { fill: #b8cabd; font: 16px 'IBM Plex Sans', sans-serif; }
+      .tiny { fill: #92a89a; font: 14px 'IBM Plex Sans', sans-serif; }
+      .callout { fill: #101611; stroke: #496252; stroke-width: 1.5; rx: 16; }
+      .wire { fill: none; stroke: #c6b574; stroke-width: 3; stroke-linecap: round; }
+      .chip { fill: #131a15; stroke: #3b5244; stroke-width: 1.5; }
+      .port { fill: #254034; stroke: #98d0ae; stroke-width: 1.5; }
+    </style>
+  </defs>
+  <rect width="960" height="600" fill="url(#bg)" />
+  <text x="64" y="76" class="label">Matek H743 Family</text>
+  <text x="64" y="108" class="copy">Shared quick-look layout for H743-WLITE, MINI, SLIM, and WING variants.</text>
+
+  <g transform="translate(324 118)">
+    <rect width="312" height="360" rx="26" fill="url(#board)" stroke="#7ca489" stroke-width="2.5" />
+    <rect x="104" y="72" width="104" height="72" rx="10" class="chip" />
+    <rect x="76" y="170" width="160" height="104" rx="14" class="chip" />
+    <rect x="60" y="300" width="192" height="28" rx="8" class="chip" />
+
+    <rect x="116" y="-18" width="80" height="24" rx="8" class="port" />
+    <rect x="-16" y="62" width="24" height="62" rx="8" class="port" />
+    <rect x="-16" y="142" width="24" height="62" rx="8" class="port" />
+    <rect x="-16" y="222" width="24" height="62" rx="8" class="port" />
+    <rect x="304" y="62" width="24" height="62" rx="8" class="port" />
+    <rect x="304" y="142" width="24" height="62" rx="8" class="port" />
+    <rect x="304" y="222" width="24" height="62" rx="8" class="port" />
+    <rect x="80" y="354" width="54" height="24" rx="8" class="port" />
+    <rect x="140" y="354" width="54" height="24" rx="8" class="port" />
+    <rect x="200" y="354" width="54" height="24" rx="8" class="port" />
+  </g>
+
+  <path class="wire" d="M440 118 C442 74 372 72 286 72" />
+  <rect x="70" y="42" width="210" height="72" class="callout" />
+  <text x="94" y="72" class="label" font-size="18">USB / SERIAL0</text>
+  <text x="94" y="96" class="copy">OTG1 for flashing, setup, and primary MAVLink.</text>
+
+  <path class="wire" d="M324 210 C252 204 194 176 122 146" />
+  <rect x="54" y="108" width="232" height="86" class="callout" />
+  <text x="78" y="140" class="label" font-size="18">Telem 1 / SERIAL7</text>
+  <text x="78" y="166" class="copy">UART7 is usually the main radio telemetry port on this family.</text>
+
+  <path class="wire" d="M324 288 C246 292 186 316 118 352" />
+  <rect x="54" y="320" width="232" height="90" class="callout" />
+  <text x="78" y="352" class="label" font-size="18">Telem 2 / GPS</text>
+  <text x="78" y="378" class="copy">USART1, USART2, and USART3 cover telem and dual-GNSS wiring.</text>
+
+  <path class="wire" d="M636 210 C708 204 770 178 836 150" />
+  <rect x="676" y="112" width="232" height="90" class="callout" />
+  <text x="700" y="144" class="label" font-size="18">RC / User UART</text>
+  <text x="700" y="170" class="copy">UART6 is the common RC path. UART4 and UART8 stay flexible for user gear.</text>
+
+  <path class="wire" d="M636 360 C708 406 774 442 844 482" />
+  <rect x="648" y="444" width="246" height="92" class="callout" />
+  <text x="672" y="476" class="label" font-size="18">ESC Telemetry / Aux</text>
+  <text x="672" y="502" class="copy">Many H743 layouts dedicate UART4 or UART8 to ESC telemetry, relay, or spare serial.</text>
+</svg>
