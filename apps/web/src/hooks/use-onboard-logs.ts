@@ -1,8 +1,19 @@
 import { useCallback, useRef, useState } from 'react'
-import type { ConfiguratorSnapshot, LogDownloadProgress, OnboardLogInfo } from '@arduconfig/ardupilot-core'
+import type {
+  ConfiguratorSnapshot,
+  LogDownloadProgress,
+  MavftpDirectoryEntry,
+  OnboardLogInfo
+} from '@arduconfig/ardupilot-core'
 import { buildOnboardLogFilename } from '@arduconfig/ardupilot-core'
 
 import { downloadBinaryFile } from '../download-file'
+import {
+  mavftpEntriesToLogItems,
+  selectOnboardLogSource,
+  type MavftpLogItem,
+  type OnboardLogSource
+} from '../view-models/onboard-log-source'
 
 // Minimal structural slice of the runtime the onboard-log surface needs.
 export interface OnboardLogCapableRuntime {
@@ -12,7 +23,13 @@ export interface OnboardLogCapableRuntime {
     sizeBytes: number,
     onProgress?: (progress: LogDownloadProgress) => void
   ): Promise<Uint8Array>
-  /** Read the live snapshot to tag the downloaded file with the board identity. */
+  /** List onboard logs over MAVFTP (`/APM/LOGS`) — the faster path when supported. */
+  listMavftpLogs(): Promise<MavftpDirectoryEntry[]>
+  downloadMavftpLog(
+    path: string,
+    onProgress?: (progress: LogDownloadProgress) => void
+  ): Promise<Uint8Array>
+  /** Read the live snapshot to pick the source + tag the file with board identity. */
   getSnapshot(): ConfiguratorSnapshot
 }
 
@@ -20,8 +37,12 @@ export type OnboardLogsStatus = 'idle' | 'listing' | 'ready' | 'error'
 
 export interface OnboardLogsState {
   status: OnboardLogsStatus
+  /** Which transport the most recent list used (MAVFTP burst vs LOG_* stream). */
+  source: OnboardLogSource
   message?: string
   logs: OnboardLogInfo[]
+  /** id → real on-FC filename for the MAVFTP source; empty for LOG_*. */
+  logNamesById: ReadonlyMap<number, string>
   activeDownloadId?: number
   activeDownloadPercent?: number
 }
@@ -38,20 +59,42 @@ export interface OnboardLogs extends OnboardLogsState {
  * preserving extraction of what previously lived inline in App.tsx.
  */
 export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): OnboardLogs {
-  const [state, setState] = useState<OnboardLogsState>({ status: 'idle', logs: [] })
+  const [state, setState] = useState<OnboardLogsState>({
+    status: 'idle',
+    source: 'mavlink',
+    logs: [],
+    logNamesById: new Map()
+  })
   // Mirror the latest logs so download() can resolve a log by id without
   // depending on (and being recreated by) state.logs.
   const logsRef = useRef<OnboardLogInfo[]>([])
+  // id → MAVFTP path/name for the current listing; empty when the last list
+  // used the LOG_* source. download() keys off this to pick the path.
+  const mavftpItemsRef = useRef<Map<number, MavftpLogItem>>(new Map())
 
   const list = useCallback(async () => {
     if (!runtime) return
-    setState((prev) => ({ ...prev, status: 'listing', message: undefined }))
+    const source = selectOnboardLogSource(runtime.getSnapshot())
+    setState((prev) => ({ ...prev, status: 'listing', source, message: undefined }))
     try {
-      const logs = await runtime.listOnboardLogs()
+      let logs: OnboardLogInfo[]
+      let logNamesById: ReadonlyMap<number, string>
+      if (source === 'mavftp') {
+        const items = mavftpEntriesToLogItems(await runtime.listMavftpLogs())
+        mavftpItemsRef.current = new Map(items.map((item) => [item.log.id, item]))
+        logs = items.map((item) => item.log)
+        logNamesById = new Map(items.map((item) => [item.log.id, item.name]))
+      } else {
+        mavftpItemsRef.current = new Map()
+        logs = await runtime.listOnboardLogs()
+        logNamesById = new Map()
+      }
       logsRef.current = logs
       setState({
         status: 'ready',
+        source,
         logs,
+        logNamesById,
         message: logs.length === 0 ? 'No logs on the card.' : undefined
       })
     } catch (error) {
@@ -70,21 +113,30 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
       if (!log) {
         return
       }
+      const mavftpItem = mavftpItemsRef.current.get(id)
       setState((prev) => ({ ...prev, activeDownloadId: id, activeDownloadPercent: 0 }))
+      const onProgress = (progress: LogDownloadProgress) => {
+        const percent =
+          progress.totalBytes > 0 ? Math.round((progress.bytesReceived / progress.totalBytes) * 100) : 0
+        setState((prev) =>
+          prev.activeDownloadId === id ? { ...prev, activeDownloadPercent: percent } : prev
+        )
+      }
       try {
-        const bytes = await runtime.downloadOnboardLog(id, log.sizeBytes, (progress) => {
-          const percent =
-            progress.totalBytes > 0 ? Math.round((progress.bytesReceived / progress.totalBytes) * 100) : 0
-          setState((prev) =>
-            prev.activeDownloadId === id ? { ...prev, activeDownloadPercent: percent } : prev
-          )
-        })
-        const board = runtime.getSnapshot().hardware.board
-        downloadBinaryFile(buildOnboardLogFilename(log, board), bytes)
+        let bytes: Uint8Array
+        let filename: string
+        if (mavftpItem) {
+          bytes = await runtime.downloadMavftpLog(mavftpItem.path, onProgress)
+          filename = mavftpItem.name
+        } else {
+          bytes = await runtime.downloadOnboardLog(id, log.sizeBytes, onProgress)
+          filename = buildOnboardLogFilename(log, runtime.getSnapshot().hardware.board)
+        }
+        downloadBinaryFile(filename, bytes)
         setState((prev) => ({
           ...prev,
           status: 'ready',
-          message: `Downloaded onboard log ${id} (${bytes.length} bytes).`,
+          message: `Downloaded ${filename} (${bytes.length} bytes).`,
           activeDownloadId: undefined,
           activeDownloadPercent: undefined
         }))

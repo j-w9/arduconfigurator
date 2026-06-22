@@ -27,6 +27,8 @@ export interface LogsBitmaskField {
 
 export interface OnboardLogListItem {
   id: number
+  /** Real on-FC filename (MAVFTP source); absent for the LOG_* source. */
+  nameLabel?: string
   sizeLabel: string
   dateLabel: string
 }
@@ -34,6 +36,8 @@ export interface OnboardLogListItem {
 export interface OnboardLogsPanel {
   /** True only when a vehicle is connected and identified. */
   available: boolean
+  /** Which transport will be used — MAVFTP burst read (faster) or LOG_* stream. */
+  source: 'mavftp' | 'mavlink'
   status: 'idle' | 'listing' | 'ready' | 'error'
   message?: string
   logs: readonly OnboardLogListItem[]
@@ -219,6 +223,9 @@ export function LogsView(props: LogsViewProps) {
             <article className="bf-gui-box" data-testid="logs-onboard">
               <div className="bf-gui-box__titlebar">
                 <span>Onboard logs</span>
+                <span data-testid="logs-onboard-source">
+                  {onboardLogs.source === 'mavftp' ? 'MAVFTP' : 'MAVLink'}
+                </span>
               </div>
               <div className="bf-gui-box__body">
                 <div className="bf-toolbar">
@@ -250,7 +257,7 @@ export function LogsView(props: LogsViewProps) {
                       const downloading = onboardLogs.activeDownloadId === log.id
                       return (
                         <li key={log.id} data-testid={`logs-onboard-row-${log.id}`}>
-                          <span>Log {log.id}</span>
+                          <span>{log.nameLabel ?? `Log ${log.id}`}</span>
                           <span>{log.sizeLabel}</span>
                           <span>{log.dateLabel}</span>
                           <button

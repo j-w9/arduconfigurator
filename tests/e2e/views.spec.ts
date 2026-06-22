@@ -705,6 +705,10 @@ test.describe('Logs view', () => {
     await expect(page.getByTestId('logs-onboard')).toBeVisible()
     await expect(page.getByTestId('logs-onboard-list')).toBeEnabled()
 
+    // The demo FC reports MAVFTP capability, so the source badge selects the
+    // faster burst-read path (it falls back to MAVLink when FTP is absent).
+    await expect(page.getByTestId('logs-onboard-source')).toHaveText('MAVFTP')
+
     // The list/download round-trip itself is covered by the layered node
     // tests — mock-scenario LOG handling (mock-scenario-logs.test.mjs),
     // LogDownloadService collection (log-download-service.test.mjs), and

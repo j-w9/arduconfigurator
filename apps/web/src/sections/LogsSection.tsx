@@ -17,6 +17,7 @@ import { selectViewCatalog } from '../selectors/view-catalog'
 import { selectViewDrafts } from '../selectors/view-drafts'
 import { readRoundedParameter } from '../selectors/parameter-read'
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
+import { selectOnboardLogSource } from '../view-models/onboard-log-source'
 import { LogsView } from '../views/Logs'
 
 export interface LogsSectionProps {
@@ -120,10 +121,15 @@ export function LogsSection(props: LogsSectionProps) {
         onRevert={() => onDiscardScopedDrafts(logsDraftEntries.map((entry) => entry.id), 'Logs')}
         onboardLogs={{
           available: snapshot.connection.kind === 'connected' && Boolean(snapshot.vehicle),
+          // The badge reflects the capability-derived source (what a list will
+          // use), so it's accurate before the first list — the hook applies
+          // the same selection at list time.
+          source: selectOnboardLogSource(snapshot),
           status: onboardLogs.status,
           message: onboardLogs.message,
           logs: onboardLogs.logs.map((log) => ({
             id: log.id,
+            nameLabel: onboardLogs.logNamesById.get(log.id),
             sizeLabel: formatByteCount(log.sizeBytes),
             dateLabel:
               log.timeUtc > 0

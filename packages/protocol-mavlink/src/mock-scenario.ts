@@ -1649,18 +1649,23 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
         }
         case 'FILE_TRANSFER_PROTOCOL': {
           const request = decodeFtpPayload((outbound.message as FileTransferProtocolMessage).payload)
-          const response = handleMockFtpRequest(request, ftpSessions, () => nextFtpSession++, ftpFiles)
-          responses.push(
-            codec.encode(
-              envelope(250, {
-                type: 'FILE_TRANSFER_PROTOCOL',
-                targetNetwork: 0,
-                targetSystem: outbound.header.systemId,
-                targetComponent: outbound.header.componentId,
-                payload: encodeFtpPayload(response)
-              })
+          const ftpFrames =
+            request.opcode === MAV_FTP_OPCODE.BURST_READ_FILE
+              ? buildMockFtpBurstFrames(request, ftpSessions, ftpFiles)
+              : [handleMockFtpRequest(request, ftpSessions, () => nextFtpSession++, ftpFiles)]
+          for (const ftpFrame of ftpFrames) {
+            responses.push(
+              codec.encode(
+                envelope(250, {
+                  type: 'FILE_TRANSFER_PROTOCOL',
+                  targetNetwork: 0,
+                  targetSystem: outbound.header.systemId,
+                  targetComponent: outbound.header.componentId,
+                  payload: encodeFtpPayload(ftpFrame)
+                })
+              )
             )
-          )
+          }
           break
         }
         case 'LOG_REQUEST_LIST':
@@ -2127,12 +2132,66 @@ function handleMockFtpRequest(
   }
 }
 
+// BURST_READ_FILE streams many data packets per request (unlike READ_FILE's
+// one-chunk-per-round-trip), so it returns an array of frames rather than a
+// single response. The mock streams the whole file from the requested offset
+// in one burst and sets burstComplete on the final packet.
+function buildMockFtpBurstFrames(
+  request: MockFtpPayload,
+  sessions: Map<number, { path: string; mode: 'read' | 'write' }>,
+  files: MockFtpFileMap
+): MockFtpPayload[] {
+  const session = sessions.get(request.session)
+  if (!session || session.mode !== 'read') {
+    return [ftpNak(request, MAV_FTP_ERR.INVALID_SESSION)]
+  }
+  const fileBytes = files.get(session.path)
+  if (!fileBytes) {
+    return [ftpNak(request, MAV_FTP_ERR.FILE_NOT_FOUND)]
+  }
+  if (request.offset >= fileBytes.length) {
+    return [ftpNak(request, MAV_FTP_ERR.EOF)]
+  }
+
+  const chunkSize = request.size > 0 ? Math.min(request.size, 239) : 239
+  const frames: MockFtpPayload[] = []
+  let offset = request.offset
+  while (offset < fileBytes.length) {
+    const end = Math.min(offset + chunkSize, fileBytes.length)
+    const data = fileBytes.slice(offset, end)
+    frames.push(
+      ftpAck(request, {
+        session: request.session,
+        size: data.length,
+        offset,
+        data,
+        burstComplete: end >= fileBytes.length ? 1 : 0
+      })
+    )
+    offset = end
+  }
+  return frames
+}
+
+// Deterministic dataflash-log bytes so a burst download has stable content to
+// assert against. Sizes are chosen to span several 239-byte burst packets.
+function makeMockLogBytes(seed: number, length: number): Uint8Array {
+  const bytes = new Uint8Array(length)
+  for (let index = 0; index < length; index += 1) {
+    bytes[index] = (index + seed) & 0xff
+  }
+  return bytes
+}
+
 function createMockFtpFiles(): MockFtpFileMap {
   return new Map<string, Uint8Array>([
     ['@SYS/uarts.txt', mockUartsBytes.slice()],
     ['@SYS/timers.txt', mockTimersBytes.slice()],
     ['@SYS/scripts/autorun.lua', mockAutorunScriptBytes.slice()],
-    ['@SYS/scripts/hello.lua', mockHelloScriptBytes.slice()]
+    ['@SYS/scripts/hello.lua', mockHelloScriptBytes.slice()],
+    // Onboard dataflash logs, downloaded via BURST_READ_FILE from /APM/LOGS.
+    ['/APM/LOGS/00000001.BIN', makeMockLogBytes(1, 600)],
+    ['/APM/LOGS/00000002.BIN', makeMockLogBytes(2, 528)]
   ])
 }
 

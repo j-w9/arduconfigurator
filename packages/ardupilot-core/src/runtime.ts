@@ -185,6 +185,11 @@ const DEFAULT_AUTOPILOT_VERSION_TIMEOUT_MS = 3000
 // read; give it a generous budget since the default is tight on a contended
 // USB link.
 const UARTS_FETCH_TIMEOUT_MS = 15000
+// ArduPilot exposes onboard dataflash logs over MAVFTP at this path.
+const MAVFTP_LOGS_DIRECTORY = '/APM/LOGS'
+// Cap a MAVFTP log download the same way the LOG_* path caps its allocation
+// (MAX_LOG_DOWNLOAD_BYTES) — logs dwarf the @SYS files the default cap targets.
+const MAX_MAVFTP_LOG_BYTES = 512 * 1024 * 1024
 const PRE_ARM_ISSUE_TTL_MS = 15000
 const STATUS_TEXT_HISTORY_LIMIT = 500
 // STATUSTEXT v2 chunking parameters. ArduPilot splits messages
@@ -896,6 +901,31 @@ export class ArduPilotConfiguratorRuntime {
   ): Promise<Uint8Array> {
     const bytes = await this.logDownload.downloadLog(id, sizeBytes, onProgress)
     this.appendStatusEntry('info', `Downloaded onboard log ${id} (${bytes.length} bytes).`)
+    this.emit()
+    return bytes
+  }
+
+  /**
+   * List onboard dataflash logs exposed over MAVFTP at `/APM/LOGS` — the file
+   * entries (real on-FC filenames + sizes). Empty when the directory is
+   * absent. A faster, real-named alternative to listOnboardLogs() on FCs that
+   * support MAVFTP burst read.
+   */
+  async listMavftpLogs(): Promise<MavftpDirectoryEntry[]> {
+    const entries = await this.mavftp.listRemoteDirectory(MAVFTP_LOGS_DIRECTORY)
+    return entries.filter((entry) => entry.kind === 'file')
+  }
+
+  /** Download one onboard log over MAVFTP burst read, reporting progress. */
+  async downloadMavftpLog(
+    path: string,
+    onProgress?: (progress: LogDownloadProgress) => void
+  ): Promise<Uint8Array> {
+    const bytes = await this.mavftp.downloadRemoteFileBurst(path, {
+      onProgress,
+      maxBytes: MAX_MAVFTP_LOG_BYTES
+    })
+    this.appendStatusEntry('info', `Downloaded ${path} via MAVFTP (${bytes.length} bytes).`)
     this.emit()
     return bytes
   }
