@@ -1,6 +1,5 @@
 import { useState, type ChangeEvent } from 'react'
 
-import { assetUrl } from './asset-url'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
 
 export type LandingTransportMode =
@@ -33,20 +32,6 @@ export interface DisconnectedLandingProps {
   onConnect: () => void
   connectDisabled: boolean
 }
-
-interface BoardCard {
-  id: string
-  name: string
-  image: string
-}
-
-const BOARDS: readonly BoardCard[] = [
-  { id: 'pixhawk6x', name: 'Pixhawk 6X', image: assetUrl('boards/pixhawk6x/pixhawk6x-uart-map.svg') },
-  { id: 'arkv6x', name: 'ARK V6X', image: assetUrl('boards/arkv6x/arkv6x-uart-map.svg') },
-  { id: 'matekh743', name: 'Matek H743', image: assetUrl('boards/matekh743/matekh743-layout.svg') },
-  { id: 'cuav-7-nano', name: 'CUAV 7 Nano', image: assetUrl('boards/cuav-7-nano/cuav-7-nano-uart-map.svg') },
-  { id: 'ark-fpv', name: 'ARK FPV', image: assetUrl('boards/ark-fpv/ark-fpv-port-map.svg') }
-]
 
 interface CapabilityCard {
   title: string
@@ -231,22 +216,6 @@ export function DisconnectedLanding(props: DisconnectedLandingProps) {
         </ul>
       </div>
 
-      <div className="landing__section">
-        <header className="landing__section-header">
-          <h2>Supported boards</h2>
-          <p>Tested against these flight controllers. Other ArduPilot targets generally work via the same transports.</p>
-        </header>
-        <ul className="landing__board-grid" role="list">
-          {BOARDS.map((board) => (
-            <li key={board.id} className="landing__board">
-              <div className="landing__board-image">
-                <img src={board.image} alt="" loading="lazy" />
-              </div>
-              <span className="landing__board-name">{board.name}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
     </section>
   )
 }

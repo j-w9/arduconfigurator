@@ -290,7 +290,6 @@ test.describe('disconnected landing screen', () => {
 
     await expect(page.getByRole('heading', { name: 'Configure your ArduPilot flight controller.' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'What you can do' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Supported boards' })).toBeVisible()
   })
 
   test('landing connect button connects via demo transport', async ({ page }) => {
