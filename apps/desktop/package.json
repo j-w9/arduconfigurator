@@ -1,6 +1,6 @@
 {
   "name": "@arduconfig/desktop",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "license": "GPL-3.0-only",
   "description": "ArduConfigurator desktop app — offline ArduPilot configuration + firmware flashing.",
@@ -23,9 +23,9 @@
     "runtime:sitl": "npm run build && node dist/runtime-sitl.js"
   },
   "dependencies": {
-    "@arduconfig/firmware-flash": "1.1.0",
-    "@arduconfig/sitl-harness": "1.1.0",
-    "@arduconfig/transport": "1.1.0",
+    "@arduconfig/firmware-flash": "1.1.1",
+    "@arduconfig/sitl-harness": "1.1.1",
+    "@arduconfig/transport": "1.1.1",
     "serialport": "^13.0.0"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 {
   "name": "@arduconfig/web",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "license": "GPL-3.0-only",
   "type": "module",
@@ -13,12 +13,12 @@
     "test:unit": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@arduconfig/ardupilot-core": "1.1.0",
-    "@arduconfig/firmware-flash": "1.1.0",
-    "@arduconfig/param-metadata": "1.1.0",
-    "@arduconfig/protocol-mavlink": "1.1.0",
-    "@arduconfig/transport": "1.1.0",
-    "@arduconfig/ui-kit": "1.1.0",
+    "@arduconfig/ardupilot-core": "1.1.1",
+    "@arduconfig/firmware-flash": "1.1.1",
+    "@arduconfig/param-metadata": "1.1.1",
+    "@arduconfig/protocol-mavlink": "1.1.1",
+    "@arduconfig/transport": "1.1.1",
+    "@arduconfig/ui-kit": "1.1.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "three": "^0.183.2"
