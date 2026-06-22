@@ -20,13 +20,52 @@ import {
   createArduSubMockScenario,
   type MavlinkSessionOptions
 } from '@arduconfig/protocol-mavlink'
-import { MockTransport, WebSerialTransport, WebSocketTransport, type WebSerialPortLike } from '@arduconfig/transport'
+import {
+  DirectSocketsTcpTransport,
+  DirectSocketsUdpTransport,
+  MockTransport,
+  WebSerialTransport,
+  WebSocketTransport,
+  type WebSerialPortLike
+} from '@arduconfig/transport'
 
+import { getDesktopBridge } from './desktop-bridge'
+import { DesktopSocketTransport } from './desktop-socket-transport'
 import type { TransportMode } from './hooks/use-transport-selection'
+
+// Parses the "UDP (direct)" target field into a neutral shape. "host:port"
+// connects to a fixed remote; ":port" or a bare "port" binds locally and learns
+// the peer from the first datagram (the ELRS / Mission-Planner-UDP-listen case).
+export function parseUdpTarget(target: string): { localPort?: number; remoteHost?: string; remotePort?: number } {
+  const trimmed = target.trim()
+  const lastColon = trimmed.lastIndexOf(':')
+  if (lastColon <= 0) {
+    const portText = trimmed.startsWith(':') ? trimmed.slice(1) : trimmed
+    const port = Number.parseInt(portText, 10)
+    return Number.isFinite(port) ? { localPort: port } : {}
+  }
+  const host = trimmed.slice(0, lastColon)
+  const port = Number.parseInt(trimmed.slice(lastColon + 1), 10)
+  return Number.isFinite(port) ? { remoteHost: host, remotePort: port } : {}
+}
+
+// TCP is always a fixed remote, so the target must be "host:port".
+export function parseTcpTarget(target: string): { host: string; port: number } | undefined {
+  const trimmed = target.trim()
+  const lastColon = trimmed.lastIndexOf(':')
+  if (lastColon <= 0) {
+    return undefined
+  }
+  const host = trimmed.slice(0, lastColon)
+  const port = Number.parseInt(trimmed.slice(lastColon + 1), 10)
+  return Number.isFinite(port) ? { host, port } : undefined
+}
 
 export function createRuntime(
   mode: TransportMode,
   websocketUrl: string,
+  udpTarget: string,
+  tcpTarget: string,
   serialPort: WebSerialPortLike | (() => WebSerialPortLike | undefined) | undefined,
   onSerialPortSelected?: (port: WebSerialPortLike) => void,
   // Optional live-recording hooks. The App owns a SessionRecorder and passes
@@ -48,6 +87,42 @@ export function createRuntime(
     if (mode === 'websocket') {
       return new WebSocketTransport('browser-websocket', {
         url: websocketUrl
+      })
+    }
+
+    if (mode === 'udp') {
+      const target = parseUdpTarget(udpTarget)
+      const socket = getDesktopBridge()?.socket
+      if (socket) {
+        return new DesktopSocketTransport('browser-udp', {
+          bridge: socket,
+          kind: 'udp',
+          localPort: target.localPort,
+          remoteHost: target.remoteHost,
+          remotePort: target.remotePort
+        })
+      }
+      return new DirectSocketsUdpTransport('browser-udp', {
+        localPort: target.localPort,
+        remoteAddress: target.remoteHost,
+        remotePort: target.remotePort
+      })
+    }
+
+    if (mode === 'tcp') {
+      const target = parseTcpTarget(tcpTarget) ?? { host: '127.0.0.1', port: 5760 }
+      const socket = getDesktopBridge()?.socket
+      if (socket) {
+        return new DesktopSocketTransport('browser-tcp', {
+          bridge: socket,
+          kind: 'tcp',
+          remoteHost: target.host,
+          remotePort: target.port
+        })
+      }
+      return new DirectSocketsTcpTransport('browser-tcp', {
+        remoteAddress: target.host,
+        remotePort: target.port
       })
     }
 

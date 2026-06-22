@@ -2166,3 +2166,34 @@ test.describe('Tuning profile round-trip', () => {
     await expect(page.getByTestId('stage-selected-tuning-profile-button')).toBeEnabled()
   })
 })
+
+test.describe('Direct Sockets (IWA) transport options', () => {
+  test('exposes UDP + TCP (direct) options and fields when Direct Sockets exist', async ({ page }) => {
+    // Simulate the Isolated Web App context where the Direct Sockets API is
+    // exposed. addInitScript runs before the app bundle evaluates, so the
+    // module-level isSupported() checks see it.
+    await page.addInitScript(() => {
+      Object.assign(window, { UDPSocket: class {}, TCPSocket: class {} })
+    })
+    await page.goto('/')
+
+    const select = page.getByTestId('landing-transport-select')
+    await expect(select.locator('option[value="udp"]')).toHaveCount(1)
+    await expect(select.locator('option[value="tcp"]')).toHaveCount(1)
+
+    await select.selectOption('udp')
+    await expect(page.getByTestId('landing-udp-input')).toBeVisible()
+    await expect(page.getByTestId('landing-udp-hint')).toContainText('Raw UDP')
+
+    await select.selectOption('tcp')
+    await expect(page.getByTestId('landing-tcp-input')).toBeVisible()
+    await expect(page.getByTestId('landing-tcp-hint')).toContainText('Raw TCP')
+  })
+
+  test('hides the UDP/TCP (direct) options in a normal browser tab', async ({ page }) => {
+    await page.goto('/')
+    const select = page.getByTestId('landing-transport-select')
+    await expect(select.locator('option[value="udp"]')).toHaveCount(0)
+    await expect(select.locator('option[value="tcp"]')).toHaveCount(0)
+  })
+})

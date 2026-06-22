@@ -1,6 +1,6 @@
 {
   "name": "@arduconfig/desktop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "license": "GPL-3.0-only",
   "description": "ArduConfigurator desktop app — offline ArduPilot configuration + firmware flashing.",
@@ -8,7 +8,7 @@
   "type": "module",
   "main": "dist/electron-main.js",
   "scripts": {
-    "build": "tsc -b tsconfig.json",
+    "build": "tsc -b tsconfig.json && esbuild src/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload.cjs",
     "typecheck": "tsc -b tsconfig.json --pretty false",
     "app": "electron dist/electron-main.js",
     "pack": "electron-builder --dir",
@@ -23,9 +23,9 @@
     "runtime:sitl": "npm run build && node dist/runtime-sitl.js"
   },
   "dependencies": {
-    "@arduconfig/firmware-flash": "1.0.0",
-    "@arduconfig/sitl-harness": "1.0.0",
-    "@arduconfig/transport": "1.0.0",
+    "@arduconfig/firmware-flash": "1.1.0",
+    "@arduconfig/sitl-harness": "1.1.0",
+    "@arduconfig/transport": "1.1.0",
     "serialport": "^13.0.0"
   },
   "devDependencies": {

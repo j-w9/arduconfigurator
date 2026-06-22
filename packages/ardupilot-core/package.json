@@ -1,6 +1,6 @@
 {
   "name": "@arduconfig/ardupilot-core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "license": "GPL-3.0-only",
   "type": "module",
@@ -11,8 +11,8 @@
     "typecheck": "tsc -b tsconfig.json --pretty false"
   },
   "dependencies": {
-    "@arduconfig/param-metadata": "1.0.0",
-    "@arduconfig/protocol-mavlink": "1.0.0",
-    "@arduconfig/transport": "1.0.0"
+    "@arduconfig/param-metadata": "1.1.0",
+    "@arduconfig/protocol-mavlink": "1.1.0",
+    "@arduconfig/transport": "1.1.0"
   }
 }

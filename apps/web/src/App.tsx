@@ -57,6 +57,7 @@ import {
 } from '@arduconfig/transport'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { describeConnectionError } from './connection-error-help'
 import { getDesktopBridge } from './desktop-bridge'
 import { createRuntime } from './runtime-factory'
 import { useOsdEditor } from './hooks/use-osd-editor'
@@ -303,7 +304,14 @@ import {
   GPS_COORD_FORMAT_VALUES,
   type GpsCoordFormat
 } from './gps-coord-format'
-import { useTransportSelection, DEFAULT_WEBSOCKET_URL } from './hooks/use-transport-selection'
+import {
+  useTransportSelection,
+  DEFAULT_WEBSOCKET_URL,
+  DEFAULT_UDP_TARGET,
+  DEFAULT_TCP_TARGET,
+  udpSupported,
+  tcpSupported
+} from './hooks/use-transport-selection'
 import { useLibraries } from './hooks/use-libraries'
 import { useParameterDrafts } from './hooks/use-parameter-drafts'
 import { useTuningProfiles } from './hooks/use-tuning-profiles'
@@ -377,6 +385,10 @@ export function App() {
     setTransportMode,
     websocketUrl,
     setWebsocketUrl,
+    udpTarget,
+    setUdpTarget,
+    tcpTarget,
+    setTcpTarget,
     selectedSerialPort,
     rememberedSerialPortInfo,
     autoReconnectAvailable,
@@ -404,12 +416,14 @@ export function App() {
       createRuntime(
         transportMode,
         websocketUrl,
+        udpTarget,
+        tcpTarget,
         () => selectedSerialPortRef.current,
         (port) => {
           rememberSelectedSerialPort(port)
         }
       ),
-    [transportMode, websocketUrl, rememberSelectedSerialPort]
+    [transportMode, websocketUrl, udpTarget, tcpTarget, rememberSelectedSerialPort]
   )
   const snapshot = useRuntimeSnapshot(runtime)
   // The catalog follows the connected vehicle. Pre-connect (or for an
@@ -1289,7 +1303,7 @@ export function App() {
     snapshot.connection.kind === 'error' ? snapshot.connection.message : undefined
   useEffect(() => {
     if (connectionErrorMessage !== undefined) {
-      setSessionNotice({ tone: 'danger', text: connectionErrorMessage })
+      setSessionNotice({ tone: 'danger', text: describeConnectionError(connectionErrorMessage) })
     }
   }, [connectionErrorMessage])
 
@@ -4832,6 +4846,12 @@ export function App() {
         busyAction={busyAction}
         websocketUrl={websocketUrl}
         webSerialSupported={webSerialSupported}
+        udpSupported={udpSupported}
+        tcpSupported={tcpSupported}
+        udpTarget={udpTarget}
+        tcpTarget={tcpTarget}
+        onUdpTargetChange={setUdpTarget}
+        onTcpTargetChange={setTcpTarget}
         headerBatteryPercent={headerBatteryPercent}
         headerBatteryLabel={headerBatteryLabel}
         headerWarningActive={headerWarningActive}
@@ -4920,6 +4940,14 @@ export function App() {
               websocketUrl={websocketUrl}
               onWebsocketUrlChange={setWebsocketUrl}
               websocketUrlPlaceholder={DEFAULT_WEBSOCKET_URL}
+              udpSupported={udpSupported}
+              tcpSupported={tcpSupported}
+              udpTarget={udpTarget}
+              onUdpTargetChange={setUdpTarget}
+              udpTargetPlaceholder={DEFAULT_UDP_TARGET}
+              tcpTarget={tcpTarget}
+              onTcpTargetChange={setTcpTarget}
+              tcpTargetPlaceholder={DEFAULT_TCP_TARGET}
               connectLabel={connectButtonLabel(snapshot, parameterFollowUp, busyAction)}
               onConnect={() => void handleConnect()}
               connectDisabled={busyAction !== undefined || snapshot.connection.kind === 'connected'}

@@ -9,21 +9,27 @@ import type { VehicleType } from '@arduconfig/firmware-flash'
 
 import { createDesktopWebPreferences } from './electron-window-options.js'
 import { listBoardFirmware, downloadFirmwareApj } from './firmware-fetch.js'
+import { NativeSocketManager, type SocketOpenOptions } from './native-socket-manager.js'
 import { desktopPlatformManifest } from './platform.js'
 import { confinedExistingPath } from './save-path.js'
 import { startHostedWebUi, type HostedWebUi } from './web-ui-server.js'
 
 const DESKTOP_DEV_SERVER_URL = process.env.ARDUCONFIG_DESKTOP_DEV_SERVER_URL
 const DESKTOP_DEVTOOLS = process.env.ARDUCONFIG_DESKTOP_DEVTOOLS === '1'
-const PRELOAD_PATH = fileURLToPath(new URL('./preload.js', import.meta.url))
+// Preload is bundled to CommonJS (preload.cjs): Electron loads preload scripts
+// as CJS, so the tsc ESM output (preload.js) silently fails to load and the
+// whole context bridge goes missing. See the esbuild step in package.json.
+const PRELOAD_PATH = fileURLToPath(new URL('./preload.cjs', import.meta.url))
 
 let hostedWebUi: HostedWebUi | undefined
+const socketManager = new NativeSocketManager()
 
 app.name = 'ArduConfigurator'
 
 void app.whenReady().then(async () => {
   registerDesktopSnapshotFileHandlers()
   registerDesktopFirmwareHandlers()
+  registerDesktopSocketHandlers()
   hostedWebUi = DESKTOP_DEV_SERVER_URL ? undefined : await startHostedWebUi()
   await createMainWindow(hostedWebUi?.url ?? DESKTOP_DEV_SERVER_URL ?? 'http://127.0.0.1:4173')
 
@@ -42,6 +48,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   void hostedWebUi?.close().catch(() => {})
+  void socketManager.closeAll().catch(() => {})
 })
 
 async function createMainWindow(startUrl: string): Promise<BrowserWindow> {
@@ -166,6 +173,33 @@ function registerDesktopSnapshotFileHandlers(): void {
   ipcMain.handle('desktop:snapshots:save-backup', async (_event, request: DesktopSaveFileRequest) =>
     saveTextFileWithDialog(request, 'arduconfig-snapshot.json')
   )
+}
+
+function registerDesktopSocketHandlers(): void {
+  // Native UDP/TCP for the desktop app: the renderer can't open raw sockets, so
+  // it drives a main-process UdpTransport/TcpTransport over IPC. Frames and
+  // status stream back to the webContents that opened the socket.
+  ipcMain.handle('desktop:socket:open', async (event, id: string, options: SocketOpenOptions) => {
+    const sender = event.sender
+    await socketManager.open(id, options, {
+      onFrame: (frame) => {
+        if (!sender.isDestroyed()) {
+          sender.send('desktop:socket:frame', id, frame)
+        }
+      },
+      onStatus: (status) => {
+        if (!sender.isDestroyed()) {
+          sender.send('desktop:socket:status', id, status)
+        }
+      }
+    })
+  })
+  ipcMain.handle('desktop:socket:send', async (_event, id: string, frame: Uint8Array) => {
+    await socketManager.send(id, frame)
+  })
+  ipcMain.handle('desktop:socket:close', async (_event, id: string) => {
+    await socketManager.close(id)
+  })
 }
 
 function registerDesktopFirmwareHandlers(): void {

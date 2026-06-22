@@ -3,7 +3,15 @@ import { useState, type ChangeEvent } from 'react'
 import { assetUrl } from './asset-url'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
 
-export type LandingTransportMode = 'demo' | 'demo-plane' | 'demo-rover' | 'demo-sub' | 'web-serial' | 'websocket'
+export type LandingTransportMode =
+  | 'demo'
+  | 'demo-plane'
+  | 'demo-rover'
+  | 'demo-sub'
+  | 'web-serial'
+  | 'websocket'
+  | 'udp'
+  | 'tcp'
 
 export interface DisconnectedLandingProps {
   transportMode: LandingTransportMode
@@ -12,6 +20,15 @@ export interface DisconnectedLandingProps {
   websocketUrl: string
   onWebsocketUrlChange: (url: string) => void
   websocketUrlPlaceholder: string
+  /** True only in the desktop app or an Isolated Web App, where raw UDP/TCP work. */
+  udpSupported: boolean
+  tcpSupported: boolean
+  udpTarget: string
+  onUdpTargetChange: (target: string) => void
+  udpTargetPlaceholder: string
+  tcpTarget: string
+  onTcpTargetChange: (target: string) => void
+  tcpTargetPlaceholder: string
   connectLabel: string
   onConnect: () => void
   connectDisabled: boolean
@@ -63,6 +80,14 @@ export function DisconnectedLanding(props: DisconnectedLandingProps) {
     websocketUrl,
     onWebsocketUrlChange,
     websocketUrlPlaceholder,
+    udpSupported,
+    tcpSupported,
+    udpTarget,
+    onUdpTargetChange,
+    udpTargetPlaceholder,
+    tcpTarget,
+    onTcpTargetChange,
+    tcpTargetPlaceholder,
     connectLabel,
     onConnect,
     connectDisabled
@@ -103,6 +128,8 @@ export function DisconnectedLanding(props: DisconnectedLandingProps) {
                 Serial{webSerialSupported ? '' : ' (n/a)'}
               </option>
               <option value="websocket">WebSocket</option>
+              {udpSupported ? <option value="udp">UDP (direct)</option> : null}
+              {tcpSupported ? <option value="tcp">TCP (direct)</option> : null}
             </select>
           </label>
 
@@ -118,6 +145,47 @@ export function DisconnectedLanding(props: DisconnectedLandingProps) {
                 spellCheck={false}
                 disabled={connectDisabled}
               />
+              <small className="landing__hint" data-testid="landing-websocket-hint">
+                A WebSocket isn't a UDP connection — a browser tab can't open a raw UDP, TCP, or serial link.
+                For a UDP or TCP link (ELRS, SITL), use the downloadable app.
+              </small>
+            </label>
+          ) : null}
+
+          {transportMode === 'udp' ? (
+            <label className="landing__field landing__field--wide">
+              <span>UDP address</span>
+              <input
+                data-testid="landing-udp-input"
+                type="text"
+                value={udpTarget}
+                onChange={(event) => onUdpTargetChange(event.target.value)}
+                placeholder={udpTargetPlaceholder}
+                spellCheck={false}
+                disabled={connectDisabled}
+              />
+              <small className="landing__hint" data-testid="landing-udp-hint">
+                Raw UDP, no bridge needed. <code>:14550</code> listens for a MAVLink feed (ELRS, or a Mission
+                Planner-style UDP stream); <code>host:14550</code> connects to a fixed sender.
+              </small>
+            </label>
+          ) : null}
+
+          {transportMode === 'tcp' ? (
+            <label className="landing__field landing__field--wide">
+              <span>TCP address</span>
+              <input
+                data-testid="landing-tcp-input"
+                type="text"
+                value={tcpTarget}
+                onChange={(event) => onTcpTargetChange(event.target.value)}
+                placeholder={tcpTargetPlaceholder}
+                spellCheck={false}
+                disabled={connectDisabled}
+              />
+              <small className="landing__hint" data-testid="landing-tcp-hint">
+                Raw TCP, no bridge needed. <code>host:5760</code> connects to a MAVLink TCP endpoint (e.g. SITL).
+              </small>
             </label>
           ) : null}
 

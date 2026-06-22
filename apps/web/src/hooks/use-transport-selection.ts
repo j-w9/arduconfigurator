@@ -1,17 +1,41 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import {
+  DirectSocketsTcpTransport,
+  DirectSocketsUdpTransport,
   getAvailableWebSerialPorts,
   getWebSerialPortInfo,
   type WebSerialPortInfo,
   type WebSerialPortLike
 } from '@arduconfig/transport'
 
-export type TransportMode = 'demo' | 'demo-plane' | 'demo-rover' | 'demo-sub' | 'web-serial' | 'websocket'
+import { desktopSocketsSupported } from '../desktop-bridge'
+
+export type TransportMode =
+  | 'demo'
+  | 'demo-plane'
+  | 'demo-rover'
+  | 'demo-sub'
+  | 'web-serial'
+  | 'websocket'
+  | 'udp'
+  | 'tcp'
 
 export const DEFAULT_WEBSOCKET_URL = 'ws://127.0.0.1:14550'
+// ":14550" → bind locally and learn the peer (ELRS / Mission-Planner UDP-listen).
+export const DEFAULT_UDP_TARGET = ':14550'
+// TCP is always a fixed remote; SITL's default is 127.0.0.1:5760.
+export const DEFAULT_TCP_TARGET = '127.0.0.1:5760'
+
+// Raw UDP/TCP need either the desktop app (native sockets over IPC) or an
+// Isolated Web App on Chromium (Direct Sockets). A normal tab has neither.
+const nativeSocketsAvailable = desktopSocketsSupported()
+export const udpSupported = DirectSocketsUdpTransport.isSupported() || nativeSocketsAvailable
+export const tcpSupported = DirectSocketsTcpTransport.isSupported() || nativeSocketsAvailable
 
 const TRANSPORT_MODE_STORAGE_KEY = 'arduconfig:transport-mode'
 const WEBSOCKET_URL_STORAGE_KEY = 'arduconfig:websocket-url'
+const UDP_TARGET_STORAGE_KEY = 'arduconfig:udp-target'
+const TCP_TARGET_STORAGE_KEY = 'arduconfig:tcp-target'
 const SERIAL_PORT_INFO_STORAGE_KEY = 'arduconfig:web-serial-port'
 
 function defaultTransportMode(webSerialSupported: boolean): TransportMode {
@@ -37,11 +61,40 @@ function readStoredTransportMode(webSerialSupported: boolean): TransportMode {
     if (stored === 'web-serial' && webSerialSupported) {
       return stored
     }
+    if (stored === 'udp' && udpSupported) {
+      return stored
+    }
+    if (stored === 'tcp' && tcpSupported) {
+      return stored
+    }
   } catch {
     return defaultTransportMode(webSerialSupported)
   }
 
   return defaultTransportMode(webSerialSupported)
+}
+
+function readStoredTarget(key: string, fallback: string): string {
+  if (typeof window === 'undefined') {
+    return fallback
+  }
+
+  try {
+    const stored = window.localStorage.getItem(key)?.trim()
+    return stored ? stored : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function persistTarget(key: string, value: string): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {}
 }
 
 function readStoredWebsocketUrl(): string {
@@ -122,6 +175,10 @@ export interface TransportSelection {
   setTransportMode: Dispatch<SetStateAction<TransportMode>>
   websocketUrl: string
   setWebsocketUrl: Dispatch<SetStateAction<string>>
+  udpTarget: string
+  setUdpTarget: Dispatch<SetStateAction<string>>
+  tcpTarget: string
+  setTcpTarget: Dispatch<SetStateAction<string>>
   selectedSerialPort: WebSerialPortLike | undefined
   rememberedSerialPortInfo: WebSerialPortInfo | undefined
   autoReconnectAvailable: boolean
@@ -153,6 +210,8 @@ export interface TransportSelection {
 export function useTransportSelection(webSerialSupported: boolean): TransportSelection {
   const [transportMode, setTransportMode] = useState<TransportMode>(() => readStoredTransportMode(webSerialSupported))
   const [websocketUrl, setWebsocketUrl] = useState<string>(readStoredWebsocketUrl)
+  const [udpTarget, setUdpTarget] = useState<string>(() => readStoredTarget(UDP_TARGET_STORAGE_KEY, DEFAULT_UDP_TARGET))
+  const [tcpTarget, setTcpTarget] = useState<string>(() => readStoredTarget(TCP_TARGET_STORAGE_KEY, DEFAULT_TCP_TARGET))
   const [selectedSerialPort, setSelectedSerialPort] = useState<WebSerialPortLike | undefined>(undefined)
   const [rememberedSerialPortInfo, setRememberedSerialPortInfo] = useState<WebSerialPortInfo | undefined>(
     readStoredSerialPortInfo
@@ -166,6 +225,14 @@ export function useTransportSelection(webSerialSupported: boolean): TransportSel
   useEffect(() => {
     persistWebsocketUrl(websocketUrl)
   }, [websocketUrl])
+
+  useEffect(() => {
+    persistTarget(UDP_TARGET_STORAGE_KEY, udpTarget)
+  }, [udpTarget])
+
+  useEffect(() => {
+    persistTarget(TCP_TARGET_STORAGE_KEY, tcpTarget)
+  }, [tcpTarget])
 
   // Query the browser's authorized ports and pick the one matching the
   // remembered FC by USB vendor/product id (or the first port). Pure: no
@@ -227,6 +294,10 @@ export function useTransportSelection(webSerialSupported: boolean): TransportSel
     setTransportMode,
     websocketUrl,
     setWebsocketUrl,
+    udpTarget,
+    setUdpTarget,
+    tcpTarget,
+    setTcpTarget,
     selectedSerialPort,
     rememberedSerialPortInfo,
     autoReconnectAvailable,

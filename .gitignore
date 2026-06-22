@@ -7,3 +7,7 @@ playwright-report
 test-results
 apps/desktop/release
 .vercel
+
+# Isolated Web App build (signed bundle output + local signing key)
+apps/web/dist-iwa/
+apps/web/iwa/signing-key.pem

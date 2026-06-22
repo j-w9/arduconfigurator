@@ -34,5 +34,42 @@ contextBridge.exposeInMainWorld('arduconfigDesktop', {
         entries: { boardId: number; vehicletype: string; releaseType: string; version: string; url: string; latest: boolean }[]
       }>,
     download: (url: string) => ipcRenderer.invoke('desktop:firmware:download', url) as Promise<Uint8Array>
+  },
+  // Native UDP/TCP socket bridge. The renderer constructs a DesktopSocketTransport
+  // that drives a main-process UdpTransport/TcpTransport over these channels.
+  socket: {
+    open: (id: string, options: SocketOpenOptions) =>
+      ipcRenderer.invoke('desktop:socket:open', id, options) as Promise<void>,
+    send: (id: string, frame: Uint8Array) => ipcRenderer.invoke('desktop:socket:send', id, frame) as Promise<void>,
+    close: (id: string) => ipcRenderer.invoke('desktop:socket:close', id) as Promise<void>,
+    subscribe: (
+      id: string,
+      onFrame: (frame: Uint8Array) => void,
+      onStatus: (status: unknown) => void
+    ): (() => void) => {
+      const frameHandler = (_event: unknown, socketId: string, frame: Uint8Array) => {
+        if (socketId === id) {
+          onFrame(frame)
+        }
+      }
+      const statusHandler = (_event: unknown, socketId: string, status: unknown) => {
+        if (socketId === id) {
+          onStatus(status)
+        }
+      }
+      ipcRenderer.on('desktop:socket:frame', frameHandler)
+      ipcRenderer.on('desktop:socket:status', statusHandler)
+      return () => {
+        ipcRenderer.removeListener('desktop:socket:frame', frameHandler)
+        ipcRenderer.removeListener('desktop:socket:status', statusHandler)
+      }
+    }
   }
 })
+
+interface SocketOpenOptions {
+  kind: 'udp' | 'tcp'
+  localPort?: number
+  remoteHost?: string
+  remotePort?: number
+}

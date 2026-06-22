@@ -13,7 +13,12 @@ import { connectButtonLabel } from '../connection-helpers'
 import { batteryHealthTone } from '../device-display'
 import type { ParameterFollowUp } from '../hooks/use-parameter-feedback'
 import type { ProductMode } from '../hooks/use-product-mode'
-import { DEFAULT_WEBSOCKET_URL, type TransportMode } from '../hooks/use-transport-selection'
+import {
+  DEFAULT_WEBSOCKET_URL,
+  DEFAULT_UDP_TARGET,
+  DEFAULT_TCP_TARGET,
+  type TransportMode
+} from '../hooks/use-transport-selection'
 
 export interface HeaderSensorItem {
   id: string
@@ -28,6 +33,12 @@ export interface AppHeaderProps {
   busyAction: string | undefined
   websocketUrl: string
   webSerialSupported: boolean
+  udpSupported: boolean
+  tcpSupported: boolean
+  udpTarget: string
+  tcpTarget: string
+  onUdpTargetChange: (target: string) => void
+  onTcpTargetChange: (target: string) => void
   headerBatteryPercent: number
   headerBatteryLabel: string
   headerWarningActive: boolean
@@ -50,6 +61,12 @@ export function AppHeader({
   busyAction,
   websocketUrl,
   webSerialSupported,
+  udpSupported,
+  tcpSupported,
+  udpTarget,
+  tcpTarget,
+  onUdpTargetChange,
+  onTcpTargetChange,
   headerBatteryPercent,
   headerBatteryLabel,
   headerWarningActive,
@@ -105,6 +122,8 @@ export function AppHeader({
             Serial / USB{webSerialSupported ? '' : ' (n/a)'}
           </option>
           <option value="websocket">WebSocket</option>
+          {udpSupported ? <option value="udp">UDP (direct)</option> : null}
+          {tcpSupported ? <option value="tcp">TCP (direct)</option> : null}
         </select>
         {transportMode === 'websocket' ? (
           <input
@@ -116,6 +135,30 @@ export function AppHeader({
             disabled={busyAction !== undefined || snapshot.connection.kind === 'connected'}
             spellCheck={false}
             placeholder={DEFAULT_WEBSOCKET_URL}
+          />
+        ) : null}
+        {transportMode === 'udp' ? (
+          <input
+            data-testid="udp-target-input"
+            className="app-header__connection-input"
+            type="text"
+            value={udpTarget}
+            onChange={(event) => onUdpTargetChange(event.target.value)}
+            disabled={busyAction !== undefined || snapshot.connection.kind === 'connected'}
+            spellCheck={false}
+            placeholder={DEFAULT_UDP_TARGET}
+          />
+        ) : null}
+        {transportMode === 'tcp' ? (
+          <input
+            data-testid="tcp-target-input"
+            className="app-header__connection-input"
+            type="text"
+            value={tcpTarget}
+            onChange={(event) => onTcpTargetChange(event.target.value)}
+            disabled={busyAction !== undefined || snapshot.connection.kind === 'connected'}
+            spellCheck={false}
+            placeholder={DEFAULT_TCP_TARGET}
           />
         ) : null}
       </div>
