@@ -688,7 +688,7 @@ test('MockTransport serializes chunked inbound frames so demo parameter sync com
     respondToOutbound: scenario.respondToOutbound,
     // chunkSize:7 is the stressor — it splits every PARAM_VALUE into ~5 chunks
     // to exercise multi-frame reassembly. The COUNT of chunks (5000+ across
-    // 1037 params) is the timing concern, not the reassembly logic itself.
+    // 1046 params) is the timing concern, not the reassembly logic itself.
     // Drop per-frame pacing + response delay to 0 so the ~5000-chunk
     // timeline drains as fast as the runner can clear setTimeout(0)
     // callbacks; contended CI runners regularly drifted past the older
@@ -714,8 +714,8 @@ test('MockTransport serializes chunked inbound frames so demo parameter sync com
     const stats = await runtime.waitForParameterSync({ timeoutMs: 120000 })
 
     assert.equal(stats.status, 'complete')
-    assert.equal(stats.downloaded, 1037)
-    assert.equal(stats.total, 1037)
+    assert.equal(stats.downloaded, 1046)
+    assert.equal(stats.total, 1046)
     assert.equal(runtime.getSnapshot().parameters.find((parameter) => parameter.id === 'FRAME_CLASS')?.value, 1)
     assert.equal(runtime.getSnapshot().parameters.find((parameter) => parameter.id === 'FRAME_TYPE')?.value, 1)
   } finally {
@@ -797,7 +797,7 @@ test('MockTransport chunked delivery still serializes frames (no interleave) whe
 })
 
 test('Bundled WebSocket bridge can drive runtime heartbeat and parameter sync from the demo source', {
-  // Same chunkSize:7 + 1037-param amplifier as the sibling chunked-stress
+  // Same chunkSize:7 + 1046-param amplifier as the sibling chunked-stress
   // test above. Structurally flaky on contended CI runners (~10x slowdown
   // vs local). Skip on CI; the local run validates the bridge ↔ runtime
   // end-to-end on every push, and the WebSocket-bridge unit tests in this
@@ -846,7 +846,7 @@ test('Bundled WebSocket bridge can drive runtime heartbeat and parameter sync fr
     assert.equal(runtime.getSnapshot().connection.kind, 'connected')
     assert.equal(runtime.getSnapshot().vehicle?.vehicle, 'ArduCopter')
     assert.equal(stats.status, 'complete')
-    assert.equal(stats.downloaded, 1037)
+    assert.equal(stats.downloaded, 1046)
     assert.equal(runtime.getSnapshot().parameters.find((parameter) => parameter.id === 'FRAME_CLASS')?.value, 1)
   } finally {
     await runtime.disconnect().catch(() => {})

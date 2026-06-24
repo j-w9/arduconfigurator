@@ -1896,6 +1896,22 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByRole('img', { name: 'Schematic motor map preview' })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByRole('button', { name: 'Reorder Motor Outputs' })).toBeVisible()
   })
+
+  test('Servos view exposes the Gimbal / Mount config section for a Copter', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
+      timeout: VEHICLE_CONNECT_TIMEOUT
+    })
+    await openView(page, 'servos')
+    // The MNT1 gimbal params surface as a "Gimbal / Mount" group in the
+    // Peripherals task's additional-settings card.
+    await page.getByTestId('outputs-summary-peripherals').click()
+    await expect(page.getByText('Gimbal / Mount', { exact: true })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('Gimbal Driver', { exact: true })).toBeVisible()
+  })
 })
 
 test.describe('ArduRover / ArduSub demo', () => {

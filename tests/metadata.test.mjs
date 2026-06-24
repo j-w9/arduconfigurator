@@ -109,6 +109,22 @@ test('metadata catalog exposes advanced setup, receiver, and failsafe parameters
   assert.equal(metadata.parameters.FS_OPTIONS.categoryDefinition.viewId, 'failsafe')
 })
 
+test('ArduCopter exposes a Gimbal / Mount config category backed by the MNT1 params', () => {
+  const metadata = normalizeFirmwareMetadata(arducopterMetadata)
+  const gimbal = metadata.parameters.MNT1_TYPE
+  assert.ok(gimbal, 'MNT1_TYPE should be curated')
+  assert.equal(gimbal.categoryDefinition.id, 'gimbal')
+  assert.equal(gimbal.categoryDefinition.label, 'Gimbal / Mount')
+  // Routed into the Outputs (Motors) additional-settings surface.
+  assert.equal(gimbal.categoryDefinition.viewId, 'motors')
+  // Pin the value->label mapping against AP_Mount source (8 = Siyi, not BrushlessPWM).
+  assert.ok(gimbal.options.some((option) => option.value === 8 && option.label === 'Siyi'))
+  // Per-axis angle limits + control mode round out the section.
+  for (const id of ['MNT1_DEFLT_MODE', 'MNT1_RC_RATE', 'MNT1_PITCH_MIN', 'MNT1_PITCH_MAX', 'MNT1_YAW_MIN', 'MNT1_YAW_MAX']) {
+    assert.equal(metadata.parameters[id]?.categoryDefinition.id, 'gimbal', `${id} should be in the gimbal category`)
+  }
+})
+
 test('VTX enable formatting stays user-facing', () => {
   assert.equal(formatArducopterVtxEnable(0), 'Disabled')
   assert.equal(formatArducopterVtxEnable(1), 'Enabled')

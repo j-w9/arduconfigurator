@@ -70,6 +70,17 @@ type ParameterState = Record<string, number>
 const mockParameters: ParameterState = {
   FRAME_CLASS: 1,
   FRAME_TYPE: 1,
+  // Gimbal / Mount (MNT1) — a real FC reports these whenever AP_Mount is
+  // compiled in; seeded so the demo surfaces the Gimbal/Mount config section.
+  MNT1_TYPE: 0,
+  MNT1_DEFLT_MODE: 3,
+  MNT1_RC_RATE: 0,
+  MNT1_PITCH_MIN: -90,
+  MNT1_PITCH_MAX: 0,
+  MNT1_ROLL_MIN: -30,
+  MNT1_ROLL_MAX: 30,
+  MNT1_YAW_MIN: -180,
+  MNT1_YAW_MAX: 180,
   AHRS_ORIENTATION: 0,
   // Config-tab fields a real FC always reports — included so the demo Config
   // surface is complete (no "— (not reported)" rows).
