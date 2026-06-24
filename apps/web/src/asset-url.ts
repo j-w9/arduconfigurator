@@ -4,7 +4,7 @@
  * The app is served at the domain root in dev / `vite preview` (base
  * `/`) but under a project sub-path on GitHub Pages (base
  * `/ArduConfigurator/`, set via `ARDUCONFIG_WEB_BASE` at build). A
- * leading-slash literal like `/boards/x.svg` is absolute from the
+ * leading-slash literal like `/models/x.glb` is absolute from the
  * domain root and 404s on Pages; this prefixes the build-time base so
  * the URL is correct in both. Mirrors how `flight-deck-preview` already
  * resolves its model files.

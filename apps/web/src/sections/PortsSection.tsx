@@ -5,7 +5,7 @@
 
 import type { ReactElement, ReactNode } from 'react'
 import type { ArduPilotConfiguratorRuntime, ConfiguratorSnapshot, ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
-import type { AppViewId, BoardCatalogEntry, BoardMediaAsset, BoardReferenceLink, BoardVariant } from '@arduconfig/param-metadata'
+import type { AppViewId, BoardCatalogEntry, BoardReferenceLink } from '@arduconfig/param-metadata'
 import {
   ARDUCOPTER_MSP_OPTION_BIT_LABELS,
   ARDUCOPTER_SERIAL_OPTION_BIT_LABELS,
@@ -27,11 +27,9 @@ import {
 } from '@arduconfig/param-metadata'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
-import { assetUrl } from '../asset-url'
 import { SERIAL_BAUD_PRESET_RATES, formatBaudRate, isPresetBaudRate, parseSerialBaudInput, selectedBaudPresetValue } from '../baud-helpers'
 import type { ParameterNotice } from '../hooks/use-parameter-feedback'
 import type { UsePortsViewResult } from '../hooks/use-ports-view'
-import type { UseBoardMediaPickerResult } from '../hooks/use-board-media-picker'
 import { LiveGpsMapCard } from '../live-gps-map'
 import { MavlinkSigningPanel } from '../mavlink-signing-panel'
 import { normalizeBitmaskValue } from '../parameter-format'
@@ -48,9 +46,7 @@ export interface PortsSectionProps {
   parameterNotice: ParameterNotice | undefined
   // Board catalog data
   boardCatalogEntry: BoardCatalogEntry | undefined
-  boardMediaAssets: readonly BoardMediaAsset[]
   boardReferenceLinks: readonly BoardReferenceLink[]
-  boardVariants: readonly BoardVariant[]
   // Serial port models
   serialPortViewModels: readonly SerialPortViewModel[]
   visibleSerialPortViewModels: readonly SerialPortViewModel[]
@@ -108,7 +104,6 @@ export interface PortsSectionProps {
   updateDrafts: (mutator: (existing: Record<string, string>) => Record<string, string>) => void
   // Sibling view state shared with App
   portsView: UsePortsViewResult
-  boardMediaPicker: UseBoardMediaPickerResult
   // Handlers + nav
   onApplyScopedDrafts: (
     drafts: readonly ParameterDraftEntry[],
@@ -140,9 +135,7 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     canApplyDraftParameters,
     parameterNotice,
     boardCatalogEntry,
-    boardMediaAssets,
     boardReferenceLinks,
-    boardVariants,
     serialPortViewModels,
     visibleSerialPortViewModels,
     gpsPeripheralViewModels,
@@ -191,7 +184,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     setDraft,
     updateDrafts,
     portsView,
-    boardMediaPicker,
     onApplyScopedDrafts,
     onDiscardScopedDrafts,
     setActiveViewId,
@@ -207,12 +199,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     expandedSerialOptionsPortNumber,
     setExpandedSerialOptionsPortNumber
   } = portsView
-
-  const {
-    setSelectedBoardMedia,
-    setSelectedBoardVariantId,
-    selectedBoardVariant
-  } = boardMediaPicker
 
   // Some inline references use App-side names that don't survive the
   // verbatim move; aliasing avoids touching the JSX.
@@ -597,86 +583,19 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                     </p>
 
                     {boardCatalogEntry ? (
-                      <>
-                        {boardMediaAssets.length > 0 ? (
-                          <div className="board-media-gallery">
-                            {boardMediaAssets.map((mediaAsset) => (
-                              <button
-                                key={mediaAsset.id}
-                                type="button"
-                                className="board-media-card"
-                                onClick={() => setSelectedBoardMedia(mediaAsset)}
-                              >
-                                <img src={assetUrl(mediaAsset.assetPath)} alt={mediaAsset.alt} />
-                                <span className="board-media-card__meta">
-                                  <strong>{mediaAsset.label}</strong>
-                                  <small>{mediaAsset.description}</small>
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
-
-                        {boardVariants.length > 0 && selectedBoardVariant ? (
-                          <div className="board-variant-photos" data-testid="board-variant-photos">
-                            <label className="board-variant-photos__picker">
-                              <span>Variant</span>
-                              <select
-                                data-testid="board-variant-select"
-                                value={selectedBoardVariant.id}
-                                onChange={(event) => setSelectedBoardVariantId(event.target.value)}
-                              >
-                                {boardVariants.map((variant) => (
-                                  <option key={variant.id} value={variant.id}>
-                                    {variant.label}
-                                  </option>
-                                ))}
-                              </select>
-                              <a href={selectedBoardVariant.productUrl} target="_blank" rel="noreferrer">
-                                View on {boardCatalogEntry.manufacturerName}
-                              </a>
-                            </label>
-                            <div className="board-variant-photos__grid" data-testid="board-variant-images">
-                              {selectedBoardVariant.images.map((image) => (
-                                <figure key={image.url} className="board-variant-photo">
-                                  <a href={image.url} target="_blank" rel="noreferrer">
-                                    <img
-                                      src={image.url}
-                                      alt={`${selectedBoardVariant.label} ${image.label}`}
-                                      loading="lazy"
-                                      referrerPolicy="no-referrer"
-                                      onError={(event) => {
-                                        // Vendor image unavailable (offline / moved) — hide the
-                                        // broken figure; the "View on <vendor>" link still works.
-                                        const figure = event.currentTarget.closest('figure')
-                                        if (figure) figure.style.display = 'none'
-                                      }}
-                                    />
-                                  </a>
-                                  <figcaption>{image.label}</figcaption>
-                                </figure>
-                              ))}
-                            </div>
-                            <small className="board-variant-photos__note">
-                              Official board photos from {boardCatalogEntry.manufacturerName}. The FC reports one board id for the whole H743 family, so pick your exact variant.
-                            </small>
-                          </div>
-                        ) : null}
-
-                        <div className="port-board-links">
-                          <a href={boardCatalogEntry.wikiUrl} target="_blank" rel="noreferrer">
-                            ArduPilot Wiki
+                      <div className="port-board-links">
+                        <a href={boardCatalogEntry.wikiUrl} target="_blank" rel="noreferrer">
+                          ArduPilot Wiki
+                        </a>
+                        <a href={boardCatalogEntry.manufacturerUrl} target="_blank" rel="noreferrer">
+                          {boardCatalogEntry.manufacturerName}
+                        </a>
+                        {boardReferenceLinks.map((reference) => (
+                          <a key={reference.id} href={reference.url} target="_blank" rel="noreferrer">
+                            {reference.label}
                           </a>
-                          <a href={boardCatalogEntry.manufacturerUrl} target="_blank" rel="noreferrer">
-                            {boardCatalogEntry.manufacturerName}
-                          </a>
-                          {boardReferenceLinks.map((reference) => (
-                            <a key={reference.id} href={reference.url} target="_blank" rel="noreferrer">
-                              {reference.label}
-                            </a>
-                          ))}
-                        </div>
-                      </>
+                        ))}
+                      </div>
                     ) : null}
 
                     {snapshot.hardware.uartsFile.rawText ? (

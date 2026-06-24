@@ -87,23 +87,6 @@ test('board catalog covers the expanded hardware-aware Ports targets', () => {
   // audit so the Ports tab identifies the board on connect.
   assert.equal(findBoardCatalogEntry(1118)?.label, 'BrainFPV Radix 2 HD')
   assert.equal(findBoardCatalogEntry(1118)?.manufacturerName, 'BrainFPV')
-  assert.ok((findBoardCatalogEntry(59)?.mediaAssets.length ?? 0) >= 2)
-  assert.ok((findBoardCatalogEntry(1013)?.mediaAssets.length ?? 0) >= 2)
-})
-
-test('Matek H743 (1013) exposes the four family variants with official photos', () => {
-  const variants = findBoardCatalogEntry(1013)?.variants ?? []
-  const labels = variants.map((variant) => variant.label)
-  assert.deepEqual(labels, ['H743-WING V2', 'H743-SLIM V4', 'H743-MINI', 'H743-WLITE (EOL)'])
-  for (const variant of variants) {
-    assert.ok(variant.productUrl.startsWith('https://'), `${variant.id} needs a product URL`)
-    assert.ok(variant.images.length >= 1, `${variant.id} needs at least one photo`)
-    for (const image of variant.images) {
-      // Hot-linked vendor photos: absolute mateksys.com URLs (verified live).
-      assert.match(image.url, /^https:\/\/www\.mateksys\.com\/.+\.(jpg|jpeg|png)$/i)
-      assert.ok(image.label.length > 0)
-    }
-  }
 })
 
 test('metadata catalog exposes advanced setup, receiver, and failsafe parameters on product surfaces', () => {

@@ -61,7 +61,6 @@ import { describeConnectionError } from './connection-error-help'
 import { getDesktopBridge } from './desktop-bridge'
 import { createRuntime } from './runtime-factory'
 import { useOsdEditor } from './hooks/use-osd-editor'
-import { useBoardMediaPicker } from './hooks/use-board-media-picker'
 import { useRcMixer } from './hooks/use-rc-mixer'
 import { useCalibrationNotices } from './hooks/use-calibration-notices'
 import { useLibraryNotices } from './hooks/use-library-notices'
@@ -83,7 +82,6 @@ import { useViewDraftSelectors } from './hooks/use-view-draft-selectors'
 import { useParameterDraftDerivations } from './hooks/use-parameter-draft-derivations'
 import { useOutputAssignmentVisibility } from './hooks/use-output-assignment-visibility'
 import { trackAppEvent, trackViewPageview } from './analytics'
-import { assetUrl } from './asset-url'
 import { GIT_HASH, GIT_BRANCH } from './build-info'
 import {
   TUNING_ALL_PID_PARAM_IDS,
@@ -1792,16 +1790,6 @@ export function App() {
     osdLinkPorts
   } = useSerialPortModels({ snapshot, boardCatalogEntry, portsDraftEntries, showAllSerialPorts })
   const boardReferenceLinks = boardCatalogEntry?.referenceLinks ?? []
-  const boardMediaAssets = boardCatalogEntry?.mediaAssets ?? []
-  const boardVariants = boardCatalogEntry?.variants ?? []
-  // The FC reports one board_id for a whole family (e.g. all H743 variants), so
-  // the operator picks which variant to view official photos for (defaults to
-  // the first). The lightbox media selection + Escape-to-close lives here too.
-  const boardMediaPicker = useBoardMediaPicker(boardVariants)
-  const {
-    selectedBoardMedia,
-    setSelectedBoardMedia
-  } = boardMediaPicker
   const uartsMappedPortCount = snapshot.hardware.uartsFile.mappings.length
   const uartsStatusTone: StatusTone =
     snapshot.hardware.uartsFile.status === 'ready'
@@ -5757,9 +5745,7 @@ export function App() {
           canApplyDraftParameters={canApplyDraftParameters}
           parameterNotice={parameterNotice}
           boardCatalogEntry={boardCatalogEntry}
-          boardMediaAssets={boardMediaAssets}
           boardReferenceLinks={boardReferenceLinks}
-          boardVariants={boardVariants}
           serialPortViewModels={serialPortViewModels}
           visibleSerialPortViewModels={visibleSerialPortViewModels}
           gpsPeripheralViewModels={gpsPeripheralViewModels}
@@ -5808,7 +5794,6 @@ export function App() {
           setDraft={setDraft}
           updateDrafts={updateDrafts}
           portsView={portsView}
-          boardMediaPicker={boardMediaPicker}
           onApplyScopedDrafts={handleApplyScopedParameterDrafts}
           onDiscardScopedDrafts={handleDiscardScopedParameterDrafts}
           setActiveViewId={setActiveViewId}
@@ -6682,22 +6667,6 @@ export function App() {
         />
       ) : null}
 
-      {selectedBoardMedia ? (
-        <div className="board-media-lightbox" role="dialog" aria-modal="true" onClick={() => setSelectedBoardMedia(undefined)}>
-          <div className="board-media-lightbox__frame" onClick={(event) => event.stopPropagation()}>
-            <div className="board-media-lightbox__header">
-              <div>
-                <strong>{selectedBoardMedia.label}</strong>
-                <p>{selectedBoardMedia.description}</p>
-              </div>
-              <button type="button" style={buttonStyle()} onClick={() => setSelectedBoardMedia(undefined)}>
-                Close
-              </button>
-            </div>
-            <img src={assetUrl(selectedBoardMedia.assetPath)} alt={selectedBoardMedia.alt} />
-          </div>
-        </div>
-      ) : null}
 
       <footer className="app-status-bar">
         <span className={`app-status-bar__item ${snapshot.connection.kind === 'connected' ? 'is-ok' : ''}`}>

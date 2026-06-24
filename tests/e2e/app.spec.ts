@@ -596,9 +596,6 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('files-table')).toBeVisible({ timeout: mavftpListingTimeout })
 
     await openView(page, 'ports')
-    await page.getByRole('button', { name: 'Port Map' }).click()
-    await expect(page.getByRole('dialog')).toBeVisible()
-    await page.getByRole('button', { name: 'Close' }).click()
   })
 
   test('bitmask parameters render as a checkbox grid in the generic editor', async ({ page }) => {
