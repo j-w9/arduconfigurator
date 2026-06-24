@@ -71,7 +71,8 @@ const mockParameters: ParameterState = {
   FRAME_CLASS: 1,
   FRAME_TYPE: 1,
   // Gimbal / Mount (MNT1) — a real FC reports these whenever AP_Mount is
-  // compiled in; seeded so the demo surfaces the Gimbal/Mount config section.
+  // compiled in; seeded so the demo surfaces the full Gimbal/Mount config
+  // section (single mount; MNT2_* metadata also ships for real hardware).
   MNT1_TYPE: 0,
   MNT1_DEFLT_MODE: 3,
   MNT1_RC_RATE: 0,
@@ -81,6 +82,15 @@ const mockParameters: ParameterState = {
   MNT1_ROLL_MAX: 30,
   MNT1_YAW_MIN: -180,
   MNT1_YAW_MAX: 180,
+  MNT1_RETRACT_X: 0,
+  MNT1_RETRACT_Y: 0,
+  MNT1_RETRACT_Z: 0,
+  MNT1_NEUTRAL_X: 0,
+  MNT1_NEUTRAL_Y: 0,
+  MNT1_NEUTRAL_Z: 0,
+  MNT1_LEAD_RLL: 0,
+  MNT1_LEAD_PTCH: 0,
+  MNT1_OPTIONS: 0,
   AHRS_ORIENTATION: 0,
   // Config-tab fields a real FC always reports — included so the demo Config
   // surface is complete (no "— (not reported)" rows).

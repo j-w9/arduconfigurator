@@ -1,5 +1,6 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
+import { buildMountParameterDefinitions } from './shared-mount.js'
 import {
   ARDUCOPTER_BATTERY_MONITOR_LABELS,
   ARDUCOPTER_BATTERY_VOLTAGE_SOURCE_LABELS,
@@ -270,6 +271,7 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     radio: { id: 'radio', label: 'Receiver', description: 'RC input mapping and ranges.', order: 6, viewId: 'receiver' },
     modes: { id: 'modes', label: 'Modes', description: 'Drive-mode switch assignments.', order: 7, viewId: 'receiver' },
     motors: { id: 'motors', label: 'Motors & Outputs', description: 'Throttle limits and motor output behavior.', order: 8, viewId: 'motors' },
+    gimbal: { id: 'gimbal', label: 'Gimbal / Mount', description: 'Camera gimbal/mount driver, control mode, and per-axis angle limits (MNT1/MNT2).', order: 8.5, viewId: 'motors' },
     steering: { id: 'steering', label: 'Steering Tuning', description: 'Steering-rate and steering-angle controller gains.', order: 9, viewId: 'tuning' },
     speed: { id: 'speed', label: 'Speed Tuning', description: 'Throttle/speed controller gains.', order: 10, viewId: 'tuning' },
     navigation: { id: 'navigation', label: 'Navigation', description: 'Waypoint and turn behavior.', order: 11, viewId: 'tuning' },
@@ -322,6 +324,8 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
   parameters: {
     ...buildSerialPortParameterDefinitions(8),
     ...buildModeParameterDefinitions(),
+    ...buildMountParameterDefinitions(1),
+    ...buildMountParameterDefinitions(2),
 
     AHRS_ORIENTATION: {
       id: 'AHRS_ORIENTATION',

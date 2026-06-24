@@ -1,5 +1,6 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
+import { buildMountParameterDefinitions } from './shared-mount.js'
 import {
   ARDUCOPTER_AUTOTUNE_AXES_BIT_LABELS,
   ARDUCOPTER_BATTERY_FAILSAFE_ACTION_LABELS,
@@ -1082,61 +1083,8 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       notes: ['Frame-type changes should be followed by a reboot and another output review.'],
       options: enumOptions(ARDUCOPTER_FRAME_TYPE_LABELS)
     },
-    MNT1_TYPE: {
-      id: 'MNT1_TYPE',
-      label: 'Gimbal Driver',
-      description: 'Mount/gimbal driver for the first mount. Pick the backend that matches your gimbal hardware.',
-      category: 'gimbal',
-      rebootRequired: true,
-      notes: ['Reboot after changing the driver. Serial gimbals also need a SERIALx_PROTOCOL assignment; Servo gimbals need SERVOx_FUNCTION mount roles.'],
-      options: [
-        { value: 0, label: 'None' },
-        { value: 1, label: 'Servo' },
-        { value: 2, label: '3DR Solo' },
-        { value: 3, label: 'Alexmos Serial' },
-        { value: 4, label: 'SToRM32 MAVLink' },
-        { value: 5, label: 'SToRM32 Serial' },
-        { value: 6, label: 'Gremsy / AVT (MAVLink)' },
-        { value: 7, label: 'BrushlessPWM' },
-        { value: 8, label: 'Siyi' },
-        { value: 9, label: 'Scripting' },
-        { value: 10, label: 'Xacti' },
-        { value: 11, label: 'Viewpro' },
-        { value: 12, label: 'Topotek' },
-        { value: 13, label: 'CADDX' },
-        { value: 14, label: 'XFRobot' }
-      ]
-    },
-    MNT1_DEFLT_MODE: {
-      id: 'MNT1_DEFLT_MODE',
-      label: 'Default Mode',
-      description: 'Mount mode entered on startup and when no other targeting command is active.',
-      category: 'gimbal',
-      options: [
-        { value: 0, label: 'Retracted' },
-        { value: 1, label: 'Neutral' },
-        { value: 2, label: 'MAVLink Targeting' },
-        { value: 3, label: 'RC Targeting' },
-        { value: 4, label: 'GPS Point' },
-        { value: 5, label: 'SysID Target' },
-        { value: 6, label: 'Home Location' }
-      ]
-    },
-    MNT1_RC_RATE: {
-      id: 'MNT1_RC_RATE',
-      label: 'RC Control Rate',
-      description: 'Rate (deg/s) at which RC input slews the gimbal in RC-targeting mode. 0 selects angle (non-rate) control.',
-      category: 'gimbal',
-      minimum: 0,
-      maximum: 90,
-      step: 1
-    },
-    MNT1_PITCH_MIN: { id: 'MNT1_PITCH_MIN', label: 'Pitch Min', description: 'Minimum pitch angle (deg); negative points the camera down.', category: 'gimbal', minimum: -180, maximum: 180, step: 1 },
-    MNT1_PITCH_MAX: { id: 'MNT1_PITCH_MAX', label: 'Pitch Max', description: 'Maximum pitch angle (deg).', category: 'gimbal', minimum: -180, maximum: 180, step: 1 },
-    MNT1_ROLL_MIN: { id: 'MNT1_ROLL_MIN', label: 'Roll Min', description: 'Minimum roll angle (deg).', category: 'gimbal', minimum: -180, maximum: 180, step: 1 },
-    MNT1_ROLL_MAX: { id: 'MNT1_ROLL_MAX', label: 'Roll Max', description: 'Maximum roll angle (deg).', category: 'gimbal', minimum: -180, maximum: 180, step: 1 },
-    MNT1_YAW_MIN: { id: 'MNT1_YAW_MIN', label: 'Yaw Min', description: 'Minimum yaw angle (deg).', category: 'gimbal', minimum: -180, maximum: 180, step: 1 },
-    MNT1_YAW_MAX: { id: 'MNT1_YAW_MAX', label: 'Yaw Max', description: 'Maximum yaw angle (deg).', category: 'gimbal', minimum: -180, maximum: 180, step: 1 },
+    ...buildMountParameterDefinitions(1),
+    ...buildMountParameterDefinitions(2),
     AHRS_ORIENTATION: {
       id: 'AHRS_ORIENTATION',
       label: 'Board Orientation',

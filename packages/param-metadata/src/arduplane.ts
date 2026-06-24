@@ -1,5 +1,6 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
+import { buildMountParameterDefinitions } from './shared-mount.js'
 import {
   ARDUCOPTER_BATTERY_MONITOR_LABELS,
   ARDUCOPTER_BATTERY_VOLTAGE_SOURCE_LABELS,
@@ -548,6 +549,13 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       label: 'Airframe',
       description: 'QuadPlane enable and geometry settings.',
       order: 1,
+      viewId: 'motors'
+    },
+    gimbal: {
+      id: 'gimbal',
+      label: 'Gimbal / Mount',
+      description: 'Camera gimbal/mount driver, control mode, and per-axis angle limits (MNT1/MNT2).',
+      order: 1.5,
       viewId: 'motors'
     },
     sensors: {
@@ -2973,6 +2981,8 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       options: enabledDisabledOptions
     },
     ...buildSerialPortParameterDefinitions(8),
+    ...buildMountParameterDefinitions(1),
+    ...buildMountParameterDefinitions(2),
     OSD_TYPE: {
       id: 'OSD_TYPE',
       label: 'OSD Backend',

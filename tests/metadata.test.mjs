@@ -125,6 +125,29 @@ test('ArduCopter exposes a Gimbal / Mount config category backed by the MNT1 par
   }
 })
 
+test('every vehicle bundle exposes the gimbal MNT1/MNT2 family with source-correct ranges', () => {
+  const bundles = {
+    ArduCopter: arducopterMetadata,
+    ArduPlane: arduplaneMetadata,
+    ArduRover: arduroverMetadata,
+    ArduSub: ardusubMetadata
+  }
+  for (const [vehicle, bundle] of Object.entries(bundles)) {
+    const metadata = normalizeFirmwareMetadata(bundle)
+    // Both mounts present, in the gimbal category.
+    assert.equal(metadata.parameters.MNT1_TYPE?.categoryDefinition.id, 'gimbal', `${vehicle} MNT1_TYPE`)
+    assert.equal(metadata.parameters.MNT2_TYPE?.categoryDefinition.id, 'gimbal', `${vehicle} MNT2_TYPE`)
+    // Deepened params: retract/neutral angles + the options bitmask.
+    assert.ok(metadata.parameters.MNT1_RETRACT_X, `${vehicle} MNT1_RETRACT_X`)
+    assert.ok(metadata.parameters.MNT1_NEUTRAL_Z, `${vehicle} MNT1_NEUTRAL_Z`)
+    assert.equal(metadata.parameters.MNT1_OPTIONS?.bitmask, true, `${vehicle} MNT1_OPTIONS is a bitmask`)
+    // Pitch range is -90..90 per AP_Mount source (roll/yaw are -180..180).
+    assert.equal(metadata.parameters.MNT1_PITCH_MIN?.minimum, -90, `${vehicle} pitch min range`)
+    assert.equal(metadata.parameters.MNT1_PITCH_MAX?.maximum, 90, `${vehicle} pitch max range`)
+    assert.equal(metadata.parameters.MNT1_ROLL_MIN?.minimum, -180, `${vehicle} roll min range`)
+  }
+})
+
 test('VTX enable formatting stays user-facing', () => {
   assert.equal(formatArducopterVtxEnable(0), 'Disabled')
   assert.equal(formatArducopterVtxEnable(1), 'Enabled')
