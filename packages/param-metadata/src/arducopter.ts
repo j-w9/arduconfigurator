@@ -1,6 +1,7 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
+import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
 import {
   ARDUCOPTER_AUTOTUNE_AXES_BIT_LABELS,
   ARDUCOPTER_BATTERY_FAILSAFE_ACTION_LABELS,
@@ -743,8 +744,15 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     gimbal: {
       id: 'gimbal',
       label: 'Gimbal / Mount',
-      description: 'Camera gimbal/mount driver, control mode, and per-axis angle limits (MNT1).',
+      description: 'Camera gimbal/mount driver, control mode, and per-axis angle limits (MNT1/MNT2).',
       order: 9.5,
+      viewId: 'motors'
+    },
+    rangefinder: {
+      id: 'rangefinder',
+      label: 'Rangefinder / Lidar',
+      description: 'Downward/forward rangefinder driver, orientation, range limits, and mounting offsets (RNGFND1).',
+      order: 9.6,
       viewId: 'motors'
     },
     power: {
@@ -1085,6 +1093,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     },
     ...buildMountParameterDefinitions(1),
     ...buildMountParameterDefinitions(2),
+    ...buildRangefinderParameterDefinitions(1),
     AHRS_ORIENTATION: {
       id: 'AHRS_ORIENTATION',
       label: 'Board Orientation',

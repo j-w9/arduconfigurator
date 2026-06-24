@@ -1,6 +1,7 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
+import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
 import {
   ARDUCOPTER_BATTERY_MONITOR_LABELS,
   ARDUCOPTER_BATTERY_VOLTAGE_SOURCE_LABELS,
@@ -556,6 +557,13 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       label: 'Gimbal / Mount',
       description: 'Camera gimbal/mount driver, control mode, and per-axis angle limits (MNT1/MNT2).',
       order: 1.5,
+      viewId: 'motors'
+    },
+    rangefinder: {
+      id: 'rangefinder',
+      label: 'Rangefinder / Lidar',
+      description: 'Rangefinder/lidar driver, orientation, range limits, and mounting offsets (RNGFND1).',
+      order: 1.6,
       viewId: 'motors'
     },
     sensors: {
@@ -2983,6 +2991,7 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
     ...buildSerialPortParameterDefinitions(8),
     ...buildMountParameterDefinitions(1),
     ...buildMountParameterDefinitions(2),
+    ...buildRangefinderParameterDefinitions(1),
     OSD_TYPE: {
       id: 'OSD_TYPE',
       label: 'OSD Backend',

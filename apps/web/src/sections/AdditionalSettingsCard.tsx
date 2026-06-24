@@ -66,13 +66,13 @@ export function AdditionalSettingsCard({
       </div>
 
       {groups.map((group) => (
-        <div key={group.categoryId} className="metadata-settings-section">
-          <div className="metadata-settings-section__header">
+        <details key={group.categoryId} className="metadata-settings-section" open data-testid={`metadata-settings-section-${group.categoryId}`}>
+          <summary className="metadata-settings-section__header">
             <strong>{group.categoryLabel}</strong>
             <p>{group.categoryDescription}</p>
-          </div>
+          </summary>
           <div className="scoped-editor-grid">{group.parameters.map((parameter) => renderField(parameter))}</div>
-        </div>
+        </details>
       ))}
 
       <div className="switch-exercise-controls">

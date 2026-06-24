@@ -6509,6 +6509,33 @@ textarea:focus {
   line-height: 1.5;
 }
 
+/* Collapsible sub-sections (native <details>/<summary>): default-open, with a
+ * rotating chevron and no default disclosure triangle. */
+details.metadata-settings-section > summary.metadata-settings-section__header {
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+  padding-right: 22px;
+  user-select: none;
+}
+
+details.metadata-settings-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.metadata-settings-section > summary::after {
+  content: '▾';
+  position: absolute;
+  right: 4px;
+  top: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+details.metadata-settings-section:not([open]) > summary::after {
+  transform: rotate(-90deg);
+}
+
 .scoped-editor-field--compact {
   padding: 10px 12px;
 }

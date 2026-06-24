@@ -91,6 +91,17 @@ const mockParameters: ParameterState = {
   MNT1_LEAD_RLL: 0,
   MNT1_LEAD_PTCH: 0,
   MNT1_OPTIONS: 0,
+  // Rangefinder / Lidar (RNGFND1) — seeded so the demo surfaces the
+  // Rangefinder/Lidar config section (downward-facing, disabled by default).
+  RNGFND1_TYPE: 0,
+  RNGFND1_ORIENT: 25,
+  RNGFND1_MIN: 0.2,
+  RNGFND1_MAX: 7,
+  RNGFND1_GNDCLR: 0.1,
+  RNGFND1_ADDR: 0,
+  RNGFND1_POS_X: 0,
+  RNGFND1_POS_Y: 0,
+  RNGFND1_POS_Z: 0,
   AHRS_ORIENTATION: 0,
   // Config-tab fields a real FC always reports — included so the demo Config
   // surface is complete (no "— (not reported)" rows).

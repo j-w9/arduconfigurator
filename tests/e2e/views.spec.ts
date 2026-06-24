@@ -1897,7 +1897,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByRole('button', { name: 'Reorder Motor Outputs' })).toBeVisible()
   })
 
-  test('Servos view exposes the Gimbal / Mount config section for a Copter', async ({ page }) => {
+  test('Servos view exposes collapsible Gimbal and Rangefinder config sections for a Copter', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -1906,11 +1906,19 @@ test.describe('ArduPlane demo', () => {
       timeout: VEHICLE_CONNECT_TIMEOUT
     })
     await openView(page, 'servos')
-    // The MNT1 gimbal params surface as a "Gimbal / Mount" group in the
-    // Peripherals task's additional-settings card.
+    // The MNT1 gimbal + RNGFND1 lidar params surface as collapsible groups in
+    // the Peripherals task's additional-settings card.
     await page.getByTestId('outputs-summary-peripherals').click()
     await expect(page.getByText('Gimbal / Mount', { exact: true })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText('Gimbal Driver', { exact: true })).toBeVisible()
+    await expect(page.getByText('Rangefinder / Lidar', { exact: true })).toBeVisible()
+    await expect(page.getByText('Rangefinder Type', { exact: true })).toBeVisible()
+    // Sub-sections are collapsible: collapsing Gimbal hides its fields.
+    const gimbalSection = page.getByTestId('metadata-settings-section-gimbal')
+    await gimbalSection.locator('summary').click()
+    await expect(page.getByText('Gimbal Driver', { exact: true })).toBeHidden()
+    // Rangefinder stays independently expanded.
+    await expect(page.getByText('Rangefinder Type', { exact: true })).toBeVisible()
   })
 })
 
