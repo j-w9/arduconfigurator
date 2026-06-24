@@ -335,7 +335,10 @@ test('arduroverMetadata normalizes and exposes a real Rover catalog (not a Copte
   assert.ok(metadata.parameters.MODE_CH, 'Rover exposes MODE_CH')
   assert.ok(metadata.parameters.MODE1.options.some((option) => option.label === 'Steering'))
   assert.ok(!metadata.parameters.FLTMODE_CH, 'Rover must not carry Copter FLTMODE_CH')
-  assert.ok(!metadata.parameters.FRAME_CLASS, 'Rover must not carry Copter FRAME_CLASS')
+  assert.ok(!metadata.parameters.ATC_INPUT_TC, 'Rover must not carry the Copter ATC_INPUT_TC')
+  // Rover carries its own FRAME_CLASS (Rover/Boat/BalanceBot) for the starter presets.
+  assert.ok(metadata.parameters.FRAME_CLASS, 'Rover exposes its own FRAME_CLASS')
+  assert.ok(metadata.parameters.FRAME_CLASS.options.some((option) => option.label === 'Boat'))
 
   // Rover-specific control surface is present and categorised for Tuning.
   assert.equal(metadata.parameters.ATC_STR_RAT_P.categoryDefinition.id, 'steering')

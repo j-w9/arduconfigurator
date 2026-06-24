@@ -263,6 +263,12 @@ const acroRatePresetCautions = [
 
 const multirotorPresetFrameClasses = [1, 2, 3, 4, 5, 7, 9, 10, 12, 14] as const
 
+const frameStarterCautions = [
+  'Changing the frame class/type reconfigures motor mixing and takes effect after a reboot.',
+  'This only selects the airframe — finish ESC/motor setup, calibrations, and tuning afterward.',
+  'A pre-apply snapshot is captured automatically so you can roll back to the previous setup if needed.'
+]
+
 function serialPortDisplayName(portNumber: number): string {
   switch (portNumber) {
     case 0:
@@ -784,6 +790,12 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     }
   },
   presetGroups: {
+    'starter-config': {
+      id: 'starter-config',
+      label: 'Starter Config',
+      description: 'One-tap airframe selection to bootstrap a fresh board — sets the frame class and layout only.',
+      order: 0
+    },
     'flight-feel': {
       id: 'flight-feel',
       label: 'Flight Feel',
@@ -798,6 +810,84 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     }
   },
   presets: {
+    'starter-quad-x': {
+      id: 'starter-quad-x',
+      label: 'Quad X',
+      description: 'Four-motor quad in the X layout — the most common multirotor airframe.',
+      groupId: 'starter-config',
+      order: 0,
+      values: [
+        { paramId: 'FRAME_CLASS', value: 1 },
+        { paramId: 'FRAME_TYPE', value: 1 }
+      ],
+      tags: ['frame', 'quad', 'starter'],
+      cautions: frameStarterCautions
+    },
+    'starter-quad-plus': {
+      id: 'starter-quad-plus',
+      label: 'Quad Plus',
+      description: 'Four-motor quad in the Plus (+) layout, arms aligned to the forward axis.',
+      groupId: 'starter-config',
+      order: 1,
+      values: [
+        { paramId: 'FRAME_CLASS', value: 1 },
+        { paramId: 'FRAME_TYPE', value: 0 }
+      ],
+      tags: ['frame', 'quad', 'starter'],
+      cautions: frameStarterCautions
+    },
+    'starter-hexa-x': {
+      id: 'starter-hexa-x',
+      label: 'Hexa X',
+      description: 'Six-motor hexacopter in the X layout.',
+      groupId: 'starter-config',
+      order: 2,
+      values: [
+        { paramId: 'FRAME_CLASS', value: 2 },
+        { paramId: 'FRAME_TYPE', value: 1 }
+      ],
+      tags: ['frame', 'hexa', 'starter'],
+      cautions: frameStarterCautions
+    },
+    'starter-octa-x': {
+      id: 'starter-octa-x',
+      label: 'Octa X',
+      description: 'Eight-motor octocopter in the X layout.',
+      groupId: 'starter-config',
+      order: 3,
+      values: [
+        { paramId: 'FRAME_CLASS', value: 3 },
+        { paramId: 'FRAME_TYPE', value: 1 }
+      ],
+      tags: ['frame', 'octa', 'starter'],
+      cautions: frameStarterCautions
+    },
+    'starter-octaquad-x': {
+      id: 'starter-octaquad-x',
+      label: 'OctaQuad X (X8)',
+      description: 'Eight motors on four arms (coaxial pairs) in the X layout — the X8 configuration.',
+      groupId: 'starter-config',
+      order: 4,
+      values: [
+        { paramId: 'FRAME_CLASS', value: 4 },
+        { paramId: 'FRAME_TYPE', value: 1 }
+      ],
+      tags: ['frame', 'octaquad', 'x8', 'starter'],
+      cautions: frameStarterCautions
+    },
+    'starter-y6': {
+      id: 'starter-y6',
+      label: 'Y6',
+      description: 'Three arms with coaxial motor pairs (Y6B mixing).',
+      groupId: 'starter-config',
+      order: 5,
+      values: [
+        { paramId: 'FRAME_CLASS', value: 5 },
+        { paramId: 'FRAME_TYPE', value: 10 }
+      ],
+      tags: ['frame', 'y6', 'starter'],
+      cautions: frameStarterCautions
+    },
     'flight-feel-cinematic': {
       id: 'flight-feel-cinematic',
       label: 'Cinematic Glide',

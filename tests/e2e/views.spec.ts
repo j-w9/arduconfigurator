@@ -1810,19 +1810,19 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('failsafe-row-BATT_FS_CRT_ACT')).toHaveCount(0)
   })
 
-  test('Plane Presets tab shows the library-restricted banner and hides empty stat cards', async ({ page }) => {
+  test('Plane Presets tab shows the starter-config frame presets (no library-restricted banner)', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'presets')
-    const restricted = page.getByTestId('presets-library-restricted')
-    await expect(restricted).toBeVisible()
-    await expect(restricted).toContainText('ArduCopter')
-    // Stat cards (Preset families / Total presets / etc.) are suppressed, but
-    // the destructive Erase-all-settings control still renders.
-    await expect(page.getByText('Preset families', { exact: true })).toHaveCount(0)
+    // Plane now ships frame-selection starter presets, so the library is no
+    // longer empty: the restricted banner is gone and the stat grid + a
+    // QuadPlane starter card render.
+    await expect(page.getByTestId('presets-library-restricted')).toHaveCount(0)
+    await expect(page.getByText('Preset families', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('preset-card-starter-qplane-quad-x')).toBeVisible()
     await expect(page.getByTestId('presets-erase')).toBeVisible()
   })
 

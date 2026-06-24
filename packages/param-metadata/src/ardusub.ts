@@ -86,6 +86,11 @@ const frameConfigNotes = [
   'FRAME_CONFIG must match the physical thruster layout. Vectored frames give full horizontal control; 6DOF adds independent vertical/lateral control.',
   'Reboot the autopilot after changing the frame configuration.'
 ]
+const frameStarterCautions = [
+  'Changing FRAME_CONFIG reconfigures thruster mixing and takes effect after a reboot.',
+  'This only selects the thruster layout — finish joystick, sensor, and tuning setup afterward.',
+  'A pre-apply snapshot is captured automatically so you can roll back to the previous setup if needed.'
+]
 const joystickGainNotes = [
   'JS_GAIN_DEFAULT is the throttle/thruster authority applied at the default gain step. Pilots step between JS_GAIN_MIN and JS_GAIN_MAX in JS_GAIN_STEPS increments from the controller.'
 ]
@@ -252,6 +257,56 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     power: { id: 'power', label: 'Power', description: 'Battery monitoring and arming voltage.', order: 12, viewId: 'power' },
     failsafe: { id: 'failsafe', label: 'Failsafe', description: 'Leak, pressure, temperature, GCS, and battery failsafe behavior.', order: 13, viewId: 'failsafe' },
     logging: { id: 'logging', label: 'Logging', description: 'Dataflash backend and retention.', order: 14, viewId: 'parameters' }
+  },
+  presetGroups: {
+    'starter-config': {
+      id: 'starter-config',
+      label: 'Starter Config',
+      description: 'One-tap thruster-layout selection to bootstrap a fresh board — sets the frame configuration only.',
+      order: 0
+    }
+  },
+  presets: {
+    'starter-vectored': {
+      id: 'starter-vectored',
+      label: 'Vectored',
+      description: 'Standard vectored frame — full horizontal control (e.g. BlueROV2 layout).',
+      groupId: 'starter-config',
+      order: 0,
+      values: [{ paramId: 'FRAME_CONFIG', value: 1 }],
+      tags: ['frame', 'vectored', 'starter'],
+      cautions: frameStarterCautions
+    },
+    'starter-vectored-6dof': {
+      id: 'starter-vectored-6dof',
+      label: 'Vectored 6DOF',
+      description: 'Vectored frame with independent vertical/lateral control (8-thruster 6DOF).',
+      groupId: 'starter-config',
+      order: 1,
+      values: [{ paramId: 'FRAME_CONFIG', value: 2 }],
+      tags: ['frame', 'vectored', '6dof', 'starter'],
+      cautions: frameStarterCautions
+    },
+    'starter-bluerov1': {
+      id: 'starter-bluerov1',
+      label: 'BlueROV1',
+      description: 'Original BlueROV1 thruster layout.',
+      groupId: 'starter-config',
+      order: 2,
+      values: [{ paramId: 'FRAME_CONFIG', value: 0 }],
+      tags: ['frame', 'bluerov', 'starter'],
+      cautions: frameStarterCautions
+    },
+    'starter-simplerov-4': {
+      id: 'starter-simplerov-4',
+      label: 'SimpleROV-4',
+      description: 'Four-thruster SimpleROV layout.',
+      groupId: 'starter-config',
+      order: 3,
+      values: [{ paramId: 'FRAME_CONFIG', value: 5 }],
+      tags: ['frame', 'simplerov', 'starter'],
+      cautions: frameStarterCautions
+    }
   },
   parameters: {
     ...buildSerialPortParameterDefinitions(8),

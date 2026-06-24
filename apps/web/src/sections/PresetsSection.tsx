@@ -193,8 +193,8 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
             : undefined
       }
       libraryRestrictedNote={
-        snapshot.vehicle?.vehicle && snapshot.vehicle.vehicle !== 'ArduCopter'
-          ? `The curated preset library is currently defined only for ArduCopter. No bundles ship for ${snapshot.vehicle.vehicle} yet, so the library is empty here. Erase all settings still works on every vehicle.`
+        presetDefinitions.length === 0
+          ? `No curated presets ship for ${snapshot.vehicle?.vehicle ?? 'this vehicle'} yet, so the library is empty here. Erase all settings still works on every vehicle.`
           : undefined
       }
     />

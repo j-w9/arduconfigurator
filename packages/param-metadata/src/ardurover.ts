@@ -89,6 +89,19 @@ const ARDUROVER_PILOT_STEER_TYPE_LABELS: Record<number, string> = {
   3: 'Direction unchanged when backing up'
 }
 
+const ARDUROVER_FRAME_CLASS_LABELS: Record<number, string> = {
+  0: 'Undefined',
+  1: 'Rover',
+  2: 'Boat',
+  3: 'BalanceBot'
+}
+
+const frameStarterCautions = [
+  'FRAME_CLASS selects the vehicle type (ground rover, boat, or balance bot) and takes effect after a reboot.',
+  'This only selects the vehicle class — finish motor/steering, sensor, and tuning setup afterward.',
+  'A pre-apply snapshot is captured automatically so you can roll back to the previous setup if needed.'
+]
+
 const modeChannelNotes = [
   'The RC channel that selects the active drive mode via MODE1–MODE6.',
   'Rover defaults this to channel 8; match it to the switch wired on the transmitter.'
@@ -266,6 +279,46 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     failsafe: { id: 'failsafe', label: 'Failsafe', description: 'Throttle, GCS, and battery failsafe behavior.', order: 13, viewId: 'failsafe' },
     logging: { id: 'logging', label: 'Logging', description: 'Dataflash backend and retention.', order: 14, viewId: 'parameters' }
   },
+  presetGroups: {
+    'starter-config': {
+      id: 'starter-config',
+      label: 'Starter Config',
+      description: 'One-tap vehicle-class selection to bootstrap a fresh board — sets the frame class only.',
+      order: 0
+    }
+  },
+  presets: {
+    'starter-rover': {
+      id: 'starter-rover',
+      label: 'Rover',
+      description: 'Standard wheeled/tracked ground rover.',
+      groupId: 'starter-config',
+      order: 0,
+      values: [{ paramId: 'FRAME_CLASS', value: 1 }],
+      tags: ['frame', 'rover', 'starter'],
+      cautions: frameStarterCautions
+    },
+    'starter-boat': {
+      id: 'starter-boat',
+      label: 'Boat',
+      description: 'Surface watercraft (enables boat-specific behavior such as loiter-at-station).',
+      groupId: 'starter-config',
+      order: 1,
+      values: [{ paramId: 'FRAME_CLASS', value: 2 }],
+      tags: ['frame', 'boat', 'starter'],
+      cautions: frameStarterCautions
+    },
+    'starter-balancebot': {
+      id: 'starter-balancebot',
+      label: 'Balance Bot',
+      description: 'Two-wheeled self-balancing rover.',
+      groupId: 'starter-config',
+      order: 2,
+      values: [{ paramId: 'FRAME_CLASS', value: 3 }],
+      tags: ['frame', 'balancebot', 'starter'],
+      cautions: frameStarterCautions
+    }
+  },
   parameters: {
     ...buildSerialPortParameterDefinitions(8),
     ...buildModeParameterDefinitions(),
@@ -285,6 +338,7 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     GPS_TYPE: { id: 'GPS_TYPE', label: 'GPS 1 Type', description: 'Driver for the primary GPS.', category: 'sensors', minimum: 0, maximum: 25 },
     GPS_TYPE2: { id: 'GPS_TYPE2', label: 'GPS 2 Type', description: 'Driver for the secondary GPS.', category: 'sensors', minimum: 0, maximum: 25 },
 
+    FRAME_CLASS: { id: 'FRAME_CLASS', label: 'Vehicle Class', description: 'Base vehicle type — ground rover, boat, or balance bot. Selects the motor/steering mixing model.', category: 'drive', rebootRequired: true, options: enumOptions(ARDUROVER_FRAME_CLASS_LABELS) },
     CRUISE_SPEED: { id: 'CRUISE_SPEED', label: 'Cruise Speed', description: 'Target ground speed (m/s) used as the reference for the speed↔throttle relationship.', category: 'drive', minimum: 0, maximum: 100, step: 0.1, notes: cruiseNotes },
     CRUISE_THROTTLE: { id: 'CRUISE_THROTTLE', label: 'Cruise Throttle', description: 'Throttle percentage that produces CRUISE_SPEED on flat ground.', category: 'drive', minimum: 0, maximum: 100, step: 1, notes: cruiseNotes },
     PILOT_STEER_TYPE: { id: 'PILOT_STEER_TYPE', label: 'Pilot Steer Type', description: 'How manual steering input maps to the steering output.', category: 'drive', options: enumOptions(ARDUROVER_PILOT_STEER_TYPE_LABELS) },

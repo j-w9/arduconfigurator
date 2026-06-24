@@ -1335,7 +1335,9 @@ test('runtime swaps to the ArduRover metadata bundle when a Rover is detected', 
     assert.ok(active.parameters.MODE_CH, 'expected the Rover bundle to expose MODE_CH')
     assert.ok(active.parameters.CRUISE_SPEED, 'expected the Rover bundle to expose CRUISE_SPEED')
     assert.ok(active.parameters.ATC_STR_RAT_P, 'expected the Rover steering-rate gains')
-    assert.ok(!active.parameters.FRAME_CLASS, 'Rover bundle must not carry the Copter FRAME_CLASS')
+    // Rover legitimately carries its own FRAME_CLASS (Rover/Boat/BalanceBot), so
+    // distinguish from the Copter fallback via a Copter-only attitude param instead.
+    assert.ok(!active.parameters.ATC_INPUT_TC, 'Rover bundle must not carry the Copter ATC_INPUT_TC')
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()

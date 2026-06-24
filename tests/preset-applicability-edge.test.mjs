@@ -26,11 +26,13 @@ function preset(values, frameClasses) {
   }
 }
 
-test('applicability blocks any non-ArduCopter vehicle outright', () => {
+test('applicability no longer hard-blocks non-ArduCopter vehicles (presets are bundle-scoped)', () => {
   for (const vehicle of ['ArduPlane', 'ArduRover', 'ArduSub']) {
-    const result = evaluateParameterPresetApplicability(snap(vehicle, { FRAME_CLASS: 1 }), preset([['ANGLE_MAX', 4200]], [1]))
-    assert.equal(result.status, 'blocked', `${vehicle} should be blocked`)
-    assert.match(result.reasons[0], /ArduCopter/)
+    // A frame-selection starter preset omits the frame-class gate, so it
+    // applies to any/fresh board on every vehicle.
+    const result = evaluateParameterPresetApplicability(snap(vehicle, {}), preset([['FRAME_CLASS', 1]]))
+    assert.equal(result.status, 'ready', `${vehicle} starter preset should be ready`)
+    assert.deepEqual(result.reasons, [])
   }
 })
 

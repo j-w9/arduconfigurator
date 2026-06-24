@@ -57,13 +57,11 @@ export function evaluateParameterPresetApplicability(
   let status: ParameterPresetApplicabilityResult['status'] = 'ready'
   const reasons: string[] = []
 
-  if (snapshot.vehicle?.vehicle && snapshot.vehicle.vehicle !== 'ArduCopter') {
-    return {
-      status: 'blocked',
-      reasons: ['This initial preset library is currently defined only for ArduCopter.']
-    }
-  }
-
+  // Presets are bundle-scoped — each vehicle only ever evaluates its own
+  // presets — so applicability is decided purely by the preset's declared
+  // compatibility. The frame-class gate below only fires for presets that opt
+  // into it (the curated Copter tuning presets); frame-selection starter
+  // presets omit it so they apply to any/fresh board on every vehicle.
   const expectedFrameClasses = preset.compatibility?.frameClasses
   if (expectedFrameClasses && expectedFrameClasses.length > 0) {
     const currentFrameClass = readRoundedParameter(snapshot.parameters, 'FRAME_CLASS')

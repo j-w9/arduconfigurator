@@ -65,6 +65,11 @@ const enabledDisabledOptions: ParameterValueOption[] = [
   { value: 0, label: 'Disabled' },
   { value: 1, label: 'Enabled' }
 ]
+const quadplaneFrameStarterCautions = [
+  'These set the QuadPlane VTOL motor layout (Q_FRAME_CLASS / Q_FRAME_TYPE) and only apply when QuadPlane is enabled (Q_ENABLE=1). Pure fixed-wing planes have no frame class.',
+  'Changing the QuadPlane frame reconfigures VTOL motor mixing and takes effect after a reboot.',
+  'A pre-apply snapshot is captured automatically so you can roll back to the previous setup if needed.'
+]
 
 // GPS behavior notes — intentionally duplicated from the ArduCopter catalog
 // rather than moved to a shared module: the strings are short, vehicle-
@@ -754,6 +759,12 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
     }
   },
   presetGroups: {
+    'starter-config': {
+      id: 'starter-config',
+      label: 'Starter Config',
+      description: 'One-tap QuadPlane VTOL airframe selection (Q_FRAME_CLASS / Q_FRAME_TYPE). Applies to QuadPlanes; pure fixed-wing has no frame class.',
+      order: 0
+    },
     'flight-feel': {
       id: 'flight-feel',
       label: 'Flight Feel',
@@ -761,7 +772,60 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       order: 1
     }
   },
-  presets: {},
+  presets: {
+    'starter-qplane-quad-x': {
+      id: 'starter-qplane-quad-x',
+      label: 'QuadPlane Quad X',
+      description: 'VTOL lift motors as a four-motor X quad — the most common QuadPlane layout.',
+      groupId: 'starter-config',
+      order: 0,
+      values: [
+        { paramId: 'Q_FRAME_CLASS', value: 1 },
+        { paramId: 'Q_FRAME_TYPE', value: 1 }
+      ],
+      tags: ['frame', 'quadplane', 'vtol', 'starter'],
+      cautions: quadplaneFrameStarterCautions
+    },
+    'starter-qplane-hexa-x': {
+      id: 'starter-qplane-hexa-x',
+      label: 'QuadPlane Hexa X',
+      description: 'VTOL lift motors as a six-motor X hexa.',
+      groupId: 'starter-config',
+      order: 1,
+      values: [
+        { paramId: 'Q_FRAME_CLASS', value: 2 },
+        { paramId: 'Q_FRAME_TYPE', value: 1 }
+      ],
+      tags: ['frame', 'quadplane', 'vtol', 'starter'],
+      cautions: quadplaneFrameStarterCautions
+    },
+    'starter-qplane-octa-x': {
+      id: 'starter-qplane-octa-x',
+      label: 'QuadPlane Octa X',
+      description: 'VTOL lift motors as an eight-motor X octa.',
+      groupId: 'starter-config',
+      order: 2,
+      values: [
+        { paramId: 'Q_FRAME_CLASS', value: 3 },
+        { paramId: 'Q_FRAME_TYPE', value: 1 }
+      ],
+      tags: ['frame', 'quadplane', 'vtol', 'starter'],
+      cautions: quadplaneFrameStarterCautions
+    },
+    'starter-qplane-tailsitter': {
+      id: 'starter-qplane-tailsitter',
+      label: 'Tailsitter',
+      description: 'Tailsitter VTOL airframe (Q_FRAME_CLASS = Tailsitter).',
+      groupId: 'starter-config',
+      order: 3,
+      values: [
+        { paramId: 'Q_FRAME_CLASS', value: 10 },
+        { paramId: 'Q_FRAME_TYPE', value: 1 }
+      ],
+      tags: ['frame', 'quadplane', 'tailsitter', 'vtol', 'starter'],
+      cautions: quadplaneFrameStarterCautions
+    }
+  },
   parameters: {
     // GPS behavior — vehicle-agnostic in ArduPilot (DroneCAN driver
     // value 9 is identical across Copter / Plane / Rover / Sub), but

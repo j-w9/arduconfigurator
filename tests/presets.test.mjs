@@ -7,6 +7,9 @@ import {
 } from '../packages/ardupilot-core/dist/index.js'
 import {
   arducopterMetadata,
+  arduplaneMetadata,
+  arduroverMetadata,
+  ardusubMetadata,
   normalizeFirmwareMetadata
 } from '../packages/param-metadata/dist/index.js'
 
@@ -14,10 +17,32 @@ const metadataCatalog = normalizeFirmwareMetadata(arducopterMetadata)
 
 test('metadata catalog exposes grouped presets and a dedicated presets view', () => {
   assert.ok(metadataCatalog.appViews.some((view) => view.id === 'presets'))
-  assert.equal(metadataCatalog.presetGroups.length, 2)
+  assert.equal(metadataCatalog.presetGroups.length, 3)
   assert.ok(metadataCatalog.presets.length >= 6)
+  assert.ok(metadataCatalog.presetsByGroup['starter-config'].length >= 4)
   assert.ok(metadataCatalog.presetsByGroup['flight-feel'].length >= 3)
   assert.ok(metadataCatalog.presetsByGroup['acro-rates'].length >= 3)
+})
+
+test('every vehicle bundle ships a frame-selection starter-config preset group', () => {
+  const bundles = {
+    ArduCopter: arducopterMetadata,
+    ArduPlane: arduplaneMetadata,
+    ArduRover: arduroverMetadata,
+    ArduSub: ardusubMetadata
+  }
+  for (const [vehicle, bundle] of Object.entries(bundles)) {
+    const catalog = normalizeFirmwareMetadata(bundle)
+    const starters = catalog.presetsByGroup['starter-config'] ?? []
+    assert.ok(starters.length >= 2, `${vehicle} should expose starter-config presets`)
+    // The starter group sorts first (order 0) so it heads the Presets tab.
+    assert.equal(catalog.presetGroups[0]?.id, 'starter-config', `${vehicle} starter group should sort first`)
+    // Starter presets set a frame parameter and carry no frame-class gate.
+    for (const preset of starters) {
+      assert.ok(preset.values.length >= 1, `${vehicle} ${preset.id} should set at least one frame param`)
+      assert.equal(preset.compatibility, undefined, `${vehicle} ${preset.id} must not gate on frame class`)
+    }
+  }
 })
 
 test('preset diffing stages only the changed values', () => {
