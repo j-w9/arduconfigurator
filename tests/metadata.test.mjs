@@ -161,8 +161,9 @@ test('every vehicle bundle exposes the rangefinder/lidar RNGFND1 family', () => 
     assert.ok(type, `${vehicle} RNGFND1_TYPE`)
     assert.equal(type.categoryDefinition.id, 'rangefinder', `${vehicle} rangefinder category`)
     assert.equal(type.categoryDefinition.viewId, 'motors', `${vehicle} rangefinder routes to Outputs`)
-    // Value->label mapping pinned against AP_RangeFinder source.
+    // Value->label mapping pinned against the upstream catalog verbatim.
     assert.ok(type.options.some((option) => option.value === 10 && option.label === 'MAVLink'))
+    assert.ok(type.options.some((option) => option.value === 48 && option.label === 'LightWare-GRF-I2C'))
     // Orientation enum (Down = 25 for terrain/altitude) + core config params.
     assert.ok(metadata.parameters.RNGFND1_ORIENT?.options.some((option) => option.value === 25 && option.label === 'Down'))
     for (const id of ['RNGFND1_MIN', 'RNGFND1_MAX', 'RNGFND1_GNDCLR', 'RNGFND1_ADDR', 'RNGFND1_POS_X']) {

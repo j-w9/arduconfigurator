@@ -12,7 +12,7 @@ const MOUNT_TYPE_OPTIONS: ParameterValueOption[] = [
   { value: 3, label: 'Alexmos Serial' },
   { value: 4, label: 'SToRM32 MAVLink' },
   { value: 5, label: 'SToRM32 Serial' },
-  { value: 6, label: 'Gremsy / AVT (MAVLink)' },
+  { value: 6, label: 'MAVLink (Gremsy/AVT)' },
   { value: 7, label: 'BrushlessPWM' },
   { value: 8, label: 'Siyi' },
   { value: 9, label: 'Scripting' },
@@ -26,7 +26,7 @@ const MOUNT_TYPE_OPTIONS: ParameterValueOption[] = [
 const MOUNT_DEFLT_MODE_OPTIONS: ParameterValueOption[] = [
   { value: 0, label: 'Retracted' },
   { value: 1, label: 'Neutral' },
-  { value: 2, label: 'MAVLink Targeting' },
+  { value: 2, label: 'MavLink Targeting' },
   { value: 3, label: 'RC Targeting' },
   { value: 4, label: 'GPS Point' },
   { value: 5, label: 'SysID Target' },
@@ -36,9 +36,9 @@ const MOUNT_DEFLT_MODE_OPTIONS: ParameterValueOption[] = [
 // @Bitmask values are bit indices (matching the SERIAL_OPTIONS convention);
 // ScopedBitmaskField ORs (1<<index) for the stored value.
 const MOUNT_OPTIONS_BITS: ParameterValueOption[] = [
-  { value: 0, label: 'Keep RC lock state from previous mode' },
+  { value: 0, label: 'RC lock state from previous mode' },
   { value: 1, label: 'Return to neutral angles on RC failsafe' },
-  { value: 2, label: 'Force FPV lock on roll and pitch' }
+  { value: 2, label: 'Force FPV (bf) lock on roll and pitch' }
 ]
 
 /**
