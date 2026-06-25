@@ -685,6 +685,25 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('snapshot-migration-notice')).toHaveCount(0)
   })
 
+  test('a snapshot from a different vehicle is flagged as a cross-vehicle migration', async ({ page }) => {
+    // Capture a baseline on a Plane, then reconnect as a Copter. The Plane
+    // snapshot persists in the local library and must be flagged as coming
+    // from a different vehicle when restoring onto the Copter.
+    await connectToPlane(page)
+    await openView(page, 'snapshots')
+    await page.getByTestId('snapshot-label-input').fill('Plane baseline')
+    await page.getByTestId('capture-live-snapshot-button').click()
+    await expect(page.getByText(/Saved snapshot "Plane baseline"/)).toBeVisible()
+
+    await connectToVehicle(page, 'demo')
+    await openView(page, 'snapshots')
+    await page.locator('.snapshot-card', { hasText: 'Plane baseline' }).first().click()
+
+    await expect(page.getByTestId('snapshot-vehicle-match')).toContainText('ArduPlane')
+    await expect(page.getByTestId('snapshot-vehicle-match')).toContainText('ArduCopter')
+    await expect(page.getByTestId('snapshot-migration-notice')).toBeVisible()
+  })
+
   test('websocket transport connects through the bundled demo bridge', async ({ page }) => {
     await connectToVehicle(page, 'websocket')
 
