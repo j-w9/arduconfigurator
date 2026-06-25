@@ -28,21 +28,15 @@ import type { LibraryForms, ProvisioningProfileSourceMode } from '../hooks/use-l
 import type { UseSafetyAcksResult } from '../hooks/use-safety-acks'
 import type { ParameterFollowUp, ParameterNotice } from '../hooks/use-parameter-feedback'
 import { formatSnapshotTimestamp } from '../library-helpers'
+import {
+  describeSnapshotBoardMatch,
+  describeSnapshotVehicleMatch,
+  isMeaningfulHardwareUid
+} from '../view-models/snapshot-identity'
 import { describeBitmaskDraftValue, formatParameterDelta, formatParameterValue } from '../parameter-format'
 import type { SavedParameterSnapshot } from '../snapshot-library'
 import type { SavedProvisioningProfile } from '../provisioning-library'
 import { SnapshotsView } from '../views/Snapshots'
-
-/**
- * AUTOPILOT_VERSION.uid often arrives as all-zero from FCs whose
- * STM32 chip doesn't expose its unique id (or hasn't been read by
- * the firmware yet). Don't surface a meaningless "UID 00000000..."
- * pill in that case.
- */
-function isMeaningfulHardwareUid(uid: string | undefined): boolean {
-  if (!uid) return false
-  return /[1-9a-f]/i.test(uid)
-}
 
 /**
  * The full STM32 UID is a 24-hex (96-bit) string — too wide for a
@@ -224,6 +218,21 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     selectedProvisioningProfileChangedEntries,
     selectedProvisioningProfileInvalidEntries
   } = derived
+
+  // Compare the selected snapshot's captured identity against the live FC so
+  // restore can flag a snapshot taken from a DIFFERENT physical board or a
+  // different vehicle (e.g. migrating a config from an old craft to a new one).
+  const selectedSnapshotBoardMatch = selectedSnapshot
+    ? describeSnapshotBoardMatch(selectedSnapshot.backup.hardware?.uid, snapshot.hardware.board?.uid)
+    : undefined
+  const selectedSnapshotVehicleMatch = selectedSnapshot
+    ? describeSnapshotVehicleMatch(
+        selectedSnapshot.backup.vehicle?.vehicle ?? selectedSnapshot.backup.firmware,
+        snapshot.vehicle?.vehicle
+      )
+    : undefined
+  const selectedSnapshotIsMigration =
+    selectedSnapshotBoardMatch?.status === 'different' || selectedSnapshotVehicleMatch?.status === 'different'
 
   const {
     handleApplySelectedProvisioningProfile,
@@ -636,6 +645,39 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                 </div>
 
                 {selectedSnapshot.note ? <p className="snapshot-selected__note">{selectedSnapshot.note}</p> : null}
+
+                {/* Identity match vs the connected FC — does this snapshot come
+                    from THIS board/vehicle, or a different one being migrated in? */}
+                {snapshot.connection.kind === 'connected' && (selectedSnapshotBoardMatch || selectedSnapshotVehicleMatch) ? (
+                  <div className="config-pills" data-testid="snapshot-identity-match">
+                    {selectedSnapshotBoardMatch ? (
+                      <span data-testid="snapshot-board-match">
+                        <StatusBadge tone={selectedSnapshotBoardMatch.tone}>{selectedSnapshotBoardMatch.label}</StatusBadge>
+                      </span>
+                    ) : null}
+                    {selectedSnapshotVehicleMatch ? (
+                      <span data-testid="snapshot-vehicle-match">
+                        <StatusBadge tone={selectedSnapshotVehicleMatch.tone}>{selectedSnapshotVehicleMatch.label}</StatusBadge>
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {snapshot.connection.kind === 'connected' && selectedSnapshotIsMigration ? (
+                  <div className="parameter-follow-up parameter-follow-up--warning" data-testid="snapshot-migration-notice">
+                    <StatusBadge tone="warning">migration</StatusBadge>
+                    <p>
+                      This snapshot was captured on a
+                      {selectedSnapshotVehicleMatch?.status === 'different' ? ' different vehicle' : ''}
+                      {selectedSnapshotVehicleMatch?.status === 'different' && selectedSnapshotBoardMatch?.status === 'different' ? ' and' : ''}
+                      {selectedSnapshotBoardMatch?.status === 'different' ? ' different board' : ''}
+                      . Restore applies the {selectedSnapshotChangedEntries.length} matching parameter(s) through the verified write path;
+                      {selectedSnapshotRestore && selectedSnapshotRestore.unknownParameterIds.length > 0
+                        ? ` ${selectedSnapshotRestore.unknownParameterIds.length} parameter(s) that don't exist here are skipped.`
+                        : ' any parameters not present here are skipped.'}
+                    </p>
+                  </div>
+                ) : null}
 
                 {selectedSnapshotRestore && selectedSnapshotRestore.unknownParameterIds.length > 0 ? (
                   <div className="parameter-follow-up parameter-follow-up--warning">

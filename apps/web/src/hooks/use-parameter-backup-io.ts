@@ -24,6 +24,7 @@ import {
 import { APP_VERSION, GIT_HASH, GIT_BRANCH } from '../build-info'
 import { downloadTextFile } from '../download-file'
 import { buildParameterBackupFilename } from '../library-helpers'
+import { describeSnapshotBoardMatch, describeSnapshotVehicleMatch } from '../view-models/snapshot-identity'
 import type { ParameterDraftValues } from './use-parameter-drafts'
 import type { ParameterFollowUp, ParameterNotice } from './use-parameter-feedback'
 
@@ -102,12 +103,32 @@ export function useParameterBackupIo({
           : ''
       const excludedNote =
         restore.excludedCount > 0 ? ` Skipped ${restore.excludedCount} excluded parameter(s).` : ''
+      // Cross-vehicle / cross-board migration callout: compare the backup's
+      // captured identity (STM32 UID + vehicle) against the connected FC so an
+      // import from a DIFFERENT board/vehicle is flagged, not silent.
+      const boardMatch = describeSnapshotBoardMatch(backup.hardware?.uid, snapshot.hardware.board?.uid)
+      const vehicleMatch = describeSnapshotVehicleMatch(
+        backup.vehicle?.vehicle ?? backup.firmware,
+        snapshot.vehicle?.vehicle
+      )
+      const migrationSources: string[] = []
+      if (vehicleMatch.status === 'different') {
+        migrationSources.push(`a different vehicle (${backup.vehicle?.vehicle ?? backup.firmware})`)
+      }
+      if (boardMatch.status === 'different') {
+        migrationSources.push('a different board')
+      }
+      const migrationNote =
+        migrationSources.length > 0
+          ? ` Cross-vehicle migration: this backup was captured on ${migrationSources.join(' and ')}; only parameters that exist on the connected FC are applied.`
+          : ''
+      const isMigration = migrationSources.length > 0
       setParameterNotice({
-        tone: restore.changedCount > 0 ? 'warning' : 'neutral',
+        tone: isMigration || restore.changedCount > 0 ? 'warning' : 'neutral',
         text:
           restore.changedCount > 0
-            ? `Loaded ${restore.changedCount} differing parameter value(s) from backup — review the staged diff below, then click Apply All to write to the controller.${unknownNote}${excludedNote}`
-            : `Backup matched the current synced values.${unknownNote}${excludedNote}`
+            ? `Loaded ${restore.changedCount} differing parameter value(s) from backup — review the staged diff below, then click Apply All to write to the controller.${unknownNote}${excludedNote}${migrationNote}`
+            : `Backup matched the current synced values.${unknownNote}${excludedNote}${migrationNote}`
       })
       // Auto-scroll the staged diff into view so the operator sees the
       // current→new list immediately on a multi-change import. Without

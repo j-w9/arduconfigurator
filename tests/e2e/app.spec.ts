@@ -671,6 +671,20 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('active-baseline-label')).toHaveText('E2E baseline')
   })
 
+  test('snapshot restore differentiates the source board/vehicle from the connected FC', async ({ page }) => {
+    await connectToVehicle(page, 'demo')
+    await openView(page, 'snapshots')
+    await page.getByTestId('snapshot-label-input').fill('Identity check')
+    await page.getByTestId('capture-live-snapshot-button').click()
+    await expect(page.getByText(/Saved snapshot "Identity check"/)).toBeVisible()
+
+    // The snapshot was captured on the connected demo FC, so it must read as the
+    // same board (UID match) and same vehicle — and NOT flag a migration.
+    await expect(page.getByTestId('snapshot-board-match')).toHaveText('Same board')
+    await expect(page.getByTestId('snapshot-vehicle-match')).toHaveText('Same vehicle')
+    await expect(page.getByTestId('snapshot-migration-notice')).toHaveCount(0)
+  })
+
   test('websocket transport connects through the bundled demo bridge', async ({ page }) => {
     await connectToVehicle(page, 'websocket')
 
