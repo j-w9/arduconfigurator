@@ -72,14 +72,62 @@ const RANGEFINDER_ORIENT_OPTIONS: ParameterValueOption[] = [
   { value: 25, label: 'Down' }
 ]
 
+const RANGEFINDER_PIN_OPTIONS: ParameterValueOption[] = [
+  { value: -1, label: 'Not Used' },
+  { value: 11, label: 'Pixracer' },
+  { value: 13, label: 'Pixhawk ADC4' },
+  { value: 14, label: 'Pixhawk ADC3' },
+  { value: 15, label: 'Pixhawk ADC6/Pixhawk2 ADC' },
+  { value: 50, label: 'AUX1' },
+  { value: 51, label: 'AUX2' },
+  { value: 52, label: 'AUX3' },
+  { value: 53, label: 'AUX4' },
+  { value: 54, label: 'AUX5' },
+  { value: 55, label: 'AUX6' },
+  { value: 103, label: 'Pixhawk SBUS' }
+]
+
+const RANGEFINDER_STOP_PIN_OPTIONS: ParameterValueOption[] = [
+  { value: -1, label: 'Not Used' },
+  { value: 50, label: 'AUX1' },
+  { value: 51, label: 'AUX2' },
+  { value: 52, label: 'AUX3' },
+  { value: 53, label: 'AUX4' },
+  { value: 54, label: 'AUX5' },
+  { value: 55, label: 'AUX6' },
+  { value: 111, label: 'PX4 FMU Relay1' },
+  { value: 112, label: 'PX4 FMU Relay2' },
+  { value: 113, label: 'PX4IO Relay1' },
+  { value: 114, label: 'PX4IO Relay2' },
+  { value: 115, label: 'PX4IO ACC1' },
+  { value: 116, label: 'PX4IO ACC2' }
+]
+
+const RANGEFINDER_FUNCTION_OPTIONS: ParameterValueOption[] = [
+  { value: 0, label: 'Linear' },
+  { value: 1, label: 'Inverted' },
+  { value: 2, label: 'Hyperbolic' }
+]
+
+const RANGEFINDER_RMETRIC_OPTIONS: ParameterValueOption[] = [
+  { value: 0, label: 'No' },
+  { value: 1, label: 'Yes' }
+]
+
 /**
  * Builds the RNGFND{instance}_* parameter family (category `rangefinder`).
  * Instance 2's labels are suffixed so a second sensor stays distinguishable.
+ * Analog/PWM-only knobs carry `visibleWhen` so they appear only once the
+ * matching TYPE is selected.
  */
 export function buildRangefinderParameterDefinitions(instance: 1 | 2): FirmwareMetadataBundle['parameters'] {
   const p = `RNGFND${instance}_`
   const suffix = instance === 1 ? '' : ' 2'
   const which = instance === 1 ? 'the first' : 'the second'
+  const ctrlType = `${p}TYPE`
+  const ANALOG = [1]
+  const PWM = [5, 22]
+  const ANALOG_OR_PWM = [1, 5, 22]
   const pos = (axis: 'X' | 'Y' | 'Z') => {
     const name = axis === 'X' ? 'forward' : axis === 'Y' ? 'right' : 'down'
     return {
@@ -147,6 +195,73 @@ export function buildRangefinderParameterDefinitions(instance: 1 | 2): FirmwareM
     },
     [`${p}POS_X`]: pos('X'),
     [`${p}POS_Y`]: pos('Y'),
-    [`${p}POS_Z`]: pos('Z')
+    [`${p}POS_Z`]: pos('Z'),
+    // Analog / PWM-only knobs — revealed by visibleWhen once the matching
+    // TYPE is selected.
+    [`${p}PIN`]: {
+      id: `${p}PIN`,
+      label: `Analog/PWM Pin${suffix}`,
+      description: 'ADC (analog) or PWM input pin the sensor is wired to.',
+      category: 'rangefinder',
+      minimum: -1,
+      maximum: 127,
+      options: RANGEFINDER_PIN_OPTIONS,
+      visibleWhen: { paramId: ctrlType, in: ANALOG_OR_PWM }
+    },
+    [`${p}FUNCTION`]: {
+      id: `${p}FUNCTION`,
+      label: `Analog Function${suffix}`,
+      description: 'Transfer function applied to the analog voltage before scaling.',
+      category: 'rangefinder',
+      options: RANGEFINDER_FUNCTION_OPTIONS,
+      visibleWhen: { paramId: ctrlType, in: ANALOG }
+    },
+    [`${p}SCALING`]: {
+      id: `${p}SCALING`,
+      label: `Analog Scaling${suffix}`,
+      description: 'Distance per volt (m/V) for analog sensors.',
+      category: 'rangefinder',
+      unit: 'm/V',
+      step: 0.01,
+      visibleWhen: { paramId: ctrlType, in: ANALOG }
+    },
+    [`${p}OFFSET`]: {
+      id: `${p}OFFSET`,
+      label: `Analog Offset${suffix}`,
+      description: 'Voltage (V) at zero distance for analog sensors.',
+      category: 'rangefinder',
+      unit: 'V',
+      step: 0.01,
+      visibleWhen: { paramId: ctrlType, in: ANALOG }
+    },
+    [`${p}RMETRIC`]: {
+      id: `${p}RMETRIC`,
+      label: `Ratiometric${suffix}`,
+      description: 'Whether the analog sensor output scales with supply voltage.',
+      category: 'rangefinder',
+      options: RANGEFINDER_RMETRIC_OPTIONS,
+      visibleWhen: { paramId: ctrlType, in: ANALOG }
+    },
+    [`${p}STOP_PIN`]: {
+      id: `${p}STOP_PIN`,
+      label: `Stop Pin${suffix}`,
+      description: 'Optional GPIO that powers the sensor down between reads (analog/PWM).',
+      category: 'rangefinder',
+      minimum: -1,
+      maximum: 127,
+      options: RANGEFINDER_STOP_PIN_OPTIONS,
+      visibleWhen: { paramId: ctrlType, in: ANALOG_OR_PWM }
+    },
+    [`${p}PWRRNG`]: {
+      id: `${p}PWRRNG`,
+      label: `Power-save Range${suffix}`,
+      description: 'Above this altitude (m) the PWM sensor is powered down to save energy. 0 disables.',
+      category: 'rangefinder',
+      unit: 'm',
+      minimum: 0,
+      maximum: 32767,
+      step: 1,
+      visibleWhen: { paramId: ctrlType, in: PWM }
+    }
   }
 }

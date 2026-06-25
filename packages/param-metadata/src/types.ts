@@ -91,6 +91,14 @@ export interface ParameterDefinition {
    * value (see ScopedBitmaskField).
    */
   bitmask?: boolean
+  /**
+   * Conditional visibility. When set, the generic editor renders this field
+   * only if the controlling parameter `paramId`'s current value (the live
+   * value, or the in-flight draft if one is staged) is one of `in`. Used for
+   * type-specific knobs — e.g. analog rangefinder pin/scaling shown only when
+   * RNGFND1_TYPE = Analog. Value is rounded before comparison.
+   */
+  visibleWhen?: { paramId: string; in: number[] }
 }
 
 export interface PresetGroupDefinition {

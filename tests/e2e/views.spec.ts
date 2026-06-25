@@ -1919,6 +1919,16 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByText('Gimbal Driver', { exact: true })).toBeHidden()
     // Rangefinder stays independently expanded.
     await expect(page.getByText('Rangefinder Type', { exact: true })).toBeVisible()
+
+    // Conditional fields: analog-only knobs are hidden until TYPE = Analog.
+    await expect(page.getByText('Analog Function', { exact: true })).toBeHidden()
+    const typeSelect = page.locator('label', { hasText: 'Rangefinder Type' }).getByRole('combobox')
+    await typeSelect.selectOption({ label: 'Analog' })
+    await expect(page.getByText('Analog Function', { exact: true })).toBeVisible()
+    await expect(page.getByText('Ratiometric', { exact: true })).toBeVisible()
+    // Switching to a serial type hides them again.
+    await typeSelect.selectOption({ label: 'MAVLink' })
+    await expect(page.getByText('Analog Function', { exact: true })).toBeHidden()
   })
 })
 

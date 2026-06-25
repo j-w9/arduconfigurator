@@ -172,6 +172,22 @@ test('every vehicle bundle exposes the rangefinder/lidar RNGFND1 family', () => 
   }
 })
 
+test('conditional (visibleWhen) params gate on the controlling parameter value', () => {
+  const metadata = normalizeFirmwareMetadata(arducopterMetadata)
+  // Analog-only knobs reveal when RNGFND1_TYPE = Analog (1).
+  for (const id of ['RNGFND1_FUNCTION', 'RNGFND1_SCALING', 'RNGFND1_OFFSET', 'RNGFND1_RMETRIC']) {
+    assert.deepEqual(metadata.parameters[id]?.visibleWhen, { paramId: 'RNGFND1_TYPE', in: [1] }, id)
+  }
+  // PIN + STOP_PIN apply to analog AND PWM; PWRRNG is PWM-only.
+  assert.deepEqual(metadata.parameters.RNGFND1_PIN?.visibleWhen, { paramId: 'RNGFND1_TYPE', in: [1, 5, 22] })
+  assert.deepEqual(metadata.parameters.RNGFND1_PWRRNG?.visibleWhen, { paramId: 'RNGFND1_TYPE', in: [5, 22] })
+  // Mount SysID target reveals only in SysID-targeting default mode (5).
+  assert.deepEqual(metadata.parameters.MNT1_SYSID_DFLT?.visibleWhen, { paramId: 'MNT1_DEFLT_MODE', in: [5] })
+  assert.deepEqual(metadata.parameters.MNT2_SYSID_DFLT?.visibleWhen, { paramId: 'MNT2_DEFLT_MODE', in: [5] })
+  // Core params stay unconditional.
+  assert.equal(metadata.parameters.RNGFND1_TYPE?.visibleWhen, undefined)
+})
+
 test('VTX enable formatting stays user-facing', () => {
   assert.equal(formatArducopterVtxEnable(0), 'Disabled')
   assert.equal(formatArducopterVtxEnable(1), 'Enabled')

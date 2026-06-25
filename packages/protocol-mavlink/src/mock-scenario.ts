@@ -91,8 +91,10 @@ const mockParameters: ParameterState = {
   MNT1_LEAD_RLL: 0,
   MNT1_LEAD_PTCH: 0,
   MNT1_OPTIONS: 0,
+  MNT1_SYSID_DFLT: 0,
   // Rangefinder / Lidar (RNGFND1) — seeded so the demo surfaces the
   // Rangefinder/Lidar config section (downward-facing, disabled by default).
+  // The analog/PWM knobs are seeded too so they reveal when TYPE is changed.
   RNGFND1_TYPE: 0,
   RNGFND1_ORIENT: 25,
   RNGFND1_MIN: 0.2,
@@ -102,6 +104,13 @@ const mockParameters: ParameterState = {
   RNGFND1_POS_X: 0,
   RNGFND1_POS_Y: 0,
   RNGFND1_POS_Z: 0,
+  RNGFND1_PIN: -1,
+  RNGFND1_FUNCTION: 0,
+  RNGFND1_SCALING: 3,
+  RNGFND1_OFFSET: 0,
+  RNGFND1_RMETRIC: 1,
+  RNGFND1_STOP_PIN: -1,
+  RNGFND1_PWRRNG: 0,
   AHRS_ORIENTATION: 0,
   // Config-tab fields a real FC always reports — included so the demo Config
   // surface is complete (no "— (not reported)" rows).

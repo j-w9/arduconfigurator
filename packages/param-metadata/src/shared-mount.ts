@@ -135,6 +135,17 @@ export function buildMountParameterDefinitions(instance: 1 | 2): FirmwareMetadat
       category: 'gimbal',
       bitmask: true,
       options: MOUNT_OPTIONS_BITS
+    },
+    // Only relevant in SysID-targeting mode (DEFLT_MODE = 5) — revealed then.
+    [`${p}SYSID_DFLT`]: {
+      id: `${p}SYSID_DFLT`,
+      label: `Target sysID${suffix}`,
+      description: 'MAVLink system ID the mount points at in SysID-targeting mode.',
+      category: 'gimbal',
+      minimum: 0,
+      maximum: 255,
+      step: 1,
+      visibleWhen: { paramId: `${p}DEFLT_MODE`, in: [5] }
     }
   }
 }

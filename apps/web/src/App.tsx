@@ -4172,6 +4172,21 @@ export function App() {
     // checkbox grid, enum options -> select, otherwise number with
     // smart step inference. Staged-red + "was X" + float-noise
     // formatting still come from the underlying widgets unchanged.
+
+    // Conditional visibility: a field with `visibleWhen` renders only when the
+    // controlling param's current value (in-flight draft if staged, else live)
+    // is allowed — e.g. analog rangefinder knobs appear once RNGFND1_TYPE is
+    // set to Analog. Reacts live because editedValues drives the re-render.
+    const visibleWhen = parameter.definition?.visibleWhen
+    if (visibleWhen) {
+      const draft = editedValues[visibleWhen.paramId]
+      const live = snapshot.parameters.find((candidate) => candidate.id === visibleWhen.paramId)?.value
+      const current = draft !== undefined && draft !== '' ? Number(draft) : live
+      if (current === undefined || Number.isNaN(current) || !visibleWhen.in.includes(Math.round(current))) {
+        return null
+      }
+    }
+
     return (
       <ScopedField
         key={parameter.id}
