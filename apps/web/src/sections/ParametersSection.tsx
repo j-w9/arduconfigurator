@@ -172,6 +172,14 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     [parameterDraftById]
   )
 
+  // The parameter inspector auto-selects the first param (FRAME_CLASS), which on
+  // a phone renders a tall box wedged above the editable table. Start it
+  // collapsed on phones (the operator taps "Show details" or any row to expand);
+  // desktop is unaffected — it initialises expanded and the toggle is CSS-hidden.
+  const [parameterDetailsCollapsed, setParameterDetailsCollapsed] = useState(
+    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px)').matches
+  )
+
   // Selected-parameter derived state — small enough to recompute here rather
   // than thread through the props.
   const selectedParameter =
@@ -575,7 +583,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
         </div>
 
         {selectedParameter ? (
-          <div className="parameter-details">
+          <div className={`parameter-details${parameterDetailsCollapsed ? ' parameter-details--collapsed' : ''}`}>
             <div className="parameter-details__header">
               <div>
                 <h3>{selectedParameterDefinition?.label ?? selectedParameter.id}</h3>
@@ -584,8 +592,19 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
               <StatusBadge tone={toneForParameterDraftStatus(selectedParameterDraft?.status ?? 'unchanged')}>
                 {selectedParameterDraft?.status ?? 'unchanged'}
               </StatusBadge>
+              <button
+                type="button"
+                className="parameter-details__toggle"
+                data-testid="parameter-details-toggle"
+                onClick={() => setParameterDetailsCollapsed((collapsed) => !collapsed)}
+                aria-expanded={!parameterDetailsCollapsed}
+              >
+                {parameterDetailsCollapsed ? 'Show details' : 'Hide details'}
+              </button>
             </div>
 
+            {parameterDetailsCollapsed ? null : (
+              <>
             <div className="parameter-details__grid">
               <div className="parameter-details__metric">
                 <small>Current value</small>
@@ -641,6 +660,8 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                 ))}
               </div>
             ) : null}
+              </>
+            )}
           </div>
         ) : null}
 

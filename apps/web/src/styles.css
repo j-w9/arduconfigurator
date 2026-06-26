@@ -9513,6 +9513,23 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 12px;
 }
 
+/* Collapse toggle for the parameter inspector — only used on phones (shown via
+ * the <=600px media query); hidden on desktop so the inspector reads exactly as
+ * before there. */
+.parameter-details__toggle {
+  display: none;
+  flex-shrink: 0;
+  align-self: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-200);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .parameter-details__header h3,
 .parameter-details__header p {
   margin: 0;
@@ -11980,5 +11997,13 @@ details.bf-gui-box:not([open]) > summary::after {
   [data-testid="export-parameter-backup-parm"],
   [data-testid="export-parameter-backup-params"] {
     display: none;
+  }
+
+  /* The parameter inspector auto-selects the first param (FRAME_CLASS), which on
+   * a phone renders as a tall box wedged above the editable table. It starts
+   * collapsed on phone (the body is omitted until expanded); show the toggle so
+   * it stays reachable. */
+  .parameter-details__toggle {
+    display: inline-flex;
   }
 }
