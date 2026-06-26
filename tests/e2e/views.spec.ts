@@ -57,6 +57,28 @@ test.describe('Phone layout', () => {
     expect(headerHeight).toBeLessThanOrEqual(250)
   })
 
+  test('phone Parameter Editor chrome is condensed so the edit surface is reachable', async ({ page }) => {
+    // Regression: the expert-mode warning + the export buttons made the
+    // "Parameter Editor" review card dominate a phone screen. On phone the
+    // warning is hidden and the export buttons are dropped (Import + Apply +
+    // Discard stay), keeping the review card compact.
+    await page.setViewportSize({ width: 390, height: 664 })
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-parameters').click()
+    await expect(page.locator('.parameter-editor__expert-note')).toBeHidden()
+    await expect(page.getByTestId('export-parameter-backup')).toBeHidden()
+    // Import (cross-vehicle migration) stays available on phone.
+    await expect(page.getByTestId('import-parameter-backup')).toBeVisible()
+    const reviewHeight = await page
+      .locator('.parameter-review')
+      .evaluate((el) => Math.round(el.getBoundingClientRect().height))
+    expect(reviewHeight).toBeLessThanOrEqual(260)
+  })
+
   test('keeps the baseline panel on desktop width', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')

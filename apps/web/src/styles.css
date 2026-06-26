@@ -11958,4 +11958,27 @@ details.bf-gui-box:not([open]) > summary::after {
   .header-sensor-status {
     display: none;
   }
+
+  /* Parameter Editor: on a phone the static expert-mode warning + the roomy
+   * review card pushed the actual search/edit surface off-screen. Drop the
+   * always-on warning (the Expert toggle is a deliberate opt-in already) and
+   * tighten the review card so search + staged changes get the screen. */
+  .parameter-editor__expert-note {
+    display: none;
+  }
+
+  .parameter-review {
+    padding: 10px;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  /* Exporting a backup file is a desktop task; on a phone keep Import Backup
+   * (used for cross-vehicle migration) plus Apply/Discard, and drop the three
+   * export buttons so the review card stops dominating the screen. */
+  [data-testid="export-parameter-backup"],
+  [data-testid="export-parameter-backup-parm"],
+  [data-testid="export-parameter-backup-params"] {
+    display: none;
+  }
 }

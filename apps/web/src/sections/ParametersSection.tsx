@@ -187,7 +187,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   return (
 
       <Panel title="Parameter Editor" subtitle="Browse, stage, and write raw parameter values.">
-        <div className="parameter-follow-up parameter-follow-up--warning">
+        <div className="parameter-follow-up parameter-follow-up--warning parameter-editor__expert-note">
           <StatusBadge tone="warning">expert</StatusBadge>
           <p>Raw parameter editing is an Expert surface. Use Setup, Ports, Receiver, Outputs, and Power for routine workflow changes first.</p>
         </div>
