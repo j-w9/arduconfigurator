@@ -206,7 +206,11 @@ export function CanBusView(props: CanBusViewProps) {
             {rows.map((row) => {
               const node = state.nodes.find((n) => n.nodeId === row.nodeId)
               const isExpanded = expandedNode === row.nodeId
-              const customName = getName(row.hwUniqueId)
+              // Prefer the stable hardware UID; fall back to the node id so a
+              // node that hasn't returned GetNodeInfo yet (e.g. the autopilot's
+              // own node) is still nameable.
+              const nameKey = row.hwUniqueId ?? `node-${row.nodeId}`
+              const customName = getName(nameKey)
               const isRenaming = renamingNode === row.nodeId
               return (
                 <li
@@ -221,9 +225,7 @@ export function CanBusView(props: CanBusViewProps) {
                           className="can-bus-node__rename"
                           onSubmit={(event) => {
                             event.preventDefault()
-                            if (row.hwUniqueId) {
-                              setName(row.hwUniqueId, nameDraft)
-                            }
+                            setName(nameKey, nameDraft)
                             setRenamingNode(undefined)
                           }}
                         >
@@ -248,11 +250,10 @@ export function CanBusView(props: CanBusViewProps) {
                           <button
                             type="button"
                             className="can-bus-node__rename-button"
-                            disabled={!row.hwUniqueId}
                             title={
                               row.hwUniqueId
-                                ? 'Give this node a persistent name'
-                                : 'Waiting for the node UID (GetNodeInfo) before it can be named'
+                                ? 'Give this node a persistent name (kept by its hardware UID)'
+                                : 'Give this node a persistent name (kept by node id until it reports a UID)'
                             }
                             onClick={() => {
                               setNameDraft(customName ?? '')
