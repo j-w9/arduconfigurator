@@ -30,7 +30,8 @@ export const MAVLINK_MESSAGE_IDS = {
   MAG_CAL_REPORT: 192,
   UAVCAN_NODE_STATUS: 310,
   UAVCAN_NODE_INFO: 311,
-  SETUP_SIGNING: 256
+  SETUP_SIGNING: 256,
+  GPS_INPUT: 232
 } as const
 
 export const MAVLINK_MESSAGE_CRCS: Record<number, number> = {
@@ -61,7 +62,9 @@ export const MAVLINK_MESSAGE_CRCS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.UAVCAN_NODE_INFO]: 95,
   // crc_extra from the MAVLink common dialect (c_library_v2
   // mavlink_msg_setup_signing.h: MAVLINK_MSG_ID_SETUP_SIGNING_CRC 71).
-  [MAVLINK_MESSAGE_IDS.SETUP_SIGNING]: 71
+  [MAVLINK_MESSAGE_IDS.SETUP_SIGNING]: 71,
+  // crc_extra 151 (c_library_v2 mavlink_msg_gps_input.h).
+  [MAVLINK_MESSAGE_IDS.GPS_INPUT]: 151
 }
 
 export const MAVLINK_PAYLOAD_LENGTHS: Record<number, number> = {
@@ -91,7 +94,9 @@ export const MAVLINK_PAYLOAD_LENGTHS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.UAVCAN_NODE_STATUS]: 17,
   [MAVLINK_MESSAGE_IDS.UAVCAN_NODE_INFO]: 116,
   // initial_timestamp(8) + target_system(1) + target_component(1) + secret_key(32)
-  [MAVLINK_MESSAGE_IDS.SETUP_SIGNING]: 42
+  [MAVLINK_MESSAGE_IDS.SETUP_SIGNING]: 42,
+  // GPS_INPUT without the yaw extension: 63 bytes (see encodeGpsInputPayload).
+  [MAVLINK_MESSAGE_IDS.GPS_INPUT]: 63
 }
 
 export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
@@ -120,7 +125,8 @@ export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.MAG_CAL_REPORT]: 44,
   [MAVLINK_MESSAGE_IDS.UAVCAN_NODE_STATUS]: 17,
   [MAVLINK_MESSAGE_IDS.UAVCAN_NODE_INFO]: 116,
-  [MAVLINK_MESSAGE_IDS.SETUP_SIGNING]: 42
+  [MAVLINK_MESSAGE_IDS.SETUP_SIGNING]: 42,
+  [MAVLINK_MESSAGE_IDS.GPS_INPUT]: 63
 }
 
 export const MAVLINK_PROTOCOL_VERSION = 3

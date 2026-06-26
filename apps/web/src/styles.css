@@ -12007,3 +12007,115 @@ details.bf-gui-box:not([open]) > summary::after {
     display: inline-flex;
   }
 }
+
+/* No-GPS calibration location card (Calibration page). */
+.cal-location {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cal-location__heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cal-location__info-button {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-200);
+  color: var(--text-muted);
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cal-location__info-button[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.cal-location__info {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface-100);
+  font-size: 13px;
+}
+
+.cal-location__info p {
+  margin: 0 0 8px;
+}
+
+.cal-location__info p:last-child {
+  margin-bottom: 0;
+}
+
+.cal-location__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.cal-location__fields {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.cal-location__notice {
+  margin: 0;
+  font-size: 13px;
+}
+
+.cal-location__notice--success {
+  color: var(--success);
+}
+
+.cal-location__notice--danger {
+  color: var(--danger);
+}
+
+.cal-location__notice--neutral {
+  color: var(--text-muted);
+}
+
+.cal-location__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cal-location__frame {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(560px, 92vw);
+  max-width: 92vw;
+  padding: 16px;
+}
+
+.cal-location__modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cal-location__modal-header strong {
+  display: block;
+}
+
+.cal-location__modal-header p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}

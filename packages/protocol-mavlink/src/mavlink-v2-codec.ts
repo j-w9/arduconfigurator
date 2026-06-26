@@ -17,6 +17,7 @@ import type {
   AutopilotVersionMessage,
   CommandAckMessage,
   CommandLongMessage,
+  GpsInputMessage,
   FileTransferProtocolMessage,
   GlobalPositionIntMessage,
   HeartbeatMessage,
@@ -638,6 +639,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeCommandAckPayload(message)
     case 'COMMAND_LONG':
       return encodeCommandLongPayload(message)
+    case 'GPS_INPUT':
+      return encodeGpsInputPayload(message)
     case 'AUTOPILOT_VERSION':
       return encodeAutopilotVersionPayload(message)
     case 'STATUSTEXT':
@@ -750,6 +753,8 @@ function messageIdFor(message: MavlinkMessage): number {
       return MAVLINK_MESSAGE_IDS.COMMAND_ACK
     case 'COMMAND_LONG':
       return MAVLINK_MESSAGE_IDS.COMMAND_LONG
+    case 'GPS_INPUT':
+      return MAVLINK_MESSAGE_IDS.GPS_INPUT
     case 'AUTOPILOT_VERSION':
       return MAVLINK_MESSAGE_IDS.AUTOPILOT_VERSION
     case 'STATUSTEXT':
@@ -1271,6 +1276,33 @@ function encodeCommandLongPayload(message: CommandLongMessage): Uint8Array {
   view.setUint8(30, message.targetSystem)
   view.setUint8(31, message.targetComponent)
   view.setUint8(32, message.confirmation)
+  return payload
+}
+
+function encodeGpsInputPayload(message: GpsInputMessage): Uint8Array {
+  // MAVLink field reordering (largest type first, declaration order within a
+  // size); the yaw extension is omitted. Velocity + accuracy fields are left
+  // zero and flagged via ignoreFlags by the caller.
+  const payload = new Uint8Array(MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.GPS_INPUT])
+  const view = new DataView(payload.buffer)
+  view.setBigUint64(0, 0n, true)               // time_usec (0 = autopilot timestamps)
+  view.setUint32(8, 0, true)                   // time_week_ms
+  view.setInt32(12, message.latitudeE7, true)  // lat (degE7)
+  view.setInt32(16, message.longitudeE7, true) // lon (degE7)
+  view.setFloat32(20, message.altitudeM, true) // alt (m, MSL)
+  view.setFloat32(24, message.hdop, true)
+  view.setFloat32(28, message.vdop, true)
+  view.setFloat32(32, 0, true)                 // vn
+  view.setFloat32(36, 0, true)                 // ve
+  view.setFloat32(40, 0, true)                 // vd
+  view.setFloat32(44, 0, true)                 // speed_accuracy
+  view.setFloat32(48, 5, true)                 // horiz_accuracy (m)
+  view.setFloat32(52, 5, true)                 // vert_accuracy (m)
+  view.setUint16(56, message.ignoreFlags, true)
+  view.setUint16(58, 0, true)                  // time_week
+  view.setUint8(60, message.gpsId)
+  view.setUint8(61, message.fixType)
+  view.setUint8(62, message.satellitesVisible)
   return payload
 }
 

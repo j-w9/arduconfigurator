@@ -9,6 +9,7 @@ import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduc
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import { AccelerometerPoseGuide } from '../accelerometer-pose-guide'
+import { CalibrationLocationButton } from './CalibrationLocationCard'
 import {
   accelerometerPoseFromAction,
   guidedActionBlockingReason,
@@ -173,6 +174,9 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                           <li>Re-run whenever the FC is repositioned on the frame. Only corrects ±10° of mounting tilt — past that you need to physically straighten the FC.</li>
                         </ol>
                       </details>
+                    ) : null}
+                    {action.actionId === 'calibrate-compass' ? (
+                      <CalibrationLocationButton snapshot={snapshot} runtime={runtime} />
                     ) : null}
                     {action.actionId === 'calibrate-compass' ? (
                       <details className="calibration-card__howto">

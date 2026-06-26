@@ -119,6 +119,27 @@ export interface CommandLongMessage {
   params: [number, number, number, number, number, number, number]
 }
 
+/**
+ * GCS → vehicle: inject a GPS reading over MAVLink (msgid 232). When a GPS
+ * backend is set to type 14 (MAV), ArduPilot consumes this as a real GPS, which
+ * lets the EKF acquire a position and complete yaw alignment with no physical
+ * GPS — the prerequisite for onboard compass calibration. Streamed at a few Hz
+ * for the duration of the calibration. lat/lon are degrees * 1e7.
+ */
+export interface GpsInputMessage {
+  type: 'GPS_INPUT'
+  gpsId: number
+  /** GPS_INPUT_IGNORE_FLAGS bitmask for fields the autopilot should ignore. */
+  ignoreFlags: number
+  fixType: number
+  latitudeE7: number
+  longitudeE7: number
+  altitudeM: number
+  hdop: number
+  vdop: number
+  satellitesVisible: number
+}
+
 export interface AutopilotVersionMessage {
   type: 'AUTOPILOT_VERSION'
   capabilities: bigint
@@ -361,6 +382,7 @@ export type MavlinkMessage =
   | ParamSetMessage
   | CommandAckMessage
   | CommandLongMessage
+  | GpsInputMessage
   | AutopilotVersionMessage
   | LogRequestListMessage
   | LogEntryMessage

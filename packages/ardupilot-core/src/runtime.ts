@@ -374,6 +374,10 @@ export class ArduPilotConfiguratorRuntime {
   private pwmOutputCount?: number
   private parameterSync: ParameterSyncState = createIdleParameterSync()
   private readonly motorTestService: MotorTestService
+  // No-GPS calibration helper: a synthetic GPS_INPUT stream + the GPS backend
+  // type we temporarily override to MAV (restored on stop).
+  private fakeGpsTimer: ReturnType<typeof setInterval> | undefined
+  private fakeGpsOriginalType: number | undefined
   private liveVerification = createIdleLiveVerification()
   private totalParameters = 0
   private liveTelemetryRequestsIssued = false
@@ -976,6 +980,72 @@ export class ArduPilotConfiguratorRuntime {
     return this.motorTestService.stop()
   }
 
+  /** True while a synthetic GPS is being streamed for no-GPS calibration. */
+  isFakeGpsActive(): boolean {
+    return this.fakeGpsTimer !== undefined
+  }
+
+  /**
+   * Start streaming a synthetic GPS (GPS_INPUT) at a fixed location so the EKF
+   * can acquire a position and complete yaw alignment with no physical GPS —
+   * which is what onboard compass calibration requires to start. Temporarily
+   * switches the GPS backend to type 14 (MAV) so the autopilot consumes the
+   * stream, saving the previous value to restore on stop. Validated in SITL:
+   * with this running, DO_START_MAG_CAL is accepted on a GPS-less vehicle.
+   *
+   * The stream must keep running for the whole calibration; call stopFakeGps()
+   * afterwards to halt it and restore the GPS backend type.
+   */
+  async startFakeGps(latitudeDeg: number, longitudeDeg: number, altitudeMeters = 0): Promise<void> {
+    if (this.fakeGpsTimer !== undefined) {
+      await this.stopFakeGps()
+    }
+    // Save the current backend type, then switch to MAV so GPS_INPUT is used.
+    this.fakeGpsOriginalType = this.parameters.get('GPS1_TYPE')?.value
+    await this.setParameter('GPS1_TYPE', 14)
+
+    const latitudeE7 = Math.round(latitudeDeg * 1e7)
+    const longitudeE7 = Math.round(longitudeDeg * 1e7)
+    const send = (): void => {
+      void this.session
+        .send({
+          type: 'GPS_INPUT',
+          gpsId: 0,
+          // Ignore velocity (horiz/vert) and speed accuracy — we only assert a
+          // static position. GPS_INPUT_IGNORE_FLAG_VEL_HORIZ|VEL_VERT|SPEED_ACCURACY.
+          ignoreFlags: 8 | 16 | 32,
+          fixType: 3,
+          latitudeE7,
+          longitudeE7,
+          altitudeM: altitudeMeters,
+          hdop: 1,
+          vdop: 1,
+          satellitesVisible: 12
+        })
+        .catch(() => {
+          // transient send failures are fine — the next tick retries
+        })
+    }
+    send()
+    this.fakeGpsTimer = setInterval(send, 200)
+  }
+
+  /** Stop the synthetic GPS stream and restore the original GPS backend type. */
+  async stopFakeGps(): Promise<void> {
+    if (this.fakeGpsTimer !== undefined) {
+      clearInterval(this.fakeGpsTimer)
+      this.fakeGpsTimer = undefined
+    }
+    if (this.fakeGpsOriginalType !== undefined) {
+      try {
+        await this.setParameter('GPS1_TYPE', this.fakeGpsOriginalType)
+      } catch {
+        // best-effort restore; the operator can also reboot to reset
+      }
+      this.fakeGpsOriginalType = undefined
+    }
+  }
+
   // ---- DroneCAN bus tab ---------------------------------------------------
   /** Ask ArduPilot to start forwarding CAN frames from the given bus
    *  index (1 or 2) over the MAVLink CAN_FRAME tunnel. The configurator's
@@ -1088,6 +1158,10 @@ export class ArduPilotConfiguratorRuntime {
     this.mavftp.cancelAll(new Error('Runtime destroyed before the MAVFTP request completed.'))
     this.logDownload.cancelAll(new Error('Runtime destroyed before the log request completed.'))
     this.motorTestService.clearCompletionTimer()
+    if (this.fakeGpsTimer !== undefined) {
+      clearInterval(this.fakeGpsTimer)
+      this.fakeGpsTimer = undefined
+    }
     this.guidedActionService.destroy()
     this.canBusService.destroy()
     this.clearPreArmExpiryTimer()
