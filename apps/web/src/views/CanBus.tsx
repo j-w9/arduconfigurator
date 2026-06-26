@@ -27,6 +27,10 @@ import { useCanNodeNames } from '../hooks/use-can-node-names'
 export interface CanBusViewProps {
   state: CanBusState
   vehicleConnected: boolean
+  /** The autopilot's own DroneCAN node id(s) (CAN_Dn_UC_NODE). A node matching
+   *  one of these is the FC itself — labelled as such, since it answers neither
+   *  GetNodeInfo nor a DroneCAN param walk (its params live on MAVLink). */
+  selfNodeIds: number[]
   onStartForward: (bus: number) => void
   onStopForward: () => void
   onRefreshNode: (nodeId: number) => void
@@ -39,6 +43,7 @@ export function CanBusView(props: CanBusViewProps) {
   const {
     state,
     vehicleConnected,
+    selfNodeIds,
     onStartForward,
     onStopForward,
     onRefreshNode,
@@ -212,6 +217,11 @@ export function CanBusView(props: CanBusViewProps) {
               const nameKey = row.hwUniqueId ?? `node-${row.nodeId}`
               const customName = getName(nameKey)
               const isRenaming = renamingNode === row.nodeId
+              // The autopilot's own DroneCAN node: give it a clear default label
+              // instead of a bare "Node N" (it answers neither GetNodeInfo nor a
+              // param walk — its params live on MAVLink).
+              const isSelf = selfNodeIds.includes(row.nodeId)
+              const baseLabel = isSelf && row.label === `Node ${row.nodeId}` ? 'Autopilot (this FC)' : row.label
               return (
                 <li
                   key={row.nodeId}
@@ -232,7 +242,7 @@ export function CanBusView(props: CanBusViewProps) {
                           <input
                             autoFocus
                             value={nameDraft}
-                            placeholder={row.label}
+                            placeholder={baseLabel}
                             aria-label={`Name for node ${row.nodeId}`}
                             onChange={(event) => setNameDraft(event.target.value)}
                             data-testid={`can-bus-node-name-input-${row.nodeId}`}
@@ -246,7 +256,8 @@ export function CanBusView(props: CanBusViewProps) {
                         </form>
                       ) : (
                         <div className="can-bus-node__name-row">
-                          <strong>{customName ?? row.label}</strong>
+                          <strong>{customName ?? baseLabel}</strong>
+                          {isSelf ? <StatusBadge tone="neutral">Autopilot</StatusBadge> : null}
                           <button
                             type="button"
                             className="can-bus-node__rename-button"
@@ -381,7 +392,11 @@ export function CanBusView(props: CanBusViewProps) {
                         </div>
                       </div>
                       {node.parameters.length === 0 ? (
-                        <p className="can-bus-empty">No parameters discovered yet.</p>
+                        <p className="can-bus-empty">
+                          {isSelf
+                            ? "This is the autopilot's own node — its parameters live on the Parameters tab (over MAVLink), not DroneCAN."
+                            : 'No parameters discovered yet.'}
+                        </p>
                       ) : (
                         <table className="can-bus-params">
                           <thead>

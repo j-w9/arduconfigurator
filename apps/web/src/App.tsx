@@ -6488,6 +6488,10 @@ export function App() {
       <CanBusView
         state={snapshot.canBus}
         vehicleConnected={snapshot.connection.kind === 'connected'}
+        selfNodeIds={[
+          readRoundedParameter(snapshot, 'CAN_D1_UC_NODE'),
+          readRoundedParameter(snapshot, 'CAN_D2_UC_NODE')
+        ].filter((id): id is number => typeof id === 'number' && id > 0)}
         onStartForward={(bus) => { void runtime?.startCanBusForward(bus) }}
         onStopForward={() => { void runtime?.stopCanBusForward() }}
         onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
