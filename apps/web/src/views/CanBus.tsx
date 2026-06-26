@@ -15,6 +15,7 @@ import {
   modeLabel,
   parseParamInput
 } from '../view-models/can-bus'
+import { useCanNodeNames } from '../hooks/use-can-node-names'
 
 // Mission Planner-equivalent DroneCAN inspector. Connects via
 // MAV_CMD_CAN_FORWARD (so MAVLink stays alive on the same channel), then
@@ -49,6 +50,10 @@ export function CanBusView(props: CanBusViewProps) {
   const [expandedNode, setExpandedNode] = useState<number | undefined>(undefined)
   const [draftValues, setDraftValues] = useState<Record<string, string>>({})
   const [busSelection, setBusSelection] = useState<number>(state.bus ?? 1)
+  // Persistent operator-assigned node names, keyed by hardware UID.
+  const { getName, setName } = useCanNodeNames()
+  const [renamingNode, setRenamingNode] = useState<number | undefined>(undefined)
+  const [nameDraft, setNameDraft] = useState('')
 
   const isActive = state.status === 'active'
   const isBusy = state.status === 'requesting' || state.status === 'stopping'
@@ -201,6 +206,8 @@ export function CanBusView(props: CanBusViewProps) {
             {rows.map((row) => {
               const node = state.nodes.find((n) => n.nodeId === row.nodeId)
               const isExpanded = expandedNode === row.nodeId
+              const customName = getName(row.hwUniqueId)
+              const isRenaming = renamingNode === row.nodeId
               return (
                 <li
                   key={row.nodeId}
@@ -209,9 +216,56 @@ export function CanBusView(props: CanBusViewProps) {
                 >
                   <header className="can-bus-node__header">
                     <div className="can-bus-node__label">
-                      <strong>{row.label}</strong>
+                      {isRenaming ? (
+                        <form
+                          className="can-bus-node__rename"
+                          onSubmit={(event) => {
+                            event.preventDefault()
+                            if (row.hwUniqueId) {
+                              setName(row.hwUniqueId, nameDraft)
+                            }
+                            setRenamingNode(undefined)
+                          }}
+                        >
+                          <input
+                            autoFocus
+                            value={nameDraft}
+                            placeholder={row.label}
+                            aria-label={`Name for node ${row.nodeId}`}
+                            onChange={(event) => setNameDraft(event.target.value)}
+                            data-testid={`can-bus-node-name-input-${row.nodeId}`}
+                          />
+                          <button type="submit" style={buttonStyle('primary')} data-testid={`can-bus-node-name-save-${row.nodeId}`}>
+                            Save
+                          </button>
+                          <button type="button" style={buttonStyle()} onClick={() => setRenamingNode(undefined)}>
+                            Cancel
+                          </button>
+                        </form>
+                      ) : (
+                        <div className="can-bus-node__name-row">
+                          <strong>{customName ?? row.label}</strong>
+                          <button
+                            type="button"
+                            className="can-bus-node__rename-button"
+                            disabled={!row.hwUniqueId}
+                            title={
+                              row.hwUniqueId
+                                ? 'Give this node a persistent name'
+                                : 'Waiting for the node UID (GetNodeInfo) before it can be named'
+                            }
+                            onClick={() => {
+                              setNameDraft(customName ?? '')
+                              setRenamingNode(row.nodeId)
+                            }}
+                            data-testid={`can-bus-node-rename-${row.nodeId}`}
+                          >
+                            {customName ? 'Rename' : 'Name'}
+                          </button>
+                        </div>
+                      )}
                       <small>
-                        Node {row.nodeId}
+                        {customName ? `${row.label} · ` : ''}Node {row.nodeId}
                         {row.uptimeSec !== undefined ? ` · up ${row.uptimeSec}s` : ''}
                         {row.hwVersion ? ` · HW ${row.hwVersion}` : ''}
                         {row.swVersion ? ` · SW ${row.swVersion}` : ''}

@@ -7250,6 +7250,45 @@ details.metadata-settings-section:not([open]) > summary::after {
   text-transform: uppercase;
 }
 
+.can-bus-node__name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.can-bus-node__name-row strong {
+  display: inline;
+}
+
+.can-bus-node__rename-button {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-200);
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.can-bus-node__rename-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.can-bus-node__rename {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.can-bus-node__rename input {
+  min-width: 140px;
+}
+
 .can-bus-node__label small {
   display: block;
   color: var(--text-muted);

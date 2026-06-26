@@ -87,4 +87,28 @@ test.describe('DroneCAN inspector', () => {
     await expect(page.getByTestId('can-bus-staged-124')).toHaveCount(0)
     await expect(input).toHaveValue('9')
   })
+
+  test('a custom node name persists across reload (keyed by hardware UID)', async ({ page }) => {
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+
+    const node = page.getByTestId('can-bus-node-124')
+    await expect(node).toBeVisible()
+    // The UID is known, so the node is nameable.
+    await expect(page.getByTestId('can-bus-node-uid-124')).toBeVisible()
+
+    await page.getByTestId('can-bus-node-rename-124').click()
+    await page.getByTestId('can-bus-node-name-input-124').fill('Front GPS')
+    await page.getByTestId('can-bus-node-name-save-124').click()
+    await expect(node.getByText('Front GPS')).toBeVisible()
+
+    // Reload + reconnect + re-discover: the name sticks (localStorage, by UID).
+    await page.reload()
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-node-124').getByText('Front GPS')).toBeVisible()
+  })
 })
