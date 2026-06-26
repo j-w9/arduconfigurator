@@ -7,6 +7,10 @@ interface FlightDeckPreviewProps {
   rollDeg?: number
   pitchDeg?: number
   yawDeg?: number
+  // True attitude quaternion (w, x, y, z) from ATTITUDE_QUATERNION. When
+  // present the 3D model is oriented from this directly (singularity-free);
+  // roll/pitch/yaw still drive the numeric readouts + heading tape.
+  quaternion?: { w: number; x: number; y: number; z: number }
   flightMode?: string
   verified: boolean
   vehicleType?: string
@@ -514,16 +518,61 @@ function headingTapeLabelTone(value: number): 'north' | 'cardinal' | 'numeric' {
   return 'numeric'
 }
 
-function buildAttitudeQuaternion(rollDeg: number | undefined, pitchDeg: number | undefined, yawDeg: number | undefined): THREE.Quaternion {
-  const pitchRad = clampDegrees(pitchDeg, 70) * (Math.PI / 180)
-  const rollRad = clampDegrees(rollDeg, 70) * (Math.PI / 180)
-  const yawRad = normalizeHeading(yawDeg) * (Math.PI / 180)
+const DEG2RAD = Math.PI / 180
 
+// Change of basis from the flight controller's NED body frame to the scene
+// frame: NED north (forward) -> scene -Z (nose), NED east (right) -> scene +X,
+// NED down -> scene -Y. Used to map the FC attitude quaternion into the scene
+// without ever going through Euler angles.
+const NED_TO_SCENE_QUATERNION = new THREE.Quaternion().setFromRotationMatrix(
+  new THREE.Matrix4().makeBasis(
+    new THREE.Vector3(0, 0, -1),
+    new THREE.Vector3(1, 0, 0),
+    new THREE.Vector3(0, -1, 0)
+  )
+)
+const NED_TO_SCENE_QUATERNION_INVERSE = NED_TO_SCENE_QUATERNION.clone().invert()
+
+// Scene-frame attitude from aerospace Euler (radians), unclamped. Shared by the
+// Euler fallback below and the equivalence unit test.
+export function buildVisualQuaternionFromEulerRad(
+  rollRad: number,
+  pitchRad: number,
+  yawRad: number
+): THREE.Quaternion {
   const yawQuaternion = new THREE.Quaternion().setFromAxisAngle(YAW_AXIS, -yawRad)
   const pitchQuaternion = new THREE.Quaternion().setFromAxisAngle(PITCH_AXIS, pitchRad)
   const rollQuaternion = new THREE.Quaternion().setFromAxisAngle(ROLL_AXIS, -rollRad)
-
   return yawQuaternion.multiply(pitchQuaternion).multiply(rollQuaternion)
+}
+
+// Euler fallback (used when ATTITUDE_QUATERNION isn't available). Clamped to
+// ±70° so the noisy near-vertical Euler the FC derives can't throw the model
+// around — the quaternion-sourced path is unclamped and singularity-free.
+function buildAttitudeQuaternion(rollDeg: number | undefined, pitchDeg: number | undefined, yawDeg: number | undefined): THREE.Quaternion {
+  return buildVisualQuaternionFromEulerRad(
+    clampDegrees(rollDeg, 70) * DEG2RAD,
+    clampDegrees(pitchDeg, 70) * DEG2RAD,
+    normalizeHeading(yawDeg) * DEG2RAD
+  )
+}
+
+// True FC attitude quaternion (w, x, y, z; body->NED) mapped into the scene
+// frame. No Euler intermediate, so it stays smooth at any attitude. The heading
+// offset matches the bench heading trim applied on the Euler path.
+export function buildVisualQuaternionFromFc(
+  quaternion: { w: number; x: number; y: number; z: number },
+  headingOffsetDeg = 0
+): THREE.Quaternion {
+  // THREE.Quaternion is (x, y, z, w); the FC sends (w, x, y, z).
+  const fc = new THREE.Quaternion(quaternion.x, quaternion.y, quaternion.z, quaternion.w)
+  const visual = NED_TO_SCENE_QUATERNION.clone()
+    .multiply(fc)
+    .multiply(NED_TO_SCENE_QUATERNION_INVERSE)
+  if (headingOffsetDeg) {
+    return new THREE.Quaternion().setFromAxisAngle(YAW_AXIS, headingOffsetDeg * DEG2RAD).multiply(visual)
+  }
+  return visual
 }
 
 function buildHeadingTapeMarks(headingDeg: number): Array<{
@@ -555,6 +604,7 @@ export function FlightDeckPreview({
   rollDeg,
   pitchDeg,
   yawDeg,
+  quaternion,
   flightMode,
   verified,
   vehicleType,
@@ -757,7 +807,11 @@ export function FlightDeckPreview({
     const headingOffsetDeg = benchHeadingOffsetDeg ?? 0
     const adjustedYawDeg = offsetHeading(yawDeg, headingOffsetDeg)
     const nextTelemetry = {
-      attitudeQuaternion: buildAttitudeQuaternion(rollDeg, pitchDeg, adjustedYawDeg),
+      // Prefer the FC's true quaternion (no Euler singularity); fall back to the
+      // clamped Euler build when ATTITUDE_QUATERNION hasn't arrived.
+      attitudeQuaternion: quaternion
+        ? buildVisualQuaternionFromFc(quaternion, headingOffsetDeg)
+        : buildAttitudeQuaternion(rollDeg, pitchDeg, adjustedYawDeg),
       pitchVisual: clampDegrees(pitchDeg, 28),
       rollVisual: clampDegrees(rollDeg, 50),
       headingDeg: normalizeHeading(adjustedYawDeg)
@@ -784,7 +838,7 @@ export function FlightDeckPreview({
         headingDeg: nextTelemetry.headingDeg
       })
     }
-  }, [benchHeadingOffsetDeg, pitchDeg, rollDeg, yawDeg])
+  }, [benchHeadingOffsetDeg, pitchDeg, rollDeg, yawDeg, quaternion])
 
   const heading = normalizeHeading(displayTelemetry.headingDeg)
   const headingTapeMarks = useMemo(() => buildHeadingTapeMarks(heading), [heading])

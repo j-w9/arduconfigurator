@@ -229,6 +229,13 @@ export interface AttitudeTelemetryState {
   rollDeg?: number
   pitchDeg?: number
   yawDeg?: number
+  /**
+   * Attitude quaternion (w, x, y, z) straight from ATTITUDE_QUATERNION — the
+   * body→NED rotation, free of the Euler singularity near ±90° pitch. Present
+   * only once that message has been received; the craft view prefers it over
+   * the Euler angles for orientation.
+   */
+  quaternion?: { w: number; x: number; y: number; z: number }
   lastSeenAtMs?: number
 }
 

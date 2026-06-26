@@ -5,6 +5,7 @@ import type {
 } from '@arduconfig/param-metadata'
 import type {
   AttitudeMessage,
+  AttitudeQuaternionMessage,
   AutopilotVersionMessage,
   CommandAckMessage,
   CommandLongMessage,
@@ -263,6 +264,14 @@ const LIVE_TELEMETRY_REQUESTS = [
   {
     messageId: MAVLINK_MESSAGE_IDS.ATTITUDE,
     label: 'ATTITUDE',
+    intervalUs: 25000
+  },
+  {
+    // Quaternion attitude for the craft view (singularity-free near vertical).
+    // Same 40 Hz cadence as ATTITUDE; ATTITUDE still drives the numeric
+    // roll/pitch/heading readouts and the heading tape.
+    messageId: MAVLINK_MESSAGE_IDS.ATTITUDE_QUATERNION,
+    label: 'ATTITUDE_QUATERNION',
     intervalUs: 25000
   },
   {
@@ -1408,6 +1417,9 @@ export class ArduPilotConfiguratorRuntime {
       case 'ATTITUDE':
         this.processAttitude(envelope.message)
         break
+      case 'ATTITUDE_QUATERNION':
+        this.processAttitudeQuaternion(envelope.message)
+        break
       case 'AUTOPILOT_VERSION':
         this.processAutopilotVersion(envelope.message)
         break
@@ -1733,11 +1745,23 @@ export class ArduPilotConfiguratorRuntime {
   }
 
   private processAttitude(message: AttitudeMessage): void {
+    // Merge so the quaternion from ATTITUDE_QUATERNION (a separate message)
+    // isn't wiped when Euler attitude updates.
     this.liveVerification.attitudeTelemetry = {
+      ...this.liveVerification.attitudeTelemetry,
       verified: true,
       rollDeg: radiansToDegrees(message.rollRad),
       pitchDeg: radiansToDegrees(message.pitchRad),
       yawDeg: radiansToDegrees(message.yawRad),
+      lastSeenAtMs: Date.now()
+    }
+  }
+
+  private processAttitudeQuaternion(message: AttitudeQuaternionMessage): void {
+    this.liveVerification.attitudeTelemetry = {
+      ...this.liveVerification.attitudeTelemetry,
+      verified: true,
+      quaternion: { w: message.qw, x: message.qx, y: message.qy, z: message.qz },
       lastSeenAtMs: Date.now()
     }
   }

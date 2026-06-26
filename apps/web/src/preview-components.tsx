@@ -47,6 +47,7 @@ export function AttitudePreview({
       rollDeg={snapshot.liveVerification.attitudeTelemetry.rollDeg}
       pitchDeg={snapshot.liveVerification.attitudeTelemetry.pitchDeg}
       yawDeg={snapshot.liveVerification.attitudeTelemetry.yawDeg}
+      quaternion={snapshot.liveVerification.attitudeTelemetry.quaternion}
       flightMode={snapshot.vehicle?.flightMode}
       verified={snapshot.liveVerification.attitudeTelemetry.verified}
       vehicleType={snapshot.vehicle?.vehicle}

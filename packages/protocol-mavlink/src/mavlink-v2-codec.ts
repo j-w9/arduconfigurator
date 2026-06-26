@@ -14,6 +14,7 @@ import { sha256 } from './sha256.js'
 import type { StreamingCodec } from './json-lines-codec.js'
 import type {
   AttitudeMessage,
+  AttitudeQuaternionMessage,
   AutopilotVersionMessage,
   CommandAckMessage,
   CommandLongMessage,
@@ -690,6 +691,8 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
       return decodeParamSetPayload(payload)
     case MAVLINK_MESSAGE_IDS.ATTITUDE:
       return decodeAttitudePayload(payload)
+    case MAVLINK_MESSAGE_IDS.ATTITUDE_QUATERNION:
+      return decodeAttitudeQuaternionPayload(payload)
     case MAVLINK_MESSAGE_IDS.RC_CHANNELS:
       return decodeRcChannelsPayload(payload)
     case MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL:
@@ -893,6 +896,21 @@ function decodeAttitudePayload(payload: Uint8Array): AttitudeMessage {
     rollSpeedRadS: view.getFloat32(16, true),
     pitchSpeedRadS: view.getFloat32(20, true),
     yawSpeedRadS: view.getFloat32(24, true)
+  }
+}
+
+function decodeAttitudeQuaternionPayload(payload: Uint8Array): AttitudeQuaternionMessage {
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  return {
+    type: 'ATTITUDE_QUATERNION',
+    timeBootMs: view.getUint32(0, true),
+    qw: view.getFloat32(4, true),
+    qx: view.getFloat32(8, true),
+    qy: view.getFloat32(12, true),
+    qz: view.getFloat32(16, true),
+    rollSpeedRadS: view.getFloat32(20, true),
+    pitchSpeedRadS: view.getFloat32(24, true),
+    yawSpeedRadS: view.getFloat32(28, true)
   }
 }
 

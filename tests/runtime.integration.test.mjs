@@ -1433,6 +1433,9 @@ test('live telemetry requests use responsive attitude rates and slower support s
         // Live GPS map looks like it's actually moving when a Here3 is.
         [MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT, 200000],
         [MAVLINK_MESSAGE_IDS.ATTITUDE, 25000],
+        // Quaternion attitude for the singularity-free craft view, same 40 Hz
+        // cadence as ATTITUDE.
+        [MAVLINK_MESSAGE_IDS.ATTITUDE_QUATERNION, 25000],
         [MAVLINK_MESSAGE_IDS.RC_CHANNELS, 50000],
         [MAVLINK_MESSAGE_IDS.SYS_STATUS, 500000],
         // DroneCAN node discovery requires explicitly streaming

@@ -77,6 +77,23 @@ export interface AttitudeMessage {
   yawSpeedRadS: number
 }
 
+/**
+ * Vehicle attitude as a quaternion (msgid 31) — the same attitude as ATTITUDE
+ * but without the Euler singularity near ±90° pitch. q is (w, x, y, z), the
+ * rotation from the body frame to the NED earth frame (1,0,0,0 = level).
+ */
+export interface AttitudeQuaternionMessage {
+  type: 'ATTITUDE_QUATERNION'
+  timeBootMs: number
+  qw: number
+  qx: number
+  qy: number
+  qz: number
+  rollSpeedRadS: number
+  pitchSpeedRadS: number
+  yawSpeedRadS: number
+}
+
 export interface FileTransferProtocolMessage {
   type: 'FILE_TRANSFER_PROTOCOL'
   targetNetwork: number
@@ -375,6 +392,7 @@ export type MavlinkMessage =
   | CanFrameMessage
   | GlobalPositionIntMessage
   | AttitudeMessage
+  | AttitudeQuaternionMessage
   | FileTransferProtocolMessage
   | ParamValueMessage
   | StatusTextMessage
