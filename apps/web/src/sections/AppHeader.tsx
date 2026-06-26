@@ -83,7 +83,7 @@ export function AppHeader({
   onDisconnect
 }: AppHeaderProps) {
   return (
-    <header className="app-header">
+    <header className="app-header" data-testid="app-header">
       <button
         type="button"
         className="app-header__brand"

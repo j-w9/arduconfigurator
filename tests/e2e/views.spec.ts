@@ -39,6 +39,24 @@ test.describe('Phone layout', () => {
     expect(overflow).toBeLessThanOrEqual(2)
   })
 
+  test('phone header stays compact so config views are not squeezed to a sliver', async ({ page }) => {
+    // Regression for a ~300px-tall mobile header that left the Parameters view
+    // only a sliver of usable height. The phone-only condensation (drop the dev
+    // build line + the sensor-icon strip) must keep the header well under a
+    // third of a typical phone viewport.
+    await page.setViewportSize({ width: 390, height: 664 })
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-parameters').click()
+    const headerHeight = await page
+      .getByTestId('app-header')
+      .evaluate((el) => Math.round(el.getBoundingClientRect().height))
+    expect(headerHeight).toBeLessThanOrEqual(250)
+  })
+
   test('keeps the baseline panel on desktop width', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')

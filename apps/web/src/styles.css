@@ -11937,3 +11937,25 @@ details.bf-gui-box:not([open]) > summary::after {
   font-size: 12px;
   margin: 0;
 }
+
+/* Phone-only header condensation. The flex-wrap header stacked to ~300px on a
+ * ~390px screen, leaving config views (Parameters especially) only a sliver of
+ * usable height. Drop the dev build/version line and the sensor-icon strip
+ * (live status is mirrored in the bottom status bar) — the latter also keeps the
+ * telemetry block to one compact row (battery + sync side-by-side) instead of
+ * wrapping into a tall stack. Scoped to <=600px so laptops/tablets and the
+ * desktop "served" layout are completely untouched. */
+@media (max-width: 600px) {
+  .app-header {
+    gap: 6px;
+    padding: 6px 10px;
+  }
+
+  .app-header__build {
+    display: none;
+  }
+
+  .header-sensor-status {
+    display: none;
+  }
+}
