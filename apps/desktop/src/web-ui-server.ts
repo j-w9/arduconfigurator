@@ -96,9 +96,10 @@ async function handleRequest(webDistDir: string, request: IncomingMessage, respo
     // Same validated policy the hosted web build ships via _headers:
     // script-src 'self' (no inline/eval), with the allowances the app needs
     // — WebSocket transport, three.js GLTF data: buffers, the OpenStreetMap
-    // map iframe, and inline <style> for dynamic widget sizing.
+    // map iframe, OpenStreetMap raster tiles for the no-GPS calibration map
+    // picker (img-src), and inline <style> for dynamic widget sizing.
     'content-security-policy':
-      "default-src 'self'; script-src 'self'; connect-src 'self' ws: wss: data:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+      "default-src 'self'; script-src 'self'; connect-src 'self' ws: wss: data:; img-src 'self' data: blob: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     'x-frame-options': 'DENY',
     'x-content-type-options': 'nosniff'
   })

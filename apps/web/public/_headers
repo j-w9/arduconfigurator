@@ -2,10 +2,11 @@
 # The Content-Security-Policy below was validated against the built app:
 # script-src 'self' (no inline/eval); the allowances are exactly what the
 # app needs — WebSocket transport (ws:/wss:), three.js GLTF buffers fetched
-# as data: URIs, the OpenStreetMap GPS-map iframe, and inline <style> for
+# as data: URIs, the OpenStreetMap GPS-map iframe, OpenStreetMap raster tiles
+# for the no-GPS calibration map picker (img-src), and inline <style> for
 # dynamic widget sizing.
 /*
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
-  Content-Security-Policy: default-src 'self'; script-src 'self'; connect-src 'self' ws: wss: data:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; connect-src 'self' ws: wss: data:; img-src 'self' data: blob: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
