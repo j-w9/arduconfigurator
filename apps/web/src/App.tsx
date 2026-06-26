@@ -234,6 +234,7 @@ import type {
   SetupFlowFollowUpDescriptor
 } from './app-types'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
+import { buildRecentNotices } from './view-models/recent-notices'
 import { invertGuidedReorderMapping, pickedReorderPositions } from './view-models/motor-reorder-mapping'
 import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
@@ -4618,6 +4619,8 @@ export function App() {
     }
   ] as const
   const setupStatusEntries = snapshot.statusTexts
+  // Recent Notices: coalesce repeats + split into Warnings & Critical / Info.
+  const recentNotices = buildRecentNotices(snapshot.statusTexts)
   const setupHasGpsCard = gpsPeripheralViewModels.length > 0 || snapshot.liveVerification.globalPosition.verified
   // "Configured" means "the GPS chain is set up and working." Two routes:
   //   - A non-zero GPS_TYPE / GPS_TYPE2 parameter in the parameter table
@@ -5075,20 +5078,13 @@ export function App() {
                         <article className="setup-gui-box">
                           <div className="setup-gui-box__titlebar">
                             <strong>Recent Notices</strong>
-                            {(() => {
-                              const severities = new Set(snapshot.statusTexts.map((entry) => entry.severity))
-                              const tone: 'danger' | 'warning' | 'neutral' =
-                                severities.has('error')
-                                  ? 'danger'
-                                  : severities.has('warning')
-                                    ? 'warning'
-                                    : 'neutral'
-                              return (
-                                <StatusBadge tone={tone}>
-                                  {snapshot.statusTexts.length > 0 ? `${snapshot.statusTexts.length} entries` : 'quiet'}
-                                </StatusBadge>
-                              )
-                            })()}
+                            <StatusBadge tone={recentNotices.tone}>
+                              {recentNotices.distinctCount > 0
+                                ? `${recentNotices.distinctCount} notice${recentNotices.distinctCount === 1 ? '' : 's'}${
+                                    recentNotices.totalCount > recentNotices.distinctCount ? ` · ${recentNotices.totalCount} total` : ''
+                                  }`
+                                : 'quiet'}
+                            </StatusBadge>
                             <button
                               type="button"
                               className="setup-gui-box__icon-button"
@@ -5139,34 +5135,38 @@ export function App() {
                           </div>
                           <div className="setup-gui-box__body">
                             <div className="setup-gui-box__status-list setup-gui-box__status-list--scroll" data-testid="setup-notices-list">
-                              {setupStatusEntries.length === 0 ? <span className="setup-gui-box__empty">No status text yet</span> : null}
-                              {(['error', 'warning', 'info'] as const).map((severity) => {
-                                const groupEntries = setupStatusEntries.filter((entry) => entry.severity === severity)
-                                if (groupEntries.length === 0) return null
-                                const groupLabel =
-                                  severity === 'error' ? 'Errors' : severity === 'warning' ? 'Warnings' : 'Info'
-                                return (
-                                  <div
-                                    key={severity}
-                                    className={`setup-gui-box__status-group setup-gui-box__status-group--${severity}`}
-                                    data-testid={`setup-notices-group-${severity}`}
-                                  >
-                                    <header className="setup-gui-box__status-group-header">
-                                      <strong>{groupLabel}</strong>
-                                      <span>{groupEntries.length}</span>
-                                    </header>
-                                    {groupEntries.map((entry, index) => (
-                                      <div
-                                        key={`${severity}-${index}-${entry.text}`}
-                                        className={`setup-gui-box__status-entry is-${entry.severity}`}
-                                      >
-                                        <strong>{entry.severity}</strong>
-                                        <span>{entry.text}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )
-                              })}
+                              {recentNotices.groups.length === 0 ? <span className="setup-gui-box__empty">No status text yet</span> : null}
+                              {recentNotices.groups.map((group) => (
+                                <div
+                                  key={group.key}
+                                  className={`setup-gui-box__status-group setup-gui-box__status-group--${group.key}`}
+                                  data-testid={`setup-notices-group-${group.key}`}
+                                >
+                                  <header className="setup-gui-box__status-group-header">
+                                    <strong>{group.label}</strong>
+                                    <span>{group.notices.length}</span>
+                                  </header>
+                                  {group.notices.map((notice) => (
+                                    <div
+                                      key={`${notice.severity}-${notice.text}`}
+                                      className={`setup-gui-box__status-entry is-${notice.severity}`}
+                                      data-testid={`setup-notice-${group.key}`}
+                                    >
+                                      <strong>{notice.severity}</strong>
+                                      <span>{notice.text}</span>
+                                      {notice.count > 1 ? (
+                                        <span
+                                          className="setup-gui-box__status-count"
+                                          data-testid="setup-notice-count"
+                                          title={`${notice.count} occurrences`}
+                                        >
+                                          ×{notice.count}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              ))}
                             </div>
                           </div>
                         </article>
