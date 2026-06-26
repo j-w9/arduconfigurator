@@ -136,7 +136,22 @@ export async function startWebSocketBridgeServer(options: WebSocketBridgeServerO
 
       completeHandshake(socket, key)
       const client = new BridgeClient(socket, async (frame) => {
-        await transport.send(frame)
+        // The WebSocket handshake completes before transport.connect() resolves,
+        // so a client's first frames can arrive while the serial port is still
+        // opening. Wait for the in-flight connect, then forward — and never let a
+        // transport send error reject (an unhandled rejection here crashed the
+        // whole bridge process when serial wasn't connected yet).
+        if (activeTransportConnect) {
+          await activeTransportConnect.catch(() => undefined)
+        }
+        if (!transportConnected) {
+          return
+        }
+        try {
+          await transport.send(frame)
+        } catch {
+          // Transport dropped mid-send; the client resyncs on reconnect.
+        }
       }, async () => {
         if (!activeClient || activeClient !== client) {
           return
