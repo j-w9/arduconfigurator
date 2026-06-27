@@ -5,6 +5,8 @@
 // plain props + semantic callbacks. Behavior-neutral lift of the original
 // inline JSX: same markup, same data-testids, same class names, same copy.
 
+import { useEffect, useRef } from 'react'
+
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
 import { AppHeaderLogo } from '../app-header-logo'
@@ -84,8 +86,28 @@ export function AppHeader({
   onDisconnect,
   onChooseSerialPort
 }: AppHeaderProps) {
+  // The header is sticky AND wraps to multiple rows on narrow/zoomed layouts, so
+  // its real height exceeds the static --header-height. Sticky elements below it
+  // (e.g. the Parameters inspector, which uses top: var(--header-height)) were
+  // tucking under the wrapped header and getting their title clipped. Keep the
+  // var in sync with the actual rendered height.
+  const headerRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const node = headerRef.current
+    if (!node || typeof ResizeObserver === 'undefined') {
+      return
+    }
+    const apply = () => {
+      document.documentElement.style.setProperty('--header-height', `${Math.round(node.getBoundingClientRect().height)}px`)
+    }
+    apply()
+    const observer = new ResizeObserver(apply)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <header className="app-header" data-testid="app-header">
+    <header ref={headerRef} className="app-header" data-testid="app-header">
       <button
         type="button"
         className="app-header__brand"
