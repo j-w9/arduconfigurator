@@ -985,6 +985,19 @@ test('arduplaneMetadata exposes the QuadPlane VTOL tuning group on the Tuning su
   assert.equal(metadata.parameters.Q_TILT_MAX.unit, 'deg')
   assert.equal(metadata.parameters.Q_TILT_RATE_UP.unit, 'deg/s')
 
+  // Tailsitter geometry + tuning resolves to the vtol-tailsitter Tuning category.
+  for (const id of ['Q_TAILSIT_ENABLE', 'Q_TAILSIT_ANGLE', 'Q_TAILSIT_RAT_FW', 'Q_TAILSIT_VHGAIN', 'Q_TAILSIT_MOTMX', 'Q_TAILSIT_GSCMSK']) {
+    const entry = metadata.parameters[id]
+    assert.ok(entry, `expected ${id} in the Plane catalog`)
+    assert.equal(entry.categoryDefinition.id, 'vtol-tailsitter')
+    assert.equal(entry.categoryDefinition.viewId, 'tuning')
+  }
+  assert.equal(metadata.parameters.Q_TAILSIT_ENABLE.options.some((o) => o.label === 'Enable Always'), true)
+  assert.equal(metadata.parameters.Q_TAILSIT_MOTMX.bitmask, true)
+  assert.equal(metadata.parameters.Q_TAILSIT_GSCMSK.bitmask, true)
+  assert.equal(metadata.parameters.Q_TAILSIT_ANGLE.unit, 'deg')
+  assert.equal(metadata.parameters.Q_TAILSIT_RAT_FW.unit, 'deg/s')
+
   // The Tuning view is now backed by the VTOL categories rather than a placeholder.
   const tuningCategories = metadata.categories.filter((category) => category.viewId === 'tuning')
   assert.ok(tuningCategories.some((category) => category.id === 'vtol-pid'))

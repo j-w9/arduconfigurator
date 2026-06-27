@@ -218,6 +218,28 @@ export const TUNING_PLANE_TILTROTOR_PARAM_IDS = [
   'Q_TILT_FIX_GAIN',
   'Q_TILT_WING_FLAP'
 ] as const
+// Tailsitter geometry + tuning. Q_TAILSIT_ENABLE is the in-group toggle; the
+// group self-gates the rest on a tailsitter being detected.
+export const TUNING_PLANE_TAILSITTER_PARAM_IDS = [
+  'Q_TAILSIT_ENABLE',
+  'Q_TAILSIT_ANGLE',
+  'Q_TAILSIT_ANG_VT',
+  'Q_TAILSIT_INPUT',
+  'Q_TAILSIT_RLL_MX',
+  'Q_TAILSIT_MOTMX',
+  'Q_TAILSIT_VFGAIN',
+  'Q_TAILSIT_VHGAIN',
+  'Q_TAILSIT_VHPOW',
+  'Q_TAILSIT_GSCMAX',
+  'Q_TAILSIT_GSCMIN',
+  'Q_TAILSIT_GSCMSK',
+  'Q_TAILSIT_RAT_FW',
+  'Q_TAILSIT_RAT_VT',
+  'Q_TAILSIT_THR_VT',
+  'Q_TAILSIT_VT_R_P',
+  'Q_TAILSIT_VT_P_P',
+  'Q_TAILSIT_VT_Y_P'
+] as const
 // Full membership set used by the scoped-draft predicate (review/apply scope).
 // Q_ENABLE itself is NOT included — it is an airframe toggle owned by Setup, not
 // a tuning value, and the VTOL groups only gate visibility on it.
@@ -232,7 +254,8 @@ export const TUNING_PLANE_PARAM_IDS = [
   ...TUNING_PLANE_VTOL_ANGLE_PARAM_IDS,
   ...TUNING_PLANE_VTOL_POSITION_PARAM_IDS,
   ...TUNING_PLANE_TRANSITION_PARAM_IDS,
-  ...TUNING_PLANE_TILTROTOR_PARAM_IDS
+  ...TUNING_PLANE_TILTROTOR_PARAM_IDS,
+  ...TUNING_PLANE_TAILSITTER_PARAM_IDS
 ] as const
 // ArduRover curated tuning surface. These are the ground-vehicle steering /
 // speed / navigation params an operator actually tunes, grouped by concern.

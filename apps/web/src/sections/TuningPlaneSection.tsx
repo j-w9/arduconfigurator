@@ -29,7 +29,8 @@ import {
   TUNING_PLANE_VTOL_ANGLE_PARAM_IDS,
   TUNING_PLANE_VTOL_POSITION_PARAM_IDS,
   TUNING_PLANE_VTOL_RATE_GROUPS,
-  TUNING_PLANE_TRANSITION_PARAM_IDS
+  TUNING_PLANE_TRANSITION_PARAM_IDS,
+  TUNING_PLANE_TAILSITTER_PARAM_IDS
 } from '../tuning-params'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
 import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
@@ -118,6 +119,13 @@ export function TuningPlaneSection(props: TuningPlaneSectionProps): ReactElement
         'Q_TILT_WING_FLAP'
       ])
     : []
+
+  // Tailsitter is a frame choice (Q_FRAME_CLASS=10) or an explicit enable, not a
+  // simple toggle like tiltrotor — so the whole group gates on detection.
+  const tailsitFrameClass = Number(editedValues['Q_FRAME_CLASS'] ?? readRoundedParameter(snapshot, 'Q_FRAME_CLASS') ?? 0)
+  const tailsitEnableValue = Number(editedValues['Q_TAILSIT_ENABLE'] ?? readRoundedParameter(snapshot, 'Q_TAILSIT_ENABLE') ?? 0)
+  const isTailsitter = isQuadPlane && (tailsitFrameClass === 10 || tailsitEnableValue >= 1)
+  const tailsitterParameters = isTailsitter ? resolve(TUNING_PLANE_TAILSITTER_PARAM_IDS) : []
 
   const renderField = (parameter: ParameterState): ReactElement => (
     <ScopedField
@@ -362,6 +370,27 @@ export function TuningPlaneSection(props: TuningPlaneSectionProps): ReactElement
                 </div>
               </article>
             ) : null}
+          </article>
+        ) : null}
+
+        {isTailsitter ? (
+          <article className="tuning-axis-card" data-testid="tuning-plane-tailsitter-group">
+            <div className="tuning-axis-card__header">
+              <strong>Tailsitter</strong>
+              <span>{tailsitterParameters.length} controls</span>
+            </div>
+            <p className="bf-note">
+              Tailsitter geometry and tuning — VTOL/fixed-wing transition angles &amp; rates, vectored-thrust
+              gains, and gain scaling. Shown because this airframe is a tailsitter (Q_FRAME_CLASS = Tailsitter,
+              or Q_TAILSIT_ENABLE is on).
+            </p>
+            {tailsitterParameters.length > 0 ? (
+              <div className="tuning-control-grid tuning-control-grid--compact" data-testid="tuning-plane-tailsitter-controls">
+                {tailsitterParameters.map(renderField)}
+              </div>
+            ) : (
+              <p className="bf-note">The connected controller is not reporting the tailsitter parameters.</p>
+            )}
           </article>
         ) : null}
 

@@ -61,6 +61,10 @@ import {
   ARDUPLANE_Q_TILT_MASK_BIT_LABELS,
   ARDUPLANE_Q_TRANS_FAIL_ACT_LABELS,
   ARDUPLANE_Q_RTL_MODE_LABELS,
+  ARDUPLANE_Q_TAILSIT_ENABLE_LABELS,
+  ARDUPLANE_Q_TAILSIT_INPUT_BIT_LABELS,
+  ARDUPLANE_Q_TAILSIT_MOTMX_BIT_LABELS,
+  ARDUPLANE_Q_TAILSIT_GSCMSK_BIT_LABELS,
   ARDUPLANE_LAND_THEN_NEUTRL_LABELS,
   ARDUPLANE_LAND_TYPE_LABELS,
   ARDUPLANE_Q_M_PWM_TYPE_LABELS,
@@ -770,25 +774,32 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       order: 27,
       viewId: 'tuning'
     },
+    'vtol-tailsitter': {
+      id: 'vtol-tailsitter',
+      label: 'Tailsitter',
+      description: 'Tailsitter geometry and tuning — VTOL/fixed-wing transition angles and rates, vectored-thrust gains, gain scaling, and the copter-tailsitter motor mask. Only relevant for tailsitter airframes.',
+      order: 28,
+      viewId: 'tuning'
+    },
     logging: {
       id: 'logging',
       label: 'Logging',
       description: 'Onboard log backend, retention, and bitmask configuration.',
-      order: 28,
+      order: 29,
       viewId: 'parameters'
     },
     soaring: {
       id: 'soaring',
       label: 'Soaring',
       description: 'Autonomous thermalling — the SOAR_ enable, vertical-speed trigger, thermal estimator (EKF) tuning, altitude band, glide polar, and thermalling/cruise behaviour.',
-      order: 29,
+      order: 30,
       viewId: 'tuning'
     },
     adsb: {
       id: 'adsb',
       label: 'ADS-B & Avoidance',
       description: 'ADS-B transponder hardware (ADSB_) plus the ADS-B traffic-avoidance behaviour (AVD_) — type, identity, RF select, vehicle list filters, and warn/fail avoidance actions.',
-      order: 30,
+      order: 31,
       viewId: 'tuning'
     }
   },
@@ -3129,6 +3140,185 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       maximum: 15,
       step: 1,
       unit: 'deg'
+    },
+    Q_TAILSIT_ENABLE: {
+      id: 'Q_TAILSIT_ENABLE',
+      label: 'Tailsitter Enable',
+      description:
+        'Enable tailsitter functionality. "Enable Always" forces VTOL stabilisation in forward flight (for airframes with no control surfaces).',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 2,
+      rebootRequired: true,
+      options: enumOptions(ARDUPLANE_Q_TAILSIT_ENABLE_LABELS)
+    },
+    Q_TAILSIT_ANGLE: {
+      id: 'Q_TAILSIT_ANGLE',
+      label: 'Fixed-wing Transition Angle',
+      description: 'Pitch angle at which the tailsitter changes from VTOL control to fixed-wing control.',
+      category: 'vtol-tailsitter',
+      minimum: 5,
+      maximum: 80,
+      step: 1,
+      unit: 'deg'
+    },
+    Q_TAILSIT_ANG_VT: {
+      id: 'Q_TAILSIT_ANG_VT',
+      label: 'VTOL Transition Angle',
+      description:
+        'Pitch angle at which the tailsitter changes from fixed-wing control back to VTOL control. 0 uses the fixed-wing transition angle.',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 80,
+      step: 1,
+      unit: 'deg'
+    },
+    Q_TAILSIT_INPUT: {
+      id: 'Q_TAILSIT_INPUT',
+      label: 'Hover Input Type',
+      description:
+        'Whether stick input when hovering follows fixed-wing or multicopter conventions (Plane Mode swaps roll/yaw to earth frame).',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 3,
+      bitmask: true,
+      options: enumOptions(ARDUPLANE_Q_TAILSIT_INPUT_BIT_LABELS)
+    },
+    Q_TAILSIT_RLL_MX: {
+      id: 'Q_TAILSIT_RLL_MX',
+      label: 'Maximum Roll Angle',
+      description: 'Maximum allowed roll angle for tailsitters. 0 uses Q_A_ANGLE_MAX.',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 80,
+      step: 1,
+      unit: 'deg'
+    },
+    Q_TAILSIT_MOTMX: {
+      id: 'Q_TAILSIT_MOTMX',
+      label: 'Forward-flight Motor Mask',
+      description:
+        'Bitmask of motors to keep active in forward flight for a copter-style tailsitter (non-zero selects copter motor layouts via Q_FRAME_CLASS/TYPE). Zero for non-copter tailsitters.',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 255,
+      bitmask: true,
+      options: enumOptions(ARDUPLANE_Q_TAILSIT_MOTMX_BIT_LABELS)
+    },
+    Q_TAILSIT_VFGAIN: {
+      id: 'Q_TAILSIT_VFGAIN',
+      label: 'Vector Thrust Gain (forward)',
+      description: 'Amount of vectored-thrust control used in forward flight for a vectored tailsitter.',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 1,
+      step: 0.01
+    },
+    Q_TAILSIT_VHGAIN: {
+      id: 'Q_TAILSIT_VHGAIN',
+      label: 'Vector Thrust Gain (hover)',
+      description: 'Amount of vectored-thrust control used in hover for a vectored tailsitter.',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 1,
+      step: 0.01
+    },
+    Q_TAILSIT_VHPOW: {
+      id: 'Q_TAILSIT_VHPOW',
+      label: 'Vector Thrust Gain Power',
+      description: 'Extra pitch given to the vectored control at high pitch errors.',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 4,
+      step: 0.1
+    },
+    Q_TAILSIT_GSCMAX: {
+      id: 'Q_TAILSIT_GSCMAX',
+      label: 'Maximum Gain Scaling',
+      description: 'Maximum gain scaling applied by the Q_TAILSIT_GSCMSK methods.',
+      category: 'vtol-tailsitter',
+      minimum: 1,
+      maximum: 5,
+      step: 0.1
+    },
+    Q_TAILSIT_GSCMIN: {
+      id: 'Q_TAILSIT_GSCMIN',
+      label: 'Minimum Gain Scaling',
+      description: 'Minimum gain scaling applied by the Q_TAILSIT_GSCMSK methods.',
+      category: 'vtol-tailsitter',
+      minimum: 0.1,
+      maximum: 1,
+      step: 0.05
+    },
+    Q_TAILSIT_GSCMSK: {
+      id: 'Q_TAILSIT_GSCMSK',
+      label: 'Gain Scaling Mask',
+      description: 'Which gain-scaling methods to apply (throttle, attitude/throttle, disk theory, altitude correction).',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 15,
+      bitmask: true,
+      options: enumOptions(ARDUPLANE_Q_TAILSIT_GSCMSK_BIT_LABELS)
+    },
+    Q_TAILSIT_RAT_FW: {
+      id: 'Q_TAILSIT_RAT_FW',
+      label: 'VTOL→Forward Transition Rate',
+      description: 'Pitch rate at which the tailsitter pitches down in the transition from VTOL to forward flight.',
+      category: 'vtol-tailsitter',
+      minimum: 10,
+      maximum: 500,
+      step: 1,
+      unit: 'deg/s'
+    },
+    Q_TAILSIT_RAT_VT: {
+      id: 'Q_TAILSIT_RAT_VT',
+      label: 'Forward→VTOL Transition Rate',
+      description: 'Pitch rate at which the tailsitter pitches up in the transition from forward flight to VTOL.',
+      category: 'vtol-tailsitter',
+      minimum: 10,
+      maximum: 500,
+      step: 1,
+      unit: 'deg/s'
+    },
+    Q_TAILSIT_THR_VT: {
+      id: 'Q_TAILSIT_THR_VT',
+      label: 'Forward→VTOL Transition Throttle',
+      description: 'Throttle used during the forward-to-VTOL transition. -1 uses hover throttle.',
+      category: 'vtol-tailsitter',
+      minimum: -1,
+      maximum: 100,
+      step: 1,
+      unit: '%'
+    },
+    Q_TAILSIT_VT_R_P: {
+      id: 'Q_TAILSIT_VT_R_P',
+      label: 'VTOL Roll Surface Gain',
+      description:
+        'Scale from PID output to roll control surface on a copter-style tailsitter where one axis is actuated by both motors and a surface.',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 2,
+      step: 0.01
+    },
+    Q_TAILSIT_VT_P_P: {
+      id: 'Q_TAILSIT_VT_P_P',
+      label: 'VTOL Pitch Surface Gain',
+      description:
+        'Scale from PID output to pitch control surface on a copter-style tailsitter where one axis is actuated by both motors and a surface.',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 2,
+      step: 0.01
+    },
+    Q_TAILSIT_VT_Y_P: {
+      id: 'Q_TAILSIT_VT_Y_P',
+      label: 'VTOL Yaw Surface Gain',
+      description:
+        'Scale from PID output to yaw control surface on a copter-style tailsitter where one axis is actuated by both motors and a surface.',
+      category: 'vtol-tailsitter',
+      minimum: 0,
+      maximum: 2,
+      step: 0.01
     },
     AHRS_ORIENTATION: {
       id: 'AHRS_ORIENTATION',

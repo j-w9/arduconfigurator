@@ -183,6 +183,39 @@ export const ARDUPLANE_Q_RTL_MODE_LABELS: Record<number, string> = {
   3: 'QRTL always'
 }
 
+// Q_TAILSIT_ENABLE — tailsitter functionality (ArduPlane tailsitter.cpp).
+export const ARDUPLANE_Q_TAILSIT_ENABLE_LABELS: Record<number, string> = {
+  0: 'Disable',
+  1: 'Enable',
+  2: 'Enable Always'
+}
+
+// Q_TAILSIT_INPUT — stick-input convention bitmask when hovering.
+export const ARDUPLANE_Q_TAILSIT_INPUT_BIT_LABELS: Record<number, string> = {
+  0: 'Plane Mode',
+  1: 'Body-frame Roll'
+}
+
+// Q_TAILSIT_MOTMX — motors kept active in forward flight (copter tailsitter).
+export const ARDUPLANE_Q_TAILSIT_MOTMX_BIT_LABELS: Record<number, string> = {
+  0: 'Motor 1',
+  1: 'Motor 2',
+  2: 'Motor 3',
+  3: 'Motor 4',
+  4: 'Motor 5',
+  5: 'Motor 6',
+  6: 'Motor 7',
+  7: 'Motor 8'
+}
+
+// Q_TAILSIT_GSCMSK — gain-scaling methods applied (bitmask).
+export const ARDUPLANE_Q_TAILSIT_GSCMSK_BIT_LABELS: Record<number, string> = {
+  0: 'Throttle',
+  1: 'Attitude/Throttle',
+  2: 'Disk Theory',
+  3: 'Altitude correction'
+}
+
 export function formatArduplaneQFrameClass(value: number | undefined): string {
   return ARDUPLANE_Q_FRAME_CLASS_LABELS[value ?? Number.NaN] ?? (value === undefined ? 'Unknown' : `Frame class ${value}`)
 }

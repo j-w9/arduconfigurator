@@ -90,7 +90,7 @@ function arduplaneAirframeLabel(snapshot: ConfiguratorSnapshot): string {
   if (qEnable !== 1) {
     return 'Fixed-wing'
   }
-  if (roundedParameter(snapshot, 'Q_FRAME_CLASS') === 10) {
+  if (roundedParameter(snapshot, 'Q_FRAME_CLASS') === 10 || (roundedParameter(snapshot, 'Q_TAILSIT_ENABLE') ?? 0) >= 1) {
     return 'Tailsitter QuadPlane'
   }
   if (roundedParameter(snapshot, 'Q_TILT_ENABLE') === 1) {

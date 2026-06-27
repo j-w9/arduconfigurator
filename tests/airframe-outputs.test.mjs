@@ -58,8 +58,12 @@ test('deriveAirframe distinguishes ArduPlane VTOL subtypes from the live params'
   assert.equal(label({ Q_ENABLE: 1, Q_FRAME_CLASS: 1 }), 'QuadPlane')
   // Tiltrotor: Q_TILT_ENABLE = 1.
   assert.equal(label({ Q_ENABLE: 1, Q_TILT_ENABLE: 1 }), 'Tiltrotor QuadPlane')
-  // Tailsitter: Q_FRAME_CLASS = 10.
+  // Tailsitter: Q_FRAME_CLASS = 10, or an explicit Q_TAILSIT_ENABLE.
   assert.equal(label({ Q_ENABLE: 1, Q_FRAME_CLASS: 10 }), 'Tailsitter QuadPlane')
+  assert.equal(label({ Q_ENABLE: 1, Q_TAILSIT_ENABLE: 1 }), 'Tailsitter QuadPlane')
+  assert.equal(label({ Q_ENABLE: 1, Q_TAILSIT_ENABLE: 2 }), 'Tailsitter QuadPlane')
+  // Tailsitter takes precedence over a tilt flag.
+  assert.equal(label({ Q_ENABLE: 1, Q_TAILSIT_ENABLE: 1, Q_TILT_ENABLE: 1 }), 'Tailsitter QuadPlane')
 })
 
 test('deriveOutputMappingSummary threads the vehicle into its airframe', () => {
