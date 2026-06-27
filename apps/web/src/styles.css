@@ -2476,7 +2476,7 @@ textarea:focus {
 }
 
 .setup-gui-box__notice-filter {
-  padding: 0 0 8px;
+  padding: 12px 0 8px;
 }
 
 .setup-gui-box__notice-filter-input {
