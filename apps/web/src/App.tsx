@@ -3750,11 +3750,13 @@ export function App() {
         outputPeripheralInvalidDraftCount,
         motorOutputCount: outputMapping.motorOutputs.length,
         expectedMotorCount: airframe.expectedMotorCount,
-        escReviewConfirmed: Boolean(escReviewConfirmation)
+        escReviewConfirmed: Boolean(escReviewConfirmation),
+        isCopterVehicle
       }),
     [
       airframe.expectedMotorCount,
       escReviewConfirmation,
+      isCopterVehicle,
       motorVerification.status,
       orientationExercise.status,
       outputAssignmentInvalidDrafts.length,

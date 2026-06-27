@@ -115,6 +115,7 @@ function recommendBase(overrides: Partial<RecommendedOutputTaskInputs> = {}): Re
     motorOutputCount: 4,
     expectedMotorCount: 4,
     escReviewConfirmed: true,
+    isCopterVehicle: true,
     ...overrides
   }
 }
@@ -149,5 +150,15 @@ describe('recommendOutputTaskId', () => {
 
   it('returns motor-setup once everything is complete', () => {
     expect(recommendOutputTaskId(recommendBase())).toBe('motor-setup')
+  })
+
+  it('defaults a non-Copter vehicle to motor-setup (no copter ESC / direction-test routing)', () => {
+    // A Plane has motors but no ESC-review / motor-direction steps; without this
+    // it would fall through to esc-protocol and hide the output overview.
+    const plane = { isCopterVehicle: false, expectedMotorCount: undefined, escReviewConfirmed: false }
+    expect(recommendOutputTaskId(recommendBase({ ...plane, motorOutputCount: 4 }))).toBe('motor-setup')
+    expect(recommendOutputTaskId(recommendBase({ ...plane, motorVerificationStatus: 'idle' }))).toBe('motor-setup')
+    // Invalid drafts still pull a Plane to the relevant task.
+    expect(recommendOutputTaskId(recommendBase({ ...plane, outputPeripheralInvalidDraftCount: 1 }))).toBe('peripherals')
   })
 })

@@ -54,6 +54,7 @@ export interface RecommendedOutputTaskInputs {
   motorOutputCount: number
   expectedMotorCount: number | undefined
   escReviewConfirmed: boolean
+  isCopterVehicle: boolean
 }
 
 /**
@@ -69,7 +70,8 @@ export function recommendOutputTaskId(inputs: RecommendedOutputTaskInputs): Outp
     outputPeripheralInvalidDraftCount,
     motorOutputCount,
     expectedMotorCount,
-    escReviewConfirmed
+    escReviewConfirmed,
+    isCopterVehicle
   } = inputs
 
   if (outputAssignmentInvalidCount > 0 || orientationExerciseStatus === 'running' || orientationExerciseStatus === 'failed') {
@@ -83,6 +85,12 @@ export function recommendOutputTaskId(inputs: RecommendedOutputTaskInputs): Outp
   }
   if (outputPeripheralInvalidDraftCount > 0) {
     return 'peripherals'
+  }
+  // ESC calibration / motor-direction verification are multirotor steps (their
+  // cards are Copter-gated). A non-Copter vehicle has no default reason to land
+  // on esc-protocol / direction-test, so it opens on its output overview.
+  if (!isCopterVehicle) {
+    return 'motor-setup'
   }
   // Deliberately no "staged > 0 → review" auto-route here: typing a
   // small ESC change would yank the operator straight into the Review
