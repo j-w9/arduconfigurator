@@ -2317,6 +2317,19 @@ test('web-serial mode exposes a "Choose a different port" affordance (two-port b
   await expect(page.getByTestId('choose-serial-port-button')).toBeVisible()
 })
 
+test('GPS panel offers a UTM coordinate format', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('transport-mode-select').selectOption('demo')
+  await page.getByTestId('connect-button').click()
+  await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+  const formatSelect = page.getByTestId('setup-gps-format-select')
+  await expect(formatSelect).toBeVisible({ timeout: 15_000 })
+  await formatSelect.selectOption('utm')
+  const utm = page.getByTestId('setup-gps-utm')
+  await expect(utm).toBeVisible()
+  await expect(utm).toContainText(/\d+E \d+N/)
+})
+
 test.describe('Direct Sockets (IWA) transport options', () => {
   test('exposes UDP + TCP (direct) options and fields when Direct Sockets exist', async ({ page }) => {
     // Simulate the Isolated Web App context where the Direct Sockets API is

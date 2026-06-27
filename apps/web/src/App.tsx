@@ -301,6 +301,7 @@ import {
   formatLatitudeDms,
   formatLongitudeDms,
   formatMgrs,
+  formatUtm,
   GPS_COORD_FORMAT_LABELS,
   GPS_COORD_FORMAT_VALUES,
   type GpsCoordFormat
@@ -5305,6 +5306,8 @@ export function App() {
                               </div>
                               {gpsCoordFormat === 'mgrs' ? (
                                 <div className="setup-gui-box__kv-row"><span>Grid (MGRS)</span><strong data-testid="setup-gps-mgrs">{formatMgrs(snapshot.liveVerification.globalPosition.latitudeDeg, snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
+                              ) : gpsCoordFormat === 'utm' ? (
+                                <div className="setup-gui-box__kv-row"><span>Grid (UTM)</span><strong data-testid="setup-gps-utm">{formatUtm(snapshot.liveVerification.globalPosition.latitudeDeg, snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
                               ) : gpsCoordFormat === 'dms' ? (
                                 <>
                                   <div className="setup-gui-box__kv-row"><span>Latitude</span><strong>{formatLatitudeDms(snapshot.liveVerification.globalPosition.latitudeDeg)}</strong></div>

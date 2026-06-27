@@ -1,11 +1,12 @@
-export type GpsCoordFormat = 'decimal' | 'dms' | 'mgrs'
+export type GpsCoordFormat = 'decimal' | 'dms' | 'mgrs' | 'utm'
 
-export const GPS_COORD_FORMAT_VALUES: readonly GpsCoordFormat[] = ['decimal', 'dms', 'mgrs'] as const
+export const GPS_COORD_FORMAT_VALUES: readonly GpsCoordFormat[] = ['decimal', 'dms', 'mgrs', 'utm'] as const
 
 export const GPS_COORD_FORMAT_LABELS: Record<GpsCoordFormat, string> = {
   decimal: 'Decimal',
   dms: 'DMS',
-  mgrs: 'MGRS'
+  mgrs: 'MGRS',
+  utm: 'UTM'
 }
 
 export function isGpsCoordFormat(value: unknown): value is GpsCoordFormat {
@@ -173,4 +174,28 @@ export function formatMgrs(latDeg: number | undefined, lonDeg: number | undefine
   }
   const mgrs = latLonToMgrs(latDeg, lonDeg)
   return mgrs ?? 'Out of UTM range'
+}
+
+/**
+ * Convert WGS84 lat/lon to a UTM grid reference: zone + latitude band, then
+ * easting/northing in metres (e.g. "32U 691875E 5337678N"). Shares the UTM
+ * projection used by MGRS. Returns undefined outside the UTM range.
+ */
+export function latLonToUtm(latDeg: number | undefined, lonDeg: number | undefined): string | undefined {
+  if (!isFiniteNumber(latDeg) || !isFiniteNumber(lonDeg)) {
+    return undefined
+  }
+  const band = latitudeBand(latDeg)
+  if (band === undefined) {
+    return undefined
+  }
+  const { zone, easting, northing } = utmForward(latDeg, lonDeg)
+  return `${zone}${band} ${Math.round(easting)}E ${Math.round(northing)}N`
+}
+
+export function formatUtm(latDeg: number | undefined, lonDeg: number | undefined): string {
+  if (!isFiniteNumber(latDeg) || !isFiniteNumber(lonDeg)) {
+    return 'Waiting'
+  }
+  return latLonToUtm(latDeg, lonDeg) ?? 'Out of UTM range'
 }
