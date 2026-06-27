@@ -25,7 +25,24 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   // gate on PILOT_Y_RATE too for symmetry / partial param tables.
   const hasFastRate = configParametersById.has('FSTRATE_ENABLE')
   const hasPilotRates = configParametersById.has('PILOT_Y_RATE')
+  // Frame class/type — present on Copter (and Heli); Plane/Rover use different
+  // frame params, so gate on FRAME_CLASS actually being in the synced tree.
+  const hasFrame = configParametersById.has('FRAME_CLASS')
   const configSections: readonly ConfigSection[] = useMemo(() => [
+    ...(hasFrame
+      ? [
+          {
+            id: 'frame',
+            title: 'Frame',
+            description:
+              'Airframe geometry. FRAME_CLASS picks the motor count/layout family (Quad, Hexa, Y6, Octa, …) and FRAME_TYPE the arrangement (X, Plus, V, H, …). Changing these restructures the motor outputs — reboot and re-verify motor order/spin before flying.',
+            fields: [
+              { paramId: 'FRAME_CLASS', label: 'Frame class', digits: 0 },
+              { paramId: 'FRAME_TYPE', label: 'Frame type', digits: 0 }
+            ]
+          }
+        ]
+      : []),
     {
       id: 'board-orientation',
       title: 'Board orientation',
@@ -199,7 +216,7 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     // Statistics (STAT_*) moved to the Setup view's side panel — lifetime
     // counters read better next to the live instruments than buried in the
     // Config grab-bag.
-  ], [activeVehicle, hasFastRate, hasPilotRates])
+  ], [activeVehicle, hasFastRate, hasPilotRates, hasFrame])
   // The Config scope covers every editable section's paramId set —
   // staged drafts in any of them apply through a single "Apply Config"
   // press. STAT_* + any other readOnly-section ids are deliberately
