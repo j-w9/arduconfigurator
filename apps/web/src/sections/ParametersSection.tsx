@@ -20,6 +20,7 @@ import {
   formatParameterDraftValue
 } from '../parameter-format'
 import { ScopedBitmaskPopover } from '../views/ScopedField'
+import { parameterApplyBlockedReason } from '../apply-gate'
 import { applyDraftSelectionClick, pruneDraftSelection } from '../view-models/draft-selection'
 import { parameterSearchPredicate } from '../view-models/filtered-parameters'
 import { toneForParameterDraftStatus } from '../tone-helpers'
@@ -319,6 +320,17 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
               </button>
             </div>
           </div>
+
+          {/* Proactively explain a disabled "Apply All": the most common cause on
+              real hardware is an accelerometer/compass calibration left running,
+              which blocks every write. Surface the reason BEFORE the operator
+              clicks so it's obvious why nothing writes (and to cancel it). */}
+          {stagedParameterDrafts.length > 0 && !canApplyAllDraftParameters && parameterApplyBlockedReason(snapshot) ? (
+            <div className="parameter-review__notice" data-testid="parameter-apply-blocked" role="alert">
+              <StatusBadge tone="warning">writes blocked</StatusBadge>
+              <p>{parameterApplyBlockedReason(snapshot)}</p>
+            </div>
+          ) : null}
 
           {parameterNotice ? (
             <div className="parameter-review__notice" data-testid="parameter-notice">
