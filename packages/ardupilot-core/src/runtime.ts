@@ -694,6 +694,20 @@ export class ArduPilotConfiguratorRuntime {
     })
   }
 
+  /**
+   * Clear the Recent Notices (STATUSTEXT history) on operator request. Drops any
+   * in-flight multi-frame chunk buffers too so a later fragment can't resurrect a
+   * cleared message. New STATUSTEXTs from the FC keep arriving as normal.
+   */
+  clearStatusTexts(): void {
+    if (this.statusTexts.length === 0) {
+      return
+    }
+    this.statusTexts.splice(0)
+    this.statusTextChunkBuffers.clear()
+    this.emit()
+  }
+
   async requestParameterList(options: RequestParameterListOptions = {}): Promise<void> {
     this.setGuidedAction('request-parameters', {
       actionId: 'request-parameters',

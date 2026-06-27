@@ -400,6 +400,8 @@ export function App() {
   const [productMode, setProductMode] = useProductMode()
   const [gpsCoordFormat, setGpsCoordFormat] = useGpsCoordFormat()
   const [activeViewId, setActiveViewId] = useState<AppViewId>('setup')
+  // Expert-mode text filter for the Recent Notices panel.
+  const [noticeFilter, setNoticeFilter] = useState('')
   // The selected port is supplied to the transport LAZILY via this ref.
   // It must NOT be a runtime-useMemo dependency: the WebSerial transport
   // calls onPortSelected(port) during connect (with the just-picked
@@ -4663,8 +4665,13 @@ export function App() {
     }
   ] as const
   const setupStatusEntries = snapshot.statusTexts
-  // Recent Notices: coalesce repeats + split into Warnings & Critical / Info.
-  const recentNotices = buildRecentNotices(snapshot.statusTexts)
+  // Recent Notices: optional expert-mode text filter, then coalesce repeats +
+  // split into Warnings & Critical / Info.
+  const trimmedNoticeFilter = noticeFilter.trim().toLowerCase()
+  const filteredNoticeEntries = trimmedNoticeFilter
+    ? snapshot.statusTexts.filter((entry) => entry.text.toLowerCase().includes(trimmedNoticeFilter))
+    : snapshot.statusTexts
+  const recentNotices = buildRecentNotices(filteredNoticeEntries)
   const setupHasGpsCard = gpsPeripheralViewModels.length > 0 || snapshot.liveVerification.globalPosition.verified
   // "Configured" means "the GPS chain is set up and working." Two routes:
   //   - A non-zero GPS_TYPE / GPS_TYPE2 parameter in the parameter table
@@ -5177,7 +5184,31 @@ export function App() {
                             >
                               {noticesCopied ? 'Copied' : 'Copy all'}
                             </button>
+                            <button
+                              type="button"
+                              className="setup-gui-box__icon-button"
+                              data-testid="setup-notices-clear-all"
+                              onClick={() => void runtime.clearStatusTexts()}
+                              disabled={setupStatusEntries.length === 0}
+                              title="Clear all notices (local display only — the FC keeps sending new ones)"
+                              aria-label="Clear all notices"
+                            >
+                              Clear all
+                            </button>
                           </div>
+                          {productMode === 'expert' ? (
+                            <div className="setup-gui-box__notice-filter">
+                              <input
+                                type="search"
+                                data-testid="setup-notices-search"
+                                className="setup-gui-box__notice-filter-input"
+                                placeholder="Filter notices…"
+                                value={noticeFilter}
+                                onChange={(event) => setNoticeFilter(event.target.value)}
+                                aria-label="Filter recent notices"
+                              />
+                            </div>
+                          ) : null}
                           <div className="setup-gui-box__body">
                             <div className="setup-gui-box__status-list setup-gui-box__status-list--scroll" data-testid="setup-notices-list">
                               {recentNotices.groups.length === 0 ? <span className="setup-gui-box__empty">No status text yet</span> : null}

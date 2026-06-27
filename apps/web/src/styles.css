@@ -2475,6 +2475,26 @@ textarea:focus {
   padding: 0;
 }
 
+.setup-gui-box__notice-filter {
+  padding: 0 0 8px;
+}
+
+.setup-gui-box__notice-filter-input {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  color: inherit;
+  font: inherit;
+  font-size: 0.85em;
+}
+
+.setup-gui-box__notice-filter-input:focus-visible {
+  outline: 2px solid var(--accent, #61dafb);
+  outline-offset: 1px;
+}
+
 .setup-gui-box__kv-list {
   display: grid;
   gap: 0;

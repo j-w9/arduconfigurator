@@ -2330,6 +2330,18 @@ test('GPS panel offers a UTM coordinate format', async ({ page }) => {
   await expect(utm).toContainText(/\d+E \d+N/)
 })
 
+test('Recent Notices: clear-all button and expert-mode search bar', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('transport-mode-select').selectOption('demo')
+  await page.getByTestId('connect-button').click()
+  await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+  await expect(page.getByTestId('setup-notices-clear-all')).toBeVisible({ timeout: 15_000 })
+  // The notice search bar is expert-only.
+  await expect(page.getByTestId('setup-notices-search')).toHaveCount(0)
+  await page.getByTestId('product-mode-expert').click()
+  await expect(page.getByTestId('setup-notices-search')).toBeVisible()
+})
+
 test.describe('Direct Sockets (IWA) transport options', () => {
   test('exposes UDP + TCP (direct) options and fields when Direct Sockets exist', async ({ page }) => {
     // Simulate the Isolated Web App context where the Direct Sockets API is
