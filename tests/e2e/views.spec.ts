@@ -2303,6 +2303,20 @@ test.describe('Tuning profile round-trip', () => {
   })
 })
 
+test('web-serial mode exposes a "Choose a different port" affordance (two-port boards)', async ({ page }) => {
+  await page.goto('/')
+  const select = page.getByTestId('transport-mode-select')
+  // Absent for non-serial transports.
+  await select.selectOption('demo')
+  await expect(page.getByTestId('choose-serial-port-button')).toHaveCount(0)
+  const webSerialDisabled = await select.locator('option[value="web-serial"]').isDisabled()
+  test.skip(webSerialDisabled, 'Web Serial unsupported in this browser')
+  // Present in web-serial mode so the operator can grant/switch to the other
+  // (MAVLink vs SLCAN) interface.
+  await select.selectOption('web-serial')
+  await expect(page.getByTestId('choose-serial-port-button')).toBeVisible()
+})
+
 test.describe('Direct Sockets (IWA) transport options', () => {
   test('exposes UDP + TCP (direct) options and fields when Direct Sockets exist', async ({ page }) => {
     // Simulate the Isolated Web App context where the Direct Sockets API is

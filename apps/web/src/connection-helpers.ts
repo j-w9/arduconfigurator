@@ -41,7 +41,7 @@ export function describeConnectFailure(
 
   if (message.includes('Timed out waiting for vehicle heartbeat')) {
     return transportMode === 'web-serial'
-      ? 'The serial link opened, but no ArduPilot heartbeat arrived in time. Re-select the flight controller port, close any other serial app using it, and try again.'
+      ? 'The serial port opened, but no ArduPilot heartbeat arrived — this is usually the SLCAN/secondary USB port (boards with CAN expose two). Use "Choose a different port" to grant the other one, then reconnect; also close any other serial app using it.'
       : 'The link opened, but no ArduPilot heartbeat arrived in time. Confirm the selected transport is pointed at a live flight controller and try again.'
   }
 

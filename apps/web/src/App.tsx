@@ -52,6 +52,7 @@ import { loadUpstreamParameters } from './generated/param-upstream'
 import {
   WebSerialTransport,
   getAvailableWebSerialPorts,
+  getWebSerialNavigator,
   getWebSerialPortInfo,
   type WebSerialPortLike,
 } from '@arduconfig/transport'
@@ -132,6 +133,7 @@ import {
   isStaleSerialHandleError,
   describeRememberedSerialPort
 } from './connection-helpers'
+import { detectMavlinkPort } from './serial-autodetect'
 import { canApplyParameterChanges, parameterApplyBlockedReason } from './apply-gate'
 import { ALL_MOTOR_TEST_OUTPUT, ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS, buildMotorTestRequest } from './motor-test-helpers'
 import { isExpertOnlyView, readGuidedSetupShortcutSectionId } from './guided-setup-shortcut'
@@ -2035,6 +2037,26 @@ export function App() {
     setBusyAction('connect')
     try {
       setSessionNotice(undefined)
+      // Web Serial: an ArduPilot board with CAN exposes MAVLink + SLCAN as two
+      // ports sharing one VID/PID, indistinguishable by metadata. When several
+      // are granted, probe for the one streaming heartbeats and select it, so a
+      // connect can't land on the silent SLCAN interface. Best-effort: any
+      // failure falls through to the normal connect (and the no-heartbeat
+      // message guides the operator to the other port).
+      if (transportMode === 'web-serial') {
+        try {
+          const grantedPorts = await getAvailableWebSerialPorts()
+          if (grantedPorts.length > 1) {
+            const { mavlinkPort } = await detectMavlinkPort(grantedPorts, 115200)
+            if (mavlinkPort) {
+              selectedSerialPortRef.current = mavlinkPort
+              rememberSelectedSerialPort(mavlinkPort)
+            }
+          }
+        } catch {
+          // detection is best-effort; proceed with the existing selection.
+        }
+      }
       await connectAndSync()
     } catch (error) {
       let lastError = error
@@ -2086,6 +2108,25 @@ export function App() {
       }
     } finally {
       setBusyAction(undefined)
+    }
+  }
+
+  // Open the browser's serial-port picker so the operator can grant or switch to
+  // a different port — the fix for "can't get back to choose a port" and for
+  // landing on the SLCAN interface. The MAVLink port is auto-detected at connect
+  // once more than one is granted.
+  async function handleChooseSerialPort(): Promise<void> {
+    const serial = getWebSerialNavigator()
+    if (!serial) {
+      return
+    }
+    try {
+      const port = await serial.requestPort()
+      selectedSerialPortRef.current = port
+      rememberSelectedSerialPort(port)
+      setSessionNotice(undefined)
+    } catch {
+      // Picker dismissed — keep the current selection.
     }
   }
 
@@ -4881,6 +4922,7 @@ export function App() {
         onProductModeChange={setProductMode}
         onConnect={() => void handleConnect()}
         onDisconnect={() => void handleDisconnect()}
+        onChooseSerialPort={() => void handleChooseSerialPort()}
       />
 
       {/* Persistent staged-changes bar. Editing any param tab stages a draft;

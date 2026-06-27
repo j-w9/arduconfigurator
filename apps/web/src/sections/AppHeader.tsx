@@ -53,6 +53,7 @@ export interface AppHeaderProps {
   onProductModeChange: (mode: ProductMode) => void
   onConnect: () => void
   onDisconnect: () => void
+  onChooseSerialPort: () => void
 }
 
 export function AppHeader({
@@ -80,7 +81,8 @@ export function AppHeader({
   onWebsocketUrlChange,
   onProductModeChange,
   onConnect,
-  onDisconnect
+  onDisconnect,
+  onChooseSerialPort
 }: AppHeaderProps) {
   return (
     <header className="app-header" data-testid="app-header">
@@ -246,6 +248,22 @@ export function AppHeader({
           >
             {connectButtonLabel(snapshot, parameterFollowUp, busyAction)}
           </button>
+          {/* Two-port boards (MAVLink + SLCAN) need a way to grant/switch to the
+              OTHER serial interface when the first pick was the silent one. */}
+          {transportMode === 'web-serial' &&
+          webSerialSupported &&
+          snapshot.connection.kind !== 'connected' &&
+          snapshot.connection.kind !== 'connecting' ? (
+            <button
+              data-testid="choose-serial-port-button"
+              className="session-strip__button"
+              onClick={onChooseSerialPort}
+              disabled={busyAction !== undefined}
+              title="Open the browser's serial-port picker to grant or switch to a different port (e.g. the MAVLink interface vs SLCAN)."
+            >
+              Choose a different port
+            </button>
+          ) : null}
           {/* Disconnect button: only render when there's something to
               disconnect from OR a connect attempt is in flight (so the
               operator can cancel a hung Connect). Otherwise the button
