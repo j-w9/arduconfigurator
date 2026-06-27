@@ -1576,9 +1576,22 @@ export class ArduPilotConfiguratorRuntime {
     const duplicateFrames = this.parameterSync.duplicateFrames + (known ? 1 : 0)
     const total = this.totalParameters
     const isComplete = total > 0 && downloaded >= total
+    // Once the table has fully synced, a later passive PARAM_VALUE — a write
+    // echo, or an FC param_count bump from enabling a subsystem mid-batch — must
+    // NOT revert status to 'streaming'. Doing so blocks the rest of an in-flight
+    // batch write AND its rollback (parameterWriteBlockReason requires a
+    // 'complete' sync), which is exactly what left the vehicle partially written
+    // when a batch toggled a feature param. An explicit re-sync
+    // (requestParameterList) or a reconnect still resets the status.
+    const nextStatus =
+      isComplete || this.parameterSync.status === 'complete'
+        ? 'complete'
+        : downloaded > 0
+          ? 'streaming'
+          : this.parameterSync.status
 
     this.parameterSync = {
-      status: isComplete ? 'complete' : downloaded > 0 ? 'streaming' : this.parameterSync.status,
+      status: nextStatus,
       downloaded,
       total,
       duplicateFrames,
@@ -1586,7 +1599,7 @@ export class ArduPilotConfiguratorRuntime {
       targetSystemId: this.parameterSync.targetSystemId ?? this.vehicle?.systemId,
       targetComponentId: this.parameterSync.targetComponentId ?? this.vehicle?.componentId,
       requestedAtMs: this.parameterSync.requestedAtMs,
-      completedAtMs: isComplete ? this.parameterSync.completedAtMs ?? Date.now() : undefined
+      completedAtMs: nextStatus === 'complete' ? this.parameterSync.completedAtMs ?? Date.now() : undefined
     }
 
     if (isComplete) {
@@ -1601,6 +1614,13 @@ export class ArduPilotConfiguratorRuntime {
         completedAtMs: Date.now()
       })
       this.parameterSyncWaiters.resolveAll(this.getSnapshot().parameterStats)
+      return
+    }
+
+    // Sticky-complete (a post-sync echo / count bump kept status 'complete'
+    // above): this isn't a fresh download, so don't schedule a re-sync retry or
+    // downgrade the guided action back to "downloading".
+    if (this.parameterSync.status === 'complete') {
       return
     }
 
