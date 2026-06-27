@@ -49,6 +49,7 @@ import { MotorTestSliders } from '../motor-test-sliders'
 import { formatParameterValue, normalizeBitmaskValue } from '../parameter-format'
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
+import { QUADPLANE_ESC_PARAM_IDS } from '../param-groups'
 import {
   OUTPUTS_BENCH_TARGET_ID,
   OUTPUTS_MOTOR_CONFIRM_BUTTON_ID,
@@ -336,6 +337,21 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     setShowAllOutputAssignments,
     setOutputTaskOverride
   } = handlers
+
+  // QuadPlane lift-motor ESC range (Q_M_*), the plane-side mirror of the Copter
+  // MOT_* ESC surface. Only meaningful when VTOL is enabled (Q_ENABLE=1); built
+  // from the existing draft machinery so edits stage/apply like the copter card.
+  const isQuadPlane = !isCopterVehicle && readRoundedParameter(snapshot, 'Q_ENABLE') === 1
+  const quadplaneEscParameters = isQuadPlane
+    ? QUADPLANE_ESC_PARAM_IDS.map((id) => selectParameterById(snapshot, id)).filter(
+        (parameter): parameter is ParameterState => parameter !== undefined
+      )
+    : []
+  const quadplaneEscDraftEntries = QUADPLANE_ESC_PARAM_IDS.map((id) => parameterDraftById.get(id)).filter(
+    (entry): entry is ParameterDraftEntry => entry !== undefined
+  )
+  const quadplaneEscStagedDrafts = quadplaneEscDraftEntries.filter((entry) => entry.status === 'staged')
+  const quadplaneEscInvalidDrafts = quadplaneEscDraftEntries.filter((entry) => entry.status === 'invalid')
 
   return (
       <OutputsView
@@ -1221,14 +1237,92 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                         <strong>ESC &amp; Protocol</strong>
                       </div>
                       <div className="bf-gui-box__body">
-                        <p className="bf-note" data-testid="esc-protocol-noncopter-note">
-                          ESC calibration and the motor spin/PWM range (MOT_PWM_*,
-                          MOT_SPIN_*) are a multirotor concept. {airframe.frameClassLabel}
-                          {' '}throttle/ESC output is configured per vehicle
-                          (SERVOx_FUNCTION, plus Q_M_* on QuadPlanes) — those parameters
-                          stay editable from the Parameters view while a vehicle-specific
-                          ESC surface is on the roadmap.
-                        </p>
+                        {isQuadPlane && quadplaneEscParameters.length > 0 ? (
+                          <div className="scoped-review-card scoped-review-card--compact" data-testid="quadplane-esc-card">
+                            <div className="switch-exercise-card__header">
+                              <div>
+                                <strong>QuadPlane lift-motor ESC &amp; range</strong>
+                                <p>
+                                  Protocol and spin/PWM range for the VTOL lift motors (Q_M_*) — the
+                                  plane-side equivalent of a multirotor&apos;s ESC setup.
+                                </p>
+                              </div>
+                              <StatusBadge tone={toneForScopedDraftReview(quadplaneEscStagedDrafts.length, quadplaneEscInvalidDrafts.length)}>
+                                {quadplaneEscInvalidDrafts.length > 0
+                                  ? `${quadplaneEscInvalidDrafts.length} invalid`
+                                  : quadplaneEscStagedDrafts.length > 0
+                                    ? `${quadplaneEscStagedDrafts.length} staged`
+                                    : 'in sync'}
+                              </StatusBadge>
+                            </div>
+
+                            <div className="scoped-editor-grid">
+                              {quadplaneEscParameters.map((parameter) => {
+                                const hasOptions = (parameter.definition?.options ?? []).length > 0
+                                return hasOptions ? (
+                                  <ScopedSelectField
+                                    key={parameter.id}
+                                    parameter={parameter}
+                                    liveValue={parameter.value}
+                                    editedValues={editedValues}
+                                    onChange={(paramId, value) => setDraft(paramId, value)}
+                                    draftStatusById={parameterDraftById}
+                                  />
+                                ) : (
+                                  <ScopedField
+                                    key={parameter.id}
+                                    parameter={parameter}
+                                    liveValue={parameter.value}
+                                    editedValues={editedValues}
+                                    onChange={(paramId, value) => setDraft(paramId, value)}
+                                    draftStatusById={parameterDraftById}
+                                    stepFallback={parameter.definition?.step ?? 0.01}
+                                  />
+                                )
+                              })}
+                            </div>
+
+                            <div className="switch-exercise-controls">
+                              <button
+                                style={buttonStyle('primary')}
+                                onClick={() =>
+                                  void handleApplyScopedParameterDrafts(quadplaneEscDraftEntries, 'outputs:apply', 'QuadPlane ESC')
+                                }
+                                disabled={
+                                  busyAction !== undefined ||
+                                  quadplaneEscStagedDrafts.length === 0 ||
+                                  quadplaneEscInvalidDrafts.length > 0 ||
+                                  !canApplyDraftParameters
+                                }
+                              >
+                                {busyAction === 'outputs:apply'
+                                  ? 'Applying…'
+                                  : `Apply ESC Changes (${quadplaneEscStagedDrafts.length})`}
+                              </button>
+                              <button
+                                style={buttonStyle()}
+                                onClick={() =>
+                                  handleDiscardScopedParameterDrafts(quadplaneEscDraftEntries.map((entry) => entry.id), 'QuadPlane ESC')
+                                }
+                                disabled={busyAction !== undefined || quadplaneEscDraftEntries.length === 0}
+                              >
+                                Discard ESC Changes
+                              </button>
+                            </div>
+
+                            <p className="bf-note">
+                              Fixed-wing throttle and control-surface output stays on SERVOx_FUNCTION (Servos
+                              tab); these Q_M_* values size the multirotor lift motors only.
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="bf-note" data-testid="esc-protocol-noncopter-note">
+                            ESC calibration and the motor spin/PWM range (MOT_PWM_*, MOT_SPIN_*) are a
+                            multirotor concept. {airframe.frameClassLabel} throttle/ESC output is configured
+                            per vehicle via SERVOx_FUNCTION (Servos tab); enable VTOL (Q_ENABLE) to expose the
+                            QuadPlane lift-motor ESC range here.
+                          </p>
+                        )}
                       </div>
                     </section>
                   ) : (

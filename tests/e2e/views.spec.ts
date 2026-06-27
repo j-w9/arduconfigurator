@@ -1921,6 +1921,27 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByRole('button', { name: 'Reorder Motor Outputs' })).toHaveCount(0)
   })
 
+  test('a QuadPlane exposes the Q_M_* lift-motor ESC surface in the ESC & Protocol task', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo-plane')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await openView(page, 'motors')
+    // The VTOL lift motors get a real Q_M_* ESC surface (the plane mirror of the
+    // Copter MOT_* card), not the roadmap note.
+    await page.getByTestId('outputs-summary-esc-protocol').click()
+    const escCard = page.getByTestId('quadplane-esc-card')
+    await expect(escCard).toBeVisible()
+    await expect(page.getByTestId('esc-protocol-noncopter-note')).toHaveCount(0)
+    await expect(escCard).toContainText('VTOL Motor')
+    // Editing a seeded Q_M_* value stages a draft and enables Apply.
+    const apply = escCard.getByRole('button', { name: /Apply ESC Changes/ })
+    await expect(apply).toBeDisabled()
+    await escCard.locator('select').first().selectOption({ index: 1 })
+    await expect(apply).toBeEnabled()
+    await expect(apply).toContainText('Apply ESC Changes (1)')
+  })
+
   test('Outputs view still shows the motor diagram for a Copter', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')

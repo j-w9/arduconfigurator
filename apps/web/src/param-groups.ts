@@ -4,6 +4,8 @@
 // have their own larger modules: tuning-params.ts and osd-params.ts.)
 
 export const OUTPUT_REVIEW_PARAM_IDS = ['MOT_PWM_TYPE', 'MOT_PWM_MIN', 'MOT_PWM_MAX', 'MOT_SPIN_ARM', 'MOT_SPIN_MIN', 'MOT_SPIN_MAX'] as const
+// QuadPlane lift-motor ESC range — the Q_M_* mirror of the Copter MOT_* set above.
+export const QUADPLANE_ESC_PARAM_IDS = ['Q_M_PWM_TYPE', 'Q_M_PWM_MIN', 'Q_M_PWM_MAX', 'Q_M_SPIN_ARM', 'Q_M_SPIN_MIN', 'Q_M_SPIN_MAX'] as const
 export const OUTPUT_NOTIFICATION_PARAM_IDS = [
   'NTF_LED_TYPES',
   'NTF_LED_LEN',
