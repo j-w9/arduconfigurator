@@ -9598,9 +9598,9 @@ details.metadata-settings-section:not([open]) > summary::after {
      short for the common case. Trimmed to ~110px tall when the
      description fits, ~150px max when it scrolls. */
   display: grid;
-  gap: 8px;
-  margin-bottom: 10px;
-  padding: 10px 14px;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(16, 21, 27, 0.98), rgba(10, 14, 18, 1));
@@ -9645,20 +9645,27 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .parameter-details__header p {
   /* User: "i do think scrolling on param detail text is reasonable."
-     Cap the description at ~3 lines and scroll the rest so a long
+     Cap the description at ~2 lines and scroll the rest so a long
      desc doesn't push the metric grid below the fold. */
   margin-top: 2px;
   color: var(--text-muted);
   font-size: 12px;
-  line-height: 1.4;
-  max-height: 3.4em;
+  line-height: 1.35;
+  max-height: 2.7em;
   overflow-y: auto;
 }
 
 .parameter-details__value-editor {
   display: grid;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+
+/* The breakout value editor reuses the shared scoped field; trim its card
+   padding so the inspector stays short and more table rows stay visible. */
+.parameter-details__value-editor .scoped-editor-field {
+  padding: 6px 8px;
   gap: 4px;
-  margin-bottom: 10px;
 }
 
 .parameter-details__value-editor > small {
@@ -9677,7 +9684,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-details__metric {
   display: grid;
   gap: 2px;
-  padding: 6px 9px;
+  padding: 4px 8px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(14, 19, 24, 0.98), rgba(9, 13, 17, 1));
@@ -9724,9 +9731,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-row {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) minmax(240px, 1.9fr) minmax(120px, 0.8fr) minmax(160px, 1fr) minmax(160px, 1fr);
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  padding: 8px 12px;
+  padding: 4px 12px;
   background: var(--bg-panel-muted);
   cursor: pointer;
   font-size: 12px;

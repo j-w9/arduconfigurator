@@ -10,8 +10,6 @@ import type { NormalizedFirmwareMetadataBundle } from '@arduconfig/param-metadat
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import {
-  describeBitmaskDraftValue,
-  findParameterOption,
   formatParameterDelta,
   formatParameterRange,
   formatParameterStep,
@@ -213,9 +211,6 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     ? metadataCatalog.parameters[selectedParameter.id] ?? selectedParameter.definition
     : undefined
   const selectedParameterDraft = selectedParameter ? parameterDraftById.get(selectedParameter.id) : undefined
-  const selectedParameterOption = selectedParameterDraft?.nextValue !== undefined
-    ? findParameterOption(selectedParameterDefinition, selectedParameterDraft.nextValue)
-    : findParameterOption(selectedParameterDefinition, selectedParameter?.value)
 
   return (
 
@@ -535,13 +530,6 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                             aria-label={`Edit staged value for ${draft.id}`}
                           />
                         )}
-                        {isBitmask ? (
-                          <small data-testid={`parameter-diff-bits-${draft.id}`}>
-                            {describeBitmaskDraftValue(draft.definition, draft.currentValue) ?? '—'}
-                            {' → '}
-                            {describeBitmaskDraftValue(draft.definition, Number(currentRawValue)) ?? '—'}
-                          </small>
-                        ) : null}
                       </span>
                       <span className="parameter-diff-delta">{formatParameterDelta(draft.delta, draft.definition?.unit)}</span>
                       {/* Per-row Discard so the operator can deselect a
@@ -711,29 +699,15 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
               </div>
             </div>
 
-            {selectedParameterOption ? (
-              <p className="parameter-details__option">
-                Active enum label: <strong>{selectedParameterOption.label}</strong>
-                {selectedParameterOption.description ? `, ${selectedParameterOption.description}` : ''}
-              </p>
-            ) : null}
-
+            {/* Active enum label + the enum option-list boxes are gone — the
+                inline editor above (select / bitmask chips) already surfaces the
+                value and the available options. */}
             {selectedParameterDefinition?.notes && selectedParameterDefinition.notes.length > 0 ? (
               <ul className="notes">
                 {selectedParameterDefinition.notes.map((note) => (
                   <li key={note}>{note}</li>
                 ))}
               </ul>
-            ) : null}
-
-            {selectedParameterDefinition?.options && selectedParameterDefinition.options.length > 0 ? (
-              <div className="parameter-option-list">
-                {selectedParameterDefinition.options.slice(0, 12).map((option) => (
-                  <span key={`${selectedParameter.id}:${option.value}`}>
-                    {option.value}: {option.label}
-                  </span>
-                ))}
-              </div>
             ) : null}
               </>
             )}
@@ -777,11 +751,9 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                 </span>
                 <span className="parameter-row__value">
                   <strong>{formatParameterValue(parameter.value, definition?.unit)}</strong>
-                  <small>
-                    {draft?.status === 'staged'
-                      ? `Delta ${formatParameterDelta(draft.delta, definition?.unit)}`
-                      : 'Live controller value'}
-                  </small>
+                  {draft?.status === 'staged' ? (
+                    <small>Delta {formatParameterDelta(draft.delta, definition?.unit)}</small>
+                  ) : null}
                 </span>
                 <span className="parameter-row__value">
                   {definition?.bitmask === true && (definition.options?.length ?? 0) > 0 ? (
