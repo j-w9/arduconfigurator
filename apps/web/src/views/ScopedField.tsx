@@ -178,23 +178,21 @@ export function ScopedBitmaskField(props: CommonScopedFieldProps) {
       data-testid={`scoped-bitmask-${parameter.id}`}
     >
       <span>{parameter.definition?.label ?? parameter.id}</span>
-      <div className="scoped-checkbox-list">
+      <div className="scoped-bitmask-bits">
         {options.map((option) => {
           const bit = option.value
           const mask = bit >= 0 && bit < 31 ? 1 << bit : 0
           const checked = mask !== 0 && (safeCurrent & mask) !== 0
           return (
-            <label key={`${parameter.id}:${bit}`} className="scoped-checkbox-option">
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={(event) => {
-                  const next = event.target.checked ? safeCurrent | mask : safeCurrent & ~mask
-                  onChange(parameter.id, String(next >>> 0))
-                }}
-              />
-              <span>{option.label}</span>
-            </label>
+            <button
+              type="button"
+              key={`${parameter.id}:${bit}`}
+              className={`scoped-bitmask-bit${checked ? ' is-set' : ''}`}
+              aria-pressed={checked}
+              onClick={() => onChange(parameter.id, String(((checked ? safeCurrent & ~mask : safeCurrent | mask) >>> 0)))}
+            >
+              {option.label}
+            </button>
           )
         })}
       </div>
@@ -229,26 +227,23 @@ export function ScopedBitmaskPopover(props: CommonScopedFieldProps) {
     >
       <summary className="scoped-bitmask-popover__summary">
         <span>{setCount > 0 ? `${setCount} of ${options.length} set` : 'None set'}</span>
-        <code>0x{(safeCurrent >>> 0).toString(16).toUpperCase()}</code>
       </summary>
       <div className="scoped-bitmask-popover__panel">
-        <div className="scoped-checkbox-list scoped-checkbox-list--single">
+        <div className="scoped-bitmask-bits scoped-bitmask-bits--single">
           {options.map((option) => {
             const bit = option.value
             const mask = bitMask(bit)
             const checked = mask !== 0 && (safeCurrent & mask) !== 0
             return (
-              <label key={`${parameter.id}:${bit}`} className="scoped-checkbox-option">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(event) => {
-                    const next = event.target.checked ? safeCurrent | mask : safeCurrent & ~mask
-                    onChange(parameter.id, String(next >>> 0))
-                  }}
-                />
-                <span>{option.label}</span>
-              </label>
+              <button
+                type="button"
+                key={`${parameter.id}:${bit}`}
+                className={`scoped-bitmask-bit${checked ? ' is-set' : ''}`}
+                aria-pressed={checked}
+                onClick={() => onChange(parameter.id, String(((checked ? safeCurrent & ~mask : safeCurrent | mask) >>> 0)))}
+              >
+                {option.label}
+              </button>
             )
           })}
         </div>

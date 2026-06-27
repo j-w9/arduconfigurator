@@ -13,13 +13,12 @@ import {
   describeBitmaskDraftValue,
   findParameterOption,
   formatParameterDelta,
-  formatParameterDisplayValue,
   formatParameterRange,
   formatParameterStep,
   formatParameterValue,
   formatParameterDraftValue
 } from '../parameter-format'
-import { ScopedBitmaskPopover } from '../views/ScopedField'
+import { ScopedBitmaskPopover, ScopedField } from '../views/ScopedField'
 import { parameterApplyBlockedReason } from '../apply-gate'
 import { applyDraftSelectionClick, pruneDraftSelection } from '../view-models/draft-selection'
 import { parameterSearchPredicate } from '../view-models/filtered-parameters'
@@ -643,34 +642,34 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
 
             {parameterDetailsCollapsed ? null : (
               <>
+            {/* Editable value: click to change here (stages a draft) instead of
+                scrolling to the row. Shows current + staged via the field. */}
+            <div className="parameter-details__value-editor" data-testid="parameter-details-editor">
+              <small>Value</small>
+              <ScopedField
+                parameter={{ ...selectedParameter, definition: selectedParameterDefinition ?? undefined }}
+                liveValue={selectedParameter.value}
+                editedValues={editedValues}
+                onChange={setDraft}
+                draftStatusById={draftStatusMap}
+                compact={false}
+              />
+            </div>
             <div className="parameter-details__grid">
-              <div className="parameter-details__metric">
-                <small>Current value</small>
-                <strong>{formatParameterDisplayValue(selectedParameter, selectedParameter.value)}</strong>
-              </div>
-              <div className="parameter-details__metric">
-                <small>Staged value</small>
-                <strong>
-                  {selectedParameterDraft?.nextValue !== undefined
-                    ? formatParameterDisplayValue(selectedParameter, selectedParameterDraft.nextValue)
-                    : 'No staged change'}
-                </strong>
-              </div>
               <div className="parameter-details__metric">
                 <small>Category</small>
                 <strong>{formatCategoryLabel(selectedParameterDefinition?.category)}</strong>
               </div>
               <div className="parameter-details__metric">
-                <small>Range</small>
-                <strong>{formatParameterRange(selectedParameterDefinition)}</strong>
-              </div>
-              <div className="parameter-details__metric">
-                <small>Step</small>
-                <strong>{formatParameterStep(selectedParameterDefinition)}</strong>
+                <small>Range / Step</small>
+                <strong>
+                  {formatParameterRange(selectedParameterDefinition)}
+                  {selectedParameterDefinition?.step !== undefined ? ` · ${formatParameterStep(selectedParameterDefinition)}` : ''}
+                </strong>
               </div>
               <div className="parameter-details__metric">
                 <small>Reboot</small>
-                <strong>{selectedParameterDefinition?.rebootRequired ? 'Required after change' : 'No reboot note available'}</strong>
+                <strong>{selectedParameterDefinition?.rebootRequired ? 'Required' : 'Not required'}</strong>
               </div>
             </div>
 
@@ -769,15 +768,13 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                       }
                     />
                   )}
-                  <small
-                    className={`parameter-status-copy${
-                      draft ? ` parameter-status-copy--${draft.status}` : ' parameter-status-copy--idle'
-                    }`}
-                  >
-                    {draft?.status === 'staged'
-                      ? `Staged ${formatParameterValue(draft.nextValue, parameter.definition?.unit)}`
-                      : draft?.reason ?? 'Edit locally to stage a parameter change.'}
-                  </small>
+                  {draft ? (
+                    <small className={`parameter-status-copy parameter-status-copy--${draft.status}`}>
+                      {draft.status === 'staged'
+                        ? `Staged ${formatParameterValue(draft.nextValue, parameter.definition?.unit)}`
+                        : (draft.reason ?? '')}
+                    </small>
+                  ) : null}
                 </span>
                 <span>
                   <div className="parameter-actions">

@@ -6459,6 +6459,45 @@ textarea:focus {
   background: var(--bg-panel-muted);
 }
 
+/* Bitmask bits as clickable chips — orange highlight = set (no checkboxes/hex). */
+.scoped-bitmask-bits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.scoped-bitmask-bits--single {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.scoped-bitmask-bit {
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--surface-400);
+  background: transparent;
+  color: var(--text-muted, rgba(255, 255, 255, 0.55));
+  font: inherit;
+  font-size: 0.8em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scoped-bitmask-bit:hover {
+  border-color: var(--accent);
+}
+
+.scoped-bitmask-bit.is-set {
+  background: var(--accent-weak);
+  border-color: var(--accent);
+  color: var(--accent-strong, var(--accent));
+}
+
+.scoped-bitmask-bit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Single-column variant for the narrow popover panel. */
 .scoped-checkbox-list--single {
   grid-template-columns: 1fr;
@@ -9614,6 +9653,19 @@ details.metadata-settings-section:not([open]) > summary::after {
   line-height: 1.4;
   max-height: 3.4em;
   overflow-y: auto;
+}
+
+.parameter-details__value-editor {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.parameter-details__value-editor > small {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
 }
 
 .parameter-details__grid {

@@ -917,12 +917,12 @@ test.describe('Config view', () => {
     const enable = page.getByTestId('esc-enable-bdshot')
     await expect(enable).toBeEnabled()
     await enable.click()
-    // Staged BLH_BDMASK=15 → first 4 output checkboxes become checked.
+    // Staged BLH_BDMASK=15 → first 4 output chips become set (orange highlight).
     const bdmask = page.getByTestId('scoped-bitmask-SERVO_BLH_BDMASK')
-    const boxes = bdmask.getByRole('checkbox')
-    await expect(boxes.nth(0)).toBeChecked()
-    await expect(boxes.nth(3)).toBeChecked()
-    await expect(boxes.nth(4)).not.toBeChecked()
+    const bits = bdmask.locator('.scoped-bitmask-bit')
+    await expect(bits.nth(0)).toHaveClass(/is-set/)
+    await expect(bits.nth(3)).toHaveClass(/is-set/)
+    await expect(bits.nth(4)).not.toHaveClass(/is-set/)
   })
 
   test('Config section grid scrolls within a bounded area instead of stretching the page', async ({ page }) => {
@@ -952,11 +952,11 @@ test.describe('Config view', () => {
     const section = page.getByTestId('config-section-receiver-signal')
     await section.scrollIntoViewIfNeeded()
     await expect(section).toBeVisible()
-    // RC_OPTIONS renders as a checkbox grid here too (shared bitmask field).
+    // RC_OPTIONS renders as a chip grid here too (shared bitmask field).
     await expect(page.getByTestId('scoped-bitmask-RC_OPTIONS')).toBeVisible()
   })
 
-  test('ESC & DShot section exposes protocol + reverse/bdshot masks as checkboxes', async ({ page }) => {
+  test('ESC & DShot section exposes protocol + reverse/bdshot masks as chips', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -965,11 +965,11 @@ test.describe('Config view', () => {
     const esc = page.getByTestId('config-section-esc-dshot')
     await esc.scrollIntoViewIfNeeded()
     await expect(esc).toBeVisible()
-    // Reverse + bidirectional-DShot masks render as per-output checkbox grids.
+    // Reverse + bidirectional-DShot masks render as per-output chip grids.
     await expect(page.getByTestId('scoped-bitmask-SERVO_BLH_RVMASK')).toBeVisible()
     await expect(page.getByTestId('scoped-bitmask-SERVO_BLH_BDMASK')).toBeVisible()
     // Reverse is off by default (demo SERVO_BLH_RVMASK=0).
-    await expect(page.getByTestId('scoped-bitmask-SERVO_BLH_RVMASK').getByRole('checkbox').first()).not.toBeChecked()
+    await expect(page.getByTestId('scoped-bitmask-SERVO_BLH_RVMASK').locator('.scoped-bitmask-bit').first()).not.toHaveClass(/is-set/)
     await expect(esc.getByText('Output 1').first()).toBeVisible()
   })
 
@@ -1036,7 +1036,7 @@ test.describe('Receiver stick-range bar', () => {
 })
 
 test.describe('Receiver RC options', () => {
-  test('RC_OPTIONS renders as a bitmask checkbox grid in the receiver tab', async ({ page }) => {
+  test('RC_OPTIONS renders as a bitmask chip grid in the receiver tab', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
@@ -1046,10 +1046,10 @@ test.describe('Receiver RC options', () => {
     await card.scrollIntoViewIfNeeded()
     await expect(card).toBeVisible()
     const field = page.getByTestId('scoped-bitmask-RC_OPTIONS')
-    const boxes = field.locator('input[type="checkbox"]')
-    await expect(boxes.first()).toBeVisible()
-    // Demo seeds RC_OPTIONS=0, so every option starts unchecked.
-    await expect(boxes.first()).not.toBeChecked()
+    const bits = field.locator('.scoped-bitmask-bit')
+    await expect(bits.first()).toBeVisible()
+    // Demo seeds RC_OPTIONS=0, so every option starts unset (no orange).
+    await expect(bits.first()).not.toHaveClass(/is-set/)
     await expect(field).toContainText('Ignore RC Receiver')
   })
 })
@@ -2255,9 +2255,9 @@ test.describe('Receiver scoped apply', () => {
 
     const field = page.getByTestId('scoped-bitmask-RC_OPTIONS')
     await field.scrollIntoViewIfNeeded()
-    // Demo seeds RC_OPTIONS=0 (all options unchecked). Clicking the first
-    // option's label toggles its custom-styled checkbox and stages a single
-    // receiver-scoped (workflow) draft.
+    // Demo seeds RC_OPTIONS=0 (all options unset). Clicking the first option's
+    // chip toggles it (orange highlight) and stages a single receiver-scoped
+    // (workflow) draft.
     await field.getByText('Ignore RC Receiver').click()
 
     const dock = page.locator('.receiver-review-dock')

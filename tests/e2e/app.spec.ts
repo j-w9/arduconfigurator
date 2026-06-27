@@ -159,21 +159,24 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText('Metadata to be expanded from upstream ArduPilot bundles.')).toHaveCount(0)
   })
 
-  test('bitmask params in the raw parameter table render as per-bit checkboxes', async ({ page }) => {
+  test('bitmask params in the raw parameter table render as per-bit chips', async ({ page }) => {
     await connectToVehicle(page, 'demo')
     await page.getByTestId('product-mode-expert').click()
     await openView(page, 'parameters')
     await page.getByTestId('parameter-search-input').fill('FS_OPTIONS')
     // FS_OPTIONS is a curated bitmask param — its Draft cell must render the
-    // labelled per-bit checkbox grid (Mission-Planner style), not a raw
-    // number input.
-    const field = page.getByTestId('scoped-bitmask-FS_OPTIONS')
+    // labelled per-bit chips (orange highlight = set), not a raw number input
+    // and not checkboxes. Scope to the table row (the details breakout echoes
+    // the same editor + testid for the selected param).
+    const field = page.locator('.parameter-table').getByTestId('scoped-bitmask-FS_OPTIONS')
     await field.scrollIntoViewIfNeeded()
     await expect(field).toBeVisible()
-    // Compact popover: collapsed by default, opens to the per-bit checkboxes.
+    // Compact popover: collapsed by default, opens to the per-bit chips.
     await field.locator('summary').click()
-    const boxes = field.locator('input[type="checkbox"]')
-    await expect(boxes.first()).toBeVisible()
+    await expect(field.locator('.scoped-bitmask-bit').first()).toBeVisible()
+    // No checkboxes and no hex readout in the new chip UI.
+    await expect(field.locator('input[type="checkbox"]')).toHaveCount(0)
+    await expect(field.locator('code')).toHaveCount(0)
     // …and the row no longer falls back to the raw number input.
     await expect(page.getByLabel('FS_OPTIONS value')).toHaveCount(0)
   })
@@ -600,7 +603,7 @@ test.describe('browser configurator regression flows', () => {
     await openView(page, 'ports')
   })
 
-  test('bitmask parameters render as a checkbox grid in the generic editor', async ({ page }) => {
+  test('bitmask parameters render as a chip grid in the generic editor', async ({ page }) => {
     await connectToVehicle(page, 'demo')
     // FS_OPTIONS (failsafe category) surfaces in the Failsafe view's
     // additional-settings card via the generic metadata editor. The
@@ -608,32 +611,32 @@ test.describe('browser configurator regression flows', () => {
     // its own dedicated tab.
     await openView(page, 'failsafe')
 
-    // FS_OPTIONS is flagged bitmask, so it renders as per-bit checkboxes,
-    // not a dropdown.
+    // FS_OPTIONS is flagged bitmask, so it renders as per-bit chips, not a
+    // dropdown.
     const field = page.getByTestId('scoped-bitmask-FS_OPTIONS')
     await field.scrollIntoViewIfNeeded()
     await expect(field).toBeVisible()
-    const boxes = field.locator('input[type="checkbox"]')
-    await expect(boxes.first()).toBeVisible()
-    // Demo seeds FS_OPTIONS=0, so every bit starts unchecked.
-    await expect(boxes.first()).not.toBeChecked()
-    // Toggling a bit stages a draft (bit 0 = value 1).
-    await boxes.first().check()
-    await expect(boxes.first()).toBeChecked()
+    const bits = field.locator('.scoped-bitmask-bit')
+    await expect(bits.first()).toBeVisible()
+    // Demo seeds FS_OPTIONS=0, so every bit starts unset (no orange).
+    await expect(bits.first()).not.toHaveClass(/is-set/)
+    // Clicking a chip stages a draft and highlights it (bit 0 = value 1).
+    await bits.first().click()
+    await expect(bits.first()).toHaveClass(/is-set/)
   })
 
-  test('Config arming checks render as a bitmask checkbox grid', async ({ page }) => {
+  test('Config arming checks render as a bitmask chip grid', async ({ page }) => {
     await connectToVehicle(page, 'demo')
     await openView(page, 'config')
 
     // ARMING_CHECK is flagged bitmask, so the Config arming section shows
-    // per-bit checkboxes. Demo seeds ARMING_CHECK=1 (bit 0 = "All checks").
+    // per-bit chips. Demo seeds ARMING_CHECK=1 (bit 0 = "All checks").
     const field = page.getByTestId('scoped-bitmask-ARMING_CHECK')
     await field.scrollIntoViewIfNeeded()
     await expect(field).toBeVisible()
-    const allChecks = field.getByRole('checkbox').first()
-    await expect(allChecks).toBeChecked()
-    // A non-"All" bit (e.g. Compass, bit 2) starts unchecked at value 1.
+    const allChecks = field.locator('.scoped-bitmask-bit').first()
+    await expect(allChecks).toHaveClass(/is-set/)
+    // A non-"All" bit (e.g. Compass, bit 2) is present.
     await expect(field.getByText('Compass')).toBeVisible()
   })
 
