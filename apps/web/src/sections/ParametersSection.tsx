@@ -385,6 +385,32 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             </div>
           ) : null}
 
+          {parameterDraftSummary.invalidCount > 0 ? (
+            <a
+              href="#parameter-invalid-grid"
+              data-testid="parameter-review-invalid-callout"
+              role="alert"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+                padding: '10px 14px',
+                marginBottom: '12px',
+                borderRadius: '8px',
+                border: '1px solid var(--danger, #d9534f)',
+                background: 'rgba(217, 83, 79, 0.12)',
+                color: 'inherit',
+                textDecoration: 'none'
+              }}
+            >
+              <strong style={{ color: 'var(--danger, #ff6b6b)' }}>
+                {parameterDraftSummary.invalidCount} invalid draft
+                {parameterDraftSummary.invalidCount === 1 ? '' : 's'} blocking Apply All
+              </strong>
+              <span>Override, fix, or drop these first — jump to them ↓</span>
+            </a>
+          ) : null}
+
           {visibleStagedGroups.length > 0 ? (
             <div className="parameter-diff-grid" id="parameter-diff-grid" data-testid="parameter-diff-grid">
               {visibleStagedGroups.map((group) => (
@@ -493,7 +519,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
           ) : null}
 
           {invalidParameterGroups.length > 0 ? (
-            <div className="parameter-diff-grid parameter-diff-grid--invalid">
+            <div className="parameter-diff-grid parameter-diff-grid--invalid" id="parameter-invalid-grid">
               {invalidParameterGroups.map((group) => (
                 <section key={`invalid:${group.category}`} className="parameter-diff-group parameter-diff-group--invalid">
                   <header>
