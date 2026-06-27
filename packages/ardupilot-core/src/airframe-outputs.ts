@@ -75,11 +75,36 @@ const NON_COPTER_AIRFRAME_LABEL: Partial<Record<VehicleClass, string>> = {
   ArduSub: 'Sub',
 }
 
+function roundedParameter(snapshot: ConfiguratorSnapshot, id: string): number | undefined {
+  const parameter = snapshot.parameters.find((candidate) => candidate.id === id)
+  return parameter ? Math.round(parameter.value) : undefined
+}
+
+// ArduPlane subtype from the live params: fixed-wing vs the three VTOL flavours.
+// Before Q_ENABLE has synced we keep the generic label rather than guess.
+function arduplaneAirframeLabel(snapshot: ConfiguratorSnapshot): string {
+  const qEnable = roundedParameter(snapshot, 'Q_ENABLE')
+  if (qEnable === undefined) {
+    return 'Fixed-wing / QuadPlane'
+  }
+  if (qEnable !== 1) {
+    return 'Fixed-wing'
+  }
+  if (roundedParameter(snapshot, 'Q_FRAME_CLASS') === 10) {
+    return 'Tailsitter QuadPlane'
+  }
+  if (roundedParameter(snapshot, 'Q_TILT_ENABLE') === 1) {
+    return 'Tiltrotor QuadPlane'
+  }
+  return 'QuadPlane'
+}
+
 export function deriveAirframe(
   snapshot: ConfiguratorSnapshot,
   vehicle: VehicleClass | undefined
 ): AirframeSummary {
-  const nonCopterLabel = vehicle ? NON_COPTER_AIRFRAME_LABEL[vehicle] : undefined
+  const nonCopterLabel =
+    vehicle === 'ArduPlane' ? arduplaneAirframeLabel(snapshot) : vehicle ? NON_COPTER_AIRFRAME_LABEL[vehicle] : undefined
   if (nonCopterLabel !== undefined) {
     return {
       frameClassValue: undefined,

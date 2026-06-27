@@ -1665,6 +1665,11 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('tuning-plane-tecs-group')).toBeVisible()
     await expect(page.getByTestId('tuning-plane-nav-group')).toBeVisible()
     await expect(page.getByTestId('tuning-plane-vtol-group')).toBeVisible()
+    // VTOL transition (all QuadPlanes) + tiltrotor. The demo Plane seeds
+    // Q_TILT_ENABLE=1, so the tiltrotor detail (geometry/rates) is shown too.
+    await expect(page.getByTestId('tuning-plane-transition-group')).toBeVisible()
+    await expect(page.getByTestId('tuning-plane-tiltrotor-group')).toBeVisible()
+    await expect(page.getByTestId('tuning-plane-tiltrotor-detail')).toBeVisible()
 
     // MOCK==REAL: the demo Plane seeds the fixed-wing rate-controller params, so
     // the group must populate with real editable fields — never the "not

@@ -801,6 +801,23 @@ const arduplaneMockParameters: ParameterState = {
   Q_ENABLE: 1,
   Q_FRAME_CLASS: 1,
   Q_FRAME_TYPE: 1,
+  // VTOL transition + tiltrotor seed so the demo Plane exercises those Tuning
+  // groups. Q_TILT_ENABLE=1 makes the demo a tiltrotor (motors 1+3 tilt).
+  Q_TRANSITION_MS: 5000,
+  Q_TRANS_DECEL: 2.0,
+  Q_TRANS_FAIL: 0,
+  Q_TRANS_FAIL_ACT: 0,
+  Q_RTL_MODE: 0,
+  Q_TILT_ENABLE: 1,
+  Q_TILT_MASK: 5,
+  Q_TILT_TYPE: 0,
+  Q_TILT_MAX: 45,
+  Q_TILT_RATE_UP: 40,
+  Q_TILT_RATE_DN: 0,
+  Q_TILT_YAW_ANGLE: 0,
+  Q_TILT_FIX_ANGLE: 0,
+  Q_TILT_FIX_GAIN: 0,
+  Q_TILT_WING_FLAP: 0,
   // Fixed-wing surface tuning / attitude family (ArduPlane defaults) so the
   // demo Plane exercises the real fixed-wing Tuning catalog, not just VTOL.
   RLL_RATE_P: 0.08,

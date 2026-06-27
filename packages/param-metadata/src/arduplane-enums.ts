@@ -148,6 +148,41 @@ export const ARDUPLANE_Q_FRAME_TYPE_LABELS: Record<number, string> = {
   19: 'Y4'
 }
 
+// Q_TILT_TYPE — tiltrotor mechanism geometry (ArduPlane tiltrotor.cpp).
+export const ARDUPLANE_Q_TILT_TYPE_LABELS: Record<number, string> = {
+  0: 'Continuous',
+  1: 'Binary',
+  2: 'Vectored Yaw',
+  3: 'Bicopter'
+}
+
+// Q_TILT_MASK — bitmask of which motors tilt for forward flight (bit 0 = motor 1).
+export const ARDUPLANE_Q_TILT_MASK_BIT_LABELS: Record<number, string> = {
+  0: 'Motor 1',
+  1: 'Motor 2',
+  2: 'Motor 3',
+  3: 'Motor 4',
+  4: 'Motor 5',
+  5: 'Motor 6',
+  6: 'Motor 7',
+  7: 'Motor 8'
+}
+
+// Q_TRANS_FAIL_ACT — action when the forward-transition failure timer elapses.
+export const ARDUPLANE_Q_TRANS_FAIL_ACT_LABELS: Record<number, string> = {
+  [-1]: 'Warn only',
+  0: 'QLand',
+  1: 'QRTL'
+}
+
+// Q_RTL_MODE — how an RTL behaves on a QuadPlane.
+export const ARDUPLANE_Q_RTL_MODE_LABELS: Record<number, string> = {
+  0: 'Disabled',
+  1: 'Enabled (QRTL near home)',
+  2: 'VTOL approach',
+  3: 'QRTL always'
+}
+
 export function formatArduplaneQFrameClass(value: number | undefined): string {
   return ARDUPLANE_Q_FRAME_CLASS_LABELS[value ?? Number.NaN] ?? (value === undefined ? 'Unknown' : `Frame class ${value}`)
 }

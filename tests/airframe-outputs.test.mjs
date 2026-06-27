@@ -48,6 +48,20 @@ test('deriveAirframe returns honest non-Copter summaries (no motor matrix)', () 
   }
 })
 
+test('deriveAirframe distinguishes ArduPlane VTOL subtypes from the live params', () => {
+  const label = (params) => deriveAirframe(snapshot(params), 'ArduPlane').frameClassLabel
+  // Q_ENABLE not synced yet -> keep the generic label rather than guess.
+  assert.equal(label({}), 'Fixed-wing / QuadPlane')
+  // Q_ENABLE = 0 -> pure fixed-wing.
+  assert.equal(label({ Q_ENABLE: 0 }), 'Fixed-wing')
+  // Q_ENABLE = 1, no tilt / non-tailsitter frame -> multirotor-lift QuadPlane.
+  assert.equal(label({ Q_ENABLE: 1, Q_FRAME_CLASS: 1 }), 'QuadPlane')
+  // Tiltrotor: Q_TILT_ENABLE = 1.
+  assert.equal(label({ Q_ENABLE: 1, Q_TILT_ENABLE: 1 }), 'Tiltrotor QuadPlane')
+  // Tailsitter: Q_FRAME_CLASS = 10.
+  assert.equal(label({ Q_ENABLE: 1, Q_FRAME_CLASS: 10 }), 'Tailsitter QuadPlane')
+})
+
 test('deriveOutputMappingSummary threads the vehicle into its airframe', () => {
   const copterMapping = deriveOutputMappingSummary(COPTER_QUAD, 'ArduCopter')
   assert.deepEqual(copterMapping.airframe, deriveArducopterAirframe(COPTER_QUAD))

@@ -196,6 +196,28 @@ export const TUNING_PLANE_VTOL_RATE_GROUPS = [
 ] as const
 export const TUNING_PLANE_VTOL_ANGLE_PARAM_IDS = ['Q_A_ANG_RLL_P', 'Q_A_ANG_PIT_P', 'Q_A_ANG_YAW_P'] as const
 export const TUNING_PLANE_VTOL_POSITION_PARAM_IDS = ['Q_P_POSXY_P', 'Q_P_VELXY_P', 'Q_P_POSZ_P', 'Q_P_ACCZ_P'] as const
+// QuadPlane forward/back transition timing + VTOL RTL behaviour (all QuadPlanes).
+export const TUNING_PLANE_TRANSITION_PARAM_IDS = [
+  'Q_TRANSITION_MS',
+  'Q_TRANS_DECEL',
+  'Q_TRANS_FAIL',
+  'Q_TRANS_FAIL_ACT',
+  'Q_RTL_MODE'
+] as const
+// Tiltrotor mechanism. Q_TILT_ENABLE is included (it's the in-group toggle); the
+// group self-gates the rest of the controls on it being on.
+export const TUNING_PLANE_TILTROTOR_PARAM_IDS = [
+  'Q_TILT_ENABLE',
+  'Q_TILT_MASK',
+  'Q_TILT_TYPE',
+  'Q_TILT_MAX',
+  'Q_TILT_RATE_UP',
+  'Q_TILT_RATE_DN',
+  'Q_TILT_YAW_ANGLE',
+  'Q_TILT_FIX_ANGLE',
+  'Q_TILT_FIX_GAIN',
+  'Q_TILT_WING_FLAP'
+] as const
 // Full membership set used by the scoped-draft predicate (review/apply scope).
 // Q_ENABLE itself is NOT included — it is an airframe toggle owned by Setup, not
 // a tuning value, and the VTOL groups only gate visibility on it.
@@ -208,7 +230,9 @@ export const TUNING_PLANE_PARAM_IDS = [
   ...TUNING_PLANE_NAV_PARAM_IDS,
   ...TUNING_PLANE_VTOL_RATE_GROUPS.flatMap((group) => group.paramIds),
   ...TUNING_PLANE_VTOL_ANGLE_PARAM_IDS,
-  ...TUNING_PLANE_VTOL_POSITION_PARAM_IDS
+  ...TUNING_PLANE_VTOL_POSITION_PARAM_IDS,
+  ...TUNING_PLANE_TRANSITION_PARAM_IDS,
+  ...TUNING_PLANE_TILTROTOR_PARAM_IDS
 ] as const
 // ArduRover curated tuning surface. These are the ground-vehicle steering /
 // speed / navigation params an operator actually tunes, grouped by concern.

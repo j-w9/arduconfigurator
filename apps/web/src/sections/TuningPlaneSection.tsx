@@ -28,7 +28,8 @@ import {
   TUNING_PLANE_TECS_TAKEOFF_PARAM_IDS,
   TUNING_PLANE_VTOL_ANGLE_PARAM_IDS,
   TUNING_PLANE_VTOL_POSITION_PARAM_IDS,
-  TUNING_PLANE_VTOL_RATE_GROUPS
+  TUNING_PLANE_VTOL_RATE_GROUPS,
+  TUNING_PLANE_TRANSITION_PARAM_IDS
 } from '../tuning-params'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
 import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
@@ -98,6 +99,25 @@ export function TuningPlaneSection(props: TuningPlaneSectionProps): ReactElement
   const vtolRateGroups = isQuadPlane ? resolveGroups(TUNING_PLANE_VTOL_RATE_GROUPS) : []
   const vtolAngleParameters = isQuadPlane ? resolve(TUNING_PLANE_VTOL_ANGLE_PARAM_IDS) : []
   const vtolPositionParameters = isQuadPlane ? resolve(TUNING_PLANE_VTOL_POSITION_PARAM_IDS) : []
+
+  // Transition applies to every QuadPlane; the tiltrotor mechanism is a further
+  // subtype, so its geometry/rate controls self-gate on Q_TILT_ENABLE (which a
+  // pure-multirotor-lift QuadPlane leaves at 0).
+  const transitionParameters = isQuadPlane ? resolve(TUNING_PLANE_TRANSITION_PARAM_IDS) : []
+  const tiltEnableValue = Number(editedValues['Q_TILT_ENABLE'] ?? readRoundedParameter(snapshot, 'Q_TILT_ENABLE') ?? 0)
+  const isTiltrotor = isQuadPlane && tiltEnableValue === 1
+  const tiltrotorCoreParameters = isQuadPlane ? resolve(['Q_TILT_ENABLE', 'Q_TILT_MASK', 'Q_TILT_TYPE']) : []
+  const tiltrotorDetailParameters = isTiltrotor
+    ? resolve([
+        'Q_TILT_MAX',
+        'Q_TILT_RATE_UP',
+        'Q_TILT_RATE_DN',
+        'Q_TILT_YAW_ANGLE',
+        'Q_TILT_FIX_ANGLE',
+        'Q_TILT_FIX_GAIN',
+        'Q_TILT_WING_FLAP'
+      ])
+    : []
 
   const renderField = (parameter: ParameterState): ReactElement => (
     <ScopedField
@@ -290,6 +310,55 @@ export function TuningPlaneSection(props: TuningPlaneSectionProps): ReactElement
                 </div>
                 <div className="tuning-control-grid tuning-control-grid--compact">
                   {vtolPositionParameters.map(renderField)}
+                </div>
+              </article>
+            ) : null}
+          </article>
+        ) : null}
+
+        {isQuadPlane ? (
+          <article className="tuning-axis-card" data-testid="tuning-plane-transition-group">
+            <div className="tuning-axis-card__header">
+              <strong>VTOL transition</strong>
+              <span>{transitionParameters.length} controls</span>
+            </div>
+            <p className="bf-note">
+              Forward/back transition timing, deceleration, failure handling, and how RTL behaves on a QuadPlane.
+              Only shown because this airframe has QuadPlane enabled.
+            </p>
+            {transitionParameters.length > 0 ? (
+              <div className="tuning-control-grid tuning-control-grid--compact">
+                {transitionParameters.map(renderField)}
+              </div>
+            ) : (
+              <p className="bf-note">The connected controller is not reporting the transition parameters.</p>
+            )}
+          </article>
+        ) : null}
+
+        {isQuadPlane ? (
+          <article className="tuning-axis-card" data-testid="tuning-plane-tiltrotor-group">
+            <div className="tuning-axis-card__header">
+              <strong>Tiltrotor</strong>
+              <span>{isTiltrotor ? 'enabled' : 'Q_TILT_ENABLE = 0'}</span>
+            </div>
+            <p className="bf-note">
+              Turn a QuadPlane into a tiltrotor: enable it and set which motors tilt. The tilt geometry, type,
+              and rate controls appear once Q_TILT_ENABLE is on.
+            </p>
+            {tiltrotorCoreParameters.length > 0 ? (
+              <div className="tuning-control-grid tuning-control-grid--compact" data-testid="tuning-plane-tiltrotor-core">
+                {tiltrotorCoreParameters.map(renderField)}
+              </div>
+            ) : null}
+            {isTiltrotor && tiltrotorDetailParameters.length > 0 ? (
+              <article className="tuning-axis-card" data-testid="tuning-plane-tiltrotor-detail">
+                <div className="tuning-axis-card__header">
+                  <strong>Tilt geometry &amp; rates</strong>
+                  <span>{tiltrotorDetailParameters.length} controls</span>
+                </div>
+                <div className="tuning-control-grid tuning-control-grid--compact">
+                  {tiltrotorDetailParameters.map(renderField)}
                 </div>
               </article>
             ) : null}

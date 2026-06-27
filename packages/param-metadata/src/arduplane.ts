@@ -57,6 +57,10 @@ import {
   ARDUPLANE_FS_SHORT_ACTN_LABELS,
   ARDUPLANE_Q_FRAME_CLASS_LABELS,
   ARDUPLANE_Q_FRAME_TYPE_LABELS,
+  ARDUPLANE_Q_TILT_TYPE_LABELS,
+  ARDUPLANE_Q_TILT_MASK_BIT_LABELS,
+  ARDUPLANE_Q_TRANS_FAIL_ACT_LABELS,
+  ARDUPLANE_Q_RTL_MODE_LABELS,
   ARDUPLANE_LAND_THEN_NEUTRL_LABELS,
   ARDUPLANE_LAND_TYPE_LABELS,
   ARDUPLANE_Q_M_PWM_TYPE_LABELS,
@@ -752,25 +756,39 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       order: 25,
       viewId: 'tuning'
     },
+    'vtol-transition': {
+      id: 'vtol-transition',
+      label: 'VTOL Transition',
+      description: 'QuadPlane forward/back transition timing, deceleration, failure handling, and VTOL RTL behaviour.',
+      order: 26,
+      viewId: 'tuning'
+    },
+    'vtol-tiltrotor': {
+      id: 'vtol-tiltrotor',
+      label: 'Tiltrotor',
+      description: 'Tiltrotor mechanism — which motors tilt, tilt geometry/type, tilt rates, and the fixed-wing tilt angle. Only relevant when the QuadPlane uses tilting motors.',
+      order: 27,
+      viewId: 'tuning'
+    },
     logging: {
       id: 'logging',
       label: 'Logging',
       description: 'Onboard log backend, retention, and bitmask configuration.',
-      order: 26,
+      order: 28,
       viewId: 'parameters'
     },
     soaring: {
       id: 'soaring',
       label: 'Soaring',
       description: 'Autonomous thermalling — the SOAR_ enable, vertical-speed trigger, thermal estimator (EKF) tuning, altitude band, glide polar, and thermalling/cruise behaviour.',
-      order: 27,
+      order: 29,
       viewId: 'tuning'
     },
     adsb: {
       id: 'adsb',
       label: 'ADS-B & Avoidance',
       description: 'ADS-B transponder hardware (ADSB_) plus the ADS-B traffic-avoidance behaviour (AVD_) — type, identity, RF select, vehicle list filters, and warn/fail avoidance actions.',
-      order: 28,
+      order: 30,
       viewId: 'tuning'
     }
   },
@@ -2950,6 +2968,167 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       maximum: 0.5,
       step: 0.05,
       notes: quadplaneAutotuneNotes
+    },
+    Q_TRANSITION_MS: {
+      id: 'Q_TRANSITION_MS',
+      label: 'Transition Time',
+      description:
+        'Time after the minimum airspeed is reached before the transition from VTOL to fixed-wing flight completes and the lift motors stop.',
+      category: 'vtol-transition',
+      minimum: 500,
+      maximum: 30000,
+      step: 100,
+      unit: 'ms'
+    },
+    Q_TRANS_DECEL: {
+      id: 'Q_TRANS_DECEL',
+      label: 'Transition Deceleration',
+      description:
+        'Deceleration rate used to calculate the stopping distance when transitioning from fixed-wing to multicopter flight.',
+      category: 'vtol-transition',
+      minimum: 0.2,
+      maximum: 5,
+      step: 0.1,
+      unit: 'm/s/s'
+    },
+    Q_TRANS_FAIL: {
+      id: 'Q_TRANS_FAIL',
+      label: 'Transition Failure Timeout',
+      description:
+        'Maximum time allowed for a forward transition. Exceeding it cancels the transition and triggers Q_TRANS_FAIL_ACT. 0 disables the limit.',
+      category: 'vtol-transition',
+      minimum: 0,
+      maximum: 20,
+      step: 1,
+      unit: 's'
+    },
+    Q_TRANS_FAIL_ACT: {
+      id: 'Q_TRANS_FAIL_ACT',
+      label: 'Transition Failure Action',
+      description: 'Action taken when the Q_TRANS_FAIL forward-transition timer elapses.',
+      category: 'vtol-transition',
+      minimum: -1,
+      maximum: 1,
+      step: 1,
+      options: enumOptions(ARDUPLANE_Q_TRANS_FAIL_ACT_LABELS)
+    },
+    Q_RTL_MODE: {
+      id: 'Q_RTL_MODE',
+      label: 'VTOL RTL Mode',
+      description:
+        'How a Return-To-Launch behaves on a QuadPlane: disabled (fixed-wing RTL), switch to QRTL near home, a VTOL approach, or always QRTL.',
+      category: 'vtol-transition',
+      minimum: 0,
+      maximum: 3,
+      step: 1,
+      options: enumOptions(ARDUPLANE_Q_RTL_MODE_LABELS)
+    },
+    Q_TILT_ENABLE: {
+      id: 'Q_TILT_ENABLE',
+      label: 'Tiltrotor Enable',
+      description:
+        'Enable tiltrotor functionality. Required for any vehicle whose motors tilt between hover and forward flight.',
+      category: 'vtol-tiltrotor',
+      minimum: 0,
+      maximum: 1,
+      step: 1,
+      rebootRequired: true,
+      options: enumOptions({ 0: 'Disable', 1: 'Enable' })
+    },
+    Q_TILT_MASK: {
+      id: 'Q_TILT_MASK',
+      label: 'Tilt Motor Mask',
+      description: 'Bitmask of which motors tilt forward for fixed-wing flight (bit 0 = motor 1).',
+      category: 'vtol-tiltrotor',
+      minimum: 0,
+      maximum: 255,
+      step: 1,
+      bitmask: true,
+      options: enumOptions(ARDUPLANE_Q_TILT_MASK_BIT_LABELS)
+    },
+    Q_TILT_TYPE: {
+      id: 'Q_TILT_TYPE',
+      label: 'Tiltrotor Type',
+      description:
+        'Mechanism the tilting motors use: continuous servo, binary (up/down only), vectored yaw, or bicopter.',
+      category: 'vtol-tiltrotor',
+      minimum: 0,
+      maximum: 3,
+      step: 1,
+      rebootRequired: true,
+      options: enumOptions(ARDUPLANE_Q_TILT_TYPE_LABELS)
+    },
+    Q_TILT_MAX: {
+      id: 'Q_TILT_MAX',
+      label: 'Maximum Tilt Angle',
+      description: 'Maximum forward tilt angle of the motors during a transition or in fixed-wing flight.',
+      category: 'vtol-tiltrotor',
+      minimum: 20,
+      maximum: 80,
+      step: 1,
+      unit: 'deg'
+    },
+    Q_TILT_RATE_UP: {
+      id: 'Q_TILT_RATE_UP',
+      label: 'Tilt Rate (to fixed-wing)',
+      description: 'Maximum tilt rate when moving the motors toward fixed-wing flight.',
+      category: 'vtol-tiltrotor',
+      minimum: 10,
+      maximum: 300,
+      step: 1,
+      unit: 'deg/s'
+    },
+    Q_TILT_RATE_DN: {
+      id: 'Q_TILT_RATE_DN',
+      label: 'Tilt Rate (to hover)',
+      description:
+        'Maximum tilt rate when moving the motors back toward hover. 0 uses Q_TILT_RATE_UP for both directions.',
+      category: 'vtol-tiltrotor',
+      minimum: 0,
+      maximum: 300,
+      step: 1,
+      unit: 'deg/s'
+    },
+    Q_TILT_YAW_ANGLE: {
+      id: 'Q_TILT_YAW_ANGLE',
+      label: 'Tilt Yaw Angle',
+      description: 'Angle the motors tilt to provide yaw control in hover for vectored-yaw tiltrotors.',
+      category: 'vtol-tiltrotor',
+      minimum: 0,
+      maximum: 30,
+      step: 1,
+      unit: 'deg'
+    },
+    Q_TILT_FIX_ANGLE: {
+      id: 'Q_TILT_FIX_ANGLE',
+      label: 'Fixed-wing Tilt Angle',
+      description:
+        'Motor tilt angle used in fixed-wing flight for vectored-yaw tiltrotors providing fixed-wing yaw assist.',
+      category: 'vtol-tiltrotor',
+      minimum: 0,
+      maximum: 30,
+      step: 1,
+      unit: 'deg'
+    },
+    Q_TILT_FIX_GAIN: {
+      id: 'Q_TILT_FIX_GAIN',
+      label: 'Fixed-wing Tilt Gain',
+      description: 'Gain applied to vectored-yaw motor tilt in fixed-wing flight.',
+      category: 'vtol-tiltrotor',
+      minimum: 0,
+      maximum: 1,
+      step: 0.01
+    },
+    Q_TILT_WING_FLAP: {
+      id: 'Q_TILT_WING_FLAP',
+      label: 'Tilt Wing Flap Angle',
+      description:
+        'Extra flap angle added on a tiltwing as the motors tilt, to keep airflow attached to the wing during transition.',
+      category: 'vtol-tiltrotor',
+      minimum: 0,
+      maximum: 15,
+      step: 1,
+      unit: 'deg'
     },
     AHRS_ORIENTATION: {
       id: 'AHRS_ORIENTATION',

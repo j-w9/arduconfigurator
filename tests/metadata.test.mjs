@@ -962,6 +962,29 @@ test('arduplaneMetadata exposes the QuadPlane VTOL tuning group on the Tuning su
   assert.equal(metadata.parameters.Q_ASSIST_SPEED.unit, 'm/s')
   assert.equal(metadata.parameters.Q_AUTOTUNE_AXES.categoryDefinition.id, 'vtol-assist')
 
+  // VTOL transition knobs resolve to the vtol-transition Tuning category.
+  for (const id of ['Q_TRANSITION_MS', 'Q_TRANS_DECEL', 'Q_TRANS_FAIL', 'Q_TRANS_FAIL_ACT', 'Q_RTL_MODE']) {
+    const entry = metadata.parameters[id]
+    assert.ok(entry, `expected ${id} in the Plane catalog`)
+    assert.equal(entry.categoryDefinition.id, 'vtol-transition')
+    assert.equal(entry.categoryDefinition.viewId, 'tuning')
+  }
+  assert.equal(metadata.parameters.Q_TRANSITION_MS.unit, 'ms')
+  assert.equal(metadata.parameters.Q_TRANS_FAIL_ACT.options.some((o) => o.label === 'QLand'), true)
+  assert.equal(metadata.parameters.Q_RTL_MODE.options.some((o) => o.label === 'QRTL always'), true)
+
+  // Tiltrotor mechanism resolves to the vtol-tiltrotor Tuning category, with the
+  // tilt-type enum + the motor-tilt bitmask.
+  for (const id of ['Q_TILT_ENABLE', 'Q_TILT_MASK', 'Q_TILT_TYPE', 'Q_TILT_MAX', 'Q_TILT_RATE_UP', 'Q_TILT_WING_FLAP']) {
+    const entry = metadata.parameters[id]
+    assert.ok(entry, `expected ${id} in the Plane catalog`)
+    assert.equal(entry.categoryDefinition.id, 'vtol-tiltrotor')
+  }
+  assert.equal(metadata.parameters.Q_TILT_MASK.bitmask, true)
+  assert.equal(metadata.parameters.Q_TILT_TYPE.options.some((o) => o.label === 'Vectored Yaw'), true)
+  assert.equal(metadata.parameters.Q_TILT_MAX.unit, 'deg')
+  assert.equal(metadata.parameters.Q_TILT_RATE_UP.unit, 'deg/s')
+
   // The Tuning view is now backed by the VTOL categories rather than a placeholder.
   const tuningCategories = metadata.categories.filter((category) => category.viewId === 'tuning')
   assert.ok(tuningCategories.some((category) => category.id === 'vtol-pid'))
