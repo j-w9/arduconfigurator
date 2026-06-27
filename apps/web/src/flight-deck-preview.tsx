@@ -242,43 +242,79 @@ function motorLayoutForModel(modelFile: string): Array<{ x: number; z: number }>
   }
 }
 
+// Forward is -Z, up is +Y, span is X — matching the copter models. A rounded
+// fuselage + cone nose + canopy reads more like an aircraft than the old box
+// stack; the QuadPlane / tiltrotor variants build their lift hardware on top.
 function createPlaneModel(): THREE.Group {
   const plane = new THREE.Group()
 
-  const airframe = new THREE.MeshStandardMaterial({
-    color: 0xd8e3f3,
-    metalness: 0.18,
-    roughness: 0.56
-  })
-  const accent = new THREE.MeshStandardMaterial({
-    color: 0x61dafb,
-    metalness: 0.12,
-    roughness: 0.4
-  })
+  const airframe = new THREE.MeshStandardMaterial({ color: 0xd8e3f3, metalness: 0.18, roughness: 0.56 })
+  const accent = new THREE.MeshStandardMaterial({ color: 0x61dafb, metalness: 0.12, roughness: 0.4 })
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1a2330, metalness: 0.24, roughness: 0.42 })
 
-  const addBox = (
-    w: number,
-    h: number,
-    d: number,
-    x: number,
-    y: number,
-    z: number,
-    material: THREE.Material
-  ): void => {
-    const part = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material)
-    part.position.set(x, y, z)
-    plane.add(part)
-  }
+  // Rounded fuselage running fore-aft (cylinder axis rotated onto Z).
+  const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 3.0, 20), airframe)
+  fuselage.rotation.x = Math.PI / 2
+  plane.add(fuselage)
 
-  // Forward is -Z, up is +Y, span is X — matching the copter models.
-  addBox(0.36, 0.4, 3.2, 0, 0, 0, airframe) // fuselage
-  addBox(0.2, 0.24, 0.4, 0, 0, -1.74, accent) // nose
-  addBox(0.28, 0.24, 0.72, 0, 0.18, -0.55, accent) // canopy
-  addBox(4.6, 0.1, 0.84, 0, 0.02, -0.15, airframe) // main wing
-  addBox(1.9, 0.08, 0.56, 0, 0.02, 1.45, airframe) // horizontal stabilizer
-  addBox(0.09, 0.6, 0.6, 0, 0.28, 1.45, airframe) // vertical fin
+  // Tractor nose cone.
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.7, 20), accent)
+  nose.rotation.x = -Math.PI / 2
+  nose.position.set(0, 0, -1.85)
+  plane.add(nose)
+
+  // Canopy (a flattened, stretched dome).
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), dark)
+  canopy.scale.set(1, 0.7, 1.7)
+  canopy.position.set(0, 0.13, -0.6)
+  plane.add(canopy)
+
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.06, 0.82), airframe)
+  wing.position.set(0, 0.02, -0.1)
+  plane.add(wing)
+
+  const hStab = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.05, 0.5), airframe)
+  hStab.position.set(0, 0.02, 1.4)
+  plane.add(hStab)
+
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.55, 0.55), airframe)
+  fin.position.set(0, 0.3, 1.42)
+  plane.add(fin)
 
   return plane
+}
+
+// QuadPlane: the fixed-wing airframe plus four lift rotors on twin fore-aft
+// booms, props horizontal for hover.
+function createQuadPlaneModel(): THREE.Group {
+  const craft = createPlaneModel()
+  const boomMat = new THREE.MeshStandardMaterial({ color: 0x182435, metalness: 0.35, roughness: 0.55 })
+  const boomX = 1.05
+  const boomLen = 2.7
+  for (const side of [-1, 1]) {
+    const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, boomLen, 12), boomMat)
+    boom.rotation.x = Math.PI / 2
+    boom.position.set(side * boomX, 0, 0)
+    craft.add(boom)
+    craft.add(createMotor(side * boomX, -boomLen / 2 + 0.25, 0x61dafb)) // front lift
+    craft.add(createMotor(side * boomX, boomLen / 2 - 0.25, 0xff815f)) // rear lift
+  }
+  return craft
+}
+
+// Tiltrotor: the fixed-wing airframe with wing-mounted motors tilted forward,
+// to read as tilting nacelles rather than fixed lift rotors.
+function createTiltrotorModel(): THREE.Group {
+  const craft = createPlaneModel()
+  const tiltForward = -Math.PI / 2.4
+  for (const side of [-1, 1]) {
+    for (const offset of [0.95, 1.85]) {
+      const motor = createMotor(side * offset, -0.3, side > 0 ? 0x61dafb : 0xff815f)
+      motor.rotation.x = tiltForward
+      craft.add(motor)
+    }
+  }
+  return craft
 }
 
 function createBoxGroup(
@@ -343,6 +379,12 @@ function createSubModel(): THREE.Group {
 function createProceduralModel(modelFile: string): THREE.Group {
   if (modelFile === 'plane') {
     return createPlaneModel()
+  }
+  if (modelFile === 'quadplane') {
+    return createQuadPlaneModel()
+  }
+  if (modelFile === 'tiltrotor') {
+    return createTiltrotorModel()
   }
   if (modelFile === 'rover') {
     return createRoverModel()
@@ -434,6 +476,16 @@ function modelFileForAirframe(
   // so they never fall through to the quad default.
   const vehicle = (vehicleType ?? '').toLowerCase()
   if (vehicle.includes('plane')) {
+    // Distinguish the VTOL subtypes the airframe label now resolves
+    // (Tiltrotor QuadPlane / QuadPlane) so they render their lift hardware
+    // instead of a bare fixed-wing. Tailsitter keeps the plane silhouette.
+    const planeClass = frameClassLabel?.toLowerCase() ?? ''
+    if (planeClass.includes('tiltrotor')) {
+      return 'tiltrotor'
+    }
+    if (planeClass.includes('quadplane')) {
+      return 'quadplane'
+    }
     return 'plane'
   }
   if (vehicle.includes('rover') || vehicle.includes('boat')) {
@@ -794,7 +846,12 @@ export function FlightDeckPreview({
         if (!sceneStateRef.current) {
           return
         }
-        mountModel(state, createProceduralModel(modelFile), compact, 'fit')
+        // The plane-family procedural models (quadplane / tiltrotor) share the
+        // fixed-wing geometry scale, so size them with the same 'betaflight'
+        // scalar the GLTF plane/copter use — otherwise 'fit' renders them much
+        // smaller than the quad. Other procedural models keep 'fit'.
+        const planeFamily = modelFile === 'quadplane' || modelFile === 'tiltrotor'
+        mountModel(state, createProceduralModel(modelFile), compact, planeFamily ? 'betaflight' : 'fit')
       }
     )
 
