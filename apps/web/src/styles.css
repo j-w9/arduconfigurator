@@ -11727,6 +11727,14 @@ details.bf-gui-box:not([open]) > summary::after {
   gap: 6px;
 }
 
+.esc-dshot-footer__warning {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--warning, #ef9b4b);
+  background: var(--warning-weak, rgba(255, 102, 0, 0.12));
+  color: var(--warning, #ef9b4b);
+}
+
 /* Betaflight-style preview-screen dropdown (replaces the per-screen tabs). */
 .osd-preview-screen-select {
   display: inline-flex;

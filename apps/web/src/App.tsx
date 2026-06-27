@@ -881,6 +881,41 @@ export function App() {
   // doesn't need to be useMemo'd, but pre-build the parametersById map
   // once so each section card can render in O(1).
   const { configParametersById, configSections, isConfigParamId } = useConfigSections(snapshot)
+  // Auto-enable bidirectional DShot when the operator picks a DShot MOT_PWM_TYPE.
+  // Fires only on an actual change of the MOT_PWM_TYPE draft (ref-guarded so
+  // other drafts / telemetry ticks don't retrigger it). If the firmware lacks
+  // BDShot (SERVO_BLH_BDMASK absent from the synced tree) we say so instead of
+  // staging anything. Staging only — the operator still presses Apply.
+  const lastMotPwmDraftRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    const raw = editedValues.MOT_PWM_TYPE
+    if (raw === undefined || raw === lastMotPwmDraftRef.current) {
+      return
+    }
+    lastMotPwmDraftRef.current = raw
+    const motPwmType = Math.round(Number(raw))
+    if (!(motPwmType >= 4 && motPwmType <= 7)) {
+      return // not a DShot protocol
+    }
+    if (!configParametersById.has('SERVO_BLH_BDMASK')) {
+      setParameterNotice({
+        tone: 'warning',
+        text: 'Your firmware build does not support bidirectional DShot (no SERVO_BLH_BDMASK parameter). Flash a board/firmware built with BDShot to use RPM telemetry.'
+      })
+      return
+    }
+    const liveBdmask = readRoundedParameter(snapshot, 'SERVO_BLH_BDMASK') ?? 0
+    const stagedBdmask = editedValues.SERVO_BLH_BDMASK
+    if (liveBdmask > 0 || (stagedBdmask !== undefined && Number(stagedBdmask) > 0)) {
+      return // already on (live or staged) — don't clobber the operator's mask
+    }
+    mergeDrafts({ SERVO_BLH_BDMASK: '15', SERVO_BLH_AUTO: '1' })
+    setParameterNotice({
+      tone: 'success',
+      text: 'Bidirectional DShot auto-enabled on outputs 1-4 (SERVO_BLH_BDMASK=15, SERVO_BLH_AUTO=1). Widen the mask in ESC & DShot if your board supports more outputs.'
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editedValues.MOT_PWM_TYPE, configParametersById, mergeDrafts, setParameterNotice])
   // Memoized on snapshot: snapshot is a fresh object every telemetry tick, so
   // these unmemoized derivations produced a new reference each render and made
   // their downstream consumers re-run every tick — the RC-calibration effect
@@ -4188,26 +4223,39 @@ export function App() {
       Number(editedValues.MOT_PWM_TYPE ?? readRoundedParameter(snapshot, 'MOT_PWM_TYPE') ?? 0)
     )
     const isDShot = motPwmType >= 4 && motPwmType <= 7 // DShot150/300/600/1200
+    // BDShot is a compile-time / board feature: SERVO_BLH_BDMASK only exists in
+    // the synced parameter tree when the firmware was built with it. Absent =>
+    // this firmware/board can't do bidirectional DShot.
+    const bdshotSupported = configParametersById.has('SERVO_BLH_BDMASK')
     return (
       <div className="esc-dshot-footer" data-testid="esc-dshot-footer">
-        <button
-          type="button"
-          style={buttonStyle()}
-          data-testid="esc-enable-bdshot"
-          disabled={!isDShot}
-          title={isDShot ? undefined : 'Select a DShot ESC protocol first — bidirectional DShot requires DShot.'}
-          onClick={() => {
-            setDraft('SERVO_BLH_BDMASK', '15')
-            setDraft('SERVO_BLH_AUTO', '1')
-          }}
-        >
-          Enable bidirectional DShot (first 4 outputs)
-        </button>
-        <small>
-          {isDShot
-            ? 'Stages bdshot on outputs 1-4 and turns on BLHeli auto. Most boards support bdshot on the first 4 outputs only — a few do 8; check your FC before enabling more.'
-            : 'Pick a DShot protocol above to enable bidirectional DShot (RPM telemetry).'}
-        </small>
+        {!bdshotSupported ? (
+          <small className="esc-dshot-footer__warning" data-testid="esc-bdshot-unsupported">
+            Your firmware build doesn’t support bidirectional DShot (no SERVO_BLH_BDMASK parameter). Flash a board/firmware
+            built with BDShot to get RPM telemetry over the DShot signal wire.
+          </small>
+        ) : (
+          <>
+            <button
+              type="button"
+              style={buttonStyle()}
+              data-testid="esc-enable-bdshot"
+              disabled={!isDShot}
+              title={isDShot ? undefined : 'Select a DShot ESC protocol first — bidirectional DShot requires DShot.'}
+              onClick={() => {
+                setDraft('SERVO_BLH_BDMASK', '15')
+                setDraft('SERVO_BLH_AUTO', '1')
+              }}
+            >
+              Enable bidirectional DShot (first 4 outputs)
+            </button>
+            <small>
+              {isDShot
+                ? 'Selecting a DShot protocol auto-stages bdshot on outputs 1-4 (BLHeli auto on). Most boards support bdshot on the first 4 outputs only — a few do 8; check your FC before enabling more.'
+                : 'Pick a DShot protocol above to enable bidirectional DShot (RPM telemetry).'}
+            </small>
+          </>
+        )}
       </div>
     )
   }

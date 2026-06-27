@@ -925,6 +925,27 @@ test.describe('Config view', () => {
     await expect(bits.nth(4)).not.toHaveClass(/is-set/)
   })
 
+  test('selecting a DShot MOT_PWM_TYPE auto-enables bidirectional DShot', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+    const esc = page.getByTestId('config-section-esc-dshot')
+    await esc.scrollIntoViewIfNeeded()
+    // Wait for SERVO_BLH_BDMASK to be synced (its presence is how the app knows
+    // the firmware supports BDShot) before changing the protocol — otherwise the
+    // auto-enable correctly treats it as unsupported.
+    const bits = page.getByTestId('scoped-bitmask-SERVO_BLH_BDMASK').locator('.scoped-bitmask-bit')
+    await expect(bits.first()).toBeVisible()
+    // MOT_PWM_TYPE is the first field (a select); switch it to a different DShot
+    // rate (demo starts at DShot300=5) to trigger the change.
+    const motSelect = esc.locator('select').first()
+    await motSelect.selectOption('6') // DShot600
+    // BDShot auto-stages on outputs 1-4 (demo firmware has SERVO_BLH_BDMASK).
+    await expect(bits.nth(0)).toHaveClass(/is-set/)
+    await expect(bits.nth(3)).toHaveClass(/is-set/)
+  })
+
   test('Config section grid scrolls within a bounded area instead of stretching the page', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')
@@ -987,6 +1008,18 @@ test.describe('Config view', () => {
     await info.hover()
     await expect(tip).toBeVisible()
     await expect(tip).not.toHaveText('')
+  })
+
+  test('Config exposes a Frame section to set FRAME_CLASS / FRAME_TYPE', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+    const frame = page.getByTestId('config-section-frame')
+    await frame.scrollIntoViewIfNeeded()
+    await expect(frame).toBeVisible()
+    // FRAME_CLASS + FRAME_TYPE are catalogued enums -> two selects to set them.
+    await expect(frame.locator('select')).toHaveCount(2)
   })
 
   test('exposes system-rates, active-IMU, and expanded GPS sections', async ({ page }) => {
