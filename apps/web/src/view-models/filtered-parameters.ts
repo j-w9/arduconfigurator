@@ -34,19 +34,19 @@ export function parameterSearchPredicate(
   return (id, label) => fuzzyScoreFields(query, [id, label]) !== null
 }
 
-/** Translate a * / ? glob into an anchored case-insensitive RegExp. */
+/** Translate a * / ? glob into a case-insensitive, substring-matched RegExp. */
 function globToRegExp(query: string): RegExp {
-  // Escape regex metachars, then translate * → .* and ? → . — case
-  // insensitive so 'arming_*' matches 'ARMING_CHECK'. Anchor with
-  // ^…$ so the glob behaves like a whole-token match (a bare '*'
-  // matches everything, '*VOLT*' is contains-style).
+  // Escape regex metachars, then translate * → .* and ? → . (case-insensitive,
+  // so 'arming_*' matches 'ARMING_CHECK'). Deliberately NOT anchored: param
+  // names are long (ATC_RAT_RLL_P), so an operator typing 'RLL*' or '*RLL'
+  // expects to FIND the RLL params, not "must start/end with RLL" (which
+  // matched nothing and read as broken). Unanchored = contains-style: 'RLL*',
+  // '*RLL', '*RLL*', 'ATC*RLL' all hit ATC_RAT_RLL_P; a bare '*' matches all.
   return new RegExp(
-    '^' +
-      query
-        .replace(/[\\^$.+(){}[\]|]/g, '\\$&')
-        .replace(/\*/g, '.*')
-        .replace(/\?/g, '.') +
-      '$',
+    query
+      .replace(/[\\^$.+(){}[\]|]/g, '\\$&')
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.'),
     'i'
   )
 }

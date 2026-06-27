@@ -43,10 +43,19 @@ describe('buildFilteredParameters', () => {
     expect(ids(buildFilteredParameters(inputs(params, '   ')))).toEqual(['ARMING_CHECK', 'BATT_MONITOR', 'GPS_TYPE'])
   })
 
-  it('treats a query containing * as a case-insensitive anchored glob', () => {
+  it('treats a query containing * as a case-insensitive substring glob', () => {
     const params = [param('ARMING_CHECK'), param('ARMING_RUDDER'), param('BATT_ARMVOLT')]
     // `ARMING_*` matches the two ARMING_ ids but not the one that merely contains "ARM".
     expect(ids(buildFilteredParameters(inputs(params, 'arming_*')))).toEqual(['ARMING_CHECK', 'ARMING_RUDDER'])
+  })
+
+  it('matches wildcards as substring so RLL*, *RLL, *RLL* all find a mid-name token', () => {
+    const params = [param('ATC_RAT_RLL_P'), param('ATC_RAT_PIT_P'), param('BATT_MONITOR')]
+    // The token RLL is in the MIDDLE of the id — anchored globs returned nothing
+    // here and read as "wildcards are broken".
+    for (const query of ['RLL*', '*RLL', '*RLL*', 'ATC*RLL*']) {
+      expect(ids(buildFilteredParameters(inputs(params, query)))).toEqual(['ATC_RAT_RLL_P'])
+    }
   })
 
   it('supports ? as a single-character glob and matches on the catalog label', () => {
@@ -76,10 +85,12 @@ describe('parameterSearchPredicate', () => {
     expect(parameterSearchPredicate('   ')).toBeNull()
   })
 
-  it('glob mode matches id or label, anchored and case-insensitive', () => {
+  it('glob mode matches id or label, substring and case-insensitive', () => {
     const match = parameterSearchPredicate('arming_*')!
     expect(match('ARMING_CHECK', undefined)).toBe(true)
     expect(match('BATT_ARMVOLT', undefined)).toBe(false)
+    // Mid-name token via wildcard (the previously-broken case).
+    expect(parameterSearchPredicate('*RLL*')!('ATC_RAT_RLL_P', undefined)).toBe(true)
     const byLabel = parameterSearchPredicate('*Throttle*')!
     expect(byLabel('XYZ_1', 'Throttle minimum')).toBe(true)
     expect(byLabel('XYZ_2', undefined)).toBe(false)
