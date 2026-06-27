@@ -326,6 +326,10 @@ export class ArduPilotConfiguratorRuntime {
   // (backgrounded tab). Whichever of rAF / timer fires first flushes and
   // cancels the other.
   private emitTimer: ReturnType<typeof setTimeout> | undefined
+  // During a batch write, emit() coalesces to the timer interval only (no
+  // per-frame rAF) so the heavy snapshot render can't starve inbound-frame
+  // processing and crawl the batch on slow links/large apps.
+  private batchEmitMode = false
   private readonly subscriptions: Unsubscribe[]
   private readonly vehicleWaiters = new Set<VehicleWaiter>()
   private readonly parameterSyncWaiters = new ParameterSyncWaiterSet()
@@ -817,6 +821,12 @@ export class ArduPilotConfiguratorRuntime {
 
     const total = requests.length
     let processed = 0
+    // Throttle snapshot emits to ~4/s for the duration so the per-write app
+    // render doesn't starve the batch (callers still get smooth progress via
+    // onProgress, which is independent of the snapshot). A final flush below
+    // pushes the terminal state.
+    this.batchEmitMode = true
+    try {
     for (const request of requests) {
       const known = this.parameters.get(request.paramId)
       if (known && approximatelyEqualParameterValue(known.value, request.paramValue, options.tolerance)) {
@@ -888,6 +898,12 @@ export class ArduPilotConfiguratorRuntime {
           error
         )
       }
+    }
+    } finally {
+      // Restore normal per-frame emits and push the terminal snapshot now.
+      this.batchEmitMode = false
+      this.cancelScheduledEmit()
+      this.flushEmit()
     }
 
     return result
@@ -2183,6 +2199,14 @@ export class ArduPilotConfiguratorRuntime {
     const run = () => {
       this.cancelScheduledEmit()
       this.flushEmit()
+    }
+    if (this.batchEmitMode) {
+      // Batch write: coalesce to the timer interval only (skip per-frame rAF).
+      // The full-snapshot rebuild + app re-render is expensive; doing it ~4x/s
+      // instead of ~60x/s frees the main thread to process the PARAM_VALUE
+      // readbacks that resolve each write, so the batch runs at link speed.
+      this.emitTimer = setTimeout(run, EMIT_COALESCE_MAX_MS)
+      return
     }
     this.emitHandle = requestAnimationFrame(run)
     // rAF is suspended entirely in a hidden tab; the timer still fires
