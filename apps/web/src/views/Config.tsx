@@ -148,37 +148,55 @@ export function ConfigView(props: ConfigViewProps) {
                       )
                     }
                     const hasOptions = (parameter.definition?.options ?? []).length > 0
-                    if (parameter.definition?.bitmask && hasOptions) {
-                      return (
+                    const editor =
+                      parameter.definition?.bitmask && hasOptions ? (
                         <ScopedBitmaskField
-                          key={field.paramId}
                           parameter={parameter}
                           liveValue={parameter.value}
                           editedValues={editedValues}
                           onChange={onEditChange}
                           draftStatusById={draftStatusById}
                         />
+                      ) : hasOptions ? (
+                        <ScopedSelectField
+                          parameter={parameter}
+                          liveValue={parameter.value}
+                          editedValues={editedValues}
+                          onChange={onEditChange}
+                          draftStatusById={draftStatusById}
+                        />
+                      ) : (
+                        <ScopedField
+                          parameter={parameter}
+                          liveValue={parameter.value}
+                          editedValues={editedValues}
+                          onChange={onEditChange}
+                          draftStatusById={draftStatusById}
+                          stepFallback={field.unit === 'rad' ? 0.001 : 1}
+                        />
                       )
-                    }
-                    return hasOptions ? (
-                      <ScopedSelectField
-                        key={field.paramId}
-                        parameter={parameter}
-                        liveValue={parameter.value}
-                        editedValues={editedValues}
-                        onChange={onEditChange}
-                        draftStatusById={draftStatusById}
-                      />
-                    ) : (
-                      <ScopedField
-                        key={field.paramId}
-                        parameter={parameter}
-                        liveValue={parameter.value}
-                        editedValues={editedValues}
-                        onChange={onEditChange}
-                        draftStatusById={draftStatusById}
-                        stepFallback={field.unit === 'rad' ? 0.001 : 1}
-                      />
+                    // Per-param "i" — hover/focus reveals the ArduPilot
+                    // description right next to the field it documents.
+                    const description = parameter.definition?.description
+                    return (
+                      <div key={field.paramId} className="config-section__field-row">
+                        {editor}
+                        {description ? (
+                          <span className="config-section__info-wrap">
+                            <button
+                              type="button"
+                              className="config-section__info"
+                              data-testid={`config-field-info-${field.paramId}`}
+                              aria-label={`About ${parameter.definition?.label ?? field.label}`}
+                            >
+                              i
+                            </button>
+                            <span className="config-section__info-tip" role="tooltip">
+                              {description}
+                            </span>
+                          </span>
+                        ) : null}
+                      </div>
                     )
                   })}
                 </div>

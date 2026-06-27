@@ -973,6 +973,22 @@ test.describe('Config view', () => {
     await expect(esc.getByText('Output 1').first()).toBeVisible()
   })
 
+  test('Config editable fields expose a per-param info "i" tooltip', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+    const info = page.locator('[data-testid^="config-field-info-"]').first()
+    await info.scrollIntoViewIfNeeded()
+    await expect(info).toBeVisible()
+    // Tooltip is hidden until hover, then reveals the param description.
+    const tip = info.locator('xpath=following-sibling::span[@role="tooltip"]')
+    await expect(tip).toBeHidden()
+    await info.hover()
+    await expect(tip).toBeVisible()
+    await expect(tip).not.toHaveText('')
+  })
+
   test('exposes system-rates, active-IMU, and expanded GPS sections', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
