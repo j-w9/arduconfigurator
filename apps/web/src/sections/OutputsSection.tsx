@@ -50,6 +50,7 @@ import { formatParameterValue, normalizeBitmaskValue } from '../parameter-format
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
 import { QUADPLANE_ESC_PARAM_IDS } from '../param-groups'
+import { buildPlaneControlSurfaces } from '../view-models/plane-control-surfaces'
 import {
   OUTPUTS_BENCH_TARGET_ID,
   OUTPUTS_MOTOR_CONFIRM_BUTTON_ID,
@@ -352,6 +353,15 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   )
   const quadplaneEscStagedDrafts = quadplaneEscDraftEntries.filter((entry) => entry.status === 'staged')
   const quadplaneEscInvalidDrafts = quadplaneEscDraftEntries.filter((entry) => entry.status === 'invalid')
+
+  // Fixed-wing control-surface checklist (Plane/QuadPlane): per-surface channel,
+  // reversal, and L/R pairing — the things to verify before flight.
+  const planeControlSurfaces = isCopterVehicle
+    ? { surfaces: [], mappedCount: 0, incompleteCount: 0 }
+    : buildPlaneControlSurfaces(
+        outputMapping.outputs,
+        (channelNumber) => readRoundedParameter(snapshot, `SERVO${channelNumber}_REVERSED`) === 1
+      )
 
   return (
       <OutputsView
@@ -656,6 +666,41 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                               </section>
                             ))
                           )}
+                          {planeControlSurfaces.surfaces.length > 0 ? (
+                            <section className="vehicle-output-group" data-testid="plane-control-surfaces">
+                              <header className="vehicle-output-group__header">
+                                {`Control surfaces · ${planeControlSurfaces.mappedCount} mapped${
+                                  planeControlSurfaces.incompleteCount > 0
+                                    ? ` · ${planeControlSurfaces.incompleteCount} incomplete`
+                                    : ''
+                                }`}
+                              </header>
+                              <div className="vehicle-output-group__rows">
+                                {planeControlSurfaces.surfaces.map((surface) => (
+                                  <div
+                                    key={surface.key}
+                                    className="vehicle-output-row vehicle-output-row--control-surface"
+                                    data-testid={`plane-surface-${surface.key}`}
+                                  >
+                                    <strong>{surface.label}</strong>
+                                    <span>
+                                      {surface.channels
+                                        .map(
+                                          (channel) =>
+                                            `OUT${channel.channelNumber}${channel.side ? ` ${channel.side}` : ''}${
+                                              channel.reversed ? ' (rev)' : ''
+                                            }`
+                                        )
+                                        .join(', ')}
+                                    </span>
+                                    <StatusBadge tone={surface.status === 'incomplete' ? 'warning' : 'success'}>
+                                      {surface.note ?? 'mapped'}
+                                    </StatusBadge>
+                                  </div>
+                                ))}
+                              </div>
+                            </section>
+                          ) : null}
                           <ul className="output-note-list">
                             <li>Edit any assignment, PWM range, trim, or reverse in the Servos tab.</li>
                             <li>Powered output movement tests for {airframe.frameClassLabel} (control-surface sweeps, steering/throttle, thrusters) are a guarded follow-up — use the transmitter on the bench meanwhile.</li>

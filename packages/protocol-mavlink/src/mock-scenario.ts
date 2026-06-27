@@ -801,6 +801,14 @@ const arduplaneMockParameters: ParameterState = {
   Q_ENABLE: 1,
   Q_FRAME_CLASS: 1,
   Q_FRAME_TYPE: 1,
+  // Fixed-wing control surfaces (the base mock leaves SERVO5-8 unassigned) so the
+  // demo is a realistic QuadPlane — lift motors on SERVO1-4, surfaces on SERVO5-8
+  // — and the plane control-surface checklist has something to show.
+  SERVO5_FUNCTION: 4, // Aileron
+  SERVO6_FUNCTION: 19, // Elevator
+  SERVO7_FUNCTION: 21, // Rudder
+  SERVO8_FUNCTION: 70, // Throttle
+  SERVO6_REVERSED: 1, // elevator reversed, to exercise the reversal readout
   // VTOL transition + tiltrotor seed so the demo Plane exercises those Tuning
   // groups. Q_TILT_ENABLE=1 makes the demo a tiltrotor (motors 1+3 tilt).
   Q_TRANSITION_MS: 5000,

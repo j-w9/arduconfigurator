@@ -1941,6 +1941,21 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByRole('button', { name: 'Reorder Motor Outputs' })).toHaveCount(0)
   })
 
+  test('a Plane shows the control-surface checklist with channel + reversal', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo-plane')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await openView(page, 'motors')
+    const surfaces = page.getByTestId('plane-control-surfaces')
+    await expect(surfaces).toBeVisible()
+    // The demo seeds aileron/elevator/rudder/throttle (SERVO5-8), elevator reversed.
+    for (const key of ['aileron', 'elevator', 'rudder', 'throttle']) {
+      await expect(page.getByTestId(`plane-surface-${key}`)).toBeVisible()
+    }
+    await expect(page.getByTestId('plane-surface-elevator')).toContainText('(rev)')
+  })
+
   test('a QuadPlane exposes the Q_M_* lift-motor ESC surface in the ESC & Protocol task', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
