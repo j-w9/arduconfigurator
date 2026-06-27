@@ -1897,6 +1897,26 @@ test.describe('ArduPlane demo', () => {
     ).toHaveCount(1)
   })
 
+  test('switching a Plane to the Tailsitter frame class reveals the Tailsitter tuning group', async ({ page }) => {
+    await page.goto('/?guidedSetupStep=airframe')
+    await page.getByTestId('transport-mode-select').selectOption('demo-plane')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    // Set Q_FRAME_CLASS (the 2nd select: Q_ENABLE, Q_FRAME_CLASS, Q_FRAME_TYPE) to
+    // Tailsitter. That stages a global draft the Tuning gating reads.
+    const frameConfig = page.getByTestId('plane-frame-config')
+    await frameConfig.locator('select').nth(1).selectOption({ label: 'Tailsitter' })
+
+    await openView(page, 'tuning')
+    const tailsitterGroup = page.getByTestId('tuning-plane-tailsitter-group')
+    await expect(tailsitterGroup).toBeVisible()
+    // It populates from the seeded Q_TAILSIT_* params (real editable controls,
+    // not the "not reporting" fallback).
+    await expect(page.getByTestId('tuning-plane-tailsitter-controls')).toBeVisible()
+    await expect(tailsitterGroup.locator('input, select').first()).toBeVisible()
+  })
+
   test('a Copter does not show the Plane frame configuration', async ({ page }) => {
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo')

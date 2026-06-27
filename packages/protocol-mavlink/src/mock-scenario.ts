@@ -818,6 +818,27 @@ const arduplaneMockParameters: ParameterState = {
   Q_TILT_FIX_ANGLE: 0,
   Q_TILT_FIX_GAIN: 0,
   Q_TILT_WING_FLAP: 0,
+  // Tailsitter family (ArduPlane defaults) so the demo streams them — the
+  // Tailsitter tuning group stays hidden here (Q_FRAME_CLASS=1, ENABLE=0) but
+  // populates if the frame class is switched to Tailsitter.
+  Q_TAILSIT_ENABLE: 0,
+  Q_TAILSIT_ANGLE: 45,
+  Q_TAILSIT_ANG_VT: 0,
+  Q_TAILSIT_INPUT: 0,
+  Q_TAILSIT_RLL_MX: 0,
+  Q_TAILSIT_MOTMX: 0,
+  Q_TAILSIT_VFGAIN: 0,
+  Q_TAILSIT_VHGAIN: 0.5,
+  Q_TAILSIT_VHPOW: 2.5,
+  Q_TAILSIT_GSCMAX: 2,
+  Q_TAILSIT_GSCMIN: 0.4,
+  Q_TAILSIT_GSCMSK: 1,
+  Q_TAILSIT_RAT_FW: 50,
+  Q_TAILSIT_RAT_VT: 50,
+  Q_TAILSIT_THR_VT: -1,
+  Q_TAILSIT_VT_R_P: 1,
+  Q_TAILSIT_VT_P_P: 1,
+  Q_TAILSIT_VT_Y_P: 1,
   // Fixed-wing surface tuning / attitude family (ArduPlane defaults) so the
   // demo Plane exercises the real fixed-wing Tuning catalog, not just VTOL.
   RLL_RATE_P: 0.08,
