@@ -53,6 +53,8 @@ export function AttitudePreview({
       vehicleType={snapshot.vehicle?.vehicle}
       frameClassLabel={frameClassLabel}
       frameTypeLabel={frameTypeLabel}
+      quadFrameClass={readRoundedParameter(snapshot, 'Q_FRAME_CLASS')}
+      quadFrameType={readRoundedParameter(snapshot, 'Q_FRAME_TYPE')}
       compact={compact}
       showReadouts={showReadouts}
       testId={compact ? undefined : 'setup-craft-preview'}
@@ -152,6 +154,8 @@ export function StickCraftPreview({
         vehicleType={vehicleType}
         frameClassLabel={frameClassLabel}
         frameTypeLabel={frameTypeLabel}
+        quadFrameClass={readRoundedParameter(snapshot, 'Q_FRAME_CLASS')}
+        quadFrameType={readRoundedParameter(snapshot, 'Q_FRAME_TYPE')}
         compact
         showReadouts={false}
         testId="receiver-stick-craft"

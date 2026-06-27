@@ -238,9 +238,8 @@ test.describe('browser configurator regression flows', () => {
     const planePreview = page.getByTestId('setup-craft-preview')
     await expect(planePreview).toBeVisible()
     // The demo Plane seeds Q_ENABLE=1 + Q_TILT_ENABLE=1, so it resolves to the
-    // tiltrotor craft model (a plane-family mesh with tilting wing motors), not
-    // the copter mixer.
-    await expect(planePreview).toHaveAttribute('data-craft-model', 'tiltrotor')
+    // VTOL craft model (the Alti Transition mesh), not the copter mixer.
+    await expect(planePreview).toHaveAttribute('data-craft-model', 'alti')
   })
 
   test('guided setup marks compass complete after the in-app onboard mag calibration succeeds', async ({ page }) => {

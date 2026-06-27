@@ -15,6 +15,23 @@ Retain upstream license obligations when redistributing these files.
 
 ----------------------------------------------------------------------
 
+Plane / VTOL meshes — bixler.gltf, alti.gltf
+
+These two are the ArduPilot fixed-wing + VTOL craft previews, copied from the
+ArduPilot Configurator project:
+https://github.com/ArduPilot/ArduConfigurator
+
+Source location:
+- resources/models/bixler.gltf                   -> bixler.gltf  (fixed-wing)
+- resources/models/alti-transition3.propped.gltf -> alti.gltf    (VTOL / tiltrotor)
+
+Per that project's resources/models/gltf-notes.txt its aircraft meshes are sourced
+from free, public-domain / unlicensed models ("we deliberately do NOT have any
+licensed models"); the project itself is GPL-3.0. Retain that provenance when
+redistributing.
+
+----------------------------------------------------------------------
+
 Exception — plane.gltf, rover.gltf, sub.gltf
 
 These three are NOT from Betaflight. They are original models authored for this project

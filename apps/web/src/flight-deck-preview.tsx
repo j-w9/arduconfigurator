@@ -16,6 +16,10 @@ interface FlightDeckPreviewProps {
   vehicleType?: string
   frameClassLabel?: string
   frameTypeLabel?: string
+  // QuadPlane lift geometry (Q_FRAME_CLASS / Q_FRAME_TYPE values), used to draw
+  // the right number/layout of lift rotors on QuadPlane + tiltrotor meshes.
+  quadFrameClass?: number
+  quadFrameType?: number
   compact?: boolean
   showReadouts?: boolean
   testId?: string
@@ -97,7 +101,8 @@ function mountModel(
   state: ModelSceneState,
   model: THREE.Object3D,
   compact: boolean,
-  scaleMode: 'betaflight' | 'fit' = 'fit'
+  scaleMode: 'betaflight' | 'fit' = 'fit',
+  fitTargetSize?: number
 ): void {
   if (state.model) {
     state.attitudeGroup.remove(state.model)
@@ -117,8 +122,10 @@ function mountModel(
 
     const maxDimension = Math.max(size.x, size.y, size.z, 1)
     // Smaller footprint so the craft doesn't dominate the panel (was 68/78,
-    // then 58/66 — still read as too big, so down again to 48/54).
-    const targetSize = compact ? 48 : 54
+    // then 58/66 — still read as too big, so down again to 48/54). Plane-family
+    // models pass an explicit target so they read at the same footprint as the
+    // betaflight-scaled GLTF copters.
+    const targetSize = fitTargetSize ?? (compact ? 48 : 54)
     const scale = targetSize / maxDimension
     model.scale.setScalar(scale)
   }
@@ -284,36 +291,56 @@ function createPlaneModel(): THREE.Group {
   return plane
 }
 
-// QuadPlane: the fixed-wing airframe plus four lift rotors on twin fore-aft
-// booms, props horizontal for hover.
-function createQuadPlaneModel(): THREE.Group {
-  const craft = createPlaneModel()
-  const boomMat = new THREE.MeshStandardMaterial({ color: 0x182435, metalness: 0.35, roughness: 0.55 })
-  const boomX = 1.05
-  const boomLen = 2.7
-  for (const side of [-1, 1]) {
-    const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, boomLen, 12), boomMat)
-    boom.rotation.x = Math.PI / 2
-    boom.position.set(side * boomX, 0, 0)
-    craft.add(boom)
-    craft.add(createMotor(side * boomX, -boomLen / 2 + 0.25, 0x61dafb)) // front lift
-    craft.add(createMotor(side * boomX, boomLen / 2 - 0.25, 0xff815f)) // rear lift
+type LiftLayout = ReadonlyArray<{ x: number; z: number }>
+
+// Map the QuadPlane lift geometry (Q_FRAME_CLASS / Q_FRAME_TYPE) onto the same
+// rotor layouts the copter models use, so the mesh shows the right number of
+// lift rotors in the right arrangement (quad/hexa/octa/Y6/tri, X vs +).
+function quadplaneLiftLayout(qFrameClass: number | undefined, qFrameType: number | undefined): LiftLayout {
+  const isPlus = qFrameType === 0 // ARDUPLANE_Q_FRAME_TYPE: 0 = Plus, 1 = X
+  let key: string
+  switch (qFrameClass) {
+    case 2:
+      key = isPlus ? 'hex_plus' : 'hex_x' // Hexa
+      break
+    case 3:
+    case 4:
+      key = isPlus ? 'octa_plus' : 'octa_x' // Octa / OctaQuad
+      break
+    case 5:
+      key = 'y6' // Y6
+      break
+    case 7:
+      key = 'tricopter' // Tri
+      break
+    default:
+      key = isPlus ? 'quad_plus' : 'quad_x' // Quad (and unknown)
   }
+  return motorLayoutForModel(key)
+}
+
+// QuadPlane: the fixed-wing airframe plus the multirotor lift frame implied by
+// Q_FRAME_CLASS/Q_FRAME_TYPE — arms + horizontal lift rotors straddling the body.
+function createQuadPlaneModel(liftLayout: LiftLayout): THREE.Group {
+  const craft = createPlaneModel()
+  liftLayout.forEach(({ x, z }, index) => {
+    craft.add(createArm(Math.hypot(x, z), Math.atan2(z, x)))
+    craft.add(createMotor(x, z, index % 2 === 0 ? 0x61dafb : 0xff815f))
+  })
   return craft
 }
 
-// Tiltrotor: the fixed-wing airframe with wing-mounted motors tilted forward,
-// to read as tilting nacelles rather than fixed lift rotors.
-function createTiltrotorModel(): THREE.Group {
+// Tiltrotor: the same lift frame, but the rotors tilt forward to read as
+// tilting nacelles rather than fixed lift rotors.
+function createTiltrotorModel(liftLayout: LiftLayout): THREE.Group {
   const craft = createPlaneModel()
   const tiltForward = -Math.PI / 2.4
-  for (const side of [-1, 1]) {
-    for (const offset of [0.95, 1.85]) {
-      const motor = createMotor(side * offset, -0.3, side > 0 ? 0x61dafb : 0xff815f)
-      motor.rotation.x = tiltForward
-      craft.add(motor)
-    }
-  }
+  liftLayout.forEach(({ x, z }, index) => {
+    craft.add(createArm(Math.hypot(x, z), Math.atan2(z, x)))
+    const motor = createMotor(x, z, index % 2 === 0 ? 0x61dafb : 0xff815f)
+    motor.rotation.x = tiltForward
+    craft.add(motor)
+  })
   return craft
 }
 
@@ -376,15 +403,17 @@ function createSubModel(): THREE.Group {
   )
 }
 
-function createProceduralModel(modelFile: string): THREE.Group {
-  if (modelFile === 'plane') {
+function createProceduralModel(modelFile: string, liftLayout: LiftLayout = []): THREE.Group {
+  // 'bixler' / 'alti' are real GLTF meshes; these procedural builds are only the
+  // graceful fallback if the asset fails to load.
+  if (modelFile === 'plane' || modelFile === 'bixler') {
     return createPlaneModel()
   }
   if (modelFile === 'quadplane') {
-    return createQuadPlaneModel()
+    return createQuadPlaneModel(liftLayout)
   }
-  if (modelFile === 'tiltrotor') {
-    return createTiltrotorModel()
+  if (modelFile === 'tiltrotor' || modelFile === 'alti') {
+    return createTiltrotorModel(liftLayout)
   }
   if (modelFile === 'rover') {
     return createRoverModel()
@@ -476,17 +505,13 @@ function modelFileForAirframe(
   // so they never fall through to the quad default.
   const vehicle = (vehicleType ?? '').toLowerCase()
   if (vehicle.includes('plane')) {
-    // Distinguish the VTOL subtypes the airframe label now resolves
-    // (Tiltrotor QuadPlane / QuadPlane) so they render their lift hardware
-    // instead of a bare fixed-wing. Tailsitter keeps the plane silhouette.
+    // Real upstream aircraft meshes (ArduPilot/ArduConfigurator, public domain):
+    // a Bixler for fixed-wing, an Alti Transition for any VTOL subtype. The
+    // airframe label resolves the subtype (QuadPlane / Tiltrotor / Tailsitter).
     const planeClass = frameClassLabel?.toLowerCase() ?? ''
-    if (planeClass.includes('tiltrotor')) {
-      return 'tiltrotor'
-    }
-    if (planeClass.includes('quadplane')) {
-      return 'quadplane'
-    }
-    return 'plane'
+    const isVtol =
+      planeClass.includes('quadplane') || planeClass.includes('tiltrotor') || planeClass.includes('tailsitter')
+    return isVtol ? 'alti' : 'bixler'
   }
   if (vehicle.includes('rover') || vehicle.includes('boat')) {
     return 'rover'
@@ -662,6 +687,8 @@ export function FlightDeckPreview({
   vehicleType,
   frameClassLabel,
   frameTypeLabel,
+  quadFrameClass,
+  quadFrameType,
   compact = false,
   showReadouts = true,
   testId,
@@ -688,6 +715,16 @@ export function FlightDeckPreview({
   const modelFile = useMemo(
     () => modelFileForAirframe(frameClassLabel, frameTypeLabel, vehicleType),
     [frameClassLabel, frameTypeLabel, vehicleType]
+  )
+
+  // Lift-rotor layout for the QuadPlane / tiltrotor meshes, derived from the
+  // QuadPlane frame geometry so the rotor count + arrangement track the FC.
+  const liftLayout = useMemo<LiftLayout>(
+    () =>
+      modelFile === 'quadplane' || modelFile === 'tiltrotor' || modelFile === 'alti'
+        ? quadplaneLiftLayout(quadFrameClass, quadFrameType)
+        : [],
+    [modelFile, quadFrameClass, quadFrameType]
   )
 
   useEffect(() => {
@@ -832,6 +869,21 @@ export function FlightDeckPreview({
     const modelUrl = `${import.meta.env.BASE_URL}models/${modelFile}.gltf`
     let cancelled = false
 
+    // Plane-family craft (fixed-wing GLTF + the procedural QuadPlane/tiltrotor)
+    // are natively ~half the quad GLTF's width, so the betaflight scalar / the
+    // default fit target rendered them much smaller than the copter. Fit them to
+    // the quad's on-screen footprint: quad_x.gltf is 8.22 native units, so match
+    // that world size at the betaflight scalar.
+    const planeFamily =
+      modelFile === 'bixler' ||
+      modelFile === 'alti' ||
+      modelFile === 'plane' ||
+      modelFile === 'quadplane' ||
+      modelFile === 'tiltrotor'
+    // 1.15x the quad footprint — planes read a touch small at parity given the
+    // thin fuselage, so nudge them slightly larger than the copter.
+    const planeFitTarget = 8.22 * (compact ? 15 : 16.5) * 1.15
+
     loader.load(
       modelUrl,
       (gltf) => {
@@ -839,26 +891,29 @@ export function FlightDeckPreview({
           return
         }
 
-        mountModel(state, gltf.scene, compact, 'betaflight')
+        if (planeFamily) {
+          mountModel(state, gltf.scene, compact, 'fit', planeFitTarget)
+        } else {
+          mountModel(state, gltf.scene, compact, 'betaflight')
+        }
       },
       undefined,
       () => {
         if (!sceneStateRef.current) {
           return
         }
-        // The plane-family procedural models (quadplane / tiltrotor) share the
-        // fixed-wing geometry scale, so size them with the same 'betaflight'
-        // scalar the GLTF plane/copter use — otherwise 'fit' renders them much
-        // smaller than the quad. Other procedural models keep 'fit'.
-        const planeFamily = modelFile === 'quadplane' || modelFile === 'tiltrotor'
-        mountModel(state, createProceduralModel(modelFile), compact, planeFamily ? 'betaflight' : 'fit')
+        if (planeFamily) {
+          mountModel(state, createProceduralModel(modelFile, liftLayout), compact, 'fit', planeFitTarget)
+        } else {
+          mountModel(state, createProceduralModel(modelFile), compact, 'fit')
+        }
       }
     )
 
     return () => {
       cancelled = true
     }
-  }, [compact, modelFile])
+  }, [compact, modelFile, liftLayout])
 
   useEffect(() => {
     const headingOffsetDeg = benchHeadingOffsetDeg ?? 0
