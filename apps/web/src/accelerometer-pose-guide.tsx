@@ -153,23 +153,6 @@ export function AccelerometerPoseGuide({
         </div>
         <p>{current.instruction}</p>
       </div>
-
-      <div className="accelerometer-pose-guide__steps" aria-label="Accelerometer calibration posture sequence">
-        {POSES.map((pose, index) => (
-          <div
-            key={pose.id}
-            className={`accelerometer-pose-guide__step${pose.id === current.id ? ' is-current' : ''}${
-              index < POSES.findIndex((candidate) => candidate.id === current.id) ? ' is-complete' : ''
-            }${pose.id === current.id ? ` is-${validation.tone}` : ''}`}
-          >
-            <span className="accelerometer-pose-guide__step-index">{index + 1}</span>
-            <div className="accelerometer-pose-guide__step-visual">
-              <img src={pose.imageSrc} alt="" aria-hidden="true" />
-            </div>
-            <strong>{pose.title}</strong>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }

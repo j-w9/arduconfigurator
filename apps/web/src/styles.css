@@ -2475,8 +2475,15 @@ textarea:focus {
   padding: 0;
 }
 
-.setup-gui-box__notice-filter {
-  padding: 12px 0 8px;
+.setup-gui-box__notice-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setup-gui-box__notice-controls .setup-gui-box__notice-filter-input {
+  flex: 1;
+  min-width: 0;
 }
 
 .setup-gui-box__notice-filter-input {
@@ -3664,9 +3671,7 @@ textarea:focus {
 }
 
 .accelerometer-pose-guide--compact {
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
 }
 
 .accelerometer-pose-guide__hero {

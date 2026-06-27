@@ -5137,23 +5137,52 @@ export function App() {
                                   }`
                                 : 'quiet'}
                             </StatusBadge>
-                            <button
-                              type="button"
-                              className="setup-gui-box__icon-button"
-                              data-testid="setup-notices-copy-all"
-                              onClick={() => {
-                                if (setupStatusEntries.length === 0) {
-                                  return
-                                }
-                                const payload = setupStatusEntries
-                                  .map((entry) => `[${entry.severity.toUpperCase()}] ${entry.text}`)
-                                  .join('\n')
-                                const finish = () => {
-                                  setNoticesCopied(true)
-                                  window.setTimeout(() => setNoticesCopied(false), 1500)
-                                }
-                                if (navigator.clipboard?.writeText) {
-                                  navigator.clipboard.writeText(payload).then(finish).catch(() => {
+                          </div>
+                          <div className="setup-gui-box__body">
+                            {/* Controls live in the body (normal flow), not the
+                                floating titlebar pill — the pill grows tall when
+                                the count badge wraps and would cover them. */}
+                            <div className="setup-gui-box__notice-controls">
+                              {productMode === 'expert' ? (
+                                <input
+                                  type="search"
+                                  data-testid="setup-notices-search"
+                                  className="setup-gui-box__notice-filter-input"
+                                  placeholder="Filter notices…"
+                                  value={noticeFilter}
+                                  onChange={(event) => setNoticeFilter(event.target.value)}
+                                  aria-label="Filter recent notices"
+                                />
+                              ) : null}
+                              <button
+                                type="button"
+                                className="setup-gui-box__icon-button"
+                                data-testid="setup-notices-copy-all"
+                                onClick={() => {
+                                  if (setupStatusEntries.length === 0) {
+                                    return
+                                  }
+                                  const payload = setupStatusEntries
+                                    .map((entry) => `[${entry.severity.toUpperCase()}] ${entry.text}`)
+                                    .join('\n')
+                                  const finish = () => {
+                                    setNoticesCopied(true)
+                                    window.setTimeout(() => setNoticesCopied(false), 1500)
+                                  }
+                                  if (navigator.clipboard?.writeText) {
+                                    navigator.clipboard.writeText(payload).then(finish).catch(() => {
+                                      const textarea = document.createElement('textarea')
+                                      textarea.value = payload
+                                      textarea.setAttribute('readonly', '')
+                                      textarea.style.position = 'fixed'
+                                      textarea.style.opacity = '0'
+                                      document.body.appendChild(textarea)
+                                      textarea.select()
+                                      try { document.execCommand('copy') } catch {}
+                                      document.body.removeChild(textarea)
+                                      finish()
+                                    })
+                                  } else {
                                     const textarea = document.createElement('textarea')
                                     textarea.value = payload
                                     textarea.setAttribute('readonly', '')
@@ -5164,52 +5193,26 @@ export function App() {
                                     try { document.execCommand('copy') } catch {}
                                     document.body.removeChild(textarea)
                                     finish()
-                                  })
-                                } else {
-                                  const textarea = document.createElement('textarea')
-                                  textarea.value = payload
-                                  textarea.setAttribute('readonly', '')
-                                  textarea.style.position = 'fixed'
-                                  textarea.style.opacity = '0'
-                                  document.body.appendChild(textarea)
-                                  textarea.select()
-                                  try { document.execCommand('copy') } catch {}
-                                  document.body.removeChild(textarea)
-                                  finish()
-                                }
-                              }}
-                              disabled={setupStatusEntries.length === 0}
-                              title="Copy all notices to clipboard"
-                              aria-label="Copy all notices to clipboard"
-                            >
-                              {noticesCopied ? 'Copied' : 'Copy all'}
-                            </button>
-                            <button
-                              type="button"
-                              className="setup-gui-box__icon-button"
-                              data-testid="setup-notices-clear-all"
-                              onClick={() => void runtime.clearStatusTexts()}
-                              disabled={setupStatusEntries.length === 0}
-                              title="Clear all notices (local display only — the FC keeps sending new ones)"
-                              aria-label="Clear all notices"
-                            >
-                              Clear all
-                            </button>
-                          </div>
-                          {productMode === 'expert' ? (
-                            <div className="setup-gui-box__notice-filter">
-                              <input
-                                type="search"
-                                data-testid="setup-notices-search"
-                                className="setup-gui-box__notice-filter-input"
-                                placeholder="Filter notices…"
-                                value={noticeFilter}
-                                onChange={(event) => setNoticeFilter(event.target.value)}
-                                aria-label="Filter recent notices"
-                              />
+                                  }
+                                }}
+                                disabled={setupStatusEntries.length === 0}
+                                title="Copy all notices to clipboard"
+                                aria-label="Copy all notices to clipboard"
+                              >
+                                {noticesCopied ? 'Copied' : 'Copy all'}
+                              </button>
+                              <button
+                                type="button"
+                                className="setup-gui-box__icon-button"
+                                data-testid="setup-notices-clear-all"
+                                onClick={() => void runtime.clearStatusTexts()}
+                                disabled={setupStatusEntries.length === 0}
+                                title="Clear all notices (local display only — the FC keeps sending new ones)"
+                                aria-label="Clear all notices"
+                              >
+                                Clear all
+                              </button>
                             </div>
-                          ) : null}
-                          <div className="setup-gui-box__body">
                             <div className="setup-gui-box__status-list setup-gui-box__status-list--scroll" data-testid="setup-notices-list">
                               {recentNotices.groups.length === 0 ? <span className="setup-gui-box__empty">No status text yet</span> : null}
                               {recentNotices.groups.map((group) => (
