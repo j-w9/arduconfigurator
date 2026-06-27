@@ -100,7 +100,7 @@ function validationStateForPose(
     return error < best.error ? { pose, error } : best
   }, { pose: POSES[0], error: poseErrorDegrees(POSES[0].id, normalizedRoll, normalizedPitch) })
 
-  if (currentError <= 18) {
+  if (currentError <= 25) {
     return {
       tone: 'ready',
       label: 'Pose aligned',
@@ -108,7 +108,11 @@ function validationStateForPose(
     }
   }
 
-  if (bestPose.pose.id !== currentPose && bestPose.error + 12 < currentError) {
+  // Only call it the WRONG pose when a DIFFERENT pose is clearly closer — a wide
+  // margin so a partially-tilted frame reads as "keep adjusting" rather than
+  // bouncing to "wrong pose" (poses are 90° apart; the slop near a target and
+  // around ±90° gimbal regions is generous).
+  if (bestPose.pose.id !== currentPose && bestPose.error + 30 < currentError) {
     return {
       tone: 'mismatch',
       label: 'Wrong pose',
