@@ -1,5 +1,6 @@
 import type { ParameterDefinition } from '@arduconfig/param-metadata'
 
+import { approximatelyEqualParameterValue } from './runtime-helpers.js'
 import type { ParameterState } from './types.js'
 
 export type ParameterDraftStatus = 'unchanged' | 'staged' | 'invalid'
@@ -223,7 +224,13 @@ function deriveParameterDraftEntry(
     }
   }
 
-  if (Object.is(parsedValue, parameter.value)) {
+  // Compare with the SAME tolerance the write path uses (relative 1e-6 +
+  // absolute floor) rather than exact bit-equality: MAVLink params are 32-bit
+  // floats on the wire, so an imported/preset 0.135 differs from the FC's
+  // 0.13500000536441803 by ~5e-9 — exact equality flagged hundreds of those as
+  // "changes" that the write then skipped, a misleading + slow review. Staging
+  // now matches what would actually be written.
+  if (approximatelyEqualParameterValue(parsedValue, parameter.value)) {
     return {
       id: paramId,
       label,

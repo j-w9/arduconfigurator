@@ -110,6 +110,17 @@ test('value equal to current is unchanged with delta 0; a real change is staged 
   assert.equal(changed.reason, undefined)
 })
 
+test('a draft within 32-bit float precision of the FC value is unchanged, not staged', () => {
+  // MAVLink params are float32 on the wire: the FC reports 0.135 as
+  // 0.13500000536441803. An imported/preset/edited "0.135" must NOT stage (and
+  // then write) hundreds of these as phantom changes.
+  const params = [param('ATC_RAT_RLL_P', Math.fround(0.135), def())]
+  const noop = entryFor(params, { ATC_RAT_RLL_P: '0.135' }, 'ATC_RAT_RLL_P')
+  assert.equal(noop.status, 'unchanged')
+  // A genuine tuning change still stages.
+  assert.equal(entryFor(params, { ATC_RAT_RLL_P: '0.18' }, 'ATC_RAT_RLL_P').status, 'staged')
+})
+
 test('surrounding whitespace is trimmed before parsing', () => {
   const params = [param('A', 1, def())]
   const e = entryFor(params, { A: '  8  ' }, 'A')
