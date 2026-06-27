@@ -129,6 +129,31 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   // selected operate on visible rows only, so a filtered bulk drop can
   // never touch rows the search is hiding.
   const searchPredicate = useMemo(() => parameterSearchPredicate(parameterSearch), [parameterSearch])
+  // Category filter (in addition to the text search). 'all' = no category
+  // restriction. Options are the distinct categories present in the synced
+  // tree, label-sorted.
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const categoryOf = (parameter: ParameterState): string | undefined =>
+    metadataCatalog.parameters[parameter.id]?.category ?? parameter.definition?.category
+  const categoryOptions = useMemo(() => {
+    const present = new Set<string>()
+    for (const parameter of snapshot.parameters) {
+      const category = categoryOf(parameter)
+      if (category) {
+        present.add(category)
+      }
+    }
+    return [...present].sort((left, right) => formatCategoryLabel(left).localeCompare(formatCategoryLabel(right)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot.parameters, metadataCatalog, formatCategoryLabel])
+  const displayedParameters = useMemo(
+    () =>
+      categoryFilter === 'all'
+        ? filteredParameters
+        : filteredParameters.filter((parameter) => categoryOf(parameter) === categoryFilter),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredParameters, categoryFilter, metadataCatalog]
+  )
   const visibleStagedGroups = useMemo(() => {
     if (!searchPredicate) {
       return stagedParameterGroups
@@ -183,7 +208,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   // Selected-parameter derived state — small enough to recompute here rather
   // than thread through the props.
   const selectedParameter =
-    filteredParameters.find((parameter) => parameter.id === selectedParameterId) ?? filteredParameters[0]
+    displayedParameters.find((parameter) => parameter.id === selectedParameterId) ?? displayedParameters[0]
   const selectedParameterDefinition = selectedParameter
     ? metadataCatalog.parameters[selectedParameter.id] ?? selectedParameter.definition
     : undefined
@@ -208,6 +233,19 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             onChange={(event) => setParameterSearch(event.target.value)}
             placeholder="Search parameters (e.g. ARMING_*, *VOLT*)"
           />
+          <select
+            data-testid="parameter-category-filter"
+            aria-label="Filter by category"
+            value={categoryFilter}
+            onChange={(event) => setCategoryFilter(event.target.value)}
+          >
+            <option value="all">All categories</option>
+            {categoryOptions.map((category) => (
+              <option key={category} value={category}>
+                {formatCategoryLabel(category)}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             data-testid="parameter-refresh-button"
@@ -710,7 +748,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             <span>Draft</span>
             <span>Actions</span>
           </div>
-          {filteredParameters.map((parameter) => {
+          {displayedParameters.map((parameter) => {
             const draft = parameterDraftById.get(parameter.id)
             // Prefer the upstream-enriched catalog definition so the raw
             // parameter table shows real descriptions/units/categories for the
@@ -815,7 +853,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             )
           })}
         </div>
-        {filteredParameters.length === 0 ? <p className="parameter-empty-state">No parameters match the current filter.</p> : null}
+        {displayedParameters.length === 0 ? <p className="parameter-empty-state">No parameters match the current filter.</p> : null}
       </Panel>
 
   )

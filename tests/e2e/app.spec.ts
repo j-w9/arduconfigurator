@@ -181,6 +181,26 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByLabel('FS_OPTIONS value')).toHaveCount(0)
   })
 
+  test('parameter table can filter by category', async ({ page }) => {
+    await connectToVehicle(page, 'demo')
+    await page.getByTestId('product-mode-expert').click()
+    await openView(page, 'parameters')
+    const filter = page.getByTestId('parameter-category-filter')
+    await expect(filter).toBeVisible()
+    // There is at least one real category beyond "All categories".
+    await expect(filter.locator('option').nth(1)).toBeAttached()
+    const rows = page.locator('.parameter-row:not(.parameter-row--header)')
+    const allCount = await rows.count()
+    const label = (await filter.locator('option').nth(1).textContent())!.trim()
+    await filter.selectOption({ index: 1 })
+    await expect(rows.first()).toBeVisible()
+    const filteredCount = await rows.count()
+    expect(filteredCount).toBeGreaterThan(0)
+    expect(filteredCount).toBeLessThanOrEqual(allCount)
+    // Every visible row belongs to the chosen category (first cell's category).
+    await expect(rows.first().locator('small').first()).toHaveText(label)
+  })
+
   test('Status page offers a two-step Enter DFU control and no calibration buttons', async ({ page }) => {
     await connectToVehicle(page, 'demo')
     // Calibration is gone from the Status page (it's in the Calibration tab).
