@@ -46,13 +46,38 @@ function normalizeSignedDegrees(value: number): number {
   return normalized
 }
 
-function angleDistanceDegrees(current: number, target: number): number {
-  return Math.abs(normalizeSignedDegrees(current - target))
+const DEG2RAD = Math.PI / 180
+const RAD2DEG = 180 / Math.PI
+
+/**
+ * Gravity direction in the body frame for a given attitude (standard aircraft
+ * convention: roll about +X/nose, pitch about +Y/right wing). This is the third
+ * column of the earth->body rotation and depends ONLY on roll+pitch — yaw is a
+ * rotation about the gravity axis, so it leaves gravity-in-body unchanged. That
+ * makes this identical to the attitude quaternion's gravity projection, just
+ * computed from the Euler pair the FC already streams. Returns a unit vector.
+ */
+function gravityBody(rollDeg: number, pitchDeg: number): [number, number, number] {
+  const r = rollDeg * DEG2RAD
+  const p = pitchDeg * DEG2RAD
+  return [-Math.sin(p), Math.sin(r) * Math.cos(p), Math.cos(r) * Math.cos(p)]
 }
 
-function poseErrorDegrees(poseId: AccelerometerPoseId, rollDeg: number, pitchDeg: number): number {
+/**
+ * Pose error = the angle between the live gravity-in-body vector and the pose's
+ * target gravity vector. This is the physically meaningful quantity for accel
+ * calibration (the accelerometer measures gravity), and unlike comparing raw
+ * Euler roll/pitch it is singularity-free: at ±90° pitch (nose-down/up) the
+ * cos(pitch) factor zeroes the roll term, so a gimbal-locked / jittery roll no
+ * longer injects a phantom error that kept those poses from ever reading
+ * aligned. Each of the six poses maps to a distinct ±axis gravity vector.
+ */
+export function poseErrorDegrees(poseId: AccelerometerPoseId, rollDeg: number, pitchDeg: number): number {
   const target = POSE_TARGETS[poseId]
-  return Math.hypot(angleDistanceDegrees(rollDeg, target.rollDeg), angleDistanceDegrees(pitchDeg, target.pitchDeg))
+  const live = gravityBody(rollDeg, pitchDeg)
+  const want = gravityBody(target.rollDeg, target.pitchDeg)
+  const dot = live[0] * want[0] + live[1] * want[1] + live[2] * want[2]
+  return Math.acos(Math.max(-1, Math.min(1, dot))) * RAD2DEG
 }
 
 function adjustmentHintForPose(poseId: AccelerometerPoseId): string {
@@ -74,7 +99,7 @@ function adjustmentHintForPose(poseId: AccelerometerPoseId): string {
   }
 }
 
-function validationStateForPose(
+export function validationStateForPose(
   currentPose: AccelerometerPoseId,
   rollDeg: number | undefined,
   pitchDeg: number | undefined,
