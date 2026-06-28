@@ -125,7 +125,10 @@ export function validationStateForPose(
     return error < best.error ? { pose, error } : best
   }, { pose: POSES[0], error: poseErrorDegrees(POSES[0].id, normalizedRoll, normalizedPitch) })
 
-  if (currentError <= 25) {
+  // Acceptance window for "pose aligned". Tightened from 25° to ~17° (down a
+  // third) now that pose detection uses the gravity vector (accurate, no
+  // gimbal-lock false positives), so a sloppy/off posture is caught sooner.
+  if (currentError <= 17) {
     return {
       tone: 'ready',
       label: 'Pose aligned',

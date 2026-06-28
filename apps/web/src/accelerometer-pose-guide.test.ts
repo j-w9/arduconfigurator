@@ -33,6 +33,13 @@ describe('accelerometer pose detection (gravity-vector math)', () => {
     expect(validationStateForPose('nose-down', 90, 0, true).tone).toBe('mismatch')
   })
 
+  it('uses the tightened ~17deg acceptance window for "aligned"', () => {
+    // A level pose tilted 15deg (within the window) still reads ready; 20deg
+    // (outside the tightened window) now reads "adjust" rather than aligned.
+    expect(validationStateForPose('level', 15, 0, true).tone).toBe('ready')
+    expect(validationStateForPose('level', 20, 0, true).tone).toBe('adjust')
+  })
+
   it('waits when live attitude is not yet verified', () => {
     expect(validationStateForPose('level', 0, 0, false).tone).toBe('waiting')
   })
