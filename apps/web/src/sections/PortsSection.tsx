@@ -347,10 +347,12 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                         </StatusBadge>
                                       </div>
                                       <div className="config-pills">
-                                        {/* Purpose + descriptive role/connector are secondary to the UART number. */}
+                                        {/* Purpose + descriptive role/connector are secondary to the UART number.
+                                            Only show the physical port when it adds something the label doesn't
+                                            (boardConnectorLabel often IS the hardwarePort -> avoid "OTG2 OTG2"). */}
                                         <span>{port.usageSummary}</span>
                                         {port.label && port.label !== portHeading ? <span>{port.label}</span> : null}
-                                        {port.hardwarePort ? <span>{port.hardwarePort}</span> : null}
+                                        {port.hardwarePort && port.hardwarePort !== port.label ? <span>{port.hardwarePort}</span> : null}
                                         {port.boardTrafficSummary ? <span>{port.boardTrafficSummary}</span> : null}
                                       </div>
                                     </div>
