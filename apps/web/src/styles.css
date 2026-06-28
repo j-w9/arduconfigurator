@@ -11573,9 +11573,10 @@ details.bf-gui-box:not([open]) > summary::after {
   padding-top: var(--space-3, 12px);
   border-top: 1px solid var(--surface-300);
   /* The grid is no longer internally scrolled, so pin the Apply/Revert bar to
-     the bottom of the viewport as the page scrolls. */
+     the bottom as the page scrolls — but ABOVE the fixed bottom status bar,
+     otherwise the buttons hide behind it (clipped at the bottom-right). */
   position: sticky;
-  bottom: 0;
+  bottom: var(--statusbar-height, 24px);
   background: var(--bg-panel, var(--surface-100));
   padding-bottom: var(--space-2, 8px);
   z-index: 3;
