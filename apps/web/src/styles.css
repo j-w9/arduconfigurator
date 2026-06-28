@@ -5449,9 +5449,20 @@ textarea:focus {
 }
 
 .receiver-info-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
   color: var(--text-muted);
   cursor: help;
-  font-size: 12px;
+  font-size: 9px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
   opacity: 0.65;
 }
 .receiver-info-dot:hover {
@@ -5554,6 +5565,10 @@ textarea:focus {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+/* The endpoints task now holds a single combined calibration card. */
+.receiver-task-two-up--single {
+  grid-template-columns: 1fr;
+}
 
 .receiver-live-card,
 .receiver-task-stage,
@@ -5617,6 +5632,12 @@ textarea:focus {
   font-family: var(--font-data);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+/* The first footer span is the live PWM value ("1500 µs") — keep it as-is so the
+   micro sign isn't uppercased into a Greek capital mu (reads as "MS"). The role
+   span (second) stays uppercase. */
+.receiver-live-card__footer span:first-child {
+  text-transform: none;
 }
 
 .receiver-live-card p,

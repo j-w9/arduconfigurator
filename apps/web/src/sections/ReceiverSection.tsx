@@ -145,7 +145,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     rcExercises,
     receiverChannelDisplays,
     rcMappingDerivations,
-    rcRangeDerivations,
     rcCalibrationDerivations,
     receiverTasks,
     receiverSupportCatalog,
@@ -155,7 +154,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     handlers
   } = props
 
-  const { rcRangeExercise, rcMappingSession, rcCalibrationSession } = rcExercises
+  const { rcMappingSession, rcCalibrationSession } = rcExercises
 
   const { receiverPrimaryChannelDisplays, receiverAuxChannelDisplays } = receiverChannelDisplays
 
@@ -172,8 +171,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     rcMappingSummary,
     rcMappingInstructions
   } = rcMappingDerivations
-
-  const { rcRangeExerciseProgress, rcRangeExerciseSummary, rcRangeExerciseInstructions } = rcRangeDerivations
 
   const { rcCalibrationSummary } = rcCalibrationDerivations
 
@@ -222,7 +219,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     receiverStagedDrafts,
     receiverInvalidDrafts,
     canRunRcMappingExercise,
-    canRunRcRangeExercise,
     canCaptureRcCalibration,
     receiverWorkflowDraftCount,
     receiverWorkflowInvalidCount,
@@ -237,9 +233,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     handleStageRcMappingDrafts,
     handleResetRcMappingExercise,
     handleFailRcMappingExercise,
-    handleStartRcRangeExercise,
-    handleResetRcRangeExercise,
-    handleFailRcRangeExercise,
     handleStartRcCalibrationCapture,
     handleResetRcCalibrationCapture,
     handleStageRcCalibrationDrafts,
@@ -585,111 +578,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
 
                 {activeReceiverTaskId === 'endpoints' ? (
                   <div className="receiver-task-panel receiver-task-panel--stack">
-                    <div className="receiver-task-stage-strip">
-                      <article className={`receiver-task-stage${rcRangeExercise.status === 'passed' ? ' is-complete' : rcRangeExercise.status === 'running' ? ' is-active' : ''}`}>
-                        <span>Stage 1</span>
-                        <strong>Stick range</strong>
-                        <p>{rcRangeExerciseSummary}</p>
-                      </article>
-                      <article className={`receiver-task-stage${rcCalibrationSession.status === 'ready' ? ' is-complete' : rcCalibrationSession.status === 'capturing' ? ' is-active' : ''}`}>
-                        <span>Stage 2</span>
-                        <strong>Endpoint capture</strong>
-                        <p>{rcCalibrationSummary}</p>
-                      </article>
-                    </div>
-
-                    <div className="receiver-task-two-up">
-                      <div className="rc-range-card">
-                        <div className="switch-exercise-card__header">
-                          <div>
-                            <strong>Stick range exercise</strong>
-                            <p>{rcRangeExerciseSummary}</p>
-                          </div>
-                          <StatusBadge tone={toneForModeSwitchExercise(rcRangeExercise.status)}>{rcRangeExercise.status === 'passed' ? 'complete' : rcRangeExercise.status}</StatusBadge>
-                        </div>
-
-                        <div className="switch-exercise-progress" aria-hidden="true">
-                          <div className="switch-exercise-progress__fill" style={{ width: `${rcRangeExerciseProgress}%` }} />
-                        </div>
-
-                        <div className="rc-range-axis-grid">
-                          {rcAxisObservations.map((axis) => {
-                            const progress = rcRangeExercise.axisProgress[axis.axisId]
-                            return (
-                              <article
-                                key={axis.axisId}
-                                className={`rc-range-axis-card${rcRangeExercise.currentTargetAxis === axis.axisId ? ' rc-range-axis-card--target' : ''}${progress.completed ? ' rc-range-axis-card--complete' : ''}`}
-                              >
-                                <div className="rc-range-axis-card__header">
-                                  <strong>{axis.label}</strong>
-                                  <span>CH{axis.channelNumber}</span>
-                                </div>
-                                <p>{axis.pwm !== undefined ? `${axis.pwm} µs live` : 'No live data'}</p>
-                                {/* Live channel-movement bar: the swept band lights up the ends
-                                    the operator has already reached (low / high observed) and the
-                                    marker tracks the stick's current position — a direct visual
-                                    companion to the Low/High/Center checklist below. */}
-                                {(() => {
-                                  const toPct = (value: number): number => Math.max(0, Math.min(100, ((value - 1000) / 1000) * 100))
-                                  // Centre band (~40-60%) the stick should rest in, plus the
-                                  // ends shaded once observed so progress is visible at a glance.
-                                  return (
-                                    <div className="rc-range-axis-card__bar" data-testid={`rc-range-bar-${axis.axisId}`} aria-hidden="true">
-                                      {progress.lowObserved ? (
-                                        <div className="rc-range-axis-card__swept" style={{ left: '0%', width: '20%' }} />
-                                      ) : null}
-                                      {progress.highObserved ? (
-                                        <div className="rc-range-axis-card__swept" style={{ left: '80%', width: '20%' }} />
-                                      ) : null}
-                                      {axis.pwm !== undefined ? (
-                                        <div className="rc-range-axis-card__marker" style={{ left: `${toPct(axis.pwm)}%` }} />
-                                      ) : null}
-                                    </div>
-                                  )
-                                })()}
-                                <div className="config-pills">
-                                  <span className={progress.lowObserved ? 'is-complete' : undefined}>Low</span>
-                                  <span className={progress.highObserved ? 'is-complete' : undefined}>High</span>
-                                  {axis.axisId !== 'throttle' ? (
-                                    <span className={progress.centeredObserved ? 'is-complete' : undefined}>Center</span>
-                                  ) : null}
-                                </div>
-                              </article>
-                            )
-                          })}
-                        </div>
-
-                        <ol className="switch-exercise-instructions">
-                          {rcRangeExerciseInstructions.map((instruction) => (
-                            <li key={instruction}>{instruction}</li>
-                          ))}
-                        </ol>
-
-                        <div className="switch-exercise-controls">
-                          <button
-                            style={buttonStyle('primary')}
-                            onClick={handleStartRcRangeExercise}
-                            disabled={!canRunRcRangeExercise || rcRangeExercise.status === 'running'}
-                          >
-                            {rcRangeExercise.status === 'passed' ? 'Run Again' : 'Start'}
-                          </button>
-                          <button
-                            style={buttonStyle()}
-                            onClick={handleResetRcRangeExercise}
-                            disabled={rcRangeExercise.status === 'idle'}
-                          >
-                            Reset
-                          </button>
-                          <button
-                            style={buttonStyle('secondary')}
-                            onClick={handleFailRcRangeExercise}
-                            disabled={rcRangeExercise.status !== 'running'}
-                          >
-                            Mark Failed
-                          </button>
-                        </div>
-                      </div>
-
+                    <div className="receiver-task-two-up receiver-task-two-up--single">
                       <div className="rc-calibration-card">
                         <div className="switch-exercise-card__header">
                           <div>
@@ -712,6 +601,8 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                         <div className="rc-range-axis-grid">
                           {RC_CALIBRATION_AXIS_ORDER.map((axisId) => {
                             const capture = rcCalibrationSession.captures[axisId]
+                            const livePwm = rcAxisObservations.find((obs) => obs.axisId === axisId)?.pwm
+                            const toPct = (value: number): number => Math.max(0, Math.min(100, ((value - 1000) / 1000) * 100))
                             return (
                               <article
                                 key={axisId}
@@ -720,6 +611,15 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                                 <div className="rc-range-axis-card__header">
                                   <strong>{capture.label}</strong>
                                   <span>CH{capture.channelNumber}</span>
+                                </div>
+                                <p>{livePwm !== undefined ? `${livePwm} µs live` : 'No live data'}</p>
+                                {/* Live channel-movement bar (from the old stick-range exercise):
+                                    the swept band lights the ends already reached and the marker
+                                    tracks the stick's current position, alongside the capture below. */}
+                                <div className="rc-range-axis-card__bar" data-testid={`rc-range-bar-${axisId}`} aria-hidden="true">
+                                  {capture.lowObserved ? <div className="rc-range-axis-card__swept" style={{ left: '0%', width: '20%' }} /> : null}
+                                  {capture.highObserved ? <div className="rc-range-axis-card__swept" style={{ left: '80%', width: '20%' }} /> : null}
+                                  {livePwm !== undefined ? <div className="rc-range-axis-card__marker" style={{ left: `${toPct(livePwm)}%` }} /> : null}
                                 </div>
                                 <p>
                                   Min {capture.observedMin !== undefined ? Math.round(capture.observedMin) : 'Unknown'} µs · Max{' '}
