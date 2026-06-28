@@ -573,6 +573,48 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                         </button>
                       </div>
                     </div>
+
+                    {/* Channel direction lives with mapping: once you know which
+                     *  channel is which, set its direction. Per-channel reverse
+                     *  toggles for the four primary axes (roll / pitch / throttle
+                     *  / yaw). Pitch reversal is the common one — most Mode-2
+                     *  transmitters need RC2_REVERSED=1 for stick-back = pitch-up.
+                     *  Toggles flow through staged drafts like every Receiver edit. */}
+                    {(() => {
+                      const reverseRows: { axisLabel: string; recommendedNote?: string; parameter: ReturnType<typeof selectParameterById> }[] = [
+                        { axisLabel: 'Roll (RC1)', parameter: selectParameterById(snapshot, 'RC1_REVERSED') },
+                        { axisLabel: 'Pitch (RC2)', recommendedNote: 'Most Mode-2 transmitters need this set to Reversed for stick-back = pitch-up.', parameter: selectParameterById(snapshot, 'RC2_REVERSED') },
+                        { axisLabel: 'Throttle (RC3)', parameter: selectParameterById(snapshot, 'RC3_REVERSED') },
+                        { axisLabel: 'Yaw (RC4)', parameter: selectParameterById(snapshot, 'RC4_REVERSED') }
+                      ].filter((row) => row.parameter !== undefined)
+                      if (reverseRows.length === 0) return null
+                      return (
+                        <div className="scoped-review-card scoped-review-card--compact" data-testid="receiver-channel-direction">
+                          <div className="switch-exercise-card__header">
+                            <div>
+                              <strong>Channel direction</strong>
+                              <p>Reverse a channel here instead of inverting it on the transmitter — staged like every other Receiver edit.</p>
+                            </div>
+                          </div>
+                          <div className="scoped-editor-grid">
+                            {reverseRows.map((row) => (
+                              <div key={row.parameter!.id} data-testid={`receiver-reverse-${row.parameter!.id}`}>
+                                <ScopedField
+                                  parameter={row.parameter!}
+                                  liveValue={row.parameter!.value}
+                                  editedValues={editedValues}
+                                  onChange={(paramId, value) => setDraft(paramId, value)}
+                                  draftStatusById={parameterDraftById}
+                                />
+                                {row.recommendedNote ? (
+                                  <small className="scoped-editor-field__hint">{row.recommendedNote}</small>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 ) : null}
 
@@ -872,48 +914,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                         </ul>
                       </div>
                     ) : null}
-
-                    {/* Per-channel reverse toggles for the four primary axes
-                     *  (roll / pitch / throttle / yaw). Pitch reversal is the
-                     *  common one — most Mode-2 transmitters need RC2_REVERSED=1
-                     *  for pitch-up = stick-back to feel natural — so it's the
-                     *  default callout. The toggles flow through staged drafts
-                     *  like every other Receiver edit. */}
-                    {(() => {
-                      const reverseRows: { axisLabel: string; recommendedNote?: string; parameter: ReturnType<typeof selectParameterById> }[] = [
-                        { axisLabel: 'Roll (RC1)', parameter: selectParameterById(snapshot, 'RC1_REVERSED') },
-                        { axisLabel: 'Pitch (RC2)', recommendedNote: 'Most Mode-2 transmitters need this set to Reversed for stick-back = pitch-up.', parameter: selectParameterById(snapshot, 'RC2_REVERSED') },
-                        { axisLabel: 'Throttle (RC3)', parameter: selectParameterById(snapshot, 'RC3_REVERSED') },
-                        { axisLabel: 'Yaw (RC4)', parameter: selectParameterById(snapshot, 'RC4_REVERSED') }
-                      ].filter((row) => row.parameter !== undefined)
-                      if (reverseRows.length === 0) return null
-                      return (
-                        <div className="scoped-review-card scoped-review-card--compact" data-testid="receiver-channel-direction">
-                          <div className="switch-exercise-card__header">
-                            <div>
-                              <strong>Channel direction</strong>
-                              <p>Reverse a channel here instead of inverting it on the transmitter — staged like every other Receiver edit.</p>
-                            </div>
-                          </div>
-                          <div className="scoped-editor-grid">
-                            {reverseRows.map((row) => (
-                              <div key={row.parameter!.id} data-testid={`receiver-reverse-${row.parameter!.id}`}>
-                                <ScopedField
-                                  parameter={row.parameter!}
-                                  liveValue={row.parameter!.value}
-                                  editedValues={editedValues}
-                                  onChange={(paramId, value) => setDraft(paramId, value)}
-                                  draftStatusById={parameterDraftById}
-                                />
-                                {row.recommendedNote ? (
-                                  <small className="scoped-editor-field__hint">{row.recommendedNote}</small>
-                                ) : null}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    })()}
 
                     {renderAdditionalSettingsCard(
                       'Additional receiver settings',
