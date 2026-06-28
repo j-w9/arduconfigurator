@@ -122,6 +122,15 @@ export function MotorReorderDialog({
 }: MotorReorderDialogProps): ReactElement {
   const motorTestBusy =
     snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'
+  // While an Apply-and-reboot is in flight (link dropping/reconnecting) or the
+  // params are re-syncing afterwards, show a single calm status line instead of
+  // the live reorder UI churning through the reload.
+  const rebootStatus =
+    busyAction === 'reboot-autopilot' || snapshot.connection.kind !== 'connected'
+      ? 'Rebooting…'
+      : snapshot.parameterStats.status !== 'complete'
+        ? 'Params refreshing…'
+        : undefined
   const body = (
     <>
         {!inline ? (
@@ -136,6 +145,10 @@ export function MotorReorderDialog({
           </div>
         ) : null}
 
+        {rebootStatus ? (
+          <p className="motor-reorder-status" role="status" data-testid="motor-reorder-status">{rebootStatus}</p>
+        ) : (
+          <>
         {/* Safety acknowledgments — pinned at the top of the dialog so
          *  the operator can't miss the props-off ack and doesn't have
          *  to leave the popout to set it. Required for both the
@@ -564,6 +577,8 @@ export function MotorReorderDialog({
             </small>
           ) : null}
         </div>
+          </>
+        )}
     </>
   )
 

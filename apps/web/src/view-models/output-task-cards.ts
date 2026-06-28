@@ -170,7 +170,7 @@ export function buildOutputTaskCards(inputs: OutputTaskCardInputs): OutputTaskCa
     },
     {
       id: 'direction-test' as const,
-      label: 'Direction & Test',
+      label: 'Test',
       value:
         motorVerificationStatus === 'passed'
           ? 'Passed'

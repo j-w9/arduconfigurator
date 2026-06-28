@@ -455,7 +455,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                   {!isCopterVehicle ? (
                     <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
                       <div className="bf-gui-box__titlebar">
-                        <strong>Direction &amp; Test</strong>
+                        <strong>Test</strong>
                       </div>
                       <div className="bf-gui-box__body">
                         <p className="bf-note">
@@ -472,9 +472,45 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                   ) : (
                   <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
                     <div className="bf-gui-box__titlebar">
-                      <strong>Direction & Test</strong>
+                      <strong>Test</strong>
                     </div>
                     <div className="bf-gui-box__body">
+                      <div className="motor-test-acknowledgments">
+                        {/* Props-off is the load-bearing safety ack — promote it
+                         *  visually so an operator who's eye-skimmed past it
+                         *  can't miss its unchecked state. Other acks stay in
+                         *  the muted style; only the prop guarantee gets the
+                         *  danger-toned card treatment until it's checked. */}
+                        {/* One combined safety ack — props off AND the craft
+                         *  restrained/clear — instead of two redundant boxes.
+                         *  Drives both underlying acknowledgments together. */}
+                        <label
+                          className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged && testAreaAcknowledged ? ' is-acknowledged' : ''}`}
+                          data-testid="motor-test-props-off-ack"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={propsRemovedAcknowledged && testAreaAcknowledged}
+                            onChange={(event) => {
+                              setPropsRemovedAcknowledged(event.target.checked)
+                              setTestAreaAcknowledged(event.target.checked)
+                            }}
+                            disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                          />
+                          <span>Props are off and the vehicle is restrained with the test area clear.</span>
+                        </label>
+                        {motorTestOverUsb ? (
+                          <label className="motor-test-acknowledgments__usb" data-testid="motor-test-usb-ack">
+                            <input
+                              type="checkbox"
+                              checked={usbBenchAcknowledged}
+                              onChange={(event) => setUsbBenchAcknowledged(event.target.checked)}
+                              disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                            />
+                            <span>USB connection detected — I confirm the craft is on the bench and will not arm/spin a flight-ready aircraft.</span>
+                          </label>
+                        ) : null}
+                      </div>
                       <div className="motor-direction-layout">
                         <div className="motor-direction-layout__sliders">
                           <MotorTestSliders
@@ -548,42 +584,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             </label>
                           </div>
 
-                          <div className="motor-test-acknowledgments">
-                            {/* Props-off is the load-bearing safety ack — promote it
-                             *  visually so an operator who's eye-skimmed past it
-                             *  can't miss its unchecked state. Other acks stay in
-                             *  the muted style; only the prop guarantee gets the
-                             *  danger-toned card treatment until it's checked. */}
-                            {/* One combined safety ack — props off AND the craft
-                             *  restrained/clear — instead of two redundant boxes.
-                             *  Drives both underlying acknowledgments together. */}
-                            <label
-                              className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged && testAreaAcknowledged ? ' is-acknowledged' : ''}`}
-                              data-testid="motor-test-props-off-ack"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={propsRemovedAcknowledged && testAreaAcknowledged}
-                                onChange={(event) => {
-                                  setPropsRemovedAcknowledged(event.target.checked)
-                                  setTestAreaAcknowledged(event.target.checked)
-                                }}
-                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                              />
-                              <span>Props are off and the vehicle is restrained with the test area clear.</span>
-                            </label>
-                            {motorTestOverUsb ? (
-                              <label className="motor-test-acknowledgments__usb" data-testid="motor-test-usb-ack">
-                                <input
-                                  type="checkbox"
-                                  checked={usbBenchAcknowledged}
-                                  onChange={(event) => setUsbBenchAcknowledged(event.target.checked)}
-                                  disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                                />
-                                <span>USB connection detected — I confirm the craft is on the bench and will not arm/spin a flight-ready aircraft.</span>
-                              </label>
-                            ) : null}
-                          </div>
 
                           <ul className="output-note-list">
                             {motorTestGuardReasons.length > 0
