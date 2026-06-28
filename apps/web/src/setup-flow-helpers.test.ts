@@ -29,9 +29,10 @@ describe('escCalibrationPathLabel / escCalibrationInstructions', () => {
     expect(escCalibrationPathLabel('manual-review')).toBe('Manual ESC review')
   })
 
-  it('returns a non-empty, path-appropriate instruction set', () => {
+  it('returns a path-appropriate instruction set (digital protocols need none)', () => {
     expect(escCalibrationInstructions({ calibrationPath: 'analog-calibration' } as Parameters<typeof escCalibrationInstructions>[0])[0]).toMatch(/Remove props/)
-    expect(escCalibrationInstructions({ calibrationPath: 'digital-protocol' } as Parameters<typeof escCalibrationInstructions>[0])[0]).toMatch(/DShot/)
+    // Digital (DShot) protocols don't use ESC endpoint calibration — no steps.
+    expect(escCalibrationInstructions({ calibrationPath: 'digital-protocol' } as Parameters<typeof escCalibrationInstructions>[0])).toEqual([])
     expect(escCalibrationInstructions({ calibrationPath: 'manual-review' } as Parameters<typeof escCalibrationInstructions>[0]).length).toBeGreaterThan(0)
   })
 })

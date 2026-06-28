@@ -24,7 +24,7 @@ import type {
   deriveOutputMappingSummary,
   evaluateMotorTestEligibility
 } from '@arduconfig/ardupilot-core'
-import { EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS, MAX_MOTOR_TEST_THROTTLE_PERCENT } from '@arduconfig/ardupilot-core'
+import { MAX_MOTOR_TEST_THROTTLE_PERCENT } from '@arduconfig/ardupilot-core'
 import {
   ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS,
   ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS,
@@ -33,7 +33,6 @@ import {
 } from '@arduconfig/param-metadata'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
-import { motorSpinArcPath } from '../views/motor-spin-arc'
 import type { useMotorManagement } from '../hooks/use-motor-management'
 import type { useMotorOutputAssignments } from '../hooks/use-motor-output-assignments'
 import type { useMotorTestConfig } from '../hooks/use-motor-test-config'
@@ -43,7 +42,7 @@ import type { useSafetyAcks } from '../hooks/use-safety-acks'
 import type { ParameterDraftValues } from '../hooks/use-parameter-drafts'
 import type { buildVehicleOutputSummary } from '../view-models/vehicle-output-summary'
 import type { createMotorPreviewNodes } from '../view-models/motor-preview'
-import { describeOutputAssignment, outputKindLabel, toneForOutputKind } from '../device-display'
+import { outputKindLabel, toneForOutputKind } from '../device-display'
 import { ALL_MOTOR_TEST_OUTPUT, ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS } from '../motor-test-helpers'
 import { MotorTestSliders } from '../motor-test-sliders'
 import { formatParameterValue, normalizeBitmaskValue } from '../parameter-format'
@@ -53,14 +52,11 @@ import { QUADPLANE_ESC_PARAM_IDS } from '../param-groups'
 import { buildPlaneControlSurfaces } from '../view-models/plane-control-surfaces'
 import {
   OUTPUTS_BENCH_TARGET_ID,
-  OUTPUTS_MOTOR_CONFIRM_BUTTON_ID,
-  OUTPUTS_MOTOR_START_BUTTON_ID,
   OUTPUTS_MOTOR_TEST_BUTTON_ID,
   escCalibrationInstructions,
   escCalibrationPathLabel
 } from '../setup-flow-helpers'
 import {
-  toneForModeSwitchExercise,
   toneForMotorTestStatus,
   toneForParameterDraftStatus,
   toneForScopedDraftReview
@@ -180,6 +176,8 @@ export interface OutputsSectionHandlers {
 export interface OutputsSectionProps {
   activeViewId: 'motors' | 'servos'
   snapshot: ConfiguratorSnapshot
+  /** The inline motor reorder/direction panel rendered as the Motor Setup tab. */
+  motorSetupSlot: ReactNode
   canApplyDraftParameters: boolean
   busyAction: string | undefined
   editedValues: ParameterDraftValues
@@ -202,12 +200,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   const {
     activeViewId,
     snapshot,
+    motorSetupSlot,
     canApplyDraftParameters,
     busyAction,
     editedValues,
     parameterDraftById,
-    motorOutputAssignments,
-    outputAssignmentVisibility,
     outputNotificationCatalog,
     motorTestConfig,
     motorManagement,
@@ -217,9 +214,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     motorTestMaxDurationSeconds
   } = props
 
-  const { effectiveMotorOutputs, effectiveMotorOutputByMotorNumber } = motorOutputAssignments
 
-  const { visibleOutputAssignmentParameters, hiddenOutputAssignmentCount } = outputAssignmentVisibility
 
   const {
     notificationLedTypesParameter,
@@ -255,37 +250,16 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     outputMapping,
     escSetup,
     vehicleOutputSummary,
-    motorPreviewNodes,
-    motorPreviewCount,
-    motorPreviewGeometryMode,
     motorTestEligibility,
     isCopterVehicle,
-    configuredOutputs,
-    visibleDisabledOutputs,
     notificationLedOutputs,
-    frameConfigEditable,
-    frameClassParameter,
-    frameTypeParameter,
-    frameDraftEntries,
-    frameStagedDrafts,
-    frameInvalidDrafts,
-    escReviewConfirmation,
     escReviewSummary,
-    motorMixerSummary,
-    motorDirectionSummary,
     currentMotorTestSucceeded,
-    currentMotorVerificationLabel,
-    selectedMotorTestOutputLabel,
-    selectedMotorTestOutputMotorNumber,
     motorTestSliderTargets,
     motorTestGuardReasons,
     motorTestOverUsb,
     canRunMotorTest,
-    canRunMotorVerification,
     outputReviewParameters,
-    outputAssignmentParameters,
-    showAllOutputAssignments,
-    outputAssignmentReviewLabel,
     servoMappingRows,
     notificationLedTypes,
     notificationLedBrightness,
@@ -322,20 +296,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   const {
     handleApplyScopedParameterDrafts,
     handleDiscardScopedParameterDrafts,
-    handleOpenMotorReorderDialog,
     handleRunMotorTest,
     handleStopMotorTest,
-    handleStartMotorVerification,
-    handleConfirmMotorVerification,
-    handleFailMotorVerification,
-    handleResetMotorVerification,
-    confirmSetupSection,
-    clearSetupSectionConfirmation,
-    renderMetadataParameterField,
     renderAdditionalSettingsCard,
     setDraft,
     updateDrafts,
-    setShowAllOutputAssignments,
     setOutputTaskOverride
   } = handlers
 
@@ -372,7 +337,12 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         // won't render — no duplicate UI between tabs.
         taskCards={
           activeViewId === 'motors'
-            ? outputTaskCards.filter((card) => card.id !== 'peripherals' && card.id !== 'servo-mapping')
+            ? // Motors is three sub-tabs in a fixed order: ESC & protocol,
+              // Motor setup, Direction & test (the consolidated 'review' task is
+              // dropped — each sub-tab applies its own drafts).
+              (['esc-protocol', 'motor-setup', 'direction-test'] as const)
+                .map((id) => outputTaskCards.find((card) => card.id === id))
+                .filter((card): card is (typeof outputTaskCards)[number] => card !== undefined)
             : outputTaskCards.filter((card) => card.id === 'servo-mapping' || card.id === 'peripherals')
         }
         title={activeViewId === 'motors' ? 'Motors' : 'Servos'}
@@ -384,250 +354,16 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         activeTaskId={activeOutputTaskId}
         activeTask={activeOutputTask}
         onSelectTask={setOutputTaskOverride}
-        // The Servos nav tab uses a full-width layout — the per-channel
-        // SERVOn mapping table doesn't fit alongside the overview's
-        // current-output-map sidebar (the columns would overlap), and
-        // the table already shows everything the overview would.
-        overviewSlot={activeViewId === 'servos' ? undefined : (
-              <div className="outputs-overview__sticky">
-                <div className="telemetry-header">
-                  <div>
-                    <h3>Output overview</h3>
-                    <p>
-                      Keep the current frame, output map, and auxiliary output inventory visible while you move through
-                      motor setup, direction checks, ESC review, and notification hardware work.
-                    </p>
-                  </div>
-                  <div className="outputs-overview__badges">
-                    <StatusBadge
-                      tone={
-                        airframe.expectedMotorCount !== undefined &&
-                        outputMapping.motorOutputs.length === airframe.expectedMotorCount
-                          ? 'success'
-                          : outputMapping.motorOutputs.length > 0
-                            ? 'warning'
-                            : 'danger'
-                      }
-                    >
-                      {airframe.expectedMotorCount !== undefined
-                        ? `${outputMapping.motorOutputs.length}/${airframe.expectedMotorCount} mapped`
-                        : `${outputMapping.motorOutputs.length} mapped`}
-                    </StatusBadge>
-                    {/* Physical output count from the boot banner
-                      * "RCOut: PWM:1-N" — captured into hardware.pwmOutputCount.
-                      * Falls back to the SERVOn_FUNCTION count when the banner
-                      * wasn't seen (e.g. the user connected long after FC
-                      * boot). The two numbers diverge on most boards: SERVOn
-                      * params are allocated up to MAX_SERVO (16) regardless of
-                      * how many PWM pins exist; only the banner reveals the
-                      * physical count. Surface BOTH so the operator can tell
-                      * which slots back real hardware. */}
-                    {(() => {
-                      const physical = snapshot.hardware.pwmOutputCount
-                      const slotCount = outputMapping.outputs.length
-                      if (physical === undefined && slotCount === 0) {
-                        return null
-                      }
-                      if (physical !== undefined && physical !== slotCount) {
-                        return (
-                          <StatusBadge tone="neutral">
-                            <span data-testid="outputs-overview-channel-count">
-                              {physical} PWM output{physical === 1 ? '' : 's'}
-                              {' · '}
-                              {slotCount} SERVOn slot{slotCount === 1 ? '' : 's'}
-                            </span>
-                          </StatusBadge>
-                        )
-                      }
-                      const count = physical ?? slotCount
-                      return (
-                        <StatusBadge tone="neutral">
-                          <span data-testid="outputs-overview-channel-count">
-                            {count} channel{count === 1 ? '' : 's'} available
-                          </span>
-                        </StatusBadge>
-                      )
-                    })()}
-                  </div>
-                </div>
-
-                {frameConfigEditable ? (
-                  <>
-                    {/* FRAME_CLASS=0 is what ArduPilot reports as "Frame:
-                      * UNSUPPORTED" in the boot banner and "PreArm: Motors:
-                      * Check frame class and type" in the status feed. While
-                      * that warning is active the autopilot refuses every
-                      * calibration COMMAND (accel/level/compass) and won't
-                      * arm. Make the root cause prominent right next to the
-                      * dropdowns that fix it instead of leaving the operator
-                      * to chase the cal failures. */}
-                    {frameClassParameter?.value === 0 ? (
-                      <div className="bf-note bf-note--warning" data-testid="frame-class-unset-warning">
-                        <p>
-                          <strong>FRAME_CLASS is not set.</strong>{' '}
-                          The autopilot is reporting <code>Frame: UNSUPPORTED</code> and will
-                          refuse calibration commands (accelerometer, level,
-                          compass, motor test) until a valid frame class is
-                          picked here. Choose the class that matches your
-                          build below, then <em>Apply Frame Config</em>.
-                        </p>
-                      </div>
-                    ) : null}
-                    <div className="scoped-editor-grid" data-testid="frame-config-editor">
-                      {frameClassParameter ? renderMetadataParameterField(frameClassParameter) : null}
-                      {frameTypeParameter && !airframe.frameTypeIgnored
-                        ? renderMetadataParameterField(frameTypeParameter)
-                        : (
-                            <article className="telemetry-metric-card">
-                              <span>Frame type</span>
-                              <strong>{airframe.frameTypeLabel}</strong>
-                            </article>
-                          )}
-                    </div>
-                  </>
-                ) : null}
-
-                {frameConfigEditable && frameDraftEntries.length > 0 ? (
-                  <div className="switch-exercise-controls" data-testid="frame-config-actions">
-                    <button
-                      style={buttonStyle('primary')}
-                      onClick={() => void handleApplyScopedParameterDrafts(frameDraftEntries, 'frame:apply', 'Frame configuration')}
-                      disabled={
-                        busyAction !== undefined ||
-                        frameStagedDrafts.length === 0 ||
-                        frameInvalidDrafts.length > 0 ||
-                        !canApplyDraftParameters
-                      }
-                    >
-                      {busyAction === 'frame:apply' ? 'Applying…' : `Apply Frame Config (${frameStagedDrafts.length})`}
-                    </button>
-                    <button
-                      style={buttonStyle()}
-                      onClick={() => handleDiscardScopedParameterDrafts(frameDraftEntries.map((entry) => entry.id), 'Frame configuration')}
-                      disabled={busyAction !== undefined || frameDraftEntries.length === 0}
-                    >
-                      Revert
-                    </button>
-                  </div>
-                ) : null}
-
-                <div className="telemetry-metric-grid">
-                  {!frameConfigEditable ? (
-                    <>
-                      <article className="telemetry-metric-card">
-                        <span>Frame class</span>
-                        <strong>{airframe.frameClassLabel}</strong>
-                      </article>
-                      <article className="telemetry-metric-card">
-                        <span>Frame type</span>
-                        <strong>{airframe.frameTypeLabel}</strong>
-                      </article>
-                    </>
-                  ) : null}
-                  <article className="telemetry-metric-card">
-                    <span>Expected motors</span>
-                    <strong>{airframe.expectedMotorCount ?? 'Specialized'}</strong>
-                  </article>
-                  <article className="telemetry-metric-card">
-                    <span>Mapped motors</span>
-                    <strong>
-                      {outputMapping.motorOutputs.length}
-                      {airframe.expectedMotorCount !== undefined ? ` / ${airframe.expectedMotorCount}` : ''}
-                    </strong>
-                  </article>
-                </div>
-
-                <div className="config-pills">
-                  <span>{motorPreviewGeometryMode.toUpperCase()} geometry</span>
-                  <span>{outputMapping.configuredAuxOutputs.length} configured non-motor outputs</span>
-                  <span>{outputMapping.disabledOutputs.length} disabled outputs in SERVO1-16</span>
-                  <span className={escReviewConfirmation ? 'is-complete' : 'is-pending'}>
-                    {escReviewConfirmation ? 'ESC review confirmed' : 'ESC review pending'}
-                  </span>
-                </div>
-
-                <div className="scoped-review-card scoped-review-card--compact">
-                  <div className="switch-exercise-card__header">
-                    <div>
-                      <strong>Current output map</strong>
-                      <p>The live motor and peripheral assignments stay visible here while you work through each output task.</p>
-                    </div>
-                    <StatusBadge tone={configuredOutputs.length > 0 ? 'success' : 'warning'}>
-                      {configuredOutputs.length > 0 ? `${configuredOutputs.length} configured` : 'Review needed'}
-                    </StatusBadge>
-                  </div>
-
-                  <div className="output-card-grid">
-                    {configuredOutputs.length > 0 ? (
-                      configuredOutputs.map((output) => (
-                        <article key={output.paramId} className={`output-card output-card--${output.kind}`}>
-                          <div className="output-card__header">
-                            <div>
-                              <strong>OUT{output.channelNumber}</strong>
-                              <small>
-                                {output.paramId} = {output.functionValue}
-                              </small>
-                            </div>
-                            <StatusBadge tone={toneForOutputKind(output.kind)}>{outputKindLabel(output.kind)}</StatusBadge>
-                          </div>
-                          <p>{output.functionLabel}</p>
-                          <small>{describeOutputAssignment(output.kind, output.motorNumber)}</small>
-                        </article>
-                      ))
-                    ) : (
-                      <div className="output-card output-card--other">
-                        <div className="output-card__header">
-                          <div>
-                            <strong>No configured outputs</strong>
-                            <small>Inspecting SERVO1-16</small>
-                          </div>
-                          <StatusBadge tone="warning">Review needed</StatusBadge>
-                        </div>
-                        <p>No motor or peripheral outputs were detected in the inspected SERVO function range.</p>
-                        <small>Pull parameters again or verify that the controller exposes SERVOx_FUNCTION parameters on this target.</small>
-                      </div>
-                    )}
-                  </div>
-
-                  {outputMapping.notes.length > 0 ? (
-                    <ul className="output-note-list">
-                      {outputMapping.notes.map((note) => (
-                        <li key={note}>{note}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
-
-                {visibleDisabledOutputs.length > 0 ? (
-                  <p className="telemetry-note">
-                    Disabled outputs in view: {visibleDisabledOutputs.map((output) => `OUT${output.channelNumber}`).join(', ')}
-                    {outputMapping.disabledOutputs.length > visibleDisabledOutputs.length
-                      ? `, plus ${outputMapping.disabledOutputs.length - visibleDisabledOutputs.length} more.`
-                      : '.'}
-                  </p>
-                ) : null}
-              </div>
-        )}
+        // The output overview panel was removed as part of the Motors/Outputs
+        // declutter — the task surfaces below carry the per-output detail.
+        overviewSlot={undefined}
         taskBodySlot={
           <>
               {activeOutputTaskId === 'motor-setup' ? (
-                <div className="outputs-task-panel outputs-task-panel--stack">
-                  <section className="bf-gui-box">
-                    <div className="bf-gui-box__titlebar">
-                      <strong>Mixer</strong>
-                    </div>
-                    <div className="bf-gui-box__body">
-                      <div className="switch-exercise-card__header">
-                        <div>
-                          <strong>Motor Setup</strong>
-                          <p>{motorMixerSummary}</p>
-                        </div>
-                        <StatusBadge tone={toneForScopedDraftReview(outputAssignmentStagedDrafts.length, outputAssignmentInvalidDrafts.length)}>
-                          {outputAssignmentReviewLabel}
-                        </StatusBadge>
-                      </div>
-
-                      {!isCopterVehicle ? (
+                isCopterVehicle ? (
+                  <div className="outputs-task-panel outputs-task-panel--stack">{motorSetupSlot}</div>
+                ) : (
+                  <div className="outputs-task-panel outputs-task-panel--stack">
                         <div className="vehicle-output-summary" data-testid="vehicle-output-summary">
                           <div className="vehicle-output-summary__header">
                             <div>
@@ -706,249 +442,8 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             <li>Powered output movement tests for {airframe.frameClassLabel} (control-surface sweeps, steering/throttle, thrusters) are a guarded follow-up — use the transmitter on the bench meanwhile.</li>
                           </ul>
                         </div>
-                      ) : motorPreviewNodes.length > 0 ? (
-                        <div className="motor-mixer-preview">
-                          <svg viewBox="0 0 260 260" role="img" aria-label="Schematic motor map preview">
-                            <defs>
-                              <radialGradient id="motorPreviewBody" cx="50%" cy="50%" r="65%">
-                                <stop offset="0%" stopColor="rgba(255, 187, 0, 0.18)" />
-                                <stop offset="100%" stopColor="rgba(255, 187, 0, 0.02)" />
-                              </radialGradient>
-                              <marker id="spinArrowOutputs" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                                <path d="M 0 0 L 6 3 L 0 6 z" className="motor-mixer-preview__spin-head" />
-                              </marker>
-                            </defs>
-                            <rect x="0" y="0" width="260" height="260" rx="18" className="motor-mixer-preview__backdrop" />
-                            <line x1="130" y1="34" x2="130" y2="58" className="motor-mixer-preview__nose-arrow" />
-                            <polygon points="130,18 122,36 138,36" className="motor-mixer-preview__nose-arrow" />
-                            {motorPreviewNodes.map((node) => {
-                              const assignedOutput = effectiveMotorOutputByMotorNumber.get(node.motorNumber)
-                              const x = 130 + node.x * 82
-                              const y = 130 + node.y * 82
-                              const stateClassName =
-                                motorVerification.currentMotorNumber === node.motorNumber
-                                  ? 'is-target'
-                                  : motorVerification.verifiedOutputs.includes(assignedOutput?.channelNumber ?? -1)
-                                    ? 'is-complete'
-                                    : assignedOutput
-                                      ? 'is-mapped'
-                                      : 'is-empty'
-
-                              return (
-                                <g key={`motor-preview:${node.motorNumber}`} className={`motor-mixer-preview__node ${stateClassName}`}>
-                                  <line x1="130" y1="130" x2={x} y2={y} className="motor-mixer-preview__arm" />
-                                  <circle cx={x} cy={y} r={node.stack ? 29 : 24} className="motor-mixer-preview__ring" />
-                                  {node.stack ? <circle cx={x} cy={y} r={19} className="motor-mixer-preview__stack" /> : null}
-                                  {node.spin ? (
-                                    <path
-                                      d={motorSpinArcPath(x, y, (node.stack ? 29 : 24) + 6, node.spin)}
-                                      className="motor-mixer-preview__spin"
-                                      markerEnd="url(#spinArrowOutputs)"
-                                    />
-                                  ) : null}
-                                  <text x={x} y={y + 4} textAnchor="middle" className="motor-mixer-preview__motor-number">
-                                    {node.motorNumber}
-                                  </text>
-                                  <text x={x} y={y + (node.stack ? 38 : 34)} textAnchor="middle" className="motor-mixer-preview__channel-label">
-                                    {assignedOutput ? `OUT${assignedOutput.channelNumber}` : 'UNMAPPED'}
-                                  </text>
-                                  {node.stack ? (
-                                    <text x={x} y={y - 34} textAnchor="middle" className="motor-mixer-preview__stack-label">
-                                      {node.stack}
-                                    </text>
-                                  ) : null}
-                                </g>
-                              )
-                            })}
-                            <circle cx="130" cy="130" r="26" fill="url(#motorPreviewBody)" className="motor-mixer-preview__body" />
-                            <text x="130" y="136" textAnchor="middle" className="motor-mixer-preview__center-label">
-                              {motorPreviewGeometryMode.toUpperCase()}
-                            </text>
-                          </svg>
-                        </div>
-                      ) : (
-                        <div className="bf-note">
-                          <p>No mapped motor outputs were detected yet. Set the required `SERVOx_FUNCTION` motor assignments first.</p>
-                        </div>
-                      )}
-
-                      {isCopterVehicle ? (
-                        <>
-                          <div className="motor-mixer-summary-grid">
-                            {Array.from({ length: motorPreviewCount }, (_, index) => {
-                              const motorNumber = index + 1
-                              const assignedOutput = effectiveMotorOutputByMotorNumber.get(motorNumber)
-                              return (
-                                <div key={`motor-summary:${motorNumber}`} className="motor-mixer-summary-card">
-                                  <strong>M{motorNumber}</strong>
-                                  <span>{assignedOutput ? `OUT${assignedOutput.channelNumber}` : 'Unmapped'}</span>
-                                  <small>{assignedOutput?.functionLabel ?? 'No motor function staged on any visible output.'}</small>
-                                </div>
-                              )
-                            })}
-                          </div>
-
-                          <div className="config-pills">
-                            <span>Schematic preview only</span>
-                            <span>{airframe.frameClassLabel}</span>
-                            <span>{airframe.frameTypeLabel}</span>
-                            <span>{effectiveMotorOutputs.length} mapped motors</span>
-                            {airframe.expectedMotorCount !== undefined ? <span>{airframe.expectedMotorCount} expected</span> : null}
-                          </div>
-                        </>
-                      ) : null}
-
-                      <div className="bf-tool-button-row">
-                        {isCopterVehicle ? (
-                          <button
-                            type="button"
-                            style={buttonStyle('secondary')}
-                            onClick={handleOpenMotorReorderDialog}
-                            disabled={effectiveMotorOutputs.length === 0}
-                          >
-                            Reorder Motor Outputs
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          style={buttonStyle()}
-                          onClick={() => setShowAllOutputAssignments((current) => !current)}
-                          disabled={outputAssignmentParameters.length === 0}
-                        >
-                          {showAllOutputAssignments ? 'Show Focused Output Slots' : `Show All ${outputAssignmentParameters.length} Output Slots`}
-                        </button>
-                      </div>
-
-                      <ul className="output-note-list">
-                        <li>Reordering stages new `SERVOx_FUNCTION` values. Nothing changes on the flight controller until you apply the staged output drafts.</li>
-                        <li>This preview is schematic. Always confirm the actual motor that spins with the guarded bench test before flight.</li>
-                      </ul>
-
-                      {outputAssignmentStagedDrafts.length > 0 || outputAssignmentInvalidDrafts.length > 0 ? (
-                        <div className="bf-toolbar">
-                          <div className="bf-toolbar__status">
-                            <span>{outputAssignmentReviewLabel}</span>
-                          </div>
-                          <button
-                            type="button"
-                            style={buttonStyle('primary')}
-                            onClick={() =>
-                              void handleApplyScopedParameterDrafts(outputAssignmentDraftEntries, 'outputs:assignments', 'Output assignments')
-                            }
-                            disabled={
-                              busyAction !== undefined ||
-                              outputAssignmentStagedDrafts.length === 0 ||
-                              outputAssignmentInvalidDrafts.length > 0 ||
-                              !canApplyDraftParameters
-                            }
-                          >
-                            {busyAction === 'outputs:assignments' ? 'Applying…' : `Apply Output Assignments (${outputAssignmentStagedDrafts.length})`}
-                          </button>
-                          <button
-                            type="button"
-                            style={buttonStyle()}
-                            onClick={() =>
-                              handleDiscardScopedParameterDrafts(outputAssignmentDraftEntries.map((entry) => entry.id), 'output assignments')
-                            }
-                            disabled={busyAction !== undefined || outputAssignmentDraftEntries.length === 0}
-                          >
-                            Discard
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  </section>
-
-                  {/* Board orientation is a Setup-flow concern — the Setup wizard
-                   * owns the Orientation Check card and the live attitude preview, so
-                   * the Motors tab intentionally omits it to keep a single place to
-                   * run / re-run the check. */}
-
-                  {outputAssignmentParameters.length > 0 ? (
-                    <div className="scoped-review-card scoped-review-card--compact">
-                      <div className="switch-exercise-card__header">
-                        <div>
-                          <strong>Output assignments</strong>
-                          <p>Remap motor and peripheral functions directly from Outputs, then rerun output verification before flight.</p>
-                        </div>
-                        <StatusBadge tone={toneForScopedDraftReview(outputAssignmentStagedDrafts.length, outputAssignmentInvalidDrafts.length)}>
-                          {outputAssignmentInvalidDrafts.length > 0
-                            ? `${outputAssignmentInvalidDrafts.length} invalid`
-                            : outputAssignmentStagedDrafts.length > 0
-                              ? `${outputAssignmentStagedDrafts.length} staged`
-                              : 'in sync'}
-                        </StatusBadge>
-                      </div>
-
-                      <div className="scoped-review-card__disclosure">
-                        <small>
-                          {showAllOutputAssignments
-                            ? `Showing all ${outputAssignmentParameters.length} SERVO function slots.`
-                            : `Showing ${visibleOutputAssignmentParameters.length} likely-relevant outputs first${hiddenOutputAssignmentCount > 0 ? `, with ${hiddenOutputAssignmentCount} additional slot${hiddenOutputAssignmentCount === 1 ? '' : 's'} hidden.` : '.'}`}
-                        </small>
-                        {outputAssignmentParameters.length > visibleOutputAssignmentParameters.length || showAllOutputAssignments ? (
-                          <button
-                            style={buttonStyle()}
-                            onClick={() => setShowAllOutputAssignments((current) => !current)}
-                            disabled={busyAction !== undefined}
-                          >
-                            {showAllOutputAssignments ? 'Show Focused Outputs' : `Show All ${outputAssignmentParameters.length} Outputs`}
-                          </button>
-                        ) : null}
-                      </div>
-
-                      <div className="scoped-editor-grid">
-                        {/* Shared ScopedSelectField so each row picks up the
-                          * staged-red + "was X" treatment without a separate
-                          * "Current X on OUTn" caption duplicating what the dropdown
-                          * already shows. The channel context (OUTn) is implicit in
-                          * the SERVOn_FUNCTION id surfaced by the field's label
-                          * area. */}
-                        {visibleOutputAssignmentParameters.map((parameter) => (
-                          <ScopedSelectField
-                            key={parameter.id}
-                            parameter={parameter}
-                            liveValue={parameter.value}
-                            editedValues={editedValues}
-                            onChange={(paramId, value) => setDraft(paramId, value)}
-                            draftStatusById={parameterDraftById}
-                          />
-                        ))}
-                      </div>
-
-                      <ul className="output-note-list">
-                        <li>Changing SERVOx function assignments can move motors, LEDs, or accessories to a different output pin immediately after apply/reboot.</li>
-                        <li>After remapping outputs, keep props off and repeat the motor/peripheral verification steps from this view.</li>
-                      </ul>
-
-                      <div className="switch-exercise-controls">
-                        <button
-                          style={buttonStyle('primary')}
-                          onClick={() =>
-                            void handleApplyScopedParameterDrafts(outputAssignmentDraftEntries, 'outputs:assignments', 'Output assignments')
-                          }
-                          disabled={
-                            busyAction !== undefined ||
-                            outputAssignmentStagedDrafts.length === 0 ||
-                            outputAssignmentInvalidDrafts.length > 0 ||
-                            !canApplyDraftParameters
-                          }
-                        >
-                          {busyAction === 'outputs:assignments' ? 'Applying…' : `Apply Output Assignments (${outputAssignmentStagedDrafts.length})`}
-                        </button>
-                        <button
-                          style={buttonStyle()}
-                          onClick={() =>
-                            handleDiscardScopedParameterDrafts(outputAssignmentDraftEntries.map((entry) => entry.id), 'output assignments')
-                          }
-                          disabled={busyAction !== undefined || outputAssignmentDraftEntries.length === 0}
-                        >
-                          Discard Output Assignments
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
+                  </div>
+                )
               ) : null}
 
               {activeOutputTaskId === 'direction-test' ? (
@@ -976,33 +471,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                       <strong>Direction & Test</strong>
                     </div>
                     <div className="bf-gui-box__body">
-                      <div className="switch-exercise-card__header">
-                        <div>
-                          <strong>Motor Direction Check</strong>
-                          <p>{motorDirectionSummary}</p>
-                        </div>
-                        <StatusBadge tone={toneForModeSwitchExercise(motorVerification.status)}>{motorVerification.status}</StatusBadge>
-                      </div>
-
-                      <div className="config-pills">
-                        <span>Current: {currentMotorVerificationLabel ?? 'Not started'}</span>
-                        <span>Selected: {selectedMotorTestOutputLabel ?? 'None selected'}</span>
-                        <span>Bench test: {motorTestThrottlePercent}% / {motorTestDurationSeconds.toFixed(1)}s</span>
-                        {outputMapping.motorOutputs.map((output) => {
-                          const verified = motorVerification.verifiedOutputs.includes(output.channelNumber)
-                          const targeted = motorVerification.currentOutputChannel === output.channelNumber
-                          const selected = selectedMotorTestOutputMotorNumber === output.motorNumber
-                          return (
-                            <span
-                              key={`direction-pill:${output.paramId}`}
-                              className={verified ? 'is-complete' : targeted ? 'is-target' : selected ? 'is-pending' : undefined}
-                            >
-                              M{output.motorNumber ?? '?'} · OUT{output.channelNumber}
-                            </span>
-                          )
-                        })}
-                      </div>
-
                       <div className="motor-direction-layout">
                         <div className="motor-direction-layout__sliders">
                           <MotorTestSliders
@@ -1076,49 +544,29 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             </label>
                           </div>
 
-                          <div className="config-pills">
-                            <span>Single output, ALL in sequence, or ALL at once</span>
-                            <span>"At once" spins every motor together (props off!)</span>
-                            <span>Auto-stop after {motorTestDurationSeconds.toFixed(1)}s</span>
-                            <span>Throttle up to {MAX_MOTOR_TEST_THROTTLE_PERCENT}% (start low)</span>
-                            {/* The longer duration ceiling exists behind Expert
-                             *  mode; surface that here so the basic-mode cap isn't
-                             *  mistaken for a bug. */}
-                            <span>
-                              Duration up to {motorTestMaxDurationSeconds}s
-                              {motorTestMaxDurationSeconds < EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS
-                                ? ` — Expert mode raises it to ${EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS}s`
-                                : ''}
-                            </span>
-                            {selectedMotorTestOutputLabel ? <span>Selected: {selectedMotorTestOutputLabel}</span> : null}
-                          </div>
-
                           <div className="motor-test-acknowledgments">
                             {/* Props-off is the load-bearing safety ack — promote it
                              *  visually so an operator who's eye-skimmed past it
                              *  can't miss its unchecked state. Other acks stay in
                              *  the muted style; only the prop guarantee gets the
                              *  danger-toned card treatment until it's checked. */}
+                            {/* One combined safety ack — props off AND the craft
+                             *  restrained/clear — instead of two redundant boxes.
+                             *  Drives both underlying acknowledgments together. */}
                             <label
-                              className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged ? ' is-acknowledged' : ''}`}
+                              className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged && testAreaAcknowledged ? ' is-acknowledged' : ''}`}
                               data-testid="motor-test-props-off-ack"
                             >
                               <input
                                 type="checkbox"
-                                checked={propsRemovedAcknowledged}
-                                onChange={(event) => setPropsRemovedAcknowledged(event.target.checked)}
+                                checked={propsRemovedAcknowledged && testAreaAcknowledged}
+                                onChange={(event) => {
+                                  setPropsRemovedAcknowledged(event.target.checked)
+                                  setTestAreaAcknowledged(event.target.checked)
+                                }}
                                 disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
                               />
-                              <span>All propellers are removed.</span>
-                            </label>
-                            <label>
-                              <input
-                                type="checkbox"
-                                checked={testAreaAcknowledged}
-                                onChange={(event) => setTestAreaAcknowledged(event.target.checked)}
-                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                              />
-                              <span>The vehicle is restrained and the test area is clear.</span>
+                              <span>Props are off and the vehicle is restrained with the test area clear.</span>
                             </label>
                             {motorTestOverUsb ? (
                               <label className="motor-test-acknowledgments__usb" data-testid="motor-test-usb-ack">
@@ -1158,116 +606,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                         </div>
                       </div>
 
-                      {(() => {
-                        const rvmaskParam = selectParameterById(snapshot, 'SERVO_BLH_RVMASK')
-                        if (!rvmaskParam || outputMapping.motorOutputs.length === 0) {
-                          return null
-                        }
-                        const currentMask = normalizeBitmaskValue(editedValues[rvmaskParam.id], rvmaskParam.value)
-                        const motPwmType = Math.round(
-                          Number(editedValues.MOT_PWM_TYPE ?? readRoundedParameter(snapshot, 'MOT_PWM_TYPE') ?? 0)
-                        )
-                        const isDShot = motPwmType >= 4 && motPwmType <= 7
-                        return (
-                          <div className="motor-reverse-card" data-testid="motor-reverse">
-                            <div className="switch-exercise-card__header">
-                              <div>
-                                <strong>Reverse motor direction</strong>
-                                <p>
-                                  If the right motor spins the wrong way, reverse it here over DShot (BLHeli/AM32) instead
-                                  of swapping wires. {isDShot ? 'Takes effect on the next reboot/redetect.' : 'Requires a DShot ESC protocol — set it in the ESC & Protocol task or Config.'}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="motor-reverse-grid">
-                              {outputMapping.motorOutputs.map((output) => {
-                                const bit = output.channelNumber - 1
-                                const reversed = hasBitmaskFlag(currentMask, bit)
-                                return (
-                                  <label
-                                    key={`motor-reverse:${output.paramId}`}
-                                    className="motor-reverse-toggle"
-                                    data-testid={`motor-reverse-${output.channelNumber}`}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={reversed}
-                                      disabled={!isDShot || busyAction !== undefined}
-                                      onChange={(event) =>
-                                        setDraft(rvmaskParam.id, String(toggleBitmaskFlag(currentMask, bit, event.target.checked)))
-                                      }
-                                    />
-                                    <span>
-                                      M{output.motorNumber ?? '?'} · OUT{output.channelNumber}
-                                      {reversed ? ' — reversed' : ''}
-                                    </span>
-                                  </label>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )
-                      })()}
-
-                      <ol className="switch-exercise-instructions">
-                        <li>Remove props, acknowledge the motor-test guardrails, and keep the vehicle restrained.</li>
-                        <li>Start the guided direction check or target a specific mapped output, then spin one motor at a time.</li>
-                        <li>If the correct motor spins but its direction is wrong, flip it with the Reverse controls above (DShot), then retest here.</li>
-                      </ol>
-
-                      <div className="bf-tool-button-row">
-                        <button
-                          id={OUTPUTS_MOTOR_START_BUTTON_ID}
-                          type="button"
-                          style={buttonStyle('primary')}
-                          onClick={() => handleStartMotorVerification()}
-                          disabled={!canRunMotorVerification || motorVerification.status === 'running'}
-                        >
-                          {motorVerification.status === 'passed' ? 'Run Direction Check Again' : 'Start Direction Check'}
-                        </button>
-                        <button
-                          type="button"
-                          style={buttonStyle()}
-                          onClick={() => setMotorTestOutput(motorVerification.currentOutputChannel)}
-                          disabled={motorVerification.currentOutputChannel === undefined}
-                        >
-                          Target Current Output
-                        </button>
-                        <button
-                          id={OUTPUTS_MOTOR_CONFIRM_BUTTON_ID}
-                          type="button"
-                          className={currentMotorTestSucceeded ? 'guided-action-pulse' : undefined}
-                          style={buttonStyle('secondary')}
-                          onClick={handleConfirmMotorVerification}
-                          disabled={
-                            motorVerification.status !== 'running' ||
-                            snapshot.motorTest.status !== 'succeeded' ||
-                            snapshot.motorTest.selectedOutputChannel !== motorVerification.currentOutputChannel
-                          }
-                        >
-                          Confirm Motor & Direction
-                        </button>
-                        <button
-                          type="button"
-                          style={buttonStyle('secondary')}
-                          onClick={handleFailMotorVerification}
-                          disabled={motorVerification.status !== 'running'}
-                        >
-                          Mark Failed
-                        </button>
-                        <button
-                          type="button"
-                          style={buttonStyle()}
-                          onClick={handleResetMotorVerification}
-                          disabled={motorVerification.status === 'idle'}
-                        >
-                          Reset
-                        </button>
-                      </div>
-
-                      <div className="bf-note">
-                        <p>Direction changes are not written from this card. Use it to verify the real motor response after any ESC-side reversal or output remap.</p>
-                      </div>
                     </div>
                   </section>
                   )}
@@ -1377,8 +715,8 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                         <strong>ESC calibration & motor range</strong>
                         <p>{escReviewSummary}</p>
                       </div>
-                      <StatusBadge tone={escReviewConfirmation ? 'success' : escSetup.calibrationPath === 'manual-review' ? 'warning' : 'neutral'}>
-                        {escReviewConfirmation ? 'confirmed' : escCalibrationPathLabel(escSetup.calibrationPath)}
+                      <StatusBadge tone={escSetup.calibrationPath === 'manual-review' ? 'warning' : 'neutral'}>
+                        {escCalibrationPathLabel(escSetup.calibrationPath)}
                       </StatusBadge>
                     </div>
 
@@ -1455,31 +793,14 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                       </div>
                     </div>
 
-                    <ol className="switch-exercise-instructions">
-                      {escCalibrationInstructions(escSetup).map((instruction) => (
-                        <li key={instruction}>{instruction}</li>
-                      ))}
-                    </ol>
+                    {escCalibrationInstructions(escSetup).length > 0 ? (
+                      <ol className="switch-exercise-instructions">
+                        {escCalibrationInstructions(escSetup).map((instruction) => (
+                          <li key={instruction}>{instruction}</li>
+                        ))}
+                      </ol>
+                    ) : null}
 
-                    <ul className="output-note-list">
-                      {escSetup.notes.map((note) => (
-                        <li key={note}>{note}</li>
-                      ))}
-                    </ul>
-
-                    <div className="switch-exercise-controls">
-                      <button
-                        style={buttonStyle(escReviewConfirmation ? 'secondary' : 'primary')}
-                        onClick={() => (escReviewConfirmation ? clearSetupSectionConfirmation('esc-range') : confirmSetupSection('esc-range'))}
-                        disabled={outputMapping.motorOutputs.length === 0}
-                      >
-                        {escReviewConfirmation
-                          ? 'Clear ESC Review'
-                          : escSetup.calibrationPath === 'analog-calibration'
-                            ? 'Confirm ESC Calibration Review'
-                            : 'Confirm ESC Range Review'}
-                      </button>
-                    </div>
                   </div>
                   )}
                 </div>

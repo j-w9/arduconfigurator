@@ -37,10 +37,9 @@ export function escCalibrationInstructions(escSetup: ReturnType<typeof deriveEsc
         'After calibration, reconnect, review the PWM range, and rerun motor-order verification before first flight.'
       ]
     case 'digital-protocol':
-      return [
-        'DShot-style protocols do not use PWM endpoint calibration.',
-        'Review MOT_PWM_TYPE and the spin thresholds, then confirm the digital-protocol setup before flight.'
-      ]
+      // Digital protocols (DShot) need no ESC endpoint-calibration steps, so
+      // there's nothing actionable to list here.
+      return []
     default:
       return [
         'Review the ESC protocol and motor-range values manually because the current snapshot does not match a known path.',

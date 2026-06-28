@@ -2094,6 +2094,54 @@ textarea:focus {
 
 /* Betaflight-style task accordion (Motors / Servos): one click expands a card
    in place; the overview rides along as a sticky sidebar. */
+/* Top tab selector for the Motors/Servos sub-tabs. */
+.outputs-tabs-layout {
+  display: grid;
+  gap: var(--space-3, 12px);
+  align-items: start;
+}
+
+.outputs-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.outputs-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.outputs-tab:hover {
+  color: var(--text);
+}
+
+.outputs-tab.is-active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.outputs-tabs__detail {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.outputs-tab-body {
+  min-width: 0;
+}
+
 .outputs-accordion-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.9fr);
@@ -7575,6 +7623,13 @@ details.metadata-settings-section:not([open]) > summary::after {
   border: 1px solid rgba(127, 147, 166, 0.24);
   object-fit: contain;
   background: rgba(7, 10, 13, 0.96);
+}
+
+/* Inline variant: the reorder/direction panel embedded as the Motor Setup tab
+   (no lightbox chrome). Stacks the acks / tabs / panels / apply-bar. */
+.motor-reorder-inline {
+  display: grid;
+  gap: 12px;
 }
 
 .motor-reorder-lightbox__frame {

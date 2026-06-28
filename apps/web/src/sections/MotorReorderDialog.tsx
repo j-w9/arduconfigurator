@@ -72,10 +72,12 @@ export interface MotorReorderDialogProps {
   /** True once an applied change needs a reboot to take effect — emphasises
    *  the Reboot button and shows the inline prompt. */
   rebootRecommended: boolean
-  /** Write the staged motor drafts to the FC without leaving the dialog. */
-  onApplyMotorDrafts: () => void
-  /** Reboot the flight controller so reboot-sensitive changes take effect. */
-  onRebootAutopilot: () => void
+  /** Write the staged motor drafts AND reboot the FC afterwards so the new
+   *  output map / reverse mask takes effect — one operator action. */
+  onApplyAndRebootMotorDrafts: () => void
+  /** Render inline (no lightbox backdrop / Close) for embedding directly in the
+   *  Motor Setup tab instead of as a popout. */
+  inline?: boolean
 }
 
 export function MotorReorderDialog({
@@ -115,49 +117,46 @@ export function MotorReorderDialog({
   motorReorderStagedCount,
   canApplyMotorDrafts,
   rebootRecommended,
-  onApplyMotorDrafts,
-  onRebootAutopilot
+  onApplyAndRebootMotorDrafts,
+  inline = false
 }: MotorReorderDialogProps): ReactElement {
   const motorTestBusy =
     snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'
-  return (
-    <div className="board-media-lightbox motor-reorder-lightbox" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="board-media-lightbox__frame motor-reorder-lightbox__frame" onClick={(event) => event.stopPropagation()}>
-        <div className="board-media-lightbox__header">
-          <div>
-            <strong>Motor Setup</strong>
-            <p>Two steps: <strong>1 · Order</strong> — confirm each output drives the right position. <strong>2 · Direction</strong> — confirm each motor spins the right way. Nothing is written until you Apply.</p>
+  const body = (
+    <>
+        {!inline ? (
+          <div className="board-media-lightbox__header">
+            <div>
+              <strong>Motor Setup</strong>
+              <p>Two steps: <strong>1 · Order</strong> — confirm each output drives the right position. <strong>2 · Direction</strong> — confirm each motor spins the right way. Nothing is written until you Apply.</p>
+            </div>
+            <button type="button" style={buttonStyle()} onClick={onClose}>
+              Close
+            </button>
           </div>
-          <button type="button" style={buttonStyle()} onClick={onClose}>
-            Close
-          </button>
-        </div>
+        ) : null}
 
         {/* Safety acknowledgments — pinned at the top of the dialog so
          *  the operator can't miss the props-off ack and doesn't have
          *  to leave the popout to set it. Required for both the
          *  Reorder identify and the Direction spin to enable. */}
         <div className="motor-reorder-lightbox__acks" data-testid="motor-reorder-lightbox-acks">
+          {/* One combined safety ack — props off AND the craft restrained/clear
+           *  — driving both underlying acknowledgments together. */}
           <label
-            className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged ? ' is-acknowledged' : ''}`}
+            className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged && testAreaAcknowledged ? ' is-acknowledged' : ''}`}
             data-testid="motor-reorder-props-off-ack"
           >
             <input
               type="checkbox"
-              checked={propsRemovedAcknowledged}
-              onChange={(event) => onPropsRemovedChange(event.target.checked)}
+              checked={propsRemovedAcknowledged && testAreaAcknowledged}
+              onChange={(event) => {
+                onPropsRemovedChange(event.target.checked)
+                onTestAreaChange(event.target.checked)
+              }}
               disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
             />
-            <span>All propellers are removed.</span>
-          </label>
-          <label className="motor-reorder-lightbox__ack-row" data-testid="motor-reorder-test-area-ack">
-            <input
-              type="checkbox"
-              checked={testAreaAcknowledged}
-              onChange={(event) => onTestAreaChange(event.target.checked)}
-              disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-            />
-            <span>The vehicle is restrained and the test area is clear.</span>
+            <span>Props are off and the vehicle is restrained with the test area clear.</span>
           </label>
         </div>
 
@@ -546,24 +545,17 @@ export function MotorReorderDialog({
             <button
               type="button"
               style={buttonStyle(motorReorderStagedCount > 0 ? 'primary' : undefined)}
-              onClick={onApplyMotorDrafts}
+              onClick={onApplyAndRebootMotorDrafts}
               disabled={motorReorderStagedCount === 0 || !canApplyMotorDrafts || busyAction !== undefined}
               data-testid="motor-reorder-apply"
             >
               {busyAction === 'motor-reorder:apply'
                 ? 'Writing…'
-                : motorReorderStagedCount > 0
-                  ? `Apply changes (${motorReorderStagedCount})`
-                  : 'Apply changes'}
-            </button>
-            <button
-              type="button"
-              style={buttonStyle(rebootRecommended ? 'primary' : undefined)}
-              onClick={onRebootAutopilot}
-              disabled={snapshot.connection.kind !== 'connected' || busyAction !== undefined}
-              data-testid="motor-reorder-reboot"
-            >
-              {busyAction === 'reboot-autopilot' ? 'Rebooting…' : 'Reboot FC'}
+                : busyAction === 'reboot-autopilot'
+                  ? 'Rebooting…'
+                  : motorReorderStagedCount > 0
+                    ? `Apply and reboot (${motorReorderStagedCount})`
+                    : 'Apply and reboot'}
             </button>
           </div>
           {rebootRecommended ? (
@@ -572,6 +564,17 @@ export function MotorReorderDialog({
             </small>
           ) : null}
         </div>
+    </>
+  )
+
+  if (inline) {
+    return <div className="motor-reorder-inline">{body}</div>
+  }
+
+  return (
+    <div className="board-media-lightbox motor-reorder-lightbox" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="board-media-lightbox__frame motor-reorder-lightbox__frame" onClick={(event) => event.stopPropagation()}>
+        {body}
       </div>
     </div>
   )

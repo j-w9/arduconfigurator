@@ -53,46 +53,36 @@ export function OutputsView(props: OutputsViewProps) {
   return (
     <div id="setup-panel-outputs">
       <Panel title={title} subtitle={subtitle}>
-        {/* Betaflight-style accordion: each task is a single card you click to
-            expand in place — one selector, body shown inline, no separate
-            "pick a task" nav + detached body pane. The overview rides along as
-            a sticky sidebar (Motors); the Servos tab drops it for full width. */}
-        <div className={`outputs-accordion-layout${overviewSlot ? '' : ' outputs-accordion-layout--full'}`}>
-          <div className="outputs-accordion" data-testid="outputs-task-nav">
+        {/* Top tab selector: the tasks sit in a row of tabs; the active task's
+            body renders once below them. (Replaced the old expand-in-place
+            accordion.) */}
+        <div className={`outputs-tabs-layout${overviewSlot ? '' : ' outputs-tabs-layout--full'}`}>
+          <div className="outputs-tabs" data-testid="outputs-task-nav" role="tablist">
             {taskCards.map((task) => {
               const isActive = task.id === activeTaskId
               return (
-                <section
+                <button
                   key={task.id}
-                  className={`outputs-accordion-card${isActive ? ' is-active' : ''}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  data-testid={`outputs-summary-${task.id}`}
+                  className={`outputs-tab${isActive ? ' is-active' : ''}`}
+                  onClick={() => onSelectTask(task.id)}
                 >
-                  <button
-                    type="button"
-                    data-testid={`outputs-summary-${task.id}`}
-                    className="outputs-accordion-card__header"
-                    aria-expanded={isActive}
-                    onClick={() => onSelectTask(task.id)}
-                  >
-                    <span className="outputs-accordion-card__chevron" aria-hidden="true">{isActive ? '▾' : '▸'}</span>
-                    <span className="outputs-accordion-card__title">{task.label}</span>
-                    <StatusBadge tone={task.tone}>{task.value}</StatusBadge>
-                    <p className="outputs-accordion-card__detail">{task.detail}</p>
-                  </button>
-                  {isActive ? (
-                    <div
-                      className="outputs-accordion-card__body"
-                      data-testid={`outputs-task-body-${task.id}`}
-                    >
-                      {taskBodySlot}
-                    </div>
-                  ) : null}
-                </section>
+                  <span className="outputs-tab__title">{task.label}</span>
+                  <StatusBadge tone={task.tone}>{task.value}</StatusBadge>
+                </button>
               )
             })}
           </div>
 
+          <div className="outputs-tab-body" data-testid={`outputs-task-body-${activeTaskId}`}>
+            {taskBodySlot}
+          </div>
+
           {overviewSlot ? (
-            <aside className="outputs-accordion__overview outputs-overview">{overviewSlot}</aside>
+            <aside className="outputs-tabs__overview outputs-overview">{overviewSlot}</aside>
           ) : null}
 
           {reviewDockSlot}

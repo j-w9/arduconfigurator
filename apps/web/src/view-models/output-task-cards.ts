@@ -128,7 +128,6 @@ export function buildOutputTaskCards(inputs: OutputTaskCardInputs): OutputTaskCa
     motorDirectionSummary,
     outputReviewInvalidCount,
     outputReviewStagedCount,
-    escReviewConfirmed,
     escCalibrationPath,
     escReviewSummary,
     servoMappingRowCount,
@@ -191,20 +190,16 @@ export function buildOutputTaskCards(inputs: OutputTaskCardInputs): OutputTaskCa
           ? `${outputReviewInvalidCount} invalid`
           : outputReviewStagedCount > 0
             ? `${outputReviewStagedCount} staged`
-            : escReviewConfirmed
-              ? 'Confirmed'
-              : escCalibrationPathLabel(escCalibrationPath),
+            : escCalibrationPathLabel(escCalibrationPath),
       detail: escReviewSummary,
       tone:
         outputReviewInvalidCount > 0
           ? 'danger'
           : outputReviewStagedCount > 0
             ? 'warning'
-            : escReviewConfirmed
-              ? 'success'
-              : escCalibrationPath === 'manual-review'
-                ? 'warning'
-                : 'neutral'
+            : escCalibrationPath === 'manual-review'
+              ? 'warning'
+              : 'neutral'
     },
     {
       // Servo function mapping — the headline card on the Servos

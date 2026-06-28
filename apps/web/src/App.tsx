@@ -4212,6 +4212,60 @@ export function App() {
     return metadataCatalog.categoryById[categoryId]?.label ?? categoryId
   }
 
+  // The Motor Setup sub-tab IS the reorder/direction panel (formerly a popout);
+  // rendered inline (no lightbox chrome) straight into the tab body.
+  function renderMotorSetupReorderPanel(): ReactNode {
+    return (
+      <MotorReorderDialog
+        inline
+        snapshot={snapshot}
+        airframe={airframe}
+        busyAction={busyAction}
+        editedValues={editedValues}
+        motorDialogTab={motorDialogTab}
+        motorDialogSpinError={motorDialogSpinError}
+        propsRemovedAcknowledged={propsRemovedAcknowledged}
+        testAreaAcknowledged={testAreaAcknowledged}
+        motorPreviewNodes={motorPreviewNodes}
+        motorPreviewGeometryMode={motorPreviewGeometryMode}
+        effectiveMotorOutputs={effectiveMotorOutputs}
+        motorReorderRows={motorReorderRows}
+        motorReorderSelections={motorReorderSelections}
+        motorReorderDuplicateChannels={motorReorderDuplicateChannels}
+        motorReorderCanStage={motorReorderCanStage}
+        motorReorderChangedCount={motorReorderChangedCount}
+        guidedReorderActive={guidedReorderActive}
+        guidedReorderStep={guidedReorderStep}
+        guidedReorderMapping={guidedReorderMapping}
+        guidedReorderAwaitingSpin={guidedReorderAwaitingSpin}
+        guidedReorderCompleted={guidedReorderCompleted}
+        onClose={handleCloseMotorReorderDialog}
+        onTabChange={setMotorDialogTab}
+        onPropsRemovedChange={setPropsRemovedAcknowledged}
+        onTestAreaChange={setTestAreaAcknowledged}
+        onSelectionChange={(motorNumber, value) =>
+          setMotorReorderSelections((current) => ({ ...current, [String(motorNumber)]: value }))
+        }
+        onStartGuidedReorder={handleStartGuidedReorder}
+        onCancelGuidedReorder={handleCancelGuidedReorder}
+        onSpinGuidedReorderCurrent={handleSpinGuidedReorderCurrent}
+        onPickGuidedReorderPosition={handlePickGuidedReorderPosition}
+        onStageReorderDrafts={handleStageMotorReorderDrafts}
+        onSpinSingleMotor={handleDialogSpinSingleMotor}
+        setDraft={setDraft}
+        motorReorderStagedCount={motorReorderDialogStagedDrafts.length}
+        canApplyMotorDrafts={canApplyDraftParameters}
+        rebootRecommended={parameterFollowUp?.requiresReboot ?? false}
+        onApplyAndRebootMotorDrafts={() =>
+          void (async () => {
+            await handleApplyScopedParameterDrafts(motorReorderDialogStagedDrafts, 'motor-reorder:apply', 'Motor setup')
+            await handleGuidedAction('reboot-autopilot')
+          })()
+        }
+      />
+    )
+  }
+
   // ESC & DShot section footer: one-click "enable bidirectional DShot"
   // choreography + the hardware-capability warnings the generic field grid
   // can't express. Enabling bdshot stages it on the first 4 outputs
@@ -6205,6 +6259,7 @@ export function App() {
       <OutputsSection
         activeViewId={activeViewId}
         snapshot={snapshot}
+        motorSetupSlot={renderMotorSetupReorderPanel()}
         canApplyDraftParameters={canApplyDraftParameters}
         busyAction={busyAction}
         motorTestMaxDurationSeconds={
@@ -6768,52 +6823,6 @@ export function App() {
         </div>
       </div>
 
-      {motorReorderDialogOpen ? (
-        <MotorReorderDialog
-          snapshot={snapshot}
-          airframe={airframe}
-          busyAction={busyAction}
-          editedValues={editedValues}
-          motorDialogTab={motorDialogTab}
-          motorDialogSpinError={motorDialogSpinError}
-          propsRemovedAcknowledged={propsRemovedAcknowledged}
-          testAreaAcknowledged={testAreaAcknowledged}
-          motorPreviewNodes={motorPreviewNodes}
-          motorPreviewGeometryMode={motorPreviewGeometryMode}
-          effectiveMotorOutputs={effectiveMotorOutputs}
-          motorReorderRows={motorReorderRows}
-          motorReorderSelections={motorReorderSelections}
-          motorReorderDuplicateChannels={motorReorderDuplicateChannels}
-          motorReorderCanStage={motorReorderCanStage}
-          motorReorderChangedCount={motorReorderChangedCount}
-          guidedReorderActive={guidedReorderActive}
-          guidedReorderStep={guidedReorderStep}
-          guidedReorderMapping={guidedReorderMapping}
-          guidedReorderAwaitingSpin={guidedReorderAwaitingSpin}
-          guidedReorderCompleted={guidedReorderCompleted}
-          onClose={handleCloseMotorReorderDialog}
-          onTabChange={setMotorDialogTab}
-          onPropsRemovedChange={setPropsRemovedAcknowledged}
-          onTestAreaChange={setTestAreaAcknowledged}
-          onSelectionChange={(motorNumber, value) =>
-            setMotorReorderSelections((current) => ({ ...current, [String(motorNumber)]: value }))
-          }
-          onStartGuidedReorder={handleStartGuidedReorder}
-          onCancelGuidedReorder={handleCancelGuidedReorder}
-          onSpinGuidedReorderCurrent={handleSpinGuidedReorderCurrent}
-          onPickGuidedReorderPosition={handlePickGuidedReorderPosition}
-          onStageReorderDrafts={handleStageMotorReorderDrafts}
-          onSpinSingleMotor={handleDialogSpinSingleMotor}
-          setDraft={setDraft}
-          motorReorderStagedCount={motorReorderDialogStagedDrafts.length}
-          canApplyMotorDrafts={canApplyDraftParameters}
-          rebootRecommended={parameterFollowUp?.requiresReboot ?? false}
-          onApplyMotorDrafts={() =>
-            void handleApplyScopedParameterDrafts(motorReorderDialogStagedDrafts, 'motor-reorder:apply', 'Motor setup')
-          }
-          onRebootAutopilot={() => void handleGuidedAction('reboot-autopilot')}
-        />
-      ) : null}
 
 
       <footer className="app-status-bar">

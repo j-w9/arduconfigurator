@@ -83,10 +83,12 @@ describe('buildOutputTaskCards', () => {
     expect(card(buildOutputTaskCards(baseInputs()), 'direction-test').value).toBe('Ready')
   })
 
-  it('esc-protocol: a confirmed review reads Confirmed/success, manual-review is a warning', () => {
-    const confirmed = card(buildOutputTaskCards(baseInputs({ escReviewConfirmed: true })), 'esc-protocol')
-    expect(confirmed.value).toBe('Confirmed')
-    expect(confirmed.tone).toBe('success')
+  it('esc-protocol: reflects the calibration path (no Confirmed badge); manual-review warns', () => {
+    // The "Confirmed" badge was removed from the ESC & Protocol tab — the card
+    // now just reflects the calibration path.
+    const digital = card(buildOutputTaskCards(baseInputs({ escCalibrationPath: 'digital-protocol' })), 'esc-protocol')
+    expect(digital.value).toBe('Digital protocol review')
+    expect(digital.tone).toBe('neutral')
 
     const manual = card(buildOutputTaskCards(baseInputs({ escCalibrationPath: 'manual-review' })), 'esc-protocol')
     expect(manual.value).toBe('Manual ESC review')

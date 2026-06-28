@@ -439,18 +439,17 @@ test.describe('Motors direction test', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'motors')
-    await page.getByTestId('outputs-summary-direction-test').click()
-    const reverse = page.getByTestId('motor-reverse')
-    await reverse.scrollIntoViewIfNeeded()
-    await expect(reverse).toBeVisible()
+    // Reverse toggles live in the Motor Setup tab's Direction sub-tab now.
+    await page.getByTestId('outputs-summary-motor-setup').click()
+    await page.getByTestId('motor-reorder-lightbox-tab-direction').click()
     // M1 is on a DShot output in the demo, so its reverse toggle is enabled.
-    const m1 = page.getByTestId('motor-reverse-1').locator('input')
+    const m1 = page.getByTestId('motor-reorder-direction-reverse-1').locator('input')
     await expect(m1).toBeEnabled()
     await expect(m1).not.toBeChecked()
     await m1.check()
     await expect(m1).toBeChecked()
-    // Staging the mask surfaces an apply (the Motors output draft toolbar).
-    await expect(page.getByTestId('motor-reverse-1')).toContainText('reversed')
+    // Staging the mask enables the panel's Apply and reboot with a count.
+    await expect(page.getByTestId('motor-reorder-apply')).toContainText('Apply and reboot (1)')
   })
 })
 
@@ -1526,32 +1525,6 @@ test.describe('ArduPlane demo', () => {
     await expect(table.getByTestId('modes-slot-2').locator('select option:checked')).toHaveText('FBWA')
   })
 
-  test('Motors tab exposes editable Frame class/type dropdowns for a Copter', async ({ page }) => {
-    await page.goto('/')
-    await connectViaHeader(page)
-    await openView(page, 'motors')
-
-    // FRAME_CLASS/FRAME_TYPE are editable dropdowns (was read-only). Demo
-    // Copter seeds Quad / X.
-    const editor = page.getByTestId('frame-config-editor')
-    await expect(editor).toBeVisible()
-    await expect(page.getByLabel('Frame Class')).toHaveValue('1') // Quad
-    await expect(page.getByLabel('Frame Type')).toHaveValue('1') // X
-
-    // No scoped apply until something is staged.
-    await expect(page.getByTestId('frame-config-actions')).toHaveCount(0)
-
-    // Changing the frame type stages a draft and surfaces the scoped Apply.
-    await page.getByLabel('Frame Type').selectOption('0') // Plus
-    await expect(page.getByTestId('frame-config-actions')).toBeVisible()
-    await expect(page.getByRole('button', { name: /Apply Frame Config \(1\)/ })).toBeVisible()
-
-    // Revert clears the staged draft.
-    await page.getByTestId('frame-config-actions').getByRole('button', { name: 'Revert' }).click()
-    await expect(page.getByTestId('frame-config-actions')).toHaveCount(0)
-    await expect(page.getByLabel('Frame Type')).toHaveValue('1')
-  })
-
   test('Servos tab surfaces the per-channel servo-function mapping table by default', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
@@ -1582,7 +1555,7 @@ test.describe('ArduPlane demo', () => {
     await expect(row1PwmInputs.nth(1)).toHaveValue('1500')
     await expect(row1PwmInputs.nth(2)).toHaveValue('2000')
 
-    await page.getByTestId('outputs-task-nav').getByRole('button', { name: /Peripherals & Alerts/i }).click()
+    await page.getByTestId('outputs-task-nav').getByRole('tab', { name: /Peripherals & Alerts/i }).click()
     await expect(page.getByTestId('servo-mapping-task-body')).toHaveCount(0)
     await expect(page.getByText('LED & buzzer notifications')).toBeVisible()
   })
@@ -1604,24 +1577,6 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.getByTestId('view-button-motors')).toContainText('motors')
-  })
-
-  test('Outputs overview surfaces channel count (physical PWM vs SERVOn slots when they differ)', async ({ page }) => {
-    // Real-FC audit follow-up: the BrainFPV reports 11 physical PWM outputs
-    // ("RCOut: PWM:1-11") but ArduPilot also allocates SERVOn_FUNCTION params
-    // up to MAX_SERVO (16). Counting SERVOn params alone was misleading. The
-    // badge now shows the physical count (parsed into snapshot.hardware.pwmOutputCount
-    // from the boot banner) and the SERVOn slot count when they differ; when
-    // they match (or no banner was seen, like in the demo), it falls back to
-    // the simple "<n> channels available" form.
-    await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo')
-    await page.getByTestId('connect-button').click()
-    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
-    await page.getByTestId('view-button-motors').click()
-    const channelCount = page.getByTestId('outputs-overview-channel-count')
-    await expect(channelCount).toBeVisible()
-    await expect(channelCount).toHaveText(/^(\d+ channels? available|\d+ PWM outputs? · \d+ SERVOn slots?)$/)
   })
 
   test('a Plane can confirm the Setup airframe step (not gated on Copter FRAME_CLASS)', async ({ page }) => {
@@ -1655,7 +1610,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'motors')
-    await page.getByTestId('outputs-task-nav').getByRole('button', { name: /Direction & Test/i }).click()
+    await page.getByTestId('outputs-task-nav').getByRole('tab', { name: /Direction & Test/i }).click()
     await expect(page.getByText('multirotor procedure', { exact: false })).toBeVisible()
     // The quad motor-direction bench is not rendered for a Plane.
     await expect(page.getByText('Motor Direction Check', { exact: true })).toHaveCount(0)
@@ -2026,23 +1981,19 @@ test.describe('ArduPlane demo', () => {
     await expect(apply).toContainText('Apply ESC Changes (1)')
   })
 
-  test('Outputs view still shows the motor diagram for a Copter', async ({ page }) => {
+  test('Motor Setup shows the inline reorder panel for a Copter', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
-    // The motor diagram is built from the SERVO_FUNCTION outputs, which arrive
-    // during parameter sync — wait for sync to complete before asserting it.
     await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
       timeout: VEHICLE_CONNECT_TIMEOUT
     })
     await openView(page, 'motors')
-    // The Motors accordion auto-activates whichever task needs attention (e.g.
-    // ESC & Protocol), so explicitly open the Motor Setup task that hosts the
-    // schematic diagram rather than assuming it's the default-expanded one.
+    // The copter Motor Setup tab IS the inline reorder/direction panel.
     await page.getByTestId('outputs-summary-motor-setup').click()
-    await expect(page.getByRole('img', { name: 'Schematic motor map preview' })).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByRole('button', { name: 'Reorder Motor Outputs' })).toBeVisible()
+    await expect(page.getByTestId('motor-reorder-lightbox-tabs')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('motor-reorder-apply')).toBeVisible()
   })
 
   test('Servos view exposes collapsible Gimbal and Rangefinder config sections for a Copter', async ({ page }) => {

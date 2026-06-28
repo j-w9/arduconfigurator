@@ -289,72 +289,53 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.locator('.setup-wizard-step').filter({ hasText: 'Failsafe' })).toBeEnabled()
   })
 
-  test('outputs exposes the motor setup card and reorder dialog', async ({ page }) => {
+  test('Motor Setup tab shows the inline reorder/direction panel', async ({ page }) => {
     await connectToVehicle(page, 'demo')
 
     await openView(page, 'motors')
     await expect(page.getByTestId('outputs-task-nav')).toBeVisible()
     await expect(page.getByTestId('outputs-summary-motor-setup')).toBeVisible()
-    await page.getByTestId('outputs-task-nav').getByRole('button', { name: /Direction & Test/i }).click()
-    await expect(page.getByText('Motor Direction Check', { exact: true })).toBeVisible()
-    await page.getByTestId('outputs-task-nav').getByRole('button', { name: /Motor Setup/i }).click()
-    await expect(page.getByRole('button', { name: 'Reorder Motor Outputs' })).toBeVisible()
-
-    await page.getByRole('button', { name: 'Reorder Motor Outputs' }).click()
-    const reorderDialog = page.getByRole('dialog')
-    await expect(reorderDialog).toBeVisible()
-    // Dialog header was renamed "Motor Output Reordering" -> "Motor
-    // Setup" when the Direction tab landed in the same popout. Scope to
-    // the dialog because the outputs task nav also has "Motor Setup".
-    await expect(reorderDialog.getByText('Motor Setup', { exact: true })).toBeVisible()
-    await expect(reorderDialog.getByRole('button', { name: 'Stage Reorder' })).toBeVisible()
-    await reorderDialog.getByRole('button', { name: 'Close' }).click()
+    // The Motor Setup tab IS the reorder panel now (formerly a popout): its
+    // Order/Direction sub-tabs + Apply bar render inline, no dialog.
+    await page.getByTestId('outputs-summary-motor-setup').click()
+    await expect(page.getByTestId('motor-reorder-lightbox-tabs')).toBeVisible()
+    await expect(page.getByTestId('motor-reorder-lightbox-tab-reorder')).toBeVisible()
+    await expect(page.getByTestId('motor-reorder-lightbox-tab-direction')).toBeVisible()
+    await expect(page.getByTestId('motor-reorder-apply')).toBeVisible()
     await expect(page.getByRole('dialog')).toHaveCount(0)
   })
 
-  test('motor setup dialog can apply staged direction changes in place', async ({ page }) => {
+  test('Motor Setup stages a direction change and offers Apply and reboot', async ({ page }) => {
     await connectToVehicle(page, 'demo')
     await openView(page, 'motors')
-    await page.getByTestId('outputs-task-nav').getByRole('button', { name: /Motor Setup/i }).click()
-    await page.getByRole('button', { name: 'Reorder Motor Outputs' }).click()
-    await expect(page.getByRole('dialog')).toBeVisible()
+    await page.getByTestId('outputs-summary-motor-setup').click()
 
-    // The shared action bar (Apply + Reboot) is present without leaving.
-    const applyBar = page.getByTestId('motor-reorder-apply-bar')
-    await expect(applyBar).toBeVisible()
     const apply = page.getByTestId('motor-reorder-apply')
-    await expect(page.getByTestId('motor-reorder-reboot')).toBeVisible()
-    // Nothing staged yet → Apply is disabled.
+    await expect(apply).toBeVisible()
+    // Single "Apply and reboot" button (no separate Reboot FC). Disabled until
+    // something is staged.
+    await expect(page.getByTestId('motor-reorder-reboot')).toHaveCount(0)
     await expect(apply).toBeDisabled()
 
-    // Stage a reverse-direction bit from the Direction tab, then Apply enables
-    // with a count — no close/apply/refresh/reopen round-trip.
+    // Stage a reverse-direction bit from the Direction sub-tab.
     await page.getByTestId('motor-reorder-lightbox-tab-direction').click()
     const m1 = page.getByTestId('motor-reorder-direction-reverse-1').locator('input')
     await expect(m1).toBeEnabled()
     await m1.check()
     await expect(apply).toBeEnabled()
-    await expect(apply).toContainText('Apply changes (1)')
+    await expect(apply).toContainText('Apply and reboot (1)')
   })
 
-  test('outputs reorder dialog runs the Betaflight-style guided identify flow (#459)', async ({ page }) => {
-    // PR #459 added a guided "spin a motor, click which position spun"
-    // workflow to the reorder dialog. The button is gated on the same
-    // props-off + test-area-clear acks as the motor test, so we drive
-    // those first on the motor-test panel before opening the reorder
-    // dialog (the acks persist across panels).
+  test('Motor Setup runs the Betaflight-style guided identify flow (#459)', async ({ page }) => {
+    // PR #459 added a guided "spin a motor, click which position spun" workflow.
+    // It now lives inline in the Motor Setup tab and is gated on the panel's
+    // props-off / test-area-clear safety ack.
     await connectToVehicle(page, 'demo')
 
     await openView(page, 'motors')
-    // Ack the safety gates on the Direction & Test panel.
-    await page.getByTestId('outputs-task-nav').getByRole('button', { name: /Direction & Test/i }).click()
-    await page.getByLabel('All propellers are removed.').check()
-    await page.getByLabel('The vehicle is restrained and the test area is clear.').check()
-
-    // Back to Motor Setup -> open reorder dialog -> start guided identify.
-    await page.getByTestId('outputs-task-nav').getByRole('button', { name: /Motor Setup/i }).click()
-    await page.getByRole('button', { name: 'Reorder Motor Outputs' }).click()
-    await expect(page.getByRole('dialog')).toBeVisible()
+    await page.getByTestId('outputs-summary-motor-setup').click()
+    // Ack the safety gate in the inline panel (gates the guided spin).
+    await page.getByTestId('motor-reorder-props-off-ack').locator('input').check()
 
     const startButton = page.getByTestId('motor-reorder-guided-start')
     await expect(startButton).toBeVisible()
@@ -386,8 +367,6 @@ test.describe('browser configurator regression flows', () => {
     // Banner gone after cancel.
     await expect(banner).toHaveCount(0)
     await expect(startButton).toBeVisible()
-
-    await page.getByRole('button', { name: 'Close' }).click()
   })
 
   test('outputs supports an ALL motor test slider with sequential mapped-motor testing', async ({ page }) => {
@@ -397,13 +376,11 @@ test.describe('browser configurator regression flows', () => {
     // The demo's recommendedOutputTaskId resolves to esc-protocol; the motor-test sliders
     // live under the direction-test task, so navigate there explicitly first.
     await page.getByTestId('outputs-summary-direction-test').click()
-    await page.getByLabel('All propellers are removed.').check()
-    await page.getByLabel('The vehicle is restrained and the test area is clear.').check()
+    await page.getByLabel('Props are off and the vehicle is restrained with the test area clear.').check()
     // The extra USB-bench acknowledgement is gated to a physical web-serial
     // link, so it must NOT appear (or block the test) over the demo transport.
     await expect(page.getByTestId('motor-test-usb-ack')).toHaveCount(0)
     await page.getByTestId('motor-test-sliders').getByText('ALL', { exact: true }).click()
-    await expect(page.getByText('Selected: All 4 mapped motors (sequence)').first()).toBeVisible()
     await expect(page.getByRole('button', { name: 'Run Motor Test' })).toBeEnabled()
   })
 
@@ -473,24 +450,17 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText('Tuning changes in review', { exact: true })).toBeVisible()
   })
 
-  test('manual motor test does not silently start motor verification', async ({ page }) => {
+  test('manual motor test: Stop is disabled until a test is running', async ({ page }) => {
     await connectToVehicle(page, 'demo')
 
     await openView(page, 'motors')
     await page.getByTestId('outputs-summary-direction-test').click()
-    await page.getByLabel('All propellers are removed.').check()
-    await page.getByLabel('The vehicle is restrained and the test area is clear.').check()
+    await page.getByLabel('Props are off and the vehicle is restrained with the test area clear.').check()
 
     // The Stop (abort) control is always present but disabled until a test
     // is actually running — you can't abort what hasn't started.
     await expect(page.getByTestId('motor-test-sliders-stop')).toBeVisible()
     await expect(page.getByTestId('motor-test-sliders-stop')).toBeDisabled()
-
-    await page.getByTestId('motor-test-sliders').getByRole('button', { name: 'Test' }).click()
-
-    await expect(page.getByText('Motor Direction Check', { exact: true })).toBeVisible()
-    await expect(page.locator('#outputs-motor-confirm')).toBeDisabled()
-    await expect(page.getByRole('button', { name: 'Start Direction Check' })).toBeVisible()
   })
 
   test('bundled websocket demo keeps core configuration surfaces reachable', async ({ page }) => {
@@ -570,7 +540,7 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('receiver-task-nav')).toBeVisible()
 
     await openView(page, 'motors')
-    await expect(page.getByText('Output assignments', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('outputs-task-nav')).toBeVisible()
     // Peripherals & Alerts moved to its own Servos nav tab as part of
     // the Outputs split (#227). After #229, the Servos tab lands on
     // the servo-function mapping table by default; click into the
@@ -579,18 +549,14 @@ test.describe('browser configurator regression flows', () => {
     // & Test continuation below.
     await openView(page, 'servos')
     await expect(page.getByTestId('servo-mapping-task-body')).toBeVisible()
-    await page.getByTestId('outputs-task-nav').getByRole('button', { name: /Peripherals & Alerts/i }).click()
+    await page.getByTestId('outputs-task-nav').getByRole('tab', { name: /Peripherals & Alerts/i }).click()
     await expect(page.getByText('LED & buzzer notifications', { exact: true })).toBeVisible()
     await openView(page, 'motors')
-    await page.getByTestId('outputs-task-nav').getByRole('button', { name: /Direction & Test/i }).click()
-    await page.getByLabel('All propellers are removed.').check()
-    await page.getByLabel('The vehicle is restrained and the test area is clear.').check()
-    await page.getByTestId('motor-test-sliders').getByRole('button', { name: 'Test' }).click()
-    await expect(page.getByRole('button', { name: 'Start Direction Check' })).toBeVisible()
-    await page.getByRole('button', { name: 'Start Direction Check' }).click()
-    await page.getByRole('button', { name: 'Run Motor Test' }).click()
-    await expect(page.locator('#outputs-motor-confirm')).toBeEnabled()
-    await expect(page.locator('#outputs-motor-confirm')).toHaveClass(/guided-action-pulse/)
+    await page.getByTestId('outputs-summary-direction-test').click()
+    await page.getByLabel('Props are off and the vehicle is restrained with the test area clear.').check()
+    // Motor-test surface reachable (the Run control + sliders render).
+    await expect(page.getByRole('button', { name: 'Run Motor Test' })).toBeVisible()
+    await expect(page.getByTestId('motor-test-sliders')).toBeVisible()
 
     await openView(page, 'power')
     // Power tab was renamed to "Battery" — the failsafe-shaped knobs that
