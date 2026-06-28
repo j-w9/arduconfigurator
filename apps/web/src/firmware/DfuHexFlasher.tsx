@@ -119,8 +119,9 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
         </p>
 
         <p className="bf-note bf-note--warning" data-testid="dfu-hex-flaky-note">
-          Heads up: entering/booting DFU is known to be flaky on ArduPilot 4.6 and current 4.7. If the board
-          doesn&rsquo;t show up as a DFU device, re-plug while holding BOOT (or retry &ldquo;Activate DFU mode&rdquo;) and try again.
+          Heads up: entering DFU via the <strong>software button</strong> (&ldquo;Activate DFU mode&rdquo; /
+          reboot-to-bootloader) is flaky on ArduPilot 4.6 and current 4.7. If the board doesn&rsquo;t enumerate as a
+          DFU device, use the hardware method instead: power off, hold <strong>BOOT0</strong>, then plug in.
         </p>
 
         <details className="dfu-hex-flasher__help" data-testid="dfu-hex-boot0-help">
