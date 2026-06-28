@@ -283,9 +283,16 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                             </div>
 
                             {visibleSerialPortViewModels.map((port) => {
-                              // Lead every row with the UART number (SERIAL0 is
-                              // the USB console, not a hardware UART).
-                              const portHeading = port.portNumber === 0 ? 'USB / Console' : `UART ${port.portNumber}`
+                              // Lead with the PHYSICAL UART (hardwarePort from the
+                              // board map) — the SERIAL index is NOT the UART
+                              // number (e.g. physical UART6 maps to SERIAL7). The
+                              // row still edits its own SERIALn_PROTOCOL (shown in
+                              // the sub-line). Falls back to the logical port when
+                              // no board map is available; SERIAL0 is USB.
+                              const portHeading =
+                                port.portNumber === 0
+                                  ? 'USB / Console'
+                                  : port.hardwarePort ?? `SERIAL ${port.portNumber}`
                               const protocolParameter = port.protocolParameter
                               const baudParameter = port.baudParameter
                               const optionsParameter = port.optionsParameter
@@ -347,12 +354,11 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                         </StatusBadge>
                                       </div>
                                       <div className="config-pills">
-                                        {/* Purpose + descriptive role/connector are secondary to the UART number.
-                                            Only show the physical port when it adds something the label doesn't
-                                            (boardConnectorLabel often IS the hardwarePort -> avoid "OTG2 OTG2"). */}
+                                        {/* Purpose + descriptive role/connector are secondary to the physical
+                                            UART (now the heading). Skip the label when it just repeats the
+                                            heading (boardConnectorLabel often IS the hardwarePort). */}
                                         <span>{port.usageSummary}</span>
                                         {port.label && port.label !== portHeading ? <span>{port.label}</span> : null}
-                                        {port.hardwarePort && port.hardwarePort !== port.label ? <span>{port.hardwarePort}</span> : null}
                                         {port.boardTrafficSummary ? <span>{port.boardTrafficSummary}</span> : null}
                                       </div>
                                     </div>

@@ -280,8 +280,10 @@ test.describe('Ports view', () => {
     await openView(page, 'ports')
     // The old Notes column header is gone.
     await expect(page.getByText('Notes', { exact: true })).toHaveCount(0)
-    // Every UART row leads with the UART number, then the SERIALn_PROTOCOL ref.
-    await expect(page.locator('.ports-matrix-row__title strong', { hasText: /^UART \d+$/ }).first()).toBeVisible()
+    // Each row leads with the physical port heading, then the SERIALn_PROTOCOL
+    // ref (the heading is the hardware UART when the board map is known, the
+    // logical SERIAL port otherwise).
+    await expect(page.locator('.ports-matrix-row__title strong').first()).toBeVisible()
     await expect(page.locator('.ports-matrix-row__title small', { hasText: /SERIAL\d+_PROTOCOL/ }).first()).toBeVisible()
     // Edit serial options on the first editable port, toggle one bit (clicking
     // the label toggles the custom-styled checkbox). Scope to the ports matrix:
