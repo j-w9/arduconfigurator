@@ -92,7 +92,7 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
     try {
       const { deviceName } = await flashSegmentsOverDfu(parsed.segments, setProgress, { fullErase })
       setNotice(
-        `Flashed ${formatBytes(parsed.totalBytes)} to ${deviceName}. The board is rebooting into the new firmware — reconnect once it re-enumerates.`
+        `Flashed and verified ${formatBytes(parsed.totalBytes)} to ${deviceName}. Now unplug the flight controller and plug it back in to boot the new firmware, then reconnect.`
       )
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'DFU flash failed.'

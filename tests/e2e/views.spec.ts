@@ -952,7 +952,7 @@ test.describe('Flash view', () => {
     await expect(page.getByTestId('dfu-hex-flash')).toBeEnabled()
 
     await page.getByTestId('dfu-hex-flash').click()
-    await expect(page.getByTestId('dfu-hex-notice')).toContainText('rebooting into the new firmware')
+    await expect(page.getByTestId('dfu-hex-notice')).toContainText('unplug the flight controller and plug it back in')
 
     // The DfuSe sequence reached the fake device: an erase (0x41), a set-address
     // (0x21) and a data block were all sent as DFU_DNLOAD (request 1).
