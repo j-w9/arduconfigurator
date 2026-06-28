@@ -1142,6 +1142,9 @@ export function App() {
             await runtime.connect()
             await runtime.waitForVehicle({ timeoutMs: 4000 })
             await runtime.requestParameterList()
+            // The reboot's pull is done — clear the "pull parameters again"
+            // follow-up so it doesn't linger after the auto-refresh.
+            setParameterFollowUp((current) => (current?.refreshRequired && !current.requiresReboot ? undefined : current))
             // This interface heartbeats — remember it as the live port.
             rememberSelectedSerialPort(candidate)
             return true
