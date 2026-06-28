@@ -1707,9 +1707,12 @@ test('arducopter catalog covers BOTH stable ANGLE_MAX / ATC_ACCEL_*_MAX and forw
     assert.doesNotMatch(params[id]?.label ?? '', /legacy/i, `${id} is stable, must NOT say legacy`)
     assert.equal(params[id]?.maximum, 220000)
   }
-  // Master / forward-readiness
+  // ATC_ANGLE_MAX shipped in 4.7 (confirmed on a real 4.7 FC), so its wording
+  // says "4.7+", not "master". (The ATC_ACC_* counterparts keep their existing
+  // wording for now.)
   assert.equal(params.ATC_ANGLE_MAX?.unit, 'deg')
-  assert.match(params.ATC_ANGLE_MAX?.label ?? '', /master/i)
+  assert.doesNotMatch(params.ATC_ANGLE_MAX?.label ?? '', /master/i)
+  assert.match(params.ATC_ANGLE_MAX?.description ?? '', /4\.7/)
   assert.equal(params.ATC_ANGLE_MAX?.maximum, 80)
   assert.equal(params.ATC_ACC_R_MAX?.unit, 'deg/s²')
   assert.match(params.ATC_ACC_R_MAX?.label ?? '', /master/i)

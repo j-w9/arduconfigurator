@@ -1636,19 +1636,17 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       step: 0.01,
       notes: flightFeelNotes
     },
-    // Max-lean-angle. The ArduPilot master branch renamed ANGLE_MAX (cdeg)
-    // -> ATC_ANGLE_MAX (deg, factor 100), but the rename has NOT yet shipped
-    // in stable releases — real ArduCopter 4.6 still streams ANGLE_MAX in
-    // cdeg on the wire (verified on a real Radix 2 HD on 2026-05-27). The
-    // catalog carries both forms so a future stable release that ships the
-    // rename also resolves, and the curated Tuning view filters by id so
-    // only the variant the FC actually streams renders (no duplicates).
-    // Alias shim deliberately omitted — a raw value mirror would be 100x
-    // off across the unit change.
+    // Max-lean-angle. ArduPilot renamed ANGLE_MAX (cdeg) -> ATC_ANGLE_MAX (deg)
+    // in 4.7; 4.6 and earlier still stream ANGLE_MAX in cdeg on the wire
+    // (verified on a real Radix 2 HD on 2026-05-27). The catalog carries both
+    // forms so either firmware resolves, and the curated Tuning view filters by
+    // id so only the variant the FC actually streams renders (no duplicates).
+    // Alias shim deliberately omitted — a raw value mirror would be 100x off
+    // across the unit change.
     ANGLE_MAX: {
       id: 'ANGLE_MAX',
       label: 'Max Lean Angle',
-      description: 'Maximum commanded lean angle in self-leveling modes (cdeg). ArduPilot master renamed this to ATC_ANGLE_MAX in degrees; rename not yet in stable as of 4.6.',
+      description: 'Maximum commanded lean angle in self-leveling modes (cdeg). Renamed to ATC_ANGLE_MAX in degrees on ArduPilot 4.7+; 4.6 and earlier still stream ANGLE_MAX in cdeg.',
       category: 'tuning',
       unit: 'cdeg',
       minimum: 1000,
@@ -1658,8 +1656,8 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     },
     ATC_ANGLE_MAX: {
       id: 'ATC_ANGLE_MAX',
-      label: 'Max Lean Angle (master)',
-      description: 'ArduPilot master rename for ANGLE_MAX, with the unit shifted cdeg -> deg (factor 100). Not yet in stable as of 4.6 — stable firmware streams ANGLE_MAX in cdeg.',
+      label: 'Max Lean Angle',
+      description: 'Max lean angle in degrees (ArduPilot 4.7+ rename of ANGLE_MAX, with the unit shifted cdeg -> deg). 4.6 and earlier stream ANGLE_MAX in cdeg instead.',
       category: 'tuning',
       unit: 'deg',
       minimum: 10,

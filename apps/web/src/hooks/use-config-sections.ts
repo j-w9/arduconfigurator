@@ -29,8 +29,8 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   // frame params, so gate on FRAME_CLASS actually being in the synced tree.
   const hasFrame = configParametersById.has('FRAME_CLASS')
   // Max lean angle was renamed ANGLE_MAX (cdeg) -> ATC_ANGLE_MAX (deg) in
-  // ArduPilot master, shipped in 4.7. Bind the field to whichever the FC
-  // actually streams so it stops reading "(not reported)" on 4.7+.
+  // ArduPilot 4.7. Bind the field to whichever the FC actually streams so it
+  // stops reading "(not reported)" on 4.7+.
   const leanAngleParamId = configParametersById.has('ATC_ANGLE_MAX') ? 'ATC_ANGLE_MAX' : 'ANGLE_MAX'
   const leanAngleUnit = leanAngleParamId === 'ATC_ANGLE_MAX' ? 'deg' : 'cdeg'
   const leanAngleDigits = leanAngleParamId === 'ATC_ANGLE_MAX' ? 1 : 0
