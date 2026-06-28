@@ -94,14 +94,17 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
       setNotice(
         `Flashed and verified ${formatBytes(parsed.totalBytes)} to ${deviceName}. Now unplug the flight controller and plug it back in to boot the new firmware, then reconnect.`
       )
+      // Leave the completed steps on screen (all done) so the operator can see
+      // what ran — the phases otherwise flash by too fast to read. Cleared on
+      // the next flash (setProgress(null) above) or on error (below).
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'DFU flash failed.'
       // requestDevice() throwing because the user dismissed the chooser is not
       // an error worth a red banner.
       setError(/no device selected|cancelled|the user (did|denied)|chooser/i.test(message) ? 'No DFU device selected.' : message)
+      setProgress(null)
     } finally {
       setBusy(false)
-      setProgress(null)
     }
   }, [parsed, busy, fullErase])
 
