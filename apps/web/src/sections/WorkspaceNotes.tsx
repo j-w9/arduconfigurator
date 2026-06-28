@@ -49,8 +49,11 @@ export function WorkspaceNotes({
       ) : null}
       {parameterFollowUp ? (
         <div className="workspace-note workspace-note--warning">
-          <strong>{parameterFollowUp.requiresReboot ? 'Reconnect required' : 'Refresh required'}</strong>
-          <p>{parameterFollowUp.text}</p>
+          <strong>{parameterFollowUp.requiresReboot ? 'Reboot required' : 'Refresh required'}</strong>
+          <p>
+            {parameterFollowUp.text}
+            {parameterFollowUp.requiresReboot ? ' One or more changes only take effect after a reboot — reboot now?' : ''}
+          </p>
           {snapshot.connection.kind !== 'connected' ? (
             <small>Reconnect from the header session strip to continue.</small>
           ) : (
@@ -58,11 +61,12 @@ export function WorkspaceNotes({
               {parameterFollowUp.requiresReboot ? (
                 <button
                   type="button"
-                  style={buttonStyle()}
+                  style={buttonStyle('primary')}
+                  data-testid="workspace-note-reboot"
                   onClick={onRebootAutopilot}
                   disabled={busyAction !== undefined || !canRunGuidedAction(snapshot, 'reboot-autopilot')}
                 >
-                  Request Reboot
+                  Reboot now
                 </button>
               ) : null}
               <button

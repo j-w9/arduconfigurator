@@ -1024,6 +1024,24 @@ test.describe('Config view', () => {
     await expect(bits.nth(4)).not.toHaveClass(/is-set/)
   })
 
+  test('applying a reboot-required config change prompts the operator to reboot', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+
+    // Enabling bdshot stages SERVO_BLH_* params, which are reboot-required.
+    await page.getByTestId('esc-dshot-footer').scrollIntoViewIfNeeded()
+    await page.getByTestId('esc-enable-bdshot').click()
+
+    // Apply the staged config changes; the apply path flags requiresReboot.
+    await page.getByRole('button', { name: /Apply Config/ }).click()
+
+    // The operator is prompted to reboot now (not just a passive note).
+    await expect(page.locator('.workspace-note--warning', { hasText: 'Reboot required' })).toBeVisible()
+    await expect(page.getByTestId('workspace-note-reboot')).toBeVisible()
+  })
+
   test('selecting a DShot MOT_PWM_TYPE auto-enables bidirectional DShot', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
