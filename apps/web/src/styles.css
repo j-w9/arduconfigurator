@@ -2790,6 +2790,10 @@ textarea:focus {
   padding: 2px 10px;
   border-radius: 999px;
   background: var(--primary-500);
+  /* The pill background is the bright brand yellow, so every bit of text inside
+     it (strong title, the trailing <small>, inline labels) must read dark —
+     inherited light/muted colors are illegible on yellow. */
+  color: #0b1118;
 }
 
 .bf-gui-box__titlebar strong {
@@ -11236,7 +11240,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .osd-backend-strip .bf-gui-box__titlebar small {
-  color: var(--text-muted);
+  /* Dark, slightly subordinate to the strong title but legible on the yellow pill. */
+  color: rgba(11, 17, 24, 0.7);
   font-size: 10px;
   font-family: var(--font-data);
   letter-spacing: 0.04em;
@@ -11305,7 +11310,8 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 
 .osd-bf-preview .bf-gui-box__titlebar small {
-  color: var(--text-muted);
+  /* Dark, slightly subordinate to the strong title but legible on the yellow pill. */
+  color: rgba(11, 17, 24, 0.7);
   font-size: 10px;
   font-family: var(--font-data);
   letter-spacing: 0.04em;
@@ -11814,7 +11820,8 @@ details.bf-gui-box:not([open]) > summary::after {
 .osd-preview-screen-select > span {
   font-size: 11px;
   letter-spacing: 0.03em;
-  color: var(--text-muted);
+  /* Sits inside the yellow preview titlebar pill — keep it dark, not muted-light. */
+  color: rgba(11, 17, 24, 0.7);
 }
 .osd-preview-screen-select select {
   padding: 5px 10px;
