@@ -243,12 +243,29 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
             </button>
 
             {progress ? (
-              <div className="firmware-progress" data-testid="dfu-hex-progress">
-                <span>
-                  {progress.label} {Math.round(progress.ratio * 100)}%
-                </span>
-                <progress value={progress.ratio} max={1} aria-label="DFU flash progress" />
-              </div>
+              <ol className="dfu-hex-flasher__steps" data-testid="dfu-hex-progress">
+                {[
+                  { phase: 'erase', label: fullErase ? '1. Full chip erase' : '1. Erase' },
+                  { phase: 'program', label: '2. Write firmware' },
+                  { phase: 'verify', label: '3. Verify (read-back compare)' }
+                ].map((step) => {
+                  // erase=0, program=1, verify=2; manifest means all three are done.
+                  const order = ['erase', 'program', 'verify']
+                  const current = progress.phase === 'manifest' ? order.length : order.indexOf(progress.phase)
+                  const index = order.indexOf(step.phase)
+                  const state = index < current ? 'done' : index === current ? 'active' : 'pending'
+                  const pct = state === 'done' ? 100 : state === 'active' ? Math.round(progress.ratio * 100) : 0
+                  return (
+                    <li key={step.phase} className={`dfu-hex-flasher__step is-${state}`} data-testid={`dfu-hex-step-${step.phase}`}>
+                      <span className="dfu-hex-flasher__step-label">{step.label}</span>
+                      <span className="dfu-hex-flasher__step-state">
+                        {state === 'done' ? '✓ done' : state === 'active' ? `${pct}%` : 'waiting'}
+                      </span>
+                      <progress value={pct} max={100} aria-label={step.label} />
+                    </li>
+                  )
+                })}
+              </ol>
             ) : null}
 
             {notice ? (
