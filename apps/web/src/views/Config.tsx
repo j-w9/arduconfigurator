@@ -106,7 +106,8 @@ export function ConfigView(props: ConfigViewProps) {
               <header className="config-section__header">
                 <div>
                   <strong>{section.title}</strong>
-                  <p>{section.description}</p>
+                  {/* Per-section blurb dropped in the cleanup — the per-param "i"
+                      tooltips carry the detail now; the title names the group. */}
                 </div>
                 {section.planned ? (
                   <StatusBadge tone="warning">planned</StatusBadge>
