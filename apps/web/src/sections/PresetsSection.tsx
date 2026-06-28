@@ -35,8 +35,10 @@ export interface PresetsSectionProps {
   presetDefinitions: readonly NormalizedPresetDefinition[]
   presetGroups: readonly PresetGroupDefinition[]
   presetPreviewById: ReadonlyMap<string, PresetPreview>
-  selectedPreset: NormalizedPresetDefinition | undefined
-  selectedPresetDiff: ParameterPresetDiffResult | undefined
+  selectedPresets: readonly NormalizedPresetDefinition[]
+  selectedPresetConflicts: readonly string[]
+  selectedPresetUnknownIds: readonly string[]
+  selectedPresetTouchedCount: number
   selectedPresetApplicability: ParameterPresetApplicabilityResult
   selectedPresetDiffGroups: readonly ParameterDraftGroup[]
   selectedPresetChangedEntries: readonly ParameterDraftEntry[]
@@ -44,7 +46,7 @@ export interface PresetsSectionProps {
   savedSnapshots: readonly SavedParameterSnapshot[]
   presetApplyAcknowledged: boolean
   setPresetApplyAcknowledged: Dispatch<SetStateAction<boolean>>
-  setSelectedPresetId: Dispatch<SetStateAction<string | undefined>>
+  onTogglePreset: (presetId: string) => void
   runtime: unknown
   formatCategoryLabel: (categoryId: string | undefined) => string
   onApplySelectedPreset: () => void | Promise<void>
@@ -63,8 +65,10 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
     presetDefinitions,
     presetGroups,
     presetPreviewById,
-    selectedPreset,
-    selectedPresetDiff,
+    selectedPresets,
+    selectedPresetConflicts,
+    selectedPresetUnknownIds,
+    selectedPresetTouchedCount,
     selectedPresetApplicability,
     selectedPresetDiffGroups,
     selectedPresetChangedEntries,
@@ -72,13 +76,66 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
     savedSnapshots,
     presetApplyAcknowledged,
     setPresetApplyAcknowledged,
-    setSelectedPresetId,
+    onTogglePreset,
     runtime,
     formatCategoryLabel,
     onApplySelectedPreset,
     onStageSelectedPresetDiff,
     onEraseSettings
   } = props
+
+  const hasSelection = selectedPresets.length > 0
+  const unchangedCount = Math.max(
+    0,
+    selectedPresetTouchedCount - selectedPresetChangedEntries.length - selectedPresetInvalidEntries.length
+  )
+  // Surface params set by more than one selected preset (later pick wins) as a
+  // caution so a silent overwrite never happens.
+  const conflictCautions =
+    selectedPresetConflicts.length > 0
+      ? [
+          `${selectedPresetConflicts.length} parameter(s) are set by more than one selected preset — the later selection wins: ${selectedPresetConflicts.join(', ')}.`
+        ]
+      : []
+  const dedupe = (values: readonly string[]): string[] => [...new Set(values)]
+  const single = selectedPresets.length === 1 ? selectedPresets[0] : undefined
+  const selectedPanel = hasSelection
+    ? {
+        label: single ? single.label : `${selectedPresets.length} presets selected`,
+        description: single
+          ? single.description
+          : `Combined diff for ${selectedPresets.map((preset) => preset.label).join(', ')}.`,
+        groupLabel: single ? single.groupDefinition.label : 'Multiple categories',
+        applicabilityStatus: selectedPresetApplicability.status,
+        applicabilityTone: toneForPresetApplicability(selectedPresetApplicability.status),
+        applicabilityReasons: selectedPresetApplicability.reasons,
+        paramCount: selectedPresetTouchedCount,
+        changedCount: selectedPresetChangedEntries.length,
+        unchangedCount,
+        unknownCount: selectedPresetUnknownIds.length,
+        tags: single ? single.tags ?? [] : dedupe(selectedPresets.flatMap((preset) => preset.tags ?? [])),
+        note: single ? single.note : undefined,
+        prerequisites: dedupe(selectedPresets.flatMap((preset) => preset.prerequisites ?? [])),
+        cautions: [...conflictCautions, ...dedupe(selectedPresets.flatMap((preset) => preset.cautions ?? []))],
+        diffGroups: selectedPresetDiffGroups.map((group) => ({
+          category: group.category,
+          categoryLabel: formatCategoryLabel(group.category),
+          changedCount: group.entries.length,
+          entries: group.entries.map((draft) => ({
+            id: draft.id,
+            label: draft.label,
+            fromToText: `${formatParameterValue(draft.currentValue, draft.definition?.unit)} to ${formatParameterValue(draft.nextValue, draft.definition?.unit)}`,
+            deltaText: formatParameterDelta(draft.delta, draft.definition?.unit)
+          }))
+        })),
+        invalidEntries: selectedPresetInvalidEntries.map((draft) => ({
+          id: draft.id,
+          label: draft.label,
+          rawValue: draft.rawValue,
+          reason: draft.reason ?? 'Invalid value'
+        }))
+      }
+    : null
 
   return (
     <PresetsView
@@ -94,7 +151,7 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
       followUp={parameterFollowUp ? { requiresReboot: parameterFollowUp.requiresReboot, text: parameterFollowUp.text } : null}
       familiesCount={presetGroups.length}
       totalCount={presetDefinitions.length}
-      changedCount={selectedPresetDiff?.changedCount ?? 0}
+      changedCount={selectedPresetChangedEntries.length}
       autoBackupCount={savedSnapshots.filter((snapshotEntry) => snapshotEntry.tags.includes('auto-backup')).length}
       groups={presetGroups.map((group): PresetsGroup => ({
         id: group.id,
@@ -103,7 +160,7 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
         cardCount: metadataCatalog.presetsByGroup[group.id]?.length ?? 0,
         cards: (metadataCatalog.presetsByGroup[group.id] ?? []).map((preset): PresetsCard => {
           const preview = presetPreviewById.get(preset.id)
-          const isActive = preset.id === selectedPreset?.id
+          const isActive = selectedPresets.some((selected) => selected.id === preset.id)
           const cardChangedCount = preview?.diff.changedCount ?? 0
           const cardInvalidCount = deriveParameterDraftEntries(snapshot.parameters, preview?.diff.draftValues ?? {}).filter(
             (entry) => entry.status === 'invalid'
@@ -135,42 +192,10 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
           }
         })
       }))}
-      selected={selectedPreset ? {
-        label: selectedPreset.label,
-        description: selectedPreset.description,
-        groupLabel: selectedPreset.groupDefinition.label,
-        applicabilityStatus: selectedPresetApplicability.status,
-        applicabilityTone: toneForPresetApplicability(selectedPresetApplicability.status),
-        applicabilityReasons: selectedPresetApplicability.reasons,
-        paramCount: selectedPreset.values.length,
-        changedCount: selectedPresetChangedEntries.length,
-        unchangedCount: selectedPresetDiff?.unchangedCount ?? 0,
-        unknownCount: selectedPresetDiff?.unknownParameterIds.length ?? 0,
-        tags: selectedPreset.tags ?? [],
-        note: selectedPreset.note,
-        prerequisites: selectedPreset.prerequisites ?? [],
-        cautions: selectedPreset.cautions ?? [],
-        diffGroups: selectedPresetDiffGroups.map((group) => ({
-          category: group.category,
-          categoryLabel: formatCategoryLabel(group.category),
-          changedCount: group.entries.length,
-          entries: group.entries.map((draft) => ({
-            id: draft.id,
-            label: draft.label,
-            fromToText: `${formatParameterValue(draft.currentValue, draft.definition?.unit)} to ${formatParameterValue(draft.nextValue, draft.definition?.unit)}`,
-            deltaText: formatParameterDelta(draft.delta, draft.definition?.unit)
-          }))
-        })),
-        invalidEntries: selectedPresetInvalidEntries.map((draft) => ({
-          id: draft.id,
-          label: draft.label,
-          rawValue: draft.rawValue,
-          reason: draft.reason ?? 'Invalid value'
-        }))
-      } : null}
+      selected={selectedPanel}
       applyAcknowledged={presetApplyAcknowledged}
       onAcknowledgedChange={setPresetApplyAcknowledged}
-      onSelectPreset={setSelectedPresetId}
+      onSelectPreset={onTogglePreset}
       onApplyPreset={() => void onApplySelectedPreset()}
       onStageDraft={onStageSelectedPresetDiff}
       isApplying={busyAction === 'presets:apply'}

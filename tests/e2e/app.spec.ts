@@ -738,6 +738,37 @@ test.describe('browser configurator regression flows', () => {
     // refreshRequired bit) is still covered.
   })
 
+  test('presets from different categories can be selected together and applied as one combined diff', async ({ page }) => {
+    await connectToVehicle(page, 'demo')
+    await openView(page, 'presets')
+
+    // Pick one preset from the flight-feel group and one from the acro-rates
+    // group — different categories, selected at the same time.
+    await page.getByTestId('preset-card-flight-feel-soft').click()
+    await page.getByTestId('preset-card-acro-rates-sport').click()
+
+    // Both stay active simultaneously (multi-select, not single-select replace).
+    await expect(page.getByTestId('preset-card-flight-feel-soft')).toHaveClass(/is-active/)
+    await expect(page.getByTestId('preset-card-acro-rates-sport')).toHaveClass(/is-active/)
+
+    // The review panel collapses to a single combined diff for the selection.
+    await expect(page.getByRole('heading', { name: '2 presets selected' })).toBeVisible()
+
+    // Apply writes the merged diff in one pass.
+    await page.getByTestId('preset-apply-ack').check()
+    await expect(page.getByTestId('apply-preset-button')).toBeEnabled()
+    await page.getByTestId('apply-preset-button').click()
+    // The combined write captures one pre-apply backup for the whole selection
+    // and reports both presets as the source of the live changes.
+    await expect(page.getByText('Pre-apply backup — 2 presets')).toBeVisible()
+    await expect(page.getByText(/2 presets \(Smooth Explorer, Sport Acro\) changed live tuning values/).first()).toBeVisible()
+
+    // Re-clicking an active card toggles it back off.
+    await page.getByTestId('preset-card-flight-feel-soft').click()
+    await expect(page.getByTestId('preset-card-flight-feel-soft')).not.toHaveClass(/is-active/)
+    await expect(page.getByTestId('preset-card-acro-rates-sport')).toHaveClass(/is-active/)
+  })
+
   test('destructive acknowledgments reset when preset and snapshot diffs change', async ({ page }) => {
     await connectToVehicle(page, 'demo')
 

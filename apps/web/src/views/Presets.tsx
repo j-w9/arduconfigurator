@@ -454,7 +454,7 @@ export function PresetsView(props: PresetsViewProps) {
                   onClick={onApplyPreset}
                   disabled={isBusy || !hasChanges || hasInvalid || applicabilityBlocked || !applyAcknowledged || !canApply}
                 >
-                  {isApplying ? 'Applying…' : `Apply Preset (${selected.changedCount})`}
+                  {isApplying ? 'Applying…' : `Apply Selected (${selected.changedCount})`}
                 </button>
                 <button
                   style={buttonStyle()}

@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS,
@@ -512,7 +512,16 @@ export function App() {
     setSelectedTuningProfileId,
     tuningProfileStorageNotice
   } = libraries
-  const [selectedPresetId, setSelectedPresetId] = useState<string>()
+  const [selectedPresetIds, setSelectedPresetIds] = useState<string[]>([])
+  // Multi-select: clicking a preset card toggles it in/out of the selection so
+  // presets from different categories can be combined and applied together.
+  // (The apply-ack auto-resets when the merged diff signature changes — see the
+  // effect on selectedPresetDiffSignature.)
+  const togglePresetSelection = useCallback((presetId: string) => {
+    setSelectedPresetIds((current) =>
+      current.includes(presetId) ? current.filter((id) => id !== presetId) : [...current, presetId]
+    )
+  }, [])
   const [desktopSnapshotLibraryPath, setDesktopSnapshotLibraryPath] = useState<string>()
   const [desktopSnapshotLibraryName, setDesktopSnapshotLibraryName] = useState<string>()
   // Form-input state bound to a name first so SnapshotsSection can take
@@ -1722,14 +1731,24 @@ export function App() {
     presetDefinitions,
     presetGroups,
     presetPreviewById,
-    selectedPreset,
-    selectedPresetDiff,
+    selectedPresets,
+    selectedPresetDraftValues,
+    selectedPresetConflicts,
+    selectedPresetUnknownIds,
+    selectedPresetTouchedCount,
     selectedPresetApplicability,
     selectedPresetDiffGroups,
     selectedPresetChangedEntries,
     selectedPresetInvalidEntries,
     selectedPresetDiffSignature
-  } = usePresetCatalog({ snapshot, metadataCatalog, selectedPresetId })
+  } = usePresetCatalog({ snapshot, metadataCatalog, selectedPresetIds })
+  // Human label for the current selection, used across preset notices/messages.
+  const selectedPresetsLabel =
+    selectedPresets.length === 0
+      ? 'No preset selected'
+      : selectedPresets.length === 1
+        ? `Preset "${selectedPresets[0].label}"`
+        : `${selectedPresets.length} presets (${selectedPresets.map((preset) => preset.label).join(', ')})`
   const {
     receiverDraftEntries,
     receiverStagedDrafts,
@@ -2718,14 +2737,14 @@ export function App() {
   }
 
   function handleStageSelectedPresetDiff(): void {
-    if (!selectedPreset || !selectedPresetDiff) {
+    if (selectedPresets.length === 0) {
       return
     }
 
     if (selectedPresetApplicability.status === 'blocked') {
       setPresetNotice({
         tone: 'danger',
-        text: selectedPresetApplicability.reasons[0] ?? 'This preset is not compatible with the current live configuration.'
+        text: selectedPresetApplicability.reasons[0] ?? 'A selected preset is not compatible with the current live configuration.'
       })
       return
     }
@@ -2733,12 +2752,12 @@ export function App() {
     if (selectedPresetChangedEntries.length === 0) {
       setPresetNotice({
         tone: 'neutral',
-        text: `Preset "${selectedPreset.label}" already matches the current live tuning values.`
+        text: `${selectedPresetsLabel}: every value already matches the current live tuning values.`
       })
       return
     }
 
-    mergeDrafts(selectedPresetDiff.draftValues)
+    mergeDrafts(selectedPresetDraftValues)
     setActiveViewId('tuning')
     setParameterNotice({
       tone: 'warning',
@@ -2746,7 +2765,7 @@ export function App() {
     })
     setPresetNotice({
       tone: 'warning',
-      text: `Preset "${selectedPreset.label}" was loaded into manual tuning drafts instead of being applied directly.`
+      text: `${selectedPresetsLabel} loaded into manual tuning drafts instead of being applied directly.`
     })
   }
 
@@ -2784,14 +2803,14 @@ export function App() {
   }
 
   async function handleApplySelectedPreset(): Promise<void> {
-    if (!selectedPreset || !selectedPresetDiff) {
+    if (selectedPresets.length === 0) {
       return
     }
 
     if (!canApplyDraftParameters) {
       setPresetNotice({
         tone: 'warning',
-        text: 'Connect, finish parameter sync, and keep the vehicle disarmed before applying a preset.'
+        text: 'Connect, finish parameter sync, and keep the vehicle disarmed before applying presets.'
       })
       return
     }
@@ -2799,7 +2818,7 @@ export function App() {
     if (selectedPresetApplicability.status === 'blocked') {
       setPresetNotice({
         tone: 'danger',
-        text: selectedPresetApplicability.reasons[0] ?? 'This preset is not compatible with the current live configuration.'
+        text: selectedPresetApplicability.reasons[0] ?? 'A selected preset is not compatible with the current live configuration.'
       })
       return
     }
@@ -2807,7 +2826,7 @@ export function App() {
     if (!presetApplyAcknowledged) {
       setPresetNotice({
         tone: 'warning',
-        text: 'Review the diff and acknowledge the overwrite warning before applying a preset.'
+        text: 'Review the diff and acknowledge the overwrite warning before applying.'
       })
       return
     }
@@ -2815,7 +2834,7 @@ export function App() {
     if (selectedPresetInvalidEntries.length > 0) {
       setPresetNotice({
         tone: 'danger',
-        text: `Preset "${selectedPreset.label}" has ${selectedPresetInvalidEntries.length} invalid value(s) in the current metadata set.`
+        text: `${selectedPresetsLabel} has ${selectedPresetInvalidEntries.length} invalid value(s) in the current metadata set.`
       })
       return
     }
@@ -2823,14 +2842,24 @@ export function App() {
     if (selectedPresetChangedEntries.length === 0) {
       setPresetNotice({
         tone: 'neutral',
-        text: `Preset "${selectedPreset.label}" already matches the current live tuning values.`
+        text: `${selectedPresetsLabel}: every value already matches the current live tuning values.`
       })
       return
     }
 
-    const autoBackup = createSavedSnapshot(createParameterBackup(snapshot), buildPresetAutoBackupLabel(snapshot, selectedPreset), 'captured', {
-      note: buildPresetAutoBackupNote(selectedPreset),
-      tags: [...PRESET_AUTO_BACKUP_TAGS, ...selectedPreset.tags, selectedPreset.id]
+    // One pre-apply backup covers the whole combined write. For a single preset
+    // keep the existing label/note; for a combined apply, summarize the set.
+    const backupLabel =
+      selectedPresets.length === 1
+        ? buildPresetAutoBackupLabel(snapshot, selectedPresets[0])
+        : `Pre-apply backup — ${selectedPresets.length} presets`
+    const backupNote =
+      selectedPresets.length === 1
+        ? buildPresetAutoBackupNote(selectedPresets[0])
+        : `Auto-saved before applying ${selectedPresetsLabel}.`
+    const autoBackup = createSavedSnapshot(createParameterBackup(snapshot), backupLabel, 'captured', {
+      note: backupNote,
+      tags: [...PRESET_AUTO_BACKUP_TAGS, ...selectedPresets.flatMap((preset) => [...preset.tags, preset.id])]
     })
     setSavedSnapshots((current) => [autoBackup, ...current.filter((entry) => entry.id !== autoBackup.id)])
 
@@ -2850,8 +2879,8 @@ export function App() {
         tone: 'success',
         text:
           result.applied.length === 0
-            ? `Preset "${selectedPreset.label}" already matched the live controller. Auto-saved snapshot "${autoBackup.label}".`
-            : `Applied preset "${selectedPreset.label}" with ${result.applied.length} verified write(s). Auto-saved snapshot "${autoBackup.label}".`
+            ? `${selectedPresetsLabel} already matched the live controller. Auto-saved snapshot "${autoBackup.label}".`
+            : `Applied ${selectedPresetsLabel} with ${result.applied.length} verified write(s). Auto-saved snapshot "${autoBackup.label}".`
       })
       setParameterFollowUp({
         requiresReboot: rebootRequiredCount > 0,
@@ -2859,13 +2888,13 @@ export function App() {
         changedCount: result.applied.length,
         text:
           rebootRequiredCount > 0
-            ? `Preset "${selectedPreset.label}" changed reboot-sensitive settings. Request a reboot, then pull parameters again before flying.`
-            : `Preset "${selectedPreset.label}" changed live tuning values. Pull parameters again if you want a clean post-write snapshot.`
+            ? `${selectedPresetsLabel} changed reboot-sensitive settings. Request a reboot, then pull parameters again before flying.`
+            : `${selectedPresetsLabel} changed live tuning values. Pull parameters again if you want a clean post-write snapshot.`
       })
     } catch (error) {
       setPresetNotice({
         tone: 'danger',
-        text: `${error instanceof Error ? error.message : `Preset "${selectedPreset.label}" failed to apply.`} Pre-apply snapshot "${autoBackup.label}" was saved before any writes were attempted.`
+        text: `${error instanceof Error ? error.message : `${selectedPresetsLabel} failed to apply.`} Pre-apply snapshot "${autoBackup.label}" was saved before any writes were attempted.`
       })
     } finally {
       setPresetApplyAcknowledged(false)
@@ -4611,17 +4640,14 @@ export function App() {
   }, [savedTuningProfiles, selectedTuningProfileId])
 
   useEffect(() => {
-    if (presetDefinitions.length === 0) {
-      if (selectedPresetId !== undefined) {
-        setSelectedPresetId(undefined)
-      }
-      return
-    }
-
-    if (!selectedPresetId || !presetDefinitions.some((preset) => preset.id === selectedPresetId)) {
-      setSelectedPresetId(presetDefinitions[0]?.id)
-    }
-  }, [presetDefinitions, selectedPresetId])
+    // Drop any selected preset ids that are no longer in the catalog (e.g. after
+    // a vehicle change swaps the preset set). Multi-select starts empty — nothing
+    // is auto-selected; the operator picks what to combine.
+    setSelectedPresetIds((current) => {
+      const valid = current.filter((id) => presetDefinitions.some((preset) => preset.id === id))
+      return valid.length === current.length ? current : valid
+    })
+  }, [presetDefinitions])
 
   useEffect(() => {
     if (
@@ -6637,8 +6663,10 @@ export function App() {
           presetDefinitions={presetDefinitions}
           presetGroups={presetGroups}
           presetPreviewById={presetPreviewById}
-          selectedPreset={selectedPreset}
-          selectedPresetDiff={selectedPresetDiff}
+          selectedPresets={selectedPresets}
+          selectedPresetConflicts={selectedPresetConflicts}
+          selectedPresetUnknownIds={selectedPresetUnknownIds}
+          selectedPresetTouchedCount={selectedPresetTouchedCount}
           selectedPresetApplicability={selectedPresetApplicability}
           selectedPresetDiffGroups={selectedPresetDiffGroups}
           selectedPresetChangedEntries={selectedPresetChangedEntries}
@@ -6646,7 +6674,7 @@ export function App() {
           savedSnapshots={savedSnapshots}
           presetApplyAcknowledged={presetApplyAcknowledged}
           setPresetApplyAcknowledged={setPresetApplyAcknowledged}
-          setSelectedPresetId={setSelectedPresetId}
+          onTogglePreset={togglePresetSelection}
           runtime={runtime}
           formatCategoryLabel={formatCategoryLabel}
           onApplySelectedPreset={handleApplySelectedPreset}
