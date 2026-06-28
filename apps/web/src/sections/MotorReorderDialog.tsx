@@ -344,9 +344,6 @@ export function MotorReorderDialog({
                   >
                     Identify motors interactively
                   </button>
-                  {(!propsRemovedAcknowledged || !testAreaAcknowledged) ? (
-                    <small>Acknowledge "props removed" and "test area clear" above before running guided identify.</small>
-                  ) : null}
                 </div>
               )}
               <div className="motor-reorder-table">
