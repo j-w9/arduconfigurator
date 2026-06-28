@@ -191,7 +191,11 @@ const MAVFTP_LOGS_DIRECTORY = '/APM/LOGS'
 // Cap a MAVFTP log download the same way the LOG_* path caps its allocation
 // (MAX_LOG_DOWNLOAD_BYTES) — logs dwarf the @SYS files the default cap targets.
 const MAX_MAVFTP_LOG_BYTES = 512 * 1024 * 1024
-const PRE_ARM_ISSUE_TTL_MS = 15000
+// ArduPilot only re-emits a failing pre-arm check roughly every ~30s, so a short
+// TTL let the reason expire between sends and the UI flipped to "Clear" while the
+// FC still refused to arm. Hold each reason long enough to survive the gap (a
+// still-failing check is re-sent and refreshed; a resolved one ages out).
+const PRE_ARM_ISSUE_TTL_MS = 60000
 const STATUS_TEXT_HISTORY_LIMIT = 500
 // STATUSTEXT v2 chunking parameters. ArduPilot splits messages
 // of >50 chars into chunks of EXACTLY 50 chars (the legacy v1 payload
