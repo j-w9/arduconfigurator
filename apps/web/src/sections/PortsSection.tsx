@@ -287,7 +287,24 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                               <span>Options</span>
                             </div>
 
-                            {visibleSerialPortViewModels.map((port) => {
+                            {[...visibleSerialPortViewModels]
+                              // Order by the physical UART (hardwarePort, natural
+                              // order: UART4 < UART6 < UART8), not the SERIAL
+                              // index. Ports with no board map fall back after the
+                              // mapped ones, by SERIAL number.
+                              .sort((left, right) => {
+                                if (left.hardwarePort && right.hardwarePort) {
+                                  return left.hardwarePort.localeCompare(right.hardwarePort, undefined, { numeric: true, sensitivity: 'base' })
+                                }
+                                if (left.hardwarePort) {
+                                  return -1
+                                }
+                                if (right.hardwarePort) {
+                                  return 1
+                                }
+                                return left.portNumber - right.portNumber
+                              })
+                              .map((port) => {
                               // Lead with the PHYSICAL UART (hardwarePort from the
                               // board map) — the SERIAL index is NOT the UART
                               // number (e.g. physical UART6 maps to SERIAL7). The
