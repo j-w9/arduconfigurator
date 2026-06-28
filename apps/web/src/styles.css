@@ -282,7 +282,10 @@ textarea:focus {
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  min-height: var(--header-height);
+  /* Static floor — must NOT be var(--header-height): that var is the observer's
+     MEASUREMENT of this header, so flooring to it created a feedback ratchet
+     (one tall transient stuck the header huge until a page refresh). */
+  min-height: 56px;
   padding: 6px 12px;
   background: var(--surface-200);
   border-bottom: 1px solid var(--border);
