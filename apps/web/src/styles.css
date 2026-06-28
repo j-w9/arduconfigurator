@@ -2555,23 +2555,18 @@ textarea:focus {
   gap: 0;
 }
 
-/* Pre-arm half of the Statistics box — divider + the actual blocker list. */
-.setup-statistics__prearm {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--surface-300);
+/* Status middle column: pre-arm box on top, compact lifetime stats below. */
+.setup-status-midcol {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 14px;
 }
-.setup-statistics__prearm-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+/* Lifetime stats are secondary to pre-arm — render them smaller/denser. */
+.setup-gui-box--compact .setup-gui-box__body {
+  font-size: 12px;
+}
+.setup-gui-box--compact .setup-gui-box__kv-row {
+  padding: 3px 0;
 }
 .setup-statistics__prearm-list {
   margin: 0;

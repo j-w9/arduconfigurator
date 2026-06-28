@@ -5259,27 +5259,17 @@ export function App() {
                           </div>
                         </article>
 
-                        <article className="setup-gui-box" data-testid="setup-statistics">
-                          <div className="setup-gui-box__titlebar">
-                            <strong>Statistics</strong>
-                            <StatusBadge tone="neutral">lifetime</StatusBadge>
-                          </div>
-                          <div className="setup-gui-box__body">
-                            <div className="setup-gui-box__kv-list">
-                              <div className="setup-gui-box__kv-row"><span>Total runtime</span><strong>{formatStatHours(readRoundedParameter(snapshot, 'STAT_RUNTIME'))}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Flight time</span><strong>{formatStatHours(readRoundedParameter(snapshot, 'STAT_FLTTIME'))}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Boot count</span><strong>{readRoundedParameter(snapshot, 'STAT_BOOTCNT') ?? '—'}</strong></div>
+                        {/* Middle column: pre-arm on top (it gates flight, so it
+                            matters most), lifetime stats compact below it. */}
+                        <div className="setup-status-midcol">
+                          <article className="setup-gui-box" data-testid="setup-prearm">
+                            <div className="setup-gui-box__titlebar">
+                              <strong>Pre-arm</strong>
+                              <StatusBadge tone={snapshot.preArmStatus.healthy ? 'success' : 'warning'}>
+                                {snapshot.preArmStatus.healthy ? 'Clear' : `${snapshot.preArmStatus.issues.length} issues`}
+                              </StatusBadge>
                             </div>
-                            {/* Pre-arm half: the actual blockers, not just a count,
-                                so the operator can see what to fix without leaving
-                                the overview. */}
-                            <div className="setup-statistics__prearm" data-testid="setup-statistics-prearm">
-                              <div className="setup-statistics__prearm-head">
-                                <span>Pre-arm</span>
-                                <StatusBadge tone={snapshot.preArmStatus.healthy ? 'success' : 'warning'}>
-                                  {snapshot.preArmStatus.healthy ? 'Clear' : `${snapshot.preArmStatus.issues.length} issues`}
-                                </StatusBadge>
-                              </div>
+                            <div className="setup-gui-box__body">
                               {snapshot.preArmStatus.healthy ? (
                                 <p className="telemetry-note">No active pre-arm issues.</p>
                               ) : (
@@ -5290,8 +5280,22 @@ export function App() {
                                 </ul>
                               )}
                             </div>
-                          </div>
-                        </article>
+                          </article>
+
+                          <article className="setup-gui-box setup-gui-box--compact" data-testid="setup-statistics">
+                            <div className="setup-gui-box__titlebar">
+                              <strong>Statistics</strong>
+                              <StatusBadge tone="neutral">lifetime</StatusBadge>
+                            </div>
+                            <div className="setup-gui-box__body">
+                              <div className="setup-gui-box__kv-list">
+                                <div className="setup-gui-box__kv-row"><span>Total runtime</span><strong>{formatStatHours(readRoundedParameter(snapshot, 'STAT_RUNTIME'))}</strong></div>
+                                <div className="setup-gui-box__kv-row"><span>Flight time</span><strong>{formatStatHours(readRoundedParameter(snapshot, 'STAT_FLTTIME'))}</strong></div>
+                                <div className="setup-gui-box__kv-row"><span>Boot count</span><strong>{readRoundedParameter(snapshot, 'STAT_BOOTCNT') ?? '—'}</strong></div>
+                              </div>
+                            </div>
+                          </article>
+                        </div>
 
                         <article className="setup-gui-box">
                           <div className="setup-gui-box__titlebar">

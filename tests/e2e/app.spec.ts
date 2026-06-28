@@ -493,9 +493,9 @@ test.describe('browser configurator regression flows', () => {
     // longer carries the calibration buttons, and now offers Enter DFU.
     await expect(page.getByRole('button', { name: 'Calibrate Accelerometer' })).toHaveCount(0)
     await expect(page.getByTestId('status-dfu-button')).toBeVisible()
-    // The Statistics box now carries the pre-arm half (status + blocker list).
-    await expect(page.getByTestId('setup-statistics-prearm')).toBeVisible()
-    await expect(page.getByTestId('setup-statistics-prearm')).toContainText('Pre-arm')
+    // Pre-arm has its own box (above the lifetime stats) with the blocker list.
+    await expect(page.getByTestId('setup-prearm')).toBeVisible()
+    await expect(page.getByTestId('setup-prearm')).toContainText('Pre-arm')
     await expect(page.getByTestId('flight-deck-zero-heading-button')).toBeVisible()
     await page.getByTestId('flight-deck-zero-heading-button').click()
     await expect(page.getByText('Bench-forward zeroed')).toBeVisible()
