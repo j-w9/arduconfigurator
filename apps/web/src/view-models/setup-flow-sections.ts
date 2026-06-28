@@ -46,9 +46,6 @@ import { formatConfirmationTime, formatOrientationLabel, formatSetupOutcome } fr
 import { formatParameterSync } from '../status-formatters'
 import {
   deriveSetupStatusFromCriteria,
-  OUTPUTS_MOTOR_CONFIRM_BUTTON_ID,
-  OUTPUTS_MOTOR_START_BUTTON_ID,
-  OUTPUTS_MOTOR_TEST_BUTTON_ID,
   panelAnchorForSetupSection,
   setupPanelActionForSection
 } from '../setup-flow-helpers'
@@ -98,13 +95,11 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
     airframe,
     outputMapping,
     configuredOutputs,
-    escSetup,
     compassSetupAvailability,
     isCopterVehicle,
     modeSwitchExercise,
     modeSwitchEstimate,
     modeExerciseAssignments,
-    motorVerification,
     orientationExercise,
     rcCalibrationSession,
     rcMappingSession,
@@ -118,14 +113,10 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
     boardOrientation,
     busyAction,
     throttleFailsafe,
-    canRunGuidedMotorTest,
     canRunModeSwitchExercise,
-    canRunMotorVerification,
     canRunOrientationExercise,
     canRunRcMappingExercise,
     canRunRcRangeExercise,
-    currentMotorTestSucceeded,
-    currentMotorVerificationLabel,
     modeSwitchExerciseSummary,
     rcCalibrationSummary,
     rcMappingSummary,
@@ -144,7 +135,6 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
 
     const airframeConfirmation = getSetupConfirmationRecord('airframe')
     const outputsConfirmation = getSetupConfirmationRecord('outputs')
-    const escRangeConfirmation = getSetupConfirmationRecord('esc-range')
     const accelerometerConfirmation = getSetupConfirmationRecord('accelerometer')
     const levelConfirmation = getSetupConfirmationRecord('level')
     const compassConfirmation = getSetupConfirmationRecord('compass')
@@ -254,7 +244,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           // the actionable next step instead of leaving the operator to scan
           // the criteria list for what's wrong.
           detail = isCopterVehicle && airframe.frameClassValue === 0
-            ? 'FRAME_CLASS is unset (0) — pick a valid frame class below before continuing. The autopilot reports "Frame: UNSUPPORTED" and will refuse every calibration command in this state.'
+            ? 'FRAME_CLASS is unset (0) — set a valid frame class in Motors → ESC & Protocol (Frame) or Config → Frame before continuing. The autopilot reports "Frame: UNSUPPORTED" and will refuse every calibration command in this state.'
             : 'Confirm the detected frame geometry, verify the live horizon behavior against the board orientation, then explicitly sign off before moving on to output review or motor testing.'
           evidence = [
             ...(isCopterVehicle
@@ -313,18 +303,11 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                 {
                   label: 'Operator reviewed the output map before any props-on activity',
                   met: outputsConfirmation !== undefined
-                },
-                {
-                  label:
-                    escSetup.calibrationPath === 'analog-calibration'
-                      ? 'ESC calibration and motor-range review confirmed'
-                      : 'Motor protocol and range review confirmed',
-                  met: escRangeConfirmation !== undefined
-                },
-                {
-                  label: 'Motor order and direction verification passed',
-                  met: motorVerification.status === 'passed'
                 }
+                // (Motor-order/direction verification and the separate ESC-range
+                // confirmation gates were removed with the Motors-tab redesign —
+                // direction is now checked manually in Motors -> Test / Motor
+                // Setup, so the operator-review confirmation is the gate here.)
               ]
             : [
                 {
@@ -340,12 +323,10 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             : `${configuredOutputs.length} configured ${airframe.frameClassLabel} outputs (SERVOx_FUNCTION).`
           detail =
             outputMapping.notes[0]
-            ?? 'Review the output map, verify motor order, then confirm the ESC calibration or motor-range path before any props-on activity.'
+            ?? 'Review the output map, then check motor order/direction manually in Motors → Test / Motor Setup before any props-on activity.'
           evidence = [
             ...outputMapping.notes.slice(0, 2),
-            `Motor verification: ${motorVerification.status}`,
-            `Output review: ${outputsConfirmation ? `confirmed at ${formatConfirmationTime(outputsConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`,
-            `ESC review: ${escRangeConfirmation ? `confirmed at ${formatConfirmationTime(escRangeConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
+            `Output review: ${outputsConfirmation ? `confirmed at ${formatConfirmationTime(outputsConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
           ].slice(0, 4)
           actions.unshift({
             kind: outputsConfirmation ? 'clear-confirmation' : 'confirm-step',
@@ -359,61 +340,14 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               : (snapshot.vehicle?.vehicle ?? 'Unknown') === 'Unknown'
           })
           if (isCopterVehicle) {
-            // Motor-direction verification, ESC calibration/range, and the
-            // bench motor-test actions are quad-prop concepts. Plane/Rover/
-            // Sub keep just the output-review confirm above; their powered
-            // output testing belongs to vehicle-specific surfaces still on
-            // the roadmap.
+            // The guided motor-direction verification, ESC-range confirm, and
+            // bench-test actions were retired with the Motors-tab redesign —
+            // order/direction is now checked manually in Motors → Test / Motor
+            // Setup. Replace the generic panel action with a jump there.
             actions[actions.length - 1] = {
               kind: 'scroll',
-              label:
-                currentMotorTestSucceeded
-                  ? 'Open Motor Direction Confirm'
-                  : motorVerification.status === 'running'
-                    ? 'Open Motor Test'
-                    : 'Open Motor Verification',
-              panelId: panel.panelId,
-              targetElementId: currentMotorTestSucceeded
-                ? OUTPUTS_MOTOR_CONFIRM_BUTTON_ID
-                : motorVerification.status === 'running'
-                  ? OUTPUTS_MOTOR_TEST_BUTTON_ID
-                  : OUTPUTS_MOTOR_START_BUTTON_ID
-            }
-            actions.splice(1, 0, {
-              kind: escRangeConfirmation ? 'clear-confirmation' : 'confirm-step',
-              label:
-                escRangeConfirmation
-                  ? 'Clear ESC Review'
-                  : escSetup.calibrationPath === 'analog-calibration'
-                    ? 'Confirm ESC Calibration Review'
-                    : 'Confirm ESC Range Review',
-              tone: 'secondary',
-              sectionId: 'esc-range',
-              disabled: outputMapping.motorOutputs.length === 0
-            })
-            if (motorVerification.status === 'running') {
-              if (currentMotorTestSucceeded) {
-                actions.unshift({
-                  kind: 'motor-verification-confirm',
-                  label: currentMotorVerificationLabel ? `Confirm ${currentMotorVerificationLabel}` : 'Confirm Current Motor',
-                  tone: 'primary',
-                  disabled: false
-                })
-              } else {
-                actions.unshift({
-                  kind: 'motor-test-current',
-                  label: currentMotorVerificationLabel ? `Spin ${currentMotorVerificationLabel}` : 'Run Targeted Motor Test',
-                  tone: 'primary',
-                  disabled: !canRunGuidedMotorTest
-                })
-              }
-            } else {
-              actions.unshift({
-                kind: 'motor-verification-start',
-                label: motorVerification.status === 'passed' ? 'Run Motor Verification Again' : 'Start Motor Verification',
-                tone: 'primary',
-                disabled: !canRunMotorVerification
-              })
+              label: 'Open Motors',
+              panelId: panel.panelId
             }
           }
           break

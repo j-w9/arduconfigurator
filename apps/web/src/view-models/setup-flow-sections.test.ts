@@ -106,6 +106,36 @@ describe('buildSetupFlowSections', () => {
   })
 })
 
+describe('outputs section (Motors-tab redesign alignment)', () => {
+  const buildOutputs = (over: Partial<SetupFlowSectionsInputs> = {}) => {
+    const sections = buildSetupFlowSections(
+      inputs([{ id: 'link', title: 'Link' }, { id: 'outputs', title: 'Outputs' }], { isCopterVehicle: true, ...over })
+    )
+    const outputs = sections.find((section) => section.id === 'outputs')
+    if (!outputs) {
+      throw new Error('missing outputs section')
+    }
+    return outputs
+  }
+
+  it('drops the retired guided-verification + ESC-range gates from the criteria', () => {
+    const labels = buildOutputs().criteria.map((criterion) => criterion.label)
+    expect(labels.some((label) => /direction verification/i.test(label))).toBe(false)
+    expect(labels.some((label) => /range review|ESC calibration/i.test(label))).toBe(false)
+  })
+
+  it('offers the output-review confirm + an Open Motors jump, not the removed guided actions', () => {
+    const actions = buildOutputs().actions
+    const kinds = actions.map((action) => action.kind)
+    expect(kinds).not.toContain('motor-verification-start')
+    expect(kinds).not.toContain('motor-test-current')
+    expect(kinds).not.toContain('motor-verification-confirm')
+    expect(actions.some((action) => 'sectionId' in action && action.sectionId === 'esc-range')).toBe(false)
+    expect(actions.some((action) => 'sectionId' in action && action.sectionId === 'outputs')).toBe(true)
+    expect(actions.some((action) => 'label' in action && action.label === 'Open Motors')).toBe(true)
+  })
+})
+
 describe('radio section RCIN preflight', () => {
   const RADIO = [{ id: 'radio', title: 'Radio' }]
 
