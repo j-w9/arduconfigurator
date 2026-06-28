@@ -250,6 +250,10 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     outputMapping,
     escSetup,
     vehicleOutputSummary,
+    frameClassParameter,
+    frameTypeParameter,
+    frameDraftEntries,
+    frameStagedDrafts,
     motorTestEligibility,
     isCopterVehicle,
     notificationLedOutputs,
@@ -710,6 +714,47 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     </section>
                   ) : (
                   <div className="esc-review-card">
+                    {frameClassParameter ? (
+                      <div className="scoped-review-card scoped-review-card--compact" data-testid="esc-frame-card">
+                        <div className="switch-exercise-card__header">
+                          <div>
+                            <strong>Frame</strong>
+                            <p>Airframe class + layout. Changing these restructures the motor outputs — reboot and re-verify motor order/spin afterwards.</p>
+                          </div>
+                          <StatusBadge tone={toneForScopedDraftReview(frameStagedDrafts.length, 0)}>
+                            {frameStagedDrafts.length > 0 ? `${frameStagedDrafts.length} staged` : 'in sync'}
+                          </StatusBadge>
+                        </div>
+                        <div className="scoped-editor-grid">
+                          <ScopedSelectField
+                            parameter={frameClassParameter}
+                            liveValue={frameClassParameter.value}
+                            editedValues={editedValues}
+                            onChange={(paramId, value) => setDraft(paramId, value)}
+                            draftStatusById={parameterDraftById}
+                          />
+                          {frameTypeParameter ? (
+                            <ScopedSelectField
+                              parameter={frameTypeParameter}
+                              liveValue={frameTypeParameter.value}
+                              editedValues={editedValues}
+                              onChange={(paramId, value) => setDraft(paramId, value)}
+                              draftStatusById={parameterDraftById}
+                            />
+                          ) : null}
+                        </div>
+                        <div className="switch-exercise-controls">
+                          <button
+                            style={buttonStyle('primary')}
+                            data-testid="esc-frame-apply"
+                            onClick={() => void handleApplyScopedParameterDrafts(frameDraftEntries, 'frame:apply', 'Frame')}
+                            disabled={busyAction !== undefined || frameStagedDrafts.length === 0 || !canApplyDraftParameters}
+                          >
+                            {frameStagedDrafts.length > 0 ? `Apply Frame (${frameStagedDrafts.length})` : 'Apply Frame'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="switch-exercise-card__header">
                       <div>
                         <strong>ESC calibration & motor range</strong>

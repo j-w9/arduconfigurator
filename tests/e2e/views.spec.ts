@@ -945,6 +945,26 @@ test.describe('Config view', () => {
     await expect(bits.nth(3)).toHaveClass(/is-set/)
   })
 
+  test('ESC & Protocol exposes Frame class/type for a Copter', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await page.getByTestId('view-button-motors').click()
+    await page.getByTestId('outputs-summary-esc-protocol').click()
+    const frame = page.getByTestId('esc-frame-card')
+    await frame.scrollIntoViewIfNeeded()
+    await expect(frame).toBeVisible()
+    // FRAME_CLASS + FRAME_TYPE render as two enum selects.
+    await expect(frame.locator('select')).toHaveCount(2)
+    const apply = page.getByTestId('esc-frame-apply')
+    await expect(apply).toBeDisabled()
+    // Changing the frame type stages a draft and enables Apply Frame.
+    await frame.locator('select').nth(1).selectOption('0') // Plus
+    await expect(apply).toBeEnabled()
+    await expect(apply).toContainText('Apply Frame (1)')
+  })
+
   test('Config section grid scrolls within a bounded area instead of stretching the page', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')
