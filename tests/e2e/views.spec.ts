@@ -902,6 +902,9 @@ test.describe('Flash view', () => {
 
     await expect(page.getByTestId('dfu-hex-flasher')).toBeVisible()
 
+    // Full chip erase is offered and defaults to on.
+    await expect(page.getByTestId('dfu-hex-full-erase').locator('input')).toBeChecked()
+
     // The card carries its own two-step "Activate DFU mode" reboot control.
     await expect(page.getByTestId('dfu-hex-activate')).toBeVisible()
     await page.getByTestId('dfu-hex-activate').click()

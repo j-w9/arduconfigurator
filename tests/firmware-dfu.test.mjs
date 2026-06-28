@@ -127,6 +127,25 @@ test('DfuSeDevice.flash: erases, sets address, streams blocks, then manifests', 
   assert.deepEqual([...new Set(phases)], ['erase', 'program', 'manifest'])
 })
 
+test('DfuSeDevice.flash: full erase wipes every sector in the layout, not just the overlapped ones', async () => {
+  const mock = mockDfu()
+  const memory = parseDfuSeMemoryLayout('@Internal Flash  /0x08000000/16*128Kg') // 16 sectors
+  const device = new DfuSeDevice(mock.iface, memory, 2048)
+  // A tiny image overlapping only the first sector.
+  await device.flash([{ address: 0x08000000, data: new Uint8Array(64).fill(0xab) }], undefined, { fullErase: true })
+  const erases = mock.out.filter((o) => o.request === 1 && o.value === 0 && o.data[0] === 0x41)
+  assert.equal(erases.length, 16, 'every sector erased on a full wipe')
+})
+
+test('DfuSeDevice.flash: full erase falls back to a mass-erase when the layout is unknown', async () => {
+  const mock = mockDfu()
+  const device = new DfuSeDevice(mock.iface, [], 2048) // no memory layout
+  await device.flash([{ address: 0x08000000, data: new Uint8Array(64).fill(0xab) }], undefined, { fullErase: true })
+  const erases = mock.out.filter((o) => o.request === 1 && o.value === 0 && o.data[0] === 0x41)
+  assert.equal(erases.length, 1, 'one mass-erase command')
+  assert.equal(erases[0].data.length, 1, 'mass erase carries no address')
+})
+
 test('DfuSeDevice.flash: refuses an image outside the device memory map', async () => {
   const mock = mockDfu()
   const memory = parseDfuSeMemoryLayout('@Internal Flash  /0x08000000/16*128Kg')

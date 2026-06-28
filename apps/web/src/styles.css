@@ -10538,6 +10538,19 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 8px;
   margin: 0 0 12px;
 }
+.dfu-hex-flasher__full-erase {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.dfu-hex-flasher__full-erase input {
+  margin-top: 2px;
+  cursor: pointer;
+}
 .dfu-hex-flasher__summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));

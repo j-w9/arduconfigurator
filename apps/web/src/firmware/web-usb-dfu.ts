@@ -208,14 +208,15 @@ async function readTransferSize(device: UsbDeviceLike): Promise<number> {
  */
 export async function flashSegmentsOverDfu(
   segments: readonly IntelHexSegment[],
-  onProgress?: (progress: DfuFlashProgress) => void
+  onProgress?: (progress: DfuFlashProgress) => void,
+  options?: { fullErase?: boolean }
 ): Promise<{ deviceName: string }> {
   const device = await requestDfuDevice()
   const open = await openDfuInterface(device)
   try {
     const memory = parseDfuSeMemoryLayout(open.memoryLayoutName)
     const dfu = new DfuSeDevice(open.iface, memory, open.transferSize)
-    await dfu.flash(segments, onProgress)
+    await dfu.flash(segments, onProgress, options)
     return { deviceName: device.productName ?? 'DFU device' }
   } finally {
     await open.close()

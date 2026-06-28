@@ -198,25 +198,51 @@ export class DfuSeDevice {
     await this.pollUntilIdle()
   }
 
+  /** DfuSe mass erase (ERASE command with no address) — whole chip in one op.
+   *  Used for a full wipe when the memory layout isn't enumerable. */
+  private async massErase(): Promise<void> {
+    await this.download(0, new Uint8Array([DFUSE_ERASE]))
+    await this.pollUntilIdle()
+  }
+
   /**
    * Erase the sectors the image touches, program every segment block-by-block,
    * then manifest + leave DFU so the board boots the new firmware. Progress is
    * reported per phase.
    */
-  async flash(segments: readonly IntelHexSegment[], onProgress?: (progress: DfuFlashProgress) => void): Promise<void> {
+  async flash(
+    segments: readonly IntelHexSegment[],
+    onProgress?: (progress: DfuFlashProgress) => void,
+    options?: { fullErase?: boolean }
+  ): Promise<void> {
     if (segments.length === 0) {
       throw new Error('Nothing to flash: the firmware image is empty')
     }
     await this.clearErrorState()
 
-    // 1. Erase every sector the image overlaps (once each).
-    const eraseTargets = sectorsToErase(this.memory, segments)
-    if (this.memory.length > 0 && eraseTargets.length === 0) {
-      throw new Error('Firmware image lies outside the device flash memory map — refusing to flash')
-    }
-    for (let i = 0; i < eraseTargets.length; i += 1) {
-      await this.eraseSector(eraseTargets[i])
-      onProgress?.({ phase: 'erase', ratio: (i + 1) / eraseTargets.length, label: `Erasing ${eraseTargets.length} sector(s)` })
+    // 1. Erase. Full-erase wipes the whole chip (every sector in the layout, or
+    //    a mass-erase when the layout is unknown); otherwise erase only the
+    //    sectors the image overlaps.
+    if (options?.fullErase) {
+      if (this.memory.length > 0) {
+        const all = this.memory.map((sector) => sector.start)
+        for (let i = 0; i < all.length; i += 1) {
+          await this.eraseSector(all[i])
+          onProgress?.({ phase: 'erase', ratio: (i + 1) / all.length, label: `Full chip erase (${all.length} sectors)` })
+        }
+      } else {
+        await this.massErase()
+        onProgress?.({ phase: 'erase', ratio: 1, label: 'Full chip erase' })
+      }
+    } else {
+      const eraseTargets = sectorsToErase(this.memory, segments)
+      if (this.memory.length > 0 && eraseTargets.length === 0) {
+        throw new Error('Firmware image lies outside the device flash memory map — refusing to flash')
+      }
+      for (let i = 0; i < eraseTargets.length; i += 1) {
+        await this.eraseSector(eraseTargets[i])
+        onProgress?.({ phase: 'erase', ratio: (i + 1) / eraseTargets.length, label: `Erasing ${eraseTargets.length} sector(s)` })
+      }
     }
 
     // 2. Program each segment in transferSize blocks (set address pointer per

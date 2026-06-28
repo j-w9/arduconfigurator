@@ -56,6 +56,9 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<DfuFlashProgress | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // Default ON: a full chip erase wipes all flash (sized per FC) before
+  // programming — the safe default for a clean reflash.
+  const [fullErase, setFullErase] = useState(true)
 
   const handleFile = useCallback(async (file: File | undefined) => {
     setError(null)
@@ -87,7 +90,7 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
     setNotice(null)
     setProgress(null)
     try {
-      const { deviceName } = await flashSegmentsOverDfu(parsed.segments, setProgress)
+      const { deviceName } = await flashSegmentsOverDfu(parsed.segments, setProgress, { fullErase })
       setNotice(
         `Flashed ${formatBytes(parsed.totalBytes)} to ${deviceName}. The board is rebooting into the new firmware — reconnect once it re-enumerates.`
       )
@@ -100,7 +103,7 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
       setBusy(false)
       setProgress(null)
     }
-  }, [parsed, busy])
+  }, [parsed, busy, fullErase])
 
   return (
     <div className="bf-gui-box dfu-hex-flasher" data-testid="dfu-hex-flasher">
@@ -198,6 +201,14 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
                 </div>
               </dl>
             ) : null}
+
+            <label className="dfu-hex-flasher__full-erase" data-testid="dfu-hex-full-erase">
+              <input type="checkbox" checked={fullErase} disabled={busy} onChange={(event) => setFullErase(event.target.checked)} />
+              <span>
+                Full chip erase before flashing — wipes <strong>all</strong> flash (sized to this board), not just the
+                programmed sectors. Recommended for a clean reflash.
+              </span>
+            </label>
 
             <button
               type="button"
