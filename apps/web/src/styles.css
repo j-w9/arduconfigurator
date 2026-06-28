@@ -2555,6 +2555,34 @@ textarea:focus {
   gap: 0;
 }
 
+/* Pre-arm half of the Statistics box — divider + the actual blocker list. */
+.setup-statistics__prearm {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--surface-300);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.setup-statistics__prearm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.setup-statistics__prearm-list {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--warning);
+}
+
 .setup-gui-box__kv-row {
   display: flex;
   justify-content: space-between;

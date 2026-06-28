@@ -5252,6 +5252,26 @@ export function App() {
                               <div className="setup-gui-box__kv-row"><span>Flight time</span><strong>{formatStatHours(readRoundedParameter(snapshot, 'STAT_FLTTIME'))}</strong></div>
                               <div className="setup-gui-box__kv-row"><span>Boot count</span><strong>{readRoundedParameter(snapshot, 'STAT_BOOTCNT') ?? '—'}</strong></div>
                             </div>
+                            {/* Pre-arm half: the actual blockers, not just a count,
+                                so the operator can see what to fix without leaving
+                                the overview. */}
+                            <div className="setup-statistics__prearm" data-testid="setup-statistics-prearm">
+                              <div className="setup-statistics__prearm-head">
+                                <span>Pre-arm</span>
+                                <StatusBadge tone={snapshot.preArmStatus.healthy ? 'success' : 'warning'}>
+                                  {snapshot.preArmStatus.healthy ? 'Clear' : `${snapshot.preArmStatus.issues.length} issues`}
+                                </StatusBadge>
+                              </div>
+                              {snapshot.preArmStatus.healthy ? (
+                                <p className="telemetry-note">No active pre-arm issues — ready to arm.</p>
+                              ) : (
+                                <ul className="setup-statistics__prearm-list">
+                                  {snapshot.preArmStatus.issues.map((issue, index) => (
+                                    <li key={`prearm:${index}:${issue.text}`}>{issue.text}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
                           </div>
                         </article>
 
