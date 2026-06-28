@@ -2222,6 +2222,25 @@ export function App() {
               }
             : current
         )
+        // Re-pull parameters on every reboot. Web-serial re-pulls via its
+        // reconnect effect (the link drops then comes back). On link-persistent
+        // transports (desktop bridge / SITL) the browser link stays up across
+        // the FC reboot, so the reconnect path never fires — re-request here. A
+        // short delay lets the FC drop off first; requestParameterList then
+        // retries through the reboot gap until the firmware answers fresh values.
+        if (transportMode !== 'web-serial') {
+          void (async () => {
+            await new Promise((resolve) => setTimeout(resolve, 3000))
+            try {
+              await runtime.requestParameterList()
+              setParameterFollowUp((current) =>
+                current?.refreshRequired && !current.requiresReboot ? undefined : current
+              )
+            } catch {
+              // Link dropped (e.g. a SITL socket) — a manual reconnect re-pulls.
+            }
+          })()
+        }
       }
       if (actionId === 'request-parameters') {
         await runtime.waitForParameterSync()
@@ -5263,7 +5282,7 @@ export function App() {
                                 </StatusBadge>
                               </div>
                               {snapshot.preArmStatus.healthy ? (
-                                <p className="telemetry-note">No active pre-arm issues — ready to arm.</p>
+                                <p className="telemetry-note">No active pre-arm issues.</p>
                               ) : (
                                 <ul className="setup-statistics__prearm-list">
                                   {snapshot.preArmStatus.issues.map((issue, index) => (
