@@ -292,7 +292,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                             <div className="rc-bar__fill" style={{ width: `${channel?.fillPercent ?? 0}%` }} />
                           </div>
                           <div className="receiver-live-card__footer">
-                            <span>{axis.pwm !== undefined ? `${axis.pwm} us` : 'No data'}</span>
+                            <span>{axis.pwm !== undefined ? `${axis.pwm} µs` : 'No data'}</span>
                             <span>{channel?.role ?? 'Primary control'}</span>
                           </div>
                         </article>
@@ -312,7 +312,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                             : 'Waiting for the configured mode channel to move.'}
                       </p>
                       <div className="receiver-live-card__footer">
-                        <span>{modeSwitchEstimate.pwm !== undefined ? `${modeSwitchEstimate.pwm} us` : 'No data'}</span>
+                        <span>{modeSwitchEstimate.pwm !== undefined ? `${modeSwitchEstimate.pwm} µs` : 'No data'}</span>
                         <span>{recentModeSwitchChange ? 'Recent movement' : 'Mode switch'}</span>
                       </div>
                     </article>
@@ -354,7 +354,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                               <div className="rc-bar__fill" style={{ width: `${channel.fillPercent}%` }} />
                             </div>
                             <div className="rc-channel-card__footer">
-                              <span>{channel.pwm !== undefined ? `${channel.pwm} us` : 'No data'}</span>
+                              <span>{channel.pwm !== undefined ? `${channel.pwm} µs` : 'No data'}</span>
                               <span>{channel.isModeChannel ? 'Mode channel' : 'Aux input'}</span>
                             </div>
                           </article>
@@ -377,7 +377,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                           <p>{rcMappingSummary}</p>
                         </div>
                         <StatusBadge tone={toneForModeSwitchExercise(rcMappingSession.status === 'ready' ? 'passed' : rcMappingSession.status === 'running' ? 'running' : rcMappingSession.status === 'failed' ? 'failed' : 'idle')}>
-                          {rcMappingSession.status}
+                          {rcMappingSession.status === 'ready' ? 'complete' : rcMappingSession.status}
                         </StatusBadge>
                       </div>
 
@@ -439,10 +439,10 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                               </div>
                               <p>
                                 {capture.detectedChannelNumber !== undefined
-                                  ? `Current map CH${currentRcAxisChannelMap[axisId]} · detected CH${capture.detectedChannelNumber}${capture.deltaUs !== undefined ? ` (${Math.round(capture.deltaUs)}us delta)` : ''}`
+                                  ? `Current map CH${currentRcAxisChannelMap[axisId]} · detected CH${capture.detectedChannelNumber}${capture.deltaUs !== undefined ? ` (${Math.round(capture.deltaUs)}µs delta)` : ''}`
                                   : activeTarget
                                     ? rcMappingCandidate
-                                      ? `Current dominant channel CH${rcMappingCandidate.channelNumber} (${Math.round(rcMappingCandidate.deltaUs)}us delta)`
+                                      ? `Current dominant channel CH${rcMappingCandidate.channelNumber} (${Math.round(rcMappingCandidate.deltaUs)}µs delta)`
                                       : 'Waiting for one clear dominant channel.'
                                     : `Current map CH${currentRcAxisChannelMap[axisId]} · not captured yet`}
                               </p>
@@ -510,9 +510,9 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                                       {index === 0 ? 'leading' : 'candidate'}
                                     </StatusBadge>
                                   </div>
-                                  <p>{Math.round(candidate.deltaUs)} us change</p>
+                                  <p>{Math.round(candidate.deltaUs)} µs change</p>
                                   <small>
-                                    {Math.round(candidate.baselinePwm)} us baseline to {Math.round(candidate.livePwm)} us live
+                                    {Math.round(candidate.baselinePwm)} µs baseline to {Math.round(candidate.livePwm)} µs live
                                   </small>
                                 </article>
                               ))}
@@ -605,7 +605,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                             <strong>Stick range exercise</strong>
                             <p>{rcRangeExerciseSummary}</p>
                           </div>
-                          <StatusBadge tone={toneForModeSwitchExercise(rcRangeExercise.status)}>{rcRangeExercise.status}</StatusBadge>
+                          <StatusBadge tone={toneForModeSwitchExercise(rcRangeExercise.status)}>{rcRangeExercise.status === 'passed' ? 'complete' : rcRangeExercise.status}</StatusBadge>
                         </div>
 
                         <div className="switch-exercise-progress" aria-hidden="true">
@@ -624,7 +624,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                                   <strong>{axis.label}</strong>
                                   <span>CH{axis.channelNumber}</span>
                                 </div>
-                                <p>{axis.pwm !== undefined ? `${axis.pwm} us live` : 'No live data'}</p>
+                                <p>{axis.pwm !== undefined ? `${axis.pwm} µs live` : 'No live data'}</p>
                                 {/* Live channel-movement bar: the swept band lights up the ends
                                     the operator has already reached (low / high observed) and the
                                     marker tracks the stick's current position — a direct visual
@@ -671,7 +671,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                             onClick={handleStartRcRangeExercise}
                             disabled={!canRunRcRangeExercise || rcRangeExercise.status === 'running'}
                           >
-                            {rcRangeExercise.status === 'passed' ? 'Run Again' : 'Start Exercise'}
+                            {rcRangeExercise.status === 'passed' ? 'Run Again' : 'Start'}
                           </button>
                           <button
                             style={buttonStyle()}
@@ -697,7 +697,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                             <p>{rcCalibrationSummary}</p>
                           </div>
                           <StatusBadge tone={toneForModeSwitchExercise(rcCalibrationSession.status === 'ready' ? 'passed' : rcCalibrationSession.status === 'capturing' ? 'running' : rcCalibrationSession.status === 'failed' ? 'failed' : 'idle')}>
-                            {rcCalibrationSession.status}
+                            {rcCalibrationSession.status === 'ready' ? 'complete' : rcCalibrationSession.status}
                           </StatusBadge>
                         </div>
 
@@ -722,8 +722,8 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                                   <span>CH{capture.channelNumber}</span>
                                 </div>
                                 <p>
-                                  Min {capture.observedMin !== undefined ? Math.round(capture.observedMin) : 'Unknown'} us · Max{' '}
-                                  {capture.observedMax !== undefined ? Math.round(capture.observedMax) : 'Unknown'} us
+                                  Min {capture.observedMin !== undefined ? Math.round(capture.observedMin) : 'Unknown'} µs · Max{' '}
+                                  {capture.observedMax !== undefined ? Math.round(capture.observedMax) : 'Unknown'} µs
                                 </p>
                                 <div className="config-pills">
                                   <span className={capture.lowObserved ? 'is-complete' : undefined}>Low</span>
@@ -788,7 +788,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                             ? 'Mode channel is not configured yet.'
                             : modeSwitchEstimate.pwm === undefined
                               ? `Configured for CH${modeSwitchEstimate.channelNumber}, waiting for that channel to stream.`
-                              : `Estimated slot ${modeSwitchEstimate.estimatedSlot} on CH${modeSwitchEstimate.channelNumber} at ${modeSwitchEstimate.pwm} us.`}
+                              : `Estimated slot ${modeSwitchEstimate.estimatedSlot} on CH${modeSwitchEstimate.channelNumber} at ${modeSwitchEstimate.pwm} µs.`}
                         </p>
                         <small>
                           {modeSwitchEstimate.configuredParamId && modeSwitchEstimate.configuredValue !== undefined
@@ -802,7 +802,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                                   readRoundedParameter(snapshot, modeSlotParamId(snapshot.vehicle?.vehicle, modeSwitchActivity.currentSlot)),
                                   snapshot.vehicle?.vehicle
                                 )}`
-                              : `Last switch movement: ${modeSwitchActivity.previousPwm ?? modeSwitchActivity.currentPwm} us -> ${modeSwitchActivity.currentPwm} us`}
+                              : `Last switch movement: ${modeSwitchActivity.previousPwm ?? modeSwitchActivity.currentPwm} µs -> ${modeSwitchActivity.currentPwm} µs`}
                           </small>
                         ) : null}
                       </div>
