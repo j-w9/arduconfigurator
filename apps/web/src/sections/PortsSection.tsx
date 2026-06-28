@@ -44,6 +44,9 @@ export interface PortsSectionProps {
   busyAction: string | undefined
   canApplyDraftParameters: boolean
   parameterNotice: ParameterNotice | undefined
+  /** A pending reboot-required follow-up (serial-role changes need a reboot). */
+  rebootRequired: boolean
+  onReboot: () => void
   // Board catalog data
   boardCatalogEntry: BoardCatalogEntry | undefined
   boardReferenceLinks: readonly BoardReferenceLink[]
@@ -134,6 +137,8 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     busyAction,
     canApplyDraftParameters,
     parameterNotice,
+    rebootRequired,
+    onReboot,
     boardCatalogEntry,
     boardReferenceLinks,
     serialPortViewModels,
@@ -867,6 +872,20 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 	                Discard Port Changes
 	              </button>
 	            </div>
+
+	            {rebootRequired && snapshot.connection.kind === 'connected' ? (
+	              <div className="ports-reboot-prompt" data-testid="ports-reboot-prompt">
+	                <span>Serial-port changes only take effect after a reboot.</span>
+	                <button
+	                  style={buttonStyle('primary')}
+	                  onClick={onReboot}
+	                  disabled={busyAction !== undefined}
+	                  data-testid="ports-reboot"
+	                >
+	                  Reboot now
+	                </button>
+	              </div>
+	            ) : null}
 
 	            {parameterNotice ? (
 	              <div className="parameter-review__notice parameter-review__notice--inline">

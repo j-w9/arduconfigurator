@@ -6021,6 +6021,8 @@ export function App() {
           busyAction={busyAction}
           canApplyDraftParameters={canApplyDraftParameters}
           parameterNotice={parameterNotice}
+          rebootRequired={parameterFollowUp?.requiresReboot ?? false}
+          onReboot={() => void handleGuidedAction('reboot-autopilot')}
           boardCatalogEntry={boardCatalogEntry}
           boardReferenceLinks={boardReferenceLinks}
           serialPortViewModels={serialPortViewModels}

@@ -2002,6 +2002,16 @@ textarea:focus {
   align-items: start;
 }
 
+.ports-reboot-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .ports-surface {
   display: grid;
   gap: 12px;
