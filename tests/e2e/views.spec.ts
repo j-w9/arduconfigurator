@@ -1140,6 +1140,12 @@ test.describe('Config view', () => {
 
     await expect(page.getByTestId('config-section-system-rates')).toBeVisible()
     await expect(page.getByTestId('config-section-active-imu')).toBeVisible()
+    // Max lean angle resolves to the param the FC actually streams (ANGLE_MAX on
+    // <=4.6, ATC_ANGLE_MAX on 4.7+) — the demo streams ANGLE_MAX, so the field
+    // reports a value rather than "(not reported)".
+    const pilotRates = page.getByTestId('config-section-pilot-rates')
+    await expect(pilotRates.getByText('Max lean angle')).toBeVisible()
+    await expect(pilotRates).not.toContainText('not reported')
     // Main loop rate renders as a dropdown (enum), defaulting to 400 Hz.
     const rates = page.getByTestId('config-section-system-rates')
     await expect(rates.getByText('Main loop rate')).toBeVisible()

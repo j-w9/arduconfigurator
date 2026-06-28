@@ -28,6 +28,12 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   // Frame class/type — present on Copter (and Heli); Plane/Rover use different
   // frame params, so gate on FRAME_CLASS actually being in the synced tree.
   const hasFrame = configParametersById.has('FRAME_CLASS')
+  // Max lean angle was renamed ANGLE_MAX (cdeg) -> ATC_ANGLE_MAX (deg) in
+  // ArduPilot master, shipped in 4.7. Bind the field to whichever the FC
+  // actually streams so it stops reading "(not reported)" on 4.7+.
+  const leanAngleParamId = configParametersById.has('ATC_ANGLE_MAX') ? 'ATC_ANGLE_MAX' : 'ANGLE_MAX'
+  const leanAngleUnit = leanAngleParamId === 'ATC_ANGLE_MAX' ? 'deg' : 'cdeg'
+  const leanAngleDigits = leanAngleParamId === 'ATC_ANGLE_MAX' ? 1 : 0
   const configSections: readonly ConfigSection[] = useMemo(() => [
     ...(hasFrame
       ? [
@@ -108,7 +114,7 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
             fields: [
               { paramId: 'PILOT_Y_RATE', label: 'Pilot yaw rate', unit: 'deg/s', digits: 0 },
               { paramId: 'PILOT_Y_EXPO', label: 'Pilot yaw expo', digits: 2 },
-              { paramId: 'ANGLE_MAX', label: 'Max lean angle', unit: 'cdeg', digits: 0 },
+              { paramId: leanAngleParamId, label: 'Max lean angle', unit: leanAngleUnit, digits: leanAngleDigits },
               { paramId: 'ACRO_RP_RATE', label: 'Acro roll/pitch rate', unit: 'deg/s', digits: 0 },
               { paramId: 'ACRO_Y_RATE', label: 'Acro yaw rate', unit: 'deg/s', digits: 0 },
               { paramId: 'ACRO_RP_EXPO', label: 'Acro roll/pitch expo', digits: 2 },
@@ -216,7 +222,7 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     // Statistics (STAT_*) moved to the Setup view's side panel — lifetime
     // counters read better next to the live instruments than buried in the
     // Config grab-bag.
-  ], [activeVehicle, hasFastRate, hasPilotRates, hasFrame])
+  ], [activeVehicle, hasFastRate, hasPilotRates, hasFrame, leanAngleParamId, leanAngleUnit, leanAngleDigits])
   // The Config scope covers every editable section's paramId set —
   // staged drafts in any of them apply through a single "Apply Config"
   // press. STAT_* + any other readOnly-section ids are deliberately
