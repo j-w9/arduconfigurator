@@ -17,7 +17,7 @@ const GUIDED_SETUP_STEP_QUERY_KEY = 'guidedSetupStep'
 
 /** Tabs that only render under Expert product-mode. */
 export function isExpertOnlyView(viewId: AppViewId): boolean {
-  return viewId === 'parameters'
+  return viewId === 'parameters' || viewId === 'mavlink-inspector' || viewId === 'dronecan-inspector'
 }
 
 /**

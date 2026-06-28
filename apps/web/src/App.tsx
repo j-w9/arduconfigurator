@@ -241,6 +241,9 @@ import { invertGuidedReorderMapping, pickedReorderPositions } from './view-model
 import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
+import { MavlinkInspectorView } from './views/MavlinkInspector'
+import { useMavlinkInspector } from './hooks/use-mavlink-inspector'
+import { DronecanInspectorView } from './views/DronecanInspector'
 import { ScopedField, ScopedSelectField } from './views/ScopedField'
 import { ModesView } from './views/Modes'
 import { FailsafeSection } from './sections/FailsafeSection'
@@ -1744,6 +1747,11 @@ export function App() {
     selectedPresetInvalidEntries,
     selectedPresetDiffSignature
   } = usePresetCatalog({ snapshot, metadataCatalog, selectedPresetIds })
+  // Live MAVLink inspector stats — only subscribed while its tab is active.
+  const { stats: mavlinkInspectorStats, clear: clearMavlinkInspector } = useMavlinkInspector(
+    runtime,
+    activeViewId === 'mavlink-inspector'
+  )
   // Human label for the current selection, used across preset notices/messages.
   const selectedPresetsLabel =
     selectedPresets.length === 0
@@ -6802,6 +6810,28 @@ export function App() {
           onDownload={filesBrowser.download}
           onUpload={filesBrowser.upload}
           onDelete={filesBrowser.remove}
+        />
+      ) : null}
+
+      {activeViewId === 'mavlink-inspector' ? (
+        <MavlinkInspectorView
+          stats={mavlinkInspectorStats}
+          connected={snapshot.connection.kind === 'connected'}
+          onClear={clearMavlinkInspector}
+        />
+      ) : null}
+
+      {activeViewId === 'dronecan-inspector' ? (
+        <DronecanInspectorView
+          status={snapshot.canBus.status}
+          bus={snapshot.canBus.bus}
+          framesReceived={snapshot.canBus.framesReceived}
+          error={snapshot.canBus.error}
+          nodes={snapshot.canBus.nodes}
+          connected={snapshot.connection.kind === 'connected'}
+          busy={busyAction !== undefined}
+          onStart={() => { void runtime?.startCanBusForward(0) }}
+          onStop={() => { void runtime?.stopCanBusForward() }}
         />
       ) : null}
 

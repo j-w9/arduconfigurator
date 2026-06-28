@@ -64,6 +64,11 @@ export type AppViewId =
   // (accelerometer / level / compass) — the same guided-action flow the
   // Setup wizard drives, gathered into one tab. Injected at render time.
   | 'calibration'
+  // Expert-only read-only inspectors, injected at render time:
+  // 'mavlink-inspector' — live decoded MAVLink message stream (type/rate/last
+  // value); 'dronecan-inspector' — live DroneCAN bus traffic by node/message.
+  | 'mavlink-inspector'
+  | 'dronecan-inspector'
 
 export interface ParameterValueOption {
   value: number

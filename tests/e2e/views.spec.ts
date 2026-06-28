@@ -2529,3 +2529,27 @@ test.describe('Direct Sockets (IWA) transport options', () => {
     await expect(select.locator('option[value="tcp"]')).toHaveCount(0)
   })
 })
+
+test.describe('Inspectors (expert-only)', () => {
+  test('Expert mode reveals the MAVLink + DroneCAN inspectors', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+
+    // Hidden until Expert mode is on.
+    await expect(page.getByTestId('view-button-mavlink-inspector')).toHaveCount(0)
+    await expect(page.getByTestId('view-button-dronecan-inspector')).toHaveCount(0)
+
+    await page.getByTestId('product-mode-expert').check()
+
+    // MAVLink inspector shows the live decoded message stream.
+    await page.getByTestId('view-button-mavlink-inspector').click()
+    await expect(page.getByTestId('mavlink-inspector')).toBeVisible()
+    await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
+
+    // DroneCAN inspector offers a read-only bus-inspection control.
+    await page.getByTestId('view-button-dronecan-inspector').click()
+    await expect(page.getByTestId('dronecan-inspector')).toBeVisible()
+    await expect(page.getByTestId('dronecan-inspector-start')).toBeVisible()
+  })
+})

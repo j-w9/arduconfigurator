@@ -88,6 +88,22 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     badge: connectionKind === 'connected' ? 'ready' : 'idle',
     tone: 'neutral'
   }
+  // Read-only live-traffic inspectors — expert-only advanced tools, injected
+  // at render time and only when Expert mode is on.
+  const mavlinkInspectorDescriptor: AppViewDescriptor = {
+    id: 'mavlink-inspector',
+    label: 'MAVLink Inspector',
+    description: 'Live decoded MAVLink message stream — per-type rate, count, and last value. Read-only.',
+    badge: connectionKind === 'connected' ? 'live' : 'idle',
+    tone: 'neutral'
+  }
+  const dronecanInspectorDescriptor: AppViewDescriptor = {
+    id: 'dronecan-inspector',
+    label: 'DroneCAN Inspector',
+    description: 'Live DroneCAN bus traffic over the CAN_FORWARD tunnel — messages by node, rate, and last value. Read-only.',
+    badge: canBusStatus === 'active' ? `CAN${canBusBus} live` : 'idle',
+    tone: canBusStatus === 'active' ? 'success' : 'neutral'
+  }
   // Canonical tab order (single source of truth). The Setup tab is the
   // health/status/info dashboard, so it leads and is relabelled; the rest
   // follow a setup -> tuning -> tools flow. Views not listed fall to the
@@ -95,7 +111,8 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const CANONICAL_VIEW_ORDER = [
     'setup', 'calibration', 'config', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'power', 'failsafe', 'vtx', 'osd', 'tuning', 'presets',
-    'snapshots', 'logs', 'parameters', 'can', 'files', 'flash', 'rc-mixer'
+    'snapshots', 'logs', 'parameters', 'can', 'files', 'flash', 'rc-mixer',
+    'mavlink-inspector', 'dronecan-inspector'
   ]
   const relabelled = base.map((view) =>
     view.id === 'setup'
@@ -108,7 +125,9 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     rcMixerDescriptor,
     canBusDescriptor,
     flashDescriptor,
-    filesDescriptor
+    filesDescriptor,
+    // Expert-only inspectors — only surfaced when Expert mode is on.
+    ...(isExpertMode ? [mavlinkInspectorDescriptor, dronecanInspectorDescriptor] : [])
   ]
   const rankOf = (id: string): number => {
     const index = CANONICAL_VIEW_ORDER.indexOf(id)

@@ -12583,3 +12583,80 @@ details.bf-gui-box:not([open]) > summary::after {
   font-size: 12px;
   color: var(--text-muted);
 }
+
+/* MAVLink / DroneCAN inspector tables. */
+.mavlink-inspector__controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.mavlink-inspector__filter {
+  flex: 1;
+  min-height: 30px;
+}
+.mavlink-inspector__table {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--surface-300);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.mavlink-inspector__row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 6px 12px;
+  font-family: var(--font-data);
+  font-size: 12px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+}
+.mavlink-inspector__row--head {
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  cursor: default;
+  background: var(--surface-200);
+}
+.mavlink-inspector__entry {
+  border-top: 1px solid var(--surface-300);
+}
+.mavlink-inspector__type {
+  color: var(--accent, #ffbb00);
+}
+.mavlink-inspector__fields {
+  margin: 0;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.35);
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 280px;
+  overflow: auto;
+}
+.dronecan-inspector__row {
+  display: grid;
+  grid-template-columns: 0.7fr 1.5fr 1fr 1fr 0.8fr 0.8fr;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 12px;
+  font-family: var(--font-data);
+  font-size: 12px;
+  border-top: 1px solid var(--surface-300);
+}
+.dronecan-inspector__row--head {
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  background: var(--surface-200);
+  border-top: none;
+}

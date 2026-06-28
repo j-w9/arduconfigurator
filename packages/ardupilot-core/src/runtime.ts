@@ -323,6 +323,8 @@ export class ParameterBatchWriteError extends Error {
 
 export class ArduPilotConfiguratorRuntime {
   private readonly updateListeners = new Set<UpdateListener>()
+  // Raw MAVLink envelope subscribers for the read-only inspector (see onMessage).
+  private readonly inspectorListeners = new Set<(envelope: MavlinkEnvelope) => void>()
   // Coalesces high-rate emit()s into at most one snapshot notify per
   // animation frame. Undefined when no flush is pending.
   private emitHandle: number | undefined
@@ -479,9 +481,24 @@ export class ArduPilotConfiguratorRuntime {
       }),
       this.session.onMessage((envelope: MavlinkEnvelope) => {
         this.processEnvelope(envelope)
+        for (const listener of this.inspectorListeners) {
+          listener(envelope)
+        }
         this.emit()
       })
     ]
+  }
+
+  /**
+   * Subscribe to the raw decoded MAVLink envelope stream (every message, all
+   * types) — for the read-only MAVLink inspector. Returns an unsubscribe.
+   * Separate from the snapshot so high-rate traffic doesn't churn it.
+   */
+  onMessage(handler: (envelope: MavlinkEnvelope) => void): Unsubscribe {
+    this.inspectorListeners.add(handler)
+    return () => {
+      this.inspectorListeners.delete(handler)
+    }
   }
 
   getSnapshot(): ConfiguratorSnapshot {
