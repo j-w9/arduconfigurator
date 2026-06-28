@@ -43,6 +43,9 @@ export interface PresetsSectionProps {
   selectedPresetDiffGroups: readonly ParameterDraftGroup[]
   selectedPresetChangedEntries: readonly ParameterDraftEntry[]
   selectedPresetInvalidEntries: readonly ParameterDraftEntry[]
+  /** Param ids the operator dropped from the combined diff (excluded from apply). */
+  droppedPresetParamIds: readonly string[]
+  onTogglePresetParamDrop: (paramId: string) => void
   savedSnapshots: readonly SavedParameterSnapshot[]
   presetApplyAcknowledged: boolean
   setPresetApplyAcknowledged: Dispatch<SetStateAction<boolean>>
@@ -73,6 +76,8 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
     selectedPresetDiffGroups,
     selectedPresetChangedEntries,
     selectedPresetInvalidEntries,
+    droppedPresetParamIds,
+    onTogglePresetParamDrop,
     savedSnapshots,
     presetApplyAcknowledged,
     setPresetApplyAcknowledged,
@@ -125,7 +130,8 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
             id: draft.id,
             label: draft.label,
             fromToText: `${formatParameterValue(draft.currentValue, draft.definition?.unit)} to ${formatParameterValue(draft.nextValue, draft.definition?.unit)}`,
-            deltaText: formatParameterDelta(draft.delta, draft.definition?.unit)
+            deltaText: formatParameterDelta(draft.delta, draft.definition?.unit),
+            dropped: droppedPresetParamIds.includes(draft.id)
           }))
         })),
         invalidEntries: selectedPresetInvalidEntries.map((draft) => ({
@@ -193,6 +199,7 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
         })
       }))}
       selected={selectedPanel}
+      onToggleDropParam={onTogglePresetParamDrop}
       applyAcknowledged={presetApplyAcknowledged}
       onAcknowledgedChange={setPresetApplyAcknowledged}
       onSelectPreset={onTogglePreset}

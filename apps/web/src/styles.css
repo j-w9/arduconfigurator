@@ -9620,6 +9620,28 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-top: 1px solid rgba(39, 49, 59, 0.72);
 }
 
+/* A preset change the operator dropped before applying. */
+.parameter-diff-item--dropped {
+  opacity: 0.5;
+}
+.parameter-diff-item--dropped .parameter-diff-values,
+.parameter-diff-item--dropped .parameter-diff-delta {
+  text-decoration: line-through;
+}
+.parameter-diff-drop {
+  justify-self: end;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--surface-400);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.parameter-diff-drop:hover {
+  color: var(--text);
+}
+
 .parameter-diff-item__discard {
   justify-self: end;
 }

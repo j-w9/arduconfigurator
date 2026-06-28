@@ -774,6 +774,29 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('preset-card-acro-rates-sport')).toHaveClass(/is-active/)
   })
 
+  test('presets: a param can be dropped from the review diff before applying', async ({ page }) => {
+    await connectToVehicle(page, 'demo')
+    await openView(page, 'presets')
+    await page.getByTestId('preset-card-flight-feel-soft').click()
+
+    // The combined diff lists each change with a Drop toggle.
+    const firstDrop = page.locator('[data-testid^="preset-drop-"]').first()
+    await expect(firstDrop).toBeVisible()
+    await expect(firstDrop).toHaveText('Drop')
+
+    // Dropping struck the row + flips the control to Include; the apply count drops.
+    const applyButton = page.getByTestId('apply-preset-button')
+    const before = await applyButton.innerText()
+    await firstDrop.click()
+    await expect(firstDrop).toHaveText('Include')
+    await expect(applyButton).not.toHaveText(before)
+
+    // Re-including restores it.
+    await firstDrop.click()
+    await expect(firstDrop).toHaveText('Drop')
+    await expect(applyButton).toHaveText(before)
+  })
+
   test('destructive acknowledgments reset when preset and snapshot diffs change', async ({ page }) => {
     await connectToVehicle(page, 'demo')
 

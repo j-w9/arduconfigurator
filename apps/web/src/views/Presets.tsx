@@ -42,6 +42,8 @@ export interface PresetsDiffEntry {
   label: string
   fromToText: string
   deltaText: string
+  /** Dropped by the operator — shown struck-through and excluded from the apply. */
+  dropped: boolean
 }
 
 export interface PresetsDiffGroup {
@@ -88,6 +90,7 @@ export interface PresetsViewProps {
   autoBackupCount: number
   groups: readonly PresetsGroup[]
   selected: PresetsSelected | null
+  onToggleDropParam: (paramId: string) => void
   applyAcknowledged: boolean
   onAcknowledgedChange: (acknowledged: boolean) => void
   onSelectPreset: (presetId: string) => void
@@ -122,6 +125,7 @@ export function PresetsView(props: PresetsViewProps) {
     autoBackupCount,
     groups,
     selected,
+    onToggleDropParam,
     applyAcknowledged,
     onAcknowledgedChange,
     onSelectPreset,
@@ -388,13 +392,23 @@ export function PresetsView(props: PresetsViewProps) {
                       </header>
 
                       {group.entries.map((entry) => (
-                        <div key={entry.id} className="parameter-diff-item">
+                        <div key={entry.id} className={`parameter-diff-item${entry.dropped ? ' parameter-diff-item--dropped' : ''}`}>
                           <span>
                             <strong>{entry.id}</strong>
                             <small>{entry.label}</small>
                           </span>
                           <span className="parameter-diff-values">{entry.fromToText}</span>
                           <span className="parameter-diff-delta">{entry.deltaText}</span>
+                          <button
+                            type="button"
+                            className="parameter-diff-drop"
+                            data-testid={`preset-drop-${entry.id}`}
+                            onClick={() => onToggleDropParam(entry.id)}
+                            title={entry.dropped ? 'Include this change in the apply' : 'Drop this change from the apply'}
+                            aria-pressed={entry.dropped}
+                          >
+                            {entry.dropped ? 'Include' : 'Drop'}
+                          </button>
                         </div>
                       ))}
                     </section>

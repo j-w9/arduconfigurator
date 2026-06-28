@@ -525,6 +525,14 @@ export function App() {
       current.includes(presetId) ? current.filter((id) => id !== presetId) : [...current, presetId]
     )
   }, [])
+  // Param ids the operator has dropped from the combined preset diff before
+  // applying — excluded from the write. Reset when the selection/diff changes.
+  const [droppedPresetParamIds, setDroppedPresetParamIds] = useState<string[]>([])
+  const togglePresetParamDrop = useCallback((paramId: string) => {
+    setDroppedPresetParamIds((current) =>
+      current.includes(paramId) ? current.filter((id) => id !== paramId) : [...current, paramId]
+    )
+  }, [])
   const [desktopSnapshotLibraryPath, setDesktopSnapshotLibraryPath] = useState<string>()
   const [desktopSnapshotLibraryName, setDesktopSnapshotLibraryName] = useState<string>()
   // Form-input state bound to a name first so SnapshotsSection can take
@@ -1747,6 +1755,14 @@ export function App() {
     selectedPresetInvalidEntries,
     selectedPresetDiffSignature
   } = usePresetCatalog({ snapshot, metadataCatalog, selectedPresetIds })
+  // The preset changes that will actually be written — the combined diff minus
+  // any params the operator dropped in the review list.
+  const effectivePresetChangedEntries = selectedPresetChangedEntries.filter(
+    (entry) => !droppedPresetParamIds.includes(entry.id)
+  )
+  const effectivePresetDraftValues = Object.fromEntries(
+    Object.entries(selectedPresetDraftValues).filter(([paramId]) => !droppedPresetParamIds.includes(paramId))
+  )
   // Live MAVLink inspector stats — only subscribed while its tab is active.
   const { stats: mavlinkInspectorStats, clear: clearMavlinkInspector } = useMavlinkInspector(
     runtime,
@@ -2778,19 +2794,19 @@ export function App() {
       return
     }
 
-    if (selectedPresetChangedEntries.length === 0) {
+    if (effectivePresetChangedEntries.length === 0) {
       setPresetNotice({
         tone: 'neutral',
-        text: `${selectedPresetsLabel}: every value already matches the current live tuning values.`
+        text: `${selectedPresetsLabel}: nothing left to apply (every value matches the live tuning, or was dropped).`
       })
       return
     }
 
-    mergeDrafts(selectedPresetDraftValues)
+    mergeDrafts(effectivePresetDraftValues)
     setActiveViewId('tuning')
     setParameterNotice({
       tone: 'warning',
-      text: `Loaded ${selectedPresetChangedEntries.length} preset change(s) into the Tuning view for manual review.`
+      text: `Loaded ${effectivePresetChangedEntries.length} preset change(s) into the Tuning view for manual review.`
     })
     setPresetNotice({
       tone: 'warning',
@@ -2868,10 +2884,10 @@ export function App() {
       return
     }
 
-    if (selectedPresetChangedEntries.length === 0) {
+    if (effectivePresetChangedEntries.length === 0) {
       setPresetNotice({
         tone: 'neutral',
-        text: `${selectedPresetsLabel}: every value already matches the current live tuning values.`
+        text: `${selectedPresetsLabel}: nothing left to apply (every value matches the live tuning, or was dropped).`
       })
       return
     }
@@ -2894,9 +2910,9 @@ export function App() {
 
     setBusyAction('presets:apply')
     try {
-      const rebootRequiredCount = selectedPresetChangedEntries.filter((entry) => entry.definition?.rebootRequired).length
+      const rebootRequiredCount = effectivePresetChangedEntries.filter((entry) => entry.definition?.rebootRequired).length
       const result = await runtime.setParameters(
-        selectedPresetChangedEntries
+        effectivePresetChangedEntries
           .filter((entry) => entry.nextValue !== undefined)
           .map((entry) => ({
             paramId: entry.id,
@@ -4712,6 +4728,7 @@ export function App() {
   useEffect(() => {
     setPresetApplyAcknowledged(false)
     setPresetNotice(undefined)
+    setDroppedPresetParamIds([])
   }, [selectedPresetDiffSignature])
 
   useEffect(() => {
@@ -6723,8 +6740,10 @@ export function App() {
           selectedPresetTouchedCount={selectedPresetTouchedCount}
           selectedPresetApplicability={selectedPresetApplicability}
           selectedPresetDiffGroups={selectedPresetDiffGroups}
-          selectedPresetChangedEntries={selectedPresetChangedEntries}
+          selectedPresetChangedEntries={effectivePresetChangedEntries}
           selectedPresetInvalidEntries={selectedPresetInvalidEntries}
+          droppedPresetParamIds={droppedPresetParamIds}
+          onTogglePresetParamDrop={togglePresetParamDrop}
           savedSnapshots={savedSnapshots}
           presetApplyAcknowledged={presetApplyAcknowledged}
           setPresetApplyAcknowledged={setPresetApplyAcknowledged}
