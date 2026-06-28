@@ -6832,7 +6832,7 @@ export function App() {
           nodes={snapshot.canBus.nodes}
           connected={snapshot.connection.kind === 'connected'}
           busy={busyAction !== undefined}
-          onStart={() => { void runtime?.startCanBusForward(0) }}
+          onStart={(bus) => { void runtime?.startCanBusForward(bus) }}
           onStop={() => { void runtime?.stopCanBusForward() }}
         />
       ) : null}

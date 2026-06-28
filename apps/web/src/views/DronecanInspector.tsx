@@ -3,6 +3,8 @@
 // frames-received heartbeat. Distinct from the CAN tab (which edits per-node
 // params); this is observe-only. Presentational — state + handlers from App.
 
+import { useState } from 'react'
+
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { CanBusState, DronecanInspectedNode } from '@arduconfig/ardupilot-core'
 
@@ -14,7 +16,7 @@ export interface DronecanInspectorViewProps {
   nodes: readonly DronecanInspectedNode[]
   connected: boolean
   busy: boolean
-  onStart: () => void
+  onStart: (bus: number) => void
   onStop: () => void
 }
 
@@ -39,6 +41,7 @@ function uptimeLabel(uptimeSec: number | undefined): string {
 
 export function DronecanInspectorView(props: DronecanInspectorViewProps) {
   const { status, bus, framesReceived, error, nodes, connected, busy, onStart, onStop } = props
+  const [busSelection, setBusSelection] = useState<number>(bus ?? 1)
   const active = status === 'active'
   const statusBadge = active
     ? `CAN${bus ?? 0} live`
@@ -80,16 +83,30 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                 {status === 'stopping' ? 'Stopping…' : 'Stop bus'}
               </button>
             ) : (
-              <button
-                type="button"
-                style={buttonStyle('primary')}
-                onClick={onStart}
-                disabled={busy || !connected || status === 'requesting'}
-                title={!connected ? 'Connect to a vehicle first.' : undefined}
-                data-testid="dronecan-inspector-start"
-              >
-                {status === 'requesting' ? 'Starting…' : 'Start bus inspection'}
-              </button>
+              <>
+                <label className="dronecan-inspector__bus-select">
+                  <span>Bus</span>
+                  <select
+                    value={String(busSelection)}
+                    onChange={(event) => setBusSelection(Number(event.target.value))}
+                    disabled={busy || !connected || status === 'requesting'}
+                    data-testid="dronecan-inspector-bus"
+                  >
+                    <option value="1">CAN1</option>
+                    <option value="2">CAN2</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  style={buttonStyle('primary')}
+                  onClick={() => onStart(busSelection)}
+                  disabled={busy || !connected || status === 'requesting'}
+                  title={!connected ? 'Connect to a vehicle first.' : undefined}
+                  data-testid="dronecan-inspector-start"
+                >
+                  {status === 'requesting' ? 'Starting…' : `Start CAN${busSelection} inspection`}
+                </button>
+              </>
             )}
           </div>
 

@@ -12655,6 +12655,13 @@ details.bf-gui-box:not([open]) > summary::after {
   max-height: 280px;
   overflow: auto;
 }
+.dronecan-inspector__bus-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
 .dronecan-inspector__row {
   display: grid;
   grid-template-columns: 0.7fr 1.5fr 1fr 1fr 0.8fr 0.8fr;

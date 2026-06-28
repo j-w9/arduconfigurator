@@ -2549,9 +2549,10 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.getByTestId('mavlink-inspector')).toBeVisible()
     await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
 
-    // DroneCAN inspector offers a read-only bus-inspection control.
+    // DroneCAN inspector offers a CAN1/CAN2 bus selector + start control.
     await page.getByTestId('view-button-dronecan-inspector').click()
     await expect(page.getByTestId('dronecan-inspector')).toBeVisible()
+    await expect(page.getByTestId('dronecan-inspector-bus')).toBeVisible()
     await expect(page.getByTestId('dronecan-inspector-start')).toBeVisible()
   })
 })
