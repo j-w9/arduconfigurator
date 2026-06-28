@@ -118,6 +118,11 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
           ArduPilot <code>.hex</code> for your board and flash it directly over USB.
         </p>
 
+        <p className="bf-note bf-note--warning" data-testid="dfu-hex-flaky-note">
+          Heads up: entering/booting DFU is known to be flaky on ArduPilot 4.6 and current 4.7. If the board
+          doesn&rsquo;t show up as a DFU device, re-plug while holding BOOT (or retry &ldquo;Activate DFU mode&rdquo;) and try again.
+        </p>
+
         {onActivateDfu ? (
           <div className="dfu-hex-flasher__activate" data-testid="dfu-hex-activate-row">
             {dfuArmed ? (
