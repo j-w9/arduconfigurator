@@ -84,7 +84,7 @@ test('sectorsToErase: returns only the unique sectors an image overlaps', () => 
 // the DfuSe address pointer + programmed bytes, and serves them back on UPLOAD
 // (so the read-back verify pass succeeds). `uploadOverride` lets a test return
 // wrong bytes to exercise a verify mismatch.
-function mockDfu(uploadOverride) {
+function mockDfu(uploadOverride, failLeave) {
   const out = []
   const flash = new Map()
   const xfer = 2048
@@ -95,6 +95,10 @@ function mockDfu(uploadOverride) {
     iface: {
       async controlOut(request, value, data) {
         out.push({ request, value, data: [...data] })
+        // Emulate the board detaching on the zero-length leave (control stall).
+        if (failLeave && request === 1 && value === 0 && data.length === 0) {
+          throw new Error('DFU control OUT failed (stall)')
+        }
         if (request === 1 && value === 0 && data[0] === 0x21) {
           addrPtr = (data[1] | (data[2] << 8) | (data[3] << 16) | (data[4] << 24)) >>> 0
         } else if (request === 1 && value >= 2) {
@@ -157,6 +161,17 @@ test('DfuSeDevice.flash: read-back verify passes when the flash matches the imag
   await device.flash([{ address: 0x08000000, data: new Uint8Array(3000).fill(0x5a) }])
   // (no throw == verified)
   assert.equal(mock.flash.get(0x08000000), 0x5a)
+})
+
+test('DfuSeDevice.flash: a control stall during the manifest/leave is treated as success', async () => {
+  // The board commonly detaches mid-leave on real hardware, stalling the final
+  // control transfer. The write + verify already succeeded, so this must NOT
+  // surface as a flash failure.
+  const mock = mockDfu(undefined, true)
+  const memory = parseDfuSeMemoryLayout('@Internal Flash  /0x08000000/16*128Kg')
+  const device = new DfuSeDevice(mock.iface, memory, 2048)
+  await device.flash([{ address: 0x08000000, data: new Uint8Array(64).fill(0xab) }])
+  // No throw == the leave stall was tolerated.
 })
 
 test('DfuSeDevice.flash: read-back verify throws on a mismatch', async () => {

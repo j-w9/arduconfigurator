@@ -306,15 +306,18 @@ export class DfuSeDevice {
     await this.verify(segments, totalBytes, onProgress)
 
     // 4. Manifest + leave: point at the image start and issue a zero-length
-    //    download. The board resets into the new firmware, so the final status
-    //    read may fail as the device drops off the bus — that is success.
+    //    download to leave DFU. The write + read-back already succeeded, so the
+    //    whole leave sequence is best-effort — as the board detaches/resets the
+    //    control transfers commonly stall (DFU_GETSTATUS, or even the leave
+    //    DNLOAD itself). A stall here is the board leaving, i.e. SUCCESS — never
+    //    surface it as a flash failure.
     onProgress?.({ phase: 'manifest', ratio: 0, label: 'Finishing and rebooting' })
-    await this.setAddress(segments[0].address)
-    await this.download(0, new Uint8Array(0))
     try {
+      await this.setAddress(segments[0].address)
+      await this.download(0, new Uint8Array(0))
       await this.getStatus()
     } catch {
-      // Expected: the device re-enumerated into the application.
+      // Expected once the device re-enumerates into the application.
     }
     onProgress?.({ phase: 'manifest', ratio: 1, label: 'Finishing and rebooting' })
   }
