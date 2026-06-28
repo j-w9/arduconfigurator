@@ -67,7 +67,6 @@ export interface PowerViewProps {
   onApply: () => void
   onDiscard: () => void
   additionalSettingsSlot: ReactNode
-  preArmIssues: readonly string[]
 }
 
 export function PowerView(props: PowerViewProps) {
@@ -93,8 +92,7 @@ export function PowerView(props: PowerViewProps) {
     isBusy,
     onApply,
     onDiscard,
-    additionalSettingsSlot,
-    preArmIssues
+    additionalSettingsSlot
   } = props
 
   return (
@@ -123,23 +121,11 @@ export function PowerView(props: PowerViewProps) {
             </div>
           ) : null}
 
-          <div className="telemetry-metric-grid">
-            <article className="telemetry-metric-card">
-              <span>Voltage</span>
-              <strong>{liveMetrics.voltageText}</strong>
-            </article>
-            <article className="telemetry-metric-card">
-              <span>Current</span>
-              <strong>{liveMetrics.currentText}</strong>
-            </article>
-            <article className="telemetry-metric-card">
-              <span>Remaining</span>
-              <strong>{liveMetrics.remainingText}</strong>
-            </article>
-            <article className="telemetry-metric-card">
-              <span>Capacity</span>
-              <strong>{liveMetrics.capacityText}</strong>
-            </article>
+          <div className="power-live-strip" data-testid="power-live-metrics">
+            <span><label>Voltage</label> <strong>{liveMetrics.voltageText}</strong></span>
+            <span><label>Current</label> <strong>{liveMetrics.currentText}</strong></span>
+            <span><label>Remaining</label> <strong>{liveMetrics.remainingText}</strong></span>
+            <span><label>Capacity</label> <strong>{liveMetrics.capacityText}</strong></span>
           </div>
 
           <div className="config-pills">
@@ -227,34 +213,11 @@ export function PowerView(props: PowerViewProps) {
 
           {additionalSettingsSlot}
 
-          <div className="prearm-card">
-            <div className="switch-exercise-card__header">
-              <div>
-                <strong>Pre-arm safety</strong>
-                <p>
-                  {preArmIssues.length === 0
-                    ? 'No active pre-arm issues are present in the shared runtime state.'
-                    : `${preArmIssues.length} active pre-arm issue(s) need to be cleared before first flight.`}
-                </p>
-              </div>
-              <StatusBadge tone={preArmIssues.length === 0 ? 'success' : 'warning'}>
-                {preArmIssues.length === 0 ? 'Clear' : `${preArmIssues.length} issues`}
-              </StatusBadge>
-            </div>
-
-            {preArmIssues.length > 0 ? (
-              <ul className="output-note-list">
-                {preArmIssues.map((text) => (
-                  <li key={text}>{text}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="telemetry-note">Keep the FC powered and watch this card for new pre-arm warnings as setup changes are applied.</p>
-            )}
-          </div>
-
+          {/* Pre-arm status lives on the Status & Info tab now (Statistics box) —
+              no longer duplicated here. */}
           <p className="telemetry-note">
-            The setup checklist now treats these sections as truly complete only when both the configuration values and the live telemetry agree.
+            The setup checklist treats these sections as truly complete only when both the configuration values and the live telemetry agree.
+            Pre-arm status is shown on the Status &amp; Info tab.
           </p>
         </div>
       </Panel>

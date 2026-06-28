@@ -977,7 +977,6 @@ export function App() {
   const notificationLedOverride = readRoundedParameter(snapshot, 'NTF_LED_OVERRIDE')
   const notificationBuzzTypes = readRoundedParameter(snapshot, 'NTF_BUZZ_TYPES')
   const notificationBuzzVolume = readRoundedParameter(snapshot, 'NTF_BUZZ_VOLUME')
-  const activePreArmIssues = snapshot.preArmStatus.issues
   const configuredOutputs = [...outputMapping.motorOutputs, ...outputMapping.configuredAuxOutputs].sort(
     (left, right) => left.channelNumber - right.channelNumber
   )
@@ -6272,7 +6271,6 @@ export function App() {
             'Apply Additional Battery Changes',
             'additional battery settings'
           )}
-          preArmIssues={activePreArmIssues.map((issue) => issue.text)}
         />
         ) : null}
       </section>

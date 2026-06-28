@@ -6161,6 +6161,32 @@ textarea:focus {
   gap: 12px;
 }
 
+/* Condensed live battery readout — replaces the four big metric cards. */
+.power-live-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.02);
+}
+.power-live-strip > span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+}
+.power-live-strip label {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.power-live-strip strong {
+  font-family: var(--font-data);
+}
+
 .telemetry-stack--ports .telemetry-metric-grid,
 .telemetry-stack--outputs .telemetry-metric-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
