@@ -6440,6 +6440,12 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+/* Units keep their real casing — the uppercase label transform otherwise mangles
+   "mAh" -> "MAH", "µs" -> "ΜS", etc. */
+.scoped-editor-field__unit {
+  text-transform: none;
+}
+
 .scoped-editor-field input,
 .scoped-editor-field select,
 .scoped-editor-field textarea {

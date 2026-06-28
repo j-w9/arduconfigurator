@@ -1433,9 +1433,9 @@ test('arducopter catalog covers SERVO1..32 with FUNCTION/MIN/MAX/TRIM/REVERSED m
     assert.ok(params[`SERVO${channel}_FUNCTION`], `SERVO${channel}_FUNCTION present`)
     assert.equal(params[`SERVO${channel}_FUNCTION`]?.label, `Output ${channel} Function`)
     assert.ok((params[`SERVO${channel}_FUNCTION`]?.options ?? []).length > 0, `SERVO${channel}_FUNCTION has options`)
-    assert.equal(params[`SERVO${channel}_MIN`]?.unit, 'us')
-    assert.equal(params[`SERVO${channel}_MAX`]?.unit, 'us')
-    assert.equal(params[`SERVO${channel}_TRIM`]?.unit, 'us')
+    assert.equal(params[`SERVO${channel}_MIN`]?.unit, 'µs')
+    assert.equal(params[`SERVO${channel}_MAX`]?.unit, 'µs')
+    assert.equal(params[`SERVO${channel}_TRIM`]?.unit, 'µs')
     // REVERSED has a Normal/Reversed enum rather than a unit.
     const reversedOptions = params[`SERVO${channel}_REVERSED`]?.options ?? []
     assert.equal(reversedOptions.length, 2)

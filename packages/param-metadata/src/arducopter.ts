@@ -407,7 +407,7 @@ function buildOsdScreenOptionDefinitions(screenNumber: number): FirmwareMetadata
       minimum: 900,
       maximum: 2100,
       step: 1,
-      unit: 'us',
+      unit: 'µs',
       notes: osdSwitchNotes
     },
     [`${screenLabel}_CHAN_MAX`]: {
@@ -418,7 +418,7 @@ function buildOsdScreenOptionDefinitions(screenNumber: number): FirmwareMetadata
       minimum: 900,
       maximum: 2100,
       step: 1,
-      unit: 'us',
+      unit: 'µs',
       notes: osdSwitchNotes
     },
     [`${screenLabel}_ESC_IDX`]: {
@@ -531,7 +531,7 @@ function buildServoChannelParameterDefinitions(maxChannelNumber: number): Firmwa
       label: `Output ${channelNumber} PWM Min`,
       description: `Minimum PWM value (microseconds) for output channel ${channelNumber}.`,
       category: 'outputs',
-      unit: 'us',
+      unit: 'µs',
       minimum: 800,
       maximum: 2200,
       step: 1
@@ -541,7 +541,7 @@ function buildServoChannelParameterDefinitions(maxChannelNumber: number): Firmwa
       label: `Output ${channelNumber} PWM Max`,
       description: `Maximum PWM value (microseconds) for output channel ${channelNumber}.`,
       category: 'outputs',
-      unit: 'us',
+      unit: 'µs',
       minimum: 800,
       maximum: 2200,
       step: 1
@@ -551,7 +551,7 @@ function buildServoChannelParameterDefinitions(maxChannelNumber: number): Firmwa
       label: `Output ${channelNumber} PWM Trim`,
       description: `Centre/idle PWM value (microseconds) for output channel ${channelNumber}.`,
       category: 'outputs',
-      unit: 'us',
+      unit: 'µs',
       minimum: 800,
       maximum: 2200,
       step: 1
@@ -1762,7 +1762,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       label: 'Throttle Failsafe PWM',
       description: 'PWM threshold used to detect receiver-loss throttle failsafe.',
       category: 'failsafe',
-      unit: 'us',
+      unit: 'µs',
       minimum: 910,
       maximum: 1100,
       step: 1,
@@ -2030,7 +2030,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       label: 'RSSI Low PWM',
       description: 'PWM value treated as minimum RSSI when using a dedicated RSSI channel.',
       category: 'radio',
-      unit: 'us',
+      unit: 'µs',
       minimum: 800,
       maximum: 2200,
       step: 1,
@@ -2041,7 +2041,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       label: 'RSSI High PWM',
       description: 'PWM value treated as maximum RSSI when using a dedicated RSSI channel.',
       category: 'radio',
-      unit: 'us',
+      unit: 'µs',
       minimum: 800,
       maximum: 2200,
       step: 1,

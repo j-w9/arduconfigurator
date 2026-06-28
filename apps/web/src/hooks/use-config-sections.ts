@@ -215,8 +215,8 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
         { paramId: 'CAM_TRIGG_TYPE', label: 'Trigger type', digits: 0 },
         { paramId: 'CAM_DURATION', label: 'Pulse duration', unit: 's·10', digits: 0 },
         { paramId: 'CAM_AUTO_ONLY', label: 'Auto only', digits: 0 },
-        { paramId: 'CAM_SERVO_ON', label: 'Servo ON PWM', unit: 'us', digits: 0 },
-        { paramId: 'CAM_SERVO_OFF', label: 'Servo OFF PWM', unit: 'us', digits: 0 }
+        { paramId: 'CAM_SERVO_ON', label: 'Servo ON PWM', unit: 'µs', digits: 0 },
+        { paramId: 'CAM_SERVO_OFF', label: 'Servo OFF PWM', unit: 'µs', digits: 0 }
       ]
     },
     // Statistics (STAT_*) moved to the Setup view's side panel — lifetime
