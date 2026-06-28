@@ -902,6 +902,11 @@ test.describe('Flash view', () => {
 
     await expect(page.getByTestId('dfu-hex-flasher')).toBeVisible()
 
+    // The card carries its own two-step "Activate DFU mode" reboot control.
+    await expect(page.getByTestId('dfu-hex-activate')).toBeVisible()
+    await page.getByTestId('dfu-hex-activate').click()
+    await expect(page.getByTestId('dfu-hex-activate-confirm')).toBeVisible()
+
     // A minimal valid Intel HEX: extended-linear base 0x0800, 8 data bytes at
     // 0x08000000, EOF. Built with correct checksums.
     const record = (type: number, addr: number, data: number[]) => {

@@ -10457,6 +10457,12 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-size: 13px;
   line-height: 1.5;
 }
+.dfu-hex-flasher__activate {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
 .dfu-hex-flasher__summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));

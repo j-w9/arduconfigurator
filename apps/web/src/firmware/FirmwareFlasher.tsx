@@ -1308,8 +1308,9 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
         ) : null}
 
         {/* Separate, additive path: flash a .hex over WebUSB DFU. The serial
-            bootloader .apj flow above is unchanged. */}
-        <DfuHexFlasher />
+            bootloader .apj flow above is unchanged. Reuses the same enter-DFU
+            action so the operator can reboot-to-DFU right here. */}
+        <DfuHexFlasher onActivateDfu={onEnterDfu} activateDfuDisabledReason={enterDfuDisabledReason} />
       </div>
     </section>
   )

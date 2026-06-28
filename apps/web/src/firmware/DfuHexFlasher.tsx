@@ -20,8 +20,36 @@ function formatAddress(address: number): string {
   return `0x${address.toString(16).toUpperCase().padStart(8, '0')}`
 }
 
-export function DfuHexFlasher() {
+export interface DfuHexFlasherProps {
+  /** Reboot the connected FC into its DFU bootloader (two-step, gated here).
+   *  Omitted when there's no live MAVLink link to command. */
+  onActivateDfu?: () => Promise<void>
+  /** Why the activate button is disabled (e.g. not connected / armed). */
+  activateDfuDisabledReason?: string
+}
+
+export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuHexFlasherProps) {
   const supported = isWebUsbSupported()
+  const [dfuArmed, setDfuArmed] = useState(false)
+  const [activateBusy, setActivateBusy] = useState(false)
+  const [activateNotice, setActivateNotice] = useState<string | null>(null)
+
+  const handleActivateDfu = useCallback(async () => {
+    if (!onActivateDfu) {
+      return
+    }
+    setDfuArmed(false)
+    setActivateBusy(true)
+    setActivateNotice('Sending reboot-to-bootloader command…')
+    try {
+      await onActivateDfu()
+      setActivateNotice('Reboot to DFU sent. Once the board re-enumerates as a DFU device, load the .hex and flash below.')
+    } catch (caught) {
+      setActivateNotice(caught instanceof Error ? caught.message : 'Failed to enter DFU mode.')
+    } finally {
+      setActivateBusy(false)
+    }
+  }, [onActivateDfu])
   const [parsed, setParsed] = useState<ParsedIntelHex | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -86,6 +114,50 @@ export function DfuHexFlasher() {
           BOOT/DFU button, or use “Enter DFU mode”, so it re-enumerates as an STM32 bootloader. Then load the
           ArduPilot <code>.hex</code> for your board and flash it directly over USB.
         </p>
+
+        {onActivateDfu ? (
+          <div className="dfu-hex-flasher__activate" data-testid="dfu-hex-activate-row">
+            {dfuArmed ? (
+              <>
+                <button
+                  type="button"
+                  style={buttonStyle('secondary')}
+                  data-testid="dfu-hex-activate-confirm"
+                  disabled={activateBusy}
+                  onClick={() => void handleActivateDfu()}
+                >
+                  {activateBusy ? 'Rebooting…' : 'Confirm: reboot to DFU'}
+                </button>
+                <button type="button" style={buttonStyle()} disabled={activateBusy} onClick={() => setDfuArmed(false)}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                style={buttonStyle('secondary')}
+                data-testid="dfu-hex-activate"
+                disabled={activateBusy || Boolean(activateDfuDisabledReason)}
+                title={activateDfuDisabledReason}
+                onClick={() => setDfuArmed(true)}
+              >
+                Activate DFU mode
+              </button>
+            )}
+          </div>
+        ) : null}
+
+        {dfuArmed ? (
+          <p className="bf-note bf-note--warning">
+            DFU drops the MAVLink link and re-enumerates over USB. Only proceed if you intend to reflash.
+          </p>
+        ) : null}
+
+        {activateNotice ? (
+          <p className="bf-note" data-testid="dfu-hex-activate-notice">
+            {activateNotice}
+          </p>
+        ) : null}
 
         {!supported ? (
           <div className="firmware-error-banner" role="alert" data-testid="dfu-hex-unsupported">
