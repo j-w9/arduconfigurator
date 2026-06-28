@@ -10544,6 +10544,22 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 8px;
   margin: 0 0 12px;
 }
+.dfu-hex-flasher__help {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.dfu-hex-flasher__help summary {
+  cursor: pointer;
+  color: var(--text);
+}
+.dfu-hex-flasher__help ol {
+  margin: 8px 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .dfu-hex-flasher__full-erase {
   display: flex;
   align-items: flex-start;

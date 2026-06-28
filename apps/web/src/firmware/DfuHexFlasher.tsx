@@ -123,6 +123,23 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
           doesn&rsquo;t show up as a DFU device, re-plug while holding BOOT (or retry &ldquo;Activate DFU mode&rdquo;) and try again.
         </p>
 
+        <details className="dfu-hex-flasher__help" data-testid="dfu-hex-boot0-help">
+          <summary>How do I put the board in DFU mode?</summary>
+          <ol>
+            <li>Unplug the flight controller from USB.</li>
+            <li>Hold the <strong>BOOT0</strong> button (or bridge the BOOT0 pads) on the board.</li>
+            <li>While holding BOOT0, plug the FC back into USB — it powers up as the STM32 DFU bootloader.</li>
+            <li>Or, if it&rsquo;s connected over MAVLink, use <strong>Activate DFU mode</strong> below to reboot it into DFU.</li>
+          </ol>
+          <a
+            href="https://ardupilot.org/dev/docs/using-DFU-to-load-bootloader.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            ArduPilot DFU guide ↗
+          </a>
+        </details>
+
         {onActivateDfu ? (
           <div className="dfu-hex-flasher__activate" data-testid="dfu-hex-activate-row">
             {dfuArmed ? (
