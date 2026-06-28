@@ -14,14 +14,12 @@
 import type { ReactElement, ReactNode } from 'react'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
 import {
-  canCompleteModeSwitchExercise,
   deriveAirframe,
   deriveModeAssignments,
   deriveModeExerciseAssignments,
   deriveModeSwitchEstimate,
   deriveRcAxisChannelMap,
   deriveRcAxisObservations,
-  formatModeSlotLabel,
   formatRcAxisLabel
 } from '@arduconfig/ardupilot-core'
 import { formatArducopterFlightModeChannel, formatArducopterRssiType } from '@arduconfig/param-metadata'
@@ -148,7 +146,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     receiverChannelDisplays,
     rcMappingDerivations,
     rcRangeDerivations,
-    modeSwitchDerivations,
     rcCalibrationDerivations,
     receiverTasks,
     receiverSupportCatalog,
@@ -177,8 +174,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
   } = rcMappingDerivations
 
   const { rcRangeExerciseProgress, rcRangeExerciseSummary, rcRangeExerciseInstructions } = rcRangeDerivations
-
-  const { modeSwitchExerciseProgress, modeSwitchExerciseSummary, modeSwitchExerciseInstructions } = modeSwitchDerivations
 
   const { rcCalibrationSummary } = rcCalibrationDerivations
 
@@ -214,7 +209,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     modeSwitchEstimate,
     modeExerciseAssignments,
     modeAssignments,
-    modeSwitchExercise,
     modeSwitchActivity,
     recentModeSwitchChange,
     configuredModeChannel,
@@ -230,7 +224,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     canRunRcMappingExercise,
     canRunRcRangeExercise,
     canCaptureRcCalibration,
-    canRunModeSwitchExercise,
     receiverWorkflowDraftCount,
     receiverWorkflowInvalidCount,
     receiverAdvancedDraftCount,
@@ -250,9 +243,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     handleStartRcCalibrationCapture,
     handleResetRcCalibrationCapture,
     handleStageRcCalibrationDrafts,
-    handleStartModeSwitchExercise,
-    handleCompleteModeSwitchExercise,
-    handleResetModeSwitchExercise,
     handleApplyScopedParameterDrafts,
     handleDiscardScopedParameterDrafts,
     renderAdditionalSettingsCard,
@@ -271,11 +261,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                   <div className="telemetry-header">
                     <div>
                       <h3>Live monitor</h3>
-                      <p>
-                        {snapshot.liveVerification.rcInput.verified
-                          ? `Showing the primary controls first. ${receiverAuxChannelDisplays.length} additional AUX channel${receiverAuxChannelDisplays.length === 1 ? '' : 's'} are available on demand.`
-                          : 'Waiting for live receiver telemetry before mapping, calibration, and mode setup can continue.'}
-                      </p>
                     </div>
                     <StatusBadge tone={snapshot.liveVerification.rcInput.verified ? 'success' : 'warning'}>
                       {snapshot.liveVerification.rcInput.verified ? `${snapshot.liveVerification.rcInput.channelCount} channels live` : 'No RC telemetry'}
@@ -291,7 +276,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                       frameClassLabel={airframe.frameClassLabel}
                       frameTypeLabel={airframe.frameTypeLabel}
                     />
-                    <small>Craft banks, pitches, and yaws with your live sticks — move roll/pitch/yaw to confirm direction.</small>
                   </div>
 
                   <div className="receiver-live-primary-grid">
@@ -340,29 +324,10 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                     testId="receiver-channel-bars"
                   />
 
-                  <div className="receiver-monitor__meta">
-                    <article className="telemetry-metric-card">
-                      <span>RX RSSI</span>
-                      <strong>{formatRxRssi(snapshot.liveVerification.rcInput.rssi)}</strong>
-                      <small>{formatArducopterRssiType(rssiType)}</small>
-                    </article>
-                    <article className="telemetry-metric-card">
-                      <span>Receiver link</span>
-                      <strong>{receiverLinkPorts.length > 0 ? receiverLinkPorts.map((port) => port.label).join(', ') : 'Not detected'}</strong>
-                      <small>
-                        {receiverLinkPorts.length > 0
-                          ? receiverLinkPorts.map((port) => port.protocolLabel).join(', ')
-                          : snapshot.liveVerification.rcInput.verified
-                            ? 'Assigned from Ports when a serial receiver is in use'
-                            : 'Serial receivers need a UART set to RCIN (SERIALn_PROTOCOL = 23) in Ports, then a reboot'}
-                      </small>
-                    </article>
-                  </div>
 
                   <div className="receiver-channel-disclosure">
                     <div>
                       <strong>Aux channel details</strong>
-                      <p>Keep the page focused on the primary controls by default. Expand this only when checking AUX switches and spare channels.</p>
                     </div>
                     <button
                       style={buttonStyle()}
@@ -930,83 +895,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                         </div>
                       </div>
                     ) : null}
-
-                    <div className="switch-exercise-card">
-                      <div className="switch-exercise-card__header">
-                        <div>
-                          <strong>Switch exercise</strong>
-                          <p>{modeSwitchExerciseSummary}</p>
-                        </div>
-                        <StatusBadge tone={toneForModeSwitchExercise(modeSwitchExercise.status)}>{modeSwitchExercise.status}</StatusBadge>
-                      </div>
-
-                      <div className="switch-exercise-progress" aria-hidden="true">
-                        <div className="switch-exercise-progress__fill" style={{ width: `${modeSwitchExerciseProgress}%` }} />
-                      </div>
-
-                      <div className="config-pills">
-                        {(modeSwitchExercise.status === 'idle' ? modeExerciseAssignments.map((assignment) => assignment.slot) : modeSwitchExercise.targetSlots).map((slot) => {
-                          const visited = modeSwitchExercise.visitedSlots.includes(slot)
-                          const isTarget = modeSwitchExercise.status === 'running' && modeSwitchExercise.currentTargetSlot === slot
-                          const classes = [visited ? 'is-complete' : undefined, isTarget ? 'is-target' : undefined]
-                            .filter((value): value is string => value !== undefined)
-                            .join(' ')
-
-                          return (
-                            <span key={slot} className={classes || undefined}>
-                              {formatModeSlotLabel(snapshot, slot, snapshot.vehicle?.vehicle)}
-                            </span>
-                          )
-                        })}
-                      </div>
-
-                      {modeSwitchExercise.unexpectedSlots.length > 0 ? (
-                        <p className="switch-exercise-warning">
-                          Observed unconfigured positions: {modeSwitchExercise.unexpectedSlots.map((slot) => `slot ${slot}`).join(', ')}
-                        </p>
-                      ) : null}
-
-                      <ol className="switch-exercise-instructions">
-                        {modeSwitchExerciseInstructions.map((instruction) => (
-                          <li key={instruction}>{instruction}</li>
-                        ))}
-                      </ol>
-
-                      <div className="switch-exercise-controls">
-                        <button
-                          style={buttonStyle('primary')}
-                          onClick={handleStartModeSwitchExercise}
-                          disabled={!canRunModeSwitchExercise || modeSwitchExercise.status === 'running'}
-                        >
-                          {modeSwitchExercise.status === 'running'
-                            ? 'Exercise Running'
-                            : modeSwitchExercise.status === 'passed'
-                              ? 'Run Again'
-                              : 'Start Exercise'}
-                        </button>
-                        <button
-                          style={buttonStyle()}
-                          data-testid="switch-exercise-complete"
-                          onClick={handleCompleteModeSwitchExercise}
-                          disabled={!canCompleteModeSwitchExercise(modeSwitchExercise)}
-                          title="Mark the exercise complete once the switch has been moved through its full travel — a 2/3-position switch can't hit every configured slot, so the operator confirms when it's done."
-                        >
-                          Mark Complete
-                        </button>
-                        <button
-                          style={buttonStyle()}
-                          onClick={handleResetModeSwitchExercise}
-                          disabled={modeSwitchExercise.status === 'idle'}
-                        >
-                          Reset
-                        </button>
-                        {/* "Mark Failed" button removed — failure on this
-                         * exercise should come from real telemetry loss
-                         * (handled inside advanceModeSwitchExerciseState),
-                         * not a manual click. Reset re-runs from scratch
-                         * if the operator wants a clean re-try. */}
-                      </div>
-                    </div>
                   </div>
                 ) : null}
 

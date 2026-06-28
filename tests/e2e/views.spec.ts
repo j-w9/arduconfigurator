@@ -1224,7 +1224,6 @@ test.describe('Receiver stick-driven craft', () => {
     const card = page.getByTestId('receiver-stick-craft-card')
     await expect(card).toBeVisible()
     await expect(page.getByTestId('receiver-stick-craft')).toHaveAttribute('data-craft-model', /.+/)
-    await expect(card).toContainText('live sticks')
   })
 })
 
@@ -1292,10 +1291,10 @@ test.describe('Receiver RSSI', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
+    // RX RSSI lives in the Signal Setup task now (removed from the main monitor).
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Signal Setup' }).click()
     // Demo seeds RC_CHANNELS.rssi = 100 (raw 0-254), which is ~39%.
-    const card = page.locator('.telemetry-metric-card', { hasText: 'RX RSSI' }).first()
-    await expect(card).toBeVisible()
-    await expect(card.locator('strong')).toHaveText('39%')
+    await expect(page.getByText('Live RX RSSI: 39%')).toBeVisible()
   })
 })
 

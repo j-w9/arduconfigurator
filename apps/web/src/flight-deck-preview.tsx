@@ -1015,7 +1015,9 @@ export function FlightDeckPreview({
         </div>
         <div className="flight-deck__caption">
           <div className="flight-deck__caption-copy">
-            <span>{captionLabel ?? (verified ? 'Live attitude + heading from the flight controller' : 'Preview waiting on attitude telemetry')}</span>
+            {captionLabel === '' ? null : (
+              <span>{captionLabel ?? (verified ? 'Live attitude + heading from the flight controller' : 'Preview waiting on attitude telemetry')}</span>
+            )}
             <strong>{flightMode ?? 'No active mode'}</strong>
           </div>
           <div className="flight-deck__caption-actions">

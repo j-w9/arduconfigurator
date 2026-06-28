@@ -148,7 +148,7 @@ export function StickCraftPreview({
         rollDeg={rollNorm * 35}
         pitchDeg={-pitchNorm * 35}
         yawDeg={yawHeading}
-        captionLabel={verified ? 'Moves with your live RC sticks' : 'Waiting on live RC input'}
+        captionLabel={verified ? '' : 'Waiting on live RC input'}
         flightMode="Stick preview"
         verified={verified}
         vehicleType={vehicleType}

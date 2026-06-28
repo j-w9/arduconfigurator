@@ -28,10 +28,7 @@ export function ReceiverView(props: ReceiverViewProps) {
 
   return (
     <div id="setup-panel-rc">
-      <Panel
-        title="Receiver"
-        subtitle="Live RC monitoring plus task-based mapping, endpoint calibration, flight-mode setup, and review."
-      >
+      <Panel title="Receiver">
         <div className="telemetry-stack telemetry-stack--receiver">
           <div className="receiver-summary-grid">
             {taskCards.map((task) => (
