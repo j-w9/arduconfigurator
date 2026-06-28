@@ -80,16 +80,37 @@ test('sectorsToErase: returns only the unique sectors an image overlaps', () => 
   assert.deepEqual(targets, [0x08000000, 0x08020000])
 })
 
-// A mock DFU interface: records every control-OUT and reports an idle/OK status.
-function mockDfu() {
+// A mock DFU interface that emulates flash: records every control-OUT, tracks
+// the DfuSe address pointer + programmed bytes, and serves them back on UPLOAD
+// (so the read-back verify pass succeeds). `uploadOverride` lets a test return
+// wrong bytes to exercise a verify mismatch.
+function mockDfu(uploadOverride) {
   const out = []
+  const flash = new Map()
+  const xfer = 2048
+  let addrPtr = 0
   return {
     out,
+    flash,
     iface: {
       async controlOut(request, value, data) {
         out.push({ request, value, data: [...data] })
+        if (request === 1 && value === 0 && data[0] === 0x21) {
+          addrPtr = (data[1] | (data[2] << 8) | (data[3] << 16) | (data[4] << 24)) >>> 0
+        } else if (request === 1 && value >= 2) {
+          const base = addrPtr + (value - 2) * xfer
+          for (let i = 0; i < data.length; i += 1) flash.set(base + i, data[i])
+        }
       },
-      async controlIn() {
+      async controlIn(request, value, length) {
+        if (request === 2) {
+          // DFU_UPLOAD — serve programmed bytes (or the override for mismatch tests).
+          if (uploadOverride) return uploadOverride(length)
+          const base = addrPtr + (value - 2) * xfer
+          const buf = new Uint8Array(length)
+          for (let i = 0; i < length; i += 1) buf[i] = flash.get(base + i) ?? 0xff
+          return buf
+        }
         // GETSTATUS: status OK (0), pollTimeout 0, state dfuDNLOAD_IDLE (5).
         return new Uint8Array([0, 0, 0, 0, 5, 0])
       }
@@ -124,7 +145,29 @@ test('DfuSeDevice.flash: erases, sets address, streams blocks, then manifests', 
   // Manifest: a zero-length download terminates the sequence.
   assert.ok(dnloads.some((o) => o.value === 0 && o.data.length === 0))
 
-  assert.deepEqual([...new Set(phases)], ['erase', 'program', 'manifest'])
+  assert.deepEqual([...new Set(phases)], ['erase', 'program', 'verify', 'manifest'])
+})
+
+test('DfuSeDevice.flash: read-back verify passes when the flash matches the image', async () => {
+  const mock = mockDfu()
+  const memory = parseDfuSeMemoryLayout('@Internal Flash  /0x08000000/16*128Kg')
+  const device = new DfuSeDevice(mock.iface, memory, 2048)
+  // Emulator serves back what was written, so verify succeeds. A DFU_UPLOAD
+  // (request 2) read-back happened.
+  await device.flash([{ address: 0x08000000, data: new Uint8Array(3000).fill(0x5a) }])
+  // (no throw == verified)
+  assert.equal(mock.flash.get(0x08000000), 0x5a)
+})
+
+test('DfuSeDevice.flash: read-back verify throws on a mismatch', async () => {
+  // UPLOAD always returns 0x00 bytes, never matching the 0xAB image.
+  const mock = mockDfu((length) => new Uint8Array(length))
+  const memory = parseDfuSeMemoryLayout('@Internal Flash  /0x08000000/16*128Kg')
+  const device = new DfuSeDevice(mock.iface, memory, 2048)
+  await assert.rejects(
+    () => device.flash([{ address: 0x08000000, data: new Uint8Array(64).fill(0xab) }]),
+    /verification failed/i
+  )
 })
 
 test('DfuSeDevice.flash: full erase wipes every sector in the layout, not just the overlapped ones', async () => {

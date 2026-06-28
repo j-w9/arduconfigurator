@@ -853,6 +853,10 @@ test.describe('Flash view', () => {
     await page.addInitScript(() => {
       const out: Array<{ request: number; value: number; len: number }> = []
       ;(window as unknown as { __dfuOut: typeof out }).__dfuOut = out
+      // Flash emulator state so the read-back verify pass succeeds.
+      const flash = new Map<number, number>()
+      const xfer = 2048
+      let addrPtr = 0
       const device = {
         productName: 'STM32 BOOTLOADER',
         configuration: {
@@ -876,10 +880,17 @@ test.describe('Flash view', () => {
         claimInterface: async () => {},
         releaseInterface: async () => {},
         selectAlternateInterface: async () => {},
-        controlTransferIn: async (setup: { requestType: string; request: number }) => {
+        controlTransferIn: async (setup: { requestType: string; request: number; value: number }, length: number) => {
           if (setup.requestType === 'class' && setup.request === 3) {
             // GETSTATUS: status OK, poll 0, state dfuDNLOAD_IDLE (5).
             return { status: 'ok', data: new DataView(new Uint8Array([0, 0, 0, 0, 5, 0]).buffer) }
+          }
+          if (setup.request === 2) {
+            // DFU_UPLOAD — serve back the programmed bytes so read-back verify passes.
+            const base = addrPtr + (setup.value - 2) * xfer
+            const buf = new Uint8Array(length)
+            for (let i = 0; i < length; i += 1) buf[i] = flash.get(base + i) ?? 0xff
+            return { status: 'ok', data: new DataView(buf.buffer) }
           }
           if (setup.request === 6) {
             // GET_DESCRIPTOR(config): a lone DFU functional descriptor with
@@ -889,7 +900,15 @@ test.describe('Flash view', () => {
           return { status: 'ok', data: new DataView(new Uint8Array(6).buffer) }
         },
         controlTransferOut: async (setup: { request: number; value: number }, data?: ArrayBuffer) => {
-          out.push({ request: setup.request, value: setup.value, len: data ? data.byteLength : 0 })
+          const bytes = data ? new Uint8Array(data) : new Uint8Array(0)
+          out.push({ request: setup.request, value: setup.value, len: bytes.length })
+          // Track the DfuSe address pointer + programmed bytes so UPLOAD verify works.
+          if (setup.request === 1 && setup.value === 0 && bytes[0] === 0x21) {
+            addrPtr = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0
+          } else if (setup.request === 1 && setup.value >= 2) {
+            const base = addrPtr + (setup.value - 2) * xfer
+            for (let i = 0; i < bytes.length; i += 1) flash.set(base + i, bytes[i])
+          }
           return { status: 'ok' }
         }
       }

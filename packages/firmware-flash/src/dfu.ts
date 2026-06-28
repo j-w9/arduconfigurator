@@ -18,6 +18,7 @@ export interface DfuUsbInterface {
 
 // DFU class requests (USB DFU 1.1 / DfuSe).
 const DFU_DNLOAD = 1
+const DFU_UPLOAD = 2
 const DFU_GETSTATUS = 3
 const DFU_CLRSTATUS = 4
 const DFU_ABORT = 6
@@ -49,7 +50,7 @@ export interface DfuMemorySector {
   size: number
 }
 
-export type DfuFlashPhase = 'erase' | 'program' | 'manifest'
+export type DfuFlashPhase = 'erase' | 'program' | 'verify' | 'manifest'
 
 export interface DfuFlashProgress {
   phase: DfuFlashPhase
@@ -205,6 +206,39 @@ export class DfuSeDevice {
     await this.pollUntilIdle()
   }
 
+  /** Read every programmed byte back over DFU UPLOAD and byte-compare it to the
+   *  image; throws on the first mismatch. Per ST AN3156 the DfuSe read sequence
+   *  is abort -> set-address -> abort -> UPLOAD blocks 2,3,... */
+  private async verify(
+    segments: readonly IntelHexSegment[],
+    totalBytes: number,
+    onProgress?: (progress: DfuFlashProgress) => void
+  ): Promise<void> {
+    let verifiedBytes = 0
+    for (const segment of segments) {
+      await this.abort()
+      await this.setAddress(segment.address)
+      await this.abort()
+      let block = 2
+      for (let offset = 0; offset < segment.data.length; offset += this.transferSize) {
+        const expected = segment.data.slice(offset, offset + this.transferSize)
+        const got = await this.usb.controlIn(DFU_UPLOAD, block, expected.length)
+        if (!bytesEqual(got, expected)) {
+          throw new Error(
+            `Verification failed at 0x${(segment.address + offset).toString(16)} — flash read-back does not match the firmware image`
+          )
+        }
+        block += 1
+        verifiedBytes += expected.length
+        onProgress?.({
+          phase: 'verify',
+          ratio: verifiedBytes / totalBytes,
+          label: `Verifying ${formatBytes(verifiedBytes)} / ${formatBytes(totalBytes)}`
+        })
+      }
+    }
+  }
+
   /**
    * Erase the sectors the image touches, program every segment block-by-block,
    * then manifest + leave DFU so the board boots the new firmware. Progress is
@@ -258,11 +292,20 @@ export class DfuSeDevice {
         await this.pollUntilIdle()
         block += 1
         sentBytes += chunk.length
-        onProgress?.({ phase: 'program', ratio: sentBytes / totalBytes, label: `Writing ${formatBytes(totalBytes)}` })
+        onProgress?.({
+          phase: 'program',
+          ratio: sentBytes / totalBytes,
+          label: `Flashing ${formatBytes(sentBytes)} / ${formatBytes(totalBytes)}`
+        })
       }
     }
 
-    // 3. Manifest + leave: point at the image start and issue a zero-length
+    // 3. Verify: read every programmed byte back over DFU UPLOAD and compare to
+    //    the image. A failed verify throws before the board reboots, so it never
+    //    boots a half-written image.
+    await this.verify(segments, totalBytes, onProgress)
+
+    // 4. Manifest + leave: point at the image start and issue a zero-length
     //    download. The board resets into the new firmware, so the final status
     //    read may fail as the device drops off the bus — that is success.
     onProgress?.({ phase: 'manifest', ratio: 0, label: 'Finishing and rebooting' })
@@ -289,4 +332,19 @@ function encodeCommand(command: number, address: number): Uint8Array {
 
 function formatBytes(bytes: number): string {
   return bytes >= 1024 ? `${(bytes / 1024).toFixed(0)} KiB` : `${bytes} bytes`
+}
+
+/** True when the first `expected.length` bytes of `got` match `expected`. The
+ *  device may return a full transferSize buffer for a short final chunk, so
+ *  only the expected prefix is compared. */
+function bytesEqual(got: Uint8Array, expected: Uint8Array): boolean {
+  if (got.length < expected.length) {
+    return false
+  }
+  for (let i = 0; i < expected.length; i += 1) {
+    if (got[i] !== expected[i]) {
+      return false
+    }
+  }
+  return true
 }
