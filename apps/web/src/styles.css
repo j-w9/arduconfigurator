@@ -7632,6 +7632,17 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 12px;
 }
 
+/* Calm single-line status shown in place of the panel during an apply-and-reboot
+   / param re-sync (instead of the live UI churning through the reload). */
+.motor-reorder-status {
+  margin: 0;
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .motor-reorder-lightbox__frame {
   width: min(1120px, 100%);
   /* The frame inherits max-height: calc(100vh - 64px) from
@@ -11107,19 +11118,12 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .config-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--space-3, 12px);
-  /* Cards size to their own content instead of stretching to the tallest
-     card in their row — otherwise short sections (board orientation, identity)
-     get a big empty body next to a tall one (the arming bitmask). */
-  align-items: start;
-  /* The Config tab is a grab-bag of many sections; let the grid scroll
-     within a bounded area instead of stretching the whole page so the
-     Apply/Revert toolbar below it stays in view. */
-  max-height: calc(100vh - 19rem);
-  overflow-y: auto;
-  overflow-x: clip;
+  /* Masonry packing via CSS multicolumn: short sections (frame, identity,
+     fast-loop) tuck under tall ones (arming/RC bitmasks, ESC) instead of
+     leaving a row's worth of dead space beside them. The Apply/Revert toolbar
+     below stays reachable via the sticky rule on .config-toolbar. */
+  columns: 300px;
+  column-gap: var(--space-3, 12px);
   padding-right: 6px;
 }
 
@@ -11130,6 +11134,9 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-radius: var(--radius-md, 8px);
   border: 1px solid var(--surface-400);
   background: var(--surface-200);
+  /* Multicolumn item: keep a card whole and space it from the next one. */
+  break-inside: avoid;
+  margin-bottom: var(--space-3, 12px);
 }
 
 .config-section--planned {
@@ -11422,6 +11429,13 @@ details.bf-gui-box:not([open]) > summary::after {
   margin-top: var(--space-3, 12px);
   padding-top: var(--space-3, 12px);
   border-top: 1px solid var(--surface-300);
+  /* The grid is no longer internally scrolled, so pin the Apply/Revert bar to
+     the bottom of the viewport as the page scrolls. */
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-panel, var(--surface-100));
+  padding-bottom: var(--space-2, 8px);
+  z-index: 3;
 }
 
 .config-toolbar__status {

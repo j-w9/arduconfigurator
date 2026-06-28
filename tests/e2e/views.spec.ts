@@ -965,23 +965,17 @@ test.describe('Config view', () => {
     await expect(apply).toContainText('Apply Frame (1)')
   })
 
-  test('Config section grid scrolls within a bounded area instead of stretching the page', async ({ page }) => {
+  test('Config sections pack into a multicolumn (masonry) layout', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'config')
     const grid = page.getByTestId('config-section-grid')
-    const info = await grid.evaluate((el) => ({
-      overflowY: getComputedStyle(el).overflowY,
-      scrollH: el.scrollHeight,
-      clientH: el.clientHeight
-    }))
-    expect(info.overflowY).toBe('auto')
-    // Bounded: the (tall) content scrolls inside a shorter viewport.
-    expect(info.clientH).toBeLessThan(info.scrollH)
-    // The page itself isn't massively prolonged by the config sections.
-    const docOverflow = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)
-    expect(docOverflow).toBeLessThan(300)
+    await expect(grid).toBeVisible()
+    // Sections pack via CSS multicolumn (columns: 300px) so short cards tuck
+    // under tall ones instead of leaving a row of dead space.
+    const columnWidth = await grid.evaluate((el) => getComputedStyle(el).columnWidth)
+    expect(columnWidth).toBe('300px')
   })
 
   test('Receiver & signal section mirrors RSSI / mode-channel / RC options into Config', async ({ page }) => {
@@ -1630,7 +1624,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'motors')
-    await page.getByTestId('outputs-task-nav').getByRole('tab', { name: /Direction & Test/i }).click()
+    await page.getByTestId('outputs-summary-direction-test').click()
     await expect(page.getByText('multirotor procedure', { exact: false })).toBeVisible()
     // The quad motor-direction bench is not rendered for a Plane.
     await expect(page.getByText('Motor Direction Check', { exact: true })).toHaveCount(0)

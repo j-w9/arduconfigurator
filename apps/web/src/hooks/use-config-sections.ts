@@ -55,58 +55,16 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
       ]
     },
     {
-      id: 'arming',
-      title: 'Arming behavior',
-      description: 'Pre-arm checks bitmask + which inputs are allowed to arm. ARMING_CHECK = 1 enables all checks; specific bits disable individual checks.',
+      id: 'esc-dshot',
+      title: 'ESC & DShot',
+      description: 'Output protocol and DShot/BLHeli behavior — set this before motor testing. Bidirectional DShot needs a DShot protocol; check it on the first 4 outputs (some boards do 8) and enable BLHeli auto. Reverse a motor here instead of swapping wires.',
       fields: [
-        { paramId: 'ARMING_CHECK', label: 'Check bitmask', digits: 0 },
-        { paramId: 'ARMING_REQUIRE', label: 'Require arming', digits: 0 },
-        { paramId: 'ARMING_RUDDER', label: 'Rudder arm', digits: 0 }
-      ]
-    },
-    {
-      id: 'identity',
-      title: 'System identity',
-      description: 'MAVLink identity. Change SYSID_THISMAV to coordinate a swarm; SYSID_MYGCS pins which GCS is trusted for failsafe.',
-      fields: [
-        { paramId: 'SYSID_THISMAV', label: 'This system id', digits: 0 },
-        { paramId: 'SYSID_MYGCS', label: 'Trusted GCS id', digits: 0 },
-        { paramId: 'BRD_BOOT_DELAY', label: 'Boot delay', unit: 'ms', digits: 0 }
-      ]
-    },
-    {
-      id: 'beeper',
-      title: 'Beeper / notification',
-      description: 'Buzzer + LED notification volumes. Same params are also reachable from Servos → Peripherals; surfaced here for BF parity.',
-      fields: [
-        { paramId: 'NTF_BUZZ_VOLUME', label: 'Buzzer volume', unit: '%', digits: 0 },
-        { paramId: 'NTF_BUZZ_TYPES', label: 'Buzzer types', digits: 0 },
-        { paramId: 'NTF_LED_BRIGHT', label: 'LED brightness', digits: 0 }
-      ]
-    },
-    {
-      id: 'camera-trigger',
-      title: 'Camera trigger',
-      description: 'Triggered camera shutter behavior — type/duration/auto. Pair with a SERVOn_FUNCTION = 10 (Camera Trigger) output.',
-      fields: [
-        { paramId: 'CAM_TRIGG_TYPE', label: 'Trigger type', digits: 0 },
-        { paramId: 'CAM_DURATION', label: 'Pulse duration', unit: 's·10', digits: 0 },
-        { paramId: 'CAM_AUTO_ONLY', label: 'Auto only', digits: 0 },
-        { paramId: 'CAM_SERVO_ON', label: 'Servo ON PWM', unit: 'us', digits: 0 },
-        { paramId: 'CAM_SERVO_OFF', label: 'Servo OFF PWM', unit: 'us', digits: 0 }
-      ]
-    },
-    {
-      id: 'gps',
-      title: 'GPS behavior',
-      description: 'GPS driver type + auto-config + update rate, plus multi-GPS behavior (which receiver is primary and how the FC switches between them).',
-      fields: [
-        { paramId: 'GPS_TYPE', label: 'GPS type', digits: 0 },
-        { paramId: 'GPS_AUTO_CONFIG', label: 'Auto config', digits: 0 },
-        { paramId: 'GPS_RATE_MS', label: 'Update rate', unit: 'ms', digits: 0 },
-        { paramId: 'GPS_GNSS_MODE', label: 'GNSS mode', digits: 0 },
-        { paramId: 'GPS_AUTO_SWITCH', label: 'Auto switch', digits: 0 },
-        { paramId: 'GPS_PRIMARY', label: 'Primary GPS', digits: 0 }
+        { paramId: 'MOT_PWM_TYPE', label: 'ESC protocol', digits: 0 },
+        { paramId: 'SERVO_DSHOT_RATE', label: 'DShot rate', digits: 0 },
+        { paramId: 'SERVO_BLH_AUTO', label: 'BLHeli auto', digits: 0 },
+        { paramId: 'SERVO_BLH_POLES', label: 'Motor poles', digits: 0 },
+        { paramId: 'SERVO_BLH_BDMASK', label: 'Bidirectional DShot outputs', digits: 0 },
+        { paramId: 'SERVO_BLH_RVMASK', label: 'Reverse motor outputs', digits: 0 }
       ]
     },
     {
@@ -160,6 +118,29 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
         ]
       : []),
     {
+      id: 'active-imu',
+      title: 'Active IMU',
+      description: 'Which onboard IMUs the EKF/AHRS uses. Disable a noisy or failed IMU here; reboot required. At least one IMU must stay enabled.',
+      fields: [
+        { paramId: 'INS_USE', label: 'Use IMU 1', digits: 0 },
+        { paramId: 'INS_USE2', label: 'Use IMU 2', digits: 0 },
+        { paramId: 'INS_USE3', label: 'Use IMU 3', digits: 0 }
+      ]
+    },
+    {
+      id: 'gps',
+      title: 'GPS behavior',
+      description: 'GPS driver type + auto-config + update rate, plus multi-GPS behavior (which receiver is primary and how the FC switches between them).',
+      fields: [
+        { paramId: 'GPS_TYPE', label: 'GPS type', digits: 0 },
+        { paramId: 'GPS_AUTO_CONFIG', label: 'Auto config', digits: 0 },
+        { paramId: 'GPS_RATE_MS', label: 'Update rate', unit: 'ms', digits: 0 },
+        { paramId: 'GPS_GNSS_MODE', label: 'GNSS mode', digits: 0 },
+        { paramId: 'GPS_AUTO_SWITCH', label: 'Auto switch', digits: 0 },
+        { paramId: 'GPS_PRIMARY', label: 'Primary GPS', digits: 0 }
+      ]
+    },
+    {
       id: 'receiver-signal',
       title: 'Receiver & signal',
       description: 'RC link and signal settings, mirrored from the Receiver tab so they can be reviewed alongside the rest of the config. Use the Receiver tab for the guided stage/review signal-setup flow; RSSI source, mode channel, RC options, and accepted RC protocols are all here too.',
@@ -180,26 +161,23 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
       ]
     },
     {
-      id: 'esc-dshot',
-      title: 'ESC & DShot',
-      description: 'Output protocol and DShot/BLHeli behavior — set this before motor testing. Bidirectional DShot needs a DShot protocol; check it on the first 4 outputs (some boards do 8) and enable BLHeli auto. Reverse a motor here instead of swapping wires.',
+      id: 'arming',
+      title: 'Arming behavior',
+      description: 'Pre-arm checks bitmask + which inputs are allowed to arm. ARMING_CHECK = 1 enables all checks; specific bits disable individual checks.',
       fields: [
-        { paramId: 'MOT_PWM_TYPE', label: 'ESC protocol', digits: 0 },
-        { paramId: 'SERVO_DSHOT_RATE', label: 'DShot rate', digits: 0 },
-        { paramId: 'SERVO_BLH_AUTO', label: 'BLHeli auto', digits: 0 },
-        { paramId: 'SERVO_BLH_POLES', label: 'Motor poles', digits: 0 },
-        { paramId: 'SERVO_BLH_BDMASK', label: 'Bidirectional DShot outputs', digits: 0 },
-        { paramId: 'SERVO_BLH_RVMASK', label: 'Reverse motor outputs', digits: 0 }
+        { paramId: 'ARMING_CHECK', label: 'Check bitmask', digits: 0 },
+        { paramId: 'ARMING_REQUIRE', label: 'Require arming', digits: 0 },
+        { paramId: 'ARMING_RUDDER', label: 'Rudder arm', digits: 0 }
       ]
     },
     {
-      id: 'active-imu',
-      title: 'Active IMU',
-      description: 'Which onboard IMUs the EKF/AHRS uses. Disable a noisy or failed IMU here; reboot required. At least one IMU must stay enabled.',
+      id: 'identity',
+      title: 'System identity',
+      description: 'MAVLink identity. Change SYSID_THISMAV to coordinate a swarm; SYSID_MYGCS pins which GCS is trusted for failsafe.',
       fields: [
-        { paramId: 'INS_USE', label: 'Use IMU 1', digits: 0 },
-        { paramId: 'INS_USE2', label: 'Use IMU 2', digits: 0 },
-        { paramId: 'INS_USE3', label: 'Use IMU 3', digits: 0 }
+        { paramId: 'SYSID_THISMAV', label: 'This system id', digits: 0 },
+        { paramId: 'SYSID_MYGCS', label: 'Trusted GCS id', digits: 0 },
+        { paramId: 'BRD_BOOT_DELAY', label: 'Boot delay', unit: 'ms', digits: 0 }
       ]
     },
     {
@@ -211,6 +189,28 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
         { paramId: 'LOG_BITMASK', label: 'Bitmask', digits: 0 },
         { paramId: 'LOG_DISARMED', label: 'Log while disarmed', digits: 0 },
         { paramId: 'LOG_REPLAY', label: 'Replay log', digits: 0 }
+      ]
+    },
+    {
+      id: 'beeper',
+      title: 'Beeper / notification',
+      description: 'Buzzer + LED notification volumes. Same params are also reachable from Servos → Peripherals; surfaced here for BF parity.',
+      fields: [
+        { paramId: 'NTF_BUZZ_VOLUME', label: 'Buzzer volume', unit: '%', digits: 0 },
+        { paramId: 'NTF_BUZZ_TYPES', label: 'Buzzer types', digits: 0 },
+        { paramId: 'NTF_LED_BRIGHT', label: 'LED brightness', digits: 0 }
+      ]
+    },
+    {
+      id: 'camera-trigger',
+      title: 'Camera trigger',
+      description: 'Triggered camera shutter behavior — type/duration/auto. Pair with a SERVOn_FUNCTION = 10 (Camera Trigger) output.',
+      fields: [
+        { paramId: 'CAM_TRIGG_TYPE', label: 'Trigger type', digits: 0 },
+        { paramId: 'CAM_DURATION', label: 'Pulse duration', unit: 's·10', digits: 0 },
+        { paramId: 'CAM_AUTO_ONLY', label: 'Auto only', digits: 0 },
+        { paramId: 'CAM_SERVO_ON', label: 'Servo ON PWM', unit: 'us', digits: 0 },
+        { paramId: 'CAM_SERVO_OFF', label: 'Servo OFF PWM', unit: 'us', digits: 0 }
       ]
     },
     // Statistics (STAT_*) moved to the Setup view's side panel — lifetime
