@@ -40,10 +40,12 @@ export function ReceiverView(props: ReceiverViewProps) {
                 onClick={() => onSelectTask(task.id)}
               >
                 <div className="receiver-summary-card__header">
-                  <span>{task.label}</span>
+                  <span>
+                    {task.label}{' '}
+                    <span className="receiver-info-dot" title={task.detail} aria-label={task.detail}>ⓘ</span>
+                  </span>
                   <StatusBadge tone={task.tone}>{task.value}</StatusBadge>
                 </div>
-                <p>{task.detail}</p>
               </button>
             ))}
           </div>
@@ -54,8 +56,10 @@ export function ReceiverView(props: ReceiverViewProps) {
             <div className="receiver-workspace__config receiver-task-deck">
               <div className="receiver-task-deck__header">
                 <div>
-                  <h3>{activeTask.label}</h3>
-                  <p>{activeTask.detail}</p>
+                  <h3>
+                    {activeTask.label}{' '}
+                    <span className="receiver-info-dot" title={activeTask.detail} aria-label={activeTask.detail}>ⓘ</span>
+                  </h3>
                 </div>
                 <StatusBadge tone={activeTask.tone}>{activeTask.value}</StatusBadge>
               </div>

@@ -5448,6 +5448,16 @@ textarea:focus {
     0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
+.receiver-info-dot {
+  color: var(--text-muted);
+  cursor: help;
+  font-size: 12px;
+  opacity: 0.65;
+}
+.receiver-info-dot:hover {
+  opacity: 1;
+}
+
 .receiver-summary-card__header,
 .outputs-summary-card__header,
 .tuning-summary-card__header {
