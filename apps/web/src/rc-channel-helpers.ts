@@ -19,23 +19,26 @@ export function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value))
 }
 
-export function channelRole(channelNumber: number, modeChannelNumber: number | undefined): string {
-  if (modeChannelNumber === channelNumber) {
-    return 'Mode switch'
-  }
+// Which input channel drives each control axis. ArduPilot lets the operator
+// remap these via RCMAP_* (defaults: roll=1, pitch=2, throttle=3, yaw=4), so the
+// role labels must follow the params — not a hardcoded 1-4 — or a remapped TX
+// shows the wrong roles on every channel.
+const AXIS_RCMAP: ReadonlyArray<{ param: string; defaultChannel: number; role: string }> = [
+  { param: 'RCMAP_ROLL', defaultChannel: 1, role: 'Roll' },
+  { param: 'RCMAP_PITCH', defaultChannel: 2, role: 'Pitch' },
+  { param: 'RCMAP_THROTTLE', defaultChannel: 3, role: 'Throttle' },
+  { param: 'RCMAP_YAW', defaultChannel: 4, role: 'Yaw' }
+]
 
-  switch (channelNumber) {
-    case 1:
-      return 'Roll'
-    case 2:
-      return 'Pitch'
-    case 3:
-      return 'Throttle'
-    case 4:
-      return 'Yaw'
-    default:
-      return `Aux ${channelNumber - 4}`
+export function buildRcmapRoleByChannel(snapshot: ConfiguratorSnapshot): Map<number, string> {
+  const roleByChannel = new Map<number, string>()
+  for (const axis of AXIS_RCMAP) {
+    const channel = readRoundedParameter(snapshot, axis.param) ?? axis.defaultChannel
+    if (channel >= 1 && channel <= 16) {
+      roleByChannel.set(channel, axis.role)
+    }
   }
+  return roleByChannel
 }
 
 export function deriveAssignedRcOptionChannels(snapshot: ConfiguratorSnapshot): Map<number, string> {
@@ -68,8 +71,14 @@ export function getModeChannelNumber(snapshot: ConfiguratorSnapshot): number | u
 export function buildRcChannelDisplays(snapshot: ConfiguratorSnapshot, visibleCount = 8): RcChannelDisplay[] {
   const modeChannelNumber = getModeChannelNumber(snapshot)
   const assignedRcOptionChannels = deriveAssignedRcOptionChannels(snapshot)
+  const rcmapRoleByChannel = buildRcmapRoleByChannel(snapshot)
   const highestAssignedChannel = Math.max(0, ...assignedRcOptionChannels.keys())
   const channelCount = Math.max(visibleCount, snapshot.liveVerification.rcInput.channelCount, modeChannelNumber ?? 0, highestAssignedChannel)
+
+  // Aux channels are numbered sequentially among the leftovers (not by raw
+  // channel number) so the labels stay sensible even when an axis is remapped
+  // off the usual 1-4. Array.from's map callback runs in channel order.
+  let auxIndex = 0
 
   return Array.from({ length: channelCount }, (_, index) => {
     const channelNumber = index + 1
@@ -80,9 +89,21 @@ export function buildRcChannelDisplays(snapshot: ConfiguratorSnapshot, visibleCo
     const range = Math.max(maximum - minimum, 1)
     const hasLivePwm = typeof pwm === 'number' && pwm !== 0xffff
 
+    let role: string
+    if (modeChannelNumber === channelNumber) {
+      role = 'Mode switch'
+    } else if (rcmapRoleByChannel.has(channelNumber)) {
+      role = rcmapRoleByChannel.get(channelNumber) as string
+    } else if (assignedRcOptionChannels.has(channelNumber)) {
+      role = assignedRcOptionChannels.get(channelNumber) as string
+    } else {
+      auxIndex += 1
+      role = `Aux ${auxIndex}`
+    }
+
     return {
       channelNumber,
-      role: modeChannelNumber === channelNumber ? 'Mode switch' : assignedRcOptionChannels.get(channelNumber) ?? channelRole(channelNumber, modeChannelNumber),
+      role,
       pwm: hasLivePwm ? pwm : undefined,
       fillPercent: hasLivePwm ? clamp01((pwm - minimum) / range) * 100 : 0,
       trimPercent: clamp01((trim - minimum) / range) * 100,
