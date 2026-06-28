@@ -842,6 +842,95 @@ test.describe('Flash view', () => {
     await expect(page.getByTestId('firmware-flasher')).toBeVisible()
     await expect(page.getByTestId('firmware-enter-dfu')).toHaveCount(0)
   })
+
+  test('Flash tab: the DFU .hex card parses a hex and flashes it over a mocked WebUSB device', async ({ page }) => {
+    // Stub navigator.usb with a fake STM32 DFU device that records every
+    // control-OUT and answers GETSTATUS as idle/OK, so the whole UI -> WebUSB
+    // binding -> DfuSe protocol path runs end-to-end without real hardware.
+    await page.addInitScript(() => {
+      const out: Array<{ request: number; value: number; len: number }> = []
+      ;(window as unknown as { __dfuOut: typeof out }).__dfuOut = out
+      const device = {
+        productName: 'STM32 BOOTLOADER',
+        configuration: {
+          interfaces: [
+            {
+              interfaceNumber: 0,
+              alternates: [
+                {
+                  alternateSetting: 0,
+                  interfaceClass: 0xfe,
+                  interfaceSubclass: 0x01,
+                  interfaceName: '@Internal Flash  /0x08000000/16*128Kg'
+                }
+              ]
+            }
+          ]
+        },
+        open: async () => {},
+        close: async () => {},
+        selectConfiguration: async () => {},
+        claimInterface: async () => {},
+        releaseInterface: async () => {},
+        selectAlternateInterface: async () => {},
+        controlTransferIn: async (setup: { requestType: string; request: number }) => {
+          if (setup.requestType === 'class' && setup.request === 3) {
+            // GETSTATUS: status OK, poll 0, state dfuDNLOAD_IDLE (5).
+            return { status: 'ok', data: new DataView(new Uint8Array([0, 0, 0, 0, 5, 0]).buffer) }
+          }
+          if (setup.request === 6) {
+            // GET_DESCRIPTOR(config): a lone DFU functional descriptor with
+            // wTransferSize = 2048 (0x0800) at offset 5-6.
+            return { status: 'ok', data: new DataView(new Uint8Array([0x09, 0x21, 0x0b, 0xff, 0x00, 0x00, 0x08, 0x1a, 0x01]).buffer) }
+          }
+          return { status: 'ok', data: new DataView(new Uint8Array(6).buffer) }
+        },
+        controlTransferOut: async (setup: { request: number; value: number }, data?: ArrayBuffer) => {
+          out.push({ request: setup.request, value: setup.value, len: data ? data.byteLength : 0 })
+          return { status: 'ok' }
+        }
+      }
+      Object.defineProperty(navigator, 'usb', { configurable: true, value: { requestDevice: async () => device } })
+    })
+
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'flash')
+
+    await expect(page.getByTestId('dfu-hex-flasher')).toBeVisible()
+
+    // A minimal valid Intel HEX: extended-linear base 0x0800, 8 data bytes at
+    // 0x08000000, EOF. Built with correct checksums.
+    const record = (type: number, addr: number, data: number[]) => {
+      const bytes = [data.length, (addr >> 8) & 0xff, addr & 0xff, type, ...data]
+      const sum = bytes.reduce((acc, b) => (acc + b) & 0xff, 0)
+      bytes.push((0x100 - sum) & 0xff)
+      return ':' + bytes.map((b) => b.toString(16).padStart(2, '0')).join('')
+    }
+    const hex = [
+      record(0x04, 0x0000, [0x08, 0x00]),
+      record(0x00, 0x0000, [1, 2, 3, 4, 5, 6, 7, 8]),
+      ':00000001FF'
+    ].join('\n')
+
+    await page
+      .getByTestId('dfu-hex-file')
+      .setInputFiles({ name: 'arducopter.hex', mimeType: 'application/octet-stream', buffer: Buffer.from(hex) })
+
+    await expect(page.getByTestId('dfu-hex-summary')).toBeVisible()
+    await expect(page.getByTestId('dfu-hex-summary')).toContainText('0x08000000')
+    await expect(page.getByTestId('dfu-hex-flash')).toBeEnabled()
+
+    await page.getByTestId('dfu-hex-flash').click()
+    await expect(page.getByTestId('dfu-hex-notice')).toContainText('rebooting into the new firmware')
+
+    // The DfuSe sequence reached the fake device: an erase (0x41), a set-address
+    // (0x21) and a data block were all sent as DFU_DNLOAD (request 1).
+    const ops = await page.evaluate(() => (window as unknown as { __dfuOut: Array<{ request: number; value: number; len: number }> }).__dfuOut)
+    const dnloads = ops.filter((o) => o.request === 1)
+    expect(dnloads.length).toBeGreaterThan(2)
+    expect(dnloads.some((o) => o.value >= 2 && o.len === 8)).toBe(true)
+  })
 })
 
 test.describe('Config view', () => {

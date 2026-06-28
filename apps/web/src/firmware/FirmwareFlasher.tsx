@@ -13,6 +13,7 @@ import {
 import type { WebSerialPortLike } from '@arduconfig/transport'
 
 import { WebSerialBootloaderSerial, inflateZlib } from './web-serial-bootloader'
+import { DfuHexFlasher } from './DfuHexFlasher'
 
 export interface FirmwareBrowseEntry {
   boardId: number
@@ -1305,6 +1306,10 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             </div>
           </div>
         ) : null}
+
+        {/* Separate, additive path: flash a .hex over WebUSB DFU. The serial
+            bootloader .apj flow above is unchanged. */}
+        <DfuHexFlasher />
       </div>
     </section>
   )

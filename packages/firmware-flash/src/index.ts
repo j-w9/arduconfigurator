@@ -9,6 +9,17 @@ export {
   type Inflate
 } from './apj.js'
 export { checkBoardMatch, checkImageFitsFlash, type BoardMatchResult } from './board-guard.js'
+export { parseIntelHex, type IntelHexSegment, type ParsedIntelHex } from './intel-hex.js'
+export {
+  DfuSeDevice,
+  parseDfuSeMemoryLayout,
+  sectorsToErase,
+  type DfuUsbInterface,
+  type DfuMemorySector,
+  type DfuStatus,
+  type DfuFlashPhase,
+  type DfuFlashProgress
+} from './dfu.js'
 export { BOARD_NAMES_BY_ID, formatBoardId } from './board-names.js'
 export {
   BootloaderClient,

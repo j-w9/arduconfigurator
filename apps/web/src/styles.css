@@ -10447,6 +10447,39 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin: 10px 0;
 }
 
+/* DFU (.hex) flash card — sits below the serial-bootloader .apj wizard. */
+.dfu-hex-flasher {
+  margin-top: 18px;
+}
+.dfu-hex-flasher__intro {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.dfu-hex-flasher__summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px 18px;
+  margin: 12px 0;
+}
+.dfu-hex-flasher__summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dfu-hex-flasher__summary dt {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.dfu-hex-flasher__summary dd {
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: 13px;
+}
+
 /* Hard-stop refusal banner — promoted from a small <p> because the
    user reported that the previous styling let the "Refusing to flash"
    message read as a passing footnote next to the (still-visible) green
