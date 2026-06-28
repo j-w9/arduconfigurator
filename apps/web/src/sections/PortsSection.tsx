@@ -283,6 +283,9 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                             </div>
 
                             {visibleSerialPortViewModels.map((port) => {
+                              // Lead every row with the UART number (SERIAL0 is
+                              // the USB console, not a hardware UART).
+                              const portHeading = port.portNumber === 0 ? 'USB / Console' : `UART ${port.portNumber}`
                               const protocolParameter = port.protocolParameter
                               const baudParameter = port.baudParameter
                               const optionsParameter = port.optionsParameter
@@ -333,10 +336,10 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                     <div className="ports-matrix-row__cell ports-matrix-row__cell--port">
                                       <div className="ports-matrix-row__identity">
                                         <div className="ports-matrix-row__title">
-                                          <strong>{port.label}</strong>
+                                          <strong>{portHeading}</strong>
                                           <small>
-                                            {`SERIAL${port.portNumber}`}
-                                            {port.hardwarePort ? ` -> ${port.hardwarePort}` : ''}
+                                            {`SERIAL${port.portNumber}_PROTOCOL `}
+                                            {port.protocolValue ?? '—'}
                                           </small>
                                         </div>
                                         <StatusBadge tone={rowHasInvalid ? 'danger' : rowHasStaged ? 'warning' : port.editable ? 'neutral' : 'warning'}>
@@ -344,8 +347,10 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                         </StatusBadge>
                                       </div>
                                       <div className="config-pills">
+                                        {/* Purpose + descriptive role/connector are secondary to the UART number. */}
                                         <span>{port.usageSummary}</span>
-                                        {port.boardConnectorLabel && port.boardConnectorLabel !== port.label ? <span>{port.boardConnectorLabel}</span> : null}
+                                        {port.label && port.label !== portHeading ? <span>{port.label}</span> : null}
+                                        {port.hardwarePort ? <span>{port.hardwarePort}</span> : null}
                                         {port.boardTrafficSummary ? <span>{port.boardTrafficSummary}</span> : null}
                                       </div>
                                     </div>
