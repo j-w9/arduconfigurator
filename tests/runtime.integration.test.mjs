@@ -1747,6 +1747,72 @@ test('stopMotorTest aborts an in-flight test with a zero-throttle command and cl
   }
 })
 
+test('battery current stays sticky across a SYS_STATUS that omits it (-1), instead of flickering to no-telemetry', async () => {
+  const messageListeners = []
+  const statusListeners = []
+  let connected = false
+  const emit = (message) =>
+    messageListeners.forEach((l) =>
+      l({ header: { systemId: 1, componentId: 1, sequence: 0 }, message, timestampMs: Date.now() })
+    )
+  const sysStatus = (currentBatteryCa, voltageBatteryMv = 16000) => ({
+    type: 'SYS_STATUS',
+    sensorsPresent: 0,
+    sensorsEnabled: 0,
+    sensorsHealth: 0,
+    load: 100,
+    voltageBatteryMv,
+    currentBatteryCa,
+    batteryRemaining: 80,
+    dropRateComm: 0,
+    errorsComm: 0,
+    errorsCount1: 0,
+    errorsCount2: 0,
+    errorsCount3: 0,
+    errorsCount4: 0,
+    sensorsPresentExtended: 0,
+    sensorsEnabledExtended: 0,
+    sensorsHealthExtended: 0
+  })
+  const session = {
+    getTransportStatus: () => (connected ? { kind: 'connected' } : { kind: 'disconnected' }),
+    onStatus(l) {
+      statusListeners.push(l)
+      return () => {}
+    },
+    onMessage(l) {
+      messageListeners.push(l)
+      return () => {}
+    },
+    async connect() {
+      connected = true
+      statusListeners.forEach((l) => l({ kind: 'connected' }))
+    },
+    async disconnect() {
+      connected = false
+    },
+    destroy() {},
+    async send() {}
+  }
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata)
+  try {
+    await runtime.connect()
+    emit({ type: 'HEARTBEAT', autopilot: 3, vehicleType: 2, baseMode: 0, customMode: 0, systemStatus: 4, mavlinkVersion: 3 })
+    emit(sysStatus(50))
+    assert.equal(runtime.getSnapshot().liveVerification.batteryTelemetry.currentA, 0.5)
+    // A SYS_STATUS that omits current (-1) while the battery stays verified must
+    // keep the last reading, not flicker to "no telemetry".
+    emit(sysStatus(-1))
+    assert.equal(runtime.getSnapshot().liveVerification.batteryTelemetry.currentA, 0.5, 'sticky across a -1 gap')
+    // A genuine loss of battery telemetry (voltage unavailable) still clears it.
+    emit(sysStatus(-1, 0xffff))
+    assert.equal(runtime.getSnapshot().liveVerification.batteryTelemetry.currentA, undefined, 'cleared when battery telemetry is gone')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
 test('SYS_STATUS surfaces barometer presence/health from the sensor bitmask, EKF-independent', async () => {
   // Regression: the baro indicator was inferred from GLOBAL_POSITION_INT
   // altitude, which ArduPilot only streams once the EKF has a position
