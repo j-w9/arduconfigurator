@@ -3153,7 +3153,7 @@ textarea:focus {
 .motor-test-sliders-row {
   display: flex;
   gap: 16px;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   flex-wrap: wrap;
 }
@@ -3161,18 +3161,19 @@ textarea:focus {
   width: 100%;
   max-width: 100%;
 }
+/* Sliders box + motor diagram share the row evenly (50/50), wrapping on narrow. */
 .motor-test-sliders-row > :first-child {
-  flex: 1 1 300px;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: 240px;
 }
 .motor-mixer-preview--test {
   min-height: 0;
-  flex: 0 0 auto;
-  width: 190px;
+  flex: 1 1 0;
+  min-width: 240px;
 }
 .motor-mixer-preview--test svg {
   width: 100%;
-  max-width: 190px;
+  max-width: 100%;
 }
 
 .motor-mixer-preview svg {
