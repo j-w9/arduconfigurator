@@ -3141,6 +3141,32 @@ textarea:focus {
   min-height: 360px;
 }
 
+/* Test tab: throttle sliders + a small read-only motor map, side by side. */
+.motor-test-sliders-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.motor-direction-layout__sliders > .motor-test-sliders-row {
+  width: 100%;
+  max-width: 100%;
+}
+.motor-test-sliders-row > :first-child {
+  flex: 1 1 300px;
+  min-width: 0;
+}
+.motor-mixer-preview--test {
+  min-height: 0;
+  flex: 0 0 auto;
+  width: 190px;
+}
+.motor-mixer-preview--test svg {
+  width: 100%;
+  max-width: 190px;
+}
+
 .motor-mixer-preview svg {
   width: min(100%, 380px);
   height: auto;

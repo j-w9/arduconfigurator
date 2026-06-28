@@ -376,6 +376,8 @@ test.describe('browser configurator regression flows', () => {
     // The demo's recommendedOutputTaskId resolves to esc-protocol; the motor-test sliders
     // live under the direction-test task, so navigate there explicitly first.
     await page.getByTestId('outputs-summary-direction-test').click()
+    // The Test tab shows the read-only motor map beside the throttle sliders.
+    await expect(page.getByTestId('motor-test-diagram')).toBeVisible()
     await page.getByLabel('Props are off and the vehicle is restrained with the test area clear.').check()
     // The extra USB-bench acknowledgement is gated to a physical web-serial
     // link, so it must NOT appear (or block the test) over the demo transport.

@@ -45,6 +45,7 @@ import type { createMotorPreviewNodes } from '../view-models/motor-preview'
 import { outputKindLabel, toneForOutputKind } from '../device-display'
 import { ALL_MOTOR_TEST_OUTPUT, ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS } from '../motor-test-helpers'
 import { MotorTestSliders } from '../motor-test-sliders'
+import { MotorMixerDiagram } from '../views/MotorMixerDiagram'
 import { formatParameterValue, normalizeBitmaskValue } from '../parameter-format'
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
@@ -250,6 +251,8 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     outputMapping,
     escSetup,
     vehicleOutputSummary,
+    motorPreviewNodes,
+    motorPreviewGeometryMode,
     frameClassParameter,
     frameTypeParameter,
     frameDraftEntries,
@@ -513,6 +516,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                       </div>
                       <div className="motor-direction-layout">
                         <div className="motor-direction-layout__sliders">
+                         <div className="motor-test-sliders-row">
                           <MotorTestSliders
                             targets={motorTestSliderTargets}
                             selectedOutput={motorTestOutput}
@@ -526,6 +530,20 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             masterEnabled
                             testId="motor-test-sliders"
                           />
+                          {/* Small read-only motor map beside the sliders so the
+                              operator can see which OUTx/spin each Mn is. */}
+                          <MotorMixerDiagram
+                            nodes={motorPreviewNodes}
+                            geometryMode={motorPreviewGeometryMode}
+                            outputLabelByMotor={Object.fromEntries(
+                              outputMapping.motorOutputs
+                                .filter((output) => output.motorNumber !== undefined)
+                                .map((output) => [output.motorNumber as number, `OUT${output.channelNumber}`])
+                            )}
+                            className="motor-mixer-preview--test"
+                            testId="motor-test-diagram"
+                          />
+                         </div>
                         </div>
 
                         <div className="motor-test-card motor-test-card--embedded">
