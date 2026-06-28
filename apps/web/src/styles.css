@@ -10648,10 +10648,20 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .firmware-wizard__confirm {
+  display: flex;
   flex-direction: row;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
-  margin: 4px 0;
+  margin: 8px 0;
+  /* Plain inline confirm, not a heavy bordered field-card — it was reading as
+     obnoxious for a single safety checkbox. */
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.firmware-wizard__confirm input {
+  cursor: pointer;
 }
 
 .firmware-wizard__flash {

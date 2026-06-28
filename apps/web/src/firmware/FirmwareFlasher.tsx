@@ -1193,7 +1193,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             {/* Hide the irreversibility checkbox in the error state so its
                 confirmation visual doesn't read as "OK" over a refusal. */}
             {phase === 'error' ? null : (
-              <label className="scoped-editor-field firmware-wizard__confirm" data-testid="firmware-confirm">
+              <label className="firmware-wizard__confirm" data-testid="firmware-confirm">
                 <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
                 <span>I understand flashing is irreversible and won&rsquo;t unplug until it completes.</span>
               </label>
