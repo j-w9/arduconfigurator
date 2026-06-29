@@ -2538,9 +2538,21 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('view-button-mavlink-inspector').click()
     await expect(page.getByTestId('mavlink-inspector')).toBeVisible()
     await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
-    // Summary + sort + pause affordances are present.
+    // Summary + sort + pause affordances are present, with the new
+    // source-awareness + bandwidth read-outs.
     await expect(page.getByTestId('mavlink-inspector-summary')).toContainText('msg/s')
+    await expect(page.getByTestId('mavlink-inspector-summary')).toContainText('B/s')
+    await expect(page.getByTestId('mavlink-inspector-summary')).toContainText('source')
     await expect(page.getByTestId('mavlink-inspector-sort')).toBeVisible()
+
+    // Messages are grouped by their (systemId:componentId) source — the demo
+    // streams from the autopilot at sys 1, comp 1.
+    await expect(page.getByTestId('mavlink-inspector-source')).toBeVisible()
+    await expect(page.getByTestId('mavlink-source-1:1')).toBeVisible()
+
+    // The source selector narrows the stream to a single source.
+    await page.getByTestId('mavlink-inspector-source').selectOption('1:1')
+    await expect(page.getByTestId('mavlink-source-1:1')).toBeVisible()
 
     // Pause freezes the table; the badge flips to "paused" and back on resume.
     const pause = page.getByTestId('mavlink-inspector-pause')
@@ -2570,6 +2582,13 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(mavTable).toBeVisible({ timeout: 8000 })
     await mavTable.locator('[data-testid^="mavlink-row-"]').first().getByRole('button').first().click()
     await expect(page.getByRole('button', { name: 'Copy JSON' }).first()).toBeVisible()
+
+    // The expanded row shows a live field table (name / value / type) with a
+    // per-field copy affordance, not a raw JSON blob.
+    const fieldTable = page.locator('[data-testid^="mavlink-field-table-"]').first()
+    await expect(fieldTable).toBeVisible()
+    await expect(fieldTable).toContainText('Field')
+    await expect(fieldTable.locator('[data-testid^="mavlink-field-copy-"]').first()).toHaveCount(1)
 
     // Start the DroneCAN bus and expand the first discovered node's detail.
     await page.getByTestId('view-button-dronecan-inspector').click()
