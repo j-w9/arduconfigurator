@@ -1,6 +1,7 @@
 import type { DronecanParamEntry } from '@arduconfig/ardupilot-core'
 import { describe, expect, it } from 'vitest'
 
+import { AP_PERIPH_PARAM_METADATA } from './ap-periph-param-metadata'
 import { describeDronecanParam, type DronecanParamCatalogDef } from './dronecan-param-display'
 
 const int = (n: number): DronecanParamEntry['value'] => ({ tag: 'int64', int64: String(n) })
@@ -54,5 +55,17 @@ describe('describeDronecanParam', () => {
     expect(d.valueIsEnum).toBe(false)
     expect(d.rangeLabel).toBeUndefined()
     expect(d.fromCatalog).toBe(false)
+  })
+})
+
+describe('AP_PERIPH_PARAM_METADATA fallback', () => {
+  it('enriches periph-only params the FC catalog lacks (range + enum)', () => {
+    const node = describeDronecanParam(entry({ name: 'CAN_NODE', value: int(125) }), AP_PERIPH_PARAM_METADATA.CAN_NODE)
+    expect(node.label).toBe('DroneCAN node ID')
+    expect(node.rangeLabel).toBe('0–127')
+
+    const fd = describeDronecanParam(entry({ name: 'CAN_FDMODE', value: int(1) }), AP_PERIPH_PARAM_METADATA.CAN_FDMODE)
+    expect(fd.valueLabel).toBe('Enabled')
+    expect(fd.valueIsEnum).toBe(true)
   })
 })

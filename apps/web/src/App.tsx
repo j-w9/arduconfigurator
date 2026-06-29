@@ -238,6 +238,7 @@ import type {
   SetupFlowSectionDescriptor,
   SetupFlowFollowUpDescriptor
 } from './app-types'
+import { AP_PERIPH_PARAM_METADATA } from './view-models/ap-periph-param-metadata'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
 import { buildRecentNotices } from './view-models/recent-notices'
 import { invertGuidedReorderMapping, pickedReorderPositions } from './view-models/motor-reorder-mapping'
@@ -6954,7 +6955,7 @@ export function App() {
         onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
         onFetchAllParameters={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
         onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
-        paramMetadata={(name) => metadataCatalog.parameters[name]}
+        paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
       />
       ) : null}
 
@@ -7037,7 +7038,7 @@ export function App() {
           onStartFirmwareUpdate={(nodeId, fileName, image) => { void runtime?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image) }}
           onCancelFirmwareUpdate={() => { runtime?.cancelCanBusNodeFirmwareUpdate() }}
           firmwareOnline={dronecanFirmwareOnline}
-          paramMetadata={(name) => metadataCatalog.parameters[name]}
+          paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
         />
       ) : null}
 
