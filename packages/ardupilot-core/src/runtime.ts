@@ -59,6 +59,7 @@ import {
   boardTypeFromBoardVersion,
   formatAutopilotUid,
   formatFlightSwVersion,
+  parseFlightSwVersion,
   formatFlightCustomVersion,
   parseUartsFile,
   type MavftpDirectoryEntry,
@@ -1355,6 +1356,7 @@ export class ArduPilotConfiguratorRuntime {
       uid: formatAutopilotUid(message.uid, message.uid2),
       ftpSupported: (message.capabilities & MAV_PROTOCOL_CAPABILITY.FTP) !== 0n,
       firmwareVersion: formatFlightSwVersion(message.flightSwVersion),
+      firmwareVersionParts: parseFlightSwVersion(message.flightSwVersion),
       firmwareGitHash: formatFlightCustomVersion(message.flightCustomVersion),
       lastUpdatedAtMs: Date.now()
     }

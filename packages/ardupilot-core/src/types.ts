@@ -49,6 +49,9 @@ export interface HardwareBoardState {
   /** Decoded flight firmware version, e.g. "4.5.3 (official)", from
    *  AUTOPILOT_VERSION.flight_sw_version. Undefined until that arrives. */
   firmwareVersion?: string
+  /** Parsed major/minor/patch of the flight firmware version, for version
+   *  gating (e.g. 4.6 vs 4.7 param divergence). Undefined until reported. */
+  firmwareVersionParts?: { major: number; minor: number; patch: number }
   /** Firmware build git hash (ASCII) from flight_custom_version, if any. */
   firmwareGitHash?: string
   lastUpdatedAtMs: number

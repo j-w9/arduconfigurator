@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { formatFlightSwVersion, formatFlightCustomVersion } from '../packages/ardupilot-core/dist/index.js'
+import {
+  formatFlightSwVersion,
+  formatFlightCustomVersion,
+  parseFlightSwVersion,
+  firmwareVersionAtLeast
+} from '../packages/ardupilot-core/dist/index.js'
 
 // AUTOPILOT_VERSION.flight_sw_version is packed major<<24 | minor<<16 |
 // patch<<8 | fw_type. fw_type: 0=dev, 64=alpha, 128=beta, 192=rc, 255=official.
@@ -26,6 +31,26 @@ test('formatFlightSwVersion handles the high bit without sign issues', () => {
   // Major 0xC0 (192) would be negative under signed shifts; >>> 0 keeps it
   // unsigned. 0xC0000000 -> 192.0.0 official.
   assert.equal(formatFlightSwVersion(0xc00000ff), '192.0.0')
+})
+
+test('parseFlightSwVersion returns numeric major/minor/patch', () => {
+  assert.deepEqual(parseFlightSwVersion(0x040600ff), { major: 4, minor: 6, patch: 0 })
+  assert.deepEqual(parseFlightSwVersion(0x04050700), { major: 4, minor: 5, patch: 7 })
+  // High bit stays unsigned.
+  assert.deepEqual(parseFlightSwVersion(0xc00000ff), { major: 192, minor: 0, patch: 0 })
+  assert.equal(parseFlightSwVersion(0), undefined)
+  assert.equal(parseFlightSwVersion(Number.NaN), undefined)
+})
+
+test('firmwareVersionAtLeast compares major.minor, undefined when unknown', () => {
+  const v47 = parseFlightSwVersion(0x04070000)
+  const v46 = parseFlightSwVersion(0x04060300)
+  assert.equal(firmwareVersionAtLeast(v47, 4, 7), true)
+  assert.equal(firmwareVersionAtLeast(v46, 4, 7), false)
+  assert.equal(firmwareVersionAtLeast(v46, 4, 6), true)
+  assert.equal(firmwareVersionAtLeast(v46, 4, 5), true)
+  assert.equal(firmwareVersionAtLeast(parseFlightSwVersion(0x05000000), 4, 7), true) // 5.0 > 4.7
+  assert.equal(firmwareVersionAtLeast(undefined, 4, 7), undefined) // unknown → caller falls back
 })
 
 test('formatFlightCustomVersion accepts a real ArduPilot 8-char hex git hash', () => {

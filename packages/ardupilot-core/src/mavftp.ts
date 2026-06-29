@@ -137,6 +137,42 @@ export function formatFlightSwVersion(flightSwVersion: number): string | undefin
   return typeLabel && typeLabel !== 'official' ? `${base} (${typeLabel})` : base
 }
 
+export interface FlightSwVersionParts {
+  major: number
+  minor: number
+  patch: number
+}
+
+/** Parse AUTOPILOT_VERSION.flight_sw_version into numeric major/minor/patch for
+ *  version comparisons (e.g. 4.6 vs 4.7 feature gating). Returns undefined for 0
+ *  / non-finite (no version reported yet). */
+export function parseFlightSwVersion(flightSwVersion: number): FlightSwVersionParts | undefined {
+  if (!Number.isFinite(flightSwVersion) || flightSwVersion === 0) {
+    return undefined
+  }
+  const v = flightSwVersion >>> 0
+  return {
+    major: (v >>> 24) & 0xff,
+    minor: (v >>> 16) & 0xff,
+    patch: (v >>> 8) & 0xff
+  }
+}
+
+/** True when `parts` is at least major.minor. Used to gate UI/metadata that
+ *  diverged between firmware releases (e.g. ARMING_CHECK→ARMING_SKIPCHK in 4.7).
+ *  Returns undefined when the version is unknown so callers can fall back to
+ *  another signal (e.g. which param the FC actually streamed). */
+export function firmwareVersionAtLeast(
+  parts: FlightSwVersionParts | undefined,
+  major: number,
+  minor: number
+): boolean | undefined {
+  if (!parts) {
+    return undefined
+  }
+  return parts.major > major || (parts.major === major && parts.minor >= minor)
+}
+
 /** flight_custom_version is up to 8 ASCII bytes — the firmware build's git
  *  hash (ArduPilot copies fwversion().fw_hash_str directly). Returns the
  *  trimmed string only when it looks like a git hash (≥4 chars, all
