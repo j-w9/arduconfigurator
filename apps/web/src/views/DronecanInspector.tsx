@@ -121,6 +121,39 @@ function NodeFirmwareUpdate(props: {
   const firmwareDownloadUrl = firmwareBoard
     ? `https://firmware.ardupilot.org/AP_Periph/stable/${encodeURIComponent(firmwareBoard)}/AP_Periph.bin`
     : 'https://firmware.ardupilot.org/AP_Periph/stable/'
+  // Manual download pointer, reused wherever we can't fetch+flash for the user
+  // (browser, or no automatic match). For an ArduPilot AP_Periph node we know
+  // the board (org.ardupilot.<board>) so we deep-link its .bin; otherwise — a
+  // Here3-style vendor name, a PX4 node, etc. — we can't guess the board, so we
+  // point at the AP_Periph index to browse and note PX4/vendor devices get
+  // firmware from their own vendor.
+  const manualFirmwareSource = firmwareBoard ? (
+    <>
+      Download{' '}
+      <a
+        href={firmwareDownloadUrl}
+        target="_blank"
+        rel="noreferrer"
+        data-testid={`dronecan-fwupdate-online-link-${nodeId}`}
+      >
+        AP_Periph.bin for <code>{firmwareBoard}</code>
+      </a>{' '}
+      (stable), then load it below.
+    </>
+  ) : (
+    <>
+      Find this node’s build on{' '}
+      <a
+        href={firmwareDownloadUrl}
+        target="_blank"
+        rel="noreferrer"
+        data-testid={`dronecan-fwupdate-online-link-${nodeId}`}
+      >
+        firmware.ardupilot.org/AP_Periph
+      </a>{' '}
+      and load its <code>AP_Periph.bin</code> below. PX4 / vendor nodes get firmware from the device vendor instead.
+    </>
+  )
   const [file, setFile] = useState<{ name: string; bytes: Uint8Array } | null>(null)
   const [acknowledged, setAcknowledged] = useState(false)
   const [readError, setReadError] = useState<string | null>(null)
@@ -280,7 +313,7 @@ function NodeFirmwareUpdate(props: {
             {onlineCandidates !== null ? (
               onlineCandidates.length === 0 ? (
                 <p className="telemetry-note" data-testid={`dronecan-fwupdate-online-empty-${nodeId}`}>
-                  No AP_Periph firmware on the server matches this node’s board id. Pick a local .bin instead.
+                  No AP_Periph build matched this node’s board id automatically. {manualFirmwareSource}
                 </p>
               ) : (
                 <ul
@@ -314,35 +347,7 @@ function NodeFirmwareUpdate(props: {
               {online.unavailableReason ??
                 'Online firmware lookup needs the desktop app — the browser can’t fetch the firmware server directly.'}
             </p>
-            <p>
-              {firmwareBoard ? (
-                <>
-                  Download{' '}
-                  <a
-                    href={firmwareDownloadUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    data-testid={`dronecan-fwupdate-online-link-${nodeId}`}
-                  >
-                    AP_Periph.bin for <code>{firmwareBoard}</code>
-                  </a>
-                  {' '}(stable), then load it below.
-                </>
-              ) : (
-                <>
-                  Browse{' '}
-                  <a
-                    href={firmwareDownloadUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    data-testid={`dronecan-fwupdate-online-link-${nodeId}`}
-                  >
-                    firmware.ardupilot.org/AP_Periph
-                  </a>
-                  {' '}for this node’s board, grab its <code>AP_Periph.bin</code>, then load it below.
-                </>
-              )}
-            </p>
+            <p>{manualFirmwareSource}</p>
           </div>
         )
       ) : null}
