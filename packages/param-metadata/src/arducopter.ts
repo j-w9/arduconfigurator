@@ -31,6 +31,7 @@ import {
   ARDUCOPTER_OUTPUT_CHANNEL_BIT_LABELS,
   ARDUCOPTER_RC_OPTIONS_BIT_LABELS,
   ARDUCOPTER_ARMING_CHECK_BIT_LABELS,
+  ARDUCOPTER_ARMING_SKIPCHK_BIT_LABELS,
   ARDUCOPTER_ARMING_REQUIRE_LABELS,
   ARDUCOPTER_ARMING_RUDDER_LABELS,
   ARDUCOPTER_SCHED_LOOP_RATE_LABELS,
@@ -1806,6 +1807,22 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       step: 1,
       bitmask: true,
       options: enumOptions(ARDUCOPTER_ARMING_CHECK_BIT_LABELS)
+    },
+    // ArduPilot 4.7+ replaces ARMING_CHECK with ARMING_SKIPCHK — INVERTED: a set
+    // bit SKIPS that check (default 0 = run every check). The Arming config
+    // section picks ARMING_CHECK vs ARMING_SKIPCHK by detected firmware version
+    // (see use-config-sections.ts). Both are curated so either firmware resolves.
+    ARMING_SKIPCHK: {
+      id: 'ARMING_SKIPCHK',
+      label: 'Pre-arm checks to skip',
+      description:
+        'Which pre-arm safety checks to SKIP before arming (ArduPilot 4.7+, replaces ARMING_CHECK). A set bit disables that check; leave at 0 to run every check. Skipping checks is a flight-safety risk — only do so deliberately on the bench.',
+      category: 'failsafe',
+      minimum: 0,
+      maximum: 1048575,
+      step: 1,
+      bitmask: true,
+      options: enumOptions(ARDUCOPTER_ARMING_SKIPCHK_BIT_LABELS)
     },
     ARMING_REQUIRE: {
       id: 'ARMING_REQUIRE',

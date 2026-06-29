@@ -408,6 +408,31 @@ export const ARDUCOPTER_ARMING_CHECK_BIT_LABELS: Record<number, string> = {
   19: 'FFT'
 }
 
+// ARMING_SKIPCHK (ArduPilot 4.7+) replaces ARMING_CHECK with INVERTED semantics:
+// a set bit SKIPS that check. Same check bits as ARMING_CHECK, but there is no
+// bit 0 "All" — the default 0 means "skip nothing" (every check runs). Bits
+// verified against AP_Arming.cpp @Bitmask.
+export const ARDUCOPTER_ARMING_SKIPCHK_BIT_LABELS: Record<number, string> = {
+  1: 'Barometer',
+  2: 'Compass',
+  3: 'GPS lock',
+  4: 'INS (gyro/accel)',
+  5: 'Parameters',
+  6: 'RC channels',
+  7: 'Board voltage',
+  8: 'Battery level',
+  10: 'Logging available',
+  11: 'Hardware safety switch',
+  12: 'GPS configuration',
+  13: 'System',
+  14: 'Mission',
+  15: 'Rangefinder',
+  16: 'Camera',
+  17: 'Aux authentication',
+  18: 'Visual odometry',
+  19: 'FFT'
+}
+
 export const ARDUCOPTER_SCHED_LOOP_RATE_LABELS: Record<number, string> = {
   50: '50 Hz',
   100: '100 Hz',

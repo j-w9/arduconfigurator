@@ -7,7 +7,7 @@
 
 import { useCallback, useMemo } from 'react'
 
-import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
+import { firmwareVersionAtLeast, type ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
 import type { ConfigSection } from '../views/Config'
 
@@ -34,6 +34,19 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   const leanAngleParamId = configParametersById.has('ATC_ANGLE_MAX') ? 'ATC_ANGLE_MAX' : 'ANGLE_MAX'
   const leanAngleUnit = leanAngleParamId === 'ATC_ANGLE_MAX' ? 'deg' : 'cdeg'
   const leanAngleDigits = leanAngleParamId === 'ATC_ANGLE_MAX' ? 1 : 0
+  // Pre-arm checks bitmask: ArduPilot 4.7 replaced ARMING_CHECK (checks to
+  // PERFORM, with an "All" bit) with ARMING_SKIPCHK (checks to SKIP, inverted,
+  // no "All"; default 0 = run everything). Can't be aliased — the meaning
+  // inverts — so detect the firmware version and bind the right param, falling
+  // back to which one the FC actually streams when the version is unknown.
+  const armingIsSkip =
+    firmwareVersionAtLeast(snapshot.hardware.board?.firmwareVersionParts, 4, 7) ??
+    configParametersById.has('ARMING_SKIPCHK')
+  const armingChecksParamId = armingIsSkip ? 'ARMING_SKIPCHK' : 'ARMING_CHECK'
+  const armingChecksLabel = armingIsSkip ? 'Checks to skip' : 'Check bitmask'
+  const armingDescription = armingIsSkip
+    ? 'Pre-arm checks to skip + which inputs may arm. ARMING_SKIPCHK = 0 runs every check (recommended); set bits skip individual checks (ArduPilot 4.7+).'
+    : 'Pre-arm checks bitmask + which inputs are allowed to arm. ARMING_CHECK "All checks" runs every check; clear it to disable individual checks.'
   const configSections: readonly ConfigSection[] = useMemo(() => [
     ...(hasFrame
       ? [
@@ -169,9 +182,9 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     {
       id: 'arming',
       title: 'Arming behavior',
-      description: 'Pre-arm checks bitmask + which inputs are allowed to arm. ARMING_CHECK = 1 enables all checks; specific bits disable individual checks.',
+      description: armingDescription,
       fields: [
-        { paramId: 'ARMING_CHECK', label: 'Check bitmask', digits: 0 },
+        { paramId: armingChecksParamId, label: armingChecksLabel, digits: 0 },
         { paramId: 'ARMING_REQUIRE', label: 'Require arming', digits: 0 },
         { paramId: 'ARMING_RUDDER', label: 'Rudder arm', digits: 0 }
       ]
@@ -222,7 +235,18 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     // Statistics (STAT_*) moved to the Setup view's side panel — lifetime
     // counters read better next to the live instruments than buried in the
     // Config grab-bag.
-  ], [activeVehicle, hasFastRate, hasPilotRates, hasFrame, leanAngleParamId, leanAngleUnit, leanAngleDigits])
+  ], [
+    activeVehicle,
+    hasFastRate,
+    hasPilotRates,
+    hasFrame,
+    leanAngleParamId,
+    leanAngleUnit,
+    leanAngleDigits,
+    armingChecksParamId,
+    armingChecksLabel,
+    armingDescription
+  ])
   // The Config scope covers every editable section's paramId set —
   // staged drafts in any of them apply through a single "Apply Config"
   // press. STAT_* + any other readOnly-section ids are deliberately
