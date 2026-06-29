@@ -35,11 +35,16 @@ const byId = (views: AppViewDescriptor[], id: string): AppViewDescriptor => {
 }
 
 describe('buildVisibleAppViews', () => {
-  it('appends the five non-metadata descriptors (calibration, rc-mixer, can, flash, files)', () => {
+  it('appends the non-metadata descriptors (calibration, can, flash, files)', () => {
     const result = ids(buildVisibleAppViews(baseInputs()))
-    for (const extra of ['calibration', 'rc-mixer', 'can', 'flash', 'files']) {
+    for (const extra of ['calibration', 'can', 'flash', 'files']) {
       expect(result).toContain(extra)
     }
+  })
+
+  it('gates the RC Mixer view behind Expert mode', () => {
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false })))).not.toContain('rc-mixer')
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true })))).toContain('rc-mixer')
   })
 
   it('hides the expert-only Parameters view outside Expert mode and shows it inside', () => {

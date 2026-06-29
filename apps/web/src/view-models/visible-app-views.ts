@@ -122,12 +122,11 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const combined = [
     ...relabelled,
     calibrationDescriptor,
-    rcMixerDescriptor,
     canBusDescriptor,
     flashDescriptor,
     filesDescriptor,
-    // Expert-only inspectors — only surfaced when Expert mode is on.
-    ...(isExpertMode ? [mavlinkInspectorDescriptor, dronecanInspectorDescriptor] : [])
+    // Expert-only views — only surfaced when Expert mode is on.
+    ...(isExpertMode ? [rcMixerDescriptor, mavlinkInspectorDescriptor, dronecanInspectorDescriptor] : [])
   ]
   const rankOf = (id: string): number => {
     const index = CANONICAL_VIEW_ORDER.indexOf(id)

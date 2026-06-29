@@ -1,11 +1,11 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// The RC option mixer view used to be flag-gated behind ?rcMixer=1 because
-// ArduPilot doesn't yet expose multi-function-per-channel with PWM ranges.
-// It graduated to the main nav once the persistent "Not available in
-// ArduPilot" callout proved load-bearing — operators can't mistake the
-// preview for a live write path. These tests pin:
-//   - the view is visible by default in the main nav after connect.
+// The RC option mixer view is an Expert-only scaffold: ArduPilot doesn't yet
+// expose multi-function-per-channel with PWM ranges, so it's gated behind Expert
+// mode (alongside the inspectors) and carries a persistent "Not available in
+// ArduPilot" callout so operators can't mistake the preview for a live write
+// path. These tests pin:
+//   - the view is gated behind Expert mode, then visible in the nav.
 //   - the ArduPilot-gap callout + scaffold banner are both visible.
 //   - the per-channel PWM chart renders for every channel.
 //   - assignment add / edit / remove works against local state.
@@ -14,12 +14,19 @@ async function connectViaLandingDemo(page: Page): Promise<void> {
   await page.getByTestId('landing-transport-select').selectOption('demo')
   await page.getByTestId('landing-connect-button').click()
   await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+  // RC Mixer is Expert-only — reveal it before the tests reach for its nav tab.
+  await page.getByTestId('product-mode-expert').check()
 }
 
 test.describe('RC Mixer scaffold', () => {
-  test('appears in the main nav after connect', async ({ page }) => {
+  test('is gated behind Expert mode, then appears in the nav', async ({ page }) => {
     await page.goto('/')
-    await connectViaLandingDemo(page)
+    await page.getByTestId('landing-transport-select').selectOption('demo')
+    await page.getByTestId('landing-connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+    // Hidden until Expert mode is on.
+    await expect(page.getByTestId('view-button-rc-mixer')).toHaveCount(0)
+    await page.getByTestId('product-mode-expert').check()
     await expect(page.getByTestId('view-button-rc-mixer')).toBeVisible()
   })
 
