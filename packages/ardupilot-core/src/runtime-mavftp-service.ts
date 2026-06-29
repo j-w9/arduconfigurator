@@ -26,14 +26,18 @@ const MAX_MAVFTP_FILE_BYTES = 16 * 1024 * 1024
 // Per-packet read size requested in a BURST_READ_FILE; the FTP payload data
 // field is 239 bytes, so the server streams packets of up to this size.
 const MAVFTP_BURST_READ_SIZE = 239
-// Per-packet inactivity budget for a burst download — a dead-link safety
-// net, not a throughput SLA. Same rationale as the LOG_* dataflash timeout:
-// a healthy-but-slow or contended link can legitimately pause between
-// packets, so keep this generous.
-const DEFAULT_MAVFTP_BURST_TIMEOUT_MS = 20000
-// Stall retries per burst download; each re-issues BURST_READ_FILE from the
-// contiguous frontier after a full inactivity window.
-const MAX_MAVFTP_BURST_RETRIES = 3
+// Inactivity budget for a burst download — the timer resets on every packet, so
+// this only fires once the stream has genuinely gone quiet (a lost burst tail or
+// a lost burst_complete). ArduPilot streams up to 2000 packets per request and
+// only signals burst_complete on the last one, so a single dropped packet on a
+// no-flow-control USB link leaves the transfer waiting; keep this short enough
+// that recovery is snappy but long enough to tolerate a slow SD card.
+const DEFAULT_MAVFTP_BURST_TIMEOUT_MS = 6000
+// CONSECUTIVE-stall retries (reset on any forward progress — see
+// handleBurstPacket). A large multi-burst log over a lossy link legitimately
+// hits many isolated stalls across the whole download; the budget is per-stall,
+// not per-download, so it must not be exhausted by total stall count.
+const MAX_MAVFTP_BURST_RETRIES = 6
 
 interface MavftpWaiter {
   seqNumber: number
@@ -57,6 +61,12 @@ interface BurstOperation {
   // completion can't fire across a hole; see handleBurstPacket (and the same
   // reasoning in LogDownloadService).
   received: number
+  // Highest offset+length ever written into the buffer. When this is ahead of
+  // `received` a packet was dropped below it (a hole); an EOF NAK in that state
+  // means we're missing middle data, not that the file ended.
+  highWater: number
+  // CONSECUTIVE stalls since the last forward progress; reset to 0 whenever the
+  // contiguous frontier advances, so the retry budget is per-stall.
   retries: number
   timeoutMs: number
   onProgress?: (progress: LogDownloadProgress) => void
@@ -406,6 +416,7 @@ export class MavftpService {
         declaredSize,
         buffer: new Uint8Array(declaredSize),
         received: 0,
+        highWater: 0,
         retries: 0,
         timeoutMs: effectiveTimeoutMs,
         onProgress,
@@ -454,12 +465,28 @@ export class MavftpService {
 
     if (payload.opcode === MAV_FTP_OPCODE.NAK) {
       const errorCode = payload.data[0] ?? 0
-      // EOF means the server has no data past the offset we asked for. Because
-      // `received` is a contiguous frontier (no holes below it), EOF here
-      // means the file is exactly `received` bytes — the vehicle over-reported
-      // declaredSize, the same benign case the LOG_* path tolerates.
       if (errorCode === MAV_FTP_ERR.EOF) {
-        this.finishBurst(op)
+        // EOF = the server has no data past the last offset it read. If our
+        // contiguous frontier already covers everything we've seen, the file is
+        // exactly `received` bytes (the vehicle over-reported declaredSize) —
+        // done. But if a dropped packet left a hole BELOW the high-water mark,
+        // EOF means we're missing middle data: re-request from the frontier to
+        // fill the gap rather than silently returning a truncated log.
+        if (op.received >= op.highWater) {
+          this.finishBurst(op)
+          return
+        }
+        if (op.retries < MAX_MAVFTP_BURST_RETRIES) {
+          op.retries += 1
+          this.bumpBurstTimer(op)
+          this.sendBurstReadRequest(op, op.received)
+          return
+        }
+        this.failBurst(
+          new Error(
+            `MAVFTP burst left a gap at ${op.received}/${op.declaredSize} bytes after ${MAX_MAVFTP_BURST_RETRIES} retries.`
+          )
+        )
         return
       }
       this.failBurst(new MavftpRequestError(errorCode, payload.data[1]))
@@ -475,6 +502,7 @@ export class MavftpService {
       // Place at the true offset so an out-of-order packet still lands
       // correctly for a later contiguous fill.
       op.buffer.set(data.subarray(0, writable), payload.offset)
+      op.highWater = Math.max(op.highWater, payload.offset + writable)
     }
 
     // Advance the contiguous frontier only when this packet starts at or
@@ -483,8 +511,15 @@ export class MavftpService {
     // from the true frontier.
     const contiguous = payload.offset <= op.received && payload.offset < op.declaredSize
     if (contiguous) {
+      const before = op.received
       op.received = Math.max(op.received, payload.offset + writable)
-      op.onProgress?.({ bytesReceived: op.received, totalBytes: op.declaredSize })
+      if (op.received > before) {
+        // Forward progress — this stall (if any) recovered, so refund the
+        // retry budget. Otherwise a long download over a lossy link would
+        // accumulate isolated stalls and fail mid-transfer.
+        op.retries = 0
+        op.onProgress?.({ bytesReceived: op.received, totalBytes: op.declaredSize })
+      }
     }
 
     if (op.received >= op.declaredSize) {

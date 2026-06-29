@@ -193,6 +193,63 @@ test('burst download trims to the contiguous frontier when the FC over-reports s
   assert.deepEqual(Array.from(bytes), Array.from(fileBytes))
 })
 
+test('burst download survives more stalls than the retry budget when it keeps making progress', async () => {
+  // 8 packets. The server delivers exactly one packet per burst request with no
+  // burst_complete, forcing the inactivity timer to fire and re-request for
+  // every single packet — 7 stalls, well past MAX_MAVFTP_BURST_RETRIES (6).
+  // The download must still complete because forward progress refunds the
+  // per-stall retry budget (the regression that left real downloads stuck at
+  // ~1% on a lossy USB link and then failed).
+  const fileBytes = makeBytes(239 * 8, 4)
+  const harness = createHarness(fileBytes, {
+    burstResponder: (req, bytes) => {
+      if (req.offset >= bytes.length) return [nakFrame(req, MAV_FTP_ERR.EOF)]
+      const end = Math.min(req.offset + BURST_DATA, bytes.length)
+      const isLast = end >= bytes.length
+      return [
+        ackFrame(req, {
+          session: req.session,
+          offset: req.offset,
+          data: bytes.slice(req.offset, end),
+          burstComplete: isLast ? 1 : 0
+        })
+      ]
+    }
+  })
+  const bytes = await harness.service.downloadRemoteFileBurst('/APM/LOGS/big.BIN', { timeoutMs: 40 })
+
+  assert.deepEqual(Array.from(bytes), Array.from(fileBytes))
+  assert.ok(harness.burstRounds >= 8, 'one stall per packet means at least 8 burst rounds')
+})
+
+test('burst download recovers a hole revealed by an EOF NAK (small-file flow)', async () => {
+  // ArduPilot streams a sub-2000-packet file as data packets (no burst_complete)
+  // terminated by an EOF NAK. If a middle packet drops, the EOF arrives while a
+  // hole sits below the high-water mark — the download must re-request the gap
+  // instead of returning a truncated log.
+  const fileBytes = makeBytes(239 * 4, 6)
+  const harness = createHarness(fileBytes, {
+    burstResponder: (req, bytes, round) => {
+      const frames = []
+      let offset = req.offset
+      while (offset < bytes.length) {
+        const end = Math.min(offset + BURST_DATA, bytes.length)
+        // Round 1 drops the packet at offset 239 — a hole below the frontier.
+        if (!(round === 1 && offset === 239)) {
+          frames.push(ackFrame(req, { session: req.session, offset, data: bytes.slice(offset, end), burstComplete: 0 }))
+        }
+        offset = end
+      }
+      frames.push(nakFrame(req, MAV_FTP_ERR.EOF))
+      return frames
+    }
+  })
+  const bytes = await harness.service.downloadRemoteFileBurst('/APM/LOGS/hole.BIN', { timeoutMs: 200 })
+
+  assert.deepEqual(Array.from(bytes), Array.from(fileBytes))
+  assert.ok(harness.burstRounds >= 2, 'the EOF-revealed hole forces a re-request')
+})
+
 test('burst download rejects a file larger than the byte cap before allocating', async () => {
   const { service } = createHarness(makeBytes(10), { declaredSize: 5_000_000 })
   await assert.rejects(
