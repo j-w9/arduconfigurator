@@ -7188,6 +7188,7 @@ export function App() {
           refreshDisabled={busyAction !== undefined || !canRunGuidedAction(snapshot, 'request-parameters')}
           parameterEnumOverrides={parameterEnumOverrides}
           onToggleParameterEnumOverride={handleToggleParameterEnumOverride}
+          onRequestReboot={() => void handleGuidedAction('reboot-autopilot')}
         />
       ) : null}
         </div>

@@ -1072,6 +1072,27 @@ test.describe('Config view', () => {
     await expect(page.getByTestId('workspace-note-reboot')).toBeVisible()
   })
 
+  test('the Parameters view surfaces an inline Request Reboot button after a reboot-required write', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').click()
+
+    // Stage + apply a reboot-required change (bdshot stages SERVO_BLH_* params).
+    await page.getByTestId('view-button-config').click()
+    await page.getByTestId('esc-dshot-footer').scrollIntoViewIfNeeded()
+    await page.getByTestId('esc-enable-bdshot').click()
+    await page.getByRole('button', { name: /Apply Config/ }).click()
+
+    // The Parameters view's reboot follow-up now carries an inline Request Reboot
+    // button, so a reboot-required change can be completed without scrolling back
+    // up to the header session strip.
+    await page.getByTestId('view-button-parameters').click()
+    const rebootButton = page.getByTestId('parameter-follow-up-reboot')
+    await expect(rebootButton).toBeVisible()
+    await expect(rebootButton).toHaveText(/Request Reboot/)
+  })
+
   test('selecting a DShot MOT_PWM_TYPE auto-enables bidirectional DShot', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')

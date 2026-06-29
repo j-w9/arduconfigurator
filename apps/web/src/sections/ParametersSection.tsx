@@ -70,6 +70,10 @@ export interface ParametersSectionProps {
    *  can lag firmware on legitimate new enum values. */
   parameterEnumOverrides: ReadonlySet<string>
   onToggleParameterEnumOverride: (paramId: string) => void
+  /** Trigger a vehicle reboot directly from the post-write follow-up prompt, so
+   *  a reboot-required change can be completed without scrolling back up to the
+   *  header session strip. */
+  onRequestReboot: () => void
 }
 
 export function ParametersSection(props: ParametersSectionProps): ReactElement {
@@ -111,7 +115,8 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     onRefreshParameters: handleRefreshParameters,
     refreshDisabled,
     parameterEnumOverrides,
-    onToggleParameterEnumOverride: handleToggleParameterEnumOverride
+    onToggleParameterEnumOverride: handleToggleParameterEnumOverride,
+    onRequestReboot: handleRequestReboot
   } = props
 
   // Bulk-drop selection over the staged review rows — dropping unwanted
@@ -121,6 +126,16 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   // row whose checkbox was clicked.
   const [selectedDraftIds, setSelectedDraftIds] = useState<ReadonlySet<string>>(new Set())
   const selectionAnchorRef = useRef<string | null>(null)
+  // After a write, bring the reboot-required follow-up (and its inline Request
+  // Reboot button) into view, so a reboot-required change can be completed
+  // without scrolling back up the param list to find the prompt.
+  const rebootFollowUpRef = useRef<HTMLDivElement>(null)
+  const followUpRequiresReboot = parameterFollowUp?.requiresReboot ?? false
+  useEffect(() => {
+    if (followUpRequiresReboot) {
+      rebootFollowUpRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [followUpRequiresReboot])
   // The search box filters the staged review too: filtering only the
   // table while the review list (where you look mid-import) ignores it
   // makes wildcard search appear broken. Selection, Select all, and Drop
@@ -382,12 +397,27 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
           ) : null}
 
 	          {parameterFollowUp ? (
-	            <div className="parameter-follow-up">
+	            <div
+	              className="parameter-follow-up"
+	              ref={parameterFollowUp.requiresReboot ? rebootFollowUpRef : null}
+	            >
 	              <StatusBadge tone={parameterFollowUp.requiresReboot ? 'warning' : 'neutral'}>
 	                {parameterFollowUp.requiresReboot ? 'reboot' : 'refresh'}
 	              </StatusBadge>
 	              <p>{parameterFollowUp.text}</p>
-	              <small>Use the header session strip to complete the pending reboot or refresh.</small>
+	              {parameterFollowUp.requiresReboot ? (
+	                <button
+	                  type="button"
+	                  data-testid="parameter-follow-up-reboot"
+	                  style={buttonStyle()}
+	                  disabled={busyAction !== undefined || snapshot.connection.kind !== 'connected'}
+	                  onClick={handleRequestReboot}
+	                >
+	                  {busyAction === 'reboot-autopilot' ? 'Rebooting…' : 'Request Reboot'}
+	                </button>
+	              ) : (
+	                <small>Use the header session strip to complete the pending refresh.</small>
+	              )}
 	            </div>
 	          ) : null}
 
