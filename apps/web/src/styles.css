@@ -12665,6 +12665,36 @@ details.bf-gui-box:not([open]) > summary::after {
   flex: 1;
   min-height: 30px;
 }
+.mavlink-inspector__request {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--surface-300);
+  border-radius: var(--radius-md);
+  background: var(--surface-100, rgba(255, 255, 255, 0.02));
+}
+.mavlink-inspector__request-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  align-self: center;
+}
+.mavlink-inspector__request-id {
+  width: 84px;
+}
+.mavlink-inspector__request-rate {
+  width: 72px;
+}
+.mavlink-inspector__request-result {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-muted);
+}
 .mavlink-inspector__table {
   display: flex;
   flex-direction: column;
@@ -12674,7 +12704,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .mavlink-inspector__row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1.2fr 1fr 1fr;
+  grid-template-columns: 1.8fr 0.9fr 1fr 1.1fr 0.8fr 0.9fr;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -12686,6 +12716,30 @@ details.bf-gui-box:not([open]) > summary::after {
   border: none;
   color: var(--text);
   cursor: pointer;
+}
+.mavlink-inspector__group:not(:first-child) {
+  border-top: 2px solid var(--surface-300);
+}
+.mavlink-inspector__source-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--surface-200);
+  border-top: 1px solid var(--surface-300);
+}
+.mavlink-inspector__source-label {
+  font-family: var(--font-data);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, #ffbb00);
+  letter-spacing: 0.02em;
+}
+.mavlink-inspector__source-meta {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-muted);
 }
 .mavlink-inspector__row--head {
   text-transform: uppercase;
@@ -12740,17 +12794,108 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .mavlink-inspector__field-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 2fr;
+  grid-template-columns: minmax(120px, 1.4fr) 2fr 0.7fr auto;
   gap: 10px;
+  align-items: center;
   padding: 2px 0;
+  border-radius: var(--radius-sm, 4px);
 }
-.mavlink-inspector__field-row dt {
+.mavlink-inspector__field-row--head {
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+.mavlink-inspector__field-name {
   color: var(--text-muted);
 }
-.mavlink-inspector__field-row dd {
-  margin: 0;
+.mavlink-inspector__field-value {
   color: var(--text);
   word-break: break-word;
+}
+.mavlink-inspector__field-type {
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+.mavlink-inspector__field-actions {
+  display: inline-flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.mavlink-inspector__field-copy,
+.mavlink-inspector__field-graph {
+  background: transparent;
+  border: 1px solid var(--surface-300);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-muted);
+  font-family: var(--font-data);
+  font-size: 10px;
+  padding: 1px 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.mavlink-inspector__field-row:hover .mavlink-inspector__field-copy,
+.mavlink-inspector__field-row:hover .mavlink-inspector__field-graph,
+.mavlink-inspector__field-copy:focus-visible,
+.mavlink-inspector__field-graph:focus-visible {
+  opacity: 1;
+}
+.mavlink-inspector__field-graph[aria-pressed='true'] {
+  opacity: 1;
+  border-color: var(--accent, #ffbb00);
+  color: var(--accent, #ffbb00);
+}
+.mavlink-inspector__plots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.mavlink-inspector__plot {
+  border: 1px solid var(--surface-300);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  background: var(--surface-100, rgba(255, 255, 255, 0.02));
+}
+.mavlink-inspector__plot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.mavlink-inspector__plot-title {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--accent, #ffbb00);
+  word-break: break-word;
+}
+.mavlink-inspector__plot-svg {
+  width: 100%;
+  height: 60px;
+  color: var(--accent, #ffbb00);
+  display: block;
+}
+.mavlink-inspector__plot-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+@keyframes mavlink-field-flash {
+  from {
+    background: var(--accent, #ffbb00);
+    color: #000;
+  }
+  to {
+    background: transparent;
+  }
+}
+.mavlink-inspector__field-row--flash {
+  animation: mavlink-field-flash 600ms ease-out;
 }
 .dronecan-inspector__bus-select {
   display: inline-flex;

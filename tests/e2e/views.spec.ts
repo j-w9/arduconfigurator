@@ -2538,9 +2538,21 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('view-button-mavlink-inspector').click()
     await expect(page.getByTestId('mavlink-inspector')).toBeVisible()
     await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
-    // Summary + sort + pause affordances are present.
+    // Summary + sort + pause affordances are present, with the new
+    // source-awareness + bandwidth read-outs.
     await expect(page.getByTestId('mavlink-inspector-summary')).toContainText('msg/s')
+    await expect(page.getByTestId('mavlink-inspector-summary')).toContainText('B/s')
+    await expect(page.getByTestId('mavlink-inspector-summary')).toContainText('source')
     await expect(page.getByTestId('mavlink-inspector-sort')).toBeVisible()
+
+    // Messages are grouped by their (systemId:componentId) source — the demo
+    // streams from the autopilot at sys 1, comp 1.
+    await expect(page.getByTestId('mavlink-inspector-source')).toBeVisible()
+    await expect(page.getByTestId('mavlink-source-1:1')).toBeVisible()
+
+    // The source selector narrows the stream to a single source.
+    await page.getByTestId('mavlink-inspector-source').selectOption('1:1')
+    await expect(page.getByTestId('mavlink-source-1:1')).toBeVisible()
 
     // Pause freezes the table; the badge flips to "paused" and back on resume.
     const pause = page.getByTestId('mavlink-inspector-pause')
@@ -2571,6 +2583,13 @@ test.describe('Inspectors (expert-only)', () => {
     await mavTable.locator('[data-testid^="mavlink-row-"]').first().getByRole('button').first().click()
     await expect(page.getByRole('button', { name: 'Copy JSON' }).first()).toBeVisible()
 
+    // The expanded row shows a live field table (name / value / type) with a
+    // per-field copy affordance, not a raw JSON blob.
+    const fieldTable = page.locator('[data-testid^="mavlink-field-table-"]').first()
+    await expect(fieldTable).toBeVisible()
+    await expect(fieldTable).toContainText('Field')
+    await expect(fieldTable.locator('[data-testid^="mavlink-field-copy-"]').first()).toHaveCount(1)
+
     // Start the DroneCAN bus and expand the first discovered node's detail.
     await page.getByTestId('view-button-dronecan-inspector').click()
     await page.getByTestId('dronecan-inspector-start').click()
@@ -2579,6 +2598,51 @@ test.describe('Inspectors (expert-only)', () => {
     const firstNode = table.locator('[data-testid^="dronecan-node-"]').first()
     await firstNode.getByRole('button').first().click()
     await expect(page.locator('[data-testid^="dronecan-node-detail-"]').first()).toContainText('Node ID')
+  })
+
+  test('MAVLink inspector requests a message stream and surfaces the result', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    await page.getByTestId('view-button-mavlink-inspector').click()
+    await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
+
+    // The request control lets the operator pick a message + rate and set its
+    // stream interval; the demo FC acks SET_MESSAGE_INTERVAL as ACCEPTED.
+    await expect(page.getByTestId('mavlink-inspector-request')).toBeVisible()
+    await page.getByTestId('mavlink-request-message').selectOption('30')
+    await page.getByTestId('mavlink-request-rate').fill('5')
+    await page.getByTestId('mavlink-request-stream').click()
+    await expect(page.getByTestId('mavlink-request-result')).toContainText('accepted', { timeout: 8000 })
+  })
+
+  test('MAVLink inspector plots a numeric field live and removes the plot', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    await page.getByTestId('view-button-mavlink-inspector').click()
+    const mavTable = page.getByTestId('mavlink-inspector-table')
+    await expect(mavTable).toBeVisible({ timeout: 8000 })
+
+    // Expand the first row and graph its first plottable field.
+    await mavTable.locator('[data-testid^="mavlink-row-"]').first().getByRole('button').first().click()
+    const graph = page.locator('[data-testid^="mavlink-field-graph-"]').first()
+    await expect(graph).toBeVisible()
+    await graph.click()
+
+    // A live plot renders with its read-outs.
+    await expect(page.getByTestId('mavlink-plots')).toBeVisible()
+    const plot = page.locator('[data-testid^="mavlink-plot-"]').first()
+    await expect(plot).toBeVisible()
+    await expect(plot).toContainText('now')
+
+    // Removing the plot tears it down.
+    page.locator('[data-testid^="mavlink-plot-remove-"]').first().click()
+    await expect(page.getByTestId('mavlink-plots')).toHaveCount(0)
   })
 
   test('DroneCAN inspector manages a node: param grid, restart, ESC telemetry', async ({ page }) => {

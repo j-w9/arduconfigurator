@@ -321,6 +321,17 @@ export class ParameterBatchWriteError extends Error {
   }
 }
 
+/**
+ * Outcome of an operator-triggered message request (SET_MESSAGE_INTERVAL /
+ * REQUEST_MESSAGE). `ok` is true when the autopilot accepted the request
+ * (ACCEPTED or IN_PROGRESS); `resultLabel` is a human MAV_RESULT name.
+ */
+export interface MessageRequestResult {
+  ok: boolean
+  result: number
+  resultLabel: string
+}
+
 export class ArduPilotConfiguratorRuntime {
   private readonly updateListeners = new Set<UpdateListener>()
   // Raw MAVLink envelope subscribers for the read-only inspector (see onMessage).
@@ -1216,6 +1227,56 @@ export class ArduPilotConfiguratorRuntime {
   /** Cancel an in-flight node firmware update, or dismiss a finished one. */
   cancelCanBusNodeFirmwareUpdate(): void {
     this.canBusService.cancelFirmwareUpdate()
+  }
+
+  /**
+   * Operator-triggered SET_MESSAGE_INTERVAL (MAV_CMD 511) for the MAVLink
+   * inspector. `intervalUs` is the raw command interval: > 0 streams the
+   * message at that period, 0 requests the firmware default rate, and a
+   * negative value disables the stream. A label is pushed onto the pending
+   * stream-request queue so the ACK lines up with the auto-stream bookkeeping
+   * (and is removed again if the send itself fails before any ACK). Standard
+   * GCS command, clearly user-initiated — does not change ArduCopter's
+   * unsolicited stream behaviour.
+   */
+  async requestMessageInterval(messageId: number, intervalUs: number): Promise<MessageRequestResult> {
+    const label = `message ${messageId}`
+    this.pendingSetMessageIntervalLabels.push(label)
+    try {
+      const ack = await this.sendCommand(
+        MAV_CMD.SET_MESSAGE_INTERVAL,
+        [messageId, intervalUs, 0, 0, 0, 0, 0],
+        { waitForAck: true, rejectAckOnFailure: false }
+      )
+      return this.toMessageRequestResult(ack)
+    } catch (error) {
+      const index = this.pendingSetMessageIntervalLabels.lastIndexOf(label)
+      if (index >= 0) {
+        this.pendingSetMessageIntervalLabels.splice(index, 1)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Operator-triggered one-shot REQUEST_MESSAGE (MAV_CMD 512): ask the vehicle
+   * to emit a single instance of the message now. Does not touch the
+   * stream-request label queue (that bookkeeping is SET_MESSAGE_INTERVAL only).
+   */
+  async requestMessageOnce(messageId: number): Promise<MessageRequestResult> {
+    const ack = await this.sendCommand(MAV_CMD.REQUEST_MESSAGE, [messageId, 0, 0, 0, 0, 0, 0], {
+      waitForAck: true,
+      rejectAckOnFailure: false
+    })
+    return this.toMessageRequestResult(ack)
+  }
+
+  private toMessageRequestResult(ack: CommandAckMessage | void): MessageRequestResult {
+    if (!ack) {
+      return { ok: false, result: -1, resultLabel: 'no acknowledgment' }
+    }
+    const ok = ack.result === MAV_RESULT.ACCEPTED || ack.result === MAV_RESULT.IN_PROGRESS
+    return { ok, result: ack.result, resultLabel: mavResultLabel(ack.result) }
   }
 
   destroy(): void {

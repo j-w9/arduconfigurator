@@ -481,7 +481,8 @@ export class MavlinkV2Codec implements StreamingCodec<MavlinkEnvelope> {
           sequence: frame[4]
         },
         message,
-        timestampMs: Date.now()
+        timestampMs: Date.now(),
+        byteLength: frameLength
       })
     }
 

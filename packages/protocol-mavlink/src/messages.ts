@@ -421,4 +421,11 @@ export interface MavlinkEnvelope {
   }
   message: MavlinkMessage
   timestampMs?: number
+  /**
+   * On-the-wire frame size in bytes (header + payload + checksum + any
+   * signature), set by the v2 codec on decode. Optional so non-v2 / stub
+   * codecs (and hand-built envelopes in tests) need not populate it; the
+   * MAVLink inspector reads it for per-source bandwidth accounting.
+   */
+  byteLength?: number
 }
