@@ -63,14 +63,15 @@ export function describeDronecanParam(
   entry: DronecanParamEntry,
   def: DronecanParamCatalogDef | undefined
 ): DronecanParamDisplay {
+  // Range reads as "min–max unit" (en-dash, e.g. "50–200 ms", "-5–5 m").
   const nodeRange =
     isPresent(entry.minValue) || isPresent(entry.maxValue)
-      ? `${formatParamValue(entry.minValue)} … ${formatParamValue(entry.maxValue)}`
+      ? `${formatParamValue(entry.minValue)}–${formatParamValue(entry.maxValue)}`
       : undefined
   const unit = def?.unit ? ` ${def.unit}` : ''
   const catalogRange =
     def && (def.minimum !== undefined || def.maximum !== undefined)
-      ? `${def.minimum ?? '−∞'} … ${def.maximum ?? '∞'}${unit}`
+      ? `${def.minimum ?? '−∞'}–${def.maximum ?? '∞'}${unit}`
       : undefined
 
   const numeric = numericValue(entry.value)

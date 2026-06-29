@@ -38,13 +38,13 @@ describe('describeDronecanParam', () => {
   it('uses the catalog minimum..maximum (with unit) for the range when the node is empty', () => {
     const def: DronecanParamCatalogDef = { label: 'Min elevation', minimum: -100, maximum: 90, unit: 'deg' }
     const d = describeDronecanParam(entry({ name: 'GPS_MIN_ELEV', value: int(-100) }), def)
-    expect(d.rangeLabel).toBe('-100 … 90 deg')
+    expect(d.rangeLabel).toBe('-100–90 deg')
   })
 
   it('prefers the node-reported range over the catalog', () => {
     const def: DronecanParamCatalogDef = { minimum: 0, maximum: 10 }
     const d = describeDronecanParam(entry({ minValue: int(2), maxValue: int(8) }), def)
-    expect(d.rangeLabel).toBe('2 … 8')
+    expect(d.rangeLabel).toBe('2–8')
   })
 
   it('falls back cleanly with no catalog match (raw name + value, no range)', () => {
