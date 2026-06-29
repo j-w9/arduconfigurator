@@ -7,7 +7,6 @@ import type { ReactElement, ReactNode } from 'react'
 import type { ArduPilotConfiguratorRuntime, ConfiguratorSnapshot, ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
 import type { AppViewId, BoardCatalogEntry, BoardReferenceLink } from '@arduconfig/param-metadata'
 import {
-  ARDUCOPTER_MSP_OPTION_BIT_LABELS,
   ARDUCOPTER_SERIAL_OPTION_BIT_LABELS,
   arducopterSerialBaudRate,
   arducopterSerialProtocolOptions,
@@ -17,13 +16,8 @@ import {
   formatArducopterGpsPrimary,
   formatArducopterGpsRateMs,
   formatArducopterGpsType,
-  formatArducopterMspOsdCellCount,
-  formatArducopterOsdChannel,
-  formatArducopterOsdSwitchMethod,
-  formatArducopterOsdType,
   formatArducopterSerialProtocol,
-  formatArducopterSerialRtscts,
-  formatArducopterVtxEnable
+  formatArducopterSerialRtscts
 } from '@arduconfig/param-metadata'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
@@ -155,27 +149,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     portsAdditionalDraftEntries,
     portsAdditionalStagedDrafts,
     portsAdditionalInvalidDrafts,
-    vtxLinkPorts,
-    osdLinkPorts,
-    vtxEnabled,
-    vtxFrequency,
-    vtxPower,
-    vtxMaxPower,
-    vtxEnableParameter,
-    vtxFrequencyParameter,
-    vtxPowerParameter,
-    vtxMaxPowerParameter,
-    vtxOptionsParameter,
-    osdType,
-    osdChannel,
-    osdSwitchMethod,
-    mspOptions,
-    mspOsdCellCount,
-    osdTypeParameter,
-    osdChannelParameter,
-    osdSwitchMethodParameter,
-    mspOptionsParameter,
-    mspOsdCellCountParameter,
     gpsAutoConfig,
     gpsAutoSwitch,
     gpsPrimary,
@@ -191,7 +164,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     portsView,
     onApplyScopedDrafts,
     onDiscardScopedDrafts,
-    setActiveViewId,
     renderAdditionalSettingsCard,
     runtime
   } = props
@@ -802,55 +774,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                     <li>Keep GPS redundancy features simple unless the aircraft actually has two usable GPS links.</li>
                     <li>After GPS behavior changes, reboot, reconnect, and verify live lock/telemetry before flight.</li>
                   </ul>
-                </div>
-              ) : null}
-
-              {osdTypeParameter || osdChannelParameter || osdSwitchMethodParameter || mspOptionsParameter || mspOsdCellCountParameter ? (
-                <div className="scoped-review-card scoped-review-card--compact">
-                  <div className="switch-exercise-card__header">
-                    <div>
-                      <strong>OSD routed through dedicated tab</strong>
-                      <p>Keep the serial-port wiring context here, then use the OSD tab for backend, page, and MSP display settings.</p>
-                    </div>
-                    <button style={buttonStyle('primary')} onClick={() => setActiveViewId('osd')}>
-                      Open OSD Tab
-                    </button>
-                  </div>
-
-                  <div className="config-pills">
-                    {osdTypeParameter ? <span>Backend: {formatArducopterOsdType(osdType)}</span> : null}
-                    {osdChannelParameter ? <span>Screen channel: {formatArducopterOsdChannel(osdChannel)}</span> : null}
-                    {osdSwitchMethodParameter ? <span>Switching: {formatArducopterOsdSwitchMethod(osdSwitchMethod)}</span> : null}
-                    {mspOsdCellCountParameter ? <span>Cell count: {formatArducopterMspOsdCellCount(mspOsdCellCount)}</span> : null}
-                    {mspOptionsParameter ? <span>MSP options: {describeBitmaskSelections(mspOptions, ARDUCOPTER_MSP_OPTION_BIT_LABELS, 'No special options')}</span> : null}
-                    {osdLinkPorts.length > 0
-                      ? osdLinkPorts.map((port) => <span key={`osd-link:${port.portNumber}`}>{port.label}: {port.protocolLabel}</span>)
-                      : <span>No MSP / DisplayPort OSD link detected in current port roles</span>}
-                  </div>
-                </div>
-              ) : null}
-
-              {vtxEnableParameter || vtxFrequencyParameter || vtxPowerParameter || vtxMaxPowerParameter || vtxOptionsParameter ? (
-                <div className="scoped-review-card scoped-review-card--compact">
-                  <div className="switch-exercise-card__header">
-                    <div>
-                      <strong>VTX routed through dedicated tab</strong>
-                      <p>Use Ports to assign the actual control link, then use the VTX tab for frequency, power, and control behavior.</p>
-                    </div>
-                    <button style={buttonStyle('primary')} onClick={() => setActiveViewId('vtx')}>
-                      Open VTX Tab
-                    </button>
-                  </div>
-
-                  <div className="config-pills">
-                    {vtxEnableParameter ? <span>Control: {formatArducopterVtxEnable(vtxEnabled)}</span> : null}
-                    {vtxFrequencyParameter ? <span>Frequency: {vtxFrequency !== undefined ? `${vtxFrequency} MHz` : 'Unknown'}</span> : null}
-                    {vtxPowerParameter ? <span>Power: {vtxPower !== undefined ? `${vtxPower} mW` : 'Unknown'}</span> : null}
-                    {vtxMaxPowerParameter ? <span>Max power: {vtxMaxPower !== undefined ? `${vtxMaxPower} mW` : 'Unknown'}</span> : null}
-                    {vtxLinkPorts.length > 0
-                      ? vtxLinkPorts.map((port) => <span key={`vtx-link:${port.portNumber}`}>{port.label}: {port.protocolLabel}</span>)
-                      : <span>No VTX control link detected in current port roles</span>}
-                  </div>
                 </div>
               ) : null}
 
