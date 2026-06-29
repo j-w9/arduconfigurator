@@ -12872,6 +12872,87 @@ details.bf-gui-box:not([open]) > summary::after {
   font-size: 12px;
   color: var(--text-muted);
 }
+.dronecan-inspector__fwupdate {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--surface-300);
+  border-radius: 8px;
+  background: var(--surface-100);
+}
+.dronecan-inspector__fwupdate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.dronecan-inspector__fwupdate-file {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.dronecan-inspector__fwupdate-selected {
+  font-family: var(--font-data);
+  font-size: 12px;
+}
+.dronecan-inspector__fwupdate-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+}
+.dronecan-inspector__fwupdate-ack input {
+  margin-top: 2px;
+}
+.dronecan-inspector__fwupdate-bar {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--surface-300);
+  overflow: hidden;
+}
+.dronecan-inspector__fwupdate-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+.dronecan-inspector__fwupdate-fill.is-success {
+  background: var(--success);
+}
+.dronecan-inspector__fwupdate-fill.is-danger {
+  background: var(--danger);
+}
+.dronecan-inspector__fwupdate-bytes {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.dronecan-inspector__fwupdate-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.dronecan-inspector__fwupdate-error {
+  font-size: 12px;
+  color: var(--danger);
+  margin: 0;
+}
+.dronecan-inspector__fwupdate-go:not(:disabled) {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
 .dronecan-inspector__esc {
   margin-top: 16px;
 }

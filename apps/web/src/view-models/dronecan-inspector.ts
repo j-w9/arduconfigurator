@@ -6,6 +6,7 @@
 
 import type {
   DronecanEscTelemetry,
+  DronecanFirmwareUpdateState,
   DronecanInspectedNode,
   DronecanParamEntry
 } from '@arduconfig/ardupilot-core'
@@ -155,6 +156,69 @@ export function buildDronecanParamRows(node: DronecanInspectedNode): DronecanPar
       defaultLabel
     }
   })
+}
+
+// --- Firmware update ----------------------------------------------------------
+
+export interface DronecanFirmwareUpdateView {
+  nodeId: number
+  fileName: string
+  /** 0..100, clamped. */
+  percent: number
+  /** "12.3 / 48.0 KiB" style progress label. */
+  bytesLabel: string
+  /** Short human status ("Starting…", "Updating…", "Complete", "Failed"). */
+  statusLabel: string
+  status: DronecanFirmwareUpdateState['status']
+  /** True while the transfer occupies the bus (starting or in progress). */
+  inProgress: boolean
+  /** True once finished (completed or error) — actions can re-enable. */
+  terminal: boolean
+  /** Badge tone for the status pill. */
+  tone: 'neutral' | 'success' | 'danger'
+  error?: string
+}
+
+function kib(bytes: number): string {
+  return `${(bytes / 1024).toFixed(1)} KiB`
+}
+
+/** Shape the single in-flight (or just-finished) firmware update into display
+ *  fields: progress percent + bytes label + a status pill. Pure — drives the
+ *  inspector's progress bar and gates the other per-node actions. */
+export function buildDronecanFirmwareUpdateView(
+  update: DronecanFirmwareUpdateState | undefined
+): DronecanFirmwareUpdateView | undefined {
+  if (!update) {
+    return undefined
+  }
+  const size = Math.max(0, update.fileSize)
+  const served = Math.max(0, Math.min(update.bytesServed, size))
+  const percent = size === 0 ? 0 : Math.max(0, Math.min(100, Math.round((served / size) * 100)))
+  const inProgress = update.status === 'starting' || update.status === 'in_progress'
+  const terminal = update.status === 'completed' || update.status === 'error'
+  const statusLabel =
+    update.status === 'starting'
+      ? 'Starting…'
+      : update.status === 'in_progress'
+        ? `Updating… ${percent}%`
+        : update.status === 'completed'
+          ? 'Complete'
+          : 'Failed'
+  const tone: DronecanFirmwareUpdateView['tone'] =
+    update.status === 'completed' ? 'success' : update.status === 'error' ? 'danger' : 'neutral'
+  return {
+    nodeId: update.nodeId,
+    fileName: update.fileName,
+    percent,
+    bytesLabel: `${kib(served)} / ${kib(size)}`,
+    statusLabel,
+    status: update.status,
+    inProgress,
+    terminal,
+    tone,
+    error: update.error
+  }
 }
 
 // --- ESC telemetry ------------------------------------------------------------

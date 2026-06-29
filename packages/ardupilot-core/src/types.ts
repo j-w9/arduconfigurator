@@ -483,10 +483,35 @@ export interface DronecanEscTelemetry {
   lastSeenAtMs: number
 }
 
+// Live state of a DroneCAN node firmware update (the GCS acts as the file
+// server over the CAN_FORWARD tunnel: it sends BeginFirmwareUpdate, then
+// answers the node's file.Read requests with chunks of the selected image).
+// Only one update runs at a time. Snapshot-safe (all plain numbers/strings).
+export type DronecanFirmwareUpdateStatus = 'starting' | 'in_progress' | 'completed' | 'error'
+
+export interface DronecanFirmwareUpdateState {
+  /** Node being updated. */
+  nodeId: number
+  /** Display name of the selected image file. */
+  fileName: string
+  /** Total bytes in the selected image. */
+  fileSize: number
+  /** High-water mark of bytes served to the node (progress = served / size). */
+  bytesServed: number
+  status: DronecanFirmwareUpdateStatus
+  /** Set when status === 'error'; also used to carry the success note. */
+  error?: string
+  startedAtMs: number
+  /** Last time the node read a chunk or the begin request was (re)sent. */
+  updatedAtMs: number
+}
+
 export interface CanBusState {
   status: CanBusStatus
   /** Active bus index when status === 'active'. */
   bus?: number
+  /** In-flight (or just-finished) DroneCAN node firmware update, if any. */
+  firmwareUpdate?: DronecanFirmwareUpdateState
   /** Sticky error message after a refused start/stop. Cleared on retry. */
   error?: string
   /** Count of CAN_FRAME messages observed in this session. UI uses it as

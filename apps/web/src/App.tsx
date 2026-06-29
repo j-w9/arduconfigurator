@@ -6922,6 +6922,7 @@ export function App() {
           error={snapshot.canBus.error}
           nodes={snapshot.canBus.nodes}
           escTelemetry={snapshot.canBus.escTelemetry}
+          firmwareUpdate={snapshot.canBus.firmwareUpdate}
           connected={snapshot.connection.kind === 'connected'}
           busy={busyAction !== undefined}
           onStart={(bus) => { void runtime?.startCanBusForward(bus) }}
@@ -6929,6 +6930,8 @@ export function App() {
           onFetchParams={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
           onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
           onRestartNode={(nodeId) => { void runtime?.restartCanBusNode(nodeId) }}
+          onStartFirmwareUpdate={(nodeId, fileName, image) => { void runtime?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image) }}
+          onCancelFirmwareUpdate={() => { runtime?.cancelCanBusNodeFirmwareUpdate() }}
         />
       ) : null}
 

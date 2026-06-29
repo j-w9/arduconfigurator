@@ -13,12 +13,14 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type {
   CanBusState,
   DronecanEscTelemetry,
+  DronecanFirmwareUpdateState,
   DronecanInspectedNode,
   DronecanParamValueState
 } from '@arduconfig/ardupilot-core'
 
 import {
   buildDronecanEscRows,
+  buildDronecanFirmwareUpdateView,
   buildDronecanNodeDetailRows,
   buildDronecanParamRows,
   summarizeDronecanNodes
@@ -33,6 +35,8 @@ export interface DronecanInspectorViewProps {
   error: string | undefined
   nodes: readonly DronecanInspectedNode[]
   escTelemetry: readonly DronecanEscTelemetry[]
+  /** The single in-flight (or just-finished) node firmware update, if any. */
+  firmwareUpdate: DronecanFirmwareUpdateState | undefined
   connected: boolean
   busy: boolean
   onStart: (bus: number) => void
@@ -43,6 +47,145 @@ export interface DronecanInspectorViewProps {
   onApplyAndSave: (nodeId: number, writes: Array<{ name: string; value: DronecanParamValueState }>) => void
   /** Restart a node via uavcan.protocol.RestartNode (with a confirm step). */
   onRestartNode: (nodeId: number) => void
+  /** Begin a firmware update on a node (GCS serves the selected .bin image). */
+  onStartFirmwareUpdate: (nodeId: number, fileName: string, image: Uint8Array) => void
+  /** Cancel an in-flight update, or dismiss a finished one. */
+  onCancelFirmwareUpdate: () => void
+}
+
+/** Per-node firmware-update affordance: file picker, prominent brick-risk
+ *  confirmation, progress bar, and clear success/error. Only one update runs at
+ *  a time — all the node's other actions are disabled while one is underway. */
+function NodeFirmwareUpdate(props: {
+  nodeId: number
+  view: ReturnType<typeof buildDronecanFirmwareUpdateView>
+  /** True when ANY update (this node or another) is occupying the bus. */
+  anotherUpdateActive: boolean
+  busy: boolean
+  onStart: (nodeId: number, fileName: string, image: Uint8Array) => void
+  onCancel: () => void
+}) {
+  const { nodeId, view, anotherUpdateActive, busy, onStart, onCancel } = props
+  const [file, setFile] = useState<{ name: string; bytes: Uint8Array } | null>(null)
+  const [acknowledged, setAcknowledged] = useState(false)
+  const [readError, setReadError] = useState<string | null>(null)
+
+  // This node's own update (progress / result) takes over the section.
+  if (view && view.nodeId === nodeId) {
+    return (
+      <div className="dronecan-inspector__fwupdate" data-testid={`dronecan-fwupdate-${nodeId}`}>
+        <div className="dronecan-inspector__fwupdate-head">
+          <span>Firmware update — {view.fileName}</span>
+          <StatusBadge tone={view.tone}>{view.statusLabel}</StatusBadge>
+        </div>
+        <div
+          className="dronecan-inspector__fwupdate-bar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={view.percent}
+          data-testid={`dronecan-fwupdate-progress-${nodeId}`}
+        >
+          <div
+            className={`dronecan-inspector__fwupdate-fill is-${view.tone}`}
+            style={{ width: `${view.percent}%` }}
+          />
+        </div>
+        <p className="dronecan-inspector__fwupdate-bytes">
+          {view.bytesLabel} · {view.percent}%
+        </p>
+        {view.status === 'completed' ? (
+          <p className="dronecan-inspector__fwupdate-note" data-testid={`dronecan-fwupdate-done-${nodeId}`}>
+            Image transferred. The node is rebooting into the new firmware and will reappear on the bus.
+          </p>
+        ) : null}
+        {view.error ? (
+          <p className="dronecan-inspector__fwupdate-error" data-testid={`dronecan-fwupdate-error-${nodeId}`}>
+            {view.error}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          style={buttonStyle()}
+          onClick={onCancel}
+          data-testid={`dronecan-fwupdate-cancel-${nodeId}`}
+        >
+          {view.terminal ? 'Dismiss' : 'Cancel update'}
+        </button>
+      </div>
+    )
+  }
+
+  const disabled = busy || anotherUpdateActive
+
+  const pickFile = (selected: File | undefined): void => {
+    setAcknowledged(false)
+    setReadError(null)
+    if (!selected) {
+      setFile(null)
+      return
+    }
+    selected
+      .arrayBuffer()
+      .then((buffer) => setFile({ name: selected.name, bytes: new Uint8Array(buffer) }))
+      .catch(() => {
+        setFile(null)
+        setReadError('Could not read the selected file.')
+      })
+  }
+
+  return (
+    <div className="dronecan-inspector__fwupdate" data-testid={`dronecan-fwupdate-${nodeId}`}>
+      <div className="dronecan-inspector__fwupdate-head">
+        <span>Firmware update</span>
+      </div>
+      {anotherUpdateActive ? (
+        <p className="telemetry-note">Another node is updating — wait for it to finish.</p>
+      ) : null}
+      <label className="dronecan-inspector__fwupdate-file">
+        <span>Image (.bin)</span>
+        <input
+          type="file"
+          accept=".bin,application/octet-stream"
+          disabled={disabled}
+          onChange={(event) => pickFile(event.target.files?.[0])}
+          data-testid={`dronecan-fwupdate-file-${nodeId}`}
+        />
+      </label>
+      {readError ? <p className="dronecan-inspector__fwupdate-error">{readError}</p> : null}
+      {file ? (
+        <>
+          <p className="dronecan-inspector__fwupdate-selected">
+            {file.name} · {(file.bytes.length / 1024).toFixed(1)} KiB
+          </p>
+          <label className="dronecan-inspector__fwupdate-ack">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              disabled={disabled}
+              onChange={(event) => setAcknowledged(event.target.checked)}
+              data-testid={`dronecan-fwupdate-ack-${nodeId}`}
+            />
+            <span>
+              <strong>Brick risk:</strong> flashing the wrong or corrupt image can permanently disable node #{nodeId}.
+              Keep the bus connected and powered until the update completes. I have selected the correct firmware for this
+              node.
+            </span>
+          </label>
+          <button
+            type="button"
+            className="dronecan-inspector__fwupdate-go"
+            style={buttonStyle('primary')}
+            disabled={disabled || !acknowledged || file.bytes.length === 0}
+            onClick={() => onStart(nodeId, file.name, file.bytes)}
+            data-testid={`dronecan-fwupdate-start-${nodeId}`}
+          >
+            Update firmware
+          </button>
+        </>
+      ) : null}
+    </div>
+  )
 }
 
 function ageLabel(lastSeenAtMs: number): string {
@@ -73,16 +216,23 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
     error,
     nodes,
     escTelemetry,
+    firmwareUpdate,
     connected,
     busy,
     onStart,
     onStop,
     onFetchParams,
     onApplyAndSave,
-    onRestartNode
+    onRestartNode,
+    onStartFirmwareUpdate,
+    onCancelFirmwareUpdate
   } = props
   const [busSelection, setBusSelection] = useState<number>(bus ?? 1)
   const [expanded, setExpanded] = useState<number | null>(null)
+  const fwView = buildDronecanFirmwareUpdateView(firmwareUpdate)
+  // While an update is transferring, lock every node's other actions (one
+  // update at a time, and a write/restart mid-flash could corrupt the node).
+  const updateInProgress = !!(fwView && fwView.inProgress)
   // Draft param edits, keyed `${nodeId}:${name}` (same convention as the CAN
   // tab's pure staged-changes helper). Nothing is written until Apply & Save.
   const [draftValues, setDraftValues] = useState<Record<string, string>>({})
@@ -300,7 +450,7 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                                   type="button"
                                   style={buttonStyle()}
                                   onClick={() => onFetchParams(node.nodeId)}
-                                  disabled={busy}
+                                  disabled={busy || updateInProgress}
                                   data-testid={`dronecan-refetch-${node.nodeId}`}
                                 >
                                   Re-fetch
@@ -343,7 +493,7 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                                       <input
                                         type="text"
                                         value={inputValue}
-                                        disabled={!row.editable || busy}
+                                        disabled={!row.editable || busy || updateInProgress}
                                         onChange={(event) =>
                                           setDraft(node.nodeId, row.name, event.target.value, row.valueLabel)
                                         }
@@ -371,7 +521,7 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                                     type="button"
                                     style={buttonStyle('primary')}
                                     onClick={() => applyAndSave(node.nodeId, stagedChanges)}
-                                    disabled={busy || validChanges.length === 0}
+                                    disabled={busy || updateInProgress || validChanges.length === 0}
                                     data-testid={`dronecan-apply-save-${node.nodeId}`}
                                   >
                                     Apply &amp; Save ({validChanges.length})
@@ -414,7 +564,7 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                                     onRestartNode(node.nodeId)
                                     setConfirmRestart(null)
                                   }}
-                                  disabled={busy}
+                                  disabled={busy || updateInProgress}
                                   data-testid={`dronecan-restart-confirm-${node.nodeId}`}
                                 >
                                   Confirm restart
@@ -433,13 +583,23 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                                 type="button"
                                 style={buttonStyle()}
                                 onClick={() => setConfirmRestart(node.nodeId)}
-                                disabled={busy}
+                                disabled={busy || updateInProgress}
                                 data-testid={`dronecan-restart-${node.nodeId}`}
                               >
                                 Restart node
                               </button>
                             )}
                           </div>
+
+                          {/* ---- Firmware update (file server over CAN_FORWARD) ---- */}
+                          <NodeFirmwareUpdate
+                            nodeId={node.nodeId}
+                            view={fwView}
+                            anotherUpdateActive={updateInProgress && fwView?.nodeId !== node.nodeId}
+                            busy={busy}
+                            onStart={onStartFirmwareUpdate}
+                            onCancel={onCancelFirmwareUpdate}
+                          />
                         </div>
                       ) : null}
                     </div>
