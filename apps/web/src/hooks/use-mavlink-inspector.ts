@@ -14,17 +14,19 @@ import type { ArduPilotConfiguratorRuntime } from '@arduconfig/ardupilot-core'
 
 import { downloadTextFile } from '../download-file'
 import {
+  accountSequence,
   appendPlotSample,
+  createSeqAccounting,
   inspectorExportFilename,
   lossPercent,
   pushRecordedMessage,
   RECORDING_MAX_MESSAGES,
-  sequenceGap,
   serializePlotCsv,
   serializeRecording,
   serializeStatsSnapshot,
   toPlottableNumber,
   type MavlinkSourceHealth,
+  type SourceSeqAccounting,
   type RecordedMavlinkMessage,
   type PlotSample
 } from '../view-models/mavlink-inspector'
@@ -87,12 +89,9 @@ interface Accumulator {
 }
 
 /** Per-source (sys:comp) sequence + loss accounting, across all message types. */
-interface SourceAccumulator {
+interface SourceAccumulator extends SourceSeqAccounting {
   systemId: number
   componentId: number
-  received: number
-  dropped: number
-  lastSeq: number | undefined
 }
 
 export interface MavlinkInspectorState {
@@ -210,15 +209,12 @@ export function useMavlinkInspector(
       const sourceId = `${systemId}:${componentId}`
       const sequence = envelope.header.sequence
       const source =
-        sources.current.get(sourceId) ??
-        { systemId, componentId, received: 0, dropped: 0, lastSeq: undefined }
-      if (typeof sequence === 'number' && source.lastSeq !== undefined) {
-        source.dropped += sequenceGap(source.lastSeq, sequence)
-      }
+        sources.current.get(sourceId) ?? { systemId, componentId, ...createSeqAccounting() }
       if (typeof sequence === 'number') {
-        source.lastSeq = sequence
+        accountSequence(source, sequence)
+      } else {
+        source.received += 1
       }
-      source.received += 1
       sources.current.set(sourceId, source)
 
       // Stream recording rides the same hot path but is otherwise independent
@@ -319,7 +315,7 @@ export function useMavlinkInspector(
           received: source.received,
           dropped: source.dropped,
           lossPct: lossPercent(source.received, source.dropped),
-          lastSeqSeen: source.lastSeq
+          lastSeqSeen: source.expected === undefined ? undefined : (source.expected - 1) & 0xff
         })
       }
       setSourceHealth(health)

@@ -31,9 +31,11 @@ import {
   messageNameForId,
   messageToJson,
   pushRecordedMessage,
+  accountSequence,
+  createSeqAccounting,
   RECORDING_MAX_MESSAGES,
   REQUESTABLE_MESSAGES,
-  sequenceGap,
+  SEQ_REORDER_WINDOW,
   serializePlotCsv,
   serializeRecording,
   serializeStatsSnapshot,
@@ -364,25 +366,32 @@ describe('field plotting', () => {
 })
 
 describe('link health — packet loss', () => {
+  const feed = (seqs: number[]) => {
+    const s = createSeqAccounting()
+    for (const q of seqs) accountSequence(s, q & 0xff)
+    return s
+  }
+
   it('counts no loss for consecutive sequences', () => {
-    expect(sequenceGap(10, 11)).toBe(0)
-    expect(sequenceGap(0, 1)).toBe(0)
+    expect(feed([10, 11, 12, 13]).dropped).toBe(0)
+    expect(feed([254, 255, 0, 1]).dropped).toBe(0) // wraps at 256
   })
 
-  it('counts the skipped sequence numbers as dropped frames', () => {
-    expect(sequenceGap(10, 13)).toBe(2)
-    expect(sequenceGap(100, 105)).toBe(4)
+  it('recovers late / out-of-order frames within the window (no false loss)', () => {
+    // forward jump skips 1,2 — then they arrive late → recovered, not lost.
+    expect(feed([0, 3, 1, 2]).dropped).toBe(0)
+    // same across the 8-bit wrap (skip 255, it arrives after 0).
+    expect(feed([254, 0, 255]).dropped).toBe(0)
+    // an exact duplicate is not loss.
+    expect(feed([42, 42]).dropped).toBe(0)
   })
 
-  it('wraps the 8-bit sequence at 256', () => {
-    // 255 -> 0 is consecutive (no loss); 255 -> 2 drops 0 and 1.
-    expect(sequenceGap(255, 0)).toBe(0)
-    expect(sequenceGap(255, 2)).toBe(2)
-    expect(sequenceGap(254, 1)).toBe(2)
-  })
-
-  it('treats an exact duplicate / reorder onto the same seq as no loss', () => {
-    expect(sequenceGap(42, 42)).toBe(0)
+  it('counts a never-arriving skipped seq as loss once it falls outside the window', () => {
+    const s = createSeqAccounting()
+    accountSequence(s, 0)
+    accountSequence(s, 2) // skips 1, which never arrives
+    for (let q = 3; q < 3 + SEQ_REORDER_WINDOW + 5; q++) accountSequence(s, q & 0xff)
+    expect(s.dropped).toBe(1)
   })
 
   it('computes loss as a percentage of expected frames', () => {

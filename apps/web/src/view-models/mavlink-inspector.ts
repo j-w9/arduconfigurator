@@ -483,17 +483,63 @@ export function formatPlotValue(value: number): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Count packets dropped between two MAVLink v2 sequence bytes for the same
- * source. The 8-bit sequence increments once per frame and wraps at 256, so
- * the forward distance `(seq - prevSeq) mod 256` is the number of frames the
- * sender emitted since the last one we saw; one of those is the frame that
- * just arrived, so `distance - 1` were dropped. A consecutive frame
- * (distance 1) and an exact duplicate / reorder onto the same seq (distance 0)
- * both count as zero loss. Pure / unit-tested.
+ * Reorder-tolerant per-source packet-loss accounting off the MAVLink v2
+ * sequence byte (8-bit, wraps at 256). A skipped sequence is only counted as
+ * dropped once it has fallen `SEQ_REORDER_WINDOW` frames behind without ever
+ * arriving — frames that show up late / out of order within the window are
+ * recovered, not counted as loss. This avoids the false-loss a naive
+ * "forward distance" counter reports when frames are delivered out of order
+ * (e.g. a transport interleaving a solicited burst with a live stream — the
+ * in-browser demo mock does exactly this). On a real, in-order single-source
+ * stream it reports genuine gaps. Pure / unit-tested.
  */
-export function sequenceGap(prevSeq: number, seq: number): number {
-  const distance = (seq - prevSeq) & 0xff
-  return distance <= 1 ? 0 : distance - 1
+export const SEQ_REORDER_WINDOW = 64
+
+export interface SourceSeqAccounting {
+  /** Next sequence we expect (undefined until the first frame). */
+  expected: number | undefined
+  received: number
+  dropped: number
+  /** Skipped seqs awaiting a possible late (reordered) arrival. */
+  pending: Set<number>
+}
+
+export function createSeqAccounting(): SourceSeqAccounting {
+  return { expected: undefined, received: 0, dropped: 0, pending: new Set() }
+}
+
+/** Account one frame's sequence byte. Mutates + returns `state`. */
+export function accountSequence(state: SourceSeqAccounting, seq: number): SourceSeqAccounting {
+  state.received += 1
+  if (state.expected === undefined) {
+    state.expected = (seq + 1) & 0xff
+    return state
+  }
+  const gap = (seq - state.expected) & 0xff
+  if (gap === 0) {
+    // exactly the next frame — in order
+    state.expected = (seq + 1) & 0xff
+  } else if (gap <= 0x7f) {
+    // forward jump: the skipped seqs may yet arrive out of order — hold them
+    for (let i = 0; i < gap; i++) {
+      state.pending.add((state.expected + i) & 0xff)
+    }
+    state.expected = (seq + 1) & 0xff
+  } else {
+    // seq is behind `expected` (wrap-back) — a late/reordered frame or a
+    // duplicate. Recover it from pending if we were waiting on it; otherwise
+    // it's an old/duplicate frame. Either way it is not a loss, and it does
+    // not advance `expected`.
+    state.pending.delete(seq)
+  }
+  // Finalise any pending seq that has now fallen outside the reorder window.
+  for (const p of state.pending) {
+    if (((state.expected - p) & 0xff) > SEQ_REORDER_WINDOW) {
+      state.dropped += 1
+      state.pending.delete(p)
+    }
+  }
+  return state
 }
 
 /** Loss as a percentage of expected frames (received + dropped). 0 when idle. */
