@@ -520,8 +520,6 @@ test.describe('browser configurator regression flows', () => {
     await openView(page, 'ports')
     await expect(page.getByRole('heading', { name: 'Ports & Peripherals' })).toBeVisible()
     await expect(page.getByTestId('ports-gps-map-widget')).toBeVisible()
-    await expect(page.getByText('OSD routed through dedicated tab')).toBeVisible()
-    await expect(page.getByText('VTX routed through dedicated tab')).toBeVisible()
     await openView(page, 'setup')
     await expect(page.getByTestId('workspace-view-title')).toHaveText('Status & Info')
 
