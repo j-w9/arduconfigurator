@@ -2547,11 +2547,46 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('view-button-mavlink-inspector').click()
     await expect(page.getByTestId('mavlink-inspector')).toBeVisible()
     await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
+    // Summary + sort + pause affordances are present.
+    await expect(page.getByTestId('mavlink-inspector-summary')).toContainText('msg/s')
+    await expect(page.getByTestId('mavlink-inspector-sort')).toBeVisible()
+
+    // Pause freezes the table; the badge flips to "paused" and back on resume.
+    const pause = page.getByTestId('mavlink-inspector-pause')
+    await pause.click()
+    await expect(pause).toHaveText('Resume')
+    await expect(page.getByTestId('mavlink-inspector')).toContainText('paused')
+    await pause.click()
+    await expect(pause).toHaveText('Pause')
 
     // DroneCAN inspector offers a CAN1/CAN2 bus selector + start control.
     await page.getByTestId('view-button-dronecan-inspector').click()
     await expect(page.getByTestId('dronecan-inspector')).toBeVisible()
+    await expect(page.getByTestId('dronecan-inspector-summary')).toContainText('frames/s')
     await expect(page.getByTestId('dronecan-inspector-bus')).toBeVisible()
     await expect(page.getByTestId('dronecan-inspector-start')).toBeVisible()
+  })
+
+  test('MAVLink rows expand to copyable fields and DroneCAN nodes show detail', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    // Expand the first decoded MAVLink row and reveal its copy affordance.
+    await page.getByTestId('view-button-mavlink-inspector').click()
+    const mavTable = page.getByTestId('mavlink-inspector-table')
+    await expect(mavTable).toBeVisible({ timeout: 8000 })
+    await mavTable.locator('[data-testid^="mavlink-row-"]').first().getByRole('button').first().click()
+    await expect(page.getByRole('button', { name: 'Copy JSON' }).first()).toBeVisible()
+
+    // Start the DroneCAN bus and expand the first discovered node's detail.
+    await page.getByTestId('view-button-dronecan-inspector').click()
+    await page.getByTestId('dronecan-inspector-start').click()
+    const table = page.getByTestId('dronecan-inspector-table')
+    await expect(table).toBeVisible({ timeout: 12000 })
+    const firstNode = table.locator('[data-testid^="dronecan-node-"]').first()
+    await firstNode.getByRole('button').first().click()
+    await expect(page.locator('[data-testid^="dronecan-node-detail-"]').first()).toContainText('Node ID')
   })
 })
