@@ -26,6 +26,7 @@ export type OutputTaskId =
   | 'esc-protocol'
   | 'servo-mapping'
   | 'peripherals'
+  | 'relays'
   | 'review'
 
 export interface AppViewDescriptor {

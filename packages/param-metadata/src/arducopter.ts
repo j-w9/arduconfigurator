@@ -2,6 +2,7 @@ import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
+import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
 import {
   ARDUCOPTER_AUTOTUNE_AXES_BIT_LABELS,
   ARDUCOPTER_BATTERY_FAILSAFE_ACTION_LABELS,
@@ -759,6 +760,13 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       order: 9.6,
       viewId: 'motors'
     },
+    relays: {
+      id: 'relays',
+      label: 'Relays',
+      description: 'GPIO relay function mapping, pin assignment, default state, and signal inversion (RELAY1..RELAY6).',
+      order: 9.7,
+      viewId: 'servos'
+    },
     power: {
       id: 'power',
       label: 'Power',
@@ -1098,6 +1106,9 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     ...buildMountParameterDefinitions(1),
     ...buildMountParameterDefinitions(2),
     ...buildRangefinderParameterDefinitions(1),
+    ...Array.from({ length: RELAY_INSTANCE_COUNT }, (_, index) =>
+      buildRelayParameterDefinitions(index + 1)
+    ).reduce((merged, family) => ({ ...merged, ...family }), {}),
     AHRS_ORIENTATION: {
       id: 'AHRS_ORIENTATION',
       label: 'Board Orientation',

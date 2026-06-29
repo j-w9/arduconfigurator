@@ -1722,6 +1722,25 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByText('LED & buzzer notifications')).toBeVisible()
   })
 
+  test('Servos tab exposes a Relays tab that renders relay cards and stages an edit', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-servos').click()
+
+    // Switch to the Relays sub-tab; the seeded RELAY1/RELAY2 cards render.
+    await page.getByTestId('outputs-task-nav').getByRole('tab', { name: /Relays/i }).click()
+    await expect(page.getByTestId('relays-task-body')).toBeVisible()
+    await expect(page.getByTestId('relay-card-1')).toBeVisible()
+    await expect(page.getByTestId('relay-card-2')).toBeVisible()
+    // RELAY1_FUNCTION = Relay (seeded), so the enum + PIN field render.
+    await expect(page.getByTestId('relay-card-1').locator('input[type="number"]')).toHaveValue('50')
+
+    // Staging an edit flows through the same staged-draft + Apply bar.
+    await page.getByTestId('scoped-chips-RELAY1_INVERTED').getByRole('radio', { name: 'Inverted' }).click()
+    await expect(page.getByTestId('relays-apply')).toContainText('Apply relay changes (1)')
+  })
+
   test('Outputs nav badge is vehicle-aware (no Copter "motors" framing for a Plane)', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')

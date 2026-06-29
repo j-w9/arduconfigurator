@@ -41,6 +41,9 @@ export interface OutputTaskCardInputs {
   hasNotificationLedTypes: boolean
   hasNotificationBuzzTypes: boolean
   outputAdditionalGroupCount: number
+  relayInstanceCount: number
+  relayStagedCount: number
+  relayInvalidCount: number
   totalOutputInvalidDrafts: number
   totalOutputStagedDrafts: number
 }
@@ -136,6 +139,9 @@ export function buildOutputTaskCards(inputs: OutputTaskCardInputs): OutputTaskCa
     hasNotificationLedTypes,
     hasNotificationBuzzTypes,
     outputAdditionalGroupCount,
+    relayInstanceCount,
+    relayStagedCount,
+    relayInvalidCount,
     totalOutputInvalidDrafts,
     totalOutputStagedDrafts
   } = inputs
@@ -246,6 +252,26 @@ export function buildOutputTaskCards(inputs: OutputTaskCardInputs): OutputTaskCa
             : configuredAuxOutputCount > 0
               ? 'success'
               : 'neutral'
+    },
+    {
+      id: 'relays' as const,
+      label: 'Relays',
+      value:
+        relayInvalidCount > 0
+          ? `${relayInvalidCount} invalid`
+          : relayStagedCount > 0
+            ? `${relayStagedCount} staged`
+            : `${relayInstanceCount} relay${relayInstanceCount === 1 ? '' : 's'}`,
+      detail:
+        relayInstanceCount > 0
+          ? 'Map flight-controller GPIO pins to relay functions and set each relay default state and polarity.'
+          : 'No relay parameters are currently exposed on this vehicle.',
+      tone:
+        relayInvalidCount > 0
+          ? 'danger'
+          : relayStagedCount > 0
+            ? 'warning'
+            : 'neutral'
     },
     {
       id: 'review' as const,

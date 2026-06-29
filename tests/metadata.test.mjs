@@ -172,6 +172,50 @@ test('every vehicle bundle exposes the rangefinder/lidar RNGFND1 family', () => 
   }
 })
 
+test('every vehicle bundle exposes the AP_Relay RELAY1..RELAY6 family on the Servos surface', () => {
+  const bundles = {
+    ArduCopter: arducopterMetadata,
+    ArduPlane: arduplaneMetadata,
+    ArduRover: arduroverMetadata,
+    ArduSub: ardusubMetadata
+  }
+  for (const [vehicle, bundle] of Object.entries(bundles)) {
+    const metadata = normalizeFirmwareMetadata(bundle)
+    // AP_RELAY_NUM_RELAYS defaults to 6, so all six instances ship.
+    for (let instance = 1; instance <= 6; instance += 1) {
+      for (const field of ['FUNCTION', 'PIN', 'DEFAULT', 'INVERTED']) {
+        const id = `RELAY${instance}_${field}`
+        assert.equal(metadata.parameters[id]?.categoryDefinition.id, 'relays', `${vehicle} ${id} in relays category`)
+        assert.equal(metadata.parameters[id]?.categoryDefinition.viewId, 'servos', `${vehicle} ${id} routes to Servos`)
+      }
+    }
+    const fn = metadata.parameters.RELAY1_FUNCTION
+    // FUNCTION value->label map pinned against AP_Relay_Params.cpp @Values.
+    assert.ok(fn.options.some((option) => option.value === 0 && option.label === 'None'))
+    assert.ok(fn.options.some((option) => option.value === 1 && option.label === 'Relay'))
+    assert.ok(fn.options.some((option) => option.value === 3 && option.label === 'Parachute'))
+    assert.ok(fn.options.some((option) => option.value === 4 && option.label === 'Camera'))
+    assert.ok(fn.options.some((option) => option.value === 9 && option.label === 'ICE Starter'))
+    assert.ok(fn.options.some((option) => option.value === 25), `${vehicle} keeps DroneCAN Hardpoint 15`)
+    // DEFAULT/INVERTED enums + PIN range (-1..1015 per @Range).
+    assert.deepEqual(
+      metadata.parameters.RELAY1_DEFAULT?.options?.map((option) => option.label),
+      ['Off', 'On', 'NoChange'],
+      `${vehicle} RELAY1_DEFAULT labels`
+    )
+    assert.deepEqual(
+      metadata.parameters.RELAY1_INVERTED?.options?.map((option) => option.label),
+      ['Normal', 'Inverted'],
+      `${vehicle} RELAY1_INVERTED labels`
+    )
+    assert.equal(metadata.parameters.RELAY1_PIN?.minimum, -1, `${vehicle} RELAY1_PIN min`)
+    assert.equal(metadata.parameters.RELAY1_PIN?.maximum, 1015, `${vehicle} RELAY1_PIN max`)
+    assert.ok((metadata.parameters.RELAY1_PIN?.options ?? []).length === 0, `${vehicle} RELAY1_PIN is a numeric field`)
+    // DEFAULT only applies to the "Relay" function (1).
+    assert.deepEqual(metadata.parameters.RELAY1_DEFAULT?.visibleWhen, { paramId: 'RELAY1_FUNCTION', in: [1] }, `${vehicle} RELAY1_DEFAULT visibleWhen`)
+  }
+})
+
 test('conditional (visibleWhen) params gate on the controlling parameter value', () => {
   const metadata = normalizeFirmwareMetadata(arducopterMetadata)
   // Analog-only knobs reveal when RNGFND1_TYPE = Analog (1).
