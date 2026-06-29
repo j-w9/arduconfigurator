@@ -1,6 +1,7 @@
 // Read-only DroneCAN bus inspector: starts the CAN_FORWARD tunnel and shows live
-// node traffic — node id, name, health, mode, uptime, last-seen — plus the
-// frames-received heartbeat. Distinct from the CAN tab (which edits per-node
+// node traffic — node id, name, health, mode, uptime, last-seen — plus bus stats
+// (frames/s, unique nodes) and an expandable per-node detail panel (full
+// NodeStatus + version identity). Distinct from the CAN tab (which edits per-node
 // params); this is observe-only. Presentational — state + handlers from App.
 
 import { useState } from 'react'
@@ -8,10 +9,13 @@ import { useState } from 'react'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { CanBusState, DronecanInspectedNode } from '@arduconfig/ardupilot-core'
 
+import { buildDronecanNodeDetailRows, summarizeDronecanNodes } from '../view-models/dronecan-inspector'
+
 export interface DronecanInspectorViewProps {
   status: CanBusState['status']
   bus: number | undefined
   framesReceived: number
+  framesPerSec: number
   error: string | undefined
   nodes: readonly DronecanInspectedNode[]
   connected: boolean
@@ -40,9 +44,11 @@ function uptimeLabel(uptimeSec: number | undefined): string {
 }
 
 export function DronecanInspectorView(props: DronecanInspectorViewProps) {
-  const { status, bus, framesReceived, error, nodes, connected, busy, onStart, onStop } = props
+  const { status, bus, framesReceived, framesPerSec, error, nodes, connected, busy, onStart, onStop } = props
   const [busSelection, setBusSelection] = useState<number>(bus ?? 1)
+  const [expanded, setExpanded] = useState<number | null>(null)
   const active = status === 'active'
+  const summary = summarizeDronecanNodes(nodes)
   const statusBadge = active
     ? `CAN${bus ?? 0} live`
     : status === 'requesting'
@@ -63,8 +69,10 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
           <div className="telemetry-header">
             <div>
               <h3>Bus traffic</h3>
-              <p>
-                {nodes.length} node{nodes.length === 1 ? '' : 's'} · {framesReceived} frame{framesReceived === 1 ? '' : 's'} this session
+              <p data-testid="dronecan-inspector-summary">
+                {summary.nodeCount} node{summary.nodeCount === 1 ? '' : 's'}
+                {summary.unhealthyCount > 0 ? ` (${summary.unhealthyCount} unhealthy)` : ''} ·{' '}
+                {framesPerSec.toFixed(0)} frames/s · {framesReceived} this session
               </p>
             </div>
             <StatusBadge tone={active ? 'success' : status === 'error' ? 'danger' : 'neutral'}>{statusBadge}</StatusBadge>
@@ -133,16 +141,43 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
               </div>
               {[...nodes]
                 .sort((left, right) => left.nodeId - right.nodeId)
-                .map((node) => (
-                  <div key={node.nodeId} className="dronecan-inspector__row" data-testid={`dronecan-node-${node.nodeId}`}>
-                    <span className="mavlink-inspector__type">#{node.nodeId}</span>
-                    <span>{node.name ?? '—'}</span>
-                    <span>{node.health}</span>
-                    <span>{node.mode}</span>
-                    <span>{uptimeLabel(node.uptimeSec)}</span>
-                    <span>{ageLabel(node.lastSeenAtMs)}</span>
-                  </div>
-                ))}
+                .map((node) => {
+                  const isOpen = expanded === node.nodeId
+                  return (
+                    <div
+                      key={node.nodeId}
+                      className="mavlink-inspector__entry"
+                      data-testid={`dronecan-node-${node.nodeId}`}
+                    >
+                      <button
+                        type="button"
+                        className="dronecan-inspector__row dronecan-inspector__row--button"
+                        onClick={() => setExpanded(isOpen ? null : node.nodeId)}
+                        aria-expanded={isOpen}
+                      >
+                        <span className="mavlink-inspector__type">#{node.nodeId}</span>
+                        <span>{node.name ?? '—'}</span>
+                        <span>{node.health}</span>
+                        <span>{node.mode}</span>
+                        <span>{uptimeLabel(node.uptimeSec)}</span>
+                        <span>{ageLabel(node.lastSeenAtMs)}</span>
+                      </button>
+                      {isOpen ? (
+                        <dl
+                          className="mavlink-inspector__fields dronecan-inspector__detail"
+                          data-testid={`dronecan-node-detail-${node.nodeId}`}
+                        >
+                          {buildDronecanNodeDetailRows(node).map((row) => (
+                            <div key={row.label} className="mavlink-inspector__field-row">
+                              <dt>{row.label}</dt>
+                              <dd>{row.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      ) : null}
+                    </div>
+                  )
+                })}
             </div>
           )}
         </div>

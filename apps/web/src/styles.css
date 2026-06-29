@@ -12706,7 +12706,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .mavlink-inspector__row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
+  grid-template-columns: 2fr 1fr 1.2fr 1fr 1fr;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -12733,6 +12733,29 @@ details.bf-gui-box:not([open]) > summary::after {
 .mavlink-inspector__type {
   color: var(--accent, #ffbb00);
 }
+.mavlink-inspector__spark {
+  width: 64px;
+  height: 16px;
+  color: var(--accent, #ffbb00);
+  opacity: 0.85;
+}
+.mavlink-inspector__spark--empty {
+  display: inline-block;
+}
+.mavlink-inspector__detail {
+  background: rgba(0, 0, 0, 0.35);
+}
+.mavlink-inspector__detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
 .mavlink-inspector__fields {
   margin: 0;
   padding: 8px 12px;
@@ -12740,10 +12763,26 @@ details.bf-gui-box:not([open]) > summary::after {
   font-family: var(--font-data);
   font-size: 11px;
   color: var(--text-muted);
-  white-space: pre-wrap;
   word-break: break-word;
   max-height: 280px;
   overflow: auto;
+}
+.mavlink-inspector__detail .mavlink-inspector__fields {
+  padding-top: 0;
+}
+.mavlink-inspector__field-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 2fr;
+  gap: 10px;
+  padding: 2px 0;
+}
+.mavlink-inspector__field-row dt {
+  color: var(--text-muted);
+}
+.mavlink-inspector__field-row dd {
+  margin: 0;
+  color: var(--text);
+  word-break: break-word;
 }
 .dronecan-inspector__bus-select {
   display: inline-flex;
@@ -12769,4 +12808,16 @@ details.bf-gui-box:not([open]) > summary::after {
   letter-spacing: 0.05em;
   background: var(--surface-200);
   border-top: none;
+}
+.dronecan-inspector__row--button {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-top: none;
+  color: var(--text);
+  cursor: pointer;
+}
+.dronecan-inspector__detail {
+  border-top: 1px solid var(--surface-300);
 }

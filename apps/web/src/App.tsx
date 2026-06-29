@@ -247,6 +247,7 @@ import { FirmwareFlasher } from './firmware/FirmwareFlasher'
 import { MavlinkInspectorView } from './views/MavlinkInspector'
 import { useMavlinkInspector } from './hooks/use-mavlink-inspector'
 import { DronecanInspectorView } from './views/DronecanInspector'
+import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
 import { ScopedField, ScopedSelectField } from './views/ScopedField'
 import { ModesView } from './views/Modes'
 import { FailsafeSection } from './sections/FailsafeSection'
@@ -1809,9 +1810,16 @@ export function App() {
     Object.entries(selectedPresetDraftValues).filter(([paramId]) => !droppedPresetParamIds.includes(paramId))
   )
   // Live MAVLink inspector stats — only subscribed while its tab is active.
-  const { stats: mavlinkInspectorStats, clear: clearMavlinkInspector } = useMavlinkInspector(
-    runtime,
-    activeViewId === 'mavlink-inspector'
+  const {
+    stats: mavlinkInspectorStats,
+    clear: clearMavlinkInspector,
+    paused: mavlinkInspectorPaused,
+    setPaused: setMavlinkInspectorPaused
+  } = useMavlinkInspector(runtime, activeViewId === 'mavlink-inspector')
+  // Live frames/sec for the DroneCAN inspector, sampled off the cumulative counter.
+  const dronecanFramesPerSec = useDronecanBusStats(
+    snapshot.canBus.framesReceived,
+    snapshot.canBus.status === 'active'
   )
   // Human label for the current selection, used across preset notices/messages.
   const selectedPresetsLabel =
@@ -6899,6 +6907,8 @@ export function App() {
         <MavlinkInspectorView
           stats={mavlinkInspectorStats}
           connected={snapshot.connection.kind === 'connected'}
+          paused={mavlinkInspectorPaused}
+          onTogglePause={() => setMavlinkInspectorPaused(!mavlinkInspectorPaused)}
           onClear={clearMavlinkInspector}
         />
       ) : null}
@@ -6908,6 +6918,7 @@ export function App() {
           status={snapshot.canBus.status}
           bus={snapshot.canBus.bus}
           framesReceived={snapshot.canBus.framesReceived}
+          framesPerSec={dronecanFramesPerSec}
           error={snapshot.canBus.error}
           nodes={snapshot.canBus.nodes}
           connected={snapshot.connection.kind === 'connected'}
