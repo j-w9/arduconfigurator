@@ -16,16 +16,31 @@ import type { MavlinkMessageStat } from '../hooks/use-mavlink-inspector'
 import {
   buildMavlinkFieldRows,
   buildSparklinePoints,
+  describeMessageRequestOutcome,
   filterMavlinkStats,
   filterMavlinkStatsBySource,
   formatBytesPerSec,
   groupMavlinkStatsBySource,
   listMavlinkSources,
+  messageNameForId,
   messageToJson,
+  REQUESTABLE_MESSAGES,
   sortMavlinkStats,
   summarizeMavlinkStats,
+  type MavlinkRequestKind,
   type MavlinkSortKey
 } from '../view-models/mavlink-inspector'
+
+export interface MavlinkMessageRequest {
+  kind: MavlinkRequestKind
+  messageId: number
+  rateHz: number
+}
+
+export interface MavlinkMessageRequestOutcome {
+  ok: boolean
+  resultLabel: string
+}
 
 export interface MavlinkInspectorViewProps {
   stats: readonly MavlinkMessageStat[]
@@ -33,6 +48,8 @@ export interface MavlinkInspectorViewProps {
   paused: boolean
   onTogglePause: () => void
   onClear: () => void
+  /** Issue a SET_MESSAGE_INTERVAL / REQUEST_MESSAGE on the operator's behalf. */
+  onRequestMessage?: (request: MavlinkMessageRequest) => Promise<MavlinkMessageRequestOutcome>
 }
 
 function ageLabel(lastSeenMs: number): string {
@@ -177,7 +194,128 @@ function MavlinkFieldTable({ stat }: { stat: MavlinkMessageStat }) {
   )
 }
 
-export function MavlinkInspectorView({ stats, connected, paused, onTogglePause, onClear }: MavlinkInspectorViewProps) {
+/** Operator control to request a message once or set its stream interval. */
+function MavlinkRequestControl({
+  connected,
+  onRequestMessage
+}: {
+  connected: boolean
+  onRequestMessage: (request: MavlinkMessageRequest) => Promise<MavlinkMessageRequestOutcome>
+}) {
+  const [messageId, setMessageId] = useState(30)
+  const [rateHz, setRateHz] = useState(4)
+  const [busy, setBusy] = useState(false)
+  const [outcome, setOutcome] = useState<string | null>(null)
+
+  const run = (kind: MavlinkRequestKind): void => {
+    if (busy || !connected) {
+      return
+    }
+    setBusy(true)
+    setOutcome(null)
+    const name = messageNameForId(messageId)
+    onRequestMessage({ kind, messageId, rateHz }).then(
+      (result) => {
+        setOutcome(describeMessageRequestOutcome(kind, name, result))
+        setBusy(false)
+      },
+      (error: unknown) => {
+        const detail = error instanceof Error ? error.message : 'request failed'
+        setOutcome(`${name} request failed — ${detail}`)
+        setBusy(false)
+      }
+    )
+  }
+
+  return (
+    <div className="mavlink-inspector__request" data-testid="mavlink-inspector-request">
+      <span className="mavlink-inspector__request-title">Request message</span>
+      <label className="dronecan-inspector__bus-select">
+        <span>Message</span>
+        <select
+          value={REQUESTABLE_MESSAGES.some((entry) => entry.id === messageId) ? String(messageId) : ''}
+          onChange={(event) => {
+            if (event.target.value !== '') {
+              setMessageId(Number(event.target.value))
+            }
+          }}
+          data-testid="mavlink-request-message"
+        >
+          <option value="">Custom…</option>
+          {REQUESTABLE_MESSAGES.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.name} ({entry.id})
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="dronecan-inspector__bus-select">
+        <span>ID</span>
+        <input
+          type="number"
+          min={0}
+          className="mavlink-inspector__request-id"
+          value={messageId}
+          onChange={(event) => setMessageId(Math.max(0, Math.round(Number(event.target.value) || 0)))}
+          data-testid="mavlink-request-id"
+        />
+      </label>
+      <label className="dronecan-inspector__bus-select">
+        <span>Rate (Hz)</span>
+        <input
+          type="number"
+          min={0}
+          max={200}
+          className="mavlink-inspector__request-rate"
+          value={rateHz}
+          onChange={(event) => setRateHz(Math.max(0, Number(event.target.value) || 0))}
+          data-testid="mavlink-request-rate"
+        />
+      </label>
+      <button
+        type="button"
+        style={buttonStyle()}
+        disabled={busy || !connected}
+        onClick={() => run('once')}
+        data-testid="mavlink-request-once"
+      >
+        Request once
+      </button>
+      <button
+        type="button"
+        style={buttonStyle('primary')}
+        disabled={busy || !connected}
+        onClick={() => run('stream')}
+        data-testid="mavlink-request-stream"
+      >
+        Set stream
+      </button>
+      <button
+        type="button"
+        style={buttonStyle()}
+        disabled={busy || !connected}
+        onClick={() => run('disable')}
+        data-testid="mavlink-request-disable"
+      >
+        Disable
+      </button>
+      {outcome ? (
+        <p className="mavlink-inspector__request-result" data-testid="mavlink-request-result" role="status">
+          {outcome}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+export function MavlinkInspectorView({
+  stats,
+  connected,
+  paused,
+  onTogglePause,
+  onClear,
+  onRequestMessage
+}: MavlinkInspectorViewProps) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
   const [sortKey, setSortKey] = useState<MavlinkSortKey>('name')
@@ -266,6 +404,10 @@ export function MavlinkInspectorView({ stats, connected, paused, onTogglePause, 
               Clear
             </button>
           </div>
+
+          {onRequestMessage ? (
+            <MavlinkRequestControl connected={connected} onRequestMessage={onRequestMessage} />
+          ) : null}
 
           {!connected && stats.length === 0 ? (
             <p className="telemetry-note">Connect to a vehicle to see the live MAVLink message stream.</p>

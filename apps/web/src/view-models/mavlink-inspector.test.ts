@@ -5,16 +5,20 @@ import {
   buildMavlinkFieldRows,
   buildSparklinePoints,
   describeMavlinkSource,
+  describeMessageRequestOutcome,
   filterMavlinkStats,
   filterMavlinkStatsBySource,
   formatBytesPerSec,
   formatMavlinkFieldType,
   formatMavlinkFieldValue,
   groupMavlinkStatsBySource,
+  intervalUsForRate,
   isPlottableFieldValue,
   listMavlinkSources,
   mavlinkComponentLabel,
+  messageNameForId,
   messageToJson,
+  REQUESTABLE_MESSAGES,
   sortMavlinkStats,
   summarizeMavlinkStats
 } from './mavlink-inspector'
@@ -236,6 +240,43 @@ describe('messageToJson', () => {
   it('pretty-prints without the type field and survives bigints', () => {
     const json = messageToJson({ type: 'HEARTBEAT', custom_mode: 5n })
     expect(json).toBe('{\n  "custom_mode": "5"\n}')
+  })
+})
+
+describe('message requests', () => {
+  it('converts a rate to a SET_MESSAGE_INTERVAL micros value', () => {
+    expect(intervalUsForRate(10)).toBe(100000)
+    expect(intervalUsForRate(1)).toBe(1000000)
+    expect(intervalUsForRate(4)).toBe(250000)
+    // 0 requests the firmware default; non-positive disables (-1).
+    expect(intervalUsForRate(0)).toBe(0)
+    expect(intervalUsForRate(-1)).toBe(-1)
+  })
+
+  it('exposes a curated, unique list of requestable messages', () => {
+    const ids = REQUESTABLE_MESSAGES.map((entry) => entry.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(REQUESTABLE_MESSAGES.find((entry) => entry.name === 'ATTITUDE')?.id).toBe(30)
+  })
+
+  it('resolves message names with a fallback for unknown ids', () => {
+    expect(messageNameForId(30)).toBe('ATTITUDE')
+    expect(messageNameForId(9999)).toBe('msg 9999')
+  })
+
+  it('describes accepted and rejected outcomes per kind', () => {
+    expect(describeMessageRequestOutcome('once', 'ATTITUDE', { ok: true, resultLabel: 'ACCEPTED' })).toBe(
+      'Requested ATTITUDE — accepted (ACCEPTED).'
+    )
+    expect(describeMessageRequestOutcome('stream', 'RC_CHANNELS', { ok: true, resultLabel: 'ACCEPTED' })).toBe(
+      'Streaming RC_CHANNELS — accepted (ACCEPTED).'
+    )
+    expect(describeMessageRequestOutcome('disable', 'VIBRATION', { ok: true, resultLabel: 'ACCEPTED' })).toBe(
+      'Disabled VIBRATION — accepted (ACCEPTED).'
+    )
+    expect(describeMessageRequestOutcome('stream', 'ATTITUDE', { ok: false, resultLabel: 'DENIED' })).toBe(
+      'ATTITUDE request rejected (DENIED).'
+    )
   })
 })
 

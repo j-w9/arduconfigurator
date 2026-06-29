@@ -306,3 +306,72 @@ export function buildSparklinePoints(
     })
     .join(' ')
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 — interactive message requests (SET_MESSAGE_INTERVAL / REQUEST_MESSAGE)
+// ---------------------------------------------------------------------------
+
+export interface MavlinkRequestableMessage {
+  id: number
+  name: string
+}
+
+/**
+ * Curated list of commonly-requested ArduPilot telemetry messages for the
+ * inspector's request control. Ids are MAVLink common-dialect message ids;
+ * kept here (not imported from protocol-mavlink) so the view stays dumb. An
+ * operator can also type any numeric id in the control.
+ */
+export const REQUESTABLE_MESSAGES: readonly MavlinkRequestableMessage[] = [
+  { id: 0, name: 'HEARTBEAT' },
+  { id: 1, name: 'SYS_STATUS' },
+  { id: 24, name: 'GPS_RAW_INT' },
+  { id: 27, name: 'RAW_IMU' },
+  { id: 29, name: 'SCALED_PRESSURE' },
+  { id: 30, name: 'ATTITUDE' },
+  { id: 31, name: 'ATTITUDE_QUATERNION' },
+  { id: 33, name: 'GLOBAL_POSITION_INT' },
+  { id: 36, name: 'SERVO_OUTPUT_RAW' },
+  { id: 62, name: 'NAV_CONTROLLER_OUTPUT' },
+  { id: 65, name: 'RC_CHANNELS' },
+  { id: 74, name: 'VFR_HUD' },
+  { id: 116, name: 'SCALED_IMU2' },
+  { id: 147, name: 'BATTERY_STATUS' },
+  { id: 148, name: 'AUTOPILOT_VERSION' },
+  { id: 193, name: 'EKF_STATUS_REPORT' },
+  { id: 241, name: 'VIBRATION' }
+] as const
+
+export type MavlinkRequestKind = 'once' | 'stream' | 'disable'
+
+/**
+ * Convert a requested rate (Hz) to the SET_MESSAGE_INTERVAL interval parameter
+ * in microseconds, matching MAVLink semantics: a positive rate becomes the
+ * per-message period, 0 requests the firmware default rate, and any
+ * non-positive rate disables the stream (-1). The single source of truth for
+ * the µs the autopilot receives.
+ */
+export function intervalUsForRate(rateHz: number): number {
+  if (rateHz > 0) {
+    return Math.round(1_000_000 / rateHz)
+  }
+  return rateHz === 0 ? 0 : -1
+}
+
+/** Human label for a finished message request, for the result line. */
+export function describeMessageRequestOutcome(
+  kind: MavlinkRequestKind,
+  messageName: string,
+  outcome: { ok: boolean; resultLabel: string }
+): string {
+  const verb = kind === 'once' ? 'Requested' : kind === 'disable' ? 'Disabled' : 'Streaming'
+  if (outcome.ok) {
+    return `${verb} ${messageName} — accepted (${outcome.resultLabel}).`
+  }
+  return `${messageName} request rejected (${outcome.resultLabel}).`
+}
+
+/** Resolve a message-id to its known name, or "msg <id>" for unknown ids. */
+export function messageNameForId(messageId: number): string {
+  return REQUESTABLE_MESSAGES.find((entry) => entry.id === messageId)?.name ?? `msg ${messageId}`
+}

@@ -12659,6 +12659,36 @@ details.bf-gui-box:not([open]) > summary::after {
   flex: 1;
   min-height: 30px;
 }
+.mavlink-inspector__request {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--surface-300);
+  border-radius: var(--radius-md);
+  background: var(--surface-100, rgba(255, 255, 255, 0.02));
+}
+.mavlink-inspector__request-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  align-self: center;
+}
+.mavlink-inspector__request-id {
+  width: 84px;
+}
+.mavlink-inspector__request-rate {
+  width: 72px;
+}
+.mavlink-inspector__request-result {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-muted);
+}
 .mavlink-inspector__table {
   display: flex;
   flex-direction: column;

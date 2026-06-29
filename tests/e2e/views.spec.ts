@@ -2600,6 +2600,24 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.locator('[data-testid^="dronecan-node-detail-"]').first()).toContainText('Node ID')
   })
 
+  test('MAVLink inspector requests a message stream and surfaces the result', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    await page.getByTestId('view-button-mavlink-inspector').click()
+    await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
+
+    // The request control lets the operator pick a message + rate and set its
+    // stream interval; the demo FC acks SET_MESSAGE_INTERVAL as ACCEPTED.
+    await expect(page.getByTestId('mavlink-inspector-request')).toBeVisible()
+    await page.getByTestId('mavlink-request-message').selectOption('30')
+    await page.getByTestId('mavlink-request-rate').fill('5')
+    await page.getByTestId('mavlink-request-stream').click()
+    await expect(page.getByTestId('mavlink-request-result')).toContainText('accepted', { timeout: 8000 })
+  })
+
   test('DroneCAN inspector manages a node: param grid, restart, ESC telemetry', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')

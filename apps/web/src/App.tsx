@@ -246,6 +246,7 @@ import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
 import { MavlinkInspectorView } from './views/MavlinkInspector'
+import { intervalUsForRate } from './view-models/mavlink-inspector'
 import { useMavlinkInspector } from './hooks/use-mavlink-inspector'
 import { DronecanInspectorView, type DronecanFirmwareOnlineSource } from './views/DronecanInspector'
 import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
@@ -7015,6 +7016,20 @@ export function App() {
           paused={mavlinkInspectorPaused}
           onTogglePause={() => setMavlinkInspectorPaused(!mavlinkInspectorPaused)}
           onClear={clearMavlinkInspector}
+          onRequestMessage={
+            runtime
+              ? async ({ kind, messageId, rateHz }) => {
+                  const result =
+                    kind === 'once'
+                      ? await runtime.requestMessageOnce(messageId)
+                      : await runtime.requestMessageInterval(
+                          messageId,
+                          intervalUsForRate(kind === 'disable' ? -1 : rateHz)
+                        )
+                  return { ok: result.ok, resultLabel: result.resultLabel }
+                }
+              : undefined
+          }
         />
       ) : null}
 
