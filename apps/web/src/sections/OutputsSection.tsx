@@ -922,28 +922,30 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                         {notificationLedTypesParameter ? (
                           <label className={`scoped-editor-field scoped-editor-field--${parameterDraftById.get(notificationLedTypesParameter.id)?.status ?? 'unchanged'}`}>
                             <span>{notificationLedTypesParameter.definition?.label ?? notificationLedTypesParameter.id}</span>
-                            <div className="scoped-checkbox-list">
+                            <div className="scoped-bitmask-bits">
                               {Object.entries(ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS).map(([bit, label]) => {
                                 const numericBit = Number(bit)
+                                const checked = hasBitmaskFlag(editedNotificationLedTypes, numericBit)
                                 return (
-                                  <label key={`${notificationLedTypesParameter.id}:${bit}`} className="scoped-checkbox-option">
-                                    <input
-                                      type="checkbox"
-                                      checked={hasBitmaskFlag(editedNotificationLedTypes, numericBit)}
-                                      onChange={(event) =>
-                                        updateDrafts((existing) => {
-                                          const currentValue = normalizeBitmaskValue(existing[notificationLedTypesParameter.id], notificationLedTypes)
-                                          const nextValue = toggleBitmaskFlag(currentValue, numericBit, event.target.checked)
+                                  <button
+                                    type="button"
+                                    key={`${notificationLedTypesParameter.id}:${bit}`}
+                                    className={`scoped-bitmask-bit${checked ? ' is-set' : ''}`}
+                                    aria-pressed={checked}
+                                    onClick={() =>
+                                      updateDrafts((existing) => {
+                                        const currentValue = normalizeBitmaskValue(existing[notificationLedTypesParameter.id], notificationLedTypes)
+                                        const nextValue = toggleBitmaskFlag(currentValue, numericBit, !checked)
 
-                                          return {
-                                            ...existing,
-                                            [notificationLedTypesParameter.id]: String(nextValue)
-                                          }
-                                        })
-                                      }
-                                    />
-                                    <span>{label}</span>
-                                  </label>
+                                        return {
+                                          ...existing,
+                                          [notificationLedTypesParameter.id]: String(nextValue)
+                                        }
+                                      })
+                                    }
+                                  >
+                                    {label}
+                                  </button>
                                 )
                               })}
                             </div>
@@ -989,28 +991,30 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                         {notificationBuzzTypesParameter ? (
                           <label className={`scoped-editor-field scoped-editor-field--${parameterDraftById.get(notificationBuzzTypesParameter.id)?.status ?? 'unchanged'}`}>
                             <span>{notificationBuzzTypesParameter.definition?.label ?? notificationBuzzTypesParameter.id}</span>
-                            <div className="scoped-checkbox-list">
+                            <div className="scoped-bitmask-bits">
                               {Object.entries(ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS).map(([bit, label]) => {
                                 const numericBit = Number(bit)
+                                const checked = hasBitmaskFlag(editedNotificationBuzzTypes, numericBit)
                                 return (
-                                  <label key={`${notificationBuzzTypesParameter.id}:${bit}`} className="scoped-checkbox-option">
-                                    <input
-                                      type="checkbox"
-                                      checked={hasBitmaskFlag(editedNotificationBuzzTypes, numericBit)}
-                                      onChange={(event) =>
-                                        updateDrafts((existing) => {
-                                          const currentValue = normalizeBitmaskValue(existing[notificationBuzzTypesParameter.id], notificationBuzzTypes)
-                                          const nextValue = toggleBitmaskFlag(currentValue, numericBit, event.target.checked)
+                                  <button
+                                    type="button"
+                                    key={`${notificationBuzzTypesParameter.id}:${bit}`}
+                                    className={`scoped-bitmask-bit${checked ? ' is-set' : ''}`}
+                                    aria-pressed={checked}
+                                    onClick={() =>
+                                      updateDrafts((existing) => {
+                                        const currentValue = normalizeBitmaskValue(existing[notificationBuzzTypesParameter.id], notificationBuzzTypes)
+                                        const nextValue = toggleBitmaskFlag(currentValue, numericBit, !checked)
 
-                                          return {
-                                            ...existing,
-                                            [notificationBuzzTypesParameter.id]: String(nextValue)
-                                          }
-                                        })
-                                      }
-                                    />
-                                    <span>{label}</span>
-                                  </label>
+                                        return {
+                                          ...existing,
+                                          [notificationBuzzTypesParameter.id]: String(nextValue)
+                                        }
+                                      })
+                                    }
+                                  >
+                                    {label}
+                                  </button>
                                 )
                               })}
                             </div>
