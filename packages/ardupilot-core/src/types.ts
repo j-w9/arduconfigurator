@@ -460,6 +460,29 @@ export interface DronecanInspectedNode {
   lastSeenAtMs: number
 }
 
+// Latest observed uavcan.equipment.esc.Status (DT 1034) for one ESC, keyed by
+// its esc_index. Observe-only telemetry surfaced in the DroneCAN Inspector;
+// values are snapshot-safe numbers (NaN is normalized to undefined so the
+// JSON snapshot round-trips and the UI can show "—" for unreported fields).
+export interface DronecanEscTelemetry {
+  /** Zero-based ESC index (the cmd[] slot in RawCommand). */
+  escIndex: number
+  /** DroneCAN node id that broadcast this Status. */
+  nodeId: number
+  rpm: number
+  /** Volts; undefined when the node sent NaN. */
+  voltage?: number
+  /** Amps (negative under regen braking); undefined when NaN. */
+  current?: number
+  /** Degrees Celsius (converted from the wire's Kelvin); undefined when NaN. */
+  temperatureC?: number
+  /** Raw temperature in Kelvin; undefined when NaN. */
+  temperatureK?: number
+  errorCount: number
+  powerRatingPct: number
+  lastSeenAtMs: number
+}
+
 export interface CanBusState {
   status: CanBusStatus
   /** Active bus index when status === 'active'. */
@@ -471,6 +494,8 @@ export interface CanBusState {
   framesReceived: number
   lastFrameAtMs?: number
   nodes: DronecanInspectedNode[]
+  /** Latest ESC telemetry per esc_index (uavcan.equipment.esc.Status). */
+  escTelemetry: DronecanEscTelemetry[]
 }
 
 export interface ConfiguratorSnapshot {

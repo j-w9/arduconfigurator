@@ -1,15 +1,29 @@
-// Read-only DroneCAN bus inspector: starts the CAN_FORWARD tunnel and shows live
-// node traffic — node id, name, health, mode, uptime, last-seen — plus bus stats
-// (frames/s, unique nodes) and an expandable per-node detail panel (full
-// NodeStatus + version identity). Distinct from the CAN tab (which edits per-node
-// params); this is observe-only. Presentational — state + handlers from App.
+// DroneCAN bus inspector (expert-only): starts the CAN_FORWARD tunnel and shows
+// live node traffic — node id, name, health, mode, uptime, last-seen — plus bus
+// stats (frames/s, unique nodes) and an expandable per-node detail panel. Beyond
+// the read-only NodeStatus view it brings Mission Planner-style per-node DroneCAN
+// management over MAVLink CAN forwarding: read/edit/save a node's parameters,
+// restart a node (uavcan.protocol.RestartNode), and observe ESC telemetry
+// (uavcan.equipment.esc.Status). Presentational — state + handlers come from App.
+// Distinct from (and does not touch) the normal CAN tab.
 
 import { useState } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
-import type { CanBusState, DronecanInspectedNode } from '@arduconfig/ardupilot-core'
+import type {
+  CanBusState,
+  DronecanEscTelemetry,
+  DronecanInspectedNode,
+  DronecanParamValueState
+} from '@arduconfig/ardupilot-core'
 
-import { buildDronecanNodeDetailRows, summarizeDronecanNodes } from '../view-models/dronecan-inspector'
+import {
+  buildDronecanEscRows,
+  buildDronecanNodeDetailRows,
+  buildDronecanParamRows,
+  summarizeDronecanNodes
+} from '../view-models/dronecan-inspector'
+import { buildCanBusStagedChanges } from '../view-models/can-bus'
 
 export interface DronecanInspectorViewProps {
   status: CanBusState['status']
@@ -18,10 +32,17 @@ export interface DronecanInspectorViewProps {
   framesPerSec: number
   error: string | undefined
   nodes: readonly DronecanInspectedNode[]
+  escTelemetry: readonly DronecanEscTelemetry[]
   connected: boolean
   busy: boolean
   onStart: (bus: number) => void
   onStop: () => void
+  /** Re-walk a node's full parameter table from index 0. */
+  onFetchParams: (nodeId: number) => void
+  /** Write the staged params to a node, then persist to flash once acked. */
+  onApplyAndSave: (nodeId: number, writes: Array<{ name: string; value: DronecanParamValueState }>) => void
+  /** Restart a node via uavcan.protocol.RestartNode (with a confirm step). */
+  onRestartNode: (nodeId: number) => void
 }
 
 function ageLabel(lastSeenAtMs: number): string {
@@ -44,11 +65,32 @@ function uptimeLabel(uptimeSec: number | undefined): string {
 }
 
 export function DronecanInspectorView(props: DronecanInspectorViewProps) {
-  const { status, bus, framesReceived, framesPerSec, error, nodes, connected, busy, onStart, onStop } = props
+  const {
+    status,
+    bus,
+    framesReceived,
+    framesPerSec,
+    error,
+    nodes,
+    escTelemetry,
+    connected,
+    busy,
+    onStart,
+    onStop,
+    onFetchParams,
+    onApplyAndSave,
+    onRestartNode
+  } = props
   const [busSelection, setBusSelection] = useState<number>(bus ?? 1)
   const [expanded, setExpanded] = useState<number | null>(null)
+  // Draft param edits, keyed `${nodeId}:${name}` (same convention as the CAN
+  // tab's pure staged-changes helper). Nothing is written until Apply & Save.
+  const [draftValues, setDraftValues] = useState<Record<string, string>>({})
+  // Node id awaiting a restart confirmation (two-step button).
+  const [confirmRestart, setConfirmRestart] = useState<number | null>(null)
   const active = status === 'active'
   const summary = summarizeDronecanNodes(nodes)
+  const escRows = buildDronecanEscRows(escTelemetry)
   const statusBadge = active
     ? `CAN${bus ?? 0} live`
     : status === 'requesting'
@@ -59,11 +101,48 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
           ? 'error'
           : 'idle'
 
+  const draftKey = (nodeId: number, name: string): string => `${nodeId}:${name}`
+
+  const setDraft = (nodeId: number, name: string, raw: string, current: string): void => {
+    setDraftValues((prev) => {
+      const next = { ...prev }
+      const key = draftKey(nodeId, name)
+      if (raw === current) {
+        // Typed back to the live value — un-stage it.
+        delete next[key]
+      } else {
+        next[key] = raw
+      }
+      return next
+    })
+  }
+
+  const applyAndSave = (
+    nodeId: number,
+    changes: ReturnType<typeof buildCanBusStagedChanges>
+  ): void => {
+    const writes = changes
+      .filter((change) => change.parsed !== undefined)
+      .map((change) => ({ name: change.name, value: change.parsed as DronecanParamValueState }))
+    if (writes.length === 0) {
+      return
+    }
+    onApplyAndSave(nodeId, writes)
+    // Optimistic: clear the applied drafts so the rows reflect each write's echo.
+    setDraftValues((prev) => {
+      const next = { ...prev }
+      for (const write of writes) {
+        delete next[draftKey(nodeId, write.name)]
+      }
+      return next
+    })
+  }
+
   return (
     <section className="grid one-up" id="setup-panel-dronecan-inspector">
       <Panel
         title="DroneCAN Inspector"
-        subtitle="Live DroneCAN bus traffic over the CAN_FORWARD tunnel — nodes, health, and rate. Read-only."
+        subtitle="Live DroneCAN bus over the CAN_FORWARD tunnel — discover nodes, read/edit/save their parameters, restart them, and watch ESC telemetry."
       >
         <div className="telemetry-stack" data-testid="dronecan-inspector">
           <div className="telemetry-header">
@@ -122,8 +201,8 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
             <p className="telemetry-note">Connect to a vehicle to inspect the DroneCAN bus.</p>
           ) : !active && nodes.length === 0 ? (
             <p className="telemetry-note">
-              Start the bus to discover DroneCAN nodes over the CAN_FORWARD tunnel. Per-node parameter editing lives on the
-              CAN tab.
+              Start the bus to discover DroneCAN nodes over the CAN_FORWARD tunnel, then expand a node to read, edit, save,
+              or restart it.
             </p>
           ) : nodes.length === 0 ? (
             <p className="telemetry-note">
@@ -143,6 +222,9 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                 .sort((left, right) => left.nodeId - right.nodeId)
                 .map((node) => {
                   const isOpen = expanded === node.nodeId
+                  const paramRows = buildDronecanParamRows(node)
+                  const stagedChanges = buildCanBusStagedChanges(node, draftValues)
+                  const validChanges = stagedChanges.filter((change) => change.parsed !== undefined)
                   return (
                     <div
                       key={node.nodeId}
@@ -163,23 +245,214 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                         <span>{ageLabel(node.lastSeenAtMs)}</span>
                       </button>
                       {isOpen ? (
-                        <dl
-                          className="mavlink-inspector__fields dronecan-inspector__detail"
+                        <div
+                          className="dronecan-inspector__detail"
                           data-testid={`dronecan-node-detail-${node.nodeId}`}
                         >
-                          {buildDronecanNodeDetailRows(node).map((row) => (
-                            <div key={row.label} className="mavlink-inspector__field-row">
-                              <dt>{row.label}</dt>
-                              <dd>{row.value}</dd>
+                          <dl className="mavlink-inspector__fields">
+                            {buildDronecanNodeDetailRows(node).map((row) => (
+                              <div key={row.label} className="mavlink-inspector__field-row">
+                                <dt>{row.label}</dt>
+                                <dd>{row.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+
+                          {/* ---- Per-node parameter grid ---- */}
+                          <div className="dronecan-inspector__params" data-testid={`dronecan-params-${node.nodeId}`}>
+                            <div className="dronecan-inspector__params-head">
+                              <span>
+                                {node.paramFetch.status === 'fetching'
+                                  ? `Reading parameters… (index ${node.paramFetch.nextIndex})`
+                                  : `${paramRows.length} parameter${paramRows.length === 1 ? '' : 's'}`}
+                              </span>
+                              <button
+                                type="button"
+                                style={buttonStyle()}
+                                onClick={() => onFetchParams(node.nodeId)}
+                                disabled={busy}
+                                data-testid={`dronecan-refetch-${node.nodeId}`}
+                              >
+                                Re-fetch
+                              </button>
                             </div>
-                          ))}
-                        </dl>
+
+                            {paramRows.length === 0 ? (
+                              <p className="telemetry-note">
+                                {node.paramFetch.status === 'fetching'
+                                  ? 'Walking the parameter table…'
+                                  : 'No parameters reported by this node.'}
+                              </p>
+                            ) : (
+                              <div className="dronecan-inspector__param-grid">
+                                <div className="dronecan-inspector__param-row dronecan-inspector__param-row--head">
+                                  <span>Name</span>
+                                  <span>Value</span>
+                                  <span>Type</span>
+                                </div>
+                                {paramRows.map((row) => {
+                                  const key = draftKey(node.nodeId, row.name)
+                                  const draft = draftValues[key]
+                                  const inputValue = draft ?? row.valueLabel
+                                  const dirty = draft !== undefined && draft !== row.valueLabel
+                                  return (
+                                    <label
+                                      key={row.name}
+                                      className={`dronecan-inspector__param-row${dirty ? ' is-dirty' : ''}`}
+                                      data-testid={`dronecan-param-${node.nodeId}-${row.name}`}
+                                    >
+                                      <span className="dronecan-inspector__param-name">
+                                        {row.name}
+                                        {row.rangeLabel ? (
+                                          <small className="dronecan-inspector__param-range"> {row.rangeLabel}</small>
+                                        ) : null}
+                                      </span>
+                                      <input
+                                        type="text"
+                                        value={inputValue}
+                                        disabled={!row.editable || busy}
+                                        onChange={(event) =>
+                                          setDraft(node.nodeId, row.name, event.target.value, row.valueLabel)
+                                        }
+                                        data-testid={`dronecan-param-input-${node.nodeId}-${row.name}`}
+                                      />
+                                      <span className="dronecan-inspector__param-type">{row.type}</span>
+                                    </label>
+                                  )
+                                })}
+                              </div>
+                            )}
+
+                            {stagedChanges.length > 0 ? (
+                              <div className="dronecan-inspector__staged" data-testid={`dronecan-staged-${node.nodeId}`}>
+                                <ul className="dronecan-inspector__staged-list">
+                                  {stagedChanges.map((change) => (
+                                    <li key={change.name}>
+                                      <code>{change.name}</code> {change.currentLabel} →{' '}
+                                      {change.parsed ? change.nextLabel : <em>invalid</em>}
+                                    </li>
+                                  ))}
+                                </ul>
+                                <div className="dronecan-inspector__staged-actions">
+                                  <button
+                                    type="button"
+                                    style={buttonStyle('primary')}
+                                    onClick={() => applyAndSave(node.nodeId, stagedChanges)}
+                                    disabled={busy || validChanges.length === 0}
+                                    data-testid={`dronecan-apply-save-${node.nodeId}`}
+                                  >
+                                    Apply &amp; Save ({validChanges.length})
+                                  </button>
+                                  <button
+                                    type="button"
+                                    style={buttonStyle()}
+                                    onClick={() =>
+                                      setDraftValues((prev) => {
+                                        const next = { ...prev }
+                                        for (const change of stagedChanges) {
+                                          delete next[draftKey(node.nodeId, change.name)]
+                                        }
+                                        return next
+                                      })
+                                    }
+                                    disabled={busy}
+                                    data-testid={`dronecan-discard-${node.nodeId}`}
+                                  >
+                                    Discard
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          {/* ---- Restart node (confirm step) ---- */}
+                          <div className="dronecan-inspector__node-actions">
+                            {confirmRestart === node.nodeId ? (
+                              <>
+                                <span className="dronecan-inspector__confirm-text">
+                                  Restart node #{node.nodeId}? It will reboot and drop off the bus briefly.
+                                </span>
+                                <button
+                                  type="button"
+                                  style={buttonStyle('primary')}
+                                  onClick={() => {
+                                    onRestartNode(node.nodeId)
+                                    setConfirmRestart(null)
+                                  }}
+                                  disabled={busy}
+                                  data-testid={`dronecan-restart-confirm-${node.nodeId}`}
+                                >
+                                  Confirm restart
+                                </button>
+                                <button
+                                  type="button"
+                                  style={buttonStyle()}
+                                  onClick={() => setConfirmRestart(null)}
+                                  data-testid={`dronecan-restart-cancel-${node.nodeId}`}
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                style={buttonStyle()}
+                                onClick={() => setConfirmRestart(node.nodeId)}
+                                disabled={busy}
+                                data-testid={`dronecan-restart-${node.nodeId}`}
+                              >
+                                Restart node
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       ) : null}
                     </div>
                   )
                 })}
             </div>
           )}
+
+          {/* ---- ESC telemetry (observe-only) ---- */}
+          {escRows.length > 0 ? (
+            <div className="dronecan-inspector__esc" data-testid="dronecan-esc-telemetry">
+              <h3>ESC telemetry</h3>
+              <p className="telemetry-note">
+                Live uavcan.equipment.esc.Status per ESC index. Observe-only.
+              </p>
+              <div className="mavlink-inspector__table" data-testid="dronecan-esc-table">
+                <div className="dronecan-inspector__esc-row dronecan-inspector__esc-row--head">
+                  <span>ESC</span>
+                  <span>RPM</span>
+                  <span>Voltage</span>
+                  <span>Current</span>
+                  <span>Temp</span>
+                  <span>Power</span>
+                  <span>Errors</span>
+                  <span>Last</span>
+                </div>
+                {escRows.map((row) => (
+                  <div
+                    key={row.escIndex}
+                    className="dronecan-inspector__esc-row"
+                    data-testid={`dronecan-esc-${row.escIndex}`}
+                  >
+                    <span>
+                      #{row.escIndex}
+                      <small className="dronecan-inspector__esc-node"> (node {row.nodeId})</small>
+                    </span>
+                    <span>{row.rpmLabel}</span>
+                    <span>{row.voltageLabel}</span>
+                    <span>{row.currentLabel}</span>
+                    <span>{row.temperatureLabel}</span>
+                    <span>{row.powerLabel}</span>
+                    <span>{row.errorCountLabel}</span>
+                    <span>{row.ageLabel}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </Panel>
     </section>

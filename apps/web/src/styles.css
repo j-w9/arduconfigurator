@@ -12820,4 +12820,110 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .dronecan-inspector__detail {
   border-top: 1px solid var(--surface-300);
+  padding: 4px 12px 12px;
+}
+.dronecan-inspector__params {
+  margin-top: 10px;
+}
+.dronecan-inspector__params-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.dronecan-inspector__param-grid {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--surface-300);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.dronecan-inspector__param-row {
+  display: grid;
+  grid-template-columns: 1.6fr 1.4fr 0.6fr;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 10px;
+  font-family: var(--font-data);
+  font-size: 12px;
+  border-top: 1px solid var(--surface-300);
+  margin: 0;
+}
+.dronecan-inspector__param-row:first-child {
+  border-top: none;
+}
+.dronecan-inspector__param-row--head {
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  background: var(--surface-200);
+}
+.dronecan-inspector__param-row.is-dirty {
+  background: var(--surface-200);
+}
+.dronecan-inspector__param-row input {
+  width: 100%;
+  font-family: var(--font-data);
+  font-size: 12px;
+}
+.dronecan-inspector__param-range {
+  color: var(--text-muted);
+}
+.dronecan-inspector__param-type {
+  color: var(--text-muted);
+}
+.dronecan-inspector__staged {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--surface-300);
+  border-radius: 6px;
+  background: var(--surface-100);
+}
+.dronecan-inspector__staged-list {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  font-size: 12px;
+}
+.dronecan-inspector__staged-actions,
+.dronecan-inspector__node-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.dronecan-inspector__node-actions {
+  margin-top: 12px;
+}
+.dronecan-inspector__confirm-text {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.dronecan-inspector__esc {
+  margin-top: 16px;
+}
+.dronecan-inspector__esc-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 0.9fr 0.9fr 0.8fr 0.7fr 0.7fr 0.8fr;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 12px;
+  font-family: var(--font-data);
+  font-size: 12px;
+  border-top: 1px solid var(--surface-300);
+}
+.dronecan-inspector__esc-row--head {
+  text-transform: uppercase;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  background: var(--surface-200);
+  border-top: none;
+}
+.dronecan-inspector__esc-node,
+.dronecan-inspector__esc-row small {
+  color: var(--text-muted);
 }

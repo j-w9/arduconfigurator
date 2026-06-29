@@ -2589,4 +2589,39 @@ test.describe('Inspectors (expert-only)', () => {
     await firstNode.getByRole('button').first().click()
     await expect(page.locator('[data-testid^="dronecan-node-detail-"]').first()).toContainText('Node ID')
   })
+
+  test('DroneCAN inspector manages a node: param grid, restart, ESC telemetry', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    await page.getByTestId('view-button-dronecan-inspector').click()
+    await page.getByTestId('dronecan-inspector-start').click()
+    const table = page.getByTestId('dronecan-inspector-table')
+    await expect(table).toBeVisible({ timeout: 12000 })
+
+    // Expand node 50 (ap_periph) and read its DroneCAN parameter grid.
+    const node = page.getByTestId('dronecan-node-50')
+    await node.getByRole('button').first().click()
+    await expect(page.getByTestId('dronecan-params-50')).toBeVisible()
+    const battInput = page.getByTestId('dronecan-param-input-50-BATT_MONITOR')
+    await expect(battInput).toBeVisible({ timeout: 12000 })
+
+    // Editing a parameter stages a change and reveals Apply & Save.
+    await battInput.fill('3')
+    const apply = page.getByTestId('dronecan-apply-save-50')
+    await expect(apply).toBeVisible()
+    await apply.click()
+
+    // Restart is gated behind a confirm step.
+    await page.getByTestId('dronecan-restart-50').click()
+    await expect(page.getByTestId('dronecan-restart-confirm-50')).toBeVisible()
+    await page.getByTestId('dronecan-restart-confirm-50').click()
+    await expect(page.getByTestId('dronecan-restart-50')).toBeVisible()
+
+    // ESC telemetry section populates from uavcan.equipment.esc.Status.
+    await expect(page.getByTestId('dronecan-esc-telemetry')).toBeVisible({ timeout: 12000 })
+    await expect(page.getByTestId('dronecan-esc-0')).toBeVisible()
+  })
 })

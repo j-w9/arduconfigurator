@@ -1167,6 +1167,12 @@ export class ArduPilotConfiguratorRuntime {
     this.canBusService.refreshNode(nodeId)
   }
 
+  /** Restart a discovered DroneCAN node via uavcan.protocol.RestartNode.
+   *  The node reboots and re-announces itself with a fresh uptime. */
+  async restartCanBusNode(nodeId: number): Promise<void> {
+    return this.canBusService.restartNode(nodeId)
+  }
+
   /** Re-fetch all parameters for the given node from index 0. */
   fetchAllCanBusParameters(nodeId: number): void {
     this.canBusService.fetchAllParameters(nodeId)

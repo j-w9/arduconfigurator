@@ -9,6 +9,8 @@
 
 import type { CanFrameMessage, MavlinkMessage } from './messages.js'
 import {
+  DRONECAN_ESC_STATUS_DT_ID,
+  DRONECAN_ESC_STATUS_SIGNATURE,
   DRONECAN_GET_NODE_INFO_SERVICE_ID,
   DRONECAN_GET_NODE_INFO_SIGNATURE,
   DRONECAN_NODE_STATUS_DT_ID,
@@ -17,6 +19,8 @@ import {
   DRONECAN_PARAM_EXECUTE_OPCODE_SIGNATURE,
   DRONECAN_PARAM_GETSET_SERVICE_ID,
   DRONECAN_PARAM_GETSET_SIGNATURE,
+  DRONECAN_RESTART_NODE_SERVICE_ID,
+  DRONECAN_RESTART_NODE_SIGNATURE,
   DronecanReassembler,
   dronecanBuildBroadcastFrames,
   dronecanBuildServiceFrames,
@@ -25,10 +29,12 @@ import {
   dronecanParseTailByte,
   dronecanServiceDestinationNodeId,
   dronecanServiceTypeId,
+  encodeDronecanEscStatus,
   encodeDronecanExecuteOpcodeResponse,
   encodeDronecanGetNodeInfoResponse,
   encodeDronecanGetSetResponse,
   encodeDronecanNodeStatus,
+  encodeDronecanRestartNodeResponse,
   type DronecanGetSetResponse,
   type DronecanParamValue
 } from './dronecan.js'
@@ -278,6 +284,51 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
     })
   }
 
+  // The ap_periph node also advertises four ESCs over uavcan.equipment.esc.Status
+  // (DT 1034) so the inspector's ESC telemetry section populates without
+  // hardware. esc.Status is 14 bytes — a multi-frame transfer — so every frame
+  // (not just the first) must be emitted for the reassembler to complete it.
+  const ESC_TELEMETRY_NODE_ID = 50
+  const escTransferId = new Map<number, number>()
+  const nextEscTransferId = (escIndex: number): number => {
+    const next = (escTransferId.get(escIndex) ?? 0) & 0x1f
+    escTransferId.set(escIndex, next + 1)
+    return next
+  }
+  const emitEscStatus = (): CanFrameMessage[] => {
+    if (!active) {
+      return []
+    }
+    const tick = uptimeSec()
+    const out: CanFrameMessage[] = []
+    for (let escIndex = 0; escIndex < 4; escIndex += 1) {
+      // Gently varying values so the UI looks alive across ticks.
+      const rpm = 4800 + escIndex * 150 + (tick % 7) * 20
+      const payload = encodeDronecanEscStatus({
+        errorCount: 0,
+        voltage: 16.2 - escIndex * 0.05,
+        current: 7.5 + escIndex * 0.4,
+        temperature: 305 + escIndex, // Kelvin (~32-35C)
+        rpm,
+        powerRatingPct: 40 + escIndex * 3,
+        escIndex
+      })
+      const frames = dronecanBuildBroadcastFrames(
+        {
+          messageTypeId: DRONECAN_ESC_STATUS_DT_ID,
+          signature: DRONECAN_ESC_STATUS_SIGNATURE,
+          sourceNodeId: ESC_TELEMETRY_NODE_ID,
+          transferId: nextEscTransferId(escIndex)
+        },
+        payload
+      )
+      for (const frame of frames) {
+        out.push(toCanFrame(frame.canId, frame.data))
+      }
+    }
+    return out
+  }
+
   return {
     isActive: () => active,
     handleOutbound: (message: MavlinkMessage): CanFrameMessage[] => {
@@ -289,10 +340,11 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
         // MAV_CMD_CAN_FORWARD param1 is the 1-indexed bus; the CAN_FRAME wire
         // field is 0-indexed.
         wireBus = Math.max(0, Math.round(message.params?.[0] ?? 1) - 1)
+        escTransferId.clear()
         // Discover the bus immediately rather than waiting for the next ~1 Hz
         // emitter tick — the inspector populates right after the user clicks
-        // Connect. Periodic broadcasts then keep uptimes ticking.
-        return emitNodeStatus()
+        // Connect. Periodic broadcasts then keep uptimes ticking + ESC live.
+        return [...emitNodeStatus(), ...emitEscStatus()]
       }
       if (!active || message.type !== 'CAN_FRAME') {
         return []
@@ -334,10 +386,14 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
           )
         case DRONECAN_PARAM_EXECUTE_OPCODE_SERVICE_ID:
           return serviceResponseFrames(node, DRONECAN_PARAM_EXECUTE_OPCODE_SERVICE_ID, DRONECAN_PARAM_EXECUTE_OPCODE_SIGNATURE, encodeDronecanExecuteOpcodeResponse(0n, true), tail.transferId)
+        case DRONECAN_RESTART_NODE_SERVICE_ID:
+          // Acknowledge the restart (bool ok = true). A real node would reboot
+          // and re-announce; the mock just keeps broadcasting NodeStatus.
+          return serviceResponseFrames(node, DRONECAN_RESTART_NODE_SERVICE_ID, DRONECAN_RESTART_NODE_SIGNATURE, encodeDronecanRestartNodeResponse(true), tail.transferId)
         default:
           return []
       }
     },
-    broadcasts: (): CanFrameMessage[] => emitNodeStatus()
+    broadcasts: (): CanFrameMessage[] => [...emitNodeStatus(), ...emitEscStatus()]
   }
 }

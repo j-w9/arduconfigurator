@@ -619,6 +619,220 @@ export function decodeDronecanExecuteOpcodeResponse(payload: Uint8Array): Dronec
   return { argument, ok }
 }
 
+// uavcan.protocol.RestartNode (service 5) request + response
+// Signature: 0x569E05394A3017F0
+//   REQUEST:  uint40 magic_number   (must equal MAGIC_NUMBER or the node refuses)
+//   RESPONSE: bool ok
+// The request is 5 bytes — a single-frame service transfer (no CRC prefix).
+export const DRONECAN_RESTART_NODE_SERVICE_ID = 5
+export const DRONECAN_RESTART_NODE_SIGNATURE = 0x569e05394a3017f0n
+/** uavcan.protocol.RestartNode.MAGIC_NUMBER — the node rejects any RestartNode
+ *  request whose magic_number does not match this exact value. */
+export const DRONECAN_RESTART_NODE_MAGIC = 0xacce551b1en
+
+/** Encode a uavcan.protocol.RestartNode request: a single uint40 (5 bytes,
+ *  little-endian). Defaults to the spec MAGIC_NUMBER so the node accepts it. */
+export function encodeDronecanRestartNodeRequest(magic: bigint = DRONECAN_RESTART_NODE_MAGIC): Uint8Array {
+  const out = new Uint8Array(5)
+  for (let i = 0; i < 5; i += 1) {
+    out[i] = Number((magic >> BigInt(8 * i)) & 0xffn)
+  }
+  return out
+}
+
+export interface DronecanRestartNodeResponse {
+  ok: boolean
+}
+
+export function decodeDronecanRestartNodeResponse(payload: Uint8Array): DronecanRestartNodeResponse | undefined {
+  if (payload.length < 1) {
+    return undefined
+  }
+  return { ok: payload[0] !== 0 }
+}
+
+/** Encode a uavcan.protocol.RestartNode response (bool ok, 1 byte). */
+export function encodeDronecanRestartNodeResponse(ok: boolean): Uint8Array {
+  return Uint8Array.of(ok ? 1 : 0)
+}
+
+// ---------------------------------------------------------------------------
+// Canard-compatible bit packing (UAVCAN v0 / DroneCAN)
+//
+// Unlike the GetSet path (which real ArduPilot nodes serialize byte-aligned —
+// see decodeDronecanGetSetResponse), broadcast equipment messages like
+// uavcan.equipment.esc.Status are bit-packed by libcanard: fields are emitted
+// in declaration order, MSB-first within the byte stream, and each multi-byte
+// scalar is little-endian. The helpers below mirror canardEncodeScalar /
+// canardDecodeScalar + copyBitArray exactly (verified against
+// modules/DroneCAN/libcanard/canard.c) so non-byte-aligned fields decode
+// correctly. Widths follow canard's "closest standard byte length" rule
+// (1/2/4/8 bytes); esc.Status fits inside 32-bit reads.
+// ---------------------------------------------------------------------------
+
+function canardStdByteLength(bitLength: number): number {
+  if (bitLength <= 8) return 1
+  if (bitLength <= 16) return 2
+  if (bitLength <= 32) return 4
+  return 8
+}
+
+/** Read `bitLength` bits at `bitOffset` as an unsigned integer, mirroring
+ *  canardDecodeScalar (MSB-first gather, little-endian std-width interpret). */
+export function dronecanReadCanardUint(payload: Uint8Array, bitOffset: number, bitLength: number): number {
+  const tmp = new Uint8Array(8)
+  for (let i = 0; i < bitLength; i += 1) {
+    const src = bitOffset + i
+    const bit = ((payload[src >> 3] ?? 0) >> (7 - (src & 7))) & 1
+    if (bit) tmp[i >> 3] |= 1 << (7 - (i & 7))
+  }
+  if (bitLength % 8 !== 0) {
+    tmp[bitLength >> 3] >>= (8 - (bitLength % 8)) & 7
+  }
+  const stdLen = canardStdByteLength(bitLength)
+  let value = 0
+  for (let i = 0; i < stdLen; i += 1) {
+    value += tmp[i] * 2 ** (8 * i)
+  }
+  return value
+}
+
+/** Signed counterpart of {@link dronecanReadCanardUint} (two's complement
+ *  over `bitLength` bits). */
+export function dronecanReadCanardInt(payload: Uint8Array, bitOffset: number, bitLength: number): number {
+  const raw = dronecanReadCanardUint(payload, bitOffset, bitLength)
+  const signBit = 2 ** (bitLength - 1)
+  return raw >= signBit ? raw - 2 ** bitLength : raw
+}
+
+/** Write `value` as `bitLength` bits at `bitOffset`, mirroring
+ *  canardEncodeScalar + copyBitArray. Used to synthesize broadcast frames
+ *  (the demo mock; round-trip tests). */
+export function dronecanWriteCanardScalar(
+  dst: Uint8Array,
+  bitOffset: number,
+  bitLength: number,
+  value: number
+): void {
+  const stdLen = canardStdByteLength(bitLength)
+  const mod = 1n << BigInt(8 * stdLen)
+  let v = BigInt(Math.trunc(value))
+  if (v < 0n) v = ((v % mod) + mod) % mod
+  const storage = new Uint8Array(8)
+  for (let i = 0; i < stdLen; i += 1) {
+    storage[i] = Number((v >> BigInt(8 * i)) & 0xffn)
+  }
+  if (bitLength % 8 !== 0) {
+    storage[bitLength >> 3] = (storage[bitLength >> 3] << ((8 - (bitLength % 8)) & 7)) & 0xff
+  }
+  for (let i = 0; i < bitLength; i += 1) {
+    const bit = (storage[i >> 3] >> (7 - (i & 7))) & 1
+    const d = bitOffset + i
+    if (bit) {
+      dst[d >> 3] |= 1 << (7 - (d & 7))
+    } else {
+      dst[d >> 3] &= ~(1 << (7 - (d & 7))) & 0xff
+    }
+  }
+}
+
+/** Decode an IEEE 754 half-precision (binary16) value from its 16-bit pattern. */
+export function dronecanDecodeFloat16(bits: number): number {
+  const sign = (bits & 0x8000) !== 0 ? -1 : 1
+  const exp = (bits >> 10) & 0x1f
+  const frac = bits & 0x3ff
+  if (exp === 0) {
+    return sign * frac * 2 ** -24
+  }
+  if (exp === 0x1f) {
+    return frac !== 0 ? Number.NaN : sign * Number.POSITIVE_INFINITY
+  }
+  return sign * (1 + frac / 1024) * 2 ** (exp - 15)
+}
+
+/** Encode a number to its IEEE 754 half-precision (binary16) 16-bit pattern.
+ *  Round-to-nearest; saturates to ±Inf on overflow. Used by the demo mock. */
+export function dronecanEncodeFloat16(value: number): number {
+  if (Number.isNaN(value)) return 0x7e00
+  const sign = value < 0 || Object.is(value, -0) ? 0x8000 : 0
+  const v = Math.abs(value)
+  if (v === Number.POSITIVE_INFINITY) return sign | 0x7c00
+  if (v === 0) return sign
+  let exp = Math.floor(Math.log2(v))
+  if (exp > 15) return sign | 0x7c00
+  if (exp < -14) {
+    const frac = Math.round(v / 2 ** -24)
+    return sign | (frac & 0x3ff)
+  }
+  let frac = Math.round((v / 2 ** exp - 1) * 1024)
+  if (frac === 1024) {
+    exp += 1
+    frac = 0
+  }
+  if (exp > 15) return sign | 0x7c00
+  return sign | ((exp + 15) << 10) | (frac & 0x3ff)
+}
+
+// uavcan.equipment.esc.Status (DT-id 1034, broadcast)
+// Signature: 0xA9AF28AEA2FBB254 — 14-byte (110-bit) bit-packed message.
+//   uint32  error_count        (offset   0, byte-aligned)
+//   float16 voltage  [V]       (offset  32)
+//   float16 current  [A]       (offset  48, may be negative — regen braking)
+//   float16 temperature [K]    (offset  64)
+//   int18   rpm                (offset  80, signed; negative = reverse)
+//   uint7   power_rating_pct   (offset  98, 0..127 % of max power)
+//   uint5   esc_index          (offset 105, 0 = first ESC)
+// The trailing rpm/power/index fields are NOT byte-aligned, so the codec uses
+// the canard-compatible bit readers above. Unknown fields are sent as NaN.
+export const DRONECAN_ESC_STATUS_DT_ID = 1034
+export const DRONECAN_ESC_STATUS_SIGNATURE = 0xa9af28aea2fbb254n
+
+export interface DronecanEscStatus {
+  /** Resets when the motor restarts. */
+  errorCount: number
+  /** Volts. NaN when the node didn't report it. */
+  voltage: number
+  /** Amps (can be negative under regenerative braking). NaN when unreported. */
+  current: number
+  /** Kelvin. NaN when unreported. */
+  temperature: number
+  /** Signed RPM (negative = spinning in reverse). */
+  rpm: number
+  /** Instant demand factor, 0..127 % of maximum power. */
+  powerRatingPct: number
+  /** Zero-based ESC index (matches the RawCommand cmd[] slot). */
+  escIndex: number
+}
+
+export function decodeDronecanEscStatus(payload: Uint8Array): DronecanEscStatus | undefined {
+  // 110 bits = 14 bytes. esc.Status is fixed-size, so require the full frame.
+  if (payload.length < 14) {
+    return undefined
+  }
+  const errorCount = dronecanReadCanardUint(payload, 0, 32)
+  const voltage = dronecanDecodeFloat16(dronecanReadCanardUint(payload, 32, 16))
+  const current = dronecanDecodeFloat16(dronecanReadCanardUint(payload, 48, 16))
+  const temperature = dronecanDecodeFloat16(dronecanReadCanardUint(payload, 64, 16))
+  const rpm = dronecanReadCanardInt(payload, 80, 18)
+  const powerRatingPct = dronecanReadCanardUint(payload, 98, 7)
+  const escIndex = dronecanReadCanardUint(payload, 105, 5)
+  return { errorCount, voltage, current, temperature, rpm, powerRatingPct, escIndex }
+}
+
+/** Encode a uavcan.equipment.esc.Status payload (14 bytes, canard bit-packed).
+ *  Inverse of {@link decodeDronecanEscStatus}; used by the demo mock + tests. */
+export function encodeDronecanEscStatus(status: DronecanEscStatus): Uint8Array {
+  const out = new Uint8Array(14)
+  dronecanWriteCanardScalar(out, 0, 32, status.errorCount)
+  dronecanWriteCanardScalar(out, 32, 16, dronecanEncodeFloat16(status.voltage))
+  dronecanWriteCanardScalar(out, 48, 16, dronecanEncodeFloat16(status.current))
+  dronecanWriteCanardScalar(out, 64, 16, dronecanEncodeFloat16(status.temperature))
+  dronecanWriteCanardScalar(out, 80, 18, status.rpm)
+  dronecanWriteCanardScalar(out, 98, 7, status.powerRatingPct)
+  dronecanWriteCanardScalar(out, 105, 5, status.escIndex)
+  return out
+}
+
 // ---------------------------------------------------------------------------
 // Outbound frame helpers — split a multi-byte service payload into CAN frames
 // ---------------------------------------------------------------------------
