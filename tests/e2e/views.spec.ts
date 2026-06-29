@@ -286,11 +286,11 @@ test.describe('Ports view', () => {
     await expect(page.locator('.ports-matrix-row__title strong').first()).toBeVisible()
     await expect(page.locator('.ports-matrix-row__title small', { hasText: /SERIAL\d+_PROTOCOL/ }).first()).toBeVisible()
     // Edit serial options on the first editable port, toggle one bit (clicking
-    // the label toggles the custom-styled checkbox). Scope to the ports matrix:
+    // the click-to-highlight chip). Scope to the ports matrix:
     // a bare hasText 'Edit' also matches the header build-info button on
     // branches whose name contains "edit" (case-insensitive substring).
     await page.locator('.ports-matrix button:enabled', { hasText: 'Edit' }).first().click()
-    await page.locator('.ports-matrix-row__expanded .scoped-checkbox-option').first().click()
+    await page.locator('.ports-matrix-row__expanded .scoped-bitmask-bit').first().click()
     // The selected option now shows as a chip in the Options cell.
     await expect(page.locator('[data-testid^="serial-options-chips-"]').first()).toBeVisible()
   })
@@ -716,19 +716,21 @@ test.describe('Logs view', () => {
     await openView(page, 'logs')
 
     // Mock seeds LOG_BITMASK = 0xFFFB (bit 2 is the single cleared bit).
-    // Bit 7 (IMU) is set; toggling clears it.
-    const imuBit = page.getByTestId('logs-bitmask-bit-7').locator('input[type="checkbox"]')
-    await expect(imuBit).toBeChecked()
+    // Bit 7 (IMU) is set; the chip renders as a click-to-highlight box
+    // (aria-pressed/is-set), and clicking it clears the bit.
+    const imuBit = page.getByTestId('logs-bitmask-bit-7')
+    await expect(imuBit).toHaveAttribute('aria-pressed', 'true')
 
-    await imuBit.uncheck()
+    await imuBit.click()
+    await expect(imuBit).toHaveAttribute('aria-pressed', 'false')
 
     // The Save button should report a staged draft and become enabled.
     await expect(page.getByTestId('logs-apply')).toContainText('Save Logs (1)')
     await expect(page.getByTestId('logs-apply')).toBeEnabled()
 
-    // Revert clears the staged draft and re-checks the bit.
+    // Revert clears the staged draft and re-highlights the bit.
     await page.getByTestId('logs-revert').click()
-    await expect(imuBit).toBeChecked()
+    await expect(imuBit).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByTestId('logs-apply')).toContainText('Save Logs (0)')
   })
 
