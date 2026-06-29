@@ -63,6 +63,7 @@ import {
   parseUartsFile,
   type MavftpDirectoryEntry,
 } from './mavftp.js'
+import { listMavftpLogFiles } from './mavftp-log-directories.js'
 import { CanBusService } from './runtime-can-bus-service.js'
 import { GuidedActionService } from './runtime-guided-action-service.js'
 import { LogDownloadService, type LogDownloadProgress, type OnboardLogInfo } from './runtime-log-download-service.js'
@@ -186,8 +187,6 @@ const DEFAULT_AUTOPILOT_VERSION_TIMEOUT_MS = 3000
 // read; give it a generous budget since the default is tight on a contended
 // USB link.
 const UARTS_FETCH_TIMEOUT_MS = 15000
-// ArduPilot exposes onboard dataflash logs over MAVFTP at this path.
-const MAVFTP_LOGS_DIRECTORY = '/APM/LOGS'
 // Cap a MAVFTP log download the same way the LOG_* path caps its allocation
 // (MAX_LOG_DOWNLOAD_BYTES) — logs dwarf the @SYS files the default cap targets.
 const MAX_MAVFTP_LOG_BYTES = 512 * 1024 * 1024
@@ -970,14 +969,13 @@ export class ArduPilotConfiguratorRuntime {
   }
 
   /**
-   * List onboard dataflash logs exposed over MAVFTP at `/APM/LOGS` — the file
-   * entries (real on-FC filenames + sizes). Empty when the directory is
-   * absent. A faster, real-named alternative to listOnboardLogs() on FCs that
-   * support MAVFTP burst read.
+   * List onboard dataflash logs exposed over MAVFTP — the file entries (real
+   * on-FC filenames + sizes). Probes `/APM/LOGS` (hardware) then `/logs` (SITL)
+   * so the listing works in either environment. A faster, real-named
+   * alternative to listOnboardLogs() on FCs that support MAVFTP burst read.
    */
   async listMavftpLogs(): Promise<MavftpDirectoryEntry[]> {
-    const entries = await this.mavftp.listRemoteDirectory(MAVFTP_LOGS_DIRECTORY)
-    return entries.filter((entry) => entry.kind === 'file')
+    return listMavftpLogFiles((path) => this.mavftp.listRemoteDirectory(path))
   }
 
   /** Download one onboard log over MAVFTP burst read, reporting progress. */
