@@ -3,6 +3,8 @@ import type {
   MavlinkSession
 } from '@arduconfig/protocol-mavlink'
 import {
+  DRONECAN_ESC_STATUS_DT_ID,
+  DRONECAN_ESC_STATUS_SIGNATURE,
   DRONECAN_GET_NODE_INFO_SERVICE_ID,
   DRONECAN_GET_NODE_INFO_SIGNATURE,
   DRONECAN_NODE_STATUS_DT_ID,
@@ -12,11 +14,15 @@ import {
   DRONECAN_PARAM_GETSET_SERVICE_ID,
   DRONECAN_PARAM_GETSET_SIGNATURE,
   DRONECAN_PARAM_OPCODE_SAVE,
+  DRONECAN_RESTART_NODE_SERVICE_ID,
+  DRONECAN_RESTART_NODE_SIGNATURE,
   DronecanReassembler,
+  decodeDronecanEscStatus,
   decodeDronecanExecuteOpcodeResponse,
   decodeDronecanGetNodeInfoResponse,
   decodeDronecanGetSetResponse,
   decodeDronecanNodeStatus,
+  decodeDronecanRestartNodeResponse,
   dronecanBuildServiceFrames,
   dronecanIsServiceFrame,
   dronecanIsServiceRequest,
@@ -24,13 +30,15 @@ import {
   dronecanServiceTypeId,
   dronecanSourceNodeId,
   encodeDronecanExecuteOpcodeRequest,
-  encodeDronecanGetSetRequest
+  encodeDronecanGetSetRequest,
+  encodeDronecanRestartNodeRequest
 } from '@arduconfig/protocol-mavlink'
 
 import type {
   CanBusState,
   CanNodeHealth,
   CanNodeMode,
+  DronecanEscTelemetry,
   DronecanInspectedNode,
   DronecanParamEntry,
   DronecanParamValueState
@@ -84,6 +92,12 @@ const CAN_FORWARD_REARM_INTERVAL_MS = 2000
 const WRITE_RETRY_INTERVAL_MS = 600
 const MAX_WRITE_RETRIES = 5
 const MAX_SAVE_RETRIES = 3
+
+/** Minimum gap between snapshot emits driven by ESC telemetry. esc.Status can
+ *  arrive at tens of Hz per ESC; the latest sample is always stored in the
+ *  service map (cheap), but the React snapshot is only rebuilt at this rate so
+ *  a busy bus doesn't thrash the UI. NodeStatus (~1 Hz) still emits normally. */
+const ESC_TELEMETRY_EMIT_INTERVAL_MS = 200
 
 const HEALTH_TABLE: readonly CanNodeHealth[] = ['ok', 'warning', 'error', 'critical']
 const MODE_TABLE: Record<number, CanNodeMode> = {
@@ -168,6 +182,10 @@ export class CanBusService {
         if (ctx.typeId === DRONECAN_NODE_STATUS_DT_ID) {
           return DRONECAN_NODE_STATUS_SIGNATURE
         }
+        if (ctx.typeId === DRONECAN_ESC_STATUS_DT_ID) {
+          // esc.Status is 14 bytes — a multi-frame transfer needing CRC.
+          return DRONECAN_ESC_STATUS_SIGNATURE
+        }
         return undefined
       }
       switch (ctx.typeId) {
@@ -177,11 +195,18 @@ export class CanBusService {
           return DRONECAN_PARAM_GETSET_SIGNATURE
         case DRONECAN_PARAM_EXECUTE_OPCODE_SERVICE_ID:
           return DRONECAN_PARAM_EXECUTE_OPCODE_SIGNATURE
+        case DRONECAN_RESTART_NODE_SERVICE_ID:
+          return DRONECAN_RESTART_NODE_SIGNATURE
         default:
           return undefined
       }
     }
   })
+  /** Latest uavcan.equipment.esc.Status per esc_index. Updated on every frame;
+   *  surfaced (throttled) in the snapshot. */
+  private readonly escTelemetry = new Map<number, DronecanEscTelemetry>()
+  /** Last time an ESC-telemetry frame drove a snapshot emit (throttle). */
+  private lastEscEmitAtMs = 0
   private transferIdCounter = 0
   /** When the last MAV_CMD_CAN_FORWARD keep-alive was issued, so the poll
    *  loop can re-arm forwarding before ArduPilot's 5s timeout lapses. */
@@ -222,7 +247,10 @@ export class CanBusService {
       lastFrameAtMs: this.lastFrameAtMs,
       nodes: Array.from(this.nodes.values())
         .map((node) => ({ ...node, parameters: node.parameters.map((entry) => ({ ...entry })) }))
-        .sort((left, right) => left.nodeId - right.nodeId)
+        .sort((left, right) => left.nodeId - right.nodeId),
+      escTelemetry: Array.from(this.escTelemetry.values())
+        .map((esc) => ({ ...esc }))
+        .sort((left, right) => left.escIndex - right.escIndex)
     }
   }
 
@@ -254,6 +282,8 @@ export class CanBusService {
     this.lastFrameAtMs = undefined
     this.nodes.clear()
     this.reassembler.reset()
+    this.escTelemetry.clear()
+    this.lastEscEmitAtMs = 0
     this.deps.appendStatusEntry('info', `CAN: forwarding bus ${bus} via MAV_CMD_CAN_FORWARD.`)
     this.startPollTimer()
     this.deps.emit()
@@ -285,6 +315,8 @@ export class CanBusService {
     this.framesReceived = 0
     this.nodes.clear()
     this.reassembler.reset()
+    this.escTelemetry.clear()
+    this.lastEscEmitAtMs = 0
     this.pendingSaves.clear()
     this.saveAttempts.clear()
     this.pendingWrites.clear()
@@ -307,6 +339,8 @@ export class CanBusService {
     this.lastFrameAtMs = undefined
     this.nodes.clear()
     this.reassembler.reset()
+    this.escTelemetry.clear()
+    this.lastEscEmitAtMs = 0
     this.pendingSaves.clear()
     this.saveAttempts.clear()
     this.pendingWrites.clear()
@@ -349,6 +383,8 @@ export class CanBusService {
     if (!finished.isService) {
       if (finished.typeId === DRONECAN_NODE_STATUS_DT_ID) {
         this.handleNodeStatus(finished.sourceNodeId, finished.payload)
+      } else if (finished.typeId === DRONECAN_ESC_STATUS_DT_ID) {
+        this.handleEscStatus(finished.sourceNodeId, finished.payload)
       }
       return
     }
@@ -367,6 +403,9 @@ export class CanBusService {
       case DRONECAN_PARAM_EXECUTE_OPCODE_SERVICE_ID:
         this.handleExecuteOpcodeResponse(finished.sourceNodeId, finished.payload)
         return
+      case DRONECAN_RESTART_NODE_SERVICE_ID:
+        this.handleRestartNodeResponse(finished.sourceNodeId, finished.payload)
+        return
     }
   }
 
@@ -376,6 +415,31 @@ export class CanBusService {
       return
     }
     void this.requestGetNodeInfo(nodeId)
+  }
+
+  /** Restart a node via uavcan.protocol.RestartNode. Fire-and-forget: the node
+   *  reboots, so it may never send the bool-ok response. Surfaces a status
+   *  entry up front; the response (if any) is logged by
+   *  handleRestartNodeResponse. */
+  async restartNode(nodeId: number): Promise<void> {
+    this.error = undefined
+    if (!this.nodes.has(nodeId)) {
+      this.error = `No DroneCAN node ${nodeId}`
+      this.deps.emit()
+      return
+    }
+    this.deps.appendStatusEntry('info', `CAN: restarting node ${nodeId} (uavcan.protocol.RestartNode).`)
+    this.deps.emit()
+    try {
+      await this.sendServiceCall(nodeId, {
+        serviceTypeId: DRONECAN_RESTART_NODE_SERVICE_ID,
+        signature: DRONECAN_RESTART_NODE_SIGNATURE,
+        payload: encodeDronecanRestartNodeRequest()
+      })
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : `Failed to restart node ${nodeId}`
+      this.deps.emit()
+    }
   }
 
   /** Re-fetch the full parameter list from scratch. */
@@ -794,6 +858,47 @@ export class CanBusService {
         this.fetchAllParameters(sourceNodeId)
       }
     }
+    this.deps.emit()
+  }
+
+  private handleEscStatus(sourceNodeId: number, payload: Uint8Array): void {
+    const status = decodeDronecanEscStatus(payload)
+    if (!status) {
+      return
+    }
+    const now = Date.now()
+    // Always store the freshest sample (cheap). NaN fields (sent by nodes that
+    // don't measure them) collapse to undefined so the snapshot is JSON-safe.
+    this.escTelemetry.set(status.escIndex, {
+      escIndex: status.escIndex,
+      nodeId: sourceNodeId,
+      rpm: status.rpm,
+      voltage: Number.isNaN(status.voltage) ? undefined : status.voltage,
+      current: Number.isNaN(status.current) ? undefined : status.current,
+      temperatureK: Number.isNaN(status.temperature) ? undefined : status.temperature,
+      temperatureC: Number.isNaN(status.temperature) ? undefined : status.temperature - 273.15,
+      errorCount: status.errorCount,
+      powerRatingPct: status.powerRatingPct,
+      lastSeenAtMs: now
+    })
+    // Throttle the snapshot rebuild — esc.Status can stream at tens of Hz.
+    if (now - this.lastEscEmitAtMs >= ESC_TELEMETRY_EMIT_INTERVAL_MS) {
+      this.lastEscEmitAtMs = now
+      this.deps.emit()
+    }
+  }
+
+  private handleRestartNodeResponse(sourceNodeId: number, payload: Uint8Array): void {
+    const response = decodeDronecanRestartNodeResponse(payload)
+    if (!response) {
+      return
+    }
+    this.deps.appendStatusEntry(
+      response.ok ? 'info' : 'warning',
+      response.ok
+        ? `CAN: node ${sourceNodeId} accepted restart and is rebooting.`
+        : `CAN: node ${sourceNodeId} refused the restart request.`
+    )
     this.deps.emit()
   }
 

@@ -6921,10 +6921,14 @@ export function App() {
           framesPerSec={dronecanFramesPerSec}
           error={snapshot.canBus.error}
           nodes={snapshot.canBus.nodes}
+          escTelemetry={snapshot.canBus.escTelemetry}
           connected={snapshot.connection.kind === 'connected'}
           busy={busyAction !== undefined}
           onStart={(bus) => { void runtime?.startCanBusForward(bus) }}
           onStop={() => { void runtime?.stopCanBusForward() }}
+          onFetchParams={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
+          onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
+          onRestartNode={(nodeId) => { void runtime?.restartCanBusNode(nodeId) }}
         />
       ) : null}
 

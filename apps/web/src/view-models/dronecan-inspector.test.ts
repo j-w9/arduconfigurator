@@ -1,7 +1,12 @@
-import type { DronecanInspectedNode } from '@arduconfig/ardupilot-core'
+import type { DronecanEscTelemetry, DronecanInspectedNode } from '@arduconfig/ardupilot-core'
 import { describe, expect, it } from 'vitest'
 
-import { buildDronecanNodeDetailRows, summarizeDronecanNodes } from './dronecan-inspector'
+import {
+  buildDronecanEscRows,
+  buildDronecanNodeDetailRows,
+  buildDronecanParamRows,
+  summarizeDronecanNodes
+} from './dronecan-inspector'
 
 function node(overrides: Partial<DronecanInspectedNode> = {}): DronecanInspectedNode {
   return {
@@ -75,5 +80,87 @@ describe('summarizeDronecanNodes', () => {
       node({ nodeId: 4, health: 'unknown' })
     ])
     expect(summary).toEqual({ nodeCount: 4, healthyCount: 1, unhealthyCount: 2 })
+  })
+})
+
+describe('buildDronecanParamRows', () => {
+  it('shapes editable rows sorted by index with range + default hints', () => {
+    const rows = buildDronecanParamRows(
+      node({
+        parameters: [
+          {
+            index: 1,
+            name: 'GPS_TYPE',
+            value: { tag: 'int64', int64: '1' },
+            defaultValue: { tag: 'int64', int64: '0' },
+            minValue: { tag: 'int64', int64: '0' },
+            maxValue: { tag: 'int64', int64: '26' },
+            lastFetchedAtMs: 1
+          },
+          {
+            index: 0,
+            name: 'NODEID',
+            value: { tag: 'int64', int64: '124' },
+            lastFetchedAtMs: 1
+          }
+        ]
+      })
+    )
+    expect(rows.map((r) => r.name)).toEqual(['NODEID', 'GPS_TYPE'])
+    const gps = rows[1]
+    expect(gps.valueLabel).toBe('1')
+    expect(gps.type).toBe('int64')
+    expect(gps.editable).toBe(true)
+    expect(gps.rangeLabel).toBe('0..26')
+    expect(gps.defaultLabel).toBe('0')
+    // NODEID has no min/max/default reported.
+    expect(rows[0].rangeLabel).toBeUndefined()
+    expect(rows[0].defaultLabel).toBeUndefined()
+  })
+
+  it('marks empty/unknown values as non-editable', () => {
+    const rows = buildDronecanParamRows(
+      node({ parameters: [{ index: 0, name: 'X', value: { tag: 'empty' }, lastFetchedAtMs: 1 }] })
+    )
+    expect(rows[0].editable).toBe(false)
+    expect(rows[0].valueLabel).toBe('—')
+  })
+})
+
+describe('buildDronecanEscRows', () => {
+  const esc = (overrides: Partial<DronecanEscTelemetry> = {}): DronecanEscTelemetry => ({
+    escIndex: 0,
+    nodeId: 50,
+    rpm: 1234,
+    voltage: 16.2,
+    current: 12.5,
+    temperatureK: 313.15,
+    temperatureC: 40,
+    errorCount: 0,
+    powerRatingPct: 42,
+    lastSeenAtMs: 9000,
+    ...overrides
+  })
+
+  it('formats RPM/V/A/temp/power per ESC, sorted by index', () => {
+    const rows = buildDronecanEscRows([esc({ escIndex: 1 }), esc({ escIndex: 0 })], 10000)
+    expect(rows.map((r) => r.escIndex)).toEqual([0, 1])
+    const first = rows[0]
+    expect(first.rpmLabel).toBe('1234')
+    expect(first.voltageLabel).toBe('16.20 V')
+    expect(first.currentLabel).toBe('12.50 A')
+    expect(first.temperatureLabel).toBe('40 °C')
+    expect(first.powerLabel).toBe('42%')
+    expect(first.errorCountLabel).toBe('0')
+    expect(first.ageLabel).toBe('now')
+  })
+
+  it('shows — for fields the node did not report (NaN → undefined)', () => {
+    const rows = buildDronecanEscRows([
+      esc({ voltage: undefined, current: undefined, temperatureC: undefined, temperatureK: undefined })
+    ])
+    expect(rows[0].voltageLabel).toBe('—')
+    expect(rows[0].currentLabel).toBe('—')
+    expect(rows[0].temperatureLabel).toBe('—')
   })
 })
