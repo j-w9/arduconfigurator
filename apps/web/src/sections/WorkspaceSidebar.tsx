@@ -134,11 +134,6 @@ export function WorkspaceSidebar({
               <span className="workspace-nav__item-copy">
                 <strong>{view.label}</strong>
               </span>
-              {view.badge ? (
-                <span className={`workspace-nav__badge workspace-nav__badge--${view.tone}`}>
-                  {view.badge}
-                </span>
-              ) : null}
             </button>
           ))}
         </nav>

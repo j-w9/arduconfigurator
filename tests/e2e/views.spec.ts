@@ -1743,25 +1743,6 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('relays-apply')).toContainText('Apply relay changes (1)')
   })
 
-  test('Outputs nav badge is vehicle-aware (no Copter "motors" framing for a Plane)', async ({ page }) => {
-    await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo-plane')
-    await page.getByTestId('connect-button').click()
-    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
-
-    const outputsNav = page.getByTestId('view-button-motors')
-    await expect(outputsNav).toContainText('outputs')
-    await expect(outputsNav).not.toContainText('motors')
-  })
-
-  test('Outputs nav badge keeps "motors" framing for a Copter', async ({ page }) => {
-    await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo')
-    await page.getByTestId('connect-button').click()
-    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
-    await expect(page.getByTestId('view-button-motors')).toContainText('motors')
-  })
-
   test('a Plane can confirm the Setup airframe step (not gated on Copter FRAME_CLASS)', async ({ page }) => {
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
@@ -1806,10 +1787,7 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
-    // Plane now has a real curated Tuning surface, so the nav badge advertises a
     // control count rather than the old "via Params" fallback.
-    await expect(page.getByTestId('view-button-tuning')).toContainText('controls')
-    await expect(page.getByTestId('view-button-tuning')).not.toContainText('via Params')
 
     await openView(page, 'tuning')
     // The curated section renders; the old honest-note placeholder does not.
@@ -1826,8 +1804,6 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     // Copter keeps the control-count badge (byte-identical).
-    await expect(page.getByTestId('view-button-tuning')).toContainText('controls')
-    await expect(page.getByTestId('view-button-tuning')).not.toContainText('via Params')
 
     await openView(page, 'tuning')
     await expect(page.getByTestId('workspace-view-title')).toHaveText('Tuning')
@@ -2222,10 +2198,7 @@ test.describe('ArduRover / ArduSub demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduRover', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expectParameterSyncComplete(page)
 
-    // Rover now has a real curated Tuning surface, so the nav badge advertises a
     // control count rather than the old "via Params" fallback.
-    await expect(page.getByTestId('view-button-tuning')).toContainText('controls')
-    await expect(page.getByTestId('view-button-tuning')).not.toContainText('via Params')
 
     await openView(page, 'tuning')
     const section = page.getByTestId('tuning-rover-section')
@@ -2248,7 +2221,6 @@ test.describe('ArduRover / ArduSub demo', () => {
     await expect(section).not.toContainText('not reporting')
 
     // The control-count badge on the nav button is > 0.
-    await expect(page.getByTestId('view-button-tuning')).not.toContainText('0 controls')
 
     const apply = page.getByTestId('apply-rover-tuning-changes-button')
     await expect(apply).toBeVisible()
@@ -2299,8 +2271,6 @@ test.describe('ArduRover / ArduSub demo', () => {
     // Non-Copter Outputs gating holds for a Rover (vehicle-aware nav
     // badge — the non-multirotor Outputs body is covered by the demo-sub
     // and Plane slice-2c specs).
-    await expect(page.getByTestId('view-button-motors')).toContainText('outputs')
-    await expect(page.getByTestId('view-button-motors')).not.toContainText('motors')
 
     // Failsafe view is the real Rover failsafe set, not the hardcoded
     // Copter rows: FS_ACTION (2 -> "Hold") shows; the Copter-only
@@ -2325,10 +2295,7 @@ test.describe('ArduRover / ArduSub demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduSub', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expectParameterSyncComplete(page)
 
-    // Sub now has a real curated Tuning surface, so the nav badge advertises a
     // control count rather than the old "via Params" fallback.
-    await expect(page.getByTestId('view-button-tuning')).toContainText('controls')
-    await expect(page.getByTestId('view-button-tuning')).not.toContainText('via Params')
 
     await openView(page, 'tuning')
     const section = page.getByTestId('tuning-sub-section')
@@ -2353,7 +2320,6 @@ test.describe('ArduRover / ArduSub demo', () => {
     await expect(section).not.toContainText('not reporting')
 
     // The control-count badge on the nav button is > 0.
-    await expect(page.getByTestId('view-button-tuning')).not.toContainText('0 controls')
 
     const apply = page.getByTestId('apply-sub-tuning-changes-button')
     await expect(apply).toBeVisible()

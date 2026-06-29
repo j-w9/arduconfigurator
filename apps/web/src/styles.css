@@ -110,7 +110,7 @@
   /* Wide enough that every nav label ("Status & Info", "Calibration")
    * renders in full next to its widest badge ("11 SECTIONS") — labels
    * must never be ellipsized (field feedback: no shortened words). */
-  --sidebar-width: 248px;
+  --sidebar-width: 216px;
   background: var(--bg-app);
   color: var(--text);
 }
@@ -1415,46 +1415,6 @@ textarea:focus {
 
 .workspace-nav__item small {
   display: none;
-}
-
-.workspace-nav__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  align-self: center;
-  min-width: 36px;
-  padding: 3px 6px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  font-family: var(--font-data);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.workspace-nav__badge--neutral {
-  color: var(--accent-strong);
-  background: var(--accent-weak);
-  border-color: rgba(255, 187, 0, 0.26);
-}
-
-.workspace-nav__badge--success {
-  color: #c8f36e;
-  background: var(--success-weak);
-  border-color: rgba(150, 226, 18, 0.24);
-}
-
-.workspace-nav__badge--warning {
-  color: #ffb166;
-  background: rgba(255, 102, 0, 0.12);
-  border-color: rgba(255, 102, 0, 0.22);
-}
-
-.workspace-nav__badge--danger {
-  color: #ff7f99;
-  background: var(--danger-weak);
-  border-color: rgba(226, 18, 63, 0.24);
 }
 
 .workspace-sidebar__footer {
