@@ -107,13 +107,20 @@ function NodeFirmwareUpdate(props: {
 }) {
   const { node, view, anotherUpdateActive, busy, onStart, onCancel, online } = props
   const nodeId = node.nodeId
-  // AP_Periph nodes report a name like "org.ardupilot.<board>"; surface the
-  // board suffix as a search hint for the firmware-server link (the browser
-  // can't fetch/match the manifest itself, so it points the operator there).
-  const firmwareBoardHint =
+  // AP_Periph nodes report a name like "org.ardupilot.<board>" (e.g.
+  // org.ardupilot.Here4AP). The firmware server lays builds out as
+  // /AP_Periph/<release>/<board>/AP_Periph.bin, so when we can recover the board
+  // we deep-link straight to its raw .bin (which drops into the picker below as
+  // the exact image the node's bootloader flashes). The browser can't fetch it
+  // for us (no CORS) — this is a one-click manual download. Unknown board names
+  // fall back to the AP_Periph index to browse.
+  const firmwareBoard =
     node.name && node.name.startsWith('org.ardupilot.')
       ? node.name.slice('org.ardupilot.'.length)
-      : node.name ?? undefined
+      : undefined
+  const firmwareDownloadUrl = firmwareBoard
+    ? `https://firmware.ardupilot.org/AP_Periph/stable/${encodeURIComponent(firmwareBoard)}/AP_Periph.bin`
+    : 'https://firmware.ardupilot.org/AP_Periph/stable/'
   const [file, setFile] = useState<{ name: string; bytes: Uint8Array } | null>(null)
   const [acknowledged, setAcknowledged] = useState(false)
   const [readError, setReadError] = useState<string | null>(null)
@@ -308,22 +315,33 @@ function NodeFirmwareUpdate(props: {
                 'Online firmware lookup needs the desktop app — the browser can’t fetch the firmware server directly.'}
             </p>
             <p>
-              Download this node’s firmware from{' '}
-              <a
-                href="https://firmware.ardupilot.org/AP_Periph/"
-                target="_blank"
-                rel="noreferrer"
-                data-testid={`dronecan-fwupdate-online-link-${nodeId}`}
-              >
-                firmware.ardupilot.org/AP_Periph
-              </a>
-              {firmwareBoardHint ? (
+              {firmwareBoard ? (
                 <>
-                  {' '}
-                  (look for <code>{firmwareBoardHint}</code>)
+                  Download{' '}
+                  <a
+                    href={firmwareDownloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid={`dronecan-fwupdate-online-link-${nodeId}`}
+                  >
+                    AP_Periph.bin for <code>{firmwareBoard}</code>
+                  </a>
+                  {' '}(stable), then load it below.
                 </>
-              ) : null}
-              , then load the .bin below.
+              ) : (
+                <>
+                  Browse{' '}
+                  <a
+                    href={firmwareDownloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid={`dronecan-fwupdate-online-link-${nodeId}`}
+                  >
+                    firmware.ardupilot.org/AP_Periph
+                  </a>
+                  {' '}for this node’s board, grab its <code>AP_Periph.bin</code>, then load it below.
+                </>
+              )}
             </p>
           </div>
         )
