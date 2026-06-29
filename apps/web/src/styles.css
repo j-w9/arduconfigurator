@@ -1210,6 +1210,12 @@ textarea:focus {
 
 .baseline-summary__text {
   color: var(--text);
+  display: block;
+}
+/* Description moved into the collapsible body (the name now lives in the summary). */
+.baseline-summary__desc {
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 .baseline-summary__note {

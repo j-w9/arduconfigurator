@@ -75,11 +75,9 @@ export function WorkspaceSidebar({
           <summary className="baseline-summary__header">
             <div>
               <strong>Active Baseline</strong>
-              <small>
-                {selectedSnapshot
-                  ? 'Drift tracking stays visible across every tab.'
-                  : 'Capture or select a snapshot to track configuration drift.'}
-              </small>
+              <span className="baseline-summary__text" data-testid="active-baseline-label">
+                {selectedSnapshot ? selectedSnapshot.label : 'No baseline selected'}
+              </span>
             </div>
             <StatusBadge tone={selectedSnapshotInvalidCount > 0 ? 'danger' : selectedSnapshotChangedCount > 0 ? 'warning' : 'neutral'}>
               {selectedSnapshotInvalidCount > 0
@@ -92,9 +90,11 @@ export function WorkspaceSidebar({
             </StatusBadge>
           </summary>
           <div className="baseline-summary__body">
-          <p className="baseline-summary__text" data-testid="active-baseline-label">
-            {selectedSnapshot ? selectedSnapshot.label : 'No baseline selected'}
-          </p>
+          <small className="baseline-summary__desc">
+            {selectedSnapshot
+              ? 'Drift tracking stays visible across every tab.'
+              : 'Capture or select a snapshot to track configuration drift.'}
+          </small>
           <div className="baseline-summary__metrics">
             <article>
               <span>Saved</span>
