@@ -5,6 +5,15 @@ import type {
 import {
   DRONECAN_ESC_STATUS_DT_ID,
   DRONECAN_ESC_STATUS_SIGNATURE,
+  DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID,
+  DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SIGNATURE,
+  DRONECAN_FILE_BFU_ERROR_IN_PROGRESS,
+  DRONECAN_FILE_BFU_ERROR_INVALID_MODE,
+  DRONECAN_FILE_BFU_ERROR_OK,
+  DRONECAN_FILE_ERROR_OK,
+  DRONECAN_FILE_READ_MAX_DATA,
+  DRONECAN_FILE_READ_SERVICE_ID,
+  DRONECAN_FILE_READ_SIGNATURE,
   DRONECAN_GET_NODE_INFO_SERVICE_ID,
   DRONECAN_GET_NODE_INFO_SIGNATURE,
   DRONECAN_NODE_STATUS_DT_ID,
@@ -17,8 +26,10 @@ import {
   DRONECAN_RESTART_NODE_SERVICE_ID,
   DRONECAN_RESTART_NODE_SIGNATURE,
   DronecanReassembler,
+  decodeDronecanBeginFirmwareUpdateResponse,
   decodeDronecanEscStatus,
   decodeDronecanExecuteOpcodeResponse,
+  decodeDronecanFileReadRequest,
   decodeDronecanGetNodeInfoResponse,
   decodeDronecanGetSetResponse,
   decodeDronecanNodeStatus,
@@ -27,9 +38,12 @@ import {
   dronecanIsServiceFrame,
   dronecanIsServiceRequest,
   dronecanMessageTypeId,
+  dronecanServiceDestinationNodeId,
   dronecanServiceTypeId,
   dronecanSourceNodeId,
+  encodeDronecanBeginFirmwareUpdateRequest,
   encodeDronecanExecuteOpcodeRequest,
+  encodeDronecanFileReadResponse,
   encodeDronecanGetSetRequest,
   encodeDronecanRestartNodeRequest
 } from '@arduconfig/protocol-mavlink'
@@ -39,6 +53,7 @@ import type {
   CanNodeHealth,
   CanNodeMode,
   DronecanEscTelemetry,
+  DronecanFirmwareUpdateState,
   DronecanInspectedNode,
   DronecanParamEntry,
   DronecanParamValueState
@@ -99,6 +114,23 @@ const MAX_SAVE_RETRIES = 3
  *  a busy bus doesn't thrash the UI. NodeStatus (~1 Hz) still emits normally. */
 const ESC_TELEMETRY_EMIT_INTERVAL_MS = 200
 
+/** Max payload bytes the GCS serves per file.Read response. The slave reads
+ *  in 256-byte chunks (AP_Bootloader/can.cpp) and treats a shorter chunk as
+ *  EOF, so this MUST be the Read.Response `data` capacity. */
+const FIRMWARE_READ_CHUNK = DRONECAN_FILE_READ_MAX_DATA
+/** How often to re-send BeginFirmwareUpdate while waiting for the node to start
+ *  reading (the request or its ack can be lost on the best-effort tunnel). */
+const FIRMWARE_BEGIN_RETRY_MS = 1500
+/** Max BeginFirmwareUpdate attempts before giving up if the node never reads. */
+const FIRMWARE_MAX_BEGIN_ATTEMPTS = 5
+/** If the node hasn't begun reading within this long after we (first) sent
+ *  BeginFirmwareUpdate, fail the update. */
+const FIRMWARE_BEGIN_TIMEOUT_MS = 12000
+/** Once reading, if no further read arrives within this long, the transfer is
+ *  considered stalled (node dropped off, link lost). Generous because flash
+ *  erase between sectors can pause the node for a couple of seconds. */
+const FIRMWARE_STALL_TIMEOUT_MS = 15000
+
 const HEALTH_TABLE: readonly CanNodeHealth[] = ['ok', 'warning', 'error', 'critical']
 const MODE_TABLE: Record<number, CanNodeMode> = {
   0: 'operational',
@@ -153,6 +185,29 @@ interface MutableNode extends DronecanInspectedNode {
   paramFetchRetries?: number
 }
 
+/** In-flight DroneCAN node firmware update (the GCS-side file-server state
+ *  machine). Only one runs at a time. `image` is the selected .bin held for the
+ *  duration of the transfer; we serve slices of it for the node's file.Read
+ *  requests and never read outside its bounds. */
+interface FirmwareUpdateSession {
+  nodeId: number
+  fileName: string
+  image: Uint8Array
+  /** Path advertised in BeginFirmwareUpdate and echoed by the node's reads. */
+  path: string
+  status: DronecanFirmwareUpdateState['status']
+  /** High-water mark of bytes served (max offset+chunk we have answered). */
+  bytesServed: number
+  error?: string
+  startedAtMs: number
+  updatedAtMs: number
+  /** BeginFirmwareUpdate (re)send bookkeeping. */
+  beginAttempts: number
+  lastBeginAtMs: number
+  /** Set once the node issues its first file.Read (transfer is underway). */
+  readingStarted: boolean
+}
+
 export interface CanBusServiceDeps {
   session: MavlinkSession
   emit: () => void
@@ -197,6 +252,12 @@ export class CanBusService {
           return DRONECAN_PARAM_EXECUTE_OPCODE_SIGNATURE
         case DRONECAN_RESTART_NODE_SERVICE_ID:
           return DRONECAN_RESTART_NODE_SIGNATURE
+        case DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID:
+          return DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SIGNATURE
+        case DRONECAN_FILE_READ_SERVICE_ID:
+          // Both directions are multi-frame: the node's Read request (offset +
+          // path) and our Read response (up to 256 data bytes).
+          return DRONECAN_FILE_READ_SIGNATURE
         default:
           return undefined
       }
@@ -235,6 +296,8 @@ export class CanBusService {
   /** Nodes to re-fetch (full parameter re-walk) once their Apply & Save SAVE is
    *  acknowledged, so the operator sees fresh values without clicking Re-fetch. */
   private readonly refetchAfterSave = new Set<number>()
+  /** The one in-flight (or just-finished) node firmware update, if any. */
+  private firmwareUpdate: FirmwareUpdateSession | undefined
 
   constructor(private readonly deps: CanBusServiceDeps) {}
 
@@ -250,7 +313,25 @@ export class CanBusService {
         .sort((left, right) => left.nodeId - right.nodeId),
       escTelemetry: Array.from(this.escTelemetry.values())
         .map((esc) => ({ ...esc }))
-        .sort((left, right) => left.escIndex - right.escIndex)
+        .sort((left, right) => left.escIndex - right.escIndex),
+      firmwareUpdate: this.firmwareUpdateSnapshot()
+    }
+  }
+
+  private firmwareUpdateSnapshot(): DronecanFirmwareUpdateState | undefined {
+    const update = this.firmwareUpdate
+    if (!update) {
+      return undefined
+    }
+    return {
+      nodeId: update.nodeId,
+      fileName: update.fileName,
+      fileSize: update.image.length,
+      bytesServed: Math.min(update.bytesServed, update.image.length),
+      status: update.status,
+      error: update.error,
+      startedAtMs: update.startedAtMs,
+      updatedAtMs: update.updatedAtMs
     }
   }
 
@@ -323,6 +404,10 @@ export class CanBusService {
     this.saveAfterWrites.clear()
     this.refetchAfterSave.clear()
     this.clearAllSaveAckWatchdogs()
+    // Drop any in-flight firmware update — the tunnel is going away, so we can
+    // no longer answer the node's reads. (A node mid-update will time out and
+    // stay in its bootloader; nothing we can do about that from here.)
+    this.firmwareUpdate = undefined
     this.deps.appendStatusEntry('info', 'CAN: forwarding stopped.')
     this.deps.emit()
   }
@@ -347,6 +432,10 @@ export class CanBusService {
     this.saveAfterWrites.clear()
     this.refetchAfterSave.clear()
     this.clearAllSaveAckWatchdogs()
+    // Drop any in-flight firmware update — the tunnel is going away, so we can
+    // no longer answer the node's reads. (A node mid-update will time out and
+    // stay in its bootloader; nothing we can do about that from here.)
+    this.firmwareUpdate = undefined
   }
 
   destroy(): void {
@@ -364,6 +453,7 @@ export class CanBusService {
     const isService = dronecanIsServiceFrame(message.id)
     const typeId = isService ? dronecanServiceTypeId(message.id) : dronecanMessageTypeId(message.id)
     const isRequest = isService ? dronecanIsServiceRequest(message.id) : undefined
+    const destNodeId = isService ? dronecanServiceDestinationNodeId(message.id) : undefined
 
     const payload = message.data.subarray(0, message.len)
     if (payload.length === 0) {
@@ -389,8 +479,16 @@ export class CanBusService {
       return
     }
 
-    // Service response to an outbound request: typeId is the service id, isRequest is false.
+    // Inbound service REQUESTS. The only one we answer is the file.Read a node
+    // being updated sends to us (the GCS is the file server). Everything else
+    // addressed at us during normal operation is ignored.
     if (finished.isRequest) {
+      if (
+        finished.typeId === DRONECAN_FILE_READ_SERVICE_ID &&
+        destNodeId === GCS_DRONECAN_NODE_ID
+      ) {
+        this.handleFileReadRequest(finished.sourceNodeId, finished.transferId, finished.payload)
+      }
       return
     }
     switch (finished.typeId) {
@@ -405,6 +503,9 @@ export class CanBusService {
         return
       case DRONECAN_RESTART_NODE_SERVICE_ID:
         this.handleRestartNodeResponse(finished.sourceNodeId, finished.payload)
+        return
+      case DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID:
+        this.handleBeginFirmwareUpdateResponse(finished.sourceNodeId, finished.payload)
         return
     }
   }
@@ -521,6 +622,233 @@ export class CanBusService {
     this.deps.emit()
     for (const write of encoded) {
       await this.sendWrite(nodeId, write.name, write.value)
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // DroneCAN node firmware update (GCS acts as the file server)
+  // -------------------------------------------------------------------------
+
+  /** Begin a firmware update on a node: send uavcan.protocol.file
+   *  BeginFirmwareUpdate, then serve the node's file.Read requests with chunks
+   *  of `image` until it has read the whole file and reboots. Only one update
+   *  may run at a time. Surfaces failures via state.error + emit (callers fire
+   *  this and watch the snapshot). */
+  async startFirmwareUpdate(nodeId: number, fileName: string, image: Uint8Array): Promise<void> {
+    this.error = undefined
+    if (this.status !== 'active') {
+      this.error = 'Start the bus before updating a node.'
+      this.deps.emit()
+      return
+    }
+    if (this.firmwareUpdate && (this.firmwareUpdate.status === 'starting' || this.firmwareUpdate.status === 'in_progress')) {
+      this.error = `A firmware update is already in progress on node ${this.firmwareUpdate.nodeId}. Wait for it to finish or cancel it first.`
+      this.deps.emit()
+      return
+    }
+    if (!this.nodes.has(nodeId)) {
+      this.error = `No DroneCAN node ${nodeId}`
+      this.deps.emit()
+      return
+    }
+    if (image.length === 0) {
+      this.error = 'The selected firmware image is empty.'
+      this.deps.emit()
+      return
+    }
+    const now = Date.now()
+    // A short, fixed remote path keeps the BeginFirmwareUpdate/Read framing
+    // small; the node echoes it back in its reads but we serve the one held
+    // image regardless of the path.
+    const path = 'fw.bin'
+    this.firmwareUpdate = {
+      nodeId,
+      fileName,
+      image: image.slice(),
+      path,
+      status: 'starting',
+      bytesServed: 0,
+      startedAtMs: now,
+      updatedAtMs: now,
+      beginAttempts: 1,
+      lastBeginAtMs: now,
+      readingStarted: false
+    }
+    this.deps.appendStatusEntry(
+      'info',
+      `CAN: starting firmware update on node ${nodeId} (${fileName}, ${image.length} bytes) — do not disconnect.`
+    )
+    this.deps.emit()
+    await this.sendBeginFirmwareUpdate(nodeId, path)
+  }
+
+  /** Cancel an in-flight update, or dismiss a finished (completed/error) one so
+   *  the inspector returns to normal. Cancelling mid-transfer is best-effort:
+   *  the node may be left waiting in its bootloader for an image it will never
+   *  finish receiving. */
+  cancelFirmwareUpdate(): void {
+    const update = this.firmwareUpdate
+    if (!update) {
+      return
+    }
+    if (update.status === 'completed' || update.status === 'error') {
+      this.firmwareUpdate = undefined
+      this.deps.emit()
+      return
+    }
+    update.status = 'error'
+    update.error = 'Update cancelled. The node may remain in its bootloader awaiting firmware — power-cycle it to recover.'
+    update.updatedAtMs = Date.now()
+    this.deps.appendStatusEntry('warning', `CAN: firmware update on node ${update.nodeId} cancelled by operator.`)
+    this.deps.emit()
+  }
+
+  private async sendBeginFirmwareUpdate(nodeId: number, path: string): Promise<void> {
+    try {
+      await this.sendServiceCall(nodeId, {
+        serviceTypeId: DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID,
+        signature: DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SIGNATURE,
+        payload: encodeDronecanBeginFirmwareUpdateRequest({
+          sourceNodeId: GCS_DRONECAN_NODE_ID,
+          imageFileRemotePath: path
+        })
+      })
+    } catch (err) {
+      if (this.firmwareUpdate && this.firmwareUpdate.nodeId === nodeId) {
+        this.firmwareUpdate.status = 'error'
+        this.firmwareUpdate.error =
+          err instanceof Error ? err.message : `Failed to start firmware update on node ${nodeId}`
+        this.firmwareUpdate.updatedAtMs = Date.now()
+        this.deps.emit()
+      }
+    }
+  }
+
+  private handleBeginFirmwareUpdateResponse(sourceNodeId: number, payload: Uint8Array): void {
+    const update = this.firmwareUpdate
+    if (!update || update.nodeId !== sourceNodeId || update.status !== 'starting') {
+      return
+    }
+    const response = decodeDronecanBeginFirmwareUpdateResponse(payload)
+    if (!response) {
+      return
+    }
+    if (response.error === DRONECAN_FILE_BFU_ERROR_OK) {
+      // Accepted — the node will now send file.Read requests. Stay 'starting'
+      // until the first read arrives so progress reflects real transfer.
+      this.deps.appendStatusEntry('info', `CAN: node ${sourceNodeId} accepted the firmware update; transferring image.`)
+      this.deps.emit()
+      return
+    }
+    update.status = 'error'
+    update.error = this.beginErrorMessage(response.error, response.optionalErrorMessage)
+    update.updatedAtMs = Date.now()
+    this.deps.appendStatusEntry('error', `CAN: node ${sourceNodeId} refused the firmware update — ${update.error}`)
+    this.deps.emit()
+  }
+
+  private beginErrorMessage(error: number, message: string | undefined): string {
+    const base =
+      error === DRONECAN_FILE_BFU_ERROR_INVALID_MODE
+        ? 'node is in a state that cannot accept an update (INVALID_MODE).'
+        : error === DRONECAN_FILE_BFU_ERROR_IN_PROGRESS
+          ? 'an update is already in progress on the node (IN_PROGRESS).'
+          : `node returned error code ${error}.`
+    return message ? `${base} ${message}` : base
+  }
+
+  /** Answer one file.Read request from the node being updated with a chunk of
+   *  the held image. Serves at most FIRMWARE_READ_CHUNK (256) bytes and never
+   *  reads outside the image — a request at/after EOF returns an empty data
+   *  array, which the node treats as end-of-file. */
+  private handleFileReadRequest(sourceNodeId: number, transferId: number, payload: Uint8Array): void {
+    const update = this.firmwareUpdate
+    // Only serve the node we are actively updating; ignore stray readers and
+    // requests that arrive after the transfer has terminated.
+    if (!update || update.nodeId !== sourceNodeId) {
+      return
+    }
+    if (update.status === 'completed' || update.status === 'error') {
+      return
+    }
+    const request = decodeDronecanFileReadRequest(payload)
+    if (!request) {
+      return
+    }
+    const size = update.image.length
+    const offset = Math.max(0, Math.min(request.offset, size))
+    const end = Math.min(offset + FIRMWARE_READ_CHUNK, size)
+    const chunk = update.image.subarray(offset, end)
+
+    const node = this.nodes.get(sourceNodeId)
+    if (node) {
+      node.lastSeenAtMs = Date.now()
+    }
+    if (!update.readingStarted) {
+      update.readingStarted = true
+      update.status = 'in_progress'
+    }
+    update.bytesServed = Math.max(update.bytesServed, offset + chunk.length)
+    update.updatedAtMs = Date.now()
+
+    void this.sendFileReadResponse(sourceNodeId, transferId, chunk)
+
+    // A chunk shorter than the 256-byte capacity is the EOF handshake: the node
+    // flashes it and boots the new app (AP_Bootloader/can.cpp). The whole image
+    // has been served, so the transfer is done from the server's side.
+    if (chunk.length < FIRMWARE_READ_CHUNK) {
+      update.status = 'completed'
+      update.bytesServed = size
+      update.error = undefined
+      this.deps.appendStatusEntry(
+        'info',
+        `CAN: node ${sourceNodeId} finished reading the firmware image (${size} bytes); it will reboot into the new firmware.`
+      )
+    }
+    this.deps.emit()
+  }
+
+  private async sendFileReadResponse(nodeId: number, transferId: number, data: Uint8Array): Promise<void> {
+    await this.sendServiceCall(
+      nodeId,
+      {
+        serviceTypeId: DRONECAN_FILE_READ_SERVICE_ID,
+        signature: DRONECAN_FILE_READ_SIGNATURE,
+        payload: encodeDronecanFileReadResponse(DRONECAN_FILE_ERROR_OK, data)
+      },
+      { isRequest: false, transferId }
+    )
+  }
+
+  /** Drive BeginFirmwareUpdate retries + timeouts. Called from the poll tick. */
+  private serviceFirmwareUpdate(now: number): void {
+    const update = this.firmwareUpdate
+    if (!update || update.status === 'completed' || update.status === 'error') {
+      return
+    }
+    if (update.status === 'starting' && !update.readingStarted) {
+      if (now - update.startedAtMs > FIRMWARE_BEGIN_TIMEOUT_MS) {
+        update.status = 'error'
+        update.error = `Node ${update.nodeId} did not start reading the firmware image. It may not support DroneCAN firmware update, or the request was lost.`
+        update.updatedAtMs = now
+        this.deps.appendStatusEntry('error', `CAN: firmware update on node ${update.nodeId} timed out before the node started reading.`)
+        this.deps.emit()
+        return
+      }
+      if (update.beginAttempts < FIRMWARE_MAX_BEGIN_ATTEMPTS && now - update.lastBeginAtMs >= FIRMWARE_BEGIN_RETRY_MS) {
+        update.beginAttempts += 1
+        update.lastBeginAtMs = now
+        void this.sendBeginFirmwareUpdate(update.nodeId, update.path)
+      }
+      return
+    }
+    // Reading underway: fail if the node goes quiet for too long.
+    if (now - update.updatedAtMs > FIRMWARE_STALL_TIMEOUT_MS) {
+      update.status = 'error'
+      update.error = `Firmware transfer to node ${update.nodeId} stalled (no read for ${Math.round(FIRMWARE_STALL_TIMEOUT_MS / 1000)}s). The node may have dropped off the bus.`
+      update.updatedAtMs = now
+      this.deps.appendStatusEntry('error', `CAN: firmware update on node ${update.nodeId} stalled.`)
+      this.deps.emit()
     }
   }
 
@@ -670,6 +998,8 @@ export class CanBusService {
         // Best-effort keep-alive; the next tick retries.
       })
     }
+    // Drive BeginFirmwareUpdate retries + update timeouts.
+    this.serviceFirmwareUpdate(now)
     // Re-send in-flight writes the node hasn't echoed yet (best-effort tunnel
     // can drop the request or its ack). Cleared in handleGetSetResponse.
     for (const [key, write] of this.pendingWrites) {
@@ -925,12 +1255,17 @@ export class CanBusService {
 
   private async sendServiceCall(
     destNodeId: number,
-    parts: { serviceTypeId: number; signature: bigint; payload: Uint8Array }
+    parts: { serviceTypeId: number; signature: bigint; payload: Uint8Array },
+    options?: { isRequest?: boolean; transferId?: number }
   ): Promise<void> {
     if (this.status !== 'active') {
       return
     }
-    const transferId = this.nextTransferId()
+    // Outbound service calls are requests by default; the file-server path
+    // sends RESPONSES and must echo the originating request's transfer id so
+    // the node matches the reply to its read.
+    const isRequest = options?.isRequest ?? true
+    const transferId = options?.transferId ?? this.nextTransferId()
     const frames = dronecanBuildServiceFrames(
       {
         serviceTypeId: parts.serviceTypeId,
@@ -938,7 +1273,7 @@ export class CanBusService {
         destinationNodeId: destNodeId,
         sourceNodeId: GCS_DRONECAN_NODE_ID,
         transferId,
-        isRequest: true
+        isRequest
       },
       parts.payload
     )

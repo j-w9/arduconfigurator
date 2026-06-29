@@ -1,8 +1,13 @@
-import type { DronecanEscTelemetry, DronecanInspectedNode } from '@arduconfig/ardupilot-core'
+import type {
+  DronecanEscTelemetry,
+  DronecanFirmwareUpdateState,
+  DronecanInspectedNode
+} from '@arduconfig/ardupilot-core'
 import { describe, expect, it } from 'vitest'
 
 import {
   buildDronecanEscRows,
+  buildDronecanFirmwareUpdateView,
   buildDronecanNodeDetailRows,
   buildDronecanParamRows,
   summarizeDronecanNodes
@@ -162,5 +167,61 @@ describe('buildDronecanEscRows', () => {
     expect(rows[0].voltageLabel).toBe('—')
     expect(rows[0].currentLabel).toBe('—')
     expect(rows[0].temperatureLabel).toBe('—')
+  })
+})
+
+describe('buildDronecanFirmwareUpdateView', () => {
+  function update(overrides: Partial<DronecanFirmwareUpdateState> = {}): DronecanFirmwareUpdateState {
+    return {
+      nodeId: 50,
+      fileName: 'periph-fw.bin',
+      fileSize: 4096,
+      bytesServed: 1024,
+      status: 'in_progress',
+      startedAtMs: 0,
+      updatedAtMs: 0,
+      ...overrides
+    }
+  }
+
+  it('returns undefined when there is no update', () => {
+    expect(buildDronecanFirmwareUpdateView(undefined)).toBeUndefined()
+  })
+
+  it('computes percent + byte label and flags an in-progress transfer', () => {
+    const view = buildDronecanFirmwareUpdateView(update())!
+    expect(view.percent).toBe(25)
+    expect(view.bytesLabel).toBe('1.0 KiB / 4.0 KiB')
+    expect(view.statusLabel).toBe('Updating… 25%')
+    expect(view.inProgress).toBe(true)
+    expect(view.terminal).toBe(false)
+    expect(view.tone).toBe('neutral')
+  })
+
+  it('marks completion at 100% with a success tone', () => {
+    const view = buildDronecanFirmwareUpdateView(update({ status: 'completed', bytesServed: 4096 }))!
+    expect(view.percent).toBe(100)
+    expect(view.statusLabel).toBe('Complete')
+    expect(view.inProgress).toBe(false)
+    expect(view.terminal).toBe(true)
+    expect(view.tone).toBe('success')
+  })
+
+  it('surfaces an error with a danger tone and clamps served past size', () => {
+    const view = buildDronecanFirmwareUpdateView(
+      update({ status: 'error', bytesServed: 9999, error: 'stalled' })!
+    )!
+    expect(view.percent).toBe(100)
+    expect(view.tone).toBe('danger')
+    expect(view.statusLabel).toBe('Failed')
+    expect(view.terminal).toBe(true)
+    expect(view.error).toBe('stalled')
+  })
+
+  it("reports 'Starting…' before the first chunk is served", () => {
+    const view = buildDronecanFirmwareUpdateView(update({ status: 'starting', bytesServed: 0 }))!
+    expect(view.statusLabel).toBe('Starting…')
+    expect(view.percent).toBe(0)
+    expect(view.inProgress).toBe(true)
   })
 })

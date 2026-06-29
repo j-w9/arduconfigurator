@@ -1204,6 +1204,20 @@ export class ArduPilotConfiguratorRuntime {
     return this.canBusService.applyAndSave(nodeId, writes)
   }
 
+  /** Update a DroneCAN node's firmware: the configurator acts as the file
+   *  server over the CAN_FORWARD tunnel — it sends uavcan.protocol.file
+   *  BeginFirmwareUpdate, then answers the node's file.Read requests with the
+   *  selected image until the node has read it all and reboots. Only one
+   *  update runs at a time. Progress + result surface on canBus.firmwareUpdate. */
+  async startCanBusNodeFirmwareUpdate(nodeId: number, fileName: string, image: Uint8Array): Promise<void> {
+    return this.canBusService.startFirmwareUpdate(nodeId, fileName, image)
+  }
+
+  /** Cancel an in-flight node firmware update, or dismiss a finished one. */
+  cancelCanBusNodeFirmwareUpdate(): void {
+    this.canBusService.cancelFirmwareUpdate()
+  }
+
   destroy(): void {
     // Flush any pending coalesced emit synchronously before cancelling the
     // rAF/timer, so a still-subscribed listener isn't left on stale state.

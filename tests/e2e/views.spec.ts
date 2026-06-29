@@ -2624,4 +2624,42 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.getByTestId('dronecan-esc-telemetry')).toBeVisible({ timeout: 12000 })
     await expect(page.getByTestId('dronecan-esc-0')).toBeVisible()
   })
+
+  test('DroneCAN inspector updates a node firmware: pick image, confirm brick risk, reach 100%', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    await page.getByTestId('view-button-dronecan-inspector').click()
+    await page.getByTestId('dronecan-inspector-start').click()
+    const table = page.getByTestId('dronecan-inspector-table')
+    await expect(table).toBeVisible({ timeout: 12000 })
+
+    // Expand node 50 (ap_periph) and open its firmware-update affordance.
+    const node = page.getByTestId('dronecan-node-50')
+    await node.getByRole('button').first().click()
+    const fileInput = page.getByTestId('dronecan-fwupdate-file-50')
+    await expect(fileInput).toBeVisible()
+
+    // The Update button stays out of reach until a file is picked AND the
+    // brick-risk acknowledgement is checked.
+    const image = Buffer.from(Array.from({ length: 700 }, (_, i) => (i * 37 + 11) & 0xff))
+    await fileInput.setInputFiles({ name: 'periph-fw.bin', mimeType: 'application/octet-stream', buffer: image })
+    const startButton = page.getByTestId('dronecan-fwupdate-start-50')
+    await expect(startButton).toBeDisabled()
+    await page.getByTestId('dronecan-fwupdate-ack-50').check()
+    await expect(startButton).toBeEnabled()
+
+    // Run the update; the GCS serves the image over file.Read until the mock
+    // node has read it all, and the progress bar reaches completion.
+    await startButton.click()
+    await expect(page.getByTestId('dronecan-fwupdate-done-50')).toBeVisible({ timeout: 15000 })
+    const progress = page.getByTestId('dronecan-fwupdate-progress-50')
+    await expect(progress).toHaveAttribute('aria-valuenow', '100')
+
+    // Finished updates re-enable the node's other actions via a Dismiss control.
+    await page.getByTestId('dronecan-fwupdate-cancel-50').click()
+    await expect(page.getByTestId('dronecan-fwupdate-file-50')).toBeVisible()
+  })
 })

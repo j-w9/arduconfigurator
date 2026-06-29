@@ -11,6 +11,12 @@ import type { CanFrameMessage, MavlinkMessage } from './messages.js'
 import {
   DRONECAN_ESC_STATUS_DT_ID,
   DRONECAN_ESC_STATUS_SIGNATURE,
+  DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID,
+  DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SIGNATURE,
+  DRONECAN_FILE_BFU_ERROR_OK,
+  DRONECAN_FILE_READ_MAX_DATA,
+  DRONECAN_FILE_READ_SERVICE_ID,
+  DRONECAN_FILE_READ_SIGNATURE,
   DRONECAN_GET_NODE_INFO_SERVICE_ID,
   DRONECAN_GET_NODE_INFO_SIGNATURE,
   DRONECAN_NODE_STATUS_DT_ID,
@@ -22,6 +28,8 @@ import {
   DRONECAN_RESTART_NODE_SERVICE_ID,
   DRONECAN_RESTART_NODE_SIGNATURE,
   DronecanReassembler,
+  decodeDronecanBeginFirmwareUpdateRequest,
+  decodeDronecanFileReadResponse,
   dronecanBuildBroadcastFrames,
   dronecanBuildServiceFrames,
   dronecanIsServiceFrame,
@@ -29,8 +37,10 @@ import {
   dronecanParseTailByte,
   dronecanServiceDestinationNodeId,
   dronecanServiceTypeId,
+  encodeDronecanBeginFirmwareUpdateResponse,
   encodeDronecanEscStatus,
   encodeDronecanExecuteOpcodeResponse,
+  encodeDronecanFileReadRequest,
   encodeDronecanGetNodeInfoResponse,
   encodeDronecanGetSetResponse,
   encodeDronecanNodeStatus,
@@ -133,6 +143,19 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
   let wireBus = 0
   let bootMs = Date.now()
   const statusTransferId = new Map<number, number>()
+  // Firmware-update simulation: when the GCS sends BeginFirmwareUpdate, the
+  // addressed node accepts it and then pulls the image from the GCS via
+  // sequential file.Read requests (256-byte chunks), mirroring the real
+  // AP_Bootloader client. State is per-node so the inspector's progress bar
+  // advances and the node "reboots" (bumps its SW version) on completion.
+  interface MockFirmwareUpdate {
+    node: MockDronecanNode
+    path: string
+    /** Bytes the node has read so far = next read offset. */
+    received: number
+    transferId: number
+  }
+  let fwUpdate: MockFirmwareUpdate | undefined
   // Requests can be multi-frame (a param write carries value + name), so
   // reassemble GCS→node service transfers before acting on them.
   const reassembler = new DronecanReassembler({
@@ -145,6 +168,12 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
           return DRONECAN_PARAM_GETSET_SIGNATURE
         case DRONECAN_PARAM_EXECUTE_OPCODE_SERVICE_ID:
           return DRONECAN_PARAM_EXECUTE_OPCODE_SIGNATURE
+        case DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID:
+          return DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SIGNATURE
+        case DRONECAN_FILE_READ_SERVICE_ID:
+          // The GCS's Read responses (up to 256 data bytes) are multi-frame, so
+          // reassembling them needs the file.Read signature for the CRC check.
+          return DRONECAN_FILE_READ_SIGNATURE
         default:
           return undefined
       }
@@ -191,6 +220,23 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
       },
       payload
     ).map((frame) => toCanFrame(frame.canId, frame.data))
+
+  // The node (being updated) issues file.Read REQUESTS to the GCS file server:
+  // source = node, destination = GCS, request flag set.
+  const nodeReadRequestFrames = (update: MockFirmwareUpdate): CanFrameMessage[] => {
+    update.transferId = (update.transferId + 1) & 0x1f
+    return dronecanBuildServiceFrames(
+      {
+        serviceTypeId: DRONECAN_FILE_READ_SERVICE_ID,
+        signature: DRONECAN_FILE_READ_SIGNATURE,
+        destinationNodeId: GCS_DRONECAN_NODE_ID,
+        sourceNodeId: update.node.nodeId,
+        transferId: update.transferId,
+        isRequest: true
+      },
+      encodeDronecanFileReadRequest({ offset: update.received, path: update.path })
+    ).map((frame) => toCanFrame(frame.canId, frame.data))
+  }
 
   const nodeInfoResponse = (node: MockDronecanNode): Uint8Array =>
     encodeDronecanGetNodeInfoResponse({
@@ -333,13 +379,22 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
     isActive: () => active,
     handleOutbound: (message: MavlinkMessage): CanFrameMessage[] => {
       if (message.type === 'COMMAND_LONG' && message.command === MAV_CMD_CAN_FORWARD) {
+        // MAV_CMD_CAN_FORWARD param1 is the 1-indexed bus; the CAN_FRAME wire
+        // field is 0-indexed.
+        const newBus = Math.max(0, Math.round(message.params?.[0] ?? 1) - 1)
+        if (active && newBus === wireBus) {
+          // The runtime re-issues MAV_CMD_CAN_FORWARD every ~2s as a keep-alive.
+          // Treat a re-arm of the already-active bus as a no-op refresh — wiping
+          // the reassembler / firmware-update state here would break an
+          // in-flight node update mid-transfer.
+          return [...emitNodeStatus(), ...emitEscStatus()]
+        }
         active = true
         bootMs = Date.now()
         statusTransferId.clear()
         reassembler.reset()
-        // MAV_CMD_CAN_FORWARD param1 is the 1-indexed bus; the CAN_FRAME wire
-        // field is 0-indexed.
-        wireBus = Math.max(0, Math.round(message.params?.[0] ?? 1) - 1)
+        fwUpdate = undefined
+        wireBus = newBus
         escTransferId.clear()
         // Discover the bus immediately rather than waiting for the next ~1 Hz
         // emitter tick — the inspector populates right after the user clicks
@@ -350,20 +405,56 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
         return []
       }
       const canId = message.id >>> 0
-      if (!dronecanIsServiceFrame(canId) || !dronecanIsServiceRequest(canId)) {
+      if (!dronecanIsServiceFrame(canId)) {
         return []
       }
       const destinationNodeId = dronecanServiceDestinationNodeId(canId)
-      const node = NODES.find((n) => n.nodeId === destinationNodeId)
-      if (!node) {
-        return []
-      }
       const serviceTypeId = dronecanServiceTypeId(canId)
       const requestFrame = message.data.subarray(0, message.len)
       if (requestFrame.length === 0) {
         return []
       }
       const tail = dronecanParseTailByte(requestFrame[requestFrame.length - 1])
+
+      // The GCS's file.Read RESPONSE to the node being updated: feed the image
+      // chunk into the node and emit its next read (or finish + "reboot").
+      if (
+        !dronecanIsServiceRequest(canId) &&
+        serviceTypeId === DRONECAN_FILE_READ_SERVICE_ID &&
+        fwUpdate &&
+        destinationNodeId === fwUpdate.node.nodeId
+      ) {
+        const finishedResp = reassembler.push(
+          { sourceNodeId: GCS_DRONECAN_NODE_ID, isService: true, typeId: serviceTypeId, isRequest: false, transferId: tail.transferId },
+          requestFrame
+        )
+        if (!finishedResp) {
+          return []
+        }
+        const response = decodeDronecanFileReadResponse(finishedResp.payload)
+        if (!response || response.error !== 0) {
+          // A read error aborts the simulated update; the node stops reading.
+          fwUpdate = undefined
+          return []
+        }
+        fwUpdate.received += response.data.length
+        if (response.data.length < DRONECAN_FILE_READ_MAX_DATA) {
+          // EOF: the node has the whole image. Simulate the reboot into the new
+          // app by bumping its advertised SW version, then end the update.
+          fwUpdate.node.swMinor += 1
+          fwUpdate = undefined
+          return []
+        }
+        return nodeReadRequestFrames(fwUpdate)
+      }
+
+      if (!dronecanIsServiceRequest(canId)) {
+        return []
+      }
+      const node = NODES.find((n) => n.nodeId === destinationNodeId)
+      if (!node) {
+        return []
+      }
       const finished = reassembler.push(
         { sourceNodeId: GCS_DRONECAN_NODE_ID, isService: true, typeId: serviceTypeId, isRequest: true, transferId: tail.transferId },
         requestFrame
@@ -390,6 +481,22 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
           // Acknowledge the restart (bool ok = true). A real node would reboot
           // and re-announce; the mock just keeps broadcasting NodeStatus.
           return serviceResponseFrames(node, DRONECAN_RESTART_NODE_SERVICE_ID, DRONECAN_RESTART_NODE_SIGNATURE, encodeDronecanRestartNodeResponse(true), tail.transferId)
+        case DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID: {
+          // Accept the update (ERROR_OK) and immediately begin pulling the image
+          // from the GCS: respond, then emit the first file.Read request. The
+          // node reads sequentially until the GCS returns a short chunk (EOF).
+          const begin = decodeDronecanBeginFirmwareUpdateRequest(finished.payload)
+          const path = begin?.imageFileRemotePath && begin.imageFileRemotePath.length > 0 ? begin.imageFileRemotePath : 'fw.bin'
+          fwUpdate = { node, path, received: 0, transferId: 0 }
+          const responseFrames = serviceResponseFrames(
+            node,
+            DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID,
+            DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SIGNATURE,
+            encodeDronecanBeginFirmwareUpdateResponse(DRONECAN_FILE_BFU_ERROR_OK),
+            tail.transferId
+          )
+          return [...responseFrames, ...nodeReadRequestFrames(fwUpdate)]
+        }
         default:
           return []
       }

@@ -657,6 +657,200 @@ export function encodeDronecanRestartNodeResponse(ok: boolean): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------
+// uavcan.protocol.file.BeginFirmwareUpdate (service 40) +
+// uavcan.protocol.file.Read (service 48) — the two DSDL types that drive a
+// DroneCAN node firmware update with the GCS acting as the file server.
+//
+// Wire layout verified two ways:
+//   1. Against the DSDL at modules/DroneCAN/DSDL/uavcan/protocol/file/
+//      (40.BeginFirmwareUpdate.uavcan, 48.Read.uavcan, Error.uavcan,
+//      Path.uavcan).
+//   2. Byte-for-byte against pydronecan's canonical TAO marshaller
+//      (`payload._pack(tao=True)`), e.g.
+//        BeginFirmwareUpdate.Request(source_node_id=125, path="abc")
+//          -> 7d 61 62 63
+//        Read.Request(offset=256, path="abc")
+//          -> 00 01 00 00 00 61 62 63
+//        Read.Response(error=OK, data=[1,2,3,4,5])
+//          -> 00 00 01 02 03 04 05
+//        Read.Response(error=NOT_FOUND, data=[])
+//          -> 02 00
+//        BeginFirmwareUpdate.Response(error=OK) -> 00
+//        BeginFirmwareUpdate.Response(error=IN_PROGRESS, msg="busy")
+//          -> 02 62 75 73 79
+//
+// Every field here is byte-aligned, so no canard bit-packing is needed. The
+// trailing array of each transfer (the Path, and the Read.Response `data`)
+// uses DroneCAN's tail-array optimization: it is the last field with >=8-bit
+// elements, so its length prefix is omitted and it simply runs to the end of
+// the payload. Read.Response EOF is signalled by `data.len < 256` (the array
+// capacity) — confirmed by AP_Bootloader/can.cpp, which jumps to the app once
+// it receives a chunk shorter than `sizeof(ReadResponse::data.data)` (256).
+// ---------------------------------------------------------------------------
+
+export const DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID = 40
+export const DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SIGNATURE = 0xb7d725df72724126n
+export const DRONECAN_FILE_READ_SERVICE_ID = 48
+export const DRONECAN_FILE_READ_SIGNATURE = 0x8dcdca939f33f678n
+
+/** BeginFirmwareUpdate.Response error codes (uavcan.protocol.file). */
+export const DRONECAN_FILE_BFU_ERROR_OK = 0
+export const DRONECAN_FILE_BFU_ERROR_INVALID_MODE = 1
+export const DRONECAN_FILE_BFU_ERROR_IN_PROGRESS = 2
+export const DRONECAN_FILE_BFU_ERROR_UNKNOWN = 255
+
+/** uavcan.protocol.file.Error result codes (the nested Error in Read.Response). */
+export const DRONECAN_FILE_ERROR_OK = 0
+export const DRONECAN_FILE_ERROR_NOT_FOUND = 2
+export const DRONECAN_FILE_ERROR_IO_ERROR = 5
+
+/** Read.Response `data` array capacity (uint8[<=256]). A chunk shorter than
+ *  this means end-of-file — the slave stops reading and boots the new app. */
+export const DRONECAN_FILE_READ_MAX_DATA = 256
+/** Path.path array capacity (uint8[<=200]). */
+export const DRONECAN_FILE_PATH_MAX = 200
+
+const fileTextEncoder = new TextEncoder()
+
+function dronecanWriteUint40LE(out: Uint8Array, pos: number, value: number): void {
+  let v = Math.max(0, Math.trunc(value))
+  for (let i = 0; i < 5; i += 1) {
+    out[pos + i] = v % 256
+    v = Math.floor(v / 256)
+  }
+}
+
+function dronecanReadUint40LE(payload: Uint8Array, pos: number): number {
+  let v = 0
+  for (let i = 0; i < 5; i += 1) {
+    v += (payload[pos + i] ?? 0) * 2 ** (8 * i)
+  }
+  return v
+}
+
+function encodeFilePath(path: string): Uint8Array {
+  return fileTextEncoder.encode(path).slice(0, DRONECAN_FILE_PATH_MAX)
+}
+
+export interface DronecanBeginFirmwareUpdateRequest {
+  /** Node id of the file server (0 = "use the caller's node id"). */
+  sourceNodeId: number
+  /** Remote path the slave will Read the image from. */
+  imageFileRemotePath: string
+}
+
+/** Encode a uavcan.protocol.file.BeginFirmwareUpdate request:
+ *  uint8 source_node_id, then the Path tail array (no length prefix). */
+export function encodeDronecanBeginFirmwareUpdateRequest(
+  req: DronecanBeginFirmwareUpdateRequest
+): Uint8Array {
+  const pathBytes = encodeFilePath(req.imageFileRemotePath)
+  const out = new Uint8Array(1 + pathBytes.length)
+  out[0] = req.sourceNodeId & 0xff
+  out.set(pathBytes, 1)
+  return out
+}
+
+export function decodeDronecanBeginFirmwareUpdateRequest(
+  payload: Uint8Array
+): DronecanBeginFirmwareUpdateRequest | undefined {
+  if (payload.length < 1) {
+    return undefined
+  }
+  return {
+    sourceNodeId: payload[0],
+    imageFileRemotePath: textDecoder.decode(payload.subarray(1)).replace(/\0+$/, '')
+  }
+}
+
+export interface DronecanBeginFirmwareUpdateResponse {
+  /** ERROR_OK (0) on accept; non-zero is a refusal (see the BFU_ERROR_* codes). */
+  error: number
+  optionalErrorMessage?: string
+}
+
+/** Encode a BeginFirmwareUpdate response: uint8 error, then the optional
+ *  error message tail array (uint8[<128], TAO — no length prefix). */
+export function encodeDronecanBeginFirmwareUpdateResponse(
+  error: number,
+  optionalErrorMessage = ''
+): Uint8Array {
+  const msg = fileTextEncoder.encode(optionalErrorMessage).slice(0, 127)
+  const out = new Uint8Array(1 + msg.length)
+  out[0] = error & 0xff
+  out.set(msg, 1)
+  return out
+}
+
+export function decodeDronecanBeginFirmwareUpdateResponse(
+  payload: Uint8Array
+): DronecanBeginFirmwareUpdateResponse | undefined {
+  if (payload.length < 1) {
+    return undefined
+  }
+  const optionalErrorMessage = textDecoder.decode(payload.subarray(1)).replace(/\0+$/, '')
+  return {
+    error: payload[0],
+    optionalErrorMessage: optionalErrorMessage.length > 0 ? optionalErrorMessage : undefined
+  }
+}
+
+export interface DronecanFileReadRequest {
+  /** Byte offset into the file (uint40). */
+  offset: number
+  path: string
+}
+
+/** Encode a uavcan.protocol.file.Read request: uint40 offset (LE), then the
+ *  Path tail array (no length prefix). */
+export function encodeDronecanFileReadRequest(req: DronecanFileReadRequest): Uint8Array {
+  const pathBytes = encodeFilePath(req.path)
+  const out = new Uint8Array(5 + pathBytes.length)
+  dronecanWriteUint40LE(out, 0, req.offset)
+  out.set(pathBytes, 5)
+  return out
+}
+
+export function decodeDronecanFileReadRequest(payload: Uint8Array): DronecanFileReadRequest | undefined {
+  if (payload.length < 5) {
+    return undefined
+  }
+  return {
+    offset: dronecanReadUint40LE(payload, 0),
+    path: textDecoder.decode(payload.subarray(5)).replace(/\0+$/, '')
+  }
+}
+
+export interface DronecanFileReadResponse {
+  /** uavcan.protocol.file.Error.value (int16). 0 = OK. */
+  error: number
+  data: Uint8Array
+}
+
+/** Encode a uavcan.protocol.file.Read response: int16 error (LE), then the
+ *  `data` tail array (no length prefix). `data` must already be clamped to
+ *  <=256 bytes by the caller; the slave reads to EOF when it is shorter. */
+export function encodeDronecanFileReadResponse(error: number, data: Uint8Array): Uint8Array {
+  const clamped = data.length > DRONECAN_FILE_READ_MAX_DATA ? data.subarray(0, DRONECAN_FILE_READ_MAX_DATA) : data
+  const out = new Uint8Array(2 + clamped.length)
+  out[0] = error & 0xff
+  out[1] = (error >> 8) & 0xff
+  out.set(clamped, 2)
+  return out
+}
+
+export function decodeDronecanFileReadResponse(payload: Uint8Array): DronecanFileReadResponse | undefined {
+  if (payload.length < 2) {
+    return undefined
+  }
+  let error = payload[0] | (payload[1] << 8)
+  if (error & 0x8000) {
+    error -= 0x10000
+  }
+  return { error, data: payload.slice(2) }
+}
+
+// ---------------------------------------------------------------------------
 // Canard-compatible bit packing (UAVCAN v0 / DroneCAN)
 //
 // Unlike the GetSet path (which real ArduPilot nodes serialize byte-aligned —
