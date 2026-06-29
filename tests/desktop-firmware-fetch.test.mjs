@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { gzipSync } from 'node:zlib'
 import {
   listBoardFirmware,
+  listDronecanNodeFirmware,
   downloadFirmwareApj,
   resetFirmwareManifestCache
 } from '../apps/desktop/dist/firmware-fetch.js'
@@ -61,4 +62,41 @@ test('downloadFirmwareApj fetches bytes from firmware.ardupilot.org', async () =
   const bytes = new Uint8Array([1, 2, 3, 4])
   const out = await downloadFirmwareApj(url, fakeFetch({ [url]: okBytes(bytes) }))
   assert.deepEqual([...out], [1, 2, 3, 4])
+})
+
+// AP_Periph DroneCAN node firmware list — matched by board id, AP_Periph apj
+// only (the Copter entry on the same board id and the raw .bin are excluded).
+const PERIPH_MANIFEST = JSON.stringify({
+  'format-version': '1.0.0',
+  firmware: [
+    { vehicletype: 'AP_Periph', board_id: 1137, platform: 'FlywooF405Pro', format: 'apj', latest: 1,
+      'mav-firmware-version-type': 'OFFICIAL', 'mav-firmware-version-str': '1.7.0',
+      url: 'https://firmware.ardupilot.org/AP_Periph/stable/FlywooF405Pro/AP_Periph.apj' },
+    { vehicletype: 'AP_Periph', board_id: 1137, platform: 'FlywooF405Pro', format: 'bin', latest: 1,
+      'mav-firmware-version-type': 'OFFICIAL', 'mav-firmware-version-str': '1.7.0',
+      url: 'https://firmware.ardupilot.org/AP_Periph/stable/FlywooF405Pro/AP_Periph.bin' },
+    { vehicletype: 'Copter', board_id: 1137, platform: 'CubeOrange', format: 'apj', latest: 1,
+      'mav-firmware-version-type': 'OFFICIAL', 'mav-firmware-version-str': '4.6.0',
+      url: 'https://firmware.ardupilot.org/Copter/stable/CubeOrange/arducopter.apj' }
+  ]
+})
+const PERIPH_MANIFEST_GZ = gzipSync(Buffer.from(PERIPH_MANIFEST, 'utf-8'))
+
+test('listDronecanNodeFirmware matches AP_Periph apj by node board id', async () => {
+  resetFirmwareManifestCache()
+  const res = await listDronecanNodeFirmware(
+    1137,
+    fakeFetch({ 'https://firmware.ardupilot.org/manifest.json.gz': okGzManifest(PERIPH_MANIFEST_GZ) })
+  )
+  assert.equal(res.entries.length, 1, 'AP_Periph apj only — not the .bin, not the Copter entry')
+  assert.equal(res.entries[0].vehicletype, 'AP_Periph')
+  assert.equal(res.entries[0].versionStr, '1.7.0')
+  assert.deepEqual(res.releaseTypes, ['OFFICIAL'])
+
+  resetFirmwareManifestCache()
+  const none = await listDronecanNodeFirmware(
+    9999,
+    fakeFetch({ 'https://firmware.ardupilot.org/manifest.json.gz': okGzManifest(PERIPH_MANIFEST_GZ) })
+  )
+  assert.equal(none.entries.length, 0)
 })

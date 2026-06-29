@@ -35,9 +35,13 @@ export {
   firmwaresForBoard,
   availableReleaseTypes,
   selectFirmware,
+  firmwaresForDronecanNode,
+  dronecanNodeReleaseTypes,
+  dronecanNodeBoardId,
   type FirmwareManifest,
   type FirmwareEntry,
   type FirmwareQuery,
+  type DronecanNodeFirmwareQuery,
   type VehicleType,
   type ReleaseType,
   type ManifestFetcher

@@ -246,8 +246,10 @@ import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
 import { MavlinkInspectorView } from './views/MavlinkInspector'
 import { useMavlinkInspector } from './hooks/use-mavlink-inspector'
-import { DronecanInspectorView } from './views/DronecanInspector'
+import { DronecanInspectorView, type DronecanFirmwareOnlineSource } from './views/DronecanInspector'
 import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
+import { dronecanNodeBoardId, parseApj, decodeApjImage } from '@arduconfig/firmware-flash'
+import { inflateZlib } from './firmware/web-serial-bootloader'
 import { ScopedField, ScopedSelectField } from './views/ScopedField'
 import { ModesView } from './views/Modes'
 import { FailsafeSection } from './sections/FailsafeSection'
@@ -1821,6 +1823,90 @@ export function App() {
     snapshot.canBus.framesReceived,
     snapshot.canBus.status === 'active'
   )
+  // Online firmware lookup for DroneCAN nodes (desktop-only). The browser can't
+  // reach firmware.ardupilot.org (no CORS), so this is wired ONLY when the
+  // Electron firmware bridge is present — same precedent as the FC flasher. In
+  // the web build it degrades to `available: false` (local .bin still works).
+  // The node's bootloader flashes RAW bytes, so we decode the server's .apj
+  // (zlib image) down to the raw image before handing it to the Phase-2 update.
+  const dronecanFirmwareOnline = useMemo<DronecanFirmwareOnlineSource>(() => {
+    const bridge =
+      typeof window !== 'undefined'
+        ? (
+            window as unknown as {
+              arduconfigDesktop?: {
+                firmware?: {
+                  listDronecanNode?: (boardId: number) => Promise<{
+                    releaseTypes: string[]
+                    entries: Array<{
+                      boardId: number
+                      platform: string
+                      releaseType: string
+                      versionStr: string
+                      url: string
+                      latest: boolean
+                    }>
+                  }>
+                  download?: (url: string) => Promise<Uint8Array>
+                }
+              }
+            }
+          ).arduconfigDesktop?.firmware
+        : undefined
+    if (!bridge?.listDronecanNode || !bridge.download) {
+      const unavailable = async (): Promise<never> => {
+        throw new Error(
+          'Online firmware lookup needs the ArduConfigurator desktop app — the browser can’t reach firmware.ardupilot.org. Pick a local .bin instead.'
+        )
+      }
+      return {
+        available: false,
+        unavailableReason:
+          'Online firmware lookup needs the ArduConfigurator desktop app (the browser can’t reach firmware.ardupilot.org). Pick a local .bin below.',
+        findCandidates: unavailable,
+        download: unavailable
+      }
+    }
+    const list = bridge.listDronecanNode
+    const download = bridge.download
+    const releaseLabel = (releaseType: string): string => {
+      if (releaseType === 'OFFICIAL') return 'Stable'
+      if (releaseType === 'BETA') return 'Beta'
+      if (releaseType === 'DEV') return 'Dev'
+      if (releaseType.startsWith('STABLE-')) return releaseType.slice('STABLE-'.length)
+      return releaseType
+    }
+    return {
+      available: true,
+      findCandidates: async (node) => {
+        const boardId = dronecanNodeBoardId(node.hwVersion)
+        if (boardId === undefined) {
+          throw new Error(
+            'This node hasn’t reported its hardware version yet — wait for its identity to fill in, then try again.'
+          )
+        }
+        const result = await list(boardId)
+        return result.entries.map((entry) => ({
+          url: entry.url,
+          versionLabel: entry.versionStr || 'unknown',
+          releaseLabel: releaseLabel(entry.releaseType),
+          platform: entry.platform || '',
+          boardId: entry.boardId,
+          latest: entry.latest
+        }))
+      },
+      download: async (candidate) => {
+        const apjBytes = await download(candidate.url)
+        // The manifest serves AP_Periph firmware as .apj (JSON-wrapped, zlib
+        // image). The node's bootloader writes raw bytes straight to flash
+        // (AP_Bootloader/can.cpp), so decode to the raw image here.
+        const parsed = parseApj(new TextDecoder().decode(apjBytes))
+        const image = await decodeApjImage(parsed, inflateZlib)
+        const fileName = candidate.url.split('/').slice(-2).join('/')
+        return { fileName, image }
+      }
+    }
+  }, [])
   // Human label for the current selection, used across preset notices/messages.
   const selectedPresetsLabel =
     selectedPresets.length === 0
@@ -6932,6 +7018,7 @@ export function App() {
           onRestartNode={(nodeId) => { void runtime?.restartCanBusNode(nodeId) }}
           onStartFirmwareUpdate={(nodeId, fileName, image) => { void runtime?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image) }}
           onCancelFirmwareUpdate={() => { runtime?.cancelCanBusNodeFirmwareUpdate() }}
+          firmwareOnline={dronecanFirmwareOnline}
         />
       ) : null}
 

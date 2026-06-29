@@ -12901,6 +12901,30 @@ details.bf-gui-box:not([open]) > summary::after {
   font-family: var(--font-data);
   font-size: 12px;
 }
+.dronecan-inspector__fwupdate-online {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.dronecan-inspector__fwupdate-online-id {
+  font-family: var(--font-data);
+  color: var(--text-muted);
+}
+.dronecan-inspector__fwupdate-online-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dronecan-inspector__fwupdate-online-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
 .dronecan-inspector__fwupdate-ack {
   display: flex;
   align-items: flex-start;

@@ -8,7 +8,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type { VehicleType } from '@arduconfig/firmware-flash'
 
 import { createDesktopWebPreferences } from './electron-window-options.js'
-import { listBoardFirmware, downloadFirmwareApj } from './firmware-fetch.js'
+import { listBoardFirmware, listDronecanNodeFirmware, downloadFirmwareApj } from './firmware-fetch.js'
 import { NativeSocketManager, type SocketOpenOptions } from './native-socket-manager.js'
 import { desktopPlatformManifest } from './platform.js'
 import { confinedExistingPath } from './save-path.js'
@@ -208,6 +208,10 @@ function registerDesktopFirmwareHandlers(): void {
   // chosen .apj bytes — the browser can't do either.
   ipcMain.handle('desktop:firmware:list', async (_event, boardId: number, vehicletype?: string) =>
     listBoardFirmware(boardId, vehicletype as VehicleType | undefined)
+  )
+  // AP_Periph firmware for a DroneCAN node, matched by its board id.
+  ipcMain.handle('desktop:firmware:list-dronecan', async (_event, boardId: number) =>
+    listDronecanNodeFirmware(boardId)
   )
   ipcMain.handle('desktop:firmware:download', async (_event, url: string) => downloadFirmwareApj(url))
 }

@@ -33,6 +33,23 @@ contextBridge.exposeInMainWorld('arduconfigDesktop', {
         releaseTypes: string[]
         entries: { boardId: number; vehicletype: string; releaseType: string; version: string; url: string; latest: boolean }[]
       }>,
+    // AP_Periph firmware for a DroneCAN node, matched by board id. Returns the
+    // firmware-flash FirmwareEntry shape (versionStr/platform/format), not the
+    // FC-flasher's renderer subset above.
+    listDronecanNode: (boardId: number) =>
+      ipcRenderer.invoke('desktop:firmware:list-dronecan', boardId) as Promise<{
+        releaseTypes: string[]
+        entries: {
+          boardId: number
+          vehicletype: string
+          platform: string
+          releaseType: string
+          versionStr: string
+          url: string
+          latest: boolean
+          format: string
+        }[]
+      }>,
     download: (url: string) => ipcRenderer.invoke('desktop:firmware:download', url) as Promise<Uint8Array>
   },
   // Native UDP/TCP socket bridge. The renderer constructs a DesktopSocketTransport

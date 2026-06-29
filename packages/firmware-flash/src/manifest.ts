@@ -215,6 +215,82 @@ export function selectFirmware(
   return flagged ?? candidates[0]
 }
 
+// --- DroneCAN peripheral (AP_Periph) node firmware matching --------------
+//
+// A DroneCAN node reports its identity over uavcan.protocol.GetNodeInfo:
+// `name` (e.g. "org.ardupilot.<board>") and a `hardware_version` whose major
+// and minor bytes are the high and low bytes of the board's APJ_BOARD_ID:
+//
+//   Tools/AP_Periph/can.cpp:
+//     pkt.hardware_version.major = APJ_BOARD_ID >> 8;
+//     pkt.hardware_version.minor = APJ_BOARD_ID & 0xFF;
+//
+// That reconstructed APJ_BOARD_ID is the SAME integer the firmware manifest
+// carries as `board_id` for vehicletype "AP_Periph", so it is the precise
+// match key — exactly like the FC flasher matches its board id. The node name
+// ("org.ardupilot." + CHIBIOS_BOARD_NAME) is a human-facing label only (board
+// ids can be shared across brand variants); it is not the match key.
+
+/** Reconstruct a DroneCAN node's APJ board id from the major/minor bytes of its
+ *  GetNodeInfo hardware_version (board_id = major<<8 | minor). Returns undefined
+ *  when the node hasn't reported a hardware version yet. */
+export function dronecanNodeBoardId(
+  hwVersion: { major: number; minor: number } | undefined
+): number | undefined {
+  if (!hwVersion) {
+    return undefined
+  }
+  const { major, minor } = hwVersion
+  if (!Number.isFinite(major) || !Number.isFinite(minor)) {
+    return undefined
+  }
+  return ((major & 0xff) << 8) | (minor & 0xff)
+}
+
+export interface DronecanNodeFirmwareQuery {
+  /** APJ board id the node reported, reconstructed via dronecanNodeBoardId from
+   *  GetNodeInfo hardware_version. The match key. Undefined when the node hasn't
+   *  answered GetNodeInfo yet. */
+  boardId?: number
+  /** DroneCAN node name, surfaced to the operator; not used to filter. */
+  name?: string
+  /** Optional release-channel filter. Omit to return every release. */
+  releaseType?: ReleaseType
+}
+
+/**
+ * AP_Periph firmware candidates for a detected DroneCAN node, in the same
+ * channel order as firmwaresForBoard. Matches strictly on board id against
+ * vehicletype "AP_Periph" `.apj` entries; returns [] when the node's board id
+ * is unknown (no GetNodeInfo yet) so the UI can prompt for identity rather than
+ * offer an unmatched image. An optional releaseType narrows to one channel.
+ */
+export function firmwaresForDronecanNode(
+  manifest: FirmwareManifest,
+  query: DronecanNodeFirmwareQuery
+): FirmwareEntry[] {
+  if (query.boardId === undefined || !Number.isFinite(query.boardId)) {
+    return []
+  }
+  const candidates = firmwaresForBoard(manifest, query.boardId, 'AP_Periph')
+  if (query.releaseType === undefined) {
+    return candidates
+  }
+  return candidates.filter((entry) => entry.releaseType === query.releaseType)
+}
+
+/** Release channels available for a node's board (for a UI selector). Empty
+ *  when the board id is unknown or no AP_Periph firmware matches. */
+export function dronecanNodeReleaseTypes(
+  manifest: FirmwareManifest,
+  boardId: number | undefined
+): ReleaseType[] {
+  if (boardId === undefined || !Number.isFinite(boardId)) {
+    return []
+  }
+  return availableReleaseTypes(manifest, boardId, 'AP_Periph')
+}
+
 export type ManifestFetcher = () => Promise<string>
 
 /** Fetch + parse via an injected fetcher (app supplies direct/proxied fetch). */
