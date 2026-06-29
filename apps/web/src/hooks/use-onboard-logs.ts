@@ -124,14 +124,17 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
       }
       try {
         let bytes: Uint8Array
-        let filename: string
         if (mavftpItem) {
           bytes = await runtime.downloadMavftpLog(mavftpItem.path, onProgress)
-          filename = mavftpItem.name
         } else {
           bytes = await runtime.downloadOnboardLog(id, log.sizeBytes, onProgress)
-          filename = buildOnboardLogFilename(log, runtime.getSnapshot().hardware.board)
         }
+        // Both sources use the descriptive <uid>_log<id>[_date].bin convention.
+        // MAVFTP listings carry no timestamp (so no date part), but tagging with
+        // the board uid + log number still beats the raw on-FC "00000042.BIN"
+        // name and keeps a multi-craft download folder self-describing. (The
+        // logs list UI still shows the raw FC name for on-card correlation.)
+        const filename = buildOnboardLogFilename(log, runtime.getSnapshot().hardware.board)
         downloadBinaryFile(filename, bytes)
         setState((prev) => ({
           ...prev,
