@@ -2,6 +2,7 @@ import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
+import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
 import {
   ARDUCOPTER_BATTERY_MONITOR_LABELS,
   ARDUCOPTER_BATTERY_VOLTAGE_SOURCE_LABELS,
@@ -575,6 +576,13 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       description: 'Rangefinder/lidar driver, orientation, range limits, and mounting offsets (RNGFND1).',
       order: 1.6,
       viewId: 'motors'
+    },
+    relays: {
+      id: 'relays',
+      label: 'Relays',
+      description: 'GPIO relay function mapping, pin assignment, default state, and signal inversion (RELAY1..RELAY6).',
+      order: 1.7,
+      viewId: 'servos'
     },
     sensors: {
       id: 'sensors',
@@ -3363,6 +3371,9 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
     ...buildMountParameterDefinitions(1),
     ...buildMountParameterDefinitions(2),
     ...buildRangefinderParameterDefinitions(1),
+    ...Array.from({ length: RELAY_INSTANCE_COUNT }, (_, index) =>
+      buildRelayParameterDefinitions(index + 1)
+    ).reduce((merged, family) => ({ ...merged, ...family }), {}),
     OSD_TYPE: {
       id: 'OSD_TYPE',
       label: 'OSD Backend',

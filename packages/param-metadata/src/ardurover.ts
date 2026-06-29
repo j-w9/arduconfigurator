@@ -2,6 +2,7 @@ import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
+import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
 import {
   ARDUCOPTER_BATTERY_MONITOR_LABELS,
   ARDUCOPTER_BATTERY_VOLTAGE_SOURCE_LABELS,
@@ -276,6 +277,7 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     motors: { id: 'motors', label: 'Motors & Outputs', description: 'Throttle limits and motor output behavior.', order: 8, viewId: 'motors' },
     gimbal: { id: 'gimbal', label: 'Gimbal / Mount', description: 'Camera gimbal/mount driver, control mode, and per-axis angle limits (MNT1/MNT2).', order: 8.5, viewId: 'motors' },
     rangefinder: { id: 'rangefinder', label: 'Rangefinder / Lidar', description: 'Rangefinder driver, orientation, range limits, and mounting offsets (RNGFND1).', order: 8.6, viewId: 'motors' },
+    relays: { id: 'relays', label: 'Relays', description: 'GPIO relay function mapping, pin assignment, default state, and signal inversion (RELAY1..RELAY6).', order: 8.7, viewId: 'servos' },
     steering: { id: 'steering', label: 'Steering Tuning', description: 'Steering-rate and steering-angle controller gains.', order: 9, viewId: 'tuning' },
     speed: { id: 'speed', label: 'Speed Tuning', description: 'Throttle/speed controller gains.', order: 10, viewId: 'tuning' },
     navigation: { id: 'navigation', label: 'Navigation', description: 'Waypoint and turn behavior.', order: 11, viewId: 'tuning' },
@@ -331,6 +333,9 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     ...buildMountParameterDefinitions(1),
     ...buildMountParameterDefinitions(2),
     ...buildRangefinderParameterDefinitions(1),
+    ...Array.from({ length: RELAY_INSTANCE_COUNT }, (_, index) =>
+      buildRelayParameterDefinitions(index + 1)
+    ).reduce((merged, family) => ({ ...merged, ...family }), {}),
 
     AHRS_ORIENTATION: {
       id: 'AHRS_ORIENTATION',

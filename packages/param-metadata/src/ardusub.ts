@@ -2,6 +2,7 @@ import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
+import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
 import {
   ARDUCOPTER_BATTERY_MONITOR_LABELS,
   ARDUCOPTER_BATTERY_VOLTAGE_SOURCE_LABELS,
@@ -250,6 +251,7 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     frame: { id: 'frame', label: 'Frame Config', description: 'Thruster frame configuration.', order: 1, viewId: 'motors' },
     gimbal: { id: 'gimbal', label: 'Gimbal / Mount', description: 'Camera gimbal/mount driver, control mode, and per-axis angle limits (MNT1/MNT2).', order: 1.5, viewId: 'motors' },
     rangefinder: { id: 'rangefinder', label: 'Rangefinder / Lidar', description: 'Rangefinder/echosounder driver, orientation, range limits, and mounting offsets (RNGFND1).', order: 1.6, viewId: 'motors' },
+    relays: { id: 'relays', label: 'Relays', description: 'GPIO relay function mapping, pin assignment, default state, and signal inversion (RELAY1..RELAY6).', order: 1.7, viewId: 'servos' },
     joystick: { id: 'joystick', label: 'Joystick', description: 'Pilot joystick gain and control behavior.', order: 2, viewId: 'receiver' },
     pilot: { id: 'pilot', label: 'Pilot & Depth', description: 'Vertical speed, acceleration, and surface depth.', order: 3, viewId: 'tuning' },
     sensors: { id: 'sensors', label: 'Sensors', description: 'Board orientation and sensor-related setup.', order: 4, viewId: 'setup' },
@@ -320,6 +322,9 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     ...buildMountParameterDefinitions(1),
     ...buildMountParameterDefinitions(2),
     ...buildRangefinderParameterDefinitions(1),
+    ...Array.from({ length: RELAY_INSTANCE_COUNT }, (_, index) =>
+      buildRelayParameterDefinitions(index + 1)
+    ).reduce((merged, family) => ({ ...merged, ...family }), {}),
 
     FRAME_CONFIG: { id: 'FRAME_CONFIG', label: 'Frame Configuration', description: 'Thruster layout of the Sub. Set this according to your vehicle/motor configuration.', category: 'frame', rebootRequired: true, notes: frameConfigNotes, options: enumOptions(ARDUSUB_FRAME_CONFIG_LABELS) },
 

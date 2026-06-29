@@ -48,3 +48,10 @@ export const POWER_REVIEW_PARAM_IDS = [
   'BATT_ARM_MAH'
 ] as const
 export const RECEIVER_SUPPORT_PARAM_IDS = ['FLTMODE_CH', 'MODE_CH', 'RSSI_TYPE', 'RSSI_CHANNEL', 'RSSI_CHAN_LOW', 'RSSI_CHAN_HIGH', 'RC_OPTIONS'] as const
+
+// AP_Relay per-instance params (RELAY1_FUNCTION/_PIN/_DEFAULT/_INVERTED ..
+// RELAYn_*). Dynamic per-instance, so matched by shape rather than a static
+// list — the Relays tab pulls every RELAYx_* the controller reports.
+export function isRelayParamId(parameterId: string): boolean {
+  return /^RELAY\d+_(FUNCTION|PIN|DEFAULT|INVERTED)$/.test(parameterId)
+}

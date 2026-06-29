@@ -292,6 +292,7 @@ import { StatusDfuCard } from './sections/StatusDfuCard'
 import { buildSetupConfirmationSignatures } from './view-models/setup-confirmation-signatures'
 import { buildTuningTaskCards } from './view-models/tuning-task-cards'
 import { buildOutputTaskCards, recommendOutputTaskId, type OutputTaskCard } from './view-models/output-task-cards'
+import { buildRelayGroups } from './view-models/relay-groups'
 import { buildSetupFlowSections } from './view-models/setup-flow-sections'
 import { buildGuidedSetupOverview } from './view-models/guided-setup-overview'
 import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
@@ -1969,7 +1970,10 @@ export function App() {
     outputNotificationInvalidDrafts,
     outputAssignmentDraftEntries,
     outputAssignmentStagedDrafts,
-    outputAssignmentInvalidDrafts
+    outputAssignmentInvalidDrafts,
+    relayDraftEntries,
+    relayStagedDrafts,
+    relayInvalidDrafts
   } = useViewDraftSelectors({ parameterDraftEntries, isConfigParamId })
   const canApplyAllDraftParameters =
     canApplyDraftParameters && stagedParameterDrafts.length > 0 && invalidParameterDrafts.length === 0
@@ -2080,6 +2084,9 @@ export function App() {
       ),
     [snapshot.parameters]
   )
+  // Relay tab: one card per reported RELAYx instance, grouped from the live
+  // snapshot. Edits flow through the shared relay draft scope (isRelayParamId).
+  const relayGroups = useMemo(() => buildRelayGroups(snapshot.parameters), [snapshot.parameters])
   const outputNotificationCatalog = useOutputNotificationCatalog(snapshot)
   const {
     notificationLedTypesParameter,
@@ -4080,7 +4087,7 @@ export function App() {
   // since that's the headline workflow for Servos. Stale overrides
   // from a Motors-tab task ('direction-test', etc.) are ignored.
   const activeOutputTaskId: OutputTaskId = activeViewId === 'servos'
-    ? (outputTaskOverride === 'servo-mapping' || outputTaskOverride === 'peripherals'
+    ? (outputTaskOverride === 'servo-mapping' || outputTaskOverride === 'peripherals' || outputTaskOverride === 'relays'
         ? outputTaskOverride
         : 'servo-mapping')
     : outputTaskOverride ?? recommendedOutputTaskId
@@ -4108,6 +4115,9 @@ export function App() {
         hasNotificationLedTypes: Boolean(notificationLedTypesParameter),
         hasNotificationBuzzTypes: Boolean(notificationBuzzTypesParameter),
         outputAdditionalGroupCount: outputAdditionalGroups.length,
+        relayInstanceCount: relayGroups.length,
+        relayStagedCount: relayStagedDrafts.length,
+        relayInvalidCount: relayInvalidDrafts.length,
         totalOutputInvalidDrafts,
         totalOutputStagedDrafts
       }),
@@ -4132,6 +4142,9 @@ export function App() {
       outputPeripheralStagedDraftCount,
       outputReviewInvalidDrafts.length,
       outputReviewStagedDrafts.length,
+      relayGroups.length,
+      relayStagedDrafts.length,
+      relayInvalidDrafts.length,
       totalOutputInvalidDrafts,
       totalOutputStagedDrafts
     ]
@@ -6593,7 +6606,11 @@ export function App() {
           outputHasPendingReview,
           outputTaskCards,
           activeOutputTaskId,
-          activeOutputTask
+          activeOutputTask,
+          relayGroups,
+          relayDraftEntries,
+          relayStagedDrafts,
+          relayInvalidDrafts
         }}
         handlers={{
           handleApplyScopedParameterDrafts,

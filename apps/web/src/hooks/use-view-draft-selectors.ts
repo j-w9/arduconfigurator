@@ -25,7 +25,7 @@ import {
   isTuningReviewParamId,
   isVtxReviewParamId
 } from '../param-review'
-import { OUTPUT_NOTIFICATION_PARAM_IDS, OUTPUT_REVIEW_PARAM_IDS } from '../param-groups'
+import { OUTPUT_NOTIFICATION_PARAM_IDS, OUTPUT_REVIEW_PARAM_IDS, isRelayParamId } from '../param-groups'
 import { TUNING_ALL_PID_PARAM_IDS, TUNING_FILTER_PARAM_IDS, TUNING_RATE_PARAM_IDS } from '../tuning-params'
 import { selectViewDrafts, type ViewDrafts } from '../selectors/view-drafts'
 
@@ -183,6 +183,11 @@ export function useViewDraftSelectors(input: {
     staged: outputAssignmentStagedDrafts,
     invalid: outputAssignmentInvalidDrafts
   } = useViewDraftSlice(parameterDraftEntries, isOutputAssignmentParamId)
+  const {
+    entries: relayDraftEntries,
+    staged: relayStagedDrafts,
+    invalid: relayInvalidDrafts
+  } = useViewDraftSlice(parameterDraftEntries, isRelayParamId)
 
   return {
     receiverDraftEntries,
@@ -239,6 +244,9 @@ export function useViewDraftSelectors(input: {
     outputNotificationInvalidDrafts,
     outputAssignmentDraftEntries,
     outputAssignmentStagedDrafts,
-    outputAssignmentInvalidDrafts
+    outputAssignmentInvalidDrafts,
+    relayDraftEntries,
+    relayStagedDrafts,
+    relayInvalidDrafts
   }
 }

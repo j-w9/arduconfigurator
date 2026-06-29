@@ -65,6 +65,7 @@ import {
 import { OutputsView } from '../views/Outputs'
 import type { OutputsTaskId, OutputsViewProps } from '../views/Outputs'
 import { ScopedField, ScopedSelectField } from '../views/ScopedField'
+import { RelaysView } from '../views/RelaysView'
 import { ServoFunctionMappingView } from '../views/ServoFunctionMapping'
 import type { ServoFunctionMappingViewProps } from '../views/ServoFunctionMapping'
 
@@ -138,6 +139,10 @@ export interface OutputsSectionDerived {
   outputTaskCards: OutputsViewProps['taskCards']
   activeOutputTaskId: OutputsTaskId
   activeOutputTask: OutputsViewProps['activeTask']
+  relayGroups: import('../view-models/relay-groups').RelayInstanceGroup[]
+  relayDraftEntries: ParameterDraftEntry[]
+  relayStagedDrafts: ParameterDraftEntry[]
+  relayInvalidDrafts: ParameterDraftEntry[]
 }
 
 export interface OutputsSectionHandlers {
@@ -297,7 +302,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     outputHasPendingReview,
     outputTaskCards,
     activeOutputTaskId,
-    activeOutputTask
+    activeOutputTask,
+    relayGroups,
+    relayDraftEntries,
+    relayStagedDrafts,
+    relayInvalidDrafts
   } = derived
 
   const {
@@ -350,7 +359,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
               (['esc-protocol', 'motor-setup', 'direction-test'] as const)
                 .map((id) => outputTaskCards.find((card) => card.id === id))
                 .filter((card): card is (typeof outputTaskCards)[number] => card !== undefined)
-            : outputTaskCards.filter((card) => card.id === 'servo-mapping' || card.id === 'peripherals')
+            : outputTaskCards.filter((card) => card.id === 'servo-mapping' || card.id === 'peripherals' || card.id === 'relays')
         }
         title={activeViewId === 'motors' ? 'Motors' : 'Servos'}
         subtitle={
@@ -884,6 +893,25 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     isBusy={busyAction !== undefined}
                     onApply={() => void handleApplyScopedParameterDrafts(outputAssignmentDraftEntries, 'outputs:assignments', 'Output assignments')}
                     onRevert={() => handleDiscardScopedParameterDrafts(outputAssignmentDraftEntries.map((entry) => entry.id), 'output assignments')}
+                  />
+                </div>
+              ) : null}
+
+              {activeOutputTaskId === 'relays' ? (
+                <div className="outputs-task-panel outputs-task-panel--stack">
+                  <RelaysView
+                    groups={relayGroups}
+                    editedValues={editedValues}
+                    onEditChange={(paramId, value) => setDraft(paramId, value)}
+                    draftStatusById={parameterDraftById}
+                    stagedCount={relayStagedDrafts.length}
+                    invalidCount={relayInvalidDrafts.length}
+                    draftCount={relayDraftEntries.length}
+                    canApply={canApplyDraftParameters}
+                    isApplying={busyAction === 'outputs:relays'}
+                    isBusy={busyAction !== undefined}
+                    onApply={() => void handleApplyScopedParameterDrafts(relayDraftEntries, 'outputs:relays', 'Relays')}
+                    onRevert={() => handleDiscardScopedParameterDrafts(relayDraftEntries.map((entry) => entry.id), 'relays')}
                   />
                 </div>
               ) : null}

@@ -9,6 +9,7 @@ export type OutputsTaskId =
   | 'esc-protocol'
   | 'servo-mapping'
   | 'peripherals'
+  | 'relays'
   | 'review'
 
 export interface OutputsTaskCard {

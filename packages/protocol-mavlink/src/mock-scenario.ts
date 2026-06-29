@@ -111,6 +111,17 @@ const mockParameters: ParameterState = {
   RNGFND1_RMETRIC: 1,
   RNGFND1_STOP_PIN: -1,
   RNGFND1_PWRRNG: 0,
+  // Relays (RELAY1/RELAY2) — seeded so the demo surfaces the Relays tab
+  // populated: relay 1 is a plain operator relay on an AUX pin (default off),
+  // relay 2 is mapped to the camera shutter. Metadata ships RELAY1..RELAY6.
+  RELAY1_FUNCTION: 1,
+  RELAY1_PIN: 50,
+  RELAY1_DEFAULT: 0,
+  RELAY1_INVERTED: 0,
+  RELAY2_FUNCTION: 4,
+  RELAY2_PIN: 51,
+  RELAY2_DEFAULT: 0,
+  RELAY2_INVERTED: 0,
   AHRS_ORIENTATION: 0,
   // Config-tab fields a real FC always reports — included so the demo Config
   // surface is complete (no "— (not reported)" rows).

@@ -714,8 +714,8 @@ test('MockTransport serializes chunked inbound frames so demo parameter sync com
     const stats = await runtime.waitForParameterSync({ timeoutMs: 120000 })
 
     assert.equal(stats.status, 'complete')
-    assert.equal(stats.downloaded, 1072)
-    assert.equal(stats.total, 1072)
+    assert.equal(stats.downloaded, 1080)
+    assert.equal(stats.total, 1080)
     assert.equal(runtime.getSnapshot().parameters.find((parameter) => parameter.id === 'FRAME_CLASS')?.value, 1)
     assert.equal(runtime.getSnapshot().parameters.find((parameter) => parameter.id === 'FRAME_TYPE')?.value, 1)
   } finally {
@@ -846,7 +846,7 @@ test('Bundled WebSocket bridge can drive runtime heartbeat and parameter sync fr
     assert.equal(runtime.getSnapshot().connection.kind, 'connected')
     assert.equal(runtime.getSnapshot().vehicle?.vehicle, 'ArduCopter')
     assert.equal(stats.status, 'complete')
-    assert.equal(stats.downloaded, 1072)
+    assert.equal(stats.downloaded, 1080)
     assert.equal(runtime.getSnapshot().parameters.find((parameter) => parameter.id === 'FRAME_CLASS')?.value, 1)
   } finally {
     await runtime.disconnect().catch(() => {})
