@@ -458,7 +458,10 @@ function buildSerialPortParameterDefinitions(maxPortNumber: number): FirmwareMet
       description: `Configured baud rate for ${portLabel}.`,
       category: 'ports',
       minimum: 1,
-      maximum: 12500,
+      // 12.5 MBaud is encoded as the direct rate 12500000 (see
+      // ARDUCOPTER_SERIAL_BAUD_LABELS) — the ceiling must allow it or selecting
+      // the top baud option reads back as invalid.
+      maximum: 12500000,
       notes: serialBaudNotes,
       options: enumOptions(ARDUCOPTER_SERIAL_BAUD_LABELS)
     }
