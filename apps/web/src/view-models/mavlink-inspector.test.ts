@@ -6,25 +6,42 @@ import {
   buildMavlinkFieldRows,
   buildPlotGeometry,
   buildSparklinePoints,
+  buildStatsSnapshot,
+  classifyRowHealth,
   describeMavlinkSource,
   describeMessageRequestOutcome,
+  describeSourceHealth,
   filterMavlinkStats,
   filterMavlinkStatsBySource,
   formatBytesPerSec,
+  formatLossPercent,
   formatMavlinkFieldType,
   formatMavlinkFieldValue,
   formatPlotValue,
   groupMavlinkStatsBySource,
+  inspectorExportFilename,
   intervalUsForRate,
   isPlottableFieldValue,
+  isRateDropSharp,
+  isRowStale,
+  jsonSafeReplacer,
   listMavlinkSources,
+  lossPercent,
   mavlinkComponentLabel,
   messageNameForId,
   messageToJson,
+  pushRecordedMessage,
+  RECORDING_MAX_MESSAGES,
   REQUESTABLE_MESSAGES,
+  sequenceGap,
+  serializePlotCsv,
+  serializeRecording,
+  serializeStatsSnapshot,
   sortMavlinkStats,
+  STALE_AFTER_MS,
   summarizeMavlinkStats,
-  toPlottableNumber
+  toPlottableNumber,
+  type RecordedMavlinkMessage
 } from './mavlink-inspector'
 
 function stat(overrides: Partial<MavlinkMessageStat> & { type: string }): MavlinkMessageStat {
@@ -346,6 +363,80 @@ describe('field plotting', () => {
   })
 })
 
+describe('link health — packet loss', () => {
+  it('counts no loss for consecutive sequences', () => {
+    expect(sequenceGap(10, 11)).toBe(0)
+    expect(sequenceGap(0, 1)).toBe(0)
+  })
+
+  it('counts the skipped sequence numbers as dropped frames', () => {
+    expect(sequenceGap(10, 13)).toBe(2)
+    expect(sequenceGap(100, 105)).toBe(4)
+  })
+
+  it('wraps the 8-bit sequence at 256', () => {
+    // 255 -> 0 is consecutive (no loss); 255 -> 2 drops 0 and 1.
+    expect(sequenceGap(255, 0)).toBe(0)
+    expect(sequenceGap(255, 2)).toBe(2)
+    expect(sequenceGap(254, 1)).toBe(2)
+  })
+
+  it('treats an exact duplicate / reorder onto the same seq as no loss', () => {
+    expect(sequenceGap(42, 42)).toBe(0)
+  })
+
+  it('computes loss as a percentage of expected frames', () => {
+    expect(lossPercent(0, 0)).toBe(0)
+    expect(lossPercent(90, 10)).toBe(10)
+    expect(lossPercent(100, 0)).toBe(0)
+    expect(lossPercent(3, 1)).toBe(25)
+  })
+
+  it('formats loss compactly', () => {
+    expect(formatLossPercent(0)).toBe('0%')
+    expect(formatLossPercent(0.3)).toBe('<1%')
+    expect(formatLossPercent(3.42)).toBe('3.4%')
+    expect(formatLossPercent(12.7)).toBe('13%')
+  })
+})
+
+describe('link health — stale + slowed', () => {
+  it('flags a row stale once its stream stops for the window', () => {
+    const now = 100_000
+    expect(isRowStale(now - 500, now)).toBe(false)
+    expect(isRowStale(now - STALE_AFTER_MS, now)).toBe(true)
+    expect(isRowStale(now - STALE_AFTER_MS - 1, now)).toBe(true)
+  })
+
+  it('flags a sharp rate drop off a lively recent peak', () => {
+    // Peak ~50 Hz, now 5 Hz -> well under half: slowed.
+    expect(isRateDropSharp([50, 48, 52, 5], 5)).toBe(true)
+    // Still near peak: not slowed.
+    expect(isRateDropSharp([50, 48, 52, 49], 49)).toBe(false)
+    // Low-rate stream (1 Hz heartbeat) never reads as "slow".
+    expect(isRateDropSharp([1, 1, 0.3], 0.3)).toBe(false)
+    // Too little history to judge.
+    expect(isRateDropSharp([10], 1)).toBe(false)
+  })
+
+  it('classifies row health stale > slow > ok', () => {
+    const now = 100_000
+    // Stopped: stale wins even if the history looks fine.
+    expect(classifyRowHealth(now - STALE_AFTER_MS, now, [50, 50], 50)).toBe('stale')
+    // Live but sharply slowed.
+    expect(classifyRowHealth(now - 200, now, [50, 48, 5], 5)).toBe('slow')
+    // Healthy.
+    expect(classifyRowHealth(now - 200, now, [50, 49, 50], 50)).toBe('ok')
+  })
+
+  it('describes a source health line with optional stale count', () => {
+    expect(describeSourceHealth(0, 0)).toBe('0% loss')
+    expect(describeSourceHealth(12, 0)).toBe('12% loss')
+    expect(describeSourceHealth(12, 2)).toBe('12% loss · 2 stale')
+    expect(describeSourceHealth(0, 1)).toBe('0% loss · 1 stale')
+  })
+})
+
 describe('buildSparklinePoints', () => {
   it('returns empty for fewer than two samples', () => {
     expect(buildSparklinePoints([])).toBe('')
@@ -361,5 +452,115 @@ describe('buildSparklinePoints', () => {
     const points = buildSparklinePoints([5, 5, 5], 40, 10)
     // Flat line: every sample at the peak, so y=0 across an even x-step.
     expect(points).toBe('0.0,0.0 20.0,0.0 40.0,0.0')
+  })
+})
+
+describe('record / export — JSON safety', () => {
+  it('stringifies bigints and flattens typed arrays, leaving DataView alone', () => {
+    expect(jsonSafeReplacer('k', 7n)).toBe('7')
+    expect(jsonSafeReplacer('k', new Uint8Array([1, 2, 3]))).toEqual([1, 2, 3])
+    expect(jsonSafeReplacer('k', 5)).toBe(5)
+    expect(jsonSafeReplacer('k', 'hi')).toBe('hi')
+    const view = new DataView(new ArrayBuffer(4))
+    expect(jsonSafeReplacer('k', view)).toBe(view)
+  })
+})
+
+describe('record / export — stats snapshot', () => {
+  it('captures sources, types, last fields and per-source loss', () => {
+    const stats = [
+      stat({ type: 'ATTITUDE', systemId: 1, componentId: 1, rateHz: 10, count: 100, bytesPerSec: 360, lastMessage: { type: 'ATTITUDE', roll: 0.5 } }),
+      stat({ type: 'HEARTBEAT', systemId: 1, componentId: 1, rateHz: 1, count: 5, lastMessage: { type: 'HEARTBEAT', custom_mode: 9n } })
+    ]
+    const health = [
+      { id: '1:1', systemId: 1, componentId: 1, received: 95, dropped: 5, lossPct: 5, lastSeqSeen: 42 }
+    ]
+    const snapshot = buildStatsSnapshot(stats, health, Date.parse('2026-06-29T12:00:00Z'))
+    expect(snapshot.kind).toBe('stats-snapshot')
+    expect(snapshot.capturedAt).toBe('2026-06-29T12:00:00.000Z')
+    expect(snapshot.summary.sourceCount).toBe(1)
+    expect(snapshot.sources).toHaveLength(1)
+    const source = snapshot.sources[0]
+    expect(source).toMatchObject({ id: '1:1', received: 95, dropped: 5, lossPct: 5 })
+    // Types are name-sorted; last fields drop the synthetic discriminator.
+    expect(source.types.map((entry) => entry.type)).toEqual(['ATTITUDE', 'HEARTBEAT'])
+    expect(source.types[0].lastFields).toEqual({ roll: 0.5 })
+  })
+
+  it('serializes to bigint-safe JSON', () => {
+    const stats = [stat({ type: 'HEARTBEAT', lastMessage: { type: 'HEARTBEAT', custom_mode: 9n } })]
+    const json = serializeStatsSnapshot(stats, [], Date.parse('2026-06-29T12:00:00Z'))
+    const parsed = JSON.parse(json)
+    expect(parsed.sources[0].types[0].lastFields.custom_mode).toBe('9')
+  })
+
+  it('tolerates a source with no health entry (loss defaults to 0)', () => {
+    const stats = [stat({ type: 'ATTITUDE', systemId: 2, componentId: 1 })]
+    const snapshot = buildStatsSnapshot(stats, [], 0)
+    expect(snapshot.sources[0]).toMatchObject({ received: 0, dropped: 0, lossPct: 0 })
+  })
+})
+
+describe('record / export — stream recording ring buffer', () => {
+  const record = (t: number): RecordedMavlinkMessage => ({
+    t,
+    systemId: 1,
+    componentId: 1,
+    sequence: t & 0xff,
+    type: 'ATTITUDE',
+    fields: { roll: t }
+  })
+
+  it('caps the buffer and drops the oldest beyond the limit', () => {
+    const buffer: RecordedMavlinkMessage[] = []
+    for (let i = 0; i < 5; i += 1) {
+      pushRecordedMessage(buffer, record(i), 3)
+    }
+    expect(buffer.map((entry) => entry.t)).toEqual([2, 3, 4])
+  })
+
+  it('mutates the buffer in place (hot-path contract)', () => {
+    const buffer: RecordedMavlinkMessage[] = []
+    const returned = pushRecordedMessage(buffer, record(1), 10)
+    expect(returned).toBe(buffer)
+    expect(buffer).toHaveLength(1)
+  })
+
+  it('keeps a default cap that is bounded and positive', () => {
+    expect(RECORDING_MAX_MESSAGES).toBeGreaterThan(0)
+  })
+
+  it('serializes a recording with metadata + bigint-safe fields', () => {
+    const messages: RecordedMavlinkMessage[] = [
+      { t: 1000, systemId: 1, componentId: 1, sequence: 7, type: 'X', fields: { v: 2n } }
+    ]
+    const json = serializeRecording(messages, Date.parse('2026-06-29T12:00:00Z'), 5000, true)
+    const parsed = JSON.parse(json)
+    expect(parsed).toMatchObject({
+      kind: 'stream-recording',
+      capturedAt: '2026-06-29T12:00:00.000Z',
+      messageCount: 1,
+      capped: true,
+      maxMessages: 5000
+    })
+    expect(parsed.messages[0].fields.v).toBe('2')
+  })
+})
+
+describe('record / export — plot CSV + filenames', () => {
+  it('writes a header and one row per sample', () => {
+    expect(serializePlotCsv([])).toBe('timestamp,value')
+    expect(
+      serializePlotCsv([
+        { t: 1000, value: 1.5 },
+        { t: 1500, value: 2 }
+      ])
+    ).toBe('timestamp,value\n1000,1.5\n1500,2')
+  })
+
+  it('builds a timestamped, filesystem-safe filename', () => {
+    const name = inspectorExportFilename('plot-ATTITUDE.roll', 'csv', Date.parse('2026-06-29T12:00:00Z'))
+    expect(name).toBe('mavlink-plot-ATTITUDE.roll-2026-06-29T12-00-00-000Z.csv')
+    expect(name).not.toMatch(/[^a-zA-Z0-9_.-]/)
   })
 })

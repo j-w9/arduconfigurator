@@ -477,3 +477,316 @@ export function formatPlotValue(value: number): string {
   }
   return value.toFixed(3).replace(/\.?0+$/, '')
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4 — link health (per-source packet loss + stale / slowed flagging)
+// ---------------------------------------------------------------------------
+
+/**
+ * Count packets dropped between two MAVLink v2 sequence bytes for the same
+ * source. The 8-bit sequence increments once per frame and wraps at 256, so
+ * the forward distance `(seq - prevSeq) mod 256` is the number of frames the
+ * sender emitted since the last one we saw; one of those is the frame that
+ * just arrived, so `distance - 1` were dropped. A consecutive frame
+ * (distance 1) and an exact duplicate / reorder onto the same seq (distance 0)
+ * both count as zero loss. Pure / unit-tested.
+ */
+export function sequenceGap(prevSeq: number, seq: number): number {
+  const distance = (seq - prevSeq) & 0xff
+  return distance <= 1 ? 0 : distance - 1
+}
+
+/** Loss as a percentage of expected frames (received + dropped). 0 when idle. */
+export function lossPercent(received: number, dropped: number): number {
+  const total = received + dropped
+  return total > 0 ? (dropped / total) * 100 : 0
+}
+
+/** Compact loss label: "0%", "<1%", "3.4%", "12%". */
+export function formatLossPercent(lossPct: number): string {
+  if (!Number.isFinite(lossPct) || lossPct <= 0) {
+    return '0%'
+  }
+  if (lossPct < 1) {
+    return '<1%'
+  }
+  return `${lossPct.toFixed(lossPct < 10 ? 1 : 0)}%`
+}
+
+/** A row is stale once its stream has gone quiet for this long. */
+export const STALE_AFTER_MS = 3000
+/** A row's rate must fall below this fraction of its recent peak to read "slow". */
+const RATE_DROP_FACTOR = 0.5
+/** …and the recent peak must have been at least this lively (Hz) to bother. */
+const RATE_DROP_MIN_PEAK_HZ = 2
+
+/** True when a row's stream has stopped (no message within the stale window). */
+export function isRowStale(lastSeenMs: number, now: number, staleAfterMs = STALE_AFTER_MS): boolean {
+  return now - lastSeenMs >= staleAfterMs
+}
+
+/**
+ * True when a still-live row's rate has fallen sharply off its recent peak —
+ * a stream that was healthy and is now limping (but not yet fully stale).
+ * Cheap: reads the per-row rate history already tracked for the sparkline.
+ */
+export function isRateDropSharp(
+  rateHistory: readonly number[],
+  currentRateHz: number,
+  factor = RATE_DROP_FACTOR,
+  minPeakHz = RATE_DROP_MIN_PEAK_HZ
+): boolean {
+  if (rateHistory.length < 2) {
+    return false
+  }
+  const peak = Math.max(...rateHistory)
+  if (peak < minPeakHz) {
+    return false
+  }
+  return currentRateHz < peak * factor
+}
+
+export type MavlinkRowHealth = 'ok' | 'slow' | 'stale'
+
+/**
+ * Classify a row's stream health: fully stopped → 'stale', sharply slowed but
+ * still alive → 'slow', otherwise 'ok'. Pure / unit-tested.
+ */
+export function classifyRowHealth(
+  lastSeenMs: number,
+  now: number,
+  rateHistory: readonly number[],
+  currentRateHz: number,
+  staleAfterMs = STALE_AFTER_MS
+): MavlinkRowHealth {
+  if (isRowStale(lastSeenMs, now, staleAfterMs)) {
+    return 'stale'
+  }
+  if (isRateDropSharp(rateHistory, currentRateHz)) {
+    return 'slow'
+  }
+  return 'ok'
+}
+
+/** Per-source link health, accumulated in the hook and rendered per group. */
+export interface MavlinkSourceHealth {
+  /** `${systemId}:${componentId}` — matches a source group's id. */
+  id: string
+  systemId: number
+  componentId: number
+  /** Frames received from this source this session (across all types). */
+  received: number
+  /** Frames inferred dropped from sequence gaps this session. */
+  dropped: number
+  /** dropped / (received + dropped) × 100. */
+  lossPct: number
+  /** Most recent sequence byte seen, or undefined before the first frame. */
+  lastSeqSeen: number | undefined
+}
+
+/**
+ * One-line health summary for a source group: loss percentage plus, when any
+ * of the source's rows have gone quiet, a stale count — e.g. "0% loss",
+ * "12% loss · 2 stale". Pure / unit-tested.
+ */
+export function describeSourceHealth(lossPct: number, staleCount: number): string {
+  const parts = [`${formatLossPercent(lossPct)} loss`]
+  if (staleCount > 0) {
+    parts.push(`${staleCount} stale`)
+  }
+  return parts.join(' · ')
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5 — record / export (download-only): stats snapshot JSON, a bounded
+// stream-recording ring buffer + its JSON, and per-plot CSV. All serialization
+// is pure / unit-tested; the side-effecting downloads live in the hook.
+// ---------------------------------------------------------------------------
+
+/** JSON.stringify replacer that survives decoded MAVLink field values:
+ *  bigints become strings and typed arrays (e.g. LOG_DATA.data) become plain
+ *  number arrays, so nothing throws and nothing serializes as `{"0":…}`. */
+export function jsonSafeReplacer(_key: string, value: unknown): unknown {
+  if (typeof value === 'bigint') {
+    return value.toString()
+  }
+  if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+    return Array.from(value as unknown as ArrayLike<number>)
+  }
+  return value
+}
+
+/** Strip the synthetic `type` discriminator from a decoded message's fields. */
+function fieldsWithoutType(message: Record<string, unknown>): Record<string, unknown> {
+  const { type: _type, ...rest } = message
+  return rest
+}
+
+export interface StatsSnapshotType {
+  type: string
+  count: number
+  rateHz: number
+  bytesPerSec: number
+  totalBytes: number
+  lastSeenMs: number
+  lastFields: Record<string, unknown>
+}
+
+export interface StatsSnapshotSource {
+  id: string
+  systemId: number
+  componentId: number
+  received: number
+  dropped: number
+  lossPct: number
+  rateHz: number
+  bytesPerSec: number
+  types: StatsSnapshotType[]
+}
+
+export interface StatsSnapshot {
+  tool: 'arduconfigurator-mavlink-inspector'
+  kind: 'stats-snapshot'
+  version: 1
+  capturedAt: string
+  summary: MavlinkInspectorSummary
+  sources: StatsSnapshotSource[]
+}
+
+/**
+ * Build a JSON-serializable snapshot of the whole inspector state: every
+ * source → its types (rate / count / bytes / last decoded fields) plus the
+ * source's packet-loss accounting. Pure / unit-tested.
+ */
+export function buildStatsSnapshot(
+  stats: readonly MavlinkMessageStat[],
+  sourceHealth: readonly MavlinkSourceHealth[],
+  capturedAtMs: number
+): StatsSnapshot {
+  const healthById = new Map(sourceHealth.map((entry) => [entry.id, entry]))
+  const sources = groupMavlinkStatsBySource(sortMavlinkStats(stats, 'name')).map((group) => {
+    const health = healthById.get(group.id)
+    return {
+      id: group.id,
+      systemId: group.systemId,
+      componentId: group.componentId,
+      received: health?.received ?? 0,
+      dropped: health?.dropped ?? 0,
+      lossPct: health?.lossPct ?? 0,
+      rateHz: group.rateHz,
+      bytesPerSec: group.bytesPerSec,
+      types: group.stats.map((stat) => ({
+        type: stat.type,
+        count: stat.count,
+        rateHz: stat.rateHz,
+        bytesPerSec: stat.bytesPerSec,
+        totalBytes: stat.totalBytes,
+        lastSeenMs: stat.lastSeenMs,
+        lastFields: fieldsWithoutType(stat.lastMessage)
+      }))
+    }
+  })
+  return {
+    tool: 'arduconfigurator-mavlink-inspector',
+    kind: 'stats-snapshot',
+    version: 1,
+    capturedAt: new Date(capturedAtMs).toISOString(),
+    summary: summarizeMavlinkStats(stats),
+    sources
+  }
+}
+
+/** Pretty-printed JSON for the stats-snapshot download. */
+export function serializeStatsSnapshot(
+  stats: readonly MavlinkMessageStat[],
+  sourceHealth: readonly MavlinkSourceHealth[],
+  capturedAtMs: number
+): string {
+  return JSON.stringify(buildStatsSnapshot(stats, sourceHealth, capturedAtMs), jsonSafeReplacer, 2)
+}
+
+/** Cap on the stream-recording ring buffer (most recent N messages). */
+export const RECORDING_MAX_MESSAGES = 5000
+
+/** One captured message in a stream recording. */
+export interface RecordedMavlinkMessage {
+  /** Capture timestamp in ms (Date.now() at arrival). */
+  t: number
+  systemId: number
+  componentId: number
+  sequence: number
+  type: string
+  fields: Record<string, unknown>
+}
+
+/**
+ * Push a message onto a bounded recording buffer, dropping the oldest beyond
+ * `maxMessages` so the capture never grows unbounded. Mutates and returns the
+ * buffer — this rides the hot message path, so it avoids per-message copies
+ * (unlike the immutable plot buffer). Unit-tested for the cap + drop-oldest.
+ */
+export function pushRecordedMessage(
+  buffer: RecordedMavlinkMessage[],
+  record: RecordedMavlinkMessage,
+  maxMessages: number
+): RecordedMavlinkMessage[] {
+  buffer.push(record)
+  if (buffer.length > maxMessages) {
+    buffer.splice(0, buffer.length - maxMessages)
+  }
+  return buffer
+}
+
+export interface RecordingExport {
+  tool: 'arduconfigurator-mavlink-inspector'
+  kind: 'stream-recording'
+  version: 1
+  capturedAt: string
+  /** Messages retained in the buffer (after the ring-buffer cap). */
+  messageCount: number
+  /** True when the cap dropped older messages (the capture is a trailing window). */
+  capped: boolean
+  /** The per-message cap that bounded the buffer. */
+  maxMessages: number
+  messages: RecordedMavlinkMessage[]
+}
+
+/** Pretty-printed JSON for the stream-recording download. */
+export function serializeRecording(
+  messages: readonly RecordedMavlinkMessage[],
+  capturedAtMs: number,
+  maxMessages: number,
+  capped: boolean
+): string {
+  const payload: RecordingExport = {
+    tool: 'arduconfigurator-mavlink-inspector',
+    kind: 'stream-recording',
+    version: 1,
+    capturedAt: new Date(capturedAtMs).toISOString(),
+    messageCount: messages.length,
+    capped,
+    maxMessages,
+    messages: [...messages]
+  }
+  return JSON.stringify(payload, jsonSafeReplacer, 2)
+}
+
+/**
+ * CSV ("timestamp,value") for a plot's sample buffer. `timestamp` is the raw
+ * sample time in ms (the same clock the buffer was filled on); a header row
+ * always leads so the file is self-describing even when empty. Pure.
+ */
+export function serializePlotCsv(samples: readonly PlotSample[]): string {
+  const lines = ['timestamp,value']
+  for (const sample of samples) {
+    lines.push(`${sample.t},${sample.value}`)
+  }
+  return lines.join('\n')
+}
+
+/** Filesystem-safe, timestamped filename for an inspector export. */
+export function inspectorExportFilename(label: string, extension: string, capturedAtMs: number): string {
+  const stamp = new Date(capturedAtMs).toISOString().replace(/[:.]/g, '-')
+  const safeLabel = label.replace(/[^a-zA-Z0-9_.-]+/g, '-')
+  return `mavlink-${safeLabel}-${stamp}.${extension}`
+}

@@ -1817,12 +1817,22 @@ export function App() {
   // Live MAVLink inspector stats — only subscribed while its tab is active.
   const {
     stats: mavlinkInspectorStats,
+    sourceHealth: mavlinkInspectorSourceHealth,
     clear: clearMavlinkInspector,
     paused: mavlinkInspectorPaused,
     setPaused: setMavlinkInspectorPaused,
     plots: mavlinkInspectorPlots,
     addPlot: addMavlinkInspectorPlot,
-    removePlot: removeMavlinkInspectorPlot
+    removePlot: removeMavlinkInspectorPlot,
+    exportSnapshot: exportMavlinkInspectorSnapshot,
+    recording: mavlinkInspectorRecording,
+    recordedCount: mavlinkInspectorRecordedCount,
+    recordingCapped: mavlinkInspectorRecordingCapped,
+    recordingMax: mavlinkInspectorRecordingMax,
+    startRecording: startMavlinkInspectorRecording,
+    stopRecording: stopMavlinkInspectorRecording,
+    downloadRecording: downloadMavlinkInspectorRecording,
+    exportPlotCsv: exportMavlinkInspectorPlotCsv
   } = useMavlinkInspector(runtime, activeViewId === 'mavlink-inspector')
   // Live frames/sec for the DroneCAN inspector, sampled off the cumulative counter.
   const dronecanFramesPerSec = useDronecanBusStats(
@@ -7019,6 +7029,7 @@ export function App() {
           paused={mavlinkInspectorPaused}
           onTogglePause={() => setMavlinkInspectorPaused(!mavlinkInspectorPaused)}
           onClear={clearMavlinkInspector}
+          sourceHealth={mavlinkInspectorSourceHealth}
           onRequestMessage={
             runtime
               ? async ({ kind, messageId, rateHz }) => {
@@ -7033,9 +7044,18 @@ export function App() {
                 }
               : undefined
           }
+          onExportSnapshot={exportMavlinkInspectorSnapshot}
+          recording={mavlinkInspectorRecording}
+          recordedCount={mavlinkInspectorRecordedCount}
+          recordingCapped={mavlinkInspectorRecordingCapped}
+          recordingMax={mavlinkInspectorRecordingMax}
+          onStartRecording={startMavlinkInspectorRecording}
+          onStopRecording={stopMavlinkInspectorRecording}
+          onDownloadRecording={downloadMavlinkInspectorRecording}
           plots={mavlinkInspectorPlots}
           onAddPlot={addMavlinkInspectorPlot}
           onRemovePlot={removeMavlinkInspectorPlot}
+          onExportPlotCsv={exportMavlinkInspectorPlotCsv}
           maxPlots={MAX_MAVLINK_PLOTS}
         />
       ) : null}

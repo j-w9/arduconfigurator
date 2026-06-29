@@ -12,7 +12,22 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { ArduPilotConfiguratorRuntime } from '@arduconfig/ardupilot-core'
 
-import { appendPlotSample, toPlottableNumber, type PlotSample } from '../view-models/mavlink-inspector'
+import { downloadTextFile } from '../download-file'
+import {
+  appendPlotSample,
+  inspectorExportFilename,
+  lossPercent,
+  pushRecordedMessage,
+  RECORDING_MAX_MESSAGES,
+  sequenceGap,
+  serializePlotCsv,
+  serializeRecording,
+  serializeStatsSnapshot,
+  toPlottableNumber,
+  type MavlinkSourceHealth,
+  type RecordedMavlinkMessage,
+  type PlotSample
+} from '../view-models/mavlink-inspector'
 
 export interface MavlinkMessageStat {
   /** Stable identity for React keys: `${systemId}:${componentId}:${type}`. */
@@ -71,14 +86,37 @@ interface Accumulator {
   rateHistory: number[]
 }
 
+/** Per-source (sys:comp) sequence + loss accounting, across all message types. */
+interface SourceAccumulator {
+  systemId: number
+  componentId: number
+  received: number
+  dropped: number
+  lastSeq: number | undefined
+}
+
 export interface MavlinkInspectorState {
   stats: MavlinkMessageStat[]
+  /** Per-source link health (packet loss), keyed by `${systemId}:${componentId}`. */
+  sourceHealth: MavlinkSourceHealth[]
   clear: () => void
   paused: boolean
   setPaused: (paused: boolean) => void
   plots: MavlinkPlot[]
   addPlot: (spec: MavlinkPlotSpec) => void
   removePlot: (key: string) => void
+  /** Download the current inspector state (sources/types/loss) as JSON. */
+  exportSnapshot: () => void
+  /** Stream-recording controls (bounded ring buffer → JSON download). */
+  recording: boolean
+  recordedCount: number
+  recordingCapped: boolean
+  recordingMax: number
+  startRecording: () => void
+  stopRecording: () => void
+  downloadRecording: () => void
+  /** Download one plot's sample buffer as CSV (timestamp,value). */
+  exportPlotCsv: (key: string) => void
 }
 
 function sourceKey(systemId: number, componentId: number, type: string): string {
@@ -90,10 +128,24 @@ export function useMavlinkInspector(
   active: boolean
 ): MavlinkInspectorState {
   const accumulators = useRef(new Map<string, Accumulator>())
+  const sources = useRef(new Map<string, SourceAccumulator>())
   const [stats, setStats] = useState<MavlinkMessageStat[]>([])
+  const [sourceHealth, setSourceHealth] = useState<MavlinkSourceHealth[]>([])
   const [paused, setPaused] = useState(false)
   const pausedRef = useRef(paused)
   pausedRef.current = paused
+  // Latest stats/health mirrored into refs so the snapshot/CSV exports read
+  // current values without re-binding the download callbacks every flush.
+  const statsRef = useRef<MavlinkMessageStat[]>([])
+  const sourceHealthRef = useRef<MavlinkSourceHealth[]>([])
+  // Stream recording: a bounded ring buffer on a ref (hot message path) plus
+  // light React state for the count / capped badge, refreshed on flush.
+  const recordBuffer = useRef<RecordedMavlinkMessage[]>([])
+  const recordingRef = useRef(false)
+  const recordingCappedRef = useRef(false)
+  const [recording, setRecording] = useState(false)
+  const [recordedCount, setRecordedCount] = useState(0)
+  const [recordingCapped, setRecordingCapped] = useState(false)
   // Plot specs + their trailing sample buffers live in refs (sampled on the
   // hot message path); `plots` mirrors them into React state on each flush.
   const plotSpecs = useRef(new Map<string, MavlinkPlotSpec>())
@@ -152,6 +204,45 @@ export function useMavlinkInspector(
       }
       accumulators.current.set(key, entry)
 
+      // Per-source packet-loss accounting off the MAVLink v2 sequence byte,
+      // tracked across all of this source's message types (the sequence
+      // increments once per frame regardless of type).
+      const sourceId = `${systemId}:${componentId}`
+      const sequence = envelope.header.sequence
+      const source =
+        sources.current.get(sourceId) ??
+        { systemId, componentId, received: 0, dropped: 0, lastSeq: undefined }
+      if (typeof sequence === 'number' && source.lastSeq !== undefined) {
+        source.dropped += sequenceGap(source.lastSeq, sequence)
+      }
+      if (typeof sequence === 'number') {
+        source.lastSeq = sequence
+      }
+      source.received += 1
+      sources.current.set(sourceId, source)
+
+      // Stream recording rides the same hot path but is otherwise independent
+      // of the table/plots: capture into a bounded ring buffer so it never
+      // grows without limit and never disturbs the live view.
+      if (recordingRef.current) {
+        const { type: _type, ...fields } = message
+        pushRecordedMessage(
+          recordBuffer.current,
+          {
+            t: now,
+            systemId,
+            componentId,
+            sequence: typeof sequence === 'number' ? sequence : 0,
+            type,
+            fields
+          },
+          RECORDING_MAX_MESSAGES
+        )
+        if (recordBuffer.current.length >= RECORDING_MAX_MESSAGES) {
+          recordingCappedRef.current = true
+        }
+      }
+
       // Sample any plotted field of this exact source+type into its buffer.
       if (plotSpecs.current.size > 0) {
         const sourceTypeKey = `${key}:`
@@ -173,6 +264,12 @@ export function useMavlinkInspector(
     })
 
     const flush = (): void => {
+      // Recording is independent of the (pausable) live table — refresh its
+      // count/capped badge first so a paused operator still sees it growing.
+      if (recordingRef.current) {
+        setRecordedCount(recordBuffer.current.length)
+        setRecordingCapped(recordingCappedRef.current)
+      }
       // Frozen: keep accumulating in the ref but don't disturb the table.
       if (pausedRef.current) {
         return
@@ -211,6 +308,22 @@ export function useMavlinkInspector(
         })
       }
       setStats(next)
+      statsRef.current = next
+
+      const health: MavlinkSourceHealth[] = []
+      for (const [id, source] of sources.current) {
+        health.push({
+          id,
+          systemId: source.systemId,
+          componentId: source.componentId,
+          received: source.received,
+          dropped: source.dropped,
+          lossPct: lossPercent(source.received, source.dropped),
+          lastSeqSeen: source.lastSeq
+        })
+      }
+      setSourceHealth(health)
+      sourceHealthRef.current = health
       snapshotPlots()
     }
 
@@ -224,7 +337,9 @@ export function useMavlinkInspector(
 
   const clear = (): void => {
     accumulators.current.clear()
+    sources.current.clear()
     setStats([])
+    setSourceHealth([])
   }
 
   const addPlot = (spec: MavlinkPlotSpec): void => {
@@ -242,5 +357,65 @@ export function useMavlinkInspector(
     snapshotPlots()
   }
 
-  return { stats, clear, paused, setPaused, plots, addPlot, removePlot }
+  const exportSnapshot = (): void => {
+    const now = Date.now()
+    downloadTextFile(
+      inspectorExportFilename('snapshot', 'json', now),
+      serializeStatsSnapshot(statsRef.current, sourceHealthRef.current, now)
+    )
+  }
+
+  const startRecording = (): void => {
+    recordBuffer.current = []
+    recordingCappedRef.current = false
+    recordingRef.current = true
+    setRecording(true)
+    setRecordedCount(0)
+    setRecordingCapped(false)
+  }
+
+  const stopRecording = (): void => {
+    recordingRef.current = false
+    setRecording(false)
+    // Leave the buffer intact so the operator can still download the capture.
+    setRecordedCount(recordBuffer.current.length)
+  }
+
+  const downloadRecording = (): void => {
+    const now = Date.now()
+    downloadTextFile(
+      inspectorExportFilename('recording', 'json', now),
+      serializeRecording(recordBuffer.current, now, RECORDING_MAX_MESSAGES, recordingCappedRef.current)
+    )
+  }
+
+  const exportPlotCsv = (key: string): void => {
+    const buffer = plotBuffers.current.get(key)
+    if (!buffer) {
+      return
+    }
+    const spec = plotSpecs.current.get(key)
+    const label = spec ? `plot-${spec.type}-${spec.field}` : 'plot'
+    downloadTextFile(inspectorExportFilename(label, 'csv', Date.now()), serializePlotCsv(buffer), 'text/csv')
+  }
+
+  return {
+    stats,
+    sourceHealth,
+    clear,
+    paused,
+    setPaused,
+    plots,
+    addPlot,
+    removePlot,
+    exportSnapshot,
+    recording,
+    recordedCount,
+    recordingCapped,
+    recordingMax: RECORDING_MAX_MESSAGES,
+    startRecording,
+    stopRecording,
+    downloadRecording,
+    exportPlotCsv
+  }
 }
