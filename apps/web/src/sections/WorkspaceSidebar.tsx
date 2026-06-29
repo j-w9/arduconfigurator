@@ -71,8 +71,8 @@ export function WorkspaceSidebar({
           </small>
         </div>
 
-        <div className="baseline-summary">
-          <div className="baseline-summary__header">
+        <details className="baseline-summary">
+          <summary className="baseline-summary__header">
             <div>
               <strong>Active Baseline</strong>
               <small>
@@ -90,7 +90,8 @@ export function WorkspaceSidebar({
                     ? 'matched'
                     : `${savedSnapshotCount} saved`}
             </StatusBadge>
-          </div>
+          </summary>
+          <div className="baseline-summary__body">
           <p className="baseline-summary__text" data-testid="active-baseline-label">
             {selectedSnapshot ? selectedSnapshot.label : 'No baseline selected'}
           </p>
@@ -117,7 +118,8 @@ export function WorkspaceSidebar({
               ? `Captured ${formatSnapshotTimestamp(selectedSnapshot.capturedAt)}.`
               : 'Open Snapshots to capture a known-good baseline before larger changes.'}
           </p>
-        </div>
+          </div>
+        </details>
 
         <nav className="workspace-nav workspace-nav--flat" aria-label="Configurator tabs">
           {visibleAppViews.map((view) => (

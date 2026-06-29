@@ -1141,6 +1141,28 @@ textarea:focus {
   font-size: 11px;
 }
 
+/* The Active Baseline box collapses by default — the summary is the title row,
+   with a chevron on the title that flips when expanded. */
+.baseline-summary > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.baseline-summary > summary::-webkit-details-marker {
+  display: none;
+}
+.baseline-summary__header strong::after {
+  content: ' ▸';
+  color: var(--text-muted);
+}
+.baseline-summary[open] .baseline-summary__header strong::after {
+  content: ' ▾';
+}
+.baseline-summary__body {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .baseline-summary__metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
