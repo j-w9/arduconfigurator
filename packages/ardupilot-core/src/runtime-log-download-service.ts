@@ -85,14 +85,24 @@ function utcStamp(timeUtc: number): string | undefined {
  * `onboard-log-1.bin` collisions. Always ends in `.bin`.
  */
 export function buildOnboardLogFilename(log: OnboardLogInfo, board?: OnboardLogFilenameBoard): string {
-  const tag = isMeaningfulUid(board?.uid)
-    ? sanitizeFilenameTag(board.uid)
-    : board?.firmwareGitHash
-      ? sanitizeFilenameTag(board.firmwareGitHash)
-      : 'ardupilot'
+  // Self-describing, underscore-separated parts so a folder of logs from several
+  // craft is readable: e.g. `uid_2300..._date_20240602-000000_log7.bin`. The
+  // identity is labelled `uid_` for a real STM32 uid, `fw_` for the git-hash
+  // fallback, or a bare `ardupilot` when the FC reports neither.
+  const parts: string[] = []
+  if (isMeaningfulUid(board?.uid)) {
+    parts.push(`uid_${sanitizeFilenameTag(board.uid)}`)
+  } else if (board?.firmwareGitHash) {
+    parts.push(`fw_${sanitizeFilenameTag(board.firmwareGitHash)}`)
+  } else {
+    parts.push('ardupilot')
+  }
   const stamp = utcStamp(log.timeUtc)
-  const stampPart = stamp ? `_${stamp}` : ''
-  return `${tag || 'ardupilot'}_log${log.id}${stampPart}.bin`
+  if (stamp) {
+    parts.push(`date_${stamp}`)
+  }
+  parts.push(`log${log.id}`)
+  return `${parts.join('_')}.bin`
 }
 
 interface ListOperation {

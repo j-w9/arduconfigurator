@@ -3,17 +3,17 @@ import test from 'node:test'
 
 import { LogDownloadService, buildOnboardLogFilename } from '../packages/ardupilot-core/dist/index.js'
 
-test('buildOnboardLogFilename tags with a real uid + log number + UTC stamp', () => {
+test('buildOnboardLogFilename tags with a labelled uid + date + log number', () => {
   // timeUtc 1717286400 = 2024-06-02 00:00:00 UTC
   const name = buildOnboardLogFilename({ id: 7, sizeBytes: 1024, timeUtc: 1717286400 }, { uid: '230043000E51323531363232' })
-  assert.equal(name, '230043000E51323531363232_log7_20240602-000000.bin')
+  assert.equal(name, 'uid_230043000E51323531363232_date_20240602-000000_log7.bin')
 })
 
-test('buildOnboardLogFilename falls back to git hash when uid is missing or all-zero', () => {
+test('buildOnboardLogFilename falls back to a fw_ git-hash tag when uid is missing or all-zero', () => {
   const zero = buildOnboardLogFilename({ id: 3, sizeBytes: 1, timeUtc: 0 }, { uid: '0000000000000000', firmwareGitHash: '3fc7011a' })
-  assert.equal(zero, '3fc7011a_log3.bin')
+  assert.equal(zero, 'fw_3fc7011a_log3.bin')
   const none = buildOnboardLogFilename({ id: 3, sizeBytes: 1, timeUtc: 0 }, { firmwareGitHash: '3fc7011a' })
-  assert.equal(none, '3fc7011a_log3.bin')
+  assert.equal(none, 'fw_3fc7011a_log3.bin')
 })
 
 test('buildOnboardLogFilename uses a generic tag with no identity and omits a zero timestamp', () => {
