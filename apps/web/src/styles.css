@@ -7853,6 +7853,24 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 16px;
 }
 
+/* Manual output mapping is collapsed by default — the interactive identify flow
+   is the recommended path; manual is an opt-in disclosure. */
+.motor-reorder-manual > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 4px 0;
+  user-select: none;
+}
+.motor-reorder-manual > summary:hover {
+  color: var(--text);
+}
+.motor-reorder-manual__hint {
+  margin: 6px 0 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .motor-reorder-table {
   display: grid;
   gap: 1px;

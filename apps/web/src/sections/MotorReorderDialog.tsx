@@ -346,7 +346,12 @@ export function MotorReorderDialog({
                   </button>
                 </div>
               )}
-              <div className="motor-reorder-table">
+              <details className="motor-reorder-manual" data-testid="motor-reorder-manual">
+                <summary>Manual output mapping (optional)</summary>
+                <p className="motor-reorder-manual__hint">
+                  Prefer “Identify motors interactively” above. Use this only if you already know each motor’s output.
+                </p>
+                <div className="motor-reorder-table">
                 <div className="motor-reorder-table__row motor-reorder-table__row--header">
                   <span>Motor</span>
                   <span>Current</span>
@@ -369,6 +374,7 @@ export function MotorReorderDialog({
                   </label>
                 ))}
               </div>
+              </details>
 
               {motorReorderDuplicateChannels.length > 0 ? (
                 <div className="bf-note bf-note--warning">
