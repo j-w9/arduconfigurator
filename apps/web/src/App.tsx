@@ -151,6 +151,9 @@ import {
 import {
   ORIENTATION_EXERCISE_ORDER,
   RC_CALIBRATION_AXIS_ORDER,
+  RC_CALIBRATION_SWITCH_CHANNELS,
+  RC_SWITCH_LOW_PWM,
+  RC_SWITCH_HIGH_PWM,
   createIdleOrientationExerciseState,
   createOrientationExerciseState,
   advanceOrientationExerciseState,
@@ -1259,7 +1262,16 @@ export function App() {
       current.status === 'idle' && stored.exercises.rcMappingSession ? stored.exercises.rcMappingSession : current
     )
     setRcCalibrationSession((current) =>
-      current.status === 'idle' && stored.exercises.rcCalibrationSession ? stored.exercises.rcCalibrationSession : current
+      current.status === 'idle' && stored.exercises.rcCalibrationSession
+        ? // Sessions persisted before switchCaptures existed lack the field at
+          // runtime (the type says otherwise); backfill it so the CH5/CH6
+          // add-on never reads undefined.
+          {
+            ...stored.exercises.rcCalibrationSession,
+            switchCaptures:
+              stored.exercises.rcCalibrationSession.switchCaptures ?? createIdleRcCalibrationSessionState().switchCaptures
+          }
+        : current
     )
     setMotorVerification((current) =>
       current.status === 'idle' && stored.exercises.motorVerification ? stored.exercises.motorVerification : current
@@ -1522,20 +1534,53 @@ export function App() {
         }
       })
 
+      // CH5/CH6 switch endpoints — captured opportunistically from the live
+      // channels. These are OPTIONAL: they never gate completion (gated on the
+      // four control axes only below), so a 4-channel radio still finishes.
+      const liveChannels = snapshot.liveVerification.rcInput.channels
+      const nextSwitchCaptures = { ...current.switchCaptures }
+      for (const channelNumber of RC_CALIBRATION_SWITCH_CHANNELS) {
+        const existing = nextSwitchCaptures[channelNumber]
+        if (!existing) {
+          continue
+        }
+        const pwm = liveChannels[channelNumber - 1]
+        if (typeof pwm !== 'number' || pwm === 0xffff || pwm < 800) {
+          continue
+        }
+        const nextSwitch = {
+          ...existing,
+          observedMin: Math.min(existing.observedMin ?? pwm, pwm),
+          observedMax: Math.max(existing.observedMax ?? pwm, pwm),
+          lowObserved: existing.lowObserved || pwm <= RC_SWITCH_LOW_PWM,
+          highObserved: existing.highObserved || pwm >= RC_SWITCH_HIGH_PWM
+        }
+        if (
+          nextSwitch.observedMin !== existing.observedMin ||
+          nextSwitch.observedMax !== existing.observedMax ||
+          nextSwitch.lowObserved !== existing.lowObserved ||
+          nextSwitch.highObserved !== existing.highObserved
+        ) {
+          nextSwitchCaptures[channelNumber] = nextSwitch
+          changed = true
+        }
+      }
+
       const completed = RC_CALIBRATION_AXIS_ORDER.every((axisId) => rcCalibrationCaptureComplete(nextCaptures[axisId]))
       if (completed) {
         return {
           ...current,
           status: 'ready',
           captures: nextCaptures,
+          switchCaptures: nextSwitchCaptures,
           completedAtMs: Date.now(),
           failureReason: undefined
         }
       }
 
-      return changed ? { ...current, captures: nextCaptures } : current
+      return changed ? { ...current, captures: nextCaptures, switchCaptures: nextSwitchCaptures } : current
     })
-  }, [rcAxisObservations, rcCalibrationSession.status])
+  }, [rcAxisObservations, rcCalibrationSession.status, snapshot])
 
   // Memoized: snapshot is a fresh object every telemetry tick, so an
   // unmemoized filter re-ran over the full (1000+ on real hardware)
@@ -3343,6 +3388,22 @@ export function App() {
       }
       if (axisId !== 'throttle' && capture.trimPwm !== undefined) {
         nextDrafts[`RC${capture.channelNumber}_TRIM`] = String(Math.round(capture.trimPwm))
+      }
+    })
+
+    // Stage CH5/CH6 switch endpoints too, but only when actually exercised
+    // (both ends seen) — never push endpoints for a switch the operator didn't
+    // touch. Switches have no trim/centre.
+    RC_CALIBRATION_SWITCH_CHANNELS.forEach((channelNumber) => {
+      const capture = rcCalibrationSession.switchCaptures[channelNumber]
+      if (!capture || !capture.lowObserved || !capture.highObserved) {
+        return
+      }
+      if (capture.observedMin !== undefined) {
+        nextDrafts[`RC${channelNumber}_MIN`] = String(Math.round(capture.observedMin))
+      }
+      if (capture.observedMax !== undefined) {
+        nextDrafts[`RC${channelNumber}_MAX`] = String(Math.round(capture.observedMax))
       }
     })
 

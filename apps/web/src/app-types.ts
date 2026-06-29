@@ -83,9 +83,28 @@ export interface RcCalibrationAxisCapture {
   centeredObserved: boolean
 }
 
+/**
+ * A non-axis RC switch channel (CH5/CH6) captured alongside the four control
+ * axes during endpoint calibration. Switches have no centering/trim — the
+ * operator just flicks them through their travel so RCn_MIN/MAX get real
+ * endpoints. OPTIONAL: switches never gate calibration completion (a 4-channel
+ * radio has no CH5/CH6); they're only staged when actually exercised.
+ */
+export interface RcSwitchCapture {
+  channelNumber: number
+  label: string
+  observedMin?: number
+  observedMax?: number
+  lowObserved: boolean
+  highObserved: boolean
+}
+
 export interface RcCalibrationSessionState {
   status: RcCalibrationStatus
   captures: Record<RcAxisId, RcCalibrationAxisCapture>
+  /** CH5/CH6 switch endpoints, keyed by channel number. Optional add-on to the
+   *  axis captures; see RcSwitchCapture. */
+  switchCaptures: Record<number, RcSwitchCapture>
   startedAtMs?: number
   completedAtMs?: number
   failureReason?: string

@@ -41,7 +41,7 @@ import { formatParameterValue } from '../parameter-format'
 import { formatModeAssignment, modeSlotParamId } from '../modes-failsafe-helpers'
 import { RcChannelBars } from '../rc-channel-bars'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
-import { RC_CALIBRATION_AXIS_ORDER, rcCalibrationCaptureComplete } from '../setup-exercise-helpers'
+import { RC_CALIBRATION_AXIS_ORDER, RC_CALIBRATION_SWITCH_CHANNELS, rcCalibrationCaptureComplete } from '../setup-exercise-helpers'
 import { StickCraftPreview } from '../preview-components'
 import { formatRxRssi } from '../status-formatters'
 import { toneForModeSwitchExercise, toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
@@ -679,11 +679,49 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                               </article>
                             )
                           })}
+                          {/* CH5/CH6 switch channels — optional add-on. Flick each
+                              switch low + high to capture its RCn_MIN/MAX endpoints. */}
+                          {RC_CALIBRATION_SWITCH_CHANNELS.map((channelNumber) => {
+                            const capture = rcCalibrationSession.switchCaptures[channelNumber]
+                            if (!capture) {
+                              return null
+                            }
+                            const livePwm = snapshot.liveVerification.rcInput.channels[channelNumber - 1]
+                            const hasLive = typeof livePwm === 'number' && livePwm !== 0xffff
+                            const toPct = (value: number): number => Math.max(0, Math.min(100, ((value - 1000) / 1000) * 100))
+                            const complete = capture.lowObserved && capture.highObserved
+                            return (
+                              <article
+                                key={`switch-${channelNumber}`}
+                                className={`rc-range-axis-card${complete ? ' rc-range-axis-card--complete' : ''}`}
+                              >
+                                <div className="rc-range-axis-card__header">
+                                  <strong>{capture.label}</strong>
+                                  <span>Switch</span>
+                                </div>
+                                <p>{hasLive ? `${livePwm} µs live` : 'No live data'}</p>
+                                <div className="rc-range-axis-card__bar" data-testid={`rc-range-bar-ch${channelNumber}`} aria-hidden="true">
+                                  {capture.lowObserved ? <div className="rc-range-axis-card__swept" style={{ left: '0%', width: '20%' }} /> : null}
+                                  {capture.highObserved ? <div className="rc-range-axis-card__swept" style={{ left: '80%', width: '20%' }} /> : null}
+                                  {hasLive ? <div className="rc-range-axis-card__marker" style={{ left: `${toPct(livePwm)}%` }} /> : null}
+                                </div>
+                                <p>
+                                  Min {capture.observedMin !== undefined ? Math.round(capture.observedMin) : 'Unknown'} µs · Max{' '}
+                                  {capture.observedMax !== undefined ? Math.round(capture.observedMax) : 'Unknown'} µs
+                                </p>
+                                <div className="config-pills">
+                                  <span className={capture.lowObserved ? 'is-complete' : undefined}>Low</span>
+                                  <span className={capture.highObserved ? 'is-complete' : undefined}>High</span>
+                                </div>
+                              </article>
+                            )
+                          })}
                         </div>
 
                         <ol className="switch-exercise-instructions">
                           <li>Start capture with the sticks centered and throttle low.</li>
                           <li>Move roll, pitch, throttle, and yaw through their full travel.</li>
+                          <li>Optional: flick CH5/CH6 switches fully low then high to capture their endpoints.</li>
                           <li>Stage the captured values, then review and apply them from the Receiver view before confirming the radio step.</li>
                         </ol>
 

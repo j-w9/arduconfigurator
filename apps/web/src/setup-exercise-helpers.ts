@@ -21,11 +21,20 @@ import type {
   RcCalibrationAxisCapture,
   RcCalibrationSessionState,
   RcMappingAxisCapture,
-  RcMappingSessionState
+  RcMappingSessionState,
+  RcSwitchCapture
 } from './app-types'
 
 export const ORIENTATION_EXERCISE_ORDER: OrientationExerciseStepId[] = ['level', 'pitch-forward', 'roll-right']
 export const RC_CALIBRATION_AXIS_ORDER: RcAxisId[] = ['roll', 'pitch', 'throttle', 'yaw']
+/** Non-axis RC switch channels captured alongside the four control axes during
+ *  endpoint calibration. These are NOT RCMAP axes — they're plain channels the
+ *  operator flicks high/low so RCn_MIN/MAX get real endpoints. Optional: they
+ *  never gate completion (a 4-channel radio has none). */
+export const RC_CALIBRATION_SWITCH_CHANNELS = [5, 6]
+/** A switch is "low"/"high" once its PWM is seen at/below or at/above these. */
+export const RC_SWITCH_LOW_PWM = 1300
+export const RC_SWITCH_HIGH_PWM = 1700
 /** How long (ms) a stable mapping candidate must hold before the RC-mapping
  *  exercise auto-captures it. Used by the rcMapping derivations hook AND by
  *  an effect in App.tsx that ticks the accumulator. */
@@ -183,8 +192,23 @@ export function createIdleRcCalibrationSessionState(observations: RcAxisObservat
           }
         ]
       })
-    ) as Record<RcAxisId, RcCalibrationAxisCapture>
+    ) as Record<RcAxisId, RcCalibrationAxisCapture>,
+    switchCaptures: Object.fromEntries(
+      RC_CALIBRATION_SWITCH_CHANNELS.map((channelNumber) => [
+        channelNumber,
+        {
+          channelNumber,
+          label: `CH${channelNumber}`,
+          lowObserved: false,
+          highObserved: false
+        } satisfies RcSwitchCapture
+      ])
+    )
   }
+}
+
+export function rcSwitchCaptureComplete(capture: RcSwitchCapture): boolean {
+  return capture.lowObserved && capture.highObserved
 }
 
 export function createIdleRcMappingSessionState(): RcMappingSessionState {
