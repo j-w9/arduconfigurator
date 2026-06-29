@@ -5449,6 +5449,7 @@ textarea:focus {
 }
 
 .receiver-info-dot {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5457,7 +5458,7 @@ textarea:focus {
   border: 1px solid currentColor;
   border-radius: 50%;
   color: var(--text-muted);
-  cursor: help;
+  cursor: default;
   font-size: 9px;
   font-style: italic;
   font-weight: 700;
@@ -5467,6 +5468,41 @@ textarea:focus {
 }
 .receiver-info-dot:hover {
   opacity: 1;
+}
+/* Immediate, readable hover tooltip carrying the task description. Opens
+   downward (vertical — unaffected by the workspace's overflow-x: clip) and
+   centered on the dot; high z-index so it isn't covered by sibling cards. */
+.receiver-info-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  width: max-content;
+  max-width: 240px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-300, #1b222b);
+  color: var(--text);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.45;
+  text-align: left;
+  text-transform: none;
+  white-space: normal;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.receiver-info-dot:hover .receiver-info-tip,
+.receiver-info-dot:focus-visible .receiver-info-tip {
+  opacity: 1;
+  visibility: visible;
 }
 
 .receiver-summary-card__header,

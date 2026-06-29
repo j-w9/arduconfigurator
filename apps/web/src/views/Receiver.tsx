@@ -42,7 +42,10 @@ export function ReceiverView(props: ReceiverViewProps) {
                 <div className="receiver-summary-card__header">
                   <span>
                     {task.label}{' '}
-                    <span className="receiver-info-dot" title={task.detail} aria-label={task.detail}>i</span>
+                    <span className="receiver-info-dot" aria-label={task.detail}>
+                      i
+                      <span className="receiver-info-tip" role="tooltip">{task.detail}</span>
+                    </span>
                   </span>
                   <StatusBadge tone={task.tone}>{task.value}</StatusBadge>
                 </div>
@@ -58,7 +61,10 @@ export function ReceiverView(props: ReceiverViewProps) {
                 <div>
                   <h3>
                     {activeTask.label}{' '}
-                    <span className="receiver-info-dot" title={activeTask.detail} aria-label={activeTask.detail}>i</span>
+                    <span className="receiver-info-dot" aria-label={activeTask.detail}>
+                      i
+                      <span className="receiver-info-tip" role="tooltip">{activeTask.detail}</span>
+                    </span>
                   </h3>
                 </div>
                 <StatusBadge tone={activeTask.tone}>{activeTask.value}</StatusBadge>
