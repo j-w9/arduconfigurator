@@ -2741,6 +2741,12 @@ test.describe('Inspectors (expert-only)', () => {
     await node.getByRole('button').first().click()
     await expect(page.getByTestId('dronecan-fwupdate-online-unavailable-50')).toContainText('desktop app')
     await expect(page.getByTestId('dronecan-fwupdate-online-find-50')).toHaveCount(0)
+    // Browser degrade still offers a link to the firmware server so the operator
+    // can grab the .bin manually and load it with the local picker.
+    await expect(page.getByTestId('dronecan-fwupdate-online-link-50')).toHaveAttribute(
+      'href',
+      /firmware\.ardupilot\.org/
+    )
     await expect(page.getByTestId('dronecan-fwupdate-file-50')).toBeVisible()
   })
 })

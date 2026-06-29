@@ -107,6 +107,13 @@ function NodeFirmwareUpdate(props: {
 }) {
   const { node, view, anotherUpdateActive, busy, onStart, onCancel, online } = props
   const nodeId = node.nodeId
+  // AP_Periph nodes report a name like "org.ardupilot.<board>"; surface the
+  // board suffix as a search hint for the firmware-server link (the browser
+  // can't fetch/match the manifest itself, so it points the operator there).
+  const firmwareBoardHint =
+    node.name && node.name.startsWith('org.ardupilot.')
+      ? node.name.slice('org.ardupilot.'.length)
+      : node.name ?? undefined
   const [file, setFile] = useState<{ name: string; bytes: Uint8Array } | null>(null)
   const [acknowledged, setAcknowledged] = useState(false)
   const [readError, setReadError] = useState<string | null>(null)
@@ -295,10 +302,30 @@ function NodeFirmwareUpdate(props: {
             ) : null}
           </div>
         ) : (
-          <p className="telemetry-note" data-testid={`dronecan-fwupdate-online-unavailable-${nodeId}`}>
-            {online.unavailableReason ??
-              'Online firmware lookup needs the desktop app. Pick a local .bin below.'}
-          </p>
+          <div className="telemetry-note" data-testid={`dronecan-fwupdate-online-unavailable-${nodeId}`}>
+            <p>
+              {online.unavailableReason ??
+                'Online firmware lookup needs the desktop app — the browser can’t fetch the firmware server directly.'}
+            </p>
+            <p>
+              Download this node’s firmware from{' '}
+              <a
+                href="https://firmware.ardupilot.org/AP_Periph/"
+                target="_blank"
+                rel="noreferrer"
+                data-testid={`dronecan-fwupdate-online-link-${nodeId}`}
+              >
+                firmware.ardupilot.org/AP_Periph
+              </a>
+              {firmwareBoardHint ? (
+                <>
+                  {' '}
+                  (look for <code>{firmwareBoardHint}</code>)
+                </>
+              ) : null}
+              , then load the .bin below.
+            </p>
+          </div>
         )
       ) : null}
 
