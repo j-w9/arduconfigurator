@@ -85,7 +85,7 @@ async function applySingleTuningChange(page: Page, value: string): Promise<void>
   // The Rates task hosts the flight-feel ATC_INPUT_TC control. Select it
   // explicitly: a prior apply leaves the Tuning task on Review (the active task
   // is now operator-driven and sticky, never auto-switched).
-  await page.getByTestId('tuning-summary-rates').click()
+  await page.getByTestId('tuning-tab-rates').click()
   await page.getByTestId('tuning-input-ATC_INPUT_TC').fill(value)
   await page.getByTestId('tuning-input-ATC_INPUT_TC').blur()
   // Editing stages in place and no longer auto-redirects to Review, so the
@@ -391,7 +391,7 @@ test.describe('browser configurator regression flows', () => {
 
     await openView(page, 'tuning')
     await expect(page.getByTestId('tuning-task-nav')).toBeVisible()
-    await expect(page.getByTestId('tuning-summary-rates')).toBeVisible()
+    await expect(page.getByTestId('tuning-tab-rates')).toBeVisible()
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
     await expect(page.getByText('Axis controller gains', { exact: true })).toBeVisible()
     await expect(page.getByTestId('tuning-roll-pitch-link-button')).toBeVisible()

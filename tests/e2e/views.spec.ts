@@ -2292,7 +2292,7 @@ test.describe('ArduRover / ArduSub demo', () => {
     // Receiver Flight-Mode pills name the real Rover slot param (MODE1..6),
     // not the Copter FLTMODE prefix. Mock seeds MODE1 = 0 -> "Manual".
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-summary-flight-modes').click()
+    await page.getByTestId('receiver-tab-flight-modes').click()
     await expect(page.getByText('FLTMODE1 =', { exact: false })).toHaveCount(0)
     await expect(page.getByText('MODE1 = Manual', { exact: false })).toBeVisible()
   })

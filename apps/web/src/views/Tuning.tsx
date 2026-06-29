@@ -24,7 +24,7 @@ export interface TuningViewProps {
 }
 
 export function TuningView(props: TuningViewProps) {
-  const { taskCards, activeTaskId, activeTask, onSelectTask, taskBodySlot, overviewSlot, noticeSlot } = props
+  const { taskCards, activeTaskId, onSelectTask, taskBodySlot, overviewSlot, noticeSlot } = props
 
   return (
     <section className="grid one-up tuning-page">
@@ -33,45 +33,26 @@ export function TuningView(props: TuningViewProps) {
         subtitle="Curated ArduPilot rate, gain, and filter tuning."
       >
         <div className="telemetry-stack telemetry-stack--tuning">
-          <div className="tuning-summary-grid">
-            {taskCards.map((task) => (
-              <button
-                key={task.id}
-                type="button"
-                data-testid={`tuning-summary-${task.id}`}
-                className={`tuning-summary-card${task.id === activeTaskId ? ' is-active' : ''}`}
-                onClick={() => onSelectTask(task.id)}
-              >
-                <div className="tuning-summary-card__header">
-                  <span>{task.label}</span>
-                  <StatusBadge tone={task.tone}>{task.value}</StatusBadge>
-                </div>
-                <p>{task.detail}</p>
-              </button>
-            ))}
-          </div>
-
           {noticeSlot}
 
           <div className="tuning-workspace tuning-workspace--task-deck">
             <div className="tuning-workspace__task tuning-task-deck">
-              <div className="tuning-task-deck__header">
-                <div>
-                  <h3>{activeTask.label}</h3>
-                  <p>{activeTask.detail}</p>
-                </div>
-                <StatusBadge tone={activeTask.tone}>{activeTask.value}</StatusBadge>
-              </div>
-
               <div className="tab-strip" data-testid="tuning-task-nav">
                 {taskCards.map((task) => (
                   <button
                     key={`tuning-task-nav:${task.id}`}
                     type="button"
+                    data-testid={`tuning-tab-${task.id}`}
                     className={`tab-strip__tab${task.id === activeTaskId ? ' is-active' : ''}`}
                     onClick={() => onSelectTask(task.id)}
                   >
-                    <span className="tab-strip__tab-title">{task.label}</span>
+                    <span className="tab-strip__tab-title">
+                      {task.label}{' '}
+                      <span className="receiver-info-dot" aria-hidden="true">
+                        i
+                        <span className="receiver-info-tip" role="tooltip">{task.detail}</span>
+                      </span>
+                    </span>
                     <StatusBadge tone={task.tone}>{task.value}</StatusBadge>
                   </button>
                 ))}
