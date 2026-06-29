@@ -12741,6 +12741,42 @@ details.bf-gui-box:not([open]) > summary::after {
   font-size: 11px;
   color: var(--text-muted);
 }
+.mavlink-inspector__source-health {
+  margin-left: auto;
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.mavlink-inspector__source-health--ok {
+  color: var(--success, #3ddc84);
+}
+.mavlink-inspector__source-health--warn {
+  color: var(--warning, #ffbb00);
+}
+.mavlink-inspector__last {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mavlink-inspector__tone {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 999px;
+  line-height: 1.4;
+}
+.mavlink-inspector__tone--slow {
+  color: var(--warning, #ffbb00);
+  background: rgba(255, 187, 0, 0.15);
+}
+.mavlink-inspector__tone--stale {
+  color: var(--danger, #ff5a5a);
+  background: rgba(255, 90, 90, 0.15);
+}
+.mavlink-inspector__entry--stale .mavlink-inspector__type {
+  opacity: 0.55;
+}
 .mavlink-inspector__row--head {
   text-transform: uppercase;
   font-size: 10px;

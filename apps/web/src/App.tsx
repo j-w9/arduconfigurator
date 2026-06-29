@@ -1817,6 +1817,7 @@ export function App() {
   // Live MAVLink inspector stats — only subscribed while its tab is active.
   const {
     stats: mavlinkInspectorStats,
+    sourceHealth: mavlinkInspectorSourceHealth,
     clear: clearMavlinkInspector,
     paused: mavlinkInspectorPaused,
     setPaused: setMavlinkInspectorPaused,
@@ -7019,6 +7020,7 @@ export function App() {
           paused={mavlinkInspectorPaused}
           onTogglePause={() => setMavlinkInspectorPaused(!mavlinkInspectorPaused)}
           onClear={clearMavlinkInspector}
+          sourceHealth={mavlinkInspectorSourceHealth}
           onRequestMessage={
             runtime
               ? async ({ kind, messageId, rateHz }) => {

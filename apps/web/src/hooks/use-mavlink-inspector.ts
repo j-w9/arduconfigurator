@@ -12,7 +12,14 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { ArduPilotConfiguratorRuntime } from '@arduconfig/ardupilot-core'
 
-import { appendPlotSample, toPlottableNumber, type PlotSample } from '../view-models/mavlink-inspector'
+import {
+  appendPlotSample,
+  lossPercent,
+  sequenceGap,
+  toPlottableNumber,
+  type MavlinkSourceHealth,
+  type PlotSample
+} from '../view-models/mavlink-inspector'
 
 export interface MavlinkMessageStat {
   /** Stable identity for React keys: `${systemId}:${componentId}:${type}`. */
@@ -71,8 +78,19 @@ interface Accumulator {
   rateHistory: number[]
 }
 
+/** Per-source (sys:comp) sequence + loss accounting, across all message types. */
+interface SourceAccumulator {
+  systemId: number
+  componentId: number
+  received: number
+  dropped: number
+  lastSeq: number | undefined
+}
+
 export interface MavlinkInspectorState {
   stats: MavlinkMessageStat[]
+  /** Per-source link health (packet loss), keyed by `${systemId}:${componentId}`. */
+  sourceHealth: MavlinkSourceHealth[]
   clear: () => void
   paused: boolean
   setPaused: (paused: boolean) => void
@@ -90,7 +108,9 @@ export function useMavlinkInspector(
   active: boolean
 ): MavlinkInspectorState {
   const accumulators = useRef(new Map<string, Accumulator>())
+  const sources = useRef(new Map<string, SourceAccumulator>())
   const [stats, setStats] = useState<MavlinkMessageStat[]>([])
+  const [sourceHealth, setSourceHealth] = useState<MavlinkSourceHealth[]>([])
   const [paused, setPaused] = useState(false)
   const pausedRef = useRef(paused)
   pausedRef.current = paused
@@ -152,6 +172,23 @@ export function useMavlinkInspector(
       }
       accumulators.current.set(key, entry)
 
+      // Per-source packet-loss accounting off the MAVLink v2 sequence byte,
+      // tracked across all of this source's message types (the sequence
+      // increments once per frame regardless of type).
+      const sourceId = `${systemId}:${componentId}`
+      const sequence = envelope.header.sequence
+      const source =
+        sources.current.get(sourceId) ??
+        { systemId, componentId, received: 0, dropped: 0, lastSeq: undefined }
+      if (typeof sequence === 'number' && source.lastSeq !== undefined) {
+        source.dropped += sequenceGap(source.lastSeq, sequence)
+      }
+      if (typeof sequence === 'number') {
+        source.lastSeq = sequence
+      }
+      source.received += 1
+      sources.current.set(sourceId, source)
+
       // Sample any plotted field of this exact source+type into its buffer.
       if (plotSpecs.current.size > 0) {
         const sourceTypeKey = `${key}:`
@@ -211,6 +248,20 @@ export function useMavlinkInspector(
         })
       }
       setStats(next)
+
+      const health: MavlinkSourceHealth[] = []
+      for (const [id, source] of sources.current) {
+        health.push({
+          id,
+          systemId: source.systemId,
+          componentId: source.componentId,
+          received: source.received,
+          dropped: source.dropped,
+          lossPct: lossPercent(source.received, source.dropped),
+          lastSeqSeen: source.lastSeq
+        })
+      }
+      setSourceHealth(health)
       snapshotPlots()
     }
 
@@ -224,7 +275,9 @@ export function useMavlinkInspector(
 
   const clear = (): void => {
     accumulators.current.clear()
+    sources.current.clear()
     setStats([])
+    setSourceHealth([])
   }
 
   const addPlot = (spec: MavlinkPlotSpec): void => {
@@ -242,5 +295,5 @@ export function useMavlinkInspector(
     snapshotPlots()
   }
 
-  return { stats, clear, paused, setPaused, plots, addPlot, removePlot }
+  return { stats, sourceHealth, clear, paused, setPaused, plots, addPlot, removePlot }
 }

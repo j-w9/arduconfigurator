@@ -17,12 +17,15 @@ import {
   buildMavlinkFieldRows,
   buildPlotGeometry,
   buildSparklinePoints,
+  classifyRowHealth,
   describeMessageRequestOutcome,
+  describeSourceHealth,
   filterMavlinkStats,
   filterMavlinkStatsBySource,
   formatBytesPerSec,
   formatPlotValue,
   groupMavlinkStatsBySource,
+  isRowStale,
   listMavlinkSources,
   messageNameForId,
   messageToJson,
@@ -30,7 +33,8 @@ import {
   sortMavlinkStats,
   summarizeMavlinkStats,
   type MavlinkRequestKind,
-  type MavlinkSortKey
+  type MavlinkSortKey,
+  type MavlinkSourceHealth
 } from '../view-models/mavlink-inspector'
 
 export interface MavlinkMessageRequest {
@@ -52,6 +56,8 @@ export interface MavlinkInspectorViewProps {
   onClear: () => void
   /** Issue a SET_MESSAGE_INTERVAL / REQUEST_MESSAGE on the operator's behalf. */
   onRequestMessage?: (request: MavlinkMessageRequest) => Promise<MavlinkMessageRequestOutcome>
+  /** Per-source link health (packet loss), keyed by `${systemId}:${componentId}`. */
+  sourceHealth?: readonly MavlinkSourceHealth[]
   /** Live field plots and the controls to add/remove them. */
   plots?: readonly MavlinkPlot[]
   onAddPlot?: (spec: MavlinkPlotSpec) => void
@@ -398,6 +404,7 @@ export function MavlinkInspectorView({
   onTogglePause,
   onClear,
   onRequestMessage,
+  sourceHealth = [],
   plots = [],
   onAddPlot,
   onRemovePlot,
@@ -418,6 +425,11 @@ export function MavlinkInspectorView({
   )
   const groups = groupMavlinkStatsBySource(visible)
   const matched = filter.trim().length > 0 || activeSource.length > 0
+  const healthById = new Map(sourceHealth.map((entry) => [entry.id, entry]))
+  // Single clock read drives every row's stale/age check this render; the hook
+  // re-flushes (and so re-renders) on a fixed interval, so a stream that stops
+  // visibly tips to "stale" rather than freezing its last rate.
+  const now = Date.now()
 
   const plottedKeys = new Set(plots.map((plot) => plot.key))
   const atPlotLimit = typeof maxPlots === 'number' && plots.length >= maxPlots
@@ -532,7 +544,15 @@ export function MavlinkInspectorView({
             <p className="telemetry-note">No messages {matched ? 'match the filter' : 'received yet'}.</p>
           ) : (
             <div className="mavlink-inspector__table" data-testid="mavlink-inspector-table">
-              {groups.map((group) => (
+              {groups.map((group) => {
+                const health = healthById.get(group.id)
+                const staleCount = group.stats.reduce(
+                  (count, stat) => count + (isRowStale(stat.lastSeenMs, now) ? 1 : 0),
+                  0
+                )
+                const lossPct = health?.lossPct ?? 0
+                const healthTone = lossPct >= 5 || staleCount > 0 ? 'warn' : 'ok'
+                return (
                 <div
                   key={group.id}
                   className="mavlink-inspector__group"
@@ -542,6 +562,17 @@ export function MavlinkInspectorView({
                     <span className="mavlink-inspector__source-label">{group.label}</span>
                     <span className="mavlink-inspector__source-meta">
                       {group.rateHz.toFixed(0)} msg/s · {formatBytesPerSec(group.bytesPerSec)}
+                    </span>
+                    <span
+                      className={`mavlink-inspector__source-health mavlink-inspector__source-health--${healthTone}`}
+                      data-testid={`mavlink-source-health-${group.id}`}
+                      title={
+                        health
+                          ? `${health.dropped} dropped of ${health.received + health.dropped} frames`
+                          : 'No sequence data yet'
+                      }
+                    >
+                      {describeSourceHealth(lossPct, staleCount)}
                     </span>
                   </div>
                   <div className="mavlink-inspector__row mavlink-inspector__row--head">
@@ -554,11 +585,13 @@ export function MavlinkInspectorView({
                   </div>
                   {group.stats.map((stat) => {
                     const isOpen = expanded === stat.key
+                    const rowHealth = classifyRowHealth(stat.lastSeenMs, now, stat.rateHistory, stat.rateHz)
                     return (
                       <div
                         key={stat.key}
-                        className="mavlink-inspector__entry"
+                        className={`mavlink-inspector__entry mavlink-inspector__entry--${rowHealth}`}
                         data-testid={`mavlink-row-${stat.key}`}
+                        data-health={rowHealth}
                       >
                         <button
                           type="button"
@@ -571,7 +604,17 @@ export function MavlinkInspectorView({
                           <RateSparkline history={stat.rateHistory} />
                           <span>{formatBytesPerSec(stat.bytesPerSec)}</span>
                           <span>{stat.count}</span>
-                          <span>{ageLabel(stat.lastSeenMs)}</span>
+                          <span className="mavlink-inspector__last">
+                            {ageLabel(stat.lastSeenMs)}
+                            {rowHealth !== 'ok' ? (
+                              <span
+                                className={`mavlink-inspector__tone mavlink-inspector__tone--${rowHealth}`}
+                                data-testid={`mavlink-row-tone-${stat.key}`}
+                              >
+                                {rowHealth}
+                              </span>
+                            ) : null}
+                          </span>
                         </button>
                         {isOpen ? (
                           <MavlinkFieldTable stat={stat} plottedKeys={plottedKeys} onTogglePlot={togglePlot} />
@@ -580,7 +623,8 @@ export function MavlinkInspectorView({
                     )
                   })}
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

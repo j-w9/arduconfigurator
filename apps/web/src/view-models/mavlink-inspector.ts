@@ -477,3 +477,122 @@ export function formatPlotValue(value: number): string {
   }
   return value.toFixed(3).replace(/\.?0+$/, '')
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4 — link health (per-source packet loss + stale / slowed flagging)
+// ---------------------------------------------------------------------------
+
+/**
+ * Count packets dropped between two MAVLink v2 sequence bytes for the same
+ * source. The 8-bit sequence increments once per frame and wraps at 256, so
+ * the forward distance `(seq - prevSeq) mod 256` is the number of frames the
+ * sender emitted since the last one we saw; one of those is the frame that
+ * just arrived, so `distance - 1` were dropped. A consecutive frame
+ * (distance 1) and an exact duplicate / reorder onto the same seq (distance 0)
+ * both count as zero loss. Pure / unit-tested.
+ */
+export function sequenceGap(prevSeq: number, seq: number): number {
+  const distance = (seq - prevSeq) & 0xff
+  return distance <= 1 ? 0 : distance - 1
+}
+
+/** Loss as a percentage of expected frames (received + dropped). 0 when idle. */
+export function lossPercent(received: number, dropped: number): number {
+  const total = received + dropped
+  return total > 0 ? (dropped / total) * 100 : 0
+}
+
+/** Compact loss label: "0%", "<1%", "3.4%", "12%". */
+export function formatLossPercent(lossPct: number): string {
+  if (!Number.isFinite(lossPct) || lossPct <= 0) {
+    return '0%'
+  }
+  if (lossPct < 1) {
+    return '<1%'
+  }
+  return `${lossPct.toFixed(lossPct < 10 ? 1 : 0)}%`
+}
+
+/** A row is stale once its stream has gone quiet for this long. */
+export const STALE_AFTER_MS = 3000
+/** A row's rate must fall below this fraction of its recent peak to read "slow". */
+const RATE_DROP_FACTOR = 0.5
+/** …and the recent peak must have been at least this lively (Hz) to bother. */
+const RATE_DROP_MIN_PEAK_HZ = 2
+
+/** True when a row's stream has stopped (no message within the stale window). */
+export function isRowStale(lastSeenMs: number, now: number, staleAfterMs = STALE_AFTER_MS): boolean {
+  return now - lastSeenMs >= staleAfterMs
+}
+
+/**
+ * True when a still-live row's rate has fallen sharply off its recent peak —
+ * a stream that was healthy and is now limping (but not yet fully stale).
+ * Cheap: reads the per-row rate history already tracked for the sparkline.
+ */
+export function isRateDropSharp(
+  rateHistory: readonly number[],
+  currentRateHz: number,
+  factor = RATE_DROP_FACTOR,
+  minPeakHz = RATE_DROP_MIN_PEAK_HZ
+): boolean {
+  if (rateHistory.length < 2) {
+    return false
+  }
+  const peak = Math.max(...rateHistory)
+  if (peak < minPeakHz) {
+    return false
+  }
+  return currentRateHz < peak * factor
+}
+
+export type MavlinkRowHealth = 'ok' | 'slow' | 'stale'
+
+/**
+ * Classify a row's stream health: fully stopped → 'stale', sharply slowed but
+ * still alive → 'slow', otherwise 'ok'. Pure / unit-tested.
+ */
+export function classifyRowHealth(
+  lastSeenMs: number,
+  now: number,
+  rateHistory: readonly number[],
+  currentRateHz: number,
+  staleAfterMs = STALE_AFTER_MS
+): MavlinkRowHealth {
+  if (isRowStale(lastSeenMs, now, staleAfterMs)) {
+    return 'stale'
+  }
+  if (isRateDropSharp(rateHistory, currentRateHz)) {
+    return 'slow'
+  }
+  return 'ok'
+}
+
+/** Per-source link health, accumulated in the hook and rendered per group. */
+export interface MavlinkSourceHealth {
+  /** `${systemId}:${componentId}` — matches a source group's id. */
+  id: string
+  systemId: number
+  componentId: number
+  /** Frames received from this source this session (across all types). */
+  received: number
+  /** Frames inferred dropped from sequence gaps this session. */
+  dropped: number
+  /** dropped / (received + dropped) × 100. */
+  lossPct: number
+  /** Most recent sequence byte seen, or undefined before the first frame. */
+  lastSeqSeen: number | undefined
+}
+
+/**
+ * One-line health summary for a source group: loss percentage plus, when any
+ * of the source's rows have gone quiet, a stale count — e.g. "0% loss",
+ * "12% loss · 2 stale". Pure / unit-tested.
+ */
+export function describeSourceHealth(lossPct: number, staleCount: number): string {
+  const parts = [`${formatLossPercent(lossPct)} loss`]
+  if (staleCount > 0) {
+    parts.push(`${staleCount} stale`)
+  }
+  return parts.join(' · ')
+}

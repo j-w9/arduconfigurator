@@ -6,23 +6,31 @@ import {
   buildMavlinkFieldRows,
   buildPlotGeometry,
   buildSparklinePoints,
+  classifyRowHealth,
   describeMavlinkSource,
   describeMessageRequestOutcome,
+  describeSourceHealth,
   filterMavlinkStats,
   filterMavlinkStatsBySource,
   formatBytesPerSec,
+  formatLossPercent,
   formatMavlinkFieldType,
   formatMavlinkFieldValue,
   formatPlotValue,
   groupMavlinkStatsBySource,
   intervalUsForRate,
   isPlottableFieldValue,
+  isRateDropSharp,
+  isRowStale,
   listMavlinkSources,
+  lossPercent,
   mavlinkComponentLabel,
   messageNameForId,
   messageToJson,
   REQUESTABLE_MESSAGES,
+  sequenceGap,
   sortMavlinkStats,
+  STALE_AFTER_MS,
   summarizeMavlinkStats,
   toPlottableNumber
 } from './mavlink-inspector'
@@ -343,6 +351,80 @@ describe('field plotting', () => {
     expect(formatPlotValue(5)).toBe('5')
     expect(formatPlotValue(1.25)).toBe('1.25')
     expect(formatPlotValue(0.0001)).toBe('1.00e-4')
+  })
+})
+
+describe('link health — packet loss', () => {
+  it('counts no loss for consecutive sequences', () => {
+    expect(sequenceGap(10, 11)).toBe(0)
+    expect(sequenceGap(0, 1)).toBe(0)
+  })
+
+  it('counts the skipped sequence numbers as dropped frames', () => {
+    expect(sequenceGap(10, 13)).toBe(2)
+    expect(sequenceGap(100, 105)).toBe(4)
+  })
+
+  it('wraps the 8-bit sequence at 256', () => {
+    // 255 -> 0 is consecutive (no loss); 255 -> 2 drops 0 and 1.
+    expect(sequenceGap(255, 0)).toBe(0)
+    expect(sequenceGap(255, 2)).toBe(2)
+    expect(sequenceGap(254, 1)).toBe(2)
+  })
+
+  it('treats an exact duplicate / reorder onto the same seq as no loss', () => {
+    expect(sequenceGap(42, 42)).toBe(0)
+  })
+
+  it('computes loss as a percentage of expected frames', () => {
+    expect(lossPercent(0, 0)).toBe(0)
+    expect(lossPercent(90, 10)).toBe(10)
+    expect(lossPercent(100, 0)).toBe(0)
+    expect(lossPercent(3, 1)).toBe(25)
+  })
+
+  it('formats loss compactly', () => {
+    expect(formatLossPercent(0)).toBe('0%')
+    expect(formatLossPercent(0.3)).toBe('<1%')
+    expect(formatLossPercent(3.42)).toBe('3.4%')
+    expect(formatLossPercent(12.7)).toBe('13%')
+  })
+})
+
+describe('link health — stale + slowed', () => {
+  it('flags a row stale once its stream stops for the window', () => {
+    const now = 100_000
+    expect(isRowStale(now - 500, now)).toBe(false)
+    expect(isRowStale(now - STALE_AFTER_MS, now)).toBe(true)
+    expect(isRowStale(now - STALE_AFTER_MS - 1, now)).toBe(true)
+  })
+
+  it('flags a sharp rate drop off a lively recent peak', () => {
+    // Peak ~50 Hz, now 5 Hz -> well under half: slowed.
+    expect(isRateDropSharp([50, 48, 52, 5], 5)).toBe(true)
+    // Still near peak: not slowed.
+    expect(isRateDropSharp([50, 48, 52, 49], 49)).toBe(false)
+    // Low-rate stream (1 Hz heartbeat) never reads as "slow".
+    expect(isRateDropSharp([1, 1, 0.3], 0.3)).toBe(false)
+    // Too little history to judge.
+    expect(isRateDropSharp([10], 1)).toBe(false)
+  })
+
+  it('classifies row health stale > slow > ok', () => {
+    const now = 100_000
+    // Stopped: stale wins even if the history looks fine.
+    expect(classifyRowHealth(now - STALE_AFTER_MS, now, [50, 50], 50)).toBe('stale')
+    // Live but sharply slowed.
+    expect(classifyRowHealth(now - 200, now, [50, 48, 5], 5)).toBe('slow')
+    // Healthy.
+    expect(classifyRowHealth(now - 200, now, [50, 49, 50], 50)).toBe('ok')
+  })
+
+  it('describes a source health line with optional stale count', () => {
+    expect(describeSourceHealth(0, 0)).toBe('0% loss')
+    expect(describeSourceHealth(12, 0)).toBe('12% loss')
+    expect(describeSourceHealth(12, 2)).toBe('12% loss · 2 stale')
+    expect(describeSourceHealth(0, 1)).toBe('0% loss · 1 stale')
   })
 })
 
