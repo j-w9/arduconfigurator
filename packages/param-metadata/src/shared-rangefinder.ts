@@ -184,6 +184,42 @@ export function buildRangefinderParameterDefinitions(instance: 1 | 2): FirmwareM
       maximum: 1.5,
       step: 0.01
     },
+    // Legacy pre-4.7 distance params (centimetres). ArduPilot 4.7 renamed these
+    // to the metre-based MIN/MAX/GNDCLR above. Both are curated so the field
+    // binds whichever the FC streams — the peripherals card only renders params
+    // actually present in the synced tree, so 4.6 shows the _CM/GNDCLEAR set and
+    // 4.7 shows the metre set, never both. Can't be aliased (units differ).
+    // Ranges source-verified vs AP_RangeFinder_Params.cpp on Copter-4.6.3.
+    [`${p}MIN_CM`]: {
+      id: `${p}MIN_CM`,
+      label: `Min Distance${suffix}`,
+      description: 'Minimum reliable distance (cm). Pre-4.7 firmware; 4.7+ uses the metre-based Min Distance.',
+      category: 'rangefinder',
+      unit: 'cm',
+      minimum: 0,
+      maximum: 10000,
+      step: 1
+    },
+    [`${p}MAX_CM`]: {
+      id: `${p}MAX_CM`,
+      label: `Max Distance${suffix}`,
+      description: 'Maximum reliable distance (cm). Pre-4.7 firmware; 4.7+ uses the metre-based Max Distance.',
+      category: 'rangefinder',
+      unit: 'cm',
+      minimum: 0,
+      maximum: 10000,
+      step: 1
+    },
+    [`${p}GNDCLEAR`]: {
+      id: `${p}GNDCLEAR`,
+      label: `Ground Clearance${suffix}`,
+      description: 'Distance (cm) the sensor reads on the ground (mounting height). Pre-4.7 firmware; 4.7+ uses the metre-based Ground Clearance.',
+      category: 'rangefinder',
+      unit: 'cm',
+      minimum: 5,
+      maximum: 127,
+      step: 1
+    },
     [`${p}ADDR`]: {
       id: `${p}ADDR`,
       label: `I2C Address${suffix}`,
