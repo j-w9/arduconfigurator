@@ -172,20 +172,18 @@ export function LogsView(props: LogsViewProps) {
                   aria-label={bitmaskField.parameter.definition?.label ?? bitmaskField.parameter.id}
                 >
                   <span>{bitmaskField.parameter.definition?.label ?? bitmaskField.parameter.id}</span>
-                  <div className="scoped-checkbox-list">
+                  <div className="scoped-bitmask-bits">
                     {bitmaskField.bits.map((bit) => (
-                      <label
+                      <button
+                        type="button"
                         key={`${bitmaskField.parameter.id}:${bit.bit}`}
-                        className="scoped-checkbox-option"
+                        className={`scoped-bitmask-bit${bit.isChecked ? ' is-set' : ''}`}
+                        aria-pressed={bit.isChecked}
                         data-testid={`logs-bitmask-bit-${bit.bit}`}
+                        onClick={() => bitmaskField.onToggleBit(bit.bit, !bit.isChecked)}
                       >
-                        <input
-                          type="checkbox"
-                          checked={bit.isChecked}
-                          onChange={(event) => bitmaskField.onToggleBit(bit.bit, event.target.checked)}
-                        />
-                        <span>{bit.label}</span>
-                      </label>
+                        {bit.label}
+                      </button>
                     ))}
                   </div>
                   <small>{bitmaskField.captionText}</small>

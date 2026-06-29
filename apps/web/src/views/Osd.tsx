@@ -655,16 +655,17 @@ export function OsdView(props: OsdViewProps) {
                         aria-label={mspOptionsField.parameter.definition?.label ?? mspOptionsField.parameter.id}
                       >
                         <span>{mspOptionsField.parameter.definition?.label ?? mspOptionsField.parameter.id}</span>
-                        <div className="scoped-checkbox-list">
+                        <div className="scoped-bitmask-bits">
                           {mspOptionsField.bits.map((bit) => (
-                            <label key={`${mspOptionsField.parameter.id}:${bit.bit}`} className="scoped-checkbox-option">
-                              <input
-                                type="checkbox"
-                                checked={bit.isChecked}
-                                onChange={(event) => mspOptionsField.onToggleBit(bit.bit, event.target.checked)}
-                              />
-                              <span>{bit.label}</span>
-                            </label>
+                            <button
+                              type="button"
+                              key={`${mspOptionsField.parameter.id}:${bit.bit}`}
+                              className={`scoped-bitmask-bit${bit.isChecked ? ' is-set' : ''}`}
+                              aria-pressed={bit.isChecked}
+                              onClick={() => mspOptionsField.onToggleBit(bit.bit, !bit.isChecked)}
+                            >
+                              {bit.label}
+                            </button>
                           ))}
                         </div>
                         <small>{mspOptionsField.captionText}</small>

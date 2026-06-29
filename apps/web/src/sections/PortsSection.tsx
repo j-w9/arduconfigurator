@@ -506,29 +506,31 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 
                                   {optionsParameter && expandedSerialOptionsPortNumber === port.portNumber ? (
                                     <div className="ports-matrix-row__expanded">
-                                      <div className="scoped-checkbox-list port-row__options-panel">
+                                      <div className="scoped-bitmask-bits port-row__options-panel">
                                         {Object.entries(ARDUCOPTER_SERIAL_OPTION_BIT_LABELS).map(([bit, label]) => {
                                           const numericBit = Number(bit)
+                                          const checked = hasBitmaskFlag(editedOptionsValue, numericBit)
                                           return (
-                                            <label key={`${optionsParameter.id}:${bit}`} className="scoped-checkbox-option">
-                                              <input
-                                                type="checkbox"
-                                                checked={hasBitmaskFlag(editedOptionsValue, numericBit)}
-                                                onChange={(event) =>
-                                                  updateDrafts((existing) => {
-                                                    const currentValue = normalizeBitmaskValue(existing[optionsParameter.id], port.optionsValue)
-                                                    const nextValue = toggleBitmaskFlag(currentValue, numericBit, event.target.checked)
+                                            <button
+                                              type="button"
+                                              key={`${optionsParameter.id}:${bit}`}
+                                              className={`scoped-bitmask-bit${checked ? ' is-set' : ''}`}
+                                              aria-pressed={checked}
+                                              onClick={() =>
+                                                updateDrafts((existing) => {
+                                                  const currentValue = normalizeBitmaskValue(existing[optionsParameter.id], port.optionsValue)
+                                                  const nextValue = toggleBitmaskFlag(currentValue, numericBit, !checked)
 
-                                                    return {
-                                                      ...existing,
-                                                      [optionsParameter.id]: String(nextValue)
-                                                    }
-                                                  })
-                                                }
-                                                disabled={!port.editable}
-                                              />
-                                              <span>{label}</span>
-                                            </label>
+                                                  return {
+                                                    ...existing,
+                                                    [optionsParameter.id]: String(nextValue)
+                                                  }
+                                                })
+                                              }
+                                              disabled={!port.editable}
+                                            >
+                                              {label}
+                                            </button>
                                           )
                                         })}
                                       </div>
