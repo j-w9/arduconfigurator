@@ -12834,6 +12834,21 @@ details.bf-gui-box:not([open]) > summary::after {
   color: var(--text-muted);
   margin-bottom: 6px;
 }
+/* The params section collapses by default; this is its disclosure toggle. */
+.dronecan-inspector__params-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.dronecan-inspector__params-toggle:hover {
+  color: var(--text);
+}
 .dronecan-inspector__param-grid {
   display: flex;
   flex-direction: column;

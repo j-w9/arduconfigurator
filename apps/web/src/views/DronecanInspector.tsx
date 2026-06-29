@@ -88,6 +88,19 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
   const [draftValues, setDraftValues] = useState<Record<string, string>>({})
   // Node id awaiting a restart confirmation (two-step button).
   const [confirmRestart, setConfirmRestart] = useState<number | null>(null)
+  // Nodes whose parameter grid is expanded. Params are collapsed by default —
+  // the table can be large + costs a bus read-walk — so the operator opts in.
+  const [openParams, setOpenParams] = useState<Set<number>>(new Set())
+  const toggleParams = (nodeId: number) =>
+    setOpenParams((prev) => {
+      const next = new Set(prev)
+      if (next.has(nodeId)) {
+        next.delete(nodeId)
+      } else {
+        next.add(nodeId)
+      }
+      return next
+    })
   const active = status === 'active'
   const summary = summarizeDronecanNodes(nodes)
   const escRows = buildDronecanEscRows(escTelemetry)
@@ -222,6 +235,7 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                 .sort((left, right) => left.nodeId - right.nodeId)
                 .map((node) => {
                   const isOpen = expanded === node.nodeId
+                  const paramsShown = openParams.has(node.nodeId)
                   const paramRows = buildDronecanParamRows(node)
                   const stagedChanges = buildCanBusStagedChanges(node, draftValues)
                   const validChanges = stagedChanges.filter((change) => change.parsed !== undefined)
@@ -261,23 +275,42 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                           {/* ---- Per-node parameter grid ---- */}
                           <div className="dronecan-inspector__params" data-testid={`dronecan-params-${node.nodeId}`}>
                             <div className="dronecan-inspector__params-head">
-                              <span>
-                                {node.paramFetch.status === 'fetching'
-                                  ? `Reading parameters… (index ${node.paramFetch.nextIndex})`
-                                  : `${paramRows.length} parameter${paramRows.length === 1 ? '' : 's'}`}
-                              </span>
                               <button
                                 type="button"
-                                style={buttonStyle()}
-                                onClick={() => onFetchParams(node.nodeId)}
-                                disabled={busy}
-                                data-testid={`dronecan-refetch-${node.nodeId}`}
+                                className="dronecan-inspector__params-toggle"
+                                aria-expanded={paramsShown}
+                                onClick={() => {
+                                  const willOpen = !paramsShown
+                                  toggleParams(node.nodeId)
+                                  // Fetch on first open — params are collapsed (and
+                                  // unfetched) by default, so opening pulls them.
+                                  if (willOpen && paramRows.length === 0 && node.paramFetch.status !== 'fetching') {
+                                    onFetchParams(node.nodeId)
+                                  }
+                                }}
+                                data-testid={`dronecan-params-toggle-${node.nodeId}`}
                               >
-                                Re-fetch
+                                <span aria-hidden="true">{paramsShown ? '▾' : '▸'}</span>{' '}
+                                {node.paramFetch.status === 'fetching'
+                                  ? `Reading parameters… (index ${node.paramFetch.nextIndex})`
+                                  : `Parameters${paramRows.length ? ` (${paramRows.length})` : ''}`}
                               </button>
+                              {paramsShown ? (
+                                <button
+                                  type="button"
+                                  style={buttonStyle()}
+                                  onClick={() => onFetchParams(node.nodeId)}
+                                  disabled={busy}
+                                  data-testid={`dronecan-refetch-${node.nodeId}`}
+                                >
+                                  Re-fetch
+                                </button>
+                              ) : null}
                             </div>
 
-                            {paramRows.length === 0 ? (
+                            {paramsShown ? (
+                              <>
+                                {paramRows.length === 0 ? (
                               <p className="telemetry-note">
                                 {node.paramFetch.status === 'fetching'
                                   ? 'Walking the parameter table…'
@@ -362,6 +395,8 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                                   </button>
                                 </div>
                               </div>
+                            ) : null}
+                              </>
                             ) : null}
                           </div>
 

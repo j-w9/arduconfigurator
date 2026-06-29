@@ -2605,6 +2605,8 @@ test.describe('Inspectors (expert-only)', () => {
     const node = page.getByTestId('dronecan-node-50')
     await node.getByRole('button').first().click()
     await expect(page.getByTestId('dronecan-params-50')).toBeVisible()
+    // Parameters are collapsed by default — open them (also triggers the fetch).
+    await page.getByTestId('dronecan-params-toggle-50').click()
     const battInput = page.getByTestId('dronecan-param-input-50-BATT_MONITOR')
     await expect(battInput).toBeVisible({ timeout: 12000 })
 
