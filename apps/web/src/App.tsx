@@ -6954,6 +6954,7 @@ export function App() {
         onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
         onFetchAllParameters={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
         onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
+        paramMetadata={(name) => metadataCatalog.parameters[name]}
       />
       ) : null}
 
@@ -7036,6 +7037,7 @@ export function App() {
           onStartFirmwareUpdate={(nodeId, fileName, image) => { void runtime?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image) }}
           onCancelFirmwareUpdate={() => { runtime?.cancelCanBusNodeFirmwareUpdate() }}
           firmwareOnline={dronecanFirmwareOnline}
+          paramMetadata={(name) => metadataCatalog.parameters[name]}
         />
       ) : null}
 

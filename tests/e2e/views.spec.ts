@@ -2632,6 +2632,9 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('dronecan-params-toggle-50').click()
     const battInput = page.getByTestId('dronecan-param-input-50-BATT_MONITOR')
     await expect(battInput).toBeVisible({ timeout: 12000 })
+    // The node reports no labels/enums, so the grid enriches from the curated
+    // FC catalog by name: BATT_MONITOR=4 shows its enum label.
+    await expect(page.getByTestId('dronecan-param-50-BATT_MONITOR')).toContainText('Analog Voltage and Current')
 
     // Editing a parameter stages a change and reveals Apply & Save.
     await battInput.fill('3')

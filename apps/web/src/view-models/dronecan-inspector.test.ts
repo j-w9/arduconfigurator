@@ -116,7 +116,7 @@ describe('buildDronecanParamRows', () => {
     expect(gps.valueLabel).toBe('1')
     expect(gps.type).toBe('int64')
     expect(gps.editable).toBe(true)
-    expect(gps.rangeLabel).toBe('0..26')
+    expect(gps.rangeLabel).toBe('0 … 26')
     expect(gps.defaultLabel).toBe('0')
     // NODEID has no min/max/default reported.
     expect(rows[0].rangeLabel).toBeUndefined()

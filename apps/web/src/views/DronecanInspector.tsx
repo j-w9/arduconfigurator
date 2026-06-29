@@ -26,6 +26,7 @@ import {
   summarizeDronecanNodes
 } from '../view-models/dronecan-inspector'
 import { buildCanBusStagedChanges } from '../view-models/can-bus'
+import type { DronecanParamCatalogLookup } from '../view-models/dronecan-param-display'
 
 /** One AP_Periph firmware build offered for a node (already matched to the
  *  node's board id by the host). Plain display shape — no firmware-flash types
@@ -90,6 +91,10 @@ export interface DronecanInspectorViewProps {
   /** Online firmware lookup (desktop-only). Omit to hide the online affordance
    *  entirely; pass `available: false` to show the degrade note. */
   firmwareOnline?: DronecanFirmwareOnlineSource
+  /** Curated-catalog lookup (by param name) to enrich a node's params with a
+   *  label, range, enum value labels, and a description. AP_Periph nodes report
+   *  none of that; unknown params render raw. */
+  paramMetadata: DronecanParamCatalogLookup
 }
 
 /** Per-node firmware-update affordance: file picker, prominent brick-risk
@@ -426,7 +431,8 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
     onRestartNode,
     onStartFirmwareUpdate,
     onCancelFirmwareUpdate,
-    firmwareOnline
+    firmwareOnline,
+    paramMetadata
   } = props
   const [busSelection, setBusSelection] = useState<number>(bus ?? 1)
   const [expanded, setExpanded] = useState<number | null>(null)
@@ -587,7 +593,7 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                 .map((node) => {
                   const isOpen = expanded === node.nodeId
                   const paramsShown = openParams.has(node.nodeId)
-                  const paramRows = buildDronecanParamRows(node)
+                  const paramRows = buildDronecanParamRows(node, paramMetadata)
                   const stagedChanges = buildCanBusStagedChanges(node, draftValues)
                   const validChanges = stagedChanges.filter((change) => change.parsed !== undefined)
                   return (
@@ -685,8 +691,14 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
                                       className={`dronecan-inspector__param-row${dirty ? ' is-dirty' : ''}`}
                                       data-testid={`dronecan-param-${node.nodeId}-${row.name}`}
                                     >
-                                      <span className="dronecan-inspector__param-name">
+                                      <span className="dronecan-inspector__param-name" title={row.description}>
                                         {row.name}
+                                        {row.label !== row.name ? (
+                                          <small className="dronecan-inspector__param-label"> {row.label}</small>
+                                        ) : null}
+                                        {row.enumLabel ? (
+                                          <small className="dronecan-inspector__param-enum"> = {row.enumLabel}</small>
+                                        ) : null}
                                         {row.rangeLabel ? (
                                           <small className="dronecan-inspector__param-range"> {row.rangeLabel}</small>
                                         ) : null}

@@ -15,6 +15,7 @@ import {
   modeLabel,
   parseParamInput
 } from '../view-models/can-bus'
+import { describeDronecanParam, type DronecanParamCatalogLookup } from '../view-models/dronecan-param-display'
 import { useCanNodeNames } from '../hooks/use-can-node-names'
 
 // Mission Planner-equivalent DroneCAN inspector. Connects via
@@ -37,6 +38,11 @@ export interface CanBusViewProps {
   onFetchAllParameters: (nodeId: number) => void
   /** Write the staged params to the node, then persist to flash once acked. */
   onApplyAndSave: (nodeId: number, writes: Array<{ name: string; value: DronecanParamValueState }>) => void
+  /** Curated-catalog lookup (by param name) used to enrich a node's params with
+   *  a label, range, enum value labels, and a description — AP_Periph nodes
+   *  usually report none of that. Returns undefined for unknown/periph-specific
+   *  params, which then render raw. */
+  paramMetadata: DronecanParamCatalogLookup
 }
 
 export function CanBusView(props: CanBusViewProps) {
@@ -48,7 +54,8 @@ export function CanBusView(props: CanBusViewProps) {
     onStopForward,
     onRefreshNode,
     onFetchAllParameters,
-    onApplyAndSave
+    onApplyAndSave,
+    paramMetadata
   } = props
 
   const rows = useMemo(() => buildCanBusNodeRows(state), [state])
@@ -414,11 +421,16 @@ export function CanBusView(props: CanBusViewProps) {
                               const displayed = draft ?? formatParamValue(entry.value)
                               const editable = entry.value.tag !== 'empty'
                               const draftValid = draft === undefined ? true : parseParamInput(draft, entry.value) !== undefined
+                              const meta = describeDronecanParam(entry, paramMetadata(entry.name))
                               return (
                                 <tr key={entry.name} data-testid={`can-bus-param-${node.nodeId}-${entry.name}`}>
-                                  <td>
+                                  <td title={meta.description}>
                                     <code>{entry.name}</code>
-                                    <small>({entry.value.tag})</small>
+                                    {meta.label !== entry.name ? (
+                                      <small className="can-bus-params__label">{meta.label}</small>
+                                    ) : (
+                                      <small>({entry.value.tag})</small>
+                                    )}
                                   </td>
                                   <td>
                                     {editable ? (
@@ -434,11 +446,12 @@ export function CanBusView(props: CanBusViewProps) {
                                     ) : (
                                       <span>{displayed}</span>
                                     )}
+                                    {meta.valueIsEnum && draft === undefined ? (
+                                      <small className="can-bus-params__enum">{meta.valueLabel}</small>
+                                    ) : null}
                                   </td>
-                                  <td>{formatParamValue(entry.defaultValue)}</td>
-                                  <td>
-                                    {formatParamValue(entry.minValue)} … {formatParamValue(entry.maxValue)}
-                                  </td>
+                                  <td>{meta.defaultLabel ?? '—'}</td>
+                                  <td>{meta.rangeLabel ?? '—'}</td>
                                 </tr>
                               )
                             })}

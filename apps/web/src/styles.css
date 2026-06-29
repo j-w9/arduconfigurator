@@ -7630,6 +7630,13 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-size: 10px;
   margin-left: 6px;
 }
+/* Catalog-derived friendly label + enum value hint (params metadata enrichment).
+   On their own line so the raw name/value stay primary. */
+.can-bus-params__label,
+.can-bus-params__enum {
+  display: block;
+  margin-left: 0;
+}
 
 .can-bus-params input[type='text'] {
   font: inherit;
@@ -12860,6 +12867,13 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .dronecan-inspector__param-range {
   color: var(--text-muted);
+}
+/* Catalog-derived friendly label + enum value hint (params metadata enrichment). */
+.dronecan-inspector__param-label {
+  color: var(--text-muted);
+}
+.dronecan-inspector__param-enum {
+  color: var(--text);
 }
 .dronecan-inspector__param-type {
   color: var(--text-muted);

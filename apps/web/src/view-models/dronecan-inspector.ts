@@ -12,6 +12,7 @@ import type {
 } from '@arduconfig/ardupilot-core'
 
 import { compareParamEntries, formatParamValue, healthLabel, modeLabel } from './can-bus'
+import { describeDronecanParam, type DronecanParamCatalogLookup } from './dronecan-param-display'
 
 export interface DronecanDetailRow {
   label: string
@@ -114,46 +115,49 @@ export type DronecanParamType = 'int64' | 'real32' | 'bool' | 'string' | 'empty'
 export interface DronecanParamRow {
   index: number
   name: string
+  /** Friendly catalog label, or the raw name when there's no catalog match. */
+  label: string
   /** Formatted current value the node last reported. */
   valueLabel: string
+  /** Enum value label (catalog) for the current value, when known. */
+  enumLabel?: string
   /** The value variant — drives the editor's input kind + parse rules. */
   type: DronecanParamType
   /** True when the value can be edited (everything except an empty/unknown). */
   editable: boolean
-  /** Formatted range hint ("0..127", ">= 0", "<= 64000"), when reported. */
+  /** Range hint: node-reported when present, else the catalog range. */
   rangeLabel?: string
   /** Formatted default value, when the node reported one. */
   defaultLabel?: string
+  /** Catalog description, for a tooltip. */
+  description?: string
 }
 
 /** Build the editable parameter grid rows for one node, sorted by index
  *  (enumeration order). The view owns the draft text + edit handlers; this only
- *  shapes display + edit metadata. */
-export function buildDronecanParamRows(node: DronecanInspectedNode): DronecanParamRow[] {
+ *  shapes display + edit metadata. `lookup` enriches each param from the curated
+ *  FC catalog by name (label/range/enum/description) — AP_Periph nodes usually
+ *  report none of that; node-reported values still win. */
+export function buildDronecanParamRows(
+  node: DronecanInspectedNode,
+  lookup?: DronecanParamCatalogLookup
+): DronecanParamRow[] {
   return [...node.parameters].sort(compareParamEntries).map((entry: DronecanParamEntry): DronecanParamRow => {
     const type = entry.value.tag
-    const min = entry.minValue ? formatParamValue(entry.minValue) : undefined
-    const max = entry.maxValue ? formatParamValue(entry.maxValue) : undefined
-    let rangeLabel: string | undefined
-    if (min !== undefined && min !== '—' && max !== undefined && max !== '—') {
-      rangeLabel = `${min}..${max}`
-    } else if (min !== undefined && min !== '—') {
-      rangeLabel = `>= ${min}`
-    } else if (max !== undefined && max !== '—') {
-      rangeLabel = `<= ${max}`
-    }
-    const defaultLabel =
-      entry.defaultValue && formatParamValue(entry.defaultValue) !== '—'
-        ? formatParamValue(entry.defaultValue)
-        : undefined
+    const meta = describeDronecanParam(entry, lookup?.(entry.name))
     return {
       index: entry.index,
       name: entry.name,
+      label: meta.label,
+      // Raw formatted value — this seeds the editable input, so it must NOT be
+      // the enum label. The enum label is exposed separately for display.
       valueLabel: formatParamValue(entry.value),
+      enumLabel: meta.valueIsEnum ? meta.valueLabel : undefined,
       type,
       editable: type !== 'empty',
-      rangeLabel,
-      defaultLabel
+      rangeLabel: meta.rangeLabel,
+      defaultLabel: meta.defaultLabel,
+      description: meta.description
     }
   })
 }
