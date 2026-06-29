@@ -261,32 +261,36 @@ export const ARDUCOPTER_SERIAL_OPTION_BIT_LABELS: Record<number, string> = {
   12: 'Ignore Streamrate'
 }
 
+// Values are the stable AP_GPS GPS_Type C++ enum (AP_GPS.h). Removing a driver
+// leaves a numeric gap rather than renumbering, so these hold across 4.6/4.7/4.8.
+// (Earlier this table had SBF=3/GSOF=4 and a shifted mapping from value 10 up —
+// those were wrong: 3/4 are the removed MTK/MTK19 slots, SBF=10, GSOF=11.)
 export const ARDUCOPTER_GPS_TYPE_LABELS: Record<number, string> = {
   0: 'None',
   1: 'Auto',
   2: 'u-blox',
-  3: 'SBF',
-  4: 'GSOF',
+  // 3 = MTK, 4 = MTK19 — drivers removed upstream; values never reused.
   5: 'NMEA',
   6: 'SiRF',
   7: 'HIL',
   8: 'SwiftNav',
   9: 'DroneCAN',
-  10: 'MAV',
-  11: 'ERB',
-  13: 'Nova',
-  14: 'Hemisphere NMEA',
-  15: 'u-blox Moving Baseline Base',
-  16: 'u-blox Moving Baseline Rover',
-  17: 'MSP',
-  18: 'AllyStar',
-  19: 'ExternalAHRS',
-  20: 'NMEA Unicore',
-  21: 'Rover Moving Baseline Base',
-  22: 'Rover Moving Baseline Rover',
-  23: 'Septentrio',
-  24: 'Unicore Moving Baseline Base',
-  25: 'Unicore Moving Baseline Rover'
+  10: 'SBF',
+  11: 'GSOF',
+  13: 'ERB',
+  14: 'MAV',
+  15: 'NOVA',
+  16: 'Hemisphere NMEA',
+  17: 'u-blox Moving Baseline Base',
+  18: 'u-blox Moving Baseline Rover',
+  19: 'MSP',
+  20: 'AllyStar',
+  21: 'ExternalAHRS',
+  22: 'DroneCAN Moving Baseline Base',
+  23: 'DroneCAN Moving Baseline Rover',
+  24: 'Unicore NMEA',
+  25: 'Unicore Moving Baseline NMEA',
+  26: 'SBF DualAntenna'
 }
 
 export const ARDUCOPTER_GPS_AUTO_CONFIG_LABELS: Record<number, string> = {

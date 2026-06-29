@@ -1684,7 +1684,8 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       label: 'Yaw Expo',
       description: 'Softens yaw response near center stick while preserving full authority at the ends.',
       category: 'tuning',
-      minimum: 0,
+      // Firmware @Range is -0.5..1.0; widen the floor to allow negative expo.
+      minimum: -0.5,
       maximum: 1,
       step: 0.01,
       notes: flightFeelNotes
@@ -2220,7 +2221,9 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       label: 'Acro Roll/Pitch Expo',
       description: 'Softens roll and pitch response near center stick in Acro mode.',
       category: 'acro',
-      minimum: 0,
+      // Firmware @Range is -0.5..0.95 (negative expo sharpens center response).
+      // Widen the floor to allow it; the configurator keeps a 1.0 ceiling.
+      minimum: -0.5,
       maximum: 1,
       step: 0.01,
       notes: acroRateNotes
@@ -2230,7 +2233,8 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       label: 'Acro Yaw Expo',
       description: 'Softens yaw response near center stick in Acro mode.',
       category: 'acro',
-      minimum: 0,
+      // Firmware @Range is -1.0..0.95; widen the floor to allow negative expo.
+      minimum: -1,
       maximum: 1,
       step: 0.01,
       notes: acroRateNotes
@@ -2720,8 +2724,10 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       label: 'Motor magnet poles',
       description: 'Number of motor magnet poles, used to convert ESC eRPM telemetry to real RPM. Most 5”-class motors have 14 poles.',
       category: 'outputs',
-      minimum: 2,
-      maximum: 64,
+      // Match the firmware @Range (AP_BLHeli.cpp): 1..127. The old 2..64 ceiling
+      // rejected valid high-pole-count motors.
+      minimum: 1,
+      maximum: 127,
       step: 1
     },
     MOT_PWM_MIN: {
