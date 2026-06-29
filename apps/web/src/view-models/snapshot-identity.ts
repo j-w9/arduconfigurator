@@ -48,6 +48,44 @@ export function describeSnapshotBoardMatch(
     : { status: 'different', label: 'Different board', tone: 'warning' }
 }
 
+function parseSemverParts(
+  version: string | undefined
+): { major: number; minor: number; patch: number } | undefined {
+  if (!version) return undefined
+  const match = version.match(/(\d+)\.(\d+)(?:\.(\d+))?/)
+  if (!match) return undefined
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: match[3] ? Number(match[3]) : 0
+  }
+}
+
+/**
+ * Compare a backup's captured flight-firmware version (a string like
+ * "4.6.0 (official)") against the connected FC's parsed version. Only the
+ * major.minor series is compared — that is where ArduPilot renames / adds /
+ * removes parameters between releases (4.6 vs 4.7), which is what makes a
+ * cross-version restore stage values the firmware no longer knows. A patch bump
+ * (4.7.0 → 4.7.1) effectively never changes the parameter set, so it counts as
+ * the same. `unknown` when either side lacks a parseable version.
+ */
+export function describeSnapshotFirmwareMatch(
+  backupVersion: string | undefined,
+  liveVersionParts: { major: number; minor: number; patch: number } | undefined
+): SnapshotMatch {
+  const backup = parseSemverParts(backupVersion)
+  if (!backup || !liveVersionParts) {
+    return { status: 'unknown', label: 'Firmware version unknown', tone: 'neutral' }
+  }
+  const backupLabel = `${backup.major}.${backup.minor}.${backup.patch}`
+  const liveLabel = `${liveVersionParts.major}.${liveVersionParts.minor}.${liveVersionParts.patch}`
+  const sameSeries = backup.major === liveVersionParts.major && backup.minor === liveVersionParts.minor
+  return sameSeries
+    ? { status: 'same', label: `Same firmware (${liveLabel})`, tone: 'success' }
+    : { status: 'different', label: `${backupLabel} → ${liveLabel}`, tone: 'warning' }
+}
+
 /** Compare a snapshot's captured vehicle type against the live vehicle. */
 export function describeSnapshotVehicleMatch(
   snapshotVehicle: string | undefined,

@@ -24,7 +24,11 @@ import {
 import { APP_VERSION, GIT_HASH, GIT_BRANCH } from '../build-info'
 import { downloadTextFile } from '../download-file'
 import { buildParameterBackupFilename } from '../library-helpers'
-import { describeSnapshotBoardMatch, describeSnapshotVehicleMatch } from '../view-models/snapshot-identity'
+import {
+  describeSnapshotBoardMatch,
+  describeSnapshotFirmwareMatch,
+  describeSnapshotVehicleMatch
+} from '../view-models/snapshot-identity'
 import type { ParameterDraftValues } from './use-parameter-drafts'
 import type { ParameterFollowUp, ParameterNotice } from './use-parameter-feedback'
 
@@ -122,13 +126,25 @@ export function useParameterBackupIo({
         migrationSources.length > 0
           ? ` Cross-vehicle migration: this backup was captured on ${migrationSources.join(' and ')}; only parameters that exist on the connected FC are applied.`
           : ''
-      const isMigration = migrationSources.length > 0
+      // Firmware-version mismatch (e.g. a 4.6 backup onto 4.7 firmware): params
+      // are renamed/added/removed between releases, so a cross-version restore
+      // stages values the running firmware may no longer know. Compares the
+      // backup's captured firmware version against the connected FC's.
+      const firmwareMatch = describeSnapshotFirmwareMatch(
+        backup.firmwareVersion,
+        snapshot.hardware.board?.firmwareVersionParts
+      )
+      const firmwareMismatchNote =
+        firmwareMatch.status === 'different'
+          ? ` Firmware version mismatch (${firmwareMatch.label}): parameters are renamed, added, or removed between ArduPilot releases, so some values in this backup may not exist on the connected firmware. Review the staged diff before applying.`
+          : ''
+      const isMigration = migrationSources.length > 0 || firmwareMatch.status === 'different'
       setParameterNotice({
         tone: isMigration || restore.changedCount > 0 ? 'warning' : 'neutral',
         text:
           restore.changedCount > 0
-            ? `Loaded ${restore.changedCount} differing parameter value(s) from backup — review the staged diff below, then click Apply All to write to the controller.${unknownNote}${excludedNote}${migrationNote}`
-            : `Backup matched the current synced values.${unknownNote}${excludedNote}${migrationNote}`
+            ? `Loaded ${restore.changedCount} differing parameter value(s) from backup — review the staged diff below, then click Apply All to write to the controller.${unknownNote}${excludedNote}${migrationNote}${firmwareMismatchNote}`
+            : `Backup matched the current synced values.${unknownNote}${excludedNote}${migrationNote}${firmwareMismatchNote}`
       })
       // Auto-scroll the staged diff into view so the operator sees the
       // current→new list immediately on a multi-change import. Without
