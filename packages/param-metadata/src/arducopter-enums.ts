@@ -96,10 +96,19 @@ export const ARDUCOPTER_BATTERY_MONITOR_LABELS: Record<number, string> = {
   18: 'Generator Fuel',
   19: 'Rotoye',
   20: 'MPPT',
-  21: 'INA2XX',
+  21: 'INA2XX (INA226/228/238/231/260)',
   22: 'LTC2946',
   23: 'Torqeedo',
-  24: 'Fuel Level Analog'
+  24: 'Fuel Level Analog',
+  // 25..32 added through 4.7 — keep in sync with AP_BattMonitor Type enum.
+  25: 'Synthetic Current + Analog Voltage',
+  26: 'INA239 SPI',
+  27: 'EFI',
+  28: 'AD7091R5',
+  29: 'Scripting',
+  30: 'INA3221',
+  31: 'Analog Current Only',
+  32: 'TIBQ76952-I2C'
 }
 
 export const ARDUCOPTER_BATTERY_VOLTAGE_SOURCE_LABELS: Record<number, string> = {
@@ -130,6 +139,7 @@ export const ARDUCOPTER_FS_GCS_LABELS: Record<number, string> = {
 }
 
 export const ARDUCOPTER_FS_EKF_ACTION_LABELS: Record<number, string> = {
+  0: 'Report Only',
   1: 'Land',
   2: 'AltHold',
   3: 'Land Even In Stabilize'
