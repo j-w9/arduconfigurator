@@ -812,6 +812,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                             editedValues={editedValues}
                             onChange={(paramId, value) => setDraft(paramId, value)}
                             draftStatusById={parameterDraftById}
+                            layout="chips"
                           />
                         </div>
                       ) : null}
@@ -912,6 +913,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                               editedValues={editedValues}
                               onChange={(paramId, value) => setDraft(paramId, value)}
                               draftStatusById={parameterDraftById}
+                              layout="chips"
                             />
                           ) : null}
 

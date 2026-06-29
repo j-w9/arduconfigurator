@@ -70,16 +70,16 @@ export function ReceiverView(props: ReceiverViewProps) {
                 <StatusBadge tone={activeTask.tone}>{activeTask.value}</StatusBadge>
               </div>
 
-              <div className="receiver-task-nav" data-testid="receiver-task-nav">
+              <div className="tab-strip" data-testid="receiver-task-nav">
                 {taskCards.map((task) => (
                   <button
                     key={`task-nav:${task.id}`}
                     type="button"
-                    className={`receiver-task-nav__button${task.id === activeTaskId ? ' is-active' : ''}`}
+                    className={`tab-strip__tab${task.id === activeTaskId ? ' is-active' : ''}`}
                     onClick={() => onSelectTask(task.id)}
                   >
-                    <span>{task.label}</span>
-                    <small>{task.value}</small>
+                    <span className="tab-strip__tab-title">{task.label}</span>
+                    <StatusBadge tone={task.tone}>{task.value}</StatusBadge>
                   </button>
                 ))}
               </div>

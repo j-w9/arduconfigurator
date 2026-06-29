@@ -98,6 +98,7 @@ export function VtxView(props: VtxViewProps) {
                       editedValues={editedValues}
                       onChange={onEditChange}
                       draftStatusById={draftStatusById}
+                      layout="chips"
                     />
                   ) : null}
 

@@ -400,6 +400,7 @@ export function OsdView(props: OsdViewProps) {
                     editedValues={editedValues}
                     onChange={onEditChange}
                     draftStatusById={draftStatusById}
+                    layout="chips"
                   />
                 ) : null}
                 {channelField ? (
@@ -409,6 +410,7 @@ export function OsdView(props: OsdViewProps) {
                     editedValues={editedValues}
                     onChange={onEditChange}
                     draftStatusById={draftStatusById}
+                    layout="chips"
                   />
                 ) : null}
                 {switchMethodField ? (
@@ -418,6 +420,7 @@ export function OsdView(props: OsdViewProps) {
                     editedValues={editedValues}
                     onChange={onEditChange}
                     draftStatusById={draftStatusById}
+                    layout="chips"
                   />
                 ) : null}
               </div>
@@ -440,6 +443,7 @@ export function OsdView(props: OsdViewProps) {
                         editedValues={editedValues}
                         draftStatusById={draftStatusById}
                         onChange={onEditChange}
+                        layout="chips"
                       />
                     ) : (
                       <ScopedField

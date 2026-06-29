@@ -120,6 +120,7 @@ export function LogsView(props: LogsViewProps) {
                     editedValues={editedValues}
                     onChange={onEditChange}
                     draftStatusById={draftStatusById}
+                    layout="chips"
                   />
                 ) : null}
                 {retentionField ? (
@@ -138,6 +139,7 @@ export function LogsView(props: LogsViewProps) {
                     editedValues={editedValues}
                     onChange={onEditChange}
                     draftStatusById={draftStatusById}
+                    layout="chips"
                   />
                 ) : null}
                 {replayField ? (
@@ -147,6 +149,7 @@ export function LogsView(props: LogsViewProps) {
                     editedValues={editedValues}
                     onChange={onEditChange}
                     draftStatusById={draftStatusById}
+                    layout="chips"
                   />
                 ) : null}
                 {disarmedField ? (
@@ -156,6 +159,7 @@ export function LogsView(props: LogsViewProps) {
                     editedValues={editedValues}
                     onChange={onEditChange}
                     draftStatusById={draftStatusById}
+                    layout="chips"
                   />
                 ) : null}
               </div>

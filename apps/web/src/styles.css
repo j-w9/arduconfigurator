@@ -2114,14 +2114,16 @@ textarea:focus {
   align-items: start;
 }
 
-.outputs-tabs {
+/* Shared underline tab strip — Motors/Servos (Outputs), Receiver, and Tuning
+   all use these classes so the sub-tab nav stays visually in sync. */
+.tab-strip {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   border-bottom: 1px solid var(--border);
 }
 
-.outputs-tab {
+.tab-strip__tab {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -2136,11 +2138,11 @@ textarea:focus {
   cursor: pointer;
 }
 
-.outputs-tab:hover {
+.tab-strip__tab:hover {
   color: var(--text);
 }
 
-.outputs-tab.is-active {
+.tab-strip__tab.is-active {
   color: var(--text);
   border-bottom-color: var(--accent);
 }
@@ -5756,62 +5758,8 @@ textarea:focus {
   font-size: 13px;
 }
 
-.receiver-task-nav,
-.outputs-task-nav,
-.tuning-task-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.receiver-task-nav__button,
-.outputs-task-nav__button,
-.tuning-task-nav__button {
-  display: grid;
-  gap: 3px;
-  min-width: 130px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: rgba(11, 15, 19, 0.92);
-  text-align: left;
-  color: var(--text);
-  transition:
-    border-color 140ms ease,
-    transform 140ms ease,
-    box-shadow 140ms ease;
-}
-
-.receiver-task-nav__button:hover,
-.outputs-task-nav__button:hover,
-.tuning-task-nav__button:hover {
-  border-color: rgba(183, 149, 93, 0.42);
-  transform: translateY(-1px);
-}
-
-.receiver-task-nav__button.is-active,
-.outputs-task-nav__button.is-active,
-.tuning-task-nav__button.is-active {
-  border-color: rgba(183, 149, 93, 0.72);
-  box-shadow: inset 0 0 0 1px rgba(183, 149, 93, 0.14);
-}
-
-.receiver-task-nav__button span,
-.outputs-task-nav__button span,
-.tuning-task-nav__button span {
-  font-family: var(--font-data);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.receiver-task-nav__button small,
-.outputs-task-nav__button small,
-.tuning-task-nav__button small {
-  color: var(--text-muted);
-}
-
+/* Receiver / Tuning sub-tab nav now uses the shared `.tab-strip` underline
+   tabs (see Motors/Servos); the title + StatusBadge match the Outputs tabs. */
 .receiver-task-panel,
 .outputs-task-panel,
 .tuning-task-panel {
@@ -6673,8 +6621,11 @@ textarea:focus {
   background: var(--bg-panel-muted);
 }
 
-/* Bitmask bits as clickable chips — orange highlight = set (no checkboxes/hex). */
-.scoped-bitmask-bits {
+/* Bitmask bits (multi-select) and single-select enum chips render with the
+   SAME box/chip look — orange highlight = set/selected (no checkboxes/hex).
+   The two share these rules so they stay visually identical. */
+.scoped-bitmask-bits,
+.scoped-option-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
@@ -6685,7 +6636,8 @@ textarea:focus {
   flex-wrap: nowrap;
 }
 
-.scoped-bitmask-bit {
+.scoped-bitmask-bit,
+.scoped-option-chip {
   padding: 3px 8px;
   border-radius: 6px;
   border: 1px solid var(--surface-400);
@@ -6697,17 +6649,20 @@ textarea:focus {
   cursor: pointer;
 }
 
-.scoped-bitmask-bit:hover {
+.scoped-bitmask-bit:hover,
+.scoped-option-chip:hover {
   border-color: var(--accent);
 }
 
-.scoped-bitmask-bit.is-set {
+.scoped-bitmask-bit.is-set,
+.scoped-option-chip.is-set {
   background: var(--accent-weak);
   border-color: var(--accent);
   color: var(--accent-strong, var(--accent));
 }
 
-.scoped-bitmask-bit:focus-visible {
+.scoped-bitmask-bit:focus-visible,
+.scoped-option-chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

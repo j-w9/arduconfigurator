@@ -57,7 +57,7 @@ export function OutputsView(props: OutputsViewProps) {
             body renders once below them. (Replaced the old expand-in-place
             accordion.) */}
         <div className={`outputs-tabs-layout${overviewSlot ? '' : ' outputs-tabs-layout--full'}`}>
-          <div className="outputs-tabs" data-testid="outputs-task-nav" role="tablist">
+          <div className="tab-strip" data-testid="outputs-task-nav" role="tablist">
             {taskCards.map((task) => {
               const isActive = task.id === activeTaskId
               return (
@@ -67,10 +67,10 @@ export function OutputsView(props: OutputsViewProps) {
                   role="tab"
                   aria-selected={isActive}
                   data-testid={`outputs-summary-${task.id}`}
-                  className={`outputs-tab${isActive ? ' is-active' : ''}`}
+                  className={`tab-strip__tab${isActive ? ' is-active' : ''}`}
                   onClick={() => onSelectTask(task.id)}
                 >
-                  <span className="outputs-tab__title">{task.label}</span>
+                  <span className="tab-strip__tab-title">{task.label}</span>
                   <StatusBadge tone={task.tone}>{task.value}</StatusBadge>
                 </button>
               )

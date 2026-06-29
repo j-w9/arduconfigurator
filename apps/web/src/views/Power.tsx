@@ -155,6 +155,7 @@ export function PowerView(props: PowerViewProps) {
                     onChange={onEditChange}
                     draftStatusById={draftStatusById}
                     compact={false}
+                    layout="chips"
                   />
                 ) : (
                   <ScopedField
