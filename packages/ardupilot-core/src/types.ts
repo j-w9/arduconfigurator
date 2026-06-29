@@ -158,9 +158,25 @@ export interface ParameterWriteResult {
   confirmedAtMs: number
 }
 
+/**
+ * A staged write that was SENT but whose verified read-back never matched the
+ * requested value before the timeout — while the link stayed alive (other
+ * writes in the same batch kept succeeding). This is the signature of a
+ * firmware-managed / live value the FC re-derives (e.g. BAROn_GND_PRESS) or a
+ * value the FC silently clamped/rejected: it can never be confirmed, so the
+ * batch records it and moves on instead of rolling back the verified writes.
+ */
+export interface ParameterUnconfirmedWrite {
+  paramId: string
+  requestedValue: number
+  reason: string
+}
+
 export interface ParameterBatchWriteResult {
   applied: ParameterWriteResult[]
   rolledBack: ParameterWriteResult[]
+  /** Sent-but-unverifiable writes (link alive); see ParameterUnconfirmedWrite. */
+  unconfirmed: ParameterUnconfirmedWrite[]
 }
 
 /**

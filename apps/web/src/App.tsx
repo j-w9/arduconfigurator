@@ -34,6 +34,7 @@ import {
   type ParameterDraftEntry,
   type ParameterImportCategory,
   type ParameterState,
+  type ParameterUnconfirmedWrite,
   type RcAxisId,
   type RcMappingCandidate,
 } from '@arduconfig/ardupilot-core'
@@ -357,6 +358,21 @@ import { useServiceWorkerUpdate } from './sw-update'
 const UI_PARAMETER_WRITE_OPTIONS = {
   verifyTimeoutMs: 15000
 } as const
+
+// Appended to a batch-write success notice when some writes were sent but could
+// not be verified (the FC owns/re-derives the value, e.g. BAROn_GND_PRESS, or
+// silently clamped it). The batch keeps the verified writes and reports these
+// rather than rolling everything back — so the operator is told, not surprised.
+function describeUnconfirmedWrites(unconfirmed: ParameterUnconfirmedWrite[]): string {
+  if (unconfirmed.length === 0) {
+    return ''
+  }
+  const names = unconfirmed.map((entry) => entry.paramId).join(', ')
+  return (
+    ` ${unconfirmed.length} value(s) could not be confirmed and were left as written ` +
+    `(firmware-managed or live values that never echo the set value): ${names}. Re-sync to confirm.`
+  )
+}
 
 const PRESET_AUTO_BACKUP_TAGS = ['auto-backup', 'preset'] as const
 
@@ -2690,11 +2706,12 @@ export function App() {
       )
       appliedParamIds.push(...result.applied.map((entry) => entry.paramId))
       setParameterNotice({
-        tone: 'success',
+        tone: result.unconfirmed.length > 0 ? 'warning' : 'success',
         text:
-          result.applied.length === 0
+          (result.applied.length === 0 && result.unconfirmed.length === 0
             ? `No ${scopeLabel.toLowerCase()} changes needed to be written.`
-            : `Verified ${result.applied.length} ${scopeLabel.toLowerCase()} change(s) from this view.`
+            : `Verified ${result.applied.length} ${scopeLabel.toLowerCase()} change(s) from this view.`) +
+          describeUnconfirmedWrites(result.unconfirmed)
       })
       setParameterFollowUp({
         requiresReboot: rebootRequiredCount > 0,
@@ -2791,11 +2808,12 @@ export function App() {
       )
       appliedParamIds.push(...result.applied.map((entry) => entry.paramId))
       setParameterNotice({
-        tone: 'success',
+        tone: result.unconfirmed.length > 0 ? 'warning' : 'success',
         text:
-          result.applied.length === 0
+          (result.applied.length === 0 && result.unconfirmed.length === 0
             ? 'No staged parameter changes needed to be written.'
-            : `Verified ${result.applied.length} staged parameter change(s).`
+            : `Verified ${result.applied.length} staged parameter change(s).`) +
+          describeUnconfirmedWrites(result.unconfirmed)
       })
       setParameterFollowUp({
         requiresReboot: applyingRebootRequiredCount > 0,
@@ -3082,11 +3100,12 @@ export function App() {
         UI_PARAMETER_WRITE_OPTIONS
       )
       setPresetNotice({
-        tone: 'success',
+        tone: result.unconfirmed.length > 0 ? 'warning' : 'success',
         text:
-          result.applied.length === 0
+          (result.applied.length === 0
             ? `${selectedPresetsLabel} already matched the live controller. Auto-saved snapshot "${autoBackup.label}".`
-            : `Applied ${selectedPresetsLabel} with ${result.applied.length} verified write(s). Auto-saved snapshot "${autoBackup.label}".`
+            : `Applied ${selectedPresetsLabel} with ${result.applied.length} verified write(s). Auto-saved snapshot "${autoBackup.label}".`) +
+          describeUnconfirmedWrites(result.unconfirmed)
       })
       setParameterFollowUp({
         requiresReboot: rebootRequiredCount > 0,

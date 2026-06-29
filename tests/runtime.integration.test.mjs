@@ -199,12 +199,58 @@ test('parameter sync retries when the initial stream stalls before the full tabl
   }
 })
 
-test('batch writes roll back earlier changes when a later verification fails', async () => {
+test('a sent-but-unverifiable write (link alive) is recorded unconfirmed and the batch continues — verified writes are NOT rolled back', async () => {
+  // This is the mass-upload failure mode: a firmware-managed/live value the FC
+  // re-derives (modeled here by dropping FLTMODE2's echo) never reads back, so
+  // its verify times out — but the link is fine (FLTMODE1 verified). The fix:
+  // keep the verified write, record the unverifiable one, do NOT unwind.
   const runtime = new ArduPilotConfiguratorRuntime(
     createEchoSession({
       FLTMODE1: 0,
       FLTMODE2: 1
     }, ({ paramId, paramValue }) => paramId === 'FLTMODE2' && paramValue === 6),
+    arducopterMetadata
+  )
+
+  try {
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 200 })
+    await runtime.waitForParameterSync({ timeoutMs: 200 })
+
+    const result = await runtime.setParameters(
+      [
+        { paramId: 'FLTMODE1', paramValue: 5 },
+        { paramId: 'FLTMODE2', paramValue: 6 }
+      ],
+      { verifyTimeoutMs: 50 }
+    )
+
+    assert.equal(result.applied.length, 1)
+    assert.equal(result.rolledBack.length, 0, 'verified writes are NOT rolled back for an unverifiable param')
+    assert.equal(result.unconfirmed.length, 1)
+    assert.equal(result.unconfirmed[0].paramId, 'FLTMODE2')
+    assert.equal(result.unconfirmed[0].requestedValue, 6)
+    assert.match(result.unconfirmed[0].reason, /readback|verify|Timed out/i)
+
+    const snapshot = runtime.getSnapshot()
+    assert.equal(snapshot.parameters.find((parameter) => parameter.id === 'FLTMODE1')?.value, 5, 'FLTMODE1 stays applied')
+    assert.equal(snapshot.parameters.find((parameter) => parameter.id === 'FLTMODE2')?.value, 1)
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('batch writes roll back earlier changes when a later write fails to SEND (link still up)', async () => {
+  // A send failure (distinct from a verify timeout) means the write definitively
+  // never went out. With the link still alive, the batch rolls back the applied
+  // writes — the all-or-nothing safety net is preserved for real write failures.
+  const runtime = new ArduPilotConfiguratorRuntime(
+    createEchoSession(
+      { FLTMODE1: 0, FLTMODE2: 1 },
+      () => false,
+      ({ paramId }) => paramId === 'FLTMODE2'
+    ),
     arducopterMetadata
   )
 
@@ -220,7 +266,7 @@ test('batch writes roll back earlier changes when a later verification fails', a
           { paramId: 'FLTMODE1', paramValue: 5 },
           { paramId: 'FLTMODE2', paramValue: 6 }
         ],
-        { verifyTimeoutMs: 50 }
+        { verifyTimeoutMs: 200 }
       )
     } catch (error) {
       capturedError = error
@@ -229,6 +275,7 @@ test('batch writes roll back earlier changes when a later verification fails', a
     assert.ok(capturedError instanceof ParameterBatchWriteError)
     assert.equal(capturedError.result.applied.length, 1)
     assert.equal(capturedError.result.rolledBack.length, 1)
+    assert.equal(capturedError.result.unconfirmed.length, 0)
     assert.match(capturedError.message, /Rolled back 1 previously applied parameter change/)
 
     const snapshot = runtime.getSnapshot()

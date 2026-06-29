@@ -310,6 +310,26 @@ const LIVE_TELEMETRY_REQUESTS = [
     intervalUs: 1000000
   }
 ] as const
+/**
+ * The PARAM_SET was sent, but no PARAM_VALUE echoing the requested value
+ * arrived before the verify timeout. MAVLink has no PARAM_SET ack, so this does
+ * NOT prove the write failed — it commonly means the FC owns the value and
+ * re-derives it live (a firmware-managed param like BAROn_GND_PRESS), so the
+ * echo can never match. Distinct from a send/link failure: the batch uses this
+ * to skip-and-continue (when the link is still alive) rather than roll back.
+ */
+export class ParameterVerifyTimeoutError extends Error {
+  constructor(
+    message: string,
+    readonly paramId: string,
+    readonly requestedValue: number,
+    readonly cause?: unknown
+  ) {
+    super(message)
+    this.name = 'ParameterVerifyTimeoutError'
+  }
+}
+
 export class ParameterBatchWriteError extends Error {
   constructor(
     message: string,
@@ -851,7 +871,10 @@ export class ArduPilotConfiguratorRuntime {
       const message = error instanceof Error ? error.message : 'Unknown parameter verification error.'
       this.appendStatusEntry('warning', `Failed to verify parameter ${paramId}: ${message}`)
       this.emit()
-      throw error
+      // Typed so the batch path can tell a sent-but-unverifiable write (the FC
+      // owns/re-derives the value) apart from a send/link failure: the former is
+      // skipped-and-continued, the latter rolls back.
+      throw new ParameterVerifyTimeoutError(message, paramId, paramValue, error)
     }
   }
 
@@ -862,7 +885,8 @@ export class ArduPilotConfiguratorRuntime {
   ): Promise<ParameterBatchWriteResult> {
     const result: ParameterBatchWriteResult = {
       applied: [],
-      rolledBack: []
+      rolledBack: [],
+      unconfirmed: []
     }
 
     const total = requests.length
@@ -887,6 +911,28 @@ export class ArduPilotConfiguratorRuntime {
         processed += 1
         onProgress?.({ completed: processed, total, paramId: request.paramId })
       } catch (error) {
+        // A sent-but-unverifiable write (the FC owns/re-derives the value, e.g.
+        // BAROn_GND_PRESS, or silently clamped it) must NOT unwind the verified
+        // writes. As long as the link is still alive — this and the remaining
+        // writes can still go — record it and continue. A send/link failure
+        // (blockReason set, or any non-verify error) falls through to the
+        // rollback path below, so audit-honest rollback on a dropped link is
+        // preserved.
+        if (error instanceof ParameterVerifyTimeoutError && !this.parameterWriteBlockReason()) {
+          result.unconfirmed.push({
+            paramId: request.paramId,
+            requestedValue: request.paramValue,
+            reason: error.message
+          })
+          this.appendStatusEntry(
+            'warning',
+            `Could not confirm ${request.paramId} (${error.message}); left as written and continued the batch.`
+          )
+          processed += 1
+          onProgress?.({ completed: processed, total, paramId: request.paramId })
+          continue
+        }
+
         const rollbackSourceWrites = [...result.applied].reverse().filter((write) => write.previousValue !== undefined)
         // Rollback re-issues writes, so if the failure also blocks writes
         // (link dropped, armed, guided action started) rollback can't be
@@ -950,6 +996,17 @@ export class ArduPilotConfiguratorRuntime {
       this.batchEmitMode = false
       this.cancelScheduledEmit()
       this.flushEmit()
+    }
+
+    if (result.unconfirmed.length > 0) {
+      const names = result.unconfirmed.map((entry) => entry.paramId).join(', ')
+      this.appendStatusEntry(
+        'warning',
+        `${result.applied.length} parameter(s) written; ${result.unconfirmed.length} could not be confirmed ` +
+          `and were left as written (firmware-managed or live values that never echo the set value): ${names}. ` +
+          're-sync parameters to confirm the vehicle state.'
+      )
+      this.emit()
     }
 
     return result
