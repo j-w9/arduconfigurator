@@ -195,9 +195,16 @@ function NodeFirmwareUpdate(props: {
           {view.bytesLabel} · {view.percent}%
         </p>
         {view.status === 'completed' ? (
-          <p className="dronecan-inspector__fwupdate-note" data-testid={`dronecan-fwupdate-done-${nodeId}`}>
-            Image transferred. The node is rebooting into the new firmware and will reappear on the bus.
-          </p>
+          <div className="dronecan-inspector__fwupdate-note" data-testid={`dronecan-fwupdate-done-${nodeId}`}>
+            <p>Image transferred. The node is rebooting into the new firmware and will reappear on the bus.</p>
+            <p
+              className="dronecan-inspector__fwupdate-verify"
+              data-testid={`dronecan-fwupdate-verify-${nodeId}`}
+            >
+              ⚠ A firmware update can reset or corrupt this node’s parameters. Once it’s back, re-fetch its
+              params and check your settings (LED, GPS, compass, …) before flight.
+            </p>
+          </div>
         ) : null}
         {view.error ? (
           <p className="dronecan-inspector__fwupdate-error" data-testid={`dronecan-fwupdate-error-${nodeId}`}>

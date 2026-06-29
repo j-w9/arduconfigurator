@@ -2685,6 +2685,8 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.getByTestId('dronecan-fwupdate-done-50')).toBeVisible({ timeout: 15000 })
     const progress = page.getByTestId('dronecan-fwupdate-progress-50')
     await expect(progress).toHaveAttribute('aria-valuenow', '100')
+    // A flash can reset/corrupt the node's params — nudge to re-verify after.
+    await expect(page.getByTestId('dronecan-fwupdate-verify-50')).toContainText('reset or corrupt')
 
     // Finished updates re-enable the node's other actions via a Dismiss control.
     await page.getByTestId('dronecan-fwupdate-cancel-50').click()

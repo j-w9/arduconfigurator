@@ -12999,6 +12999,16 @@ details.bf-gui-box:not([open]) > summary::after {
   color: var(--text-muted);
   margin: 0;
 }
+.dronecan-inspector__fwupdate-note p {
+  margin: 0 0 4px;
+}
+.dronecan-inspector__fwupdate-note p:last-child {
+  margin-bottom: 0;
+}
+/* Post-flash nudge: a firmware update can reset/corrupt a node's params. */
+.dronecan-inspector__fwupdate-verify {
+  color: var(--warning);
+}
 .dronecan-inspector__fwupdate-error {
   font-size: 12px;
   color: var(--danger);
