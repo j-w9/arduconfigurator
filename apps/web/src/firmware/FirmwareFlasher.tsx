@@ -219,6 +219,9 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   )
 
   const [phase, setPhase] = useState<Phase>('idle')
+  // Flash view sub-tabs: the firmware-server/.apj flow (default, common path) vs
+  // the WebUSB DFU .hex flasher. Matches the app-wide .tab-strip pattern.
+  const [flashTab, setFlashTab] = useState<'firmware' | 'dfu-hex'>('firmware')
   const [browseEntries, setBrowseEntries] = useState<FirmwareBrowseEntry[] | null>(null)
   const [browseBusy, setBrowseBusy] = useState(false)
   const [browseError, setBrowseError] = useState<string | null>(null)
@@ -1009,6 +1012,31 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           <p className="bf-note" data-testid="firmware-dfu-notice">{dfuNotice}</p>
         ) : null}
 
+        <div className="tab-strip" data-testid="flash-tab-nav" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={flashTab === 'firmware'}
+            data-testid="flash-tab-firmware"
+            className={`tab-strip__tab${flashTab === 'firmware' ? ' is-active' : ''}`}
+            onClick={() => setFlashTab('firmware')}
+          >
+            <span className="tab-strip__tab-title">Firmware (.apj)</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={flashTab === 'dfu-hex'}
+            data-testid="flash-tab-dfu-hex"
+            className={`tab-strip__tab${flashTab === 'dfu-hex' ? ' is-active' : ''}`}
+            onClick={() => setFlashTab('dfu-hex')}
+          >
+            <span className="tab-strip__tab-title">DFU (.hex)</span>
+          </button>
+        </div>
+
+        {flashTab === 'firmware' ? (
+          <>
         {showCustomServer ? (
           <div className="firmware-wizard__custom-server" data-testid="firmware-custom-server">
             <label className="scoped-editor-field">
@@ -1306,11 +1334,14 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             </div>
           </div>
         ) : null}
+          </>
+        ) : null}
 
-        {/* Separate, additive path: flash a .hex over WebUSB DFU. The serial
-            bootloader .apj flow above is unchanged. Reuses the same enter-DFU
-            action so the operator can reboot-to-DFU right here. */}
-        <DfuHexFlasher onActivateDfu={onEnterDfu} activateDfuDisabledReason={enterDfuDisabledReason} />
+        {/* DFU .hex flash over WebUSB — its own sub-tab. Reuses the same
+            enter-DFU action so the operator can reboot-to-DFU right here. */}
+        {flashTab === 'dfu-hex' ? (
+          <DfuHexFlasher onActivateDfu={onEnterDfu} activateDfuDisabledReason={enterDfuDisabledReason} />
+        ) : null}
       </div>
     </section>
   )

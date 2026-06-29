@@ -927,6 +927,9 @@ test.describe('Flash view', () => {
     await connectViaHeader(page)
     await openView(page, 'flash')
 
+    // The DFU .hex flasher is its own sub-tab now (firmware .apj is the default).
+    await expect(page.getByTestId('dfu-hex-flasher')).toHaveCount(0)
+    await page.getByTestId('flash-tab-dfu-hex').click()
     await expect(page.getByTestId('dfu-hex-flasher')).toBeVisible()
 
     // Full chip erase is offered and defaults to on.
