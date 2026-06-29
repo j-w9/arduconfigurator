@@ -54,8 +54,36 @@ function StagedWasLine({
   return <small className="scoped-editor-field__was">was {display}</small>
 }
 
-export function ScopedSelectField(props: CommonScopedFieldProps) {
-  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true } = props
+/**
+ * Above this many options a single-select chip grid becomes unusable (e.g.
+ * GPS_TYPE, SERVOn_FUNCTION, SERIALn_PROTOCOL, AHRS_ORIENTATION), so chip
+ * mode auto-falls back to the native dropdown. Callers can therefore pass
+ * `layout="chips"` freely — large enums quietly stay dropdowns.
+ */
+export const SCOPED_CHIP_MAX_OPTIONS = 8
+
+/**
+ * Whether an enum with `optionCount` options should render as the
+ * single-select chip grid (true) rather than fall back to the native
+ * dropdown (false). Pure so it can be unit-tested off the DOM.
+ */
+export function shouldRenderOptionChips(optionCount: number): boolean {
+  return optionCount > 0 && optionCount <= SCOPED_CHIP_MAX_OPTIONS
+}
+
+interface ScopedSelectFieldProps extends CommonScopedFieldProps {
+  /** `'chips'` renders the box/chip grid (matching ScopedBitmaskField) when
+   *  the option count is small enough; otherwise falls back to the native
+   *  dropdown. Defaults to `'select'` (native dropdown). */
+  layout?: 'select' | 'chips'
+}
+
+export function ScopedSelectField(props: ScopedSelectFieldProps) {
+  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, layout = 'select' } = props
+  const options = parameter.definition?.options ?? []
+  if (layout === 'chips' && shouldRenderOptionChips(options.length)) {
+    return <ScopedOptionChipsField {...props} />
+  }
   const status = statusModifier(draftStatusById, parameter.id)
   return (
     <label className={fieldClassName(draftStatusById, parameter.id, compact)}>
@@ -197,6 +225,51 @@ export function ScopedBitmaskField(props: CommonScopedFieldProps) {
         })}
       </div>
       <StagedWasLine status={status} liveValue={liveValue} />
+    </div>
+  )
+}
+
+/**
+ * Single-select enum rendered as a grid of clickable highlight-on-select
+ * boxes — the same box/chip look as ScopedBitmaskField (shared CSS), but
+ * exactly one chip is highlighted at a time. Used for enums with a
+ * small/moderate option count; large enums fall back to the native
+ * dropdown (callers reach this via ScopedSelectField `layout="chips"`,
+ * which gates on SCOPED_CHIP_MAX_OPTIONS, but the guard is repeated here
+ * so the component is also safe to use directly).
+ */
+export function ScopedOptionChipsField(props: CommonScopedFieldProps) {
+  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true } = props
+  const options = parameter.definition?.options ?? []
+  if (!shouldRenderOptionChips(options.length)) {
+    return <ScopedSelectField {...props} layout="select" />
+  }
+  const status = statusModifier(draftStatusById, parameter.id)
+  const current = editedValues[parameter.id] ?? String(liveValue ?? '')
+  return (
+    <div
+      className={`${fieldClassName(draftStatusById, parameter.id, compact)} scoped-editor-field--chips`}
+      data-testid={`scoped-chips-${parameter.id}`}
+    >
+      <span>{parameter.definition?.label ?? parameter.id}</span>
+      <div className="scoped-option-chips" role="radiogroup">
+        {options.map((option) => {
+          const selected = String(option.value) === current
+          return (
+            <button
+              type="button"
+              key={`${parameter.id}:${option.value}`}
+              className={`scoped-option-chip${selected ? ' is-set' : ''}`}
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onChange(parameter.id, String(option.value))}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+      <StagedWasLine status={status} liveValue={liveValue} options={options} />
     </div>
   )
 }

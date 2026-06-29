@@ -698,10 +698,12 @@ test.describe('Logs view', () => {
 
     await expect(page.getByTestId('workspace-view-title')).toHaveText('Logs')
 
-    // Demo scenario seeds LOG_BACKEND_TYPE=1 (File). The inline select is
+    // Demo scenario seeds LOG_BACKEND_TYPE=1 (File). The inline chip grid is
     // the single source of truth now that the read-only mirror table has
     // been removed.
-    await expect(page.getByLabel('Log Backend')).toHaveValue('1')
+    await expect(
+      page.getByTestId('scoped-chips-LOG_BACKEND_TYPE').getByRole('radio', { name: 'File', exact: true })
+    ).toBeChecked()
 
     // Inline editor surface is visible without leaving the Logs view.
     await expect(page.getByTestId('logs-bitmask-editor')).toBeVisible()
@@ -739,7 +741,9 @@ test.describe('Logs view', () => {
     // bitmask editor only renders once LOG_BITMASK is in the snapshot, so
     // it doubles as a readiness signal.
     await expect(page.getByTestId('logs-bitmask-editor')).toBeVisible()
-    await expect(page.getByLabel('Log Backend')).toHaveValue('1')
+    await expect(
+      page.getByTestId('scoped-chips-LOG_BACKEND_TYPE').getByRole('radio', { name: 'File', exact: true })
+    ).toBeChecked()
 
     // The onboard-logs section renders and its List control is enabled
     // once a vehicle is connected + identified — this asserts the wiring

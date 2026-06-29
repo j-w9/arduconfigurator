@@ -165,6 +165,7 @@ export function ConfigView(props: ConfigViewProps) {
                           editedValues={editedValues}
                           onChange={onEditChange}
                           draftStatusById={draftStatusById}
+                          layout="chips"
                         />
                       ) : (
                         <ScopedField
