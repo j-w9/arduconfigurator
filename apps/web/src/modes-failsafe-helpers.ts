@@ -43,12 +43,12 @@ export const MODES_SLOT_DEFINITIONS: ReadonlyArray<{
   paramId: FltModeParamId
   pwmLabel: string
 }> = [
-  { position: 1, paramId: 'FLTMODE1', pwmLabel: '0 – 1230 us' },
-  { position: 2, paramId: 'FLTMODE2', pwmLabel: '1231 – 1360 us' },
-  { position: 3, paramId: 'FLTMODE3', pwmLabel: '1361 – 1490 us' },
-  { position: 4, paramId: 'FLTMODE4', pwmLabel: '1491 – 1620 us' },
-  { position: 5, paramId: 'FLTMODE5', pwmLabel: '1621 – 1749 us' },
-  { position: 6, paramId: 'FLTMODE6', pwmLabel: '1750+ us' }
+  { position: 1, paramId: 'FLTMODE1', pwmLabel: '0 – 1230 µs' },
+  { position: 2, paramId: 'FLTMODE2', pwmLabel: '1231 – 1360 µs' },
+  { position: 3, paramId: 'FLTMODE3', pwmLabel: '1361 – 1490 µs' },
+  { position: 4, paramId: 'FLTMODE4', pwmLabel: '1491 – 1620 µs' },
+  { position: 5, paramId: 'FLTMODE5', pwmLabel: '1621 – 1749 µs' },
+  { position: 6, paramId: 'FLTMODE6', pwmLabel: '1750+ µs' }
 ]
 
 // Copter/Plane use FLTMODE1..6; ArduRover uses MODE1..6. Mirrors the
@@ -270,7 +270,7 @@ export function buildFailsafeRows(input: {
     {
       source: 'RC failsafe',
       paramId: 'FS_THR_VALUE',
-      formatted: input.throttleFailsafeValue !== undefined ? `${Math.round(input.throttleFailsafeValue)} us` : 'Not synced',
+      formatted: input.throttleFailsafeValue !== undefined ? `${Math.round(input.throttleFailsafeValue)} µs` : 'Not synced',
       isSynced: input.throttleFailsafeValue !== undefined
     },
     {

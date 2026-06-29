@@ -6283,7 +6283,7 @@ export function App() {
               : undefined
           }
           currentSlotLabel={modeSwitchEstimate.estimatedSlot !== undefined ? `Slot ${modeSwitchEstimate.estimatedSlot}` : 'Waiting'}
-          currentSlotSubtext={modeSwitchEstimate.pwm !== undefined ? `${modeSwitchEstimate.pwm} us live` : 'No live RC input.'}
+          currentSlotSubtext={modeSwitchEstimate.pwm !== undefined ? `${modeSwitchEstimate.pwm} µs live` : 'No live RC input.'}
           activeModeLabel={snapshot.vehicle?.flightMode ?? 'Unknown'}
           slots={MODES_SLOT_DEFINITIONS.map((slot) => {
             const paramId = modeSlotParamId(snapshot.vehicle?.vehicle, slot.position)
