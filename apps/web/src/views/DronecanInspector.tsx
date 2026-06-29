@@ -27,6 +27,42 @@ import {
 } from '../view-models/dronecan-inspector'
 import { buildCanBusStagedChanges } from '../view-models/can-bus'
 
+/** One AP_Periph firmware build offered for a node (already matched to the
+ *  node's board id by the host). Plain display shape — no firmware-flash types
+ *  cross into the view. */
+export interface DronecanFirmwareCandidate {
+  /** Firmware image URL — the stable list key and what the host downloads. */
+  url: string
+  /** Version string, e.g. "1.7.0". */
+  versionLabel: string
+  /** Release channel label, e.g. "Stable", "Beta". */
+  releaseLabel: string
+  /** Board/platform name, e.g. "FlywooF405Pro". */
+  platform: string
+  /** APJ board id the build targets (matches the node). */
+  boardId: number
+  /** True for the channel's newest build. */
+  latest: boolean
+}
+
+/** Online firmware lookup capability, injected by the host. Only reachable in
+ *  the desktop shell (the browser can't fetch firmware.ardupilot.org — no CORS),
+ *  so the browser build passes `available: false` and the UI degrades to the
+ *  local-file path with a short reason. */
+export interface DronecanFirmwareOnlineSource {
+  /** True when online lookup works here (desktop firmware bridge present). */
+  available: boolean
+  /** Shown when unavailable (e.g. desktop-only). */
+  unavailableReason?: string
+  /** Match a node to AP_Periph firmware builds by its board id. Rejects with a
+   *  human message on fetch failure or unknown identity. */
+  findCandidates: (node: DronecanInspectedNode) => Promise<DronecanFirmwareCandidate[]>
+  /** Download + decode a candidate to the RAW image bytes the node's bootloader
+   *  flashes (the same bytes a local .bin yields), plus a display name. The
+   *  host handles the .apj→raw decode. Rejects with a human message on failure. */
+  download: (candidate: DronecanFirmwareCandidate) => Promise<{ fileName: string; image: Uint8Array }>
+}
+
 export interface DronecanInspectorViewProps {
   status: CanBusState['status']
   bus: number | undefined
@@ -51,24 +87,36 @@ export interface DronecanInspectorViewProps {
   onStartFirmwareUpdate: (nodeId: number, fileName: string, image: Uint8Array) => void
   /** Cancel an in-flight update, or dismiss a finished one. */
   onCancelFirmwareUpdate: () => void
+  /** Online firmware lookup (desktop-only). Omit to hide the online affordance
+   *  entirely; pass `available: false` to show the degrade note. */
+  firmwareOnline?: DronecanFirmwareOnlineSource
 }
 
 /** Per-node firmware-update affordance: file picker, prominent brick-risk
  *  confirmation, progress bar, and clear success/error. Only one update runs at
  *  a time — all the node's other actions are disabled while one is underway. */
 function NodeFirmwareUpdate(props: {
-  nodeId: number
+  node: DronecanInspectedNode
   view: ReturnType<typeof buildDronecanFirmwareUpdateView>
   /** True when ANY update (this node or another) is occupying the bus. */
   anotherUpdateActive: boolean
   busy: boolean
   onStart: (nodeId: number, fileName: string, image: Uint8Array) => void
   onCancel: () => void
+  online?: DronecanFirmwareOnlineSource
 }) {
-  const { nodeId, view, anotherUpdateActive, busy, onStart, onCancel } = props
+  const { node, view, anotherUpdateActive, busy, onStart, onCancel, online } = props
+  const nodeId = node.nodeId
   const [file, setFile] = useState<{ name: string; bytes: Uint8Array } | null>(null)
   const [acknowledged, setAcknowledged] = useState(false)
   const [readError, setReadError] = useState<string | null>(null)
+  // Online-lookup state. `candidates === null` means "haven't searched yet";
+  // `[]` means searched, nothing matched. `downloadingUrl` marks the build
+  // currently being fetched + decoded.
+  const [onlineBusy, setOnlineBusy] = useState(false)
+  const [onlineError, setOnlineError] = useState<string | null>(null)
+  const [onlineCandidates, setOnlineCandidates] = useState<DronecanFirmwareCandidate[] | null>(null)
+  const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null)
 
   // This node's own update (progress / result) takes over the section.
   if (view && view.nodeId === nodeId) {
@@ -134,6 +182,43 @@ function NodeFirmwareUpdate(props: {
       })
   }
 
+  // Find online: match this node to AP_Periph builds on the firmware server.
+  const findOnline = (): void => {
+    if (!online?.available) {
+      return
+    }
+    setOnlineError(null)
+    setOnlineBusy(true)
+    setOnlineCandidates(null)
+    online
+      .findCandidates(node)
+      .then((candidates) => setOnlineCandidates(candidates))
+      .catch((err) =>
+        setOnlineError(err instanceof Error ? err.message : 'Could not look up firmware online.')
+      )
+      .finally(() => setOnlineBusy(false))
+  }
+
+  // Use a matched build: download + decode it to raw image bytes, then stage it
+  // as the selected file so it flows through the SAME brick-ack + Update path as
+  // a local pick (re-arm the ack — the operator must confirm the online image).
+  const useCandidate = (candidate: DronecanFirmwareCandidate): void => {
+    if (!online?.available) {
+      return
+    }
+    setOnlineError(null)
+    setReadError(null)
+    setAcknowledged(false)
+    setDownloadingUrl(candidate.url)
+    online
+      .download(candidate)
+      .then(({ fileName, image }) => setFile({ name: fileName, bytes: image }))
+      .catch((err) =>
+        setOnlineError(err instanceof Error ? err.message : 'Could not download the firmware image.')
+      )
+      .finally(() => setDownloadingUrl(null))
+  }
+
   return (
     <div className="dronecan-inspector__fwupdate" data-testid={`dronecan-fwupdate-${nodeId}`}>
       <div className="dronecan-inspector__fwupdate-head">
@@ -152,6 +237,71 @@ function NodeFirmwareUpdate(props: {
           data-testid={`dronecan-fwupdate-file-${nodeId}`}
         />
       </label>
+
+      {/* ---- Find firmware online (desktop-only; matches the node to AP_Periph
+              builds on firmware.ardupilot.org and stages the decoded image) ---- */}
+      {online ? (
+        online.available ? (
+          <div className="dronecan-inspector__fwupdate-online" data-testid={`dronecan-fwupdate-online-${nodeId}`}>
+            <button
+              type="button"
+              style={buttonStyle()}
+              disabled={disabled || onlineBusy || downloadingUrl !== null}
+              onClick={findOnline}
+              data-testid={`dronecan-fwupdate-online-find-${nodeId}`}
+            >
+              {onlineBusy ? 'Searching…' : 'Find firmware online'}
+            </button>
+            <span className="dronecan-inspector__fwupdate-online-id">
+              {node.name ? node.name : `node #${nodeId}`}
+            </span>
+            {onlineError ? (
+              <p
+                className="dronecan-inspector__fwupdate-error"
+                data-testid={`dronecan-fwupdate-online-error-${nodeId}`}
+              >
+                {onlineError}
+              </p>
+            ) : null}
+            {onlineCandidates !== null ? (
+              onlineCandidates.length === 0 ? (
+                <p className="telemetry-note" data-testid={`dronecan-fwupdate-online-empty-${nodeId}`}>
+                  No AP_Periph firmware on the server matches this node’s board id. Pick a local .bin instead.
+                </p>
+              ) : (
+                <ul
+                  className="dronecan-inspector__fwupdate-online-list"
+                  data-testid={`dronecan-fwupdate-online-list-${nodeId}`}
+                >
+                  {onlineCandidates.map((candidate) => (
+                    <li key={candidate.url}>
+                      <span>
+                        {candidate.platform || `board ${candidate.boardId}`} · {candidate.versionLabel}{' '}
+                        ({candidate.releaseLabel}){candidate.latest ? ' · latest' : ''}
+                      </span>
+                      <button
+                        type="button"
+                        style={buttonStyle()}
+                        disabled={disabled || downloadingUrl !== null}
+                        onClick={() => useCandidate(candidate)}
+                        data-testid={`dronecan-fwupdate-online-use-${nodeId}`}
+                      >
+                        {downloadingUrl === candidate.url ? 'Downloading…' : 'Use this build'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : null}
+          </div>
+        ) : (
+          <p className="telemetry-note" data-testid={`dronecan-fwupdate-online-unavailable-${nodeId}`}>
+            {online.unavailableReason ??
+              'Online firmware lookup needs the desktop app. Pick a local .bin below.'}
+          </p>
+        )
+      ) : null}
+
       {readError ? <p className="dronecan-inspector__fwupdate-error">{readError}</p> : null}
       {file ? (
         <>
@@ -225,7 +375,8 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
     onApplyAndSave,
     onRestartNode,
     onStartFirmwareUpdate,
-    onCancelFirmwareUpdate
+    onCancelFirmwareUpdate,
+    firmwareOnline
   } = props
   const [busSelection, setBusSelection] = useState<number>(bus ?? 1)
   const [expanded, setExpanded] = useState<number | null>(null)
@@ -593,12 +744,13 @@ export function DronecanInspectorView(props: DronecanInspectorViewProps) {
 
                           {/* ---- Firmware update (file server over CAN_FORWARD) ---- */}
                           <NodeFirmwareUpdate
-                            nodeId={node.nodeId}
+                            node={node}
                             view={fwView}
                             anotherUpdateActive={updateInProgress && fwView?.nodeId !== node.nodeId}
                             busy={busy}
                             onStart={onStartFirmwareUpdate}
                             onCancel={onCancelFirmwareUpdate}
+                            online={firmwareOnline}
                           />
                         </div>
                       ) : null}

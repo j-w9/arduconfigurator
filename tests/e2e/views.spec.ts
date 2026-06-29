@@ -2668,4 +2668,79 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('dronecan-fwupdate-cancel-50').click()
     await expect(page.getByTestId('dronecan-fwupdate-file-50')).toBeVisible()
   })
+
+  test('DroneCAN inspector finds firmware online, downloads + decodes it, and updates the node', async ({ page }) => {
+    // Mock the desktop firmware bridge: the browser can't reach
+    // firmware.ardupilot.org (no CORS), so the online path is desktop-only. The
+    // mock ap_periph node 50 reports hardware_version 2.1 -> board id (2<<8)|1 =
+    // 513; listDronecanNode is queried with that. download serves a valid .apj
+    // (zlib-deflated image) the app decodes to the RAW bytes it then flashes.
+    const rawImage = Buffer.from(Array.from({ length: 700 }, (_, i) => (i * 37 + 11) & 0xff))
+    const apj = JSON.stringify({ board_id: 513, image_size: rawImage.length, image: deflateSync(rawImage).toString('base64') })
+    const apjBytes = [...new TextEncoder().encode(apj)]
+    await page.addInitScript((bytes) => {
+      ;(window as unknown as { arduconfigDesktop: unknown }).arduconfigDesktop = {
+        platform: 'electron',
+        firmware: {
+          listDronecanNode: async (boardId: number) => ({
+            releaseTypes: ['OFFICIAL'],
+            entries: [{ boardId, vehicletype: 'AP_Periph', platform: 'TestPeriph', releaseType: 'OFFICIAL',
+              versionStr: '1.7.0', latest: true, format: 'apj',
+              url: 'https://firmware.ardupilot.org/AP_Periph/stable/TestPeriph/AP_Periph.apj' }]
+          }),
+          download: async () => new Uint8Array(bytes as number[])
+        }
+      }
+    }, apjBytes)
+
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    await page.getByTestId('view-button-dronecan-inspector').click()
+    await page.getByTestId('dronecan-inspector-start').click()
+    const table = page.getByTestId('dronecan-inspector-table')
+    await expect(table).toBeVisible({ timeout: 12000 })
+
+    const node = page.getByTestId('dronecan-node-50')
+    await node.getByRole('button').first().click()
+
+    // Find firmware online -> the matched AP_Periph build appears.
+    await page.getByTestId('dronecan-fwupdate-online-find-50').click()
+    await expect(page.getByTestId('dronecan-fwupdate-online-list-50')).toBeVisible({ timeout: COMMAND_ACK_TIMEOUT })
+    await expect(page.getByTestId('dronecan-fwupdate-online-list-50')).toContainText('1.7.0')
+
+    // Use the build: it downloads + decodes, then stages the image for the
+    // same brick-ack + Update path as a local pick.
+    await page.getByTestId('dronecan-fwupdate-online-use-50').first().click()
+    const startButton = page.getByTestId('dronecan-fwupdate-start-50')
+    await expect(startButton).toBeDisabled()
+    await page.getByTestId('dronecan-fwupdate-ack-50').check()
+    await expect(startButton).toBeEnabled()
+
+    await startButton.click()
+    await expect(page.getByTestId('dronecan-fwupdate-done-50')).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('dronecan-fwupdate-progress-50')).toHaveAttribute('aria-valuenow', '100')
+  })
+
+  test('DroneCAN inspector: online firmware lookup degrades gracefully in the browser', async ({ page }) => {
+    // No desktop bridge -> the online affordance shows the desktop-only note,
+    // and the local .bin picker stays available.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    await page.getByTestId('view-button-dronecan-inspector').click()
+    await page.getByTestId('dronecan-inspector-start').click()
+    const table = page.getByTestId('dronecan-inspector-table')
+    await expect(table).toBeVisible({ timeout: 12000 })
+
+    const node = page.getByTestId('dronecan-node-50')
+    await node.getByRole('button').first().click()
+    await expect(page.getByTestId('dronecan-fwupdate-online-unavailable-50')).toContainText('desktop app')
+    await expect(page.getByTestId('dronecan-fwupdate-online-find-50')).toHaveCount(0)
+    await expect(page.getByTestId('dronecan-fwupdate-file-50')).toBeVisible()
+  })
 })

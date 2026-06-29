@@ -13,6 +13,8 @@ import {
   parseManifest,
   firmwaresForBoard,
   availableReleaseTypes,
+  firmwaresForDronecanNode,
+  dronecanNodeReleaseTypes,
   type FirmwareEntry,
   type FirmwareManifest,
   type VehicleType
@@ -75,6 +77,21 @@ export async function listBoardFirmware(
   return {
     releaseTypes: availableReleaseTypes(manifest, boardId, vehicletype),
     entries: firmwaresForBoard(manifest, boardId, vehicletype)
+  }
+}
+
+/** AP_Periph firmware list (+ release channels) for a detected DroneCAN node,
+ *  matched by the board id reconstructed from the node's GetNodeInfo
+ *  hardware_version. Same manifest + cache as the FC-flasher path; filtered to
+ *  vehicletype AP_Periph `.apj` entries for the board. */
+export async function listDronecanNodeFirmware(
+  boardId: number,
+  fetchImpl?: FetchLike
+): Promise<FirmwareListResult> {
+  const manifest = await loadFirmwareManifest(fetchImpl)
+  return {
+    releaseTypes: dronecanNodeReleaseTypes(manifest, boardId),
+    entries: firmwaresForDronecanNode(manifest, { boardId })
   }
 }
 

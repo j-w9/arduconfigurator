@@ -18,7 +18,10 @@ import {
   fetchManifest,
   firmwaresForBoard,
   availableReleaseTypes,
-  selectFirmware
+  selectFirmware,
+  firmwaresForDronecanNode,
+  dronecanNodeReleaseTypes,
+  dronecanNodeBoardId
 } from '../packages/firmware-flash/dist/index.js'
 
 const INSYNC = 0x12
@@ -606,6 +609,80 @@ test('firmwaresForBoard / availableReleaseTypes / selectFirmware', () => {
   // No match → undefined (unknown board, and DEV not present for 53).
   assert.equal(selectFirmware(m, { boardId: 99 }), undefined)
   assert.equal(selectFirmware(m, { boardId: 53, vehicletype: 'Copter', releaseType: 'DEV' }), undefined)
+})
+
+// AP_Periph DroneCAN node firmware matching. board_id 1137 (AP_HW_FlywooF405Pro
+// in Tools/AP_Bootloader/board_types.txt) splits as major=1137>>8=4,
+// minor=1137&0xff=113 in the node's GetNodeInfo hardware_version
+// (Tools/AP_Periph/can.cpp). board_id 1059 is a second peripheral board.
+const PERIPH_MANIFEST_FIXTURE = JSON.stringify({
+  'format-version': '1.0.0',
+  firmware: [
+    {
+      vehicletype: 'AP_Periph', platform: 'FlywooF405Pro', board_id: 1137, format: 'apj',
+      url: 'https://firmware.ardupilot.org/AP_Periph/stable/FlywooF405Pro/AP_Periph.apj',
+      'mav-firmware-version-type': 'OFFICIAL', 'mav-firmware-version-str': '1.7.0', latest: 1
+    },
+    {
+      vehicletype: 'AP_Periph', platform: 'FlywooF405Pro', board_id: 1137, format: 'apj',
+      url: 'https://firmware.ardupilot.org/AP_Periph/beta/FlywooF405Pro/AP_Periph.apj',
+      'mav-firmware-version-type': 'BETA', 'mav-firmware-version-str': '1.8.0-beta1', latest: 1
+    },
+    {
+      // Same board also ships a raw .bin in the manifest; firmwaresForBoard
+      // (and thus the node matcher) filters to apj only.
+      vehicletype: 'AP_Periph', platform: 'FlywooF405Pro', board_id: 1137, format: 'bin',
+      url: 'https://firmware.ardupilot.org/AP_Periph/stable/FlywooF405Pro/AP_Periph.bin',
+      'mav-firmware-version-type': 'OFFICIAL', 'mav-firmware-version-str': '1.7.0', latest: 1
+    },
+    {
+      vehicletype: 'AP_Periph', platform: 'CubeOrange-periph', board_id: 1059, format: 'apj',
+      url: 'https://firmware.ardupilot.org/AP_Periph/stable/CubeOrange-periph/AP_Periph.apj',
+      'mav-firmware-version-type': 'OFFICIAL', 'mav-firmware-version-str': '1.7.0', latest: 1
+    },
+    {
+      // A Copter build for the same board id must NOT match the periph node.
+      vehicletype: 'Copter', platform: 'CubeOrange', board_id: 1137, format: 'apj',
+      url: 'https://firmware.ardupilot.org/Copter/stable/CubeOrange/arducopter.apj',
+      'mav-firmware-version-type': 'OFFICIAL', 'mav-firmware-version-str': '4.6.0', latest: 1
+    }
+  ]
+})
+
+test('dronecanNodeBoardId reconstructs APJ_BOARD_ID from hardware_version major/minor', () => {
+  // 1137 = (4 << 8) | 113.
+  assert.equal(dronecanNodeBoardId({ major: 4, minor: 113 }), 1137)
+  // 1059 = (4 << 8) | 35.
+  assert.equal(dronecanNodeBoardId({ major: 4, minor: 35 }), 1059)
+  // Bytes are masked so a stray high bit can't widen the id.
+  assert.equal(dronecanNodeBoardId({ major: 0x102, minor: 0x101 }), (2 << 8) | 1)
+  assert.equal(dronecanNodeBoardId(undefined), undefined)
+  assert.equal(dronecanNodeBoardId({ major: Number.NaN, minor: 1 }), undefined)
+})
+
+test('firmwaresForDronecanNode matches AP_Periph apj by board id', () => {
+  const m = parseManifest(PERIPH_MANIFEST_FIXTURE)
+  const boardId = dronecanNodeBoardId({ major: 4, minor: 113 }) // 1137
+
+  // Only AP_Periph apj entries for this board id — the .bin and the Copter
+  // entry (same board id) are excluded.
+  const candidates = firmwaresForDronecanNode(m, { boardId, name: 'org.ardupilot.FlywooF405Pro' })
+  assert.equal(candidates.length, 2)
+  assert.ok(candidates.every((e) => e.vehicletype === 'AP_Periph' && e.format === 'apj' && e.boardId === 1137))
+  assert.deepEqual(candidates.map((e) => e.releaseType).sort(), ['BETA', 'OFFICIAL'])
+
+  // Release-channel filter.
+  const stable = firmwaresForDronecanNode(m, { boardId, releaseType: 'OFFICIAL' })
+  assert.equal(stable.length, 1)
+  assert.equal(stable[0].versionStr, '1.7.0')
+
+  // Unknown board id (no GetNodeInfo yet) → no candidates, no throw.
+  assert.deepEqual(firmwaresForDronecanNode(m, { boardId: undefined }), [])
+  assert.deepEqual(firmwaresForDronecanNode(m, { boardId: 9999 }), [])
+
+  // Release types for the node's board.
+  assert.deepEqual(dronecanNodeReleaseTypes(m, boardId), ['OFFICIAL', 'BETA'])
+  assert.deepEqual(dronecanNodeReleaseTypes(m, undefined), [])
 })
 
 test('parseManifest keeps STABLE-x.y.z archived releases (80% of the live manifest) and availableReleaseTypes sorts them newest-first', () => {
