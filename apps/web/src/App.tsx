@@ -1823,7 +1823,16 @@ export function App() {
     setPaused: setMavlinkInspectorPaused,
     plots: mavlinkInspectorPlots,
     addPlot: addMavlinkInspectorPlot,
-    removePlot: removeMavlinkInspectorPlot
+    removePlot: removeMavlinkInspectorPlot,
+    exportSnapshot: exportMavlinkInspectorSnapshot,
+    recording: mavlinkInspectorRecording,
+    recordedCount: mavlinkInspectorRecordedCount,
+    recordingCapped: mavlinkInspectorRecordingCapped,
+    recordingMax: mavlinkInspectorRecordingMax,
+    startRecording: startMavlinkInspectorRecording,
+    stopRecording: stopMavlinkInspectorRecording,
+    downloadRecording: downloadMavlinkInspectorRecording,
+    exportPlotCsv: exportMavlinkInspectorPlotCsv
   } = useMavlinkInspector(runtime, activeViewId === 'mavlink-inspector')
   // Live frames/sec for the DroneCAN inspector, sampled off the cumulative counter.
   const dronecanFramesPerSec = useDronecanBusStats(
@@ -7035,9 +7044,18 @@ export function App() {
                 }
               : undefined
           }
+          onExportSnapshot={exportMavlinkInspectorSnapshot}
+          recording={mavlinkInspectorRecording}
+          recordedCount={mavlinkInspectorRecordedCount}
+          recordingCapped={mavlinkInspectorRecordingCapped}
+          recordingMax={mavlinkInspectorRecordingMax}
+          onStartRecording={startMavlinkInspectorRecording}
+          onStopRecording={stopMavlinkInspectorRecording}
+          onDownloadRecording={downloadMavlinkInspectorRecording}
           plots={mavlinkInspectorPlots}
           onAddPlot={addMavlinkInspectorPlot}
           onRemovePlot={removeMavlinkInspectorPlot}
+          onExportPlotCsv={exportMavlinkInspectorPlotCsv}
           maxPlots={MAX_MAVLINK_PLOTS}
         />
       ) : null}

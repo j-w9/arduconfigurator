@@ -2593,6 +2593,65 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(health).toHaveText(/\d+% loss/)
   })
 
+  test('MAVLink inspector exports a stats snapshot and records the stream', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    await page.getByTestId('view-button-mavlink-inspector').click()
+    await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
+
+    // Export the current state as a JSON download.
+    const snapshotDownload = page.waitForEvent('download')
+    await page.getByTestId('mavlink-export-snapshot').click()
+    const snapshot = await snapshotDownload
+    expect(snapshot.suggestedFilename()).toMatch(/^mavlink-snapshot-.*\.json$/)
+
+    // Record the live stream, then stop and download the capture.
+    const status = page.getByTestId('mavlink-record-status')
+    await expect(page.getByTestId('mavlink-record-download')).toBeDisabled()
+    await page.getByTestId('mavlink-record-toggle').click()
+    await expect(status).toContainText('recording')
+    // Let messages land in the bounded buffer. The demo's dynamic emitter
+    // ticks at ~7s, so allow more than one cadence.
+    await expect(status).not.toContainText('0 msg', { timeout: 12000 })
+    await page.getByTestId('mavlink-record-toggle').click()
+    await expect(page.getByTestId('mavlink-record-toggle')).toHaveText('Record stream')
+
+    const captureDownload = page.waitForEvent('download')
+    await page.getByTestId('mavlink-record-download').click()
+    const capture = await captureDownload
+    expect(capture.suggestedFilename()).toMatch(/^mavlink-recording-.*\.json$/)
+  })
+
+  test('MAVLink inspector exports a live plot as CSV', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    await page.getByTestId('view-button-mavlink-inspector').click()
+    const mavTable = page.getByTestId('mavlink-inspector-table')
+    await expect(mavTable).toBeVisible({ timeout: 8000 })
+
+    // Graph a field on an actively-streaming row (SYS_STATUS streams every
+    // tick) so its sample buffer fills, then export it as CSV.
+    const streamingRow = page.getByTestId('mavlink-row-1:1:SYS_STATUS')
+    await expect(streamingRow).toBeVisible({ timeout: 8000 })
+    await streamingRow.getByRole('button').first().click()
+    await streamingRow.locator('[data-testid^="mavlink-field-graph-"]').first().click()
+    await expect(page.getByTestId('mavlink-plots')).toBeVisible()
+    // The plot buffer fills as SYS_STATUS arrives; the demo emitter ticks at
+    // ~7s, so allow more than one cadence for the first sample.
+    const csvButton = page.locator('[data-testid^="mavlink-plot-csv-"]').first()
+    await expect(csvButton).toBeEnabled({ timeout: 12000 })
+    const csvDownload = page.waitForEvent('download')
+    await csvButton.click()
+    const csv = await csvDownload
+    expect(csv.suggestedFilename()).toMatch(/^mavlink-plot-.*\.csv$/)
+  })
+
   test('MAVLink rows expand to copyable fields and DroneCAN nodes show detail', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')

@@ -596,3 +596,197 @@ export function describeSourceHealth(lossPct: number, staleCount: number): strin
   }
   return parts.join(' · ')
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5 — record / export (download-only): stats snapshot JSON, a bounded
+// stream-recording ring buffer + its JSON, and per-plot CSV. All serialization
+// is pure / unit-tested; the side-effecting downloads live in the hook.
+// ---------------------------------------------------------------------------
+
+/** JSON.stringify replacer that survives decoded MAVLink field values:
+ *  bigints become strings and typed arrays (e.g. LOG_DATA.data) become plain
+ *  number arrays, so nothing throws and nothing serializes as `{"0":…}`. */
+export function jsonSafeReplacer(_key: string, value: unknown): unknown {
+  if (typeof value === 'bigint') {
+    return value.toString()
+  }
+  if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+    return Array.from(value as unknown as ArrayLike<number>)
+  }
+  return value
+}
+
+/** Strip the synthetic `type` discriminator from a decoded message's fields. */
+function fieldsWithoutType(message: Record<string, unknown>): Record<string, unknown> {
+  const { type: _type, ...rest } = message
+  return rest
+}
+
+export interface StatsSnapshotType {
+  type: string
+  count: number
+  rateHz: number
+  bytesPerSec: number
+  totalBytes: number
+  lastSeenMs: number
+  lastFields: Record<string, unknown>
+}
+
+export interface StatsSnapshotSource {
+  id: string
+  systemId: number
+  componentId: number
+  received: number
+  dropped: number
+  lossPct: number
+  rateHz: number
+  bytesPerSec: number
+  types: StatsSnapshotType[]
+}
+
+export interface StatsSnapshot {
+  tool: 'arduconfigurator-mavlink-inspector'
+  kind: 'stats-snapshot'
+  version: 1
+  capturedAt: string
+  summary: MavlinkInspectorSummary
+  sources: StatsSnapshotSource[]
+}
+
+/**
+ * Build a JSON-serializable snapshot of the whole inspector state: every
+ * source → its types (rate / count / bytes / last decoded fields) plus the
+ * source's packet-loss accounting. Pure / unit-tested.
+ */
+export function buildStatsSnapshot(
+  stats: readonly MavlinkMessageStat[],
+  sourceHealth: readonly MavlinkSourceHealth[],
+  capturedAtMs: number
+): StatsSnapshot {
+  const healthById = new Map(sourceHealth.map((entry) => [entry.id, entry]))
+  const sources = groupMavlinkStatsBySource(sortMavlinkStats(stats, 'name')).map((group) => {
+    const health = healthById.get(group.id)
+    return {
+      id: group.id,
+      systemId: group.systemId,
+      componentId: group.componentId,
+      received: health?.received ?? 0,
+      dropped: health?.dropped ?? 0,
+      lossPct: health?.lossPct ?? 0,
+      rateHz: group.rateHz,
+      bytesPerSec: group.bytesPerSec,
+      types: group.stats.map((stat) => ({
+        type: stat.type,
+        count: stat.count,
+        rateHz: stat.rateHz,
+        bytesPerSec: stat.bytesPerSec,
+        totalBytes: stat.totalBytes,
+        lastSeenMs: stat.lastSeenMs,
+        lastFields: fieldsWithoutType(stat.lastMessage)
+      }))
+    }
+  })
+  return {
+    tool: 'arduconfigurator-mavlink-inspector',
+    kind: 'stats-snapshot',
+    version: 1,
+    capturedAt: new Date(capturedAtMs).toISOString(),
+    summary: summarizeMavlinkStats(stats),
+    sources
+  }
+}
+
+/** Pretty-printed JSON for the stats-snapshot download. */
+export function serializeStatsSnapshot(
+  stats: readonly MavlinkMessageStat[],
+  sourceHealth: readonly MavlinkSourceHealth[],
+  capturedAtMs: number
+): string {
+  return JSON.stringify(buildStatsSnapshot(stats, sourceHealth, capturedAtMs), jsonSafeReplacer, 2)
+}
+
+/** Cap on the stream-recording ring buffer (most recent N messages). */
+export const RECORDING_MAX_MESSAGES = 5000
+
+/** One captured message in a stream recording. */
+export interface RecordedMavlinkMessage {
+  /** Capture timestamp in ms (Date.now() at arrival). */
+  t: number
+  systemId: number
+  componentId: number
+  sequence: number
+  type: string
+  fields: Record<string, unknown>
+}
+
+/**
+ * Push a message onto a bounded recording buffer, dropping the oldest beyond
+ * `maxMessages` so the capture never grows unbounded. Mutates and returns the
+ * buffer — this rides the hot message path, so it avoids per-message copies
+ * (unlike the immutable plot buffer). Unit-tested for the cap + drop-oldest.
+ */
+export function pushRecordedMessage(
+  buffer: RecordedMavlinkMessage[],
+  record: RecordedMavlinkMessage,
+  maxMessages: number
+): RecordedMavlinkMessage[] {
+  buffer.push(record)
+  if (buffer.length > maxMessages) {
+    buffer.splice(0, buffer.length - maxMessages)
+  }
+  return buffer
+}
+
+export interface RecordingExport {
+  tool: 'arduconfigurator-mavlink-inspector'
+  kind: 'stream-recording'
+  version: 1
+  capturedAt: string
+  /** Messages retained in the buffer (after the ring-buffer cap). */
+  messageCount: number
+  /** True when the cap dropped older messages (the capture is a trailing window). */
+  capped: boolean
+  /** The per-message cap that bounded the buffer. */
+  maxMessages: number
+  messages: RecordedMavlinkMessage[]
+}
+
+/** Pretty-printed JSON for the stream-recording download. */
+export function serializeRecording(
+  messages: readonly RecordedMavlinkMessage[],
+  capturedAtMs: number,
+  maxMessages: number,
+  capped: boolean
+): string {
+  const payload: RecordingExport = {
+    tool: 'arduconfigurator-mavlink-inspector',
+    kind: 'stream-recording',
+    version: 1,
+    capturedAt: new Date(capturedAtMs).toISOString(),
+    messageCount: messages.length,
+    capped,
+    maxMessages,
+    messages: [...messages]
+  }
+  return JSON.stringify(payload, jsonSafeReplacer, 2)
+}
+
+/**
+ * CSV ("timestamp,value") for a plot's sample buffer. `timestamp` is the raw
+ * sample time in ms (the same clock the buffer was filled on); a header row
+ * always leads so the file is self-describing even when empty. Pure.
+ */
+export function serializePlotCsv(samples: readonly PlotSample[]): string {
+  const lines = ['timestamp,value']
+  for (const sample of samples) {
+    lines.push(`${sample.t},${sample.value}`)
+  }
+  return lines.join('\n')
+}
+
+/** Filesystem-safe, timestamped filename for an inspector export. */
+export function inspectorExportFilename(label: string, extension: string, capturedAtMs: number): string {
+  const stamp = new Date(capturedAtMs).toISOString().replace(/[:.]/g, '-')
+  const safeLabel = label.replace(/[^a-zA-Z0-9_.-]+/g, '-')
+  return `mavlink-${safeLabel}-${stamp}.${extension}`
+}
