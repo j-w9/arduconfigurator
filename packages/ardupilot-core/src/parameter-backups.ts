@@ -32,6 +32,20 @@ const CALIBRATION_PATTERNS: readonly RegExp[] = [
 const STREAM_RATE_PATTERN = /^SR\d+_/
 const MISSION_PATTERN = /^MIS_/
 
+// Firmware-managed params (AP_PARAM_FLAG_INTERNAL_USE_ONLY) that a GCS can never
+// meaningfully set: the firmware owns the value and re-derives it live, so a
+// verified write never sees its written value echo back — the batch write just
+// stalls waiting for a readback that never matches. The baro ground-pressure
+// reference (BAROn_GND_PRESS, verified internal-use-only in AP_Baro.cpp) updates
+// continuously, so importing it from a backup is futile and breaks the upload.
+// These are dropped on import unconditionally, independent of the opt-in
+// categories — they should never be part of a parameter restore.
+const INTERNAL_USE_ONLY_PATTERNS: readonly RegExp[] = [/^BARO\d+_GND_PRESS$/]
+
+export function isInternalUseOnlyParameter(id: string): boolean {
+  return INTERNAL_USE_ONLY_PATTERNS.some((pattern) => pattern.test(id))
+}
+
 /**
  * Classify a parameter id into one of the opt-in import-exclusion categories,
  * or `undefined` if it belongs to none. Shared by the import path and exposed
@@ -385,6 +399,15 @@ export function deriveDraftValuesFromParameterBackup(
 
   backup.parameters.forEach((entry) => {
     if (isSnapshotExcludedBackupEntry(entry)) {
+      return
+    }
+
+    // Firmware-managed (internal-use-only) params can never be verify-written, so
+    // always drop them on import — a mass restore must not stall on a value the
+    // FC re-derives live (e.g. BAROn_GND_PRESS). Counts as excluded, never
+    // staged, regardless of the opt-in categories.
+    if (isInternalUseOnlyParameter(entry.id)) {
+      excludedCount += 1
       return
     }
 

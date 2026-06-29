@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   createParameterBackup,
   deriveDraftValuesFromParameterBackup,
+  isInternalUseOnlyParameter,
   parameterImportExclusionCategory
 } from '../packages/ardupilot-core/dist/index.js'
 
@@ -96,6 +97,28 @@ test('excluding all three categories leaves only the unrelated tuning param', ()
   assert.equal(result.excludedCount, 5)
   assert.equal(result.changedCount, 1)
   assert.deepEqual(Object.keys(result.draftValues), ['ATC_RAT_RLL_P'])
+})
+
+test('internal-use-only params (BAROn_GND_PRESS) are ALWAYS dropped on import — they can never be verify-written', () => {
+  assert.equal(isInternalUseOnlyParameter('BARO1_GND_PRESS'), true)
+  assert.equal(isInternalUseOnlyParameter('BARO2_GND_PRESS'), true)
+  assert.equal(isInternalUseOnlyParameter('BARO3_GND_PRESS'), true)
+  // The user-settable ground temperature + unrelated params are NOT internal-use-only.
+  assert.equal(isInternalUseOnlyParameter('BARO_GND_TEMP'), false)
+  assert.equal(isInternalUseOnlyParameter('ATC_RAT_RLL_P'), false)
+
+  const live = [
+    { id: 'ATC_RAT_RLL_P', value: 0.135 },
+    { id: 'BARO1_GND_PRESS', value: 101000 }
+  ]
+  const backup = backupOf({ ATC_RAT_RLL_P: 0.2, BARO1_GND_PRESS: 99000 })
+  // No exclusion categories opted in — the baro reference is STILL dropped, so a
+  // mass restore can't stall on a value the FC re-derives live.
+  const result = deriveDraftValuesFromParameterBackup(live, backup)
+  assert.equal('BARO1_GND_PRESS' in result.draftValues, false)
+  assert.ok('ATC_RAT_RLL_P' in result.draftValues)
+  assert.equal(result.excludedCount, 1)
+  assert.equal(result.changedCount, 1)
 })
 
 test('excluded entries never count as unknown even when absent from the live table', () => {
