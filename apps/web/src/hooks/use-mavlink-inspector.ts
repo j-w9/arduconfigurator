@@ -12,6 +12,8 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { ArduPilotConfiguratorRuntime } from '@arduconfig/ardupilot-core'
 
+import { appendPlotSample, toPlottableNumber, type PlotSample } from '../view-models/mavlink-inspector'
+
 export interface MavlinkMessageStat {
   /** Stable identity for React keys: `${systemId}:${componentId}:${type}`. */
   key: string
@@ -36,6 +38,26 @@ const RATE_WINDOW_MS = 3000
 const FLUSH_INTERVAL_MS = 500
 const HISTORY_SAMPLES = 40
 
+/** Trailing window of field samples kept per live plot. */
+const PLOT_WINDOW_MS = 20_000
+const PLOT_MAX_SAMPLES = 600
+/** Cap on simultaneous live plots. */
+export const MAX_MAVLINK_PLOTS = 6
+
+/** A field selected for live plotting. `key` is `${stat.key}:${field}`. */
+export interface MavlinkPlotSpec {
+  key: string
+  systemId: number
+  componentId: number
+  type: string
+  field: string
+}
+
+/** A live plot with its trailing sample buffer (oldest → newest). */
+export interface MavlinkPlot extends MavlinkPlotSpec {
+  samples: PlotSample[]
+}
+
 interface Accumulator {
   systemId: number
   componentId: number
@@ -54,6 +76,9 @@ export interface MavlinkInspectorState {
   clear: () => void
   paused: boolean
   setPaused: (paused: boolean) => void
+  plots: MavlinkPlot[]
+  addPlot: (spec: MavlinkPlotSpec) => void
+  removePlot: (key: string) => void
 }
 
 function sourceKey(systemId: number, componentId: number, type: string): string {
@@ -69,6 +94,22 @@ export function useMavlinkInspector(
   const [paused, setPaused] = useState(false)
   const pausedRef = useRef(paused)
   pausedRef.current = paused
+  // Plot specs + their trailing sample buffers live in refs (sampled on the
+  // hot message path); `plots` mirrors them into React state on each flush.
+  const plotSpecs = useRef(new Map<string, MavlinkPlotSpec>())
+  const plotBuffers = useRef(new Map<string, PlotSample[]>())
+  const [plots, setPlots] = useState<MavlinkPlot[]>([])
+
+  const snapshotPlots = (): void => {
+    const now = Date.now()
+    const next: MavlinkPlot[] = []
+    for (const [key, spec] of plotSpecs.current) {
+      const buffer = (plotBuffers.current.get(key) ?? []).filter((sample) => sample.t >= now - PLOT_WINDOW_MS)
+      plotBuffers.current.set(key, buffer)
+      next.push({ ...spec, samples: [...buffer] })
+    }
+    setPlots(next)
+  }
 
   useEffect(() => {
     if (!runtime || !active) {
@@ -110,6 +151,25 @@ export function useMavlinkInspector(
         entry.arrivalBytes.shift()
       }
       accumulators.current.set(key, entry)
+
+      // Sample any plotted field of this exact source+type into its buffer.
+      if (plotSpecs.current.size > 0) {
+        const sourceTypeKey = `${key}:`
+        for (const [plotKey, spec] of plotSpecs.current) {
+          if (!plotKey.startsWith(sourceTypeKey)) {
+            continue
+          }
+          const numeric = toPlottableNumber(message[spec.field])
+          if (numeric === undefined) {
+            continue
+          }
+          const buffer = plotBuffers.current.get(plotKey) ?? []
+          plotBuffers.current.set(
+            plotKey,
+            appendPlotSample(buffer, { t: now, value: numeric }, PLOT_WINDOW_MS, PLOT_MAX_SAMPLES)
+          )
+        }
+      }
     })
 
     const flush = (): void => {
@@ -151,6 +211,7 @@ export function useMavlinkInspector(
         })
       }
       setStats(next)
+      snapshotPlots()
     }
 
     flush()
@@ -166,5 +227,20 @@ export function useMavlinkInspector(
     setStats([])
   }
 
-  return { stats, clear, paused, setPaused }
+  const addPlot = (spec: MavlinkPlotSpec): void => {
+    if (plotSpecs.current.has(spec.key) || plotSpecs.current.size >= MAX_MAVLINK_PLOTS) {
+      return
+    }
+    plotSpecs.current.set(spec.key, spec)
+    plotBuffers.current.set(spec.key, [])
+    snapshotPlots()
+  }
+
+  const removePlot = (key: string): void => {
+    plotSpecs.current.delete(key)
+    plotBuffers.current.delete(key)
+    snapshotPlots()
+  }
+
+  return { stats, clear, paused, setPaused, plots, addPlot, removePlot }
 }

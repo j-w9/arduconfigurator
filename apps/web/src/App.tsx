@@ -247,7 +247,7 @@ import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
 import { MavlinkInspectorView } from './views/MavlinkInspector'
 import { intervalUsForRate } from './view-models/mavlink-inspector'
-import { useMavlinkInspector } from './hooks/use-mavlink-inspector'
+import { MAX_MAVLINK_PLOTS, useMavlinkInspector } from './hooks/use-mavlink-inspector'
 import { DronecanInspectorView, type DronecanFirmwareOnlineSource } from './views/DronecanInspector'
 import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
 import { dronecanNodeBoardId, parseApj, decodeApjImage } from '@arduconfig/firmware-flash'
@@ -1819,7 +1819,10 @@ export function App() {
     stats: mavlinkInspectorStats,
     clear: clearMavlinkInspector,
     paused: mavlinkInspectorPaused,
-    setPaused: setMavlinkInspectorPaused
+    setPaused: setMavlinkInspectorPaused,
+    plots: mavlinkInspectorPlots,
+    addPlot: addMavlinkInspectorPlot,
+    removePlot: removeMavlinkInspectorPlot
   } = useMavlinkInspector(runtime, activeViewId === 'mavlink-inspector')
   // Live frames/sec for the DroneCAN inspector, sampled off the cumulative counter.
   const dronecanFramesPerSec = useDronecanBusStats(
@@ -7030,6 +7033,10 @@ export function App() {
                 }
               : undefined
           }
+          plots={mavlinkInspectorPlots}
+          onAddPlot={addMavlinkInspectorPlot}
+          onRemovePlot={removeMavlinkInspectorPlot}
+          maxPlots={MAX_MAVLINK_PLOTS}
         />
       ) : null}
 

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import type { MavlinkMessageStat } from '../hooks/use-mavlink-inspector'
 import {
+  appendPlotSample,
   buildMavlinkFieldRows,
+  buildPlotGeometry,
   buildSparklinePoints,
   describeMavlinkSource,
   describeMessageRequestOutcome,
@@ -11,6 +13,7 @@ import {
   formatBytesPerSec,
   formatMavlinkFieldType,
   formatMavlinkFieldValue,
+  formatPlotValue,
   groupMavlinkStatsBySource,
   intervalUsForRate,
   isPlottableFieldValue,
@@ -20,7 +23,8 @@ import {
   messageToJson,
   REQUESTABLE_MESSAGES,
   sortMavlinkStats,
-  summarizeMavlinkStats
+  summarizeMavlinkStats,
+  toPlottableNumber
 } from './mavlink-inspector'
 
 function stat(overrides: Partial<MavlinkMessageStat> & { type: string }): MavlinkMessageStat {
@@ -227,11 +231,11 @@ describe('isPlottableFieldValue', () => {
 
 describe('buildMavlinkFieldRows', () => {
   it('drops the type discriminator and renders each field with its kind', () => {
-    const rows = buildMavlinkFieldRows({ type: 'ATTITUDE', roll: 0.5, pitch: 0, count: 7n })
+    const rows = buildMavlinkFieldRows({ type: 'ATTITUDE', roll: 0.5, name: 'x', count: 7n })
     expect(rows).toEqual([
-      { key: 'roll', value: '0.5', type: 'float' },
-      { key: 'pitch', value: '0', type: 'int' },
-      { key: 'count', value: '7', type: 'uint64' }
+      { key: 'roll', value: '0.5', type: 'float', plottable: true },
+      { key: 'name', value: 'x', type: 'string', plottable: false },
+      { key: 'count', value: '7', type: 'uint64', plottable: true }
     ])
   })
 })
@@ -277,6 +281,68 @@ describe('message requests', () => {
     expect(describeMessageRequestOutcome('stream', 'ATTITUDE', { ok: false, resultLabel: 'DENIED' })).toBe(
       'ATTITUDE request rejected (DENIED).'
     )
+  })
+})
+
+describe('field plotting', () => {
+  it('coerces plottable values to numbers', () => {
+    expect(toPlottableNumber(1.5)).toBe(1.5)
+    expect(toPlottableNumber(7n)).toBe(7)
+    expect(toPlottableNumber(true)).toBe(1)
+    expect(toPlottableNumber(false)).toBe(0)
+    expect(toPlottableNumber('x')).toBeUndefined()
+    expect(toPlottableNumber(Number.NaN)).toBeUndefined()
+  })
+
+  it('rings the buffer by window then by max count', () => {
+    let samples = appendPlotSample([], { t: 1000, value: 1 }, 5000, 100)
+    samples = appendPlotSample(samples, { t: 2000, value: 2 }, 5000, 100)
+    // 7000 is > 5000 after 1000, so the t=1000 sample is dropped.
+    samples = appendPlotSample(samples, { t: 7000, value: 3 }, 5000, 100)
+    expect(samples.map((s) => s.value)).toEqual([2, 3])
+
+    // Cap to the most recent N regardless of window.
+    let capped: ReturnType<typeof appendPlotSample> = []
+    for (let i = 0; i < 5; i += 1) {
+      capped = appendPlotSample(capped, { t: i, value: i }, 1_000_000, 3)
+    }
+    expect(capped.map((s) => s.value)).toEqual([2, 3, 4])
+  })
+
+  it('does not mutate the input buffer', () => {
+    const input = [{ t: 0, value: 1 }]
+    appendPlotSample(input, { t: 1, value: 2 }, 1000, 10)
+    expect(input).toEqual([{ t: 0, value: 1 }])
+  })
+
+  it('builds autoscaled geometry spanning the sample time range', () => {
+    const geo = buildPlotGeometry(
+      [
+        { t: 0, value: 0 },
+        { t: 50, value: 5 },
+        { t: 100, value: 10 }
+      ],
+      100,
+      20
+    )
+    // x across [0,100] → [0,100]; y autoscaled [0,10] inverted to [20,0].
+    expect(geo.points).toBe('0.0,20.0 50.0,10.0 100.0,0.0')
+    expect(geo).toMatchObject({ min: 0, max: 10, current: 10, sampleCount: 3 })
+  })
+
+  it('centres a single sample and reports empty for none', () => {
+    expect(buildPlotGeometry([{ t: 5, value: 9 }], 100, 20)).toMatchObject({
+      points: '0.0,10.0',
+      current: 9,
+      sampleCount: 1
+    })
+    expect(buildPlotGeometry([], 100, 20)).toMatchObject({ points: '', sampleCount: 0 })
+  })
+
+  it('formats plot read-outs compactly', () => {
+    expect(formatPlotValue(5)).toBe('5')
+    expect(formatPlotValue(1.25)).toBe('1.25')
+    expect(formatPlotValue(0.0001)).toBe('1.00e-4')
   })
 })
 

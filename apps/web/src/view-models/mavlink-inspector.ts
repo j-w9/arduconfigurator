@@ -199,6 +199,8 @@ export interface MavlinkFieldRow {
   value: string
   /** Coarse value kind for the table's type column. */
   type: MavlinkFieldType
+  /** True when the raw value is a single number worth plotting over time. */
+  plottable: boolean
 }
 
 export type MavlinkFieldType =
@@ -228,6 +230,15 @@ export function isPlottableFieldValue(value: unknown): boolean {
   if (typeof value === 'bigint') return true
   if (typeof value === 'boolean') return true
   return false
+}
+
+/** Coerce a plottable field value to a number (bool→0/1, bigint→Number),
+ *  or undefined when it isn't plottable. */
+export function toPlottableNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined
+  if (typeof value === 'bigint') return Number(value)
+  if (typeof value === 'boolean') return value ? 1 : 0
+  return undefined
 }
 
 /** Render a single decoded field value: round floats, stringify bigints,
@@ -269,7 +280,8 @@ export function buildMavlinkFieldRows(message: Record<string, unknown>): Mavlink
   return Object.entries(rest).map(([key, value]) => ({
     key,
     value: formatMavlinkFieldValue(value),
-    type: formatMavlinkFieldType(value)
+    type: formatMavlinkFieldType(value),
+    plottable: isPlottableFieldValue(value)
   }))
 }
 
@@ -374,4 +386,94 @@ export function describeMessageRequestOutcome(
 /** Resolve a message-id to its known name, or "msg <id>" for unknown ids. */
 export function messageNameForId(messageId: number): string {
   return REQUESTABLE_MESSAGES.find((entry) => entry.id === messageId)?.name ?? `msg ${messageId}`
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — live field plotting (ring-buffered samples + inline SVG geometry)
+// ---------------------------------------------------------------------------
+
+export interface PlotSample {
+  /** Sample timestamp in ms (Date.now() at arrival). */
+  t: number
+  value: number
+}
+
+/**
+ * Append a sample to a field's ring buffer and trim it to the trailing window:
+ * drop anything older than `sample.t - windowMs`, then cap to the most recent
+ * `maxSamples`. Pure — the new sample's timestamp is the reference "now", so
+ * the result is deterministic and unit-testable off any clock. Returns a new
+ * array; the input is not mutated.
+ */
+export function appendPlotSample(
+  samples: readonly PlotSample[],
+  sample: PlotSample,
+  windowMs: number,
+  maxSamples: number
+): PlotSample[] {
+  const cutoff = sample.t - windowMs
+  const next = samples.filter((entry) => entry.t >= cutoff)
+  next.push(sample)
+  if (next.length > maxSamples) {
+    next.splice(0, next.length - maxSamples)
+  }
+  return next
+}
+
+export interface PlotGeometry {
+  /** SVG polyline points across the sample's own time span, y autoscaled. */
+  points: string
+  min: number
+  max: number
+  /** Most recent sample value (the live read-out). */
+  current: number
+  sampleCount: number
+}
+
+/**
+ * Inline-SVG geometry for a field plot: x spans the samples' own [first,last]
+ * timestamps, y autoscales to [min,max] (a flat series centres vertically).
+ * Returns empty points for an empty buffer. Pure / unit-tested.
+ */
+export function buildPlotGeometry(
+  samples: readonly PlotSample[],
+  width = 240,
+  height = 60
+): PlotGeometry {
+  if (samples.length === 0) {
+    return { points: '', min: 0, max: 0, current: 0, sampleCount: 0 }
+  }
+  let min = samples[0].value
+  let max = samples[0].value
+  for (const sample of samples) {
+    if (sample.value < min) min = sample.value
+    if (sample.value > max) max = sample.value
+  }
+  const current = samples[samples.length - 1].value
+  if (samples.length === 1) {
+    const y = height / 2
+    return { points: `0.0,${y.toFixed(1)}`, min, max, current, sampleCount: 1 }
+  }
+  const tFirst = samples[0].t
+  const tSpan = samples[samples.length - 1].t - tFirst || 1
+  const ySpan = max - min || 1
+  const points = samples
+    .map((sample) => {
+      const x = ((sample.t - tFirst) / tSpan) * width
+      const y = height - ((sample.value - min) / ySpan) * height
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+  return { points, min, max, current, sampleCount: samples.length }
+}
+
+/** Compact numeric label for plot axes / read-outs. */
+export function formatPlotValue(value: number): string {
+  if (!Number.isFinite(value)) return '—'
+  if (Number.isInteger(value)) return String(value)
+  const abs = Math.abs(value)
+  if (abs !== 0 && (abs < 0.001 || abs >= 1e6)) {
+    return value.toExponential(2)
+  }
+  return value.toFixed(3).replace(/\.?0+$/, '')
 }

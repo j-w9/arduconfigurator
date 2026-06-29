@@ -12811,7 +12811,13 @@ details.bf-gui-box:not([open]) > summary::after {
   color: var(--text-muted);
   opacity: 0.75;
 }
-.mavlink-inspector__field-copy {
+.mavlink-inspector__field-actions {
+  display: inline-flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.mavlink-inspector__field-copy,
+.mavlink-inspector__field-graph {
   background: transparent;
   border: 1px solid var(--surface-300);
   border-radius: var(--radius-sm, 4px);
@@ -12824,8 +12830,54 @@ details.bf-gui-box:not([open]) > summary::after {
   transition: opacity 120ms ease;
 }
 .mavlink-inspector__field-row:hover .mavlink-inspector__field-copy,
-.mavlink-inspector__field-copy:focus-visible {
+.mavlink-inspector__field-row:hover .mavlink-inspector__field-graph,
+.mavlink-inspector__field-copy:focus-visible,
+.mavlink-inspector__field-graph:focus-visible {
   opacity: 1;
+}
+.mavlink-inspector__field-graph[aria-pressed='true'] {
+  opacity: 1;
+  border-color: var(--accent, #ffbb00);
+  color: var(--accent, #ffbb00);
+}
+.mavlink-inspector__plots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.mavlink-inspector__plot {
+  border: 1px solid var(--surface-300);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  background: var(--surface-100, rgba(255, 255, 255, 0.02));
+}
+.mavlink-inspector__plot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.mavlink-inspector__plot-title {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--accent, #ffbb00);
+  word-break: break-word;
+}
+.mavlink-inspector__plot-svg {
+  width: 100%;
+  height: 60px;
+  color: var(--accent, #ffbb00);
+  display: block;
+}
+.mavlink-inspector__plot-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-muted);
 }
 @keyframes mavlink-field-flash {
   from {

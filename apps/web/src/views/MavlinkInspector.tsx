@@ -12,14 +12,16 @@ import { useEffect, useRef, useState } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
-import type { MavlinkMessageStat } from '../hooks/use-mavlink-inspector'
+import type { MavlinkMessageStat, MavlinkPlot, MavlinkPlotSpec } from '../hooks/use-mavlink-inspector'
 import {
   buildMavlinkFieldRows,
+  buildPlotGeometry,
   buildSparklinePoints,
   describeMessageRequestOutcome,
   filterMavlinkStats,
   filterMavlinkStatsBySource,
   formatBytesPerSec,
+  formatPlotValue,
   groupMavlinkStatsBySource,
   listMavlinkSources,
   messageNameForId,
@@ -50,6 +52,12 @@ export interface MavlinkInspectorViewProps {
   onClear: () => void
   /** Issue a SET_MESSAGE_INTERVAL / REQUEST_MESSAGE on the operator's behalf. */
   onRequestMessage?: (request: MavlinkMessageRequest) => Promise<MavlinkMessageRequestOutcome>
+  /** Live field plots and the controls to add/remove them. */
+  plots?: readonly MavlinkPlot[]
+  onAddPlot?: (spec: MavlinkPlotSpec) => void
+  onRemovePlot?: (key: string) => void
+  /** Cap on simultaneous plots, surfaced when the limit is reached. */
+  maxPlots?: number
 }
 
 function ageLabel(lastSeenMs: number): string {
@@ -75,8 +83,17 @@ function RateSparkline({ history }: { history: readonly number[] }) {
 const FLASH_MS = 600
 
 /** Live field table for one message: name / value / type, flashing a row when
- *  its value changes, with per-field and whole-message copy. */
-function MavlinkFieldTable({ stat }: { stat: MavlinkMessageStat }) {
+ *  its value changes, with per-field and whole-message copy, plus a per-field
+ *  "graph" toggle that adds/removes a live plot. */
+function MavlinkFieldTable({
+  stat,
+  plottedKeys,
+  onTogglePlot
+}: {
+  stat: MavlinkMessageStat
+  plottedKeys: Set<string>
+  onTogglePlot?: (stat: MavlinkMessageStat, field: string) => void
+}) {
   const rows = buildMavlinkFieldRows(stat.lastMessage)
   const previous = useRef(new Map<string, string>())
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
@@ -169,26 +186,44 @@ function MavlinkFieldTable({ stat }: { stat: MavlinkMessageStat }) {
           <span>Type</span>
           <span aria-hidden="true" />
         </div>
-        {rows.map((row) => (
-          <div
-            key={row.key}
-            className={`mavlink-inspector__field-row${flashing.has(row.key) ? ' mavlink-inspector__field-row--flash' : ''}`}
-            data-testid={`mavlink-field-row-${stat.key}-${row.key}`}
-          >
-            <span className="mavlink-inspector__field-name">{row.key}</span>
-            <span className="mavlink-inspector__field-value">{row.value}</span>
-            <span className="mavlink-inspector__field-type">{row.type}</span>
-            <button
-              type="button"
-              className="mavlink-inspector__field-copy"
-              title={`Copy ${row.key}`}
-              onClick={() => copyValue(row.key, row.value)}
-              data-testid={`mavlink-field-copy-${stat.key}-${row.key}`}
+        {rows.map((row) => {
+          const plotKey = `${stat.key}:${row.key}`
+          const plotted = plottedKeys.has(plotKey)
+          return (
+            <div
+              key={row.key}
+              className={`mavlink-inspector__field-row${flashing.has(row.key) ? ' mavlink-inspector__field-row--flash' : ''}`}
+              data-testid={`mavlink-field-row-${stat.key}-${row.key}`}
             >
-              {copied === row.key ? '✓' : 'copy'}
-            </button>
-          </div>
-        ))}
+              <span className="mavlink-inspector__field-name">{row.key}</span>
+              <span className="mavlink-inspector__field-value">{row.value}</span>
+              <span className="mavlink-inspector__field-type">{row.type}</span>
+              <span className="mavlink-inspector__field-actions">
+                {onTogglePlot && row.plottable ? (
+                  <button
+                    type="button"
+                    className="mavlink-inspector__field-graph"
+                    aria-pressed={plotted}
+                    title={plotted ? `Stop plotting ${row.key}` : `Plot ${row.key}`}
+                    onClick={() => onTogglePlot(stat, row.key)}
+                    data-testid={`mavlink-field-graph-${stat.key}-${row.key}`}
+                  >
+                    {plotted ? 'graphing' : 'graph'}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="mavlink-inspector__field-copy"
+                  title={`Copy ${row.key}`}
+                  onClick={() => copyValue(row.key, row.value)}
+                  data-testid={`mavlink-field-copy-${stat.key}-${row.key}`}
+                >
+                  {copied === row.key ? '✓' : 'copy'}
+                </button>
+              </span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -308,13 +343,65 @@ function MavlinkRequestControl({
   )
 }
 
+const PLOT_WIDTH = 240
+const PLOT_HEIGHT = 60
+
+/** One live field plot: an autoscaling inline-SVG line chart + read-outs. */
+function MavlinkPlotChart({ plot, onRemove }: { plot: MavlinkPlot; onRemove?: (key: string) => void }) {
+  const geometry = buildPlotGeometry(plot.samples, PLOT_WIDTH, PLOT_HEIGHT)
+  return (
+    <div className="mavlink-inspector__plot" data-testid={`mavlink-plot-${plot.key}`}>
+      <div className="mavlink-inspector__plot-head">
+        <span className="mavlink-inspector__plot-title">
+          {plot.systemId}:{plot.componentId} · {plot.type}.{plot.field}
+        </span>
+        <button
+          type="button"
+          className="mavlink-inspector__field-copy"
+          onClick={() => onRemove?.(plot.key)}
+          data-testid={`mavlink-plot-remove-${plot.key}`}
+        >
+          remove
+        </button>
+      </div>
+      <svg
+        className="mavlink-inspector__plot-svg"
+        viewBox={`0 0 ${PLOT_WIDTH} ${PLOT_HEIGHT}`}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`${plot.type}.${plot.field} over time`}
+      >
+        {geometry.points ? (
+          <polyline
+            points={geometry.points}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
+      </svg>
+      <div className="mavlink-inspector__plot-meta">
+        <span data-testid={`mavlink-plot-current-${plot.key}`}>now {formatPlotValue(geometry.current)}</span>
+        <span>min {formatPlotValue(geometry.min)}</span>
+        <span>max {formatPlotValue(geometry.max)}</span>
+        <span>{geometry.sampleCount} pts</span>
+      </div>
+    </div>
+  )
+}
+
 export function MavlinkInspectorView({
   stats,
   connected,
   paused,
   onTogglePause,
   onClear,
-  onRequestMessage
+  onRequestMessage,
+  plots = [],
+  onAddPlot,
+  onRemovePlot,
+  maxPlots
 }: MavlinkInspectorViewProps) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
@@ -331,6 +418,28 @@ export function MavlinkInspectorView({
   )
   const groups = groupMavlinkStatsBySource(visible)
   const matched = filter.trim().length > 0 || activeSource.length > 0
+
+  const plottedKeys = new Set(plots.map((plot) => plot.key))
+  const atPlotLimit = typeof maxPlots === 'number' && plots.length >= maxPlots
+  const togglePlot = onAddPlot
+    ? (stat: MavlinkMessageStat, field: string): void => {
+        const key = `${stat.key}:${field}`
+        if (plottedKeys.has(key)) {
+          onRemovePlot?.(key)
+          return
+        }
+        if (atPlotLimit) {
+          return
+        }
+        onAddPlot({
+          key,
+          systemId: stat.systemId,
+          componentId: stat.componentId,
+          type: stat.type,
+          field
+        })
+      }
+    : undefined
 
   return (
     <section className="grid one-up" id="setup-panel-mavlink-inspector">
@@ -409,6 +518,14 @@ export function MavlinkInspectorView({
             <MavlinkRequestControl connected={connected} onRequestMessage={onRequestMessage} />
           ) : null}
 
+          {plots.length > 0 ? (
+            <div className="mavlink-inspector__plots" data-testid="mavlink-plots">
+              {plots.map((plot) => (
+                <MavlinkPlotChart key={plot.key} plot={plot} onRemove={onRemovePlot} />
+              ))}
+            </div>
+          ) : null}
+
           {!connected && stats.length === 0 ? (
             <p className="telemetry-note">Connect to a vehicle to see the live MAVLink message stream.</p>
           ) : groups.length === 0 ? (
@@ -456,7 +573,9 @@ export function MavlinkInspectorView({
                           <span>{stat.count}</span>
                           <span>{ageLabel(stat.lastSeenMs)}</span>
                         </button>
-                        {isOpen ? <MavlinkFieldTable stat={stat} /> : null}
+                        {isOpen ? (
+                          <MavlinkFieldTable stat={stat} plottedKeys={plottedKeys} onTogglePlot={togglePlot} />
+                        ) : null}
                       </div>
                     )
                   })}

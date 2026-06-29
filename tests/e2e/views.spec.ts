@@ -2618,6 +2618,33 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.getByTestId('mavlink-request-result')).toContainText('accepted', { timeout: 8000 })
   })
 
+  test('MAVLink inspector plots a numeric field live and removes the plot', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    await page.getByTestId('view-button-mavlink-inspector').click()
+    const mavTable = page.getByTestId('mavlink-inspector-table')
+    await expect(mavTable).toBeVisible({ timeout: 8000 })
+
+    // Expand the first row and graph its first plottable field.
+    await mavTable.locator('[data-testid^="mavlink-row-"]').first().getByRole('button').first().click()
+    const graph = page.locator('[data-testid^="mavlink-field-graph-"]').first()
+    await expect(graph).toBeVisible()
+    await graph.click()
+
+    // A live plot renders with its read-outs.
+    await expect(page.getByTestId('mavlink-plots')).toBeVisible()
+    const plot = page.locator('[data-testid^="mavlink-plot-"]').first()
+    await expect(plot).toBeVisible()
+    await expect(plot).toContainText('now')
+
+    // Removing the plot tears it down.
+    page.locator('[data-testid^="mavlink-plot-remove-"]').first().click()
+    await expect(page.getByTestId('mavlink-plots')).toHaveCount(0)
+  })
+
   test('DroneCAN inspector manages a node: param grid, restart, ESC telemetry', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
