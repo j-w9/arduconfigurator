@@ -1,0 +1,4 @@
+# ArduConfigurator wiki — Sphinx + the Read-the-Docs theme (the same theme the
+# ArduPilot wiki uses), so the layout/structure matches closely.
+sphinx>=7.2,<8
+sphinx-rtd-theme>=2.0

@@ -322,6 +322,44 @@ textarea:focus {
     box-shadow 140ms ease;
 }
 
+/* Wiki link in the header, next to the brand. Compact pill that opens the wiki
+   in a new tab. .app-header's flex-wrap keeps it from overflowing on phones; the
+   label collapses to just the icon on very narrow widths. */
+.app-header__wiki {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.app-header__wiki:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: color-mix(in srgb, var(--accent, #ffbb00) 60%, transparent);
+}
+
+.app-header__wiki-icon {
+  font-size: 1rem;
+}
+
+@media (max-width: 560px) {
+  .app-header__wiki-label {
+    display: none;
+  }
+}
+
 .app-header__brand:hover {
   transform: translateY(-1px);
   border-color: rgba(255, 255, 255, 0.08);

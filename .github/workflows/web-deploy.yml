@@ -35,6 +35,21 @@ jobs:
       - name: Build web bundle
         run: npm run build --workspace @arduconfig/web
 
+      # Build the Sphinx wiki into the bundle at /wiki so it ships with the app
+      # on the same origin — the header "Wiki" button links to /wiki/. Cloudflare
+      # Pages serves these static files directly; the SPA catch-all only applies
+      # to paths with no matching file, so /wiki/* is unaffected.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build wiki into the bundle
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r wiki/requirements.txt
+          sphinx-build -b html wiki apps/web/dist/wiki
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

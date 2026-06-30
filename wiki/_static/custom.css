@@ -1,0 +1,4 @@
+/* Minor ArduConfigurator brand tweaks on top of the Read-the-Docs theme.
+   Keep this light — the goal is to match the ArduPilot wiki's familiar look. */
+.wy-side-nav-search { background-color: #1f2a37; }
+.wy-nav-top { background-color: #1f2a37; }

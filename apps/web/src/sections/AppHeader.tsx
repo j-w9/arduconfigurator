@@ -22,6 +22,10 @@ import {
   type TransportMode
 } from '../hooks/use-transport-selection'
 
+// The wiki is served at arduconfigurator.com/wiki (same-origin subpath). Kept
+// behind a single constant so it's trivial to repoint; opens in a new tab.
+const WIKI_URL = '/wiki/'
+
 export interface HeaderSensorItem {
   id: string
   label: string
@@ -129,6 +133,18 @@ export function AppHeader({
           </small>
         </span>
       </button>
+
+      <a
+        className="app-header__wiki"
+        data-testid="header-wiki-link"
+        href={WIKI_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open the ArduConfigurator wiki (opens in a new tab)"
+      >
+        <span className="app-header__wiki-icon" aria-hidden="true">📖</span>
+        <span className="app-header__wiki-label">Wiki</span>
+      </a>
 
       <div className="app-header__connection" data-testid="header-session-strip">
         <select
