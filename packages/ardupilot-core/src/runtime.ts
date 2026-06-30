@@ -1208,6 +1208,23 @@ export class ArduPilotConfiguratorRuntime {
     })
   }
 
+  /**
+   * Put the RC receiver into bind/pair mode (MAV_CMD_START_RX_PAIR). ArduPilot
+   * routes this to the active RC protocol's bind: CRSF/ExpressLRS sends the CRSF
+   * bind command frame to the receiver, Spektrum pulses the satellite bind. The
+   * command params are ignored for CRSF. Fire-and-forget — the autopilot does
+   * not report whether the RX actually completed binding, so the operator
+   * confirms via the receiver LED / their transmitter.
+   */
+  async startReceiverBind(): Promise<void> {
+    await this.sendCommand(MAV_CMD.START_RX_PAIR, [0, 0, 0, 0, 0, 0, 0])
+    this.appendStatusEntry(
+      'info',
+      'Receiver bind requested (MAV_CMD_START_RX_PAIR) — put the receiver/transmitter into bind mode.'
+    )
+    this.emit()
+  }
+
   /** Start CompassMot (compass/motor interference) calibration via
    *  MAV_CMD_PREFLIGHT_CALIBRATION param6=1. The vehicle must be disarmed,
    *  restrained, and have its props removed — running it spins the motors.

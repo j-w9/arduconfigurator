@@ -287,6 +287,24 @@ test('batch writes roll back earlier changes when a later write fails to SEND (l
   }
 })
 
+test('startReceiverBind sends MAV_CMD_START_RX_PAIR (500) so ArduPilot binds the ELRS/CRSF RX', async () => {
+  const sent = []
+  const runtime = new ArduPilotConfiguratorRuntime(
+    createEchoSession({}, () => false, () => false, (message) => sent.push(message)),
+    arducopterMetadata
+  )
+
+  try {
+    await runtime.connect()
+    await runtime.startReceiverBind()
+    const bindCommand = sent.find((message) => message.type === 'COMMAND_LONG' && message.command === 500)
+    assert.ok(bindCommand, 'a COMMAND_LONG with command 500 (MAV_CMD_START_RX_PAIR) was sent')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
 test('batch writes report progress once per request (drives the "Writing… (N/M)" label)', async () => {
   const runtime = new ArduPilotConfiguratorRuntime(
     createEchoSession({ FLTMODE1: 0, FLTMODE2: 1, FLTMODE3: 2 }, () => false),

@@ -2785,6 +2785,28 @@ export function App() {
     }
   }
 
+  // Bind the RC receiver (ELRS/CRSF). Sends MAV_CMD_START_RX_PAIR; ArduPilot
+  // forwards the bind command to the active RC protocol's receiver. Fire-and-
+  // forget — the FC doesn't report RX-side bind completion, so we just confirm
+  // the request and tell the operator to put their transmitter in bind mode.
+  async function handleBindReceiver(): Promise<void> {
+    if (!runtime) {
+      return
+    }
+    try {
+      await runtime.startReceiverBind()
+      setSessionNotice({
+        tone: 'neutral',
+        text: 'Receiver bind requested — put your ELRS/CRSF transmitter or module into bind mode; the receiver LED confirms when it pairs.'
+      })
+    } catch (error) {
+      setSessionNotice({
+        tone: 'danger',
+        text: error instanceof Error ? error.message : 'Failed to send the receiver bind command.'
+      })
+    }
+  }
+
   async function handleApplyAllParameterDrafts(): Promise<void> {
     if (!canApplyAllDraftParameters) {
       return
@@ -6344,6 +6366,7 @@ export function App() {
           snapshot={snapshot}
           canApplyDraftParameters={canApplyDraftParameters}
           busyAction={busyAction}
+          onBindReceiver={() => void handleBindReceiver()}
           editedValues={editedValues}
           parameterDraftById={parameterDraftById}
           rcExercises={rcExercises}

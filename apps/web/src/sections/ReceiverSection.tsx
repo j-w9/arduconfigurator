@@ -119,6 +119,8 @@ export interface ReceiverSectionProps {
   snapshot: ConfiguratorSnapshot
   canApplyDraftParameters: boolean
   busyAction: string | undefined
+  /** Send MAV_CMD_START_RX_PAIR to bind the RC receiver (ELRS/CRSF). */
+  onBindReceiver: () => void
   editedValues: Record<string, string>
   parameterDraftById: ReadonlyMap<string, ParameterDraftEntry>
   rcExercises: ReturnType<typeof useRcExercises>
@@ -140,6 +142,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     snapshot,
     canApplyDraftParameters,
     busyAction,
+    onBindReceiver,
     editedValues,
     parameterDraftById,
     rcExercises,
@@ -249,6 +252,23 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
           activeTaskId={activeReceiverTaskId}
           activeTask={activeReceiverTask}
           onSelectTask={setReceiverTaskOverride}
+          bindActionSlot={
+            <div className="receiver-bind-action" data-testid="receiver-bind-action">
+              <button
+                type="button"
+                data-testid="receiver-bind-button"
+                style={buttonStyle('primary')}
+                disabled={snapshot.connection.kind !== 'connected' || busyAction !== undefined}
+                onClick={onBindReceiver}
+              >
+                Bind Receiver (ELRS / CRSF)
+              </button>
+              <small>
+                Tells ArduPilot to send the bind command to the RC receiver (MAV_CMD_START_RX_PAIR).
+                Put your transmitter / ELRS module into bind mode too; the receiver LED confirms pairing.
+              </small>
+            </div>
+          }
           liveMonitorSlot={
                 <div className="receiver-monitor__sticky">
                   <div className="telemetry-header">

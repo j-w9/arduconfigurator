@@ -21,14 +21,17 @@ export interface ReceiverViewProps {
   liveMonitorSlot: ReactNode
   taskBodySlot: ReactNode
   helpDockSlot?: ReactNode
+  /** Top-of-panel action (e.g. the ELRS/CRSF receiver bind button). */
+  bindActionSlot?: ReactNode
 }
 
 export function ReceiverView(props: ReceiverViewProps) {
-  const { taskCards, activeTaskId, onSelectTask, liveMonitorSlot, taskBodySlot, helpDockSlot } = props
+  const { taskCards, activeTaskId, onSelectTask, liveMonitorSlot, taskBodySlot, helpDockSlot, bindActionSlot } = props
 
   return (
     <div id="setup-panel-rc">
       <Panel title="Receiver">
+        {bindActionSlot}
         <div className="telemetry-stack telemetry-stack--receiver">
           <div className="receiver-workspace receiver-workspace--task-deck">
             <div className="receiver-workspace__live receiver-monitor">{liveMonitorSlot}</div>
