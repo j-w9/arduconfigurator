@@ -339,6 +339,7 @@ import {
 } from './hooks/use-parameter-feedback'
 import { useLibraryForms } from './hooks/use-library-forms'
 import { readParameterValue, readRoundedParameter, selectParameterById } from './selectors/parameter-read'
+import { useLatchedRcDirections } from './hooks/use-latched-rc-directions'
 import {
   buildCanNodePeripheralViewModels,
   buildGpsPeripheralViewModels,
@@ -971,6 +972,22 @@ export function App() {
   const escSetup = useMemo(() => deriveEscSetupSummary(snapshot), [snapshot])
   const currentRcAxisChannelMap = useMemo(() => deriveRcAxisChannelMap(snapshot), [snapshot])
   const rcAxisObservations = useMemo(() => deriveRcAxisObservations(snapshot), [snapshot])
+  // RC channel-direction verdicts live here (not in ReceiverSection) so both the
+  // Endpoints direction card and the guided-setup radio gate read the same
+  // latched per-axis result.
+  const rcDirectionInputs = useMemo(
+    () =>
+      rcAxisObservations.map((observation) => ({
+        axisId: observation.axisId,
+        pwm: observation.pwm,
+        trim: observation.calibratedTrim,
+        min: observation.calibratedMin,
+        max: observation.calibratedMax,
+        reversed: (readParameterValue(snapshot, `RC${observation.channelNumber}_REVERSED`) ?? 0) !== 0
+      })),
+    [rcAxisObservations, snapshot]
+  )
+  const { results: rcDirectionResults } = useLatchedRcDirections(rcDirectionInputs)
   const receiverChannelDisplays = useReceiverChannelDisplays({
     snapshot,
     rcChannelDisplays,
@@ -4254,6 +4271,7 @@ export function App() {
     () =>
       buildSetupFlowSections({
         snapshot,
+        rcDirectionResults,
         airframe,
         outputMapping,
         configuredOutputs,
@@ -4329,6 +4347,7 @@ export function App() {
     rcRangeExercise.status,
     rcRangeExerciseSummary,
     rcAxisObservations,
+    rcDirectionResults,
     setupConfirmations,
     setupFlowFollowUp,
     snapshot,
@@ -6367,6 +6386,7 @@ export function App() {
           canApplyDraftParameters={canApplyDraftParameters}
           busyAction={busyAction}
           onBindReceiver={() => void handleBindReceiver()}
+          rcDirectionResults={rcDirectionResults}
           editedValues={editedValues}
           parameterDraftById={parameterDraftById}
           rcExercises={rcExercises}

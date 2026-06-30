@@ -11,9 +11,8 @@
 // identifier needs renaming. Scalar derivations, edit plumbing, and handler
 // bodies stay in App.tsx and are threaded through here.
 
-import { useMemo } from 'react'
 import type { ReactElement, ReactNode } from 'react'
-import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
+import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterState, RcAxisId } from '@arduconfig/ardupilot-core'
 import {
   deriveAirframe,
   deriveModeAssignments,
@@ -42,8 +41,7 @@ import { formatParameterValue } from '../parameter-format'
 import { formatModeAssignment, modeSlotParamId } from '../modes-failsafe-helpers'
 import { RcChannelBars } from '../rc-channel-bars'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
-import { useLatchedRcDirections } from '../hooks/use-latched-rc-directions'
-import { RC_DIRECTION_PROMPTS } from '../view-models/receiver-direction-check'
+import { RC_DIRECTION_PROMPTS, type RcDirectionResult } from '../view-models/receiver-direction-check'
 import { RC_CALIBRATION_AXIS_ORDER, RC_CALIBRATION_SWITCH_CHANNELS, rcCalibrationCaptureComplete } from '../setup-exercise-helpers'
 import { StickCraftPreview } from '../preview-components'
 import { formatRxRssi } from '../status-formatters'
@@ -124,6 +122,9 @@ export interface ReceiverSectionProps {
   busyAction: string | undefined
   /** Send MAV_CMD_START_RX_PAIR to bind the RC receiver (ELRS/CRSF). */
   onBindReceiver: () => void
+  /** Latched per-axis channel-direction verdicts (computed in App so the
+   *  Endpoints card and the guided-setup radio gate share one result). */
+  rcDirectionResults: Record<RcAxisId, RcDirectionResult>
   editedValues: Record<string, string>
   parameterDraftById: ReadonlyMap<string, ParameterDraftEntry>
   rcExercises: ReturnType<typeof useRcExercises>
@@ -146,6 +147,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     canApplyDraftParameters,
     busyAction,
     onBindReceiver,
+    rcDirectionResults,
     editedValues,
     parameterDraftById,
     rcExercises,
@@ -232,24 +234,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     receiverAdvancedInvalidCount,
     receiverHasPendingReview
   } = derived
-
-  // Direction check (Endpoints): feed the live per-axis samples — pwm + the
-  // calibrated trim/min/max + the channel's current RCn_REVERSED — into the
-  // shared latching detector so each axis keeps its correct/backwards verdict
-  // after the stick re-centres.
-  const rcDirectionInputs = useMemo(
-    () =>
-      rcAxisObservations.map((observation) => ({
-        axisId: observation.axisId,
-        pwm: observation.pwm,
-        trim: observation.calibratedTrim,
-        min: observation.calibratedMin,
-        max: observation.calibratedMax,
-        reversed: (selectParameterById(snapshot, `RC${observation.channelNumber}_REVERSED`)?.value ?? 0) !== 0
-      })),
-    [rcAxisObservations, snapshot]
-  )
-  const { results: rcDirectionResults } = useLatchedRcDirections(rcDirectionInputs)
 
   const {
     handleStartRcMappingExercise,

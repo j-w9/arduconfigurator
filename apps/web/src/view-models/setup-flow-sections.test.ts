@@ -40,6 +40,7 @@ function inputs(sections: SectionMeta[], over: Partial<SetupFlowSectionsInputs> 
     rcCalibrationSession: idle as unknown as SetupFlowSectionsInputs['rcCalibrationSession'],
     rcMappingSession: { status: 'idle', captures: {} } as unknown as SetupFlowSectionsInputs['rcMappingSession'],
     rcRangeExercise: idle as unknown as SetupFlowSectionsInputs['rcRangeExercise'],
+    rcDirectionResults: { roll: 'idle', pitch: 'idle', throttle: 'idle', yaw: 'idle' },
     parameterFollowUp: undefined,
     setupFlowFollowUp: undefined,
     setupConfirmations: {},
@@ -172,5 +173,23 @@ describe('radio section RCIN preflight', () => {
   it('does not point at Ports once live RC telemetry is present', () => {
     const sections = buildSetupFlowSections(radioInputs({ rcVerified: true }))
     expect(portsAction(sections)).toBeUndefined()
+  })
+
+  it('gates the radio step on channel directions — unmet until every axis reads correct', () => {
+    const directionMet = (rcDirectionResults: SetupFlowSectionsInputs['rcDirectionResults']) => {
+      const sections = buildSetupFlowSections(
+        inputs(RADIO, {
+          rcDirectionResults,
+          snapshot: snapshot(RADIO, { liveVerification: { rcInput: { verified: true, channelCount: 8 } } })
+        })
+      )
+      return sections[0].criteria.find((criterion) => criterion.label.includes('directions verified'))?.met
+    }
+    // Any axis reading backwards blocks the gate.
+    expect(directionMet({ roll: 'correct', pitch: 'reversed', throttle: 'correct', yaw: 'correct' })).toBe(false)
+    // An unchecked (idle) axis also blocks — every axis must be verified.
+    expect(directionMet({ roll: 'correct', pitch: 'idle', throttle: 'correct', yaw: 'correct' })).toBe(false)
+    // All four correct → the gate is satisfied.
+    expect(directionMet({ roll: 'correct', pitch: 'correct', throttle: 'correct', yaw: 'correct' })).toBe(true)
   })
 })

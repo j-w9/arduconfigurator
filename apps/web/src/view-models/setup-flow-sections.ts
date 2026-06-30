@@ -20,6 +20,7 @@ import type {
   ConfiguratorSnapshot,
   ModeAssignment,
   ModeSwitchEstimate,
+  RcAxisId,
   RcRangeExerciseState
 } from '@arduconfig/ardupilot-core'
 import { formatArducopterBatteryFailsafeAction, formatArducopterThrottleFailsafe } from '@arduconfig/param-metadata'
@@ -37,6 +38,7 @@ import type {
   SetupSectionOutcome
 } from '../app-types'
 import type { ParameterFollowUp } from '../hooks/use-parameter-feedback'
+import type { RcDirectionResult } from './receiver-direction-check'
 import { canRunGuidedAction, deriveCompassStepSkipReason, guidedActionButtonLabel } from '../guided-action-helpers'
 import { readRoundedParameter } from '../selectors/parameter-read'
 import { isReceiverSerialProtocol } from '../serial-port-helpers'
@@ -66,6 +68,7 @@ export interface SetupFlowSectionsInputs {
   rcCalibrationSession: RcCalibrationSessionState
   rcMappingSession: RcMappingSessionState
   rcRangeExercise: RcRangeExerciseState
+  rcDirectionResults: Record<RcAxisId, RcDirectionResult>
   parameterFollowUp: ParameterFollowUp | undefined
   setupFlowFollowUp: SetupFlowFollowUpDescriptor | undefined
   setupConfirmations: Record<string, SetupConfirmationRecord>
@@ -104,6 +107,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
     rcCalibrationSession,
     rcMappingSession,
     rcRangeExercise,
+    rcDirectionResults,
     parameterFollowUp,
     setupFlowFollowUp,
     setupConfirmations,
@@ -707,6 +711,12 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             {
               label: 'RC endpoint capture completed',
               met: rcCalibrationSession.status === 'ready'
+            },
+            {
+              label: 'RC channel directions verified — no axis reads backwards',
+              met: (['roll', 'pitch', 'throttle', 'yaw'] as const).every(
+                (axis) => rcDirectionResults[axis] === 'correct'
+              )
             },
             {
               label: 'Operator reviewed RC mapping and calibration values',
