@@ -299,6 +299,7 @@ test('startReceiverBind sends MAV_CMD_START_RX_PAIR (500) so ArduPilot binds the
     await runtime.startReceiverBind()
     const bindCommand = sent.find((message) => message.type === 'COMMAND_LONG' && message.command === 500)
     assert.ok(bindCommand, 'a COMMAND_LONG with command 500 (MAV_CMD_START_RX_PAIR) was sent')
+    assert.equal(bindCommand.params[0], 1, 'param1 is RC_TYPE_CRSF (1) per the MAVLink spec')
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()

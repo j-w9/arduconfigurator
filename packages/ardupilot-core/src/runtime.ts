@@ -1210,14 +1210,18 @@ export class ArduPilotConfiguratorRuntime {
 
   /**
    * Put the RC receiver into bind/pair mode (MAV_CMD_START_RX_PAIR). ArduPilot
-   * routes this to the active RC protocol's bind: CRSF/ExpressLRS sends the CRSF
-   * bind command frame to the receiver, Spektrum pulses the satellite bind. The
-   * command params are ignored for CRSF. Fire-and-forget — the autopilot does
-   * not report whether the RX actually completed binding, so the operator
-   * confirms via the receiver LED / their transmitter.
+   * routes this to the active RC protocol's bind: CRSF/ExpressLRS emits the CRSF
+   * "RX bind" command frame to the receiver, Spektrum pulses the satellite bind.
+   * param1 is the RC_TYPE (1 = CRSF) per the MAVLink spec — ArduPilot ignores it
+   * (it binds every enabled backend), but setting it keeps us spec-correct and
+   * portable. Fire-and-forget — the autopilot returns ACCEPTED unconditionally
+   * and does not report whether the RX actually entered bind mode, so the
+   * operator confirms via the receiver LED / their transmitter. Note: ELRS
+   * receivers with a bind phrase set ignore this command.
    */
   async startReceiverBind(): Promise<void> {
-    await this.sendCommand(MAV_CMD.START_RX_PAIR, [0, 0, 0, 0, 0, 0, 0])
+    // param1 = RC_TYPE_CRSF (1); remaining params unused for CRSF/ELRS.
+    await this.sendCommand(MAV_CMD.START_RX_PAIR, [1, 0, 0, 0, 0, 0, 0])
     this.appendStatusEntry(
       'info',
       'Receiver bind requested (MAV_CMD_START_RX_PAIR) — put the receiver/transmitter into bind mode.'

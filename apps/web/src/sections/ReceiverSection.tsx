@@ -381,6 +381,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                       <span className="receiver-info-tip" role="tooltip">
                         Tells ArduPilot to send the bind command to the receiver (MAV_CMD_START_RX_PAIR).
                         Put your transmitter / ELRS module into bind mode too; the receiver LED confirms pairing.
+                        ELRS receivers with a bind phrase set ignore this — bind by phrase or power-cycle instead.
                       </span>
                     </span>
                   </div>
