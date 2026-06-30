@@ -1072,7 +1072,7 @@ test.describe('Config view', () => {
     await expect(page.getByTestId('workspace-note-reboot')).toBeVisible()
   })
 
-  test('the Parameters view surfaces an inline Request Reboot button after a reboot-required write', async ({ page }) => {
+  test('a reboot-required write surfaces a prominent Request Reboot button without scrolling', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -1084,13 +1084,16 @@ test.describe('Config view', () => {
     await page.getByTestId('esc-enable-bdshot').click()
     await page.getByRole('button', { name: /Apply Config/ }).click()
 
-    // The Parameters view's reboot follow-up now carries an inline Request Reboot
-    // button, so a reboot-required change can be completed without scrolling back
-    // up to the header session strip.
+    // The fixed bottom action bar — the same spot Write all just occupied —
+    // becomes a prominent reboot prompt on whatever view the operator is on
+    // (here: still Config), so AP's reboot demand can't be missed.
+    const stickyReboot = page.getByTestId('global-draft-reboot')
+    await expect(stickyReboot).toBeVisible()
+    await expect(stickyReboot).toHaveText(/Request Reboot/)
+
+    // The Parameters view's inline follow-up also carries a Request Reboot button.
     await page.getByTestId('view-button-parameters').click()
-    const rebootButton = page.getByTestId('parameter-follow-up-reboot')
-    await expect(rebootButton).toBeVisible()
-    await expect(rebootButton).toHaveText(/Request Reboot/)
+    await expect(page.getByTestId('parameter-follow-up-reboot')).toBeVisible()
   })
 
   test('selecting a DShot MOT_PWM_TYPE auto-enables bidirectional DShot', async ({ page }) => {

@@ -1011,6 +1011,15 @@ textarea:focus {
   max-width: calc(100vw - 32px);
 }
 
+/* Reboot mode — the write is done and the FC needs a restart. Bump the accent
+   so the pill reads as "action needed", since the reboot is now the only
+   control and a new operator must not miss it. */
+.parameter-draft-bar--reboot {
+  background: color-mix(in srgb, var(--accent, #ffbb00) 36%, var(--surface-200));
+  border-color: color-mix(in srgb, var(--accent, #ffbb00) 72%, transparent);
+  padding: 8px 14px;
+}
+
 .parameter-draft-bar__summary {
   display: flex;
   flex-wrap: wrap;

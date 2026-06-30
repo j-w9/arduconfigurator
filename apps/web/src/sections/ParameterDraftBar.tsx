@@ -18,9 +18,14 @@ export interface ParameterDraftBarProps {
   busyAction: string | undefined
   canApplyAllDraftParameters: boolean
   applyAllBusyLabel: string
+  /** True when a completed write left the FC needing a reboot and nothing is
+   *  staged — the bar becomes a prominent reboot prompt in place of the write
+   *  controls, so the operator never has to scroll to find the reboot button. */
+  rebootPending: boolean
   onShowChanges: () => void
   onWriteAll: () => void
   onDiscard: () => void
+  onRequestReboot: () => void
 }
 
 export function ParameterDraftBar({
@@ -28,10 +33,37 @@ export function ParameterDraftBar({
   busyAction,
   canApplyAllDraftParameters,
   applyAllBusyLabel,
+  rebootPending,
   onShowChanges,
   onWriteAll,
-  onDiscard
+  onDiscard,
+  onRequestReboot
 }: ParameterDraftBarProps) {
+  // Reboot mode: the write is done and nothing is staged, but the FC needs a
+  // reboot to apply it. ArduPilot asks for a reboot constantly and new operators
+  // don't expect it, so the reboot becomes the bar's single prominent action —
+  // in the same always-on-screen spot the Write-all button just occupied.
+  if (rebootPending && summary.stagedCount === 0 && summary.invalidCount === 0) {
+    return (
+      <div className="parameter-draft-bar parameter-draft-bar--reboot" data-testid="global-draft-bar">
+        <div className="parameter-draft-bar__summary">
+          <strong data-testid="global-reboot-required">Reboot required</strong>
+          <small>Reboot the flight controller to apply the change(s) you just wrote.</small>
+        </div>
+        <div className="parameter-draft-bar__actions">
+          <button
+            type="button"
+            data-testid="global-draft-reboot"
+            style={buttonStyle('primary')}
+            onClick={onRequestReboot}
+            disabled={busyAction !== undefined}
+          >
+            {busyAction === 'reboot-autopilot' ? 'Rebooting…' : 'Request Reboot'}
+          </button>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="parameter-draft-bar" data-testid="global-draft-bar">
       <div className="parameter-draft-bar__summary">

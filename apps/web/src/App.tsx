@@ -5314,15 +5314,19 @@ export function App() {
           offers one place to review (Show changes -> Parameters) and write the
           whole set (Write all), or discard. Hidden when nothing is staged. */}
       {snapshot.connection.kind === 'connected' &&
-      (parameterDraftSummary.stagedCount > 0 || parameterDraftSummary.invalidCount > 0) ? (
+      (parameterDraftSummary.stagedCount > 0 ||
+        parameterDraftSummary.invalidCount > 0 ||
+        Boolean(parameterFollowUp?.requiresReboot)) ? (
         <ParameterDraftBar
           summary={parameterDraftSummary}
           busyAction={busyAction}
           canApplyAllDraftParameters={canApplyAllDraftParameters}
           applyAllBusyLabel={applyAllBusyLabel}
+          rebootPending={Boolean(parameterFollowUp?.requiresReboot)}
           onShowChanges={() => setActiveViewId('parameters')}
           onWriteAll={() => void handleApplyAllParameterDrafts()}
           onDiscard={clearAllDrafts}
+          onRequestReboot={() => void handleGuidedAction('reboot-autopilot')}
         />
       ) : null}
 
