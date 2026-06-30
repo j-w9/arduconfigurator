@@ -1850,6 +1850,7 @@ export function App() {
   // Live MAVLink inspector stats — only subscribed while its tab is active.
   const {
     stats: mavlinkInspectorStats,
+    sentStats: mavlinkInspectorSentStats,
     sourceHealth: mavlinkInspectorSourceHealth,
     clear: clearMavlinkInspector,
     paused: mavlinkInspectorPaused,
@@ -7091,6 +7092,7 @@ export function App() {
       {activeViewId === 'mavlink-inspector' ? (
         <MavlinkInspectorView
           stats={mavlinkInspectorStats}
+          sentStats={mavlinkInspectorSentStats}
           connected={snapshot.connection.kind === 'connected'}
           paused={mavlinkInspectorPaused}
           onTogglePause={() => setMavlinkInspectorPaused(!mavlinkInspectorPaused)}

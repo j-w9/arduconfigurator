@@ -50,6 +50,8 @@ export interface MavlinkMessageRequestOutcome {
 
 export interface MavlinkInspectorViewProps {
   stats: readonly MavlinkMessageStat[]
+  /** Per-type stats for what this app SENT (outbound), shown as a separate section. */
+  sentStats?: readonly MavlinkMessageStat[]
   connected: boolean
   paused: boolean
   onTogglePause: () => void
@@ -432,6 +434,7 @@ function MavlinkPlotChart({
 
 export function MavlinkInspectorView({
   stats,
+  sentStats = [],
   connected,
   paused,
   onTogglePause,
@@ -719,6 +722,37 @@ export function MavlinkInspectorView({
               })}
             </div>
           )}
+
+          {sentStats.length > 0 ? (
+            <div className="mavlink-inspector__sent" data-testid="mavlink-inspector-sent">
+              <div className="mavlink-inspector__sent-head">
+                <span className="mavlink-inspector__sent-title">Sent (outbound)</span>
+                <span className="mavlink-inspector__sent-meta">
+                  {sentStats.length} message type(s) this app has sent
+                </span>
+              </div>
+              <div className="mavlink-inspector__sent-row mavlink-inspector__sent-row--head">
+                <span>Message</span>
+                <span>Rate</span>
+                <span>Count</span>
+                <span>Last sent</span>
+              </div>
+              {[...sentStats]
+                .sort((left, right) => right.count - left.count)
+                .map((stat) => (
+                  <div
+                    key={stat.key}
+                    className="mavlink-inspector__sent-row"
+                    data-testid={`mavlink-sent-row-${stat.type}`}
+                  >
+                    <span className="mavlink-inspector__type">{stat.type}</span>
+                    <span>{stat.rateHz >= 0.05 ? `${stat.rateHz.toFixed(1)} Hz` : '—'}</span>
+                    <span>{stat.count}</span>
+                    <span className="mavlink-inspector__last">{ageLabel(stat.lastSeenMs)}</span>
+                  </div>
+                ))}
+            </div>
+          ) : null}
         </div>
       </Panel>
     </section>

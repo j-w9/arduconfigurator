@@ -2693,6 +2693,24 @@ test.describe('Inspectors (expert-only)', () => {
     expect(capture.suggestedFilename()).toMatch(/^mavlink-recording-.*\.json$/)
   })
 
+  test('MAVLink inspector shows a separate Sent section for outbound messages', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+
+    await page.getByTestId('view-button-mavlink-inspector').click()
+    await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
+
+    // The Sent section only appears once the app transmits something while the
+    // inspector is open — trigger an outbound message via the request control.
+    await page.getByTestId('mavlink-request-once').click()
+
+    const sent = page.getByTestId('mavlink-inspector-sent')
+    await expect(sent).toBeVisible({ timeout: 5000 })
+    await expect(sent).toContainText('Sent (outbound)')
+  })
+
   test('MAVLink inspector exports a live plot as CSV', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')

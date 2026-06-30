@@ -41,6 +41,7 @@ const DEFAULT_GCS_HEARTBEAT_INTERVAL_MS = 1000
 
 export class MavlinkSession {
   private readonly messageListeners = new Set<MessageListener>()
+  private readonly sentMessageListeners = new Set<MessageListener>()
   private readonly statusListeners = new Set<StatusListener>()
   private readonly transportSubscriptions: Unsubscribe[]
   private sequence = 0
@@ -134,6 +135,13 @@ export class MavlinkSession {
 
     const frame = this.codec.encode(envelope)
     this.options.onOutboundFrame?.(frame, Date.now())
+    // Fan the outbound message out to sent-message subscribers (e.g. the MAVLink
+    // inspector's "Sent" view). Same envelope shape as inbound, with byteLength
+    // set from the encoded frame so bandwidth accounting works symmetrically.
+    if (this.sentMessageListeners.size > 0) {
+      const sentEnvelope: MavlinkEnvelope = { ...envelope, byteLength: frame.length }
+      this.sentMessageListeners.forEach((listener) => listener(sentEnvelope))
+    }
     await this.transport.send(frame)
   }
 
@@ -141,6 +149,14 @@ export class MavlinkSession {
     this.messageListeners.add(listener)
     return () => {
       this.messageListeners.delete(listener)
+    }
+  }
+
+  /** Subscribe to messages this session SENDS (outbound). Mirrors onMessage. */
+  onSentMessage(listener: MessageListener): Unsubscribe {
+    this.sentMessageListeners.add(listener)
+    return () => {
+      this.sentMessageListeners.delete(listener)
     }
   }
 

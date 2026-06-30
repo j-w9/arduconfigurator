@@ -12835,6 +12835,40 @@ details.bf-gui-box:not([open]) > summary::after {
   border-radius: var(--radius-md);
   overflow: hidden;
 }
+
+/* "Sent (outbound)" section — what the configurator transmits, tallied per type. */
+.mavlink-inspector__sent {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--surface-300);
+}
+.mavlink-inspector__sent-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 6px;
+}
+.mavlink-inspector__sent-title {
+  font-weight: 600;
+}
+.mavlink-inspector__sent-meta {
+  opacity: 0.65;
+  font-size: 0.85em;
+}
+.mavlink-inspector__sent-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 12px;
+  padding: 4px 8px;
+  align-items: center;
+}
+.mavlink-inspector__sent-row--head {
+  opacity: 0.55;
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .mavlink-inspector__row {
   display: grid;
   grid-template-columns: 1.8fr 0.9fr 1fr 1.1fr 0.8fr 0.9fr;

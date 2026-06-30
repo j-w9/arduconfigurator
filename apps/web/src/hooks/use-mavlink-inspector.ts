@@ -96,6 +96,8 @@ interface SourceAccumulator extends SourceSeqAccounting {
 
 export interface MavlinkInspectorState {
   stats: MavlinkMessageStat[]
+  /** Per-type stats for the messages this app SENDS (outbound), shown separately. */
+  sentStats: MavlinkMessageStat[]
   /** Per-source link health (packet loss), keyed by `${systemId}:${componentId}`. */
   sourceHealth: MavlinkSourceHealth[]
   clear: () => void
@@ -127,8 +129,11 @@ export function useMavlinkInspector(
   active: boolean
 ): MavlinkInspectorState {
   const accumulators = useRef(new Map<string, Accumulator>())
+  const sentAccumulators = useRef(new Map<string, Accumulator>())
   const sources = useRef(new Map<string, SourceAccumulator>())
   const [stats, setStats] = useState<MavlinkMessageStat[]>([])
+  const [sentStats, setSentStats] = useState<MavlinkMessageStat[]>([])
+  const sentStatsRef = useRef<MavlinkMessageStat[]>([])
   const [sourceHealth, setSourceHealth] = useState<MavlinkSourceHealth[]>([])
   const [paused, setPaused] = useState(false)
   const pausedRef = useRef(paused)
@@ -259,6 +264,42 @@ export function useMavlinkInspector(
       }
     })
 
+    // Outbound stream: what this app sends to the vehicle. Tallied per message
+    // type (all from us, so no per-source grouping or loss accounting) into a
+    // separate accumulator, surfaced as its own "Sent" section.
+    const unsubscribeSent = runtime.onSentMessage((envelope) => {
+      const message = envelope.message as unknown as Record<string, unknown> & { type?: string }
+      const type = typeof message.type === 'string' ? message.type : 'UNKNOWN'
+      const bytes = typeof envelope.byteLength === 'number' ? envelope.byteLength : 0
+      const now = Date.now()
+      const entry =
+        sentAccumulators.current.get(type) ??
+        {
+          systemId: envelope.header.systemId,
+          componentId: envelope.header.componentId,
+          type,
+          count: 0,
+          totalBytes: 0,
+          arrivalsMs: [],
+          arrivalBytes: [],
+          lastSeenMs: 0,
+          lastMessage: {},
+          rateHistory: []
+        }
+      entry.count += 1
+      entry.totalBytes += bytes
+      entry.lastSeenMs = now
+      entry.lastMessage = message
+      entry.arrivalsMs.push(now)
+      entry.arrivalBytes.push(bytes)
+      const cutoff = now - RATE_WINDOW_MS
+      while (entry.arrivalsMs.length > 0 && entry.arrivalsMs[0] < cutoff) {
+        entry.arrivalsMs.shift()
+        entry.arrivalBytes.shift()
+      }
+      sentAccumulators.current.set(type, entry)
+    })
+
     const flush = (): void => {
       // Recording is independent of the (pausable) live table — refresh its
       // count/capped badge first so a paused operator still sees it growing.
@@ -306,6 +347,38 @@ export function useMavlinkInspector(
       setStats(next)
       statsRef.current = next
 
+      const sentNext: MavlinkMessageStat[] = []
+      for (const [key, entry] of sentAccumulators.current) {
+        let recent = 0
+        let recentBytes = 0
+        for (let index = 0; index < entry.arrivalsMs.length; index += 1) {
+          if (entry.arrivalsMs[index] >= cutoff) {
+            recent += 1
+            recentBytes += entry.arrivalBytes[index] ?? 0
+          }
+        }
+        const rateHz = recent / windowSeconds
+        entry.rateHistory.push(rateHz)
+        if (entry.rateHistory.length > HISTORY_SAMPLES) {
+          entry.rateHistory.shift()
+        }
+        sentNext.push({
+          key,
+          systemId: entry.systemId,
+          componentId: entry.componentId,
+          type: entry.type,
+          count: entry.count,
+          rateHz,
+          bytesPerSec: recentBytes / windowSeconds,
+          totalBytes: entry.totalBytes,
+          lastSeenMs: entry.lastSeenMs,
+          lastMessage: entry.lastMessage,
+          rateHistory: [...entry.rateHistory]
+        })
+      }
+      setSentStats(sentNext)
+      sentStatsRef.current = sentNext
+
       const health: MavlinkSourceHealth[] = []
       for (const [id, source] of sources.current) {
         health.push({
@@ -327,14 +400,17 @@ export function useMavlinkInspector(
     const interval = setInterval(flush, FLUSH_INTERVAL_MS)
     return () => {
       unsubscribe()
+      unsubscribeSent()
       clearInterval(interval)
     }
   }, [runtime, active])
 
   const clear = (): void => {
     accumulators.current.clear()
+    sentAccumulators.current.clear()
     sources.current.clear()
     setStats([])
+    setSentStats([])
     setSourceHealth([])
   }
 
@@ -397,6 +473,7 @@ export function useMavlinkInspector(
 
   return {
     stats,
+    sentStats,
     sourceHealth,
     clear,
     paused,

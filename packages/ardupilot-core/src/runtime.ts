@@ -532,6 +532,15 @@ export class ArduPilotConfiguratorRuntime {
     }
   }
 
+  /**
+   * Subscribe to the MAVLink envelopes this runtime SENDS (outbound) — for the
+   * inspector's "Sent" view. Delegates straight to the session; the runtime
+   * keeps no sent-side state of its own.
+   */
+  onSentMessage(handler: (envelope: MavlinkEnvelope) => void): Unsubscribe {
+    return this.session.onSentMessage(handler)
+  }
+
   getSnapshot(): ConfiguratorSnapshot {
     const parameters = [...this.parameters.values()].sort((left, right) => left.id.localeCompare(right.id))
     const preArmStatus = this.buildPreArmStatus()
