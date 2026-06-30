@@ -11,6 +11,7 @@
 // identifier needs renaming. Scalar derivations, edit plumbing, and handler
 // bodies stay in App.tsx and are threaded through here.
 
+import { useEffect, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterState, RcAxisId } from '@arduconfig/ardupilot-core'
 import {
@@ -161,6 +162,18 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     derived,
     handlers
   } = props
+
+  // Brief visual confirmation that the bind command was sent — the action is
+  // fire-and-forget, so the button flips to the accent colour (and "Bind sent")
+  // for ~1.6s on click, then reverts.
+  const [bindFlash, setBindFlash] = useState(false)
+  useEffect(() => {
+    if (!bindFlash) {
+      return
+    }
+    const timer = setTimeout(() => setBindFlash(false), 1600)
+    return () => clearTimeout(timer)
+  }, [bindFlash])
 
   const { rcMappingSession, rcCalibrationSession } = rcExercises
 
@@ -370,11 +383,19 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                     <button
                       type="button"
                       data-testid="receiver-bind-button"
-                      style={buttonStyle()}
+                      style={{
+                        ...buttonStyle(),
+                        ...(bindFlash
+                          ? { background: 'var(--accent, #ffbb00)', borderColor: 'var(--accent, #ffbb00)', color: '#10151c' }
+                          : {})
+                      }}
                       disabled={snapshot.connection.kind !== 'connected' || busyAction !== undefined}
-                      onClick={onBindReceiver}
+                      onClick={() => {
+                        onBindReceiver()
+                        setBindFlash(true)
+                      }}
                     >
-                      Bind RX (ELRS / CRSF)
+                      {bindFlash ? 'Bind sent ✓' : 'Bind RX (ELRS / CRSF)'}
                     </button>
                     <span className="receiver-info-dot" aria-hidden="true">
                       i

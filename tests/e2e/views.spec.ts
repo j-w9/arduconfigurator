@@ -1248,6 +1248,8 @@ test.describe('Receiver bind', () => {
     // Fire-and-forget MAV_CMD_START_RX_PAIR; the session notice confirms the
     // request (button copy doesn't contain this phrase, so it's notice-specific).
     await bindButton.click()
+    // The button gives immediate click feedback (accent colour + "Bind sent").
+    await expect(bindButton).toHaveText(/Bind sent/)
     await expect(page.getByText(/Receiver bind requested/i)).toBeVisible()
   })
 })
