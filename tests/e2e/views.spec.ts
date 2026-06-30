@@ -1235,7 +1235,7 @@ test.describe('Config view', () => {
 })
 
 test.describe('Receiver bind', () => {
-  test('a bind button near the top sends the ELRS/CRSF receiver bind request', async ({ page }) => {
+  test('the bind button under the live monitor sends the ELRS/CRSF receiver bind request', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -1243,7 +1243,7 @@ test.describe('Receiver bind', () => {
 
     const bindButton = page.getByTestId('receiver-bind-button')
     await expect(bindButton).toBeVisible()
-    await expect(bindButton).toHaveText(/Bind Receiver/)
+    await expect(bindButton).toHaveText(/Bind RX/)
 
     // Fire-and-forget MAV_CMD_START_RX_PAIR; the session notice confirms the
     // request (button copy doesn't contain this phrase, so it's notice-specific).
