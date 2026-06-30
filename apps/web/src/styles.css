@@ -322,9 +322,9 @@ textarea:focus {
     box-shadow 140ms ease;
 }
 
-/* Wiki link in the header, next to the brand. Compact pill that opens the wiki
-   in a new tab. .app-header's flex-wrap keeps it from overflowing on phones; the
-   label collapses to just the icon on very narrow widths. */
+/* Wiki link in the header, next to the brand. Compact pill (icon + "Wiki"
+   label) that opens the wiki in a new tab. .app-header's flex-wrap keeps it from
+   overflowing on phones — it wraps to the next line instead. */
 .app-header__wiki {
   display: inline-flex;
   align-items: center;
@@ -352,12 +352,6 @@ textarea:focus {
 
 .app-header__wiki-icon {
   font-size: 1rem;
-}
-
-@media (max-width: 560px) {
-  .app-header__wiki-label {
-    display: none;
-  }
 }
 
 .app-header__brand:hover {
