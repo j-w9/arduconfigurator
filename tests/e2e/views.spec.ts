@@ -1252,6 +1252,27 @@ test.describe('Receiver bind', () => {
   })
 })
 
+test.describe('Receiver channel-direction check', () => {
+  test('lives under Endpoints (not Mapping) with a verdict row per primary axis', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await openView(page, 'receiver')
+
+    // The old manual reverse box is gone from Mapping.
+    await page.getByTestId('receiver-tab-mapping').click()
+    await expect(page.getByTestId('receiver-channel-direction')).toHaveCount(0)
+
+    // The guided direction check now lives in Endpoints, one row per axis.
+    await page.getByTestId('receiver-tab-endpoints').click()
+    await expect(page.getByTestId('receiver-direction-check')).toBeVisible()
+    for (const axis of ['roll', 'pitch', 'throttle', 'yaw']) {
+      await expect(page.getByTestId(`receiver-direction-${axis}`)).toBeVisible()
+      await expect(page.getByTestId(`receiver-direction-result-${axis}`)).toBeVisible()
+    }
+  })
+})
+
 test.describe('Receiver stick-driven craft', () => {
   test('centred sticks hold heading and sit level (no yaw spin)', async ({ page }) => {
     await page.goto('/')

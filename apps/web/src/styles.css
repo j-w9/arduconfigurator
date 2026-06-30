@@ -5561,6 +5561,63 @@ textarea:focus {
   margin-top: 12px;
 }
 
+/* Endpoints channel-direction check: one row per axis, flex-wrap so the verdict
+   and Reverse button drop below the prompt on narrow/phone widths (no overflow). */
+.rc-direction-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rc-direction-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rc-direction-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-200) 60%, transparent);
+}
+
+.rc-direction-row__axis {
+  font-weight: 600;
+  min-width: 64px;
+}
+
+.rc-direction-row__prompt {
+  flex: 1 1 140px;
+  min-width: 0;
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+
+.rc-direction-row__verdict {
+  white-space: nowrap;
+}
+
+.rc-direction-row--correct {
+  background: color-mix(in srgb, var(--success, #2bd576) 16%, var(--surface-200));
+}
+
+.rc-direction-row--correct .rc-direction-row__verdict {
+  color: var(--success, #2bd576);
+}
+
+.rc-direction-row--reversed {
+  background: color-mix(in srgb, var(--accent, #ffbb00) 22%, var(--surface-200));
+}
+
+.rc-direction-row--reversed .rc-direction-row__verdict {
+  color: var(--accent, #ffbb00);
+  font-weight: 600;
+}
+
 .receiver-workspace--task-deck {
   grid-template-columns: minmax(320px, 0.88fr) minmax(0, 1.12fr);
   align-items: start;
