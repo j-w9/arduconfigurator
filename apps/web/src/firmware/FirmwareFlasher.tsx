@@ -1066,7 +1066,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             <p className="firmware-wizard__hint">
               Point this at an internal ArduPilot build mirror (e.g. a per-branch CI). The URL is saved
               for next session; the token stays in memory only. The browser still has to honor the
-              server's CORS settings — Jack's branch builds need to allow this origin.
+              server's CORS settings — the build server must allow this origin.
             </p>
           </div>
         ) : null}
