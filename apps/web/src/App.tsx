@@ -826,6 +826,12 @@ export function App() {
   const [parameterImportExclusions, setParameterImportExclusions] = useState<
     Record<ParameterImportCategory, boolean>
   >({ calibration: true, 'stream-rates': true, mission: true })
+  // Export defaults differ from import: only calibration (the per-airframe
+  // offsets/scales/trims) is skipped by default, keeping stream rates + mission
+  // unless the operator opts to drop them for a leaner backup.
+  const [parameterExportExclusions, setParameterExportExclusions] = useState<
+    Record<ParameterImportCategory, boolean>
+  >({ calibration: true, 'stream-rates': false, mission: false })
   const {
     handleExportParameterBackup,
     handleExportParameterBackupAsParm,
@@ -834,6 +840,7 @@ export function App() {
   } = useParameterBackupIo({
     snapshot,
     parameterImportExclusions,
+    parameterExportExclusions,
     replaceDrafts,
     setParameterNotice,
     setParameterFollowUp
@@ -7225,6 +7232,13 @@ export function App() {
           parameterImportExclusions={parameterImportExclusions}
           onToggleParameterImportExclusion={(category) =>
             setParameterImportExclusions((current) => ({
+              ...current,
+              [category]: !current[category]
+            }))
+          }
+          parameterExportExclusions={parameterExportExclusions}
+          onToggleParameterExportExclusion={(category) =>
+            setParameterExportExclusions((current) => ({
               ...current,
               [category]: !current[category]
             }))

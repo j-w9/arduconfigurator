@@ -946,6 +946,23 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('parameter-notice')).not.toContainText('Skipped')
   })
 
+  test('Expert export can skip calibration params (Skip on export)', async ({ page }) => {
+    await connectToVehicle(page, 'demo')
+    await page.getByTestId('product-mode-expert').click()
+    await openView(page, 'parameters')
+
+    // Skip-on-export defaults to calibration only; stream-rates/mission off.
+    await expect(page.getByTestId('parameter-export-exclusions')).toBeVisible()
+    await expect(page.getByTestId('param-export-exclude-calibration')).toBeChecked()
+    await expect(page.getByTestId('param-export-exclude-stream-rates')).not.toBeChecked()
+
+    // Exporting reports the skipped category in the notice.
+    const download = page.waitForEvent('download')
+    await page.getByTestId('export-parameter-backup').click()
+    await download
+    await expect(page.getByTestId('parameter-notice')).toContainText('skipped calibration')
+  })
+
   test('the persistent draft bar follows edits across tabs and writes them all', async ({ page }) => {
     await connectToVehicle(page, 'demo')
 

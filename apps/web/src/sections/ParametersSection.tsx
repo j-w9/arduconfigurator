@@ -56,6 +56,9 @@ export interface ParametersSectionProps {
   /** Opt-in categories to strip from the next backup import (all false = none). */
   parameterImportExclusions: Record<ParameterImportCategory, boolean>
   onToggleParameterImportExclusion: (category: ParameterImportCategory) => void
+  /** Categories to leave OUT of exported backups (calibration/stream-rates/mission). */
+  parameterExportExclusions: Record<ParameterImportCategory, boolean>
+  onToggleParameterExportExclusion: (category: ParameterImportCategory) => void
   onExportParameterBackup: () => void
   onExportParameterBackupAsParm: () => void
   onExportParameterBackupAsParams: () => void
@@ -108,6 +111,8 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     onOpenParameterBackup: handleOpenParameterBackup,
     parameterImportExclusions,
     onToggleParameterImportExclusion: handleToggleParameterImportExclusion,
+    parameterExportExclusions,
+    onToggleParameterExportExclusion: handleToggleParameterExportExclusion,
     onExportParameterBackup: handleExportParameterBackup,
     onExportParameterBackupAsParm: handleExportParameterBackupAsParm,
     onExportParameterBackupAsParams: handleExportParameterBackupAsParams,
@@ -324,6 +329,24 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
               >
                 Export .params
               </button>
+              <fieldset className="parameter-import-exclusions" data-testid="parameter-export-exclusions">
+                <legend>Skip on export</legend>
+                {([
+                  { key: 'calibration', label: 'Calibration', title: 'Leave compass/accel/gyro offsets, scales, and AHRS board-level trims (per-airframe values) out of the backup.' },
+                  { key: 'stream-rates', label: 'Stream rates', title: 'Leave the SRn_* MAVLink telemetry stream-rate group out of the backup.' },
+                  { key: 'mission', label: 'Mission', title: 'Leave the MIS_* mission parameters out of the backup.' }
+                ] as const).map((option) => (
+                  <label key={option.key} className="parameter-import-exclusions__item" title={option.title}>
+                    <input
+                      type="checkbox"
+                      data-testid={`param-export-exclude-${option.key}`}
+                      checked={parameterExportExclusions[option.key]}
+                      onChange={() => handleToggleParameterExportExclusion(option.key)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </fieldset>
               <button
                 data-testid="import-parameter-backup"
                 style={buttonStyle()}

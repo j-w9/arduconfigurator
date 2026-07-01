@@ -35,6 +35,8 @@ import type { ParameterFollowUp, ParameterNotice } from './use-parameter-feedbac
 export interface UseParameterBackupIoParams {
   snapshot: ConfiguratorSnapshot
   parameterImportExclusions: Record<ParameterImportCategory, boolean>
+  /** Categories to leave OUT of exported backups (calibration/stream-rates/mission). */
+  parameterExportExclusions: Record<ParameterImportCategory, boolean>
   replaceDrafts: (drafts: ParameterDraftValues) => void
   setParameterNotice: Dispatch<SetStateAction<ParameterNotice | undefined>>
   setParameterFollowUp: Dispatch<SetStateAction<ParameterFollowUp | undefined>>
@@ -50,6 +52,7 @@ export interface UseParameterBackupIoResult {
 export function useParameterBackupIo({
   snapshot,
   parameterImportExclusions,
+  parameterExportExclusions,
   replaceDrafts,
   setParameterNotice,
   setParameterFollowUp
@@ -58,30 +61,47 @@ export function useParameterBackupIo({
     return { appVersion: APP_VERSION, appGitHash: GIT_HASH, appGitBranch: GIT_BRANCH }
   }
 
+  function exportExcludeCategories(): ParameterImportCategory[] {
+    return (Object.keys(parameterExportExclusions) as ParameterImportCategory[]).filter(
+      (category) => parameterExportExclusions[category]
+    )
+  }
+
+  function exportSkipNote(): string {
+    const skipped = exportExcludeCategories()
+    return skipped.length > 0 ? ` (skipped ${skipped.join(', ')})` : ''
+  }
+
   function handleExportParameterBackup(): void {
-    const backup = createParameterBackup(snapshot, buildBackupAppInfo())
+    const backup = createParameterBackup(snapshot, buildBackupAppInfo(), {
+      excludeCategories: exportExcludeCategories()
+    })
     downloadTextFile(buildParameterBackupFilename(snapshot, 'json'), serializeParameterBackup(backup))
     setParameterNotice({
       tone: 'success',
-      text: `Exported ${backup.parameterCount} parameters as ArduConfigurator JSON backup.`
+      text: `Exported ${backup.parameterCount} parameters as ArduConfigurator JSON backup${exportSkipNote()}.`
     })
   }
 
   function handleExportParameterBackupAsParm(): void {
-    const backup = createParameterBackup(snapshot, buildBackupAppInfo())
+    const backup = createParameterBackup(snapshot, buildBackupAppInfo(), {
+      excludeCategories: exportExcludeCategories()
+    })
     downloadTextFile(buildParameterBackupFilename(snapshot, 'parm'), serializeParameterBackupAsParm(backup))
     setParameterNotice({
       tone: 'success',
-      text: `Exported ${backup.parameterCount} parameters as Mission Planner .parm.`
+      text: `Exported ${backup.parameterCount} parameters as Mission Planner .parm${exportSkipNote()}.`
     })
   }
 
   function handleExportParameterBackupAsParams(): void {
-    const backup = createParameterBackup(snapshot, buildBackupAppInfo())
+    const backup = createParameterBackup(snapshot, buildBackupAppInfo(), {
+      excludeCategories: exportExcludeCategories()
+    })
     downloadTextFile(buildParameterBackupFilename(snapshot, 'params'), serializeParameterBackupAsParams(backup))
     setParameterNotice({
       tone: 'success',
-      text: `Exported ${backup.parameterCount} parameters as QGroundControl .params.`
+      text: `Exported ${backup.parameterCount} parameters as QGroundControl .params${exportSkipNote()}.`
     })
   }
 

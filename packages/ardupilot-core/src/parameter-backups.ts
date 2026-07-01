@@ -132,12 +132,32 @@ export interface ParameterBackupImportOptions {
   excludeCategories?: readonly ParameterImportCategory[]
 }
 
+export interface ParameterBackupExportOptions {
+  /**
+   * Opt-in categories to leave OUT of the exported backup — the same classifier
+   * as the import-skip toggles (calibration offsets/scales/trims, SRn_* stream
+   * rates, MIS_* mission). Lets the operator save a lean, portable backup without
+   * per-airframe values. Volatile system params (STAT_*, BAROn_GND_PRESS, …) are
+   * always excluded regardless.
+   */
+  excludeCategories?: readonly ParameterImportCategory[]
+}
+
 export function createParameterBackup(
   snapshot: ConfiguratorSnapshot,
-  appInfo: ParameterBackupAppInfo = {}
+  appInfo: ParameterBackupAppInfo = {},
+  options: ParameterBackupExportOptions = {}
 ): ParameterBackupFile {
+  const excludeCategories = new Set(options.excludeCategories ?? [])
   const exportableParameters = snapshot.parameters
     .filter((parameter) => !isSnapshotExcludedParameterState(parameter))
+    .filter((parameter) => {
+      if (excludeCategories.size === 0) {
+        return true
+      }
+      const category = parameterImportExclusionCategory(parameter.id)
+      return category === undefined || !excludeCategories.has(category)
+    })
     .map((parameter) => ({
       id: parameter.id,
       value: parameter.value,

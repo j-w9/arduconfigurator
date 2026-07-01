@@ -133,3 +133,28 @@ test('excluded entries never count as unknown even when absent from the live tab
   assert.equal(result.unknownParameterIds.length, 0)
   assert.equal(result.changedCount, 1)
 })
+
+test('createParameterBackup leaves opt-in categories out of the exported backup', () => {
+  const snapshot = {
+    parameters: [
+      { id: 'COMPASS_OFS_X', value: 10 },
+      { id: 'INS_ACCOFFS_X', value: 0.1 },
+      { id: 'SR0_POSITION', value: 5 },
+      { id: 'ATC_RAT_RLL_P', value: 0.135 }
+    ],
+    hardware: {},
+    vehicle: { vehicle: 'ArduCopter' }
+  }
+  const ids = (backup) => backup.parameters.map((entry) => entry.id)
+
+  // Default export keeps everything (minus always-excluded volatile params).
+  assert.ok(ids(createParameterBackup(snapshot, {})).includes('COMPASS_OFS_X'))
+
+  // Skipping calibration drops the offsets/scales but keeps the rest.
+  const lean = createParameterBackup(snapshot, {}, { excludeCategories: ['calibration'] })
+  assert.equal(ids(lean).includes('COMPASS_OFS_X'), false, 'compass offset skipped')
+  assert.equal(ids(lean).includes('INS_ACCOFFS_X'), false, 'accel offset skipped')
+  assert.ok(ids(lean).includes('SR0_POSITION'), 'stream rate kept (not in the skip set)')
+  assert.ok(ids(lean).includes('ATC_RAT_RLL_P'), 'tuning kept')
+  assert.equal(lean.parameterCount, 2)
+})
