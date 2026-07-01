@@ -213,6 +213,13 @@ test('every vehicle bundle exposes the AP_Relay RELAY1..RELAY6 family on the Ser
     assert.ok((metadata.parameters.RELAY1_PIN?.options ?? []).length === 0, `${vehicle} RELAY1_PIN is a numeric field`)
     // DEFAULT only applies to the "Relay" function (1).
     assert.deepEqual(metadata.parameters.RELAY1_DEFAULT?.visibleWhen, { paramId: 'RELAY1_FUNCTION', in: [1] }, `${vehicle} RELAY1_DEFAULT visibleWhen`)
+    // FUNCTION/PIN/DEFAULT are applied at AP_Relay::init(), so they are
+    // reboot-required — writing one prompts the operator to reboot. INVERTED is
+    // applied live (per set), so it is not.
+    assert.equal(metadata.parameters.RELAY1_FUNCTION?.rebootRequired, true, `${vehicle} RELAY1_FUNCTION rebootRequired`)
+    assert.equal(metadata.parameters.RELAY1_PIN?.rebootRequired, true, `${vehicle} RELAY1_PIN rebootRequired`)
+    assert.equal(metadata.parameters.RELAY1_DEFAULT?.rebootRequired, true, `${vehicle} RELAY1_DEFAULT rebootRequired`)
+    assert.notEqual(metadata.parameters.RELAY1_INVERTED?.rebootRequired, true, `${vehicle} RELAY1_INVERTED not rebootRequired`)
   }
 })
 

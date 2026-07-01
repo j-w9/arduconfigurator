@@ -76,7 +76,10 @@ export function buildRelayParameterDefinitions(instance: number): FirmwareMetada
       label: `Relay${n} Function`,
       description: `The function ${which} is mapped to. "Relay" is a plain GPIO output you control directly; the other functions are driven by their owning feature (parachute, camera, ICE, etc.).`,
       category: 'relays',
-      options: RELAY_FUNCTION_OPTIONS
+      options: RELAY_FUNCTION_OPTIONS,
+      // The relay pin is configured in AP_Relay::init() from FUNCTION/PIN, so a
+      // change only takes effect after a reboot.
+      rebootRequired: true
     },
     [`${p}PIN`]: {
       id: `${p}PIN`,
@@ -85,7 +88,8 @@ export function buildRelayParameterDefinitions(instance: number): FirmwareMetada
       category: 'relays',
       minimum: -1,
       maximum: 1015,
-      step: 1
+      step: 1,
+      rebootRequired: true
     },
     [`${p}DEFAULT`]: {
       id: `${p}DEFAULT`,
@@ -93,7 +97,9 @@ export function buildRelayParameterDefinitions(instance: number): FirmwareMetada
       description: `Power-on state for ${which}. Only applies to the "Relay" function; if INVERTED is set the default is inverted too.`,
       category: 'relays',
       options: RELAY_DEFAULT_OPTIONS,
-      visibleWhen: { paramId: `${p}FUNCTION`, in: [1] }
+      visibleWhen: { paramId: `${p}FUNCTION`, in: [1] },
+      // Power-on state is applied at boot — reboot to take effect.
+      rebootRequired: true
     },
     [`${p}INVERTED`]: {
       id: `${p}INVERTED`,
