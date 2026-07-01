@@ -20,6 +20,7 @@ import {
   classifyRowHealth,
   describeMessageRequestOutcome,
   describeSourceHealth,
+  disableGuardForMessage,
   filterMavlinkStats,
   filterMavlinkStatsBySource,
   formatBytesPerSec,
@@ -261,11 +262,28 @@ function MavlinkRequestControl({
   const [rateHz, setRateHz] = useState(4)
   const [busy, setBusy] = useState(false)
   const [outcome, setOutcome] = useState<string | null>(null)
+  // Message id currently armed for a guarded disable (needs a second click).
+  const [armedDisableId, setArmedDisableId] = useState<number | null>(null)
 
   const run = (kind: MavlinkRequestKind): void => {
     if (busy || !connected) {
       return
     }
+    if (kind === 'disable') {
+      const guard = disableGuardForMessage(messageId)
+      if (guard?.level === 'blocked') {
+        setArmedDisableId(null)
+        setOutcome(guard.message)
+        return
+      }
+      if (guard?.level === 'warn' && armedDisableId !== messageId) {
+        // First click on a critical stream: warn and require a confirming click.
+        setArmedDisableId(messageId)
+        setOutcome(`${guard.message} Click Disable again to confirm.`)
+        return
+      }
+    }
+    setArmedDisableId(null)
     setBusy(true)
     setOutcome(null)
     const name = messageNameForId(messageId)
@@ -352,7 +370,7 @@ function MavlinkRequestControl({
         onClick={() => run('disable')}
         data-testid="mavlink-request-disable"
       >
-        Disable
+        {armedDisableId === messageId ? 'Disable anyway' : 'Disable'}
       </button>
       {outcome ? (
         <p className="mavlink-inspector__request-result" data-testid="mavlink-request-result" role="status">

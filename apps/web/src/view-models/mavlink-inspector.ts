@@ -388,6 +388,55 @@ export function messageNameForId(messageId: number): string {
   return REQUESTABLE_MESSAGES.find((entry) => entry.id === messageId)?.name ?? `msg ${messageId}`
 }
 
+/** MAVLink HEARTBEAT — the link-liveness signal the app keys vehicle detection on. */
+export const HEARTBEAT_MESSAGE_ID = 0
+
+/**
+ * Message ids the app actively streams for its live UI (mirrors the runtime's
+ * LIVE_TELEMETRY_REQUESTS). Disabling one silently blanks part of the flight
+ * deck / calibration UI until the operator reconnects or re-requests it. Kept
+ * here (not imported from the runtime) so the view stays dumb.
+ */
+export const CRITICAL_STREAM_IDS: ReadonlySet<number> = new Set<number>([
+  1, // SYS_STATUS
+  30, // ATTITUDE
+  31, // ATTITUDE_QUATERNION
+  33, // GLOBAL_POSITION_INT
+  65, // RC_CHANNELS
+  191, // MAG_CAL_PROGRESS
+  192, // MAG_CAL_REPORT
+  310 // UAVCAN_NODE_STATUS
+])
+
+export interface DisableGuard {
+  level: 'blocked' | 'warn'
+  message: string
+}
+
+/**
+ * Guard an operator "Disable" (SET_MESSAGE_INTERVAL → -1) against footguns.
+ * HEARTBEAT is blocked outright — killing it stops vehicle detection and the
+ * live link, and the FC may need a power-cycle to recover. The live-telemetry
+ * streams warn (arm-to-confirm) before they blank the flight deck. Returns null
+ * when disabling the id is harmless. Only relevant for the `disable` kind;
+ * requesting/streaming any id stays unguarded.
+ */
+export function disableGuardForMessage(messageId: number): DisableGuard | null {
+  if (messageId === HEARTBEAT_MESSAGE_ID) {
+    return {
+      level: 'blocked',
+      message: 'Disabling HEARTBEAT stops vehicle detection and the live link — blocked. Power-cycle the FC to restore it if already disabled.'
+    }
+  }
+  if (CRITICAL_STREAM_IDS.has(messageId)) {
+    return {
+      level: 'warn',
+      message: `${messageNameForId(messageId)} feeds the live display — disabling it blanks that view until you reconnect or re-request it.`
+    }
+  }
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Phase 3 — live field plotting (ring-buffered samples + inline SVG geometry)
 // ---------------------------------------------------------------------------

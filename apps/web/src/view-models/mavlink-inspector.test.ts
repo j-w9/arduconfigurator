@@ -11,6 +11,7 @@ import {
   describeMavlinkSource,
   describeMessageRequestOutcome,
   describeSourceHealth,
+  disableGuardForMessage,
   filterMavlinkStats,
   filterMavlinkStatsBySource,
   formatBytesPerSec,
@@ -571,5 +572,24 @@ describe('record / export — plot CSV + filenames', () => {
     const name = inspectorExportFilename('plot-ATTITUDE.roll', 'csv', Date.parse('2026-06-29T12:00:00Z'))
     expect(name).toBe('mavlink-plot-ATTITUDE.roll-2026-06-29T12-00-00-000Z.csv')
     expect(name).not.toMatch(/[^a-zA-Z0-9_.-]/)
+  })
+})
+
+describe('disableGuardForMessage', () => {
+  it('blocks disabling HEARTBEAT (id 0) — killing it breaks vehicle detection', () => {
+    const guard = disableGuardForMessage(0)
+    expect(guard?.level).toBe('blocked')
+    expect(guard?.message).toMatch(/HEARTBEAT/)
+  })
+
+  it('warns before disabling a live-telemetry stream the app depends on', () => {
+    // ATTITUDE (30) and GLOBAL_POSITION_INT (33) feed the flight deck.
+    expect(disableGuardForMessage(30)?.level).toBe('warn')
+    expect(disableGuardForMessage(33)?.level).toBe('warn')
+    expect(disableGuardForMessage(310)?.level).toBe('warn') // UAVCAN_NODE_STATUS
+  })
+
+  it('leaves an unrelated message (e.g. VIBRATION 241) unguarded', () => {
+    expect(disableGuardForMessage(241)).toBeNull()
   })
 })
