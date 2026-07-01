@@ -11,3 +11,6 @@ apps/desktop/release
 # Isolated Web App build (signed bundle output + local signing key)
 apps/web/dist-iwa/
 apps/web/iwa/signing-key.pem
+
+# Local audit / analysis notes — not part of the shipped repo
+.audit/
