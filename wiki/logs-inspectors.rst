@@ -6,10 +6,6 @@ session, watch the live link. This page covers downloading onboard logs and the
 two expert-only live inspectors — the **MAVLink Inspector** for the telemetry
 stream and the **DroneCAN Inspector** for the CAN bus.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 Onboard logs
 ------------
 

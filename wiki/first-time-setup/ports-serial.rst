@@ -6,10 +6,6 @@ expects to talk to on that UART — along with its baud rate, flow control, and 
 options. Getting RC input, telemetry, and GPS onto the right ports here is what
 makes the rest of setup work.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 The port matrix
 ---------------
 

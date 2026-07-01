@@ -16,10 +16,6 @@ voltage/current, airspeed on Plane, ESC on Copter).
    vehicle is armed, while a motor test is running, or before the parameters
    have finished syncing.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 Accelerometer (six-position)
 ----------------------------
 

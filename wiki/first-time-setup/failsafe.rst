@@ -16,10 +16,6 @@ read-only status summaries up top and inline editors below.
    (switch the transmitter off, simulate a low cell voltage, kill the GCS link)
    and confirm the vehicle reacts the way you expect before you fly.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 RC (throttle) failsafe
 ----------------------
 

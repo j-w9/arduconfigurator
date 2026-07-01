@@ -5,10 +5,6 @@ ArduConfigurator talks to your flight controller through a **connection source**
 chosen on the landing screen. Pick the one that matches your setup, then click
 **Connect**.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 Serial / USB (Web Serial)
 -------------------------
 

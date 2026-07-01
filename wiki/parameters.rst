@@ -8,10 +8,6 @@ Ports, Receiver, Outputs, Power, Tuning) cover routine workflow changes more
 safely, so reach for this tab when you need a parameter those surfaces do not
 expose, or when you are migrating a configuration between aircraft.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 Browsing, search, and categories
 ---------------------------------
 

@@ -6,10 +6,6 @@ arming thresholds, and shows live pack telemetry. Getting the monitor right is
 what makes everything downstream — the OSD readout, the remaining-capacity
 estimate, and the battery failsafe — meaningful.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 Battery monitor
 ---------------
 

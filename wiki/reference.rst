@@ -5,10 +5,6 @@ Practical references for using the configurator: how it is driven, what to do
 when something does not connect, what hardware it supports, and a short glossary
 of the terms used throughout this wiki.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 Keyboard shortcuts
 ------------------
 

@@ -6,10 +6,6 @@ and the **VTX** tab configures the video transmitter. Both use the familiar
 staged-draft model: edits accumulate, then **Save** writes them and **Revert**
 discards them.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 OSD layout
 ----------
 

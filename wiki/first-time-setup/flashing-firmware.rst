@@ -5,10 +5,6 @@ The **Flash** tab installs ArduPilot firmware onto your flight controller. It ha
 two sub-tabs: **Firmware (.apj)**, the normal ArduPilot serial-bootloader flow,
 and **DFU (.hex)**, which programs a raw ``.hex`` over WebUSB DFU.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 .. warning::
 
    Flashing replaces the firmware on the board. **Do not unplug the flight

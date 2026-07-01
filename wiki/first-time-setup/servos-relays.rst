@@ -7,10 +7,6 @@ payloads. Both live under the **Outputs** panel's task strip alongside motor
 setup, ESC protocol, and peripherals. Notify devices — external LEDs and
 buzzers — are configured nearby in the Outputs peripherals card.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 Servo output functions
 -----------------------
 

@@ -8,10 +8,6 @@ Rover, and Sub). It runs entirely in your browser over Web Serial, with a thin
 desktop shell that reuses the same app. This wiki documents the configurator;
 see :doc:`introduction` to get started.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 License
 -------
 

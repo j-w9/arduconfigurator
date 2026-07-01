@@ -8,10 +8,6 @@ parameters, restart, and firmware update over CAN. Both reach the bus the same
 way: they ask the autopilot to forward a CAN bus over the live MAVLink link, so
 you never have to switch the flight controller into a dedicated SLCAN mode.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 How the bus is reached
 ----------------------
 

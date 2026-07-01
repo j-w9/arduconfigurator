@@ -7,10 +7,6 @@ mount/gimbal — in collapsible sections. Each section only renders the paramete
 the connected firmware actually reports, so you see the controls that apply to
 your build and nothing else.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 Rangefinder / LiDAR
 -------------------
 

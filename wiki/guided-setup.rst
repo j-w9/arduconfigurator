@@ -7,10 +7,6 @@ step against the **live vehicle** rather than just telling you what to do. Steps
 unlock in sequence: you can't sign off a later step until the ones it depends on
 are satisfied.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 How it works
 ------------
 

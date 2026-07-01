@@ -6,10 +6,6 @@ which axis, how far each stick travels, which way each axis moves, the bind, RSS
 reporting, and flight-mode assignment. A live monitor shows the incoming channels
 in real time.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 Live monitor
 ------------
 

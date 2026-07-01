@@ -8,10 +8,6 @@ tune can be roughed in without diving into the raw parameter tree. Every change
 is staged as a local draft and reviewed before it is written to the controller,
 and known-good tunes can be saved as reusable profiles.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 Rate controllers (PID gains)
 ----------------------------
 

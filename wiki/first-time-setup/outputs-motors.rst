@@ -6,10 +6,6 @@ and spin direction, and runs a props-off motor test. On ArduCopter it works from
 the frame's motor matrix; Plane, Rover, and Sub show a read-only summary of their
 output assignments instead.
 
-.. contents:: On this page
-   :local:
-   :depth: 1
-
 .. warning::
 
    **Props off for everything on this page.** Remove all propellers before any
