@@ -1,9 +1,9 @@
 name: Web Deploy
 
+# Production is published from a separate internal deploy pipeline. This workflow
+# is manual-only so a push here can't overwrite the production deployment; run it
+# by hand (workflow_dispatch) only to publish this build deliberately.
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 # One deploy at a time so a fast-follow merge can't publish a stale bundle
