@@ -1,4 +1,5 @@
 export * from './arducopter.js'
+export * from './arducopter-4.7-overrides.js'
 export * from './arducopter-enums.js'
 export * from './arduplane.js'
 export * from './arduplane-enums.js'

@@ -64,6 +64,7 @@ import {
   parseUartsFile,
   type MavftpDirectoryEntry,
 } from './mavftp.js'
+import { applyArducopter47Override } from './firmware-overrides.js'
 import { listMavftpLogFiles } from './mavftp-log-directories.js'
 import { CanBusService } from './runtime-can-bus-service.js'
 import { GuidedActionService } from './runtime-guided-action-service.js'
@@ -542,7 +543,23 @@ export class ArduPilotConfiguratorRuntime {
   }
 
   getSnapshot(): ConfiguratorSnapshot {
-    const parameters = [...this.parameters.values()].sort((left, right) => left.id.localeCompare(right.id))
+    // Apply version-gated ArduCopter 4.7 metadata overrides HERE (not at
+    // PARAM_VALUE receive time) so every snapshot reflects the CURRENT detected
+    // firmware version — a param that arrived before AUTOPILOT_VERSION still
+    // picks up its 4.7 definition once the version is known. Base (<=4.6 /
+    // unknown / non-copter) is returned unchanged by identity, so this is a
+    // no-op on the trust-anchor path.
+    const applyCopter47Override = this.vehicle?.vehicle === 'ArduCopter'
+    const firmwareVersionParts = this.hardwareBoard?.firmwareVersionParts
+    const parameters = [...this.parameters.values()]
+      .map((parameter) => {
+        if (!applyCopter47Override || parameter.definition === undefined) {
+          return parameter
+        }
+        const definition = applyArducopter47Override(parameter.definition, firmwareVersionParts)
+        return definition === parameter.definition ? parameter : { ...parameter, definition }
+      })
+      .sort((left, right) => left.id.localeCompare(right.id))
     const preArmStatus = this.buildPreArmStatus()
 
     return {

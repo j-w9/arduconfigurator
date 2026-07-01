@@ -30,6 +30,7 @@ import {
   failRcRangeExerciseState,
   formatRcAxisLabel,
   type MotorTestRequest,
+  applyArducopter47CatalogOverrides,
   type ParameterBackupFile,
   type ParameterDraftEntry,
   type ParameterImportCategory,
@@ -510,9 +511,17 @@ export function App() {
     }
     return base
   }, [activeVehicle, upstreamParameters])
+  // The Params view reads definitions from this catalog. Apply the version-gated
+  // ArduCopter 4.7 overrides when a >= 4.7 build is detected; pre-connect /
+  // Unknown / 4.6 / non-copter get the untouched base catalog.
   const metadataCatalog = useMemo(
-    () => normalizeFirmwareMetadata(activeMetadataBundle),
-    [activeMetadataBundle]
+    () =>
+      applyArducopter47CatalogOverrides(
+        normalizeFirmwareMetadata(activeMetadataBundle),
+        snapshot.hardware.board?.firmwareVersionParts,
+        snapshot.vehicle?.vehicle === 'ArduCopter'
+      ),
+    [activeMetadataBundle, snapshot.hardware.board?.firmwareVersionParts, snapshot.vehicle?.vehicle]
   )
   const setupSectionIds = useMemo(
     () => activeMetadataBundle.setupSections.map((section) => section.id),
