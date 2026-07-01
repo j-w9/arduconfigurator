@@ -84,8 +84,14 @@ async function navigationStrategy(request) {
     // and the app never mounts (blue screen). A cache-reload navigation always
     // references the current deploy's assets.
     const fresh = await fetch(request.url, { cache: 'reload' })
-    // Refresh the cached shell on a successful response only.
-    if (fresh.ok && NAVIGATION_FALLBACK) {
+    // Refresh the cached shell on a successful APP navigation only. The wiki
+    // (/wiki*) is a separate static site under the same origin; caching its HTML
+    // as the shell would make the next offline PWA launch render a wiki page
+    // instead of the app.
+    const isWikiNavigation = new URL(request.url).pathname.startsWith(
+      new URL('wiki', self.registration.scope).pathname
+    )
+    if (fresh.ok && NAVIGATION_FALLBACK && !isWikiNavigation) {
       const cache = await caches.open(CACHE_NAME)
       // clone() so the body can be both returned and cached.
       await cache.put(NAVIGATION_FALLBACK, fresh.clone())
