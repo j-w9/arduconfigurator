@@ -1,10 +1,10 @@
-# ArduConfigurator wiki — Sphinx + the Read-the-Docs theme (the same theme the
-# ArduPilot wiki uses), so the layout/structure matches closely.
+# ArduConfigurator wiki — Sphinx + the Furo theme (a clean, modern, responsive
+# docs theme with a light/dark toggle).
 #
-# PINNED on purpose: the built HTML (specifically sphinx_rtd_theme's nav-init
-# inline <script>) must stay byte-stable, because the app's CSP
-# (apps/web/public/_headers) allow-lists that script by sha256 hash. If you bump
-# either version, rebuild the wiki and recompute that hash in _headers — otherwise
-# the mobile-nav hamburger gets CSP-blocked on production.
+# PINNED on purpose: the built HTML (specifically Furo's theme-init inline
+# <script> — `document.body.dataset.theme = ...`) must stay byte-stable, because
+# the app's CSP (apps/web/public/_headers) allow-lists that script by sha256
+# hash. If you bump either version, rebuild the wiki and recompute that hash in
+# _headers — otherwise the dark/light toggle gets CSP-blocked on production.
 sphinx==7.4.7
-sphinx-rtd-theme==3.1.0
+furo==2025.12.19
