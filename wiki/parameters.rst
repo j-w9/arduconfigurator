@@ -17,7 +17,10 @@ Browsing, search, and categories
 
 The table lists every parameter the connected flight controller reports,
 enriched with labels, descriptions, units, ranges, and categories from the
-metadata catalog. A **search** box filters by name with wildcards (for example
+metadata catalog, which is firmware-version-aware — a 4.7 (or newer) controller
+gets the 4.7 labels, ranges, and enum values, while older firmware and the
+pre-connect view keep the stable set, so each value's options and limits match
+the running firmware. A **search** box filters by name with wildcards (for example
 ``ARMING_*`` or ``*VOLT*``), and a **category** dropdown narrows to a single
 group such as rangefinder, gimbal, or serial. A **Refresh** button pulls the
 tree fresh from the controller, bypassing the auto-refresh, and selecting any
@@ -66,6 +69,13 @@ Importing a backup stages the differing values as drafts and scrolls the diff
 into view — nothing is written until you review it and click Apply All. Optional
 **Skip on import** toggles drop calibration offsets, the ``SRn_*`` stream-rate
 group, or the ``MIS_*`` mission parameters before staging.
+
+Exporting mirrors that with **Skip on export** toggles, so you can leave the
+per-airframe or volatile categories out of the file for a leaner, more portable
+backup: calibration offsets/scales/trims (skipped by default), the ``SRn_*``
+stream-rate group, or the ``MIS_*`` mission parameters. The success notice reports
+what was skipped. Volatile system values the firmware continuously re-derives are
+always excluded.
 
 .. note::
 

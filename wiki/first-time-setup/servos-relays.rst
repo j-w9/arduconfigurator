@@ -80,6 +80,13 @@ cards. Each relay has:
   the function is the plain *Relay* type.
 - ``RELAYn_INVERTED`` — *Normal* or *Inverted* pin polarity.
 
+.. note::
+
+   ``RELAYn_FUNCTION``, ``RELAYn_PIN``, and ``RELAYn_DEFAULT`` are applied when
+   the flight controller boots — the pin is configured and the default state set
+   at start-up — so a change is **reboot-required**: the app prompts you to
+   reboot before it takes effect. ``RELAYn_INVERTED`` applies live.
+
 Enum fields render as selectable chips and the pin as a number field; the same
 staged **Apply relay changes** / **Revert** toolbar applies. Only relay
 instances the flight controller actually reports are shown.

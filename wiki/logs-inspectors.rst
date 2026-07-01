@@ -68,6 +68,12 @@ counted as loss — so the figure reflects genuine gaps on a real link.
 
 You can sort by name, rate, recency, or bandwidth, and filter by type or source.
 
+Alongside the received stream, a separate **Sent (outbound)** section lists the
+messages ArduConfigurator itself transmits — GCS heartbeats, parameter
+reads/writes, message requests, and commands — with the same per-type rate,
+count, and last-sent time. It populates from traffic sent while the inspector is
+open, so you can confirm exactly what the app put on the wire.
+
 Request a message
 ~~~~~~~~~~~~~~~~~~
 
