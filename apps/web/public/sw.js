@@ -77,7 +77,13 @@ self.addEventListener('fetch', (event) => {
 
 async function navigationStrategy(request) {
   try {
-    const fresh = await fetch(request)
+    // Force the index fresh from the origin (bypass HTTP/edge cache). Without
+    // this, a returning visitor after a deploy could get a stale index.html that
+    // references purged asset hashes — those 404, hit the SPA fallback, and come
+    // back as text/html, so the module script fails ("Expected JS, got text/html")
+    // and the app never mounts (blue screen). A cache-reload navigation always
+    // references the current deploy's assets.
+    const fresh = await fetch(request.url, { cache: 'reload' })
     // Refresh the cached shell on a successful response only.
     if (fresh.ok && NAVIGATION_FALLBACK) {
       const cache = await caches.open(CACHE_NAME)
