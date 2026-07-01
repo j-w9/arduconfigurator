@@ -43,22 +43,29 @@ describe('evaluateRcDirection (centred axes)', () => {
   })
 })
 
-describe('evaluateRcDirection (throttle, measured from mid-range)', () => {
-  it('throttle-up reading high is correct, and reversed inverts that', () => {
-    expect(evaluateRcDirection({ axisId: 'throttle', pwm: 1900, ...CENTERED, reversed: false })).toBe('correct')
-    expect(evaluateRcDirection({ axisId: 'throttle', pwm: 1900, ...CENTERED, reversed: true })).toBe('reversed')
+describe('evaluateRcDirection (throttle, measured from a resting baseline)', () => {
+  it('is idle with no captured baseline — cannot tell rest from a reversed-radio push', () => {
+    expect(evaluateRcDirection({ axisId: 'throttle', pwm: 1100, ...CENTERED })).toBe('idle')
+    expect(evaluateRcDirection({ axisId: 'throttle', pwm: 1900, ...CENTERED })).toBe('idle')
   })
 
-  it('throttle-up reading low needs reversing (correct once reversed)', () => {
-    expect(evaluateRcDirection({ axisId: 'throttle', pwm: 1100, ...CENTERED, reversed: false })).toBe('reversed')
-    expect(evaluateRcDirection({ axisId: 'throttle', pwm: 1100, ...CENTERED, reversed: true })).toBe('correct')
+  it('is idle at rest, so a resting (low) throttle NEVER falsely reads reversed (the flyaway bug)', () => {
+    // Regression: a fixed mid-range (1500) reference read a resting ~1100 throttle
+    // as a decisive "down" movement and reported it reversed, pointing the operator
+    // at a hazardous RC3_REVERSED=1 write. With a baseline, rest is simply idle.
+    expect(evaluateRcDirection({ axisId: 'throttle', pwm: 1100, ...CENTERED, restReference: 1100 })).toBe('idle')
   })
 
-  it('uses mid-range, not trim, so an off-centre throttle trim does not skew it', () => {
-    // trim deliberately near min; mid-range is 1500, pwm 1700 is clearly "up".
-    expect(evaluateRcDirection({ axisId: 'throttle', pwm: 1700, trim: 1100, min: 1000, max: 2000, reversed: false })).toBe(
-      'correct'
-    )
+  it('normal wire (rests low): pushing up reads correct; RC3_REVERSED=1 inverts it', () => {
+    const base = { axisId: 'throttle' as const, ...CENTERED, restReference: 1100 }
+    expect(evaluateRcDirection({ ...base, pwm: 1900, reversed: false })).toBe('correct')
+    expect(evaluateRcDirection({ ...base, pwm: 1900, reversed: true })).toBe('reversed')
+  })
+
+  it('reversed wire (rests high): the up-push drops the pwm — flagged reversed, correct once RC3_REVERSED=1', () => {
+    const base = { axisId: 'throttle' as const, ...CENTERED, restReference: 1900 }
+    expect(evaluateRcDirection({ ...base, pwm: 1100, reversed: false })).toBe('reversed')
+    expect(evaluateRcDirection({ ...base, pwm: 1100, reversed: true })).toBe('correct')
   })
 })
 

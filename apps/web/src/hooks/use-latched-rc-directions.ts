@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { RcAxisId } from '@arduconfig/ardupilot-core'
 
@@ -28,13 +28,24 @@ export function useLatchedRcDirections(inputs: RcDirectionAxisInput[]): {
   reset: () => void
 } {
   const [results, setResults] = useState<Record<RcAxisId, RcDirectionResult>>(IDLE_RESULTS)
+  // Throttle rests at an end of travel, so it needs a captured resting baseline
+  // (not a fixed mid/trim reference) to tell rest from an up-push. Grab the first
+  // defined throttle sample and hold it until reset; a ref avoids re-render churn.
+  const throttleBaseline = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     setResults((previous) => {
       let changed = false
       const next = { ...previous }
       for (const input of inputs) {
-        const latched = latchRcDirection(previous[input.axisId], evaluateRcDirection(input))
+        let evaluated = input
+        if (input.axisId === 'throttle') {
+          if (throttleBaseline.current === undefined && input.pwm !== undefined) {
+            throttleBaseline.current = input.pwm
+          }
+          evaluated = { ...input, restReference: throttleBaseline.current }
+        }
+        const latched = latchRcDirection(previous[input.axisId], evaluateRcDirection(evaluated))
         if (latched !== previous[input.axisId]) {
           next[input.axisId] = latched
           changed = true
@@ -44,7 +55,10 @@ export function useLatchedRcDirections(inputs: RcDirectionAxisInput[]): {
     })
   }, [inputs])
 
-  const reset = useCallback(() => setResults(IDLE_RESULTS), [])
+  const reset = useCallback(() => {
+    throttleBaseline.current = undefined
+    setResults(IDLE_RESULTS)
+  }, [])
 
   return { results, reset }
 }

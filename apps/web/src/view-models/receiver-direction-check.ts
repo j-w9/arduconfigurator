@@ -8,10 +8,17 @@
 //     so this stays correct even when RCMAP is customised).
 //   - RC_Channel norm_input sign = (reversed ? -1 : 1) * sign(pwm - trim).
 //   - Copter mode.cpp lean/velocity mapping: roll-right, pitch-back(up), and
-//     yaw-right all want a POSITIVE norm_input; throttle-up wants a high range
-//     value. So every named "positive" direction below expects normSign > 0,
-//     measuring throttle from mid-range instead of trim.
-// This is exactly why most Mode-2 transmitters need RC2_REVERSED=1: stick-back
+//     yaw-right all want a POSITIVE norm_input; throttle-up wants MORE throttle.
+// Roll/pitch/yaw rest at centre (trim), so a single sample vs trim tells us the
+// direction. THROTTLE rests at an END of travel, so there is no fixed reference
+// that separates "resting" from "moved" — instead we capture the resting pwm as
+// a baseline and measure the RESPONSE to the up-push relative to it. That is
+// correct regardless of the radio's wire polarity (a reversed throttle rests
+// HIGH, so its up-push drops the pwm; the delta sign + RCn_REVERSED still give
+// the right verdict). A fixed mid-range reference used to read a resting (low)
+// throttle as a deliberate DOWN movement and falsely report it "reversed",
+// steering the operator toward a flyaway-hazard RC3_REVERSED write.
+// This is also why most Mode-2 transmitters need RC2_REVERSED=1: stick-back
 // reads low on the wire, and the reverse flips it to the positive norm.
 
 import type { RcAxisId } from '@arduconfig/ardupilot-core'
@@ -34,6 +41,13 @@ export interface RcDirectionAxisInput {
   max: number
   /** Current RCn_REVERSED state. */
   reversed: boolean
+  /**
+   * Resting pwm captured while the axis was at rest — the reference for THROTTLE
+   * (which rests at an end of travel, not centre). Ignored for the centred axes,
+   * which reference trim. When absent for throttle we can't distinguish rest from
+   * a reversed-radio push, so the throttle verdict stays `idle`.
+   */
+  restReference?: number
 }
 
 /** Operator-facing prompt copy per axis (the named positive direction). */
@@ -54,7 +68,17 @@ export function evaluateRcDirection(input: RcDirectionAxisInput): RcDirectionRes
   if (input.pwm === undefined) {
     return 'idle'
   }
-  const reference = input.axisId === 'throttle' ? (input.min + input.max) / 2 : input.trim
+  let reference: number
+  if (input.axisId === 'throttle') {
+    // No baseline yet ⇒ we can't tell a resting stick from a reversed-radio push,
+    // so report nothing rather than a dangerous false "reversed".
+    if (input.restReference === undefined) {
+      return 'idle'
+    }
+    reference = input.restReference
+  } else {
+    reference = input.trim
+  }
   const delta = input.pwm - reference
   if (Math.abs(delta) < RC_DIRECTION_MOVE_THRESHOLD_US) {
     return 'idle'
