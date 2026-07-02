@@ -12869,6 +12869,18 @@ details.bf-gui-box:not([open]) > summary::after {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+/* Outbound data rows are expandable buttons — reset button chrome so they read
+   as rows (matching the inbound .mavlink-inspector__row treatment). */
+button.mavlink-inspector__sent-row {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: 12px;
+  cursor: pointer;
+}
 .mavlink-inspector__row {
   display: grid;
   grid-template-columns: 1.8fr 0.9fr 1fr 1.1fr 0.8fr 0.9fr;

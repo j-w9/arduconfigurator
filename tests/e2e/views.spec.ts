@@ -2709,6 +2709,11 @@ test.describe('Inspectors (expert-only)', () => {
     const sent = page.getByTestId('mavlink-inspector-sent')
     await expect(sent).toBeVisible({ timeout: 5000 })
     await expect(sent).toContainText('Sent (outbound)')
+
+    // Outbound rows expand to the same per-message field detail as inbound rows.
+    const sentRow = sent.locator('[data-testid^="mavlink-sent-row-"]').first()
+    await sentRow.getByRole('button').first().click()
+    await expect(sent.locator('[data-testid^="mavlink-field-table-"]').first()).toBeVisible()
   })
 
   test('MAVLink inspector exports a live plot as CSV', async ({ page }) => {

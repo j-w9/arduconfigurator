@@ -103,6 +103,9 @@ function RateSparkline({ history }: { history: readonly number[] }) {
 
 const FLASH_MS = 600
 
+// Outbound field tables have no plot toggle, so no field is ever "plotted".
+const NO_PLOTTED_KEYS: Set<string> = new Set()
+
 /** Live field table for one message: name / value / type, flashing a row when
  *  its value changes, with per-field and whole-message copy, plus a per-field
  *  "graph" toggle that adds/removes a live plot. */
@@ -474,6 +477,9 @@ export function MavlinkInspectorView({
   maxPlots
 }: MavlinkInspectorViewProps) {
   const [expanded, setExpanded] = useState<string | null>(null)
+  // Outbound rows expand independently of inbound: a type can appear in both
+  // sections (e.g. HEARTBEAT is sent and received), so they can't share state.
+  const [expandedSent, setExpandedSent] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
   const [sortKey, setSortKey] = useState<MavlinkSortKey>('name')
   const [source, setSource] = useState('')
@@ -757,18 +763,29 @@ export function MavlinkInspectorView({
               </div>
               {[...sentStats]
                 .sort((left, right) => right.count - left.count)
-                .map((stat) => (
-                  <div
-                    key={stat.key}
-                    className="mavlink-inspector__sent-row"
-                    data-testid={`mavlink-sent-row-${stat.type}`}
-                  >
-                    <span className="mavlink-inspector__type">{stat.type}</span>
-                    <span>{stat.rateHz >= 0.05 ? `${stat.rateHz.toFixed(1)} Hz` : '—'}</span>
-                    <span>{stat.count}</span>
-                    <span className="mavlink-inspector__last">{ageLabel(stat.lastSeenMs)}</span>
-                  </div>
-                ))}
+                .map((stat) => {
+                  const isOpen = expandedSent === stat.key
+                  return (
+                    <div
+                      key={stat.key}
+                      className="mavlink-inspector__entry"
+                      data-testid={`mavlink-sent-row-${stat.type}`}
+                    >
+                      <button
+                        type="button"
+                        className="mavlink-inspector__sent-row"
+                        onClick={() => setExpandedSent(isOpen ? null : stat.key)}
+                        aria-expanded={isOpen}
+                      >
+                        <span className="mavlink-inspector__type">{stat.type}</span>
+                        <span>{stat.rateHz >= 0.05 ? `${stat.rateHz.toFixed(1)} Hz` : '—'}</span>
+                        <span>{stat.count}</span>
+                        <span className="mavlink-inspector__last">{ageLabel(stat.lastSeenMs)}</span>
+                      </button>
+                      {isOpen ? <MavlinkFieldTable stat={stat} plottedKeys={NO_PLOTTED_KEYS} /> : null}
+                    </div>
+                  )
+                })}
             </div>
           ) : null}
         </div>
