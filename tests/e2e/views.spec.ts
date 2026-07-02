@@ -23,6 +23,16 @@ async function expectParameterSyncComplete(page: Page): Promise<void> {
   })
 }
 
+// The Rover/Sub demo options are hidden from the transport picker (UI decision —
+// their catalogs are thinner than Copter/Plane), but the modes themselves still
+// work and stay covered here. Reach them the way a restored session does: seed
+// the stored transport mode, then reload so the app boots into it (the select
+// renders the hidden option while it's the active mode). Call after page.goto().
+async function useHiddenDemoMode(page: Page, mode: 'demo-rover' | 'demo-sub'): Promise<void> {
+  await page.evaluate((value) => window.localStorage.setItem('arduconfig:transport-mode', value), mode)
+  await page.reload()
+}
+
 test.describe('Phone layout', () => {
   test('hides the sidebar baseline panel on phone so the tab content gets the screen', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
@@ -389,7 +399,7 @@ test.describe('Config — vehicle-aware mode channel', () => {
     // Rover: the receiver-signal section should use MODE_CH (which Rover has),
     // so neither FLTMODE_CH nor MODE_CH shows a "not reported" row.
     await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo-rover')
+    await useHiddenDemoMode(page, 'demo-rover')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduRover', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expectParameterSyncComplete(page)
@@ -399,7 +409,7 @@ test.describe('Config — vehicle-aware mode channel', () => {
 
     // Sub: no RC mode channel param exists, so the field is omitted entirely.
     await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo-sub')
+    await useHiddenDemoMode(page, 'demo-sub')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduSub', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expectParameterSyncComplete(page)
@@ -2245,7 +2255,7 @@ test.describe('ArduPlane demo', () => {
 test.describe('ArduRover / ArduSub demo', () => {
   test('Rover curated Tuning surface renders its groups, shows seeded values, and stages a draft', async ({ page }) => {
     await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo-rover')
+    await useHiddenDemoMode(page, 'demo-rover')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduRover', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expectParameterSyncComplete(page)
@@ -2293,7 +2303,7 @@ test.describe('ArduRover / ArduSub demo', () => {
 
   test('demo-rover identifies a Rover and drives the real Rover catalog UI', async ({ page }) => {
     await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo-rover')
+    await useHiddenDemoMode(page, 'demo-rover')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduRover', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expectParameterSyncComplete(page)
@@ -2342,7 +2352,7 @@ test.describe('ArduRover / ArduSub demo', () => {
 
   test('Sub curated Tuning surface renders its groups, shows seeded values, and stages a draft', async ({ page }) => {
     await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo-sub')
+    await useHiddenDemoMode(page, 'demo-sub')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduSub', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expectParameterSyncComplete(page)
@@ -2392,7 +2402,7 @@ test.describe('ArduRover / ArduSub demo', () => {
 
   test('demo-sub identifies a Sub and shows no multirotor motor UI', async ({ page }) => {
     await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo-sub')
+    await useHiddenDemoMode(page, 'demo-sub')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduSub', { timeout: VEHICLE_CONNECT_TIMEOUT })
     // "Sub outputs" and the rest below derive from the synced param table, so

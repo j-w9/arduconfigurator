@@ -156,8 +156,10 @@ export function AppHeader({
         >
           <option value="demo">Demo (Copter)</option>
           <option value="demo-plane">Demo (Plane)</option>
-          <option value="demo-rover">Demo (Rover)</option>
-          <option value="demo-sub">Demo (Sub)</option>
+          {/* Rover/Sub demos hidden from the picker for now (see
+              disconnected-landing.tsx); shown only while already active. */}
+          {transportMode === 'demo-rover' ? <option value="demo-rover">Demo (Rover)</option> : null}
+          {transportMode === 'demo-sub' ? <option value="demo-sub">Demo (Sub)</option> : null}
           <option value="web-serial" disabled={!webSerialSupported}>
             Serial / USB{webSerialSupported ? '' : ' (n/a)'}
           </option>

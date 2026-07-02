@@ -107,8 +107,12 @@ export function DisconnectedLanding(props: DisconnectedLandingProps) {
             >
               <option value="demo">Demo (Copter)</option>
               <option value="demo-plane">Demo (Plane)</option>
-              <option value="demo-rover">Demo (Rover)</option>
-              <option value="demo-sub">Demo (Sub)</option>
+              {/* Rover/Sub demos are hidden from the picker for now. The modes
+                  still work — restored selections and e2e reach them via the
+                  stored transport mode — so render the option only when it's
+                  already active (keeps the select from displaying blank). */}
+              {transportMode === 'demo-rover' ? <option value="demo-rover">Demo (Rover)</option> : null}
+              {transportMode === 'demo-sub' ? <option value="demo-sub">Demo (Sub)</option> : null}
               <option value="web-serial" disabled={!webSerialSupported}>
                 Serial{webSerialSupported ? '' : ' (n/a)'}
               </option>
