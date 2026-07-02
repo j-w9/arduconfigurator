@@ -163,6 +163,11 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     handlers
   } = props
 
+  // Bind button hidden for now (the runtime capability + onBindReceiver wiring
+  // stay intact, so flip this to re-surface it). See the receiver-bind-action
+  // block below.
+  const SHOW_RECEIVER_BIND_BUTTON: boolean = false
+
   // Brief visual confirmation that the bind command was sent — the action is
   // fire-and-forget, so the button flips to the accent colour (and "Bind sent")
   // for ~1.6s on click, then reverts.
@@ -379,6 +384,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                     )
                   ) : null}
 
+                  {SHOW_RECEIVER_BIND_BUTTON ? (
                   <div className="receiver-bind-action" data-testid="receiver-bind-action">
                     <button
                       type="button"
@@ -406,6 +412,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                       </span>
                     </span>
                   </div>
+                  ) : null}
                 </div>
           }
           taskBodySlot={

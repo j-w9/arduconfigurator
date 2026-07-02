@@ -1234,25 +1234,9 @@ test.describe('Config view', () => {
   })
 })
 
-test.describe('Receiver bind', () => {
-  test('the bind button under the live monitor sends the ELRS/CRSF receiver bind request', async ({ page }) => {
-    await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo')
-    await page.getByTestId('connect-button').click()
-    await openView(page, 'receiver')
-
-    const bindButton = page.getByTestId('receiver-bind-button')
-    await expect(bindButton).toBeVisible()
-    await expect(bindButton).toHaveText(/Bind RX/)
-
-    // Fire-and-forget MAV_CMD_START_RX_PAIR; the session notice confirms the
-    // request (button copy doesn't contain this phrase, so it's notice-specific).
-    await bindButton.click()
-    // The button gives immediate click feedback (accent colour + "Bind sent").
-    await expect(bindButton).toHaveText(/Bind sent/)
-    await expect(page.getByText(/Receiver bind requested/i)).toBeVisible()
-  })
-})
+// The receiver Bind (ELRS/CRSF) button is currently hidden in the UI
+// (SHOW_RECEIVER_BIND_BUTTON=false in ReceiverSection.tsx); the runtime
+// startReceiverBind path stays covered by tests/runtime.integration.test.mjs.
 
 test.describe('Receiver channel-direction check', () => {
   test('lives under Endpoints (not Mapping) with a verdict row per primary axis', async ({ page }) => {
