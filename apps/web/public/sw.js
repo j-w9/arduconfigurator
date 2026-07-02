@@ -62,6 +62,16 @@ self.addEventListener('fetch', (event) => {
 
   // Navigations: network-first with cached-shell fallback when offline.
   if (request.mode === 'navigate') {
+    // The wiki (/wiki*) is a separate multi-page static site on the same origin.
+    // Its .html URLs 308-redirect to extensionless paths (Cloudflare Pages clean
+    // URLs), and returning a redirected response for a navigation is a network
+    // error under the SW spec — so intercepting them breaks every wiki sub-page
+    // in the browser (while direct fetch/curl works). The SW only needs to
+    // shell-cache the app, so let the browser handle wiki navigations itself.
+    const wikiBase = new URL('wiki', self.registration.scope).pathname
+    if (url.pathname === wikiBase || url.pathname.startsWith(`${wikiBase}/`)) {
+      return
+    }
     event.respondWith(navigationStrategy(request))
     return
   }
