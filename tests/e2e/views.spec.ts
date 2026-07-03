@@ -328,6 +328,13 @@ test.describe('Networking view (Expert + networking-capable FC)', () => {
     await expect(page.getByText('IP configuration', { exact: true })).toBeVisible()
     await expect(page.getByText('Network endpoints', { exact: true })).toBeVisible()
 
+    // IP renders as a dotted-quad (four octet inputs), not four "byte N" fields;
+    // editing an octet stages a change on the Apply button.
+    await expect(page.getByTestId('ip-octet-NET_IPADDR0')).toBeVisible()
+    await expect(page.getByTestId('ip-octet-NET_IPADDR3')).toBeVisible()
+    await page.getByTestId('ip-octet-NET_IPADDR3').fill('20')
+    await expect(page.getByRole('button', { name: /Apply Network Changes \(\d+\)/ })).toBeVisible()
+
     // DroneNet tab: switching to it auto-connects over CAN and discovers the demo
     // DroneNet peripheral — no CAN tab, no manual Start needed.
     await page.getByTestId('networking-tab-dronenet').click()

@@ -6514,6 +6514,26 @@ textarea:focus {
   border: 1px solid rgba(255, 255, 255, 0.035);
   background: linear-gradient(180deg, rgba(20, 24, 31, 0.96), rgba(14, 18, 23, 0.98));
 }
+/* Dotted-quad IPv4 editor: four small octet inputs separated by dots. */
+.ip-address-field__octets {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-data);
+}
+.ip-address-field__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ip-address-field__octet {
+  width: 3.4em;
+  text-align: center;
+}
+.ip-address-field__sep {
+  opacity: 0.6;
+  font-weight: 600;
+}
 
 /* Staged = the editor diverges from the live snapshot. Operators
  * explicitly asked for a clearly-red flag (not the previous subtle

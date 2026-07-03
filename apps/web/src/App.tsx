@@ -277,6 +277,7 @@ import { VtxSection } from './sections/VtxSection'
 import { PowerView, type PowerDraftItem, type PowerFieldSpec } from './views/Power'
 import { CanBusView } from './views/CanBus'
 import { NetworkingView, type NetworkingTab } from './views/NetworkingView'
+import { IpAddressField } from './views/IpAddressField'
 import { RcMixerView } from './views/RcMixer'
 import { buildServoFunctionMappingRows } from './view-models/servo-function-mapping'
 import { buildFilteredParameters } from './view-models/filtered-parameters'
@@ -4732,6 +4733,49 @@ export function App() {
     )
   }
 
+  // Networking field renderer: compose the four NET_…IP octet params into one
+  // dotted-quad editor; everything else falls through to the generic metadata
+  // field. Sibling octets (byte 2-4) render null — the byte-1 quad draws them.
+  // MAC stays as plain byte fields (in-place hex editing fights the cursor).
+  function renderNetworkingField(parameter: ParameterState): ReactNode {
+    const octet0 = /^(NET_(?:IPADDR|GWADDR|REMPPP_IP|P\d+_IP))0$/.exec(parameter.id)
+    if (octet0) {
+      // Honour the same visibleWhen gating the generic renderer applies (endpoint
+      // IPs stay hidden until their NET_Pn_TYPE is an active type).
+      const visibleWhen = parameter.definition?.visibleWhen
+      if (visibleWhen) {
+        const draft = editedValues[visibleWhen.paramId]
+        const live = snapshot.parameters.find((candidate) => candidate.id === visibleWhen.paramId)?.value
+        const current = draft !== undefined && draft !== '' ? Number(draft) : live
+        if (current === undefined || Number.isNaN(current) || !visibleWhen.in.includes(Math.round(current))) {
+          return null
+        }
+      }
+      const base = octet0[1]
+      const octets = [0, 1, 2, 3]
+        .map((index) => selectParameterById(snapshot, `${base}${index}`))
+        .filter((entry): entry is ParameterState => entry !== undefined)
+      if (octets.length === 4) {
+        return (
+          <IpAddressField
+            key={parameter.id}
+            label={(parameter.definition?.label ?? base).replace(/ · byte \d+$/, '')}
+            description={parameter.definition?.description}
+            octets={octets}
+            editedValues={editedValues}
+            draftStatusById={parameterDraftById}
+            onChange={(paramId, value) => setDraft(paramId, value)}
+          />
+        )
+      }
+    }
+    // A non-leading octet of an IP group — already drawn by its byte-1 quad.
+    if (/^NET_(?:IPADDR|GWADDR|REMPPP_IP|P\d+_IP)[1-3]$/.test(parameter.id)) {
+      return null
+    }
+    return renderMetadataParameterField(parameter)
+  }
+
   function handleStageTuningParameterValue(parameter: ParameterState, nextValue: string): void {
     updateDrafts((existing) => {
       let nextEditedValues = applyTuningEditedValue(existing, parameter, nextValue)
@@ -4810,7 +4854,8 @@ export function App() {
     invalidDrafts: ParameterDraftEntry[],
     applyActionId: string,
     applyLabel: string,
-    discardScope: string
+    discardScope: string,
+    renderField: (parameter: ParameterState) => ReactNode = renderMetadataParameterField
   ): ReactNode {
     return (
       <AdditionalSettingsCard
@@ -4826,7 +4871,7 @@ export function App() {
         canApply={canApplyDraftParameters}
         onApply={() => void handleApplyScopedParameterDrafts(draftEntries, applyActionId, title)}
         onDiscard={() => handleDiscardScopedParameterDrafts(draftEntries.map((entry) => entry.id), discardScope)}
-        renderField={renderMetadataParameterField}
+        renderField={renderField}
       />
     )
   }
@@ -7104,7 +7149,8 @@ export function App() {
           networkingInvalidDrafts,
           'networking:apply',
           'Apply Network Changes',
-          'network settings'
+          'network settings',
+          renderNetworkingField
         )}
         dronecanSlot={
           <CanBusView
