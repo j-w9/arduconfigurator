@@ -278,6 +278,8 @@ import { PowerView, type PowerDraftItem, type PowerFieldSpec } from './views/Pow
 import { CanBusView } from './views/CanBus'
 import { NetworkingView, type NetworkingTab } from './views/NetworkingView'
 import { IpAddressField } from './views/IpAddressField'
+import { PassthroughEditor } from './views/PassthroughEditor'
+import { groupPassthroughBlocks } from './view-models/passthrough'
 import { RcMixerView } from './views/RcMixer'
 import { buildServoFunctionMappingRows } from './view-models/servo-function-mapping'
 import { buildFilteredParameters } from './view-models/filtered-parameters'
@@ -4575,6 +4577,34 @@ export function App() {
       void runtime?.startCanBusForward(1)
     }
   }, [activeViewId, networkingTab, snapshot.connection.kind, snapshot.canBus.status, runtime])
+  // On the DroneNet tab, auto-walk each discovered node's params once so its
+  // network settings (incl. passthrough) populate without a manual "Re-fetch".
+  // Guarded on idle + empty so it fires exactly once per node.
+  useEffect(() => {
+    if (activeViewId !== 'networking' || networkingTab !== 'dronenet' || snapshot.canBus.status !== 'active') {
+      return
+    }
+    for (const node of snapshot.canBus.nodes) {
+      if (node.paramFetch.status === 'idle' && node.parameters.length === 0) {
+        runtime?.fetchAllCanBusParameters(node.nodeId)
+      }
+    }
+  }, [activeViewId, networkingTab, snapshot.canBus.status, snapshot.canBus.nodes, runtime])
+  // Friendly passthrough-row editors, one per DroneNet node that reports a
+  // NET_PASSn_ block. Writes go over DroneCAN via the shared apply-and-save path.
+  const dronenetPassthroughEditors = networkCanBusState.nodes
+    .map((node) => ({ node, blocks: groupPassthroughBlocks(node.parameters) }))
+    .filter((entry) => entry.blocks.length > 0)
+    .map(({ node, blocks }) => (
+      <PassthroughEditor
+        key={node.nodeId}
+        nodeId={node.nodeId}
+        nodeName={node.name ?? `node ${node.nodeId}`}
+        blocks={blocks}
+        busy={busyAction !== undefined}
+        onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
+      />
+    ))
   const visibleAppViews = useMemo(
     () =>
       buildVisibleAppViews({
@@ -7140,6 +7170,7 @@ export function App() {
         onTabChange={setNetworkingTab}
         dronenetNodeCount={networkCanBusState.nodes.length}
         scanning={snapshot.canBus.status === 'active' || snapshot.canBus.status === 'requesting'}
+        passthroughSlot={dronenetPassthroughEditors.length > 0 ? <>{dronenetPassthroughEditors}</> : null}
         settingsSlot={renderAdditionalSettingsCard(
           'Network settings',
           'ArduPilot NET_ parameters — IP addressing (Ethernet/PPP), DHCP, gateway, MAC, and network serial endpoints.',

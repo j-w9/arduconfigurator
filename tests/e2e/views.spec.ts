@@ -342,6 +342,12 @@ test.describe('Networking view (Expert + networking-capable FC)', () => {
     await expect(page.getByText('DroneNet peripherals', { exact: true })).toBeVisible()
     // The demo com.botblox.dronenet node (id 71) shows up over the auto-started forward.
     await expect(page.getByTestId('can-bus-node-toggle-71')).toBeVisible({ timeout: 15000 })
+
+    // Its NET_PASSn_ passthrough renders as a friendly bridge row with labelled
+    // endpoint dropdowns (params auto-walked over CAN). Mock EP1=2 ⇒ "Serial 2".
+    await expect(page.getByTestId('passthrough-editor-71')).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('passthrough-ep1-71-1')).toHaveValue('2')
+    await expect(page.getByTestId('passthrough-ep2-71-1')).toHaveValue('21')
   })
 })
 

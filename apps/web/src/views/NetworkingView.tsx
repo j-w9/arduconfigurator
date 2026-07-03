@@ -11,6 +11,8 @@ export interface NetworkingViewProps {
   settingsSlot: ReactNode
   /** DroneNet peripherals — a NET_-filtered DroneCAN node editor, built by App. */
   dronecanSlot: ReactNode
+  /** Friendly passthrough-bridge editors for DroneNet nodes (built by App). */
+  passthroughSlot: ReactNode
   activeTab: NetworkingTab
   onTabChange: (tab: NetworkingTab) => void
   /** Discovered DroneCAN node count (drives the DroneNet tab badge + status). */
@@ -34,6 +36,7 @@ export function NetworkingView({
   hasParameters,
   settingsSlot,
   dronecanSlot,
+  passthroughSlot,
   activeTab,
   onTabChange,
   dronenetNodeCount,
@@ -71,8 +74,8 @@ export function NetworkingView({
         <div data-testid="networking-fc-tab">
           <ul className="bf-note">
             <li>
-              These are this flight controller's own network settings (over MAVLink). No native Ethernet? Networking
-              runs over PPP — set a serial port's protocol to PPP on the link that carries it, then enable networking.
+              No native Ethernet? Networking runs over PPP — set a serial port's protocol to PPP on the link that
+              carries it, then enable networking.
             </li>
           </ul>
           {hasParameters ? (
@@ -93,6 +96,7 @@ export function NetworkingView({
                 : 'Connected over CAN — scanning for DroneNet peripherals…'
               : 'Connecting over the CAN bus to look for DroneNet peripherals…'}
           </p>
+          {passthroughSlot}
           {dronecanSlot}
         </div>
       )}
