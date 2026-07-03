@@ -326,6 +326,9 @@ test.describe('Networking view (Expert + networking-capable FC)', () => {
     // The scoped-settings card rendered both metadata categories.
     await expect(page.getByText('IP configuration', { exact: true })).toBeVisible()
     await expect(page.getByText('Network endpoints', { exact: true })).toBeVisible()
+    // DroneNet peripherals configure over DroneCAN right here — no CAN tab needed.
+    await expect(page.getByText('DroneNet peripherals', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('networking-view').getByText(/Start .* to discover nodes/i)).toBeVisible()
   })
 })
 

@@ -122,6 +122,33 @@ const NODES: MockDronecanNode[] = [
       { name: 'BATT_MONITOR', value: int(4), default: int(0), min: int(0), max: int(20) },
       { name: 'BATT_CAPACITY', value: real(5200), default: real(0), min: real(0), max: real(64000) }
     ]
+  },
+  {
+    // A DroneNet Ethernet-switch peripheral — an AP_Periph node that carries a
+    // NET_ networking tree, configured over DroneCAN. Powers the DroneNet section
+    // in the Networking tab.
+    nodeId: 71,
+    name: 'com.botblox.dronenet',
+    swMajor: 1,
+    swMinor: 3,
+    vcsCommit: 0x2934abcd,
+    hwMajor: 1,
+    hwMinor: 0,
+    uniqueId: uid(71),
+    health: 0,
+    mode: 0,
+    params: [
+      { name: 'NODEID', value: int(71), default: int(0), min: int(0), max: int(127) },
+      { name: 'NET_ENABLE', value: int(1), default: int(0), min: int(0), max: int(1) },
+      { name: 'NET_DHCP', value: int(1), default: int(1), min: int(0), max: int(1) },
+      { name: 'NET_IPADDR0', value: int(192), default: int(192), min: int(0), max: int(255) },
+      { name: 'NET_IPADDR1', value: int(168), default: int(168), min: int(0), max: int(255) },
+      { name: 'NET_IPADDR2', value: int(144), default: int(144), min: int(0), max: int(255) },
+      { name: 'NET_IPADDR3', value: int(20), default: int(14), min: int(0), max: int(255) },
+      { name: 'NET_OPTIONS', value: int(3), default: int(0), min: int(0), max: int(255) },
+      { name: 'NET_P1_TYPE', value: int(2), default: int(0), min: int(0), max: int(4) },
+      { name: 'NET_P1_PORT', value: int(14550), default: int(0), min: int(0), max: int(65535) }
+    ]
   }
 ]
 

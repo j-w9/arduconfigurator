@@ -4546,6 +4546,20 @@ export function App() {
     () => snapshot.parameters.some((parameter) => parameter.id === 'NET_ENABLE'),
     [snapshot.parameters]
   )
+  // DroneNet: the Networking tab embeds a NET_-filtered DroneCAN node editor so a
+  // peripheral's network settings are configurable without the CAN tab. Filtering
+  // at the state level means the node list, param count, staged changes, and the
+  // editor all restrict to NET_ automatically (CanBusView is unchanged).
+  const networkCanBusState = useMemo(
+    () => ({
+      ...snapshot.canBus,
+      nodes: snapshot.canBus.nodes.map((node) => ({
+        ...node,
+        parameters: node.parameters.filter((parameter) => parameter.name.startsWith('NET_'))
+      }))
+    }),
+    [snapshot.canBus]
+  )
   const visibleAppViews = useMemo(
     () =>
       buildVisibleAppViews({
@@ -7074,6 +7088,24 @@ export function App() {
           'Apply Network Changes',
           'network settings'
         )}
+        dronecanSlot={
+          <CanBusView
+            state={networkCanBusState}
+            vehicleConnected={snapshot.connection.kind === 'connected'}
+            selfNodeIds={[
+              readRoundedParameter(snapshot, 'CAN_D1_UC_NODE'),
+              readRoundedParameter(snapshot, 'CAN_D2_UC_NODE')
+            ].filter((id): id is number => typeof id === 'number' && id > 0)}
+            onStartForward={(bus) => { void runtime?.startCanBusForward(bus) }}
+            onStopForward={() => { void runtime?.stopCanBusForward() }}
+            onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
+            onFetchAllParameters={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
+            onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
+            paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
+            title="DroneNet peripherals"
+            subtitle="Configure a DroneCAN peripheral's network settings — its NET_ parameters, written over the CAN bus and saved to the node. Start the bus to discover nodes; no need to leave this tab."
+          />
+        }
       />
       ) : null}
 

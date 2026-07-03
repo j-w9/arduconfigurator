@@ -7,6 +7,9 @@ export interface NetworkingViewProps {
   hasParameters: boolean
   /** The scoped-parameter settings card (IP config + endpoints), built by App. */
   settingsSlot: ReactNode
+  /** DroneNet peripherals — a NET_-filtered DroneCAN node editor, built by App,
+   *  so the user configures peripheral network settings without the CAN tab. */
+  dronecanSlot: ReactNode
 }
 
 /**
@@ -15,21 +18,21 @@ export interface NetworkingViewProps {
  * shared additional-settings scope) and passes it in as `settingsSlot`. Reachable
  * only when the FC reports networking support (NET_ENABLE present).
  */
-export function NetworkingView({ hasParameters, settingsSlot }: NetworkingViewProps) {
+export function NetworkingView({ hasParameters, settingsSlot, dronecanSlot }: NetworkingViewProps) {
   return (
-    <Panel
-      title="Networking"
-      subtitle="IP networking for this flight controller — Ethernet or PPP addressing and MAVLink/telemetry served over UDP/TCP network endpoints. Most fields take effect after a reboot."
-    >
-      <div data-testid="networking-view">
+    <div data-testid="networking-view">
+      <Panel
+        title="Networking"
+        subtitle="IP networking for this flight controller — Ethernet or PPP addressing and MAVLink/telemetry served over UDP/TCP network endpoints. Most fields take effect after a reboot."
+      >
         <ul className="bf-note">
           <li>
             No native Ethernet? Networking runs over PPP — set a serial port's protocol to PPP on the link that
             carries it, then enable networking.
           </li>
           <li>
-            DroneNet peripherals (e.g. an AP_Periph Ethernet switch) are configured over DroneCAN from the CAN tab —
-            they use these same NET_ parameters.
+            DroneNet peripherals (e.g. an AP_Periph Ethernet switch) are configured below over DroneCAN — no need to
+            leave this tab. They use these same NET_ parameters.
           </li>
         </ul>
         {hasParameters ? (
@@ -40,7 +43,8 @@ export function NetworkingView({ hasParameters, settingsSlot }: NetworkingViewPr
             will populate.
           </p>
         )}
-      </div>
-    </Panel>
+      </Panel>
+      {dronecanSlot}
+    </div>
   )
 }

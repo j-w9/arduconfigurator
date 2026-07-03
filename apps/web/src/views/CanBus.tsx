@@ -43,6 +43,12 @@ export interface CanBusViewProps {
    *  usually report none of that. Returns undefined for unknown/periph-specific
    *  params, which then render raw. */
   paramMetadata: DronecanParamCatalogLookup
+  /** Panel title/subtitle override (the networking variant reframes the copy).
+   *  The DroneNet section in the Networking tab passes a NET_-filtered `state`,
+   *  so no param-level filtering is needed here — count, staged changes, and the
+   *  param list all derive from `state`. */
+  title?: string
+  subtitle?: string
 }
 
 export function CanBusView(props: CanBusViewProps) {
@@ -55,7 +61,9 @@ export function CanBusView(props: CanBusViewProps) {
     onRefreshNode,
     onFetchAllParameters,
     onApplyAndSave,
-    paramMetadata
+    paramMetadata,
+    title = 'DroneCAN Bus',
+    subtitle = 'Discover DroneCAN devices on the CAN bus and read, edit, and save their parameters — without dropping your vehicle connection.'
   } = props
 
   const rows = useMemo(() => buildCanBusNodeRows(state), [state])
@@ -127,10 +135,7 @@ export function CanBusView(props: CanBusViewProps) {
 
   return (
     <div id="setup-panel-can">
-      <Panel
-        title="DroneCAN Bus"
-        subtitle="Discover DroneCAN devices on the CAN bus and read, edit, and save their parameters — without dropping your vehicle connection."
-      >
+      <Panel title={title} subtitle={subtitle}>
         <header className="can-bus-header">
           <div className="can-bus-header__status">
             <StatusBadge tone={headerTone}>

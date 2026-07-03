@@ -56,8 +56,13 @@ DroneNet peripherals
 --------------------
 
 A **DroneNet** node (for example an AP_Periph Ethernet-switch peripheral) provides
-a network on the CAN bus side of the vehicle. It is configured over DroneCAN from
-the **CAN** tab: its network settings are the same ``NET_*`` parameters, written to
-the node and saved like any other peripheral parameter. Serial-to-network
-**passthrough** (bridging a node UART to a TCP/UDP endpoint) is a peripheral
-feature — it is configured on the node, not on the flight controller.
+a network on the CAN bus side of the vehicle. It is configured **right here in the
+Networking tab** — the **DroneNet peripherals** panel at the bottom. Start the CAN
+bus to discover nodes, expand a node, and edit its network (``NET_*``) parameters;
+**Apply & Save** writes them to the node over DroneCAN and persists them to its
+flash. You never have to leave for the CAN tab.
+
+Under the hood these are ordinary DroneCAN parameter writes (the same mechanism the
+CAN tab uses), but they are presented as plain network settings. Serial-to-network
+**passthrough** (bridging a node UART to a TCP/UDP endpoint) is a peripheral feature
+configured on the node itself.

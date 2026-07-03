@@ -383,7 +383,13 @@ test('demo DroneCAN simulator populates the inspector with named nodes + params'
     assert.ok(snapshot, 'two named nodes with their parameter tables were discovered')
 
     const names = snapshot.canBus.nodes.map((node) => node.name).sort()
-    assert.deepEqual(names, ['com.hex.here3', 'org.ardupilot.ap_periph'])
+    assert.deepEqual(names, ['com.botblox.dronenet', 'com.hex.here3', 'org.ardupilot.ap_periph'])
+
+    // The DroneNet peripheral carries a NET_ tree — the Networking tab's DroneNet
+    // section reads/writes these over DroneCAN.
+    const dronenet = snapshot.canBus.nodes.find((node) => node.nodeId === 71)
+    assert.ok(dronenet, 'DroneNet node 71 present')
+    assert.ok(dronenet.parameters.find((param) => param.name === 'NET_ENABLE'), 'NET_ENABLE param fetched over DroneCAN')
 
     const gps = snapshot.canBus.nodes.find((node) => node.nodeId === 124)
     assert.ok(gps, 'GPS node 124 present')
