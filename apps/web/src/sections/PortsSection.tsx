@@ -260,33 +260,23 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                             </div>
 
                             {[...visibleSerialPortViewModels]
-                              // Order by the physical UART (hardwarePort, natural
-                              // order: UART4 < UART6 < UART8), not the SERIAL
-                              // index. Ports with no board map fall back after the
-                              // mapped ones, by SERIAL number.
-                              .sort((left, right) => {
-                                if (left.hardwarePort && right.hardwarePort) {
-                                  return left.hardwarePort.localeCompare(right.hardwarePort, undefined, { numeric: true, sensitivity: 'base' })
-                                }
-                                if (left.hardwarePort) {
-                                  return -1
-                                }
-                                if (right.hardwarePort) {
-                                  return 1
-                                }
-                                return left.portNumber - right.portNumber
-                              })
+                              // Order by SERIAL number — the identifier the operator
+                              // and the params (SERIALn_*) use. The physical
+                              // peripheral name (UART4/USART2) is shown as a secondary
+                              // pill; its UART-vs-USART distinction doesn't matter for
+                              // ordering.
+                              .sort((left, right) => left.portNumber - right.portNumber)
                               .map((port) => {
-                              // Lead with the PHYSICAL UART (hardwarePort from the
-                              // board map) — the SERIAL index is NOT the UART
-                              // number (e.g. physical UART6 maps to SERIAL7). The
-                              // row still edits its own SERIALn_PROTOCOL (shown in
-                              // the sub-line). Falls back to the logical port when
-                              // no board map is available; SERIAL0 is USB.
+                              // Lead with the SERIAL number — the identifier the
+                              // params use (SERIALn_PROTOCOL, shown in the sub-line)
+                              // and what the operator thinks in. The physical UART
+                              // (UART6/USART2) is secondary (a pill below); whether
+                              // it's a UART or a USART doesn't matter here. SERIAL0
+                              // is the USB console.
                               const portHeading =
                                 port.portNumber === 0
                                   ? 'USB / Console'
-                                  : port.hardwarePort ?? `SERIAL ${port.portNumber}`
+                                  : `SERIAL ${port.portNumber}`
                               const protocolParameter = port.protocolParameter
                               const baudParameter = port.baudParameter
                               const optionsParameter = port.optionsParameter
@@ -348,11 +338,14 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                         </StatusBadge>
                                       </div>
                                       <div className="config-pills">
-                                        {/* Purpose + descriptive role/connector are secondary to the physical
-                                            UART (now the heading). Skip the label when it just repeats the
-                                            heading (boardConnectorLabel often IS the hardwarePort). */}
+                                        {/* SERIAL number now leads (heading); the physical UART and the
+                                            descriptive connector/role are secondary pills. Dedupe so a
+                                            connector label that just repeats the UART name isn't shown twice. */}
                                         <span>{port.usageSummary}</span>
-                                        {port.label && port.label !== portHeading ? <span>{port.label}</span> : null}
+                                        {port.hardwarePort ? <span>{port.hardwarePort}</span> : null}
+                                        {port.label && port.label !== portHeading && port.label !== port.hardwarePort ? (
+                                          <span>{port.label}</span>
+                                        ) : null}
                                         {port.boardTrafficSummary ? <span>{port.boardTrafficSummary}</span> : null}
                                       </div>
                                     </div>
