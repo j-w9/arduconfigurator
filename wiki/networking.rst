@@ -15,6 +15,11 @@ Most flight controllers have no Ethernet or PPP hardware, so the tab is hidden o
 them — switch on Expert mode (top-right) and, if the board supports networking,
 the **Networking** tab appears in the sidebar.
 
+The tab has two sub-tabs:
+
+- **IP setup** — the flight controller's own networking (below).
+- **DroneNet** — a DroneCAN peripheral's networking (further below).
+
 .. note::
 
    Not every flight controller is Ethernet/PPP-capable. If the Networking tab
@@ -56,13 +61,14 @@ DroneNet peripherals
 --------------------
 
 A **DroneNet** node (for example an AP_Periph Ethernet-switch peripheral) provides
-a network on the CAN bus side of the vehicle. It is configured **right here in the
-Networking tab** — the **DroneNet peripherals** panel at the bottom. Start the CAN
-bus to discover nodes, expand a node, and edit its network (``NET_*``) parameters;
-**Apply & Save** writes them to the node over DroneCAN and persists them to its
-flash. You never have to leave for the CAN tab.
+a network on the CAN bus side of the vehicle. Open the **DroneNet** sub-tab and the
+configurator **auto-connects over the CAN bus** to look for peripherals — no manual
+"Start" needed. Discovered nodes are listed; expand one and edit its network
+(``NET_*``) parameters, then **Apply & Save** to write them to the node over
+DroneCAN and persist them to its flash. You never have to leave for the CAN tab.
 
-Under the hood these are ordinary DroneCAN parameter writes (the same mechanism the
-CAN tab uses), but they are presented as plain network settings. Serial-to-network
-**passthrough** (bridging a node UART to a TCP/UDP endpoint) is a peripheral feature
-configured on the node itself.
+The full peripheral network parameter set is supported and labelled: IP addressing,
+network endpoints (``NET_Pn_*``), the PPP link (``NET_PPP_*``), and serial↔network
+**passthrough** (``NET_PASSn_*`` — bridge a node UART to a TCP/UDP endpoint on the
+LAN). Under the hood these are ordinary DroneCAN parameter writes (the same
+mechanism the CAN tab uses), presented as plain network settings.

@@ -147,7 +147,12 @@ const NODES: MockDronecanNode[] = [
       { name: 'NET_IPADDR3', value: int(20), default: int(14), min: int(0), max: int(255) },
       { name: 'NET_OPTIONS', value: int(3), default: int(0), min: int(0), max: int(255) },
       { name: 'NET_P1_TYPE', value: int(2), default: int(0), min: int(0), max: int(4) },
-      { name: 'NET_P1_PORT', value: int(14550), default: int(0), min: int(0), max: int(65535) }
+      { name: 'NET_P1_PORT', value: int(14550), default: int(0), min: int(0), max: int(65535) },
+      { name: 'NET_PPP_PORT', value: int(1), default: int(0), min: int(0), max: int(9) },
+      { name: 'NET_PPP_BAUD', value: int(12500000), default: int(0), min: int(0), max: int(12500000) },
+      { name: 'NET_PASS1_ENABLE', value: int(1), default: int(0), min: int(0), max: int(1) },
+      { name: 'NET_PASS1_EP1', value: int(2), default: int(0), min: int(0), max: int(59) },
+      { name: 'NET_PASS1_EP2', value: int(21), default: int(0), min: int(0), max: int(59) }
     ]
   }
 ]

@@ -323,12 +323,18 @@ test.describe('Networking view (Expert + networking-capable FC)', () => {
     await page.getByTestId('view-button-networking').click()
 
     await expect(page.getByTestId('networking-view')).toBeVisible()
-    // The scoped-settings card rendered both metadata categories.
+    // Default tab: IP setup — the scoped-settings card rendered both categories.
+    await expect(page.getByTestId('networking-fc-tab')).toBeVisible()
     await expect(page.getByText('IP configuration', { exact: true })).toBeVisible()
     await expect(page.getByText('Network endpoints', { exact: true })).toBeVisible()
-    // DroneNet peripherals configure over DroneCAN right here — no CAN tab needed.
+
+    // DroneNet tab: switching to it auto-connects over CAN and discovers the demo
+    // DroneNet peripheral — no CAN tab, no manual Start needed.
+    await page.getByTestId('networking-tab-dronenet').click()
+    await expect(page.getByTestId('networking-dronenet-tab')).toBeVisible()
     await expect(page.getByText('DroneNet peripherals', { exact: true })).toBeVisible()
-    await expect(page.getByTestId('networking-view').getByText(/Start .* to discover nodes/i)).toBeVisible()
+    // The demo com.botblox.dronenet node (id 71) shows up over the auto-started forward.
+    await expect(page.getByTestId('can-bus-node-toggle-71')).toBeVisible({ timeout: 15000 })
   })
 })
 

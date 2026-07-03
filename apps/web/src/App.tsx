@@ -276,7 +276,7 @@ import { TuningSubSection } from './sections/TuningSubSection'
 import { VtxSection } from './sections/VtxSection'
 import { PowerView, type PowerDraftItem, type PowerFieldSpec } from './views/Power'
 import { CanBusView } from './views/CanBus'
-import { NetworkingView } from './views/NetworkingView'
+import { NetworkingView, type NetworkingTab } from './views/NetworkingView'
 import { RcMixerView } from './views/RcMixer'
 import { buildServoFunctionMappingRows } from './view-models/servo-function-mapping'
 import { buildFilteredParameters } from './view-models/filtered-parameters'
@@ -4560,6 +4560,20 @@ export function App() {
     }),
     [snapshot.canBus]
   )
+  const [networkingTab, setNetworkingTab] = useState<NetworkingTab>('fc')
+  // Opening the DroneNet tab auto-connects over CAN (starts the forward) so
+  // peripherals are discovered without the operator hunting for a Start button.
+  // The idle guard means it fires once; the CAN tab / Stop button still control it.
+  useEffect(() => {
+    if (
+      activeViewId === 'networking' &&
+      networkingTab === 'dronenet' &&
+      snapshot.connection.kind === 'connected' &&
+      snapshot.canBus.status === 'idle'
+    ) {
+      void runtime?.startCanBusForward(1)
+    }
+  }, [activeViewId, networkingTab, snapshot.connection.kind, snapshot.canBus.status, runtime])
   const visibleAppViews = useMemo(
     () =>
       buildVisibleAppViews({
@@ -7077,6 +7091,10 @@ export function App() {
       {activeViewId === 'networking' ? (
       <NetworkingView
         hasParameters={hasNetworkingParams}
+        activeTab={networkingTab}
+        onTabChange={setNetworkingTab}
+        dronenetNodeCount={networkCanBusState.nodes.length}
+        scanning={snapshot.canBus.status === 'active' || snapshot.canBus.status === 'requesting'}
         settingsSlot={renderAdditionalSettingsCard(
           'Network settings',
           'ArduPilot NET_ parameters — IP addressing (Ethernet/PPP), DHCP, gateway, MAC, and network serial endpoints.',

@@ -19,6 +19,7 @@ import type { FirmwareMetadataBundle, ParameterDefinition, ParameterValueOption 
 
 const CORE = 'network'
 const ENDPOINTS = 'network-endpoints'
+const PASSTHROUGH = 'network-passthrough'
 
 // NET_OPTIONS @Bitmask (AP_Networking.cpp) / enum class OPTION (AP_Networking.h).
 // Bitmask option values are the BIT INDICES.
@@ -109,6 +110,92 @@ export function buildNetworkPortParameterDefinitions(maxPort: number): FirmwareM
   return defs
 }
 
+/**
+ * AP_Periph serial↔network passthrough family NET_PASSn_* (n = 1..maxBlocks) —
+ * bridges two serial-manager endpoints (a node UART ↔ a network endpoint). This
+ * is a peripheral-firmware feature, so it appears only on DroneNet/AP_Periph
+ * nodes; the DroneNet section reads it over DroneCAN.
+ */
+export function buildNetworkPassthroughParameterDefinitions(maxBlocks: number): FirmwareMetadataBundle['parameters'] {
+  const defs: Record<string, ParameterDefinition> = {}
+  const endpointDescription =
+    'Serial-manager endpoint ID: 0–9 = a hardware UART/USB, 21–29 = network port 1–9 (TCP/UDP), 41–59 = a CAN serial-tunnel port.'
+  for (let n = 1; n <= maxBlocks; n += 1) {
+    const p = `NET_PASS${n}_`
+    const active = { paramId: `${p}ENABLE`, in: [1] }
+    defs[`${p}ENABLE`] = {
+      id: `${p}ENABLE`,
+      label: `Passthrough ${n}`,
+      description: `Bridge two endpoints, pumping bytes both ways (e.g. expose a node UART as a TCP socket on the LAN).`,
+      category: PASSTHROUGH,
+      rebootRequired: true,
+      options: [
+        { value: 0, label: 'Disabled' },
+        { value: 1, label: 'Enabled' }
+      ]
+    }
+    defs[`${p}EP1`] = {
+      id: `${p}EP1`,
+      label: `Passthrough ${n} · endpoint 1`,
+      description: endpointDescription,
+      category: PASSTHROUGH,
+      minimum: 0,
+      maximum: 59,
+      step: 1,
+      visibleWhen: active
+    }
+    defs[`${p}EP2`] = {
+      id: `${p}EP2`,
+      label: `Passthrough ${n} · endpoint 2`,
+      description: endpointDescription,
+      category: PASSTHROUGH,
+      minimum: 0,
+      maximum: 59,
+      step: 1,
+      visibleWhen: active
+    }
+    defs[`${p}BAUD1`] = {
+      id: `${p}BAUD1`,
+      label: `Passthrough ${n} · endpoint 1 baud`,
+      description: 'Baud rate for endpoint 1 (only meaningful when it is a hardware UART).',
+      category: PASSTHROUGH,
+      minimum: 0,
+      maximum: 12500000,
+      step: 1,
+      visibleWhen: active
+    }
+    defs[`${p}BAUD2`] = {
+      id: `${p}BAUD2`,
+      label: `Passthrough ${n} · endpoint 2 baud`,
+      description: 'Baud rate for endpoint 2 (only meaningful when it is a hardware UART).',
+      category: PASSTHROUGH,
+      minimum: 0,
+      maximum: 12500000,
+      step: 1,
+      visibleWhen: active
+    }
+    defs[`${p}OPT1`] = {
+      id: `${p}OPT1`,
+      label: `Passthrough ${n} · endpoint 1 options`,
+      description: 'Serial options bitmask for endpoint 1 (only meaningful when it is a hardware UART).',
+      category: PASSTHROUGH,
+      minimum: 0,
+      step: 1,
+      visibleWhen: active
+    }
+    defs[`${p}OPT2`] = {
+      id: `${p}OPT2`,
+      label: `Passthrough ${n} · endpoint 2 options`,
+      description: 'Serial options bitmask for endpoint 2 (only meaningful when it is a hardware UART).',
+      category: PASSTHROUGH,
+      minimum: 0,
+      step: 1,
+      visibleWhen: active
+    }
+  }
+  return defs
+}
+
 /** Core NET_* IP / PPP / options params + the per-port endpoint family. */
 export function buildNetworkParameterDefinitions(): FirmwareMetadataBundle['parameters'] {
   return {
@@ -163,7 +250,31 @@ export function buildNetworkParameterDefinitions(): FirmwareMetadataBundle['para
       bitmask: true,
       options: NET_OPTIONS_BITS
     },
-    ...buildNetworkPortParameterDefinitions(4)
+    // PPP link config (AP_Periph nodes that run networking over PPP).
+    NET_PPP_PORT: {
+      id: 'NET_PPP_PORT',
+      label: 'PPP serial port',
+      description: 'Serial-manager port index that carries the PPP link on this node.',
+      category: CORE,
+      rebootRequired: true,
+      minimum: 0,
+      maximum: 9,
+      step: 1
+    },
+    NET_PPP_BAUD: {
+      id: 'NET_PPP_BAUD',
+      label: 'PPP baud rate',
+      description: 'Baud rate of the PPP serial link (e.g. 12500000 for a 12.5 Mbaud CAN-adjacent link).',
+      category: CORE,
+      rebootRequired: true,
+      minimum: 0,
+      maximum: 12500000,
+      step: 1
+    },
+    // Vehicles expose NET_P1..P4; AP_Periph up to NET_P1..P9. Generate the full
+    // set — presence-gating hides the ones a given board doesn't report.
+    ...buildNetworkPortParameterDefinitions(9),
+    ...buildNetworkPassthroughParameterDefinitions(9)
   }
 }
 

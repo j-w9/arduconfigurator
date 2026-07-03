@@ -722,6 +722,13 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       order: 4.6,
       viewId: 'networking'
     },
+    'network-passthrough': {
+      id: 'network-passthrough',
+      label: 'Passthrough',
+      description: 'Serial↔network bridges (AP_Periph/DroneNet peripherals only).',
+      order: 4.7,
+      viewId: 'networking'
+    },
     vtx: {
       id: 'vtx',
       label: 'VTX',

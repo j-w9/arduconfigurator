@@ -71,6 +71,14 @@ test('metadata catalog exposes AP_Networking (NET_) parameters on the Networking
   assert.equal(p1Protocol.categoryDefinition.viewId, 'networking')
   assert.deepEqual(p1Protocol.visibleWhen, { paramId: 'NET_P1_TYPE', in: [1, 2, 3, 4] })
   assert.ok(p1Protocol.options.some((option) => option.value === 48 && /PPP/i.test(option.label)))
+
+  // Full DroneNet/AP_Periph set: 9 ports, NET_PPP_*, and the NET_PASSn_ passthrough
+  // family (peripheral-only, so it lives in its own 'network-passthrough' category).
+  assert.equal(metadata.parameters.NET_P9_TYPE.categoryDefinition.viewId, 'networking')
+  assert.equal(metadata.parameters.NET_PPP_BAUD.categoryDefinition.id, 'network')
+  assert.equal(metadata.parameters.NET_PASS1_ENABLE.categoryDefinition.id, 'network-passthrough')
+  assert.deepEqual(metadata.parameters.NET_PASS1_EP1.visibleWhen, { paramId: 'NET_PASS1_ENABLE', in: [1] })
+  assert.ok(metadata.parameters.NET_PASS9_EP2, 'passthrough family generated through block 9')
 })
 
 test('metadata catalog exposes OSD and notification parameters on product surfaces', () => {
