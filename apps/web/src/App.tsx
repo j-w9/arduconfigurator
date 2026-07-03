@@ -276,6 +276,7 @@ import { TuningSubSection } from './sections/TuningSubSection'
 import { VtxSection } from './sections/VtxSection'
 import { PowerView, type PowerDraftItem, type PowerFieldSpec } from './views/Power'
 import { CanBusView } from './views/CanBus'
+import { NetworkingView } from './views/NetworkingView'
 import { RcMixerView } from './views/RcMixer'
 import { buildServoFunctionMappingRows } from './view-models/servo-function-mapping'
 import { buildFilteredParameters } from './view-models/filtered-parameters'
@@ -2250,6 +2251,19 @@ export function App() {
     snapshot,
     metadataCatalog,
     viewId: 'failsafe',
+    parameterDraftEntries
+  })
+  // Networking (NET_*) — the whole surface is metadata-driven scoped fields, so
+  // it reuses the additional-settings scope like the other param-group views.
+  const {
+    groups: networkingGroups,
+    entries: networkingDraftEntries,
+    staged: networkingStagedDrafts,
+    invalid: networkingInvalidDrafts
+  } = useAdditionalScope({
+    snapshot,
+    metadataCatalog,
+    viewId: 'networking',
     parameterDraftEntries
   })
   const {
@@ -4526,6 +4540,12 @@ export function App() {
     handleRcMixerRemoveAssignment,
     handleRcMixerUpdateAssignment
   } = useRcMixer(snapshot)
+  // NET_ENABLE is present on every networking-capable ArduPilot build (Ethernet
+  // or PPP), so its presence is the reliable "this FC does networking" sentinel.
+  const hasNetworkingParams = useMemo(
+    () => snapshot.parameters.some((parameter) => parameter.id === 'NET_ENABLE'),
+    [snapshot.parameters]
+  )
   const visibleAppViews = useMemo(
     () =>
       buildVisibleAppViews({
@@ -4533,9 +4553,10 @@ export function App() {
         isExpertMode,
         canBusStatus: snapshot.canBus.status,
         canBusBus: snapshot.canBus.bus,
-        connectionKind: snapshot.connection.kind
+        connectionKind: snapshot.connection.kind,
+        hasNetworkingParams
       }),
-    [appViews, isExpertMode, snapshot.canBus.status, snapshot.canBus.bus, snapshot.connection.kind]
+    [appViews, isExpertMode, snapshot.canBus.status, snapshot.canBus.bus, snapshot.connection.kind, hasNetworkingParams]
   )
   const activeViewDescriptor = visibleAppViews.find((view) => view.id === activeViewId) ?? visibleAppViews[0]
   function formatCategoryLabel(categoryId: string | undefined): string {
@@ -7036,6 +7057,23 @@ export function App() {
         onAddAssignment={handleRcMixerAddAssignment}
         onRemoveAssignment={handleRcMixerRemoveAssignment}
         onUpdateAssignment={handleRcMixerUpdateAssignment}
+      />
+      ) : null}
+
+      {activeViewId === 'networking' ? (
+      <NetworkingView
+        hasParameters={hasNetworkingParams}
+        settingsSlot={renderAdditionalSettingsCard(
+          'Network settings',
+          'ArduPilot NET_ parameters — IP addressing (Ethernet/PPP), DHCP, gateway, MAC, and network serial endpoints.',
+          networkingGroups,
+          networkingDraftEntries,
+          networkingStagedDrafts,
+          networkingInvalidDrafts,
+          'networking:apply',
+          'Apply Network Changes',
+          'network settings'
+        )}
       />
       ) : null}
 

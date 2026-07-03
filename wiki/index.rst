@@ -40,6 +40,7 @@ each tab. If you are new, start with :doc:`introduction` and
    tuning
    parameters
    can-dronecan
+   networking
    logs-inspectors
 
 .. toctree::

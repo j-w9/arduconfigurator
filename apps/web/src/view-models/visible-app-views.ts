@@ -20,10 +20,12 @@ export interface VisibleAppViewsInputs {
   canBusStatus: ConfiguratorSnapshot['canBus']['status']
   canBusBus: ConfiguratorSnapshot['canBus']['bus']
   connectionKind: ConfiguratorSnapshot['connection']['kind']
+  /** The FC reports NET_ networking params (Ethernet/PPP-capable board). */
+  hasNetworkingParams: boolean
 }
 
 export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDescriptor[] {
-  const { appViews, isExpertMode, canBusStatus, canBusBus, connectionKind } = inputs
+  const { appViews, isExpertMode, canBusStatus, canBusBus, connectionKind, hasNetworkingParams } = inputs
 
   const base = appViews.filter((view) => isExpertMode || !isExpertOnlyView(view.id))
   // RC Mixer was originally hidden behind ?rcMixer=1 because ArduPilot
@@ -104,6 +106,17 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     badge: canBusStatus === 'active' ? `CAN${canBusBus} live` : 'idle',
     tone: canBusStatus === 'active' ? 'success' : 'neutral'
   }
+  // Networking (NET_*): Ethernet/PPP IP setup + network serial endpoints, and
+  // the DroneNet peripheral path. Expert-only AND only when the FC reports
+  // networking (NET_ENABLE present), so it stays invisible on the vast majority
+  // of boards that have no Ethernet/PPP.
+  const networkingDescriptor: AppViewDescriptor = {
+    id: 'networking',
+    label: 'Networking',
+    description: 'IP networking — Ethernet/PPP addressing, DHCP, and MAVLink/telemetry over UDP/TCP network endpoints. DroneNet peripherals configure over DroneCAN.',
+    badge: connectionKind === 'connected' ? 'live' : 'idle',
+    tone: 'neutral'
+  }
   // Canonical tab order (single source of truth). The Setup tab is the
   // health/status/info dashboard, so it leads and is relabelled; the rest
   // follow a setup -> tuning -> tools flow. Views not listed fall to the
@@ -111,7 +124,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const CANONICAL_VIEW_ORDER = [
     'setup', 'calibration', 'config', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'power', 'failsafe', 'vtx', 'osd', 'tuning', 'presets',
-    'snapshots', 'logs', 'parameters', 'can', 'files', 'flash', 'rc-mixer',
+    'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'flash', 'rc-mixer',
     'mavlink-inspector', 'dronecan-inspector'
   ]
   const relabelled = base.map((view) =>
@@ -125,6 +138,8 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     canBusDescriptor,
     flashDescriptor,
     filesDescriptor,
+    // Networking — Expert-only AND only when the FC advertises NET_ params.
+    ...(isExpertMode && hasNetworkingParams ? [networkingDescriptor] : []),
     // Expert-only views — only surfaced when Expert mode is on.
     ...(isExpertMode ? [rcMixerDescriptor, mavlinkInspectorDescriptor, dronecanInspectorDescriptor] : [])
   ]

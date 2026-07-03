@@ -99,6 +99,8 @@ export function viewMonogram(viewId: AppViewId): string {
       return 'FLS'
     case 'files':
       return 'FIL'
+    case 'networking':
+      return 'NET'
     default:
       return 'APP'
   }

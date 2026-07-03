@@ -21,6 +21,7 @@ function baseInputs(overrides: Partial<VisibleAppViewsInputs> = {}): VisibleAppV
     canBusStatus: 'idle',
     canBusBus: 0,
     connectionKind: 'disconnected',
+    hasNetworkingParams: false,
     ...overrides
   }
 }
@@ -50,6 +51,14 @@ describe('buildVisibleAppViews', () => {
   it('hides the expert-only Parameters view outside Expert mode and shows it inside', () => {
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false })))).not.toContain('parameters')
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true })))).toContain('parameters')
+  })
+
+  it('shows Networking only in Expert mode AND when the FC reports NET_ params', () => {
+    // Needs both gates: expert on + networking params present.
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasNetworkingParams: true })))).toContain('networking')
+    // Missing either gate hides it.
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false, hasNetworkingParams: true })))).not.toContain('networking')
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasNetworkingParams: false })))).not.toContain('networking')
   })
 
   it('relabels the Setup tab as Status & Info', () => {

@@ -1,6 +1,7 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
+import { buildNetworkParameterDefinitions } from './shared-network.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
 import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
 import {
@@ -707,6 +708,20 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       order: 4,
       viewId: 'ports'
     },
+    network: {
+      id: 'network',
+      label: 'IP configuration',
+      description: 'Ethernet / PPP addressing (static IP, DHCP, gateway, MAC) and networking options.',
+      order: 4.5,
+      viewId: 'networking'
+    },
+    'network-endpoints': {
+      id: 'network-endpoints',
+      label: 'Network endpoints',
+      description: 'MAVLink/telemetry served over UDP/TCP network serial ports.',
+      order: 4.6,
+      viewId: 'networking'
+    },
     vtx: {
       id: 'vtx',
       label: 'VTX',
@@ -1257,6 +1272,10 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       step: 1
     },
     ...buildSerialPortParameterDefinitions(8),
+    // AP_Networking NET_* family (Ethernet/PPP IP setup + network serial
+    // endpoints). Surfaced in the Expert-only Networking view, and only when the
+    // FC actually reports these params (Ethernet/PPP-capable boards).
+    ...buildNetworkParameterDefinitions(),
     GPS_TYPE: {
       id: 'GPS_TYPE',
       label: 'Primary GPS Type',

@@ -69,6 +69,10 @@ export type AppViewId =
   // value); 'dronecan-inspector' — live DroneCAN bus traffic by node/message.
   | 'mavlink-inspector'
   | 'dronecan-inspector'
+  // 'networking' is the Expert-only IP/PPP/DroneNet surface — the NET_* family
+  // (Ethernet/PPP IP setup + network serial endpoints). Injected at render time,
+  // shown only when the FC reports networking support (NET_ENABLE present).
+  | 'networking'
 
 export interface ParameterValueOption {
   value: number

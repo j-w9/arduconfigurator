@@ -21,7 +21,8 @@ export function isExpertOnlyView(viewId: AppViewId): boolean {
     viewId === 'parameters' ||
     viewId === 'rc-mixer' ||
     viewId === 'mavlink-inspector' ||
-    viewId === 'dronecan-inspector'
+    viewId === 'dronecan-inspector' ||
+    viewId === 'networking'
   )
 }
 

@@ -306,6 +306,29 @@ test.describe('Ports view', () => {
   })
 })
 
+test.describe('Networking view (Expert + networking-capable FC)', () => {
+  test('appears only in Expert mode when the FC reports NET_ params, then renders IP + endpoint settings', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expectParameterSyncComplete(page)
+
+    // Basic mode: no Networking tab (it's an Expert-only surface).
+    await expect(page.getByTestId('view-button-networking')).toHaveCount(0)
+
+    // Expert mode: the tab appears because the demo Copter reports NET_ params.
+    await page.getByTestId('product-mode-expert').check()
+    await expect(page.getByTestId('view-button-networking')).toBeVisible()
+    await page.getByTestId('view-button-networking').click()
+
+    await expect(page.getByTestId('networking-view')).toBeVisible()
+    // The scoped-settings card rendered both metadata categories.
+    await expect(page.getByText('IP configuration', { exact: true })).toBeVisible()
+    await expect(page.getByText('Network endpoints', { exact: true })).toBeVisible()
+  })
+})
+
 test.describe('connection transports', () => {
   test('WebSocket transport reveals the bridge endpoint URL input', async ({ page }) => {
     await page.goto('/')

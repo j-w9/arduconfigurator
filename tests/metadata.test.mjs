@@ -51,6 +51,28 @@ test('metadata catalog exposes VTX parameters on the dedicated VTX surface', () 
   assert.equal(vtxOptions.categoryDefinition.viewId, 'vtx')
 })
 
+test('metadata catalog exposes AP_Networking (NET_) parameters on the Networking surface', () => {
+  const metadata = normalizeFirmwareMetadata(arducopterMetadata)
+
+  // Sentinel + core IP params route to the Networking view.
+  assert.equal(metadata.parameters.NET_ENABLE.categoryDefinition.viewId, 'networking')
+  assert.equal(metadata.parameters.NET_ENABLE.categoryDefinition.id, 'network')
+  assert.equal(metadata.parameters.NET_IPADDR0.categoryDefinition.viewId, 'networking')
+  assert.equal(metadata.parameters.NET_NETMASK.maximum, 32) // prefix length, not octets
+  assert.equal(metadata.parameters.NET_MACADDR5.categoryDefinition.viewId, 'networking')
+  assert.ok(metadata.parameters.NET_OPTIONS.bitmask)
+
+  // Per-port endpoint family NET_P1.._P4 generated with TYPE/PROTOCOL/IP/PORT.
+  for (const n of [1, 2, 3, 4]) {
+    assert.equal(metadata.parameters[`NET_P${n}_TYPE`].categoryDefinition.id, 'network-endpoints')
+  }
+  // PROTOCOL reuses the SERIALn_PROTOCOL enum (PPP=48 present) and hides until active.
+  const p1Protocol = metadata.parameters.NET_P1_PROTOCOL
+  assert.equal(p1Protocol.categoryDefinition.viewId, 'networking')
+  assert.deepEqual(p1Protocol.visibleWhen, { paramId: 'NET_P1_TYPE', in: [1, 2, 3, 4] })
+  assert.ok(p1Protocol.options.some((option) => option.value === 48 && /PPP/i.test(option.label)))
+})
+
 test('metadata catalog exposes OSD and notification parameters on product surfaces', () => {
   const metadata = normalizeFirmwareMetadata(arducopterMetadata)
 
