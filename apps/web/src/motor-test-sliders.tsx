@@ -1,4 +1,4 @@
-import { useCallback, useRef, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 
 interface MotorTestSlidersProps {
   targets: Array<{
@@ -92,25 +92,38 @@ function SliderColumn({
   const trackRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
 
-  const handleMouseDown = useCallback(
-    (e: ReactMouseEvent) => {
+  // Pointer events (not mouse) so finger drags work on touch devices too — the
+  // old mouse-only handler never fired mousemove/mouseup during a touch drag, so
+  // the sliders couldn't be moved by finger on phones. Pointer capture keeps the
+  // drag tracking if the finger leaves the track; the track's touch-action:none
+  // (below) stops the browser from stealing the gesture as a scroll.
+  const handlePointerDown = useCallback(
+    (e: ReactPointerEvent) => {
       e.preventDefault()
       onSelect()
-      if (!trackRef.current) return
+      const track = trackRef.current
+      if (!track) return
       dragging.current = true
-      onDrag(percentFromY(trackRef.current, e.clientY))
+      try {
+        track.setPointerCapture(e.pointerId)
+      } catch {
+        // Pointer already released/invalid — capture is best-effort.
+      }
+      onDrag(percentFromY(track, e.clientY))
 
-      const onMove = (ev: globalThis.MouseEvent) => {
+      const onMove = (ev: globalThis.PointerEvent) => {
         if (!dragging.current || !trackRef.current) return
         onDrag(percentFromY(trackRef.current, ev.clientY))
       }
       const onUp = () => {
         dragging.current = false
-        window.removeEventListener('mousemove', onMove)
-        window.removeEventListener('mouseup', onUp)
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onUp)
       }
-      window.addEventListener('mousemove', onMove)
-      window.addEventListener('mouseup', onUp)
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onUp)
     },
     [onSelect, onDrag],
   )
@@ -148,6 +161,9 @@ function SliderColumn({
       : 'inset 0 2px 6px rgba(0,0,0,0.35)',
     overflow: 'hidden',
     transition: 'border-color 0.15s, box-shadow 0.15s',
+    // Claim the touch gesture so a finger drag adjusts the slider instead of
+    // scrolling the page.
+    touchAction: 'none',
   }
 
   const fillHeight = (percent / 100) * TRACK_HEIGHT
@@ -190,8 +206,13 @@ function SliderColumn({
 
   return (
     <div style={columnStyle} onClick={onSelect}>
-      <span style={readoutStyle}>{percent}%</span>
-      <div ref={trackRef} style={trackOuterStyle} onMouseDown={handleMouseDown}>
+      <span style={readoutStyle} data-testid={`motor-slider-readout-${label}`}>{percent}%</span>
+      <div
+        ref={trackRef}
+        style={trackOuterStyle}
+        onPointerDown={handlePointerDown}
+        data-testid={`motor-slider-track-${label}`}
+      >
         <div style={fillStyle} />
         <div style={handleStyle} />
       </div>

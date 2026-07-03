@@ -386,6 +386,35 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByRole('button', { name: 'Run Motor Test' })).toBeEnabled()
   })
 
+  test('motor-test sliders are draggable by pointer (the finger-drag path on phones)', async ({ page }) => {
+    await connectToVehicle(page, 'demo')
+    await openView(page, 'motors')
+    await page.getByTestId('outputs-summary-direction-test').click()
+    await expect(page.getByTestId('motor-test-diagram')).toBeVisible()
+    await page.getByLabel('Props are off and the vehicle is restrained with the test area clear.').check()
+
+    const track = page.getByTestId('motor-slider-track-M4')
+    await expect(track).toBeVisible()
+    // The track claims the touch gesture so a finger drag adjusts it instead of
+    // scrolling the page — this CSS is half of what makes touch work.
+    await expect(track).toHaveCSS('touch-action', 'none')
+
+    const readout = page.getByTestId('motor-slider-readout-M4')
+    await expect(readout).toHaveText('0%')
+
+    // Drag from near the bottom of the track toward the top. Playwright's mouse
+    // dispatches the pointer events the slider now listens to (the same code path
+    // a finger drag takes), so the value should climb off 0%. The old mouse-only
+    // handler is what the field report couldn't move by finger.
+    const box = (await track.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 5)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.3, { steps: 6 })
+    await page.mouse.up()
+
+    await expect(readout).not.toHaveText('0%')
+  })
+
   test('tuning exposes linked PID edits, master sliders, advanced terms, and local tuning profiles', async ({ page }) => {
     await connectToVehicle(page, 'demo')
 
