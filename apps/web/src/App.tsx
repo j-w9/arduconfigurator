@@ -4768,6 +4768,29 @@ export function App() {
   // field. Sibling octets (byte 2-4) render null — the byte-1 quad draws them.
   // MAC stays as plain byte fields (in-place hex editing fights the cursor).
   function renderNetworkingField(parameter: ParameterState): ReactNode {
+    // MAC address: six octets, colon-separated, on one row like the IPs.
+    if (parameter.id === 'NET_MACADDR0') {
+      const octets = [0, 1, 2, 3, 4, 5]
+        .map((index) => selectParameterById(snapshot, `NET_MACADDR${index}`))
+        .filter((entry): entry is ParameterState => entry !== undefined)
+      if (octets.length === 6) {
+        return (
+          <IpAddressField
+            key={parameter.id}
+            label={(parameter.definition?.label ?? 'MAC address').replace(/ · byte \d+$/, '')}
+            description={parameter.definition?.description}
+            octets={octets}
+            editedValues={editedValues}
+            draftStatusById={parameterDraftById}
+            onChange={(paramId, value) => setDraft(paramId, value)}
+            separator=":"
+          />
+        )
+      }
+    }
+    if (/^NET_MACADDR[1-5]$/.test(parameter.id)) {
+      return null
+    }
     const octet0 = /^(NET_(?:IPADDR|GWADDR|REMPPP_IP|P\d+_IP))0$/.exec(parameter.id)
     if (octet0) {
       // Honour the same visibleWhen gating the generic renderer applies (endpoint

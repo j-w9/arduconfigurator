@@ -5,20 +5,22 @@ import type { ScopedFieldDraftMap } from './ScopedField'
 export interface IpAddressFieldProps {
   label: string
   description?: string
-  /** The four octet params in order (NET_…IP0..3), highest-order octet first. */
+  /** The octet params in order, highest-order octet first (4 for IPv4, 6 for MAC). */
   octets: ParameterState[]
   editedValues: Record<string, string>
   draftStatusById: ScopedFieldDraftMap
   onChange: (paramId: string, value: string) => void
+  /** Character shown between octets — '.' for IPv4 (default), ':' for MAC. */
+  separator?: string
 }
 
 /**
- * A dotted-quad IPv4 editor over four octet parameters — `192 . 168 . 144 . 14`
- * instead of four separate "byte N" number fields. Each octet writes its own
- * NET_…IPn parameter through the same scoped-draft path, so staging/apply is
+ * A composite octet editor — `192 . 168 . 144 . 14` (IPv4) or `194 : 175 : …`
+ * (MAC) — instead of separate "byte N" number fields. Each octet writes its own
+ * NET_…n parameter through the same scoped-draft path, so staging/apply is
  * unchanged; the whole row colours by the worst octet's draft status.
  */
-export function IpAddressField({ label, description, octets, editedValues, draftStatusById, onChange }: IpAddressFieldProps) {
+export function IpAddressField({ label, description, octets, editedValues, draftStatusById, onChange, separator = '.' }: IpAddressFieldProps) {
   const statuses = octets.map((octet) => draftStatusById.get(octet.id)?.status ?? 'unchanged')
   const rowStatus = statuses.includes('invalid') ? 'invalid' : statuses.includes('staged') ? 'staged' : 'unchanged'
   return (
@@ -34,7 +36,7 @@ export function IpAddressField({ label, description, octets, editedValues, draft
           const displayed = numeric === undefined || Number.isNaN(numeric) ? '' : String(Math.round(numeric))
           return (
             <span key={octet.id} className="ip-address-field__group">
-              {index > 0 ? <span className="ip-address-field__sep" aria-hidden="true">.</span> : null}
+              {index > 0 ? <span className="ip-address-field__sep" aria-hidden="true">{separator}</span> : null}
               <input
                 className="ip-address-field__octet"
                 type="number"

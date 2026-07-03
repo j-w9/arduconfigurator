@@ -332,6 +332,9 @@ test.describe('Networking view (Expert + networking-capable FC)', () => {
     // editing an octet stages a change on the Apply button.
     await expect(page.getByTestId('ip-octet-NET_IPADDR0')).toBeVisible()
     await expect(page.getByTestId('ip-octet-NET_IPADDR3')).toBeVisible()
+    // MAC also composites into one row (six colon-separated octets).
+    await expect(page.getByTestId('ip-octet-NET_MACADDR0')).toBeVisible()
+    await expect(page.getByTestId('ip-octet-NET_MACADDR5')).toBeVisible()
     await page.getByTestId('ip-octet-NET_IPADDR3').fill('20')
     await expect(page.getByRole('button', { name: /Apply Network Changes \(\d+\)/ })).toBeVisible()
 

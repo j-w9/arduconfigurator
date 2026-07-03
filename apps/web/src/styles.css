@@ -6518,6 +6518,7 @@ textarea:focus {
 .ip-address-field__octets {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
   font-family: var(--font-data);
 }
