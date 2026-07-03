@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { Panel, buttonStyle } from '@arduconfig/ui-kit'
+import { buttonStyle } from '@arduconfig/ui-kit'
 
 export type NetworkingTab = 'fc' | 'dronenet'
 
@@ -65,27 +65,25 @@ export function NetworkingView({
       </div>
 
       {activeTab === 'fc' ? (
-        <Panel
-          title="Flight-controller networking"
-          subtitle="ArduPilot NET_ parameters — Ethernet/PPP addressing and MAVLink/telemetry over UDP/TCP network endpoints. Most fields take effect after a reboot."
-        >
-          <div data-testid="networking-fc-tab">
-            <ul className="bf-note">
-              <li>
-                No native Ethernet? Networking runs over PPP — set a serial port's protocol to PPP on the link that
-                carries it, then enable networking.
-              </li>
-            </ul>
-            {hasParameters ? (
-              settingsSlot
-            ) : (
-              <p className="bf-note" data-testid="networking-empty">
-                No NET_ parameters reported by the autopilot yet. Connect, pull parameters, and the networking
-                settings will populate.
-              </p>
-            )}
-          </div>
-        </Panel>
+        // No wrapping Panel here — settingsSlot is itself a titled card ("Network
+        // settings" with IP configuration / Network endpoints subsections), so a
+        // Panel around it would just nest two identical-looking boxes.
+        <div data-testid="networking-fc-tab">
+          <ul className="bf-note">
+            <li>
+              These are this flight controller's own network settings (over MAVLink). No native Ethernet? Networking
+              runs over PPP — set a serial port's protocol to PPP on the link that carries it, then enable networking.
+            </li>
+          </ul>
+          {hasParameters ? (
+            settingsSlot
+          ) : (
+            <p className="bf-note" data-testid="networking-empty">
+              No NET_ parameters reported by the autopilot yet. Connect, pull parameters, and the networking settings
+              will populate.
+            </p>
+          )}
+        </div>
       ) : (
         <div data-testid="networking-dronenet-tab">
           <p className="bf-note" data-testid="networking-dronenet-status">
