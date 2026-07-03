@@ -351,6 +351,11 @@ test.describe('Networking view (Expert + networking-capable FC)', () => {
     await expect(page.getByTestId('passthrough-editor-71')).toBeVisible({ timeout: 15000 })
     await expect(page.getByTestId('passthrough-ep1-71-1')).toHaveValue('2')
     await expect(page.getByTestId('passthrough-ep2-71-1')).toHaveValue('21')
+    // Endpoint list is derived from the node's own ports (a handful), not the
+    // full ~37-entry serial-manager range — and no CAN-tunnel entries it lacks.
+    const ep1 = page.getByTestId('passthrough-ep1-71-1')
+    expect(await ep1.locator('option').count()).toBeLessThan(8)
+    await expect(ep1.getByRole('option', { name: /CAN\d tunnel/ })).toHaveCount(0)
   })
 })
 

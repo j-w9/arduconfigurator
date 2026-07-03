@@ -279,7 +279,7 @@ import { CanBusView } from './views/CanBus'
 import { NetworkingView, type NetworkingTab } from './views/NetworkingView'
 import { IpAddressField } from './views/IpAddressField'
 import { PassthroughEditor } from './views/PassthroughEditor'
-import { groupPassthroughBlocks } from './view-models/passthrough'
+import { availablePassthroughEndpoints, groupPassthroughBlocks } from './view-models/passthrough'
 import { RcMixerView } from './views/RcMixer'
 import { buildServoFunctionMappingRows } from './view-models/servo-function-mapping'
 import { buildFilteredParameters } from './view-models/filtered-parameters'
@@ -4592,7 +4592,9 @@ export function App() {
   }, [activeViewId, networkingTab, snapshot.canBus.status, snapshot.canBus.nodes, runtime])
   // Friendly passthrough-row editors, one per DroneNet node that reports a
   // NET_PASSn_ block. Writes go over DroneCAN via the shared apply-and-save path.
-  const dronenetPassthroughEditors = networkCanBusState.nodes
+  // Built from the FULL node params (not the NET_-filtered view) so the endpoint
+  // dropdowns can be derived from the node's SERIALn_ / NET_Pn_ params.
+  const dronenetPassthroughEditors = snapshot.canBus.nodes
     .map((node) => ({ node, blocks: groupPassthroughBlocks(node.parameters) }))
     .filter((entry) => entry.blocks.length > 0)
     .map(({ node, blocks }) => (
@@ -4601,6 +4603,10 @@ export function App() {
         nodeId={node.nodeId}
         nodeName={node.name ?? `node ${node.nodeId}`}
         blocks={blocks}
+        endpointOptions={availablePassthroughEndpoints(
+          node.parameters.map((parameter) => parameter.name),
+          blocks.flatMap((block) => [block.ep1, block.ep2])
+        )}
         busy={busyAction !== undefined}
         onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
       />

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { DronecanParamEntry } from '@arduconfig/ardupilot-core'
 
 import {
+  availablePassthroughEndpoints,
   endpointLabel,
   groupPassthroughBlocks,
   intValueLike,
@@ -47,6 +48,25 @@ describe('passthrough view-model', () => {
     ])
     expect(blocks.map((b) => b.index)).toEqual([1, 3]) // sorted, non-passthrough dropped
     expect(blocks[0]).toMatchObject({ enable: 1, ep1: 2, ep2: 21, baud1: 57600 })
+  })
+
+  it('limits endpoints to what the node reports (SERIALn + NET_Pn) plus current selections', () => {
+    const options = availablePassthroughEndpoints(
+      ['SERIAL1_PROTOCOL', 'SERIAL2_PROTOCOL', 'NET_P1_TYPE', 'NET_PASS1_EP1'],
+      [41] // a currently-selected CAN1 tunnel must still be offered
+    )
+    const values = options.map((option) => option.value)
+    expect(values).toContain(0) // Serial 0 / console always
+    expect(values).toContain(1) // Serial 1 (reported)
+    expect(values).toContain(2) // Serial 2 (reported)
+    expect(values).toContain(21) // Network port 1 (NET_P1)
+    expect(values).toContain(41) // currently-selected CAN1 tunnel kept
+    expect(values).not.toContain(3) // no SERIAL3 reported
+    expect(values).not.toContain(22) // no NET_P2
+    expect(values).not.toContain(51) // CAN2 tunnel not advertised
+    // Far smaller than the full ~37-entry serial-manager range.
+    expect(options.length).toBeLessThan(passthroughEndpointOptions().length)
+    expect(options.length).toBeLessThan(8)
   })
 
   it('reads/writes values preserving the original tag', () => {

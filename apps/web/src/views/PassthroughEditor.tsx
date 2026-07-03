@@ -7,7 +7,7 @@ import {
   endpointLabel,
   intValueLike,
   isUartEndpoint,
-  passthroughEndpointOptions,
+  type EndpointOption,
   type PassthroughBlock
 } from '../view-models/passthrough'
 
@@ -15,6 +15,9 @@ export interface PassthroughEditorProps {
   nodeId: number
   nodeName: string
   blocks: PassthroughBlock[]
+  /** Endpoints this node actually exposes (derived from its params), not the
+   *  full serial-manager range — so the dropdowns don't list ports it lacks. */
+  endpointOptions: EndpointOption[]
   busy: boolean
   onApplyAndSave: (nodeId: number, writes: Array<{ name: string; value: DronecanParamValueState }>) => void
 }
@@ -26,9 +29,8 @@ export interface PassthroughEditorProps {
  * Manages its own drafts and writes them over DroneCAN via the shared
  * apply-and-save path; the node reboots on apply.
  */
-export function PassthroughEditor({ nodeId, nodeName, blocks, busy, onApplyAndSave }: PassthroughEditorProps) {
+export function PassthroughEditor({ nodeId, nodeName, blocks, endpointOptions, busy, onApplyAndSave }: PassthroughEditorProps) {
   const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const endpointOptions = passthroughEndpointOptions()
 
   if (blocks.length === 0) {
     return null

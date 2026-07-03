@@ -152,7 +152,12 @@ const NODES: MockDronecanNode[] = [
       { name: 'NET_PPP_BAUD', value: int(12500000), default: int(0), min: int(0), max: int(12500000) },
       { name: 'NET_PASS1_ENABLE', value: int(1), default: int(0), min: int(0), max: int(1) },
       { name: 'NET_PASS1_EP1', value: int(2), default: int(0), min: int(0), max: int(59) },
-      { name: 'NET_PASS1_EP2', value: int(21), default: int(0), min: int(0), max: int(59) }
+      { name: 'NET_PASS1_EP2', value: int(21), default: int(0), min: int(0), max: int(59) },
+      // SERIALn_ params advertise the node's real UARTs — the passthrough endpoint
+      // dropdown derives its "Serial N" options from these (not the full range).
+      { name: 'SERIAL1_PROTOCOL', value: int(2), default: int(2), min: int(-1), max: int(48) },
+      { name: 'SERIAL2_PROTOCOL', value: int(23), default: int(0), min: int(-1), max: int(48) },
+      { name: 'SERIAL3_PROTOCOL', value: int(5), default: int(0), min: int(-1), max: int(48) }
     ]
   }
 ]

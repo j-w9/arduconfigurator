@@ -21,6 +21,38 @@ export function passthroughEndpointOptions(): EndpointOption[] {
   return options
 }
 
+/**
+ * The endpoints actually available on a node, derived from its full param set:
+ * Serial 0 (console) + every SERIALn_ UART it reports + every NET_Pn_ network
+ * port, plus any endpoint IDs currently selected (so existing config always
+ * renders). CAN-tunnel endpoints (41–59) are offered only when already in use —
+ * AP_Periph nodes rarely wire them, so we don't advertise all 18. Prevents the
+ * dropdown listing endpoints the node doesn't actually have.
+ */
+export function availablePassthroughEndpoints(
+  paramNames: readonly string[],
+  selected: readonly number[]
+): EndpointOption[] {
+  const present = new Set<number>([0]) // Serial 0 / console always exists.
+  for (const name of paramNames) {
+    const serial = /^SERIAL(\d)_/.exec(name)
+    if (serial) {
+      present.add(Number(serial[1]))
+    }
+    const net = /^NET_P(\d)_/.exec(name)
+    if (net) {
+      const port = Number(net[1])
+      if (port >= 1 && port <= 9) {
+        present.add(20 + port)
+      }
+    }
+  }
+  for (const value of selected) {
+    present.add(value)
+  }
+  return passthroughEndpointOptions().filter((option) => present.has(option.value))
+}
+
 export function endpointLabel(id: number | undefined): string {
   if (id === undefined) return '—'
   return passthroughEndpointOptions().find((option) => option.value === id)?.label ?? `ID ${id}`
