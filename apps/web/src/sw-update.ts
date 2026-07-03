@@ -1,139 +1,55 @@
-import { useEffect, useState } from 'react'
+// The offline-shell service worker was RETIRED — it stranded users on a stale
+// app shell across deploys (white screen until a hard refresh). apps/web/public/
+// sw.js is now a self-destructing SW; this module just makes the running app
+// unregister any lingering SW and clear its caches, and registers nothing new.
+// The app loads fresh from the network on every visit.
 
-// PWA update flow: the service worker (apps/web/public/sw.js) deliberately
-// does NOT call skipWaiting() on install — a new SW stays in `waiting`
-// until the user opts in. This module registers the SW and exposes a hook
-// that returns the latest update state so a banner can surface the prompt.
-//
-// Why a manual opt-in: an auto-activated SW would still leave the live
-// page running the OLD bundle (the new code only loads on refresh), so
-// the silent swap buys nothing visible to the user — but it CAN interrupt
-// an in-flight MAVLink session (param write, log download, firmware
-// flash) if the cache transition races. Opt-in keeps the user in control.
+import { useState } from 'react'
 
-export type SwUpdateState =
-  | { kind: 'idle' }
-  | { kind: 'available'; apply: () => void }
+// Kept as a union (not just 'idle') so consumers that switch on 'available'
+// still type-check; the hook now only ever returns 'idle', so no update banner
+// is shown.
+export type SwUpdateState = { kind: 'idle' } | { kind: 'available'; apply: () => void }
 
-interface UpdateBus {
-  state: SwUpdateState
-  listeners: Set<(state: SwUpdateState) => void>
-}
-
-const bus: UpdateBus = { state: { kind: 'idle' }, listeners: new Set() }
-let registrationStarted = false
-
-function publish(next: SwUpdateState): void {
-  bus.state = next
-  for (const listener of bus.listeners) listener(next)
-}
+let cleanupStarted = false
 
 /**
- * Register the SW once per page. Idempotent — safe to call from main.tsx
- * on app boot regardless of how many times React mounts the consumer hook.
+ * Unregister any previously-installed service worker and clear its caches;
+ * register nothing. Idempotent, safe to call once on app boot.
  *
- * Skipped on localhost / 127.0.0.1 because `vite dev` serves /src/main.tsx
- * via HMR and a SW would intercept those requests with a stale cached
- * response.
+ * The load-bearing recovery for an already-white-screened tab is the
+ * self-destructing sw.js itself (driven by the browser's own SW update check,
+ * independent of the page JS). This is the belt-and-suspenders cleanup for tabs
+ * whose JS did run.
  */
 export function registerServiceWorker(): void {
-  if (registrationStarted) return
-  registrationStarted = true
+  if (cleanupStarted) return
+  cleanupStarted = true
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
-  const host = window.location.hostname
-  if (host === 'localhost' || host === '127.0.0.1') return
-
-  // GitHub Pages serves under /ArduConfigurator/, Vercel under /. Derive
-  // both the SW URL and its scope from the entry-page path so the same
-  // script works on either host without a build-time substitution.
-  const basePath = window.location.pathname.replace(/[^/]*$/, '')
-
   window.addEventListener('load', () => {
     navigator.serviceWorker
-      .register(basePath + 'sw.js', { scope: basePath })
-      .then((registration) => {
-        // A waiting worker may already be present when this script runs
-        // (deploy landed while the tab was open but before SW registration
-        // completed). Surface it immediately.
-        if (registration.waiting && navigator.serviceWorker.controller) {
-          offer(registration.waiting)
-        }
-        if (registration.installing) {
-          watchInstalling(registration.installing)
-        }
-        registration.addEventListener('updatefound', () => {
-          if (registration.installing) watchInstalling(registration.installing)
+      .getRegistrations()
+      .then((registrations) => {
+        for (const registration of registrations) void registration.unregister()
+      })
+      .catch(() => {})
+    if ('caches' in window) {
+      caches
+        .keys()
+        .then((keys) => {
+          for (const key of keys) void caches.delete(key)
         })
-      })
-      .catch(() => {
-        // SW registration failure is non-fatal — the app still works
-        // without PWA install.
-      })
-  })
-}
-
-function watchInstalling(worker: ServiceWorker): void {
-  worker.addEventListener('statechange', () => {
-    // `installed` with a controller present = an UPGRADE: there was an
-    // existing SW serving this page, and a new one just finished
-    // installing. (A first install reaches `installed` with controller
-    // still null; clients.claim() in activate sets it shortly after.)
-    if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-      offer(worker)
+        .catch(() => {})
     }
   })
 }
 
-function offer(worker: ServiceWorker): void {
-  // Always re-publish with a fresh apply tied to THIS worker, even if
-  // the bus is already 'available' from a previous offer. A new
-  // updatefound during the same session means a newer SW has just
-  // installed and the previous waiting worker has been moved to
-  // `redundant` (per W3C ServiceWorker spec: a new install supersedes
-  // the prior waiting worker, the prior one is discarded). The cached
-  // apply closure points at the now-redundant worker; postMessage to
-  // it is a silent no-op. So we MUST overwrite the closure here or the
-  // banner clicks land on a dead worker and nothing happens.
-  const apply = (): void => {
-    // controllerchange fires once the new SW takes over (its skipWaiting
-    // promotes it from waiting → activating → activated, then clients.claim
-    // re-controls this page). Reload then so the live document picks up
-    // the new bundle. { once: true } guards against an accidental reload
-    // loop if controllerchange ever fires again.
-    navigator.serviceWorker.addEventListener(
-      'controllerchange',
-      () => window.location.reload(),
-      { once: true }
-    )
-    worker.postMessage({ type: 'SKIP_WAITING' })
-  }
-  publish({ kind: 'available', apply })
-}
-
-/**
- * React hook returning the latest SW update state. Multiple consumers
- * share the same bus, so every mounted hook reflects the same
- * `available` state and the same `apply` callback.
- */
+/** The SW update prompt is retired — always idle (no banner renders). */
 export function useServiceWorkerUpdate(): SwUpdateState {
-  const [state, setState] = useState<SwUpdateState>(bus.state)
-  useEffect(() => {
-    // Re-sync in case the bus advanced between render and mount.
-    setState(bus.state)
-    const listener = (next: SwUpdateState): void => setState(next)
-    bus.listeners.add(listener)
-    return () => {
-      bus.listeners.delete(listener)
-    }
-  }, [])
+  const [state] = useState<SwUpdateState>({ kind: 'idle' })
   return state
 }
 
-// Test-only: reset the module's singleton bus + registration latch so
-// each test can drive the flow from a clean slate. NOT used by the app
-// in production.
 export function __resetForTests(): void {
-  bus.state = { kind: 'idle' }
-  bus.listeners.clear()
-  registrationStarted = false
+  cleanupStarted = false
 }

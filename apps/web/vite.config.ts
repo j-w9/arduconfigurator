@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
-import { offlineShellPlugin } from './vite-plugin-offline-shell.js'
 
 const root = new URL('../..', import.meta.url)
 const packagesDir = fileURLToPath(new URL('packages/', root))
@@ -52,11 +51,10 @@ export default defineConfig({
     __GIT_BRANCH__: JSON.stringify(gitBranch)
   },
   plugins: [
-    react(),
-    // PWA offline app-shell: inject the precache manifest + version into
-    // the SW after build. See vite-plugin-offline-shell.ts for the why.
-    // No-op in `vite dev` (apply: 'build' inside the plugin).
-    offlineShellPlugin({ base, version: gitHash })
+    react()
+    // The offline app-shell SW was retired (it stranded users on a stale shell
+    // across deploys); sw.js is now a self-destructing no-op, so there is no
+    // precache manifest to inject.
   ],
   resolve: {
     alias: {
