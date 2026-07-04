@@ -488,6 +488,13 @@ export function MotorReorderDialog({
               ) : (
                 <p className="bf-note">No mapped motor outputs are available to spin yet.</p>
               )}
+            </div>
+          </section>
+          <section className="bf-gui-box">
+            <div className="bf-gui-box__titlebar">
+              <strong>Reverse direction</strong>
+            </div>
+            <div className="bf-gui-box__body">
               {(() => {
                 const rvmaskParam = selectParameterById(snapshot, 'SERVO_BLH_RVMASK')
                 if (!rvmaskParam || effectiveMotorOutputs.length === 0) {

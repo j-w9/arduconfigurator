@@ -8016,7 +8016,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .motor-reorder-lightbox__direction {
   display: grid;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(340px, 1.05fr);
   gap: 16px;
+  align-items: start;
 }
 
 /* Manual output mapping is collapsed by default — the interactive identify flow
@@ -10463,6 +10465,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   .bf-vtx-advanced-grid,
   .osd-grid,
   .motor-reorder-lightbox__grid,
+  .motor-reorder-lightbox__direction,
   .ports-workspace__sidebar,
   .rc-range-axis-grid,
   .snapshot-library-grid,

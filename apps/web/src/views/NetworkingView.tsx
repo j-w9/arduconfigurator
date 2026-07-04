@@ -77,6 +77,11 @@ export function NetworkingView({
               No native Ethernet? Networking runs over PPP — set a serial port's protocol to PPP on the link that
               carries it, then enable networking.
             </li>
+            <li>
+              Network endpoints: an <strong>IP is only needed for client types</strong> (the destination to connect
+              to). Leave <code>0.0.0.0</code> for server types — the server binds all interfaces and any client can
+              connect.
+            </li>
           </ul>
           {hasParameters ? (
             settingsSlot
