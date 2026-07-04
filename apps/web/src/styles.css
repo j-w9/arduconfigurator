@@ -11822,13 +11822,10 @@ details.bf-gui-box:not([open]) > summary::after {
 .field-info-row > .ip-address-field {
   flex: 0 1 auto;
 }
-.field-info-wrap {
-  position: relative;
-  display: inline-flex;
-  flex: none;
-  margin-top: 4px;
-}
 .field-info {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 4px;
   width: 18px;
   height: 18px;
   padding: 0;
@@ -11844,29 +11841,6 @@ details.bf-gui-box:not([open]) > summary::after {
 .field-info:hover {
   border-color: var(--accent);
   color: var(--accent-strong, var(--accent));
-}
-.field-info-tip {
-  display: none;
-  position: absolute;
-  right: 0;
-  top: 24px;
-  z-index: 20;
-  width: max-content;
-  max-width: 260px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--surface-400);
-  background: var(--bg-panel, #14181f);
-  color: var(--text);
-  font-size: 12px;
-  font-style: normal;
-  line-height: 1.4;
-  white-space: normal;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-}
-.field-info-wrap:hover .field-info-tip,
-.field-info:focus-visible + .field-info-tip {
-  display: block;
 }
 
 .config-section__field-row {

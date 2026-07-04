@@ -4847,22 +4847,20 @@ export function App() {
     if (node === null || node === undefined || !description) {
       return node
     }
+    // Native `title` tooltip (not a custom overlay box) so the browser positions
+    // it and it never spills out of / over the tight two-column layout.
     return (
       <div key={parameter.id} className="field-info-row">
         {node}
-        <span className="field-info-wrap">
-          <button
-            type="button"
-            className="field-info"
-            data-testid={`networking-field-info-${parameter.id}`}
-            aria-label={`About ${parameter.definition?.label ?? parameter.id}`}
-          >
-            i
-          </button>
-          <span className="field-info-tip" role="tooltip">
-            {description}
-          </span>
-        </span>
+        <button
+          type="button"
+          className="field-info"
+          title={description}
+          data-testid={`networking-field-info-${parameter.id}`}
+          aria-label={`${parameter.definition?.label ?? parameter.id}: ${description}`}
+        >
+          i
+        </button>
       </div>
     )
   }
