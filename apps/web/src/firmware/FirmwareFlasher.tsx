@@ -1265,7 +1265,18 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
         {phase === 'prompt-unplug' ? (
           <div className="firmware-replug-prompt" data-testid="firmware-prompt-unplug" role="alert">
             <strong>Unplug the flight controller.</strong>
-            <p className="bf-note">Then click Continue, plug it back in, and select the bootloader port.</p>
+            <ol className="firmware-replug-prompt__steps">
+              <li>Click <strong>Continue</strong> — the browser&apos;s serial-port picker opens.</li>
+              <li>Plug the FC back in. It re-appears as a <strong>new bootloader port</strong> (often ending in
+                <code> _BL</code>, or a different name than your normal port).</li>
+              <li>Select that new port in the picker <strong>within about a second</strong> — the board only sits in the
+                bootloader briefly before it boots back to the normal port.</li>
+            </ol>
+            <p className="bf-note">
+              If it boots away before you pick it (the <code>_BL</code> port vanishes), just click Continue and re-plug —
+              you can retry as many times as needed. The browser can&apos;t grab the new port for you; picking it is the
+              one manual step Web Serial requires.
+            </p>
             <div className="firmware-replug-prompt__buttons">
               <button type="button" onClick={handleUnplugContinue} data-testid="firmware-prompt-unplug-continue">
                 Continue
@@ -1279,7 +1290,11 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
 
         {phase === 'prompt-replug' || phase === 'detecting' ? (
           <div className="firmware-replug-prompt" data-testid="firmware-prompt-replug" role="alert">
-            <strong>Plug it back in and select the bootloader port.</strong>
+            <strong>Plug it back in and select the new bootloader port.</strong>
+            <p className="bf-note">
+              Pick the port that appears when you re-plug (often ending in <code>_BL</code>). It only shows for about a
+              second — if you miss it, reopen the picker and re-plug.
+            </p>
             <div className="firmware-replug-prompt__buttons">
               <button
                 type="button"
