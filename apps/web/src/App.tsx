@@ -4839,6 +4839,34 @@ export function App() {
   // dotted-quad editor; everything else falls through to the generic metadata
   // field. Sibling octets (byte 2-4) render null — the byte-1 quad draws them.
   // MAC stays as plain byte fields (in-place hex editing fights the cursor).
+  // Wrap a networking field with a per-param "i" — hover/focus reveals the
+  // ArduPilot description right next to the control, so the operator knows what
+  // each NET_ param does without leaving the tab. Mirrors the Config "i".
+  function withNetworkingFieldInfo(parameter: ParameterState, node: ReactNode): ReactNode {
+    const description = parameter.definition?.description
+    if (node === null || node === undefined || !description) {
+      return node
+    }
+    return (
+      <div key={parameter.id} className="field-info-row">
+        {node}
+        <span className="field-info-wrap">
+          <button
+            type="button"
+            className="field-info"
+            data-testid={`networking-field-info-${parameter.id}`}
+            aria-label={`About ${parameter.definition?.label ?? parameter.id}`}
+          >
+            i
+          </button>
+          <span className="field-info-tip" role="tooltip">
+            {description}
+          </span>
+        </span>
+      </div>
+    )
+  }
+
   function renderNetworkingField(parameter: ParameterState): ReactNode {
     // MAC address: six octets, colon-separated, on one row like the IPs.
     if (parameter.id === 'NET_MACADDR0') {
@@ -4846,7 +4874,8 @@ export function App() {
         .map((index) => selectParameterById(snapshot, `NET_MACADDR${index}`))
         .filter((entry): entry is ParameterState => entry !== undefined)
       if (octets.length === 6) {
-        return (
+        return withNetworkingFieldInfo(
+          parameter,
           <IpAddressField
             key={parameter.id}
             label={(parameter.definition?.label ?? 'MAC address').replace(/ · byte \d+$/, '')}
@@ -4881,7 +4910,8 @@ export function App() {
         .map((index) => selectParameterById(snapshot, `${base}${index}`))
         .filter((entry): entry is ParameterState => entry !== undefined)
       if (octets.length === 4) {
-        return (
+        return withNetworkingFieldInfo(
+          parameter,
           <IpAddressField
             key={parameter.id}
             label={(parameter.definition?.label ?? base).replace(/ · byte \d+$/, '')}
@@ -4898,7 +4928,7 @@ export function App() {
     if (/^NET_(?:IPADDR|GWADDR|REMPPP_IP|P\d+_IP)[1-3]$/.test(parameter.id)) {
       return null
     }
-    return renderMetadataParameterField(parameter)
+    return withNetworkingFieldInfo(parameter, renderMetadataParameterField(parameter))
   }
 
   function handleStageTuningParameterValue(parameter: ParameterState, nextValue: string): void {

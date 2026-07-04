@@ -260,12 +260,22 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                             </div>
 
                             {[...visibleSerialPortViewModels]
-                              // Order by SERIAL number — the identifier the operator
-                              // and the params (SERIALn_*) use. The physical
-                              // peripheral name (UART4/USART2) is shown as a secondary
-                              // pill; its UART-vs-USART distinction doesn't matter for
-                              // ordering.
-                              .sort((left, right) => left.portNumber - right.portNumber)
+                              // Order by the physical peripheral NUMBER — USART1, 2, 3
+                              // then UART4, 5, 6… — which is what the operator reads off
+                              // the board, not the SERIAL number (SERIALn maps to those
+                              // peripherals in a board-specific order). USB / console
+                              // (SERIAL0) stays first; ports with no board map fall back
+                              // to SERIAL order.
+                              .sort((left, right) => {
+                                const rank = (port: typeof left): number => {
+                                  if (port.portNumber === 0) {
+                                    return -1
+                                  }
+                                  const match = /(\d+)/.exec(port.hardwarePort ?? '')
+                                  return match ? Number(match[1]) : 1000 + port.portNumber
+                                }
+                                return rank(left) - rank(right)
+                              })
                               .map((port) => {
                               // Lead with the board's physical peripheral name
                               // (USART1, UART4, …) from the board map — that's what

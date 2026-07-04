@@ -292,7 +292,8 @@ test.describe('Ports view', () => {
     await expect(page.getByText('Notes', { exact: true })).toHaveCount(0)
     // Each row leads with the physical UART/USART heading (or "SERIAL n" fallback
     // when the board map is unknown), with the SERIALn_PROTOCOL ref in the sub-line
-    // and the SERIAL number as a secondary pill. Rows are ordered by SERIAL number.
+    // and the SERIAL number as a secondary pill. Rows are ordered by the physical
+    // peripheral number (USART1,2,3 then UART4,5,6…), USB/console first.
     await expect(page.locator('.ports-matrix-row__title strong').first()).toBeVisible()
     await expect(page.locator('.ports-matrix-row__title small', { hasText: /SERIAL\d+_PROTOCOL/ }).first()).toBeVisible()
     // Edit serial options on the first editable port, toggle one bit (clicking
@@ -337,6 +338,10 @@ test.describe('Networking view (Expert + networking-capable FC)', () => {
     await expect(page.getByTestId('ip-octet-NET_MACADDR5')).toBeVisible()
     await page.getByTestId('ip-octet-NET_IPADDR3').fill('20')
     await expect(page.getByRole('button', { name: /Apply Network Changes \(\d+\)/ })).toBeVisible()
+
+    // Per-param "i" info affordance — each NET_ field carries one (hover/focus
+    // reveals the ArduPilot description) so operators know what each param does.
+    await expect(page.getByTestId('networking-field-info-NET_ENABLE')).toBeVisible()
 
     // DroneNet tab: switching to it auto-connects over CAN and discovers the demo
     // DroneNet peripheral — no CAN tab, no manual Start needed.
