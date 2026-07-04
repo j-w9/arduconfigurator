@@ -11811,10 +11811,16 @@ details.bf-gui-box:not([open]) > summary::after {
   align-items: flex-start;
   gap: 6px;
 }
-.field-info-row > .scoped-editor-field,
-.field-info-row > .ip-address-field {
+/* Dropdowns / number fields fill the column, so the "i" lands at the right edge. */
+.field-info-row > .scoped-editor-field {
   flex: 1;
   min-width: 0;
+}
+/* Composite IP/MAC rows size to their octets instead, so the "i" sits right
+   next to them rather than across a big empty gap (and its tooltip opens
+   anchored to the field, not floating in the gutter). */
+.field-info-row > .ip-address-field {
+  flex: 0 1 auto;
 }
 .field-info-wrap {
   position: relative;
