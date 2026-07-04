@@ -88,7 +88,7 @@ export function buildNetworkPortParameterDefinitions(maxPort: number): FirmwareM
       defs[`${p}IP${i}`] = {
         id: `${p}IP${i}`,
         label: `Endpoint ${n} IP · byte ${i + 1}`,
-        description: `Byte ${i + 1} of 4 of endpoint ${n}'s IP (destination for a client, bind address for a server).`,
+        description: `Endpoint ${n}'s IP address. Only needed for CLIENT types (the destination to connect/send to). Leave it 0.0.0.0 for server types — the server binds all interfaces and any client may connect.`,
         category: ENDPOINTS,
         minimum: 0,
         maximum: 255,

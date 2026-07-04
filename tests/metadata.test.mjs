@@ -81,6 +81,22 @@ test('metadata catalog exposes AP_Networking (NET_) parameters on the Networking
   assert.ok(metadata.parameters.NET_PASS9_EP2, 'passthrough family generated through block 9')
 })
 
+test('metadata catalog gives FSTRATE_* and RC_PROTOCOLS enum/bitmask options (were raw number fields)', () => {
+  const metadata = normalizeFirmwareMetadata(arducopterMetadata)
+
+  const fstrate = metadata.parameters.FSTRATE_ENABLE
+  assert.ok(fstrate, 'FSTRATE_ENABLE present')
+  assert.equal(fstrate.options.length, 4) // Disabled / Dynamic / FixedWhenArmed / Fixed
+  assert.ok(fstrate.options.some((option) => option.value === 2 && /armed/i.test(option.label)))
+  assert.equal(metadata.parameters.FSTRATE_DIV.maximum, 10)
+
+  const rcProtocols = metadata.parameters.RC_PROTOCOLS
+  assert.ok(rcProtocols, 'RC_PROTOCOLS present')
+  assert.ok(rcProtocols.bitmask, 'RC_PROTOCOLS is a bitmask')
+  // bit 9 = CRSF (value 512 = the common ELRS/Crossfire choice)
+  assert.ok(rcProtocols.options.some((option) => option.value === 9 && /CRSF/i.test(option.label)))
+})
+
 test('metadata catalog exposes OSD and notification parameters on product surfaces', () => {
   const metadata = normalizeFirmwareMetadata(arducopterMetadata)
 

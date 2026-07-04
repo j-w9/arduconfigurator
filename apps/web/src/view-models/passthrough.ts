@@ -33,7 +33,10 @@ export function availablePassthroughEndpoints(
   paramNames: readonly string[],
   selected: readonly number[]
 ): EndpointOption[] {
-  const present = new Set<number>([0]) // Serial 0 / console always exists.
+  // Do NOT assume Serial 0 / USB console exists — an AP_Periph/DroneNet node
+  // often has no USB, so offering "Serial 0 (USB / console)" is misleading.
+  // Derive serials purely from the SERIALn_ params the node actually reports.
+  const present = new Set<number>()
   for (const name of paramNames) {
     const serial = /^SERIAL(\d)_/.exec(name)
     if (serial) {

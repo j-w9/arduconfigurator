@@ -56,11 +56,11 @@ describe('passthrough view-model', () => {
       [41] // a currently-selected CAN1 tunnel must still be offered
     )
     const values = options.map((option) => option.value)
-    expect(values).toContain(0) // Serial 0 / console always
     expect(values).toContain(1) // Serial 1 (reported)
     expect(values).toContain(2) // Serial 2 (reported)
     expect(values).toContain(21) // Network port 1 (NET_P1)
     expect(values).toContain(41) // currently-selected CAN1 tunnel kept
+    expect(values).not.toContain(0) // Serial 0 / USB console NOT assumed (no SERIAL0_ reported)
     expect(values).not.toContain(3) // no SERIAL3 reported
     expect(values).not.toContain(22) // no NET_P2
     expect(values).not.toContain(51) // CAN2 tunnel not advertised

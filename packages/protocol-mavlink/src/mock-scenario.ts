@@ -266,6 +266,12 @@ const mockParameters: ParameterState = {
   SCHED_LOOP_RATE: 400,
   INS_GYRO_RATE: 0,
   INS_FAST_SAMPLE: 1,
+  // Fast-rate PID thread + RC protocol allow-list — so the Config "Fast loop
+  // rate" card and RC-protocol bitmask render with their new metadata (dropdown /
+  // checkbox grid) in the demo. RC_PROTOCOLS=512 = CRSF only.
+  FSTRATE_ENABLE: 2,
+  FSTRATE_DIV: 1,
+  RC_PROTOCOLS: 512,
   INS_USE: 1,
   INS_USE2: 1,
   INS_USE3: 0,

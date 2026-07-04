@@ -1889,6 +1889,34 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       rebootRequired: true,
       options: enumOptions(ARDUCOPTER_SCHED_LOOP_RATE_LABELS)
     },
+    // Fast-rate PID thread (ArduCopter). Values/description verbatim from
+    // ArduCopter/Parameters.cpp (@Param: FSTRATE_ENABLE / FSTRATE_DIV).
+    FSTRATE_ENABLE: {
+      id: 'FSTRATE_ENABLE',
+      label: 'Fast rate thread',
+      description:
+        'Runs the PID loop in a separate fast-rate thread, faster than the main loop, divided down from the gyro rate. Dynamic scales the divisor automatically to avoid gyro-buffer overrun; the fixed options pin it to the divisor below (on arming, or always).',
+      category: 'tuning',
+      rebootRequired: true,
+      notes: ['FSTRATE_DIV only applies when the fast-rate thread is enabled; the actual rate = gyro rate ÷ divisor.'],
+      options: [
+        { value: 0, label: 'Disabled' },
+        { value: 1, label: 'Enabled — dynamic', description: 'Divisor auto-scaled from FSTRATE_DIV to avoid overruns.' },
+        { value: 2, label: 'Enabled — fixed when armed', description: 'Divisor fixed to FSTRATE_DIV on arming, dynamic when disarmed.' },
+        { value: 3, label: 'Enabled — fixed', description: 'Divisor always fixed to FSTRATE_DIV.' }
+      ]
+    },
+    FSTRATE_DIV: {
+      id: 'FSTRATE_DIV',
+      label: 'Fast rate divisor',
+      description:
+        'Divides the gyro rate to set the fast-rate thread frequency (rate = gyro rate ÷ divisor). E.g. at a 4 kHz gyro loop, divisor 2 gives a 2 kHz PID loop. Scaled per FSTRATE_ENABLE.',
+      category: 'tuning',
+      rebootRequired: true,
+      minimum: 1,
+      maximum: 10,
+      step: 1
+    },
     INS_GYRO_RATE: {
       id: 'INS_GYRO_RATE',
       label: 'Gyro update rate',
@@ -2127,6 +2155,39 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       bitmask: true,
       options: enumOptions(ARDUCOPTER_RC_OPTIONS_BIT_LABELS),
       notes: advancedReceiverNotes
+    },
+    // RC receiver protocol allow-list (bitmask). @Bitmask verbatim from
+    // libraries/AP_RCProtocol/AP_RCProtocol.cpp. Bit 0 = All (auto-detect any);
+    // to pin one protocol, clear All and set just its bit (e.g. CRSF = bit 9 =
+    // 512, the usual choice for CRSF/ELRS).
+    RC_PROTOCOLS: {
+      id: 'RC_PROTOCOLS',
+      label: 'RC protocols',
+      description:
+        'Which RC receiver protocols the autopilot will accept. Leave "All" to auto-detect, or select a single protocol to avoid mis-detection (CRSF covers ELRS/TBS Crossfire). Reboot required.',
+      category: 'radio',
+      rebootRequired: true,
+      bitmask: true,
+      options: [
+        { value: 0, label: 'All (auto-detect)' },
+        { value: 1, label: 'PPM' },
+        { value: 2, label: 'IBUS' },
+        { value: 3, label: 'SBUS' },
+        { value: 4, label: 'SBUS (non-inverted)' },
+        { value: 5, label: 'DSM' },
+        { value: 6, label: 'SUMD' },
+        { value: 7, label: 'SRXL' },
+        { value: 8, label: 'SRXL2' },
+        { value: 9, label: 'CRSF' },
+        { value: 10, label: 'ST24' },
+        { value: 11, label: 'FPort' },
+        { value: 12, label: 'FPort2' },
+        { value: 13, label: 'FastSBUS' },
+        { value: 14, label: 'DroneCAN' },
+        { value: 15, label: 'Ghost' },
+        { value: 16, label: 'MAVLink Radio' },
+        { value: 18, label: 'SITL UDP' }
+      ]
     },
     RC1_MIN: {
       id: 'RC1_MIN',
