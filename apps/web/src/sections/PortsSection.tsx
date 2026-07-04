@@ -267,16 +267,18 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                               // ordering.
                               .sort((left, right) => left.portNumber - right.portNumber)
                               .map((port) => {
-                              // Lead with the SERIAL number — the identifier the
-                              // params use (SERIALn_PROTOCOL, shown in the sub-line)
-                              // and what the operator thinks in. The physical UART
-                              // (UART6/USART2) is secondary (a pill below); whether
-                              // it's a UART or a USART doesn't matter here. SERIAL0
+                              // Lead with the board's physical peripheral name
+                              // (USART1, UART4, …) from the board map — that's what
+                              // the operator reads off the silkscreen / wiring. The
+                              // SERIAL number (which the params use) is shown as a
+                              // secondary pill + in the SERIALn_PROTOCOL sub-line.
+                              // Rows are still ordered by SERIAL number. Falls back
+                              // to "SERIAL n" when the board map is unknown; SERIAL0
                               // is the USB console.
                               const portHeading =
                                 port.portNumber === 0
                                   ? 'USB / Console'
-                                  : `SERIAL ${port.portNumber}`
+                                  : port.hardwarePort ?? `SERIAL ${port.portNumber}`
                               const protocolParameter = port.protocolParameter
                               const baudParameter = port.baudParameter
                               const optionsParameter = port.optionsParameter
@@ -338,14 +340,13 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                         </StatusBadge>
                                       </div>
                                       <div className="config-pills">
-                                        {/* SERIAL number now leads (heading); the physical UART and the
-                                            descriptive connector/role are secondary pills. Dedupe so a
-                                            connector label that just repeats the UART name isn't shown twice. */}
+                                        {/* Physical UART/USART now leads (heading); show the SERIAL number
+                                            as a secondary pill (the id the params use) plus the descriptive
+                                            connector/role. Dedupe so a connector label that just repeats the
+                                            heading isn't shown twice. */}
+                                        {port.portNumber !== 0 ? <span>{`SERIAL ${port.portNumber}`}</span> : null}
                                         <span>{port.usageSummary}</span>
-                                        {port.hardwarePort ? <span>{port.hardwarePort}</span> : null}
-                                        {port.label && port.label !== portHeading && port.label !== port.hardwarePort ? (
-                                          <span>{port.label}</span>
-                                        ) : null}
+                                        {port.label && port.label !== portHeading ? <span>{port.label}</span> : null}
                                         {port.boardTrafficSummary ? <span>{port.boardTrafficSummary}</span> : null}
                                       </div>
                                     </div>
