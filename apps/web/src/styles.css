@@ -11858,6 +11858,10 @@ details.bf-gui-box:not([open]) > summary::after {
   font-style: normal;
   line-height: 1.4;
   white-space: normal;
+  /* Break long unspaced tokens (e.g. NET_GWADDR0.NET_GWADDR1…) so they wrap
+     inside the box instead of spilling past its fixed max-width. */
+  overflow-wrap: break-word;
+  word-break: break-word;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
 }
 

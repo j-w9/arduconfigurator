@@ -50,7 +50,13 @@ function octetGroup(base: string, name: string, category: string, rebootRequired
     defs[`${base}${i}`] = {
       id: `${base}${i}`,
       label: `${name} · byte ${i + 1}`,
-      description: `Byte ${i + 1} of 4 of ${name.toLowerCase()} (0–255). Full address = ${base}0.${base}1.${base}2.${base}3.`,
+      // Byte 0's description doubles as the composite field's tooltip, so keep it
+      // about the whole address (and free of long unbreakable param-name tokens
+      // that spill a fixed-width tooltip box).
+      description:
+        i === 0
+          ? `${name} — four octets (0–255 each), most-significant first.`
+          : `Byte ${i + 1} of 4 of ${name.toLowerCase()} (0–255).`,
       category,
       minimum: 0,
       maximum: 255,
@@ -282,7 +288,11 @@ function macOctet(i: number): ParameterDefinition {
   return {
     id: `NET_MACADDR${i}`,
     label: `MAC address · byte ${i + 1}`,
-    description: `Byte ${i + 1} of 6 of the interface MAC address (0–255). Leave default unless your network requires a specific MAC.`,
+    // Byte 0's description doubles as the composite MAC field's tooltip.
+    description:
+      i === 0
+        ? 'Interface MAC address — six octets (0–255 each). Leave default unless your network requires a specific MAC.'
+        : `Byte ${i + 1} of 6 of the interface MAC address (0–255).`,
     category: CORE,
     rebootRequired: true,
     minimum: 0,
