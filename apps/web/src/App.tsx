@@ -4847,20 +4847,25 @@ export function App() {
     if (node === null || node === undefined || !description) {
       return node
     }
-    // Native `title` tooltip (not a custom overlay box) so the browser positions
-    // it and it never spills out of / over the tight two-column layout.
+    // Same per-field "i" affordance as the Config tab (config-section__info) —
+    // hover/focus reveals the styled description box — so it's consistent with
+    // the rest of the app.
     return (
-      <div key={parameter.id} className="field-info-row">
+      <div key={parameter.id} className="config-section__field-row">
         {node}
-        <button
-          type="button"
-          className="field-info"
-          title={description}
-          data-testid={`networking-field-info-${parameter.id}`}
-          aria-label={`${parameter.definition?.label ?? parameter.id}: ${description}`}
-        >
-          i
-        </button>
+        <span className="config-section__info-wrap">
+          <button
+            type="button"
+            className="config-section__info"
+            data-testid={`networking-field-info-${parameter.id}`}
+            aria-label={`About ${parameter.definition?.label ?? parameter.id}`}
+          >
+            i
+          </button>
+          <span className="config-section__info-tip" role="tooltip">
+            {description}
+          </span>
+        </span>
       </div>
     )
   }
