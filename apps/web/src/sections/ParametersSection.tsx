@@ -77,6 +77,16 @@ export interface ParametersSectionProps {
    *  a reboot-required change can be completed without scrolling back up to the
    *  header session strip. */
   onRequestReboot: () => void
+  /** Params the FC reports as differing from firmware default (from MAVFTP
+   *  param.pck?withdefaults, 4.5+). null = not fetched yet. */
+  nonDefaultParamIds: ReadonlySet<string> | null
+  /** "Show only changed" — restrict the table (and export) to non-default params. */
+  showOnlyNonDefault: boolean
+  onToggleShowOnlyNonDefault: () => void
+  /** Fetch the packed defaults from the FC to populate nonDefaultParamIds. */
+  onFetchParamDefaults: () => void | Promise<void>
+  /** True while the defaults fetch is in flight. */
+  fetchDefaultsBusy: boolean
 }
 
 export function ParametersSection(props: ParametersSectionProps): ReactElement {
@@ -121,7 +131,12 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     refreshDisabled,
     parameterEnumOverrides,
     onToggleParameterEnumOverride: handleToggleParameterEnumOverride,
-    onRequestReboot: handleRequestReboot
+    onRequestReboot: handleRequestReboot,
+    nonDefaultParamIds,
+    showOnlyNonDefault,
+    onToggleShowOnlyNonDefault: handleToggleShowOnlyNonDefault,
+    onFetchParamDefaults: handleFetchParamDefaults,
+    fetchDefaultsBusy
   } = props
 
   // Bulk-drop selection over the staged review rows — dropping unwanted
@@ -165,12 +180,19 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot.parameters, metadataCatalog, formatCategoryLabel])
   const displayedParameters = useMemo(
-    () =>
-      categoryFilter === 'all'
-        ? filteredParameters
-        : filteredParameters.filter((parameter) => categoryOf(parameter) === categoryFilter),
+    () => {
+      const byCategory =
+        categoryFilter === 'all'
+          ? filteredParameters
+          : filteredParameters.filter((parameter) => categoryOf(parameter) === categoryFilter)
+      // "Show only changed" — restrict to params the FC reported as non-default.
+      if (showOnlyNonDefault && nonDefaultParamIds) {
+        return byCategory.filter((parameter) => nonDefaultParamIds.has(parameter.id))
+      }
+      return byCategory
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filteredParameters, categoryFilter, metadataCatalog]
+    [filteredParameters, categoryFilter, metadataCatalog, showOnlyNonDefault, nonDefaultParamIds]
   )
   const visibleStagedGroups = useMemo(() => {
     if (!searchPredicate) {
@@ -271,6 +293,33 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
           >
             Refresh
           </button>
+          <button
+            type="button"
+            data-testid="parameter-fetch-defaults-button"
+            style={buttonStyle()}
+            onClick={() => void handleFetchParamDefaults()}
+            disabled={fetchDefaultsBusy || refreshDisabled}
+            title="Fetch firmware defaults from the FC (ArduPilot 4.5+) so 'Show only changed' can filter to non-default params."
+          >
+            {fetchDefaultsBusy ? 'Fetching…' : nonDefaultParamIds ? 'Refresh defaults' : 'Fetch defaults'}
+          </button>
+          <label
+            className="parameter-show-changed"
+            title={
+              nonDefaultParamIds
+                ? 'Show only params that differ from their firmware default.'
+                : 'Fetch defaults first to enable this filter.'
+            }
+          >
+            <input
+              type="checkbox"
+              data-testid="parameter-show-changed-toggle"
+              checked={showOnlyNonDefault}
+              onChange={handleToggleShowOnlyNonDefault}
+              disabled={!nonDefaultParamIds}
+            />
+            <span>Show only changed{nonDefaultParamIds ? ` (${nonDefaultParamIds.size})` : ''}</span>
+          </label>
         </div>
 
         <div className="parameter-review">

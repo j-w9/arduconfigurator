@@ -141,6 +141,12 @@ export interface ParameterBackupExportOptions {
    * always excluded regardless.
    */
   excludeCategories?: readonly ParameterImportCategory[]
+  /**
+   * When set, restrict the export to just these param ids (in addition to the
+   * category excludes). Used for "export only changed / non-default params" —
+   * the caller passes the non-default set from param.pck?withdefaults.
+   */
+  includeParamIds?: ReadonlySet<string>
 }
 
 export function createParameterBackup(
@@ -149,8 +155,10 @@ export function createParameterBackup(
   options: ParameterBackupExportOptions = {}
 ): ParameterBackupFile {
   const excludeCategories = new Set(options.excludeCategories ?? [])
+  const includeParamIds = options.includeParamIds
   const exportableParameters = snapshot.parameters
     .filter((parameter) => !isSnapshotExcludedParameterState(parameter))
+    .filter((parameter) => includeParamIds === undefined || includeParamIds.has(parameter.id))
     .filter((parameter) => {
       if (excludeCategories.size === 0) {
         return true

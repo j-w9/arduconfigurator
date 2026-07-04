@@ -1087,6 +1087,19 @@ export class ArduPilotConfiguratorRuntime {
     return bytes
   }
 
+  // Fetch @PARAM/param.pck?withdefaults=1 (ArduPilot 4.5+) — the packed param
+  // table where each param carries a flag when it differs from its firmware
+  // default. Returns the raw bytes; the caller parses them (parseParamPck) to
+  // derive the non-default set. Uses the same burst reader as log download.
+  async downloadParamPack(): Promise<Uint8Array> {
+    const bytes = await this.mavftp.downloadRemoteFileBurst('@PARAM/param.pck?withdefaults=1', {
+      maxBytes: MAX_MAVFTP_LOG_BYTES
+    })
+    this.appendStatusEntry('info', `Fetched packed param defaults via MAVFTP (${bytes.length} bytes).`)
+    this.emit()
+    return bytes
+  }
+
   async uploadRemoteFile(path: string, bytes: Uint8Array, options: { overwrite?: boolean } = {}): Promise<void> {
     await this.mavftp.uploadRemoteFile(path, bytes, options)
     this.appendStatusEntry('info', `Uploaded ${path} via MAVFTP.`)

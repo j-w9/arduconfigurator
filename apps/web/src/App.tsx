@@ -241,6 +241,7 @@ import type {
   SetupFlowFollowUpDescriptor
 } from './app-types'
 import { AP_PERIPH_PARAM_METADATA } from './view-models/ap-periph-param-metadata'
+import { parseParamPck } from './view-models/param-pck'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
 import { buildRecentNotices } from './view-models/recent-notices'
 import { invertGuidedReorderMapping, pickedReorderPositions } from './view-models/motor-reorder-mapping'
@@ -847,6 +848,13 @@ export function App() {
   const [parameterExportExclusions, setParameterExportExclusions] = useState<
     Record<ParameterImportCategory, boolean>
   >({ calibration: true, 'stream-rates': false, mission: false })
+  // Non-default params fetched from the FC's packed defaults (MAVFTP
+  // param.pck?withdefaults, 4.5+). null until fetched. Drives the "Show only
+  // changed" filter and the non-default export. Declared here (above the export
+  // hook) so the export can honour the same set.
+  const [nonDefaultParamIds, setNonDefaultParamIds] = useState<ReadonlySet<string> | null>(null)
+  const [showOnlyNonDefault, setShowOnlyNonDefault] = useState(false)
+  const [fetchDefaultsBusy, setFetchDefaultsBusy] = useState(false)
   const {
     handleExportParameterBackup,
     handleExportParameterBackupAsParm,
@@ -856,6 +864,7 @@ export function App() {
     snapshot,
     parameterImportExclusions,
     parameterExportExclusions,
+    exportIncludeParamIds: showOnlyNonDefault && nonDefaultParamIds ? nonDefaultParamIds : undefined,
     replaceDrafts,
     setParameterNotice,
     setParameterFollowUp
@@ -2692,6 +2701,40 @@ export function App() {
       }
       return next
     })
+  }
+
+  // Fetch the FC's packed defaults (MAVFTP param.pck?withdefaults, 4.5+) and
+  // derive the non-default set that drives "Show only changed" + the non-default
+  // export. Parse is pure (parseParamPck); the flag on each entry IS the
+  // non-default signal, so no value/default comparison is needed here.
+  async function handleFetchParamDefaults(): Promise<void> {
+    setFetchDefaultsBusy(true)
+    try {
+      const result = parseParamPck(await runtime.downloadParamPack())
+      if (!result.withDefaults) {
+        setNonDefaultParamIds(new Set())
+        setParameterNotice({
+          tone: 'warning',
+          text: 'This firmware returned params without default flags — update to ArduPilot 4.5+ to use the "changed only" filter.'
+        })
+        return
+      }
+      setNonDefaultParamIds(result.nonDefaultParamIds)
+      setShowOnlyNonDefault(true)
+      setParameterNotice({
+        tone: 'neutral',
+        text: `Defaults fetched: ${result.nonDefaultParamIds.size} of ${result.entries.length} params differ from firmware default.`
+      })
+    } catch (error) {
+      setParameterNotice({
+        tone: 'danger',
+        text: `Couldn't fetch packed defaults over MAVFTP (needs a MAVFTP-capable FC on ArduPilot 4.5+): ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      })
+    } finally {
+      setFetchDefaultsBusy(false)
+    }
   }
 
   // Drop overrides for any paramId whose draft has been cleared (applied,
@@ -7478,6 +7521,11 @@ export function App() {
           parameterEnumOverrides={parameterEnumOverrides}
           onToggleParameterEnumOverride={handleToggleParameterEnumOverride}
           onRequestReboot={() => void handleGuidedAction('reboot-autopilot')}
+          nonDefaultParamIds={nonDefaultParamIds}
+          showOnlyNonDefault={showOnlyNonDefault}
+          onToggleShowOnlyNonDefault={() => setShowOnlyNonDefault((previous) => !previous)}
+          onFetchParamDefaults={handleFetchParamDefaults}
+          fetchDefaultsBusy={fetchDefaultsBusy}
         />
       ) : null}
         </div>

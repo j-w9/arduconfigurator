@@ -37,6 +37,8 @@ export interface UseParameterBackupIoParams {
   parameterImportExclusions: Record<ParameterImportCategory, boolean>
   /** Categories to leave OUT of exported backups (calibration/stream-rates/mission). */
   parameterExportExclusions: Record<ParameterImportCategory, boolean>
+  /** When set, export only these param ids ("export only changed / non-default"). */
+  exportIncludeParamIds?: ReadonlySet<string>
   replaceDrafts: (drafts: ParameterDraftValues) => void
   setParameterNotice: Dispatch<SetStateAction<ParameterNotice | undefined>>
   setParameterFollowUp: Dispatch<SetStateAction<ParameterFollowUp | undefined>>
@@ -53,6 +55,7 @@ export function useParameterBackupIo({
   snapshot,
   parameterImportExclusions,
   parameterExportExclusions,
+  exportIncludeParamIds,
   replaceDrafts,
   setParameterNotice,
   setParameterFollowUp
@@ -67,15 +70,20 @@ export function useParameterBackupIo({
     )
   }
 
+  function exportOptions(): { excludeCategories: ParameterImportCategory[]; includeParamIds?: ReadonlySet<string> } {
+    return { excludeCategories: exportExcludeCategories(), includeParamIds: exportIncludeParamIds }
+  }
+
   function exportSkipNote(): string {
     const skipped = exportExcludeCategories()
-    return skipped.length > 0 ? ` (skipped ${skipped.join(', ')})` : ''
+    const parts: string[] = []
+    if (exportIncludeParamIds !== undefined) parts.push('changed only')
+    if (skipped.length > 0) parts.push(`skipped ${skipped.join(', ')}`)
+    return parts.length > 0 ? ` (${parts.join('; ')})` : ''
   }
 
   function handleExportParameterBackup(): void {
-    const backup = createParameterBackup(snapshot, buildBackupAppInfo(), {
-      excludeCategories: exportExcludeCategories()
-    })
+    const backup = createParameterBackup(snapshot, buildBackupAppInfo(), exportOptions())
     downloadTextFile(buildParameterBackupFilename(snapshot, 'json'), serializeParameterBackup(backup))
     setParameterNotice({
       tone: 'success',
@@ -84,9 +92,7 @@ export function useParameterBackupIo({
   }
 
   function handleExportParameterBackupAsParm(): void {
-    const backup = createParameterBackup(snapshot, buildBackupAppInfo(), {
-      excludeCategories: exportExcludeCategories()
-    })
+    const backup = createParameterBackup(snapshot, buildBackupAppInfo(), exportOptions())
     downloadTextFile(buildParameterBackupFilename(snapshot, 'parm'), serializeParameterBackupAsParm(backup))
     setParameterNotice({
       tone: 'success',
@@ -95,9 +101,7 @@ export function useParameterBackupIo({
   }
 
   function handleExportParameterBackupAsParams(): void {
-    const backup = createParameterBackup(snapshot, buildBackupAppInfo(), {
-      excludeCategories: exportExcludeCategories()
-    })
+    const backup = createParameterBackup(snapshot, buildBackupAppInfo(), exportOptions())
     downloadTextFile(buildParameterBackupFilename(snapshot, 'params'), serializeParameterBackupAsParams(backup))
     setParameterNotice({
       tone: 'success',

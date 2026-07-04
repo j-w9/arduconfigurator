@@ -9753,6 +9753,21 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-backup-input {
   display: none;
 }
+.parameter-show-changed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.parameter-show-changed input:disabled {
+  cursor: not-allowed;
+}
+.parameter-show-changed:has(input:disabled) {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 .parameter-import-exclusions {
   display: inline-flex;
