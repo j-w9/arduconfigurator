@@ -32,6 +32,9 @@ export interface UseSafetyAcksResult {
   /** Snapshot-library restore confirmation. */
   snapshotRestoreAcknowledged: boolean
   setSnapshotRestoreAcknowledged: Dispatch<SetStateAction<boolean>>
+  /** Force-write the restore's blocked (out-of-range/enum) values anyway. */
+  snapshotForceInvalid: boolean
+  setSnapshotForceInvalid: Dispatch<SetStateAction<boolean>>
   /** Provisioning-library restore confirmation. */
   provisioningRestoreAcknowledged: boolean
   setProvisioningRestoreAcknowledged: Dispatch<SetStateAction<boolean>>
@@ -45,6 +48,10 @@ export function useSafetyAcks(): UseSafetyAcksResult {
   const [testAreaAcknowledged, setTestAreaAcknowledged] = useState(false)
   const [usbBenchAcknowledged, setUsbBenchAcknowledged] = useState(false)
   const [snapshotRestoreAcknowledged, setSnapshotRestoreAcknowledged] = useState(false)
+  // Operator opted to force-write the snapshot restore's blocked (out-of-doc-range
+  // / outside-enum) values anyway — common on a cross-board restore where a value
+  // valid on the source FC trips this app's documented range/enum.
+  const [snapshotForceInvalid, setSnapshotForceInvalid] = useState(false)
   const [provisioningRestoreAcknowledged, setProvisioningRestoreAcknowledged] = useState(false)
   const [presetApplyAcknowledged, setPresetApplyAcknowledged] = useState(false)
 
@@ -57,6 +64,8 @@ export function useSafetyAcks(): UseSafetyAcksResult {
     setUsbBenchAcknowledged,
     snapshotRestoreAcknowledged,
     setSnapshotRestoreAcknowledged,
+    snapshotForceInvalid,
+    setSnapshotForceInvalid,
     provisioningRestoreAcknowledged,
     setProvisioningRestoreAcknowledged,
     presetApplyAcknowledged,

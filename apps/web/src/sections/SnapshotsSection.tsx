@@ -199,6 +199,8 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
   const {
     snapshotRestoreAcknowledged,
     setSnapshotRestoreAcknowledged,
+    snapshotForceInvalid,
+    setSnapshotForceInvalid,
     provisioningRestoreAcknowledged,
     setProvisioningRestoreAcknowledged
   } = safetyAcks
@@ -819,6 +821,20 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                       ))}
                     </section>
                   </div>
+                  <label className="snapshot-restore-ack">
+                    <input
+                      data-testid="snapshot-force-invalid"
+                      type="checkbox"
+                      checked={snapshotForceInvalid}
+                      onChange={(event) => setSnapshotForceInvalid(event.target.checked)}
+                      disabled={busyAction !== undefined}
+                    />
+                    <span>
+                      Force-write these {selectedSnapshotInvalidEntries.length} blocked value(s) anyway. They exceed this
+                      app&apos;s documented range/enum (common on a cross-board restore) — the flight controller may
+                      still accept them, or clamp/reject on write-back. Use when you know they&apos;re valid on this FC.
+                    </span>
+                  </label>
                   </>
                 ) : null}
 
@@ -842,7 +858,11 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     type="checkbox"
                     checked={snapshotRestoreAcknowledged}
                     onChange={(event) => setSnapshotRestoreAcknowledged(event.target.checked)}
-                    disabled={busyAction !== undefined || selectedSnapshotChangedEntries.length === 0}
+                    disabled={
+                      busyAction !== undefined ||
+                      (selectedSnapshotChangedEntries.length === 0 &&
+                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0))
+                    }
                   />
                   <span>I understand that applying this restore will overwrite the current live values shown in the diff above.</span>
                 </label>
@@ -854,13 +874,16 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     onClick={() => void handleApplySelectedSnapshotRestore()}
                     disabled={
                       busyAction !== undefined ||
-                      selectedSnapshotChangedEntries.length === 0 ||
-                      selectedSnapshotInvalidEntries.length > 0 ||
+                      (selectedSnapshotChangedEntries.length === 0 &&
+                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0)) ||
+                      (selectedSnapshotInvalidEntries.length > 0 && !snapshotForceInvalid) ||
                       !snapshotRestoreAcknowledged ||
                       !canApplyDraftParameters
                     }
                   >
-                    {busyAction === 'snapshots:apply' ? 'Applying…' : `Apply Snapshot Restore (${selectedSnapshotChangedEntries.length})`}
+                    {busyAction === 'snapshots:apply'
+                      ? 'Applying…'
+                      : `Apply Snapshot Restore (${selectedSnapshotChangedEntries.length + (snapshotForceInvalid ? selectedSnapshotInvalidEntries.length : 0)})`}
                   </button>
                   {isExpertMode ? (
                     <button

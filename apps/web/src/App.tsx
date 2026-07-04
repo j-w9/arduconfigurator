@@ -803,6 +803,8 @@ export function App() {
     setUsbBenchAcknowledged,
     snapshotRestoreAcknowledged,
     setSnapshotRestoreAcknowledged,
+    snapshotForceInvalid,
+    setSnapshotForceInvalid,
     provisioningRestoreAcknowledged,
     setProvisioningRestoreAcknowledged,
     presetApplyAcknowledged,
@@ -3026,10 +3028,31 @@ export function App() {
       return
     }
 
-    await handleApplyScopedParameterDrafts(selectedSnapshotDiffEntries, 'snapshots:apply', `Snapshot restore: ${selectedSnapshot.label}`)
+    // Force-write path: reclassify the blocked (out-of-doc-range / outside-enum)
+    // entries as staged so they're written as-is. Common on a cross-board restore
+    // where a value valid on the source FC trips this app's documented range/enum;
+    // runtime.setParameters still verifies readback and tolerates FC clamping.
+    const forcedInvalidEntries: ParameterDraftEntry[] = snapshotForceInvalid
+      ? selectedSnapshotInvalidEntries
+          .map((entry): ParameterDraftEntry | null => {
+            const value = entry.nextValue ?? Number(entry.rawValue)
+            return Number.isFinite(value)
+              ? { ...entry, status: 'staged', nextValue: value, override: true, reason: undefined }
+              : null
+          })
+          .filter((entry): entry is ParameterDraftEntry => entry !== null)
+      : []
+    const entriesToWrite = [
+      ...selectedSnapshotDiffEntries.filter((entry) => entry.status === 'staged'),
+      ...forcedInvalidEntries
+    ]
+
+    await handleApplyScopedParameterDrafts(entriesToWrite, 'snapshots:apply', `Snapshot restore: ${selectedSnapshot.label}`)
     setSnapshotRestoreAcknowledged(false)
+    setSnapshotForceInvalid(false)
     trackAppEvent('Snapshot Restore Applied', {
-      changedCount: selectedSnapshotDiffEntries.length
+      changedCount: entriesToWrite.length,
+      forcedCount: forcedInvalidEntries.length
     })
   }
 
