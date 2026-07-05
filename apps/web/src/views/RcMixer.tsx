@@ -1,3 +1,5 @@
+import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
+
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import {
@@ -9,6 +11,34 @@ import {
   type RcMixerFunctionDefinition,
   type RcMixerFunctionDefinitionLookup
 } from '../view-models/rc-mixer'
+
+// Drag step (μs) — snap the range edges like Betaflight's 25 μs mode-range grid.
+const RC_MIXER_DRAG_STEP = 25
+
+function clampPwm(pwm: number): number {
+  return Math.max(RC_MIXER_TRACK_MIN_PWM, Math.min(RC_MIXER_TRACK_MAX_PWM, pwm))
+}
+function snapPwm(pwm: number): number {
+  return clampPwm(Math.round(pwm / RC_MIXER_DRAG_STEP) * RC_MIXER_DRAG_STEP)
+}
+/** Map a pointer's clientX to a PWM value along a track rail element. */
+function pwmFromClientX(clientX: number, rail: HTMLElement): number {
+  const rect = rail.getBoundingClientRect()
+  const fraction = rect.width > 0 ? (clientX - rect.left) / rect.width : 0
+  const bounded = Math.max(0, Math.min(1, fraction))
+  return RC_MIXER_TRACK_MIN_PWM + bounded * (RC_MIXER_TRACK_MAX_PWM - RC_MIXER_TRACK_MIN_PWM)
+}
+
+type RcMixerDragEdge = 'low' | 'high' | 'move'
+interface RcMixerDragState {
+  assignmentId: string
+  edge: RcMixerDragEdge
+  rail: HTMLElement
+  /** Values at grab time, so a "move" drag preserves width without drift. */
+  low: number
+  high: number
+  grabPwm: number
+}
 
 // PHASE 0 — UI scaffold for the BF-style "multiple functions per RC channel
 // with PWM ranges" mixer. ArduPilot does not yet support this model at the
@@ -79,6 +109,74 @@ export function RcMixerView(props: RcMixerViewProps) {
     hiddenTermCount,
     tableFull
   } = props
+
+  // Drag-to-resize the PWM range bands (Betaflight-style). The band edges and the
+  // band body are pointer targets; movement maps clientX -> PWM and stages the
+  // change through onUpdateAssignment (same path as the manual inputs).
+  const [drag, setDrag] = useState<RcMixerDragState | null>(null)
+
+  useEffect(() => {
+    if (!drag) {
+      return
+    }
+    const { assignmentId, edge, rail, low, high, grabPwm } = drag
+    function handleMove(event: PointerEvent): void {
+      const pwm = snapPwm(pwmFromClientX(event.clientX, rail))
+      if (edge === 'low') {
+        onUpdateAssignment(assignmentId, { lowPwm: Math.min(pwm, high - RC_MIXER_DRAG_STEP) })
+      } else if (edge === 'high') {
+        onUpdateAssignment(assignmentId, { highPwm: Math.max(pwm, low + RC_MIXER_DRAG_STEP) })
+      } else {
+        const width = high - low
+        const nextLow = clampPwm(Math.min(low + (pwm - grabPwm), RC_MIXER_TRACK_MAX_PWM - width))
+        onUpdateAssignment(assignmentId, { lowPwm: nextLow, highPwm: nextLow + width })
+      }
+    }
+    function end(): void {
+      setDrag(null)
+    }
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+    return () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+    }
+  }, [drag, onUpdateAssignment])
+
+  function beginDrag(event: ReactPointerEvent, assignment: RcMixerAssignment, edge: RcMixerDragEdge): void {
+    const rail = (event.currentTarget as HTMLElement).closest('.rc-mixer-track__rail')
+    if (!(rail instanceof HTMLElement)) {
+      return
+    }
+    event.preventDefault()
+    if (edge !== 'move') {
+      event.stopPropagation() // an edge-handle grab must not also move the band
+    }
+    setDrag({
+      assignmentId: assignment.id,
+      edge,
+      rail,
+      low: assignment.lowPwm,
+      high: assignment.highPwm,
+      grabPwm: pwmFromClientX(event.clientX, rail)
+    })
+  }
+
+  // Keyboard nudge on a range edge — accessibility parity with the drag handles.
+  function nudgeEdge(assignment: RcMixerAssignment, edge: 'low' | 'high', deltaSteps: number): void {
+    const delta = deltaSteps * RC_MIXER_DRAG_STEP
+    if (edge === 'low') {
+      onUpdateAssignment(assignment.id, {
+        lowPwm: clampPwm(Math.min(assignment.lowPwm + delta, assignment.highPwm - RC_MIXER_DRAG_STEP))
+      })
+    } else {
+      onUpdateAssignment(assignment.id, {
+        highPwm: clampPwm(Math.max(assignment.highPwm + delta, assignment.lowPwm + RC_MIXER_DRAG_STEP))
+      })
+    }
+  }
 
   return (
     <div id="setup-panel-rc-mixer">
@@ -213,10 +311,51 @@ export function RcMixerView(props: RcMixerViewProps) {
                             background: `hsla(${hue}, 70%, 55%, 0.55)`,
                             borderColor: `hsla(${hue}, 70%, 60%, 0.9)`
                           }}
-                          title={`${definition?.label ?? `Function ${assignment.functionId}`} · ${assignment.lowPwm}–${assignment.highPwm} μs${assignment.inverted ? ' (inverted)' : ''}`}
+                          title={`${definition?.label ?? `Function ${assignment.functionId}`} · ${assignment.lowPwm}–${assignment.highPwm} μs${assignment.inverted ? ' (inverted)' : ''} · drag to adjust`}
                           data-testid={`rc-mixer-track-band-${assignment.id}`}
+                          onPointerDown={(event) => beginDrag(event, assignment, 'move')}
                         >
+                          <span
+                            className="rc-mixer-track__handle rc-mixer-track__handle--low"
+                            role="slider"
+                            tabIndex={0}
+                            aria-label={`${definition?.label ?? 'Function'} range low (μs)`}
+                            aria-valuemin={RC_MIXER_TRACK_MIN_PWM}
+                            aria-valuemax={RC_MIXER_TRACK_MAX_PWM}
+                            aria-valuenow={assignment.lowPwm}
+                            data-testid={`rc-mixer-handle-low-${assignment.id}`}
+                            onPointerDown={(event) => beginDrag(event, assignment, 'low')}
+                            onKeyDown={(event) => {
+                              if (event.key === 'ArrowLeft') {
+                                event.preventDefault()
+                                nudgeEdge(assignment, 'low', -1)
+                              } else if (event.key === 'ArrowRight') {
+                                event.preventDefault()
+                                nudgeEdge(assignment, 'low', 1)
+                              }
+                            }}
+                          />
                           <em>{definition?.label ?? `Fn ${assignment.functionId}`}</em>
+                          <span
+                            className="rc-mixer-track__handle rc-mixer-track__handle--high"
+                            role="slider"
+                            tabIndex={0}
+                            aria-label={`${definition?.label ?? 'Function'} range high (μs)`}
+                            aria-valuemin={RC_MIXER_TRACK_MIN_PWM}
+                            aria-valuemax={RC_MIXER_TRACK_MAX_PWM}
+                            aria-valuenow={assignment.highPwm}
+                            data-testid={`rc-mixer-handle-high-${assignment.id}`}
+                            onPointerDown={(event) => beginDrag(event, assignment, 'high')}
+                            onKeyDown={(event) => {
+                              if (event.key === 'ArrowLeft') {
+                                event.preventDefault()
+                                nudgeEdge(assignment, 'high', -1)
+                              } else if (event.key === 'ArrowRight') {
+                                event.preventDefault()
+                                nudgeEdge(assignment, 'high', 1)
+                              }
+                            }}
+                          />
                         </span>
                       )
                     })}

@@ -69,6 +69,37 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     await expect(page.getByTestId('rc-mixer-channel-7')).toContainText('No functions assigned to this channel.')
   })
 
+  test('range edges adjust via the drag handle (keyboard + pointer)', async ({ page }) => {
+    await page.goto('/')
+    await connectCopterDemo(page)
+    await page.getByTestId('view-button-rc-mixer').click()
+    await expect(page.getByTestId('rc-mixer-track-band-rcl-1')).toBeVisible()
+
+    const highInput = page.getByTestId('rc-mixer-high-rcl-1')
+    await expect(highInput).toHaveValue('2100')
+
+    // Keyboard: focus the high grip and nudge it one 25 μs step down.
+    const highHandle = page.getByTestId('rc-mixer-handle-high-rcl-1')
+    await highHandle.focus()
+    await highHandle.press('ArrowLeft')
+    await expect(highInput).toHaveValue('2075')
+
+    // Pointer: drag the high grip further left -> the value shrinks, staying in range.
+    const box = await highHandle.boundingBox()
+    if (box) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.down()
+      await page.mouse.move(box.x - 80, box.y + box.height / 2, { steps: 6 })
+      await page.mouse.up()
+      const dragged = Number(await highInput.inputValue())
+      expect(dragged).toBeLessThan(2075)
+      expect(dragged).toBeGreaterThanOrEqual(800)
+    }
+    // The manual input still works alongside the handle.
+    await highInput.fill('1950')
+    await expect(highInput).toHaveValue('1950')
+  })
+
   test('a firmware without AP_RC_Logic keeps the preview scaffold', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
