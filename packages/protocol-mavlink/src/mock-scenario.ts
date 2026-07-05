@@ -266,11 +266,11 @@ const mockParameters: ParameterState = {
   SCHED_LOOP_RATE: 400,
   INS_GYRO_RATE: 0,
   INS_FAST_SAMPLE: 1,
-  // Fast-rate PID thread + RC protocol allow-list — so the Config "Fast loop
-  // rate" card and RC-protocol bitmask render with their new metadata (dropdown /
-  // checkbox grid) in the demo. RC_PROTOCOLS=512 = CRSF only.
-  FSTRATE_ENABLE: 2,
-  FSTRATE_DIV: 1,
+  // RC protocol allow-list — renders the RC-protocol bitmask with its new
+  // metadata (checkbox grid) in the demo. RC_PROTOCOLS=512 = CRSF only.
+  // NOTE: FSTRATE_* is deliberately NOT streamed here — the Config "Fast loop
+  // rate" card is build-gated on FSTRATE_ENABLE, and an e2e verifies it stays
+  // hidden (graceful degradation) when a build omits it (e.g. RADIX 2 HD).
   RC_PROTOCOLS: 512,
   INS_USE: 1,
   INS_USE2: 1,
