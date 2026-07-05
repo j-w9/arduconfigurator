@@ -1539,6 +1539,44 @@ test.describe('OSD view preview', () => {
     await expect(page.getByTestId('osd-preview-element-HORIZON')).toHaveCount(0)
   })
 
+  test('enabling an element with no live-telemetry text still adds it to the preview', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await openView(page, 'osd')
+
+    // ARMING has no hardcoded live-value string. The preview used to iterate
+    // only the ~24 elements with such a string, so checking ARMING staged the
+    // EN draft but the element never appeared on the overlay (the reported bug).
+    await expect(page.getByTestId('osd-preview-element-ARMING')).toHaveCount(0)
+    const cell = page.getByTestId('osd-cell-ARMING-1')
+    await cell.scrollIntoViewIfNeeded()
+    await cell.check()
+    await expect(page.getByTestId('osd-preview-element-ARMING')).toBeVisible()
+  })
+
+  test('HD video layouts render element positions beyond the analog 30x16 grid', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await openView(page, 'osd')
+
+    // Switch to the 60x22 HD grid (DJI/Walksnail-class DisplayPort). A column
+    // beyond the analog 29 ceiling must render at that column, not be clamped
+    // back into the 30x16 box the way the fixed 29/15 clamp did.
+    await page.getByTestId('osd-analog-layout').locator('select').selectOption('hd_60x22')
+    const align = page.getByTestId('osd-element-align-BAT_VOLT')
+    await align.scrollIntoViewIfNeeded()
+    const xInput = align.locator('input[type="number"]').first()
+    await xInput.fill('45')
+    const element = page.getByTestId('osd-preview-element-BAT_VOLT')
+    await expect(async () => {
+      const col = await element.evaluate((el) => getComputedStyle(el).gridColumnStart)
+      expect(col).toBe('46')
+    }).toPass()
+    await expect(xInput).toHaveValue('45')
+  })
+
   test('OSD elements can be aligned to an exact cell via X/Y inputs', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
@@ -1564,6 +1602,10 @@ test.describe('OSD view preview', () => {
     await page.getByTestId('view-button-osd').click()
 
     await expect(page.getByTestId('osd-preview-grid')).toBeVisible()
+    // The preview can sit below the fold; scroll it into view so the synthetic
+    // pointer actually lands on the element (an off-viewport point hit-tests to
+    // null and the drag silently does nothing).
+    await page.getByTestId('osd-bf-preview-pane').scrollIntoViewIfNeeded()
     const batVolt = page.getByTestId('osd-preview-element-BAT_VOLT')
     await expect(batVolt).toBeVisible()
     await expect(batVolt).toHaveClass(/osd-preview-screen__element--draggable/)
@@ -1576,18 +1618,23 @@ test.describe('OSD view preview', () => {
     const cellHeight = gridBox.height / 16
     const startX = startBox.x + startBox.width / 2
     const startY = startBox.y + startBox.height / 2
+    const colBefore = Number(await batVolt.evaluate((el) => getComputedStyle(el).gridColumnStart))
 
     await page.mouse.move(startX, startY)
     await page.mouse.down()
-    // Step in cell-sized increments so the pointer-move handler fires reliably.
+    // Step in cell-sized increments (right + up; BAT_VOLT sits near the bottom
+    // row) so the pointer-move handler fires reliably.
     for (let step = 1; step <= 4; step += 1) {
-      await page.mouse.move(startX + cellWidth * step, startY + cellHeight * step, { steps: 2 })
+      await page.mouse.move(startX + cellWidth * step, startY - cellHeight * step, { steps: 2 })
     }
     await page.mouse.up()
 
-    // The Save OSD CTA now reports staged-count > 0 reflecting the X/Y drafts the drag committed.
-    const save = page.getByRole('button', { name: /Save OSD \(\d+\)/ })
-    await expect(save).toBeVisible()
+    // The element actually moved to the RIGHT tracking the pointer (grab-offset
+    // relative drag), and the Save OSD CTA reflects the staged X/Y drafts —
+    // asserted strictly (not a regex that would also match "Save OSD (0)").
+    const colAfter = Number(await batVolt.evaluate((el) => getComputedStyle(el).gridColumnStart))
+    expect(colAfter).toBeGreaterThan(colBefore)
+    await expect(page.getByTestId('osd-save')).not.toHaveText('Save OSD (0)')
   })
 
   test('OSD preview-screen dropdown switches which screen the preview renders', async ({ page }) => {

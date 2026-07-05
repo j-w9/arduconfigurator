@@ -3272,8 +3272,10 @@ textarea:focus {
 
 .osd-preview-screen__hud--grid {
   display: grid;
-  grid-template-columns: repeat(30, 1fr);
-  grid-template-rows: repeat(16, 1fr);
+  /* minmax(0, 1fr) — see Osd.tsx: keeps cells equal so overflowing element text
+     doesn't expand a track and shove the others (the drag "avoid each other"). */
+  grid-template-columns: repeat(30, minmax(0, 1fr));
+  grid-template-rows: repeat(16, minmax(0, 1fr));
   padding: 6px 8px;
 }
 
@@ -11648,22 +11650,48 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .osd-preview-screen__element--draggable {
+  position: relative;
   cursor: grab;
   user-select: none;
   touch-action: none;
   padding: 0 2px;
   border-radius: 3px;
-  transition: background-color 0.08s ease-in-out, transform 0.08s ease-in-out;
+  transition: background-color 0.08s ease-in-out, transform 0.08s ease-in-out, outline-color 0.08s ease-in-out;
+  outline: 1px solid transparent;
+  outline-offset: 1px;
 }
 
 .osd-preview-screen__element--draggable:hover {
   background: rgba(255, 187, 0, 0.12);
+  outline-color: rgba(255, 187, 0, 0.4);
 }
 
 .osd-preview-screen__element--draggable.is-dragging {
   cursor: grabbing;
   background: rgba(255, 187, 0, 0.22);
   transform: scale(1.05);
+  outline-color: rgba(255, 187, 0, 0.85);
+  z-index: 2;
+}
+
+/* Live cell-coordinate badge shown above an element while it's being dragged,
+ * so the operator gets snap feedback (which character cell it will land on).
+ * Self-contained amber pill with dark ink — legible on both the dark video
+ * canvas and the light-theme preview. */
+.osd-preview-screen__element-pos {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 0;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: rgba(255, 187, 0, 0.92);
+  color: #10130a;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .servo-mapping {
@@ -12039,7 +12067,10 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .osd-bf-preview {
   position: sticky;
-  top: 12px;
+  /* Clear the sticky app header (top: 0, z-index 100) so the preview's top rows
+     don't hide behind it while scrolling the long element list. No overflow clip
+     here — the titlebar pill straddles the box top (top: -10px) and would be cut. */
+  top: calc(var(--header-height, 64px) + 18px);
 }
 
 .osd-bf-preview .bf-gui-box__titlebar {

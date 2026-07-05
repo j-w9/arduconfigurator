@@ -4,6 +4,7 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import { ScopedField, ScopedSelectField, type ScopedFieldDraftMap } from './ScopedField'
+import { clampCellToLayout, gridCellSize, pointerDragToCell } from '../view-models/osd-preview'
 
 // Character-cell grids per analog/HD video standard. PAL/NTSC are the
 // classic MAX7456 sizes; the HD grids cover MSP DisplayPort digital systems.
@@ -190,13 +191,6 @@ function fieldStatusClass(draftStatusById: ScopedFieldDraftMap, paramId: string)
   return draftStatusById.get(paramId)?.status ?? 'unchanged'
 }
 
-function clampCell(value: number, max: number): number {
-  if (!Number.isFinite(value)) return 0
-  if (value < 0) return 0
-  if (value > max) return max
-  return Math.round(value)
-}
-
 export function OsdView(props: OsdViewProps) {
   const {
     linkPorts,
@@ -261,19 +255,41 @@ export function OsdView(props: OsdViewProps) {
     if (gridRect.width <= 0 || gridRect.height <= 0) {
       return
     }
+    // Cell size is derived from the grid's CONTENT box (rect minus its padding)
+    // so the pixel->cell conversion isn't skewed by the grid padding.
+    const gridStyle = getComputedStyle(gridRef.current)
+    const { cellWidth, cellHeight } = gridCellSize(
+      gridRect,
+      {
+        left: Number.parseFloat(gridStyle.paddingLeft) || 0,
+        right: Number.parseFloat(gridStyle.paddingRight) || 0,
+        top: Number.parseFloat(gridStyle.paddingTop) || 0,
+        bottom: Number.parseFloat(gridStyle.paddingBottom) || 0
+      },
+      layout.columns,
+      layout.rows
+    )
+    if (cellWidth <= 0 || cellHeight <= 0) {
+      return
+    }
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
+    // Grab from the element's position AS DISPLAYED on the active layout (the raw
+    // param may sit beyond this grid), so the element tracks the cursor from the
+    // grab point instead of jumping.
+    const startColumn = clampCellToLayout(element.column, layout.columns - 1)
+    const startRow = clampCellToLayout(element.row, layout.rows - 1)
     dragStateRef.current = {
       elementId: element.id,
       pointerStartX: event.clientX,
       pointerStartY: event.clientY,
-      cellWidth: gridRect.width / layout.columns,
-      cellHeight: gridRect.height / layout.rows,
-      startColumn: element.column,
-      startRow: element.row,
-      lastColumn: element.column,
-      lastRow: element.row
+      cellWidth,
+      cellHeight,
+      startColumn,
+      startRow,
+      lastColumn: startColumn,
+      lastRow: startRow
     }
     setDraggingId(element.id)
   }
@@ -283,10 +299,18 @@ export function OsdView(props: OsdViewProps) {
     if (!state || !onElementMove) {
       return
     }
-    const dxCells = (event.clientX - state.pointerStartX) / state.cellWidth
-    const dyCells = (event.clientY - state.pointerStartY) / state.cellHeight
-    const nextColumn = clampCell(state.startColumn + dxCells, layout.columns - 1)
-    const nextRow = clampCell(state.startRow + dyCells, layout.rows - 1)
+    const { column: nextColumn, row: nextRow } = pointerDragToCell({
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      pointerStartX: state.pointerStartX,
+      pointerStartY: state.pointerStartY,
+      startColumn: state.startColumn,
+      startRow: state.startRow,
+      cellWidth: state.cellWidth,
+      cellHeight: state.cellHeight,
+      maxColumn: layout.columns - 1,
+      maxRow: layout.rows - 1
+    })
     if (nextColumn === state.lastColumn && nextRow === state.lastRow) {
       return
     }
@@ -344,7 +368,7 @@ export function OsdView(props: OsdViewProps) {
         title="OSD"
         subtitle={
           dragEnabled
-            ? 'FPV overlay configuration — BF-style. Drag elements on the preview to reposition them on the 30x16 character grid; toggle visibility from the categorized menu on the left.'
+            ? 'FPV overlay configuration — BF-style. Drag elements on the preview to reposition them on the character grid for the selected video layout; toggle visibility from the categorized menu on the left.'
             : 'FPV overlay configuration — BF-style. Pick a backend, route a display link in Ports, and toggle which elements appear on the live preview.'
         }
       >
@@ -582,9 +606,9 @@ export function OsdView(props: OsdViewProps) {
                                         type="number"
                                         min={0}
                                         max={layout.columns - 1}
-                                        value={placed.column}
+                                        value={clampCellToLayout(placed.column, layout.columns - 1)}
                                         onChange={(event) =>
-                                          onElementMove?.(row.elementId, clampCell(Number(event.target.value), layout.columns - 1), placed.row)
+                                          onElementMove?.(row.elementId, clampCellToLayout(Number(event.target.value), layout.columns - 1), clampCellToLayout(placed.row, layout.rows - 1))
                                         }
                                       />
                                     </label>
@@ -594,9 +618,9 @@ export function OsdView(props: OsdViewProps) {
                                         type="number"
                                         min={0}
                                         max={layout.rows - 1}
-                                        value={placed.row}
+                                        value={clampCellToLayout(placed.row, layout.rows - 1)}
                                         onChange={(event) =>
-                                          onElementMove?.(row.elementId, placed.column, clampCell(Number(event.target.value), layout.rows - 1))
+                                          onElementMove?.(row.elementId, clampCellToLayout(placed.column, layout.columns - 1), clampCellToLayout(Number(event.target.value), layout.rows - 1))
                                         }
                                       />
                                     </label>
@@ -722,12 +746,24 @@ export function OsdView(props: OsdViewProps) {
                       className="osd-preview-screen__hud osd-preview-screen__hud--grid"
                       data-testid="osd-preview-grid"
                       style={{
-                        gridTemplateColumns: `repeat(${layout.columns}, 1fr)`,
-                        gridTemplateRows: `repeat(${layout.rows}, 1fr)`
+                        // minmax(0, 1fr) keeps every character cell exactly equal.
+                        // Plain `1fr` has an `auto` minimum, so a cell would GROW to
+                        // fit an element's overflowing nowrap text and shove all the
+                        // other cells sideways — which read as elements "snapping to
+                        // avoid each other" while dragging. Fixed tracks let text
+                        // overflow/overlap in place, like a real character-cell OSD.
+                        gridTemplateColumns: `repeat(${layout.columns}, minmax(0, 1fr))`,
+                        gridTemplateRows: `repeat(${layout.rows}, minmax(0, 1fr))`
                       }}
                     >
                       {previewElements.map((element) => {
                         const isDragging = draggingId === element.id
+                        // Render at the element's position AS IT LANDS on the
+                        // active layout. The raw param can sit beyond this grid
+                        // (a 60-col HD layout viewed as 30-col PAL), so clamp to
+                        // the previewed grid instead of overflowing off-canvas.
+                        const displayColumn = clampCellToLayout(element.column, layout.columns - 1)
+                        const displayRow = clampCellToLayout(element.row, layout.rows - 1)
                         const className = [
                           'osd-preview-screen__element',
                           dragEnabled ? 'osd-preview-screen__element--draggable' : '',
@@ -739,8 +775,8 @@ export function OsdView(props: OsdViewProps) {
                             className={className}
                             data-testid={`osd-preview-element-${element.id}`}
                             style={{
-                              gridColumnStart: element.column + 1,
-                              gridRowStart: element.row + 1
+                              gridColumnStart: displayColumn + 1,
+                              gridRowStart: displayRow + 1
                             }}
                             onPointerDown={dragEnabled ? (event) => startElementDrag(event, element) : undefined}
                             onPointerMove={dragEnabled ? moveElementDrag : undefined}
@@ -748,6 +784,11 @@ export function OsdView(props: OsdViewProps) {
                             onPointerCancel={dragEnabled ? endElementDrag : undefined}
                           >
                             {element.text}
+                            {isDragging ? (
+                              <span className="osd-preview-screen__element-pos" aria-hidden="true">
+                                {displayColumn},{displayRow}
+                              </span>
+                            ) : null}
                           </span>
                         )
                       })}

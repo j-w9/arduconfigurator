@@ -12,6 +12,7 @@ import type { ConfiguratorSnapshot, ParameterState } from '@arduconfig/ardupilot
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
 import { formatRxRssi } from '../status-formatters'
 import { OSD_ELEMENTS, OSD_SCREEN_NUMBERS, OSD_SCREEN_OPTION_SUFFIXES, type OsdScreenNumber } from '../osd-params'
+import { OSD_MAX_CELL_INDEX, clampCellToLayout } from '../view-models/osd-preview'
 import type { OsdElementMatrixRow, OsdPreviewElement, OsdScreenEnableEntry, OsdScreenOptionField } from '../views/Osd'
 import type { ParameterDraftValues } from './use-parameter-drafts'
 import type { ParameterNotice } from './use-parameter-feedback'
@@ -174,6 +175,13 @@ export function useOsdEditor({
       ATEMP: 'ATMP',
       CALLSIGN: 'CALL'
     }
+    // Render EVERY enabled catalog element, not just the ones with a hardcoded
+    // live-telemetry string. Previously the preview iterated `elementTexts`
+    // (~24 entries), so enabling any of the other ~40 elements (ARMING, CLK,
+    // POWER, ESCRPM, …) staged the EN draft but the element never appeared on
+    // the overlay. Iterate the full catalog and fall back to the element id as
+    // its label when there's no live value to show.
+    //
     // Enabled elements whose X/Y the FC didn't report (advanced elements in the
     // demo, or a half-configured real layout) still need to appear on the
     // overlay. Lay them out at sequential default cells — stacked in centre
@@ -181,7 +189,8 @@ export function useOsdEditor({
     // them into place (which writes real X/Y). A real FC reports X/Y for every
     // enabled element, so this fallback only fills genuine gaps.
     let defaultSlot = 0
-    return Object.entries(elementTexts).flatMap(([elementId, text]) => {
+    return OSD_ELEMENTS.flatMap((element) => {
+      const elementId = element.id
       const enabled = readNumber(`OSD${activeOsdScreen}_${elementId}_EN`)
       if (enabled !== 1) {
         return []
@@ -193,11 +202,16 @@ export function useOsdEditor({
         row = 1 + (defaultSlot % 14)
         defaultSlot += 1
       }
+      // Clamp only to a generous ceiling here — the active video layout can be
+      // 30, 50 or 60 columns wide and is view state, so the VIEW clamps the raw
+      // position to whichever grid is being previewed. Pinning to 29/15 here
+      // silently snapped HD-layout positions (DJI/Walksnail/HDZero, 50-60 cols)
+      // into the small analog box.
       return [{
         id: elementId,
-        text,
-        column: Math.max(0, Math.min(29, column)),
-        row: Math.max(0, Math.min(15, row))
+        text: elementTexts[elementId] ?? elementId,
+        column: clampCellToLayout(column, OSD_MAX_CELL_INDEX),
+        row: clampCellToLayout(row, OSD_MAX_CELL_INDEX)
       }]
     })
   }, [
