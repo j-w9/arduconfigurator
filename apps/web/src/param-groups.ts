@@ -35,7 +35,8 @@ export const VTX_PARAM_IDS = [
   'VTX_FREQ',
   'VTX_POWER',
   'VTX_MAX_POWER',
-  'VTX_OPTIONS'
+  'VTX_OPTIONS',
+  'VTX_TYPES'
 ] as const
 // Battery-monitor / capacity / arming knobs only. Every failsafe-shaped
 // param (FS_*, BATT_FS_*, BATT_LOW_*, BATT_CRT_*) belongs on the Failsafe

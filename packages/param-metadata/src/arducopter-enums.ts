@@ -490,6 +490,27 @@ export const ARDUCOPTER_RSSI_TYPE_LABELS: Record<number, string> = {
   4: 'PWM Input Pin'
 }
 
+// VTX control transports allowed (AP_VideoTX VTX_TYPES @Bitmask). MSP is the
+// newest provider. Clearing a bit forbids that transport from driving the VTX.
+export const ARDUCOPTER_VTX_TYPES_BIT_LABELS: Record<number, string> = {
+  0: 'CRSF',
+  1: 'SmartAudio',
+  2: 'Tramp',
+  3: 'MSP'
+}
+
+// VTX advanced options (AP_VideoTX VTX_OPTIONS @Bitmask).
+export const ARDUCOPTER_VTX_OPTIONS_BIT_LABELS: Record<number, string> = {
+  0: 'Pitmode',
+  1: 'Pitmode until armed',
+  2: 'Pitmode when disarmed',
+  3: 'Unlocked',
+  4: 'Add leading zero byte to requests',
+  5: 'Use 1 stop-bit in SmartAudio',
+  6: 'Ignore CRC in SmartAudio',
+  7: 'Ignore status updates in CRSF (blindly set VTX options)'
+}
+
 export const ARDUCOPTER_DSHOT_RATE_LABELS: Record<number, string> = {
   0: '1x loop rate',
   1: '2x loop rate',

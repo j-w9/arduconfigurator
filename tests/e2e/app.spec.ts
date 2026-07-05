@@ -556,6 +556,9 @@ test.describe('browser configurator regression flows', () => {
     await expectWorkspaceViewTitle(page, 'VTX')
     await expect(page.getByText('Selected Mode', { exact: true })).toBeVisible()
     await expect(page.getByText('Actual State', { exact: true })).toBeVisible()
+    // AP_VideoTX VTX_TYPES (allowed transports incl MSP) — demo enables all four.
+    await expect(page.getByText('Transports', { exact: true })).toBeVisible()
+    await expect(page.getByText('CRSF, SmartAudio, Tramp, MSP')).toBeVisible()
 
     await openView(page, 'osd')
     await expectWorkspaceViewTitle(page, 'OSD')

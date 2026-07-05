@@ -218,6 +218,9 @@ const mockParameters: ParameterState = {
   VTX_POWER: 200,
   VTX_MAX_POWER: 800,
   VTX_OPTIONS: 0,
+  // Allowed control transports (VTX_TYPES bitmask) — all four here so the demo
+  // shows the new field: CRSF(1)|SmartAudio(2)|Tramp(4)|MSP(8) = 15.
+  VTX_TYPES: 15,
   BATT_MONITOR: 4,
   BATT_VOLT_MULT: 12.02,
   BATT_AMP_PERVLT: 17,

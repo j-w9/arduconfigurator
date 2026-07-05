@@ -21,6 +21,7 @@ export interface VtxViewProps {
   powerField: VtxField | undefined
   maxPowerField: VtxField | undefined
   optionsField: VtxField | undefined
+  typesField: VtxField | undefined
   editedValues: Record<string, string>
   onEditChange: (paramId: string, value: string) => void
   draftStatusById: ScopedFieldDraftMap
@@ -43,6 +44,7 @@ export function VtxView(props: VtxViewProps) {
     powerField,
     maxPowerField,
     optionsField,
+    typesField,
     editedValues,
     onEditChange,
     draftStatusById,
@@ -60,6 +62,20 @@ export function VtxView(props: VtxViewProps) {
   const power = powerField?.liveValue
   const maxPower = maxPowerField?.liveValue
   const options = optionsField?.liveValue
+  const types = typesField?.liveValue
+  // Human-readable list of the allowed VTX transports, derived from the param's
+  // own bit labels so the view stays free of a hard-coded transport map.
+  const transportsLabel = (() => {
+    if (types === undefined) {
+      return 'Unknown'
+    }
+    const bitOptions = typesField?.parameter.definition?.options
+    if (!bitOptions || bitOptions.length === 0) {
+      return `0x${Number(types).toString(16).toUpperCase()}`
+    }
+    const enabled = bitOptions.filter((option) => (Number(types) & (1 << option.value)) !== 0).map((option) => option.label)
+    return enabled.length > 0 ? enabled.join(', ') : 'None'
+  })()
 
   return (
     <section className="grid one-up">
@@ -161,6 +177,12 @@ export function VtxView(props: VtxViewProps) {
                     <span>Max power</span>
                     <strong>{maxPower !== undefined ? `${maxPower} mW` : 'Unknown'}</strong>
                   </div>
+                  {typesField ? (
+                    <div className="bf-gui-box__kv-row">
+                      <span>Transports</span>
+                      <strong>{transportsLabel}</strong>
+                    </div>
+                  ) : null}
                   <div className="bf-gui-box__kv-row">
                     <span>Advanced</span>
                     <strong>
@@ -180,6 +202,17 @@ export function VtxView(props: VtxViewProps) {
               <div className="bf-gui-box__body">
                 <p className="setup-gui-box__note">ArduPilot currently exposes frequency, power, max power, and an advanced options bitmask here instead of a full band/channel table.</p>
                 <div className="bf-vtx-advanced-grid">
+                  {typesField ? (
+                    <ScopedField
+                      parameter={typesField.parameter}
+                      liveValue={typesField.liveValue}
+                      editedValues={editedValues}
+                      onChange={onEditChange}
+                      draftStatusById={draftStatusById}
+                      caption="Allowed control transports (CRSF / SmartAudio / Tramp / MSP). Clear a bit to forbid that transport."
+                    />
+                  ) : null}
+
                   {optionsField ? (
                     <ScopedField
                       parameter={optionsField.parameter}

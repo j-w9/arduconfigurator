@@ -49,6 +49,8 @@ import {
   ARDUCOPTER_SERVO_FUNCTION_LABELS,
   ARDUCOPTER_THROTTLE_FAILSAFE_LABELS,
   ARDUCOPTER_VTX_ENABLE_LABELS,
+  ARDUCOPTER_VTX_OPTIONS_BIT_LABELS,
+  ARDUCOPTER_VTX_TYPES_BIT_LABELS,
 } from './arducopter-enums.js'
 
 const enabledDisabledOptions: ParameterValueOption[] = [
@@ -1537,12 +1539,26 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     VTX_OPTIONS: {
       id: 'VTX_OPTIONS',
       label: 'VTX Advanced Options',
-      description: 'Advanced VTX behavior bitmask.',
+      description: 'Advanced VTX behavior bitmask (pit mode, unlock, and per-protocol quirks).',
       category: 'vtx',
       minimum: 0,
       maximum: 255,
       step: 1,
+      bitmask: true,
+      options: enumOptions(ARDUCOPTER_VTX_OPTIONS_BIT_LABELS),
       notes: vtxOptionNotes
+    },
+    VTX_TYPES: {
+      id: 'VTX_TYPES',
+      label: 'VTX Transports',
+      description:
+        'Which control transports are allowed to drive the VTX. Clear a bit to forbid that transport. MSP is the newest provider.',
+      category: 'vtx',
+      minimum: 0,
+      maximum: 15,
+      step: 1,
+      bitmask: true,
+      options: enumOptions(ARDUCOPTER_VTX_TYPES_BIT_LABELS)
     },
     BATT_MONITOR: {
       id: 'BATT_MONITOR',

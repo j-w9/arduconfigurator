@@ -56,12 +56,14 @@ export function VtxSection(props: VtxSectionProps) {
   const vtxPowerParameter = vtxParameterById.get('VTX_POWER')
   const vtxMaxPowerParameter = vtxParameterById.get('VTX_MAX_POWER')
   const vtxOptionsParameter = vtxParameterById.get('VTX_OPTIONS')
+  const vtxTypesParameter = vtxParameterById.get('VTX_TYPES')
 
   const vtxEnabled = readRoundedParameter(snapshot, 'VTX_ENABLE')
   const vtxFrequency = readRoundedParameter(snapshot, 'VTX_FREQ')
   const vtxPower = readRoundedParameter(snapshot, 'VTX_POWER')
   const vtxMaxPower = readRoundedParameter(snapshot, 'VTX_MAX_POWER')
   const vtxOptions = readRoundedParameter(snapshot, 'VTX_OPTIONS')
+  const vtxTypes = readRoundedParameter(snapshot, 'VTX_TYPES')
 
   const vtxLinkPorts = useMemo(
     () => serialPortViewModels.filter((port) => isVtxControlSerialProtocol(port.protocolValue)),
@@ -82,6 +84,7 @@ export function VtxSection(props: VtxSectionProps) {
       powerField={vtxPowerParameter ? { parameter: vtxPowerParameter, liveValue: vtxPower } : undefined}
       maxPowerField={vtxMaxPowerParameter ? { parameter: vtxMaxPowerParameter, liveValue: vtxMaxPower } : undefined}
       optionsField={vtxOptionsParameter ? { parameter: vtxOptionsParameter, liveValue: vtxOptions } : undefined}
+      typesField={vtxTypesParameter ? { parameter: vtxTypesParameter, liveValue: vtxTypes } : undefined}
       editedValues={editedValues}
       onEditChange={(paramId, value) => setDraft(paramId, value)}
       draftStatusById={parameterDraftById}
