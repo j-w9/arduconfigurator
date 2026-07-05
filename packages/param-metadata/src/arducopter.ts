@@ -2,6 +2,7 @@ import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
 import { buildNetworkParameterDefinitions } from './shared-network.js'
+import { buildRcLogicParameterDefinitions } from './shared-rc-logic.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
 import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
 import {
@@ -729,6 +730,13 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       order: 4.7,
       viewId: 'networking'
     },
+    'rc-mixer': {
+      id: 'rc-mixer',
+      label: 'RC logic',
+      description: 'AP_RC_Logic (RCL_*) — activate AUX functions from RC channel PWM ranges.',
+      order: 4.8,
+      viewId: 'rc-mixer'
+    },
     vtx: {
       id: 'vtx',
       label: 'VTX',
@@ -1283,6 +1291,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     // endpoints). Surfaced in the Expert-only Networking view, and only when the
     // FC actually reports these params (Ethernet/PPP-capable boards).
     ...buildNetworkParameterDefinitions(),
+    ...buildRcLogicParameterDefinitions(),
     GPS_TYPE: {
       id: 'GPS_TYPE',
       label: 'Primary GPS Type',

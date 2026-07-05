@@ -272,6 +272,21 @@ const mockParameters: ParameterState = {
   // rate" card is build-gated on FSTRATE_ENABLE, and an e2e verifies it stays
   // hidden (graceful degradation) when a build omits it (e.g. RADIX 2 HD).
   RC_PROTOCOLS: 512,
+  // AP_RC_Logic engine (RCL_*) — present here so the demo Copter shows the REAL,
+  // param-backed RC Mixer editor (RCL_ENABLE gate) with two example range terms:
+  // ch5 -> ArmDisarm (153), ch6 -> LAND (18). Non-Copter demos omit RCL_* and
+  // fall back to the preview scaffold.
+  RCL_ENABLE: 1,
+  RCL1_FUNC: 153,
+  RCL1_OPT: 0,
+  RCL1_SRC: 5,
+  RCL1_MIN: 1700,
+  RCL1_MAX: 2100,
+  RCL2_FUNC: 18,
+  RCL2_OPT: 0,
+  RCL2_SRC: 6,
+  RCL2_MIN: 1500,
+  RCL2_MAX: 1900,
   INS_USE: 1,
   INS_USE2: 1,
   INS_USE3: 0,

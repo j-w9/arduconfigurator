@@ -1,89 +1,86 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// The RC option mixer view is an Expert-only scaffold: ArduPilot doesn't yet
-// expose multi-function-per-channel with PWM ranges, so it's gated behind Expert
-// mode (alongside the inspectors) and carries a persistent "Not available in
-// ArduPilot" callout so operators can't mistake the preview for a live write
-// path. These tests pin:
-//   - the view is gated behind Expert mode, then visible in the nav.
-//   - the ArduPilot-gap callout + scaffold banner are both visible.
-//   - the per-channel PWM chart renders for every channel.
-//   - assignment add / edit / remove works against local state.
+// RC Mixer binds to the AP_RC_Logic engine (RCL_* params). When the connected
+// firmware reports RCL_ENABLE it is a real, param-backed editor — edits stage as
+// RCL_* drafts through the normal write path. The demo Copter streams RCL_ENABLE
+// plus two example range terms (ch5 -> ArmDisarm, ch6 -> LAND), so these tests
+// exercise the real path. A firmware without AP_RC_Logic (the Plane demo) still
+// gets the preview scaffold. The view stays Expert-only.
 
-async function connectViaLandingDemo(page: Page): Promise<void> {
+async function connectCopterDemo(page: Page): Promise<void> {
   await page.getByTestId('landing-transport-select').selectOption('demo')
   await page.getByTestId('landing-connect-button').click()
   await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
-  // RC Mixer is Expert-only — reveal it before the tests reach for its nav tab.
   await page.getByTestId('product-mode-expert').check()
 }
 
-test.describe('RC Mixer scaffold', () => {
+test.describe('RC Mixer (AP_RC_Logic)', () => {
   test('is gated behind Expert mode, then appears in the nav', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('landing-transport-select').selectOption('demo')
     await page.getByTestId('landing-connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
-    // Hidden until Expert mode is on.
     await expect(page.getByTestId('view-button-rc-mixer')).toHaveCount(0)
     await page.getByTestId('product-mode-expert').check()
     await expect(page.getByTestId('view-button-rc-mixer')).toBeVisible()
   })
 
-  test('renders the ArduPilot-gap callout and the per-channel PWM chart', async ({ page }) => {
+  test('binds to RCL_* when supported: engine toggle + example terms, no preview callout', async ({ page }) => {
     await page.goto('/')
-    await connectViaLandingDemo(page)
+    await connectCopterDemo(page)
     await page.getByTestId('view-button-rc-mixer').click()
 
-    // The permanent warning callout — mirroring the VTX "Table not available"
-    // pattern — must be visible and must name ArduPilot, so reviewers can
-    // never mistake the surface for a live write path.
+    // Real editor: engine controls, RCL_ENABLE reflected as enabled.
+    await expect(page.getByTestId('rc-mixer-engine-controls')).toBeVisible()
+    await expect(page.getByTestId('rc-mixer-engine-enable')).toBeChecked()
+    // The preview scaffold must NOT show when the firmware supports the engine.
+    await expect(page.getByTestId('rc-mixer-ardupilot-gap-callout')).toHaveCount(0)
+    await expect(page.getByTestId('rc-mixer-scaffold-banner')).toHaveCount(0)
+
+    // The two seeded range terms read back as bands (ch5 -> rcl-1, ch6 -> rcl-2).
+    await expect(page.getByTestId('rc-mixer-track-band-rcl-1')).toBeVisible()
+    await expect(page.getByTestId('rc-mixer-track-band-rcl-2')).toBeVisible()
+    await expect(page.getByTestId('rc-mixer-channel-5')).toContainText('ArmDisarm')
+  })
+
+  test('add / edit / remove a term round-trips through the RCL_* drafts', async ({ page }) => {
+    await page.goto('/')
+    await connectCopterDemo(page)
+    await page.getByTestId('view-button-rc-mixer').click()
+    // Wait until the seeded terms have synced (model populated) before adding —
+    // otherwise the free-slot allocation races an empty model.
+    await expect(page.getByTestId('rc-mixer-track-band-rcl-2')).toBeVisible()
+
+    // Add a term on channel 7 -> allocates the first free slot (term 3) and the
+    // pending row appears, driven entirely by the staged RCL3_* drafts.
+    await page.getByTestId('rc-mixer-add-channel-7').click()
+    await expect(page.getByTestId('rc-mixer-assignment-rcl-3')).toBeVisible()
+    await expect(page.getByTestId('rc-mixer-track-band-rcl-3')).toBeVisible()
+
+    // Editing round-trips through the model (reads back the draft immediately).
+    await page.getByTestId('rc-mixer-function-rcl-3').selectOption('16') // AUTO Mode
+    await page.getByTestId('rc-mixer-low-rcl-3').fill('1800')
+    await page.getByTestId('rc-mixer-high-rcl-3').fill('2000')
+    await expect(page.getByTestId('rc-mixer-channel-7')).toContainText('AUTO Mode')
+
+    // Remove clears the term drafts -> row gone, channel 7 empty again.
+    await page.getByTestId('rc-mixer-remove-rcl-3').click()
+    await expect(page.getByTestId('rc-mixer-assignment-rcl-3')).toHaveCount(0)
+    await expect(page.getByTestId('rc-mixer-channel-7')).toContainText('No functions assigned to this channel.')
+  })
+
+  test('a firmware without AP_RC_Logic keeps the preview scaffold', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo-plane')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane')
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-rc-mixer').click()
+
     const callout = page.getByTestId('rc-mixer-ardupilot-gap-callout')
     await expect(callout).toBeVisible()
     await expect(callout).toContainText('Not available in ArduPilot')
-    await expect(callout).toContainText('RCn_OPTION')
-
-    // The chart visualizer renders for every channel even when empty.
-    await expect(page.getByTestId('rc-mixer-track-1')).toBeVisible()
-    await expect(page.getByTestId('rc-mixer-track-16')).toBeVisible()
-
-    // Add an assignment to channel 5 and confirm the band materializes.
-    await page.getByTestId('rc-mixer-add-channel-5').click()
-    const band = page.locator('[data-testid^="rc-mixer-track-band-"]').first()
-    await expect(band).toBeVisible()
-  })
-
-  test('add / edit / remove a channel assignment', async ({ page }) => {
-    await page.goto('/')
-    await connectViaLandingDemo(page)
-    await page.getByTestId('view-button-rc-mixer').click()
-
-    // Scaffold banner is always visible — second line of defense against
-    // operators mistaking the preview for a live write surface.
-    await expect(page.getByTestId('rc-mixer-scaffold-banner')).toBeVisible()
-    await expect(page.getByTestId('rc-mixer-scaffold-banner')).toContainText('Local-only preview')
-
-    await page.getByTestId('rc-mixer-add-channel-5').click()
-    const assignmentRow = page.locator('[data-testid^="rc-mixer-assignment-"]').first()
-    await expect(assignmentRow).toBeVisible()
-
-    const assignmentTestId = await assignmentRow.getAttribute('data-testid')
-    expect(assignmentTestId).toBeTruthy()
-    const assignmentId = assignmentTestId!.replace('rc-mixer-assignment-', '')
-
-    await page.getByTestId(`rc-mixer-function-${assignmentId}`).selectOption('27')
-
-    await page.getByTestId(`rc-mixer-low-${assignmentId}`).fill('1800')
-    await page.getByTestId(`rc-mixer-high-${assignmentId}`).fill('2000')
-
-    const invertedToggle = page.getByTestId(`rc-mixer-inverted-${assignmentId}`)
-    await expect(invertedToggle).not.toBeChecked()
-    await invertedToggle.check()
-    await expect(invertedToggle).toBeChecked()
-
-    await page.getByTestId(`rc-mixer-remove-${assignmentId}`).click()
-    await expect(page.getByTestId(assignmentTestId!)).toHaveCount(0)
-    const channelFive = page.getByTestId('rc-mixer-channel-5')
-    await expect(channelFive).toContainText('No functions assigned to this channel.')
+    // No real engine controls without RCL_*.
+    await expect(page.getByTestId('rc-mixer-engine-controls')).toHaveCount(0)
   })
 })

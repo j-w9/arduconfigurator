@@ -22,6 +22,7 @@ function baseInputs(overrides: Partial<VisibleAppViewsInputs> = {}): VisibleAppV
     canBusBus: 0,
     connectionKind: 'disconnected',
     hasNetworkingParams: false,
+    hasRcLogicParams: false,
     ...overrides
   }
 }

@@ -11,5 +11,8 @@ export * from './boards.js'
 export * from './catalog.js'
 export * from './format-number.js'
 export * from './fuzzy.js'
+// AP_RC_Logic schema constants (RCL_* term count, OPT bit layout, source-type
+// enum, AUX_FUNC option list) — public because the RC Mixer UI binds to them.
+export * from './shared-rc-logic.js'
 export * from './types.js'
 export * from './upstream.js'

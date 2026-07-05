@@ -7285,6 +7285,23 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 8px;
 }
 
+/* AP_RC_Logic engine controls (shown when the firmware supports RCL_*). */
+.rc-mixer-engine {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.rc-mixer-engine__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.rc-mixer-engine__toggle code {
+  font-size: 0.9em;
+}
+
 .rc-mixer-track {
   padding: 2px 0 12px;
 }

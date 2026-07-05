@@ -40,8 +40,10 @@ export type AppViewId =
   // operator decides what belongs there.
   | 'config'
   | 'parameters'
-  // 'rc-mixer' is a UI scaffold (still NOT added to any metadata catalog's
-  // appViews list). The configurator injects it into the nav at render time.
+  // 'rc-mixer' is the AP_RC_Logic surface — the RCL_* family (category
+  // 'rc-mixer') routes here. Gated on RCL_ENABLE being present: real editor when
+  // the firmware supports it, a preview scaffold otherwise. The configurator
+  // injects the nav descriptor at render time.
   | 'rc-mixer'
   // 'can' is the DroneCAN inspector tab — connects via MAV_CMD_CAN_FORWARD,
   // discovers nodes from passive NodeStatus broadcasts, fetches identity

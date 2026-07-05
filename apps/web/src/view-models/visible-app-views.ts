@@ -22,24 +22,36 @@ export interface VisibleAppViewsInputs {
   connectionKind: ConfiguratorSnapshot['connection']['kind']
   /** The FC reports NET_ networking params (Ethernet/PPP-capable board). */
   hasNetworkingParams: boolean
+  /** The FC reports the AP_RC_Logic engine (RCL_ENABLE present) — unlocks the
+   *  real RC Mixer editor; otherwise the tab stays a preview. */
+  hasRcLogicParams: boolean
 }
 
 export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDescriptor[] {
-  const { appViews, isExpertMode, canBusStatus, canBusBus, connectionKind, hasNetworkingParams } = inputs
+  const { appViews, isExpertMode, canBusStatus, canBusBus, connectionKind, hasNetworkingParams, hasRcLogicParams } =
+    inputs
 
   const base = appViews.filter((view) => isExpertMode || !isExpertOnlyView(view.id))
-  // RC Mixer was originally hidden behind ?rcMixer=1 because ArduPilot
-  // doesn't yet expose multi-function-per-channel with PWM ranges. It
-  // graduated to the main nav once the view's persistent
-  // "Not available in ArduPilot" callout proved load-bearing enough
-  // to keep operators honest about the scaffold-only nature.
-  const rcMixerDescriptor: AppViewDescriptor = {
-    id: 'rc-mixer',
-    label: 'RC Mixer',
-    description: 'BF-style RC option mixer — multiple functions per channel with PWM activation ranges. Preview only; not yet wired to ArduPilot.',
-    badge: 'preview',
-    tone: 'warning'
-  }
+  // RC Mixer binds to the AP_RC_Logic engine (RCL_* params). When the connected
+  // firmware reports RCL_ENABLE it's a real editor (badge 'beta'); otherwise it
+  // stays a preview scaffold that documents the feature and the firmware gap.
+  const rcMixerDescriptor: AppViewDescriptor = hasRcLogicParams
+    ? {
+        id: 'rc-mixer',
+        label: 'RC Mixer',
+        description:
+          'AP_RC_Logic — activate AUX functions from RC channel PWM ranges (Betaflight-style Modes). Wired to the RCL_* parameters on this firmware.',
+        badge: 'beta',
+        tone: 'success'
+      }
+    : {
+        id: 'rc-mixer',
+        label: 'RC Mixer',
+        description:
+          'BF-style RC option mixer — multiple functions per channel with PWM activation ranges. Preview only; this firmware does not report the AP_RC_Logic engine.',
+        badge: 'preview',
+        tone: 'warning'
+      }
   // DroneCAN inspector. Mirrors Mission Planner's workflow over the
   // MAVLink CAN_FORWARD tunnel so MAVLink stays alive on the same
   // channel during inspection. Badge reflects live session status.

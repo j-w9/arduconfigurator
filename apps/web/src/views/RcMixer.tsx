@@ -51,6 +51,16 @@ export interface RcMixerViewProps {
   /** Mutate any field on an assignment. Partial so each control can submit
    * only what it owns. */
   onUpdateAssignment: (assignmentId: string, patch: Partial<RcMixerAssignment>) => void
+  /** True when the connected firmware reports the AP_RC_Logic engine (RCL_*) —
+   *  switches this view from a local preview to a real, param-backed editor. */
+  firmwareSupported: boolean
+  /** RCL_ENABLE state (only meaningful when firmwareSupported). */
+  engineEnabled?: boolean
+  onToggleEngine?: (enabled: boolean) => void
+  /** Configured non-range terms (link/condition) preserved but not shown here. */
+  hiddenTermCount?: number
+  /** True when every RCL term slot is in use — the "Add function" buttons stop. */
+  tableFull?: boolean
 }
 
 export function RcMixerView(props: RcMixerViewProps) {
@@ -62,31 +72,68 @@ export function RcMixerView(props: RcMixerViewProps) {
     rcLinkLive,
     onAddAssignment,
     onRemoveAssignment,
-    onUpdateAssignment
+    onUpdateAssignment,
+    firmwareSupported,
+    engineEnabled,
+    onToggleEngine,
+    hiddenTermCount,
+    tableFull
   } = props
 
   return (
     <div id="setup-panel-rc-mixer">
       <Panel
         title="RC Option Mixer"
-        subtitle="Assign multiple ArduPilot AUX functions per RC channel with independent PWM activation ranges. Preview only — not yet wired to the vehicle."
+        subtitle={
+          firmwareSupported
+            ? 'Activate ArduPilot AUX functions from RC channel PWM ranges (AP_RC_Logic). Edits stage as RCL_* parameter drafts.'
+            : 'Assign multiple ArduPilot AUX functions per RC channel with independent PWM activation ranges. Preview only — not yet wired to the vehicle.'
+        }
       >
-        <div className="rc-mixer-callout" data-testid="rc-mixer-ardupilot-gap-callout">
-          <StatusBadge tone="warning">Not available in ArduPilot</StatusBadge>
-          <p>
-            ArduPilot's <code>RCn_OPTION</code> binds one AUX function per channel with no PWM window — there's no
-            multi-function-per-channel model and no per-function activation range. This view ships the desired UX so
-            it can be reviewed alongside ArduPilot development. The day ArduPilot grows that support (a likely
-            <code>RC_MIXn_*</code> parameter family or a new MAVLink mapping message), this box turns into a real
-            editor instead of staying a preview.
-          </p>
-        </div>
+        {firmwareSupported ? (
+          <div className="rc-mixer-engine" data-testid="rc-mixer-engine-controls">
+            <label className="rc-mixer-engine__toggle">
+              <input
+                type="checkbox"
+                checked={engineEnabled ?? false}
+                onChange={(event) => onToggleEngine?.(event.target.checked)}
+                data-testid="rc-mixer-engine-enable"
+              />
+              <span>
+                <strong>RC logic engine</strong> ({engineEnabled ? 'enabled' : 'disabled'}) — <code>RCL_ENABLE</code>
+              </span>
+            </label>
+            <p className="bf-note">
+              This firmware reports the AP_RC_Logic engine. Each row below is a real range term; changes are staged as{' '}
+              <code>RCL_*</code> parameter drafts and written through the normal verified write path.
+              {hiddenTermCount ? (
+                <>
+                  {' '}
+                  <strong>{hiddenTermCount}</strong> configured link/condition term
+                  {hiddenTermCount === 1 ? ' is' : 's are'} preserved but not shown here (range terms only for now).
+                </>
+              ) : null}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="rc-mixer-callout" data-testid="rc-mixer-ardupilot-gap-callout">
+              <StatusBadge tone="warning">Not available in ArduPilot</StatusBadge>
+              <p>
+                ArduPilot's <code>RCn_OPTION</code> binds one AUX function per channel with no PWM window — there's no
+                multi-function-per-channel model and no per-function activation range. This view ships the desired UX so
+                it can be reviewed alongside ArduPilot development. The day ArduPilot grows that support (the
+                <code>RCL_*</code> AP_RC_Logic family), this box turns into a real editor instead of staying a preview.
+              </p>
+            </div>
 
-        <div className="bf-note" data-testid="rc-mixer-scaffold-banner">
-          <p>
-            <strong>Local-only preview.</strong> Edits below stay in the browser; nothing is sent to the vehicle.
-          </p>
-        </div>
+            <div className="bf-note" data-testid="rc-mixer-scaffold-banner">
+              <p>
+                <strong>Local-only preview.</strong> Edits below stay in the browser; nothing is sent to the vehicle.
+              </p>
+            </div>
+          </>
+        )}
 
         <div className="rc-mixer-stack">
           {channels.map(({ channel, assignments }) => {
@@ -109,6 +156,8 @@ export function RcMixerView(props: RcMixerViewProps) {
                       type="button"
                       style={buttonStyle()}
                       onClick={() => onAddAssignment(channel)}
+                      disabled={firmwareSupported && tableFull}
+                      title={firmwareSupported && tableFull ? 'All 12 RC logic terms are in use.' : undefined}
                       data-testid={`rc-mixer-add-channel-${channel}`}
                     >
                       + Add function

@@ -351,7 +351,20 @@ import {
   buildGpsPeripheralViewModels,
   type AdditionalSettingsGroup
 } from './view-models/peripherals'
-import { RC_MIXER_FUNCTION_CATALOG } from './view-models/rc-mixer'
+import {
+  RC_MIXER_FUNCTION_CATALOG,
+  buildRcMixerFunctionLookup,
+  groupAssignmentsByChannel,
+  type RcMixerAssignment
+} from './view-models/rc-mixer'
+import {
+  readRcLogicModel,
+  rcLogicAddDrafts,
+  rcLogicFunctionCatalog,
+  rcLogicRemovePlan,
+  rcLogicTermFromAssignmentId,
+  rcLogicUpdateDrafts
+} from './view-models/rc-logic'
 import { type StatusTone } from './status-tone'
 import {
   createSavedSnapshot,
@@ -4615,6 +4628,61 @@ export function App() {
     () => snapshot.parameters.some((parameter) => parameter.id === 'NET_ENABLE'),
     [snapshot.parameters]
   )
+  // RCL_ENABLE is the AP_RC_Logic engine sentinel — present only on firmware that
+  // compiled the RC logic / range-function engine. Its presence unlocks the real
+  // RC Mixer editor; otherwise the tab stays a preview.
+  const hasRcLogicParams = useMemo(
+    () => snapshot.parameters.some((parameter) => parameter.id === 'RCL_ENABLE'),
+    [snapshot.parameters]
+  )
+  // RC Mixer bound to the AP_RC_Logic engine (RCL_* params) when supported: the
+  // model derives channel assignments from the RANGE terms, and edits stage as
+  // parameter drafts that flow through the normal verified write path.
+  const rcLogicModel = useMemo(
+    () => readRcLogicModel(snapshot.parameters, editedValues),
+    [snapshot.parameters, editedValues]
+  )
+  const rcLogicFunctionCatalogMemo = useMemo(() => rcLogicFunctionCatalog(), [])
+  const rcLogicFunctionLookup = useMemo(
+    () => buildRcMixerFunctionLookup(rcLogicFunctionCatalogMemo),
+    [rcLogicFunctionCatalogMemo]
+  )
+  const rcLogicChannels = useMemo(
+    () => groupAssignmentsByChannel(rcLogicModel.assignments),
+    [rcLogicModel.assignments]
+  )
+  function handleRcLogicAddAssignment(channel: number): void {
+    const drafts = rcLogicAddDrafts(rcLogicModel, channel)
+    if (!drafts) {
+      setParameterNotice({
+        tone: 'warning',
+        text: 'All 12 RC logic terms are in use — remove one before adding another.'
+      })
+      return
+    }
+    mergeDrafts(drafts)
+  }
+  function handleRcLogicUpdateAssignment(assignmentId: string, patch: Partial<RcMixerAssignment>): void {
+    const term = rcLogicTermFromAssignmentId(assignmentId)
+    if (term === null) {
+      return
+    }
+    mergeDrafts(rcLogicUpdateDrafts(snapshot.parameters, editedValues, term, patch))
+  }
+  function handleRcLogicRemoveAssignment(assignmentId: string): void {
+    const term = rcLogicTermFromAssignmentId(assignmentId)
+    if (term === null) {
+      return
+    }
+    const plan = rcLogicRemovePlan(snapshot.parameters, term)
+    clearDrafts(plan.clear)
+    if (Object.keys(plan.disable).length > 0) {
+      mergeDrafts(plan.disable)
+    }
+  }
+  function handleRcLogicToggleEngine(enabled: boolean): void {
+    setDraft('RCL_ENABLE', enabled ? '1' : '0')
+  }
   // DroneNet: the Networking tab embeds a NET_-filtered DroneCAN node editor so a
   // peripheral's network settings are configurable without the CAN tab. Filtering
   // at the state level means the node list, param count, staged changes, and the
@@ -4685,9 +4753,18 @@ export function App() {
         canBusStatus: snapshot.canBus.status,
         canBusBus: snapshot.canBus.bus,
         connectionKind: snapshot.connection.kind,
-        hasNetworkingParams
+        hasNetworkingParams,
+        hasRcLogicParams
       }),
-    [appViews, isExpertMode, snapshot.canBus.status, snapshot.canBus.bus, snapshot.connection.kind, hasNetworkingParams]
+    [
+      appViews,
+      isExpertMode,
+      snapshot.canBus.status,
+      snapshot.canBus.bus,
+      snapshot.connection.kind,
+      hasNetworkingParams,
+      hasRcLogicParams
+    ]
   )
   const activeViewDescriptor = visibleAppViews.find((view) => view.id === activeViewId) ?? visibleAppViews[0]
   function formatCategoryLabel(categoryId: string | undefined): string {
@@ -7280,14 +7357,19 @@ export function App() {
 
       {activeViewId === 'rc-mixer' ? (
       <RcMixerView
-        channels={rcMixerChannels}
-        functionCatalog={RC_MIXER_FUNCTION_CATALOG}
-        functionLookup={rcMixerFunctionLookup}
+        channels={hasRcLogicParams ? rcLogicChannels : rcMixerChannels}
+        functionCatalog={hasRcLogicParams ? rcLogicFunctionCatalogMemo : RC_MIXER_FUNCTION_CATALOG}
+        functionLookup={hasRcLogicParams ? rcLogicFunctionLookup : rcMixerFunctionLookup}
         livePwmByChannel={rcMixerLivePwmByChannel}
         rcLinkLive={snapshot.liveVerification.rcInput.verified}
-        onAddAssignment={handleRcMixerAddAssignment}
-        onRemoveAssignment={handleRcMixerRemoveAssignment}
-        onUpdateAssignment={handleRcMixerUpdateAssignment}
+        onAddAssignment={hasRcLogicParams ? handleRcLogicAddAssignment : handleRcMixerAddAssignment}
+        onRemoveAssignment={hasRcLogicParams ? handleRcLogicRemoveAssignment : handleRcMixerRemoveAssignment}
+        onUpdateAssignment={hasRcLogicParams ? handleRcLogicUpdateAssignment : handleRcMixerUpdateAssignment}
+        firmwareSupported={hasRcLogicParams}
+        engineEnabled={rcLogicModel.enabled}
+        onToggleEngine={handleRcLogicToggleEngine}
+        hiddenTermCount={rcLogicModel.hiddenTermCount}
+        tableFull={rcLogicModel.freeTermIndex === null}
       />
       ) : null}
 
