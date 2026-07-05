@@ -103,12 +103,15 @@ export function buttonStyle(kind: 'primary' | 'secondary' | 'hero' = 'secondary'
     }
   }
   return {
-    border: `1px solid ${kind === 'primary' ? 'var(--primary-action-border, #6f9e59)' : 'rgba(255, 255, 255, 0.08)'}`,
+    // Secondary bg/border come from theme tokens so the button flips with the
+    // light theme (inline styles still resolve CSS var()); the fallbacks are the
+    // original dark values.
+    border: `1px solid ${kind === 'primary' ? 'var(--primary-action-border, #6f9e59)' : 'var(--btn-border, rgba(255, 255, 255, 0.08))'}`,
     background:
       kind === 'primary'
         ? 'linear-gradient(180deg, var(--primary-action, #7fb966), var(--primary-action-border, #6f9e59))'
-        : 'linear-gradient(180deg, rgba(47, 55, 63, 0.96), rgba(35, 41, 48, 0.98))',
-    color: kind === 'primary' ? '#0a1308' : 'var(--text, #f2f2f2)',
+        : 'var(--btn-bg, linear-gradient(180deg, rgba(47, 55, 63, 0.96), rgba(35, 41, 48, 0.98)))',
+    color: kind === 'primary' ? '#0a1308' : 'var(--btn-text, var(--text, #f2f2f2))',
     padding: '5px 12px',
     borderRadius: 8,
     fontWeight: 600,

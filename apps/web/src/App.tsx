@@ -68,6 +68,7 @@ import { useRcMixer } from './hooks/use-rc-mixer'
 import { useCalibrationNotices } from './hooks/use-calibration-notices'
 import { useLibraryNotices } from './hooks/use-library-notices'
 import { useSafetyAcks } from './hooks/use-safety-acks'
+import { useTheme } from './hooks/use-theme'
 import { useSetupWizard } from './hooks/use-setup-wizard'
 import { useTuningWorkbench } from './hooks/use-tuning-workbench'
 import { usePortsView } from './hooks/use-ports-view'
@@ -807,6 +808,7 @@ export function App() {
   // SnapshotsSection can take the full result object (it needs the
   // snapshot-restore + provisioning-restore pair); the destructure then
   // pulls out what App still references inline.
+  const { theme, toggleTheme } = useTheme()
   const safetyAcks = useSafetyAcks()
   const {
     propsRemovedAcknowledged,
@@ -5694,6 +5696,8 @@ export function App() {
         onConnect={() => void handleConnect()}
         onDisconnect={() => void handleDisconnect()}
         onChooseSerialPort={() => void handleChooseSerialPort()}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       {/* Persistent staged-changes bar. Editing any param tab stages a draft;

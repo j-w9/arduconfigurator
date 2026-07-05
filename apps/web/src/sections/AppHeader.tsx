@@ -21,6 +21,7 @@ import {
   DEFAULT_TCP_TARGET,
   type TransportMode
 } from '../hooks/use-transport-selection'
+import type { Theme } from '../theme'
 
 // The wiki is served at arduconfigurator.com/wiki (same-origin subpath). Kept
 // behind a single constant so it's trivial to repoint; opens in a new tab.
@@ -60,6 +61,8 @@ export interface AppHeaderProps {
   onConnect: () => void
   onDisconnect: () => void
   onChooseSerialPort: () => void
+  theme: Theme
+  onToggleTheme: () => void
 }
 
 export function AppHeader({
@@ -88,7 +91,9 @@ export function AppHeader({
   onProductModeChange,
   onConnect,
   onDisconnect,
-  onChooseSerialPort
+  onChooseSerialPort,
+  theme,
+  onToggleTheme
 }: AppHeaderProps) {
   // The header is sticky AND wraps to multiple rows on narrow/zoomed layouts, so
   // its real height exceeds the static --header-height. Sticky elements below it
@@ -275,6 +280,17 @@ export function AppHeader({
           onClick={() => onProductModeChange('basic')}
         >
           Basic
+        </button>
+        <button
+          type="button"
+          className="app-header__theme-toggle"
+          data-testid="theme-toggle"
+          onClick={onToggleTheme}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-pressed={theme === 'light'}
+        >
+          <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
         </button>
       </div>
 
