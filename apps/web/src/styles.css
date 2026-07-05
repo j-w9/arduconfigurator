@@ -60,6 +60,9 @@
      The dark values are representative — the many near-identical hard-coded
      shades collapse to these, visually indistinguishable on the dark theme. */
   --fill-rgb: 20, 25, 32;
+  /* Slightly-lighter "top edge" of raised fills (button/input gradient tops).
+     Kept near the originals so the dark theme is unchanged. */
+  --fill-top-rgb: 42, 49, 57;
   --ink-rgb: 246, 249, 252;
   --card-outline: rgba(var(--edge-rgb), 0.08);
   --card-outline-soft: rgba(var(--edge-rgb), 0.04);
@@ -85,7 +88,7 @@
   --primary-action-border: #6f9e59;
   --primary-action-hover: #8ec86f;
   /* Secondary button surface (used by ui-kit buttonStyle) — themed so it flips. */
-  --btn-bg: linear-gradient(180deg, rgba(47, 55, 63, 0.96), rgba(35, 41, 48, 0.98));
+  --btn-bg: linear-gradient(180deg, rgba(var(--fill-top-rgb), 0.96), rgba(35, 41, 48, 0.98));
   --btn-border: rgba(var(--edge-rgb), 0.08);
   /* Rate-preview chart chrome (SVG RateCurveGraph). */
   --chart-bg: #0b1016;
@@ -147,6 +150,7 @@
   --edge-rgb: 17, 24, 34;
   /* Dark fills become light surfaces; near-white ink becomes near-black. */
   --fill-rgb: 250, 251, 253;
+  --fill-top-rgb: 255, 255, 255;
   --ink-rgb: 26, 33, 43;
 
   /* Surface ramp reversed: light backgrounds low, dark ink high. */
@@ -1128,7 +1132,7 @@ textarea:focus {
 
 .session-strip__button:hover:not(:disabled) {
   border-color: rgba(var(--edge-rgb), 0.18);
-  background: linear-gradient(180deg, rgba(57, 65, 73, 0.98), rgba(45, 51, 58, 1));
+  background: linear-gradient(180deg, rgba(57, 65, 73, 0.98), rgba(var(--fill-top-rgb), 1));
 }
 
 .session-strip__button:disabled {
@@ -6896,7 +6900,7 @@ textarea:focus {
 .scoped-editor-field select:hover,
 .scoped-editor-field textarea:hover {
   border-color: rgba(var(--edge-rgb), 0.1);
-  background: linear-gradient(180deg, rgba(35, 42, 51, 0.96), rgba(var(--fill-rgb), 0.98));
+  background: linear-gradient(180deg, rgba(var(--fill-top-rgb), 0.96), rgba(var(--fill-rgb), 0.98));
 }
 
 .scoped-editor-field input:focus,
@@ -6904,7 +6908,7 @@ textarea:focus {
 .scoped-editor-field textarea:focus {
   border-color: rgba(136, 166, 199, 0.45);
   box-shadow: 0 0 0 3px rgba(109, 148, 198, 0.14);
-  background: linear-gradient(180deg, rgba(36, 44, 53, 0.98), rgba(var(--fill-rgb), 1));
+  background: linear-gradient(180deg, rgba(var(--fill-top-rgb), 0.98), rgba(var(--fill-rgb), 1));
 }
 
 .scoped-editor-field textarea {
@@ -8952,7 +8956,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .tuning-page .snapshots-field select:hover,
 .tuning-page .snapshots-field textarea:hover {
   border-color: rgba(var(--edge-rgb), 0.1);
-  background: linear-gradient(180deg, rgba(35, 42, 51, 0.96), rgba(var(--fill-rgb), 0.98));
+  background: linear-gradient(180deg, rgba(var(--fill-top-rgb), 0.96), rgba(var(--fill-rgb), 0.98));
 }
 
 .snapshots-page .snapshots-field input:focus,
@@ -8963,7 +8967,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .tuning-page .snapshots-field textarea:focus {
   border-color: rgba(136, 166, 199, 0.45);
   box-shadow: 0 0 0 3px rgba(109, 148, 198, 0.14);
-  background: linear-gradient(180deg, rgba(36, 44, 53, 0.98), rgba(var(--fill-rgb), 1));
+  background: linear-gradient(180deg, rgba(var(--fill-top-rgb), 0.98), rgba(var(--fill-rgb), 1));
 }
 
 .snapshots-page .snapshots-field small,
@@ -9081,13 +9085,13 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-button--secondary {
   border: 1px solid rgba(var(--edge-rgb), 0.08);
-  background: linear-gradient(180deg, rgba(40, 47, 55, 0.94), rgba(var(--fill-rgb), 0.98));
+  background: linear-gradient(180deg, rgba(var(--fill-top-rgb), 0.94), rgba(var(--fill-rgb), 0.98));
   color: rgba(var(--ink-rgb), 0.92);
 }
 
 .snapshots-button--secondary:hover:not(:disabled) {
   border-color: rgba(var(--edge-rgb), 0.13);
-  background: linear-gradient(180deg, rgba(47, 55, 63, 0.96), rgba(var(--fill-rgb), 0.98));
+  background: linear-gradient(180deg, rgba(var(--fill-top-rgb), 0.96), rgba(var(--fill-rgb), 0.98));
 }
 
 .snapshots-button--ghost {
