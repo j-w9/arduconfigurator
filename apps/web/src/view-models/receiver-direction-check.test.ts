@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  activeRcDirectionAxis,
   evaluateRcDirection,
   latchRcDirection,
   RC_DIRECTION_MOVE_THRESHOLD_US,
+  type RcDirectionAxisInput,
   type RcDirectionResult
 } from './receiver-direction-check'
 
@@ -66,6 +68,47 @@ describe('evaluateRcDirection (throttle, measured from a resting baseline)', () 
     const base = { axisId: 'throttle' as const, ...CENTERED, restReference: 1900 }
     expect(evaluateRcDirection({ ...base, pwm: 1100, reversed: false })).toBe('reversed')
     expect(evaluateRcDirection({ ...base, pwm: 1100, reversed: true })).toBe('correct')
+  })
+})
+
+describe('activeRcDirectionAxis', () => {
+  const rest = (over: Partial<RcDirectionAxisInput>): RcDirectionAxisInput => ({
+    axisId: 'roll',
+    pwm: 1500,
+    ...CENTERED,
+    ...over
+  })
+
+  it('is undefined when every stick is at rest', () => {
+    expect(
+      activeRcDirectionAxis([rest({ axisId: 'roll' }), rest({ axisId: 'pitch' }), rest({ axisId: 'yaw' })])
+    ).toBeUndefined()
+  })
+
+  it('returns the axis that has left its trim (either direction)', () => {
+    expect(activeRcDirectionAxis([rest({ axisId: 'roll', pwm: 1900 }), rest({ axisId: 'pitch' })])).toBe('roll')
+    expect(activeRcDirectionAxis([rest({ axisId: 'pitch', pwm: 1100 }), rest({ axisId: 'roll' })])).toBe('pitch')
+  })
+
+  it('picks the most-deflected axis when several move', () => {
+    expect(
+      activeRcDirectionAxis([rest({ axisId: 'roll', pwm: 1700 }), rest({ axisId: 'yaw', pwm: 1950 })])
+    ).toBe('yaw')
+  })
+
+  it('measures throttle from its resting baseline, and ignores it without one', () => {
+    expect(activeRcDirectionAxis([rest({ axisId: 'throttle', pwm: 1900 })])).toBeUndefined()
+    expect(
+      activeRcDirectionAxis([rest({ axisId: 'throttle', pwm: 1900, restReference: 1100 })])
+    ).toBe('throttle')
+    // A resting (low) throttle with a baseline is not "active".
+    expect(
+      activeRcDirectionAxis([rest({ axisId: 'throttle', pwm: 1100, restReference: 1100 })])
+    ).toBeUndefined()
+  })
+
+  it('ignores channels with no telemetry', () => {
+    expect(activeRcDirectionAxis([rest({ axisId: 'roll', pwm: undefined })])).toBeUndefined()
   })
 })
 

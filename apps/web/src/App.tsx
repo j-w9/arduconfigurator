@@ -1033,7 +1033,7 @@ export function App() {
       })),
     [rcAxisObservations, snapshot]
   )
-  const { results: rcDirectionResults } = useLatchedRcDirections(rcDirectionInputs)
+  const { results: rcDirectionResults, activeAxis: rcDirectionActiveAxis } = useLatchedRcDirections(rcDirectionInputs)
   const receiverChannelDisplays = useReceiverChannelDisplays({
     snapshot,
     rcChannelDisplays,
@@ -6737,6 +6737,7 @@ export function App() {
           busyAction={busyAction}
           onBindReceiver={() => void handleBindReceiver()}
           rcDirectionResults={rcDirectionResults}
+          rcDirectionActiveAxis={rcDirectionActiveAxis}
           editedValues={editedValues}
           parameterDraftById={parameterDraftById}
           rcExercises={rcExercises}

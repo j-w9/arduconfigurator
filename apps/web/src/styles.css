@@ -5881,6 +5881,66 @@ textarea:focus {
   font-weight: 600;
 }
 
+/* Example craft alongside the verdict rows — banks/pitches/yaws with the live
+   sticks so the operator can confirm each axis visually while testing. */
+.rc-direction-body {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.rc-direction-body .rc-direction-grid {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rc-direction-craft {
+  /* A small corner box — just a bare reacting quad, no chrome. */
+  flex: 0 0 140px;
+  min-width: 0;
+  align-self: start;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-200) 55%, transparent);
+  padding: 6px;
+}
+
+/* Bare mini flight-deck: strip the grid gaps and shrink the model frame so only
+   the tiny reacting quad shows. */
+.flight-deck--mini,
+.flight-deck--mini .flight-deck__model-shell {
+  width: 100%;
+  gap: 0;
+}
+
+.flight-deck--mini .flight-deck__model-frame {
+  height: 122px;
+  min-height: 0;
+}
+
+/* Smooth the throttle rise/sink so it glides instead of snapping per sample. */
+.flight-deck--mini .flight-deck__canvas {
+  transition: transform 120ms ease-out;
+}
+
+@media (max-width: 720px) {
+  .rc-direction-body {
+    flex-direction: column;
+  }
+
+  .rc-direction-craft {
+    flex-basis: auto;
+    align-self: stretch;
+  }
+}
+
+/* The axis whose stick is deflected right now — ties the reacting craft to the
+   row being tested. Rendered as an outline so it layers over any verdict tint. */
+.rc-direction-row--active {
+  outline: 1.5px solid color-mix(in srgb, var(--accent, #ffbb00) 55%, transparent);
+  outline-offset: -1.5px;
+}
+
 .receiver-workspace--task-deck {
   grid-template-columns: minmax(320px, 0.88fr) minmax(0, 1.12fr);
   align-items: start;

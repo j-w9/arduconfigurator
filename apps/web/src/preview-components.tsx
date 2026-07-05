@@ -73,7 +73,8 @@ export function StickCraftPreview({
   verified,
   vehicleType,
   frameClassLabel,
-  frameTypeLabel
+  frameTypeLabel,
+  mini = false
 }: {
   observations: readonly RcAxisObservation[]
   snapshot: ConfiguratorSnapshot
@@ -81,6 +82,8 @@ export function StickCraftPreview({
   vehicleType?: string
   frameClassLabel?: string
   frameTypeLabel?: string
+  /** Bare tiny quad (no heading tape / HUD / caption) for a small side box. */
+  mini?: boolean
 }) {
   // Calibrated, reversal-aware stick deflection (-1 .. +1) for an axis: 0 when
   // centred, +/-1 at the calibrated extremes, sign flipped if the channel is
@@ -116,6 +119,24 @@ export function StickCraftPreview({
   const rollNorm = axisNorm('roll')
   const pitchNorm = axisNorm('pitch')
   const yawNorm = axisNorm('yaw')
+
+  // Throttle drives a vertical LIFT (0 = resting/low, 1 = full up), reversal-aware.
+  // Throttle rests at an END of travel, so it's measured across the full min..max
+  // span rather than from trim like the centred axes.
+  const throttleLift = ((): number => {
+    const obs = observations.find((axis) => axis.axisId === 'throttle')
+    if (!obs || obs.pwm === undefined || !Number.isFinite(obs.pwm)) {
+      return 0
+    }
+    const lo = obs.calibratedMin ?? 1000
+    const hi = obs.calibratedMax ?? 2000
+    if (hi <= lo) {
+      return 0
+    }
+    const level = Math.max(0, Math.min(1, (obs.pwm - lo) / (hi - lo)))
+    const reversed = readRoundedParameter(snapshot, `RC${obs.channelNumber}_REVERSED`) === 1
+    return reversed ? 1 - level : level
+  })()
 
   // Behave like an angle-mode multirotor: roll/pitch sticks command a
   // proportional LEAN ANGLE (centre = level), while the yaw stick is a RATE —
@@ -158,6 +179,8 @@ export function StickCraftPreview({
         quadFrameType={readRoundedParameter(snapshot, 'Q_FRAME_TYPE')}
         compact
         showReadouts={false}
+        mini={mini}
+        liftNorm={throttleLift}
         testId="receiver-stick-craft"
       />
     </div>

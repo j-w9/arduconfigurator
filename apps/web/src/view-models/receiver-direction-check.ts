@@ -97,3 +97,32 @@ export function evaluateRcDirection(input: RcDirectionAxisInput): RcDirectionRes
 export function latchRcDirection(previous: RcDirectionResult, sample: RcDirectionResult): RcDirectionResult {
   return sample === 'idle' ? previous : sample
 }
+
+/**
+ * The axis whose stick is currently deflected the most (beyond the move
+ * threshold), or `undefined` when everything is at rest. Drives the live
+ * "you're testing this axis now" highlight + the reacting example craft — it is
+ * momentary (unlike the latched verdict), so releasing the stick clears it.
+ * Uses the same reference as {@link evaluateRcDirection}: trim for the centred
+ * axes, the captured resting baseline for throttle (skipped when absent).
+ */
+export function activeRcDirectionAxis(inputs: RcDirectionAxisInput[]): RcAxisId | undefined {
+  let best: { axisId: RcAxisId; magnitude: number } | undefined
+  for (const input of inputs) {
+    if (input.pwm === undefined) {
+      continue
+    }
+    const reference = input.axisId === 'throttle' ? input.restReference : input.trim
+    if (reference === undefined) {
+      continue
+    }
+    const magnitude = Math.abs(input.pwm - reference)
+    if (magnitude < RC_DIRECTION_MOVE_THRESHOLD_US) {
+      continue
+    }
+    if (best === undefined || magnitude > best.magnitude) {
+      best = { axisId: input.axisId, magnitude }
+    }
+  }
+  return best?.axisId
+}

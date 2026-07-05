@@ -22,6 +22,12 @@ interface FlightDeckPreviewProps {
   quadFrameType?: number
   compact?: boolean
   showReadouts?: boolean
+  /** Bare quad only — strips the heading tape, HUD, caption, and readouts so the
+   *  craft can live in a very small box (e.g. the RC direction-check corner). */
+  mini?: boolean
+  /** 0..1 vertical lift for the mini quad (throttle): 0 sinks it low, 1 raises it,
+   *  0.5 is centred. Only applied in `mini` mode. */
+  liftNorm?: number
   testId?: string
   // Overrides the caption's source line. Defaults to the FC-attitude wording;
   // the receiver stick preview passes its own (it's driven by sticks, not the
@@ -691,6 +697,8 @@ export function FlightDeckPreview({
   quadFrameType,
   compact = false,
   showReadouts = true,
+  mini = false,
+  liftNorm = 0.5,
   testId,
   captionLabel
 }: FlightDeckPreviewProps) {
@@ -968,13 +976,18 @@ export function FlightDeckPreview({
 
   return (
     <div
-      className={`flight-deck${compact ? ' flight-deck--compact' : ''}`}
+      className={`flight-deck${compact ? ' flight-deck--compact' : ''}${mini ? ' flight-deck--mini' : ''}`}
       data-testid={testId}
       data-craft-model={modelFile}
     >
       <div className="flight-deck__model-shell">
         <div className={`flight-deck__model-frame${!verified ? ' is-standby' : ''}`} ref={viewportRef}>
-          <canvas ref={canvasRef} className="flight-deck__canvas" />
+          <canvas
+            ref={canvasRef}
+            className="flight-deck__canvas"
+            style={mini ? { transform: `translateY(${(0.5 - Math.max(0, Math.min(1, liftNorm))) * 64}px)` } : undefined}
+          />
+          {!mini ? (
           <div className="flight-deck__heading-tape" aria-hidden="true">
             <div className="flight-deck__heading-window">
               <div className="flight-deck__heading-ruler">
@@ -994,6 +1007,7 @@ export function FlightDeckPreview({
               </div>
             </div>
           </div>
+          ) : null}
           <div className="flight-deck__reticle" aria-hidden="true">
             <span className="flight-deck__reticle-wing flight-deck__reticle-wing--left" />
             <span className="flight-deck__reticle-core" />
@@ -1005,7 +1019,7 @@ export function FlightDeckPreview({
               <span>Attitude stream offline</span>
             </div>
           ) : null}
-          {verified ? (
+          {verified && !mini ? (
             <div className="flight-deck__hud">
               <span>ROLL {formatDegrees(rollDeg)}</span>
               <span>PITCH {formatDegrees(pitchDeg)}</span>
@@ -1013,6 +1027,7 @@ export function FlightDeckPreview({
             </div>
           ) : null}
         </div>
+        {!mini ? (
         <div className="flight-deck__caption">
           <div className="flight-deck__caption-copy">
             {captionLabel === '' ? null : (
@@ -1045,7 +1060,8 @@ export function FlightDeckPreview({
             </div>
           </div>
         </div>
-        {showReadouts ? (
+        ) : null}
+        {showReadouts && !mini ? (
           <div className="flight-deck__readout-grid">
             <article className={`flight-deck__readout-card${verified ? ' is-live' : ''}`}>
               <span>Roll</span>

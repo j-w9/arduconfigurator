@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RcAxisId } from '@arduconfig/ardupilot-core'
 
 import {
+  activeRcDirectionAxis,
   evaluateRcDirection,
   latchRcDirection,
   type RcDirectionAxisInput,
@@ -25,6 +26,8 @@ const IDLE_RESULTS: Record<RcAxisId, RcDirectionResult> = {
  */
 export function useLatchedRcDirections(inputs: RcDirectionAxisInput[]): {
   results: Record<RcAxisId, RcDirectionResult>
+  /** The axis whose stick is deflected right now (momentary, not latched). */
+  activeAxis: RcAxisId | undefined
   reset: () => void
 } {
   const [results, setResults] = useState<Record<RcAxisId, RcDirectionResult>>(IDLE_RESULTS)
@@ -60,5 +63,13 @@ export function useLatchedRcDirections(inputs: RcDirectionAxisInput[]): {
     setResults(IDLE_RESULTS)
   }, [])
 
-  return { results, reset }
+  // Live (not latched) — resolve the throttle baseline the same way the effect
+  // does so the highlight tracks the stick and clears when it re-centres.
+  const activeAxis = activeRcDirectionAxis(
+    inputs.map((input) =>
+      input.axisId === 'throttle' ? { ...input, restReference: throttleBaseline.current } : input
+    )
+  )
+
+  return { results, activeAxis, reset }
 }

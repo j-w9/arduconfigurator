@@ -126,6 +126,9 @@ export interface ReceiverSectionProps {
   /** Latched per-axis channel-direction verdicts (computed in App so the
    *  Endpoints card and the guided-setup radio gate share one result). */
   rcDirectionResults: Record<RcAxisId, RcDirectionResult>
+  /** The axis whose stick is deflected right now — highlights its row + is what
+   *  the reacting example craft is showing. Momentary, not latched. */
+  rcDirectionActiveAxis: RcAxisId | undefined
   editedValues: Record<string, string>
   parameterDraftById: ReadonlyMap<string, ParameterDraftEntry>
   rcExercises: ReturnType<typeof useRcExercises>
@@ -149,6 +152,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     busyAction,
     onBindReceiver,
     rcDirectionResults,
+    rcDirectionActiveAxis,
     editedValues,
     parameterDraftById,
     rcExercises,
@@ -639,10 +643,22 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                       <div className="switch-exercise-card__header">
                         <div>
                           <strong>Channel direction</strong>
-                          <p>Move each stick the way it&apos;s labelled. We flag any axis the flight controller reads backwards and offer a one-click reverse — staged like every other Receiver edit.</p>
+                          <p>Move each stick the way it&apos;s labelled — the example copter reacts so you can confirm each axis at a glance. We flag any the flight controller reads backwards and offer a one-click reverse, staged like every other Receiver edit.</p>
                         </div>
                       </div>
-                      <div className="rc-direction-grid">
+                      <div className="rc-direction-body">
+                        <div className="rc-direction-craft" data-testid="receiver-direction-craft">
+                          <StickCraftPreview
+                            observations={rcAxisObservations}
+                            snapshot={snapshot}
+                            verified={snapshot.liveVerification.rcInput.verified}
+                            vehicleType={snapshot.vehicle?.vehicle}
+                            frameClassLabel={airframe.frameClassLabel}
+                            frameTypeLabel={airframe.frameTypeLabel}
+                            mini
+                          />
+                        </div>
+                        <div className="rc-direction-grid">
                         {rcAxisObservations.map((observation) => {
                           const reversedParam = selectParameterById(snapshot, `RC${observation.channelNumber}_REVERSED`)
                           if (!reversedParam) {
@@ -651,10 +667,11 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                           const result = rcDirectionResults[observation.axisId]
                           const liveReversed = (reversedParam.value ?? 0) !== 0
                           const staged = editedValues[reversedParam.id] !== undefined
+                          const active = rcDirectionActiveAxis === observation.axisId
                           return (
                             <div
                               key={observation.axisId}
-                              className={`rc-direction-row rc-direction-row--${result}`}
+                              className={`rc-direction-row rc-direction-row--${result}${active ? ' rc-direction-row--active' : ''}`}
                               data-testid={`receiver-direction-${observation.axisId}`}
                             >
                               <span className="rc-direction-row__axis">{observation.label}</span>
@@ -680,6 +697,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                             </div>
                           )
                         })}
+                        </div>
                       </div>
                     </div>
                     <div className="receiver-task-two-up receiver-task-two-up--single">
