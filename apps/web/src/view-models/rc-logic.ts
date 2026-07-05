@@ -29,7 +29,6 @@ export interface RcLogicTermParamIds {
   src: string
   min: string
   max: string
-  val: string
 }
 
 export function rcLogicTermParamIds(term: number): RcLogicTermParamIds {
@@ -39,8 +38,7 @@ export function rcLogicTermParamIds(term: number): RcLogicTermParamIds {
     opt: `${prefix}OPT`,
     src: `${prefix}SRC`,
     min: `${prefix}MIN`,
-    max: `${prefix}MAX`,
-    val: `${prefix}VAL`
+    max: `${prefix}MAX`
   }
 }
 
@@ -183,7 +181,7 @@ export function rcLogicRemovePlan(parameters: readonly ParameterState[], term: n
   const ids = rcLogicTermParamIds(term)
   const liveFunc = parameters.find((parameter) => parameter.id === ids.func)?.value ?? 0
   return {
-    clear: [ids.func, ids.opt, ids.src, ids.min, ids.max, ids.val],
+    clear: [ids.func, ids.opt, ids.src, ids.min, ids.max],
     disable: liveFunc !== 0 ? { [ids.func]: '0' } : {}
   }
 }

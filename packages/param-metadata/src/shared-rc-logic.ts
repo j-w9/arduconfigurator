@@ -10,7 +10,6 @@
 //   RCL<n>_OPT                         Int16  bits 0-1 source type, 2 combine(AND), 3 negate
 //   RCL<n>_SRC                         Int16  range: RC ch 1-16; link: AUX_FUNC; condition: id
 //   RCL<n>_MIN / _MAX                  Int16  range PWM bounds (800..2200)
-//   RCL<n>_VAL                         Int8   continuous-adjust value channel (0=none, reserved)
 
 import type { FirmwareMetadataBundle, ParameterDefinition, ParameterValueOption } from './types.js'
 
@@ -213,15 +212,6 @@ function termParameterDefinitions(n: number): Record<string, ParameterDefinition
       unit: 'PWM',
       minimum: 800,
       maximum: 2200,
-      step: 1
-    },
-    [`${prefix}VAL`]: {
-      id: `${prefix}VAL`,
-      label: `Term ${n} · value channel`,
-      description: 'Value-source channel for continuous adjustments (0 = none). Reserved for a future phase.',
-      category: RC_LOGIC_CATEGORY,
-      minimum: 0,
-      maximum: 16,
       step: 1
     }
   }
