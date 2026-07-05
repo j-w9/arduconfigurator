@@ -10,10 +10,69 @@ import type { ParameterState } from '@arduconfig/ardupilot-core'
 // only renders if the controller actually reported it.
 const RELAY_FIELD_ORDER = ['FUNCTION', 'PIN', 'DEFAULT', 'INVERTED'] as const
 
+// RC aux-function (RCn_OPTION) value that toggles each relay, from the ArduPilot
+// RC_Channel::AUX_FUNC enum (RC_Channel.h, verified 2026-07). Binding "Relay 1 to
+// Ch10" means writing RC10_OPTION = 28. Instances beyond these have no RC toggle.
+export const RELAY_AUX_FUNCS: Readonly<Record<number, number>> = {
+  1: 28,
+  2: 34,
+  3: 35,
+  4: 36,
+  5: 66,
+  6: 67
+}
+
+/** RC channels an aux function can live on (RC1..RC16). */
+export const RELAY_RC_CHANNEL_COUNT = 16
+
 export interface RelayInstanceGroup {
   instance: number
   label: string
   parameters: ParameterState[]
+  /** The RCn_OPTION aux-func value that toggles this relay, or undefined when the
+   *  instance has no RC-toggle aux function. */
+  auxFunc: number | undefined
+}
+
+/**
+ * The lowest RC channel currently bound to `auxFunc` (its RCn_OPTION == auxFunc),
+ * or `undefined` when none is. `rcOptionByChannel` maps channel number → the
+ * effective RCn_OPTION value (caller overlays staged edits over live values).
+ */
+export function relayRcChannelBinding(
+  auxFunc: number | undefined,
+  rcOptionByChannel: ReadonlyMap<number, number>
+): number | undefined {
+  if (auxFunc === undefined) {
+    return undefined
+  }
+  for (let channel = 1; channel <= RELAY_RC_CHANNEL_COUNT; channel += 1) {
+    if (rcOptionByChannel.get(channel) === auxFunc) {
+      return channel
+    }
+  }
+  return undefined
+}
+
+/**
+ * The parameter writes to rebind a relay's aux function to a new RC channel:
+ * set the new channel's RCn_OPTION to `auxFunc`, and clear the previously-bound
+ * channel (RCn_OPTION → 0) so only one switch owns the relay. `newChannel = 0`
+ * unbinds (clears the current channel only).
+ */
+export function planRelayRcChannelChange(
+  auxFunc: number,
+  newChannel: number,
+  currentChannel: number | undefined
+): Array<{ id: string; value: string }> {
+  const writes: Array<{ id: string; value: string }> = []
+  if (newChannel >= 1 && newChannel <= RELAY_RC_CHANNEL_COUNT) {
+    writes.push({ id: `RC${newChannel}_OPTION`, value: String(auxFunc) })
+  }
+  if (currentChannel !== undefined && currentChannel !== newChannel) {
+    writes.push({ id: `RC${currentChannel}_OPTION`, value: '0' })
+  }
+  return writes
 }
 
 /**
@@ -42,6 +101,6 @@ export function buildRelayGroups(parameters: readonly ParameterState[]): RelayIn
       const ordered = RELAY_FIELD_ORDER.map((field) => fields.get(field)).filter(
         (parameter): parameter is ParameterState => parameter !== undefined
       )
-      return { instance, label: `Relay ${instance}`, parameters: ordered }
+      return { instance, label: `Relay ${instance}`, parameters: ordered, auxFunc: RELAY_AUX_FUNCS[instance] }
     })
 }

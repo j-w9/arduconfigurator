@@ -1910,6 +1910,22 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('relays-apply')).toContainText('Apply relay changes (1)')
   })
 
+  test('Relays tab binds an RC switch channel to a relay (writes RCn_OPTION)', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-servos').click()
+    await page.getByTestId('outputs-task-nav').getByRole('tab', { name: /Relays/i }).click()
+
+    const rcChannel = page.getByTestId('relay-rc-channel-1')
+    await expect(rcChannel).toBeVisible()
+    // Bind Relay 1 to Ch10 → writes RC10_OPTION = 28 (the Relay1 aux function),
+    // staged in the relay scope so the Relays Apply picks it up.
+    await rcChannel.locator('select').selectOption('10')
+    await expect(rcChannel).toContainText('RC10 toggles Relay 1')
+    await expect(page.getByTestId('relays-apply')).toContainText('Apply relay changes (1)')
+  })
+
   test('a Plane can confirm the Setup airframe step (not gated on Copter FRAME_CLASS)', async ({ page }) => {
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')

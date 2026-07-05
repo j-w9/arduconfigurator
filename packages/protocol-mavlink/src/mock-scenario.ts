@@ -122,6 +122,24 @@ const mockParameters: ParameterState = {
   RELAY2_PIN: 51,
   RELAY2_DEFAULT: 0,
   RELAY2_INVERTED: 0,
+  // RCn_OPTION aux-function assignments (all 16 channels). Default 0 (Do Nothing);
+  // the Relays tab "RC Channel" control binds a relay by writing one of these.
+  RC1_OPTION: 0,
+  RC2_OPTION: 0,
+  RC3_OPTION: 0,
+  RC4_OPTION: 0,
+  RC5_OPTION: 0,
+  RC6_OPTION: 0,
+  RC7_OPTION: 0,
+  RC8_OPTION: 0,
+  RC9_OPTION: 0,
+  RC10_OPTION: 0,
+  RC11_OPTION: 0,
+  RC12_OPTION: 0,
+  RC13_OPTION: 0,
+  RC14_OPTION: 0,
+  RC15_OPTION: 0,
+  RC16_OPTION: 0,
   AHRS_ORIENTATION: 0,
   // Config-tab fields a real FC always reports — included so the demo Config
   // surface is complete (no "— (not reported)" rows).

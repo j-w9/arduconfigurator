@@ -6797,6 +6797,24 @@ textarea:focus {
   gap: 12px;
 }
 
+/* Relays tab — bind an RC switch to a relay (writes RCn_OPTION behind the scenes). */
+.relay-rc-channel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.relay-rc-channel--staged .scoped-editor-field {
+  border-color: color-mix(in srgb, var(--accent, #ffbb00) 55%, var(--border));
+}
+
+.relay-rc-channel__hint {
+  margin: 6px 2px 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
 .scoped-editor-field {
   display: grid;
   gap: 6px;

@@ -324,6 +324,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   // MOT_* ESC surface. Only meaningful when VTOL is enabled (Q_ENABLE=1); built
   // from the existing draft machinery so edits stage/apply like the copter card.
   const isQuadPlane = !isCopterVehicle && readRoundedParameter(snapshot, 'Q_ENABLE') === 1
+  // Live RCn_OPTION per channel — feeds the Relays tab's "RC Channel" binding.
+  const relayRcOptionByChannel = new Map<number, number>()
+  for (let channel = 1; channel <= 16; channel += 1) {
+    relayRcOptionByChannel.set(channel, readRoundedParameter(snapshot, `RC${channel}_OPTION`) ?? 0)
+  }
   const quadplaneEscParameters = isQuadPlane
     ? QUADPLANE_ESC_PARAM_IDS.map((id) => selectParameterById(snapshot, id)).filter(
         (parameter): parameter is ParameterState => parameter !== undefined
@@ -901,6 +906,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                 <div className="outputs-task-panel outputs-task-panel--stack">
                   <RelaysView
                     groups={relayGroups}
+                    rcOptionByChannel={relayRcOptionByChannel}
                     editedValues={editedValues}
                     onEditChange={(paramId, value) => setDraft(paramId, value)}
                     draftStatusById={parameterDraftById}
