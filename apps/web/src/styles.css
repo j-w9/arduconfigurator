@@ -272,11 +272,38 @@
   color: #1a212b;
 }
 
+/* Motor mixer / test quad diagram (SVG). The "screen" container + backdrop + ring
+   fills are hard-coded dark and its arms a light stroke — flip them for light. */
+:root[data-theme='light'] .motor-mixer-preview {
+  background:
+    linear-gradient(rgba(var(--edge-rgb), 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--edge-rgb), 0.05) 1px, transparent 1px),
+    radial-gradient(circle at 50% 42%, rgba(255, 187, 0, 0.06), transparent 42%),
+    #e8ebf1;
+}
+:root[data-theme='light'] .motor-mixer-preview__backdrop {
+  fill: #f4f6fa;
+}
+:root[data-theme='light'] .motor-mixer-preview__ring,
+:root[data-theme='light'] .motor-mixer-preview__node.is-mapped .motor-mixer-preview__ring {
+  fill: #ffffff;
+  stroke: rgba(60, 72, 88, 0.4);
+}
+:root[data-theme='light'] .motor-mixer-preview__node.is-empty .motor-mixer-preview__ring {
+  fill: #eef1f6;
+  stroke: rgba(60, 72, 88, 0.3);
+}
+:root[data-theme='light'] .motor-mixer-preview__arm {
+  stroke: rgba(60, 72, 88, 0.5);
+}
+
 /* The theme toggle in the header. */
 .app-header__theme-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* Breathing room so it doesn't crowd the Expert-mode toggle. */
+  margin-left: 16px;
   width: 30px;
   height: 30px;
   padding: 0;
@@ -1058,9 +1085,15 @@ textarea:focus {
 }
 
 .app-header__primary-actions {
+  /* Stack Connect/Reconnect over Disconnect so the pair (shown once connected)
+     doesn't widen the header. */
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.app-header__primary-actions .session-strip__button {
+  justify-content: center;
 }
 
 .session-strip__button {
@@ -1074,9 +1107,9 @@ textarea:focus {
   min-width: 76px;
   height: 28px;
   padding: 0 12px;
-  border: 1px solid rgba(var(--edge-rgb), 0.08);
+  border: 1px solid var(--btn-border);
   border-radius: 8px;
-  background: linear-gradient(180deg, rgba(47, 55, 63, 0.96), rgba(var(--fill-rgb), 0.98));
+  background: var(--btn-bg);
   color: var(--text, #f2f2f2);
   font-size: 12px;
   font-weight: 600;

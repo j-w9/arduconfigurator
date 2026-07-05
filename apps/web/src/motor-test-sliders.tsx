@@ -21,14 +21,17 @@ interface MotorTestSlidersProps {
 
 /* ── palette constants (mirrors :root tokens for inline styles) ── */
 
+// Structural colours read CSS theme tokens (inline styles resolve var()) so the
+// vertical sliders follow the light/dark theme; the throttle fill + accents stay
+// fixed data colours.
 const color = {
-  bgPanelMuted: '#0b1016',
-  bgPanel: '#151c25',
-  bgPanelRaised: '#1b2430',
-  bgSurfaceStrong: '#243040',
-  border: '#2e3d4e',
-  borderStrong: '#42566b',
-  borderAccent: 'rgba(100, 180, 230, 0.44)',
+  bgPanelMuted: 'var(--bg-panel-muted)',
+  bgPanel: 'var(--bg-panel)',
+  bgPanelRaised: 'var(--bg-panel-raised)',
+  bgSurfaceStrong: 'var(--bg-surface-strong)',
+  border: 'var(--border)',
+  borderStrong: 'var(--border-strong)',
+  borderAccent: 'var(--border-accent)',
   accent: '#6db8e0',
   accentWeak: 'rgba(109, 184, 224, 0.14)',
   warning: '#dab254',
@@ -36,10 +39,10 @@ const color = {
   danger: '#d46b62',
   dangerWeak: 'rgba(212, 107, 98, 0.12)',
   success: '#5cc28a',
-  text: '#e4eaf0',
-  textMuted: '#8ea0b0',
-  textDim: '#5a7088',
-  fontData: '"IBM Plex Mono", "SFMono-Regular", "SF Mono", Consolas, monospace',
+  text: 'var(--text)',
+  textMuted: 'var(--text-muted)',
+  textDim: 'var(--text-dim)',
+  fontData: 'var(--font-data)',
 } as const
 
 /* ── geometry ── */
