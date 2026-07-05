@@ -71,6 +71,28 @@ export function shouldRenderOptionChips(optionCount: number): boolean {
   return optionCount > 0 && optionCount <= SCOPED_CHIP_MAX_OPTIONS
 }
 
+/**
+ * Whether a param's enumerated options are non-exhaustive HINTS rather than a
+ * closed enum — true when they cover only a sparse fraction of a wide numeric
+ * range (e.g. RELAY_PIN: 36 named GPIO pins scattered across -1..1015, with
+ * valid pins like 81 sitting in the gaps). Such params must render as a number
+ * field: an exclusive dropdown can't hold a valid unlisted value, so it silently
+ * shows the first option ("Disabled") and reads as OFF. A closed enum densely
+ * covers its range, so it stays a dropdown. Pure so it can be unit-tested.
+ */
+export function optionsAreHintList(
+  definition: { options?: readonly { value: number }[]; minimum?: number; maximum?: number } | undefined
+): boolean {
+  const options = definition?.options
+  if (!options || options.length === 0 || definition?.minimum === undefined || definition?.maximum === undefined) {
+    return false
+  }
+  const range = definition.maximum - definition.minimum
+  // Wide range + sparse coverage ⇒ hints. The thresholds sit far from any real
+  // enum (which covers most of its range) and far below RELAY_PIN's ~3.5%.
+  return range > 50 && options.length / (range + 1) < 0.25
+}
+
 interface ScopedSelectFieldProps extends CommonScopedFieldProps {
   /** `'chips'` renders the box/chip grid (matching ScopedBitmaskField) when
    *  the option count is small enough; otherwise falls back to the native
@@ -85,14 +107,20 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
     return <ScopedOptionChipsField {...props} />
   }
   const status = statusModifier(draftStatusById, parameter.id)
+  const currentValue = editedValues[parameter.id] ?? String(liveValue ?? '')
+  // Surface a value that isn't one of the listed options as its own option, so a
+  // native <select> shows the real value instead of silently falling back to the
+  // first option (which misreads e.g. an unlisted pin as "Disabled").
+  const currentNumber = Number(currentValue)
+  const renderedOptions =
+    currentValue !== '' && Number.isFinite(currentNumber) && !options.some((option) => String(option.value) === currentValue)
+      ? [...options, { value: currentNumber, label: `${currentValue} (unlisted)` }]
+      : options
   return (
     <label className={fieldClassName(draftStatusById, parameter.id, compact)}>
       <span>{parameter.definition?.label ?? parameter.id}</span>
-      <select
-        value={editedValues[parameter.id] ?? String(liveValue ?? '')}
-        onChange={(event) => onChange(parameter.id, event.target.value)}
-      >
-        {(parameter.definition?.options ?? []).map((valueOption) => (
+      <select value={currentValue} onChange={(event) => onChange(parameter.id, event.target.value)}>
+        {renderedOptions.map((valueOption) => (
           <option key={`${parameter.id}:${valueOption.value}`} value={String(valueOption.value)}>
             {valueOption.label}
           </option>
@@ -181,7 +209,12 @@ export function ScopedField(props: ScopedNumberFieldProps) {
     if (definition?.bitmask === true) {
       return <ScopedBitmaskField {...props} />
     }
-    return <ScopedSelectField {...props} />
+    // When the options are just hints on a wider numeric range (RELAY_PIN and
+    // friends), a dropdown can't hold a valid unlisted value — render a number
+    // field so the operator can type any pin.
+    if (!optionsAreHintList(definition)) {
+      return <ScopedSelectField {...props} />
+    }
   }
   return <ScopedNumberField {...props} />
 }
