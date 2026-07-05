@@ -139,6 +139,9 @@ export function AppHeader({
         </span>
       </button>
 
+      {/* Wiki + connection picker stack vertically to keep the header from
+          overflowing on narrower/zoomed layouts. */}
+      <div className="app-header__nav-stack">
       <a
         className="app-header__wiki"
         data-testid="header-wiki-link"
@@ -208,6 +211,7 @@ export function AppHeader({
             placeholder={DEFAULT_TCP_TARGET}
           />
         ) : null}
+      </div>
       </div>
 
       {snapshot.connection.kind === 'connected' || snapshot.connection.kind === 'connecting' ? (

@@ -87,6 +87,11 @@
   /* Secondary button surface (used by ui-kit buttonStyle) — themed so it flips. */
   --btn-bg: linear-gradient(180deg, rgba(47, 55, 63, 0.96), rgba(35, 41, 48, 0.98));
   --btn-border: rgba(var(--edge-rgb), 0.08);
+  /* Rate-preview chart chrome (SVG RateCurveGraph). */
+  --chart-bg: #0b1016;
+  --chart-grid: rgba(46, 61, 78, 0.5);
+  --chart-border: #2e3d4e;
+  --chart-dim-text: #5a7088;
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 11px;
@@ -196,6 +201,10 @@
   --primary-action-hover: #62b955;
   --btn-bg: linear-gradient(180deg, #ffffff, #eef2f7);
   --btn-border: rgba(var(--edge-rgb), 0.22);
+  --chart-bg: #eef2f7;
+  --chart-grid: rgba(120, 135, 155, 0.35);
+  --chart-border: #c4ccd8;
+  --chart-dim-text: #5a6577;
 
   /* Softer shadows on a light canvas. */
   --shadow-soft: 0 12px 30px rgba(15, 23, 42, 0.12);
@@ -246,6 +255,21 @@
 :root[data-theme='light'] .scoped-option-chip {
   background: var(--chip-fill);
   color: var(--text-muted);
+}
+
+/* OSD preview "screen" follows the theme in light mode (light panel + dark HUD
+   ink) instead of staying a dark simulated video feed. */
+:root[data-theme='light'] .osd-preview-screen {
+  background:
+    linear-gradient(rgba(var(--edge-rgb), 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--edge-rgb), 0.06) 1px, transparent 1px),
+    radial-gradient(circle at top, rgba(255, 187, 0, 0.06), transparent 55%),
+    #e8ebf1;
+}
+:root[data-theme='light'] .osd-preview-screen__hud,
+:root[data-theme='light'] .osd-preview-screen__element,
+:root[data-theme='light'] .osd-preview-screen__center-marker {
+  color: #1a212b;
 }
 
 /* The theme toggle in the header. */
@@ -481,6 +505,18 @@ textarea:focus {
 /* Wiki link in the header, next to the brand. Compact pill (icon + "Wiki"
    label) that opens the wiki in a new tab. .app-header's flex-wrap keeps it from
    overflowing on phones — it wraps to the next line instead. */
+/* Wiki + connection picker stacked vertically to save header width. */
+.app-header__nav-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  min-width: 0;
+  flex-shrink: 0;
+}
+.app-header__nav-stack .app-header__wiki {
+  justify-content: center;
+}
 .app-header__wiki {
   display: inline-flex;
   align-items: center;

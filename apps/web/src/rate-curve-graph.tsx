@@ -9,12 +9,15 @@ interface RateCurveGraphProps {
 }
 
 const MONO_FONT = '"IBM Plex Mono", "SFMono-Regular", "SF Mono", Consolas, monospace'
-const GRID_COLOR = 'rgba(46, 61, 78, 0.5)'
-const BORDER_COLOR = '#2e3d4e'
-const BG_COLOR = '#0b1016'
-const DIM_TEXT = '#5a7088'
+// Chart chrome reads theme tokens (with the original dark values as fallback) so
+// the rate-preview graphs follow the light/dark theme. The curve accent stays a
+// fixed data colour.
+const GRID_COLOR = 'var(--chart-grid, rgba(46, 61, 78, 0.5))'
+const BORDER_COLOR = 'var(--chart-border, #2e3d4e)'
+const BG_COLOR = 'var(--chart-bg, #0b1016)'
+const DIM_TEXT = 'var(--chart-dim-text, #5a7088)'
 const ACCENT_DEFAULT = '#6db8e0'
-const LINEAR_REF_COLOR = '#2e3d4e'
+const LINEAR_REF_COLOR = 'var(--chart-border, #2e3d4e)'
 
 /* Layout constants within the SVG viewBox */
 const VIEW_W = 400
@@ -287,7 +290,7 @@ export function RateCurveGraph({ maxRate, expo, label, color, testId }: RateCurv
           height={18}
           rx={9}
           ry={9}
-          fill="rgba(11, 16, 22, 0.85)"
+          fill={BG_COLOR}
           stroke={curveColor}
           strokeWidth={0.8}
           strokeOpacity={0.4}
