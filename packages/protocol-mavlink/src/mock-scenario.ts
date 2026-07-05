@@ -1148,6 +1148,16 @@ const arduplaneMockParameters: ParameterState = {
   AVD_F_ALT_MIN: 0
 }
 
+// The Plane demo spreads the Copter base directly (QuadPlane shares much of it),
+// but RC Mixer (AP_RC_Logic, RCL_*) is a Copter-only configurator surface — drop
+// it so the Plane demo's RC Mixer tab shows its preview scaffold, not the real
+// editor (an e2e pins that fallback).
+for (const key of Object.keys(arduplaneMockParameters)) {
+  if (key === 'RCL_ENABLE' || /^RCL\d+_/.test(key)) {
+    delete arduplaneMockParameters[key]
+  }
+}
+
 // Copter-only params that must NOT leak into the Rover/Sub overlays.
 // Real ArduRover/ArduSub do not expose these (Rover uses MODE_CH /
 // MODE1..6, Sub is joystick-driven with FRAME_CONFIG), so excluding them
@@ -1174,7 +1184,11 @@ const COPTER_ONLY_MOCK_KEYS = new Set<string>([
  * comms, battery, GPS, compass) — never FLTMODE* / FRAME_CLASS. */
 function nonCopterMockBase(): ParameterState {
   return Object.fromEntries(
-    Object.entries(mockParameters).filter(([key]) => !COPTER_ONLY_MOCK_KEYS.has(key))
+    Object.entries(mockParameters).filter(
+      // RC Mixer (AP_RC_Logic, RCL_*) is a Copter-only surface in the
+      // configurator, so keep the RCL_* family off the non-Copter demos.
+      ([key]) => !COPTER_ONLY_MOCK_KEYS.has(key) && !/^RCL(_|\d)/.test(key)
+    )
   ) as ParameterState
 }
 
