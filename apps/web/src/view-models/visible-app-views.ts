@@ -25,11 +25,22 @@ export interface VisibleAppViewsInputs {
   /** The FC reports the AP_RC_Logic engine (RCL_ENABLE present) — unlocks the
    *  real RC Mixer editor; otherwise the tab stays a preview. */
   hasRcLogicParams: boolean
+  /** The FC reports the Lua scripting engine (SCR_ENABLE present) — the board's
+   *  build has the VM compiled in, so it can run scripts. Gates the Lua tab. */
+  hasScriptingParams: boolean
 }
 
 export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDescriptor[] {
-  const { appViews, isExpertMode, canBusStatus, canBusBus, connectionKind, hasNetworkingParams, hasRcLogicParams } =
-    inputs
+  const {
+    appViews,
+    isExpertMode,
+    canBusStatus,
+    canBusBus,
+    connectionKind,
+    hasNetworkingParams,
+    hasRcLogicParams,
+    hasScriptingParams
+  } = inputs
 
   const base = appViews.filter((view) => isExpertMode || !isExpertOnlyView(view.id))
   // RC Mixer binds to the AP_RC_Logic engine (RCL_* params). When the connected
@@ -129,6 +140,17 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     badge: connectionKind === 'connected' ? 'live' : 'idle',
     tone: 'neutral'
   }
+  // Lua Scripts (SCR_*): install curated ArduPilot applets or upload your own to
+  // /APM/scripts over MAVFTP. Expert-only AND only when the FC reports scripting
+  // (SCR_ENABLE present — the board's build has the Lua VM compiled in), so it
+  // stays hidden on builds that can't run Lua.
+  const luaDescriptor: AppViewDescriptor = {
+    id: 'lua',
+    label: 'Lua Scripts',
+    description: 'Install curated ArduPilot Lua applets (VTX, LEDs, camera, battery, gimbal, winch) or upload your own scripts to the SD card.',
+    badge: connectionKind === 'connected' ? 'live' : 'idle',
+    tone: 'neutral'
+  }
   // Canonical tab order (single source of truth). The Setup tab is the
   // health/status/info dashboard, so it leads and is relabelled; the rest
   // follow a setup -> tuning -> tools flow. Views not listed fall to the
@@ -136,7 +158,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const CANONICAL_VIEW_ORDER = [
     'setup', 'calibration', 'config', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'power', 'failsafe', 'vtx', 'osd', 'tuning', 'presets',
-    'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'flash', 'rc-mixer',
+    'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'rc-mixer',
     'mavlink-inspector', 'dronecan-inspector'
   ]
   const relabelled = base.map((view) =>
@@ -152,6 +174,8 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     filesDescriptor,
     // Networking — Expert-only AND only when the FC advertises NET_ params.
     ...(isExpertMode && hasNetworkingParams ? [networkingDescriptor] : []),
+    // Lua Scripts — Expert-only AND only when the FC advertises scripting (SCR_).
+    ...(isExpertMode && hasScriptingParams ? [luaDescriptor] : []),
     // Expert-only views — only surfaced when Expert mode is on.
     ...(isExpertMode ? [rcMixerDescriptor, mavlinkInspectorDescriptor, dronecanInspectorDescriptor] : [])
   ]

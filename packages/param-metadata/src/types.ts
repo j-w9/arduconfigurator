@@ -75,6 +75,11 @@ export type AppViewId =
   // (Ethernet/PPP IP setup + network serial endpoints). Injected at render time,
   // shown only when the FC reports networking support (NET_ENABLE present).
   | 'networking'
+  // 'lua' is the Expert-only Lua Scripts surface — install curated ArduPilot
+  // applets (bundled) or upload your own to /APM/scripts over MAVFTP. Injected
+  // at render time; shown only when the FC reports scripting support
+  // (SCR_ENABLE present, i.e. the build has the Lua VM compiled in).
+  | 'lua'
 
 export interface ParameterValueOption {
   value: number

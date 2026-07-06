@@ -23,6 +23,7 @@ function baseInputs(overrides: Partial<VisibleAppViewsInputs> = {}): VisibleAppV
     connectionKind: 'disconnected',
     hasNetworkingParams: false,
     hasRcLogicParams: false,
+    hasScriptingParams: false,
     ...overrides
   }
 }
@@ -60,6 +61,12 @@ describe('buildVisibleAppViews', () => {
     // Missing either gate hides it.
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false, hasNetworkingParams: true })))).not.toContain('networking')
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasNetworkingParams: false })))).not.toContain('networking')
+  })
+
+  it('shows Lua Scripts only in Expert mode AND when the FC reports SCR_ params', () => {
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasScriptingParams: true })))).toContain('lua')
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false, hasScriptingParams: true })))).not.toContain('lua')
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasScriptingParams: false })))).not.toContain('lua')
   })
 
   it('relabels the Setup tab as Status & Info', () => {
