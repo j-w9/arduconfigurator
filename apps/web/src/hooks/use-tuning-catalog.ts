@@ -20,7 +20,9 @@ import {
   TUNING_FILTER_PARAM_IDS,
   TUNING_FLIGHT_FEEL_PARAM_IDS,
   TUNING_PARAM_IDS,
-  TUNING_PID_AXIS_GROUPS
+  TUNING_PID_AXIS_GROUPS,
+  TUNING_PILOT_ALTHOLD_PARAM_IDS,
+  TUNING_PILOT_LOITER_PARAM_IDS
 } from '../tuning-params'
 import { selectViewCatalog } from '../selectors/view-catalog'
 
@@ -37,6 +39,8 @@ export interface UseTuningCatalogResult {
   flightFeelParameters: ParameterState[]
   tuningAccelerationParameters: ParameterState[]
   acroTuningParameters: ParameterState[]
+  altHoldPilotParameters: ParameterState[]
+  loiterPilotParameters: ParameterState[]
   tuningAdvancedPidParameters: ParameterState[]
   tuningFilterParameters: ParameterState[]
   tuningPidAxisGroups: TuningParameterAxisGroup[]
@@ -73,6 +77,20 @@ export function useTuningCatalog(snapshot: ConfiguratorSnapshot): UseTuningCatal
   const acroTuningParameters = useMemo(
     () =>
       TUNING_ACRO_PARAM_IDS.map((paramId) => tuningParameterById.get(paramId)).filter(
+        (parameter): parameter is ParameterState => parameter !== undefined
+      ),
+    [tuningParameterById]
+  )
+  const altHoldPilotParameters = useMemo(
+    () =>
+      TUNING_PILOT_ALTHOLD_PARAM_IDS.map((paramId) => tuningParameterById.get(paramId)).filter(
+        (parameter): parameter is ParameterState => parameter !== undefined
+      ),
+    [tuningParameterById]
+  )
+  const loiterPilotParameters = useMemo(
+    () =>
+      TUNING_PILOT_LOITER_PARAM_IDS.map((paramId) => tuningParameterById.get(paramId)).filter(
         (parameter): parameter is ParameterState => parameter !== undefined
       ),
     [tuningParameterById]
@@ -128,6 +146,8 @@ export function useTuningCatalog(snapshot: ConfiguratorSnapshot): UseTuningCatal
     flightFeelParameters,
     tuningAccelerationParameters,
     acroTuningParameters,
+    altHoldPilotParameters,
+    loiterPilotParameters,
     tuningAdvancedPidParameters,
     tuningFilterParameters,
     tuningPidAxisGroups,

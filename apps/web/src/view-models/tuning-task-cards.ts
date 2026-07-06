@@ -19,6 +19,8 @@ export interface TuningTaskCardCounts {
   filterInvalidCount: number
   filterStagedCount: number
   filterCount: number
+  autotuneInvalidCount: number
+  autotuneStagedCount: number
   profileInvalidCount: number
   profileChangedCount: number
   savedProfileCount: number
@@ -37,6 +39,8 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
     filterInvalidCount,
     filterStagedCount,
     filterCount,
+    autotuneInvalidCount,
+    autotuneStagedCount,
     profileInvalidCount,
     profileChangedCount,
     savedProfileCount,
@@ -47,7 +51,7 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
   return [
     {
       id: 'rates',
-      label: 'Rates',
+      label: 'Pilot',
       value:
         rateInvalidCount > 0
           ? `${rateInvalidCount} invalid`
@@ -55,7 +59,7 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
             ? `${rateStagedCount} staged`
             : `${rateControlCount} controls`,
       detail:
-        'Flight feel, acceleration shaping, and acro rates stay grouped here so stick response can be tuned quickly without diving into raw parameters.',
+        'Everything that shapes manual flight feel — angle, acro rates, alt-hold climb speeds, and loiter — grouped here (not the PID gains) so stick response can be tuned without diving into raw parameters.',
       tone: rateInvalidCount > 0 ? 'danger' : rateStagedCount > 0 ? 'warning' : 'neutral'
     },
     {
@@ -83,6 +87,19 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
       detail:
         'Target, error, and D-term filters stay together so noise-handling changes can be reviewed as one deliberate pass.',
       tone: filterInvalidCount > 0 ? 'danger' : filterStagedCount > 0 ? 'warning' : 'neutral'
+    },
+    {
+      id: 'autotune',
+      label: 'Autotune',
+      value:
+        autotuneInvalidCount > 0
+          ? `${autotuneInvalidCount} invalid`
+          : autotuneStagedCount > 0
+            ? `${autotuneStagedCount} staged`
+            : 'Setup',
+      detail:
+        'Configure ArduPilot AUTOTUNE (axes, aggressiveness, min-D, gain-margin) here, then run it in the air — the automated tuning itself happens in flight.',
+      tone: autotuneInvalidCount > 0 ? 'danger' : autotuneStagedCount > 0 ? 'warning' : 'neutral'
     },
     {
       id: 'profiles',

@@ -3,7 +3,7 @@ import { Panel, StatusBadge } from '@arduconfig/ui-kit'
 
 export type TuningStatusTone = 'neutral' | 'success' | 'warning' | 'danger'
 
-export type TuningTaskId = 'rates' | 'pid-gains' | 'filters' | 'profiles' | 'review'
+export type TuningTaskId = 'rates' | 'pid-gains' | 'filters' | 'autotune' | 'profiles' | 'review'
 
 export interface TuningTaskCard {
   id: TuningTaskId
@@ -19,12 +19,11 @@ export interface TuningViewProps {
   activeTask: TuningTaskCard
   onSelectTask: (taskId: TuningTaskId) => void
   taskBodySlot: ReactNode
-  overviewSlot: ReactNode
   noticeSlot?: ReactNode
 }
 
 export function TuningView(props: TuningViewProps) {
-  const { taskCards, activeTaskId, onSelectTask, taskBodySlot, overviewSlot, noticeSlot } = props
+  const { taskCards, activeTaskId, onSelectTask, taskBodySlot, noticeSlot } = props
 
   return (
     <section className="grid one-up tuning-page">
@@ -35,7 +34,7 @@ export function TuningView(props: TuningViewProps) {
         <div className="telemetry-stack telemetry-stack--tuning">
           {noticeSlot}
 
-          <div className="tuning-workspace tuning-workspace--task-deck">
+          <div className="tuning-workspace tuning-workspace--full">
             <div className="tuning-workspace__task tuning-task-deck">
               <div className="tab-strip" data-testid="tuning-task-nav">
                 {taskCards.map((task) => (
@@ -60,8 +59,6 @@ export function TuningView(props: TuningViewProps) {
 
               {taskBodySlot}
             </div>
-
-            <div className="tuning-workspace__overview tuning-overview">{overviewSlot}</div>
           </div>
         </div>
       </Panel>

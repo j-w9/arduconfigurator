@@ -1753,6 +1753,244 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       step: 0.01,
       notes: flightFeelNotes
     },
+    // --- Alt-Hold pilot feel (vertical climb/descent/accel + takeoff) ---
+    // Verbatim @Units/@Range/@Increment/@Description from ArduPilot source.
+    // ArduCopter master (fork sfd-rc-work) renamed these to SI (m-based) names —
+    // PILOT_SPEED_UP -> PILOT_SPD_UP (cm/s -> m/s), PILOT_ACCEL_Z -> PILOT_ACC_Z
+    // (cm/s² -> m/s²), PILOT_TKOFF_ALT -> PILOT_TKO_ALT_M (cm -> m). 4.6 and
+    // earlier stream the old cm-based names; the catalog carries both so either
+    // firmware resolves and the Tuning view filters by id to render only the
+    // variant the FC actually streams. No alias shim — a raw mirror would be
+    // 100x off across the unit change. Old-name source read from the pre-rename
+    // commit 107152625a^ (Parameters.cpp).
+    PILOT_SPEED_UP: {
+      id: 'PILOT_SPEED_UP',
+      label: 'Climb Speed',
+      description: 'The maximum vertical ascending velocity the pilot may request in cm/s. Renamed to PILOT_SPD_UP in m/s on ArduPilot master.',
+      category: 'tuning',
+      unit: 'cm/s',
+      minimum: 50,
+      maximum: 500,
+      step: 10,
+      notes: flightFeelNotes
+    },
+    PILOT_SPD_UP: {
+      id: 'PILOT_SPD_UP',
+      label: 'Climb Speed',
+      description: 'The maximum vertical ascending velocity the pilot may request in m/s (ArduPilot master SI rename of PILOT_SPEED_UP, cm/s -> m/s).',
+      category: 'tuning',
+      unit: 'm/s',
+      minimum: 0.5,
+      maximum: 5,
+      step: 0.1,
+      notes: flightFeelNotes
+    },
+    PILOT_SPEED_DN: {
+      id: 'PILOT_SPEED_DN',
+      label: 'Descent Speed',
+      description: 'The maximum vertical descending velocity the pilot may request in cm/s. If 0, the PILOT_SPEED_UP value is used. Renamed to PILOT_SPD_DN in m/s on ArduPilot master.',
+      category: 'tuning',
+      unit: 'cm/s',
+      minimum: 0,
+      maximum: 500,
+      step: 10,
+      notes: flightFeelNotes
+    },
+    PILOT_SPD_DN: {
+      id: 'PILOT_SPD_DN',
+      label: 'Descent Speed',
+      description: 'The maximum vertical descending velocity the pilot may request in m/s. If 0, the PILOT_SPD_UP value is used (ArduPilot master SI rename of PILOT_SPEED_DN).',
+      category: 'tuning',
+      unit: 'm/s',
+      minimum: 0,
+      maximum: 5,
+      step: 0.1,
+      notes: flightFeelNotes
+    },
+    PILOT_ACCEL_Z: {
+      id: 'PILOT_ACCEL_Z',
+      label: 'Vertical Accel',
+      description: 'The vertical acceleration used when the pilot is controlling the altitude (cm/s²). Renamed to PILOT_ACC_Z in m/s² on ArduPilot master.',
+      category: 'tuning',
+      unit: 'cm/s²',
+      minimum: 50,
+      maximum: 500,
+      step: 10,
+      notes: flightFeelNotes
+    },
+    PILOT_ACC_Z: {
+      id: 'PILOT_ACC_Z',
+      label: 'Vertical Accel',
+      description: 'The vertical acceleration used when the pilot is controlling the altitude in m/s² (ArduPilot master SI rename of PILOT_ACCEL_Z, cm/s² -> m/s²).',
+      category: 'tuning',
+      unit: 'm/s²',
+      minimum: 0.5,
+      maximum: 5,
+      step: 0.1,
+      notes: flightFeelNotes
+    },
+    PILOT_THR_FILT: {
+      id: 'PILOT_THR_FILT',
+      label: 'Throttle Filter',
+      description: 'Throttle filter cutoff (Hz) — active whenever altitude control is inactive; 0 to disable.',
+      category: 'tuning',
+      unit: 'Hz',
+      minimum: 0,
+      maximum: 10,
+      step: 0.5,
+      notes: flightFeelNotes
+    },
+    THR_DZ: {
+      id: 'THR_DZ',
+      label: 'Throttle Deadzone',
+      description: 'The deadzone above and below mid throttle, in PWM microseconds. Used in AltHold, Loiter and PosHold flight modes.',
+      category: 'tuning',
+      unit: 'PWM',
+      minimum: 0,
+      maximum: 300,
+      step: 1,
+      notes: flightFeelNotes
+    },
+    PILOT_TKOFF_ALT: {
+      id: 'PILOT_TKOFF_ALT',
+      label: 'Takeoff Altitude',
+      description: 'Altitude that altitude-control modes will climb to when a takeoff is triggered with the throttle stick (cm). Renamed to PILOT_TKO_ALT_M in metres on ArduPilot master.',
+      category: 'tuning',
+      unit: 'cm',
+      minimum: 0,
+      maximum: 1000,
+      step: 10,
+      notes: flightFeelNotes
+    },
+    PILOT_TKO_ALT_M: {
+      id: 'PILOT_TKO_ALT_M',
+      label: 'Takeoff Altitude',
+      description: 'Altitude that altitude-control modes will climb to when a takeoff is triggered with the throttle stick, in metres (ArduPilot master SI rename of PILOT_TKOFF_ALT, cm -> m).',
+      category: 'tuning',
+      unit: 'm',
+      minimum: 0,
+      maximum: 10,
+      step: 0.1,
+      notes: flightFeelNotes
+    },
+    // --- Loiter pilot feel (max speed / correction accel / lean angle / braking) ---
+    // Verbatim from libraries/AC_WPNav/AC_Loiter.cpp (LOIT_ prefix). ArduCopter
+    // master rescaled these to SI (m-based): LOIT_SPEED -> LOIT_SPEED_MS
+    // (cm/s -> m/s), LOIT_ACC_MAX -> LOIT_ACC_MAX_M (cm/s² -> m/s²),
+    // LOIT_BRK_ACCEL -> LOIT_BRK_ACC_M, LOIT_BRK_JERK -> LOIT_BRK_JRK_M. Both
+    // forms are carried; the Tuning view renders only the streamed variant.
+    // LOIT_ANG_MAX (deg) and LOIT_BRK_DELAY (s) were not re-unitted. Old-name
+    // source read from the pre-rescale commit 262876c60e^.
+    LOIT_SPEED: {
+      id: 'LOIT_SPEED',
+      label: 'Loiter Max Speed',
+      description: 'Maximum speed in cm/s at which the aircraft travels horizontally in Loiter mode. Renamed to LOIT_SPEED_MS in m/s on ArduPilot master.',
+      category: 'tuning',
+      unit: 'cm/s',
+      minimum: 20,
+      maximum: 3500,
+      step: 50,
+      notes: flightFeelNotes
+    },
+    LOIT_SPEED_MS: {
+      id: 'LOIT_SPEED_MS',
+      label: 'Loiter Max Speed',
+      description: 'Maximum speed in m/s at which the aircraft travels horizontally in Loiter mode (ArduPilot master SI rename of LOIT_SPEED, cm/s -> m/s).',
+      category: 'tuning',
+      unit: 'm/s',
+      minimum: 0.2,
+      maximum: 35,
+      step: 0.05,
+      notes: flightFeelNotes
+    },
+    LOIT_ACC_MAX: {
+      id: 'LOIT_ACC_MAX',
+      label: 'Loiter Correction Accel',
+      description: 'Loiter maximum correction acceleration in cm/s². Higher values correct position errors more aggressively. Renamed to LOIT_ACC_MAX_M in m/s² on ArduPilot master.',
+      category: 'tuning',
+      unit: 'cm/s²',
+      minimum: 100,
+      maximum: 981,
+      step: 1,
+      notes: flightFeelNotes
+    },
+    LOIT_ACC_MAX_M: {
+      id: 'LOIT_ACC_MAX_M',
+      label: 'Loiter Correction Accel',
+      description: 'Loiter maximum correction acceleration in m/s². Higher values correct position errors more aggressively (ArduPilot master SI rename of LOIT_ACC_MAX).',
+      category: 'tuning',
+      unit: 'm/s²',
+      minimum: 1,
+      maximum: 9.81,
+      step: 0.01,
+      notes: flightFeelNotes
+    },
+    LOIT_ANG_MAX: {
+      id: 'LOIT_ANG_MAX',
+      label: 'Loiter Max Lean Angle',
+      description: 'Loiter maximum pilot-requested lean angle (deg). Set to 0 for 2/3 of the ATC_ANGLE_MAX limit; the vehicle lean is still bounded by ATC_ANGLE_MAX.',
+      category: 'tuning',
+      unit: 'deg',
+      minimum: 0,
+      maximum: 45,
+      step: 1,
+      notes: flightFeelNotes
+    },
+    LOIT_BRK_ACCEL: {
+      id: 'LOIT_BRK_ACCEL',
+      label: 'Loiter Braking Accel',
+      description: 'Loiter braking acceleration in cm/s². Higher values stop the copter more quickly when the stick is centered. Renamed to LOIT_BRK_ACC_M in m/s² on ArduPilot master.',
+      category: 'tuning',
+      unit: 'cm/s²',
+      minimum: 25,
+      maximum: 250,
+      step: 1,
+      notes: flightFeelNotes
+    },
+    LOIT_BRK_ACC_M: {
+      id: 'LOIT_BRK_ACC_M',
+      label: 'Loiter Braking Accel',
+      description: 'Loiter braking acceleration in m/s². Higher values stop the copter more quickly when the stick is centered (ArduPilot master SI rename of LOIT_BRK_ACCEL).',
+      category: 'tuning',
+      unit: 'm/s²',
+      minimum: 0.25,
+      maximum: 2.5,
+      step: 0.01,
+      notes: flightFeelNotes
+    },
+    LOIT_BRK_DELAY: {
+      id: 'LOIT_BRK_DELAY',
+      label: 'Loiter Brake Delay',
+      description: 'Delay in seconds between the stick returning to center and Loiter braking beginning.',
+      category: 'tuning',
+      unit: 's',
+      minimum: 0,
+      maximum: 2,
+      step: 0.1,
+      notes: flightFeelNotes
+    },
+    LOIT_BRK_JERK: {
+      id: 'LOIT_BRK_JERK',
+      label: 'Loiter Braking Jerk',
+      description: 'Loiter braking jerk in cm/s³. Higher values remove braking faster if the pilot moves the sticks during a braking maneuver. Renamed to LOIT_BRK_JRK_M in m/s³ on ArduPilot master.',
+      category: 'tuning',
+      unit: 'cm/s³',
+      minimum: 500,
+      maximum: 5000,
+      step: 1,
+      notes: flightFeelNotes
+    },
+    LOIT_BRK_JRK_M: {
+      id: 'LOIT_BRK_JRK_M',
+      label: 'Loiter Braking Jerk',
+      description: 'Loiter braking jerk in m/s³. Higher values remove braking faster if the pilot moves the sticks during a braking maneuver (ArduPilot master SI rename of LOIT_BRK_JERK).',
+      category: 'tuning',
+      unit: 'm/s³',
+      minimum: 5,
+      maximum: 50,
+      step: 0.01,
+      notes: flightFeelNotes
+    },
     FLTMODE1: {
       id: 'FLTMODE1',
       label: 'Flight Mode 1',

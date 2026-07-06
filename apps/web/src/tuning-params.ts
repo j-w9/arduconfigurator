@@ -10,6 +10,41 @@
 export const TUNING_FLIGHT_FEEL_PARAM_IDS = ['ATC_INPUT_TC', 'ATC_ANGLE_MAX', 'ANGLE_MAX', 'PILOT_Y_RATE', 'PILOT_Y_EXPO'] as const
 export const TUNING_ACCEL_LIMIT_PARAM_IDS = ['ATC_ACC_R_MAX', 'ATC_ACCEL_R_MAX', 'ATC_ACC_P_MAX', 'ATC_ACCEL_P_MAX', 'ATC_ACC_Y_MAX', 'ATC_ACCEL_Y_MAX'] as const
 export const TUNING_ACRO_PARAM_IDS = ['ACRO_RP_RATE', 'ACRO_Y_RATE', 'ACRO_RP_EXPO', 'ACRO_Y_EXPO'] as const
+// Vertical / altitude-hold pilot feel — climb & descent speed, vertical accel,
+// throttle behaviour, and auto-takeoff altitude. ArduCopter 4.6+ re-unit'd
+// several to SI names (PILOT_SPEED_UP -> PILOT_SPD_UP, PILOT_ACCEL_Z ->
+// PILOT_ACC_Z, PILOT_TKOFF_ALT -> PILOT_TKO_ALT_M); both forms are listed and
+// the tuning view drops whichever the connected FC doesn't stream.
+// Numeric (slider) pilot-feel params only — the bitmask PILOT_THR_BHV and
+// LOIT_OPTIONS are intentionally left out (they'd render as a meaningless slider;
+// add them with proper bitmask editing in a follow-up).
+export const TUNING_PILOT_ALTHOLD_PARAM_IDS = [
+  'PILOT_SPEED_UP',
+  'PILOT_SPD_UP',
+  'PILOT_SPEED_DN',
+  'PILOT_SPD_DN',
+  'PILOT_ACCEL_Z',
+  'PILOT_ACC_Z',
+  'PILOT_THR_FILT',
+  'THR_DZ',
+  'PILOT_TKOFF_ALT',
+  'PILOT_TKO_ALT_M'
+] as const
+// Loiter (position-hold) pilot feel — max speed, acceleration, lean angle, and
+// braking. 4.6+ SI renames: LOIT_SPEED -> LOIT_SPEED_MS, LOIT_ACC_MAX ->
+// LOIT_ACC_MAX_M, LOIT_BRK_ACCEL -> LOIT_BRK_ACC_M, LOIT_BRK_JERK -> LOIT_BRK_JRK_M.
+export const TUNING_PILOT_LOITER_PARAM_IDS = [
+  'LOIT_SPEED',
+  'LOIT_SPEED_MS',
+  'LOIT_ACC_MAX',
+  'LOIT_ACC_MAX_M',
+  'LOIT_ANG_MAX',
+  'LOIT_BRK_ACCEL',
+  'LOIT_BRK_ACC_M',
+  'LOIT_BRK_DELAY',
+  'LOIT_BRK_JERK',
+  'LOIT_BRK_JRK_M'
+] as const
 export const TUNING_PID_GAIN_PARAM_IDS = [
   'ATC_RAT_RLL_P',
   'ATC_RAT_RLL_I',
@@ -50,7 +85,13 @@ export const TUNING_FILTER_PARAM_IDS = [
   'ATC_RAT_YAW_FLTE',
   'ATC_RAT_YAW_FLTD'
 ] as const
-export const TUNING_RATE_PARAM_IDS = [...TUNING_FLIGHT_FEEL_PARAM_IDS, ...TUNING_ACCEL_LIMIT_PARAM_IDS, ...TUNING_ACRO_PARAM_IDS] as const
+export const TUNING_RATE_PARAM_IDS = [
+  ...TUNING_FLIGHT_FEEL_PARAM_IDS,
+  ...TUNING_ACCEL_LIMIT_PARAM_IDS,
+  ...TUNING_ACRO_PARAM_IDS,
+  ...TUNING_PILOT_ALTHOLD_PARAM_IDS,
+  ...TUNING_PILOT_LOITER_PARAM_IDS
+] as const
 export const TUNING_PARAM_IDS = [...TUNING_RATE_PARAM_IDS, ...TUNING_ALL_PID_PARAM_IDS, ...TUNING_FILTER_PARAM_IDS] as const
 export const TUNING_PID_AXIS_GROUPS = [
   {

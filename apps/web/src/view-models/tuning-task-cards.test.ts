@@ -13,6 +13,8 @@ function counts(overrides: Partial<TuningTaskCardCounts> = {}): TuningTaskCardCo
     filterInvalidCount: 0,
     filterStagedCount: 0,
     filterCount: 4,
+    autotuneInvalidCount: 0,
+    autotuneStagedCount: 0,
     profileInvalidCount: 0,
     profileChangedCount: 0,
     savedProfileCount: 2,
@@ -23,11 +25,12 @@ function counts(overrides: Partial<TuningTaskCardCounts> = {}): TuningTaskCardCo
 }
 
 describe('buildTuningTaskCards', () => {
-  it('emits the five tuning cards in a stable order', () => {
+  it('emits the tuning cards in a stable order', () => {
     expect(buildTuningTaskCards(counts()).map((card) => card.id)).toEqual([
       'rates',
       'pid-gains',
       'filters',
+      'autotune',
       'profiles',
       'review'
     ])

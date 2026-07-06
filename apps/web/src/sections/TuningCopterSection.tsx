@@ -4,7 +4,7 @@
 // Behaviour-neutral verbatim move; the per-subsection JSX, draft slicing,
 // and the master-slider preview math all stay byte-identical.
 
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import type { AirframeSummary, ConfiguratorSnapshot, ParameterBackupImportResult, ParameterDraftEntry, ParameterDraftGroup, ParameterState } from '@arduconfig/ardupilot-core'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
@@ -14,12 +14,10 @@ import type { ParameterNotice } from '../hooks/use-parameter-feedback'
 import type { UseTuningWorkbenchResult } from '../hooks/use-tuning-workbench'
 import { formatSnapshotTimestamp } from '../library-helpers'
 import { formatParameterDelta, formatParameterValue } from '../parameter-format'
-import { readParameterValue } from '../selectors/parameter-read'
-import { RateCurveGraph } from '../rate-curve-graph'
 import type { SavedTuningProfile } from '../tuning-profile-library'
 import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
-import { formatTuningDisplayValue } from '../tuning-control'
-import { TUNING_ALL_PID_PARAM_IDS, TUNING_FILTER_PARAM_IDS } from '../tuning-params'
+import { TUNING_ALL_PID_PARAM_IDS } from '../tuning-params'
+import { InfoDot } from '../views/InfoDot'
 import { TuningView, type TuningTaskCard, type TuningTaskId } from '../views/Tuning'
 
 interface TuningAxisGroup {
@@ -37,6 +35,8 @@ export interface TuningCopterSectionDerived {
   flightFeelParameters: readonly ParameterState[]
   acroTuningParameters: readonly ParameterState[]
   tuningAccelerationParameters: readonly ParameterState[]
+  altHoldPilotParameters: readonly ParameterState[]
+  loiterPilotParameters: readonly ParameterState[]
   tuningPidAxisGroups: readonly TuningAxisGroup[]
   tuningAdvancedPidParameters: readonly ParameterState[]
   tuningAdvancedPidAxisGroups: readonly TuningAxisGroup[]
@@ -99,16 +99,17 @@ export interface TuningCopterSectionProps {
   forms: LibraryForms
   derived: TuningCopterSectionDerived
   handlers: TuningCopterSectionHandlers
+  /** The ArduCopter AUTOTUNE surface, rendered in the task body when the
+   *  'autotune' tab is active (kept a slot so App owns its disjoint draft scope). */
+  autotuneSlot?: ReactNode
 }
 
 export function TuningCopterSection(props: TuningCopterSectionProps): ReactElement {
   const {
-    snapshot,
     canApplyDraftParameters,
     busyAction,
     parameterNotice,
-    editedValues,
-    parameterDraftById,
+    autotuneSlot,
     tuningWorkbench,
     forms,
     derived,
@@ -151,6 +152,8 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     flightFeelParameters,
     acroTuningParameters,
     tuningAccelerationParameters,
+    altHoldPilotParameters,
+    loiterPilotParameters,
     tuningPidAxisGroups,
     tuningAdvancedPidParameters,
     tuningAdvancedPidAxisGroups,
@@ -214,12 +217,19 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                   <div className="tuning-task-panel tuning-task-panel--stack">
                     <section className="bf-gui-box">
                       <div className="bf-gui-box__titlebar">
-                        <strong>Flight Feel</strong>
+                        <strong>Angle</strong>
                       </div>
                       <div className="bf-gui-box__body">
                         <div className="switch-exercise-card__header">
                           <div>
-                            <strong>General response</strong>
+                            <span className="tuning-card-title">
+                              <strong>General response</strong>
+                              <InfoDot label="About general response" testId="tuning-info-angle" wide>
+                                <span className="info-dot-line">Lower smoothing makes the quad feel more immediate; higher smoothing makes it calmer and softer.</span>
+                                <span className="info-dot-line">Lean-angle changes are shown in degrees even though ANGLE_MAX is stored in centidegrees.</span>
+                                <span className="info-dot-line">Increase yaw values slowly and validate feel with a short hover or line-of-sight test before pushing further.</span>
+                              </InfoDot>
+                            </span>
                             <p>Smoothing, lean angle, and yaw authority for self-leveling and general handling.</p>
                           </div>
                           <StatusBadge tone={toneForScopedDraftReview(tuningRateStagedDrafts.length, tuningRateInvalidDrafts.length)}>
@@ -230,23 +240,24 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                         <div className="tuning-control-grid">
                           {flightFeelParameters.map((parameter) => renderTuningControl(parameter))}
                         </div>
-
-                        <ul className="output-note-list">
-                          <li>Lower smoothing makes the quad feel more immediate; higher smoothing makes it calmer and softer.</li>
-                          <li>Lean-angle changes are shown in degrees here even though `ANGLE_MAX` is stored in centidegrees.</li>
-                          <li>Increase yaw values slowly and validate feel with a short hover or line-of-sight test before pushing further.</li>
-                        </ul>
                       </div>
                     </section>
 
                     <section className="bf-gui-box">
                       <div className="bf-gui-box__titlebar">
-                        <strong>Acro Rates</strong>
+                        <strong>Attitude (Acro)</strong>
                       </div>
                       <div className="bf-gui-box__body">
                         <div className="switch-exercise-card__header">
                           <div>
-                            <strong>Rates, expo, and accel shaping</strong>
+                            <span className="tuning-card-title">
+                              <strong>Rates, expo, and accel shaping</strong>
+                              <InfoDot label="About rates, expo, and accel shaping" testId="tuning-info-acro" wide>
+                                <span className="info-dot-line">Rates set maximum rotation speed. Expo softens the center without reducing full-stick authority.</span>
+                                <span className="info-dot-line">Acceleration limits control how aggressively the controller tries to reach the commanded rate.</span>
+                                <span className="info-dot-line">Keep changes small and save a known-good snapshot before pushing responsiveness higher.</span>
+                              </InfoDot>
+                            </span>
                             <p>Curated FPV-style rate shaping backed by real ArduPilot acro-rate and angular-acceleration parameters.</p>
                           </div>
                           <StatusBadge tone="neutral">{acroTuningParameters.length + tuningAccelerationParameters.length} controls</StatusBadge>
@@ -256,28 +267,50 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           {acroTuningParameters.map((parameter) => renderTuningControl(parameter))}
                           {tuningAccelerationParameters.map((parameter) => renderTuningControl(parameter))}
                         </div>
+                      </div>
+                    </section>
 
-                        <div className="tuning-curve-grid">
-                          <RateCurveGraph
-                            maxRate={Number(editedValues['ACRO_RP_RATE'] ?? readParameterValue(snapshot, 'ACRO_RP_RATE') ?? 360)}
-                            expo={Number(editedValues['ACRO_RP_EXPO'] ?? readParameterValue(snapshot, 'ACRO_RP_EXPO') ?? 0)}
-                            label="Roll / Pitch"
-                            testId="tuning-rate-curve-roll"
-                          />
-                          <RateCurveGraph
-                            maxRate={Number(editedValues['ACRO_Y_RATE'] ?? readParameterValue(snapshot, 'ACRO_Y_RATE') ?? 180)}
-                            expo={Number(editedValues['ACRO_Y_EXPO'] ?? readParameterValue(snapshot, 'ACRO_Y_EXPO') ?? 0)}
-                            label="Yaw"
-                            color="#dab254"
-                            testId="tuning-rate-curve-yaw"
-                          />
+                    <section className="bf-gui-box">
+                      <div className="bf-gui-box__titlebar">
+                        <strong>Alt Hold</strong>
+                      </div>
+                      <div className="bf-gui-box__body">
+                        <div className="switch-exercise-card__header">
+                          <div>
+                            <strong>Vertical stick feel</strong>
+                            <p>Climb and descent speed, vertical acceleration, and throttle response in AltHold and other height-controlled modes — not the position PIDs.</p>
+                          </div>
+                          <StatusBadge tone="neutral">{altHoldPilotParameters.length} controls</StatusBadge>
                         </div>
+                        {altHoldPilotParameters.length > 0 ? (
+                          <div className="tuning-control-grid">
+                            {altHoldPilotParameters.map((parameter) => renderTuningControl(parameter))}
+                          </div>
+                        ) : (
+                          <p className="bf-note">No altitude-hold pilot parameters reported by this firmware.</p>
+                        )}
+                      </div>
+                    </section>
 
-                        <ul className="output-note-list">
-                          <li>Rates set maximum rotation speed. Expo softens the center without reducing full-stick authority.</li>
-                          <li>Acceleration limits control how aggressively the controller tries to reach the commanded rate.</li>
-                          <li>Keep changes small and save a known-good snapshot before pushing responsiveness higher.</li>
-                        </ul>
+                    <section className="bf-gui-box">
+                      <div className="bf-gui-box__titlebar">
+                        <strong>Loiter</strong>
+                      </div>
+                      <div className="bf-gui-box__body">
+                        <div className="switch-exercise-card__header">
+                          <div>
+                            <strong>Position-hold feel</strong>
+                            <p>Max speed, acceleration, lean angle, and how hard it brakes when you release the sticks in Loiter.</p>
+                          </div>
+                          <StatusBadge tone="neutral">{loiterPilotParameters.length} controls</StatusBadge>
+                        </div>
+                        {loiterPilotParameters.length > 0 ? (
+                          <div className="tuning-control-grid">
+                            {loiterPilotParameters.map((parameter) => renderTuningControl(parameter))}
+                          </div>
+                        ) : (
+                          <p className="bf-note">No loiter pilot parameters reported by this firmware.</p>
+                        )}
                       </div>
                     </section>
                   </div>
@@ -292,7 +325,14 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                       <div className="bf-gui-box__body">
                         <div className="switch-exercise-card__header">
                           <div>
-                            <strong>Axis controller gains</strong>
+                            <span className="tuning-card-title">
+                              <strong>Axis controller gains</strong>
+                              <InfoDot label="About axis controller gains" testId="tuning-info-pid" wide>
+                                <span className="info-dot-line">Keep roll and pitch close unless the aircraft has a real asymmetry that justifies diverging them.</span>
+                                <span className="info-dot-line">Feedforward increases stick-to-rate immediacy; use it deliberately rather than masking a weak base tune.</span>
+                                <span className="info-dot-line">If you move P, I, or D significantly, re-check filters and do a short test flight before stacking more changes.</span>
+                              </InfoDot>
+                            </span>
                             <p>P, I, D, feedforward, and deeper controller limits stay grouped by axis so roll, pitch, and yaw can be reviewed deliberately.</p>
                           </div>
                           <StatusBadge tone={toneForScopedDraftReview(tuningPidStagedDrafts.length, tuningPidInvalidDrafts.length)}>
@@ -504,12 +544,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                             ))}
                           </div>
                         ) : null}
-
-                        <ul className="output-note-list">
-                          <li>Keep roll and pitch close unless the aircraft has a real asymmetry that justifies diverging them.</li>
-                          <li>Feedforward increases stick-to-rate immediacy; use it deliberately rather than masking a weak base tune.</li>
-                          <li>If you move P, I, or D significantly, re-check filters and do a short test flight before stacking more changes.</li>
-                        </ul>
                       </div>
                     </section>
                   </div>
@@ -524,7 +558,14 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                       <div className="bf-gui-box__body">
                         <div className="switch-exercise-card__header">
                           <div>
-                            <strong>Axis bandwidth and smoothing</strong>
+                            <span className="tuning-card-title">
+                              <strong>Axis bandwidth and smoothing</strong>
+                              <InfoDot label="About axis bandwidth and smoothing" testId="tuning-info-filters" wide>
+                                <span className="info-dot-line">Higher filter frequencies preserve response but pass more noise. Lower values smooth noise at the cost of latency.</span>
+                                <span className="info-dot-line">Zero values are valid for some ArduPilot filter parameters and can intentionally disable a filter path.</span>
+                                <span className="info-dot-line">Change filters carefully and listen for noise or oscillation before moving on to more aggressive gain changes.</span>
+                              </InfoDot>
+                            </span>
                             <p>Target, error, and D-term filter frequencies are exposed as one grouped filter pass instead of a raw parameter list.</p>
                           </div>
                           <StatusBadge tone={toneForScopedDraftReview(tuningFilterStagedDrafts.length, tuningFilterInvalidDrafts.length)}>
@@ -545,12 +586,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                             </article>
                           ))}
                         </div>
-
-                        <ul className="output-note-list">
-                          <li>Higher filter frequencies preserve response but pass more noise. Lower values smooth noise at the cost of latency.</li>
-                          <li>Zero values are valid for some ArduPilot filter parameters and can intentionally disable a filter path.</li>
-                          <li>Change filters carefully and listen for noise or oscillation before moving on to more aggressive gain changes.</li>
-                        </ul>
                       </div>
                     </section>
                   </div>
@@ -888,132 +923,13 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                     </div>
                   </div>
                 ) : null}
+
+                {activeTuningTaskId === 'autotune' ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-autotune-panel">
+                    {autotuneSlot}
+                  </div>
+                ) : null}
           </>
-        }
-        overviewSlot={
-          <div className="tuning-overview__sticky">
-                  <div className="telemetry-header">
-                    <div>
-                      <h3>Tuning overview</h3>
-                      <p>Keep the live mode, current curves, and staged change count visible while you work through rates, gains, and filters.</p>
-                    </div>
-                    <StatusBadge tone={toneForScopedDraftReview(tuningStagedDrafts.length, tuningInvalidDrafts.length)}>
-                      {tuningInvalidDrafts.length > 0
-                        ? `${tuningInvalidDrafts.length} invalid`
-                        : tuningStagedDrafts.length > 0
-                          ? `${tuningStagedDrafts.length} staged`
-                          : 'in sync'}
-                    </StatusBadge>
-                  </div>
-
-                  <div className="telemetry-metric-grid">
-                    <article className="telemetry-metric-card">
-                      <span>Live mode</span>
-                      <strong>{snapshot.vehicle?.flightMode ?? 'Unknown'}</strong>
-                    </article>
-                    <article className="telemetry-metric-card">
-                      <span>Staged changes</span>
-                      <strong>{tuningStagedDrafts.length}</strong>
-                    </article>
-                    <article className="telemetry-metric-card">
-                      <span>Saved profiles</span>
-                      <strong>{savedTuningProfiles.length}</strong>
-                    </article>
-                  </div>
-
-                  <div className="config-pills">
-                    <span>{flightFeelParameters.length + tuningAccelerationParameters.length + acroTuningParameters.length} rate controls</span>
-                    <span>{TUNING_ALL_PID_PARAM_IDS.length} PID terms</span>
-                    <span>{TUNING_FILTER_PARAM_IDS.length} filters</span>
-                    <span>{tuningAdvancedPidParameters.length} advanced exposed</span>
-                    <span>{snapshot.liveVerification.rcInput.verified ? 'RC link verified' : 'RC telemetry pending'}</span>
-                  </div>
-
-                  <div className="scoped-review-card scoped-review-card--compact">
-                    <div className="switch-exercise-card__header">
-                      <div>
-                        <strong>Rate preview</strong>
-                        <p>Roll/pitch and yaw curves update immediately from the staged rate and expo values.</p>
-                      </div>
-                      <StatusBadge tone="neutral">live preview</StatusBadge>
-                    </div>
-
-                    <div className="tuning-curve-grid">
-                      <RateCurveGraph
-                        maxRate={Number(editedValues['ACRO_RP_RATE'] ?? readParameterValue(snapshot, 'ACRO_RP_RATE') ?? 360)}
-                        expo={Number(editedValues['ACRO_RP_EXPO'] ?? readParameterValue(snapshot, 'ACRO_RP_EXPO') ?? 0)}
-                        label="Roll / Pitch"
-                      />
-                      <RateCurveGraph
-                        maxRate={Number(editedValues['ACRO_Y_RATE'] ?? readParameterValue(snapshot, 'ACRO_Y_RATE') ?? 180)}
-                        expo={Number(editedValues['ACRO_Y_EXPO'] ?? readParameterValue(snapshot, 'ACRO_Y_EXPO') ?? 0)}
-                        label="Yaw"
-                        color="#dab254"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="scoped-review-card scoped-review-card--compact">
-                    <div className="switch-exercise-card__header">
-                      <div>
-                        <strong>Controller snapshot</strong>
-                        <p>Current live gains and filter ceilings for each axis, based on the controller values or staged drafts above them.</p>
-                      </div>
-                      <StatusBadge tone="neutral">axis view</StatusBadge>
-                    </div>
-
-                    <div className="tuning-axis-snapshot-grid">
-                      {tuningPidAxisGroups.map((group, index) => {
-                        const filterGroup = tuningFilterAxisGroups[index]
-                        const advancedGroup = tuningAdvancedPidAxisGroups[index]
-                        return (
-                          <article key={`tuning-axis-snapshot:${group.id}`} className="tuning-axis-snapshot">
-                            <div className="tuning-axis-card__header">
-                              <strong>{group.label}</strong>
-                              <span>
-                                {group.parameters.length + (filterGroup?.parameters.length ?? 0) + (advancedGroup?.parameters.length ?? 0)} values
-                              </span>
-                            </div>
-                            <div className="config-pills">
-                              {group.parameters.map((parameter) => (
-                                <span key={`snapshot-pid:${group.id}:${parameter.id}`}>
-                                  {(parameter.definition?.label
-                                    ? parameter.definition.label
-                                        .replace(`${group.label} `, '')
-                                        .replace(' Gain', '')
-                                        .replace('Feedforward', 'FF')
-                                    : parameter.id)}
-                                  :{' '}
-                                  {formatTuningDisplayValue(parameter, parameterDraftById.get(parameter.id)?.nextValue ?? parameter.value)}
-                                </span>
-                              ))}
-                            </div>
-                            {filterGroup ? (
-                              <div className="config-pills">
-                                {filterGroup.parameters.map((parameter) => (
-                                  <span key={`snapshot-filter:${group.id}:${parameter.id}`}>
-                                    {(parameter.definition?.label ? parameter.definition.label.replace(`${group.label} `, '') : parameter.id)}:{' '}
-                                    {formatTuningDisplayValue(parameter, parameterDraftById.get(parameter.id)?.nextValue ?? parameter.value)}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
-                            {advancedGroup && advancedGroup.parameters.length > 0 ? (
-                              <div className="config-pills">
-                                {advancedGroup.parameters.map((parameter) => (
-                                  <span key={`snapshot-advanced:${group.id}:${parameter.id}`}>
-                                    {(parameter.definition?.label ? parameter.definition.label.replace(`${group.label} `, '') : parameter.id)}:{' '}
-                                    {formatTuningDisplayValue(parameter, parameterDraftById.get(parameter.id)?.nextValue ?? parameter.value)}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
-                          </article>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
         }
       />
 

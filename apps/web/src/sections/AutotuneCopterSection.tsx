@@ -9,7 +9,7 @@
 // never touches the ATC_* tuning batch. The section also carries the in-flight
 // AUTOTUNE procedure guidance as a bf-note.
 
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
@@ -17,7 +17,37 @@ import { AUTOTUNE_COPTER_PARAM_IDS } from '../autotune-params'
 import { formatParameterValue } from '../parameter-format'
 import { selectParameterById } from '../selectors/parameter-read'
 import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
+import { InfoDot } from '../views/InfoDot'
 import { ScopedBitmaskField, ScopedField } from '../views/ScopedField'
+
+// Wrap a scoped Autotune field with the same per-field "i" info bubble used on
+// the Config / Networking tabs and the curated tuning controls — hover/focus
+// reveals the ArduPilot parameter description right next to the control, so the
+// always-on explanatory paragraph can be retired without losing the guidance.
+function withAutotuneFieldInfo(parameter: ParameterState, node: ReactNode): ReactNode {
+  const description = parameter.definition?.description
+  if (!description) {
+    return node
+  }
+  return (
+    <div key={parameter.id} className="config-section__field-row">
+      {node}
+      <span className="config-section__info-wrap">
+        <button
+          type="button"
+          className="config-section__info"
+          data-testid={`autotune-field-info-${parameter.id}`}
+          aria-label={`About ${parameter.definition?.label ?? parameter.id}`}
+        >
+          i
+        </button>
+        <span className="config-section__info-tip" role="tooltip">
+          {description}
+        </span>
+      </span>
+    </div>
+  )
+}
 
 export interface AutotuneCopterSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -64,7 +94,7 @@ export function AutotuneCopterSection(props: AutotuneCopterSectionProps): ReactE
     return null
   }
 
-  const renderField = (parameter: ParameterState): ReactElement => {
+  const renderField = (parameter: ParameterState): ReactNode => {
     const common = {
       key: parameter.id,
       parameter,
@@ -73,10 +103,9 @@ export function AutotuneCopterSection(props: AutotuneCopterSectionProps): ReactE
       onChange: (paramId: string, value: string) => setDraft(paramId, value),
       draftStatusById: parameterDraftById
     }
-    if (parameter.definition?.bitmask === true) {
-      return <ScopedBitmaskField {...common} />
-    }
-    return <ScopedField {...common} />
+    const field =
+      parameter.definition?.bitmask === true ? <ScopedBitmaskField {...common} /> : <ScopedField {...common} />
+    return withAutotuneFieldInfo(parameter, field)
   }
 
   const reviewTone = toneForScopedDraftReview(
@@ -93,26 +122,30 @@ export function AutotuneCopterSection(props: AutotuneCopterSectionProps): ReactE
   return (
     <section className="bf-gui-box" data-testid="autotune-copter-section">
       <div className="bf-gui-box__titlebar">
-        <strong>ArduCopter AutoTune</strong>
+        <span className="tuning-card-title">
+          <strong>ArduCopter AutoTune</strong>
+          <InfoDot label="About the AutoTune surface" testId="autotune-copter-info" wide>
+            <span className="info-dot-line">Each control is the real ArduPilot parameter from the loaded catalog.</span>
+            <span className="info-dot-line">Edits stage here and apply through the same verified review path as the other tabs — nothing is written until you apply.</span>
+            <span className="info-dot-line">These set up AutoTune; the tuning itself happens in the air.</span>
+          </InfoDot>
+        </span>
         <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
       </div>
       <div className="bf-gui-box__body">
-        <p className="bf-note">
-          Curated AUTOTUNE configuration. Each control is the real ArduPilot parameter from the loaded catalog —
-          edits stage here and apply through the same verified review path as the other tabs, so nothing is written
-          until you apply. These set up AutoTune; the tuning itself happens in the air.
-        </p>
-
         <article className="tuning-axis-card" data-testid="autotune-copter-config-group">
           <div className="tuning-axis-card__header">
-            <strong>AutoTune configuration</strong>
+            <span className="tuning-card-title">
+              <strong>AutoTune configuration</strong>
+              <InfoDot label="About the AutoTune configuration parameters" testId="autotune-config-info" wide>
+                <span className="info-dot-line">AUTOTUNE_AXES picks which axes are tuned (Roll / Pitch / Yaw / YawD).</span>
+                <span className="info-dot-line">AUTOTUNE_AGGR is the bounce-back aggressiveness used to size the D term.</span>
+                <span className="info-dot-line">AUTOTUNE_MIN_D is the lowest D gain AutoTune may set.</span>
+                <span className="info-dot-line">AUTOTUNE_GMBK is the gain-margin backoff applied after tuning for extra stability margin.</span>
+              </InfoDot>
+            </span>
             <span>{parameters.length} controls</span>
           </div>
-          <p className="bf-note">
-            AUTOTUNE_AXES picks which axes are tuned (Roll / Pitch / Yaw / YawD). AUTOTUNE_AGGR is the bounce-back
-            aggressiveness used to size the D term, AUTOTUNE_MIN_D the lowest D gain AutoTune may set, and
-            AUTOTUNE_GMBK the gain-margin backoff applied after tuning for extra stability margin.
-          </p>
           <div className="tuning-control-grid tuning-control-grid--compact">{parameters.map(renderField)}</div>
         </article>
 
@@ -120,18 +153,23 @@ export function AutotuneCopterSection(props: AutotuneCopterSectionProps): ReactE
           <div className="tuning-axis-card__header">
             <strong>How to run AutoTune (in flight)</strong>
           </div>
-          <p className="bf-note">
-            1. Save a known-good tuning snapshot first and pick open, calm airspace.
-            <br />
-            2. Assign an RC aux switch to the AutoTune function (RC&nbsp;OPTIONS&nbsp;=&nbsp;17).
-            <br />
-            3. Take off and stabilise in AltHold (not Stabilize — AltHold gives AutoTune the steady hover it needs),
-            then engage AutoTune — the copter twitches each selected axis for a few minutes per axis.
-            <br />
-            4. To SAVE the tuned gains: keep the AutoTune switch HIGH and land + disarm.
-            <br />
-            5. To DISCARD: switch AutoTune off (low) before disarming, and the original gains are kept.
+          <p className="bf-note bf-note--warning" data-testid="autotune-copter-safety">
+            Save a known-good tuning snapshot first, and fly in open, calm airspace — AutoTune twitches the aircraft
+            hard on each axis.
           </p>
+          <details className="tuning-details" data-testid="autotune-copter-procedure-details">
+            <summary>Show the AutoTune procedure</summary>
+            <p className="bf-note">
+              1. Assign an RC aux switch to the AutoTune function (RC&nbsp;OPTIONS&nbsp;=&nbsp;17).
+              <br />
+              2. Take off and stabilise in AltHold (not Stabilize — AltHold gives AutoTune the steady hover it needs),
+              then engage AutoTune — the copter twitches each selected axis for a few minutes per axis.
+              <br />
+              3. To SAVE the tuned gains: keep the AutoTune switch HIGH and land + disarm.
+              <br />
+              4. To DISCARD: switch AutoTune off (low) before disarming, and the original gains are kept.
+            </p>
+          </details>
         </article>
 
         <div className="scoped-review-card scoped-review-card--compact" data-testid="autotune-copter-review">

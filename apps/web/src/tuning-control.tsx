@@ -123,6 +123,8 @@ export interface TuningControlProps {
   currentValue: string
   stagedValue: string
   label: string
+  /** Plain-text ArduPilot description, surfaced via the per-box "i" info bubble. */
+  description?: string
   onStage: (parameter: ParameterState, nextValue: string) => void
 }
 
@@ -148,6 +150,7 @@ export function TuningControl(props: TuningControlProps): ReactElement {
     currentValue,
     stagedValue,
     label,
+    description,
     onStage
   } = props
 
@@ -172,6 +175,24 @@ export function TuningControl(props: TuningControlProps): ReactElement {
         </div>
         {draftStatus === 'staged' ? <StatusBadge tone="warning">staged</StatusBadge> : null}
         {draftStatus === 'invalid' ? <StatusBadge tone="danger">invalid</StatusBadge> : null}
+        {description ? (
+          // Same per-field "i" affordance as the Config / Networking tabs
+          // (config-section__info) — hover/focus reveals the styled description
+          // box — so it reads consistently across the app.
+          <span className="config-section__info-wrap">
+            <button
+              type="button"
+              className="config-section__info"
+              data-testid={`tuning-info-${parameter.id}`}
+              aria-label={`About ${label}`}
+            >
+              i
+            </button>
+            <span className="config-section__info-tip" role="tooltip">
+              {description}
+            </span>
+          </span>
+        ) : null}
       </div>
 
       <input
