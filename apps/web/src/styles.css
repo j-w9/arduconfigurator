@@ -5766,6 +5766,65 @@ textarea:focus {
   opacity: 1;
   visibility: visible;
 }
+/* Multi-point guidance inside a tip: each point on its own line so a card's
+   condensed help stays scannable in the hover box (replaces the always-on
+   output-note-list bullet walls on the tuning cards). */
+.receiver-info-tip .info-dot-line {
+  display: block;
+}
+.receiver-info-tip .info-dot-line + .info-dot-line {
+  margin-top: 6px;
+}
+/* Let a card/section title's info dot sit a touch wider — card guidance runs a
+   little longer than the terse tab-strip task detail. */
+.receiver-info-tip--wide {
+  max-width: 300px;
+}
+
+/* Card/section title paired with its guidance info dot on one row. Keeps the
+   dot inline next to the (block) title without absorbing it into the <strong>,
+   so title text stays independently selectable/queryable. */
+.tuning-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.tuning-card-title > strong {
+  display: inline;
+  margin-bottom: 0;
+}
+
+/* Collapsible guidance (e.g. the in-flight AutoTune procedure) — hidden by
+   default so the surface stays dense, one click from the full steps. Theme-safe
+   (token colors only). */
+.tuning-details > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  list-style: none;
+  padding: 2px 0;
+  user-select: none;
+}
+.tuning-details > summary::-webkit-details-marker {
+  display: none;
+}
+.tuning-details > summary::before {
+  content: '\25B8';
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.15s ease;
+}
+.tuning-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.tuning-details > summary:hover {
+  color: var(--text);
+}
+.tuning-details > *:not(summary) {
+  margin-top: 8px;
+}
 
 .receiver-summary-card__header,
 .outputs-summary-card__header,
@@ -5951,6 +6010,11 @@ textarea:focus {
   grid-template-columns: minmax(0, 1.16fr) minmax(320px, 0.84fr);
   gap: 14px;
   align-items: start;
+}
+
+/* Overview panel removed — the task body spans the full width. */
+.tuning-workspace--full {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .receiver-workspace__live,
@@ -6218,6 +6282,30 @@ textarea:focus {
 .tuning-control__header strong {
   color: var(--text);
   font-size: 13px;
+}
+
+/* Config-style "i" info bubble inside the tuning header. The generic bubble
+   markup is built from <span>s, which the header's blanket span styling would
+   break (block/uppercase/muted, and the tip would show permanently since that
+   rule out-specifies .config-section__info-tip). Re-declare the wrap + tip +
+   toggle here at higher specificity so the bubble behaves exactly like the
+   Config/Networking one, in both light and dark themes (tokens only). */
+.tuning-control__header .config-section__info-wrap {
+  display: inline-flex;
+  margin: 0;
+}
+.tuning-control__header .config-section__info-tip {
+  display: none;
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.tuning-control__header .config-section__info-wrap:hover .config-section__info-tip,
+.tuning-control__header .config-section__info:focus-visible + .config-section__info-tip {
+  display: block;
 }
 
 .tuning-control__range {
@@ -12371,6 +12459,41 @@ details.bf-gui-box:not([open]) > summary::after {
   gap: 6px;
 }
 
+/* Destructive "Sanitize" action — deletes all non-flight files. Red so it reads
+   as dangerous; theme-safe via the danger token. */
+.files-sanitize-button {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--danger, #e2123f) 55%, transparent);
+  background: color-mix(in srgb, var(--danger, #e2123f) 16%, transparent);
+  color: var(--danger, #e2123f);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+
+.files-sanitize-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #e2123f) 28%, transparent);
+}
+
+.files-sanitize-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Directory/listing error — a MAVFTP failure (e.g. a directory that fails to
+   open) surfaces here with the real reason instead of silently reverting. */
+.files-error {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--danger, #e2123f) 45%, transparent);
+  background: color-mix(in srgb, var(--danger, #e2123f) 12%, transparent);
+  color: var(--danger, #e2123f);
+  font-size: 13px;
+}
+
 .files-quick-path {
   padding: 6px 12px;
   border-radius: var(--radius-md, 8px);
@@ -13873,4 +13996,203 @@ button.mavlink-inspector__sent-row {
 .dronecan-inspector__esc-node,
 .dronecan-inspector__esc-row small {
   color: var(--text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   Lua Scripts tab — a calm, mostly-neutral surface. Colour (and any filled box)
+   is reserved for genuinely actionable / warning states; everything else is
+   plain muted text so the tab reads quietly. All tokens are theme-safe.
+----------------------------------------------------------------------------- */
+
+/* Slim status line (the "enabled" capability banner + action notices): a single
+   row, not a filled box. */
+.lua-status-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.lua-status-line .lua-status-text {
+  color: var(--text-muted);
+}
+.lua-status-line--success .lua-status-text {
+  color: var(--text);
+}
+/* Push a trailing control (the Reboot button) to the end of the status row. */
+.lua-status-line .lua-status-spacer {
+  margin-left: auto;
+}
+
+/* Plain muted helper/intro copy — replaces the old filled `bf-note` boxes used
+   for purely informational text. */
+.lua-subtitle {
+  margin: 4px 0 0;
+  max-width: 68ch;
+  color: var(--text-muted);
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.lua-section {
+  margin-top: 22px;
+}
+.lua-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lua-section-head h3 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Condensed catalog grid — tighter columns so more cards fit without an endless
+   scroll. */
+.lua-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.lua-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface-100, transparent);
+}
+
+/* Compact top row: name + tag + info dot on the left, Install + Source on the
+   right. */
+.lua-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lua-card-name {
+  margin: 0;
+  font-size: 0.98em;
+  font-weight: 600;
+}
+.lua-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Small, neutral category tag — a quiet pill, not a coloured badge. */
+.lua-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.lua-card-summary {
+  margin: 6px 0 0;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.lua-source-link {
+  font-size: 0.82em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.lua-source-link:hover {
+  color: var(--text);
+}
+
+/* Full description + prerequisite list, tucked inside the InfoDot tip. */
+.lua-info-body {
+  display: grid;
+  gap: 8px;
+}
+.lua-info-prereqs {
+  display: grid;
+  gap: 3px;
+}
+.lua-info-prereqs > span {
+  display: block;
+}
+.lua-info-prereqs .is-unmet {
+  color: var(--warning);
+}
+.lua-info-prereqs .lua-prereq-detail {
+  opacity: 0.7;
+}
+
+/* The only inline colour on a resting card: a small, collapsible warning chip
+   shown ONLY when a prerequisite is unmet. */
+.lua-prereq-warn {
+  margin-top: 8px;
+  font-size: 0.85em;
+}
+.lua-prereq-warn > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  padding: 2px 8px;
+  border: 1px solid var(--warning);
+  border-radius: 999px;
+  color: var(--warning);
+  cursor: pointer;
+  list-style: none;
+}
+.lua-prereq-warn > summary::-webkit-details-marker {
+  display: none;
+}
+.lua-prereq-warn > summary::marker {
+  content: '';
+}
+.lua-prereq-warn[open] > summary {
+  margin-bottom: 6px;
+}
+.lua-prereq-warn ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  display: grid;
+  gap: 3px;
+}
+
+/* Installed-file rows: quiet dividers, no boxes. */
+.lua-installed-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.lua-installed-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+}
+.lua-installed-list li .lua-installed-size {
+  opacity: 0.7;
+}
+
+/* Small, muted footnotes (SITL path / GPL provenance). */
+.lua-footnotes {
+  margin-top: 18px;
+  color: var(--text-muted);
+  font-size: 0.82em;
+  line-height: 1.5;
 }

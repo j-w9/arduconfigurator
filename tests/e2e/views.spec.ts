@@ -364,6 +364,41 @@ test.describe('Networking view (Expert + networking-capable FC)', () => {
   })
 })
 
+test.describe('Lua Scripts view (Expert + scripting-capable FC)', () => {
+  test('appears only in Expert mode when the FC reports SCR_, lists scripts, and installs a curated applet', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expectParameterSyncComplete(page)
+
+    // Basic mode: no Lua tab (it's an Expert-only surface).
+    await expect(page.getByTestId('view-button-lua')).toHaveCount(0)
+
+    // Expert mode: the tab appears because the demo Copter reports SCR_ params.
+    await page.getByTestId('product-mode-expert').check()
+    await expect(page.getByTestId('view-button-lua')).toBeVisible()
+    await page.getByTestId('view-button-lua').click()
+
+    await expect(page.getByTestId('lua-view')).toBeVisible()
+    // Demo seeds SCR_ENABLE=1 → the "scripting enabled" capability banner.
+    await expect(page.getByTestId('lua-capability')).toHaveAttribute('data-capability', 'enabled')
+
+    // The /APM/scripts listing populates from the mock FTP map (hello.lua seeded).
+    await expect(page.getByTestId('lua-installed-row-hello.lua')).toBeVisible({ timeout: 15000 })
+
+    // The curated catalog renders cards for the bundled applets.
+    await expect(page.getByTestId('lua-card-smartaudio')).toBeVisible()
+    await expect(page.getByTestId('lua-card-leds-on-switch')).toBeVisible()
+
+    // Install a curated applet → uploads over MAVFTP, then the file appears in
+    // the installed list and the card flips to "Reinstall".
+    await page.getByTestId('lua-install-leds-on-switch').click()
+    await expect(page.getByTestId('lua-installed-row-leds_on_a_switch.lua')).toBeVisible({ timeout: 20000 })
+    await expect(page.getByTestId('lua-install-leds-on-switch')).toHaveText(/Reinstall/)
+  })
+})
+
 test.describe('connection transports', () => {
   test('WebSocket transport reveals the bridge endpoint URL input', async ({ page }) => {
     await page.goto('/')
@@ -2100,17 +2135,22 @@ test.describe('ArduPlane demo', () => {
 
     await openView(page, 'tuning')
 
-    // The AutoTune section renders as a SIBLING alongside the large Copter
-    // tuning workbench (which must still be present and untouched — its
-    // ATC_INPUT_TC control is a signature workbench field).
+    // The large Copter tuning workbench is the default ('rates') tab — its
+    // ATC_INPUT_TC control is a signature workbench field and must still be
+    // present and untouched.
     await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeVisible({ timeout: 10000 })
+
+    // AutoTune now lives in its own task tab; open it to reveal the surface.
+    await page.getByTestId('tuning-tab-autotune').click()
     const section = page.getByTestId('autotune-copter-section')
     await expect(section).toBeVisible()
 
     const configGroup = page.getByTestId('autotune-copter-config-group')
     await expect(configGroup).toBeVisible()
-    // The procedure guide is present.
+    // The procedure guide is present (its full steps sit behind a collapsible;
+    // the always-visible safety note stays up top).
     await expect(page.getByTestId('autotune-copter-procedure')).toBeVisible()
+    await expect(page.getByTestId('autotune-copter-safety')).toBeVisible()
 
     const apply = page.getByTestId('apply-copter-autotune-changes-button')
     await expect(apply).toBeVisible()

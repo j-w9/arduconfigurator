@@ -279,6 +279,14 @@ import { VtxSection } from './sections/VtxSection'
 import { PowerView, type PowerDraftItem, type PowerFieldSpec } from './views/Power'
 import { CanBusView } from './views/CanBus'
 import { NetworkingView, type NetworkingTab } from './views/NetworkingView'
+import { LuaScriptsView } from './views/LuaScripts'
+import { useLuaScripts } from './hooks/use-lua-scripts'
+import {
+  buildLuaScriptsViewModel,
+  LUA_APPLET_CATALOG,
+  LUA_SCRIPTS_DIR
+} from './view-models/lua-scripts'
+import { LUA_APPLET_CONTENTS } from './lua-applets'
 import { IpAddressField } from './views/IpAddressField'
 import { PassthroughEditor } from './views/PassthroughEditor'
 import { availablePassthroughEndpoints, groupPassthroughBlocks } from './view-models/passthrough'
@@ -2166,6 +2174,8 @@ export function App() {
     flightFeelParameters,
     tuningAccelerationParameters,
     acroTuningParameters,
+    altHoldPilotParameters,
+    loiterPilotParameters,
     tuningAdvancedPidParameters,
     tuningFilterParameters,
     tuningPidAxisGroups,
@@ -4048,6 +4058,8 @@ export function App() {
         filterInvalidCount: tuningFilterInvalidDrafts.length,
         filterStagedCount: tuningFilterStagedDrafts.length,
         filterCount: TUNING_FILTER_PARAM_IDS.length,
+        autotuneInvalidCount: copterAutotuneInvalidDrafts.length,
+        autotuneStagedCount: copterAutotuneStagedDrafts.length,
         profileInvalidCount: selectedTuningProfileInvalidEntries.length,
         profileChangedCount: selectedTuningProfileChangedEntries.length,
         savedProfileCount: savedTuningProfiles.length,
@@ -4063,6 +4075,8 @@ export function App() {
       tuningRateInvalidDrafts.length,
       tuningRateStagedDrafts.length,
       tuningStagedDrafts.length,
+      copterAutotuneInvalidDrafts.length,
+      copterAutotuneStagedDrafts.length,
       savedTuningProfiles.length,
       selectedTuningProfileChangedEntries.length,
       selectedTuningProfileInvalidEntries.length
@@ -4092,6 +4106,7 @@ export function App() {
         currentValue={currentValue}
         stagedValue={stagedValue}
         label={parameter.definition?.label ?? parameter.id}
+        description={parameter.definition?.description}
         onStage={handleStageTuningParameterValue}
       />
     )
@@ -4630,6 +4645,42 @@ export function App() {
     () => snapshot.parameters.some((parameter) => parameter.id === 'NET_ENABLE'),
     [snapshot.parameters]
   )
+  // SCR_ENABLE only exists when the board's firmware was built with the Lua VM,
+  // so its presence is the reliable "this FC can run scripts" sentinel that
+  // gates the Expert-only Lua Scripts tab.
+  const hasScriptingParams = useMemo(
+    () => snapshot.parameters.some((parameter) => parameter.id === 'SCR_ENABLE'),
+    [snapshot.parameters]
+  )
+  // Lua Scripts view-model: scripting-capability gate + per-applet sanity, plus
+  // the installed-file state machine (MAVFTP against /APM/scripts). The catalog
+  // + capability logic is a pure builder (unit-tested); the hook owns the async
+  // install/upload/remove/enable actions through the runtime's verified paths.
+  const luaScriptsModel = useMemo(
+    () => buildLuaScriptsViewModel({ params: snapshot.parameters, installedNames: [] }),
+    [snapshot.parameters]
+  )
+  const luaScripts = useLuaScripts({
+    runtime,
+    connected: snapshot.connection.kind === 'connected',
+    isActive: activeViewId === 'lua',
+    scriptsDir: LUA_SCRIPTS_DIR,
+    appletContents: LUA_APPLET_CONTENTS,
+    catalog: LUA_APPLET_CATALOG,
+    heapLow: luaScriptsModel.capability.heapLow,
+    recommendedHeapBytes: luaScriptsModel.capability.recommendedHeapBytes,
+    writeOptions: UI_PARAMETER_WRITE_OPTIONS
+  })
+  // Fold the live installed-file listing into the catalog cards so each card
+  // knows whether its script is already on the SD card (Install vs Reinstall).
+  const luaScriptCards = useMemo(
+    () =>
+      buildLuaScriptsViewModel({
+        params: snapshot.parameters,
+        installedNames: (luaScripts.installed ?? []).map((script) => script.name)
+      }).cards,
+    [snapshot.parameters, luaScripts.installed]
+  )
   // RCL_ENABLE is the AP_RC_Logic engine sentinel — present only on firmware that
   // compiled the RC logic / range-function engine. Its presence unlocks the real
   // RC Mixer editor; otherwise the tab stays a preview.
@@ -4756,7 +4807,8 @@ export function App() {
         canBusBus: snapshot.canBus.bus,
         connectionKind: snapshot.connection.kind,
         hasNetworkingParams,
-        hasRcLogicParams
+        hasRcLogicParams,
+        hasScriptingParams
       }),
     [
       appViews,
@@ -4765,7 +4817,8 @@ export function App() {
       snapshot.canBus.bus,
       snapshot.connection.kind,
       hasNetworkingParams,
-      hasRcLogicParams
+      hasRcLogicParams,
+      hasScriptingParams
     ]
   )
   const activeViewDescriptor = visibleAppViews.find((view) => view.id === activeViewId) ?? visibleAppViews[0]
@@ -7261,6 +7314,8 @@ export function App() {
             flightFeelParameters,
             acroTuningParameters,
             tuningAccelerationParameters,
+            altHoldPilotParameters,
+            loiterPilotParameters,
             tuningPidAxisGroups,
             tuningAdvancedPidParameters,
             tuningAdvancedPidAxisGroups,
@@ -7303,27 +7358,26 @@ export function App() {
             renderTuningControl,
             formatCategoryLabel
           }}
-        />
-      ) : null}
-
-      {/* ArduCopter AUTOTUNE curated surface. Rendered as a SIBLING right after
-          TuningCopterSection (NOT inside it) — lowest risk: the large Copter
-          tuning workbench is untouched, and this section uses its own disjoint
-          AUTOTUNE_* scoped-draft scope so applying here never affects the ATC_*
-          tuning batch. Returns null if the FC streams no AUTOTUNE_ params. */}
-      {activeViewId === 'tuning' && isCopterVehicle ? (
-        <AutotuneCopterSection
-          snapshot={snapshot}
-          canApplyDraftParameters={canApplyDraftParameters}
-          busyAction={busyAction}
-          editedValues={editedValues}
-          parameterDraftById={parameterDraftById}
-          copterAutotuneDraftEntries={copterAutotuneDraftEntries}
-          copterAutotuneStagedDrafts={copterAutotuneStagedDrafts}
-          copterAutotuneInvalidDrafts={copterAutotuneInvalidDrafts}
-          setDraft={setDraft}
-          handleApplyScopedParameterDrafts={handleApplyScopedParameterDrafts}
-          handleDiscardScopedParameterDrafts={handleDiscardScopedParameterDrafts}
+          autotuneSlot={
+            /* Rendered INSIDE the Tuning task body when the 'autotune' tab is
+               active (see TuningCopterSection), so it no longer trails below the
+               overview. Its own disjoint AUTOTUNE_* scoped-draft scope — applying
+               here never touches the ATC_* tuning batch. Null on firmware with no
+               AUTOTUNE_ params. */
+            <AutotuneCopterSection
+              snapshot={snapshot}
+              canApplyDraftParameters={canApplyDraftParameters}
+              busyAction={busyAction}
+              editedValues={editedValues}
+              parameterDraftById={parameterDraftById}
+              copterAutotuneDraftEntries={copterAutotuneDraftEntries}
+              copterAutotuneStagedDrafts={copterAutotuneStagedDrafts}
+              copterAutotuneInvalidDrafts={copterAutotuneInvalidDrafts}
+              setDraft={setDraft}
+              handleApplyScopedParameterDrafts={handleApplyScopedParameterDrafts}
+              handleDiscardScopedParameterDrafts={handleDiscardScopedParameterDrafts}
+            />
+          }
         />
       ) : null}
 
@@ -7419,6 +7473,26 @@ export function App() {
       />
       ) : null}
 
+      {activeViewId === 'lua' ? (
+      <LuaScriptsView
+        connected={snapshot.connection.kind === 'connected'}
+        capability={luaScriptsModel.capability}
+        scriptsDir={LUA_SCRIPTS_DIR}
+        cards={luaScriptCards}
+        installed={luaScripts.installed}
+        installedLoading={luaScripts.installedLoading}
+        installedError={luaScripts.installedError}
+        notice={luaScripts.notice}
+        busyAction={luaScripts.busyAction}
+        onEnableScripting={luaScripts.enableScripting}
+        onReboot={luaScripts.reboot}
+        onRefresh={luaScripts.refresh}
+        onInstall={luaScripts.install}
+        onRemove={luaScripts.remove}
+        onUpload={luaScripts.upload}
+      />
+      ) : null}
+
       {activeViewId === 'can' ? (
       <CanBusView
         state={snapshot.canBus}
@@ -7482,6 +7556,7 @@ export function App() {
           onDownload={filesBrowser.download}
           onUpload={filesBrowser.upload}
           onDelete={filesBrowser.remove}
+          onSanitize={filesBrowser.sanitize}
         />
       ) : null}
 

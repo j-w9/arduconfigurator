@@ -261,6 +261,20 @@ const mockParameters: ParameterState = {
   ANGLE_MAX: 4500,
   PILOT_Y_RATE: 180,
   PILOT_Y_EXPO: 0.2,
+  // Pilot-section feel params (Alt Hold + Loiter) so the demo shows the grouped
+  // surface. Pre-SI-rename names (this mock represents a 4.5/4.6-era FC).
+  PILOT_SPEED_UP: 250,
+  PILOT_SPEED_DN: 150,
+  PILOT_ACCEL_Z: 250,
+  PILOT_THR_FILT: 0,
+  THR_DZ: 100,
+  PILOT_TKOFF_ALT: 0,
+  LOIT_SPEED: 1250,
+  LOIT_ACC_MAX: 500,
+  LOIT_ANG_MAX: 0,
+  LOIT_BRK_ACCEL: 250,
+  LOIT_BRK_DELAY: 1,
+  LOIT_BRK_JERK: 500,
   ATC_ACCEL_R_MAX: 140900,
   ATC_ACCEL_P_MAX: 140900,
   ATC_ACCEL_Y_MAX: 29300,
@@ -308,6 +322,11 @@ const mockParameters: ParameterState = {
   RCL2_SRC: 6,
   RCL2_MIN: 1500,
   RCL2_MAX: 1900,
+  // AP_Scripting (SCR_*) — present here so the Expert-only Lua Scripts tab is
+  // visible and shows the "scripting enabled" state. SCR_ENABLE present = the
+  // build has the Lua VM; the /APM/scripts listing is seeded in the mock FTP map.
+  SCR_ENABLE: 1,
+  SCR_HEAP_SIZE: 102400,
   INS_USE: 1,
   INS_USE2: 1,
   INS_USE3: 0,
@@ -2373,6 +2392,10 @@ function createMockFtpFiles(): MockFtpFileMap {
     ['@SYS/timers.txt', mockTimersBytes.slice()],
     ['@SYS/scripts/autorun.lua', mockAutorunScriptBytes.slice()],
     ['@SYS/scripts/hello.lua', mockHelloScriptBytes.slice()],
+    // SD-card Lua scripts directory (/APM/scripts) — what the Lua Scripts tab
+    // lists. Seeded so the demo shows an installed script and supports
+    // install/upload/remove round-trips against the mock FTP write/delete path.
+    ['/APM/scripts/hello.lua', mockHelloScriptBytes.slice()],
     // Onboard dataflash logs, downloaded via BURST_READ_FILE from /APM/LOGS.
     ['/APM/LOGS/00000001.BIN', makeMockLogBytes(1, 600)],
     ['/APM/LOGS/00000002.BIN', makeMockLogBytes(2, 528)]
