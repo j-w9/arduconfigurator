@@ -26,6 +26,8 @@ export interface FilesViewProps {
   onDownload: (entry: MavftpDirectoryEntry) => void
   onUpload: (file: File) => void
   onDelete: (entry: MavftpDirectoryEntry) => void
+  /** Fast-delete all non-flight files (logs, terrain, crash dumps). */
+  onSanitize: () => void
 }
 
 function formatSize(sizeBytes: number | undefined): string {
@@ -61,7 +63,8 @@ export function FilesView(props: FilesViewProps) {
     onRefresh,
     onDownload,
     onUpload,
-    onDelete
+    onDelete,
+    onSanitize
   } = props
 
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
@@ -125,6 +128,16 @@ export function FilesView(props: FilesViewProps) {
                     event.target.value = ''
                   }}
                 />
+                <button
+                  type="button"
+                  className="files-sanitize-button"
+                  onClick={onSanitize}
+                  disabled={isBusy}
+                  data-testid="files-sanitize"
+                  title="Delete all logs, terrain, and crash dumps (everything not needed for flight). This is a normal delete — not a secure wipe on SD/flash; destroy the card for that."
+                >
+                  {busyAction === 'files:sanitize' ? 'Sanitizing…' : 'Sanitize'}
+                </button>
               </div>
             </div>
 
@@ -132,6 +145,12 @@ export function FilesView(props: FilesViewProps) {
               <span className="files-path__label">Path</span>
               <code>{path}</code>
             </div>
+
+            {error ? (
+              <p className="files-error" role="alert" data-testid="files-error">
+                {error}
+              </p>
+            ) : null}
 
             <div className="files-table-wrap">
             <table className="files-table" data-testid="files-table">
@@ -165,7 +184,7 @@ export function FilesView(props: FilesViewProps) {
                 {entries.length === 0 && !loading ? (
                   <tr>
                     <td colSpan={4} className="files-empty">
-                      {error ? 'Could not list this directory.' : 'Empty directory.'}
+                      {error ? error : 'Empty directory.'}
                     </td>
                   </tr>
                 ) : (

@@ -34,6 +34,8 @@ export interface MavftpBrowser {
   download: (entry: MavftpDirectoryEntry) => void
   upload: (file: File) => void
   remove: (entry: MavftpDirectoryEntry) => void
+  /** Fast-delete all non-flight files (logs, terrain, crash dumps). */
+  sanitize: () => void
 }
 
 /**
@@ -82,8 +84,14 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
         if (requestId !== requestIdRef.current) {
           return
         }
-        setEntries([])
-        setError(err instanceof Error ? err.message : 'Failed to list directory.')
+        // Navigating INTO a directory that fails to open (ArduPilot returns
+        // FailErrno for opendir failures) must NOT blank the directory the
+        // operator is currently viewing — keep them where they are and surface
+        // the real reason (errno) instead of a silent snap-back. We only leave
+        // `entries`/`path` as-is here; a failed refresh of the current dir keeps
+        // its last-good listing too, which is preferable to a wiped table.
+        const reason = err instanceof Error ? err.message : 'Failed to list directory.'
+        setError(`Couldn’t open ${target}: ${reason}`)
       } finally {
         if (requestId === requestIdRef.current) {
           setLoading(false)
@@ -169,6 +177,73 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
     [runtime, path, load, setBusyAction]
   )
 
+  // Sanitize — fast-delete everything not needed for flight (logs, terrain,
+  // crash dumps) across the known dataflash/terrain dirs. Keeps params (they
+  // live in storage/FRAM, not files), scripts, and missions. Deliberately a
+  // plain delete: on an SD card / FC flash, wear-leveling means overwriting
+  // wouldn't reliably scrub the physical cells, so we don't pretend to — the
+  // confirm is explicit that a guaranteed wipe means destroying the card.
+  const sanitize = useCallback(async () => {
+    if (!runtime) return
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        'Sanitize the flight controller?\n\n' +
+          'Deletes ALL logs, terrain data, and crash dumps — everything not needed for flight. ' +
+          'Parameters, scripts, and missions are kept.\n\n' +
+          'Note: this is a normal delete. On an SD card / FC flash, wear-leveling can leave the ' +
+          'old data physically recoverable — for a guaranteed wipe, pull the card and destroy it.\n\n' +
+          'Continue?'
+      )
+    ) {
+      return
+    }
+    setBusyAction('files:sanitize')
+    setError(undefined)
+    let deleted = 0
+    const failed: string[] = []
+    const wipeDir = async (dir: string) => {
+      let listing: readonly MavftpDirectoryEntry[]
+      try {
+        listing = await runtime.listRemoteDirectory(dir)
+      } catch {
+        return // directory absent on this board/SD — nothing to wipe
+      }
+      for (const entry of listing) {
+        if (entry.kind !== 'file') continue
+        try {
+          await runtime.deleteRemotePath(entry.path, 'file')
+          deleted += 1
+        } catch {
+          failed.push(entry.path)
+        }
+      }
+    }
+    try {
+      for (const dir of ['/APM/LOGS', '/logs', '/APM/TERRAIN']) {
+        await wipeDir(dir)
+      }
+      for (const dump of ['/APM/crash_dump.bin', '/crash_dump.bin']) {
+        try {
+          await runtime.deleteRemotePath(dump, 'file')
+          deleted += 1
+        } catch {
+          // no crash dump present — fine
+        }
+      }
+      await load(path)
+      setError(
+        failed.length > 0
+          ? `Sanitize: deleted ${deleted} file(s); ${failed.length} could not be removed.`
+          : `Sanitize complete — deleted ${deleted} file(s).`
+      )
+    } catch (err) {
+      setError(err instanceof Error ? `Sanitize failed: ${err.message}` : 'Sanitize failed.')
+    } finally {
+      setBusyAction(undefined)
+    }
+  }, [runtime, path, load, setBusyAction])
+
   const navigate = useCallback((target: string) => void load(target), [load])
   const refresh = useCallback(() => void load(path), [load, path])
 
@@ -181,6 +256,7 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
     refresh,
     download: (entry) => void download(entry),
     upload: (file) => void upload(file),
-    remove: (entry) => void remove(entry)
+    remove: (entry) => void remove(entry),
+    sanitize: () => void sanitize()
   }
 }
