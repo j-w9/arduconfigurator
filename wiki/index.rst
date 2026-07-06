@@ -39,8 +39,10 @@ each tab. If you are new, start with :doc:`introduction` and
 
    tuning
    parameters
+   lua
    can-dronecan
    networking
+   files
    logs-inspectors
 
 .. toctree::
