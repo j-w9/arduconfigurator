@@ -188,7 +188,7 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
     if (
       typeof window !== 'undefined' &&
       !window.confirm(
-        'Sanitize the flight controller?\n\n' +
+        'Free storage on the SD card?\n\n' +
           'Deletes ALL logs, terrain data, and crash dumps — everything not needed for flight. ' +
           'Parameters, scripts, and missions are kept.\n\n' +
           'Note: this is a normal delete. On an SD card / FC flash, wear-leveling can leave the ' +
@@ -234,11 +234,11 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
       await load(path)
       setError(
         failed.length > 0
-          ? `Sanitize: deleted ${deleted} file(s); ${failed.length} could not be removed.`
-          : `Sanitize complete — deleted ${deleted} file(s).`
+          ? `Freed storage: deleted ${deleted} file(s); ${failed.length} could not be removed.`
+          : `Freed storage — deleted ${deleted} file(s).`
       )
     } catch (err) {
-      setError(err instanceof Error ? `Sanitize failed: ${err.message}` : 'Sanitize failed.')
+      setError(err instanceof Error ? `Free storage failed: ${err.message}` : 'Free storage failed.')
     } finally {
       setBusyAction(undefined)
     }

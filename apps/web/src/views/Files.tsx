@@ -136,7 +136,7 @@ export function FilesView(props: FilesViewProps) {
                   data-testid="files-sanitize"
                   title="Delete all logs, terrain, and crash dumps (everything not needed for flight). This is a normal delete — not a secure wipe on SD/flash; destroy the card for that."
                 >
-                  {busyAction === 'files:sanitize' ? 'Sanitizing…' : 'Sanitize'}
+                  {busyAction === 'files:sanitize' ? 'Freeing…' : 'Free storage'}
                 </button>
               </div>
             </div>

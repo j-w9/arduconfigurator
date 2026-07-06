@@ -27,19 +27,19 @@ Two roots are visible:
      corrupt card makes every ``/APM`` operation fail, even disarmed. ``@SYS`` is
      unaffected.
 
-Sanitize
---------
+Free storage
+------------
 
-**Sanitize** (the red button) is a fast one-shot cleanup: it deletes everything
-that is not needed for flight — ``/APM/LOGS``, ``/APM/TERRAIN``, and crash dumps
-— while **keeping** your configuration. Parameters are safe because they live in
-storage/FRAM, not in files; scripts and missions are kept too. It is the quick
-way to hand off or resell a board, or reclaim card space, without wiping the
-tune.
+**Free storage** (the red button) is a fast one-shot cleanup: it deletes
+everything that is not needed for flight — ``/APM/LOGS``, ``/APM/TERRAIN``, and
+crash dumps — while **keeping** your configuration. Parameters are safe because
+they live in storage/FRAM, not in files; scripts and missions are kept too. It
+is the quick way to reclaim card space, or hand off or resell a board, without
+wiping the tune.
 
 .. warning::
 
-   Sanitize is a **normal file delete, not a secure wipe**. The confirmation
+   This is a **normal file delete, not a secure wipe**. The confirmation
    dialog says so explicitly: SD and flash wear-levelling can leave deleted data
    recoverable by forensic tools. If you need a *guaranteed* wipe — for a board
    leaving your control with sensitive mission data — pull the card and
