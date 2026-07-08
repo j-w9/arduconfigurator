@@ -21,6 +21,7 @@
       "@arduconfig/mock-sitl": ["./packages/mock-sitl/src/index.ts"],
       "@arduconfig/sitl-harness": ["./packages/sitl-harness/src/index.ts"],
       "@arduconfig/param-metadata": ["./packages/param-metadata/src/index.ts"],
+      "@arduconfig/ai-assistant": ["./packages/ai-assistant/src/index.ts"],
       "@arduconfig/ui-kit": ["./packages/ui-kit/src/index.tsx"]
     }
   }

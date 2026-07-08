@@ -151,6 +151,17 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     badge: connectionKind === 'connected' ? 'live' : 'idle',
     tone: 'neutral'
   }
+  // AI Assistant (bring-your-own-key chat over Anthropic/OpenAI/Ollama). Expert-
+  // only, but — unlike Networking/Lua — gated on no FC capability: it is useful
+  // for general ArduPilot questions even before a vehicle is connected, and its
+  // read-only tools simply return "not connected" until a link is up.
+  const aiAssistantDescriptor: AppViewDescriptor = {
+    id: 'ai-assistant',
+    label: 'AI Assistant',
+    description: 'Bring your own model (Claude, GPT, or a local Ollama) to discuss your vehicle configuration. Read-only — it inspects parameters and telemetry but cannot change anything.',
+    badge: connectionKind === 'connected' ? 'live' : 'idle',
+    tone: 'neutral'
+  }
   // Canonical tab order (single source of truth). The Setup tab is the
   // health/status/info dashboard, so it leads and is relabelled; the rest
   // follow a setup -> tuning -> tools flow. Views not listed fall to the
@@ -159,7 +170,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     'setup', 'calibration', 'config', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'power', 'failsafe', 'vtx', 'osd', 'tuning', 'presets',
     'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'rc-mixer',
-    'mavlink-inspector', 'dronecan-inspector'
+    'mavlink-inspector', 'dronecan-inspector', 'ai-assistant'
   ]
   const relabelled = base.map((view) =>
     view.id === 'setup'
@@ -177,7 +188,9 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     // Lua Scripts — Expert-only AND only when the FC advertises scripting (SCR_).
     ...(isExpertMode && hasScriptingParams ? [luaDescriptor] : []),
     // Expert-only views — only surfaced when Expert mode is on.
-    ...(isExpertMode ? [rcMixerDescriptor, mavlinkInspectorDescriptor, dronecanInspectorDescriptor] : [])
+    ...(isExpertMode
+      ? [rcMixerDescriptor, mavlinkInspectorDescriptor, dronecanInspectorDescriptor, aiAssistantDescriptor]
+      : [])
   ]
   const rankOf = (id: string): number => {
     const index = CANONICAL_VIEW_ORDER.indexOf(id)

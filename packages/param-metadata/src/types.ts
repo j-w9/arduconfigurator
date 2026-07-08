@@ -80,6 +80,12 @@ export type AppViewId =
   // at render time; shown only when the FC reports scripting support
   // (SCR_ENABLE present, i.e. the build has the Lua VM compiled in).
   | 'lua'
+  // 'ai-assistant' is the Expert-only AI Assistant surface — bring-your-own-key
+  // chat (Anthropic/OpenAI/Ollama) that inspects live vehicle state through
+  // read-only tools. Injected at render time; shown whenever Expert mode is on
+  // (it needs no specific FC capability, only a configured model + optionally a
+  // connected vehicle to discuss). Read-only: no parameter writes this slice.
+  | 'ai-assistant'
 
 export interface ParameterValueOption {
   value: number

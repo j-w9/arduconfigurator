@@ -63,6 +63,13 @@ describe('buildVisibleAppViews', () => {
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasNetworkingParams: false })))).not.toContain('networking')
   })
 
+  it('gates the AI Assistant view behind Expert mode alone (no FC capability)', () => {
+    // Unlike Networking/Lua it needs no capability flag — Expert mode is the
+    // only gate, since it is useful even before a vehicle is connected.
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true })))).toContain('ai-assistant')
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false })))).not.toContain('ai-assistant')
+  })
+
   it('shows Lua Scripts only in Expert mode AND when the FC reports SCR_ params', () => {
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasScriptingParams: true })))).toContain('lua')
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false, hasScriptingParams: true })))).not.toContain('lua')
