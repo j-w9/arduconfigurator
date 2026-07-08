@@ -80,7 +80,7 @@ export function createOllamaProvider(options: { baseUrl?: string }): ChatProvide
         )
       }
 
-      let stopReason: 'end' | 'tool-use' = 'end'
+      let stopReason: 'end' | 'tool-use' | 'length' = 'end'
       let toolIndex = 0
 
       for await (const line of iterateLines(response)) {
@@ -90,6 +90,7 @@ export function createOllamaProvider(options: { baseUrl?: string }): ChatProvide
             tool_calls?: Array<{ function?: { name?: string; arguments?: Record<string, unknown> } }>
           }
           done?: boolean
+          done_reason?: string
           error?: string
         }
         try {
@@ -116,6 +117,7 @@ export function createOllamaProvider(options: { baseUrl?: string }): ChatProvide
             }
           }
         }
+        if (frame.done_reason === 'length') stopReason = 'length'
       }
       yield { type: 'done', stopReason }
     }

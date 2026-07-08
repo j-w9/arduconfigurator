@@ -11,7 +11,9 @@ import { iterateLines, sseData } from './stream.js'
 
 const DEFAULT_BASE_URL = 'https://api.anthropic.com'
 const ANTHROPIC_VERSION = '2023-06-01'
-const MAX_TOKENS = 4096
+// Generous enough that a verbose report after a long tool-investigation
+// (many parameters looked up) doesn't get cut off mid-sentence.
+const MAX_TOKENS = 8192
 
 interface AnthropicBlock {
   type: 'text' | 'tool_use' | 'tool_result'
@@ -101,7 +103,7 @@ export function createAnthropicProvider(options: { apiKey: string; baseUrl?: str
         )
       }
 
-      let stopReason: 'end' | 'tool-use' = 'end'
+      let stopReason: 'end' | 'tool-use' | 'length' = 'end'
       let toolId = ''
       let toolName = ''
       let toolJson = ''
@@ -146,6 +148,7 @@ export function createAnthropicProvider(options: { apiKey: string; baseUrl?: str
         } else if (type === 'message_delta') {
           const delta = event.delta as { stop_reason?: string }
           if (delta?.stop_reason === 'tool_use') stopReason = 'tool-use'
+          else if (delta?.stop_reason === 'max_tokens') stopReason = 'length'
         } else if (type === 'error') {
           const err = event.error as { message?: string }
           yield { type: 'error', message: err?.message ?? 'Anthropic stream error' }

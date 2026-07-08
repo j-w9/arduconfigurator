@@ -47,7 +47,11 @@ export interface ChatToolCall {
 export type ChatEvent =
   | { type: 'text-delta'; text: string }
   | { type: 'tool-call'; call: ChatToolCall }
-  | { type: 'done'; stopReason: 'end' | 'tool-use' }
+  // 'length' means the model's reply was cut off by the provider's own output
+  // token cap (Anthropic max_tokens, OpenAI finish_reason 'length', Ollama
+  // done_reason 'length') — distinct from a clean finish so the caller can tell
+  // the user the answer was truncated rather than silently treating it as done.
+  | { type: 'done'; stopReason: 'end' | 'tool-use' | 'length' }
   | { type: 'error'; message: string }
 
 export interface ChatRequest {
