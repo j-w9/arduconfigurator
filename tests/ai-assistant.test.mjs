@@ -16,7 +16,8 @@ import {
   toolsFor,
   parseProposedChanges,
   PROPOSE_PARAM_CHANGES_TOOL,
-  MAX_PROPOSED_CHANGES
+  MAX_PROPOSED_CHANGES,
+  listModels
 } from '../packages/ai-assistant/dist/index.js'
 
 // A minimal ConfiguratorSnapshot with just the fields the read-only tools read.
@@ -284,6 +285,80 @@ test('system prompt switches framing when proposals are allowed', () => {
   const propose = buildSystemPrompt({ grounding: 'g', allowProposals: true })
   assert.match(propose, /propose_param_changes/)
   assert.match(propose, /human|user must|review and approve|review and apply/i)
+})
+
+// Stub global fetch for the listModels tests, capturing the request.
+function withStubbedFetch(handler, run) {
+  const original = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init })
+    return handler(url, init)
+  }
+  return Promise.resolve(run(calls)).finally(() => {
+    globalThis.fetch = original
+  })
+}
+
+const jsonResponse = (body) => ({ ok: true, status: 200, json: async () => body, text: async () => '' })
+
+test('listModels(anthropic) returns sorted ids and sends the browser-access header', async () => {
+  await withStubbedFetch(
+    () => jsonResponse({ data: [{ id: 'claude-sonnet-5' }, { id: 'claude-haiku-4-5' }] }),
+    async (calls) => {
+      const models = await listModels({ providerId: 'anthropic', model: '', apiKey: 'sk' })
+      assert.deepEqual(models, ['claude-haiku-4-5', 'claude-sonnet-5'])
+      assert.match(String(calls[0].url), /api\.anthropic\.com\/v1\/models/)
+      assert.equal(calls[0].init.headers['anthropic-dangerous-direct-browser-access'], 'true')
+      assert.equal(calls[0].init.headers['x-api-key'], 'sk')
+    }
+  )
+})
+
+test('listModels(anthropic) requires a key', async () => {
+  await assert.rejects(() => listModels({ providerId: 'anthropic', model: '' }), /key is required/i)
+})
+
+test('listModels(openai) filters to chat-capable models', async () => {
+  await withStubbedFetch(
+    () => jsonResponse({ data: [{ id: 'gpt-4o' }, { id: 'text-embedding-3-large' }, { id: 'o1' }, { id: 'whisper-1' }] }),
+    async () => {
+      const models = await listModels({ providerId: 'openai', model: '', apiKey: 'sk' })
+      assert.deepEqual(models, ['gpt-4o', 'o1'])
+    }
+  )
+})
+
+test('listModels(openai) keeps all ids when none match the chat filter (gateways)', async () => {
+  await withStubbedFetch(
+    () => jsonResponse({ data: [{ id: 'my-gateway-model' }, { id: 'another-model' }] }),
+    async () => {
+      const models = await listModels({ providerId: 'openai', model: '', apiKey: 'sk', baseUrl: 'https://gw.example.com' })
+      assert.deepEqual(models, ['another-model', 'my-gateway-model'])
+    }
+  )
+})
+
+test('listModels(ollama) returns installed model names from /api/tags', async () => {
+  await withStubbedFetch(
+    (url) => {
+      assert.match(String(url), /\/api\/tags$/)
+      return jsonResponse({ models: [{ name: 'llama3.1' }, { name: 'qwen2.5' }] })
+    },
+    async () => {
+      const models = await listModels({ providerId: 'ollama', model: '', baseUrl: 'http://localhost:11434' })
+      assert.deepEqual(models, ['llama3.1', 'qwen2.5'])
+    }
+  )
+})
+
+test('listModels throws ChatProviderError on a non-ok response', async () => {
+  await withStubbedFetch(
+    () => ({ ok: false, status: 401, json: async () => ({}), text: async () => 'unauthorized' }),
+    async () => {
+      await assert.rejects(() => listModels({ providerId: 'anthropic', model: '', apiKey: 'bad' }), /401/)
+    }
+  )
 })
 
 // In-memory Storage double for the persistence tests.

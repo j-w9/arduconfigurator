@@ -31,6 +31,10 @@ export interface AiAssistantViewProps {
   apiKey: string
   rememberKey: boolean
   allowProposals: boolean
+  availableModels: string[]
+  modelsStatus: 'idle' | 'loading' | 'error'
+  modelsError?: string
+  onRefreshModels: () => void
   onProviderChange: (providerId: ChatProviderId) => void
   onModelChange: (model: string) => void
   onBaseUrlChange: (baseUrl: string) => void
@@ -54,6 +58,71 @@ function formatValue(value: number | undefined): string {
   return Number.isInteger(value) ? String(value) : Number(value.toFixed(4)).toString()
 }
 
+function ModelField(props: AiAssistantViewProps) {
+  const meta = providerMetadata(props.providerId)
+  const hasModels = props.availableModels.length > 0
+  const [useCustom, setUseCustom] = useState(false)
+  const showSelect = hasModels && !useCustom
+
+  // Ensure the current value is always selectable even if the fetched list
+  // doesn't include it (custom id, or a model not returned by /models).
+  const options = props.model && !props.availableModels.includes(props.model)
+    ? [props.model, ...props.availableModels]
+    : props.availableModels
+
+  return (
+    <label className="ai-assistant__model-field">
+      <span>
+        Model
+        {props.modelsStatus === 'loading' ? ' (loading…)' : hasModels ? ` (${props.availableModels.length})` : ''}
+      </span>
+      {showSelect ? (
+        <select
+          data-testid="ai-assistant-model-select"
+          value={props.model}
+          onChange={(event) => props.onModelChange(event.target.value)}
+        >
+          {options.map((id) => (
+            <option key={id} value={id}>
+              {id}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          data-testid="ai-assistant-model-input"
+          type="text"
+          value={props.model}
+          placeholder={meta?.modelPlaceholder}
+          onChange={(event) => props.onModelChange(event.target.value)}
+        />
+      )}
+      <span className="ai-assistant__model-actions">
+        <button
+          type="button"
+          className="ai-assistant__linkbtn"
+          data-testid="ai-assistant-refresh-models"
+          onClick={props.onRefreshModels}
+        >
+          {props.modelsStatus === 'loading' ? 'Loading…' : 'Load models'}
+        </button>
+        {hasModels ? (
+          <button
+            type="button"
+            className="ai-assistant__linkbtn"
+            onClick={() => setUseCustom((prev) => !prev)}
+          >
+            {useCustom ? 'Pick from list' : 'Custom id'}
+          </button>
+        ) : null}
+      </span>
+      {props.modelsStatus === 'error' && props.modelsError ? (
+        <span className="ai-assistant__model-error">{props.modelsError}</span>
+      ) : null}
+    </label>
+  )
+}
+
 function SettingsForm(props: AiAssistantViewProps) {
   const meta = providerMetadata(props.providerId)
   return (
@@ -73,16 +142,7 @@ function SettingsForm(props: AiAssistantViewProps) {
             ))}
           </select>
         </label>
-        <label>
-          <span>Model</span>
-          <input
-            data-testid="ai-assistant-model-input"
-            type="text"
-            value={props.model}
-            placeholder={meta?.modelPlaceholder}
-            onChange={(event) => props.onModelChange(event.target.value)}
-          />
-        </label>
+        <ModelField {...props} />
         {meta?.needsApiKey ? (
           <label>
             <span>API key</span>
@@ -324,7 +384,7 @@ export function AiAssistantView(props: AiAssistantViewProps) {
   return (
     <Panel
       title="AI Assistant"
-      subtitle="Bring your own model (Claude, GPT, or a local Ollama) to discuss your vehicle’s current configuration. Read-only — the assistant can inspect parameters and telemetry but cannot change anything yet."
+      subtitle="Bring your own model (Claude, GPT, or a local Ollama) to discuss your vehicle’s configuration and propose parameter changes — every write is yours to review and approve, and nothing is applied without your explicit confirmation."
     >
       <div data-testid="ai-assistant-view" className="ai-assistant">
         <details className="ai-assistant__settings-disclosure" open={!props.configReady}>
