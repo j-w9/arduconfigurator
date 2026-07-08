@@ -399,6 +399,73 @@ test.describe('Lua Scripts view (Expert + scripting-capable FC)', () => {
   })
 })
 
+test.describe('AI Assistant view (Expert, offline mock provider)', () => {
+  test('appears only in Expert mode and drives a read-only tool loop against the demo vehicle', async ({ page }) => {
+    // ?aiProvider=mock forces the offline mock provider (dev/localhost only), so
+    // the whole send loop runs with no API key and no network.
+    await page.goto('/?aiProvider=mock')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expectParameterSyncComplete(page)
+
+    // Basic mode: no AI Assistant tab (Expert-only surface).
+    await expect(page.getByTestId('view-button-ai-assistant')).toHaveCount(0)
+
+    // Expert mode: the tab appears (gated on Expert alone, no FC capability).
+    await page.getByTestId('product-mode-expert').check()
+    await expect(page.getByTestId('view-button-ai-assistant')).toBeVisible()
+    await page.getByTestId('view-button-ai-assistant').click()
+    await expect(page.getByTestId('ai-assistant-view')).toBeVisible()
+
+    // The mock provider needs no key, so the composer is ready. Ask a question.
+    await page.getByTestId('ai-assistant-input').fill('What am I connected to?')
+    await page.getByTestId('ai-assistant-send').click()
+
+    // The user turn renders, the model calls the read-only get_vehicle_info tool,
+    // the app executes it, and the final answer reflects the demo vehicle.
+    await expect(page.getByTestId('ai-assistant-message').first()).toContainText('What am I connected to?')
+    const toolChip = page.getByTestId('ai-assistant-tool-chip').filter({ hasText: 'get_vehicle_info' })
+    await expect(toolChip).toHaveAttribute('data-done', 'true', { timeout: 15000 })
+    await expect(page.getByTestId('ai-assistant-transcript')).toContainText('ArduCopter')
+  })
+
+  test('proposes a parameter change that the human reviews, acknowledges, and applies', async ({ page }) => {
+    await page.goto('/?aiProvider=mock')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expectParameterSyncComplete(page)
+
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-ai-assistant').click()
+    await expect(page.getByTestId('ai-assistant-view')).toBeVisible()
+
+    // A write-intent prompt makes the mock provider stage a proposal (never auto-applies).
+    await page.getByTestId('ai-assistant-input').fill('please raise my pitch P a little')
+    await page.getByTestId('ai-assistant-send').click()
+
+    // The proposal card renders the diff current → proposed for ATC_RAT_PIT_P.
+    const proposal = page.getByTestId('ai-assistant-proposal')
+    await expect(proposal).toBeVisible({ timeout: 15000 })
+    const row = page.getByTestId('ai-assistant-proposal-row-ATC_RAT_PIT_P')
+    await expect(row).toBeVisible()
+    await expect(row).toHaveAttribute('data-status', 'staged')
+    await expect(row).toContainText('0.145')
+
+    // Apply is gated: disabled until the acknowledge checkbox is ticked.
+    const applyButton = page.getByTestId('ai-assistant-proposal-apply')
+    await expect(applyButton).toBeDisabled()
+    await page.getByTestId('ai-assistant-proposal-ack').check()
+    await expect(applyButton).toBeEnabled()
+
+    // Apply → verified batch write against the demo FC → success result.
+    await applyButton.click()
+    await expect(page.getByTestId('ai-assistant-proposal-result')).toContainText('1 verified', { timeout: 20000 })
+    await expect(page.getByTestId('ai-assistant-proposal-result')).toContainText('backup was saved')
+  })
+})
+
 test.describe('connection transports', () => {
   test('WebSocket transport reveals the bridge endpoint URL input', async ({ page }) => {
     await page.goto('/')

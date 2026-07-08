@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspace @arduconfig/firmware-flash && npm run build --workspace @arduconfig/mock-sitl && npm run build --workspace @arduconfig/sitl-harness && npm run build --workspace @arduconfig/web && npm run build --workspace @arduconfig/desktop",
-    "typecheck": "npm run typecheck --workspace @arduconfig/transport && npm run typecheck --workspace @arduconfig/firmware-flash && npm run typecheck --workspace @arduconfig/protocol-mavlink && npm run typecheck --workspace @arduconfig/param-metadata && npm run typecheck --workspace @arduconfig/ardupilot-core && npm run typecheck --workspace @arduconfig/mock-sitl && npm run typecheck --workspace @arduconfig/sitl-harness && npm run typecheck --workspace @arduconfig/web && npm run typecheck --workspace @arduconfig/desktop",
+    "typecheck": "npm run typecheck --workspace @arduconfig/transport && npm run typecheck --workspace @arduconfig/firmware-flash && npm run typecheck --workspace @arduconfig/protocol-mavlink && npm run typecheck --workspace @arduconfig/param-metadata && npm run typecheck --workspace @arduconfig/ardupilot-core && npm run typecheck --workspace @arduconfig/ai-assistant && npm run typecheck --workspace @arduconfig/mock-sitl && npm run typecheck --workspace @arduconfig/sitl-harness && npm run typecheck --workspace @arduconfig/web && npm run typecheck --workspace @arduconfig/desktop",
     "test": "npm run build && node --test tests/*.test.mjs",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:headed": "npm run build && playwright test --headed",

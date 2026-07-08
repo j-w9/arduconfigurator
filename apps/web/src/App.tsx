@@ -32,10 +32,13 @@ import {
   type MotorTestRequest,
   applyArducopter47CatalogOverrides,
   type ParameterBackupFile,
+  type ParameterBatchWriteProgress,
+  type ParameterBatchWriteResult,
   type ParameterDraftEntry,
   type ParameterImportCategory,
   type ParameterState,
   type ParameterUnconfirmedWrite,
+  type ParameterWriteRequest,
   type RcAxisId,
   type RcMappingCandidate,
 } from '@arduconfig/ardupilot-core'
@@ -139,7 +142,7 @@ import {
 import { detectMavlinkPort } from './serial-autodetect'
 import { canApplyParameterChanges, parameterApplyBlockedReason } from './apply-gate'
 import { ALL_MOTOR_TEST_OUTPUT, ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS, buildMotorTestRequest } from './motor-test-helpers'
-import { isExpertOnlyView, readGuidedSetupShortcutSectionId } from './guided-setup-shortcut'
+import { canUseGuidedSetupTestingShortcut, isExpertOnlyView, readGuidedSetupShortcutSectionId } from './guided-setup-shortcut'
 import { actionLabels, type GuidedActionId } from './guided-action-labels'
 import {
   canRunGuidedAction
@@ -287,6 +290,10 @@ import {
   LUA_SCRIPTS_DIR
 } from './view-models/lua-scripts'
 import { LUA_APPLET_CONTENTS } from './lua-applets'
+import { AiAssistantView } from './views/AiAssistantView'
+import { useAiAssistant } from './hooks/use-ai-assistant'
+import { buildTranscript } from './view-models/ai-assistant'
+import { resolveWriteBlockReason } from './view-models/ai-assistant-proposal'
 import { IpAddressField } from './views/IpAddressField'
 import { PassthroughEditor } from './views/PassthroughEditor'
 import { availablePassthroughEndpoints, groupPassthroughBlocks } from './view-models/passthrough'
@@ -4681,6 +4688,59 @@ export function App() {
       }).cards,
     [snapshot.parameters, luaScripts.installed]
   )
+  // AI Assistant controller. Reads live vehicle state through a snapshot
+  // accessor (never the runtime directly), so its read-only tools always see the
+  // current snapshot. e2e forces the offline 'mock' provider via ?aiProvider=mock
+  // (dev/localhost only) so the tab can be exercised with no key and no network.
+  const aiAssistantAccessor = useMemo(() => ({ getSnapshot: () => runtime.getSnapshot() }), [runtime])
+  const aiForcedProvider = useMemo(() => {
+    if (!canUseGuidedSetupTestingShortcut()) return undefined
+    try {
+      return new URLSearchParams(window.location.search).get('aiProvider') === 'mock'
+        ? ('mock' as const)
+        : undefined
+    } catch {
+      return undefined
+    }
+  }, [])
+  // Applies an AI-proposed, human-approved batch of parameter changes. Mirrors
+  // the preset apply path: auto-backup to Snapshots first (undo safety net),
+  // then the verified batch write with rollback. The model can never call this —
+  // it only runs from an explicit human click behind the acknowledge gate.
+  const handleAiApplyProposal = useCallback(
+    async (
+      requests: ParameterWriteRequest[],
+      onProgress?: (progress: ParameterBatchWriteProgress) => void
+    ): Promise<ParameterBatchWriteResult> => {
+      const backupSnapshot = runtime.getSnapshot()
+      const autoBackup = createSavedSnapshot(createParameterBackup(backupSnapshot), 'Before AI-assisted changes', 'captured', {
+        note: 'Auto-saved before applying AI Assistant proposed parameter changes.',
+        tags: ['auto-backup', 'ai-assistant']
+      })
+      setSavedSnapshots((current) => [autoBackup, ...current.filter((entry) => entry.id !== autoBackup.id)])
+      const result = await runtime.setParameters(requests, UI_PARAMETER_WRITE_OPTIONS, onProgress)
+      if (result.applied.length > 0) {
+        void runtime.requestParameterList().then(() => runtime.waitForParameterSync()).catch(() => undefined)
+      }
+      return result
+    },
+    [runtime, setSavedSnapshots]
+  )
+  const aiAssistant = useAiAssistant({
+    accessor: aiAssistantAccessor,
+    applyChanges: handleAiApplyProposal,
+    forcedProviderId: aiForcedProvider
+  })
+  const aiTranscript = useMemo(() => buildTranscript(aiAssistant.messages), [aiAssistant.messages])
+  const aiWriteBlockReason = useMemo(
+    () =>
+      resolveWriteBlockReason({
+        connectionKind: snapshot.connection.kind,
+        armed: snapshot.vehicle?.armed ?? false,
+        syncStatus: snapshot.parameterStats.status
+      }),
+    [snapshot.connection.kind, snapshot.vehicle?.armed, snapshot.parameterStats.status]
+  )
   // RCL_ENABLE is the AP_RC_Logic engine sentinel — present only on firmware that
   // compiled the RC logic / range-function engine. Its presence unlocks the real
   // RC Mixer editor; otherwise the tab stays a preview.
@@ -7490,6 +7550,35 @@ export function App() {
         onInstall={luaScripts.install}
         onRemove={luaScripts.remove}
         onUpload={luaScripts.upload}
+      />
+      ) : null}
+
+      {activeViewId === 'ai-assistant' ? (
+      <AiAssistantView
+        connected={snapshot.connection.kind === 'connected'}
+        configReady={aiAssistant.configReady}
+        status={aiAssistant.status}
+        error={aiAssistant.error}
+        transcript={aiTranscript}
+        providerId={aiAssistant.settings.providerId}
+        model={aiAssistant.settings.model}
+        baseUrl={aiAssistant.settings.baseUrl}
+        apiKey={aiAssistant.apiKey}
+        rememberKey={aiAssistant.settings.rememberKey}
+        allowProposals={aiAssistant.settings.allowProposals}
+        onProviderChange={aiAssistant.setProviderId}
+        onModelChange={aiAssistant.setModel}
+        onBaseUrlChange={aiAssistant.setBaseUrl}
+        onApiKeyChange={aiAssistant.setApiKey}
+        onRememberKeyChange={aiAssistant.setRememberKey}
+        onAllowProposalsChange={aiAssistant.setAllowProposals}
+        proposal={aiAssistant.pendingProposal}
+        writeBlockReason={aiWriteBlockReason}
+        onApplyProposal={aiAssistant.applyProposal}
+        onDiscardProposal={aiAssistant.discardProposal}
+        onSend={aiAssistant.send}
+        onStop={aiAssistant.stop}
+        onClear={aiAssistant.clear}
       />
       ) : null}
 

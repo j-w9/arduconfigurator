@@ -13,6 +13,7 @@
     "test:unit": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "@arduconfig/ai-assistant": "1.1.1",
     "@arduconfig/ardupilot-core": "1.1.1",
     "@arduconfig/firmware-flash": "1.1.1",
     "@arduconfig/param-metadata": "1.1.1",
