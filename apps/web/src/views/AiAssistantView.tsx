@@ -177,11 +177,7 @@ function SettingsForm(props: AiAssistantViewProps) {
             checked={props.rememberKey}
             onChange={(event) => props.onRememberKeyChange(event.target.checked)}
           />
-          <span>
-            Remember this key on this device. It is stored in your browser’s local storage in plain
-            text — anyone with access to this browser (or a script injected into this page) could read
-            it. Leave off to keep it in memory only (cleared on reload).
-          </span>
+          <span>Remember this key on this device. Your key is only ever sent to the AI provider’s API.</span>
         </label>
       ) : null}
       {meta?.note ? <p className="ai-assistant__note">{meta.note}</p> : null}
