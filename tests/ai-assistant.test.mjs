@@ -307,6 +307,39 @@ test('mock provider does NOT propose when the propose tool is not offered', asyn
   assert.ok(!names.includes('propose_param_changes'))
 })
 
+test('mock provider answers in prose (never a tool call) when no tools are offered', async () => {
+  const provider = createProvider({ providerId: 'mock', model: 'mock' })
+  const request = {
+    system: 'sys',
+    messages: [{ role: 'user', content: 'anything' }],
+    tools: [],
+    model: 'mock'
+  }
+  const events = []
+  for await (const event of provider.send(request)) events.push(event)
+  assert.ok(!events.some((e) => e.type === 'tool-call'))
+  assert.ok(events.some((e) => e.type === 'text-delta'))
+  assert.equal(events.find((e) => e.type === 'done').stopReason, 'end')
+})
+
+test('mock provider keeps requesting a tool when the loop-test marker is present', async () => {
+  const provider = createProvider({ providerId: 'mock', model: 'mock' })
+  const request = {
+    system: 'sys',
+    messages: [
+      { role: 'user', content: 'LOOP_TEST_MARKER investigate everything' },
+      { role: 'assistant', content: '', toolCalls: [{ id: 'x', name: 'get_vehicle_info', arguments: {} }] },
+      { role: 'tool', content: '{"ok":true}', toolCallId: 'x' }
+    ],
+    tools: [{ name: 'get_vehicle_info', description: '', parameters: { type: 'object', properties: {} } }],
+    model: 'mock'
+  }
+  const events = []
+  for await (const event of provider.send(request)) events.push(event)
+  assert.equal(events.find((e) => e.type === 'tool-call').call.name, 'get_vehicle_info')
+  assert.equal(events.find((e) => e.type === 'done').stopReason, 'tool-use')
+})
+
 test('system prompt switches framing when proposals are allowed', () => {
   const readOnly = buildSystemPrompt({ grounding: 'g' })
   assert.match(readOnly, /READ-ONLY/)
