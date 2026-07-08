@@ -464,6 +464,31 @@ test.describe('AI Assistant view (Expert, offline mock provider)', () => {
     await expect(page.getByTestId('ai-assistant-proposal-result')).toContainText('1 verified', { timeout: 20000 })
     await expect(page.getByTestId('ai-assistant-proposal-result')).toContainText('backup was saved')
   })
+
+  test('still answers after hitting the tool-call budget instead of leaving the user with a bare error', async ({ page }) => {
+    await page.goto('/?aiProvider=mock')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expectParameterSyncComplete(page)
+
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-ai-assistant').click()
+    await expect(page.getByTestId('ai-assistant-view')).toBeVisible()
+
+    // LOOP_TEST_MARKER makes the mock provider request a tool on every turn,
+    // deterministically driving the hook into its tool-iteration cap.
+    await page.getByTestId('ai-assistant-input').fill('LOOP_TEST_MARKER investigate everything')
+    await page.getByTestId('ai-assistant-send').click()
+
+    // The forced, tool-free wrap-up turn still produces a final answer — the
+    // conversation isn't left with nothing but an error after all that work.
+    await expect(page.getByTestId('ai-assistant-transcript')).toContainText('Summarizing from everything gathered', {
+      timeout: 20000
+    })
+    // The user is told the budget was hit, without it replacing the answer.
+    await expect(page.getByTestId('ai-assistant-error')).toContainText(/tool-call limit/i)
+  })
 })
 
 test.describe('connection transports', () => {

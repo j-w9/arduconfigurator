@@ -41,7 +41,11 @@ import {
 // model. A write happens only when the human ticks acknowledge and clicks Apply,
 // which delegates to the injected applyChanges (App owns the runtime + backup).
 
-const MAX_TOOL_ITERATIONS = 8
+// Number of assistant turns that may each request tools before a forced,
+// tool-free wrap-up turn (see hitIterationCap below) makes the model answer
+// with whatever it has gathered so far. Raised from 8 now that get_parameters
+// (batched) cuts down how many turns a deep parameter investigation needs.
+const MAX_TOOL_ITERATIONS = 12
 
 export interface AiAssistantSettings {
   providerId: ChatProviderId
@@ -253,7 +257,12 @@ export function useAiAssistant(options: UseAiAssistantOptions): AiAssistantContr
       })
       const tools = toolsFor({ allowProposals })
 
-      for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
+      // Runs one assistant turn against `turnTools` (empty disallows further tool
+      // calls, used for the forced wrap-up below) and streams it into the
+      // conversation. Returns the terminal state; does not execute any tools.
+      async function runTurn(
+        turnTools: typeof tools
+      ): Promise<{ assistant: ChatMessage; stopReason: 'end' | 'tool-use' | 'length'; streamError?: string }> {
         const requestMessages = [...conversationRef.current]
         const assistant: ChatMessage = { role: 'assistant', content: '', toolCalls: [] }
         conversationRef.current = [...conversationRef.current, assistant]
@@ -265,7 +274,7 @@ export function useAiAssistant(options: UseAiAssistantOptions): AiAssistantContr
         for await (const event of provider.send({
           system,
           messages: requestMessages,
-          tools,
+          tools: turnTools,
           model: connectionRef.current.model,
           signal: controller.signal
         })) {
@@ -282,18 +291,26 @@ export function useAiAssistant(options: UseAiAssistantOptions): AiAssistantContr
           }
         }
 
+        return { assistant, stopReason, streamError }
+      }
+
+      let hitIterationCap = false
+
+      for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
+        const { assistant, stopReason, streamError } = await runTurn(tools)
+
         if (streamError) {
           setError(streamError)
-          break
+          return
         }
         if (stopReason === 'length') {
           // The provider cut the reply off at its own output-token cap — tell
           // the user rather than silently presenting a truncated answer as final.
           setError('The response was cut off after reaching the model’s reply length limit. Ask it to continue.')
-          break
+          return
         }
         if (stopReason !== 'tool-use' || (assistant.toolCalls?.length ?? 0) === 0) {
-          break
+          return // Clean finish — the model answered without asking for another tool.
         }
 
         for (const call of assistant.toolCalls ?? []) {
@@ -309,7 +326,29 @@ export function useAiAssistant(options: UseAiAssistantOptions): AiAssistantContr
         commit()
 
         if (iteration === MAX_TOOL_ITERATIONS - 1) {
-          setError('Reached the tool-call limit for one turn. Ask a more specific question.')
+          hitIterationCap = true
+        }
+      }
+
+      if (hitIterationCap) {
+        // The model was still mid-investigation when the tool-call budget ran
+        // out. Rather than discarding everything it already gathered and
+        // showing a bare error, force one more turn with no tools offered so it
+        // MUST answer in prose from what it already has.
+        conversationRef.current = [
+          ...conversationRef.current,
+          {
+            role: 'user',
+            content:
+              '[Tool-call budget reached for this turn. Answer now using only the information already gathered above — no more tools are available this turn.]'
+          }
+        ]
+        commit()
+        const { streamError: wrapupError } = await runTurn([])
+        if (wrapupError) {
+          setError(wrapupError)
+        } else {
+          setError('Reached the tool-call limit for this turn — answered using what was already gathered. Ask a follow-up for more detail.')
         }
       }
 

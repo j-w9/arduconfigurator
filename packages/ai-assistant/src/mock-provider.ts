@@ -10,11 +10,36 @@ import type { ChatEvent, ChatProvider, ChatRequest } from './provider.js'
 
 const TOOL_CALL_ID = 'mock-call-1'
 
+/** Prompt marker that makes the mock keep requesting a tool forever as long as
+ *  tools are on offer — the e2e seam for exercising the hook's tool-iteration
+ *  cap and its forced, tool-free wrap-up turn deterministically. */
+const LOOP_FOREVER_MARKER = 'LOOP_TEST_MARKER'
+
 export function createMockProvider(): ChatProvider {
   return {
     id: 'mock',
     async *send(request: ChatRequest): AsyncIterable<ChatEvent> {
       const last = request.messages[request.messages.length - 1]
+
+      // No tools on offer — this is the hook's forced wrap-up turn after
+      // hitting its tool-call budget (or any tool-free call). A real provider
+      // physically cannot request a tool here, so the mock must answer in
+      // prose too, exercising the same "synthesize from what's gathered" path.
+      if (request.tools.length === 0) {
+        yield { type: 'text-delta', text: 'Summarizing from everything gathered so far.' }
+        yield { type: 'done', stopReason: 'end' }
+        return
+      }
+
+      // Deterministic infinite-tool-use seam: keeps requesting the same
+      // read-only tool on every turn for as long as tools remain on offer, so
+      // e2e can drive the hook into its iteration cap without depending on
+      // real model behavior.
+      if (request.messages.some((message) => message.role === 'user' && message.content.includes(LOOP_FOREVER_MARKER))) {
+        yield { type: 'tool-call', call: { id: `mock-loop-${request.messages.length}`, name: 'get_vehicle_info', arguments: {} } }
+        yield { type: 'done', stopReason: 'tool-use' }
+        return
+      }
 
       // A write-intent prompt (and the propose tool is on offer) → stage a
       // proposal. Used by e2e to exercise the propose→approve→apply flow.
