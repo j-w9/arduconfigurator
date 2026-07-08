@@ -43,6 +43,9 @@ export type ToolResult =
  *  with a full ~1000-param dump. The model pages with offset/limit. */
 const DEFAULT_PARAM_PAGE = 100
 const MAX_PARAM_PAGE = 300
+/** Cap on how many ids get_parameters will detail in one call — keeps a single
+ *  batched lookup bounded even if the model asks for an unreasonably long list. */
+const MAX_BATCH_PARAMETERS = 50
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
@@ -206,7 +209,7 @@ export const AI_ASSISTANT_TOOLS: ToolDefinition[] = [
   {
     name: 'get_parameter',
     description:
-      'Full detail for one parameter: current value plus its label, description, unit, valid range, enum options, and whether a reboot is required to apply. Use the exact parameter id (e.g. "ATC_RAT_PIT_P").',
+      'Full detail for ONE parameter: current value plus its label, description, unit, valid range, enum options, and whether a reboot is required to apply. Use the exact parameter id (e.g. "ATC_RAT_PIT_P"). If you need detail on more than one parameter, call get_parameters instead of calling this repeatedly — it returns the same detail for many ids in a single round trip.',
     parameters: {
       type: 'object',
       properties: { id: { type: 'string', description: 'Exact parameter id.' } },
@@ -215,9 +218,26 @@ export const AI_ASSISTANT_TOOLS: ToolDefinition[] = [
     }
   },
   {
+    name: 'get_parameters',
+    description:
+      `Full detail (value, label, description, unit, range, enum options) for MULTIPLE parameters in one call — the batched form of get_parameter. Always prefer this over several individual get_parameter calls when you already know which ids you need (e.g. after list_parameters or search_parameters). Unknown ids are reported separately rather than failing the whole call. Max ${MAX_BATCH_PARAMETERS} ids per call.`,
+    parameters: {
+      type: 'object',
+      properties: {
+        ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: `Exact parameter ids, max ${MAX_BATCH_PARAMETERS}.`
+        }
+      },
+      required: ['ids'],
+      additionalProperties: false
+    }
+  },
+  {
     name: 'search_parameters',
     description:
-      'Find parameters by fuzzy text across id, label, and description (e.g. "battery failsafe", "notch filter", "compass orientation"). Returns matching ids with their labels and current values so you can then get_parameter the relevant ones.',
+      'Find parameters by fuzzy text across id, label, and description (e.g. "battery failsafe", "notch filter", "compass orientation"). Returns matching ids with their labels and current values. Follow up with get_parameters (batched) for full detail on the ones you need — not one get_parameter call per id.',
     parameters: {
       type: 'object',
       properties: {
@@ -304,6 +324,31 @@ export function createToolExecutor(accessor: SnapshotAccessor): {
         const match = realParameters(snapshot).find((parameter) => parameter.id.toUpperCase() === id)
         if (!match) return { ok: false, error: `No parameter "${id}" on this vehicle.` }
         return { ok: true, data: detailParam(match) }
+      }
+      case 'get_parameters': {
+        const rawIds = args.ids
+        if (!Array.isArray(rawIds) || rawIds.length === 0) {
+          return { ok: false, error: 'Missing required non-empty "ids" array.' }
+        }
+        const ids = rawIds.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+        if (ids.length === 0) return { ok: false, error: '"ids" must contain at least one non-empty string.' }
+        const requested = ids.slice(0, MAX_BATCH_PARAMETERS).map((id) => id.toUpperCase())
+        const byId = new Map(realParameters(snapshot).map((parameter) => [parameter.id.toUpperCase(), parameter]))
+        const found: Record<string, unknown>[] = []
+        const notFound: string[] = []
+        for (const id of requested) {
+          const match = byId.get(id)
+          if (match) found.push(detailParam(match))
+          else notFound.push(id)
+        }
+        return {
+          ok: true,
+          data: {
+            parameters: found,
+            notFound,
+            truncated: ids.length > MAX_BATCH_PARAMETERS
+          }
+        }
       }
       case 'search_parameters': {
         const query = asString(args.query)?.toLowerCase()

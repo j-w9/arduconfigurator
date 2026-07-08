@@ -17,7 +17,10 @@ import {
   parseProposedChanges,
   PROPOSE_PARAM_CHANGES_TOOL,
   MAX_PROPOSED_CHANGES,
-  listModels
+  listModels,
+  createAnthropicProvider,
+  createOpenAiProvider,
+  createOllamaProvider
 } from '../packages/ai-assistant/dist/index.js'
 
 // A minimal ConfiguratorSnapshot with just the fields the read-only tools read.
@@ -77,6 +80,7 @@ test('tool definitions expose only read-only tools', () => {
   assert.deepEqual(names, [
     'get_can_nodes',
     'get_parameter',
+    'get_parameters',
     'get_prearm_status',
     'get_setup_status',
     'get_telemetry',
@@ -129,6 +133,30 @@ test('get_parameter returns full metadata and errors on unknown id', () => {
   assert.equal(ok.data.maximum, 0.6)
   const missing = execute('get_parameter', { id: 'NOPE' })
   assert.equal(missing.ok, false)
+})
+
+test('get_parameters batches full metadata for multiple ids and reports unknowns', () => {
+  const { execute } = createToolExecutor(accessorFor(makeSnapshot()))
+  const result = execute('get_parameters', { ids: ['atc_rat_pit_p', 'BATT_LOW_VOLT', 'NOPE'] })
+  assert.equal(result.ok, true)
+  assert.equal(result.data.parameters.length, 2)
+  assert.deepEqual(result.data.notFound, ['NOPE'])
+  const pitchP = result.data.parameters.find((p) => p.id === 'ATC_RAT_PIT_P')
+  assert.equal(pitchP.maximum, 0.6)
+})
+
+test('get_parameters rejects a missing or empty ids array', () => {
+  const { execute } = createToolExecutor(accessorFor(makeSnapshot()))
+  assert.equal(execute('get_parameters', {}).ok, false)
+  assert.equal(execute('get_parameters', { ids: [] }).ok, false)
+})
+
+test('get_parameters caps the batch size and reports truncation', () => {
+  const { execute } = createToolExecutor(accessorFor(makeSnapshot()))
+  const manyIds = Array.from({ length: 60 }, (_, i) => `PARAM_${i}`)
+  const result = execute('get_parameters', { ids: manyIds })
+  assert.equal(result.ok, true)
+  assert.equal(result.data.truncated, true)
 })
 
 test('search_parameters matches across id/label/description', () => {
@@ -301,6 +329,96 @@ function withStubbedFetch(handler, run) {
 }
 
 const jsonResponse = (body) => ({ ok: true, status: 200, json: async () => body, text: async () => '' })
+
+// A streaming Response whose body yields the given raw lines (SSE "data: ..."
+// frames or NDJSON, per-adapter) — enough for iterateLines() to parse.
+function streamResponse(lines) {
+  const encoder = new TextEncoder()
+  const body = new ReadableStream({
+    start(controller) {
+      for (const line of lines) controller.enqueue(encoder.encode(`${line}\n`))
+      controller.close()
+    }
+  })
+  return { ok: true, status: 200, body, text: async () => '' }
+}
+
+async function collectEvents(provider, request) {
+  const events = []
+  for await (const event of provider.send(request)) events.push(event)
+  return events
+}
+
+const baseRequest = { system: 'sys', messages: [{ role: 'user', content: 'hi' }], tools: [], model: 'm' }
+
+test('anthropic provider surfaces stop_reason max_tokens as a length done event', async () => {
+  await withStubbedFetch(
+    () =>
+      streamResponse([
+        'data: {"type":"content_block_start","content_block":{"type":"text"}}',
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"cut off mid-"}}',
+        'data: {"type":"content_block_stop"}',
+        'data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}'
+      ]),
+    async () => {
+      const provider = createAnthropicProvider({ apiKey: 'sk' })
+      const events = await collectEvents(provider, baseRequest)
+      const done = events.find((e) => e.type === 'done')
+      assert.equal(done.stopReason, 'length')
+    }
+  )
+})
+
+test('openai provider surfaces finish_reason length as a length done event', async () => {
+  await withStubbedFetch(
+    () =>
+      streamResponse([
+        'data: {"choices":[{"delta":{"content":"cut off mid-"}}]}',
+        'data: {"choices":[{"delta":{},"finish_reason":"length"}]}',
+        'data: [DONE]'
+      ]),
+    async () => {
+      const provider = createOpenAiProvider({ apiKey: 'sk' })
+      const events = await collectEvents(provider, baseRequest)
+      const done = events.find((e) => e.type === 'done')
+      assert.equal(done.stopReason, 'length')
+    }
+  )
+})
+
+test('ollama provider surfaces done_reason length as a length done event', async () => {
+  await withStubbedFetch(
+    () =>
+      streamResponse([
+        JSON.stringify({ message: { content: 'cut off mid-' } }),
+        JSON.stringify({ done: true, done_reason: 'length' })
+      ]),
+    async () => {
+      const provider = createOllamaProvider({})
+      const events = await collectEvents(provider, baseRequest)
+      const done = events.find((e) => e.type === 'done')
+      assert.equal(done.stopReason, 'length')
+    }
+  )
+})
+
+test('anthropic provider reports a clean end (not length) on a normal finish', async () => {
+  await withStubbedFetch(
+    () =>
+      streamResponse([
+        'data: {"type":"content_block_start","content_block":{"type":"text"}}',
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"all done"}}',
+        'data: {"type":"content_block_stop"}',
+        'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}'
+      ]),
+    async () => {
+      const provider = createAnthropicProvider({ apiKey: 'sk' })
+      const events = await collectEvents(provider, baseRequest)
+      const done = events.find((e) => e.type === 'done')
+      assert.equal(done.stopReason, 'end')
+    }
+  )
+})
 
 test('listModels(anthropic) returns sorted ids and sends the browser-access header', async () => {
   await withStubbedFetch(

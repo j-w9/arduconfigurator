@@ -94,7 +94,7 @@ export function createOpenAiProvider(options: { apiKey: string; baseUrl?: string
       }
 
       const pending = new Map<number, PendingToolCall>()
-      let stopReason: 'end' | 'tool-use' = 'end'
+      let stopReason: 'end' | 'tool-use' | 'length' = 'end'
 
       for await (const line of iterateLines(response)) {
         const data = sseData(line)
@@ -130,6 +130,7 @@ export function createOpenAiProvider(options: { apiKey: string; baseUrl?: string
           pending.set(toolDelta.index, existing)
         }
         if (choice.finish_reason === 'tool_calls') stopReason = 'tool-use'
+        else if (choice.finish_reason === 'length') stopReason = 'length'
       }
 
       if (stopReason === 'tool-use') {

@@ -259,7 +259,7 @@ export function useAiAssistant(options: UseAiAssistantOptions): AiAssistantContr
         conversationRef.current = [...conversationRef.current, assistant]
         commit()
 
-        let stopReason: 'end' | 'tool-use' = 'end'
+        let stopReason: 'end' | 'tool-use' | 'length' = 'end'
         let streamError: string | undefined
 
         for await (const event of provider.send({
@@ -284,6 +284,12 @@ export function useAiAssistant(options: UseAiAssistantOptions): AiAssistantContr
 
         if (streamError) {
           setError(streamError)
+          break
+        }
+        if (stopReason === 'length') {
+          // The provider cut the reply off at its own output-token cap — tell
+          // the user rather than silently presenting a truncated answer as final.
+          setError('The response was cut off after reaching the model’s reply length limit. Ask it to continue.')
           break
         }
         if (stopReason !== 'tool-use' || (assistant.toolCalls?.length ?? 0) === 0) {
