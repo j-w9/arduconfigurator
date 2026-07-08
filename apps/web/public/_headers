@@ -9,6 +9,11 @@
 # three.js GLTF buffers fetched as data: URIs, the OpenStreetMap GPS-map iframe,
 # OpenStreetMap raster tiles for the no-GPS calibration map picker (img-src), and
 # inline <style> for dynamic widget sizing.
+# connect-src also allows https: and http://localhost for the AI Assistant's
+# bring-your-own-key model calls (Anthropic/OpenAI/OpenAI-compatible gateways over
+# https, a local Ollama over http://localhost). Consistent with the already-open
+# ws:/wss:; the public build ships no telemetry/beacon, so these are only ever the
+# user's own configured endpoints.
 # The service worker must never be cached, so browsers pick up the
 # self-destructing sw.js on the next visit and un-stick users promptly.
 /sw.js
@@ -18,4 +23,4 @@
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-ySvT2PEZeueHGC1y2crNuNTfphBynFPP7i+U21fEgX0='; connect-src 'self' ws: wss: data:; img-src 'self' data: blob: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-ySvT2PEZeueHGC1y2crNuNTfphBynFPP7i+U21fEgX0='; connect-src 'self' ws: wss: data: https: http://localhost:* http://127.0.0.1:*; img-src 'self' data: blob: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'

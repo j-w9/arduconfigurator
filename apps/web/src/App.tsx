@@ -7566,6 +7566,10 @@ export function App() {
         apiKey={aiAssistant.apiKey}
         rememberKey={aiAssistant.settings.rememberKey}
         allowProposals={aiAssistant.settings.allowProposals}
+        availableModels={aiAssistant.availableModels}
+        modelsStatus={aiAssistant.modelsStatus}
+        modelsError={aiAssistant.modelsError}
+        onRefreshModels={aiAssistant.refreshModels}
         onProviderChange={aiAssistant.setProviderId}
         onModelChange={aiAssistant.setModel}
         onBaseUrlChange={aiAssistant.setBaseUrl}

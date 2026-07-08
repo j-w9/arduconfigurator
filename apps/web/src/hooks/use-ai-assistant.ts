@@ -6,6 +6,7 @@ import {
   createProvider,
   createToolExecutor,
   isConnectionReady,
+  listModels,
   toolsFor,
   parseProposedChanges,
   ChatProviderError,
@@ -61,6 +62,11 @@ export interface AiAssistantController {
   status: 'idle' | 'streaming'
   error: string | undefined
   pendingProposal: PendingProposal | undefined
+  /** Models the configured key/endpoint exposes; empty until fetched. */
+  availableModels: string[]
+  modelsStatus: 'idle' | 'loading' | 'error'
+  modelsError: string | undefined
+  refreshModels: () => void
   setProviderId: (providerId: ChatProviderId) => void
   setModel: (model: string) => void
   setBaseUrl: (baseUrl: string) => void
@@ -111,6 +117,9 @@ export function useAiAssistant(options: UseAiAssistantOptions): AiAssistantContr
   const [status, setStatus] = useState<'idle' | 'streaming'>('idle')
   const [error, setError] = useState<string | undefined>(undefined)
   const [pendingProposal, setPendingProposal] = useState<PendingProposal | undefined>(undefined)
+  const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [modelsStatus, setModelsStatus] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [modelsError, setModelsError] = useState<string | undefined>(undefined)
 
   // Canonical provider-facing history; `messages` mirrors it for rendering.
   const conversationRef = useRef<ChatMessage[]>([])
@@ -131,6 +140,49 @@ export function useAiAssistant(options: UseAiAssistantOptions): AiAssistantContr
   )
 
   const configReady = isConnectionReady(connection)
+  // Cloud providers need a key before their model list can be fetched; Ollama
+  // just needs its endpoint; mock has no list to fetch.
+  const canFetchModels =
+    connection.providerId === 'ollama' ? true : connection.providerId === 'mock' ? false : Boolean(apiKey)
+
+  const connectionForModelsRef = useRef(connection)
+  connectionForModelsRef.current = connection
+  const modelsRequestRef = useRef(0)
+
+  const refreshModels = useCallback(() => {
+    const target = connectionForModelsRef.current
+    if (target.providerId !== 'ollama' && target.providerId !== 'mock' && !target.apiKey) return
+    const requestId = modelsRequestRef.current + 1
+    modelsRequestRef.current = requestId
+    setModelsStatus('loading')
+    setModelsError(undefined)
+    void listModels(target)
+      .then((models) => {
+        if (modelsRequestRef.current !== requestId) return // superseded
+        setAvailableModels(models)
+        setModelsStatus('idle')
+      })
+      .catch((caught: unknown) => {
+        if (modelsRequestRef.current !== requestId) return
+        setAvailableModels([])
+        setModelsStatus('error')
+        setModelsError(caught instanceof ChatProviderError ? caught.message : (caught as Error).message)
+      })
+  }, [])
+
+  // Auto-fetch the model list shortly after the key/endpoint settles, so the
+  // picker fills in without a manual step. Debounced so it doesn't fire on every
+  // keystroke while pasting a key.
+  useEffect(() => {
+    if (!canFetchModels) {
+      setAvailableModels([])
+      setModelsStatus('idle')
+      setModelsError(undefined)
+      return
+    }
+    const timer = setTimeout(refreshModels, 700)
+    return () => clearTimeout(timer)
+  }, [canFetchModels, connection.providerId, connection.apiKey, connection.baseUrl, refreshModels])
 
   // Refs so the async loop and follow-up runs read current values without
   // re-creating callbacks on every keystroke.
@@ -381,6 +433,10 @@ export function useAiAssistant(options: UseAiAssistantOptions): AiAssistantContr
     status,
     error,
     pendingProposal,
+    availableModels,
+    modelsStatus,
+    modelsError,
+    refreshModels,
     setProviderId,
     setModel,
     setBaseUrl,

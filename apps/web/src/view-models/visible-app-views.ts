@@ -158,7 +158,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const aiAssistantDescriptor: AppViewDescriptor = {
     id: 'ai-assistant',
     label: 'AI Assistant',
-    description: 'Bring your own model (Claude, GPT, or a local Ollama) to discuss your vehicle configuration. Read-only — it inspects parameters and telemetry but cannot change anything.',
+    description: 'Bring your own model (Claude, GPT, or a local Ollama) to discuss your vehicle and propose parameter changes you review and approve. No change is applied without your explicit confirmation.',
     badge: connectionKind === 'connected' ? 'live' : 'idle',
     tone: 'neutral'
   }
