@@ -2387,9 +2387,77 @@ function makeMockLogBytes(seed: number, length: number): Uint8Array {
   return bytes
 }
 
+// Build a valid @VTX/vtxtable.dat blob for the demo so the VTX view shows the
+// real band/frequency table editor (feature-detected) instead of the "Table
+// not available" preview. Self-contained (protocol-mavlink can't import the
+// ardupilot-core codec) — byte format + CRC match AP_VideoTX_Table::serialize.
+function mockVtxCrc32(bytes: Uint8Array, length: number): number {
+  let crc = 0
+  for (let i = 0; i < length; i += 1) {
+    let c = (crc ^ bytes[i]) & 0xff
+    for (let k = 0; k < 8; k += 1) {
+      c = c & 1 ? (0xedb88320 ^ (c >>> 1)) >>> 0 : c >>> 1
+    }
+    crc = (c ^ (crc >>> 8)) >>> 0
+  }
+  return crc >>> 0
+}
+
+function createMockVtxTableBytes(): Uint8Array {
+  const NAME_LEN = 8
+  const LABEL_LEN = 3
+  const numChannels = 8
+  const bands = [
+    { name: 'Boscam A', letter: 'A', factory: true, freq: [5865, 5845, 5825, 5805, 5785, 5765, 5745, 5725] },
+    { name: 'Raceband', letter: 'R', factory: true, freq: [5658, 5695, 5732, 5769, 5806, 5843, 5880, 5917] },
+    { name: 'Fatshark', letter: 'F', factory: true, freq: [5740, 5760, 5780, 5800, 5820, 5840, 5860, 5880] }
+  ]
+  const powerLevels = [
+    { value: 25, label: '25' },
+    { value: 200, label: '200' },
+    { value: 500, label: '500' },
+    { value: 800, label: '1W' }
+  ]
+  const size = 6 + bands.length * (NAME_LEN + 2 + numChannels * 2) + powerLevels.length * (2 + LABEL_LEN) + 4
+  const buf = new Uint8Array(size)
+  let o = 0
+  buf[o++] = 0x54 // magic 0x5654 LE ('VT')
+  buf[o++] = 0x56
+  buf[o++] = 1 // version
+  buf[o++] = bands.length
+  buf[o++] = numChannels
+  buf[o++] = powerLevels.length
+  for (const band of bands) {
+    for (let i = 0; i < NAME_LEN; i += 1) buf[o + i] = i < band.name.length ? band.name.charCodeAt(i) : 0
+    o += NAME_LEN
+    buf[o++] = band.letter.charCodeAt(0)
+    buf[o++] = band.factory ? 1 : 0
+    for (let c = 0; c < numChannels; c += 1) {
+      buf[o++] = band.freq[c] & 0xff
+      buf[o++] = (band.freq[c] >> 8) & 0xff
+    }
+  }
+  for (const level of powerLevels) {
+    buf[o++] = level.value & 0xff
+    buf[o++] = (level.value >> 8) & 0xff
+    for (let i = 0; i < LABEL_LEN; i += 1) buf[o + i] = i < level.label.length ? level.label.charCodeAt(i) : 0
+    o += LABEL_LEN
+  }
+  const crc = mockVtxCrc32(buf, o)
+  buf[o++] = crc & 0xff
+  buf[o++] = (crc >> 8) & 0xff
+  buf[o++] = (crc >> 16) & 0xff
+  buf[o++] = (crc >> 24) & 0xff
+  return buf
+}
+
 function createMockFtpFiles(): MockFtpFileMap {
   return new Map<string, Uint8Array>([
     ['@SYS/uarts.txt', mockUartsBytes.slice()],
+    // VTX band/power table (@VTX FTP mount) — present so the demo Copter shows
+    // the real table editor. Non-Copter/other demos can omit it to exercise the
+    // "Table not available" preview fallback.
+    ['@VTX/vtxtable.dat', createMockVtxTableBytes()],
     ['@SYS/timers.txt', mockTimersBytes.slice()],
     ['@SYS/scripts/autorun.lua', mockAutorunScriptBytes.slice()],
     ['@SYS/scripts/hello.lua', mockHelloScriptBytes.slice()],
