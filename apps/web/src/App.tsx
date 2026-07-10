@@ -692,6 +692,14 @@ export function App() {
   // shows "Writing… (N/M)" instead of a frozen "Writing…" while a large
   // show-all → write-all batch grinds through one verified write at a time.
   const [applyAllProgress, setApplyAllProgress] = useState<{ completed: number; total: number }>()
+  // Live write-progress for the SCOPED apply path (snapshot restore, receiver,
+  // config, power, servo mapping, …). The Parameters "Apply All" button shows
+  // its own inline "(N/M)" label; the scoped applies had no progress signal at
+  // all — just a frozen "Applying…" — so this drives a global progress bar for
+  // them (most visible on a many-parameter snapshot restore).
+  const [scopedWriteProgress, setScopedWriteProgress] = useState<
+    { completed: number; total: number; scopeLabel: string } | undefined
+  >(undefined)
   // Setup-tab guided exercises that aren't RC-side and aren't motor-side
   // (orientation 6-pose, mode-switch activity observer, mode-switch
   // exercise) live in their own hook — see use-setup-exercises.ts.
@@ -2879,6 +2887,7 @@ export function App() {
 
     const appliedParamIds: string[] = []
     setBusyAction(busyKey)
+    setScopedWriteProgress({ completed: 0, total: stagedDrafts.length, scopeLabel })
     try {
       const rebootRequiredCount = stagedDrafts.filter((entry) => entry.definition?.rebootRequired).length
       const result = await runtime.setParameters(
@@ -2886,7 +2895,8 @@ export function App() {
           paramId: entry.id,
           paramValue: entry.nextValue as number
         })),
-        UI_PARAMETER_WRITE_OPTIONS
+        UI_PARAMETER_WRITE_OPTIONS,
+        (progress) => setScopedWriteProgress({ completed: progress.completed, total: progress.total, scopeLabel })
       )
       appliedParamIds.push(...result.applied.map((entry) => entry.paramId))
       setParameterNotice({
@@ -2932,6 +2942,7 @@ export function App() {
         clearDrafts(appliedParamIds)
       }
 
+      setScopedWriteProgress(undefined)
       setBusyAction(undefined)
     }
   }
@@ -5890,6 +5901,19 @@ export function App() {
           >
             Refresh
           </button>
+        </div>
+      ) : null}
+      {scopedWriteProgress ? (
+        <div className="write-progress-banner" role="status" aria-live="polite" data-testid="write-progress-banner">
+          <span className="write-progress-banner__label">
+            Writing {scopedWriteProgress.scopeLabel.toLowerCase()} — {scopedWriteProgress.completed} / {scopedWriteProgress.total} parameters
+          </span>
+          <progress
+            className="write-progress-banner__bar"
+            data-testid="write-progress-bar"
+            value={scopedWriteProgress.completed}
+            max={scopedWriteProgress.total}
+          />
         </div>
       ) : null}
 	    <main className="app-shell">
