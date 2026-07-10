@@ -1509,21 +1509,26 @@ test.describe('Config view', () => {
   test('an editable field shows the raw ArduPilot parameter name under its label', async ({ page }) => {
     // Reported gap: friendly labels alone don't tell the operator what to
     // search the wiki/Parameters tab for. Centralized in ScopedField's shared
-    // components, so any editable field is representative — Main loop rate
-    // (SCHED_LOOP_RATE) in the system-rates section.
+    // components, so any editable field is representative — Fast sampling
+    // (INS_FAST_SAMPLE) in the system-rates section. NOTE: not Main loop rate
+    // (SCHED_LOOP_RATE) — that one has <= 8 enum options and Config.tsx
+    // renders it via the chip-grid layout (ScopedOptionChipsField), which is
+    // a role="radiogroup" of buttons with no single labelled control for
+    // getByLabel to match. INS_FAST_SAMPLE has no enum options, so it goes
+    // through ScopedNumberField's plain aria-label'd <input> instead.
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-config').click()
 
     const rates = page.getByTestId('config-section-system-rates')
-    const field = rates.locator('.scoped-editor-field', { hasText: 'Main loop rate' })
-    await expect(field.locator('.scoped-editor-field__param-id')).toHaveText('SCHED_LOOP_RATE')
+    const field = rates.locator('.scoped-editor-field', { hasText: 'Fast sampling' })
+    await expect(field.locator('.scoped-editor-field__param-id')).toHaveText('INS_FAST_SAMPLE')
 
     // Regression guard: the id hint must not pollute the control's accessible
     // name (a <label> concatenates ALL its text by default) — an exact
     // getByLabel query on the friendly label alone must still resolve.
-    await expect(field.getByLabel('Main loop rate', { exact: true })).toBeVisible()
+    await expect(field.getByLabel('Fast sampling (IMU mask)', { exact: true })).toBeVisible()
   })
 })
 

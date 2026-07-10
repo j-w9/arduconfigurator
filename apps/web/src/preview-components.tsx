@@ -158,16 +158,23 @@ export function StickCraftPreview({
   return (
     // display:contents wrapper exposes the live attitude for tests without
     // affecting layout (e.g. asserting a centred yaw holds heading).
+    //
+    // rollNorm/pitchNorm are ArduPilot's own norm_input() convention (verified
+    // against rc_input_to_roll_pitch_rad + its unit test in AP_Math): positive
+    // norm_input -> positive target angle -> roll-right / pitch-up. FlightDeckPreview's
+    // rollDeg/pitchDeg use that same positive-is-up/right convention directly
+    // (confirmed by the other FlightDeckPreview call site, which feeds real
+    // ATTITUDE.pitch/roll unmodified) — neither axis needs a sign flip here.
     <div
       style={{ display: 'contents' }}
       data-testid="receiver-stick-attitude"
       data-yaw-heading={Math.round(yawHeading)}
       data-roll-deg={Math.round(rollNorm * 35)}
-      data-pitch-deg={Math.round(-pitchNorm * 35)}
+      data-pitch-deg={Math.round(pitchNorm * 35)}
     >
       <FlightDeckPreview
         rollDeg={rollNorm * 35}
-        pitchDeg={-pitchNorm * 35}
+        pitchDeg={pitchNorm * 35}
         yawDeg={yawHeading}
         captionLabel={verified ? '' : 'Waiting on live RC input'}
         flightMode="Stick preview"
