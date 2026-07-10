@@ -26,6 +26,7 @@ import {
 import { formatArducopterFlightModeChannel, formatArducopterRssiType } from '@arduconfig/param-metadata'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { armSwitchChannelOptions, type ArmSwitchAssignment } from '../view-models/arm-switch'
 import type { useModeSwitchDerivations } from '../hooks/use-mode-switch-derivations'
 import type { useRcCalibrationDerivations } from '../hooks/use-rc-calibration-derivations'
 import type { useRcExercises } from '../hooks/use-rc-exercises'
@@ -79,6 +80,10 @@ export interface ReceiverSectionDerived {
   receiverAdvancedDraftCount: number
   receiverAdvancedInvalidCount: number
   receiverHasPendingReview: boolean
+  /** True once RC5_OPTION metadata is synced — proves this firmware exposes
+   *  RCn_OPTION at all, so the Arm switch card has something to bind to. */
+  armSwitchAvailable: boolean
+  armSwitchAssignment: ArmSwitchAssignment
 }
 
 export interface ReceiverSectionHandlers {
@@ -115,6 +120,7 @@ export interface ReceiverSectionHandlers {
   ) => ReactNode
   setDraft: (paramId: string, value: string) => void
   setReceiverTaskOverride: (taskId: import('../views/Receiver').ReceiverTaskId) => void
+  handleSetArmSwitchChannel: (channel: number, airmode: boolean) => void
 }
 
 export interface ReceiverSectionProps {
@@ -254,7 +260,9 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     receiverWorkflowInvalidCount,
     receiverAdvancedDraftCount,
     receiverAdvancedInvalidCount,
-    receiverHasPendingReview
+    receiverHasPendingReview,
+    armSwitchAvailable,
+    armSwitchAssignment
   } = derived
 
   const {
@@ -270,7 +278,8 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     handleDiscardScopedParameterDrafts,
     renderAdditionalSettingsCard,
     setDraft,
-    setReceiverTaskOverride
+    setReceiverTaskOverride,
+    handleSetArmSwitchChannel
   } = handlers
 
   return (
@@ -894,6 +903,52 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                             draftStatusById={parameterDraftById}
                             layout="chips"
                           />
+                        </div>
+                      ) : null}
+
+                      {armSwitchAvailable ? (
+                        <div className="scoped-review-card scoped-review-card--compact" data-testid="receiver-arm-switch">
+                          <div className="switch-exercise-card__header">
+                            <div>
+                              <strong>Arm switch</strong>
+                              <p>Assign a channel to arm/disarm the vehicle from a physical switch (writes RCn_OPTION directly).</p>
+                            </div>
+                            <StatusBadge tone={armSwitchAssignment.channel !== undefined ? 'success' : 'neutral'}>
+                              {armSwitchAssignment.channel !== undefined
+                                ? `CH${armSwitchAssignment.channel}${armSwitchAssignment.airmode ? ' + AirMode' : ''}`
+                                : 'not assigned'}
+                            </StatusBadge>
+                          </div>
+
+                          <label className="receiver-arm-switch__field">
+                            <span>Channel</span>
+                            <select
+                              data-testid="receiver-arm-switch-channel"
+                              value={String(armSwitchAssignment.channel ?? 0)}
+                              onChange={(event) =>
+                                handleSetArmSwitchChannel(Number(event.target.value), armSwitchAssignment.airmode)
+                              }
+                            >
+                              {armSwitchChannelOptions().map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="receiver-arm-switch__checkbox">
+                            <input
+                              type="checkbox"
+                              data-testid="receiver-arm-switch-airmode"
+                              checked={armSwitchAssignment.airmode}
+                              disabled={armSwitchAssignment.channel === undefined}
+                              onChange={(event) =>
+                                handleSetArmSwitchChannel(armSwitchAssignment.channel ?? 0, event.target.checked)
+                              }
+                            />
+                            <span>Also enable AirMode when armed via this switch</span>
+                          </label>
                         </div>
                       ) : null}
 

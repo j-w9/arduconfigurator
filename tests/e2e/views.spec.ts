@@ -1662,6 +1662,47 @@ test.describe('Receiver RC options', () => {
   })
 })
 
+test.describe('Receiver arm switch', () => {
+  test('assigns RCn_OPTION to a channel, moves it, adds AirMode, and clears it', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Flight Modes' }).click()
+    const card = page.getByTestId('receiver-arm-switch')
+    await card.scrollIntoViewIfNeeded()
+    await expect(card).toBeVisible()
+
+    // Demo seeds every RCn_OPTION at 0 — starts unassigned.
+    await expect(card).toContainText('not assigned')
+    const channelSelect = page.getByTestId('receiver-arm-switch-channel')
+    const airmodeCheckbox = page.getByTestId('receiver-arm-switch-airmode')
+    await expect(channelSelect).toHaveValue('0')
+    await expect(airmodeCheckbox).toBeDisabled()
+
+    // Assign channel 6 — stages RC6_OPTION=153 and the card reflects it.
+    await channelSelect.selectOption('6')
+    await expect(card).toContainText('CH6')
+    await expect(airmodeCheckbox).toBeEnabled()
+    await expect(page.getByTestId('receiver-apply-button')).not.toHaveText('Apply Receiver Changes (0)')
+
+    // Enable AirMode on the same channel — rewrites RC6_OPTION to 154, no
+    // second channel touched.
+    await airmodeCheckbox.check()
+    await expect(card).toContainText('CH6 + AirMode')
+
+    // Move to channel 9 — clears RC6_OPTION and assigns RC9_OPTION, keeping
+    // exactly one live arm switch.
+    await channelSelect.selectOption('9')
+    await expect(card).toContainText('CH9')
+    await expect(card).not.toContainText('CH6')
+
+    // Clear the assignment entirely.
+    await channelSelect.selectOption('0')
+    await expect(card).toContainText('not assigned')
+    await expect(airmodeCheckbox).toBeDisabled()
+  })
+})
+
 test.describe('Receiver flight-mode labels', () => {
   test('flight-mode slots render known mode names (no "Mode N" placeholders)', async ({ page }) => {
     await page.goto('/')

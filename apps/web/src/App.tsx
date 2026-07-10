@@ -380,6 +380,7 @@ import {
   rcLogicTermFromAssignmentId,
   rcLogicUpdateDrafts
 } from './view-models/rc-logic'
+import { armSwitchAssignmentDrafts, deriveArmSwitchAssignment } from './view-models/arm-switch'
 import { type StatusTone } from './status-tone'
 import {
   createSavedSnapshot,
@@ -1078,6 +1079,10 @@ export function App() {
   const compassSetupAvailability = deriveCompassSetupAvailability(snapshot)
   const boardOrientation = readRoundedParameter(snapshot, 'AHRS_ORIENTATION')
   const configuredModeChannel = readRoundedParameter(snapshot, 'FLTMODE_CH') ?? readRoundedParameter(snapshot, 'MODE_CH')
+  // Arm switch: RC5_OPTION existing proves this firmware's RCn_OPTION metadata
+  // is synced at all, so the control gates on that rather than assuming.
+  const armSwitchAvailable = selectParameterById(snapshot, 'RC5_OPTION') !== undefined
+  const armSwitchAssignment = deriveArmSwitchAssignment(snapshot, editedValues)
   const rssiType = readRoundedParameter(snapshot, 'RSSI_TYPE')
   const rssiChannel = readRoundedParameter(snapshot, 'RSSI_CHANNEL')
   const rssiChannelLow = readRoundedParameter(snapshot, 'RSSI_CHAN_LOW')
@@ -4797,6 +4802,14 @@ export function App() {
   function handleRcLogicToggleEngine(enabled: boolean): void {
     setDraft('RCL_ENABLE', enabled ? '1' : '0')
   }
+  // Arm switch: writes plain RCn_OPTION directly (153, or 154 for the
+  // AirMode variant) — independent of the AP_RC_Logic engine above, so it
+  // works on every ArduPilot vehicle/firmware, not just the fork that ships
+  // RCL_*. channel 0 means "None" (clear the current assignment).
+  function handleSetArmSwitchChannel(channel: number, airmode: boolean): void {
+    const targetChannel = channel === 0 ? undefined : channel
+    mergeDrafts(armSwitchAssignmentDrafts(armSwitchAssignment, targetChannel, airmode))
+  }
   // DroneNet: the Networking tab embeds a NET_-filtered DroneCAN node editor so a
   // peripheral's network settings are configurable without the CAN tab. Filtering
   // at the state level means the node list, param count, staged changes, and the
@@ -6909,7 +6922,9 @@ export function App() {
             receiverWorkflowInvalidCount,
             receiverAdvancedDraftCount,
             receiverAdvancedInvalidCount,
-            receiverHasPendingReview
+            receiverHasPendingReview,
+            armSwitchAvailable,
+            armSwitchAssignment
           }}
           handlers={{
             handleStartRcMappingExercise,
@@ -6930,7 +6945,8 @@ export function App() {
             handleDiscardScopedParameterDrafts,
             renderAdditionalSettingsCard,
             setDraft,
-            setReceiverTaskOverride
+            setReceiverTaskOverride,
+            handleSetArmSwitchChannel
           }}
         />
         ) : null}

@@ -6822,6 +6822,37 @@ textarea:focus {
   background: var(--bg-panel-raised);
 }
 
+.receiver-arm-switch__field {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.receiver-arm-switch__field select {
+  font: inherit;
+  font-family: var(--font-data);
+  background: var(--surface-300);
+  color: var(--text);
+  border: 1px solid var(--surface-400);
+  border-radius: 5px;
+  padding: 4px 6px;
+}
+
+.receiver-arm-switch__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.receiver-arm-switch__checkbox:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .scoped-review-card__disclosure {
   display: flex;
   align-items: center;
@@ -7708,7 +7739,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .rc-mixer-stack {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 /* AP_RC_Logic engine controls (shown when the firmware supports RCL_*). */
@@ -7730,6 +7761,19 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .rc-mixer-track {
   padding: 2px 0 12px;
+}
+
+/* No assignments to visualize yet — shrink to a slim cursor-only rail
+ * (still shows where the live channel sits, useful for picking the right
+ * channel to add a function to) instead of the full band-height track. */
+.rc-mixer-track--empty {
+  padding: 2px 0 4px;
+}
+.rc-mixer-track--empty .rc-mixer-track__rail {
+  height: 14px;
+}
+.rc-mixer-track--empty .rc-mixer-track__tick em {
+  display: none;
 }
 
 .rc-mixer-track__rail {
@@ -7849,8 +7893,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .rc-mixer-channel {
   display: grid;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 4px;
+  padding: 6px 10px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-panel);
@@ -7880,12 +7924,6 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.rc-mixer-channel__empty {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 11px;
 }
 
 .rc-mixer-channel__assignments {
