@@ -69,6 +69,7 @@ import { getDesktopBridge } from './desktop-bridge'
 import { createRuntime } from './runtime-factory'
 import { useOsdEditor } from './hooks/use-osd-editor'
 import { useRcMixer } from './hooks/use-rc-mixer'
+import { useVtxTable } from './hooks/use-vtx-table'
 import { useCalibrationNotices } from './hooks/use-calibration-notices'
 import { useLibraryNotices } from './hooks/use-library-notices'
 import { useSafetyAcks } from './hooks/use-safety-acks'
@@ -4713,6 +4714,14 @@ export function App() {
     handleRcMixerRemoveAssignment,
     handleRcMixerUpdateAssignment
   } = useRcMixer(snapshot)
+  // VTX band/frequency table (MAVFTP @VTX/vtxtable.dat). Detects lazily when the
+  // VTX view opens; when present the view shows the real editable table,
+  // otherwise the "Table not available" preview.
+  const vtxTable = useVtxTable({
+    runtime,
+    active: activeViewId === 'vtx',
+    connected: snapshot.connection.kind === 'connected'
+  })
   // NET_ENABLE is present on every networking-capable ArduPilot build (Ethernet
   // or PPP), so its presence is the reliable "this FC does networking" sentinel.
   const hasNetworkingParams = useMemo(
@@ -6956,6 +6965,7 @@ export function App() {
             busyAction={busyAction}
             onApplyScopedDrafts={handleApplyScopedParameterDrafts}
             onDiscardScopedDrafts={handleDiscardScopedParameterDrafts}
+            vtxTable={vtxTable}
           />
         ) : null}
 

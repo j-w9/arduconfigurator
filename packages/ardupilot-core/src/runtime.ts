@@ -66,6 +66,7 @@ import {
 } from './mavftp.js'
 import { applyArducopter47Override } from './firmware-overrides.js'
 import { listMavftpLogFiles } from './mavftp-log-directories.js'
+import { VTX_TABLE_FTP_PATH, parseVtxTable, serializeVtxTable, type VtxTable } from './vtx-table.js'
 import { CanBusService } from './runtime-can-bus-service.js'
 import { GuidedActionService } from './runtime-guided-action-service.js'
 import { LogDownloadService, type LogDownloadProgress, type OnboardLogInfo } from './runtime-log-download-service.js'
@@ -1044,6 +1045,35 @@ export class ArduPilotConfiguratorRuntime {
 
   async downloadRemoteFile(path: string): Promise<Uint8Array> {
     return this.mavftp.downloadRemoteFile(path)
+  }
+
+  /**
+   * Read the VTX band/power table over MAVLink FTP (@VTX/vtxtable.dat) and
+   * parse it. Returns `undefined` when the firmware doesn't expose the table
+   * (FTP mount/file absent) OR the blob doesn't parse (bad magic/version/CRC) —
+   * both mean "no usable VTX table here", so the caller keeps the preview.
+   * Only surfaces as available on a clean parse.
+   */
+  async readVtxTable(): Promise<VtxTable | undefined> {
+    let bytes: Uint8Array
+    try {
+      bytes = await this.mavftp.readRemoteFile(VTX_TABLE_FTP_PATH)
+    } catch {
+      return undefined // no @VTX mount / file — feature not present
+    }
+    try {
+      return parseVtxTable(bytes)
+    } catch {
+      return undefined // present but unparseable (version skew / corruption)
+    }
+  }
+
+  /** Serialize and upload a VTX table over MAVLink FTP, overwriting the
+   *  existing @VTX/vtxtable.dat. The firmware re-validates (magic/version/CRC)
+   *  and rejects a malformed blob, leaving its table unchanged. */
+  async writeVtxTable(table: VtxTable): Promise<void> {
+    await this.mavftp.uploadRemoteFile(VTX_TABLE_FTP_PATH, serializeVtxTable(table), { overwrite: true })
+    this.appendStatusEntry('info', `Uploaded VTX table over MAVFTP (${table.bands.length} bands).`)
   }
 
   /** List the onboard dataflash logs (`LOG_REQUEST_LIST`). */

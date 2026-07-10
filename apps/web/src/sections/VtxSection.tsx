@@ -14,6 +14,7 @@ import { readRoundedParameter } from '../selectors/parameter-read'
 import { selectViewCatalog } from '../selectors/view-catalog'
 import { selectViewDrafts } from '../selectors/view-drafts'
 import { isVtxControlSerialProtocol, type SerialPortViewModel } from '../serial-port-helpers'
+import type { UseVtxTableResult } from '../hooks/use-vtx-table'
 import { VtxView } from '../views/Vtx'
 
 export interface VtxSectionProps {
@@ -31,6 +32,7 @@ export interface VtxSectionProps {
     scopeLabel: string
   ) => void | Promise<void>
   onDiscardScopedDrafts: (paramIds: readonly string[], scopeLabel: string) => void
+  vtxTable: UseVtxTableResult
 }
 
 export function VtxSection(props: VtxSectionProps) {
@@ -44,7 +46,8 @@ export function VtxSection(props: VtxSectionProps) {
     canApplyDraftParameters,
     busyAction,
     onApplyScopedDrafts,
-    onDiscardScopedDrafts
+    onDiscardScopedDrafts,
+    vtxTable
   } = props
 
   const { byId: vtxParameterById } = useMemo(
@@ -96,6 +99,7 @@ export function VtxSection(props: VtxSectionProps) {
       isBusy={busyAction !== undefined}
       onApply={() => void onApplyScopedDrafts(vtxDraftEntries, 'vtx:apply', 'VTX')}
       onRevert={() => onDiscardScopedDrafts(vtxDraftEntries.map((entry) => entry.id), 'VTX')}
+      vtxTable={vtxTable}
     />
   )
 }

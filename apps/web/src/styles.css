@@ -3255,6 +3255,70 @@ textarea:focus {
   line-height: 1.5;
 }
 
+/* VTX band/frequency table editor (shown when @VTX/vtxtable.dat is detected).
+ * Spans both advanced-grid columns since the channel grid is wide. */
+.bf-vtx-table {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+}
+.bf-vtx-table__scroll {
+  overflow-x: auto;
+}
+.bf-vtx-table__grid {
+  border-collapse: collapse;
+  font-size: 12px;
+  min-width: 100%;
+}
+.bf-vtx-table__grid th,
+.bf-vtx-table__grid td {
+  border: 1px solid var(--surface-400);
+  padding: 4px 6px;
+  text-align: center;
+}
+.bf-vtx-table__grid thead th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.bf-vtx-table__band {
+  text-align: left;
+  white-space: nowrap;
+}
+.bf-vtx-table__band strong {
+  margin-right: 6px;
+}
+.bf-vtx-table__band small {
+  color: var(--text-muted);
+}
+.bf-vtx-table__grid input[type='number'] {
+  width: 68px;
+  font-family: var(--font-data);
+  font-size: 12px;
+  background: var(--surface-300);
+  color: var(--text);
+  border: 1px solid var(--surface-400);
+  border-radius: 4px;
+  padding: 2px 4px;
+  text-align: right;
+}
+.bf-vtx-table__power {
+  display: grid;
+  gap: 6px;
+}
+.bf-vtx-table__power-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bf-vtx-table__power small {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.bf-vtx-table__actions {
+  display: flex;
+  gap: 8px;
+}
+
 .osd-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 1.6fr);
