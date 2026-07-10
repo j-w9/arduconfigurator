@@ -58,4 +58,9 @@ describe('groupAssignmentsByChannel', () => {
     expect(groups).toHaveLength(4)
     expect(groups.every((group) => group.assignments.length === 0)).toBe(true)
   })
+
+  it('omits excluded channels (e.g. the primary stick axes) from the rows entirely', () => {
+    const groups = groupAssignmentsByChannel([assign(2)], 6, new Set([1, 2, 3, 4]))
+    expect(groups.map((group) => group.channel)).toEqual([5, 6])
+  })
 })

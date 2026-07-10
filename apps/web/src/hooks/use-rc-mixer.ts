@@ -7,6 +7,7 @@ import { useCallback, useMemo, useState } from 'react'
 
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
+import { derivePrimaryAndModeChannels } from '../rc-channel-helpers'
 import {
   buildRcMixerFunctionLookup,
   createAssignment,
@@ -19,9 +20,10 @@ import {
 export function useRcMixer(snapshot: ConfiguratorSnapshot) {
   const [rcMixerState, setRcMixerState] = useState<RcMixerState>(createIdleRcMixerState)
   const rcMixerFunctionLookup = useMemo(() => buildRcMixerFunctionLookup(), [])
+  const excludedChannels = useMemo(() => derivePrimaryAndModeChannels(snapshot), [snapshot])
   const rcMixerChannels = useMemo(
-    () => groupAssignmentsByChannel(rcMixerState.assignments),
-    [rcMixerState.assignments]
+    () => groupAssignmentsByChannel(rcMixerState.assignments, 16, excludedChannels),
+    [rcMixerState.assignments, excludedChannels]
   )
   const rcMixerLivePwmByChannel = useMemo(() => {
     const map = new Map<number, number>()

@@ -1532,6 +1532,29 @@ test.describe('Config view', () => {
   })
 })
 
+test.describe('RC Mixer view', () => {
+  test('shows only AUX channels, not the primary stick axes or the mode switch', async ({ page }) => {
+    // Demo Copter: RCMAP_ROLL/PITCH/THROTTLE/YAW = 1/2/3/4, FLTMODE_CH = 7,
+    // RCL_ENABLE = 1 with real range terms on ch5 (ArmDisarm) and ch6 (LAND).
+    // Channels 1-4 and 7 are stick axes / the mode switch, never AUX
+    // candidates in practice — the mixer should skip them entirely rather
+    // than listing all 16 channels.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-rc-mixer').click()
+
+    for (const channel of [1, 2, 3, 4, 7]) {
+      await expect(page.getByTestId(`rc-mixer-channel-${channel}`)).toHaveCount(0)
+    }
+    // AUX channels remain, including the ones with real assigned functions.
+    await expect(page.getByTestId('rc-mixer-channel-5')).toBeVisible()
+    await expect(page.getByTestId('rc-mixer-channel-6')).toBeVisible()
+    await expect(page.getByTestId('rc-mixer-channel-8')).toBeVisible()
+  })
+})
+
 // The receiver Bind (ELRS/CRSF) button is currently hidden in the UI
 // (SHOW_RECEIVER_BIND_BUTTON=false in ReceiverSection.tsx); the runtime
 // startReceiverBind path stays covered by tests/runtime.integration.test.mjs.
