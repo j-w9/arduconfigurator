@@ -106,14 +106,21 @@ export function buildRcMixerFunctionLookup(
 /**
  * Group assignments by channel for the channel-row layout. Channels with no
  * assignments are still surfaced so the UI can show "+ Add" affordances on
- * every channel in the 1..maxChannel range.
+ * every channel in the 1..maxChannel range — except those in `excludeChannels`
+ * (the primary stick axes and the flight-mode switch), which never get an AUX
+ * function assigned in practice and would otherwise clutter the mixer with
+ * rows nobody uses.
  */
 export function groupAssignmentsByChannel(
   assignments: readonly RcMixerAssignment[],
-  maxChannel = 16
+  maxChannel = 16,
+  excludeChannels?: ReadonlySet<number>
 ): Array<{ channel: number; assignments: RcMixerAssignment[] }> {
   const byChannel = new Map<number, RcMixerAssignment[]>()
   for (let channel = 1; channel <= maxChannel; channel += 1) {
+    if (excludeChannels?.has(channel)) {
+      continue
+    }
     byChannel.set(channel, [])
   }
   for (const assignment of assignments) {

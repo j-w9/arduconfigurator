@@ -68,6 +68,22 @@ export function getModeChannelNumber(snapshot: ConfiguratorSnapshot): number | u
   return configuredChannel >= 1 && configuredChannel <= 16 ? configuredChannel : undefined
 }
 
+/**
+ * Channels reserved for the primary stick axes (RCMAP_ROLL/PITCH/THROTTLE/YAW)
+ * and the flight-mode switch. ArduPilot's RCn_OPTION / AP_RC_Logic AUX
+ * functions are never assigned to these in practice, so views that edit AUX
+ * functions only (e.g. the RC Mixer tab) exclude them rather than listing all
+ * 16 channels.
+ */
+export function derivePrimaryAndModeChannels(snapshot: ConfiguratorSnapshot): Set<number> {
+  const channels = new Set<number>(buildRcmapRoleByChannel(snapshot).keys())
+  const modeChannel = getModeChannelNumber(snapshot)
+  if (modeChannel !== undefined) {
+    channels.add(modeChannel)
+  }
+  return channels
+}
+
 export function buildRcChannelDisplays(snapshot: ConfiguratorSnapshot, visibleCount = 8): RcChannelDisplay[] {
   const modeChannelNumber = getModeChannelNumber(snapshot)
   const assignedRcOptionChannels = deriveAssignedRcOptionChannels(snapshot)

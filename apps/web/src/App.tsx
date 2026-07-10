@@ -132,7 +132,7 @@ import {
   formatCurrent,
   formatRemaining
 } from './device-display'
-import { buildRcChannelDisplays } from './rc-channel-helpers'
+import { buildRcChannelDisplays, derivePrimaryAndModeChannels } from './rc-channel-helpers'
 import {
   connectButtonLabel,
   describeConnectFailure,
@@ -4760,9 +4760,10 @@ export function App() {
     () => buildRcMixerFunctionLookup(rcLogicFunctionCatalogMemo),
     [rcLogicFunctionCatalogMemo]
   )
+  const rcLogicExcludedChannels = useMemo(() => derivePrimaryAndModeChannels(snapshot), [snapshot])
   const rcLogicChannels = useMemo(
-    () => groupAssignmentsByChannel(rcLogicModel.assignments),
-    [rcLogicModel.assignments]
+    () => groupAssignmentsByChannel(rcLogicModel.assignments, 16, rcLogicExcludedChannels),
+    [rcLogicModel.assignments, rcLogicExcludedChannels]
   )
   function handleRcLogicAddAssignment(channel: number): void {
     const drafts = rcLogicAddDrafts(rcLogicModel, channel)
