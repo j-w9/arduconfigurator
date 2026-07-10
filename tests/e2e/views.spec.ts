@@ -3515,3 +3515,57 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.getByTestId('dronecan-fwupdate-file-50')).toBeVisible()
   })
 })
+
+test.describe('Snapshot restore', () => {
+  test('captures a snapshot, shows a real diff after a live edit, drops/undoes a row, and overwrites in place', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    // Capture must happen AFTER the full parameter sync — otherwise the
+    // backup only has whichever params had streamed in so far (a real race:
+    // BATT_LOW_VOLT missing from the backup entirely reads as "already
+    // matches", not as a diff, for the wrong reason).
+    await expectParameterSyncComplete(page)
+
+    // Capture a baseline while the live values are still untouched.
+    await page.getByTestId('view-button-snapshots').click()
+    await page.getByTestId('snapshot-label-input').fill('E2E baseline')
+    await page.getByTestId('capture-live-snapshot-button').click()
+    await expect(page.getByTestId('snapshot-import-calibration')).not.toBeChecked()
+
+    // Change a live value from a different tab so the snapshot now has
+    // something real to restore.
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-parameters').click()
+    const search = page.getByTestId('parameter-search-input')
+    await search.fill('BATT_LOW_VOLT')
+    await page.locator('input[aria-label="BATT_LOW_VOLT value"]').fill('13.5')
+    await search.fill('')
+    await page.getByRole('button', { name: /^Apply All \(/ }).click()
+    await expect(page.getByRole('button', { name: /^Apply All \(0\)/ })).toBeVisible()
+
+    // Back in Snapshots, the captured baseline now diffs against the live
+    // (changed) value.
+    await page.getByTestId('view-button-snapshots').click()
+    await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toBeVisible()
+
+    // Calibration is excluded by default (accel/gyro/compass/AHRS trim) —
+    // the note names how many were stripped from this restore.
+    await expect(page.getByTestId('snapshot-import-calibration-toggle')).toContainText('currently excluded')
+
+    // Drop the row — excludes it from the restore diff/count without
+    // leaving this view — then undo to restore it.
+    await page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT').click()
+    await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toHaveCount(0)
+    await expect(page.getByTestId('snapshot-restore-dropped-note')).toContainText('1 row dropped')
+    await page.getByTestId('snapshot-restore-undo-drops').click()
+    await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toBeVisible()
+    await expect(page.getByTestId('snapshot-restore-dropped-note')).toHaveCount(0)
+
+    // Overwrite Selected refreshes the SAME saved entry in place rather
+    // than creating a new one.
+    await page.getByTestId('overwrite-selected-snapshot-button').click()
+    await expect(page.getByText(/Overwrote snapshot/)).toBeVisible()
+    // The restore diff against the (now up to date) baseline is empty again.
+    await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toHaveCount(0)
+  })
+})

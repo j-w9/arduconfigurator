@@ -32,6 +32,7 @@ import {
   type MotorTestRequest,
   applyArducopter47CatalogOverrides,
   type ParameterBackupFile,
+  type ParameterBackupImportOptions,
   type ParameterBatchWriteProgress,
   type ParameterBatchWriteResult,
   type ParameterDraftEntry,
@@ -191,6 +192,7 @@ import { useReceiverAdditional } from './hooks/use-receiver-additional'
 import { useReceiverChannelDisplays } from './hooks/use-receiver-channel-displays'
 import { useReceiverSupportCatalog } from './hooks/use-receiver-support-catalog'
 import { useSelectedProfileDiff } from './hooks/use-selected-profile-diff'
+import { selectEntityDiff } from './selectors/entity-diff'
 import { useTuningCatalog } from './hooks/use-tuning-catalog'
 import { useTuningMasterPreview } from './hooks/use-tuning-master-preview'
 import { useTuningProfileSource } from './hooks/use-tuning-profile-source'
@@ -1727,24 +1729,72 @@ export function App() {
     const liveById = new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter]))
     return buildParametersFromBackup(baseline.backup, liveById)
   }, [snapshotCompareBaselineId, savedSnapshots, snapshot.parameters])
+  // Snapshot restore curation: off-by-default calibration exclusion (restoring
+  // another unit's accel/gyro/compass calibration + AHRS trim onto different
+  // hardware is wrong by default) plus a per-row Drop so the operator can
+  // curate the diff before writing it — matching the Parameters tab's
+  // stage-then-write feel instead of committing the entire diff in one shot.
+  // Reuses the SAME opt-in 'calibration' exclusion category the Parameters
+  // tab's own backup-import toggles already use (parameter-backups.ts) rather
+  // than a second bespoke classifier.
+  const [snapshotImportCalibration, setSnapshotImportCalibration] = useState(false)
+  const [snapshotRestoreDroppedParamIds, setSnapshotRestoreDroppedParamIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
+  const snapshotRestoreImportOptions = useMemo<ParameterBackupImportOptions>(
+    () => ({ excludeCategories: snapshotImportCalibration ? [] : ['calibration'] }),
+    [snapshotImportCalibration]
+  )
   const {
     selectedProfile: selectedSnapshot,
-    restore: selectedSnapshotRestore,
-    diff: {
-      entries: selectedSnapshotDiffEntries,
-      groups: selectedSnapshotDiffGroups,
-      changed: selectedSnapshotChangedEntries,
-      invalid: selectedSnapshotInvalidEntries,
-      signature: selectedSnapshotDiffSignature
-    }
+    restore: selectedSnapshotRestore
   } = useSelectedProfileDiff({
     snapshotParameters: snapshotCompareBaselineParameters,
     savedProfiles: savedSnapshots,
     selectedProfileId: selectedSnapshotId,
-    resolveBackup: resolveSnapshotBackup
+    resolveBackup: resolveSnapshotBackup,
+    importOptions: snapshotRestoreImportOptions
   })
+  useEffect(() => {
+    setSnapshotRestoreDroppedParamIds(new Set())
+  }, [selectedSnapshot?.id])
+  function handleDropSnapshotRestoreEntry(paramId: string): void {
+    setSnapshotRestoreDroppedParamIds((current) => {
+      const next = new Set(current)
+      next.add(paramId)
+      return next
+    })
+  }
+  function handleClearSnapshotRestoreDrops(): void {
+    setSnapshotRestoreDroppedParamIds(new Set())
+  }
+  const snapshotRestoreExcludedCalibrationCount = selectedSnapshotRestore?.excludedCount ?? 0
+  const filteredSnapshotRestoreDraftValues = useMemo(() => {
+    const draftValues = selectedSnapshotRestore?.draftValues ?? {}
+    if (snapshotRestoreDroppedParamIds.size === 0) {
+      return draftValues
+    }
+    const result: Record<string, string> = {}
+    for (const [paramId, value] of Object.entries(draftValues)) {
+      if (!snapshotRestoreDroppedParamIds.has(paramId)) {
+        result[paramId] = value
+      }
+    }
+    return result
+  }, [selectedSnapshotRestore, snapshotRestoreDroppedParamIds])
+  const {
+    entries: selectedSnapshotDiffEntries,
+    groups: selectedSnapshotDiffGroups,
+    changed: selectedSnapshotChangedEntries,
+    invalid: selectedSnapshotInvalidEntries,
+    signature: selectedSnapshotDiffSignature
+  } = useMemo(
+    () => selectEntityDiff(snapshotCompareBaselineParameters, filteredSnapshotRestoreDraftValues),
+    [snapshotCompareBaselineParameters, filteredSnapshotRestoreDraftValues]
+  )
   const {
     handleCaptureLiveSnapshot,
+    handleOverwriteSelectedSnapshot,
     handleImportSnapshotFile,
     handleExportSnapshotLibrary,
     handleOpenDesktopSnapshotFile,
@@ -3085,12 +3135,12 @@ export function App() {
       return
     }
 
-    replaceDrafts(selectedSnapshotRestore.draftValues)
+    replaceDrafts(filteredSnapshotRestoreDraftValues)
     setSelectedParameterId(selectedSnapshotChangedEntries[0]?.id ?? selectedParameterId)
     setActiveViewId('parameters')
     setSnapshotNotice({
       tone: 'warning',
-      text: `Loaded ${selectedSnapshotRestore.changedCount} snapshot change(s) into the Expert parameter editor draft set.`
+      text: `Loaded ${selectedSnapshotChangedEntries.length} snapshot change(s) into the Expert parameter editor draft set.`
     })
   }
 
@@ -7238,6 +7288,9 @@ export function App() {
             selectedSnapshotChangedEntries,
             selectedSnapshotInvalidEntries,
             selectedSnapshotRebootSensitiveCount,
+            snapshotImportCalibration,
+            snapshotRestoreExcludedCalibrationCount,
+            snapshotRestoreDroppedParamIds,
             stagedProvisioningOverlayParameters,
             selectedProvisioningProfile,
             selectedProvisioningProfileRestore,
@@ -7256,6 +7309,10 @@ export function App() {
                 `Snapshot restore (single): ${entry.id}`
               ),
             handleCaptureLiveSnapshot,
+            handleOverwriteSelectedSnapshot,
+            handleDropSnapshotRestoreEntry,
+            handleClearSnapshotRestoreDrops,
+            setSnapshotImportCalibration,
             handleCreateProvisioningProfile,
             handleDeleteSelectedProvisioningProfile,
             handleDeleteSelectedSnapshot,

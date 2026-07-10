@@ -64,6 +64,15 @@ export interface SnapshotsSectionDerived {
   selectedSnapshotChangedEntries: readonly ParameterDraftEntry[]
   selectedSnapshotInvalidEntries: readonly ParameterDraftEntry[]
   selectedSnapshotRebootSensitiveCount: number
+  /** Off by default — restoring another unit's accel/compass/RC-trim
+   *  calibration onto different hardware is wrong by default. */
+  snapshotImportCalibration: boolean
+  /** How many calibration params the default filter is currently excluding
+   *  (informational note next to the checkbox). */
+  snapshotRestoreExcludedCalibrationCount: number
+  /** Param ids individually dropped from this restore via the per-row Drop
+   *  button — used to grey out/hide already-dropped rows. */
+  snapshotRestoreDroppedParamIds: ReadonlySet<string>
   stagedProvisioningOverlayParameters: readonly ParameterBackupEntry[]
   selectedProvisioningProfile: SavedProvisioningProfile | undefined
   selectedProvisioningProfileRestore: ParameterBackupImportResult | undefined
@@ -86,6 +95,16 @@ export interface SnapshotsSectionHandlers {
    *  gates it as the full restore. */
   handleApplySnapshotEntry: (entry: ParameterDraftEntry) => void | Promise<void>
   handleCaptureLiveSnapshot: () => void | Promise<void>
+  /** Refreshes the SELECTED snapshot's backup with current live values
+   *  in place (same id) instead of creating a new saved entry. */
+  handleOverwriteSelectedSnapshot: () => void | Promise<void>
+  /** Per-row Drop for the restore diff — like Parameters, excludes one
+   *  param from the restore without leaving this view. */
+  handleDropSnapshotRestoreEntry: (paramId: string) => void
+  /** Restores every row dropped via handleDropSnapshotRestoreEntry for the
+   *  selected snapshot. */
+  handleClearSnapshotRestoreDrops: () => void
+  setSnapshotImportCalibration: (value: boolean) => void
   handleCreateProvisioningProfile: () => void | Promise<void>
   handleDeleteSelectedProvisioningProfile: () => void | Promise<void>
   handleDeleteSelectedSnapshot: () => void | Promise<void>
@@ -213,6 +232,9 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     selectedSnapshotDiffGroups,
     selectedSnapshotChangedEntries,
     selectedSnapshotInvalidEntries,
+    snapshotImportCalibration,
+    snapshotRestoreExcludedCalibrationCount,
+    snapshotRestoreDroppedParamIds,
     stagedProvisioningOverlayParameters,
     selectedProvisioningProfile,
     selectedProvisioningProfileRestore,
@@ -241,6 +263,10 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     handleApplySelectedSnapshotRestore,
     handleApplySnapshotEntry,
     handleCaptureLiveSnapshot,
+    handleOverwriteSelectedSnapshot,
+    handleDropSnapshotRestoreEntry,
+    handleClearSnapshotRestoreDrops,
+    setSnapshotImportCalibration,
     handleCreateProvisioningProfile,
     handleDeleteSelectedProvisioningProfile,
     handleDeleteSelectedSnapshot,
@@ -375,6 +401,17 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                   >
                     Capture Live Snapshot
                   </button>
+                  {selectedSnapshot ? (
+                    <button
+                      data-testid="overwrite-selected-snapshot-button"
+                      className="snapshots-button snapshots-button--secondary"
+                      onClick={handleOverwriteSelectedSnapshot}
+                      disabled={busyAction !== undefined || snapshot.parameters.length === 0}
+                      title={`Replace "${selectedSnapshot.label}" with the current live values, keeping the same saved entry.`}
+                    >
+                      Overwrite Selected
+                    </button>
+                  ) : null}
                   <button
                     data-testid="import-snapshot-file-button"
                     className="snapshots-button snapshots-button--secondary"
@@ -738,6 +775,42 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                   </div>
                 ) : null}
 
+                {snapshotRestoreDroppedParamIds.size > 0 ? (
+                  <div className="snapshot-restore-dropped-note" data-testid="snapshot-restore-dropped-note">
+                    <span>
+                      {snapshotRestoreDroppedParamIds.size} row{snapshotRestoreDroppedParamIds.size === 1 ? '' : 's'} dropped
+                      from this restore.
+                    </span>
+                    <button
+                      type="button"
+                      style={buttonStyle()}
+                      data-testid="snapshot-restore-undo-drops"
+                      onClick={handleClearSnapshotRestoreDrops}
+                      disabled={busyAction !== undefined}
+                    >
+                      Undo drops
+                    </button>
+                  </div>
+                ) : null}
+
+                <label className="snapshot-restore-ack" data-testid="snapshot-import-calibration-toggle">
+                  <input
+                    data-testid="snapshot-import-calibration"
+                    type="checkbox"
+                    checked={snapshotImportCalibration}
+                    onChange={(event) => setSnapshotImportCalibration(event.target.checked)}
+                    disabled={busyAction !== undefined}
+                  />
+                  <span>
+                    Import calibrations (accelerometer/compass/RC-trim). Off by default — this data is
+                    specific to the unit it was captured from and is almost never meaningful on different
+                    hardware.
+                    {snapshotRestoreExcludedCalibrationCount > 0
+                      ? ` ${snapshotRestoreExcludedCalibrationCount} calibration value(s) are currently excluded.`
+                      : ''}
+                  </span>
+                </label>
+
                 {selectedSnapshotChangedEntries.length > 0 ? (
                   <div className="parameter-diff-grid">
                     {selectedSnapshotDiffGroups.map((group) => (
@@ -782,6 +855,19 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                             >
                               Apply
                             </button>
+                            {/* Per-row Drop — same contract as Parameters:
+                             *  excludes this param from the restore diff
+                             *  without leaving this view. */}
+                            <button
+                              type="button"
+                              style={buttonStyle()}
+                              data-testid={`snapshot-diff-drop-${draft.id}`}
+                              onClick={() => handleDropSnapshotRestoreEntry(draft.id)}
+                              disabled={busyAction !== undefined}
+                              title={`Drop the staged change to ${draft.id} (excludes it from this restore; keeps the live FC value as-is).`}
+                            >
+                              Drop
+                            </button>
                           </div>
                         ))}
                       </section>
@@ -798,15 +884,18 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                   <>
                     <div className="snapshots-detail-section-heading snapshots-detail-section-heading--compact">
                       <div>
-                        <h4>Review invalid restore entries</h4>
+                        <h4>
+                          {selectedSnapshotInvalidEntries.length} invalid draft{selectedSnapshotInvalidEntries.length === 1 ? '' : 's'} blocking
+                          restore
+                        </h4>
                       </div>
-                      <span className="snapshots-counter-chip is-danger">{selectedSnapshotInvalidEntries.length} blocked</span>
+                      <span className="snapshots-counter-chip is-danger">{selectedSnapshotInvalidEntries.length} invalid</span>
                     </div>
                   <div className="parameter-diff-grid parameter-diff-grid--invalid">
                     <section className="parameter-diff-group parameter-diff-group--invalid">
                       <header>
                         <strong>Invalid restore values</strong>
-                        <span>{selectedSnapshotInvalidEntries.length} blocked</span>
+                        <span>{selectedSnapshotInvalidEntries.length} invalid</span>
                       </header>
 
                       {selectedSnapshotInvalidEntries.map((draft) => (
@@ -817,6 +906,19 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                           </span>
                           <span className="parameter-diff-values">{draft.rawValue || 'Empty draft'}</span>
                           <span className="parameter-diff-delta">{draft.reason ?? 'Invalid value'}</span>
+                          {/* Every invalid row offers Drop — same contract
+                              as Parameters — so the operator can dismiss a
+                              bad restore value without first fixing it. */}
+                          <button
+                            type="button"
+                            style={buttonStyle()}
+                            data-testid={`snapshot-diff-drop-${draft.id}`}
+                            onClick={() => handleDropSnapshotRestoreEntry(draft.id)}
+                            disabled={busyAction !== undefined}
+                            title={`Drop the invalid restore value for ${draft.id} (excludes it from this restore).`}
+                          >
+                            Drop
+                          </button>
                         </div>
                       ))}
                     </section>

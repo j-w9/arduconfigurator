@@ -9919,6 +9919,15 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin-top: 2px;
 }
 
+.snapshot-restore-dropped-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .motor-test-card {
   display: grid;
   gap: 14px;
