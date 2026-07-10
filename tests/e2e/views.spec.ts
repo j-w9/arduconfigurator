@@ -3616,3 +3616,23 @@ test.describe('Snapshot restore', () => {
     await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toHaveCount(0)
   })
 })
+
+test.describe('App update banner', () => {
+  test('shows a "new version ready" banner with a Refresh action when an update is detected', async ({ page }) => {
+    // The offline-shell SW was retired, but the "new version ready — Refresh"
+    // prompt is back as a service-worker-free version poll (compares the
+    // deployed index.html entry-bundle hash to the one this tab loaded). The
+    // ?appUpdate=available seam forces the detected state so the banner can be
+    // exercised without an actual redeploy.
+    await page.goto('/?appUpdate=available')
+    const banner = page.getByTestId('sw-update-banner')
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText('A new version of ArduConfigurator is ready.')
+    await expect(page.getByTestId('sw-update-refresh')).toBeVisible()
+  })
+
+  test('does not show the update banner on a normal load', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.getByTestId('sw-update-banner')).toHaveCount(0)
+  })
+})
