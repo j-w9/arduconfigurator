@@ -278,10 +278,9 @@ export function VtxView(props: VtxViewProps) {
 }
 
 /**
- * Editable band/frequency grid + read-only power levels, shown when the
- * firmware exposes a VTX table over MAVFTP. Slice 1: band frequencies are
- * editable + savable (upload); power levels are read-only pending firmware
- * driver integration (Task 5).
+ * Editable band/frequency grid + editable power levels, shown when the firmware
+ * exposes a VTX table over MAVFTP. Both halves edit the in-RAM draft and Save
+ * uploads the whole table (@VTX/vtxtable.dat).
  */
 function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
   const table = vtxTable.table
@@ -290,8 +289,9 @@ function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
   return (
     <div className="bf-vtx-table" data-testid="vtx-table-editor">
       <p className="setup-gui-box__note">
-        Band/channel frequencies from the flight controller (<code>@VTX/vtxtable.dat</code>). Edit any cell (MHz, 0 =
-        channel disabled) and Save to upload the whole table. Factory bands use the VTX&apos;s own frequency map.
+        VTX band/frequency + power table from the flight controller (<code>@VTX/vtxtable.dat</code>). Edit any frequency
+        cell (MHz, 0 = channel disabled) or power level, then Save to upload the whole table. Factory bands use the
+        VTX&apos;s own frequency map.
       </p>
       <div className="bf-vtx-table__scroll">
         <table className="bf-vtx-table__grid">
@@ -338,18 +338,45 @@ function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
       <div className="bf-vtx-table__power" data-testid="vtx-table-power">
         <div className="bf-vtx-table__power-head">
           <strong>Power levels</strong>
-          <StatusBadge tone="neutral">read-only</StatusBadge>
         </div>
-        <div className="config-pills">
-          {table.powerLevels.map((level, index) => (
-            <span key={index}>
-              {level.label || String(level.value)} · {level.value}
-            </span>
-          ))}
-        </div>
+        <table className="bf-vtx-table__power-grid">
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Value</th>
+              <th scope="col">Label</th>
+            </tr>
+          </thead>
+          <tbody>
+            {table.powerLevels.map((level, index) => (
+              <tr key={index} data-testid={`vtx-table-power-${index}`}>
+                <th scope="row">{index + 1}</th>
+                <td>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    data-testid={`vtx-table-power-value-${index}`}
+                    value={level.value}
+                    onChange={(event) => vtxTable.setPowerValue(index, Number(event.target.value))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    maxLength={3}
+                    data-testid={`vtx-table-power-label-${index}`}
+                    value={level.label}
+                    onChange={(event) => vtxTable.setPowerLabel(index, event.target.value)}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
         <small>
-          Power levels are stored and transported, but the VTX drivers don&apos;t apply the table&apos;s power values
-          yet (pending firmware work) — editing lands in a follow-up.
+          Protocol value sent to the VTX (mW for Tramp; index/dBm for SmartAudio) plus a short display label. Saved as
+          part of the table upload.
         </small>
       </div>
 

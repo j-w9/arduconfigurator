@@ -3650,13 +3650,18 @@ test.describe('VTX band/frequency table', () => {
     // Seeded Boscam A channel 1 = 5865 MHz.
     const cell = page.getByTestId('vtx-table-freq-0-0')
     await expect(cell).toHaveValue('5865')
-    // Power levels are surfaced read-only.
-    await expect(page.getByTestId('vtx-table-power')).toContainText('read-only')
 
     // Save is disabled until an edit dirties the draft.
     await expect(page.getByTestId('vtx-table-save')).toBeDisabled()
     await cell.fill('5900')
     await expect(page.getByTestId('vtx-table-save')).toBeEnabled()
+
+    // Power levels are editable too (value + label); the seeded first level is
+    // 25 mW / "25". Editing them also dirties the draft and rides the same save.
+    const powerValue = page.getByTestId('vtx-table-power-value-0')
+    await expect(powerValue).toHaveValue('25')
+    await powerValue.fill('50')
+    await page.getByTestId('vtx-table-power-label-0').fill('50')
 
     // Save uploads the whole table over MAVFTP; success clears the dirty state
     // (button → "Saved") with no error banner — proves the write round-tripped.
