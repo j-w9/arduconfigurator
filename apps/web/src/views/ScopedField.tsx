@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from 'react'
+import { useState, type ReactElement, type ReactNode } from 'react'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 import { formatParamNumber, formatParamNumberInput } from '@arduconfig/param-metadata'
 
@@ -98,22 +98,82 @@ interface ScopedSelectFieldProps extends CommonScopedFieldProps {
    *  the option count is small enough; otherwise falls back to the native
    *  dropdown. Defaults to `'select'` (native dropdown). */
   layout?: 'select' | 'chips'
+  /** When true, an explicit "Custom…" option reveals a plain number input so
+   *  an unlisted enum value (e.g. a custom FLTMODEn, like scripting-defined
+   *  mode 29) can be typed directly instead of only ever showing as an
+   *  inert "N (unlisted)" label with no way to change it to another number.
+   *  Opt-in — every other ScopedSelectField usage is unaffected. */
+  allowCustomValue?: boolean
 }
 
+const CUSTOM_VALUE_SENTINEL = '__custom__'
+
 export function ScopedSelectField(props: ScopedSelectFieldProps) {
-  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, layout = 'select' } = props
+  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, layout = 'select', allowCustomValue = false } = props
   const options = parameter.definition?.options ?? []
   if (layout === 'chips' && shouldRenderOptionChips(options.length)) {
     return <ScopedOptionChipsField {...props} />
   }
   const status = statusModifier(draftStatusById, parameter.id)
   const currentValue = editedValues[parameter.id] ?? String(liveValue ?? '')
+  const matchesKnownOption = options.some((option) => String(option.value) === currentValue)
+  // Sticky "I picked Custom…" flag — without it, typing e.g. "6" (a real
+  // FLTMODE value) into the number input would make matchesKnownOption true
+  // again and the custom input would vanish out from under the operator's
+  // cursor mid-edit.
+  const [customModeForced, setCustomModeForced] = useState(false)
+  const showCustomInput = allowCustomValue && (customModeForced || (currentValue !== '' && !matchesKnownOption))
+
+  if (allowCustomValue) {
+    return (
+      <label className={fieldClassName(draftStatusById, parameter.id, compact)}>
+        <span>{parameter.definition?.label ?? parameter.id}</span>
+        <span className="scoped-select-with-custom">
+          <select
+            data-testid={`scoped-select-${parameter.id}`}
+            value={showCustomInput ? CUSTOM_VALUE_SENTINEL : currentValue}
+            onChange={(event) => {
+              if (event.target.value === CUSTOM_VALUE_SENTINEL) {
+                setCustomModeForced(true)
+              } else {
+                setCustomModeForced(false)
+                onChange(parameter.id, event.target.value)
+              }
+            }}
+          >
+            {options.map((option) => (
+              <option key={`${parameter.id}:${option.value}`} value={String(option.value)}>
+                {option.label}
+              </option>
+            ))}
+            <option value={CUSTOM_VALUE_SENTINEL}>Custom…</option>
+          </select>
+          {showCustomInput ? (
+            <input
+              type="number"
+              data-testid={`scoped-select-custom-${parameter.id}`}
+              className="scoped-select-with-custom__input"
+              value={currentValue}
+              aria-label={`Custom ${parameter.definition?.label ?? parameter.id} value`}
+              onChange={(event) => onChange(parameter.id, event.target.value)}
+            />
+          ) : null}
+        </span>
+        <StagedWasLine
+          status={status}
+          liveValue={liveValue}
+          options={parameter.definition?.options}
+        />
+      </label>
+    )
+  }
+
   // Surface a value that isn't one of the listed options as its own option, so a
   // native <select> shows the real value instead of silently falling back to the
   // first option (which misreads e.g. an unlisted pin as "Disabled").
   const currentNumber = Number(currentValue)
   const renderedOptions =
-    currentValue !== '' && Number.isFinite(currentNumber) && !options.some((option) => String(option.value) === currentValue)
+    currentValue !== '' && Number.isFinite(currentNumber) && !matchesKnownOption
       ? [...options, { value: currentNumber, label: `${currentValue} (unlisted)` }]
       : options
   return (

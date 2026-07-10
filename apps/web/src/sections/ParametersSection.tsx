@@ -34,6 +34,11 @@ export interface ParametersSectionProps {
   editedValues: Record<string, string>
   parameterNotice: ParameterNotice | undefined
   parameterFollowUp: ParameterFollowUp | undefined
+  /** Bumped by the global draft bar's "Show changes" button — a plain
+   *  boolean can't refire on a second click while already on this tab, so
+   *  App increments a counter instead. Any change scrolls the diff grid
+   *  into view (invalid rows first, since those block Apply All). */
+  scrollToChangesRequestId: number
   formatCategoryLabel: (categoryId: string | undefined) => string
   parameterSearch: string
   setParameterSearch: Dispatch<SetStateAction<string>>
@@ -100,6 +105,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     editedValues,
     parameterNotice,
     parameterFollowUp,
+    scrollToChangesRequestId,
     formatCategoryLabel,
     parameterSearch,
     setParameterSearch,
@@ -156,6 +162,19 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
       rebootFollowUpRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   }, [followUpRequiresReboot])
+  // "Show changes" (the global draft bar) switches to this tab but previously
+  // dropped the operator wherever they last scrolled, leaving the diff grid
+  // to hunt for — the reported bug. Scroll to it on every request; invalid
+  // rows first since those block Apply All, matching the existing "jump to
+  // them" anchor link below. Runs on mount too (a fresh tab switch), since a
+  // dependency changing on the very first render still fires the effect.
+  const stagedDiffGridRef = useRef<HTMLDivElement>(null)
+  const invalidDiffGridRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (scrollToChangesRequestId === 0) return
+    const target = invalidDiffGridRef.current ?? stagedDiffGridRef.current
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [scrollToChangesRequestId])
   // The search box filters the staged review too: filtering only the
   // table while the review list (where you look mid-import) ignores it
   // makes wildcard search appear broken. Selection, Select all, and Drop
@@ -353,31 +372,38 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             <div className="button-row">
               <button
                 data-testid="export-parameter-backup"
-                style={buttonStyle()}
+                style={buttonStyle('primary')}
                 onClick={handleExportParameterBackup}
                 disabled={busyAction !== undefined || snapshot.parameters.length === 0}
-                title="ArduConfigurator JSON backup with full metadata; round-trips through Import Backup."
+                title="ArduConfigurator JSON backup with full metadata; round-trips through Import Backup. Use this unless another tool specifically needs a legacy format."
               >
-                Export JSON
+                Export
               </button>
-              <button
-                data-testid="export-parameter-backup-parm"
+              {/* A third export format ("why do these exist?") collapsed into
+               *  one control: pick a legacy ground-station format here only
+               *  when you specifically need to hand the file to Mission
+               *  Planner or QGroundControl. Resets to the placeholder after
+               *  each export so it reads as a one-shot action, not a
+               *  persistent mode toggle. */}
+              <select
+                data-testid="export-parameter-backup-legacy"
+                className="export-legacy-select"
                 style={buttonStyle()}
-                onClick={handleExportParameterBackupAsParm}
+                value=""
                 disabled={busyAction !== undefined || snapshot.parameters.length === 0}
-                title="Mission Planner .parm — NAME,VALUE per line, header metadata in # comments."
+                title="Export in a legacy ground-station format for a specific tool, instead of ArduConfigurator's own JSON."
+                onChange={(event) => {
+                  const format = event.target.value
+                  if (format === 'parm') handleExportParameterBackupAsParm()
+                  else if (format === 'params') handleExportParameterBackupAsParams()
+                }}
               >
-                Export .parm
-              </button>
-              <button
-                data-testid="export-parameter-backup-params"
-                style={buttonStyle()}
-                onClick={handleExportParameterBackupAsParams}
-                disabled={busyAction !== undefined || snapshot.parameters.length === 0}
-                title="QGroundControl .params — tab-separated vid/cid/NAME/VALUE/type."
-              >
-                Export .params
-              </button>
+                <option value="" disabled>
+                  Export Legacy…
+                </option>
+                <option value="parm">Mission Planner (.parm)</option>
+                <option value="params">QGroundControl (.params)</option>
+              </select>
               <fieldset className="parameter-import-exclusions" data-testid="parameter-export-exclusions">
                 <legend>Skip on export</legend>
                 {([
@@ -558,7 +584,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
           ) : null}
 
           {visibleStagedGroups.length > 0 ? (
-            <div className="parameter-diff-grid" id="parameter-diff-grid" data-testid="parameter-diff-grid">
+            <div ref={stagedDiffGridRef} className="parameter-diff-grid" id="parameter-diff-grid" data-testid="parameter-diff-grid">
               {visibleStagedGroups.map((group) => (
                 <section key={group.category} className="parameter-diff-group">
                   <header>
@@ -658,7 +684,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
           ) : null}
 
           {invalidParameterGroups.length > 0 ? (
-            <div className="parameter-diff-grid parameter-diff-grid--invalid" id="parameter-invalid-grid">
+            <div ref={invalidDiffGridRef} className="parameter-diff-grid parameter-diff-grid--invalid" id="parameter-invalid-grid">
               {invalidParameterGroups.map((group) => (
                 <section key={`invalid:${group.category}`} className="parameter-diff-group parameter-diff-group--invalid">
                   <header>

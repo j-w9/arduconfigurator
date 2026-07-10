@@ -6911,6 +6911,22 @@ textarea:focus {
   border: 1px solid rgba(var(--edge-rgb), 0.035);
   background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.96), rgba(var(--fill-rgb), 0.98));
 }
+/* ScopedSelectField's opt-in "Custom…" mode: the select stays full-width
+ * until Custom… is picked, then a plain number input appears alongside it
+ * for typing an unlisted value directly (e.g. a scripting-defined flight
+ * mode number) instead of only ever showing an inert "N (unlisted)" label. */
+.scoped-select-with-custom {
+  display: flex;
+  gap: 6px;
+}
+.scoped-select-with-custom select {
+  flex: 1;
+  min-width: 0;
+}
+.scoped-select-with-custom__input {
+  width: 5.5em;
+  flex: 0 0 auto;
+}
 /* Dotted-quad IPv4 editor: four small octet inputs separated by dots. */
 .ip-address-field__octets {
   display: flex;
@@ -11840,6 +11856,15 @@ details.metadata-settings-section:not([open]) > summary::after {
   z-index: 2;
 }
 
+/* Clicked from the checklist (or clicked directly in the preview) — a
+ * persistent highlight, distinct from the transient is-dragging state, so an
+ * operator can see "this is the one I selected" without holding a drag. */
+.osd-preview-screen__element.is-highlighted {
+  background: rgba(97, 218, 251, 0.16);
+  outline-color: rgba(97, 218, 251, 0.85);
+  z-index: 2;
+}
+
 /* Live cell-coordinate badge shown above an element while it's being dragged,
  * so the operator gets snap feedback (which character cell it will land on).
  * Self-contained amber pill with dark ink — legible on both the dark video
@@ -12841,6 +12866,22 @@ details.bf-gui-box:not([open]) > summary::after {
 .osd-matrix__row:not(.osd-matrix__row--head):hover {
   background: var(--surface-200);
 }
+.osd-matrix__row.is-highlighted {
+  background: rgba(97, 218, 251, 0.1);
+  outline: 1px solid rgba(97, 218, 251, 0.5);
+  outline-offset: -1px;
+}
+.osd-matrix__label--clickable {
+  cursor: pointer;
+  border-radius: 4px;
+}
+.osd-matrix__label--clickable:hover {
+  background: var(--surface-200);
+}
+.osd-matrix__label--clickable:focus-visible {
+  outline: 2px solid var(--accent, #61dafb);
+  outline-offset: 1px;
+}
 .osd-matrix__col {
   text-align: center;
   font-size: 10px;
@@ -13260,11 +13301,10 @@ details.bf-gui-box:not([open]) > summary::after {
   }
 
   /* Exporting a backup file is a desktop task; on a phone keep Import Backup
-   * (used for cross-vehicle migration) plus Apply/Discard, and drop the three
-   * export buttons so the review card stops dominating the screen. */
+   * (used for cross-vehicle migration) plus Apply/Discard, and drop the
+   * export controls so the review card stops dominating the screen. */
   [data-testid="export-parameter-backup"],
-  [data-testid="export-parameter-backup-parm"],
-  [data-testid="export-parameter-backup-params"] {
+  [data-testid="export-parameter-backup-legacy"] {
     display: none;
   }
 
