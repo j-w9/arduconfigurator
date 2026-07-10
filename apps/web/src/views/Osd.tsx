@@ -23,6 +23,27 @@ const OSD_ANALOG_LAYOUTS = {
 } as const
 type OsdAnalogLayout = keyof typeof OSD_ANALOG_LAYOUTS
 
+// Named video-system picker — the operator names the goggles/VRX they
+// actually have instead of guessing a raw grid size. `layout` is fixed for
+// every digital system (each digital standard only ever runs one character
+// grid); `analog` has none here because analog is either PAL or NTSC
+// depending on the camera/goggles, picked via the secondary selector.
+// Grid sizes verified against ArduPilot's own DisplayPort OSD documentation
+// (HDZero: ardupilot.org/copter/docs/common-displayport.html, explicit
+// "set OSDx_TXT_RES to 0 or 1") and hardware specs (Walksnail Avatar HD
+// defaults to 60x22; the whole DJI HD family — O3 Air Unit, Goggles 2,
+// Goggles V2, Goggles 3 — shares the same 810p/60x22 grid).
+const OSD_VIDEO_SYSTEMS = {
+  analog: { label: 'Analog', layout: undefined },
+  hdzero: { label: 'HDZero', layout: 'hd_50x18' },
+  walksnail: { label: 'Walksnail Avatar', layout: 'hd_60x22' },
+  dji_o3: { label: 'DJI O3 Air Unit', layout: 'hd_60x22' },
+  dji_goggles_2: { label: 'DJI Goggles 2', layout: 'hd_60x22' },
+  dji_goggles_v: { label: 'DJI Goggles V2', layout: 'hd_60x22' },
+  dji_goggles_3: { label: 'DJI Goggles 3', layout: 'hd_60x22' }
+} as const satisfies Record<string, { label: string; layout: OsdAnalogLayout | undefined }>
+type OsdVideoSystem = keyof typeof OSD_VIDEO_SYSTEMS
+
 // BF-style element category groupings. Each id below maps a per-element
 // OsdElementToggle (keyed on elementId — BAT_VOLT / GSPEED / etc.) into a
 // logical group operators recognize from BF's OSD configuration page.
@@ -232,7 +253,12 @@ export function OsdView(props: OsdViewProps) {
   // boundary, so the preview reflects each cell change as it happens
   // — no separate "commit on drop" step.
   const gridRef = useRef<HTMLDivElement | null>(null)
-  const [analogLayout, setAnalogLayout] = useState<OsdAnalogLayout>('pal')
+  // Default NTSC, not PAL — an arbitrary-but-deliberate choice away from the
+  // old hardcoded PAL default (field feedback). Digital systems don't need a
+  // sub-choice since each one only ever runs a single fixed grid.
+  const [videoSystem, setVideoSystem] = useState<OsdVideoSystem>('analog')
+  const [analogSubMode, setAnalogSubMode] = useState<'pal' | 'ntsc'>('ntsc')
+  const analogLayout: OsdAnalogLayout = OSD_VIDEO_SYSTEMS[videoSystem].layout ?? analogSubMode
   const layout = OSD_ANALOG_LAYOUTS[analogLayout]
   const [draggingId, setDraggingId] = useState<string | undefined>(undefined)
   // Continuous, un-quantized pixel offset from the grab point, updated on
@@ -897,19 +923,43 @@ export function OsdView(props: OsdViewProps) {
                     {dragEnabled ? 'editable · drag to reposition' : 'live preview'}
                   </StatusBadge>
                   <label className="osd-preview-footer__layout" data-testid="osd-analog-layout">
-                    <span>Video layout</span>
+                    <span>Video system</span>
                     <select
-                      value={analogLayout}
-                      onChange={(event) => setAnalogLayout(event.target.value as OsdAnalogLayout)}
-                      aria-label="OSD video layout"
+                      value={videoSystem}
+                      onChange={(event) => setVideoSystem(event.target.value as OsdVideoSystem)}
+                      aria-label="OSD video system"
                     >
-                      {(Object.keys(OSD_ANALOG_LAYOUTS) as OsdAnalogLayout[]).map((key) => (
-                        <option key={key} value={key}>
-                          {OSD_ANALOG_LAYOUTS[key].label} ({OSD_ANALOG_LAYOUTS[key].columns}×{OSD_ANALOG_LAYOUTS[key].rows})
-                        </option>
-                      ))}
+                      {(Object.keys(OSD_VIDEO_SYSTEMS) as OsdVideoSystem[]).map((key) => {
+                        const system = OSD_VIDEO_SYSTEMS[key]
+                        const gridSuffix = system.layout
+                          ? ` (${OSD_ANALOG_LAYOUTS[system.layout].columns}×${OSD_ANALOG_LAYOUTS[system.layout].rows})`
+                          : ''
+                        return (
+                          <option key={key} value={key}>
+                            {system.label}
+                            {gridSuffix}
+                          </option>
+                        )
+                      })}
                     </select>
                   </label>
+                  {videoSystem === 'analog' ? (
+                    <label className="osd-preview-footer__layout" data-testid="osd-analog-submode">
+                      <span>Analog standard</span>
+                      <select
+                        value={analogSubMode}
+                        onChange={(event) => setAnalogSubMode(event.target.value as 'pal' | 'ntsc')}
+                        aria-label="OSD analog standard"
+                      >
+                        <option value="ntsc">NTSC ({OSD_ANALOG_LAYOUTS.ntsc.columns}×{OSD_ANALOG_LAYOUTS.ntsc.rows})</option>
+                        <option value="pal">PAL ({OSD_ANALOG_LAYOUTS.pal.columns}×{OSD_ANALOG_LAYOUTS.pal.rows})</option>
+                      </select>
+                    </label>
+                  ) : null}
+                  <p className="osd-preview-footer__match-note">
+                    The goggles/VRX, camera, and FC OSD settings must all agree on the same video system — a
+                    mismatch here is a preview-only aid and won&apos;t fix a mismatch on the real hardware.
+                  </p>
                   <p>
                     Element positions read from the OSD{activeScreen}_*_X/Y catalog values. Live telemetry feeds the
                     displayed numbers. Video layout is a preview aid (PAL/NTSC/HD canvas) and doesn’t change FC params.

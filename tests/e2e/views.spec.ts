@@ -1838,24 +1838,42 @@ test.describe('OSD view preview', () => {
     await expect(units).toContainText('globally')
   })
 
-  test('analog/HD layout selector switches the preview canvas (PAL/NTSC/HD)', async ({ page }) => {
+  test('named video-system selector switches the preview canvas (Analog/HDZero/Walksnail/DJI)', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'osd')
 
+    // Default is Analog + NTSC (not PAL — field feedback), 30 columns.
     const screen = page.locator('.osd-preview-screen').first()
-    await expect(screen).toHaveAttribute('data-osd-layout', 'pal')
+    await expect(page.getByTestId('osd-analog-layout').locator('select')).toHaveValue('analog')
+    await expect(page.getByTestId('osd-analog-submode').locator('select')).toHaveValue('ntsc')
+    await expect(screen).toHaveAttribute('data-osd-layout', 'ntsc')
     const grid = page.getByTestId('osd-preview-grid')
     const columnCount = () =>
       grid.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length)
-    // PAL is 30 columns; the two HD grids are 50x18 and 60x22.
     expect(await columnCount()).toBe(30)
-    await page.getByTestId('osd-analog-layout').locator('select').selectOption('hd_50x18')
+
+    // Switching to a named digital system auto-sets its fixed grid and hides
+    // the analog PAL/NTSC sub-picker (a digital standard has no such choice).
+    await page.getByTestId('osd-analog-layout').locator('select').selectOption('hdzero')
     await expect(screen).toHaveAttribute('data-osd-layout', 'hd_50x18')
     expect(await columnCount()).toBe(50)
-    await page.getByTestId('osd-analog-layout').locator('select').selectOption('hd_60x22')
+    await expect(page.getByTestId('osd-analog-submode')).toHaveCount(0)
+
+    await page.getByTestId('osd-analog-layout').locator('select').selectOption('walksnail')
     await expect(screen).toHaveAttribute('data-osd-layout', 'hd_60x22')
     expect(await columnCount()).toBe(60)
+
+    await page.getByTestId('osd-analog-layout').locator('select').selectOption('dji_o3')
+    await expect(screen).toHaveAttribute('data-osd-layout', 'hd_60x22')
+    expect(await columnCount()).toBe(60)
+
+    // Back to Analog, PAL this time.
+    await page.getByTestId('osd-analog-layout').locator('select').selectOption('analog')
+    await expect(page.getByTestId('osd-analog-submode')).toBeVisible()
+    await page.getByTestId('osd-analog-submode').locator('select').selectOption('pal')
+    await expect(screen).toHaveAttribute('data-osd-layout', 'pal')
+    expect(await columnCount()).toBe(30)
   })
 
   test('renders the per-element preview from the OSD1_*_EN/X/Y catalog values', async ({ page }) => {
@@ -1934,7 +1952,7 @@ test.describe('OSD view preview', () => {
     // Switch to the 60x22 HD grid (DJI/Walksnail-class DisplayPort). A column
     // beyond the analog 29 ceiling must render at that column, not be clamped
     // back into the 30x16 box the way the fixed 29/15 clamp did.
-    await page.getByTestId('osd-analog-layout').locator('select').selectOption('hd_60x22')
+    await page.getByTestId('osd-analog-layout').locator('select').selectOption('dji_o3')
     const align = page.getByTestId('osd-element-align-BAT_VOLT')
     await align.scrollIntoViewIfNeeded()
     const xInput = align.locator('input[type="number"]').first()
@@ -1984,8 +2002,9 @@ test.describe('OSD view preview', () => {
     const startBox = await batVolt.boundingBox()
     if (!gridBox || !startBox) throw new Error('no bounding box for OSD preview grid or element')
 
+    // Default video system is Analog/NTSC (30x13) — not PAL (30x16).
     const cellWidth = gridBox.width / 30
-    const cellHeight = gridBox.height / 16
+    const cellHeight = gridBox.height / 13
     const startX = startBox.x + startBox.width / 2
     const startY = startBox.y + startBox.height / 2
     const colBefore = Number(await batVolt.evaluate((el) => getComputedStyle(el).gridColumnStart))
