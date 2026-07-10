@@ -65,6 +65,7 @@ export interface UseSnapshotLibraryParams {
 
 export interface UseSnapshotLibraryResult {
   handleCaptureLiveSnapshot: () => void
+  handleOverwriteSelectedSnapshot: () => void
   handleImportSnapshotFile: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
   handleExportSnapshotLibrary: () => void
   handleOpenDesktopSnapshotFile: () => Promise<void>
@@ -164,6 +165,50 @@ export function useSnapshotLibrary({
       text: `Saved snapshot "${savedSnapshot.label}" with ${backup.parameterCount} parameters.`
     })
     trackAppEvent('Snapshot Captured', {
+      parameterCount: backup.parameterCount,
+      protected: snapshotProtectedInput
+    })
+  }
+
+  // Refreshes the SELECTED snapshot's backup with the current live values
+  // in place — same id, so the selection and any references (compare
+  // baseline picker, exports) stay stable, unlike Capture which always
+  // creates a new entry. Metadata fields only change if the operator typed
+  // something into the form; blank fields keep the existing snapshot's
+  // values rather than clearing them.
+  function handleOverwriteSelectedSnapshot(): void {
+    if (!selectedSnapshot) {
+      return
+    }
+    if (snapshot.parameters.length === 0) {
+      setSnapshotNotice({
+        tone: 'warning',
+        text: 'Pull parameters before overwriting a snapshot.'
+      })
+      return
+    }
+
+    const backup = createParameterBackup(snapshot)
+    setSavedSnapshots((current) =>
+      updateSavedSnapshot(current, selectedSnapshot.id, (existing) => ({
+        ...existing,
+        label: snapshotLabelInput || existing.label,
+        capturedAt: backup.exportedAt,
+        note: snapshotNoteInput || existing.note,
+        tags: snapshotTagsInput ? parseSnapshotTags(snapshotTagsInput) : existing.tags,
+        protected: snapshotProtectedInput,
+        backup
+      }))
+    )
+    setSnapshotLabelInput('')
+    setSnapshotNoteInput('')
+    setSnapshotTagsInput('')
+    setSnapshotProtectedInput(false)
+    setSnapshotNotice({
+      tone: 'success',
+      text: `Overwrote snapshot "${snapshotLabelInput || selectedSnapshot.label}" with the current live values (${backup.parameterCount} parameters).`
+    })
+    trackAppEvent('Snapshot Overwritten', {
       parameterCount: backup.parameterCount,
       protected: snapshotProtectedInput
     })
@@ -337,6 +382,7 @@ export function useSnapshotLibrary({
 
   return {
     handleCaptureLiveSnapshot,
+    handleOverwriteSelectedSnapshot,
     handleImportSnapshotFile,
     handleExportSnapshotLibrary,
     handleOpenDesktopSnapshotFile,

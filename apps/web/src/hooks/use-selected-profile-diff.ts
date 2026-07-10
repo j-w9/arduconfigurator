@@ -16,6 +16,7 @@ import { useMemo } from 'react'
 
 import {
   type ParameterBackupFile,
+  type ParameterBackupImportOptions,
   type ParameterBackupImportResult,
   type ParameterState,
   deriveDraftValuesFromParameterBackup
@@ -45,8 +46,13 @@ export function useSelectedProfileDiff<TProfile extends { id: string }>(input: {
   savedProfiles: readonly TProfile[]
   selectedProfileId: string | undefined
   resolveBackup: (profile: TProfile) => ParameterBackupFile
+  /** Forwarded to deriveDraftValuesFromParameterBackup verbatim — lets a
+   *  caller (the Snapshot restore "Import calibrations" toggle) strip an
+   *  opt-in category before matched/changed/unknown are even tallied.
+   *  Omitted by every other call site, so their behavior is unchanged. */
+  importOptions?: ParameterBackupImportOptions
 }): UseSelectedProfileDiffResult<TProfile> {
-  const { snapshotParameters, savedProfiles, selectedProfileId, resolveBackup } = input
+  const { snapshotParameters, savedProfiles, selectedProfileId, resolveBackup, importOptions } = input
 
   const selectedProfile = useMemo<TProfile | undefined>(
     () => savedProfiles.find((profile) => profile.id === selectedProfileId) ?? savedProfiles[0],
@@ -57,8 +63,9 @@ export function useSelectedProfileDiff<TProfile extends { id: string }>(input: {
     [resolveBackup, selectedProfile]
   )
   const restore = useMemo<ParameterBackupImportResult | undefined>(
-    () => (selectedBackup ? deriveDraftValuesFromParameterBackup(snapshotParameters, selectedBackup) : undefined),
-    [selectedBackup, snapshotParameters]
+    () =>
+      selectedBackup ? deriveDraftValuesFromParameterBackup(snapshotParameters, selectedBackup, importOptions) : undefined,
+    [selectedBackup, snapshotParameters, importOptions]
   )
   const diff = useMemo<EntityDiff>(
     () => selectEntityDiff(snapshotParameters, restore?.draftValues),
