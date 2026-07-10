@@ -128,30 +128,54 @@ function hexToBytes(hex: string, where: string): Uint8Array {
   return out
 }
 
-/** Sort writes by address and merge contiguous/overlapping runs into segments. */
+/** Sort writes by address and merge contiguous/overlapping runs into segments.
+ *
+ * A real ArduPilot .hex has one data record per 16-32 bytes, so a 1-2 MB
+ * image is tens of thousands of records. Allocating and copying the WHOLE
+ * accumulated segment on every contiguous record (the previous approach)
+ * is O(n^2) in the segment size — that quadratic blowup is exactly what made
+ * loading a large .hex file feel like it hung the browser. This does two
+ * O(n) passes instead: first group runs and total their length without
+ * touching any bytes, then allocate each final segment's buffer once and
+ * copy each run into its slot directly. */
 function coalesce(writes: IntelHexSegment[]): ParsedIntelHex {
   if (writes.length === 0) {
     return { segments: [], minAddress: 0, endAddress: 0, totalBytes: 0 }
   }
   const ordered = [...writes].sort((a, b) => a.address - b.address)
-  const segments: IntelHexSegment[] = []
+
+  interface PendingSegment {
+    address: number
+    length: number
+    runs: IntelHexSegment[]
+  }
+  const pending: PendingSegment[] = []
   for (const write of ordered) {
-    const last = segments[segments.length - 1]
-    if (last && write.address === last.address + last.data.length) {
-      // Contiguous — extend the current segment.
-      const merged = new Uint8Array(last.data.length + write.data.length)
-      merged.set(last.data)
-      merged.set(write.data, last.data.length)
-      last.data = merged
+    const current = pending[pending.length - 1]
+    const currentEnd = current ? current.address + current.length : undefined
+    if (current && write.address === currentEnd) {
+      current.length += write.data.length
+      current.runs.push(write)
       continue
     }
-    if (last && write.address < last.address + last.data.length) {
+    if (current && write.address < (currentEnd as number)) {
       throw new Error(
         `Invalid Intel HEX: overlapping data at 0x${write.address.toString(16)} — refusing to flash an ambiguous image`
       )
     }
-    segments.push({ address: write.address, data: write.data })
+    pending.push({ address: write.address, length: write.data.length, runs: [write] })
   }
+
+  const segments: IntelHexSegment[] = pending.map((segment) => {
+    const data = new Uint8Array(segment.length)
+    let offset = 0
+    for (const run of segment.runs) {
+      data.set(run.data, offset)
+      offset += run.data.length
+    }
+    return { address: segment.address, data }
+  })
+
   const minAddress = segments[0].address
   const lastSegment = segments[segments.length - 1]
   const endAddress = lastSegment.address + lastSegment.data.length

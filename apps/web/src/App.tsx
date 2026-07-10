@@ -368,7 +368,6 @@ import {
   type AdditionalSettingsGroup
 } from './view-models/peripherals'
 import {
-  RC_MIXER_FUNCTION_CATALOG,
   buildRcMixerFunctionLookup,
   groupAssignmentsByChannel,
   type RcMixerAssignment
@@ -4640,6 +4639,7 @@ export function App() {
   )
   const {
     rcMixerChannels,
+    rcMixerFunctionCatalog,
     rcMixerFunctionLookup,
     rcMixerLivePwmByChannel,
     handleRcMixerAddAssignment,
@@ -7495,7 +7495,7 @@ export function App() {
       {activeViewId === 'rc-mixer' ? (
       <RcMixerView
         channels={hasRcLogicParams ? rcLogicChannels : rcMixerChannels}
-        functionCatalog={hasRcLogicParams ? rcLogicFunctionCatalogMemo : RC_MIXER_FUNCTION_CATALOG}
+        functionCatalog={hasRcLogicParams ? rcLogicFunctionCatalogMemo : rcMixerFunctionCatalog}
         functionLookup={hasRcLogicParams ? rcLogicFunctionLookup : rcMixerFunctionLookup}
         livePwmByChannel={rcMixerLivePwmByChannel}
         rcLinkLive={snapshot.liveVerification.rcInput.verified}

@@ -12,14 +12,27 @@ import {
   buildRcMixerFunctionLookup,
   createAssignment,
   createIdleRcMixerState,
+  filterRcMixerFunctionCatalogForVehicle,
   groupAssignmentsByChannel,
+  RC_MIXER_FUNCTION_CATALOG,
   type RcMixerAssignment,
   type RcMixerState
 } from '../view-models/rc-mixer'
 
 export function useRcMixer(snapshot: ConfiguratorSnapshot) {
   const [rcMixerState, setRcMixerState] = useState<RcMixerState>(createIdleRcMixerState)
-  const rcMixerFunctionLookup = useMemo(() => buildRcMixerFunctionLookup(), [])
+  // Scaffold catalog covers all four vehicles' worth of BF-style AUX ideas;
+  // filter to what the connected firmware actually supports (AutoTune/LAND/
+  // parachutes/Precision Loiter/airmode aren't universal) rather than
+  // showing Rover a "Precision Loiter" entry it can never use.
+  const rcMixerFunctionCatalog = useMemo(
+    () => filterRcMixerFunctionCatalogForVehicle(RC_MIXER_FUNCTION_CATALOG, snapshot.vehicle?.vehicle),
+    [snapshot.vehicle?.vehicle]
+  )
+  const rcMixerFunctionLookup = useMemo(
+    () => buildRcMixerFunctionLookup(rcMixerFunctionCatalog),
+    [rcMixerFunctionCatalog]
+  )
   const excludedChannels = useMemo(() => derivePrimaryAndModeChannels(snapshot), [snapshot])
   const rcMixerChannels = useMemo(
     () => groupAssignmentsByChannel(rcMixerState.assignments, 16, excludedChannels),
@@ -54,6 +67,7 @@ export function useRcMixer(snapshot: ConfiguratorSnapshot) {
 
   return {
     rcMixerChannels,
+    rcMixerFunctionCatalog,
     rcMixerFunctionLookup,
     rcMixerLivePwmByChannel,
     handleRcMixerAddAssignment,

@@ -235,6 +235,12 @@ export function OsdView(props: OsdViewProps) {
   const [analogLayout, setAnalogLayout] = useState<OsdAnalogLayout>('pal')
   const layout = OSD_ANALOG_LAYOUTS[analogLayout]
   const [draggingId, setDraggingId] = useState<string | undefined>(undefined)
+  // Continuous, un-quantized pixel offset from the grab point, updated on
+  // every pointermove — lets the element follow the cursor freely while
+  // dragging instead of jumping cell-to-cell (the committed column/row still
+  // only lands on whole character cells, matching ArduPilot's
+  // OSDn_ELEMENT_X/Y; only the mid-drag rendering is free).
+  const [dragOffsetPx, setDragOffsetPx] = useState<{ x: number; y: number } | undefined>(undefined)
   // Clicking an element's row in the left checklist (or the element itself in
   // the preview) highlights it on the other side and scrolls it into view —
   // so an operator can find "which row is this?" / "where did that land?"
@@ -308,6 +314,7 @@ export function OsdView(props: OsdViewProps) {
       lastRow: startRow
     }
     setDraggingId(element.id)
+    setDragOffsetPx({ x: 0, y: 0 })
   }
 
   function moveElementDrag(event: React.PointerEvent<HTMLSpanElement>): void {
@@ -327,12 +334,24 @@ export function OsdView(props: OsdViewProps) {
       maxColumn: layout.columns - 1,
       maxRow: layout.rows - 1
     })
-    if (nextColumn === state.lastColumn && nextRow === state.lastRow) {
-      return
+    if (nextColumn !== state.lastColumn || nextRow !== state.lastRow) {
+      state.lastColumn = nextColumn
+      state.lastRow = nextRow
+      onElementMove(state.elementId, nextColumn, nextRow)
     }
-    state.lastColumn = nextColumn
-    state.lastRow = nextRow
-    onElementMove(state.elementId, nextColumn, nextRow)
+    // Free-follow the raw pointer for the VISUAL position (clamped to the
+    // grid's edges, same bounds pointerDragToCell enforces for the committed
+    // cell) — decoupled from the quantized column/row above, so the element
+    // doesn't visually teleport cell-to-cell while the operator is still
+    // mid-drag.
+    const maxOffsetX = (layout.columns - 1 - state.startColumn) * state.cellWidth
+    const minOffsetX = -state.startColumn * state.cellWidth
+    const maxOffsetY = (layout.rows - 1 - state.startRow) * state.cellHeight
+    const minOffsetY = -state.startRow * state.cellHeight
+    setDragOffsetPx({
+      x: Math.max(minOffsetX, Math.min(maxOffsetX, event.clientX - state.pointerStartX)),
+      y: Math.max(minOffsetY, Math.min(maxOffsetY, event.clientY - state.pointerStartY))
+    })
   }
 
   function endElementDrag(event: React.PointerEvent<HTMLSpanElement>): void {
@@ -341,6 +360,7 @@ export function OsdView(props: OsdViewProps) {
     }
     dragStateRef.current = undefined
     setDraggingId(undefined)
+    setDragOffsetPx(undefined)
   }
 
   const dragEnabled = typeof onElementMove === 'function'
@@ -814,6 +834,15 @@ export function OsdView(props: OsdViewProps) {
                         // operator otherwise has no way to tell which element
                         // they're moving.
                         const friendlyLabel = matrixByElementId.get(element.id)?.label ?? element.id
+                        // While actively dragging THIS element, freeze its grid cell at
+                        // the drag-start position and slide it visually via a pixel
+                        // transform instead — the committed column/row still updates
+                        // (badge + drafts), but the DOM position only re-quantizes to
+                        // the new cell once the drag ends, so the box doesn't visually
+                        // teleport cell-to-cell while the pointer is still moving.
+                        const dragStart = isDragging ? dragStateRef.current : undefined
+                        const gridColumnStart = dragStart ? dragStart.startColumn + 1 : displayColumn + 1
+                        const gridRowStart = dragStart ? dragStart.startRow + 1 : displayRow + 1
                         return (
                           <span
                             key={element.id}
@@ -824,8 +853,12 @@ export function OsdView(props: OsdViewProps) {
                             className={className}
                             data-testid={`osd-preview-element-${element.id}`}
                             style={{
-                              gridColumnStart: displayColumn + 1,
-                              gridRowStart: displayRow + 1
+                              gridColumnStart,
+                              gridRowStart,
+                              transform:
+                                isDragging && dragOffsetPx
+                                  ? `translate(${dragOffsetPx.x}px, ${dragOffsetPx.y}px) scale(1.05)`
+                                  : undefined
                             }}
                             onPointerDown={dragEnabled ? (event) => startElementDrag(event, element) : undefined}
                             onPointerMove={dragEnabled ? moveElementDrag : undefined}

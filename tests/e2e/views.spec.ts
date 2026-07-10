@@ -1553,6 +1553,29 @@ test.describe('RC Mixer view', () => {
     await expect(page.getByTestId('rc-mixer-channel-6')).toBeVisible()
     await expect(page.getByTestId('rc-mixer-channel-8')).toBeVisible()
   })
+
+  test('function picker only offers functions the connected vehicle firmware actually supports', async ({ page }) => {
+    // Demo Plane doesn't report RCL_ENABLE, so the tab falls back to the
+    // scaffold catalog — which should now exclude Copter/Rover-only entries
+    // (Precision Loiter, Reverse throttle) while keeping Plane-applicable
+    // ones (Land) and vehicle-generic ones (Do nothing).
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo-plane')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-rc-mixer').click()
+
+    const channel5 = page.getByTestId('rc-mixer-channel-5')
+    await channel5.getByTestId('rc-mixer-add-channel-5').click()
+    const functionSelect = channel5.locator('select')
+    const optionLabels = await functionSelect.locator('option').allTextContents()
+
+    expect(optionLabels.some((label) => label.startsWith('Precision Loiter'))).toBe(false)
+    expect(optionLabels.some((label) => label.startsWith('Reverse throttle'))).toBe(false)
+    expect(optionLabels.some((label) => label.startsWith('Land'))).toBe(true)
+    expect(optionLabels.some((label) => label.startsWith('Do nothing'))).toBe(true)
+  })
 })
 
 // The receiver Bind (ELRS/CRSF) button is currently hidden in the UI
@@ -1941,6 +1964,52 @@ test.describe('OSD view preview', () => {
     const colAfter = Number(await batVolt.evaluate((el) => getComputedStyle(el).gridColumnStart))
     expect(colAfter).toBeGreaterThan(colBefore)
     await expect(page.getByTestId('osd-save')).not.toHaveText('Save OSD (0)')
+  })
+
+  test('OSD preview elements follow the pointer freely mid-drag instead of jumping cell-to-cell', async ({ page }) => {
+    // Regression guard: dragging used to re-quantize the DOM position (via
+    // gridColumnStart/gridRowStart) on every cell crossing, so the box visibly
+    // teleported in whole-cell jumps instead of tracking the cursor. The grid
+    // cell should now stay frozen at the drag-start position while a CSS
+    // transform slides the element smoothly; only on drop does it re-quantize.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-osd').click()
+
+    await expect(page.getByTestId('osd-preview-grid')).toBeVisible()
+    await page.getByTestId('osd-bf-preview-pane').scrollIntoViewIfNeeded()
+    const batVolt = page.getByTestId('osd-preview-element-BAT_VOLT')
+    await expect(batVolt).toBeVisible()
+
+    const gridBox = await page.getByTestId('osd-preview-grid').boundingBox()
+    const startBox = await batVolt.boundingBox()
+    if (!gridBox || !startBox) throw new Error('no bounding box for OSD preview grid or element')
+
+    const cellWidth = gridBox.width / 30
+    const startX = startBox.x + startBox.width / 2
+    const startY = startBox.y + startBox.height / 2
+    const colStart = await batVolt.evaluate((el) => getComputedStyle(el).gridColumnStart)
+
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    // Move less than a full cell — enough to produce a non-zero pixel offset
+    // but not enough to cross into the next character cell.
+    await page.mouse.move(startX + cellWidth * 0.4, startY, { steps: 4 })
+
+    // The grid cell hasn't re-quantized yet...
+    await expect(async () => {
+      const col = await batVolt.evaluate((el) => getComputedStyle(el).gridColumnStart)
+      expect(col).toBe(colStart)
+    }).toPass()
+    // ...but the element is visibly sliding via a translate transform, not
+    // sitting glued to its cell's static position.
+    await expect(async () => {
+      const transform = await batVolt.evaluate((el) => getComputedStyle(el).transform)
+      expect(transform).not.toBe('none')
+    }).toPass()
+
+    await page.mouse.up()
   })
 
   test('OSD preview-screen dropdown switches which screen the preview renders', async ({ page }) => {

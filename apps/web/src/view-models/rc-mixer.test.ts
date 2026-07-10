@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildRcMixerFunctionLookup,
   createAssignment,
+  filterRcMixerFunctionCatalogForVehicle,
   groupAssignmentsByChannel,
   RC_MIXER_FUNCTION_CATALOG,
   type RcMixerAssignment,
@@ -62,5 +63,36 @@ describe('groupAssignmentsByChannel', () => {
   it('omits excluded channels (e.g. the primary stick axes) from the rows entirely', () => {
     const groups = groupAssignmentsByChannel([assign(2)], 6, new Set([1, 2, 3, 4]))
     expect(groups.map((group) => group.channel)).toEqual([5, 6])
+  })
+})
+
+describe('filterRcMixerFunctionCatalogForVehicle', () => {
+  const catalog: RcMixerFunctionDefinition[] = [
+    { id: 0, label: 'Do nothing', description: 'generic' },
+    { id: 16, label: 'AutoTune', description: 'copter+plane', vehicles: ['ArduCopter', 'ArduPlane'] },
+    { id: 66, label: 'Reverse throttle', description: 'rover only', vehicles: ['ArduRover'] }
+  ]
+
+  it('shows the full catalog when the vehicle kind is unknown or not yet connected', () => {
+    expect(filterRcMixerFunctionCatalogForVehicle(catalog, undefined)).toEqual(catalog)
+    expect(filterRcMixerFunctionCatalogForVehicle(catalog, 'Unknown')).toEqual(catalog)
+  })
+
+  it('drops entries scoped to vehicles other than the connected one', () => {
+    const rover = filterRcMixerFunctionCatalogForVehicle(catalog, 'ArduRover')
+    expect(rover.map((entry) => entry.id)).toEqual([0, 66])
+
+    const sub = filterRcMixerFunctionCatalogForVehicle(catalog, 'ArduSub')
+    expect(sub.map((entry) => entry.id)).toEqual([0])
+  })
+
+  it('keeps vehicle-untagged (generic) entries for every vehicle', () => {
+    const copter = filterRcMixerFunctionCatalogForVehicle(catalog, 'ArduCopter')
+    expect(copter.map((entry) => entry.id)).toEqual([0, 16])
+  })
+
+  it('the real catalog has at least one vehicle-restricted and one generic entry', () => {
+    expect(RC_MIXER_FUNCTION_CATALOG.some((entry) => entry.vehicles)).toBe(true)
+    expect(RC_MIXER_FUNCTION_CATALOG.some((entry) => !entry.vehicles)).toBe(true)
   })
 })

@@ -9,6 +9,9 @@
 //   - We can wire the real protocol the day ArduPilot ships support
 //     without redoing the UI from scratch.
 
+/** ArduPilot's four vehicle firmwares — matches ConfiguratorSnapshot['vehicle']['vehicle']. */
+export type RcMixerVehicleKind = 'ArduCopter' | 'ArduPlane' | 'ArduRover' | 'ArduSub'
+
 export interface RcMixerFunctionDefinition {
   /** Numeric option value if/when ArduPilot adopts an enum. For the
    * scaffold this is a stable lookup key. */
@@ -22,6 +25,26 @@ export interface RcMixerFunctionDefinition {
    * narrates "active" — momentary functions describe the active range as
    * a trigger window, sustained ones as a hold window. */
   momentary?: boolean
+  /** Vehicle firmwares this function actually applies to. Undefined means
+   *  generic — every vehicle supports it (arm/disarm, RC override, scripting
+   *  flags, etc). Restrict this when the function is tied to a mode or
+   *  subsystem only some vehicles build (AutoTune, LAND, parachutes, Precision
+   *  Loiter, airmode). */
+  vehicles?: readonly RcMixerVehicleKind[]
+}
+
+/** Filters a function catalog down to entries the connected vehicle firmware
+ *  actually supports. `vehicleKind` undefined or `'Unknown'` (not yet
+ *  connected, or the FC hasn't reported a vehicle type) shows the full
+ *  catalog rather than guessing. */
+export function filterRcMixerFunctionCatalogForVehicle(
+  catalog: readonly RcMixerFunctionDefinition[],
+  vehicleKind: string | undefined
+): readonly RcMixerFunctionDefinition[] {
+  if (!vehicleKind || vehicleKind === 'Unknown') {
+    return catalog
+  }
+  return catalog.filter((definition) => !definition.vehicles || (definition.vehicles as readonly string[]).includes(vehicleKind))
 }
 
 export interface RcMixerAssignment {
@@ -54,19 +77,19 @@ export interface RcMixerState {
 export const RC_MIXER_FUNCTION_CATALOG: readonly RcMixerFunctionDefinition[] = [
   { id: 0, label: 'Do nothing', description: 'No assigned function — the channel is reserved or used by another mapping.' },
   { id: 9, label: 'Save waypoint', description: 'Records the current vehicle position into the active mission.', momentary: true },
-  { id: 16, label: 'AutoTune', description: 'Triggers ArduCopter\'s automatic tuning routine while the channel is high.' },
-  { id: 18, label: 'Land', description: 'Switches the vehicle into LAND immediately when this range is active.' },
-  { id: 22, label: 'Parachute release', description: 'Fires the chute servo when the channel enters the active range.', momentary: true },
+  { id: 16, label: 'AutoTune', description: 'Triggers the vehicle\'s automatic tuning routine while the channel is high.', vehicles: ['ArduCopter', 'ArduPlane'] },
+  { id: 18, label: 'Land', description: 'Switches the vehicle into LAND immediately when this range is active.', vehicles: ['ArduCopter', 'ArduPlane'] },
+  { id: 22, label: 'Parachute release', description: 'Fires the chute servo when the channel enters the active range.', momentary: true, vehicles: ['ArduCopter', 'ArduPlane'] },
   { id: 27, label: 'Arm / Disarm', description: 'Toggles the motor arm state. Most operators bind this to a sticky two-position switch.' },
   { id: 31, label: 'Motor emergency stop', description: 'Cuts power to the motors immediately. Wire to a guarded switch.', momentary: true },
-  { id: 41, label: 'RTL', description: 'Engages Return-to-Launch while the channel sits in the active range.' },
+  { id: 41, label: 'RTL', description: 'Engages Return-to-Launch while the channel sits in the active range.', vehicles: ['ArduCopter', 'ArduPlane', 'ArduRover'] },
   { id: 46, label: 'RC override enable', description: 'Lets a companion computer pilot via MAVLink while this range is held.' },
-  { id: 47, label: 'Gripper', description: 'Cycles the gripper open/closed on each pulse into the active range.', momentary: true },
-  { id: 51, label: 'Precision Loiter', description: 'Engages precision-loiter assistance (requires PrecLand sensor).' },
+  { id: 47, label: 'Gripper', description: 'Cycles the gripper open/closed on each pulse into the active range.', momentary: true, vehicles: ['ArduCopter', 'ArduRover'] },
+  { id: 51, label: 'Precision Loiter', description: 'Engages precision-loiter assistance (requires PrecLand sensor).', vehicles: ['ArduCopter'] },
   { id: 55, label: 'Guided', description: 'Switches the vehicle into GUIDED mode for the duration of the active range.' },
-  { id: 66, label: 'Reverse throttle', description: 'Inverts the throttle stick mapping while the channel sits in the active range.' },
+  { id: 66, label: 'Reverse throttle', description: 'Inverts the throttle stick mapping while the channel sits in the active range.', vehicles: ['ArduRover'] },
   { id: 77, label: 'Camera trigger', description: 'Fires the configured camera shutter / record line.', momentary: true },
-  { id: 83, label: 'Disable airmode', description: 'Forces airmode off while held; vehicle-dependent.' },
+  { id: 83, label: 'Disable airmode', description: 'Forces airmode off while held; vehicle-dependent.', vehicles: ['ArduCopter'] },
   { id: 153, label: 'Arm without safety', description: 'Arms even with safety switch active. Off-flight bench use only.' },
   { id: 300, label: 'Scripting 1', description: 'Triggers Lua script flag 1 (vehicle must run a script that reads it).' },
   { id: 301, label: 'Scripting 2', description: 'Triggers Lua script flag 2.' }
