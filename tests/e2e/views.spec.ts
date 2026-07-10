@@ -3636,3 +3636,30 @@ test.describe('App update banner', () => {
     await expect(page.getByTestId('sw-update-banner')).toHaveCount(0)
   })
 })
+
+test.describe('Scoped write-progress bar', () => {
+  test('a scoped parameter apply shows a global write-progress bar', async ({ page }) => {
+    // The scoped apply path (snapshot restore, receiver, config, power, …) used
+    // to show only a frozen "Applying…" — no progress. It now drives a global
+    // write-progress bar. setScopedWriteProgress is set synchronously at the
+    // start of the apply handler (before the awaited batch write) and cleared
+    // in finally, so the bar is deterministically visible for the whole write.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+
+    await page.getByTestId('view-button-config').click()
+    const rates = page.getByTestId('config-section-system-rates')
+    await rates.scrollIntoViewIfNeeded()
+    // Stage a config edit (INS_FAST_SAMPLE) so config:apply has something to write.
+    await rates.locator('.scoped-editor-field', { hasText: 'Fast sampling' }).locator('input[type=number]').fill('3')
+
+    await page.getByTestId('config-apply').click()
+    const banner = page.getByTestId('write-progress-banner')
+    await expect(banner).toBeVisible()
+    await expect(page.getByTestId('write-progress-bar')).toBeVisible()
+    await expect(banner).toContainText('parameters')
+    // It clears once the write completes.
+    await expect(banner).toHaveCount(0)
+  })
+})
