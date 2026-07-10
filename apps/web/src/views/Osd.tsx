@@ -131,9 +131,11 @@ export interface OsdPreviewToolbarData {
   cellsText: string
 }
 
-// One renderable OSD element, positioned by character-cell coordinates on a
-// 30-column x 16-row grid (the standard ArduPilot OSD layout space used by
-// the MAX7456 and MSP DisplayPort backends).
+// One renderable OSD element, positioned by character-cell coordinates. The
+// grid size depends on the selected video system (analog 30x16/30x13, or HD
+// 50x18 / 60x22 for MSP DisplayPort) — positions are clamped to the active
+// layout at render time (see clampCellToLayout), so column/row here are raw
+// param values that may sit beyond a smaller previewed grid.
 export interface OsdPreviewElement {
   id: string
   text: string
@@ -183,8 +185,9 @@ export interface OsdViewProps {
   /** Drag-and-drop OSD layout editor — called whenever the user drags
    *  an element to a new character cell. Stages drafts for the
    *  matching OSD<screen>_<id>_X / _Y parameters; Save OSD commits
-   *  them. Coordinates are clamped to [0, 29] x [0, 15] before the
-   *  callback fires. */
+   *  them. Coordinates are clamped to the selected video layout's
+   *  bounds (e.g. [0, 29] x [0, 15] for PAL, [0, 59] x [0, 21] for the
+   *  60x22 HD grid) before the callback fires. */
   onElementMove?: (elementId: string, column: number, row: number) => void
   /** Per-screen tabs. ArduPilot exposes 4 OSD screens (each with its
    *  own EN/X/Y triplet per element + screen-level CHAN range). The
