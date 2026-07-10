@@ -166,7 +166,15 @@ export function useOsdEditor({
       HOME: 'HOME',
       HOMEDIST: 'HDIST',
       HOMEDIR: 'HDIR',
-      HORIZON: '[H]',
+      // These three are line-art OSD elements (an artificial-horizon ladder
+      // bar, a center reticle, and left/right scale bars), not text readouts —
+      // real MAX7456-style OSD fonts render them as runs of dash/line glyphs.
+      // A single preview cell can't reproduce the multi-row bars exactly, but
+      // dashes read as "a line", where a raw label or the old '[H]' read as
+      // stray text.
+      HORIZON: '- - - -',
+      CRSSHAIR: '- + -',
+      SIDEBARS: '¦',
       SATS: 'SAT',
       HDOP: 'HDOP',
       WAYPOINT: 'WP',
