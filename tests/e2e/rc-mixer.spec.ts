@@ -51,9 +51,11 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     // otherwise the free-slot allocation races an empty model.
     await expect(page.getByTestId('rc-mixer-track-band-rcl-2')).toBeVisible()
 
-    // Add a term on channel 7 -> allocates the first free slot (term 3) and the
-    // pending row appears, driven entirely by the staged RCL3_* drafts.
-    await page.getByTestId('rc-mixer-add-channel-7').click()
+    // Add a term on channel 8 -> allocates the first free slot (term 3) and the
+    // pending row appears, driven entirely by the staged RCL3_* drafts. (Ch8,
+    // not ch7: the demo's FLTMODE_CH=7 makes channel 7 the mode-switch channel,
+    // which the RC Mixer now excludes as a non-AUX-candidate.)
+    await page.getByTestId('rc-mixer-add-channel-8').click()
     await expect(page.getByTestId('rc-mixer-assignment-rcl-3')).toBeVisible()
     await expect(page.getByTestId('rc-mixer-track-band-rcl-3')).toBeVisible()
 
@@ -61,12 +63,14 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     await page.getByTestId('rc-mixer-function-rcl-3').selectOption('16') // AUTO Mode
     await page.getByTestId('rc-mixer-low-rcl-3').fill('1800')
     await page.getByTestId('rc-mixer-high-rcl-3').fill('2000')
-    await expect(page.getByTestId('rc-mixer-channel-7')).toContainText('AUTO Mode')
+    await expect(page.getByTestId('rc-mixer-channel-8')).toContainText('AUTO Mode')
 
-    // Remove clears the term drafts -> row gone, channel 7 empty again.
+    // Remove clears the term drafts -> row gone, channel 8 empty again (the
+    // channel header reflects "No assignments" now that the redundant
+    // per-channel empty paragraph was dropped in the vertical-condense pass).
     await page.getByTestId('rc-mixer-remove-rcl-3').click()
     await expect(page.getByTestId('rc-mixer-assignment-rcl-3')).toHaveCount(0)
-    await expect(page.getByTestId('rc-mixer-channel-7')).toContainText('No functions assigned to this channel.')
+    await expect(page.getByTestId('rc-mixer-channel-8')).toContainText('No assignments')
   })
 
   test('range edges adjust via the drag handle (keyboard + pointer)', async ({ page }) => {
