@@ -410,6 +410,7 @@ const mockParameters: ParameterState = {
   MOT_PWM_TYPE: 5,
   ESC_CALIBRATION: 0,
   SERVO_DSHOT_RATE: 0,
+  SERVO_DSHOT_ESC: 1,
   SERVO_BLH_AUTO: 0,
   SERVO_BLH_BDMASK: 0,
   SERVO_BLH_RVMASK: 0,

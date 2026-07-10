@@ -651,6 +651,37 @@ test.describe('Motors direction test', () => {
     // Staging the mask enables the panel's Apply and reboot with a count.
     await expect(page.getByTestId('motor-reorder-apply')).toContainText('Apply and reboot (1)')
   })
+
+  test('reverse toggles are disabled when SERVO_DSHOT_ESC is "None" — the actual DShot-command gate', async ({ page }) => {
+    // Hardware-verified root cause (2026-07-08, real Cube + AM32 ESC): RVMASK
+    // alone does nothing unless SERVO_DSHOT_ESC names a real ESC type. This
+    // covers the live reactivity of the fix: the ESC-type selector added to
+    // the Direction tab, and toggles disabling/re-enabling as it changes.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'motors')
+    await page.getByTestId('outputs-summary-motor-setup').click()
+    await page.getByTestId('motor-reorder-lightbox-tab-direction').click()
+
+    const m1 = page.getByTestId('motor-reorder-direction-reverse-1').locator('input')
+    const escSelect = page.getByTestId('motor-reorder-direction-esctype').locator('select')
+    await expect(escSelect).toBeVisible()
+    await expect(m1).toBeEnabled()
+
+    await m1.check()
+    await expect(m1).toBeChecked()
+
+    // Switching the ESC type to "None" disables the toggles — matches the
+    // real firmware behavior where SERVO_DSHOT_ESC=0 silently drops every
+    // DShot special command, including reverse.
+    await escSelect.selectOption('0')
+    await expect(m1).toBeDisabled()
+
+    // Switching back re-enables it, and the staged reverse bit persisted.
+    await escSelect.selectOption('1')
+    await expect(m1).toBeEnabled()
+    await expect(m1).toBeChecked()
+  })
 })
 
 test.describe('Calibration tab — motor-spin (ESC)', () => {

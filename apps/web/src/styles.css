@@ -13149,6 +13149,28 @@ details.bf-gui-box:not([open]) > summary::after {
   border-color: var(--accent, #61dafb);
   background: rgba(97, 218, 251, 0.08);
 }
+.motor-reverse-esctype {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 12px;
+}
+.motor-reverse-esctype span {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.motor-reverse-esctype select {
+  flex: 1;
+  min-width: 0;
+}
+.motor-reverse-esctype--warning {
+  border-color: var(--warning, #ff6600);
+  background: rgba(255, 102, 0, 0.08);
+}
 
 .calibration-card--danger {
   border-color: var(--danger, #e2123f);

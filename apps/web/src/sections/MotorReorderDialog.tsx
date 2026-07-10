@@ -17,6 +17,7 @@ import { normalizeBitmaskValue } from '../parameter-format'
 import { hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
 import type { MotorPreviewNode } from '../view-models/motor-preview'
+import { resolveMotorReverseEligibility } from '../view-models/motor-reverse'
 import { motorSpinArcPath } from '../views/motor-spin-arc'
 import type { MotorReorderRow } from '../hooks/use-motor-reorder'
 
@@ -508,7 +509,13 @@ export function MotorReorderDialog({
                 const motPwmType = Math.round(
                   Number(editedValues.MOT_PWM_TYPE ?? readRoundedParameter(snapshot, 'MOT_PWM_TYPE') ?? 0)
                 )
-                const isDShot = motPwmType >= 4 && motPwmType <= 7
+                const dshotEscParam = selectParameterById(snapshot, 'SERVO_DSHOT_ESC')
+                const dshotEscType =
+                  editedValues.SERVO_DSHOT_ESC !== undefined
+                    ? Math.round(Number(editedValues.SERVO_DSHOT_ESC))
+                    : dshotEscParam?.value
+                const eligibility = resolveMotorReverseEligibility({ motPwmType, dshotEscType })
+                const escOptions = dshotEscParam?.definition?.options ?? []
                 return (
                   <div className="motor-reverse-card" data-testid="motor-reorder-direction-reverse">
                     <div className="switch-exercise-card__header">
@@ -516,10 +523,29 @@ export function MotorReorderDialog({
                         <strong>Reverse motor direction</strong>
                         <p>
                           If the right motor spins the wrong way, reverse it here over DShot (BLHeli/AM32) instead
-                          of swapping wires. {isDShot ? 'Takes effect on the next reboot/redetect.' : 'Requires a DShot ESC protocol — set MOT_PWM_TYPE to a DShot value (4-7) first.'}
+                          of swapping wires. {eligibility.canReverse ? 'Takes effect on the next reboot/redetect.' : eligibility.blockedReason}
                         </p>
                       </div>
                     </div>
+                    {dshotEscParam && eligibility.isDShotProtocol ? (
+                      <label
+                        className={`motor-reverse-esctype${eligibility.escTypeConfigured ? '' : ' motor-reverse-esctype--warning'}`}
+                        data-testid="motor-reorder-direction-esctype"
+                      >
+                        <span>ESC type (SERVO_DSHOT_ESC)</span>
+                        <select
+                          value={String(dshotEscType ?? 0)}
+                          disabled={busyAction !== undefined}
+                          onChange={(event) => setDraft('SERVO_DSHOT_ESC', event.target.value)}
+                        >
+                          {escOptions.map((option) => (
+                            <option key={`servo-dshot-esc:${option.value}`} value={String(option.value)}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
                     <div className="motor-reverse-grid">
                       {effectiveMotorOutputs.map((output) => {
                         const bit = output.channelNumber - 1
@@ -533,7 +559,7 @@ export function MotorReorderDialog({
                             <input
                               type="checkbox"
                               checked={reversed}
-                              disabled={!isDShot || busyAction !== undefined}
+                              disabled={!eligibility.canReverse || busyAction !== undefined}
                               onChange={(event) =>
                                 setDraft(rvmaskParam.id, String(toggleBitmaskFlag(currentMask, bit, event.target.checked)))
                               }

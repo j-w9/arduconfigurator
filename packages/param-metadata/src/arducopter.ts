@@ -30,6 +30,7 @@ import {
   ARDUCOPTER_OSD_SWITCH_METHOD_LABELS,
   ARDUCOPTER_OSD_TYPE_LABELS,
   ARDUCOPTER_DSHOT_RATE_LABELS,
+  ARDUCOPTER_DSHOT_ESC_TYPE_LABELS,
   ARDUCOPTER_BLH_AUTO_LABELS,
   ARDUCOPTER_OUTPUT_CHANNEL_BIT_LABELS,
   ARDUCOPTER_RC_OPTIONS_BIT_LABELS,
@@ -3055,6 +3056,20 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       rebootRequired: true,
       options: enumOptions(ARDUCOPTER_DSHOT_RATE_LABELS)
     },
+    SERVO_DSHOT_ESC: {
+      id: 'SERVO_DSHOT_ESC',
+      label: 'ESC type (DShot commands)',
+      // Hardware-verified: with this at "None", SERVO_BLH_RVMASK (reverse) and
+      // 3D-mode commands are never sent at all — ArduPilot's own RCOutput driver
+      // only sends DShot special commands for the listed ESC types, and silently
+      // does nothing for "None". Must be set correctly before reverse works.
+      description: 'Which DShot command set/bit-width your ESC firmware understands. "None" disables ALL DShot special commands — including SERVO_BLH_RVMASK reverse-direction and 3D mode — even if those are otherwise configured. Only enable the "+ Extended DShot Telemetry" variants if your ESC firmware build actually supports EDT.',
+      category: 'outputs',
+      minimum: 0,
+      maximum: 4,
+      rebootRequired: true,
+      options: enumOptions(ARDUCOPTER_DSHOT_ESC_TYPE_LABELS)
+    },
     SERVO_BLH_AUTO: {
       id: 'SERVO_BLH_AUTO',
       label: 'BLHeli auto-enable',
@@ -3090,10 +3105,16 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     SERVO_BLH_RVMASK: {
       id: 'SERVO_BLH_RVMASK',
       label: 'Reverse motor direction (per output)',
-      description: 'Per-output bitmask: check an output to reverse that motor’s spin direction via DShot (BLHeli/AM32) without swapping wires. Takes effect immediately on DShot ESCs.',
+      // Hardware-verified: the reversed mask is only pushed into the RCOutput
+      // driver from AP_BLHeli::init(), which runs once at ESC-subsystem startup
+      // — a live param change does nothing until the FC reboots. Also requires
+      // SERVO_DSHOT_ESC to be set to a real ESC type (not "None"); with "None"
+      // this mask is accepted but no reverse command is ever sent.
+      description: 'Per-output bitmask: check an output to reverse that motor’s spin direction via DShot (BLHeli/AM32) without swapping wires. Requires SERVO_DSHOT_ESC set to your ESC type (not "None"), and a reboot after changing, to take effect.',
       category: 'outputs',
       minimum: 0,
       maximum: 255,
+      rebootRequired: true,
       bitmask: true,
       options: enumOptions(ARDUCOPTER_OUTPUT_CHANNEL_BIT_LABELS)
     },
