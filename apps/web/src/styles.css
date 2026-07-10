@@ -7047,6 +7047,19 @@ textarea:focus {
   text-transform: none;
 }
 
+/* The raw ArduPilot parameter name shown under every friendly label (e.g.
+ * "Vertical speed" / VSPEED) — muted and monospace so it reads as metadata,
+ * not as a second label competing with the one above it. */
+.scoped-editor-field__param-id {
+  display: block;
+  margin-top: 1px;
+  color: var(--text-dim, var(--text-muted));
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
 .scoped-editor-field input,
 .scoped-editor-field select,
 .scoped-editor-field textarea {
@@ -11766,6 +11779,11 @@ details.metadata-settings-section:not([open]) > summary::after {
 .modes-table__row span {
   font-size: 13px;
   color: var(--text);
+}
+
+.modes-table__mode-readonly {
+  display: flex;
+  flex-direction: column;
 }
 
 .modes-table__row--head span {

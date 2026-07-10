@@ -141,7 +141,12 @@ export function ModesView(props: ModesViewProps) {
                       allowCustomValue
                     />
                   ) : (
-                    slot.modeLabel
+                    <span className="modes-table__mode-readonly">
+                      {slot.modeLabel}
+                      {slot.parameter ? (
+                        <small className="scoped-editor-field__param-id">{slot.parameter.id}</small>
+                      ) : null}
+                    </span>
                   )}
                 </span>
                 <span role="cell">

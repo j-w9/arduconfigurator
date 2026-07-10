@@ -26,6 +26,27 @@ function fieldClassName(map: ScopedFieldDraftMap, paramId: string, compact: bool
 }
 
 /**
+ * Small always-visible line showing the raw ArduPilot parameter name next to
+ * its friendly label (e.g. "Vertical speed" / "VSPEED") — the label alone
+ * doesn't tell an operator what to search the wiki or the raw Parameters tab
+ * for. Skipped when there's no friendly label: in that case `parameter.id` IS
+ * already the label text, so showing it again would be a plain duplicate.
+ */
+function ParamIdHint({ parameter }: { parameter: ParameterState }): ReactElement | null {
+  if (!parameter.definition?.label) return null
+  // aria-hidden: purely decorative metadata, and — since several of these
+  // components wrap their control in a <label> — without it the browser
+  // folds this text into the <label>'s accessible name (e.g. "Roll Angle P"
+  // becomes "Roll Angle PATC_ANG_RLL_P"), breaking any getByLabel(exact) query
+  // and any screen-reader announcement of the control.
+  return (
+    <small className="scoped-editor-field__param-id" aria-hidden="true">
+      {parameter.id}
+    </small>
+  )
+}
+
+/**
  * Render "was: X" small text below a staged editor so the operator can
  * see the live-snapshot value that's about to be overwritten. Returns
  * null for unchanged / invalid fields — only show on actually-staged
@@ -125,12 +146,15 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
   const showCustomInput = allowCustomValue && (customModeForced || (currentValue !== '' && !matchesKnownOption))
 
   if (allowCustomValue) {
+    const fieldLabel = parameter.definition?.label ?? parameter.id
     return (
       <label className={fieldClassName(draftStatusById, parameter.id, compact)}>
-        <span>{parameter.definition?.label ?? parameter.id}</span>
+        <span>{fieldLabel}</span>
+        <ParamIdHint parameter={parameter} />
         <span className="scoped-select-with-custom">
           <select
             data-testid={`scoped-select-${parameter.id}`}
+            aria-label={fieldLabel}
             value={showCustomInput ? CUSTOM_VALUE_SENTINEL : currentValue}
             onChange={(event) => {
               if (event.target.value === CUSTOM_VALUE_SENTINEL) {
@@ -154,7 +178,7 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
               data-testid={`scoped-select-custom-${parameter.id}`}
               className="scoped-select-with-custom__input"
               value={currentValue}
-              aria-label={`Custom ${parameter.definition?.label ?? parameter.id} value`}
+              aria-label={`Custom ${fieldLabel} value`}
               onChange={(event) => onChange(parameter.id, event.target.value)}
             />
           ) : null}
@@ -176,10 +200,12 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
     currentValue !== '' && Number.isFinite(currentNumber) && !matchesKnownOption
       ? [...options, { value: currentNumber, label: `${currentValue} (unlisted)` }]
       : options
+  const fieldLabel = parameter.definition?.label ?? parameter.id
   return (
     <label className={fieldClassName(draftStatusById, parameter.id, compact)}>
-      <span>{parameter.definition?.label ?? parameter.id}</span>
-      <select value={currentValue} onChange={(event) => onChange(parameter.id, event.target.value)}>
+      <span>{fieldLabel}</span>
+      <ParamIdHint parameter={parameter} />
+      <select aria-label={fieldLabel} value={currentValue} onChange={(event) => onChange(parameter.id, event.target.value)}>
         {renderedOptions.map((valueOption) => (
           <option key={`${parameter.id}:${valueOption.value}`} value={String(valueOption.value)}>
             {valueOption.label}
@@ -234,14 +260,17 @@ export function ScopedNumberField(props: ScopedNumberFieldProps) {
   const step =
     parameter.definition?.step ??
     inferStep(parameter.definition?.minimum, parameter.definition?.maximum, stepFallback)
+  const fieldLabel = parameter.definition?.label ?? parameter.id
   return (
     <label className={fieldClassName(draftStatusById, parameter.id, compact)}>
       <span>
-        {parameter.definition?.label ?? parameter.id}
+        {fieldLabel}
         {unit ? <small className="scoped-editor-field__unit"> ({unit})</small> : null}
       </span>
+      <ParamIdHint parameter={parameter} />
       <input
         type="number"
+        aria-label={fieldLabel}
         min={parameter.definition?.minimum}
         max={parameter.definition?.maximum}
         step={step}
@@ -299,6 +328,7 @@ export function ScopedBitmaskField(props: CommonScopedFieldProps) {
       data-testid={`scoped-bitmask-${parameter.id}`}
     >
       <span>{parameter.definition?.label ?? parameter.id}</span>
+      <ParamIdHint parameter={parameter} />
       <div className="scoped-bitmask-bits">
         {options.map((option) => {
           const bit = option.value
@@ -345,6 +375,7 @@ export function ScopedOptionChipsField(props: CommonScopedFieldProps) {
       data-testid={`scoped-chips-${parameter.id}`}
     >
       <span>{parameter.definition?.label ?? parameter.id}</span>
+      <ParamIdHint parameter={parameter} />
       <div className="scoped-option-chips" role="radiogroup">
         {options.map((option) => {
           const selected = String(option.value) === current

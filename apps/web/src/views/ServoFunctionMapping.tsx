@@ -112,7 +112,6 @@ export function ServoFunctionMappingView(props: ServoFunctionMappingViewProps) {
                   >
                     <th scope="row" className="servo-mapping__channel">
                       <strong>SERVO{channel}</strong>
-                      <small>{row.parameter.id}</small>
                     </th>
                     <td className="servo-mapping__function">
                       <ScopedSelectField

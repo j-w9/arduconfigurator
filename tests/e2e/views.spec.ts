@@ -1505,6 +1505,26 @@ test.describe('Config view', () => {
     // than the ambiguous "Primary GPS" substring shared by both.
     await expect(gps.getByText('Primary GPS Select')).toBeVisible()
   })
+
+  test('an editable field shows the raw ArduPilot parameter name under its label', async ({ page }) => {
+    // Reported gap: friendly labels alone don't tell the operator what to
+    // search the wiki/Parameters tab for. Centralized in ScopedField's shared
+    // components, so any editable field is representative — Main loop rate
+    // (SCHED_LOOP_RATE) in the system-rates section.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+
+    const rates = page.getByTestId('config-section-system-rates')
+    const field = rates.locator('.scoped-editor-field', { hasText: 'Main loop rate' })
+    await expect(field.locator('.scoped-editor-field__param-id')).toHaveText('SCHED_LOOP_RATE')
+
+    // Regression guard: the id hint must not pollute the control's accessible
+    // name (a <label> concatenates ALL its text by default) — an exact
+    // getByLabel query on the friendly label alone must still resolve.
+    await expect(field.getByLabel('Main loop rate', { exact: true })).toBeVisible()
+  })
 })
 
 // The receiver Bind (ELRS/CRSF) button is currently hidden in the UI
