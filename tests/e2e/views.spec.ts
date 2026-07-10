@@ -267,6 +267,53 @@ test.describe('Parameters tab (expert-only)', () => {
     await search.fill('')
     expect(await dataRows.count()).toBeGreaterThan(10)
   })
+
+  test('global "Show changes" scrolls to the diff grid after switching tabs', async ({ page }) => {
+    // The reported bug: clicking Show changes from another tab switched to
+    // Parameters but dropped the operator wherever they last scrolled,
+    // leaving the diff grid to hunt for.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+
+    const search = page.getByTestId('parameter-search-input')
+    await search.fill('BATT_LOW_VOLT')
+    await page.locator('input[aria-label="BATT_LOW_VOLT value"]').fill('13.5')
+    await search.fill('')
+
+    // Navigate away — the global draft bar should follow across tabs.
+    await page.getByTestId('view-button-config').click()
+    await expect(page.getByTestId('global-draft-bar')).toBeVisible()
+
+    await page.getByTestId('global-draft-show').click()
+    await expect(page.getByTestId('workspace-view-title')).toHaveText('Parameters')
+    await expect(page.getByTestId('parameter-diff-grid')).toBeInViewport()
+  })
+
+  test('Export collapses to one primary button + an Export Legacy format picker', async ({ page }) => {
+    // Was three buttons (Export JSON / .parm / .params) with no explanation of
+    // why they exist. Now: one primary Export (native JSON) plus a legacy
+    // select for the two ground-station formats, used only when a specific
+    // tool needs them.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+
+    await expect(page.getByTestId('export-parameter-backup')).toHaveText('Export')
+    const legacySelect = page.getByTestId('export-parameter-backup-legacy')
+    await expect(legacySelect).toHaveValue('')
+    const optionLabels = await legacySelect.locator('option').allTextContents()
+    expect(optionLabels).toEqual(['Export Legacy…', 'Mission Planner (.parm)', 'QGroundControl (.params)'])
+
+    // Picking a format triggers its export and resets to the placeholder —
+    // reads as a one-shot action, not a persistent mode.
+    const download = page.waitForEvent('download')
+    await legacySelect.selectOption('parm')
+    await download
+    await expect(legacySelect).toHaveValue('')
+  })
 })
 
 test.describe('tab order', () => {
@@ -1568,6 +1615,30 @@ test.describe('Receiver flight-mode labels', () => {
     // for the previously unset 4..6 slots (was: "Mode <n>" placeholders).
     await expect(table.locator('[data-testid^="modes-slot-"]')).toHaveCount(6)
   })
+
+  test('flight-mode slot supports typing an unlisted mode number via Custom…', async ({ page }) => {
+    // Reported gap: an unlisted mode number (e.g. a scripting-defined 29) only
+    // ever showed as an inert "29 (unlisted)" label with no way to type a
+    // different raw number without leaving for the raw Parameters tab.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'modes')
+    const table = page.getByTestId('modes-slot-table')
+    const slot5 = table.getByTestId('modes-slot-5')
+    const select = slot5.locator('select')
+    await expect(select).toHaveValue('16') // PosHold
+
+    await select.selectOption('__custom__')
+    const customInput = slot5.locator('input[type="number"]')
+    await expect(customInput).toBeVisible()
+    await customInput.fill('29')
+    await expect(page.getByTestId('global-draft-bar')).toBeVisible()
+
+    // Picking a named mode again returns to the plain dropdown.
+    await select.selectOption('9') // Land
+    await expect(slot5.locator('input[type="number"]')).toHaveCount(0)
+    await expect(select).toHaveValue('9')
+  })
 })
 
 test.describe('Receiver RSSI', () => {
@@ -1695,6 +1766,35 @@ test.describe('OSD view preview', () => {
     await expect(page.getByTestId('osd-preview-element-GSPEED')).toHaveCount(0)
     await expect(page.getByTestId('osd-preview-element-HOME')).toHaveCount(0)
     await expect(page.getByTestId('osd-preview-element-HORIZON')).toHaveCount(0)
+  })
+
+  test('clicking a checklist row highlights the element in the preview, and vice versa', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'osd')
+
+    const row = page.getByTestId('osd-element-row-BAT_VOLT')
+    const rowLabel = page.getByTestId('osd-element-row-label-BAT_VOLT')
+    const previewElement = page.getByTestId('osd-preview-element-BAT_VOLT')
+    await expect(previewElement).toBeVisible()
+    await expect(row).not.toHaveClass(/is-highlighted/)
+    await expect(previewElement).not.toHaveClass(/is-highlighted/)
+
+    // Clicking the checklist row highlights the corresponding preview element.
+    await rowLabel.click()
+    await expect(row).toHaveClass(/is-highlighted/)
+    await expect(previewElement).toHaveClass(/is-highlighted/)
+    await expect(page.getByTestId('osd-preview-element-label-BAT_VOLT')).toBeVisible()
+
+    // Clicking it again clears the highlight.
+    await rowLabel.click()
+    await expect(row).not.toHaveClass(/is-highlighted/)
+    await expect(previewElement).not.toHaveClass(/is-highlighted/)
+
+    // Clicking the preview element itself highlights the checklist row too.
+    await previewElement.click()
+    await expect(row).toHaveClass(/is-highlighted/)
+    await expect(previewElement).toHaveClass(/is-highlighted/)
   })
 
   test('enabling an element with no live-telemetry text still adds it to the preview', async ({ page }) => {

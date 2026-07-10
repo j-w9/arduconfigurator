@@ -5443,6 +5443,20 @@ export function App() {
     setActiveViewId('setup')
   }, [activeViewId, isExpertMode])
 
+  // "Show changes" (global draft bar) switches to Parameters AND bumps this so
+  // ParametersSection scrolls to the diff grid — a plain boolean can't refire
+  // on a second click while already on the tab. Reset to 0 the instant the
+  // operator leaves Parameters, so the counter is only ever nonzero in the
+  // exact render where Show Changes caused the switch; a later unrelated
+  // manual nav back into Parameters (remounting the section) sees 0 and
+  // doesn't auto-scroll.
+  const [showChangesRequestId, setShowChangesRequestId] = useState(0)
+  useEffect(() => {
+    if (activeViewId !== 'parameters') {
+      setShowChangesRequestId(0)
+    }
+  }, [activeViewId])
+
   function handleSetupFlowAction(action: SetupFlowActionDescriptor): void {
     if (action.disabled) {
       return
@@ -5827,7 +5841,10 @@ export function App() {
           canApplyAllDraftParameters={canApplyAllDraftParameters}
           applyAllBusyLabel={applyAllBusyLabel}
           rebootPending={Boolean(parameterFollowUp?.requiresReboot)}
-          onShowChanges={() => setActiveViewId('parameters')}
+          onShowChanges={() => {
+            setActiveViewId('parameters')
+            setShowChangesRequestId((n) => n + 1)
+          }}
           onWriteAll={() => void handleApplyAllParameterDrafts()}
           onDiscard={clearAllDrafts}
           onRequestReboot={() => void handleGuidedAction('reboot-autopilot')}
@@ -7767,6 +7784,7 @@ export function App() {
           editedValues={editedValues}
           parameterNotice={parameterNotice}
           parameterFollowUp={parameterFollowUp}
+          scrollToChangesRequestId={showChangesRequestId}
           formatCategoryLabel={formatCategoryLabel}
           parameterSearch={parameterSearch}
           setParameterSearch={setParameterSearch}

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
@@ -235,6 +235,22 @@ export function OsdView(props: OsdViewProps) {
   const [analogLayout, setAnalogLayout] = useState<OsdAnalogLayout>('pal')
   const layout = OSD_ANALOG_LAYOUTS[analogLayout]
   const [draggingId, setDraggingId] = useState<string | undefined>(undefined)
+  // Clicking an element's row in the left checklist (or the element itself in
+  // the preview) highlights it on the other side and scrolls it into view —
+  // so an operator can find "which row is this?" / "where did that land?"
+  // without hunting. Click again to clear. Purely presentational; not backed
+  // by any FC state.
+  const [highlightedElementId, setHighlightedElementId] = useState<string | undefined>(undefined)
+  const previewElementRefs = useRef(new Map<string, HTMLSpanElement>())
+  const matrixRowRefs = useRef(new Map<string, HTMLDivElement>())
+  function toggleHighlightedElement(elementId: string): void {
+    setHighlightedElementId((current) => (current === elementId ? undefined : elementId))
+  }
+  useEffect(() => {
+    if (!highlightedElementId) return
+    previewElementRefs.current.get(highlightedElementId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    matrixRowRefs.current.get(highlightedElementId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [highlightedElementId])
   const dragStateRef = useRef<{
     elementId: string
     pointerStartX: number
@@ -572,9 +588,30 @@ export function OsdView(props: OsdViewProps) {
                             const placed = previewById.get(row.elementId)
                             const enabledOnPreview = row.cells.some((cell) => cell.screen === activeScreen && matrixCellChecked(cell))
                             const showAlign = enabledOnPreview && dragEnabled && placed !== undefined && onElementMove !== undefined
+                            const isHighlighted = highlightedElementId === row.elementId
                             return (
-                              <div key={row.elementId} className="osd-matrix__row" data-testid={`osd-element-row-${row.elementId}`}>
-                                <span className="osd-matrix__label">
+                              <div
+                                key={row.elementId}
+                                ref={(node) => {
+                                  if (node) matrixRowRefs.current.set(row.elementId, node)
+                                  else matrixRowRefs.current.delete(row.elementId)
+                                }}
+                                className={`osd-matrix__row${isHighlighted ? ' is-highlighted' : ''}`}
+                                data-testid={`osd-element-row-${row.elementId}`}
+                              >
+                                <span
+                                  className="osd-matrix__label osd-matrix__label--clickable"
+                                  role="button"
+                                  tabIndex={0}
+                                  data-testid={`osd-element-row-label-${row.elementId}`}
+                                  onClick={() => toggleHighlightedElement(row.elementId)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault()
+                                      toggleHighlightedElement(row.elementId)
+                                    }
+                                  }}
+                                >
                                   <strong>{row.label}</strong>
                                   <small>{row.elementId}</small>
                                 </span>
@@ -758,6 +795,7 @@ export function OsdView(props: OsdViewProps) {
                     >
                       {previewElements.map((element) => {
                         const isDragging = draggingId === element.id
+                        const isHighlighted = highlightedElementId === element.id
                         // Render at the element's position AS IT LANDS on the
                         // active layout. The raw param can sit beyond this grid
                         // (a 60-col HD layout viewed as 30-col PAL), so clamp to
@@ -767,11 +805,22 @@ export function OsdView(props: OsdViewProps) {
                         const className = [
                           'osd-preview-screen__element',
                           dragEnabled ? 'osd-preview-screen__element--draggable' : '',
-                          isDragging ? 'is-dragging' : ''
+                          isDragging ? 'is-dragging' : '',
+                          isHighlighted ? 'is-highlighted' : ''
                         ].filter(Boolean).join(' ')
+                        // Friendly name shown while dragging (or highlighted) —
+                        // element.text is the OSD-glyph preview string (e.g. the
+                        // dashes for HORIZON), not a readable name, so the
+                        // operator otherwise has no way to tell which element
+                        // they're moving.
+                        const friendlyLabel = matrixByElementId.get(element.id)?.label ?? element.id
                         return (
                           <span
                             key={element.id}
+                            ref={(node) => {
+                              if (node) previewElementRefs.current.set(element.id, node)
+                              else previewElementRefs.current.delete(element.id)
+                            }}
                             className={className}
                             data-testid={`osd-preview-element-${element.id}`}
                             style={{
@@ -782,11 +831,13 @@ export function OsdView(props: OsdViewProps) {
                             onPointerMove={dragEnabled ? moveElementDrag : undefined}
                             onPointerUp={dragEnabled ? endElementDrag : undefined}
                             onPointerCancel={dragEnabled ? endElementDrag : undefined}
+                            onClick={() => toggleHighlightedElement(element.id)}
                           >
                             {element.text}
-                            {isDragging ? (
-                              <span className="osd-preview-screen__element-pos" aria-hidden="true">
-                                {displayColumn},{displayRow}
+                            {isDragging || isHighlighted ? (
+                              <span className="osd-preview-screen__element-pos" aria-hidden="true" data-testid={`osd-preview-element-label-${element.id}`}>
+                                {friendlyLabel}
+                                {isDragging ? ` ${displayColumn},${displayRow}` : ''}
                               </span>
                             ) : null}
                           </span>

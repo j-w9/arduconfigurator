@@ -138,6 +138,7 @@ export function ModesView(props: ModesViewProps) {
                       editedValues={editedValues!}
                       onChange={onChangeSlot!}
                       draftStatusById={draftStatusById!}
+                      allowCustomValue
                     />
                   ) : (
                     slot.modeLabel
