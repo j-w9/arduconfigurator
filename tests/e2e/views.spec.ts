@@ -3636,3 +3636,32 @@ test.describe('App update banner', () => {
     await expect(page.getByTestId('sw-update-banner')).toHaveCount(0)
   })
 })
+
+test.describe('VTX band/frequency table', () => {
+  test('detected table renders an editable grid; edits upload via MAVFTP', async ({ page }) => {
+    // The demo seeds @VTX/vtxtable.dat (3 factory bands × 8ch + power levels),
+    // so the VTX view shows the real editable table instead of the preview.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('view-button-vtx').click()
+
+    const editor = page.getByTestId('vtx-table-editor')
+    await expect(editor).toBeVisible({ timeout: 15000 })
+    // Seeded Boscam A channel 1 = 5865 MHz.
+    const cell = page.getByTestId('vtx-table-freq-0-0')
+    await expect(cell).toHaveValue('5865')
+    // Power levels are surfaced read-only.
+    await expect(page.getByTestId('vtx-table-power')).toContainText('read-only')
+
+    // Save is disabled until an edit dirties the draft.
+    await expect(page.getByTestId('vtx-table-save')).toBeDisabled()
+    await cell.fill('5900')
+    await expect(page.getByTestId('vtx-table-save')).toBeEnabled()
+
+    // Save uploads the whole table over MAVFTP; success clears the dirty state
+    // (button → "Saved") with no error banner — proves the write round-tripped.
+    await page.getByTestId('vtx-table-save').click()
+    await expect(page.getByTestId('vtx-table-save')).toHaveText('Saved', { timeout: 10000 })
+    await expect(page.getByTestId('vtx-table-error')).toHaveCount(0)
+  })
+})

@@ -2497,7 +2497,11 @@ function parentMockFtpPath(path: string): string | undefined {
 
 function directoryExists(files: MockFtpFileMap, path: string): boolean {
   const normalizedPath = normalizeMockFtpPath(path)
-  if (normalizedPath === '@SYS') {
+  // Always-present virtual mounts. @VTX is backed by AP_VideoTX's RAM table,
+  // so it exists even after vtxtable.dat is deleted mid-overwrite (an
+  // overwriting upload does REMOVE_FILE then CREATE_FILE; without this the
+  // mount would vanish between the two and the re-create would fail).
+  if (normalizedPath === '@SYS' || normalizedPath === '@VTX') {
     return true
   }
   const prefix = `${normalizedPath}/`

@@ -1,6 +1,7 @@
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
+import type { UseVtxTableResult } from '../hooks/use-vtx-table'
 import { ScopedField, ScopedSelectField, type ScopedFieldDraftMap } from './ScopedField'
 
 export interface VtxLinkPort {
@@ -33,10 +34,13 @@ export interface VtxViewProps {
   isBusy: boolean
   onApply: () => void
   onRevert: () => void
+  /** MAVFTP-backed VTX band/frequency table (detection + edit state). */
+  vtxTable: UseVtxTableResult
 }
 
 export function VtxView(props: VtxViewProps) {
   const {
+    vtxTable,
     linkPorts,
     enabledLabel,
     enableField,
@@ -198,9 +202,9 @@ export function VtxView(props: VtxViewProps) {
             <article className="bf-gui-box bf-vtx-grid__advanced">
               <div className="bf-gui-box__titlebar">
                 <strong>VTX Table / Advanced</strong>
+                {vtxTable.status === 'available' ? <StatusBadge tone="success">Table detected</StatusBadge> : null}
               </div>
               <div className="bf-gui-box__body">
-                <p className="setup-gui-box__note">ArduPilot currently exposes frequency, power, max power, and an advanced options bitmask here instead of a full band/channel table.</p>
                 <div className="bf-vtx-advanced-grid">
                   {typesField ? (
                     <ScopedField
@@ -220,14 +224,26 @@ export function VtxView(props: VtxViewProps) {
                       editedValues={editedValues}
                       onChange={onEditChange}
                       draftStatusById={draftStatusById}
-                      caption="Keep this exposed so the ArduPilot gap stays obvious instead of hidden."
                     />
                   ) : null}
 
-                  <div className="bf-vtx-callout">
-                    <StatusBadge tone="warning">Table not available</StatusBadge>
-                    <p>When ArduPilot grows explicit VTX band/channel table support, this box should turn into a full table editor instead of staying a placeholder.</p>
-                  </div>
+                  {vtxTable.status === 'available' && vtxTable.table ? (
+                    <VtxTableEditor vtxTable={vtxTable} />
+                  ) : vtxTable.status === 'unavailable' ? (
+                    <div className="bf-vtx-callout" data-testid="vtx-table-unavailable">
+                      <StatusBadge tone="warning">Table not available</StatusBadge>
+                      <p>
+                        This firmware does not expose a VTX band/frequency table (<code>@VTX/vtxtable.dat</code>).
+                        ArduPilot exposes frequency, power, max power, and an options bitmask instead. Build firmware
+                        with the VTX table feature to edit bands/frequencies here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bf-vtx-callout" data-testid="vtx-table-checking">
+                      <StatusBadge tone="neutral">Checking…</StatusBadge>
+                      <p>Reading the VTX band/frequency table from the flight controller…</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </article>
@@ -258,5 +274,112 @@ export function VtxView(props: VtxViewProps) {
         </div>
       </Panel>
     </section>
+  )
+}
+
+/**
+ * Editable band/frequency grid + read-only power levels, shown when the
+ * firmware exposes a VTX table over MAVFTP. Slice 1: band frequencies are
+ * editable + savable (upload); power levels are read-only pending firmware
+ * driver integration (Task 5).
+ */
+function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
+  const table = vtxTable.table
+  if (!table) return null
+  const channels = Array.from({ length: table.numChannels }, (_, index) => index)
+  return (
+    <div className="bf-vtx-table" data-testid="vtx-table-editor">
+      <p className="setup-gui-box__note">
+        Band/channel frequencies from the flight controller (<code>@VTX/vtxtable.dat</code>). Edit any cell (MHz, 0 =
+        channel disabled) and Save to upload the whole table. Factory bands use the VTX&apos;s own frequency map.
+      </p>
+      <div className="bf-vtx-table__scroll">
+        <table className="bf-vtx-table__grid">
+          <thead>
+            <tr>
+              <th scope="col">Band</th>
+              {channels.map((channel) => (
+                <th key={channel} scope="col">
+                  {channel + 1}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.bands.map((band, bandIndex) => (
+              <tr key={bandIndex} data-testid={`vtx-table-band-${bandIndex}`}>
+                <th scope="row" className="bf-vtx-table__band">
+                  <strong>{band.letter || '?'}</strong>
+                  <small>
+                    {band.name || `Band ${bandIndex + 1}`}
+                    {band.isFactory ? ' · factory' : ''}
+                  </small>
+                </th>
+                {channels.map((channel) => (
+                  <td key={channel}>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      data-testid={`vtx-table-freq-${bandIndex}-${channel}`}
+                      value={band.frequencies[channel] ?? 0}
+                      onChange={(event) =>
+                        vtxTable.setFrequency(bandIndex, channel, Number(event.target.value))
+                      }
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="bf-vtx-table__power" data-testid="vtx-table-power">
+        <div className="bf-vtx-table__power-head">
+          <strong>Power levels</strong>
+          <StatusBadge tone="neutral">read-only</StatusBadge>
+        </div>
+        <div className="config-pills">
+          {table.powerLevels.map((level, index) => (
+            <span key={index}>
+              {level.label || String(level.value)} · {level.value}
+            </span>
+          ))}
+        </div>
+        <small>
+          Power levels are stored and transported, but the VTX drivers don&apos;t apply the table&apos;s power values
+          yet (pending firmware work) — editing lands in a follow-up.
+        </small>
+      </div>
+
+      {vtxTable.error ? (
+        <div className="parameter-follow-up parameter-follow-up--warning" data-testid="vtx-table-error">
+          <StatusBadge tone="danger">upload failed</StatusBadge>
+          <p>{vtxTable.error}</p>
+        </div>
+      ) : null}
+
+      <div className="bf-vtx-table__actions">
+        <button
+          type="button"
+          style={buttonStyle('primary')}
+          data-testid="vtx-table-save"
+          onClick={vtxTable.save}
+          disabled={!vtxTable.dirty || vtxTable.saving}
+        >
+          {vtxTable.saving ? 'Uploading…' : vtxTable.dirty ? 'Save VTX Table' : 'Saved'}
+        </button>
+        <button
+          type="button"
+          style={buttonStyle()}
+          data-testid="vtx-table-reset"
+          onClick={vtxTable.reset}
+          disabled={!vtxTable.dirty || vtxTable.saving}
+        >
+          Reset
+        </button>
+      </div>
+    </div>
   )
 }
