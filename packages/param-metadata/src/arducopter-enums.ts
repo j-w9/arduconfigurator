@@ -527,6 +527,18 @@ export const ARDUCOPTER_BLH_AUTO_LABELS: Record<number, string> = {
   1: 'Enabled (all DShot outputs)'
 }
 
+// SERVO_DSHOT_ESC — which DShot command set/bit-width the ESC firmware
+// understands. 'None' (0) disables ALL DShot commands, including the
+// SERVO_BLH_RVMASK reverse-direction command and 3D mode — hardware-verified
+// on a real board where reverse silently did nothing until this was set.
+export const ARDUCOPTER_DSHOT_ESC_TYPE_LABELS: Record<number, string> = {
+  0: 'None (no DShot commands sent)',
+  1: 'BLHeli32 / KISS / AM32',
+  2: 'BLHeli_S / BlueJay',
+  3: 'BLHeli32 / AM32 / KISS + Extended DShot Telemetry',
+  4: 'BLHeli_S / BlueJay + Extended DShot Telemetry'
+}
+
 // Per-output channel bit labels for the BLHeli bidirectional-DShot
 // (SERVO_BLH_BDMASK) and reverse (SERVO_BLH_RVMASK) masks. Bit 0 = output 1.
 // Most boards support bidirectional DShot on the first 4 outputs only.

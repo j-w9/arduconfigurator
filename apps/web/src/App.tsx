@@ -2238,7 +2238,7 @@ export function App() {
   // operator can Apply + Reboot from inside the popout instead of closing,
   // applying from the Outputs view, refreshing, and reopening.
   const motorReorderDialogParamIds = useMemo(() => {
-    const ids = new Set<string>(['SERVO_BLH_RVMASK'])
+    const ids = new Set<string>(['SERVO_BLH_RVMASK', 'SERVO_DSHOT_ESC'])
     effectiveMotorOutputs.forEach((output) => ids.add(output.paramId))
     return ids
   }, [effectiveMotorOutputs])

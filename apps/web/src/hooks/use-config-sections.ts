@@ -76,10 +76,11 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     {
       id: 'esc-dshot',
       title: 'ESC & DShot',
-      description: 'Output protocol and DShot/BLHeli behavior — set this before motor testing. Bidirectional DShot needs a DShot protocol; check it on the first 4 outputs (some boards do 8) and enable BLHeli auto. Reverse a motor here instead of swapping wires.',
+      description: 'Output protocol and DShot/BLHeli behavior — set this before motor testing. Bidirectional DShot needs a DShot protocol; check it on the first 4 outputs (some boards do 8) and enable BLHeli auto. ESC type must be set (not "None") for reverse/3D DShot commands to be sent at all. Reverse a motor here instead of swapping wires.',
       fields: [
         { paramId: 'MOT_PWM_TYPE', label: 'ESC protocol', digits: 0 },
         { paramId: 'SERVO_DSHOT_RATE', label: 'DShot rate', digits: 0 },
+        { paramId: 'SERVO_DSHOT_ESC', label: 'ESC type', digits: 0 },
         { paramId: 'SERVO_BLH_AUTO', label: 'BLHeli auto', digits: 0 },
         { paramId: 'SERVO_BLH_POLES', label: 'Motor poles', digits: 0 },
         { paramId: 'SERVO_BLH_BDMASK', label: 'Bidirectional DShot outputs', digits: 0 },
