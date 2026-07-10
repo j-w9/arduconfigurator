@@ -85,7 +85,17 @@ export function evaluateRcDirection(input: RcDirectionAxisInput): RcDirectionRes
   }
   const rawSign = delta > 0 ? 1 : -1
   const normSign = input.reversed ? -rawSign : rawSign
-  return normSign > 0 ? 'correct' : 'reversed'
+  // Pitch is inverted relative to roll/yaw here: hands-on hardware
+  // verification (toggling RCn_REVERSED on a real FC) confirmed the verdict
+  // was backwards for pitch specifically — flips to the wrong label when
+  // reversed is toggled, on both this verdict and the reactive stick-craft
+  // preview, which share this sign convention. Source-level tracing of
+  // RC_Channel::norm_input -> rc_input_to_roll_pitch_rad -> the attitude
+  // controller found no flip anywhere in that chain, so whatever the
+  // discrepancy is, it isn't in that path; empirical hardware behavior
+  // wins over the derivation here.
+  const orientedSign = input.axisId === 'pitch' ? -normSign : normSign
+  return orientedSign > 0 ? 'correct' : 'reversed'
 }
 
 /**

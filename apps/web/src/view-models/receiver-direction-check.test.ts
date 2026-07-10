@@ -33,10 +33,13 @@ describe('evaluateRcDirection (centred axes)', () => {
     expect(evaluateRcDirection({ axisId: 'roll', pwm: 1100, ...CENTERED, reversed: true })).toBe('correct')
   })
 
-  it('pitch-up is the classic Mode-2 case: stick-back reads low, so reversed=1 is correct', () => {
-    // Mode-2 TX: pulling back (pitch up) drives the wire LOW.
-    expect(evaluateRcDirection({ axisId: 'pitch', pwm: 1100, ...CENTERED, reversed: true })).toBe('correct')
-    expect(evaluateRcDirection({ axisId: 'pitch', pwm: 1100, ...CENTERED, reversed: false })).toBe('reversed')
+  it('pitch is inverted relative to roll/yaw (hardware-verified correction)', () => {
+    // Mode-2 TX: pulling back (pitch up) drives the wire LOW. Unlike
+    // roll/yaw, hands-on hardware testing confirmed pitch reads correctly
+    // UNREVERSED here — see evaluateRcDirection's comment for the full trace
+    // and why the source-level derivation didn't predict this.
+    expect(evaluateRcDirection({ axisId: 'pitch', pwm: 1100, ...CENTERED, reversed: false })).toBe('correct')
+    expect(evaluateRcDirection({ axisId: 'pitch', pwm: 1100, ...CENTERED, reversed: true })).toBe('reversed')
   })
 
   it('yaw-right matches the roll sign convention', () => {

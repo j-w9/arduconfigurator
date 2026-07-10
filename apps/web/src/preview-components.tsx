@@ -114,7 +114,12 @@ export function StickCraftPreview({
       value = (pwm - 1500) / 500
     }
     const reversed = readRoundedParameter(snapshot, `RC${obs.channelNumber}_REVERSED`) === 1
-    return Math.max(-1, Math.min(1, reversed ? -value : value))
+    const oriented = reversed ? -value : value
+    // Pitch is inverted relative to roll/yaw here — matches the same
+    // hardware-verified correction in receiver-direction-check.ts's
+    // evaluateRcDirection (see its comment for the full trace).
+    const axisOriented = axisId === 'pitch' ? -oriented : oriented
+    return Math.max(-1, Math.min(1, axisOriented))
   }
   const rollNorm = axisNorm('roll')
   const pitchNorm = axisNorm('pitch')
@@ -159,12 +164,12 @@ export function StickCraftPreview({
     // display:contents wrapper exposes the live attitude for tests without
     // affecting layout (e.g. asserting a centred yaw holds heading).
     //
-    // rollNorm/pitchNorm are ArduPilot's own norm_input() convention (verified
-    // against rc_input_to_roll_pitch_rad + its unit test in AP_Math): positive
-    // norm_input -> positive target angle -> roll-right / pitch-up. FlightDeckPreview's
-    // rollDeg/pitchDeg use that same positive-is-up/right convention directly
-    // (confirmed by the other FlightDeckPreview call site, which feeds real
-    // ATTITUDE.pitch/roll unmodified) — neither axis needs a sign flip here.
+    // rollNorm/pitchNorm follow ArduPilot's norm_input() convention for roll
+    // (verified against rc_input_to_roll_pitch_rad + its unit test in
+    // AP_Math). Pitch is inverted inside axisNorm() — hands-on hardware
+    // testing showed this preview and the Endpoints verdict both read
+    // pitch backwards despite the source-level convention checking out end
+    // to end, so the empirical result wins (see axisNorm's comment).
     <div
       style={{ display: 'contents' }}
       data-testid="receiver-stick-attitude"

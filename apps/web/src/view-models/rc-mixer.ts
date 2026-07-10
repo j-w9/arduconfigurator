@@ -92,7 +92,9 @@ export const RC_MIXER_FUNCTION_CATALOG: readonly RcMixerFunctionDefinition[] = [
   { id: 83, label: 'Disable airmode', description: 'Forces airmode off while held; vehicle-dependent.', vehicles: ['ArduCopter'] },
   { id: 153, label: 'Arm without safety', description: 'Arms even with safety switch active. Off-flight bench use only.' },
   { id: 300, label: 'Scripting 1', description: 'Triggers Lua script flag 1 (vehicle must run a script that reads it).' },
-  { id: 301, label: 'Scripting 2', description: 'Triggers Lua script flag 2.' }
+  { id: 301, label: 'Scripting 2', description: 'Triggers Lua script flag 2.' },
+  { id: 302, label: 'Scripting 3', description: 'Triggers Lua script flag 3.' },
+  { id: 303, label: 'Scripting 4', description: 'Triggers Lua script flag 4.' }
 ]
 
 export function createIdleRcMixerState(): RcMixerState {
