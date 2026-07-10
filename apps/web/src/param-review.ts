@@ -31,7 +31,10 @@ function makeParamIdPredicate<Id extends string>(
 export function isReceiverReviewParamId(paramId: string): boolean {
   return (
     paramId.startsWith('RCMAP_') ||
-    /^RC\d+_(MIN|MAX|TRIM)$/.test(paramId) ||
+    // MIN/MAX/TRIM from calibration; OPTION from the arm-switch control
+    // (also in the Relay tab's scope — a channel's OPTION can legitimately
+    // be edited from either place).
+    /^RC\d+_(MIN|MAX|TRIM|OPTION)$/.test(paramId) ||
     /^FLTMODE\d+$/.test(paramId) ||
     RECEIVER_SUPPORT_PARAM_IDS.includes(paramId as (typeof RECEIVER_SUPPORT_PARAM_IDS)[number])
   )

@@ -263,7 +263,10 @@ export function RcMixerView(props: RcMixerViewProps) {
                   </div>
                 </header>
 
-                <div className="rc-mixer-track" data-testid={`rc-mixer-track-${channel}`}>
+                <div
+                  className={`rc-mixer-track${assignments.length === 0 ? ' rc-mixer-track--empty' : ''}`}
+                  data-testid={`rc-mixer-track-${channel}`}
+                >
                   <div className="rc-mixer-track__rail">
                     {TRACK_TICKS.map((tick) => {
                       const pct = ((tick - RC_MIXER_TRACK_MIN_PWM) / (RC_MIXER_TRACK_MAX_PWM - RC_MIXER_TRACK_MIN_PWM)) * 100
@@ -370,9 +373,7 @@ export function RcMixerView(props: RcMixerViewProps) {
                   </div>
                 </div>
 
-                {assignments.length === 0 ? (
-                  <p className="rc-mixer-channel__empty">No functions assigned to this channel.</p>
-                ) : (
+                {assignments.length === 0 ? null : (
                   <ul className="rc-mixer-channel__assignments">
                     {assignments.map((assignment) => {
                       const definition = functionLookup.byId.get(assignment.functionId)

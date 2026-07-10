@@ -55,7 +55,9 @@ export const RECEIVER_SUPPORT_PARAM_IDS = ['FLTMODE_CH', 'MODE_CH', 'RSSI_TYPE',
 // list — the Relays tab pulls every RELAYx_* the controller reports. RCn_OPTION
 // is included so the tab's "RC Channel" control (which binds a relay's aux
 // function to an RC switch by writing RCn_OPTION) stages + applies in the same
-// scope; RCn_OPTION isn't product-edited anywhere else.
+// scope. RCn_OPTION is also in isReceiverReviewParamId's scope below (the
+// Receiver tab's arm-switch control writes it too) — a param can legitimately
+// belong to more than one tab's review scope; either Apply button commits it.
 export function isRelayParamId(parameterId: string): boolean {
   return /^RELAY\d+_(FUNCTION|PIN|DEFAULT|INVERTED)$/.test(parameterId) || /^RC\d+_OPTION$/.test(parameterId)
 }
