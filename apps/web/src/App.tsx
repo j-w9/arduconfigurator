@@ -380,6 +380,7 @@ import {
   rcLogicFunctionCatalog,
   rcLogicRemovePlan,
   rcLogicTermFromAssignmentId,
+  rcLogicTermParamIds,
   rcLogicUpdateDrafts
 } from './view-models/rc-logic'
 import { armSwitchAssignmentDrafts, deriveArmSwitchAssignment } from './view-models/arm-switch'
@@ -4816,9 +4817,30 @@ export function App() {
     [rcLogicFunctionCatalogMemo]
   )
   const rcLogicExcludedChannels = useMemo(() => derivePrimaryAndModeChannels(snapshot), [snapshot])
+  // Remove on an ALREADY-APPLIED term only STAGES a FUNC=0 draft (same
+  // stage-then-apply model every other RC Mixer edit uses) — readRcLogicModel
+  // still reports the term as "touched" while that draft is pending, so the
+  // row stayed visible after clicking Remove and looked like the button did
+  // nothing. Hide it locally the instant Remove is clicked; the check
+  // against editedValues (not just membership) means a term falls back out
+  // of this set on its own once the draft is applied (cleared) or discarded
+  // (reverted to a nonzero live func, at which point it belongs back on
+  // screen) — no separate reset path needed.
+  const [rcLogicRemovedTerms, setRcLogicRemovedTerms] = useState<ReadonlySet<number>>(() => new Set())
+  const rcLogicVisibleAssignments = useMemo(
+    () =>
+      rcLogicModel.assignments.filter((assignment) => {
+        const term = rcLogicTermFromAssignmentId(assignment.id)
+        if (term === null || !rcLogicRemovedTerms.has(term)) {
+          return true
+        }
+        return editedValues[rcLogicTermParamIds(term).func] !== '0'
+      }),
+    [rcLogicModel.assignments, rcLogicRemovedTerms, editedValues]
+  )
   const rcLogicChannels = useMemo(
-    () => groupAssignmentsByChannel(rcLogicModel.assignments, 16, rcLogicExcludedChannels),
-    [rcLogicModel.assignments, rcLogicExcludedChannels]
+    () => groupAssignmentsByChannel(rcLogicVisibleAssignments, 16, rcLogicExcludedChannels),
+    [rcLogicVisibleAssignments, rcLogicExcludedChannels]
   )
   function handleRcLogicAddAssignment(channel: number): void {
     const drafts = rcLogicAddDrafts(rcLogicModel, channel)
@@ -4847,6 +4869,15 @@ export function App() {
     clearDrafts(plan.clear)
     if (Object.keys(plan.disable).length > 0) {
       mergeDrafts(plan.disable)
+      // Disabling an already-applied term only stages a draft (same
+      // stage-then-apply model as every other RC Mixer edit) — hide the row
+      // immediately instead of leaving it visible until the operator applies
+      // the global staged changes.
+      setRcLogicRemovedTerms((current) => {
+        const next = new Set(current)
+        next.add(term)
+        return next
+      })
     }
   }
   function handleRcLogicToggleEngine(enabled: boolean): void {

@@ -1576,6 +1576,34 @@ test.describe('RC Mixer view', () => {
     expect(optionLabels.some((label) => label.startsWith('Land'))).toBe(true)
     expect(optionLabels.some((label) => label.startsWith('Do nothing'))).toBe(true)
   })
+
+  test('Remove on an already-applied assignment hides it immediately, and discarding the pending change restores it', async ({ page }) => {
+    // Regression: Remove on a real (already-written) RCL term only staged a
+    // FUNC=0 draft — readRcLogicModel still reported the term as "touched"
+    // while that draft was pending, so the row stayed on screen and looked
+    // like the button did nothing.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-rc-mixer').click()
+
+    // Demo seeds a real, already-applied ArmDisarm assignment on channel 5.
+    const channel5 = page.getByTestId('rc-mixer-channel-5')
+    await channel5.scrollIntoViewIfNeeded()
+    await expect(channel5.locator('[data-testid^="rc-mixer-remove-"]')).toBeVisible()
+
+    await channel5.locator('[data-testid^="rc-mixer-remove-"]').first().click()
+    await expect(channel5.locator('[data-testid^="rc-mixer-remove-"]')).toHaveCount(0)
+    await expect(channel5).toContainText('No assignments')
+    // The removal is staged (not yet written) — the global bar reflects it.
+    await expect(page.getByTestId('global-draft-bar')).toBeVisible()
+
+    // Discarding the pending change reverts FUNC back to its live (nonzero)
+    // value — the row must reappear rather than staying hidden forever.
+    await page.getByTestId('global-draft-discard').click()
+    await expect(channel5.locator('[data-testid^="rc-mixer-remove-"]')).toBeVisible()
+  })
 })
 
 // The receiver Bind (ELRS/CRSF) button is currently hidden in the UI
