@@ -93,7 +93,6 @@ export function FailsafeView(props: FailsafeViewProps) {
               >
                 <div className="config-section__header">
                   <span className="config-section__kicker">{row.source}</span>
-                  <code>{row.paramId}</code>
                 </div>
                 {row.parameter ? (
                   <ScopedField
