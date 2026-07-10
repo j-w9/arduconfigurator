@@ -61,6 +61,45 @@ test('parseIntelHex: rejects an unknown record type', () => {
   assert.throws(() => parseIntelHex([record(0x06, 0x0000, [1]), EOF].join('\n')), /unsupported record type/i)
 })
 
+test('parseIntelHex: parses a large contiguous image in roughly linear time (no O(n^2) re-copy)', () => {
+  // Regression guard: coalesce() used to reallocate + copy the WHOLE
+  // accumulated segment on every single contiguous data record, which is
+  // O(n^2) in the segment size — a real ~1.5 MB ArduPilot .hex (tens of
+  // thousands of 16-byte records) made the browser feel hung just parsing
+  // the file. A real STM32F4 image is ~1-2 MB; use a representative size and
+  // assert it completes quickly, not just correctly.
+  const RECORD_BYTES = 16
+  const RECORD_COUNT = 100_000 // ~1.6 MB of contiguous data
+  const BASE_ADDRESS = 0x08000000
+  const lines = []
+  let lastUpper16 = -1
+  for (let i = 0; i < RECORD_COUNT; i += 1) {
+    const absoluteAddress = BASE_ADDRESS + i * RECORD_BYTES
+    const upper16 = (absoluteAddress / 0x10000) & 0xffff // record's ELA field: absoluteAddress = upper16 * 0x10000 + offset
+    if (upper16 !== lastUpper16) {
+      lines.push(record(0x04, 0x0000, [(upper16 >> 8) & 0xff, upper16 & 0xff]))
+      lastUpper16 = upper16
+    }
+    const data = Array.from({ length: RECORD_BYTES }, (_, b) => (i + b) & 0xff)
+    lines.push(record(0x00, absoluteAddress & 0xffff, data))
+  }
+  lines.push(EOF)
+  const hex = lines.join('\n')
+
+  const start = performance.now()
+  const parsed = parseIntelHex(hex)
+  const elapsedMs = performance.now() - start
+
+  assert.equal(parsed.segments.length, 1)
+  assert.equal(parsed.totalBytes, RECORD_COUNT * RECORD_BYTES)
+  assert.equal(parsed.segments[0].data[0], 0)
+  assert.equal(parsed.segments[0].data[RECORD_BYTES], 1 & 0xff)
+  // O(n^2) re-copying at this size took multiple seconds locally; O(n)
+  // finishes in well under a second. Generous ceiling so this doesn't flake
+  // on a slow CI runner while still catching a quadratic regression.
+  assert.ok(elapsedMs < 3000, `expected roughly-linear parse time, took ${elapsedMs.toFixed(0)}ms`)
+})
+
 test('parseDfuSeMemoryLayout: parses a mixed STM32F4 sector map', () => {
   const sectors = parseDfuSeMemoryLayout('@Internal Flash  /0x08000000/04*016Kg,01*016Kg,01*064Kg,07*128Kg')
   assert.equal(sectors.length, 4 + 1 + 1 + 7)
