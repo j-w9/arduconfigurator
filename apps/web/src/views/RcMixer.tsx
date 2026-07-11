@@ -3,6 +3,16 @@ import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'rea
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { RC_LOGIC_CONDITION_LABELS, isRcLogicLevelSelectFunction } from '@arduconfig/param-metadata'
 
+import {
+  RC_MIXER_TRACK_MAX_PWM,
+  RC_MIXER_TRACK_MIN_PWM,
+  computeBandGeometry,
+  computeCursorPercent,
+  type RcMixerAssignment,
+  type RcMixerFunctionDefinition,
+  type RcMixerFunctionDefinitionLookup
+} from '../view-models/rc-mixer'
+
 /** A condition/link term shown in the Logic section (no channel/PWM). */
 export interface RcMixerLogicTerm {
   id: string
@@ -14,16 +24,6 @@ export interface RcMixerLogicTerm {
   levelMode?: boolean
   outputLevel?: number
 }
-
-import {
-  RC_MIXER_TRACK_MAX_PWM,
-  RC_MIXER_TRACK_MIN_PWM,
-  computeBandGeometry,
-  computeCursorPercent,
-  type RcMixerAssignment,
-  type RcMixerFunctionDefinition,
-  type RcMixerFunctionDefinitionLookup
-} from '../view-models/rc-mixer'
 
 // Drag step (μs) — snap the range edges like Betaflight's 25 μs mode-range grid.
 const RC_MIXER_DRAG_STEP = 25
@@ -141,6 +141,24 @@ export function RcMixerView(props: RcMixerViewProps) {
     externalClaimByChannel,
     vtxPowerLevels
   } = props
+
+  // Human "resolved VTX power" for a level-select row: the picked table level's
+  // mW, or "max" for the plain (non-level) full-power on/off mode. Returns null
+  // for non-VTX functions so callers can skip the suffix.
+  const resolveVtxPowerLabel = (
+    functionId: number,
+    levelMode: boolean | undefined,
+    outputLevel: number | undefined
+  ): string | null => {
+    if (!isRcLogicLevelSelectFunction(functionId) || !vtxPowerLevels || vtxPowerLevels.length === 0) {
+      return null
+    }
+    if (!levelMode) {
+      return 'max'
+    }
+    const level = vtxPowerLevels.find((entry) => entry.index === (outputLevel ?? 0))
+    return level ? `${level.mw} mW` : `level ${outputLevel ?? 0}`
+  }
 
   // Drag-to-resize the PWM range bands (Betaflight-style). The band edges and the
   // band body are pointer targets; movement maps clientX -> PWM and stages the
@@ -373,7 +391,13 @@ export function RcMixerView(props: RcMixerViewProps) {
                               }
                             }}
                           />
-                          <em>{definition?.label ?? `Fn ${assignment.functionId}`}</em>
+                          <em>
+                            {definition?.label ?? `Fn ${assignment.functionId}`}
+                            {(() => {
+                              const power = resolveVtxPowerLabel(assignment.functionId, assignment.levelMode, assignment.outputLevel)
+                              return power ? ` → ${power}` : ''
+                            })()}
+                          </em>
                           <span
                             className="rc-mixer-track__handle rc-mixer-track__handle--high"
                             role="slider"
@@ -491,7 +515,7 @@ export function RcMixerView(props: RcMixerViewProps) {
                                   }}
                                   data-testid={`rc-mixer-level-${assignment.id}`}
                                 >
-                                  <option value="plain">Full power (on/off)</option>
+                                  <option value="plain">Full power (on/off) — max</option>
                                   {vtxPowerLevels.map((level) => (
                                     <option key={level.index} value={String(level.index)}>
                                       {level.mw} mW{level.label && level.label !== String(level.mw) ? ` (${level.label})` : ''}
@@ -623,7 +647,7 @@ export function RcMixerView(props: RcMixerViewProps) {
                             }}
                             data-testid={`rc-mixer-logic-level-${term.id}`}
                           >
-                            <option value="plain">Full power (on/off)</option>
+                            <option value="plain">Full power (on/off) — max</option>
                             {vtxPowerLevels.map((level) => (
                               <option key={level.index} value={String(level.index)}>
                                 {level.mw} mW{level.label && level.label !== String(level.mw) ? ` (${level.label})` : ''}
@@ -642,7 +666,13 @@ export function RcMixerView(props: RcMixerViewProps) {
                         <span>Negate</span>
                       </label>
                       <div className="rc-mixer-logic-term__meta">
-                        <small>{definition?.description ?? 'Unknown function.'}</small>
+                        <small>
+                          {definition?.description ?? 'Unknown function.'}
+                          {(() => {
+                            const power = resolveVtxPowerLabel(term.functionId, term.levelMode, term.outputLevel)
+                            return power ? ` · → ${power}` : ''
+                          })()}
+                        </small>
                         <button
                           type="button"
                           style={buttonStyle()}
