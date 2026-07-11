@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   describeSerialPortUsage,
+  isAnalogVtxControlSerialProtocol,
+  isDigitalVtxSerialProtocol,
   isNotificationLedServoFunction,
   isOsdSerialProtocol,
   isReceiverSerialProtocol,
@@ -43,6 +45,34 @@ describe('protocol classifiers', () => {
     expect(isOsdSerialProtocol(42)).toBe(true)
     expect(isOsdSerialProtocol(32)).toBe(true)
     expect(isOsdSerialProtocol(29)).toBe(false)
+  })
+
+  it('splits analog VTX-control links from digital (table-learning) video links', () => {
+    // Analog control = the operator authors the @VTX table.
+    expect(isAnalogVtxControlSerialProtocol(37)).toBe(true) // SmartAudio
+    expect(isAnalogVtxControlSerialProtocol(44)).toBe(true) // IRC Tramp
+    expect(isAnalogVtxControlSerialProtocol(29)).toBe(true) // Crossfire VTX
+    expect(isAnalogVtxControlSerialProtocol(33)).toBe(false) // DJI is digital
+    expect(isAnalogVtxControlSerialProtocol(42)).toBe(false) // DisplayPort is digital
+
+    // Digital = the goggles push (learn) the table over MSP.
+    expect(isDigitalVtxSerialProtocol(42)).toBe(true) // MSP DisplayPort
+    expect(isDigitalVtxSerialProtocol(33)).toBe(true) // DJI FPV
+    expect(isDigitalVtxSerialProtocol(32)).toBe(false) // plain MSP telemetry is not a VTX
+    expect(isDigitalVtxSerialProtocol(37)).toBe(false) // SmartAudio is analog
+
+    // The demo's SmartAudio (37) + DisplayPort (42) combo: analog control is
+    // present, so the table stays operator-authored (editable), not learned.
+    const demo = [37, 42]
+    const learned =
+      demo.some((p) => isDigitalVtxSerialProtocol(p)) && !demo.some((p) => isAnalogVtxControlSerialProtocol(p))
+    expect(learned).toBe(false)
+    // A pure digital rig (DisplayPort only) learns the table.
+    const digitalOnly = [42]
+    expect(
+      digitalOnly.some((p) => isDigitalVtxSerialProtocol(p)) &&
+        !digitalOnly.some((p) => isAnalogVtxControlSerialProtocol(p))
+    ).toBe(true)
   })
 
   it('flags only the NeoPixel/notification LED servo-function band (120..123)', () => {

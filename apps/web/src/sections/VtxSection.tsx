@@ -13,7 +13,12 @@ import { isVtxReviewParamId } from '../param-review'
 import { readRoundedParameter } from '../selectors/parameter-read'
 import { selectViewCatalog } from '../selectors/view-catalog'
 import { selectViewDrafts } from '../selectors/view-drafts'
-import { isVtxControlSerialProtocol, type SerialPortViewModel } from '../serial-port-helpers'
+import {
+  isAnalogVtxControlSerialProtocol,
+  isDigitalVtxSerialProtocol,
+  isVtxControlSerialProtocol,
+  type SerialPortViewModel
+} from '../serial-port-helpers'
 import type { UseVtxTableResult } from '../hooks/use-vtx-table'
 import { VtxView } from '../views/Vtx'
 
@@ -73,6 +78,20 @@ export function VtxSection(props: VtxSectionProps) {
     [serialPortViewModels]
   )
 
+  // For a digital/MSP video system (DJI/HDZero/Walksnail over MSP DisplayPort)
+  // the @VTX table is LEARNED — the goggles push their bands/power into the FC
+  // over MSP_SET_VTXTABLE_*. We must not author/upload it, so the table renders
+  // read-only. An analog VTX-control link (SmartAudio/Tramp/Crossfire) means the
+  // operator authors the table, so it wins even alongside an MSP DisplayPort OSD
+  // (a common analog-VTX + digital-goggles combo): learned only when a digital
+  // VTX link exists AND no analog control link does.
+  const vtxTableLearned = useMemo(() => {
+    const ports = serialPortViewModels
+    const hasDigitalVtx = ports.some((port) => isDigitalVtxSerialProtocol(port.protocolValue))
+    const hasAnalogControl = ports.some((port) => isAnalogVtxControlSerialProtocol(port.protocolValue))
+    return hasDigitalVtx && !hasAnalogControl
+  }, [serialPortViewModels])
+
   const { entries: vtxDraftEntries, staged: vtxStagedDrafts, invalid: vtxInvalidDrafts } = useMemo(
     () => selectViewDrafts(parameterDraftEntries, isVtxReviewParamId),
     [parameterDraftEntries]
@@ -100,6 +119,7 @@ export function VtxSection(props: VtxSectionProps) {
       onApply={() => void onApplyScopedDrafts(vtxDraftEntries, 'vtx:apply', 'VTX')}
       onRevert={() => onDiscardScopedDrafts(vtxDraftEntries.map((entry) => entry.id), 'VTX')}
       vtxTable={vtxTable}
+      tableLearned={vtxTableLearned}
     />
   )
 }

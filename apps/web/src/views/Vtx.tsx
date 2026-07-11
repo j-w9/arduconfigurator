@@ -39,6 +39,9 @@ export interface VtxViewProps {
   onRevert: () => void
   /** MAVFTP-backed VTX band/frequency table (detection + edit state). */
   vtxTable: UseVtxTableResult
+  /** True when a digital/MSP video system owns the @VTX table (learned from the
+   *  goggles over MSP). The table then renders read-only — no edit/upload. */
+  tableLearned: boolean
 }
 
 export function VtxView(props: VtxViewProps) {
@@ -62,7 +65,8 @@ export function VtxView(props: VtxViewProps) {
     isApplying,
     isBusy,
     onApply,
-    onRevert
+    onRevert,
+    tableLearned
   } = props
 
   const frequency = frequencyField?.liveValue
@@ -231,7 +235,7 @@ export function VtxView(props: VtxViewProps) {
                   ) : null}
 
                   {vtxTable.status === 'available' && vtxTable.table ? (
-                    <VtxTableEditor vtxTable={vtxTable} />
+                    <VtxTableEditor vtxTable={vtxTable} learned={tableLearned} />
                   ) : vtxTable.status === 'unavailable' ? (
                     <div className="bf-vtx-callout" data-testid="vtx-table-unavailable">
                       <StatusBadge tone="warning">Table not available</StatusBadge>
@@ -281,11 +285,13 @@ export function VtxView(props: VtxViewProps) {
 }
 
 /**
- * Editable band/frequency grid + editable power levels, shown when the firmware
- * exposes a VTX table over MAVFTP. Both halves edit the in-RAM draft and Save
- * uploads the whole table (@VTX/vtxtable.dat).
+ * Band/frequency grid + power levels, shown when the firmware exposes a VTX
+ * table over MAVFTP. For an analog VTX the operator authors it: both halves edit
+ * the in-RAM draft and Save uploads the whole table (@VTX/vtxtable.dat). For a
+ * digital/MSP video system (`learned`) the goggles own the table (pushed over
+ * MSP), so it renders read-only — no upload, import/export, or field editing.
  */
-function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
+function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; learned: boolean }) {
   const [importOpen, setImportOpen] = useState(false)
   const [importText, setImportText] = useState('')
   const [importError, setImportError] = useState<string | undefined>(undefined)
@@ -314,12 +320,21 @@ function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
 
   return (
     <div className="bf-vtx-table" data-testid="vtx-table-editor">
-      <p className="setup-gui-box__note">
-        VTX band/frequency + power table from the flight controller (<code>@VTX/vtxtable.dat</code>). Edit any frequency
-        cell (MHz, 0 = channel disabled) or power level, then Save to upload the whole table. Factory bands use the
-        VTX&apos;s own frequency map.
-      </p>
+      {learned ? (
+        <p className="setup-gui-box__note" data-testid="vtx-table-learned-note">
+          This band/frequency + power table (<code>@VTX/vtxtable.dat</code>) is provided by your digital VTX and learned
+          over MSP, so it is read-only here. Analog VTXs (SmartAudio/Tramp) let you author and upload the table.
+        </p>
+      ) : (
+        <p className="setup-gui-box__note">
+          VTX band/frequency + power table from the flight controller (<code>@VTX/vtxtable.dat</code>). Edit any frequency
+          cell (MHz, 0 = channel disabled) or power level, then Save to upload the whole table. Factory bands use the
+          VTX&apos;s own frequency map.
+        </p>
+      )}
 
+      {learned ? null : (
+      <>
       <div className="bf-vtx-table__io" data-testid="vtx-table-io">
         <button
           type="button"
@@ -393,6 +408,8 @@ function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
           ) : null}
         </div>
       ) : null}
+      </>
+      )}
       <div className="bf-vtx-table__scroll">
         <table className="bf-vtx-table__grid">
           <thead>
@@ -423,6 +440,7 @@ function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
                       step={1}
                       data-testid={`vtx-table-freq-${bandIndex}-${channel}`}
                       value={band.frequencies[channel] ?? 0}
+                      disabled={learned}
                       onChange={(event) =>
                         vtxTable.setFrequency(bandIndex, channel, Number(event.target.value))
                       }
@@ -458,6 +476,7 @@ function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
                     step={1}
                     data-testid={`vtx-table-power-value-${index}`}
                     value={level.value}
+                    disabled={learned}
                     onChange={(event) => vtxTable.setPowerValue(index, Number(event.target.value))}
                   />
                 </td>
@@ -467,6 +486,7 @@ function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
                     maxLength={3}
                     data-testid={`vtx-table-power-label-${index}`}
                     value={level.label}
+                    disabled={learned}
                     onChange={(event) => vtxTable.setPowerLabel(index, event.target.value)}
                   />
                 </td>
@@ -475,8 +495,8 @@ function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
           </tbody>
         </table>
         <small>
-          Protocol value sent to the VTX (mW for Tramp; index/dBm for SmartAudio) plus a short display label. Saved as
-          part of the table upload.
+          Protocol value sent to the VTX (mW for Tramp; index/dBm for SmartAudio; dBm for MSP digital) plus a short
+          display label. The firmware resolves an exact power level by its position in this table.
         </small>
       </div>
 
@@ -487,26 +507,28 @@ function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
         </div>
       ) : null}
 
-      <div className="bf-vtx-table__actions">
-        <button
-          type="button"
-          style={buttonStyle('primary')}
-          data-testid="vtx-table-save"
-          onClick={vtxTable.save}
-          disabled={!vtxTable.dirty || vtxTable.saving}
-        >
-          {vtxTable.saving ? 'Uploading…' : vtxTable.dirty ? 'Save VTX Table' : 'Saved'}
-        </button>
-        <button
-          type="button"
-          style={buttonStyle()}
-          data-testid="vtx-table-reset"
-          onClick={vtxTable.reset}
-          disabled={!vtxTable.dirty || vtxTable.saving}
-        >
-          Reset
-        </button>
-      </div>
+      {learned ? null : (
+        <div className="bf-vtx-table__actions">
+          <button
+            type="button"
+            style={buttonStyle('primary')}
+            data-testid="vtx-table-save"
+            onClick={vtxTable.save}
+            disabled={!vtxTable.dirty || vtxTable.saving}
+          >
+            {vtxTable.saving ? 'Uploading…' : vtxTable.dirty ? 'Save VTX Table' : 'Saved'}
+          </button>
+          <button
+            type="button"
+            style={buttonStyle()}
+            data-testid="vtx-table-reset"
+            onClick={vtxTable.reset}
+            disabled={!vtxTable.dirty || vtxTable.saving}
+          >
+            Reset
+          </button>
+        </div>
+      )}
     </div>
   )
 }
