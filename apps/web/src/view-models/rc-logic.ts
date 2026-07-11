@@ -218,8 +218,11 @@ export function rcLogicUpdateDrafts(
   const next: ParameterDraftValues = {}
   if (patch.functionId !== undefined) next[ids.func] = String(patch.functionId)
   if (patch.channel !== undefined) next[ids.src] = String(patch.channel)
-  if (patch.lowPwm !== undefined) next[ids.min] = String(patch.lowPwm)
-  if (patch.highPwm !== undefined) next[ids.max] = String(patch.highPwm)
+  // RCL<n>_MIN/MAX are Int16 PWM — always stage an integer. A fractional value
+  // (e.g. from a band drag) can never equal the Int16 the FC stores, so the
+  // verified write would never confirm and would burn the full readback timeout.
+  if (patch.lowPwm !== undefined) next[ids.min] = String(Math.round(patch.lowPwm))
+  if (patch.highPwm !== undefined) next[ids.max] = String(Math.round(patch.highPwm))
   // Negate (bit 3) and the level field (bit 4 mode + bits 5-7 index) all live in
   // OPT — fold every OPT-affecting change into one value read from the existing
   // OPT so they don't clobber each other. Switching to a function that has no

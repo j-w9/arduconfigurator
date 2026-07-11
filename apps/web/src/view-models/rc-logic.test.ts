@@ -90,6 +90,17 @@ describe('rcLogic draft mappers', () => {
     expect(rcLogicAddDrafts(full, 8)).toBeNull()
   })
 
+  it('rounds fractional MIN/MAX to integers (Int16 params must match the FC readback)', () => {
+    // A band drag can produce a fractional PWM; staging it verbatim would never
+    // confirm against the Int16 the FC stores, timing out the verified write.
+    const drafts = rcLogicUpdateDrafts(params({}), {}, 1, {
+      lowPwm: 1289.9074734910278,
+      highPwm: 1689.9074734910278
+    })
+    expect(drafts.RCL1_MIN).toBe('1290')
+    expect(drafts.RCL1_MAX).toBe('1690')
+  })
+
   it('folds inverted into OPT bit 3 while preserving other option bits', () => {
     // OPT already has combine=AND (bit2); toggling inverted must keep it.
     const drafts = rcLogicUpdateDrafts(params({ RCL1_OPT: 0b0100 }), {}, 1, { functionId: 22, inverted: true })

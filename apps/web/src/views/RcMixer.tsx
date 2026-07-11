@@ -279,7 +279,10 @@ export function RcMixerView(props: RcMixerViewProps) {
       rail,
       low: assignment.lowPwm,
       high: assignment.highPwm,
-      grabPwm: pwmFromClientX(event.clientX, rail)
+      // Snap the grab point too, so a "move" drag's delta (pwm - grabPwm) is a
+      // clean multiple of the grid step rather than a fractional value that
+      // would drift MIN/MAX off an integer.
+      grabPwm: snapPwm(pwmFromClientX(event.clientX, rail))
     })
   }
 
