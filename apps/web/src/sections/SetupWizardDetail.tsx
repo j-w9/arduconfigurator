@@ -36,8 +36,13 @@ export function SetupWizardDetail({ selectedSetupSection, snapshot }: SetupWizar
         />
       ) : null}
 
-      <div className="setup-flow__criteria">
-        <strong>Completion Criteria</strong>
+      <details className="setup-flow__criteria" data-testid="setup-wizard-criteria">
+        <summary>
+          <strong>Completion Criteria</strong>
+          <span className="setup-flow__criteria-count">
+            {selectedSetupSection.criteriaMetCount}/{selectedSetupSection.criteria.length} done
+          </span>
+        </summary>
         <ul>
           {selectedSetupSection.criteria.map((criterion) => (
             <li key={criterion.label} className={criterion.met ? 'is-met' : undefined}>
@@ -46,7 +51,7 @@ export function SetupWizardDetail({ selectedSetupSection, snapshot }: SetupWizar
             </li>
           ))}
         </ul>
-      </div>
+      </details>
 
       {selectedSetupSection.evidence.length > 0 ? (
         <div className="setup-wizard__evidence">

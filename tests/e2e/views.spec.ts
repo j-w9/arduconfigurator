@@ -2431,6 +2431,34 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByRole('button', { name: 'Confirm Output Review' })).toBeEnabled()
   })
 
+  test('guided setup condenses long steps into disclosures and flags completion', async ({ page }) => {
+    await page.goto('/?guidedSetupStep=airframe')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('setup-wizard')).toBeVisible()
+
+    // The completion-criteria checklist is collapsed into a disclosure with an
+    // at-a-glance "N/N done" summary, so the checklist items are hidden until
+    // expanded — this is the anti-scrolling condense pass.
+    const criteria = page.getByTestId('setup-wizard-criteria')
+    await expect(criteria).toContainText('done')
+    const firstCriterion = criteria.locator('li').first()
+    await expect(firstCriterion).toBeHidden()
+    await criteria.locator('summary').click()
+    await expect(firstCriterion).toBeVisible()
+
+    // The advanced-settings parameter editor is behind its own disclosure on the
+    // airframe step instead of always stacked open below the checklist.
+    await expect(page.getByTestId('setup-wizard-advanced')).toBeVisible()
+
+    // A completed step surfaces an explicit completion banner (Vehicle Link is
+    // complete once connected + params synced), navigated via the step rail so
+    // the live session is preserved.
+    await page.getByRole('button', { name: /Vehicle Link/ }).click()
+    await expect(page.getByTestId('setup-wizard-complete-banner')).toContainText('complete')
+  })
+
   test('Plane Outputs Direction & Test shows an honest note, not the quad motor bench', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')

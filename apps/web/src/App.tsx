@@ -1568,6 +1568,24 @@ export function App() {
     setShowReceiverMappingDiagnostics(false)
   }, [activeViewId])
 
+  // When a guided RC exercise finishes on the Receiver view, return to the Setup
+  // wizard so the step's completion cue + Continue are visible — otherwise the
+  // operator is stranded on Receiver with no next step. Only fires on the
+  // edge into a passing state (ref starts true so a restored/already-passed
+  // exercise on load doesn't yank the view).
+  const returnedFromExerciseRef = useRef(true)
+  useEffect(() => {
+    const exercisePassed =
+      rcRangeExercise.status === 'passed' ||
+      modeSwitchExercise.status === 'passed' ||
+      rcMappingSession.status === 'ready'
+    if (exercisePassed && !returnedFromExerciseRef.current && activeViewId === 'receiver') {
+      setActiveViewId('setup')
+      setSetupMode('wizard')
+    }
+    returnedFromExerciseRef.current = exercisePassed
+  }, [rcRangeExercise.status, modeSwitchExercise.status, rcMappingSession.status, activeViewId])
+
   useEffect(() => {
     if (outputMapping.motorOutputs.length === 0) {
       setMotorTestOutput(undefined)
@@ -2654,9 +2672,14 @@ export function App() {
         setOutputTaskOverride(outputTaskId)
       }
     }
-    const performScroll = () => {
+    const performScroll = (attemptsLeft = 8) => {
       const target = document.getElementById(scrollTargetId)
       if (!target) {
+        // The target view may still be painting (the Receiver/Motors views are
+        // heavy). Retry across a few frames instead of silently no-op'ing.
+        if (attemptsLeft > 0) {
+          requestAnimationFrame(() => performScroll(attemptsLeft - 1))
+        }
         return
       }
 
@@ -5727,32 +5750,25 @@ export function App() {
       case 'motor-verification-reset':
         handleResetMotorVerification()
         return
+      // The RC exercises live in specific Receiver tabs. Pin the matching tab
+      // (the override survives the view switch — the clear effect early-returns
+      // once activeViewId is 'receiver') and route via scrollToPanel so the
+      // header offset and the paint-aware retry are consistent with every other
+      // guided nav, instead of a bare scrollIntoView that races the heavy view.
       case 'mode-switch-exercise':
         handleStartModeSwitchExercise()
-        setActiveViewId('receiver')
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            document.getElementById('setup-panel-rc')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          })
-        })
+        setReceiverTaskOverride('flight-modes')
+        scrollToPanel('setup-panel-rc')
         return
       case 'rc-range-exercise':
         handleStartRcRangeExercise()
-        setActiveViewId('receiver')
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            document.getElementById('setup-panel-rc')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          })
-        })
+        setReceiverTaskOverride('endpoints')
+        scrollToPanel('setup-panel-rc')
         return
       case 'rc-mapping-exercise':
         handleStartRcMappingExercise()
-        setActiveViewId('receiver')
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            document.getElementById('setup-panel-rc')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          })
-        })
+        setReceiverTaskOverride('mapping')
+        scrollToPanel('setup-panel-rc')
         return
       case 'confirm-step':
         if (action.sectionId) {
@@ -6971,8 +6987,13 @@ export function App() {
 
                       <SetupWizardDetail selectedSetupSection={selectedSetupSection} snapshot={snapshot} />
 
-                      {['airframe', 'accelerometer', 'compass'].includes(selectedSetupSection.id)
-                        ? renderAdditionalSettingsCard(
+                      {['airframe', 'accelerometer', 'compass'].includes(selectedSetupSection.id) ? (
+                        <details className="setup-wizard__advanced-disclosure" data-testid="setup-wizard-advanced">
+                          <summary>
+                            <strong>Advanced settings</strong>
+                            <span>board orientation, sensors &amp; related parameters</span>
+                          </summary>
+                          {renderAdditionalSettingsCard(
                             'Advanced setup settings',
                             'Board orientation, sensor, and related setup parameters stay attached to the guided flow when this step needs them.',
                             setupAdditionalGroups,
@@ -6982,8 +7003,9 @@ export function App() {
                             'setup:additional',
                             'Apply Setup Changes',
                             'advanced setup settings'
-                          )
-                        : null}
+                          )}
+                        </details>
+                      ) : null}
                     </div>
 
                     <SetupWizardAside

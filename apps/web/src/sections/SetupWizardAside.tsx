@@ -112,7 +112,7 @@ export function SetupWizardAside({
           ) : null}
           <button
             id={SETUP_WIZARD_NEXT_STEP_ID}
-            className={`setup-wizard__continue-button${continueButtonTargeted ? ' setup-wizard__continue-button--target' : ''}`}
+            className={`setup-wizard__continue-button${continueButtonTargeted ? ' setup-wizard__continue-button--target guided-action-pulse' : ''}`}
             data-testid="setup-wizard-next-step"
             style={{
               ...buttonStyle(nextSetupSection && selectedSetupSection.status === 'complete' ? 'hero' : 'secondary'),

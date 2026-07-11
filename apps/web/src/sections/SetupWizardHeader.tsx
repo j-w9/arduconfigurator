@@ -55,6 +55,16 @@ export function SetupWizardHeader({
         </div>
       </div>
 
+      {selectedSetupSection.status === 'complete' ? (
+        <div className="setup-wizard__complete-banner" data-testid="setup-wizard-complete-banner" role="status">
+          <span className="setup-wizard__complete-check" aria-hidden="true">✓</span>
+          <strong>{selectedSetupSection.title} complete</strong>
+          <span className="setup-wizard__complete-count">
+            {selectedSetupSection.criteriaMetCount}/{selectedSetupSection.criteria.length} checks
+          </span>
+        </div>
+      ) : null}
+
       <div className="switch-exercise-progress" aria-hidden="true">
         <div className="switch-exercise-progress__fill" style={{ width: `${setupFlowProgress}%` }} />
       </div>
