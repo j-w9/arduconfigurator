@@ -64,6 +64,13 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     await page.getByTestId('rc-mixer-high-rcl-3').fill('2000')
     await expect(page.getByTestId('rc-mixer-channel-8')).toContainText('AUTO Mode')
 
+    // The output-position selector (RCL OPT bits 4-5) round-trips through the
+    // draft model too — this is how one channel drives multi-level VTX power
+    // in selector mode.
+    await expect(page.getByTestId('rc-mixer-position-rcl-3')).toHaveValue('high')
+    await page.getByTestId('rc-mixer-position-rcl-3').selectOption('low')
+    await expect(page.getByTestId('rc-mixer-position-rcl-3')).toHaveValue('low')
+
     // Remove clears the term drafts -> row gone, channel 8 empty again (the
     // channel header reflects "No assignments" now that the redundant
     // per-channel empty paragraph was dropped in the vertical-condense pass).

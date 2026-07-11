@@ -9,7 +9,8 @@ import {
   computeCursorPercent,
   type RcMixerAssignment,
   type RcMixerFunctionDefinition,
-  type RcMixerFunctionDefinitionLookup
+  type RcMixerFunctionDefinitionLookup,
+  type RcMixerOutputPosition
 } from '../view-models/rc-mixer'
 
 // Drag step (μs) — snap the range edges like Betaflight's 25 μs mode-range grid.
@@ -437,6 +438,24 @@ export function RcMixerView(props: RcMixerViewProps) {
                               />
                               <span>Inverted</span>
                             </label>
+                            {firmwareSupported ? (
+                              <label className="rc-mixer-assignment__position">
+                                <span>Output position</span>
+                                <select
+                                  value={assignment.outputPosition ?? 'high'}
+                                  onChange={(event) =>
+                                    onUpdateAssignment(assignment.id, {
+                                      outputPosition: event.target.value as RcMixerOutputPosition
+                                    })
+                                  }
+                                  data-testid={`rc-mixer-position-${assignment.id}`}
+                                >
+                                  <option value="high">High</option>
+                                  <option value="middle">Middle</option>
+                                  <option value="low">Low</option>
+                                </select>
+                              </label>
+                            ) : null}
                           </div>
 
                           <div className="rc-mixer-assignment__status">

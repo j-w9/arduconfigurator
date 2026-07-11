@@ -11,15 +11,38 @@ import {
   RC_LOGIC_AUX_FUNCTION_OPTIONS,
   RC_LOGIC_NUM_TERMS,
   RC_LOGIC_OPT_NEGATE_BIT,
+  RC_LOGIC_OPT_OUTPOS_MASK,
+  RC_LOGIC_OPT_OUTPOS_SHIFT,
   RC_LOGIC_OPT_SOURCE_TYPE_MASK,
+  RcLogicOutputPosition,
   RcLogicSourceType
 } from '@arduconfig/param-metadata'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import type { ParameterDraftValues } from '../hooks/use-parameter-drafts'
-import { type RcMixerAssignment, type RcMixerFunctionDefinition } from './rc-mixer'
+import { type RcMixerAssignment, type RcMixerFunctionDefinition, type RcMixerOutputPosition } from './rc-mixer'
 
 const NEGATE_MASK = 1 << RC_LOGIC_OPT_NEGATE_BIT
+const OUTPOS_MASK_SHIFTED = RC_LOGIC_OPT_OUTPOS_MASK << RC_LOGIC_OPT_OUTPOS_SHIFT
+
+/** Decode OPT bits 4-5 into the view model's output position. */
+export function decodeOutputPosition(opt: number): RcMixerOutputPosition {
+  const value = (opt >> RC_LOGIC_OPT_OUTPOS_SHIFT) & RC_LOGIC_OPT_OUTPOS_MASK
+  if (value === RcLogicOutputPosition.Low) return 'low'
+  if (value === RcLogicOutputPosition.Middle) return 'middle'
+  return 'high'
+}
+
+/** Fold an output position into OPT bits 4-5, preserving the other bits. */
+export function encodeOutputPosition(opt: number, position: RcMixerOutputPosition): number {
+  const value =
+    position === 'low'
+      ? RcLogicOutputPosition.Low
+      : position === 'middle'
+        ? RcLogicOutputPosition.Middle
+        : RcLogicOutputPosition.High
+  return (opt & ~OUTPOS_MASK_SHIFTED) | (value << RC_LOGIC_OPT_OUTPOS_SHIFT)
+}
 const ADD_DEFAULT_LOW = 1700
 const ADD_DEFAULT_HIGH = 2100
 
@@ -110,7 +133,8 @@ export function readRcLogicModel(
       functionId: func,
       lowPwm: effective(ids.min, ADD_DEFAULT_LOW),
       highPwm: effective(ids.max, ADD_DEFAULT_HIGH),
-      inverted: (opt & NEGATE_MASK) !== 0
+      inverted: (opt & NEGATE_MASK) !== 0,
+      outputPosition: decodeOutputPosition(opt)
     })
   }
 
@@ -161,9 +185,18 @@ export function rcLogicUpdateDrafts(
   if (patch.channel !== undefined) next[ids.src] = String(patch.channel)
   if (patch.lowPwm !== undefined) next[ids.min] = String(patch.lowPwm)
   if (patch.highPwm !== undefined) next[ids.max] = String(patch.highPwm)
-  if (patch.inverted !== undefined) {
-    const opt = effective(ids.opt, 0)
-    next[ids.opt] = String(patch.inverted ? opt | NEGATE_MASK : opt & ~NEGATE_MASK)
+  // Negate (bit 3) and output position (bits 4-5) both live in OPT — fold both
+  // into a single value read from the existing OPT so one doesn't clobber the
+  // other when they're patched together.
+  if (patch.inverted !== undefined || patch.outputPosition !== undefined) {
+    let opt = effective(ids.opt, 0)
+    if (patch.inverted !== undefined) {
+      opt = patch.inverted ? opt | NEGATE_MASK : opt & ~NEGATE_MASK
+    }
+    if (patch.outputPosition !== undefined) {
+      opt = encodeOutputPosition(opt, patch.outputPosition)
+    }
+    next[ids.opt] = String(opt)
   }
   return next
 }

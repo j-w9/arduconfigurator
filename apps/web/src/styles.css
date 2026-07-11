@@ -8169,6 +8169,17 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-size: 10px;
 }
 
+.rc-mixer-assignment__position {
+  grid-column: 1 / span 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+.rc-mixer-assignment__position select {
+  font-size: 11px;
+}
+
 .rc-mixer-assignment__status {
   align-items: end;
   justify-items: end;
