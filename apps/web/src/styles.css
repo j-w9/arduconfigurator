@@ -8253,6 +8253,20 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-size: 10px;
 }
 
+/* Reset the padding/border/full-width sizing the global `input` rule
+   (styles.css ~389) inherits onto these checkboxes — without it the native
+   box is padded and pushed away from its "Inverted"/"Negate" label. Mirrors
+   the `.scoped-checkbox-option input` reset used by the bitmask grids. */
+.rc-mixer-assignment__inverted input[type='checkbox'],
+.rc-mixer-logic-term__negate input[type='checkbox'] {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  flex: none;
+}
+
 .rc-mixer-assignment__position {
   grid-column: 1 / span 2;
   display: flex;
