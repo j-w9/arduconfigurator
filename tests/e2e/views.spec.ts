@@ -3669,6 +3669,44 @@ test.describe('VTX band/frequency table', () => {
     await expect(page.getByTestId('vtx-table-save')).toHaveText('Saved', { timeout: 10000 })
     await expect(page.getByTestId('vtx-table-error')).toHaveCount(0)
   })
+
+  test('imports a Betaflight vtxtable snippet into the editor and exports the table', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('view-button-vtx').click()
+    await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
+
+    // Import a Betaflight snippet with a distinctive band-1 channel-1 frequency.
+    await page.getByTestId('vtx-table-import-toggle').click()
+    await page.getByTestId('vtx-table-import-text').fill(
+      [
+        'vtxtable bands 1',
+        'vtxtable channels 2',
+        'vtxtable band 1 CUSTOM_A A CUSTOM 5111 5222',
+        'vtxtable powerlevels 2',
+        'vtxtable powervalues 25 200',
+        'vtxtable powerlabels 25 200'
+      ].join('\n')
+    )
+    await page.getByTestId('vtx-table-import-load').click()
+    // The imported table replaces the editor draft: band-1 ch-1 = 5111.
+    await expect(page.getByTestId('vtx-table-freq-0-0')).toHaveValue('5111')
+    await expect(page.getByTestId('vtx-table-power-value-0')).toHaveValue('25')
+    // Loading an import dirties the draft (Save enabled).
+    await expect(page.getByTestId('vtx-table-save')).toBeEnabled()
+
+    // A malformed snippet surfaces an inline error, not a crash.
+    await page.getByTestId('vtx-table-import-toggle').click()
+    await page.getByTestId('vtx-table-import-text').fill('vtxtable band 1 X X 5800')
+    await page.getByTestId('vtx-table-import-load').click()
+    await expect(page.getByTestId('vtx-table-import-error')).toBeVisible()
+
+    // Export downloads a vtxtable.txt file.
+    await page.getByTestId('vtx-table-import-toggle').click() // close the import panel
+    const download = page.waitForEvent('download')
+    await page.getByTestId('vtx-table-export-bf').click()
+    expect((await download).suggestedFilename()).toBe('vtxtable.txt')
+  })
 })
 
 test.describe('Scoped write-progress bar', () => {

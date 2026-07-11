@@ -29,6 +29,9 @@ export interface UseVtxTableResult {
   setFrequency: (bandIndex: number, channelIndex: number, mhz: number) => void
   setPowerValue: (index: number, value: number) => void
   setPowerLabel: (index: number, label: string) => void
+  /** Replace the working draft wholesale (e.g. from a Betaflight import).
+   *  Marks dirty; Save then uploads it. */
+  loadTable: (table: VtxTable) => void
   save: () => void
   reset: () => void
   reload: () => void
@@ -130,6 +133,12 @@ export function useVtxTable(input: {
     setDirty(true)
   }, [])
 
+  const loadTable = useCallback((table: VtxTable) => {
+    setDraft(cloneVtxTable(table))
+    setDirty(true)
+    setError(undefined)
+  }, [])
+
   const reset = useCallback(() => {
     setDraft(detected ? cloneVtxTable(detected) : undefined)
     setDirty(false)
@@ -156,5 +165,18 @@ export function useVtxTable(input: {
       .finally(() => setSaving(false))
   }, [runtime, draft, saving])
 
-  return { status, table: draft, dirty, saving, error, setFrequency, setPowerValue, setPowerLabel, save, reset, reload }
+  return {
+    status,
+    table: draft,
+    dirty,
+    saving,
+    error,
+    setFrequency,
+    setPowerValue,
+    setPowerLabel,
+    loadTable,
+    save,
+    reset,
+    reload
+  }
 }

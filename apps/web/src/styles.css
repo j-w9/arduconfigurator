@@ -3349,6 +3349,34 @@ textarea:focus {
   display: flex;
   gap: 8px;
 }
+.bf-vtx-table__io {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bf-vtx-table__import {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--surface-400);
+  border-radius: 8px;
+  background: var(--surface-200);
+}
+.bf-vtx-table__import textarea {
+  width: 100%;
+  font-family: var(--font-data);
+  font-size: 12px;
+  background: var(--surface-300);
+  color: var(--text);
+  border: 1px solid var(--surface-400);
+  border-radius: 6px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+.bf-vtx-table__import-actions {
+  display: flex;
+  gap: 8px;
+}
 
 .osd-grid {
   display: grid;

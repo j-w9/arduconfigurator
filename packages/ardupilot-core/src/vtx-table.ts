@@ -218,3 +218,143 @@ export function serializeVtxTable(table: VtxTable): Uint8Array {
   buf[o++] = (crc >> 24) & 0xff
   return buf
 }
+
+// ---------------------------------------------------------------------------
+// Betaflight `vtxtable` CLI interchange — lets users import a table shared as
+// a Betaflight CLI snippet (or full dump) and export the current table in the
+// same format. Betaflight's vtxtable model maps 1:1 onto AP_VideoTX_Table with
+// identical field limits (name ≤8, letter 1, label ≤3, freq 0 = disabled,
+// FACTORY/CUSTOM), so the conversion is lossless. Reference:
+// https://github.com/betaflight/betaflight/wiki/VTX-CLI-Settings
+//
+//   vtxtable bands <n>
+//   vtxtable channels <n>
+//   vtxtable band <1-based> <name(≤8, quote if spaces)> <letter> <FACTORY|CUSTOM> <freq…>
+//   vtxtable powerlevels <n>
+//   vtxtable powervalues <v…>
+//   vtxtable powerlabels <l…>
+
+/** Split a CLI line into tokens, honoring double-quoted band names. */
+function tokenizeCliLine(line: string): string[] {
+  const tokens: string[] = []
+  const re = /"([^"]*)"|(\S+)/g
+  let match: RegExpExecArray | null
+  while ((match = re.exec(line)) !== null) {
+    tokens.push(match[1] !== undefined ? match[1] : match[2])
+  }
+  return tokens
+}
+
+/**
+ * Parse a Betaflight `vtxtable` table from CLI text (a bare snippet or a full
+ * `diff`/`dump` — non-vtxtable lines are ignored). Throws
+ * {@link VtxTableParseError} on a table that's missing required rows, is
+ * internally inconsistent, or exceeds the firmware's limits (so the user gets
+ * a clear reason rather than a silently-truncated table the FC can't hold).
+ */
+export function parseBetaflightVtxTable(text: string): VtxTable {
+  let numChannels: number | undefined
+  const bandByIndex = new Map<number, VtxTableBand>()
+  let powerValues: number[] | undefined
+  let powerLabels: string[] | undefined
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*$/, '').trim() // strip trailing comments
+    if (line.length === 0) continue
+    const tokens = tokenizeCliLine(line)
+    if (tokens[0]?.toLowerCase() !== 'vtxtable' || tokens.length < 2) continue
+    const kind = tokens[1].toLowerCase()
+    if (kind === 'channels') {
+      numChannels = Number(tokens[2])
+    } else if (kind === 'band') {
+      const index = Number(tokens[2])
+      if (!Number.isInteger(index) || index < 1) {
+        throw new VtxTableParseError(`Invalid vtxtable band index "${tokens[2]}".`)
+      }
+      const name = tokens[3] ?? ''
+      const letter = tokens[4] ?? ''
+      const factoryToken = (tokens[5] ?? '').toUpperCase()
+      if (factoryToken !== 'FACTORY' && factoryToken !== 'CUSTOM') {
+        throw new VtxTableParseError(`vtxtable band ${index} missing FACTORY/CUSTOM flag.`)
+      }
+      const frequencies = tokens.slice(6).map((token) => {
+        const value = Number(token)
+        return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0
+      })
+      bandByIndex.set(index, { name, letter: letter.slice(0, 1), isFactory: factoryToken === 'FACTORY', frequencies })
+    } else if (kind === 'powervalues') {
+      powerValues = tokens.slice(2).map((token) => Math.max(0, Math.round(Number(token) || 0)))
+    } else if (kind === 'powerlabels') {
+      powerLabels = tokens.slice(2).map((token) => token)
+    }
+    // `bands`/`powerlevels` counts are advisory — derived from the actual rows.
+  }
+
+  if (bandByIndex.size === 0) {
+    throw new VtxTableParseError('No vtxtable band rows found in the imported text.')
+  }
+  // Assemble bands in index order, requiring a contiguous 1..N.
+  const maxIndex = Math.max(...bandByIndex.keys())
+  const bands: VtxTableBand[] = []
+  for (let index = 1; index <= maxIndex; index += 1) {
+    const band = bandByIndex.get(index)
+    if (!band) {
+      throw new VtxTableParseError(`vtxtable is missing band ${index} (bands must be a contiguous 1..N).`)
+    }
+    bands.push(band)
+  }
+  // Channel count: explicit `channels` row, else the widest band.
+  const resolvedChannels = numChannels ?? Math.max(...bands.map((band) => band.frequencies.length))
+  // Normalize every band to exactly `resolvedChannels` frequencies (pad 0 / trim).
+  for (const band of bands) {
+    if (band.frequencies.length < resolvedChannels) {
+      band.frequencies = [...band.frequencies, ...new Array(resolvedChannels - band.frequencies.length).fill(0)]
+    } else if (band.frequencies.length > resolvedChannels) {
+      band.frequencies = band.frequencies.slice(0, resolvedChannels)
+    }
+  }
+  const values = powerValues ?? []
+  const labels = powerLabels ?? []
+  const powerCount = Math.max(values.length, labels.length)
+  const powerLevels: VtxTablePowerLevel[] = []
+  for (let i = 0; i < powerCount; i += 1) {
+    powerLevels.push({ value: values[i] ?? 0, label: (labels[i] ?? String(values[i] ?? 0)).slice(0, VTX_TABLE_POWER_LABEL_LEN) })
+  }
+
+  // Enforce the firmware's storage limits — a table that can't fit is an error,
+  // not a silent truncation.
+  if (bands.length > VTX_TABLE_MAX_BANDS) {
+    throw new VtxTableParseError(`Too many bands (${bands.length}); the flight controller supports at most ${VTX_TABLE_MAX_BANDS}.`)
+  }
+  if (resolvedChannels > VTX_TABLE_MAX_CHANNELS) {
+    throw new VtxTableParseError(`Too many channels (${resolvedChannels}); the maximum is ${VTX_TABLE_MAX_CHANNELS}.`)
+  }
+  if (powerLevels.length > VTX_TABLE_MAX_POWER_LEVELS) {
+    throw new VtxTableParseError(`Too many power levels (${powerLevels.length}); the maximum is ${VTX_TABLE_MAX_POWER_LEVELS}.`)
+  }
+  const longName = bands.find((band) => band.name.length > VTX_TABLE_BAND_NAME_LEN)
+  if (longName) {
+    throw new VtxTableParseError(`Band name "${longName.name}" exceeds ${VTX_TABLE_BAND_NAME_LEN} characters.`)
+  }
+
+  return { version: VTX_TABLE_VERSION, numChannels: resolvedChannels, bands, powerLevels }
+}
+
+/** Render a VtxTable as a Betaflight `vtxtable` CLI snippet (the shareable
+ *  format users paste into a configurator or save to a file). */
+export function serializeBetaflightVtxTable(table: VtxTable): string {
+  const quote = (name: string): string => (/\s/.test(name) ? `"${name}"` : name)
+  const lines: string[] = []
+  lines.push(`vtxtable bands ${table.bands.length}`)
+  lines.push(`vtxtable channels ${table.numChannels}`)
+  table.bands.forEach((band, index) => {
+    const freqs = Array.from({ length: table.numChannels }, (_, c) => band.frequencies[c] ?? 0).join(' ')
+    lines.push(
+      `vtxtable band ${index + 1} ${quote(band.name)} ${band.letter || '?'} ${band.isFactory ? 'FACTORY' : 'CUSTOM'} ${freqs}`
+    )
+  })
+  lines.push(`vtxtable powerlevels ${table.powerLevels.length}`)
+  lines.push(`vtxtable powervalues ${table.powerLevels.map((level) => level.value).join(' ')}`)
+  lines.push(`vtxtable powerlabels ${table.powerLevels.map((level) => level.label || String(level.value)).join(' ')}`)
+  return lines.join('\n') + '\n'
+}
