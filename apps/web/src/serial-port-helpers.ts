@@ -102,6 +102,19 @@ export function isVtxControlSerialProtocol(protocolValue: number | undefined): b
   return protocolValue === 29 || protocolValue === 33 || protocolValue === 37 || protocolValue === 44
 }
 
+/** Analog VTX control links — the operator authors the @VTX table for these.
+ *  29 Crossfire VTX, 37 SmartAudio, 44 IRC Tramp. */
+export function isAnalogVtxControlSerialProtocol(protocolValue: number | undefined): boolean {
+  return protocolValue === 29 || protocolValue === 37 || protocolValue === 44
+}
+
+/** Digital VTX video systems that LEARN the @VTX table (goggles push it over
+ *  MSP): 33 DJI FPV, 42 MSP DisplayPort. Generic MSP (32) is excluded — a plain
+ *  MSP telemetry link is not necessarily a video system. */
+export function isDigitalVtxSerialProtocol(protocolValue: number | undefined): boolean {
+  return protocolValue === 33 || protocolValue === 42
+}
+
 /** 32 MSP, 33 DJI FPV, 42 DisplayPort — the OSD-bearing links. */
 export function isOsdSerialProtocol(protocolValue: number | undefined): boolean {
   return protocolValue === 32 || protocolValue === 33 || protocolValue === 42

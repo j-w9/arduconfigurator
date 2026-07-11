@@ -11,10 +11,11 @@
 //   per power (numPowerLevels ×):  value[u16]  label[3]
 //   [tail] crc[u32]  = crc_crc32(0, buf, len-4)  over everything before it
 //
-// The band/frequency half is hardware-validated and stable; power-level
-// semantics (how `value` is consumed by the Tramp/SmartAudio drivers) are
-// still evolving on the firmware side, so consumers should treat power as
-// read-only for now.
+// `value` is the verbatim protocol value the VTX expects — mW for Tramp,
+// index/dBm for SmartAudio, dBm for MSP digital — and `label` is the authored
+// display string. The firmware resolves an exact power level by the position of
+// a non-zero entry in this table (index i = the i-th non-zero level, matching
+// the RC Mixer's level selector), so power is authoritative, not read-only.
 
 /** MAVLink-FTP path the firmware exposes the table blob at. */
 export const VTX_TABLE_FTP_PATH = '@VTX/vtxtable.dat'

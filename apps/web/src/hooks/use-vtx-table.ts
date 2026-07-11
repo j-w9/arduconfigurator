@@ -3,9 +3,11 @@
 // firmware exposes it the VTX view shows a real editable band/frequency grid,
 // otherwise it keeps the "Table not available" preview.
 //
-// Slice 1 scope: band FREQUENCIES are editable + savable (the hardware-validated
-// half of the firmware feature); power levels are surfaced read-only because the
-// Tramp/SmartAudio drivers don't consume the table's power values yet.
+// Bands/frequencies and power levels are both editable + savable for an analog
+// VTX — the firmware now resolves the selectable power set from this table (its
+// non-zero entries, in order), so the values are authoritative. For a digital
+// video system the table is instead learned from the goggles over MSP and the
+// VTX view renders it read-only (see VtxSection's tableLearned).
 
 import { useCallback, useEffect, useState } from 'react'
 
