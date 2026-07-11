@@ -252,6 +252,7 @@ import { createMotorPreviewNodes } from './view-models/motor-preview'
 import { buildRecentNotices } from './view-models/recent-notices'
 import { deriveExternalChannelClaims, deriveRcLogicChannelClaims } from './view-models/channel-usage'
 import { orderDraftsByEnableGate } from './view-models/enable-gate-write-order'
+import { deriveVtxPowerLevels } from './view-models/vtx-power-levels'
 import { invertGuidedReorderMapping, pickedReorderPositions } from './view-models/motor-reorder-mapping'
 import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
@@ -4920,17 +4921,30 @@ export function App() {
     [rcLogicVisibleAssignments]
   )
   // Non-zero @VTX power levels in table order — a VTX_POWER RCL term's level
-  // selector stores the 0-based index here into OPT bits 5-7. The firmware skips
-  // value=0 levels (get_power_mw_for_index), so we filter them out before indexing.
-  const rcMixerVtxPowerLevels = useMemo(() => {
-    const levels = vtxTable.table?.powerLevels
-    if (!levels) {
-      return undefined
+  // selector stores the 0-based index here into OPT bits 5-7. Use the DETECTED
+  // (saved) table, not the editable draft: the RCL index resolves against what
+  // the FC actually has, so unsaved VTX-table edits must not shift it.
+  const rcMixerVtxPowerLevels = useMemo(
+    () => deriveVtxPowerLevels(vtxTable.detected?.powerLevels),
+    [vtxTable.detected]
+  )
+  // A slot freed by a prior remove stays in rcLogicRemovedTerms even after the
+  // disable is applied (the Set is never pruned). Reusing that slot for a new
+  // term would leave the new (FUNC=0) row hidden by the removed-term filter, so
+  // clear the slot from the set when it's re-allocated.
+  function unmarkRcLogicRemovedTerm(term: number | null): void {
+    if (term === null) {
+      return
     }
-    return levels
-      .filter((level) => level.value !== 0)
-      .map((level, index) => ({ index, mw: level.value, label: level.label }))
-  }, [vtxTable.table])
+    setRcLogicRemovedTerms((current) => {
+      if (!current.has(term)) {
+        return current
+      }
+      const next = new Set(current)
+      next.delete(term)
+      return next
+    })
+  }
   function handleRcLogicAddAssignment(channel: number): void {
     const drafts = rcLogicAddDrafts(rcLogicModel, channel)
     if (!drafts) {
@@ -4940,6 +4954,7 @@ export function App() {
       })
       return
     }
+    unmarkRcLogicRemovedTerm(rcLogicModel.freeTermIndex)
     mergeDrafts(drafts)
   }
   function handleRcLogicUpdateAssignment(assignmentId: string, patch: Partial<RcMixerAssignment>): void {
@@ -4991,6 +5006,7 @@ export function App() {
       })
       return
     }
+    unmarkRcLogicRemovedTerm(rcLogicModel.freeTermIndex)
     mergeDrafts(drafts)
   }
   function handleRcLogicUpdateLogicTerm(id: string, patch: Partial<RcLogicLogicTerm>): void {
@@ -7119,7 +7135,6 @@ export function App() {
             modeExerciseAssignments,
             modeAssignments,
             modeSwitchExercise,
-            modeSwitchActivity,
             recentModeSwitchChange,
             configuredModeChannel,
             rssiType,

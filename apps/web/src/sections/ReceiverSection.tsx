@@ -59,7 +59,6 @@ export interface ReceiverSectionDerived {
   modeExerciseAssignments: ReturnType<typeof deriveModeExerciseAssignments>
   modeAssignments: ReturnType<typeof deriveModeAssignments>
   modeSwitchExercise: ReturnType<typeof useSetupExercises>['modeSwitchExercise']
-  modeSwitchActivity: ReturnType<typeof useSetupExercises>['modeSwitchActivity']
   recentModeSwitchChange: boolean | undefined
   configuredModeChannel: number | undefined
   rssiType: number | undefined

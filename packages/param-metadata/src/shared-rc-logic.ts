@@ -273,6 +273,11 @@ export function buildRcLogicParameterDefinitions(): FirmwareMetadataBundle['para
       description:
         'Enable the RC logic / range-function engine — activates ArduPilot AUX functions from RC channel PWM ranges (Betaflight-style Modes/Adjustments).',
       category: RC_LOGIC_CATEGORY,
+      // AP_PARAM_FLAG_ENABLE on the whole RCL subgroup — enabling it + writing
+      // terms in one batch must send RCL_ENABLE first (the RCL<n>_* sub-tree is
+      // hidden/non-echoing while disabled). The batch writer treats a "_ENABLE"
+      // enableGate as a feature master-enable, ordering it ahead of everything.
+      enableGate: true,
       options: [
         { value: 0, label: 'Disabled' },
         { value: 1, label: 'Enabled' }

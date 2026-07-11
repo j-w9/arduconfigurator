@@ -82,4 +82,21 @@ describe('orderDraftsByEnableGate', () => {
     expect(out.indexOf('SERVO1_FUNCTION')).toBeLessThan(out.indexOf('SERVO2_FUNCTION'))
     expect(out.indexOf('RCL3_FUNC')).toBeLessThan(out.indexOf('RCL3_MIN'))
   })
+
+  it('orders a "_ENABLE" feature master-enable ahead of the whole feature, above per-term gates', () => {
+    // Enabling the RCL engine + adding a term in one batch: RCL_ENABLE (an
+    // AP_PARAM_FLAG_ENABLE gate over the whole RCLn_* subtree) must go first,
+    // then the per-term FUNC gate, then its sub-params.
+    const input = [
+      draft('RCL3_MIN'),
+      draft('RCL3_FUNC', true),
+      draft('RCL_ENABLE', true), // marked enableGate; id ends in _ENABLE
+      draft('RCL3_MAX')
+    ]
+    const out = ids(orderDraftsByEnableGate(input))
+    expect(out[0]).toBe('RCL_ENABLE')
+    expect(out.indexOf('RCL_ENABLE')).toBeLessThan(out.indexOf('RCL3_FUNC'))
+    expect(out.indexOf('RCL3_FUNC')).toBeLessThan(out.indexOf('RCL3_MIN'))
+    expect(out.indexOf('RCL3_FUNC')).toBeLessThan(out.indexOf('RCL3_MAX'))
+  })
 })

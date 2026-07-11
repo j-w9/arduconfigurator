@@ -42,7 +42,12 @@ export function orderDraftsByEnableGate(
 
   const keyed = drafts.map((draft, index) => {
     if (draft.definition?.enableGate) {
-      return { draft, sortPos: index, rank: 0, index }
+      // A "_ENABLE" master feature-enable (e.g. RCL_ENABLE) gates the WHOLE
+      // feature sub-tree, not just its exact-prefix siblings, so pin it to the
+      // front of the batch. Per-group gates (e.g. RCL3_FUNC) keep their position
+      // and cluster their own dependents after them.
+      const sortPos = draft.id.endsWith('_ENABLE') ? -1 : index
+      return { draft, sortPos, rank: 0, index }
     }
     const prefix = groupPrefixOf(draft.id)
     const gateIndex = prefix !== undefined ? gateIndexByPrefix.get(prefix) : undefined
