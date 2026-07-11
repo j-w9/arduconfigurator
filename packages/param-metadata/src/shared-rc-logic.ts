@@ -43,6 +43,23 @@ export enum RcLogicOutputPosition {
   Low = 2
 }
 
+/**
+ * Aux functions whose target is a genuine multi-level/position output, so the
+ * per-row output position (HIGH/MIDDLE/LOW, OPT bits 4-5) is meaningful. For a
+ * plain on/off function the position is noise — HIGH is the only sensible value
+ * — so the RC Mixer only offers the position selector for these. VTX Power is
+ * the case this was built for: position → power level via AP_VideoTX::change_power.
+ * Extend as the firmware gains other level-selectable aux targets.
+ */
+export const RC_LOGIC_OUTPUT_POSITION_FUNCTIONS: ReadonlySet<number> = new Set<number>([
+  94 // VTX Power
+])
+
+/** True when `functionId` interprets the RCL output position (see the set above). */
+export function isRcLogicMultiPositionFunction(functionId: number): boolean {
+  return RC_LOGIC_OUTPUT_POSITION_FUNCTIONS.has(functionId)
+}
+
 /** Full ArduCopter AUX_FUNC value list (from RC_Channel.cpp RCn_OPTION @Values,
  *  Copter-applicable). RCL<n>_FUNC reuses this exact list (@CopyFieldsFrom
  *  RC1_OPTION in the firmware). */

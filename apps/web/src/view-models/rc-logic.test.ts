@@ -105,6 +105,24 @@ describe('rcLogic draft mappers', () => {
     expect(Number(drafts.RCL1_OPT)).toBe(0b0100 | 0b1000 | (1 << 4)) // AND + negate + MIDDLE
   })
 
+  it('clears the output position when the row switches to a non-multi-position function', () => {
+    // Row currently VTX Power (94) with LOW position + AND bit; switch to AUTO
+    // Mode (16, on/off) — bits 4-5 must clear so AUTO Mode doesn't inherit
+    // selector mode, but the AND bit survives.
+    const drafts = rcLogicUpdateDrafts(params({ RCL1_FUNC: 94, RCL1_OPT: (2 << 4) | 0b0100 }), {}, 1, {
+      functionId: 16
+    })
+    expect(drafts.RCL1_FUNC).toBe('16')
+    expect(Number(drafts.RCL1_OPT)).toBe(0b0100) // position wiped, AND kept
+  })
+
+  it('keeps the output position when switching between multi-position functions', () => {
+    // Staying on VTX Power (94) — no OPT rewrite needed just from re-selecting it.
+    const drafts = rcLogicUpdateDrafts(params({ RCL1_FUNC: 94, RCL1_OPT: 2 << 4 }), {}, 1, { functionId: 94 })
+    expect(drafts.RCL1_FUNC).toBe('94')
+    expect(drafts.RCL1_OPT).toBeUndefined() // no position change → no redundant OPT draft
+  })
+
   it('remove clears the term drafts and disables a live term', () => {
     const live = rcLogicRemovePlan(params({ RCL1_FUNC: 153 }), 1)
     expect(live.clear).toContain('RCL1_FUNC')

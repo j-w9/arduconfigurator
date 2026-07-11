@@ -15,7 +15,8 @@ import {
   RC_LOGIC_OPT_OUTPOS_SHIFT,
   RC_LOGIC_OPT_SOURCE_TYPE_MASK,
   RcLogicOutputPosition,
-  RcLogicSourceType
+  RcLogicSourceType,
+  isRcLogicMultiPositionFunction
 } from '@arduconfig/param-metadata'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
@@ -185,18 +186,26 @@ export function rcLogicUpdateDrafts(
   if (patch.channel !== undefined) next[ids.src] = String(patch.channel)
   if (patch.lowPwm !== undefined) next[ids.min] = String(patch.lowPwm)
   if (patch.highPwm !== undefined) next[ids.max] = String(patch.highPwm)
-  // Negate (bit 3) and output position (bits 4-5) both live in OPT — fold both
-  // into a single value read from the existing OPT so one doesn't clobber the
-  // other when they're patched together.
-  if (patch.inverted !== undefined || patch.outputPosition !== undefined) {
-    let opt = effective(ids.opt, 0)
+  // Negate (bit 3) and output position (bits 4-5) both live in OPT — fold every
+  // OPT-affecting change into one value read from the existing OPT so they don't
+  // clobber each other. Switching to a function with no multi-position output
+  // also clears the position bits, so a leftover LOW/MIDDLE doesn't strand the
+  // new function in selector mode.
+  const clearsPosition = patch.functionId !== undefined && !isRcLogicMultiPositionFunction(patch.functionId)
+  if (patch.inverted !== undefined || patch.outputPosition !== undefined || clearsPosition) {
+    const current = effective(ids.opt, 0)
+    let opt = current
     if (patch.inverted !== undefined) {
       opt = patch.inverted ? opt | NEGATE_MASK : opt & ~NEGATE_MASK
     }
     if (patch.outputPosition !== undefined) {
       opt = encodeOutputPosition(opt, patch.outputPosition)
+    } else if (clearsPosition) {
+      opt &= ~OUTPOS_MASK_SHIFTED
     }
-    next[ids.opt] = String(opt)
+    if (opt !== current) {
+      next[ids.opt] = String(opt)
+    }
   }
   return next
 }
