@@ -16,10 +16,10 @@ export const ARM_SWITCH_OPTION_VALUE = 153
 /** RCn_OPTION value for Arm/Disarm bundled with AirMode-on-arm. */
 export const ARM_SWITCH_AIRMODE_OPTION_VALUE = 154
 
-// RCn_OPTION only makes sense on AUX channels — the primary stick axes and
-// the mode-switch channel are excluded elsewhere in the app (see
-// derivePrimaryAndModeChannels) and by convention start no earlier than
-// channel 5. Internal to this module (never referenced externally).
+// RCn_OPTION only makes sense on AUX channels — the primary stick axes are
+// excluded elsewhere in the app (see derivePrimaryStickChannels) and AUX
+// options by convention start no earlier than channel 5. Internal to this
+// module (never referenced externally).
 const ARM_SWITCH_MIN_CHANNEL = 5
 const ARM_SWITCH_MAX_CHANNEL = 16
 

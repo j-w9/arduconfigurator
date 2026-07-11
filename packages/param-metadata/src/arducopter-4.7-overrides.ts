@@ -1,6 +1,7 @@
 import type { ParameterDefinition, ParameterValueOption } from './types.js'
 import {
   ARDUCOPTER_BATTERY_FAILSAFE_ACTION_LABELS,
+  ARDUCOPTER_BATTERY_MONITOR_LABELS,
   ARDUCOPTER_FS_GCS_LABELS,
   ARDUCOPTER_MOT_PWM_TYPE_LABELS,
   ARDUCOPTER_RSSI_TYPE_LABELS,
@@ -59,6 +60,15 @@ const BATTERY_FAILSAFE_ACTION_LABELS_4_7: Record<number, string> = {
   6: FAILSAFE_6_LABEL_4_7
 }
 
+// BATT_MONITOR gains 30:INA3221, 31:Analog Current Only, 32:TIBQ76952 after 4.6.
+// Source: libraries/AP_BattMonitor/AP_BattMonitor_Params.cpp @Values.
+const BATTERY_MONITOR_LABELS_4_7: Record<number, string> = {
+  ...ARDUCOPTER_BATTERY_MONITOR_LABELS,
+  30: 'INA3221',
+  31: 'Analog Current Only',
+  32: 'TIBQ76952-I2C'
+}
+
 /**
  * ArduCopter parameter metadata that changed in the 4.7 release line, keyed by
  * parameter id. Each value is a partial patch (options / range / description)
@@ -81,5 +91,6 @@ export const ARDUCOPTER_4_7_PARAMETER_OVERRIDES: Record<string, Partial<Paramete
   FS_THR_ENABLE: { options: enumOptions(THROTTLE_FAILSAFE_LABELS_4_7) },
   FS_GCS_ENABLE: { options: enumOptions(FS_GCS_LABELS_4_7) },
   BATT_FS_LOW_ACT: { options: enumOptions(BATTERY_FAILSAFE_ACTION_LABELS_4_7) },
-  BATT_FS_CRT_ACT: { options: enumOptions(BATTERY_FAILSAFE_ACTION_LABELS_4_7) }
+  BATT_FS_CRT_ACT: { options: enumOptions(BATTERY_FAILSAFE_ACTION_LABELS_4_7) },
+  BATT_MONITOR: { maximum: 32, options: enumOptions(BATTERY_MONITOR_LABELS_4_7) }
 }

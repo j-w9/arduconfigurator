@@ -165,6 +165,10 @@ function termParameterDefinitions(n: number): Record<string, ParameterDefinition
       description:
         'Auxiliary function this table row activates (0 disables the row). Same value list as an RC channel option (RCn_OPTION).',
       category: RC_LOGIC_CATEGORY,
+      // AP_PARAM_FLAG_ENABLE: FUNC gates the RCL<n>_* sub-tree. The batch writer
+      // sets it (and confirms its readback) before the term's MIN/MAX/OPT/SRC so
+      // those writes don't race a still-disabled, non-echoing sub-param.
+      enableGate: true,
       options: RC_LOGIC_AUX_FUNCTION_OPTIONS as ParameterValueOption[]
     },
     [`${prefix}OPT`]: {

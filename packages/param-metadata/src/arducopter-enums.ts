@@ -100,15 +100,15 @@ export const ARDUCOPTER_BATTERY_MONITOR_LABELS: Record<number, string> = {
   22: 'LTC2946',
   23: 'Torqeedo',
   24: 'Fuel Level Analog',
-  // 25..32 added through 4.7 — keep in sync with AP_BattMonitor Type enum.
+  // 25..29 already exist in 4.6 (verified against Copter-4.6.0
+  // AP_BattMonitor_Params.cpp @Values). Values 30..32 (INA3221 / Analog Current
+  // Only / TIBQ76952) landed after 4.6 and live in the 4.7 override
+  // (arducopter-4.7-overrides.ts) so the 4.6 catalog stays byte-identical.
   25: 'Synthetic Current + Analog Voltage',
   26: 'INA239 SPI',
   27: 'EFI',
   28: 'AD7091R5',
-  29: 'Scripting',
-  30: 'INA3221',
-  31: 'Analog Current Only',
-  32: 'TIBQ76952-I2C'
+  29: 'Scripting'
 }
 
 export const ARDUCOPTER_BATTERY_VOLTAGE_SOURCE_LABELS: Record<number, string> = {
@@ -301,6 +301,39 @@ export const ARDUCOPTER_GPS_TYPE_LABELS: Record<number, string> = {
   24: 'Unicore NMEA',
   25: 'Unicore Moving Baseline NMEA',
   26: 'SBF DualAntenna'
+}
+
+// Bit indices for the legacy GPS_GNSS_MODE / GPS_GNSS_MODE2 bitmask (which GNSS
+// constellations the receiver should track). Renamed GPS1_GNSS_MODE /
+// GPS2_GNSS_MODE in 4.6+; the bit layout is unchanged across versions.
+// Source: libraries/AP_GPS/AP_GPS.cpp @Bitmask (verified against the local fork).
+export const ARDUCOPTER_GPS_GNSS_MODE_BIT_LABELS: Record<number, string> = {
+  0: 'GPS',
+  1: 'SBAS',
+  2: 'Galileo',
+  3: 'BeiDou',
+  4: 'IMES',
+  5: 'QZSS',
+  6: 'GLONASS'
+}
+
+// Legacy CAM_TRIGG_TYPE value map. This is the pre-4.2 camera-shutter enum, which
+// is DIFFERENT from the modern CAM1_TYPE enum (0:None,1:Servo,2:Relay,…). The 4.5
+// AP_Camera::convert_params() shows the legacy semantics: 0=Servo, and 1/2/3 map
+// to Relay/GoPro/Mount (cam1_type = cam_trigg_type + 1). Do not substitute the
+// CAM1_TYPE labels here — a legacy FC reporting CAM_TRIGG_TYPE uses these values.
+export const ARDUCOPTER_CAM_TRIGG_TYPE_LABELS: Record<number, string> = {
+  0: 'Servo',
+  1: 'Relay',
+  2: 'GoPro (Solo Gimbal)',
+  3: 'Mount'
+}
+
+// CAM_AUTO_ONLY: whether distance-based triggering is limited to AUTO mode.
+// Source: libraries/AP_Camera/AP_Camera.cpp @Values 0:Always,1:Only when in AUTO.
+export const ARDUCOPTER_CAM_AUTO_ONLY_LABELS: Record<number, string> = {
+  0: 'Always',
+  1: 'Only in AUTO mode'
 }
 
 export const ARDUCOPTER_GPS_AUTO_CONFIG_LABELS: Record<number, string> = {

@@ -69,19 +69,18 @@ export function getModeChannelNumber(snapshot: ConfiguratorSnapshot): number | u
 }
 
 /**
- * Channels reserved for the primary stick axes (RCMAP_ROLL/PITCH/THROTTLE/YAW)
- * and the flight-mode switch. ArduPilot's RCn_OPTION / AP_RC_Logic AUX
- * functions are never assigned to these in practice, so views that edit AUX
- * functions only (e.g. the RC Mixer tab) exclude them rather than listing all
- * 16 channels.
+ * Channels reserved for the primary stick axes (RCMAP_ROLL/PITCH/THROTTLE/YAW).
+ * These are continuous control inputs, not switch channels, so views that edit
+ * AUX functions only (e.g. the RC Mixer tab) exclude them rather than listing
+ * all 16 channels.
+ *
+ * The flight-mode channel is deliberately NOT excluded: ArduPilot RC Logic lets
+ * you layer a range function on the mode channel (activate a function only in a
+ * given mode-switch PWM window), so hiding it wrongly reads as "the mixer can't
+ * see my channel." It shows as a normal aux row.
  */
-export function derivePrimaryAndModeChannels(snapshot: ConfiguratorSnapshot): Set<number> {
-  const channels = new Set<number>(buildRcmapRoleByChannel(snapshot).keys())
-  const modeChannel = getModeChannelNumber(snapshot)
-  if (modeChannel !== undefined) {
-    channels.add(modeChannel)
-  }
-  return channels
+export function derivePrimaryStickChannels(snapshot: ConfiguratorSnapshot): Set<number> {
+  return new Set<number>(buildRcmapRoleByChannel(snapshot).keys())
 }
 
 export function buildRcChannelDisplays(snapshot: ConfiguratorSnapshot, visibleCount = 8): RcChannelDisplay[] {

@@ -121,6 +121,16 @@ export interface ParameterDefinition {
    * RNGFND1_TYPE = Analog. Value is rounded before comparison.
    */
   visibleWhen?: { paramId: string; in: number[] }
+  /**
+   * Marks this parameter as the AP_PARAM_FLAG_ENABLE gate for its group — the
+   * sibling params sharing its `<GROUP>_` prefix (e.g. RCL3_FUNC gates
+   * RCL3_MIN/MAX/OPT/SRC). ArduPilot hides an enable-gated sub-tree until the
+   * gate is set, and does not reliably echo a PARAM_SET to a hidden sub-param.
+   * The batch writer therefore writes the gate FIRST and waits for its readback
+   * (so the sub-tree is live) before writing the dependents — otherwise the
+   * dependent writes race the still-disabled term and time out on verification.
+   */
+  enableGate?: boolean
 }
 
 export interface PresetGroupDefinition {

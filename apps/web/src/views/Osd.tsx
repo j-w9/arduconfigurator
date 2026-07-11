@@ -694,7 +694,11 @@ export function OsdView(props: OsdViewProps) {
                                         max={layout.columns - 1}
                                         value={clampCellToLayout(placed.column, layout.columns - 1)}
                                         onChange={(event) =>
-                                          onElementMove?.(row.elementId, clampCellToLayout(Number(event.target.value), layout.columns - 1), clampCellToLayout(placed.row, layout.rows - 1))
+                                          // Commit the untouched Y axis at its real stored value, not the
+                                          // grid-clamped display value — otherwise editing X silently truncates
+                                          // an element positioned outside the previewed grid (e.g. an HD-placed
+                                          // element viewed under analog NTSC). Only the edited axis is clamped.
+                                          onElementMove?.(row.elementId, clampCellToLayout(Number(event.target.value), layout.columns - 1), placed.row)
                                         }
                                       />
                                     </label>
@@ -706,7 +710,8 @@ export function OsdView(props: OsdViewProps) {
                                         max={layout.rows - 1}
                                         value={clampCellToLayout(placed.row, layout.rows - 1)}
                                         onChange={(event) =>
-                                          onElementMove?.(row.elementId, clampCellToLayout(placed.column, layout.columns - 1), clampCellToLayout(Number(event.target.value), layout.rows - 1))
+                                          // Untouched X axis keeps its real stored value; only the edited Y axis is clamped.
+                                          onElementMove?.(row.elementId, placed.column, clampCellToLayout(Number(event.target.value), layout.rows - 1))
                                         }
                                       />
                                     </label>

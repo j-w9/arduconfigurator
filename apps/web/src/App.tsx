@@ -14,7 +14,6 @@ import {
   createRcRangeExerciseState,
   deriveCompassSetupAvailability,
   deriveEscSetupSummary,
-  buildParametersFromBackup,
   deriveAirframe,
   deriveModeExerciseAssignments,
   deriveModeAssignments,
@@ -134,7 +133,7 @@ import {
   formatCurrent,
   formatRemaining
 } from './device-display'
-import { buildRcChannelDisplays, derivePrimaryAndModeChannels } from './rc-channel-helpers'
+import { buildRcChannelDisplays, derivePrimaryStickChannels } from './rc-channel-helpers'
 import {
   connectButtonLabel,
   describeConnectFailure,
@@ -251,6 +250,7 @@ import { AP_PERIPH_PARAM_METADATA } from './view-models/ap-periph-param-metadata
 import { parseParamPck } from './view-models/param-pck'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
 import { buildRecentNotices } from './view-models/recent-notices'
+import { orderDraftsByEnableGate } from './view-models/enable-gate-write-order'
 import { invertGuidedReorderMapping, pickedReorderPositions } from './view-models/motor-reorder-mapping'
 import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
@@ -799,6 +799,14 @@ export function App() {
   // motor-reorder workbench and a direction-test surface so the operator
   // never has to leave the popout to spin a motor or flip a reversal.
   const [motorDialogTab, setMotorDialogTab] = useState<'reorder' | 'direction'>('reorder')
+  // Guided motor-identify auto-spin: after the operator spins the FIRST motor,
+  // automatically spin each subsequent motor once the previous test window has
+  // fully closed, so they only ever click the position that moved. The wait is
+  // gated on the live motor-test status (not a fixed delay) — the old timed
+  // auto-advance fired while the FC was still armed from the prior test and got
+  // rejected with "the vehicle reports armed=true".
+  const [guidedReorderAutoSpin, setGuidedReorderAutoSpin] = useState(true)
+  const autoSpunGuidedReorderStepRef = useRef<number | null>(null)
   // Spin-error banner — when spinGuidedReorderStep or a manual dialog spin
   // fails (FC rejected DO_MOTOR_TEST, eligibility check failed, etc.) we
   // used to swallow the error; surface it inside the dialog so the
@@ -1717,28 +1725,6 @@ export function App() {
     invalidParameterGroups,
     rebootRequiredDrafts
   } = useParameterDraftDerivations({ snapshot, editedValues, enumOverrides: parameterEnumOverrides })
-  // Snapshot-vs-snapshot compare baseline (fleet management):
-  // - undefined / 'live' -> baseline is the live FC snapshot (the
-  //   default, existing "Restore Preview" behaviour)
-  // - a savedSnapshot.id -> baseline is THAT saved snapshot's
-  //   parameter values; the diff then reads "what changed from
-  //   snapshot A to snapshot B."
-  // This lets a fleet operator compare a pre-firmware-bump snapshot
-  // to a post-bump snapshot without their two intentional param
-  // changes being drowned in 100s of cross-version defaults.
-  const [snapshotCompareBaselineId, setSnapshotCompareBaselineId] = useState<string | undefined>(undefined)
-  // Live-FC param index, reused for both the live-baseline path (just
-  // pass snapshot.parameters straight through) AND the
-  // saved-snapshot-baseline path (used as the definition hydration
-  // source so diff rows still render with labels/units even when the
-  // baseline values come from a snapshot file).
-  const snapshotCompareBaselineParameters = useMemo(() => {
-    if (!snapshotCompareBaselineId) return snapshot.parameters
-    const baseline = savedSnapshots.find((entry) => entry.id === snapshotCompareBaselineId)
-    if (!baseline) return snapshot.parameters
-    const liveById = new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter]))
-    return buildParametersFromBackup(baseline.backup, liveById)
-  }, [snapshotCompareBaselineId, savedSnapshots, snapshot.parameters])
   // Snapshot restore curation: off-by-default calibration exclusion (restoring
   // another unit's accel/gyro/compass calibration + AHRS trim onto different
   // hardware is wrong by default) plus a per-row Drop so the operator can
@@ -1759,7 +1745,12 @@ export function App() {
     selectedProfile: selectedSnapshot,
     restore: selectedSnapshotRestore
   } = useSelectedProfileDiff({
-    snapshotParameters: snapshotCompareBaselineParameters,
+    // Restore is ALWAYS computed against the live FC — never the compare
+    // baseline. The "Compare to baseline" picker is a display-only lens for
+    // seeing how two saved snapshots differ; wiring the restore write set to it
+    // caused a silent PARTIAL restore (params equal between the two snapshots
+    // but different on the live FC were skipped). The picker now only annotates.
+    snapshotParameters: snapshot.parameters,
     savedProfiles: savedSnapshots,
     selectedProfileId: selectedSnapshotId,
     resolveBackup: resolveSnapshotBackup,
@@ -1799,8 +1790,8 @@ export function App() {
     invalid: selectedSnapshotInvalidEntries,
     signature: selectedSnapshotDiffSignature
   } = useMemo(
-    () => selectEntityDiff(snapshotCompareBaselineParameters, filteredSnapshotRestoreDraftValues),
-    [snapshotCompareBaselineParameters, filteredSnapshotRestoreDraftValues]
+    () => selectEntityDiff(snapshot.parameters, filteredSnapshotRestoreDraftValues),
+    [snapshot.parameters, filteredSnapshotRestoreDraftValues]
   )
   const {
     handleCaptureLiveSnapshot,
@@ -2890,8 +2881,14 @@ export function App() {
     setScopedWriteProgress({ completed: 0, total: stagedDrafts.length, scopeLabel })
     try {
       const rebootRequiredCount = stagedDrafts.filter((entry) => entry.definition?.rebootRequired).length
+      // Write AP_PARAM_FLAG_ENABLE gates (e.g. RCL<n>_FUNC) before their
+      // dependent sub-params. setParameters is serial and confirms each readback
+      // before the next, so ordering the gate first means its term is live by
+      // the time MIN/MAX/OPT/SRC are written — otherwise those race a disabled,
+      // non-echoing sub-tree and each burns the full verify timeout.
+      const orderedDrafts = orderDraftsByEnableGate(stagedDrafts)
       const result = await runtime.setParameters(
-        stagedDrafts.map((entry) => ({
+        orderedDrafts.map((entry) => ({
           paramId: entry.id,
           paramValue: entry.nextValue as number
         })),
@@ -3876,6 +3873,50 @@ export function App() {
     spinGuidedReorderStep(guidedReorderStep)
   }
 
+  // Auto-spin the NEXT motor in the guided identify sequence. Only steps after
+  // the first fire automatically (the operator kicks the sequence off with an
+  // explicit Spin), and only once the previous motor test has left the
+  // requested/running window — i.e. the FC has stopped the last motor and will
+  // accept a fresh DO_MOTOR_TEST. Safety acknowledgements are re-checked here,
+  // so un-ticking props-off / area-clear mid-sequence pauses the auto-spin
+  // instead of spinning a motor unattended.
+  useEffect(() => {
+    if (!guidedReorderActive) {
+      autoSpunGuidedReorderStepRef.current = null
+      return
+    }
+    if (!guidedReorderAutoSpin || !guidedReorderAwaitingSpin || guidedReorderStep === 0) {
+      return
+    }
+    if (autoSpunGuidedReorderStepRef.current === guidedReorderStep) {
+      return // already auto-spun this step — never double-fire (StrictMode / async)
+    }
+    const motorTestStatus = snapshot.motorTest.status
+    if (motorTestStatus === 'requested' || motorTestStatus === 'running') {
+      return // previous motor still spinning — wait for its window to close
+    }
+    if (busyAction !== undefined) {
+      return
+    }
+    if (!propsRemovedAcknowledged || !testAreaAcknowledged) {
+      return // safety gate — hold auto-spin until re-acknowledged
+    }
+    autoSpunGuidedReorderStepRef.current = guidedReorderStep
+    spinGuidedReorderStep(guidedReorderStep)
+    // spinGuidedReorderStep is a stable component-scope function; the primitive
+    // deps below fully determine when an auto-spin should fire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    guidedReorderActive,
+    guidedReorderAutoSpin,
+    guidedReorderAwaitingSpin,
+    guidedReorderStep,
+    snapshot.motorTest.status,
+    busyAction,
+    propsRemovedAcknowledged,
+    testAreaAcknowledged
+  ])
+
   function handleStartGuidedReorder(): void {
     if (effectiveMotorOutputs.length === 0) {
       return
@@ -4836,7 +4877,7 @@ export function App() {
     () => buildRcMixerFunctionLookup(rcLogicFunctionCatalogMemo),
     [rcLogicFunctionCatalogMemo]
   )
-  const rcLogicExcludedChannels = useMemo(() => derivePrimaryAndModeChannels(snapshot), [snapshot])
+  const rcLogicExcludedChannels = useMemo(() => derivePrimaryStickChannels(snapshot), [snapshot])
   // Remove on an ALREADY-APPLIED term only STAGES a FUNC=0 draft (same
   // stage-then-apply model every other RC Mixer edit uses) — readRcLogicModel
   // still reports the term as "touched" while that draft is pending, so the
@@ -5031,6 +5072,7 @@ export function App() {
         guidedReorderStep={guidedReorderStep}
         guidedReorderMapping={guidedReorderMapping}
         guidedReorderAwaitingSpin={guidedReorderAwaitingSpin}
+        guidedReorderAutoSpin={guidedReorderAutoSpin}
         guidedReorderCompleted={guidedReorderCompleted}
         onClose={handleCloseMotorReorderDialog}
         onTabChange={setMotorDialogTab}
@@ -5042,6 +5084,7 @@ export function App() {
         onStartGuidedReorder={handleStartGuidedReorder}
         onCancelGuidedReorder={handleCancelGuidedReorder}
         onSpinGuidedReorderCurrent={handleSpinGuidedReorderCurrent}
+        onToggleGuidedReorderAutoSpin={setGuidedReorderAutoSpin}
         onPickGuidedReorderPosition={handlePickGuidedReorderPosition}
         onStageReorderDrafts={handleStageMotorReorderDrafts}
         onSpinSingleMotor={handleDialogSpinSingleMotor}
@@ -7397,8 +7440,6 @@ export function App() {
             handleToggleSelectedProvisioningProfileProtection,
             handleToggleSelectedSnapshotProtection
           }}
-          snapshotCompareBaselineId={snapshotCompareBaselineId}
-          onSnapshotCompareBaselineIdChange={setSnapshotCompareBaselineId}
         />
       ) : null}
 

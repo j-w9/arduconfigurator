@@ -54,15 +54,23 @@ describe('groupAssignmentsByChannel', () => {
     expect(groups.find((group) => group.channel === 1)?.assignments).toEqual([])
   })
 
-  it('ignores assignments outside the 1..maxChannel window', () => {
-    const groups = groupAssignmentsByChannel([assign(9)], 4)
-    expect(groups).toHaveLength(4)
-    expect(groups.every((group) => group.assignments.length === 0)).toBe(true)
+  it('surfaces an assignment above the 1..maxChannel window so a firmware term stays manageable', () => {
+    const nine = assign(9)
+    const groups = groupAssignmentsByChannel([nine], 4)
+    expect(groups.map((group) => group.channel)).toEqual([1, 2, 3, 4, 9])
+    expect(groups.find((group) => group.channel === 9)?.assignments).toEqual([nine])
   })
 
-  it('omits excluded channels (e.g. the primary stick axes) from the rows entirely', () => {
-    const groups = groupAssignmentsByChannel([assign(2)], 6, new Set([1, 2, 3, 4]))
-    expect(groups.map((group) => group.channel)).toEqual([5, 6])
+  it('omits EMPTY excluded channels but keeps an excluded channel that carries a live term', () => {
+    // Nothing assigned on the excluded stick axes → they stay hidden.
+    const empty = groupAssignmentsByChannel([], 6, new Set([1, 2, 3, 4]))
+    expect(empty.map((group) => group.channel)).toEqual([5, 6])
+    // A firmware-set RCL term whose SRC points at excluded channel 2 must still
+    // appear (on its own row) so it can be seen and removed.
+    const two = assign(2)
+    const withTerm = groupAssignmentsByChannel([two], 6, new Set([1, 2, 3, 4]))
+    expect(withTerm.map((group) => group.channel)).toEqual([2, 5, 6])
+    expect(withTerm.find((group) => group.channel === 2)?.assignments).toEqual([two])
   })
 })
 

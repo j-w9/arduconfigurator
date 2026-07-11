@@ -342,22 +342,25 @@ test.describe('browser configurator regression flows', () => {
     await expect(startButton).toBeEnabled()
     await startButton.click()
 
-    // Banner replaces the start button while identify is in progress.
-    // Operator-paced (field feedback): nothing spins until the explicit
-    // Spin click, and the next motor never auto-spins after a pick.
+    // Banner replaces the start button while identify is in progress. The
+    // FIRST motor always waits for an explicit Spin click.
     const banner = page.getByTestId('motor-reorder-guided-banner')
     await expect(banner).toBeVisible()
     await expect(banner).toContainText('1 / 4')
     await expect(banner).toContainText('click Spin when ready')
 
+    // Auto-spin is on by default — it spins every motor after the first.
+    await expect(page.getByTestId('motor-reorder-guided-autospin').locator('input')).toBeChecked()
+
     await page.getByTestId('motor-reorder-guided-spin').click()
     await expect(banner).toContainText(/OUT\d+ spun/, { timeout: COMMAND_ACK_TIMEOUT })
 
-    // Picking a position advances to the next output — back into the
-    // "click Spin when ready" state rather than auto-spinning.
+    // Picking a position advances to the next output and — with auto-spin on —
+    // spins it automatically once the previous motor's test window closes, so
+    // the operator never has to click Spin again.
     await page.getByTestId('motor-reorder-pick-1').click()
     await expect(banner).toContainText('2 / 4')
-    await expect(banner).toContainText('click Spin when ready')
+    await expect(banner).toContainText(/OUT\d+ spun/, { timeout: COMMAND_ACK_TIMEOUT })
 
     // Cancel cleanly even if mid-sequence.
     const cancel = page.getByTestId('motor-reorder-guided-cancel')

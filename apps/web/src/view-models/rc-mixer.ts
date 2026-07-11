@@ -129,12 +129,17 @@ export function buildRcMixerFunctionLookup(
 }
 
 /**
- * Group assignments by channel for the channel-row layout. Channels with no
- * assignments are still surfaced so the UI can show "+ Add" affordances on
- * every channel in the 1..maxChannel range — except those in `excludeChannels`
- * (the primary stick axes and the flight-mode switch), which never get an AUX
- * function assigned in practice and would otherwise clutter the mixer with
- * rows nobody uses.
+ * Group assignments by channel for the channel-row layout. Empty channels in
+ * the 1..maxChannel range are surfaced so the UI can show "+ Add" affordances —
+ * except those in `excludeChannels` (the primary stick axes), which are
+ * continuous control inputs, not switch channels, and would otherwise clutter
+ * the mixer with rows nobody uses.
+ *
+ * An assignment that actually EXISTS on an excluded or out-of-window channel is
+ * still surfaced on its own row, however: a firmware-set RCL term can point its
+ * `RCLn_SRC` at an RCMAP/flight-mode channel (or a channel above maxChannel),
+ * and silently dropping it would leave the term invisible and impossible to
+ * remove from the mixer. We only suppress empty excluded rows, never live ones.
  */
 export function groupAssignmentsByChannel(
   assignments: readonly RcMixerAssignment[],
@@ -149,10 +154,14 @@ export function groupAssignmentsByChannel(
     byChannel.set(channel, [])
   }
   for (const assignment of assignments) {
-    const bucket = byChannel.get(assignment.channel)
-    if (bucket) {
-      bucket.push(assignment)
+    let bucket = byChannel.get(assignment.channel)
+    if (!bucket) {
+      // Excluded or out-of-window channel that nonetheless carries a live term —
+      // surface it so it stays visible and removable rather than dropped.
+      bucket = []
+      byChannel.set(assignment.channel, bucket)
     }
+    bucket.push(assignment)
   }
   return Array.from(byChannel.entries())
     .sort(([left], [right]) => left - right)
