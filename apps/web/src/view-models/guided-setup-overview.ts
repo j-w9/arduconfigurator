@@ -177,7 +177,7 @@ export function buildGuidedSetupOverview(inputs: GuidedSetupOverviewInputs): Gui
     selectedSetupSection?.id === 'airframe'
       ? 'Opening the board-orientation page does not complete this step. The orientation check must pass and the airframe review must still be confirmed here.'
       : selectedSetupSection?.id === 'outputs'
-        ? 'Opening the motor-verification bench does not complete this step. Motor order verification plus the output and ESC reviews still need to be completed.'
+        ? 'Opening the Motors bench does not complete this step. The output map still needs to be reviewed and confirmed here — motor order and direction are checked manually in Motors → Test / Motor Setup.'
         : undefined
 
   return {

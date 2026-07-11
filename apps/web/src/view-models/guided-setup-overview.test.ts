@@ -206,7 +206,8 @@ describe('buildGuidedSetupOverview', () => {
     const outputs = buildGuidedSetupOverview(
       baseInputs({ setupFlowSections: [section({ id: 'outputs', sequenceState: 'current' })], selectedSetupSectionId: 'outputs' })
     )
-    expect(outputs.guidedSetupContextHint).toContain('motor-verification bench')
+    expect(outputs.guidedSetupContextHint).toContain('Motors bench')
+    expect(outputs.guidedSetupContextHint).toContain('reviewed and confirmed here')
 
     const other = buildGuidedSetupOverview(
       baseInputs({ setupFlowSections: [section({ id: 'battery', sequenceState: 'current' })], selectedSetupSectionId: 'battery' })
