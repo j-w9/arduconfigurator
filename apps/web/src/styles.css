@@ -2200,6 +2200,56 @@ textarea:focus {
   gap: 10px;
 }
 
+/* The criteria checklist and the advanced-settings card are collapsible
+   disclosures so a guided step stays short — the summary carries an at-a-glance
+   progress count and the detail expands on demand. */
+.setup-flow__criteria > summary,
+.setup-wizard__advanced-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+  padding: 6px 0;
+}
+.setup-flow__criteria > summary::-webkit-details-marker,
+.setup-wizard__advanced-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.setup-flow__criteria > summary::before,
+.setup-wizard__advanced-disclosure > summary::before {
+  content: '▸';
+  color: var(--text-muted);
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+.setup-flow__criteria[open] > summary::before,
+.setup-wizard__advanced-disclosure[open] > summary::before {
+  transform: rotate(90deg);
+}
+.setup-flow__criteria[open] > ul {
+  margin-top: 10px;
+}
+.setup-flow__criteria-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.setup-wizard__advanced-disclosure {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 2px 12px;
+}
+.setup-wizard__advanced-disclosure > summary strong {
+  font-size: 13px;
+}
+.setup-wizard__advanced-disclosure > summary span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .setup-flow__criteria strong {
   font-size: 13px;
   letter-spacing: 0.08em;
@@ -4048,6 +4098,40 @@ textarea:focus {
   border-radius: var(--radius-xl);
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 1));
+}
+
+.setup-wizard__complete-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 9px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--good, #3fbf6a);
+  background: color-mix(in srgb, var(--good, #3fbf6a) 14%, transparent);
+  color: var(--text);
+  font-size: 13px;
+}
+.setup-wizard__complete-banner strong {
+  letter-spacing: -0.01em;
+}
+.setup-wizard__complete-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.setup-wizard__complete-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--good, #3fbf6a);
+  color: #04140a;
+  font-size: 13px;
+  font-weight: 700;
+  flex: none;
 }
 
 .setup-wizard__header h3 {
