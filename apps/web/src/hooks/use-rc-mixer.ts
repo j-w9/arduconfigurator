@@ -14,6 +14,7 @@ import {
   createIdleRcMixerState,
   filterRcMixerFunctionCatalogForVehicle,
   groupAssignmentsByChannel,
+  orderRcMixerFunctionCatalog,
   RC_MIXER_FUNCTION_CATALOG,
   type RcMixerAssignment,
   type RcMixerState
@@ -26,7 +27,10 @@ export function useRcMixer(snapshot: ConfiguratorSnapshot) {
   // parachutes/Precision Loiter/airmode aren't universal) rather than
   // showing Rover a "Precision Loiter" entry it can never use.
   const rcMixerFunctionCatalog = useMemo(
-    () => filterRcMixerFunctionCatalogForVehicle(RC_MIXER_FUNCTION_CATALOG, snapshot.vehicle?.vehicle),
+    () =>
+      orderRcMixerFunctionCatalog(
+        filterRcMixerFunctionCatalogForVehicle(RC_MIXER_FUNCTION_CATALOG, snapshot.vehicle?.vehicle)
+      ),
     [snapshot.vehicle?.vehicle]
   )
   const rcMixerFunctionLookup = useMemo(

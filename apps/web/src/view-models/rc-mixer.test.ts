@@ -1,14 +1,51 @@
 import { describe, expect, it } from 'vitest'
 
+import { RC_LOGIC_AUX_FUNCTION_OPTIONS } from '@arduconfig/param-metadata'
+
 import {
   buildRcMixerFunctionLookup,
   createAssignment,
   filterRcMixerFunctionCatalogForVehicle,
   groupAssignmentsByChannel,
+  orderRcMixerFunctionCatalog,
   RC_MIXER_FUNCTION_CATALOG,
+  RC_MIXER_PRIORITY_FUNCTIONS,
   type RcMixerAssignment,
   type RcMixerFunctionDefinition
 } from './rc-mixer'
+
+describe('orderRcMixerFunctionCatalog', () => {
+  const catalog: RcMixerFunctionDefinition[] = [
+    { id: 20, label: 'Zebra', description: '' },
+    { id: 4, label: 'RTL', description: '' },
+    { id: 21, label: 'Apple', description: '' },
+    { id: 94, label: 'VTX Power', description: '' },
+    { id: 22, label: 'Mango', description: '' },
+    { id: 0, label: 'Do Nothing', description: '' }
+  ]
+
+  it('puts priority functions first (in priority order), then the rest alphabetically', () => {
+    const ordered = orderRcMixerFunctionCatalog(catalog).map((entry) => entry.label)
+    // Priority ids present here: 0, 94, 4 → in RC_MIXER_PRIORITY_FUNCTIONS order (0, then 4, then 94).
+    expect(ordered.slice(0, 3)).toEqual(['Do Nothing', 'RTL', 'VTX Power'])
+    // Remainder alphabetical by label.
+    expect(ordered.slice(3)).toEqual(['Apple', 'Mango', 'Zebra'])
+  })
+
+  it('does not mutate the input and keeps every entry', () => {
+    const input = [...catalog]
+    const ordered = orderRcMixerFunctionCatalog(catalog)
+    expect(catalog).toEqual(input)
+    expect(ordered).toHaveLength(catalog.length)
+  })
+
+  it('every priority id references a real RCL aux function (guards against typos)', () => {
+    const ids = new Set(RC_LOGIC_AUX_FUNCTION_OPTIONS.map((option) => option.value))
+    for (const id of RC_MIXER_PRIORITY_FUNCTIONS) {
+      expect(ids.has(id)).toBe(true)
+    }
+  })
+})
 
 describe('createAssignment', () => {
   it('seeds the documented PWM defaults and a unique id per call', () => {

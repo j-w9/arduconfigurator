@@ -373,6 +373,7 @@ import {
 } from './view-models/peripherals'
 import {
   buildRcMixerFunctionLookup,
+  orderRcMixerFunctionCatalog,
   groupAssignmentsByChannel,
   type RcMixerAssignment
 } from './view-models/rc-mixer'
@@ -4875,7 +4876,7 @@ export function App() {
     () => readRcLogicModel(snapshot.parameters, editedValues),
     [snapshot.parameters, editedValues]
   )
-  const rcLogicFunctionCatalogMemo = useMemo(() => rcLogicFunctionCatalog(), [])
+  const rcLogicFunctionCatalogMemo = useMemo(() => orderRcMixerFunctionCatalog(rcLogicFunctionCatalog()), [])
   const rcLogicFunctionLookup = useMemo(
     () => buildRcMixerFunctionLookup(rcLogicFunctionCatalogMemo),
     [rcLogicFunctionCatalogMemo]
