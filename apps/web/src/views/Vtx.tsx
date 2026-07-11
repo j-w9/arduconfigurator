@@ -1,7 +1,10 @@
+import { useRef, useState } from 'react'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
+import { parseBetaflightVtxTable, serializeBetaflightVtxTable } from '@arduconfig/ardupilot-core'
 
 import type { UseVtxTableResult } from '../hooks/use-vtx-table'
+import { downloadTextFile } from '../download-file'
 import { ScopedField, ScopedSelectField, type ScopedFieldDraftMap } from './ScopedField'
 
 export interface VtxLinkPort {
@@ -283,9 +286,32 @@ export function VtxView(props: VtxViewProps) {
  * uploads the whole table (@VTX/vtxtable.dat).
  */
 function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
+  const [importOpen, setImportOpen] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importError, setImportError] = useState<string | undefined>(undefined)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const table = vtxTable.table
   if (!table) return null
   const channels = Array.from({ length: table.numChannels }, (_, index) => index)
+
+  const handleExport = (): void => {
+    downloadTextFile('vtxtable.txt', serializeBetaflightVtxTable(table), 'text/plain')
+  }
+  const applyImport = (text: string): void => {
+    try {
+      vtxTable.loadTable(parseBetaflightVtxTable(text))
+      setImportError(undefined)
+      setImportOpen(false)
+      setImportText('')
+    } catch (caught) {
+      setImportError(caught instanceof Error ? caught.message : 'Could not parse that Betaflight table.')
+    }
+  }
+  const handleFile = (file: File | undefined): void => {
+    if (!file) return
+    void file.text().then(applyImport).catch(() => setImportError('Could not read that file.'))
+  }
+
   return (
     <div className="bf-vtx-table" data-testid="vtx-table-editor">
       <p className="setup-gui-box__note">
@@ -293,6 +319,80 @@ function VtxTableEditor({ vtxTable }: { vtxTable: UseVtxTableResult }) {
         cell (MHz, 0 = channel disabled) or power level, then Save to upload the whole table. Factory bands use the
         VTX&apos;s own frequency map.
       </p>
+
+      <div className="bf-vtx-table__io" data-testid="vtx-table-io">
+        <button
+          type="button"
+          style={buttonStyle()}
+          data-testid="vtx-table-export-bf"
+          onClick={handleExport}
+        >
+          Export Betaflight table
+        </button>
+        <button
+          type="button"
+          style={buttonStyle()}
+          data-testid="vtx-table-import-toggle"
+          onClick={() => {
+            setImportOpen((open) => !open)
+            setImportError(undefined)
+          }}
+        >
+          {importOpen ? 'Cancel import' : 'Import Betaflight table'}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".txt,.config,text/plain"
+          style={{ display: 'none' }}
+          data-testid="vtx-table-import-file"
+          onChange={(event) => {
+            handleFile(event.target.files?.[0])
+            event.target.value = ''
+          }}
+        />
+      </div>
+
+      {importOpen ? (
+        <div className="bf-vtx-table__import" data-testid="vtx-table-import-panel">
+          <p className="setup-gui-box__note">
+            Paste a Betaflight <code>vtxtable</code> snippet (or a full CLI dump), or load a <code>.txt</code> file. It
+            loads into the editor below — review it, then Save to upload.
+          </p>
+          <textarea
+            data-testid="vtx-table-import-text"
+            value={importText}
+            onChange={(event) => setImportText(event.target.value)}
+            placeholder={'vtxtable bands 5\nvtxtable channels 8\nvtxtable band 1 BOSCAM_A A FACTORY 5865 …'}
+            rows={5}
+          />
+          <div className="bf-vtx-table__import-actions">
+            <button
+              type="button"
+              style={buttonStyle('primary')}
+              data-testid="vtx-table-import-load"
+              onClick={() => applyImport(importText)}
+              disabled={importText.trim().length === 0}
+            >
+              Load pasted table
+            </button>
+            <button
+              type="button"
+              style={buttonStyle()}
+              data-testid="vtx-table-import-file-button"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Load .txt file…
+            </button>
+          </div>
+          {importError ? (
+            <div className="parameter-follow-up parameter-follow-up--warning" data-testid="vtx-table-import-error">
+              <StatusBadge tone="danger">import failed</StatusBadge>
+              <p>{importError}</p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="bf-vtx-table__scroll">
         <table className="bf-vtx-table__grid">
           <thead>
