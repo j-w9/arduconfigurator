@@ -47,6 +47,48 @@ export function filterRcMixerFunctionCatalogForVehicle(
   return catalog.filter((definition) => !definition.vehicles || (definition.vehicles as readonly string[]).includes(vehicleKind))
 }
 
+/** Curated "surface these first" order for the RC Mixer function dropdown — the
+ *  aux functions most commonly assigned to a switch, in a sensible priority.
+ *  Everything not listed here follows, sorted alphabetically by label. Ids are
+ *  from RC_LOGIC_AUX_FUNCTION_OPTIONS (RCn_OPTION values). */
+export const RC_MIXER_PRIORITY_FUNCTIONS: readonly number[] = [
+  0, // Do Nothing (clears the row)
+  153, // ArmDisarm (4.2 and higher)
+  154, // ArmDisarm with AirMode
+  4, // RTL
+  18, // LAND Mode
+  16, // AUTO Mode
+  94, // VTX Power
+  11, // Fence Enable
+  9, // Camera Trigger
+  31, // Motor Emergency Stop
+  7, // Save WP
+  46 // RC Override Enable
+]
+
+/** Order a function catalog for the dropdown: the common/priority functions
+ *  first (in RC_MIXER_PRIORITY_FUNCTIONS order), then everything else
+ *  alphabetically by label. Pure; does not mutate the input. */
+export function orderRcMixerFunctionCatalog(
+  catalog: readonly RcMixerFunctionDefinition[]
+): RcMixerFunctionDefinition[] {
+  const priorityRank = new Map(RC_MIXER_PRIORITY_FUNCTIONS.map((id, index) => [id, index]))
+  return [...catalog].sort((left, right) => {
+    const rankLeft = priorityRank.get(left.id)
+    const rankRight = priorityRank.get(right.id)
+    if (rankLeft !== undefined && rankRight !== undefined) {
+      return rankLeft - rankRight
+    }
+    if (rankLeft !== undefined) {
+      return -1
+    }
+    if (rankRight !== undefined) {
+      return 1
+    }
+    return left.label.localeCompare(right.label)
+  })
+}
+
 export interface RcMixerAssignment {
   /** Stable, sortable id within a session. Generated on row creation. */
   id: string

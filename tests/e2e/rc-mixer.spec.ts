@@ -58,6 +58,12 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     await expect(page.getByTestId('rc-mixer-assignment-rcl-3')).toBeVisible()
     await expect(page.getByTestId('rc-mixer-track-band-rcl-3')).toBeVisible()
 
+    // The function dropdown surfaces common functions first (Do Nothing, then
+    // arm/RTL/…/VTX Power), with the long tail alphabetical after.
+    const funcOptions = await page.getByTestId('rc-mixer-function-rcl-3').locator('option').allTextContents()
+    expect(funcOptions[0]).toBe('Do Nothing (0)')
+    expect(funcOptions.slice(0, 8)).toContain('VTX Power (94)')
+
     // Editing round-trips through the model (reads back the draft immediately).
     await page.getByTestId('rc-mixer-function-rcl-3').selectOption('94') // VTX Power (level-select)
     await page.getByTestId('rc-mixer-low-rcl-3').fill('1800')
