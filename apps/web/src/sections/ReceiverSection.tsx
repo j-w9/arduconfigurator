@@ -84,6 +84,10 @@ export interface ReceiverSectionDerived {
    *  RCn_OPTION at all, so the Arm switch card has something to bind to. */
   armSwitchAvailable: boolean
   armSwitchAssignment: ArmSwitchAssignment
+  /** RC Mixer (AP_RC_Logic) function labels per channel, so aux-channel cards
+   *  and the arm-switch card can warn that a channel already carries an RCL
+   *  term (the reverse of the RC Mixer's own "also used by" badge). */
+  rcLogicChannelClaims?: ReadonlyMap<number, readonly string[]>
 }
 
 export interface ReceiverSectionHandlers {
@@ -262,7 +266,8 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     receiverAdvancedInvalidCount,
     receiverHasPendingReview,
     armSwitchAvailable,
-    armSwitchAssignment
+    armSwitchAssignment,
+    rcLogicChannelClaims
   } = derived
 
   const {
@@ -356,6 +361,16 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                     testId="receiver-channel-bars"
                   />
 
+                  {rcLogicChannelClaims && rcLogicChannelClaims.size > 0 ? (
+                    <p className="receiver-rcl-summary" data-testid="receiver-rcl-summary">
+                      ⚠ RC Mixer terms also drive:{' '}
+                      {[...rcLogicChannelClaims.entries()]
+                        .sort(([left], [right]) => left - right)
+                        .map(([channel, labels]) => `CH${channel} (${labels.join(', ')})`)
+                        .join(', ')}
+                      . These channels carry both their normal input and an RC Mixer function.
+                    </p>
+                  ) : null}
 
                   <div className="receiver-channel-disclosure">
                     <div>
@@ -919,6 +934,15 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                                 : 'not assigned'}
                             </StatusBadge>
                           </div>
+
+                          {armSwitchAssignment.channel !== undefined &&
+                          rcLogicChannelClaims?.get(armSwitchAssignment.channel)?.length ? (
+                            <p className="switch-exercise-warning" data-testid="receiver-arm-switch-rcl-conflict">
+                              ⚠ CH{armSwitchAssignment.channel} also drives an RC Mixer function
+                              ({rcLogicChannelClaims.get(armSwitchAssignment.channel)!.join(', ')}) — the arm switch
+                              and the RC Mixer term both act on this channel.
+                            </p>
+                          ) : null}
 
                           <label className="receiver-arm-switch__field">
                             <span>Channel</span>

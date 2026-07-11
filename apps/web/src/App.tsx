@@ -250,6 +250,7 @@ import { AP_PERIPH_PARAM_METADATA } from './view-models/ap-periph-param-metadata
 import { parseParamPck } from './view-models/param-pck'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
 import { buildRecentNotices } from './view-models/recent-notices'
+import { deriveExternalChannelClaims, deriveRcLogicChannelClaims } from './view-models/channel-usage'
 import { orderDraftsByEnableGate } from './view-models/enable-gate-write-order'
 import { invertGuidedReorderMapping, pickedReorderPositions } from './view-models/motor-reorder-mapping'
 import { LiveGpsMapCard } from './live-gps-map'
@@ -4903,6 +4904,15 @@ export function App() {
     () => groupAssignmentsByChannel(rcLogicVisibleAssignments, 16, rcLogicExcludedChannels),
     [rcLogicVisibleAssignments, rcLogicExcludedChannels]
   )
+  // Cross-subsystem channel awareness (both directions):
+  //  - external claims (flight-mode switch / RCn_OPTION aux funcs) badged in the
+  //    RC Mixer so a channel already in use is visible before layering a term.
+  //  - RCL-term claims surfaced back in the Receiver / Modes / arm-switch views.
+  const externalChannelClaims = useMemo(() => deriveExternalChannelClaims(snapshot), [snapshot])
+  const rcLogicChannelClaims = useMemo(
+    () => deriveRcLogicChannelClaims(rcLogicVisibleAssignments),
+    [rcLogicVisibleAssignments]
+  )
   function handleRcLogicAddAssignment(channel: number): void {
     const drafts = rcLogicAddDrafts(rcLogicModel, channel)
     if (!drafts) {
@@ -7082,7 +7092,8 @@ export function App() {
             receiverAdvancedInvalidCount,
             receiverHasPendingReview,
             armSwitchAvailable,
-            armSwitchAssignment
+            armSwitchAssignment,
+            rcLogicChannelClaims
           }}
           handlers={{
             handleStartRcMappingExercise,
@@ -7113,6 +7124,7 @@ export function App() {
         <ModesView
           modeChannelLabel={configuredModeChannel !== undefined ? `CH${configuredModeChannel}` : 'Not configured'}
           modeChannelParamName={snapshot.vehicle?.vehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH'}
+          modeChannelRcLogicClaim={configuredModeChannel !== undefined ? rcLogicChannelClaims.get(configuredModeChannel) : undefined}
           joystickModeNote={
             snapshot.vehicle?.vehicle === 'ArduSub'
               ? 'ArduSub selects modes via joystick button assignments (BTNn_FUNCTION), not an RC mode-switch channel — configure them in the Parameters view.'
@@ -7686,6 +7698,7 @@ export function App() {
         onToggleEngine={handleRcLogicToggleEngine}
         hiddenTermCount={rcLogicModel.hiddenTermCount}
         tableFull={rcLogicModel.freeTermIndex === null}
+        externalClaimByChannel={externalChannelClaims}
       />
       ) : null}
 

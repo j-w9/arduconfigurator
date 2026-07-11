@@ -1554,6 +1554,22 @@ test.describe('RC Mixer view', () => {
     await expect(page.getByTestId('rc-mixer-channel-6')).toBeVisible()
     await expect(page.getByTestId('rc-mixer-channel-7')).toBeVisible()
     await expect(page.getByTestId('rc-mixer-channel-8')).toBeVisible()
+
+    // Cross-subsystem awareness: ch7 is the flight-mode switch, so the mixer
+    // badges it as already claimed even though it has no RCL term of its own.
+    await expect(page.getByTestId('rc-mixer-channel-claim-7')).toContainText('Flight mode switch')
+  })
+
+  test('surfaces RC Mixer term usage back in the Receiver view (reverse awareness)', async ({ page }) => {
+    // Demo Copter has RCL terms on ch5 (ArmDisarm) and ch6; the Receiver view
+    // summarises that those channels also carry an RC Mixer function.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-receiver').click()
+    const summary = page.getByTestId('receiver-rcl-summary')
+    await expect(summary).toContainText('CH5')
+    await expect(summary).toContainText('RC Mixer')
   })
 
   test('function picker only offers functions the connected vehicle firmware actually supports', async ({ page }) => {
