@@ -27,6 +27,8 @@ export interface UseVtxTableResult {
   saving: boolean
   error: string | undefined
   setFrequency: (bandIndex: number, channelIndex: number, mhz: number) => void
+  setPowerValue: (index: number, value: number) => void
+  setPowerLabel: (index: number, label: string) => void
   save: () => void
   reset: () => void
   reload: () => void
@@ -103,6 +105,31 @@ export function useVtxTable(input: {
     setDirty(true)
   }, [])
 
+  const setPowerValue = useCallback((index: number, value: number) => {
+    setDraft((current) => {
+      if (!current) return current
+      const level = current.powerLevels[index]
+      if (!level) return current
+      const next = cloneVtxTable(current)
+      next.powerLevels[index].value = Number.isFinite(value) ? Math.max(0, Math.min(0xffff, Math.round(value))) : 0
+      return next
+    })
+    setDirty(true)
+  }, [])
+
+  const setPowerLabel = useCallback((index: number, label: string) => {
+    setDraft((current) => {
+      if (!current) return current
+      const level = current.powerLevels[index]
+      if (!level) return current
+      const next = cloneVtxTable(current)
+      // The firmware stores a 3-char fixed-width label; keep the edit within that.
+      next.powerLevels[index].label = label.slice(0, 3)
+      return next
+    })
+    setDirty(true)
+  }, [])
+
   const reset = useCallback(() => {
     setDraft(detected ? cloneVtxTable(detected) : undefined)
     setDirty(false)
@@ -129,5 +156,5 @@ export function useVtxTable(input: {
       .finally(() => setSaving(false))
   }, [runtime, draft, saving])
 
-  return { status, table: draft, dirty, saving, error, setFrequency, save, reset, reload }
+  return { status, table: draft, dirty, saving, error, setFrequency, setPowerValue, setPowerLabel, save, reset, reload }
 }

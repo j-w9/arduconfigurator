@@ -3310,6 +3310,37 @@ textarea:focus {
   align-items: center;
   gap: 8px;
 }
+.bf-vtx-table__power-grid {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.bf-vtx-table__power-grid th,
+.bf-vtx-table__power-grid td {
+  border: 1px solid var(--surface-400);
+  padding: 4px 6px;
+  text-align: left;
+}
+.bf-vtx-table__power-grid thead th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.bf-vtx-table__power-grid input[type='number'],
+.bf-vtx-table__power-grid input[type='text'] {
+  font-family: var(--font-data);
+  font-size: 12px;
+  background: var(--surface-300);
+  color: var(--text);
+  border: 1px solid var(--surface-400);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+.bf-vtx-table__power-grid input[type='number'] {
+  width: 72px;
+  text-align: right;
+}
+.bf-vtx-table__power-grid input[type='text'] {
+  width: 56px;
+}
 .bf-vtx-table__power small {
   color: var(--text-muted);
   line-height: 1.5;
