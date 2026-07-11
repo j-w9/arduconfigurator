@@ -138,11 +138,16 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
   const status = statusModifier(draftStatusById, parameter.id)
   const currentValue = editedValues[parameter.id] ?? String(liveValue ?? '')
   const matchesKnownOption = options.some((option) => String(option.value) === currentValue)
-  // Sticky "I picked Custom…" flag — without it, typing e.g. "6" (a real
+  // Sticky "I'm in Custom… mode" flag — without it, typing e.g. "6" (a real
   // FLTMODE value) into the number input would make matchesKnownOption true
   // again and the custom input would vanish out from under the operator's
-  // cursor mid-edit.
-  const [customModeForced, setCustomModeForced] = useState(false)
+  // cursor mid-edit. Latch it on first render when the field AUTO-enters custom
+  // mode because the live value is already unlisted (e.g. a scripting-defined
+  // FLTMODEn=29): otherwise that path — not just the dropdown-initiated one —
+  // hits the same mid-edit collapse the flag exists to prevent.
+  const [customModeForced, setCustomModeForced] = useState(
+    () => allowCustomValue && currentValue !== '' && !matchesKnownOption
+  )
   const showCustomInput = allowCustomValue && (customModeForced || (currentValue !== '' && !matchesKnownOption))
 
   if (allowCustomValue) {

@@ -3481,7 +3481,8 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       description: 'Battery sensing source configuration.',
       category: 'power',
       minimum: 0,
-      maximum: 24,
+      // Shares the ArduPilot AP_BattMonitor type enum; 4.6 supports 0..29.
+      maximum: 29,
       rebootRequired: true,
       notes: batteryMonitorNotes,
       options: enumOptions(ARDUCOPTER_BATTERY_MONITOR_LABELS)

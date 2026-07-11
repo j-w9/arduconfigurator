@@ -143,13 +143,6 @@ export interface SnapshotsSectionProps {
   refs: SnapshotsSectionRefs
   derived: SnapshotsSectionDerived
   handlers: SnapshotsSectionHandlers
-  // Snapshot-vs-snapshot compare picker. undefined / 'live' means
-  // baseline is the live FC snapshot (the default "Restore Preview"
-  // behaviour); a savedSnapshot.id swaps the baseline to that saved
-  // snapshot's parameter values. Owned by App.tsx so the derived
-  // diff above is consistent with the picker's value.
-  snapshotCompareBaselineId: string | undefined
-  onSnapshotCompareBaselineIdChange: (next: string | undefined) => void
 }
 
 export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
@@ -170,9 +163,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     safetyAcks,
     refs,
     derived,
-    handlers,
-    snapshotCompareBaselineId,
-    onSnapshotCompareBaselineIdChange
+    handlers
   } = props
 
   const {
@@ -730,50 +721,12 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
 
                 <div className="snapshots-detail-section-heading">
                   <div>
-                    <h4>{snapshotCompareBaselineId ? 'Changed between snapshots' : 'Restore preview — changed parameters'}</h4>
+                    <h4>Restore preview — changed parameters</h4>
                   </div>
                   <span className="snapshots-counter-chip">
-                    {selectedSnapshotChangedEntries.length}
-                    {snapshotCompareBaselineId ? ' diff' : ' writes'}
+                    {selectedSnapshotChangedEntries.length} writes
                   </span>
                 </div>
-
-                {/* Compare baseline picker. Default is the live FC; the
-                    operator can swap to any OTHER saved snapshot to get
-                    a snapshot-vs-snapshot diff. Hidden when only the
-                    selected snapshot exists (no other baseline to pick). */}
-                {savedSnapshots.length > 1 ? (
-                  <div className="snapshots-compare-picker" data-testid="snapshot-compare-picker">
-                    <label>
-                      <span>Compare to baseline:</span>
-                      <select
-                        data-testid="snapshot-compare-baseline-select"
-                        value={snapshotCompareBaselineId ?? '__live__'}
-                        onChange={(event) => {
-                          const next = event.target.value
-                          onSnapshotCompareBaselineIdChange(next === '__live__' ? undefined : next)
-                        }}
-                      >
-                        <option value="__live__">Live flight controller (default)</option>
-                        {savedSnapshots
-                          .filter((entry) => entry.id !== selectedSnapshot.id)
-                          .map((entry) => (
-                            <option key={entry.id} value={entry.id}>
-                              {entry.label}
-                              {entry.backup.hardware?.uid && isMeaningfulHardwareUid(entry.backup.hardware.uid)
-                                ? `  ·  UID ${formatHardwareUidShort(entry.backup.hardware.uid)}`
-                                : ''}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                    {snapshotCompareBaselineId ? (
-                      <small className="snapshots-compare-picker__note">
-                        Diff is &ldquo;baseline snapshot value &rarr; selected snapshot value.&rdquo; Restore writes the SELECTED snapshot to the live FC regardless of this baseline.
-                      </small>
-                    ) : null}
-                  </div>
-                ) : null}
 
                 {snapshotRestoreDroppedParamIds.size > 0 ? (
                   <div className="snapshot-restore-dropped-note" data-testid="snapshot-restore-dropped-note">

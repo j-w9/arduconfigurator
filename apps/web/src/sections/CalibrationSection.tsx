@@ -289,12 +289,19 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 const currentOffset = readParameterValue(snapshot, 'BATT_AMP_OFFSET')
                 const currentPerVolt = readParameterValue(snapshot, 'BATT_AMP_PERVLT')
                 const monitorMode = readRoundedParameter(snapshot, 'BATT_MONITOR')
-                // Only show the current cal card when the FC's monitor mode
-                // actually reads current (analog voltage+current = 4, plus
-                // a handful of CAN/SMBUS variants that also expose current).
-                // BATT_MONITOR=3 (voltage only) or 0 (off) → no current path
-                // to calibrate, hide the card.
-                const monitorReadsCurrent = monitorMode !== undefined && [4, 5, 7, 8, 9, 10, 12, 13, 14, 16].includes(monitorMode)
+                // This card calibrates the ANALOG current sensor via
+                // BATT_AMP_OFFSET/BATT_AMP_PERVLT, so it only applies to monitor
+                // types whose driver actually reads current through that path —
+                // the AP_BattMonitor_Analog family: 4 (Analog Voltage+Current),
+                // 25 (Synthetic Current + Analog Voltage, a subclass of Analog),
+                // 28 (AD7091R5 ADC), and 31 (Analog Current Only). Verified
+                // against the AP_BattMonitor driver factory in ~/ardupilot.
+                // Smart/CAN/SMBus/ESC monitors (7/8/9/13/14/16/…) report already-
+                // calibrated current over their own bus and ignore these params,
+                // so the card is hidden for them; voltage-only (3) and disabled
+                // (0) have no current path at all.
+                const monitorUsesAnalogCurrentCal =
+                  monitorMode !== undefined && [4, 25, 28, 31].includes(monitorMode)
                 const connected = snapshot.connection.kind === 'connected'
                 const blockedReason = !connected
                   ? 'Connect to a vehicle first.'
@@ -302,10 +309,10 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                     ? 'Finish parameter sync and disarm before applying.'
                     : monitorMode === undefined
                       ? 'BATT_MONITOR not retrieved yet.'
-                      : !monitorReadsCurrent
-                        ? `BATT_MONITOR=${monitorMode} doesn't read current — switch the monitor mode in Power first.`
+                      : !monitorUsesAnalogCurrentCal
+                        ? `BATT_MONITOR=${monitorMode} has no analog current sensor to calibrate — set it up in Power first.`
                         : undefined
-                if (!monitorReadsCurrent && monitorMode !== undefined) {
+                if (!monitorUsesAnalogCurrentCal && monitorMode !== undefined) {
                   // Hide entirely on monitor modes that don't expose current
                   // (voltage-only setups AND BATT_MONITOR=0 / disabled) —
                   // keeps the cal stack tidy on FCs without a current sensor.

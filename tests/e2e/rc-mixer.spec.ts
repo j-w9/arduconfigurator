@@ -51,10 +51,9 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     // otherwise the free-slot allocation races an empty model.
     await expect(page.getByTestId('rc-mixer-track-band-rcl-2')).toBeVisible()
 
-    // Add a term on channel 8 -> allocates the first free slot (term 3) and the
-    // pending row appears, driven entirely by the staged RCL3_* drafts. (Ch8,
-    // not ch7: the demo's FLTMODE_CH=7 makes channel 7 the mode-switch channel,
-    // which the RC Mixer now excludes as a non-AUX-candidate.)
+    // Add a term on channel 8 (an empty aux channel) -> allocates the first free
+    // slot (term 3) and the pending row appears, driven entirely by the staged
+    // RCL3_* drafts.
     await page.getByTestId('rc-mixer-add-channel-8').click()
     await expect(page.getByTestId('rc-mixer-assignment-rcl-3')).toBeVisible()
     await expect(page.getByTestId('rc-mixer-track-band-rcl-3')).toBeVisible()

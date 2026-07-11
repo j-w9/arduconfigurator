@@ -44,9 +44,13 @@ export interface MotorReorderDialogProps {
   guidedReorderActive: boolean
   guidedReorderStep: number
   guidedReorderMapping: Record<string, number>
-  /** Operator-paced identify: true while waiting for the explicit Spin
-   *  click (no auto-spin — it raced the FC's previous test window). */
+  /** True while waiting for a motor to spin. The first motor waits for an
+   *  explicit Spin click; when auto-spin is on, later motors spin themselves
+   *  once the previous test window closes (gated on the live motor-test
+   *  status so it can't race the FC's still-armed test). */
   guidedReorderAwaitingSpin: boolean
+  /** When true, each motor after the first spins automatically on advance. */
+  guidedReorderAutoSpin: boolean
   /** True once an identify sequence finished this dialog session. Gates
    *  the Stage button's primary emphasis and the no-changes note. */
   guidedReorderCompleted: boolean
@@ -59,6 +63,7 @@ export interface MotorReorderDialogProps {
   onStartGuidedReorder: () => void
   onCancelGuidedReorder: () => void
   onSpinGuidedReorderCurrent: () => void
+  onToggleGuidedReorderAutoSpin: (next: boolean) => void
   onPickGuidedReorderPosition: (motorNumber: number) => void
   onStageReorderDrafts: () => void
   onSpinSingleMotor: (channelNumber: number) => void
@@ -102,6 +107,7 @@ export function MotorReorderDialog({
   guidedReorderStep,
   guidedReorderMapping,
   guidedReorderAwaitingSpin,
+  guidedReorderAutoSpin,
   guidedReorderCompleted,
   onClose,
   onTabChange,
@@ -111,6 +117,7 @@ export function MotorReorderDialog({
   onStartGuidedReorder,
   onCancelGuidedReorder,
   onSpinGuidedReorderCurrent,
+  onToggleGuidedReorderAutoSpin,
   onPickGuidedReorderPosition,
   onStageReorderDrafts,
   onSpinSingleMotor,
@@ -299,12 +306,16 @@ export function MotorReorderDialog({
                     {guidedReorderAwaitingSpin ? (
                       <>
                         <strong>OUT{effectiveMotorOutputs[guidedReorderStep]?.channelNumber ?? '?'}</strong>
-                        {' '}({guidedReorderStep + 1} / {effectiveMotorOutputs.length}) — click Spin when ready.
+                        {' '}({guidedReorderStep + 1} / {effectiveMotorOutputs.length}) —{' '}
+                        {guidedReorderAutoSpin && guidedReorderStep > 0
+                          ? 'auto-spinning as soon as the previous motor stops (or Spin now).'
+                          : 'click Spin when ready.'}
                       </>
                     ) : (
                       <>
                         <strong>OUT{effectiveMotorOutputs[guidedReorderStep]?.channelNumber ?? '?'} spun</strong>
-                        {' '}({guidedReorderStep + 1} / {effectiveMotorOutputs.length}). Click the position that moved, or Spin again.
+                        {' '}({guidedReorderStep + 1} / {effectiveMotorOutputs.length}). Click the position that moved
+                        {guidedReorderAutoSpin ? ' — the next motor then spins automatically.' : ', or Spin again.'}
                       </>
                     )}
                   </p>
@@ -316,7 +327,13 @@ export function MotorReorderDialog({
                       disabled={busyAction !== undefined || motorTestBusy}
                       data-testid="motor-reorder-guided-spin"
                     >
-                      {motorTestBusy ? 'Spinning…' : guidedReorderAwaitingSpin ? 'Spin' : 'Spin again'}
+                      {motorTestBusy
+                        ? 'Spinning…'
+                        : guidedReorderAwaitingSpin
+                          ? guidedReorderAutoSpin && guidedReorderStep > 0
+                            ? 'Spin now'
+                            : 'Spin'
+                          : 'Spin again'}
                     </button>
                     <button
                       type="button"
@@ -327,6 +344,14 @@ export function MotorReorderDialog({
                       Cancel identify
                     </button>
                   </div>
+                  <label className="motor-reorder-autospin" data-testid="motor-reorder-guided-autospin">
+                    <input
+                      type="checkbox"
+                      checked={guidedReorderAutoSpin}
+                      onChange={(event) => onToggleGuidedReorderAutoSpin(event.target.checked)}
+                    />
+                    <span>Auto-spin each motor after the first (uncheck to spin every motor by hand)</span>
+                  </label>
                 </div>
               ) : (
                 <div className="switch-exercise-controls" style={{ marginBottom: 10 }}>

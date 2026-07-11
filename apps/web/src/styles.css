@@ -8716,6 +8716,19 @@ details.metadata-settings-section:not([open]) > summary::after {
   color: var(--text-muted);
 }
 
+.motor-reorder-autospin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.motor-reorder-autospin input {
+  cursor: pointer;
+}
+
 .motor-reorder-table {
   display: grid;
   gap: 1px;

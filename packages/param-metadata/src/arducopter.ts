@@ -10,6 +10,8 @@ import {
   ARDUCOPTER_BATTERY_FAILSAFE_ACTION_LABELS,
   ARDUCOPTER_BATTERY_MONITOR_LABELS,
   ARDUCOPTER_BATTERY_VOLTAGE_SOURCE_LABELS,
+  ARDUCOPTER_CAM_AUTO_ONLY_LABELS,
+  ARDUCOPTER_CAM_TRIGG_TYPE_LABELS,
   ARDUCOPTER_FLTMODE_CHANNEL_LABELS,
   ARDUCOPTER_FLIGHT_MODE_LABELS,
   ARDUCOPTER_FRAME_CLASS_LABELS,
@@ -17,6 +19,7 @@ import {
   ARDUCOPTER_FS_EKF_ACTION_LABELS,
   ARDUCOPTER_FS_GCS_LABELS,
   ARDUCOPTER_GPS_AUTO_CONFIG_LABELS,
+  ARDUCOPTER_GPS_GNSS_MODE_BIT_LABELS,
   ARDUCOPTER_GPS_AUTO_SWITCH_LABELS,
   ARDUCOPTER_GPS_PRIMARY_LABELS,
   ARDUCOPTER_GPS_RATE_MS_LABELS,
@@ -103,6 +106,11 @@ const gpsSwitchingNotes = [
 const gpsRateNotes = [
   'Higher GPS update rates can help responsiveness but also increase bus load and CPU work on some targets.',
   'Only raise the GPS rate if the attached module and link can sustain it cleanly.'
+]
+
+const gnssModeNotes = [
+  'GPS is required for a fix — leave it checked whenever you enable any constellation.',
+  'Selecting more constellations than the receiver can track concurrently can reduce update rate; leave the mask at 0 to keep the module at its own default unless you have a reason to restrict it.'
 ]
 
 const vtxEnableNotes = [
@@ -1361,6 +1369,49 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       notes: gpsRateNotes,
       options: enumOptions(ARDUCOPTER_GPS_RATE_MS_LABELS)
     },
+    GPS_GNSS_MODE: {
+      id: 'GPS_GNSS_MODE',
+      label: 'Primary GNSS Systems',
+      description: 'Which GNSS constellations the primary GPS should track. Leave all unchecked (0) to keep the receiver at its own configured default.',
+      category: 'peripherals',
+      minimum: 0,
+      maximum: 127,
+      bitmask: true,
+      rebootRequired: true,
+      notes: gnssModeNotes,
+      options: enumOptions(ARDUCOPTER_GPS_GNSS_MODE_BIT_LABELS)
+    },
+    GPS_GNSS_MODE2: {
+      id: 'GPS_GNSS_MODE2',
+      label: 'Secondary GNSS Systems',
+      description: 'Which GNSS constellations the secondary GPS should track. Leave all unchecked (0) to keep the receiver at its own configured default.',
+      category: 'peripherals',
+      minimum: 0,
+      maximum: 127,
+      bitmask: true,
+      rebootRequired: true,
+      notes: gnssModeNotes,
+      options: enumOptions(ARDUCOPTER_GPS_GNSS_MODE_BIT_LABELS)
+    },
+    CAM_TRIGG_TYPE: {
+      id: 'CAM_TRIGG_TYPE',
+      label: 'Camera Trigger Type',
+      description: 'How the camera shutter is triggered. Legacy camera parameter (renamed CAM1_TYPE on 4.2+); values differ from the modern camera-type enum.',
+      category: 'peripherals',
+      minimum: 0,
+      maximum: 3,
+      rebootRequired: true,
+      options: enumOptions(ARDUCOPTER_CAM_TRIGG_TYPE_LABELS)
+    },
+    CAM_AUTO_ONLY: {
+      id: 'CAM_AUTO_ONLY',
+      label: 'Distance Trigger in AUTO Only',
+      description: 'When enabled, distance-based camera triggering only runs in AUTO mode.',
+      category: 'peripherals',
+      minimum: 0,
+      maximum: 1,
+      options: enumOptions(ARDUCOPTER_CAM_AUTO_ONLY_LABELS)
+    },
     // New 4.5+ per-instance GPS params. The legacy GPS_TYPE / GPS_TYPE2 /
     // GPS_RATE_MS resolutions are still curated above and stay readable via
     // the runtime's bidirectional alias shim (see runtime.ts). These entries
@@ -1567,7 +1618,8 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Battery sensing source configuration.',
       category: 'power',
       minimum: 0,
-      maximum: 24,
+      // 4.6 supports monitor types 0..29; the 4.7 override bumps this to 32.
+      maximum: 29,
       rebootRequired: true,
       notes: batteryMonitorNotes,
       options: enumOptions(ARDUCOPTER_BATTERY_MONITOR_LABELS)
