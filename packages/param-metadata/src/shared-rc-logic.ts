@@ -24,11 +24,23 @@ export const RC_LOGIC_NUM_TERMS = 12
 export const RC_LOGIC_OPT_SOURCE_TYPE_MASK = 0x3
 export const RC_LOGIC_OPT_COMBINE_AND_BIT = 2
 export const RC_LOGIC_OPT_NEGATE_BIT = 3
+/** Output position is the 2-bit field in bits 4-5: 0=HIGH (default), 1=MIDDLE,
+ *  2=LOW. Any row with a non-HIGH position puts the whole function into
+ *  "selector" mode (lowest-numbered active row drives its position) — this is
+ *  how one RC channel drives a multi-position target such as VTX power. */
+export const RC_LOGIC_OPT_OUTPOS_SHIFT = 4
+export const RC_LOGIC_OPT_OUTPOS_MASK = 0x3
 
 export enum RcLogicSourceType {
   Range = 0,
   Link = 1,
   Condition = 2
+}
+
+export enum RcLogicOutputPosition {
+  High = 0,
+  Middle = 1,
+  Low = 2
 }
 
 /** Full ArduCopter AUX_FUNC value list (from RC_Channel.cpp RCn_OPTION @Values,
@@ -175,17 +187,19 @@ function termParameterDefinitions(n: number): Record<string, ParameterDefinition
       id: `${prefix}OPT`,
       label: `Term ${n} · options`,
       description:
-        'Packed term options: bits 0-1 source type (0 range, 1 link, 2 condition), bit 2 combine (0 OR / 1 AND), bit 3 negate.',
+        'Packed term options: bits 0-1 source type (0 range, 1 link, 2 condition), bit 2 combine (0 OR / 1 AND), bit 3 negate, bits 4-5 output position (0 HIGH, 1 MIDDLE, 2 LOW) for a multi-position target such as VTX power — any non-HIGH row puts the function into selector mode.',
       category: RC_LOGIC_CATEGORY,
       minimum: 0,
-      maximum: 15,
+      maximum: 63,
       step: 1,
       bitmask: true,
       options: [
         { value: 0, label: 'Source type bit 0' },
         { value: 1, label: 'Source type bit 1' },
         { value: 2, label: 'Combine (AND)' },
-        { value: 3, label: 'Negate' }
+        { value: 3, label: 'Negate' },
+        { value: 4, label: 'Output position bit 0' },
+        { value: 5, label: 'Output position bit 1' }
       ]
     },
     [`${prefix}SRC`]: {

@@ -62,7 +62,15 @@ export interface RcMixerAssignment {
   /** When true, the function is active when the channel is OUTSIDE the
    * [low, high] window. Mirrors BF's "inverted" semantics. */
   inverted: boolean
+  /** Output position emitted while this row is active (RCL OPT bits 4-5),
+   * for multi-position targets such as VTX power: 'high' (default) / 'middle'
+   * / 'low'. Multiple rows for the same function with different positions form
+   * a selector (lowest-numbered active row wins). Only meaningful on the
+   * firmware-backed RCL path; undefined on the preview scaffold. */
+  outputPosition?: RcMixerOutputPosition
 }
+
+export type RcMixerOutputPosition = 'high' | 'middle' | 'low'
 
 export interface RcMixerState {
   assignments: RcMixerAssignment[]
