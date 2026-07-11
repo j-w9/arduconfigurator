@@ -1,6 +1,7 @@
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+import { isRcLogicMultiPositionFunction } from '@arduconfig/param-metadata'
 
 import {
   RC_MIXER_TRACK_MAX_PWM,
@@ -452,7 +453,7 @@ export function RcMixerView(props: RcMixerViewProps) {
                               />
                               <span>Inverted</span>
                             </label>
-                            {firmwareSupported ? (
+                            {firmwareSupported && isRcLogicMultiPositionFunction(assignment.functionId) ? (
                               <label className="rc-mixer-assignment__position">
                                 <span>Output position</span>
                                 <select
