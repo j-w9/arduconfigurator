@@ -1,7 +1,7 @@
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
-import { isRcLogicMultiPositionFunction } from '@arduconfig/param-metadata'
+import { isRcLogicLevelSelectFunction } from '@arduconfig/param-metadata'
 
 import {
   RC_MIXER_TRACK_MAX_PWM,
@@ -10,8 +10,7 @@ import {
   computeCursorPercent,
   type RcMixerAssignment,
   type RcMixerFunctionDefinition,
-  type RcMixerFunctionDefinitionLookup,
-  type RcMixerOutputPosition
+  type RcMixerFunctionDefinitionLookup
 } from '../view-models/rc-mixer'
 
 // Drag step (μs) — snap the range edges like Betaflight's 25 μs mode-range grid.
@@ -97,6 +96,10 @@ export interface RcMixerViewProps {
    *  aux functions) so the operator sees a channel is already in use before
    *  layering an RC Mixer term on it. Keyed by channel number. */
   externalClaimByChannel?: ReadonlyMap<number, readonly string[]>
+  /** Non-zero @VTX power levels in table order (0-based index = the value stored
+   *  in RCL OPT bits 5-7). Drives the VTX_POWER level selector; absent when no
+   *  VTX table is detected. */
+  vtxPowerLevels?: readonly { index: number; mw: number; label: string }[]
 }
 
 export function RcMixerView(props: RcMixerViewProps) {
@@ -114,7 +117,8 @@ export function RcMixerView(props: RcMixerViewProps) {
     onToggleEngine,
     hiddenTermCount,
     tableFull,
-    externalClaimByChannel
+    externalClaimByChannel,
+    vtxPowerLevels
   } = props
 
   // Drag-to-resize the PWM range bands (Betaflight-style). The band edges and the
@@ -453,21 +457,31 @@ export function RcMixerView(props: RcMixerViewProps) {
                               />
                               <span>Inverted</span>
                             </label>
-                            {firmwareSupported && isRcLogicMultiPositionFunction(assignment.functionId) ? (
+                            {firmwareSupported &&
+                            isRcLogicLevelSelectFunction(assignment.functionId) &&
+                            vtxPowerLevels &&
+                            vtxPowerLevels.length > 0 ? (
                               <label className="rc-mixer-assignment__position">
-                                <span>Output position</span>
+                                <span>VTX power</span>
                                 <select
-                                  value={assignment.outputPosition ?? 'high'}
-                                  onChange={(event) =>
-                                    onUpdateAssignment(assignment.id, {
-                                      outputPosition: event.target.value as RcMixerOutputPosition
-                                    })
-                                  }
-                                  data-testid={`rc-mixer-position-${assignment.id}`}
+                                  value={assignment.levelMode ? String(assignment.outputLevel ?? 0) : 'plain'}
+                                  onChange={(event) => {
+                                    const raw = event.target.value
+                                    onUpdateAssignment(
+                                      assignment.id,
+                                      raw === 'plain'
+                                        ? { levelMode: false }
+                                        : { levelMode: true, outputLevel: Number(raw) }
+                                    )
+                                  }}
+                                  data-testid={`rc-mixer-level-${assignment.id}`}
                                 >
-                                  <option value="high">High</option>
-                                  <option value="middle">Middle</option>
-                                  <option value="low">Low</option>
+                                  <option value="plain">Full power (on/off)</option>
+                                  {vtxPowerLevels.map((level) => (
+                                    <option key={level.index} value={String(level.index)}>
+                                      {level.mw} mW{level.label && level.label !== String(level.mw) ? ` (${level.label})` : ''}
+                                    </option>
+                                  ))}
                                 </select>
                               </label>
                             ) : null}

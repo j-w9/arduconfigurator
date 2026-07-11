@@ -59,22 +59,24 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     await expect(page.getByTestId('rc-mixer-track-band-rcl-3')).toBeVisible()
 
     // Editing round-trips through the model (reads back the draft immediately).
-    await page.getByTestId('rc-mixer-function-rcl-3').selectOption('94') // VTX Power (multi-position)
+    await page.getByTestId('rc-mixer-function-rcl-3').selectOption('94') // VTX Power (level-select)
     await page.getByTestId('rc-mixer-low-rcl-3').fill('1800')
     await page.getByTestId('rc-mixer-high-rcl-3').fill('2000')
     await expect(page.getByTestId('rc-mixer-channel-8')).toContainText('VTX Power')
 
-    // The output-position selector only appears for a multi-position target like
-    // VTX Power, and round-trips through the draft model (this is how one channel
-    // drives multi-level VTX power in selector mode).
-    await expect(page.getByTestId('rc-mixer-position-rcl-3')).toHaveValue('high')
-    await page.getByTestId('rc-mixer-position-rcl-3').selectOption('low')
-    await expect(page.getByTestId('rc-mixer-position-rcl-3')).toHaveValue('low')
+    // VTX Power exposes a level selector listing the real @VTX power levels by mW
+    // (demo table 25/200/500/1W). Index i stores into OPT bits 5-7 — this is how a
+    // channel drives an exact VTX power level (selector mode). Defaults to plain.
+    const level = page.getByTestId('rc-mixer-level-rcl-3')
+    await expect(level).toHaveValue('plain', { timeout: 15000 })
+    await expect(level.locator('option')).toContainText(['Full power (on/off)', '25 mW', '200 mW', '500 mW', '800 mW (1W)'])
+    await level.selectOption('2') // 500 mW
+    await expect(level).toHaveValue('2')
 
-    // Switching to a plain on/off function hides the selector — position is noise
-    // there — and the row keeps working as an ordinary range term.
+    // Switching to a plain on/off function hides the level selector (VTX-only) and
+    // the row keeps working as an ordinary range term.
     await page.getByTestId('rc-mixer-function-rcl-3').selectOption('16') // AUTO Mode
-    await expect(page.getByTestId('rc-mixer-position-rcl-3')).toHaveCount(0)
+    await expect(page.getByTestId('rc-mixer-level-rcl-3')).toHaveCount(0)
     await expect(page.getByTestId('rc-mixer-channel-8')).toContainText('AUTO Mode')
 
     // Remove clears the term drafts -> row gone, channel 8 empty again (the
@@ -132,6 +134,6 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     // RCL-gated chrome (external-claim badges, output-position selectors) stays
     // hidden in the preview scaffold — all of it is gated on RCL detection.
     await expect(page.locator('[data-testid^="rc-mixer-channel-claim-"]')).toHaveCount(0)
-    await expect(page.locator('[data-testid^="rc-mixer-position-"]')).toHaveCount(0)
+    await expect(page.locator('[data-testid^="rc-mixer-level-"]')).toHaveCount(0)
   })
 })

@@ -38,12 +38,15 @@ describe('readRcLogicModel', () => {
     expect(model.assignments[0]).toMatchObject({ id: 'rcl-2', inverted: true, functionId: 18 })
   })
 
-  it('reads the output position from OPT bits 4-5 (VTX power selector)', () => {
-    const pos = (opt: number) =>
-      readRcLogicModel(params({ RCL1_FUNC: 94, RCL1_OPT: opt, RCL1_SRC: 6 }), {}).assignments[0].outputPosition
-    expect(pos(0)).toBe('high') // neither bit
-    expect(pos(1 << 4)).toBe('middle') // bit 4
-    expect(pos(2 << 4)).toBe('low') // bit 5
+  it('reads level mode (OPT bit 4) + zero-based level index (bits 5-7) for VTX power', () => {
+    const read = (opt: number) => {
+      const a = readRcLogicModel(params({ RCL1_FUNC: 94, RCL1_OPT: opt, RCL1_SRC: 6 }), {}).assignments[0]
+      return { levelMode: a.levelMode, outputLevel: a.outputLevel }
+    }
+    expect(read(0)).toEqual({ levelMode: false, outputLevel: 0 }) // no level mode
+    expect(read(0x10)).toEqual({ levelMode: true, outputLevel: 0 }) // mode bit, index 0
+    expect(read(0x10 | (1 << 5))).toEqual({ levelMode: true, outputLevel: 1 })
+    expect(read(0x10 | (3 << 5))).toEqual({ levelMode: true, outputLevel: 3 })
   })
 
   it('keeps non-range terms (link/condition) out of the editor but counts them as used', () => {
@@ -86,41 +89,42 @@ describe('rcLogic draft mappers', () => {
     expect(Number(drafts.RCL1_OPT)).toBe(0b1100) // AND + negate
   })
 
-  it('folds the output position into OPT bits 4-5, preserving and clearing correctly', () => {
-    // Set LOW while negate (bit3) is already set — negate must survive.
-    expect(Number(rcLogicUpdateDrafts(params({ RCL1_OPT: 0b1000 }), {}, 1, { outputPosition: 'low' }).RCL1_OPT)).toBe(
-      0b1000 | (2 << 4)
-    )
-    // Clearing back to HIGH wipes bits 4-5 but keeps the AND bit.
+  it('folds level mode + index into OPT bit 4 and bits 5-7, preserving other bits', () => {
+    // Select level index 2 while negate (bit 3) is set — negate must survive.
     expect(
-      Number(rcLogicUpdateDrafts(params({ RCL1_OPT: (2 << 4) | 0b0100 }), {}, 1, { outputPosition: 'high' }).RCL1_OPT)
+      Number(rcLogicUpdateDrafts(params({ RCL1_OPT: 0b1000 }), {}, 1, { levelMode: true, outputLevel: 2 }).RCL1_OPT)
+    ).toBe(0b1000 | 0x10 | (2 << 5))
+    // Clearing level mode wipes bit 4 + bits 5-7 but keeps the AND bit.
+    expect(
+      Number(rcLogicUpdateDrafts(params({ RCL1_OPT: 0x10 | (2 << 5) | 0b0100 }), {}, 1, { levelMode: false }).RCL1_OPT)
     ).toBe(0b0100)
   })
 
-  it('folds inverted and output position together in a single OPT write', () => {
+  it('folds inverted and level selection together in a single OPT write', () => {
     const drafts = rcLogicUpdateDrafts(params({ RCL1_OPT: 0b0100 /* AND */ }), {}, 1, {
       inverted: true,
-      outputPosition: 'middle'
+      levelMode: true,
+      outputLevel: 1
     })
-    expect(Number(drafts.RCL1_OPT)).toBe(0b0100 | 0b1000 | (1 << 4)) // AND + negate + MIDDLE
+    expect(Number(drafts.RCL1_OPT)).toBe(0b0100 | 0b1000 | 0x10 | (1 << 5)) // AND + negate + level mode + idx 1
   })
 
-  it('clears the output position when the row switches to a non-multi-position function', () => {
-    // Row currently VTX Power (94) with LOW position + AND bit; switch to AUTO
-    // Mode (16, on/off) — bits 4-5 must clear so AUTO Mode doesn't inherit
+  it('clears the level field when the row switches to a non-level-select function', () => {
+    // Row currently VTX Power (94) with level index 2 + AND bit; switch to AUTO
+    // Mode (16, on/off) — the level field must clear so AUTO Mode doesn't inherit
     // selector mode, but the AND bit survives.
-    const drafts = rcLogicUpdateDrafts(params({ RCL1_FUNC: 94, RCL1_OPT: (2 << 4) | 0b0100 }), {}, 1, {
+    const drafts = rcLogicUpdateDrafts(params({ RCL1_FUNC: 94, RCL1_OPT: 0x10 | (2 << 5) | 0b0100 }), {}, 1, {
       functionId: 16
     })
     expect(drafts.RCL1_FUNC).toBe('16')
-    expect(Number(drafts.RCL1_OPT)).toBe(0b0100) // position wiped, AND kept
+    expect(Number(drafts.RCL1_OPT)).toBe(0b0100) // level field wiped, AND kept
   })
 
-  it('keeps the output position when switching between multi-position functions', () => {
+  it('keeps the level field when switching between level-select functions', () => {
     // Staying on VTX Power (94) — no OPT rewrite needed just from re-selecting it.
-    const drafts = rcLogicUpdateDrafts(params({ RCL1_FUNC: 94, RCL1_OPT: 2 << 4 }), {}, 1, { functionId: 94 })
+    const drafts = rcLogicUpdateDrafts(params({ RCL1_FUNC: 94, RCL1_OPT: 0x10 | (2 << 5) }), {}, 1, { functionId: 94 })
     expect(drafts.RCL1_FUNC).toBe('94')
-    expect(drafts.RCL1_OPT).toBeUndefined() // no position change → no redundant OPT draft
+    expect(drafts.RCL1_OPT).toBeUndefined() // no level change → no redundant OPT draft
   })
 
   it('remove clears the term drafts and disables a live term', () => {

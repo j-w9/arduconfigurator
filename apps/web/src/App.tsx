@@ -4761,7 +4761,9 @@ export function App() {
   // otherwise the "Table not available" preview.
   const vtxTable = useVtxTable({
     runtime,
-    active: activeViewId === 'vtx',
+    // Also load on the RC Mixer view so a VTX_POWER term's level selector can
+    // list the real @VTX power levels by mW.
+    active: activeViewId === 'vtx' || activeViewId === 'rc-mixer',
     connected: snapshot.connection.kind === 'connected'
   })
   // NET_ENABLE is present on every networking-capable ArduPilot build (Ethernet
@@ -4913,6 +4915,18 @@ export function App() {
     () => deriveRcLogicChannelClaims(rcLogicVisibleAssignments),
     [rcLogicVisibleAssignments]
   )
+  // Non-zero @VTX power levels in table order — a VTX_POWER RCL term's level
+  // selector stores the 0-based index here into OPT bits 5-7. The firmware skips
+  // value=0 levels (get_power_mw_for_index), so we filter them out before indexing.
+  const rcMixerVtxPowerLevels = useMemo(() => {
+    const levels = vtxTable.table?.powerLevels
+    if (!levels) {
+      return undefined
+    }
+    return levels
+      .filter((level) => level.value !== 0)
+      .map((level, index) => ({ index, mw: level.value, label: level.label }))
+  }, [vtxTable.table])
   function handleRcLogicAddAssignment(channel: number): void {
     const drafts = rcLogicAddDrafts(rcLogicModel, channel)
     if (!drafts) {
@@ -7699,6 +7713,7 @@ export function App() {
         hiddenTermCount={rcLogicModel.hiddenTermCount}
         tableFull={rcLogicModel.freeTermIndex === null}
         externalClaimByChannel={externalChannelClaims}
+        vtxPowerLevels={rcMixerVtxPowerLevels}
       />
       ) : null}
 
