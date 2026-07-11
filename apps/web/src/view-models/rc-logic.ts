@@ -10,39 +10,46 @@
 import {
   RC_LOGIC_AUX_FUNCTION_OPTIONS,
   RC_LOGIC_NUM_TERMS,
+  RC_LOGIC_OPT_LEVEL_INDEX_MASK,
+  RC_LOGIC_OPT_LEVEL_INDEX_SHIFT,
+  RC_LOGIC_OPT_LEVEL_MODE_MASK,
   RC_LOGIC_OPT_NEGATE_BIT,
-  RC_LOGIC_OPT_OUTPOS_MASK,
-  RC_LOGIC_OPT_OUTPOS_SHIFT,
   RC_LOGIC_OPT_SOURCE_TYPE_MASK,
-  RcLogicOutputPosition,
   RcLogicSourceType,
-  isRcLogicMultiPositionFunction
+  isRcLogicLevelSelectFunction
 } from '@arduconfig/param-metadata'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import type { ParameterDraftValues } from '../hooks/use-parameter-drafts'
-import { type RcMixerAssignment, type RcMixerFunctionDefinition, type RcMixerOutputPosition } from './rc-mixer'
+import { type RcMixerAssignment, type RcMixerFunctionDefinition } from './rc-mixer'
 
 const NEGATE_MASK = 1 << RC_LOGIC_OPT_NEGATE_BIT
-const OUTPOS_MASK_SHIFTED = RC_LOGIC_OPT_OUTPOS_MASK << RC_LOGIC_OPT_OUTPOS_SHIFT
+const LEVEL_INDEX_MASK_SHIFTED = RC_LOGIC_OPT_LEVEL_INDEX_MASK << RC_LOGIC_OPT_LEVEL_INDEX_SHIFT
+const LEVEL_FIELD_MASK = RC_LOGIC_OPT_LEVEL_MODE_MASK | LEVEL_INDEX_MASK_SHIFTED
 
-/** Decode OPT bits 4-5 into the view model's output position. */
-export function decodeOutputPosition(opt: number): RcMixerOutputPosition {
-  const value = (opt >> RC_LOGIC_OPT_OUTPOS_SHIFT) & RC_LOGIC_OPT_OUTPOS_MASK
-  if (value === RcLogicOutputPosition.Low) return 'low'
-  if (value === RcLogicOutputPosition.Middle) return 'middle'
-  return 'high'
+export interface RcLogicLevelSelection {
+  levelMode: boolean
+  /** Zero-based level index (0-7) from OPT bits 5-7. */
+  outputLevel: number
 }
 
-/** Fold an output position into OPT bits 4-5, preserving the other bits. */
-export function encodeOutputPosition(opt: number, position: RcMixerOutputPosition): number {
-  const value =
-    position === 'low'
-      ? RcLogicOutputPosition.Low
-      : position === 'middle'
-        ? RcLogicOutputPosition.Middle
-        : RcLogicOutputPosition.High
-  return (opt & ~OUTPOS_MASK_SHIFTED) | (value << RC_LOGIC_OPT_OUTPOS_SHIFT)
+/** Decode OPT bit 4 (level mode) + bits 5-7 (zero-based level index). */
+export function decodeLevel(opt: number): RcLogicLevelSelection {
+  return {
+    levelMode: (opt & RC_LOGIC_OPT_LEVEL_MODE_MASK) !== 0,
+    outputLevel: (opt >> RC_LOGIC_OPT_LEVEL_INDEX_SHIFT) & RC_LOGIC_OPT_LEVEL_INDEX_MASK
+  }
+}
+
+/** Fold level mode + a zero-based level index into OPT, preserving the other
+ *  bits. Clearing level mode wipes both the mode bit and the index. */
+export function encodeLevel(opt: number, levelMode: boolean, outputLevel: number): number {
+  const cleared = opt & ~LEVEL_FIELD_MASK
+  if (!levelMode) {
+    return cleared
+  }
+  const index = Math.max(0, Math.min(RC_LOGIC_OPT_LEVEL_INDEX_MASK, Math.round(outputLevel)))
+  return cleared | RC_LOGIC_OPT_LEVEL_MODE_MASK | (index << RC_LOGIC_OPT_LEVEL_INDEX_SHIFT)
 }
 const ADD_DEFAULT_LOW = 1700
 const ADD_DEFAULT_HIGH = 2100
@@ -128,6 +135,7 @@ export function readRcLogicModel(
       hiddenTermCount += 1
       continue
     }
+    const level = decodeLevel(opt)
     assignments.push({
       id: rcLogicAssignmentId(term),
       channel: effective(ids.src, 0),
@@ -135,7 +143,8 @@ export function readRcLogicModel(
       lowPwm: effective(ids.min, ADD_DEFAULT_LOW),
       highPwm: effective(ids.max, ADD_DEFAULT_HIGH),
       inverted: (opt & NEGATE_MASK) !== 0,
-      outputPosition: decodeOutputPosition(opt)
+      levelMode: level.levelMode,
+      outputLevel: level.outputLevel
     })
   }
 
@@ -186,22 +195,26 @@ export function rcLogicUpdateDrafts(
   if (patch.channel !== undefined) next[ids.src] = String(patch.channel)
   if (patch.lowPwm !== undefined) next[ids.min] = String(patch.lowPwm)
   if (patch.highPwm !== undefined) next[ids.max] = String(patch.highPwm)
-  // Negate (bit 3) and output position (bits 4-5) both live in OPT — fold every
-  // OPT-affecting change into one value read from the existing OPT so they don't
-  // clobber each other. Switching to a function with no multi-position output
-  // also clears the position bits, so a leftover LOW/MIDDLE doesn't strand the
-  // new function in selector mode.
-  const clearsPosition = patch.functionId !== undefined && !isRcLogicMultiPositionFunction(patch.functionId)
-  if (patch.inverted !== undefined || patch.outputPosition !== undefined || clearsPosition) {
+  // Negate (bit 3) and the level field (bit 4 mode + bits 5-7 index) all live in
+  // OPT — fold every OPT-affecting change into one value read from the existing
+  // OPT so they don't clobber each other. Switching to a function that has no
+  // multi-level output also clears the level field, so a leftover level doesn't
+  // strand the new function in selector mode.
+  const clearsLevel = patch.functionId !== undefined && !isRcLogicLevelSelectFunction(patch.functionId)
+  const levelTouched = patch.levelMode !== undefined || patch.outputLevel !== undefined
+  if (patch.inverted !== undefined || levelTouched || clearsLevel) {
     const current = effective(ids.opt, 0)
     let opt = current
     if (patch.inverted !== undefined) {
       opt = patch.inverted ? opt | NEGATE_MASK : opt & ~NEGATE_MASK
     }
-    if (patch.outputPosition !== undefined) {
-      opt = encodeOutputPosition(opt, patch.outputPosition)
-    } else if (clearsPosition) {
-      opt &= ~OUTPOS_MASK_SHIFTED
+    if (levelTouched) {
+      const existing = decodeLevel(current)
+      const levelMode = patch.levelMode ?? existing.levelMode
+      const outputLevel = patch.outputLevel ?? existing.outputLevel
+      opt = encodeLevel(opt, levelMode, outputLevel)
+    } else if (clearsLevel) {
+      opt = encodeLevel(opt, false, 0)
     }
     if (opt !== current) {
       next[ids.opt] = String(opt)

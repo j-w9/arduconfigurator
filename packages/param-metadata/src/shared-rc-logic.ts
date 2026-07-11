@@ -19,17 +19,22 @@ export const RC_LOGIC_CATEGORY = 'rc-mixer'
 /** Table size — matches AP_RC_LOGIC_NUM_TERMS (default 12). */
 export const RC_LOGIC_NUM_TERMS = 12
 
-/** OPT bit layout (mirrors AP_RC_Logic.cpp @Bitmask). Source type is the 2-bit
- *  field in bits 0-1: 0=range, 1=link, 2=condition. */
+/** OPT bit layout (mirrors AP_RC_Logic_Term.cpp @Bitmask on sfd-rc-work,
+ *  commit bf9a7b7540). Source type is the 2-bit field in bits 0-1: 0=range,
+ *  1=link, 2=condition. */
 export const RC_LOGIC_OPT_SOURCE_TYPE_MASK = 0x3
 export const RC_LOGIC_OPT_COMBINE_AND_BIT = 2
 export const RC_LOGIC_OPT_NEGATE_BIT = 3
-/** Output position is the 2-bit field in bits 4-5: 0=HIGH (default), 1=MIDDLE,
- *  2=LOW. Any row with a non-HIGH position puts the whole function into
- *  "selector" mode (lowest-numbered active row drives its position) — this is
- *  how one RC channel drives a multi-position target such as VTX power. */
-export const RC_LOGIC_OPT_OUTPOS_SHIFT = 4
-export const RC_LOGIC_OPT_OUTPOS_MASK = 0x3
+/** Bit 4 (0x10) enables "level mode": an active row drives a multi-level target
+ *  (e.g. VTX power) to a specific level instead of plain on/off. Any level-mode
+ *  row puts the whole function into selector mode (lowest-numbered active row
+ *  wins). Bits 5-7 hold a ZERO-based level index (0-7). For VTX power the index
+ *  is the 0-based position in the ACTIVE @VTX power-level list; the firmware
+ *  emits it one-based to set_power_by_index (index i → the (i+1)-th active level). */
+export const RC_LOGIC_OPT_LEVEL_MODE_BIT = 4
+export const RC_LOGIC_OPT_LEVEL_MODE_MASK = 1 << RC_LOGIC_OPT_LEVEL_MODE_BIT
+export const RC_LOGIC_OPT_LEVEL_INDEX_SHIFT = 5
+export const RC_LOGIC_OPT_LEVEL_INDEX_MASK = 0x7
 
 export enum RcLogicSourceType {
   Range = 0,
@@ -37,27 +42,21 @@ export enum RcLogicSourceType {
   Condition = 2
 }
 
-export enum RcLogicOutputPosition {
-  High = 0,
-  Middle = 1,
-  Low = 2
-}
-
 /**
- * Aux functions whose target is a genuine multi-level/position output, so the
- * per-row output position (HIGH/MIDDLE/LOW, OPT bits 4-5) is meaningful. For a
- * plain on/off function the position is noise — HIGH is the only sensible value
- * — so the RC Mixer only offers the position selector for these. VTX Power is
- * the case this was built for: position → power level via AP_VideoTX::change_power.
- * Extend as the firmware gains other level-selectable aux targets.
+ * Aux functions whose target is a genuine multi-level output, so a row can
+ * select a specific level (OPT level mode + index) rather than plain on/off.
+ * For an on/off function the level is meaningless, so the RC Mixer only offers
+ * the level selector for these. VTX Power is the case this was built for (index
+ * → active power-table level via AP_VideoTX::set_power_by_index). Extend as the
+ * firmware gains other level-selectable aux targets.
  */
-export const RC_LOGIC_OUTPUT_POSITION_FUNCTIONS: ReadonlySet<number> = new Set<number>([
+export const RC_LOGIC_LEVEL_SELECT_FUNCTIONS: ReadonlySet<number> = new Set<number>([
   94 // VTX Power
 ])
 
-/** True when `functionId` interprets the RCL output position (see the set above). */
-export function isRcLogicMultiPositionFunction(functionId: number): boolean {
-  return RC_LOGIC_OUTPUT_POSITION_FUNCTIONS.has(functionId)
+/** True when `functionId` is a multi-level target that supports level selection. */
+export function isRcLogicLevelSelectFunction(functionId: number): boolean {
+  return RC_LOGIC_LEVEL_SELECT_FUNCTIONS.has(functionId)
 }
 
 /** Full ArduCopter AUX_FUNC value list (from RC_Channel.cpp RCn_OPTION @Values,
@@ -204,10 +203,10 @@ function termParameterDefinitions(n: number): Record<string, ParameterDefinition
       id: `${prefix}OPT`,
       label: `Term ${n} · options`,
       description:
-        'Packed term options: bits 0-1 source type (0 range, 1 link, 2 condition), bit 2 combine (0 OR / 1 AND), bit 3 negate, bits 4-5 output position (0 HIGH, 1 MIDDLE, 2 LOW) for a multi-position target such as VTX power — any non-HIGH row puts the function into selector mode.',
+        'Packed term options: bits 0-1 source type (0 range, 1 link, 2 condition), bit 2 combine (0 OR / 1 AND), bit 3 negate, bit 4 level mode, bits 5-7 zero-based level index (0-7) for a multi-level target such as VTX power — any level-mode row puts the function into selector mode (lowest active row wins).',
       category: RC_LOGIC_CATEGORY,
       minimum: 0,
-      maximum: 63,
+      maximum: 255,
       step: 1,
       bitmask: true,
       options: [
@@ -215,8 +214,10 @@ function termParameterDefinitions(n: number): Record<string, ParameterDefinition
         { value: 1, label: 'Source type bit 1' },
         { value: 2, label: 'Combine (AND)' },
         { value: 3, label: 'Negate' },
-        { value: 4, label: 'Output position bit 0' },
-        { value: 5, label: 'Output position bit 1' }
+        { value: 4, label: 'Level mode' },
+        { value: 5, label: 'Level index bit 0' },
+        { value: 6, label: 'Level index bit 1' },
+        { value: 7, label: 'Level index bit 2' }
       ]
     },
     [`${prefix}SRC`]: {
