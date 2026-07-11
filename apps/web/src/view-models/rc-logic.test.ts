@@ -4,8 +4,10 @@ import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import {
   rcLogicAddDrafts,
+  rcLogicAddLogicTermDrafts,
   rcLogicRemovePlan,
   rcLogicUpdateDrafts,
+  rcLogicUpdateLogicTermDrafts,
   readRcLogicModel
 } from './rc-logic'
 
@@ -30,7 +32,7 @@ describe('readRcLogicModel', () => {
       inverted: false
     })
     expect(model.freeTermIndex).toBe(2)
-    expect(model.hiddenTermCount).toBe(0)
+    expect(model.logicTerms).toHaveLength(0)
   })
 
   it('reads the negate bit as inverted', () => {
@@ -49,11 +51,17 @@ describe('readRcLogicModel', () => {
     expect(read(0x10 | (3 << 5))).toEqual({ levelMode: true, outputLevel: 3 })
   })
 
-  it('keeps non-range terms (link/condition) out of the editor but counts them as used', () => {
-    const model = readRcLogicModel(params({ RCL3_FUNC: 16, RCL3_OPT: 1 /* link */ }), {})
+  it('surfaces a link term in logicTerms (not the channel assignments)', () => {
+    const model = readRcLogicModel(params({ RCL3_FUNC: 16, RCL3_OPT: 1 /* link */, RCL3_SRC: 11 }), {})
     expect(model.assignments).toHaveLength(0)
-    expect(model.hiddenTermCount).toBe(1)
+    expect(model.logicTerms).toHaveLength(1)
+    expect(model.logicTerms[0]).toMatchObject({ id: 'rcl-3', sourceType: 'link', functionId: 16, sourceValue: 11 })
     expect(model.freeTermIndex).toBe(1) // term 3 used, 1/2 still free
+  })
+
+  it('surfaces a condition term with its condition id', () => {
+    const model = readRcLogicModel(params({ RCL2_FUNC: 94, RCL2_OPT: 2 /* condition */, RCL2_SRC: 0 /* RC failsafe */ }), {})
+    expect(model.logicTerms[0]).toMatchObject({ id: 'rcl-2', sourceType: 'condition', functionId: 94, sourceValue: 0 })
   })
 
   it('surfaces a pending (draft-only) row even before a function is picked', () => {
@@ -125,6 +133,36 @@ describe('rcLogic draft mappers', () => {
     const drafts = rcLogicUpdateDrafts(params({ RCL1_FUNC: 94, RCL1_OPT: 0x10 | (2 << 5) }), {}, 1, { functionId: 94 })
     expect(drafts.RCL1_FUNC).toBe('94')
     expect(drafts.RCL1_OPT).toBeUndefined() // no level change → no redundant OPT draft
+  })
+
+  it('adds a condition logic term on the free slot (RC failsafe, no function)', () => {
+    const model = readRcLogicModel(params({ RCL1_FUNC: 153 }), {})
+    expect(rcLogicAddLogicTermDrafts(model)).toEqual({
+      RCL2_FUNC: '0',
+      RCL2_OPT: '2', // condition source type
+      RCL2_SRC: '0' // condition 0 = RC failsafe
+    })
+    const full = readRcLogicModel(
+      params(Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`RCL${i + 1}_FUNC`, 153]))),
+      {}
+    )
+    expect(rcLogicAddLogicTermDrafts(full)).toBeNull()
+  })
+
+  it('logic-term update writes source type / value / function and folds OPT', () => {
+    // Condition term; set the target function to VTX Power and pick a condition.
+    const drafts = rcLogicUpdateLogicTermDrafts(params({ RCL1_OPT: 2 /* condition */ }), {}, 1, {
+      functionId: 94,
+      sourceValue: 1 // battery failsafe
+    })
+    expect(drafts.RCL1_FUNC).toBe('94')
+    expect(drafts.RCL1_SRC).toBe('1')
+
+    // Flip condition -> link: OPT source-type bits change AND SRC resets (the
+    // value spaces differ — condition id vs watched function).
+    const flipped = rcLogicUpdateLogicTermDrafts(params({ RCL1_OPT: 2, RCL1_SRC: 3 }), {}, 1, { sourceType: 'link' })
+    expect(Number(flipped.RCL1_OPT) & 0x3).toBe(1) // link
+    expect(flipped.RCL1_SRC).toBe('0')
   })
 
   it('remove clears the term drafts and disables a live term', () => {

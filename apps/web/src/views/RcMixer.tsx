@@ -1,7 +1,19 @@
 import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
-import { isRcLogicLevelSelectFunction } from '@arduconfig/param-metadata'
+import { RC_LOGIC_CONDITION_LABELS, isRcLogicLevelSelectFunction } from '@arduconfig/param-metadata'
+
+/** A condition/link term shown in the Logic section (no channel/PWM). */
+export interface RcMixerLogicTerm {
+  id: string
+  sourceType: 'condition' | 'link'
+  /** Condition id (condition) or watched AUX_FUNC (link). */
+  sourceValue: number
+  functionId: number
+  inverted: boolean
+  levelMode?: boolean
+  outputLevel?: number
+}
 
 import {
   RC_MIXER_TRACK_MAX_PWM,
@@ -88,8 +100,14 @@ export interface RcMixerViewProps {
   /** RCL_ENABLE state (only meaningful when firmwareSupported). */
   engineEnabled?: boolean
   onToggleEngine?: (enabled: boolean) => void
-  /** Configured non-range terms (link/condition) preserved but not shown here. */
-  hiddenTermCount?: number
+  /** Condition/link terms — shown in the Logic section below the channels. */
+  logicTerms?: readonly RcMixerLogicTerm[]
+  /** Add a new (condition) logic term. */
+  onAddLogicTerm?: () => void
+  /** Remove a logic term by id. */
+  onRemoveLogicTerm?: (id: string) => void
+  /** Mutate any field on a logic term. */
+  onUpdateLogicTerm?: (id: string, patch: Partial<RcMixerLogicTerm>) => void
   /** True when every RCL term slot is in use — the "Add function" buttons stop. */
   tableFull?: boolean
   /** Per-channel claims from OTHER subsystems (flight-mode switch, RCn_OPTION
@@ -115,7 +133,10 @@ export function RcMixerView(props: RcMixerViewProps) {
     firmwareSupported,
     engineEnabled,
     onToggleEngine,
-    hiddenTermCount,
+    logicTerms,
+    onAddLogicTerm,
+    onRemoveLogicTerm,
+    onUpdateLogicTerm,
     tableFull,
     externalClaimByChannel,
     vtxPowerLevels
@@ -213,15 +234,9 @@ export function RcMixerView(props: RcMixerViewProps) {
               </span>
             </label>
             <p className="bf-note">
-              This firmware reports the AP_RC_Logic engine. Each row below is a real range term; changes are staged as{' '}
-              <code>RCL_*</code> parameter drafts and written through the normal verified write path.
-              {hiddenTermCount ? (
-                <>
-                  {' '}
-                  <strong>{hiddenTermCount}</strong> configured link/condition term
-                  {hiddenTermCount === 1 ? ' is' : 's are'} preserved but not shown here (range terms only for now).
-                </>
-              ) : null}
+              This firmware reports the AP_RC_Logic engine. Each channel row is a real range term; changes are staged as{' '}
+              <code>RCL_*</code> parameter drafts and written through the normal verified write path. Condition and link
+              terms live in the Logic section below.
             </p>
           </div>
         ) : (
@@ -513,6 +528,141 @@ export function RcMixerView(props: RcMixerViewProps) {
             )
           })}
         </div>
+
+        {firmwareSupported ? (
+          <section className="rc-mixer-logic" data-testid="rc-mixer-logic-section">
+            <header className="rc-mixer-logic__header">
+              <div>
+                <strong>Logic conditions &amp; links</strong>
+                <small>Drive a function from a vehicle condition (failsafe, armed) or another function&apos;s state — no channel needed.</small>
+              </div>
+              <button
+                type="button"
+                style={buttonStyle()}
+                onClick={() => onAddLogicTerm?.()}
+                disabled={tableFull}
+                title={tableFull ? 'All 12 RC logic terms are in use.' : undefined}
+                data-testid="rc-mixer-add-logic-term"
+              >
+                + Add logic term
+              </button>
+            </header>
+            {logicTerms && logicTerms.length > 0 ? (
+              <ul className="rc-mixer-logic__list">
+                {logicTerms.map((term) => {
+                  const definition = functionLookup.byId.get(term.functionId)
+                  return (
+                    <li key={term.id} className="rc-mixer-logic-term" data-testid={`rc-mixer-logic-term-${term.id}`}>
+                      <label>
+                        <span>Source</span>
+                        <select
+                          value={term.sourceType}
+                          onChange={(event) => onUpdateLogicTerm?.(term.id, { sourceType: event.target.value as 'condition' | 'link' })}
+                          data-testid={`rc-mixer-logic-source-${term.id}`}
+                        >
+                          <option value="condition">Condition</option>
+                          <option value="link">Link</option>
+                        </select>
+                      </label>
+                      {term.sourceType === 'condition' ? (
+                        <label>
+                          <span>When</span>
+                          <select
+                            value={String(term.sourceValue)}
+                            onChange={(event) => onUpdateLogicTerm?.(term.id, { sourceValue: Number(event.target.value) })}
+                            data-testid={`rc-mixer-logic-condition-${term.id}`}
+                          >
+                            {Object.entries(RC_LOGIC_CONDITION_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : (
+                        <label>
+                          <span>Watching</span>
+                          <select
+                            value={String(term.sourceValue)}
+                            onChange={(event) => onUpdateLogicTerm?.(term.id, { sourceValue: Number(event.target.value) })}
+                            data-testid={`rc-mixer-logic-watch-${term.id}`}
+                          >
+                            {functionCatalog.map((entry) => (
+                              <option key={entry.id} value={entry.id}>
+                                {entry.label} ({entry.id})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      <label>
+                        <span>Drives</span>
+                        <select
+                          value={String(term.functionId)}
+                          onChange={(event) => onUpdateLogicTerm?.(term.id, { functionId: Number(event.target.value) })}
+                          data-testid={`rc-mixer-logic-function-${term.id}`}
+                        >
+                          {functionCatalog.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                              {entry.label} ({entry.id})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {isRcLogicLevelSelectFunction(term.functionId) && vtxPowerLevels && vtxPowerLevels.length > 0 ? (
+                        <label>
+                          <span>VTX power</span>
+                          <select
+                            value={term.levelMode ? String(term.outputLevel ?? 0) : 'plain'}
+                            onChange={(event) => {
+                              const raw = event.target.value
+                              onUpdateLogicTerm?.(
+                                term.id,
+                                raw === 'plain' ? { levelMode: false } : { levelMode: true, outputLevel: Number(raw) }
+                              )
+                            }}
+                            data-testid={`rc-mixer-logic-level-${term.id}`}
+                          >
+                            <option value="plain">Full power (on/off)</option>
+                            {vtxPowerLevels.map((level) => (
+                              <option key={level.index} value={String(level.index)}>
+                                {level.mw} mW{level.label && level.label !== String(level.mw) ? ` (${level.label})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                      <label className="rc-mixer-logic-term__negate">
+                        <input
+                          type="checkbox"
+                          checked={term.inverted}
+                          onChange={(event) => onUpdateLogicTerm?.(term.id, { inverted: event.target.checked })}
+                          data-testid={`rc-mixer-logic-negate-${term.id}`}
+                        />
+                        <span>Negate</span>
+                      </label>
+                      <div className="rc-mixer-logic-term__meta">
+                        <small>{definition?.description ?? 'Unknown function.'}</small>
+                        <button
+                          type="button"
+                          style={buttonStyle()}
+                          onClick={() => onRemoveLogicTerm?.(term.id)}
+                          data-testid={`rc-mixer-logic-remove-${term.id}`}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className="rc-mixer-logic__empty" data-testid="rc-mixer-logic-empty">
+                No condition or link terms yet. Add one to drive a function from failsafe, arming, or another function&apos;s state.
+              </p>
+            )}
+          </section>
+        ) : null}
       </Panel>
     </div>
   )

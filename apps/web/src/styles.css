@@ -7918,6 +7918,68 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 6px;
 }
 
+/* Logic conditions & links section (condition/link RCL terms). */
+.rc-mixer-logic {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #2a2f37);
+  display: grid;
+  gap: 8px;
+}
+.rc-mixer-logic__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.rc-mixer-logic__header small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.rc-mixer-logic__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.rc-mixer-logic__empty {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.rc-mixer-logic-term {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border, #2a2f37);
+  border-radius: 8px;
+}
+.rc-mixer-logic-term label {
+  display: grid;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.rc-mixer-logic-term__negate {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.rc-mixer-logic-term__meta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rc-mixer-logic-term__meta small {
+  color: var(--text-muted);
+  font-size: 11px;
+  max-width: 220px;
+}
+
 /* AP_RC_Logic engine controls (shown when the firmware supports RCL_*). */
 .rc-mixer-engine {
   display: grid;
