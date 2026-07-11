@@ -42,6 +42,17 @@ export enum RcLogicSourceType {
   Condition = 2
 }
 
+/** Condition source ids used in RCL<n>_SRC when the source type is Condition.
+ *  Mirrors the AP_RC_Logic README condition table — all map onto existing
+ *  ArduPilot vehicle state. */
+export const RC_LOGIC_CONDITION_LABELS: Record<number, string> = {
+  0: 'RC failsafe',
+  1: 'Battery failsafe',
+  2: 'GCS failsafe',
+  3: 'EKF failsafe',
+  4: 'Armed'
+}
+
 /**
  * Aux functions whose target is a genuine multi-level output, so a row can
  * select a specific level (OPT level mode + index) rather than plain on/off.

@@ -378,13 +378,16 @@ import {
   type RcMixerAssignment
 } from './view-models/rc-mixer'
 import {
+  type RcLogicLogicTerm,
   readRcLogicModel,
   rcLogicAddDrafts,
+  rcLogicAddLogicTermDrafts,
   rcLogicFunctionCatalog,
   rcLogicRemovePlan,
   rcLogicTermFromAssignmentId,
   rcLogicTermParamIds,
-  rcLogicUpdateDrafts
+  rcLogicUpdateDrafts,
+  rcLogicUpdateLogicTermDrafts
 } from './view-models/rc-logic'
 import { armSwitchAssignmentDrafts, deriveArmSwitchAssignment } from './view-models/arm-switch'
 import { type StatusTone } from './status-tone'
@@ -4966,6 +4969,37 @@ export function App() {
       })
     }
   }
+  // Condition/link terms for the Logic section, with the same removed-term
+  // self-heal the channel assignments use.
+  const rcLogicVisibleLogicTerms = useMemo(
+    () =>
+      rcLogicModel.logicTerms.filter((logicTerm) => {
+        const term = rcLogicTermFromAssignmentId(logicTerm.id)
+        if (term === null || !rcLogicRemovedTerms.has(term)) {
+          return true
+        }
+        return editedValues[rcLogicTermParamIds(term).func] !== '0'
+      }),
+    [rcLogicModel.logicTerms, rcLogicRemovedTerms, editedValues]
+  )
+  function handleRcLogicAddLogicTerm(): void {
+    const drafts = rcLogicAddLogicTermDrafts(rcLogicModel)
+    if (!drafts) {
+      setParameterNotice({
+        tone: 'warning',
+        text: 'All 12 RC logic terms are in use — remove one before adding another.'
+      })
+      return
+    }
+    mergeDrafts(drafts)
+  }
+  function handleRcLogicUpdateLogicTerm(id: string, patch: Partial<RcLogicLogicTerm>): void {
+    const term = rcLogicTermFromAssignmentId(id)
+    if (term === null) {
+      return
+    }
+    mergeDrafts(rcLogicUpdateLogicTermDrafts(snapshot.parameters, editedValues, term, patch))
+  }
   function handleRcLogicToggleEngine(enabled: boolean): void {
     setDraft('RCL_ENABLE', enabled ? '1' : '0')
   }
@@ -7711,7 +7745,10 @@ export function App() {
         firmwareSupported={hasRcLogicParams}
         engineEnabled={rcLogicModel.enabled}
         onToggleEngine={handleRcLogicToggleEngine}
-        hiddenTermCount={rcLogicModel.hiddenTermCount}
+        logicTerms={hasRcLogicParams ? rcLogicVisibleLogicTerms : undefined}
+        onAddLogicTerm={handleRcLogicAddLogicTerm}
+        onUpdateLogicTerm={handleRcLogicUpdateLogicTerm}
+        onRemoveLogicTerm={handleRcLogicRemoveAssignment}
         tableFull={rcLogicModel.freeTermIndex === null}
         externalClaimByChannel={externalChannelClaims}
         vtxPowerLevels={rcMixerVtxPowerLevels}

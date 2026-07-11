@@ -82,15 +82,32 @@ export function rcLogicTermFromAssignmentId(id: string): number | null {
   return match ? Number(match[1]) : null
 }
 
+/** A non-range RCL term (condition or link) shown in the Logic section rather
+ *  than the channel grid — it has no channel/PWM window, just a source value. */
+export interface RcLogicLogicTerm {
+  /** rcl-<term> — same id scheme as range assignments. */
+  id: string
+  /** 'condition' → SRC is a condition id (0-4); 'link' → SRC is the watched AUX_FUNC. */
+  sourceType: 'condition' | 'link'
+  /** Target AUX_FUNC this term drives. */
+  functionId: number
+  /** Condition id (condition) or watched AUX_FUNC (link) — the RCL SRC value. */
+  sourceValue: number
+  /** Negate (OPT bit 3). */
+  inverted: boolean
+  /** VTX level selection (OPT bit 4 + bits 5-7), same encoding as range terms. */
+  levelMode?: boolean
+  outputLevel?: number
+}
+
 export interface RcLogicModel {
   enabled: boolean
-  /** Range-term assignments, one per visible term (Phase 1). */
+  /** Range-term assignments (the channel grid). */
   assignments: RcMixerAssignment[]
+  /** Condition/link terms (the Logic conditions & links section). */
+  logicTerms: RcLogicLogicTerm[]
   /** First unused term slot (1-based), or null when the table is full. */
   freeTermIndex: number | null
-  /** Configured terms that aren't editable range terms (link/condition) — kept
-   *  intact but not shown in the channel editor. */
-  hiddenTermCount: number
 }
 
 function makeReaders(parameters: readonly ParameterState[], drafts: ParameterDraftValues) {
@@ -114,8 +131,8 @@ export function readRcLogicModel(
   const { hasDraft, effective } = makeReaders(parameters, drafts)
 
   const assignments: RcMixerAssignment[] = []
+  const logicTerms: RcLogicLogicTerm[] = []
   let freeTermIndex: number | null = null
-  let hiddenTermCount = 0
 
   for (let term = 1; term <= RC_LOGIC_NUM_TERMS; term += 1) {
     const ids = rcLogicTermParamIds(term)
@@ -131,28 +148,36 @@ export function readRcLogicModel(
       continue
     }
     const sourceType = opt & RC_LOGIC_OPT_SOURCE_TYPE_MASK
-    if (sourceType !== RcLogicSourceType.Range) {
-      hiddenTermCount += 1
-      continue
-    }
     const level = decodeLevel(opt)
-    assignments.push({
-      id: rcLogicAssignmentId(term),
-      channel: effective(ids.src, 0),
-      functionId: func,
-      lowPwm: effective(ids.min, ADD_DEFAULT_LOW),
-      highPwm: effective(ids.max, ADD_DEFAULT_HIGH),
-      inverted: (opt & NEGATE_MASK) !== 0,
-      levelMode: level.levelMode,
-      outputLevel: level.outputLevel
-    })
+    if (sourceType === RcLogicSourceType.Range) {
+      assignments.push({
+        id: rcLogicAssignmentId(term),
+        channel: effective(ids.src, 0),
+        functionId: func,
+        lowPwm: effective(ids.min, ADD_DEFAULT_LOW),
+        highPwm: effective(ids.max, ADD_DEFAULT_HIGH),
+        inverted: (opt & NEGATE_MASK) !== 0,
+        levelMode: level.levelMode,
+        outputLevel: level.outputLevel
+      })
+    } else {
+      logicTerms.push({
+        id: rcLogicAssignmentId(term),
+        sourceType: sourceType === RcLogicSourceType.Link ? 'link' : 'condition',
+        functionId: func,
+        sourceValue: effective(ids.src, 0),
+        inverted: (opt & NEGATE_MASK) !== 0,
+        levelMode: level.levelMode,
+        outputLevel: level.outputLevel
+      })
+    }
   }
 
   return {
     enabled: effective('RCL_ENABLE', 0) === 1,
     assignments,
-    freeTermIndex,
-    hiddenTermCount
+    logicTerms,
+    freeTermIndex
   }
 }
 
@@ -239,4 +264,69 @@ export function rcLogicRemovePlan(parameters: readonly ParameterState[], term: n
     clear: [ids.func, ids.opt, ids.src, ids.min, ids.max],
     disable: liveFunc !== 0 ? { [ids.func]: '0' } : {}
   }
+}
+
+/** Drafts that allocate a new CONDITION logic term on the first free slot. It
+ *  starts on condition 0 (RC failsafe) with no function; the operator picks the
+ *  target function and can flip it to a link term. Null when the table is full. */
+export function rcLogicAddLogicTermDrafts(model: RcLogicModel): ParameterDraftValues | null {
+  if (model.freeTermIndex === null) {
+    return null
+  }
+  const ids = rcLogicTermParamIds(model.freeTermIndex)
+  return {
+    [ids.func]: '0', // operator picks the target function
+    [ids.opt]: String(RcLogicSourceType.Condition), // condition source, OR, not negated, no level
+    [ids.src]: '0' // condition 0 = RC failsafe
+  }
+}
+
+/** Drafts for editing one field of a logic (condition/link) term. Source type
+ *  (OPT bits 0-1), negate (bit 3), and level (bit 4 + 5-7) all fold into OPT;
+ *  the source value (condition id or watched AUX_FUNC) is SRC. Switching the
+ *  source type resets SRC, since a condition id and a watched function are
+ *  different value spaces. */
+export function rcLogicUpdateLogicTermDrafts(
+  parameters: readonly ParameterState[],
+  drafts: ParameterDraftValues,
+  term: number,
+  patch: Partial<RcLogicLogicTerm>
+): ParameterDraftValues {
+  const ids = rcLogicTermParamIds(term)
+  const { effective } = makeReaders(parameters, drafts)
+  const next: ParameterDraftValues = {}
+  if (patch.functionId !== undefined) next[ids.func] = String(patch.functionId)
+  if (patch.sourceValue !== undefined) {
+    next[ids.src] = String(patch.sourceValue)
+  } else if (patch.sourceType !== undefined) {
+    next[ids.src] = '0' // type changed without a new value → reset the source
+  }
+  const clearsLevel = patch.functionId !== undefined && !isRcLogicLevelSelectFunction(patch.functionId)
+  const optTouched =
+    patch.sourceType !== undefined ||
+    patch.inverted !== undefined ||
+    patch.levelMode !== undefined ||
+    patch.outputLevel !== undefined ||
+    clearsLevel
+  if (optTouched) {
+    const current = effective(ids.opt, RcLogicSourceType.Condition)
+    let opt = current
+    if (patch.sourceType !== undefined) {
+      const sourceType = patch.sourceType === 'link' ? RcLogicSourceType.Link : RcLogicSourceType.Condition
+      opt = (opt & ~RC_LOGIC_OPT_SOURCE_TYPE_MASK) | sourceType
+    }
+    if (patch.inverted !== undefined) {
+      opt = patch.inverted ? opt | NEGATE_MASK : opt & ~NEGATE_MASK
+    }
+    if (patch.levelMode !== undefined || patch.outputLevel !== undefined) {
+      const existing = decodeLevel(current)
+      opt = encodeLevel(opt, patch.levelMode ?? existing.levelMode, patch.outputLevel ?? existing.outputLevel)
+    } else if (clearsLevel) {
+      opt = encodeLevel(opt, false, 0)
+    }
+    if (opt !== current) {
+      next[ids.opt] = String(opt)
+    }
+  }
+  return next
 }

@@ -93,6 +93,41 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     await expect(page.getByTestId('rc-mixer-channel-8')).toContainText('No assignments')
   })
 
+  test('Logic section adds a condition/link term and drives a function (VTX power on failsafe)', async ({ page }) => {
+    await page.goto('/')
+    await connectCopterDemo(page)
+    await page.getByTestId('view-button-rc-mixer').click()
+    // Wait for the seeded range terms to sync so the free slot is term 3.
+    await expect(page.getByTestId('rc-mixer-track-band-rcl-2')).toBeVisible()
+
+    const section = page.getByTestId('rc-mixer-logic-section')
+    await expect(section).toBeVisible()
+    await expect(page.getByTestId('rc-mixer-logic-empty')).toBeVisible()
+
+    await page.getByTestId('rc-mixer-add-logic-term').click()
+    const term = 'rcl-3'
+    await expect(page.getByTestId(`rc-mixer-logic-term-${term}`)).toBeVisible()
+    // Defaults to a condition term.
+    await expect(page.getByTestId(`rc-mixer-logic-source-${term}`)).toHaveValue('condition')
+
+    // Condition → RC failsafe, driving VTX Power at a specific level (the level
+    // selector reads the demo @VTX table).
+    await page.getByTestId(`rc-mixer-logic-condition-${term}`).selectOption('0') // RC failsafe
+    await page.getByTestId(`rc-mixer-logic-function-${term}`).selectOption('94') // VTX Power
+    const level = page.getByTestId(`rc-mixer-logic-level-${term}`)
+    await expect(level).toBeVisible({ timeout: 15000 })
+    await level.selectOption('0') // 25 mW
+
+    // Flip to a link term — the condition dropdown is replaced by a watched-function picker.
+    await page.getByTestId(`rc-mixer-logic-source-${term}`).selectOption('link')
+    await expect(page.getByTestId(`rc-mixer-logic-watch-${term}`)).toBeVisible()
+    await expect(page.getByTestId(`rc-mixer-logic-condition-${term}`)).toHaveCount(0)
+
+    // Remove clears the term.
+    await page.getByTestId(`rc-mixer-logic-remove-${term}`).click()
+    await expect(page.getByTestId(`rc-mixer-logic-term-${term}`)).toHaveCount(0)
+  })
+
   test('range edges adjust via the drag handle (keyboard + pointer)', async ({ page }) => {
     await page.goto('/')
     await connectCopterDemo(page)
