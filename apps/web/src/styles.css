@@ -7980,6 +7980,14 @@ details.metadata-settings-section:not([open]) > summary::after {
   max-width: 220px;
 }
 
+.rc-mixer-vtx-level-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--warning, #b8860b);
+}
+
 /* AP_RC_Logic engine controls (shown when the firmware supports RCL_*). */
 .rc-mixer-engine {
   display: grid;

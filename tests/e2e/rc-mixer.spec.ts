@@ -75,7 +75,7 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     // channel drives an exact VTX power level (selector mode). Defaults to plain.
     const level = page.getByTestId('rc-mixer-level-rcl-3')
     await expect(level).toHaveValue('plain', { timeout: 15000 })
-    await expect(level.locator('option')).toContainText(['Full power (on/off) — max', '25 mW', '200 mW', '500 mW', '800 mW (1W)'])
+    await expect(level.locator('option')).toContainText(['Full power (on/off) — max', '25 mW', '200 mW', '500 mW', '1W'])
     await level.selectOption('2') // 500 mW
     await expect(level).toHaveValue('2')
     // The row band shows the resolved power at a glance, not just in the dropdown.

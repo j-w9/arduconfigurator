@@ -76,6 +76,75 @@ const TRACK_TICKS = [
 // channel are visually distinct without needing a per-function colour map.
 const BAND_HUES = [210, 285, 30, 150, 0, 60] as const
 
+/** Human display for a @VTX power level. `value` is the protocol value — mW for
+ *  Tramp/MSP but dBm/index for SmartAudio — so prefer the author-set label and
+ *  append "mW" only when the label is a bare number (a real milliwatt figure). */
+function powerLevelDisplay(level: { mw: number; label: string }): string {
+  const label = level.label?.trim()
+  if (label) {
+    return /^\d+$/.test(label) ? `${label} mW` : label
+  }
+  return `${level.mw} mW`
+}
+
+/** The VTX-power level selector shared by range rows and logic terms. Only shown
+ *  for a VTX-power target on the firmware-backed path. Handles three edge cases
+ *  the audit flagged: an out-of-range stored index (adds a synthetic option so
+ *  the row doesn't silently read "Full power"), and a stored level with NO
+ *  detected table (surfaces it with a reset instead of leaving it invisible). */
+function VtxLevelSelector(props: {
+  functionId: number
+  levelMode: boolean | undefined
+  outputLevel: number | undefined
+  vtxPowerLevels: readonly { index: number; mw: number; label: string }[] | undefined
+  firmwareSupported: boolean
+  testId: string
+  onChange: (patch: { levelMode: boolean; outputLevel?: number }) => void
+}) {
+  const { functionId, levelMode, outputLevel, vtxPowerLevels, firmwareSupported, testId, onChange } = props
+  if (!firmwareSupported || !isRcLogicLevelSelectFunction(functionId)) {
+    return null
+  }
+  const level = outputLevel ?? 0
+  if (!vtxPowerLevels || vtxPowerLevels.length === 0) {
+    // No VTX table detected. Don't offer a picker with no options — but if a
+    // level is already stored, surface it (else it's invisible + uneditable).
+    if (!levelMode) {
+      return null
+    }
+    return (
+      <div className="rc-mixer-vtx-level-note" data-testid={`${testId}-notable`}>
+        <small>⚠ Level {level} set — no VTX table detected.</small>
+        <button type="button" style={buttonStyle()} onClick={() => onChange({ levelMode: false })}>
+          Reset to full power
+        </button>
+      </div>
+    )
+  }
+  const outOfRange = levelMode === true && !vtxPowerLevels.some((entry) => entry.index === level)
+  return (
+    <label className="rc-mixer-assignment__position">
+      <span>VTX power</span>
+      <select
+        value={levelMode ? String(level) : 'plain'}
+        onChange={(event) => {
+          const raw = event.target.value
+          onChange(raw === 'plain' ? { levelMode: false } : { levelMode: true, outputLevel: Number(raw) })
+        }}
+        data-testid={testId}
+      >
+        <option value="plain">Full power (on/off) — max</option>
+        {vtxPowerLevels.map((entry) => (
+          <option key={entry.index} value={String(entry.index)}>
+            {powerLevelDisplay(entry)}
+          </option>
+        ))}
+        {outOfRange ? <option value={String(level)}>level {level} (not in current table)</option> : null}
+      </select>
+    </label>
+  )
+}
+
 export interface RcMixerViewProps {
   /** RC channels 1..maxChannel, each with zero or more assignments. */
   channels: readonly { channel: number; assignments: readonly RcMixerAssignment[] }[]
@@ -157,7 +226,7 @@ export function RcMixerView(props: RcMixerViewProps) {
       return 'max'
     }
     const level = vtxPowerLevels.find((entry) => entry.index === (outputLevel ?? 0))
-    return level ? `${level.mw} mW` : `level ${outputLevel ?? 0}`
+    return level ? powerLevelDisplay(level) : `level ${outputLevel ?? 0}`
   }
 
   // Drag-to-resize the PWM range bands (Betaflight-style). The band edges and the
@@ -496,34 +565,15 @@ export function RcMixerView(props: RcMixerViewProps) {
                               />
                               <span>Inverted</span>
                             </label>
-                            {firmwareSupported &&
-                            isRcLogicLevelSelectFunction(assignment.functionId) &&
-                            vtxPowerLevels &&
-                            vtxPowerLevels.length > 0 ? (
-                              <label className="rc-mixer-assignment__position">
-                                <span>VTX power</span>
-                                <select
-                                  value={assignment.levelMode ? String(assignment.outputLevel ?? 0) : 'plain'}
-                                  onChange={(event) => {
-                                    const raw = event.target.value
-                                    onUpdateAssignment(
-                                      assignment.id,
-                                      raw === 'plain'
-                                        ? { levelMode: false }
-                                        : { levelMode: true, outputLevel: Number(raw) }
-                                    )
-                                  }}
-                                  data-testid={`rc-mixer-level-${assignment.id}`}
-                                >
-                                  <option value="plain">Full power (on/off) — max</option>
-                                  {vtxPowerLevels.map((level) => (
-                                    <option key={level.index} value={String(level.index)}>
-                                      {level.mw} mW{level.label && level.label !== String(level.mw) ? ` (${level.label})` : ''}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            ) : null}
+                            <VtxLevelSelector
+                              functionId={assignment.functionId}
+                              levelMode={assignment.levelMode}
+                              outputLevel={assignment.outputLevel}
+                              vtxPowerLevels={vtxPowerLevels}
+                              firmwareSupported={firmwareSupported}
+                              testId={`rc-mixer-level-${assignment.id}`}
+                              onChange={(patch) => onUpdateAssignment(assignment.id, patch)}
+                            />
                           </div>
 
                           <div className="rc-mixer-assignment__status">
@@ -633,29 +683,15 @@ export function RcMixerView(props: RcMixerViewProps) {
                           ))}
                         </select>
                       </label>
-                      {isRcLogicLevelSelectFunction(term.functionId) && vtxPowerLevels && vtxPowerLevels.length > 0 ? (
-                        <label>
-                          <span>VTX power</span>
-                          <select
-                            value={term.levelMode ? String(term.outputLevel ?? 0) : 'plain'}
-                            onChange={(event) => {
-                              const raw = event.target.value
-                              onUpdateLogicTerm?.(
-                                term.id,
-                                raw === 'plain' ? { levelMode: false } : { levelMode: true, outputLevel: Number(raw) }
-                              )
-                            }}
-                            data-testid={`rc-mixer-logic-level-${term.id}`}
-                          >
-                            <option value="plain">Full power (on/off) — max</option>
-                            {vtxPowerLevels.map((level) => (
-                              <option key={level.index} value={String(level.index)}>
-                                {level.mw} mW{level.label && level.label !== String(level.mw) ? ` (${level.label})` : ''}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ) : null}
+                      <VtxLevelSelector
+                        functionId={term.functionId}
+                        levelMode={term.levelMode}
+                        outputLevel={term.outputLevel}
+                        vtxPowerLevels={vtxPowerLevels}
+                        firmwareSupported={firmwareSupported}
+                        testId={`rc-mixer-logic-level-${term.id}`}
+                        onChange={(patch) => onUpdateLogicTerm?.(term.id, patch)}
+                      />
                       <label className="rc-mixer-logic-term__negate">
                         <input
                           type="checkbox"

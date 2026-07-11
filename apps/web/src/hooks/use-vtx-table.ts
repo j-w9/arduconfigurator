@@ -23,6 +23,10 @@ export interface UseVtxTableResult {
   status: VtxTableStatus
   /** Editable working copy of the table (undefined until available). */
   table: VtxTable | undefined
+  /** The last table READ FROM the FC (undefined until available). Unlike
+   *  `table` this does not reflect unsaved edits — consumers that must match
+   *  what the FC actually has (e.g. the RC Mixer's RCL level index) use this. */
+  detected: VtxTable | undefined
   dirty: boolean
   saving: boolean
   error: string | undefined
@@ -168,6 +172,7 @@ export function useVtxTable(input: {
   return {
     status,
     table: draft,
+    detected,
     dirty,
     saving,
     error,
