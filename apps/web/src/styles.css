@@ -6813,6 +6813,15 @@ textarea:focus {
   align-items: center;
 }
 
+.receiver-rcl-summary,
+.modes-mode-channel__rcl-claim {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warning, #b8860b);
+}
+
 .rc-channel-card__header span,
 .rc-channel-card__footer span {
   color: var(--text-muted);
@@ -8085,6 +8094,11 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: block;
   color: var(--text-muted);
   font-size: 10px;
+}
+
+.rc-mixer-channel__external-claim {
+  color: var(--warning, #b8860b);
+  font-weight: 600;
 }
 
 .rc-mixer-channel__header-right {

@@ -92,6 +92,10 @@ export interface RcMixerViewProps {
   hiddenTermCount?: number
   /** True when every RCL term slot is in use — the "Add function" buttons stop. */
   tableFull?: boolean
+  /** Per-channel claims from OTHER subsystems (flight-mode switch, RCn_OPTION
+   *  aux functions) so the operator sees a channel is already in use before
+   *  layering an RC Mixer term on it. Keyed by channel number. */
+  externalClaimByChannel?: ReadonlyMap<number, readonly string[]>
 }
 
 export function RcMixerView(props: RcMixerViewProps) {
@@ -108,7 +112,8 @@ export function RcMixerView(props: RcMixerViewProps) {
     engineEnabled,
     onToggleEngine,
     hiddenTermCount,
-    tableFull
+    tableFull,
+    externalClaimByChannel
   } = props
 
   // Drag-to-resize the PWM range bands (Betaflight-style). The band edges and the
@@ -244,6 +249,15 @@ export function RcMixerView(props: RcMixerViewProps) {
                   <div>
                     <strong>Channel {channel}</strong>
                     <small>{assignments.length === 0 ? 'No assignments' : `${assignments.length} assigned`}</small>
+                    {firmwareSupported && externalClaimByChannel?.get(channel)?.length ? (
+                      <small
+                        className="rc-mixer-channel__external-claim"
+                        data-testid={`rc-mixer-channel-claim-${channel}`}
+                        title="This channel is already used by another subsystem. Layering an RC Mixer term here stacks on top of it."
+                      >
+                        ⚠ Also used by: {externalClaimByChannel.get(channel)!.join(', ')}
+                      </small>
+                    ) : null}
                   </div>
                   <div className="rc-mixer-channel__header-right">
                     {typeof livePwm === 'number' ? (

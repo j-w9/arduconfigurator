@@ -20,6 +20,9 @@ export interface ModesViewSlot {
 export interface ModesViewProps {
   modeChannelLabel: string
   modeChannelParamName: string
+  /** RC Mixer (AP_RC_Logic) function labels layered on the mode channel, if any,
+   *  so the operator sees the mode switch shares its channel with an RCL term. */
+  modeChannelRcLogicClaim?: readonly string[]
   currentSlotLabel: string
   currentSlotSubtext: string
   activeModeLabel: string
@@ -46,6 +49,7 @@ export function ModesView(props: ModesViewProps) {
   const {
     modeChannelLabel,
     modeChannelParamName,
+    modeChannelRcLogicClaim,
     currentSlotLabel,
     currentSlotSubtext,
     activeModeLabel,
@@ -101,6 +105,11 @@ export function ModesView(props: ModesViewProps) {
               <span>Mode channel</span>
               <strong>{modeChannelLabel}</strong>
               <small>{modeChannelParamName} selects which RC channel switches the flight mode.</small>
+              {modeChannelRcLogicClaim?.length ? (
+                <small className="modes-mode-channel__rcl-claim" data-testid="modes-mode-channel-rcl-claim">
+                  ⚠ This channel also drives an RC Mixer function: {modeChannelRcLogicClaim.join(', ')}
+                </small>
+              ) : null}
             </article>
             <article className="modes-status__card">
               <span>Current slot</span>

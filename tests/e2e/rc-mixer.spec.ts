@@ -123,5 +123,9 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     await expect(callout).toContainText('Not available in ArduPilot')
     // No real engine controls without RCL_*.
     await expect(page.getByTestId('rc-mixer-engine-controls')).toHaveCount(0)
+    // RCL-gated chrome (external-claim badges, output-position selectors) stays
+    // hidden in the preview scaffold — all of it is gated on RCL detection.
+    await expect(page.locator('[data-testid^="rc-mixer-channel-claim-"]')).toHaveCount(0)
+    await expect(page.locator('[data-testid^="rc-mixer-position-"]')).toHaveCount(0)
   })
 })
