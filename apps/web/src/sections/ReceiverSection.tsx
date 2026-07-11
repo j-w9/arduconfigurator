@@ -42,7 +42,7 @@ import type { useSetupExercises } from '../hooks/use-setup-exercises'
 import { formatParameterValue } from '../parameter-format'
 import { formatModeAssignment, modeSlotParamId } from '../modes-failsafe-helpers'
 import { RcChannelBars } from '../rc-channel-bars'
-import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
+import { selectParameterById } from '../selectors/parameter-read'
 import { RC_DIRECTION_PROMPTS, type RcDirectionResult } from '../view-models/receiver-direction-check'
 import { RC_CALIBRATION_AXIS_ORDER, RC_CALIBRATION_SWITCH_CHANNELS, rcCalibrationCaptureComplete } from '../setup-exercise-helpers'
 import { StickCraftPreview } from '../preview-components'
@@ -246,7 +246,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     modeSwitchEstimate,
     modeExerciseAssignments,
     modeAssignments,
-    modeSwitchActivity,
     recentModeSwitchChange,
     configuredModeChannel,
     rssiType,
@@ -860,37 +859,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                 {activeReceiverTaskId === 'flight-modes' ? (
                   <div className="receiver-task-panel receiver-task-panel--stack">
                     <div className="receiver-task-two-up">
-                      <div className="mode-estimate-card">
-                        <div className="mode-estimate-card__header">
-                          <strong>Flight mode switch</strong>
-                          <StatusBadge tone={recentModeSwitchChange ? 'warning' : modeSwitchEstimate.estimatedSlot !== undefined ? 'success' : 'neutral'}>
-                            {recentModeSwitchChange ? 'Switch moved' : modeSwitchEstimate.estimatedSlot !== undefined ? 'Stable' : 'Waiting'}
-                          </StatusBadge>
-                        </div>
-                        <p>
-                          {modeSwitchEstimate.channelNumber === undefined
-                            ? 'Mode channel is not configured yet.'
-                            : modeSwitchEstimate.pwm === undefined
-                              ? `Configured for CH${modeSwitchEstimate.channelNumber}, waiting for that channel to stream.`
-                              : `Estimated slot ${modeSwitchEstimate.estimatedSlot} on CH${modeSwitchEstimate.channelNumber} at ${modeSwitchEstimate.pwm} µs.`}
-                        </p>
-                        <small>
-                          {modeSwitchEstimate.configuredParamId && modeSwitchEstimate.configuredValue !== undefined
-                            ? `${modeSwitchEstimate.configuredParamId} = ${formatModeAssignment(modeSwitchEstimate.configuredValue, snapshot.vehicle?.vehicle)}`
-                            : `Heartbeat mode: ${snapshot.vehicle?.flightMode ?? 'Unknown'}`}
-                        </small>
-                        {modeSwitchActivity ? (
-                          <small>
-                            {modeSwitchActivity.previousSlot !== undefined && modeSwitchActivity.previousSlot !== modeSwitchActivity.currentSlot
-                              ? `Last slot change: ${formatModeAssignment(readRoundedParameter(snapshot, modeSlotParamId(snapshot.vehicle?.vehicle, modeSwitchActivity.previousSlot)), snapshot.vehicle?.vehicle)} -> ${formatModeAssignment(
-                                  readRoundedParameter(snapshot, modeSlotParamId(snapshot.vehicle?.vehicle, modeSwitchActivity.currentSlot)),
-                                  snapshot.vehicle?.vehicle
-                                )}`
-                              : `Last switch movement: ${modeSwitchActivity.previousPwm ?? modeSwitchActivity.currentPwm} µs -> ${modeSwitchActivity.currentPwm} µs`}
-                          </small>
-                        ) : null}
-                      </div>
-
                       {modeChannelParameter ? (
                         <div className="scoped-review-card scoped-review-card--compact">
                           <div className="switch-exercise-card__header">

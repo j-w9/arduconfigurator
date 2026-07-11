@@ -16,20 +16,20 @@ function assignment(channel: number, functionId: number): RcMixerAssignment {
 }
 
 describe('deriveExternalChannelClaims', () => {
-  it('flags the flight-mode channel', () => {
+  it('names the owning section for the flight-mode channel', () => {
     const claims = deriveExternalChannelClaims(snapshot({ FLTMODE_CH: 7 }))
-    expect(claims.get(7)).toEqual(['Flight mode switch'])
+    expect(claims.get(7)).toEqual(['Flight modes'])
   })
 
-  it('labels an RCn_OPTION aux function by name (arm, VTX power)', () => {
+  it('names the arm-switch section for an arm RCn_OPTION and the function for others', () => {
     const claims = deriveExternalChannelClaims(snapshot({ RC6_OPTION: 153, RC8_OPTION: 94 }))
-    expect(claims.get(6)).toEqual(['ArmDisarm (4.2 and higher)'])
-    expect(claims.get(8)).toEqual(['VTX Power'])
+    expect(claims.get(6)).toEqual(['Arm switch'])
+    expect(claims.get(8)).toEqual(['RC option — VTX Power'])
   })
 
-  it('combines both claims when a channel is the mode switch AND has an option', () => {
+  it('combines both claims when a channel is the mode channel AND has an option', () => {
     const claims = deriveExternalChannelClaims(snapshot({ FLTMODE_CH: 5, RC5_OPTION: 153 }))
-    expect(claims.get(5)).toEqual(['Flight mode switch', 'ArmDisarm (4.2 and higher)'])
+    expect(claims.get(5)).toEqual(['Flight modes', 'Arm switch'])
   })
 
   it('ignores channels with no claim (RCn_OPTION = 0 or absent)', () => {

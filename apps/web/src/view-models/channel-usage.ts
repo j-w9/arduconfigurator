@@ -38,15 +38,19 @@ export function deriveExternalChannelClaims(snapshot: ConfiguratorSnapshot): Map
     }
   }
 
+  // Labels name the SECTION that owns the channel so the operator knows where to
+  // look: the flight-mode channel → "Flight modes", an arm RCn_OPTION → "Arm
+  // switch", any other RCn_OPTION → "RC option — <function>".
   const modeChannel = getModeChannelNumber(snapshot)
   if (modeChannel !== undefined) {
-    add(modeChannel, 'Flight mode switch')
+    add(modeChannel, 'Flight modes')
   }
 
   for (let channel = 1; channel <= 16; channel += 1) {
     const option = readRoundedParameter(snapshot, `RC${channel}_OPTION`)
     if (option !== undefined && option !== 0) {
-      add(channel, auxFunctionLabel(option))
+      const isArm = option === 41 || option === 153 || option === 154
+      add(channel, isArm ? 'Arm switch' : `RC option — ${auxFunctionLabel(option)}`)
     }
   }
 

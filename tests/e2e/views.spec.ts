@@ -1557,7 +1557,7 @@ test.describe('RC Mixer view', () => {
 
     // Cross-subsystem awareness: ch7 is the flight-mode switch, so the mixer
     // badges it as already claimed even though it has no RCL term of its own.
-    await expect(page.getByTestId('rc-mixer-channel-claim-7')).toContainText('Flight mode switch')
+    await expect(page.getByTestId('rc-mixer-channel-claim-7')).toContainText('Flight modes')
   })
 
   test('surfaces RC Mixer term usage back in the Receiver view (reverse awareness)', async ({ page }) => {
