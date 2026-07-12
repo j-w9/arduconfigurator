@@ -1,7 +1,13 @@
 import { useRef, useState } from 'react'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
-import { parseBetaflightVtxTable, serializeBetaflightVtxTable, VTX_TABLE_PRESETS } from '@arduconfig/ardupilot-core'
+import {
+  parseBetaflightVtxTable,
+  serializeBetaflightVtxTable,
+  VTX_TABLE_PRESETS,
+  VTX_POWER_PRESETS,
+  vtxPowerPresetLevels
+} from '@arduconfig/ardupilot-core'
 
 import type { UseVtxTableResult } from '../hooks/use-vtx-table'
 import { downloadTextFile } from '../download-file'
@@ -325,6 +331,15 @@ function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; le
       applyImport(preset.table)
     }
   }
+  const handlePowerPreset = (id: string): void => {
+    const preset = VTX_POWER_PRESETS.find((candidate) => candidate.id === id)
+    if (preset) {
+      // Swap only the power ladder, keeping the band/frequency map that's
+      // already loaded (from the FC or a full preset).
+      vtxTable.setPowerLevels(vtxPowerPresetLevels(preset))
+      setImportError(undefined)
+    }
+  }
 
   return (
     <div className="bf-vtx-table" data-testid="vtx-table-editor">
@@ -478,6 +493,22 @@ function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; le
       <div className="bf-vtx-table__power" data-testid="vtx-table-power">
         <div className="bf-vtx-table__power-head">
           <strong>Power levels</strong>
+          {learned ? null : (
+            <select
+              className="bf-vtx-table__preset-select"
+              data-testid="vtx-table-power-preset-select"
+              aria-label="Load a VTX power-table preset"
+              value=""
+              onChange={(event) => handlePowerPreset(event.target.value)}
+            >
+              <option value="">Load a power preset…</option>
+              {VTX_POWER_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id} title={preset.description}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <table className="bf-vtx-table__power-grid">
           <thead>

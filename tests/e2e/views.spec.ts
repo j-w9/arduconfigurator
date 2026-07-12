@@ -3788,6 +3788,33 @@ test.describe('VTX band/frequency table', () => {
     await expect(page.getByTestId('vtx-table-power-value-0')).toHaveValue('25')
     await expect(page.getByTestId('vtx-table-save')).toBeEnabled()
   })
+
+  test('loads an analog power-table preset (power-only) with a 3-char-safe 1600 mW label', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('view-button-vtx').click()
+    await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
+
+    // The power preset swaps only the ladder (bands untouched), and the 1600 mW
+    // level's label fits the firmware's 3-char field as "1.6" (not "160").
+    await page.getByTestId('vtx-table-power-preset-select').selectOption('power-25-1600')
+    await expect(page.getByTestId('vtx-table-power-value-3')).toHaveValue('1600')
+    await expect(page.getByTestId('vtx-table-power-label-3')).toHaveValue('1.6')
+    // Bands were not touched by a power-only preset.
+    await expect(page.getByTestId('vtx-table-freq-0-0')).toHaveValue('5865')
+  })
+
+  test('editing a power value auto-derives a fitting 3-char label (1600 → 1.6)', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('view-button-vtx').click()
+    await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
+
+    // The label field can't hold "1600" (3-char firmware limit); typing the value
+    // auto-fills a fitting label instead of leaving a misleading truncated one.
+    await page.getByTestId('vtx-table-power-value-0').fill('1600')
+    await expect(page.getByTestId('vtx-table-power-label-0')).toHaveValue('1.6')
+  })
 })
 
 test.describe('Scoped write-progress bar', () => {
