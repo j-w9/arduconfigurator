@@ -49,6 +49,28 @@ const POWER_WHOOP = [
   'vtxtable powerlabels 25 100 200',
 ].join('\n')
 
+// The firmware power label is a 3-char fixed field, so a mW value ≥ 1000 can't
+// be written out in full (e.g. "1600" would truncate to a misleading "160").
+// Derive a fitting label: the mW number under 1 W, a compact watts form above
+// it (1600 → "1.6", 1000 → "1", 2000 → "2"). Shared by the power presets and
+// the editor's value→label auto-fill.
+export function defaultVtxPowerLabel(valueMw: number): string {
+  if (!Number.isFinite(valueMw) || valueMw <= 0) {
+    return '0'
+  }
+  if (valueMw < 1000) {
+    return String(Math.round(valueMw))
+  }
+  const watts = valueMw / 1000
+  return (Number.isInteger(watts) ? String(watts) : watts.toFixed(1)).slice(0, 3)
+}
+
+const POWER_25_1600 = [
+  'vtxtable powerlevels 4',
+  'vtxtable powervalues 25 400 800 1600',
+  `vtxtable powerlabels 25 400 800 ${defaultVtxPowerLabel(1600)}`,
+].join('\n')
+
 export const VTX_TABLE_PRESETS: readonly VtxTablePresetDefinition[] = [
   {
     id: 'standard-40ch-25-600',
@@ -74,9 +96,68 @@ export const VTX_TABLE_PRESETS: readonly VtxTablePresetDefinition[] = [
     ].join('\n'),
   },
   {
+    id: 'standard-40ch-25-1600',
+    label: 'Standard 40CH · 25–1600 mW (1.6 W)',
+    description: 'Full 40CH map with a 25/400/800/1600 mW ladder for high-power analog VTX (e.g. a 1.6 W whoop VTX).',
+    table: ['vtxtable bands 5', 'vtxtable channels 8', STANDARD_40CH_BANDS, POWER_25_1600].join('\n'),
+  },
+  {
     id: 'standard-40ch-whoop',
     label: 'Standard 40CH · whoop (25–200 mW)',
     description: 'Full 40CH map with a low 25/100/200 mW ladder for tiny-whoop / indoor analog VTX.',
     table: ['vtxtable bands 5', 'vtxtable channels 8', STANDARD_40CH_BANDS, POWER_WHOOP].join('\n'),
   },
 ]
+
+/**
+ * Power-only presets — the ANALOG power ladder without touching the band /
+ * frequency map. The bands are universal (and usually already loaded from the
+ * FC), but the selectable power set varies by VTX, so this lets an operator
+ * swap just the power levels. Analog only: a digital/MSP VTX provides its own
+ * table (learned from the goggles) and renders read-only.
+ */
+export interface VtxPowerPresetDefinition {
+  id: string
+  label: string
+  description: string
+  /** mW values low → high; labels are derived to fit the 3-char firmware field. */
+  valuesMw: readonly number[]
+}
+
+export const VTX_POWER_PRESETS: readonly VtxPowerPresetDefinition[] = [
+  {
+    id: 'power-25-600',
+    label: '25 / 100 / 200 / 400 / 600 mW',
+    description: 'Common 5-step analog ladder (Tramp-native).',
+    valuesMw: [25, 100, 200, 400, 600],
+  },
+  {
+    id: 'power-25-800',
+    label: '25 / 100 / 400 / 800 mW',
+    description: 'Higher 4-step analog ladder.',
+    valuesMw: [25, 100, 400, 800],
+  },
+  {
+    id: 'power-25-500',
+    label: '25 / 200 / 500 mW',
+    description: 'SmartAudio-style 3-step ladder.',
+    valuesMw: [25, 200, 500],
+  },
+  {
+    id: 'power-25-1600',
+    label: '25 / 400 / 800 / 1600 mW (1.6 W)',
+    description: 'High-power ladder for a 1.6 W analog VTX.',
+    valuesMw: [25, 400, 800, 1600],
+  },
+  {
+    id: 'power-whoop',
+    label: '25 / 100 / 200 mW (whoop)',
+    description: 'Low-power indoor / tiny-whoop ladder.',
+    valuesMw: [25, 100, 200],
+  },
+]
+
+/** Build the `VtxTablePowerLevel[]` for a power preset, deriving 3-char labels. */
+export function vtxPowerPresetLevels(preset: VtxPowerPresetDefinition): { value: number; label: string }[] {
+  return preset.valuesMw.map((value) => ({ value, label: defaultVtxPowerLabel(value) }))
+}

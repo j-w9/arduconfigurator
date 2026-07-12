@@ -11,7 +11,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import type { VtxTable } from '@arduconfig/ardupilot-core'
+import type { VtxTable, VtxTablePowerLevel } from '@arduconfig/ardupilot-core'
+import { defaultVtxPowerLabel } from '@arduconfig/ardupilot-core'
 
 // Structural runtime slice — avoids importing the whole runtime class.
 export interface VtxTableRuntime {
@@ -35,6 +36,9 @@ export interface UseVtxTableResult {
   setFrequency: (bandIndex: number, channelIndex: number, mhz: number) => void
   setPowerValue: (index: number, value: number) => void
   setPowerLabel: (index: number, label: string) => void
+  /** Replace only the power ladder (keeps the band/frequency map) — used by the
+   *  analog power-table presets. */
+  setPowerLevels: (levels: VtxTablePowerLevel[]) => void
   /** Replace the working draft wholesale (e.g. from a Betaflight import).
    *  Marks dirty; Save then uploads it. */
   loadTable: (table: VtxTable) => void
@@ -120,7 +124,29 @@ export function useVtxTable(input: {
       const level = current.powerLevels[index]
       if (!level) return current
       const next = cloneVtxTable(current)
-      next.powerLevels[index].value = Number.isFinite(value) ? Math.max(0, Math.min(0xffff, Math.round(value))) : 0
+      const nextValue = Number.isFinite(value) ? Math.max(0, Math.min(0xffff, Math.round(value))) : 0
+      next.powerLevels[index].value = nextValue
+      // Keep the 3-char label in step with the value unless the operator has
+      // given it a custom label. The firmware label is only 3 chars, so a high
+      // value can't hold its full mW as text (1600 → "1.6"); auto-deriving a
+      // fitting label beats silently truncating what the operator typed.
+      if (level.label === '' || level.label === defaultVtxPowerLabel(level.value)) {
+        next.powerLevels[index].label = defaultVtxPowerLabel(nextValue)
+      }
+      return next
+    })
+    setDirty(true)
+  }, [])
+
+  const setPowerLevels = useCallback((levels: VtxTablePowerLevel[]) => {
+    setDraft((current) => {
+      if (!current) return current
+      const next = cloneVtxTable(current)
+      // Swap only the power ladder, keeping the existing band/frequency map.
+      next.powerLevels = levels.map((level) => ({
+        value: Number.isFinite(level.value) ? Math.max(0, Math.min(0xffff, Math.round(level.value))) : 0,
+        label: level.label.slice(0, 3)
+      }))
       return next
     })
     setDirty(true)
@@ -181,6 +207,7 @@ export function useVtxTable(input: {
     setFrequency,
     setPowerValue,
     setPowerLabel,
+    setPowerLevels,
     loadTable,
     save,
     reset,

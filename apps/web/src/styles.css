@@ -3358,7 +3358,9 @@ textarea:focus {
 .bf-vtx-table__power-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .bf-vtx-table__power-grid {
   border-collapse: collapse;
