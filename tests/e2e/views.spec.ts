@@ -3773,6 +3773,21 @@ test.describe('VTX band/frequency table', () => {
     await page.getByTestId('vtx-table-export-bf').click()
     expect((await download).suggestedFilename()).toBe('vtxtable.txt')
   })
+
+  test('loads a curated Betaflight preset into the editable table', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('view-button-vtx').click()
+    await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
+
+    // Selecting a preset populates the draft through the same parse path as a
+    // manual import — the Raceband preset is a single band whose R1 is 5658 MHz —
+    // and dirties it so the operator can review and Save.
+    await page.getByTestId('vtx-table-preset-select').selectOption('raceband-8ch-25-600')
+    await expect(page.getByTestId('vtx-table-freq-0-0')).toHaveValue('5658')
+    await expect(page.getByTestId('vtx-table-power-value-0')).toHaveValue('25')
+    await expect(page.getByTestId('vtx-table-save')).toBeEnabled()
+  })
 })
 
 test.describe('Scoped write-progress bar', () => {

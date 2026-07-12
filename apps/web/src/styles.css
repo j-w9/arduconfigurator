@@ -3402,7 +3402,18 @@ textarea:focus {
 .bf-vtx-table__io {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+.bf-vtx-table__preset-select {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--card-outline);
+  background: var(--bg-panel-raised);
+  color: var(--text);
+  font-size: 13px;
 }
 .bf-vtx-table__import {
   display: grid;
