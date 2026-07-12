@@ -839,9 +839,11 @@ test.describe('Tuning tab', () => {
     await connectViaHeader(page)
     await openView(page, 'tuning')
 
-    // The "rates" task renders the Flight Feel controls. The demo seeds
-    // ATC_INPUT_TC as the float32-widened 0.15000000596046448 (what a real FC
-    // reports); the number field must show it rounded, not all the digits.
+    // The "rates" (Pilot) task renders the Flight Feel controls under the
+    // collapsible Angle section (default collapsed) — expand it first. The demo
+    // seeds ATC_INPUT_TC as the float32-widened 0.15000000596046448 (what a real
+    // FC reports); the number field must show it rounded, not all the digits.
+    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
     await expect(input).toBeVisible({ timeout: 10000 })
     await expect(input).toHaveValue('0.15')
@@ -852,6 +854,8 @@ test.describe('Tuning tab', () => {
     await connectViaHeader(page)
     await openView(page, 'tuning')
 
+    // Pilot modes are collapsible and default collapsed — expand Angle first.
+    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
     await expect(input).toBeVisible({ timeout: 10000 })
     // The first tuning slider is the first Flight Feel control (ATC_INPUT_TC).
@@ -863,6 +867,21 @@ test.describe('Tuning tab', () => {
     await expect(input).toHaveValue('0.3')
     // Mid-drag (before release) nothing is staged.
     await expect(page.locator('.tuning-control--staged')).toHaveCount(0)
+  })
+
+  test('Pilot mode sections are collapsible and default collapsed', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'tuning')
+
+    // The Pilot tab opens as a compact list of collapsible mode pills; their
+    // controls stay hidden until the operator expands a mode.
+    const angleSummary = page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' })
+    await expect(angleSummary).toBeVisible()
+    await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeHidden()
+
+    await angleSummary.click()
+    await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeVisible()
   })
 })
 
@@ -2609,9 +2628,10 @@ test.describe('ArduPlane demo', () => {
 
     await openView(page, 'tuning')
 
-    // The large Copter tuning workbench is the default ('rates') tab — its
+    // The large Copter tuning workbench is the default ('rates'/Pilot) tab — its
     // ATC_INPUT_TC control is a signature workbench field and must still be
-    // present and untouched.
+    // present. It lives under the collapsible Angle section (default collapsed).
+    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeVisible({ timeout: 10000 })
 
     // AutoTune now lives in its own task tab; open it to reveal the surface.
