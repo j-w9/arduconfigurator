@@ -178,20 +178,22 @@ test('parameter sync retries when the initial stream stalls before the full tabl
 
     assert.equal(stats.status, 'complete')
     assert.equal(stats.downloaded, 4)
+    // Recovery targets the dropped slot by index (PARAM_REQUEST_READ), not a
+    // full re-stream that would re-run the same lossy burst.
     assert.equal(
       sentMessages.filter((message) => message.type === 'PARAM_REQUEST_LIST').length,
-      2
+      1,
+      'no second full re-stream once a partial set exists to gap-fill'
     )
+    const reads = sentMessages.filter((message) => message.type === 'PARAM_REQUEST_READ')
+    assert.ok(reads.length >= 1, 'the missing slot was refetched by index')
+    assert.equal(reads[0].paramIndex, 3, 'the dropped last index was the one refetched')
     assert.match(
       runtime.getSnapshot().statusTexts.map((entry) => entry.text).join('\n'),
-      /Re-requesting the table/
+      /Refetching 1 missing parameter\(s\) by index/
     )
-    // The retry recovery is a full PARAM_REQUEST_LIST re-stream; the
-    // surfaced summary must say so and must never claim a targeted
-    // "missing values" re-request the runtime does not perform.
     const allSummaries = requestParamSummaries.join('\n')
-    assert.match(allSummaries, /Re-requesting the full parameter table/)
-    assert.doesNotMatch(allSummaries, /missing values/)
+    assert.match(allSummaries, /Refetching 1 missing parameter\(s\)/)
   } finally {
     unsubscribe()
     await runtime.disconnect().catch(() => {})
@@ -2519,12 +2521,32 @@ function createStalledParamSession(initialParameters, sentMessages) {
     async send(message) {
       sentMessages.push(message)
 
+      const entries = Object.entries(parameters)
+
+      // The by-index gap-fill: the stalled sync refetches exactly the dropped
+      // slot(s) with PARAM_REQUEST_READ, which the FC answers by index.
+      if (message.type === 'PARAM_REQUEST_READ') {
+        const entry = entries[message.paramIndex]
+        if (entry) {
+          emit({
+            type: 'PARAM_VALUE',
+            paramId: entry[0],
+            paramValue: entry[1],
+            paramType: 9,
+            paramCount: entries.length,
+            paramIndex: message.paramIndex
+          })
+        }
+        return
+      }
+
       if (message.type !== 'PARAM_REQUEST_LIST') {
         return
       }
 
       parameterRequestCount += 1
-      const entries = Object.entries(parameters)
+      // The first burst drops the last slot (stall); a full re-stream (only used
+      // as a fallback when nothing has arrived) would deliver everything.
       const visibleEntries =
         parameterRequestCount === 1
           ? entries.slice(0, Math.max(entries.length - 1, 1))
@@ -3793,14 +3815,20 @@ test('audit-40: parameter-sync stall-retry fires even when alias mirrors inflate
     await runtime.requestParameterList({ timeoutMs: 200 })
 
     // Wait long enough for the stall-retry timer (30ms) to fire + the
-    // retry to schedule a second PARAM_REQUEST_LIST.
+    // retry to issue a by-index gap-fill for the dropped slot.
     await new Promise((resolve) => setTimeout(resolve, 120))
 
-    const requestLists = session.sentMessages.filter((m) => m.type === 'PARAM_REQUEST_LIST')
+    // The retry recovery is now a by-index PARAM_REQUEST_READ (index 2, the
+    // real arrival that never streamed), not a full re-stream. The audit-40
+    // invariant under test is that the retry FIRES at all — which it only does
+    // when the gate compares the alias-free realParameterIdsReceived.size (2),
+    // not the mirror-inflated parameters.size (3), against totalParameters (3).
+    const gapFills = session.sentMessages.filter((m) => m.type === 'PARAM_REQUEST_READ')
     assert.ok(
-      requestLists.length >= 2,
-      `expected the stall-retry to send a second PARAM_REQUEST_LIST, got ${requestLists.length}`
+      gapFills.length >= 1,
+      `expected the stall-retry to gap-fill the missing index, got ${gapFills.length} PARAM_REQUEST_READ`
     )
+    assert.equal(gapFills[0].paramIndex, 2, 'the un-streamed real index was refetched')
 
     // And the user-facing "stalled at X/Y" status entry should report
     // the alias-free count, not the inflated parameters.size — matches

@@ -180,6 +180,11 @@ const DEFAULT_HEARTBEAT_TIMEOUT_MS = 20000
 const DEFAULT_PARAMETER_SYNC_TIMEOUT_MS = 20000
 const PARAMETER_SYNC_STALL_RETRY_MS = 1500
 const MAX_PARAMETER_SYNC_RETRIES = 3
+// Cap on how many PARAM_REQUEST_READ frames a single gap-fill pass emits, so a
+// pathological gap streams in bounded bursts rather than thousands at once. The
+// real-world gap is a handful of dropped frames; any remainder rolls to the
+// next stall-retry pass.
+const MAX_PARAMETER_GAP_FILL_PER_PASS = 256
 // Hard upper bound on emit() coalescing. requestAnimationFrame is suspended
 // in a backgrounded tab, so a setTimeout fallback at this bound guarantees a
 // coalesced terminal snapshot still reaches the UI.
@@ -382,6 +387,10 @@ export class ArduPilotConfiguratorRuntime {
   // param-sync completion gate counts these so a mirror can't inflate
   // `downloaded` past `total`.
   private readonly realParameterIdsReceived = new Set<string>()
+  // Param indices the FC has streamed, so a stalled sync can refetch exactly the
+  // missing indices (PARAM_REQUEST_READ) instead of re-streaming the whole table
+  // and re-dropping the same frames under a lossy transport.
+  private readonly receivedParameterIndices = new Set<number>()
   private readonly preArmIssues = new Map<string, PreArmIssueState>()
   private readonly statusTexts: StatusTextEntry[] = []
   // STATUSTEXT chunked-reassembly buffers. ArduPilot splits messages longer
@@ -804,6 +813,7 @@ export class ArduPilotConfiguratorRuntime {
       const vehicle = await this.waitForVehicle(options)
       this.parameters.clear()
       this.realParameterIdsReceived.clear()
+      this.receivedParameterIndices.clear()
       this.totalParameters = 0
       this.parameterSyncRetryCount = 0
       this.clearParameterSyncRetryTimer()
@@ -1806,6 +1816,12 @@ export class ArduPilotConfiguratorRuntime {
     const known = this.realParameterIdsReceived.has(message.paramId)
     this.realParameterIdsReceived.add(message.paramId)
     this.totalParameters = message.paramCount
+    // Record the streamed index so a stalled sync can target the gaps. A
+    // by-name write echo carries paramIndex 0xffff (no valid index) — ignore it
+    // so it can't masquerade as coverage of a real slot.
+    if (message.paramIndex !== 0xffff && message.paramIndex < message.paramCount) {
+      this.receivedParameterIndices.add(message.paramIndex)
+    }
 
     // A new real arrival is sync progress — re-arm the idle timeout so a slow
     // but steadily-streaming catalog (busy/just-booted board) doesn't time out
@@ -2517,6 +2533,7 @@ export class ArduPilotConfiguratorRuntime {
     this.pwmOutputCount = undefined
     this.parameters.clear()
     this.realParameterIdsReceived.clear()
+    this.receivedParameterIndices.clear()
     this.totalParameters = 0
     this.parameterSyncRetryCount = 0
     this.parameterSync = createIdleParameterSync()
@@ -2678,16 +2695,27 @@ export class ArduPilotConfiguratorRuntime {
     // the downloaded count getSnapshot() exposes.
     const downloaded = this.realParameterIdsReceived.size
     const total = this.totalParameters
+    // Prefer targeting the exact indices the stream dropped. A full
+    // PARAM_REQUEST_LIST re-stream re-runs the same fast burst that lost the
+    // frames in the first place (and can re-drop them under a lossy transport);
+    // PARAM_REQUEST_READ-by-index refetches only the gaps. Fall back to a full
+    // re-stream when nothing has arrived yet (no indices to target) or the FC
+    // has not reported a count.
+    const missingIndices = this.missingParameterIndices()
+    const canGapFill = total > 0 && downloaded > 0 && missingIndices.length > 0
+
     this.appendStatusEntry(
       'warning',
-      `Parameter stream stalled at ${downloaded}/${total || 'unknown'}. Re-requesting the table (${this.parameterSyncRetryCount}/${MAX_PARAMETER_SYNC_RETRIES}).`
+      canGapFill
+        ? `Parameter stream stalled at ${downloaded}/${total}. Refetching ${missingIndices.length} missing parameter(s) by index (${this.parameterSyncRetryCount}/${MAX_PARAMETER_SYNC_RETRIES}).`
+        : `Parameter stream stalled at ${downloaded}/${total || 'unknown'}. Re-requesting the table (${this.parameterSyncRetryCount}/${MAX_PARAMETER_SYNC_RETRIES}).`
     )
     this.setGuidedAction('request-parameters', {
       ...this.guidedActionService.getAction('request-parameters'),
       status: 'running',
-      // Recovery is a full PARAM_REQUEST_LIST re-stream (no partial-list
-      // request exists), so the copy says "full parameter table".
-      summary: `Parameter stream stalled at ${downloaded}/${total || 'unknown'}. Re-requesting the full parameter table.`,
+      summary: canGapFill
+        ? `Parameter stream stalled at ${downloaded}/${total}. Refetching ${missingIndices.length} missing parameter(s).`
+        : `Parameter stream stalled at ${downloaded}/${total || 'unknown'}. Re-requesting the full parameter table.`,
       instructions: ['Keep the link open while the configurator retries the parameter stream.'],
       updatedAtMs: Date.now(),
       completedAtMs: undefined
@@ -2695,12 +2723,56 @@ export class ArduPilotConfiguratorRuntime {
     this.emit()
 
     try {
-      await this.requestParameterTable(this.vehicle.systemId, this.vehicle.componentId)
+      if (canGapFill) {
+        await this.requestMissingParameters(missingIndices)
+        // The refetch responses arrive as ordinary PARAM_VALUE frames and drive
+        // completion. Re-arm the stall timer so a still-incomplete set gets
+        // another gap-fill pass (or a full re-stream once nothing is arriving).
+        this.scheduleParameterSyncRetry()
+      } else {
+        await this.requestParameterTable(this.vehicle.systemId, this.vehicle.componentId)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown parameter retry error.'
       this.appendStatusEntry('warning', `Failed to retry the parameter stream: ${message}`)
       this.emit()
       this.scheduleParameterSyncRetry()
+    }
+  }
+
+  // Indices the FC promised (0..total-1) that have not yet streamed. Used to
+  // drive the by-index gap-fill on a stalled sync.
+  private missingParameterIndices(): number[] {
+    const total = this.totalParameters
+    if (total <= 0) {
+      return []
+    }
+    const missing: number[] = []
+    for (let index = 0; index < total; index += 1) {
+      if (!this.receivedParameterIndices.has(index)) {
+        missing.push(index)
+      }
+    }
+    return missing
+  }
+
+  // Refetch specific parameter slots by index with PARAM_REQUEST_READ. Bounded
+  // per pass so a pathological gap can't emit thousands of frames at once; any
+  // remainder is picked up by the next stall-retry pass.
+  private async requestMissingParameters(indices: number[]): Promise<void> {
+    if (!this.vehicle) {
+      return
+    }
+    const batch = indices.slice(0, MAX_PARAMETER_GAP_FILL_PER_PASS)
+    for (const index of batch) {
+      await this.session.send({
+        type: 'PARAM_REQUEST_READ',
+        targetSystem: this.vehicle.systemId,
+        targetComponent: this.vehicle.componentId,
+        // Reading by index: leave the name empty and set the index directly.
+        paramId: '',
+        paramIndex: index
+      })
     }
   }
 

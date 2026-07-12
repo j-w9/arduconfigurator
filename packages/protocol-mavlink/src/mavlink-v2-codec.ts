@@ -32,6 +32,7 @@ import type {
   MavlinkEnvelope,
   MavlinkMessage,
   ParamRequestListMessage,
+  ParamRequestReadMessage,
   ParamSetMessage,
   ParamValueMessage,
   CanFrameMessage,
@@ -627,6 +628,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeGlobalPositionIntPayload(message)
     case 'PARAM_REQUEST_LIST':
       return encodeParamRequestListPayload(message)
+    case 'PARAM_REQUEST_READ':
+      return encodeParamRequestReadPayload(message)
     case 'PARAM_VALUE':
       return encodeParamValuePayload(message)
     case 'PARAM_SET':
@@ -686,6 +689,8 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
       return decodeGlobalPositionIntPayload(payload)
     case MAVLINK_MESSAGE_IDS.PARAM_REQUEST_LIST:
       return decodeParamRequestListPayload(payload)
+    case MAVLINK_MESSAGE_IDS.PARAM_REQUEST_READ:
+      return decodeParamRequestReadPayload(payload)
     case MAVLINK_MESSAGE_IDS.PARAM_VALUE:
       return decodeParamValuePayload(payload)
     case MAVLINK_MESSAGE_IDS.PARAM_SET:
@@ -743,6 +748,8 @@ function messageIdFor(message: MavlinkMessage): number {
       return MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT
     case 'PARAM_REQUEST_LIST':
       return MAVLINK_MESSAGE_IDS.PARAM_REQUEST_LIST
+    case 'PARAM_REQUEST_READ':
+      return MAVLINK_MESSAGE_IDS.PARAM_REQUEST_READ
     case 'PARAM_VALUE':
       return MAVLINK_MESSAGE_IDS.PARAM_VALUE
     case 'PARAM_SET':
@@ -966,6 +973,29 @@ function decodeParamRequestListPayload(payload: Uint8Array): ParamRequestListMes
     type: 'PARAM_REQUEST_LIST',
     targetSystem: payload[0],
     targetComponent: payload[1]
+  }
+}
+
+function encodeParamRequestReadPayload(message: ParamRequestReadMessage): Uint8Array {
+  const payload = new Uint8Array(MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.PARAM_REQUEST_READ])
+  const view = new DataView(payload.buffer)
+  // Field order is size-sorted: param_index (int16) leads, then the byte-sized
+  // fields in declaration order (target_system, target_component, param_id[16]).
+  view.setInt16(0, message.paramIndex, true)
+  view.setUint8(2, message.targetSystem)
+  view.setUint8(3, message.targetComponent)
+  payload.set(encodeFixedString(message.paramId, 16), 4)
+  return payload
+}
+
+function decodeParamRequestReadPayload(payload: Uint8Array): ParamRequestReadMessage {
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  return {
+    type: 'PARAM_REQUEST_READ',
+    paramIndex: view.getInt16(0, true),
+    targetSystem: view.getUint8(2),
+    targetComponent: view.getUint8(3),
+    paramId: decodeFixedString(payload.subarray(4, 20))
   }
 }
 

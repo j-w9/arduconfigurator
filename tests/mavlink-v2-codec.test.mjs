@@ -898,3 +898,38 @@ test('AUTOPILOT_VERSION decodes the c_library_v2 wire layout (vendor/product u16
     'encoder emits the c_library_v2 layout byte-for-byte'
   )
 })
+
+test('MavlinkV2Codec round-trips a by-index PARAM_REQUEST_READ (gap-fill refetch)', () => {
+  const codec = new MavlinkV2Codec()
+  const envelope = {
+    header: { systemId: 255, componentId: 190, sequence: 0 },
+    message: { type: 'PARAM_REQUEST_READ', targetSystem: 1, targetComponent: 1, paramId: '', paramIndex: 26 }
+  }
+
+  const frame = codec.encode(envelope)
+  const payloadLength = MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.PARAM_REQUEST_READ]
+
+  assert.equal(frame[0], MAVLINK_V2_STX)
+  assert.equal(frame[1], payloadLength, 'PARAM_REQUEST_READ payload is 20 bytes')
+  assert.equal(frame[7], MAVLINK_MESSAGE_IDS.PARAM_REQUEST_READ & 0xff, 'message id 20')
+  assert.equal(frame[8], 0)
+  assert.equal(frame[9], 0)
+
+  // Wire layout: param_index(int16 LE) | target_system | target_component | param_id[16].
+  // Matches the bytes a real FC accepts (verified: index 26 -> 1a000101...).
+  const payload = frame.subarray(MAVLINK_V2_HEADER_LENGTH, MAVLINK_V2_HEADER_LENGTH + payloadLength)
+  assert.equal(payload[0], 0x1a, 'param_index low byte = 26')
+  assert.equal(payload[1], 0x00, 'param_index high byte')
+  assert.equal(payload[2], 1, 'target_system')
+  assert.equal(payload[3], 1, 'target_component')
+
+  const decoded = new MavlinkV2Codec().push(frame)
+  assert.equal(decoded.length, 1)
+  assert.deepEqual(decoded[0].message, {
+    type: 'PARAM_REQUEST_READ',
+    targetSystem: 1,
+    targetComponent: 1,
+    paramId: '',
+    paramIndex: 26
+  })
+})

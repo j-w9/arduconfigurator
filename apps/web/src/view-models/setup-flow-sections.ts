@@ -154,6 +154,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
       let evidence: string[] = []
       let criteria: SetupFlowCriterion[] = []
       let confirmationOutcome: SetupSectionOutcome | undefined
+      let blockingReason: string | undefined
 
       switch (section.id) {
         case 'link':
@@ -287,6 +288,27 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               ? airframe.frameClassValue === undefined || (!airframe.frameTypeIgnored && airframe.frameTypeValue === undefined)
               : (snapshot.vehicle?.vehicle ?? 'Unknown') === 'Unknown'
           })
+          // FRAME_CLASS/FRAME_TYPE always exist on a connected Copter, so a
+          // missing value here is never a real misconfiguration — it's a param
+          // the sync never received (a dropped frame under a lossy link). Left
+          // unexplained this reads as a dead "Confirm Airframe Review" button
+          // with no path forward, so name the missing param and offer a re-sync
+          // instead of silently gating the step. (Non-Copter "Unknown vehicle"
+          // is an identity/link problem, handled by its own copy elsewhere.)
+          if (
+            isCopterVehicle &&
+            (airframe.frameClassValue === undefined || (!airframe.frameTypeIgnored && airframe.frameTypeValue === undefined))
+          ) {
+            const missingParamName = airframe.frameClassValue === undefined ? 'FRAME_CLASS' : 'FRAME_TYPE'
+            blockingReason = `${missingParamName} has not reached the configurator (parameter sync ${snapshot.parameterStats.downloaded}/${snapshot.parameterStats.total}). The frame is set on the vehicle, but the value was dropped during sync, so this step cannot be confirmed yet. Re-sync parameters, then confirm the review.`
+            actions.push({
+              kind: 'guided',
+              label: guidedActionButtonLabel('request-parameters', snapshot, busyAction),
+              tone: 'primary',
+              actionId: 'request-parameters',
+              disabled: busyAction !== undefined || !canRunGuidedAction(snapshot, 'request-parameters')
+            })
+          }
           break
         case 'outputs':
           criteria = isCopterVehicle
@@ -970,6 +992,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
         panelId: panel.panelId,
         panelLabel: panel.panelLabel,
         confirmationOutcome,
+        blockingReason,
         actions
       }
     })
