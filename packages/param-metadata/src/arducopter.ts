@@ -2348,7 +2348,11 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       label: 'EKF Failsafe Action',
       description: 'Action taken when the EKF flags position or velocity variance over the threshold.',
       category: 'failsafe',
-      minimum: 1,
+      // ArduPilot FS_EKF_ACTION is 0..3 (0:Report only, 1:Land, 2:AltHold,
+      // 3:Land even in Stabilize — Parameters.h enum FS_EKF_Action). The lower
+      // bound was 1, which rejected the valid "Report Only" (0) option the
+      // enum itself offers — staging it failed validation with no clear reason.
+      minimum: 0,
       maximum: 3,
       notes: advancedFailsafeNotes,
       options: enumOptions(ARDUCOPTER_FS_EKF_ACTION_LABELS)

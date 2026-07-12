@@ -517,8 +517,9 @@ function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; le
           </tbody>
         </table>
         <small>
-          Protocol value sent to the VTX (mW for Tramp; index/dBm for SmartAudio; dBm for MSP digital) plus a short
-          display label. The firmware resolves an exact power level by its position in this table.
+          Power in <strong>milliwatts (mW)</strong> plus a short display label. The firmware stores the table value as mW
+          for every protocol and derives the SmartAudio dBm / dac step from it, so enter mW here (e.g. 400, not 26 dBm).
+          The exact level is resolved by its position in this table.
         </small>
       </div>
 
