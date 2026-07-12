@@ -12196,6 +12196,40 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-bottom: none;
 }
 
+/* Download progress bar spans the full row width under the columns while a log
+   is streaming, so the operator sees continuous movement instead of a button
+   that looks frozen. */
+.logs-download-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.logs-download-bar__track {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-400, rgba(var(--edge-rgb), 0.12));
+  overflow: hidden;
+}
+
+.logs-download-bar__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary-500);
+  transition: width 0.15s linear;
+}
+
+.logs-download-bar__label {
+  flex: 0 0 auto;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .modes-table__row--head {
   background: var(--bg-panel);
   font-family: var(--font-data);
