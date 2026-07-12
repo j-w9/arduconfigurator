@@ -535,7 +535,19 @@ export class ArduPilotConfiguratorRuntime {
         for (const listener of this.inspectorListeners) {
           listener(envelope)
         }
-        this.emit()
+        // MAVFTP burst packets and LOG_DATA chunks arrive by the thousand during
+        // a file/log download and do NOT change the snapshot — their progress is
+        // surfaced through the download callbacks, and processEnvelope routes
+        // them to the mavftp / logDownload services rather than snapshot state.
+        // Emitting a snapshot per packet drove a continuous full-app re-render
+        // that starved the Web Serial read loop and collapsed download
+        // throughput to ~130x slower than a headless client. Skip the per-packet
+        // emit for those two high-rate types; any status/state change they make
+        // flushes on the next telemetry message, and completion emits explicitly.
+        const messageType = envelope.message.type
+        if (messageType !== 'FILE_TRANSFER_PROTOCOL' && messageType !== 'LOG_DATA') {
+          this.emit()
+        }
       })
     ]
   }
