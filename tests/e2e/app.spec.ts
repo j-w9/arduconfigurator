@@ -86,6 +86,9 @@ async function applySingleTuningChange(page: Page, value: string): Promise<void>
   // explicitly: a prior apply leaves the Tuning task on Review (the active task
   // is now operator-driven and sticky, never auto-switched).
   await page.getByTestId('tuning-tab-rates').click()
+  // The Pilot mode sections are collapsible and default collapsed — expand
+  // Angle to reach its ATC_INPUT_TC control.
+  await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
   await page.getByTestId('tuning-input-ATC_INPUT_TC').fill(value)
   await page.getByTestId('tuning-input-ATC_INPUT_TC').blur()
   // Editing stages in place and no longer auto-redirects to Review, so the
@@ -469,7 +472,9 @@ test.describe('browser configurator regression flows', () => {
     await connectToVehicle(page, 'demo')
     await openView(page, 'tuning')
 
-    // Default landing task is rates, so the flight-feel input is visible.
+    // Default landing task is rates (Pilot); its mode sections are collapsible
+    // and default collapsed — expand Angle to reach the flight-feel input.
+    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
     await expect(input).toBeVisible()
 
@@ -888,6 +893,8 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText(/Saved snapshot "Provisioning baseline" with \d+ parameters\./)).toBeVisible()
 
     await openView(page, 'tuning')
+    // Pilot mode sections default collapsed — expand Angle to reach ATC_INPUT_TC.
+    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     await page.getByTestId('tuning-input-ATC_INPUT_TC').fill('0.2')
 
     await openView(page, 'snapshots')
