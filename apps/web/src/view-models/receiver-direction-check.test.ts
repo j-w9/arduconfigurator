@@ -33,13 +33,13 @@ describe('evaluateRcDirection (centred axes)', () => {
     expect(evaluateRcDirection({ axisId: 'roll', pwm: 1100, ...CENTERED, reversed: true })).toBe('correct')
   })
 
-  it('pitch is inverted relative to roll/yaw (hardware-verified correction)', () => {
-    // Mode-2 TX: pulling back (pitch up) drives the wire LOW. Unlike
-    // roll/yaw, hands-on hardware testing confirmed pitch reads correctly
-    // UNREVERSED here — see evaluateRcDirection's comment for the full trace
-    // and why the source-level derivation didn't predict this.
-    expect(evaluateRcDirection({ axisId: 'pitch', pwm: 1100, ...CENTERED, reversed: false })).toBe('correct')
-    expect(evaluateRcDirection({ axisId: 'pitch', pwm: 1100, ...CENTERED, reversed: true })).toBe('reversed')
+  it('pitch follows the same sign convention as roll/yaw (no per-axis flip)', () => {
+    // Mode-2 TX: pulling the pitch stick back drives the wire LOW. On-FC
+    // re-verification (2026-07-12) confirmed RC2_REVERSED=0 pitches nose-DOWN on
+    // pull-back, so that setting reads REVERSED (needs the reverse) and is only
+    // correct once RC2_REVERSED=1 — matching ArduPilot norm_input, no pitch flip.
+    expect(evaluateRcDirection({ axisId: 'pitch', pwm: 1100, ...CENTERED, reversed: false })).toBe('reversed')
+    expect(evaluateRcDirection({ axisId: 'pitch', pwm: 1100, ...CENTERED, reversed: true })).toBe('correct')
   })
 
   it('yaw-right matches the roll sign convention', () => {
