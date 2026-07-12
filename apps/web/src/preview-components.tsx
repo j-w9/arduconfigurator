@@ -115,11 +115,12 @@ export function StickCraftPreview({
     }
     const reversed = readRoundedParameter(snapshot, `RC${obs.channelNumber}_REVERSED`) === 1
     const oriented = reversed ? -value : value
-    // Pitch is inverted relative to roll/yaw here — matches the same
-    // hardware-verified correction in receiver-direction-check.ts's
-    // evaluateRcDirection (see its comment for the full trace).
-    const axisOriented = axisId === 'pitch' ? -oriented : oriented
-    return Math.max(-1, Math.min(1, axisOriented))
+    // No per-axis flip — the deflection follows ArduPilot's norm_input()
+    // convention for every axis. An earlier build inverted pitch here (and in
+    // evaluateRcDirection), but a fresh on-FC re-verification (2026-07-12) showed
+    // the inversion was wrong: with RC2_REVERSED=0 a pulled-back stick pitches
+    // nose-DOWN, and the preview must show that. Both were un-inverted together.
+    return Math.max(-1, Math.min(1, oriented))
   }
   const rollNorm = axisNorm('roll')
   const pitchNorm = axisNorm('pitch')

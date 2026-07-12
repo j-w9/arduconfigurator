@@ -85,17 +85,19 @@ export function evaluateRcDirection(input: RcDirectionAxisInput): RcDirectionRes
   }
   const rawSign = delta > 0 ? 1 : -1
   const normSign = input.reversed ? -rawSign : rawSign
-  // Pitch is inverted relative to roll/yaw here: hands-on hardware
-  // verification (toggling RCn_REVERSED on a real FC) confirmed the verdict
-  // was backwards for pitch specifically — flips to the wrong label when
-  // reversed is toggled, on both this verdict and the reactive stick-craft
-  // preview, which share this sign convention. Source-level tracing of
-  // RC_Channel::norm_input -> rc_input_to_roll_pitch_rad -> the attitude
-  // controller found no flip anywhere in that chain, so whatever the
-  // discrepancy is, it isn't in that path; empirical hardware behavior
-  // wins over the derivation here.
-  const orientedSign = input.axisId === 'pitch' ? -normSign : normSign
-  return orientedSign > 0 ? 'correct' : 'reversed'
+  // ArduPilot norm_input sign = (reversed ? -1 : 1) * sign(pwm - trim). The named
+  // direction (roll-right, pitch-back/up, yaw-right) wants a POSITIVE norm, so
+  // this is the verdict directly — no per-axis flip.
+  //
+  // Pitch is NOT special-cased. An earlier build inverted pitch here (and in the
+  // stick-craft preview) after a hardware test appeared to read it backwards, but
+  // a fresh on-FC re-verification (2026-07-12) showed the inversion was itself
+  // wrong: with RC2_REVERSED=0 a stick pulled back (wire LOW → negative norm)
+  // pitches nose-DOWN, so that setting IS reversed and the verdict must say so.
+  // The pitch inversion made it read "correct" instead. Removing it matches both
+  // the norm_input convention and the aircraft. (Keep this axis-symmetric — the
+  // preview in preview-components.tsx dropped the same inversion in lockstep.)
+  return normSign > 0 ? 'correct' : 'reversed'
 }
 
 /**
