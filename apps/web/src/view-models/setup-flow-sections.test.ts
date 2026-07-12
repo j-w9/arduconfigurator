@@ -137,6 +137,62 @@ describe('outputs section (Motors-tab redesign alignment)', () => {
   })
 })
 
+describe('airframe frame-param sync guard', () => {
+  const AIRFRAME = [{ id: 'airframe', title: 'Airframe' }]
+  const airframeStub = (over: Record<string, unknown> = {}) =>
+    ({
+      frameClassValue: 1,
+      frameClassLabel: 'Quad',
+      frameTypeValue: 1,
+      frameTypeLabel: 'X',
+      expectedMotorCount: 4,
+      frameTypeIgnored: false,
+      ...over
+    }) as unknown as SetupFlowSectionsInputs['airframe']
+
+  const buildAirframe = (over: { airframe?: Record<string, unknown>; downloaded?: number; total?: number } = {}) => {
+    const sections = buildSetupFlowSections(
+      inputs(AIRFRAME, {
+        snapshot: snapshot(AIRFRAME, {
+          liveVerification: { attitudeTelemetry: { verified: true } },
+          parameterStats: { status: 'complete', downloaded: over.downloaded ?? 1319, total: over.total ?? 1328 }
+        }),
+        airframe: airframeStub(over.airframe),
+        orientationExercise: { status: 'passed' } as unknown as SetupFlowSectionsInputs['orientationExercise'],
+        outputMapping: { motorOutputs: [1, 2, 3, 4], configuredAuxOutputs: [], notes: [] } as unknown as SetupFlowSectionsInputs['outputMapping']
+      })
+    )
+    const airframe = sections.find((section) => section.id === 'airframe')
+    if (!airframe) {
+      throw new Error('missing airframe section')
+    }
+    return airframe
+  }
+
+  it('explains a dropped FRAME_TYPE and offers a re-sync instead of a silently dead confirm', () => {
+    const airframe = buildAirframe({ airframe: { frameTypeValue: undefined } })
+    expect(airframe.blockingReason).toMatch(/FRAME_TYPE/)
+    expect(airframe.blockingReason).toMatch(/1319\/1328/)
+    // The confirm is (correctly) disabled, but now there is a re-sync path.
+    const confirm = airframe.actions.find((action) => 'label' in action && action.label === 'Confirm Airframe Review')
+    expect(confirm && 'disabled' in confirm ? confirm.disabled : undefined).toBe(true)
+    expect(airframe.actions.some((action) => 'actionId' in action && action.actionId === 'request-parameters')).toBe(true)
+  })
+
+  it('names FRAME_CLASS when that is the dropped param', () => {
+    const airframe = buildAirframe({ airframe: { frameClassValue: undefined } })
+    expect(airframe.blockingReason).toMatch(/FRAME_CLASS/)
+  })
+
+  it('adds no guard or re-sync action once both frame params are present', () => {
+    const airframe = buildAirframe()
+    expect(airframe.blockingReason).toBeUndefined()
+    expect(airframe.actions.some((action) => 'actionId' in action && action.actionId === 'request-parameters')).toBe(false)
+    const confirm = airframe.actions.find((action) => 'label' in action && action.label === 'Confirm Airframe Review')
+    expect(confirm && 'disabled' in confirm ? confirm.disabled : undefined).toBe(false)
+  })
+})
+
 describe('radio section RCIN preflight', () => {
   const RADIO = [{ id: 'radio', title: 'Radio' }]
 

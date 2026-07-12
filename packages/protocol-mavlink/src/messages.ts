@@ -108,6 +108,17 @@ export interface ParamRequestListMessage {
   targetComponent: number
 }
 
+export interface ParamRequestReadMessage {
+  type: 'PARAM_REQUEST_READ'
+  targetSystem: number
+  targetComponent: number
+  // Reading by index (paramIndex >= 0) leaves paramId empty; reading by name
+  // sets paramIndex to -1 and populates paramId. The parameter-sync gap-fill
+  // uses the by-index form to refetch exactly the indices a lossy stream dropped.
+  paramId: string
+  paramIndex: number
+}
+
 export interface ParamSetMessage {
   type: 'PARAM_SET'
   targetSystem: number
@@ -395,6 +406,7 @@ export type MavlinkMessage =
   | AttitudeQuaternionMessage
   | FileTransferProtocolMessage
   | ParamValueMessage
+  | ParamRequestReadMessage
   | StatusTextMessage
   | ParamRequestListMessage
   | ParamSetMessage
