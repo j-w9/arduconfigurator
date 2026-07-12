@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
-import { parseBetaflightVtxTable, serializeBetaflightVtxTable } from '@arduconfig/ardupilot-core'
+import { parseBetaflightVtxTable, serializeBetaflightVtxTable, VTX_TABLE_PRESETS } from '@arduconfig/ardupilot-core'
 
 import type { UseVtxTableResult } from '../hooks/use-vtx-table'
 import { downloadTextFile } from '../download-file'
@@ -317,6 +317,14 @@ function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; le
     if (!file) return
     void file.text().then(applyImport).catch(() => setImportError('Could not read that file.'))
   }
+  const handlePreset = (id: string): void => {
+    const preset = VTX_TABLE_PRESETS.find((candidate) => candidate.id === id)
+    if (preset) {
+      // Reuse the same parse+load path as a manual import — a preset is just a
+      // known-good Betaflight table. The operator still edits/Saves afterwards.
+      applyImport(preset.table)
+    }
+  }
 
   return (
     <div className="bf-vtx-table" data-testid="vtx-table-editor">
@@ -336,6 +344,20 @@ function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; le
       {learned ? null : (
       <>
       <div className="bf-vtx-table__io" data-testid="vtx-table-io">
+        <select
+          className="bf-vtx-table__preset-select"
+          data-testid="vtx-table-preset-select"
+          aria-label="Load a VTX table preset"
+          value=""
+          onChange={(event) => handlePreset(event.target.value)}
+        >
+          <option value="">Load a preset…</option>
+          {VTX_TABLE_PRESETS.map((preset) => (
+            <option key={preset.id} value={preset.id} title={preset.description}>
+              {preset.label}
+            </option>
+          ))}
+        </select>
         <button
           type="button"
           style={buttonStyle()}
