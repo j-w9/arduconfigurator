@@ -138,6 +138,8 @@ export function LogsSection(props: LogsSectionProps) {
           })),
           activeDownloadId: onboardLogs.activeDownloadId,
           activeDownloadPercent: onboardLogs.activeDownloadPercent,
+          activeDownloadReceivedBytes: onboardLogs.activeDownloadReceivedBytes,
+          activeDownloadTotalBytes: onboardLogs.activeDownloadTotalBytes,
           onList: onboardLogs.list,
           onDownload: onboardLogs.download
         }}

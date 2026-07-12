@@ -7,6 +7,12 @@ import {
   type ScopedFieldDraftMap
 } from './ScopedField'
 
+// Compact MB label for the download progress bar (one decimal, MiB base to
+// match the sizeLabel column). The unit suffix is rendered once by the caller.
+function formatMegabytes(bytes: number): string {
+  return (bytes / (1024 * 1024)).toFixed(1)
+}
+
 export interface LogsField {
   parameter: ParameterState
   liveValue: number | undefined
@@ -43,6 +49,8 @@ export interface OnboardLogsPanel {
   logs: readonly OnboardLogListItem[]
   activeDownloadId?: number
   activeDownloadPercent?: number
+  activeDownloadReceivedBytes?: number
+  activeDownloadTotalBytes?: number
   onList: () => void
   onDownload: (id: number) => void
 }
@@ -257,6 +265,7 @@ export function LogsView(props: LogsViewProps) {
                   <ul className="logs-onboard-list">
                     {onboardLogs.logs.map((log) => {
                       const downloading = onboardLogs.activeDownloadId === log.id
+                      const percent = onboardLogs.activeDownloadPercent ?? 0
                       return (
                         <li key={log.id} data-testid={`logs-onboard-row-${log.id}`}>
                           <span>{log.nameLabel ?? `Log ${log.id}`}</span>
@@ -269,10 +278,28 @@ export function LogsView(props: LogsViewProps) {
                             onClick={() => onboardLogs.onDownload(log.id)}
                             disabled={onboardLogs.activeDownloadId !== undefined}
                           >
-                            {downloading
-                              ? `Downloading ${onboardLogs.activeDownloadPercent ?? 0}%`
-                              : 'Download .bin'}
+                            {downloading ? `Downloading ${percent}%` : 'Download .bin'}
                           </button>
+                          {downloading ? (
+                            <div
+                              className="logs-download-bar"
+                              data-testid={`logs-onboard-progress-${log.id}`}
+                              role="progressbar"
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-valuenow={percent}
+                            >
+                              <div className="logs-download-bar__track">
+                                <div className="logs-download-bar__fill" style={{ width: `${percent}%` }} />
+                              </div>
+                              <span className="logs-download-bar__label">
+                                {percent}%
+                                {onboardLogs.activeDownloadTotalBytes
+                                  ? ` · ${formatMegabytes(onboardLogs.activeDownloadReceivedBytes ?? 0)} / ${formatMegabytes(onboardLogs.activeDownloadTotalBytes)} MB`
+                                  : ''}
+                              </span>
+                            </div>
+                          ) : null}
                         </li>
                       )
                     })}

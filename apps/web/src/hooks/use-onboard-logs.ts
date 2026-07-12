@@ -45,6 +45,8 @@ export interface OnboardLogsState {
   logNamesById: ReadonlyMap<number, string>
   activeDownloadId?: number
   activeDownloadPercent?: number
+  activeDownloadReceivedBytes?: number
+  activeDownloadTotalBytes?: number
 }
 
 export interface OnboardLogs extends OnboardLogsState {
@@ -114,12 +116,35 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         return
       }
       const mavftpItem = mavftpItemsRef.current.get(id)
-      setState((prev) => ({ ...prev, activeDownloadId: id, activeDownloadPercent: 0 }))
+      setState((prev) => ({
+        ...prev,
+        activeDownloadId: id,
+        activeDownloadPercent: 0,
+        activeDownloadReceivedBytes: 0,
+        activeDownloadTotalBytes: log.sizeBytes || undefined
+      }))
+      // onProgress fires once per received burst packet — thousands of times for
+      // a large log. Committing state on every packet re-renders the whole app
+      // per packet and starves the paint loop, so the UI looks frozen and the
+      // percent never visibly moves. Coalesce to one update per whole-percent
+      // tick (≤101 renders total): smooth bar, no thrash.
+      let lastPercent = -1
       const onProgress = (progress: LogDownloadProgress) => {
         const percent =
           progress.totalBytes > 0 ? Math.round((progress.bytesReceived / progress.totalBytes) * 100) : 0
+        if (percent === lastPercent) {
+          return
+        }
+        lastPercent = percent
         setState((prev) =>
-          prev.activeDownloadId === id ? { ...prev, activeDownloadPercent: percent } : prev
+          prev.activeDownloadId === id
+            ? {
+                ...prev,
+                activeDownloadPercent: percent,
+                activeDownloadReceivedBytes: progress.bytesReceived,
+                activeDownloadTotalBytes: progress.totalBytes || prev.activeDownloadTotalBytes
+              }
+            : prev
         )
       }
       try {
@@ -141,7 +166,9 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
           status: 'ready',
           message: `Downloaded ${filename} (${bytes.length} bytes).`,
           activeDownloadId: undefined,
-          activeDownloadPercent: undefined
+          activeDownloadPercent: undefined,
+          activeDownloadReceivedBytes: undefined,
+          activeDownloadTotalBytes: undefined
         }))
       } catch (error) {
         setState((prev) => ({
@@ -149,7 +176,9 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
           status: 'error',
           message: error instanceof Error ? error.message : 'Onboard log download failed.',
           activeDownloadId: undefined,
-          activeDownloadPercent: undefined
+          activeDownloadPercent: undefined,
+          activeDownloadReceivedBytes: undefined,
+          activeDownloadTotalBytes: undefined
         }))
       }
     },
