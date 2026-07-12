@@ -84,7 +84,18 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
       if (source === 'mavftp') {
         const items = mavftpEntriesToLogItems(await runtime.listMavftpLogs())
         mavftpItemsRef.current = new Map(items.map((item) => [item.log.id, item]))
-        logs = items.map((item) => item.log)
+        // MAVFTP directory listings carry no timestamp, so the rows showed
+        // "Unknown date". The LOG_ENTRY list does carry time_utc — fetch it and
+        // merge by log id. Best-effort: if it fails (or a log predates a GPS
+        // time fix, time_utc = 0) that row simply stays "Unknown date".
+        let timeUtcById = new Map<number, number>()
+        try {
+          const entries = await runtime.listOnboardLogs()
+          timeUtcById = new Map(entries.map((entry) => [entry.id, entry.timeUtc]))
+        } catch {
+          // dates are optional — keep the MAVFTP list without them
+        }
+        logs = items.map((item) => ({ ...item.log, timeUtc: timeUtcById.get(item.log.id) ?? item.log.timeUtc }))
         logNamesById = new Map(items.map((item) => [item.log.id, item.name]))
       } else {
         mavftpItemsRef.current = new Map()
