@@ -1999,6 +1999,13 @@ export function App() {
   const effectivePresetChangedEntries = selectedPresetChangedEntries.filter(
     (entry) => !droppedPresetParamIds.includes(entry.id)
   )
+  // Invalid entries the operator has NOT dropped. The apply guard must use this
+  // (not the full merged invalid set), so dropping the one metadata-invalid row
+  // unblocks applying the rest — matching snapshot restore, which filters drops
+  // before its diff.
+  const effectivePresetInvalidEntries = selectedPresetInvalidEntries.filter(
+    (entry) => !droppedPresetParamIds.includes(entry.id)
+  )
   const effectivePresetDraftValues = Object.fromEntries(
     Object.entries(selectedPresetDraftValues).filter(([paramId]) => !droppedPresetParamIds.includes(paramId))
   )
@@ -3050,7 +3057,10 @@ export function App() {
 
     const appliedParamIds: string[] = []
     setBusyAction('param:apply-all')
-    const writeRequests = stagedParameterDrafts
+    // Order by enable-gate so an AP_PARAM_FLAG_ENABLE param (e.g. RCLn_FUNC) is
+    // written before its dependent sub-params — the scoped apply path does this,
+    // and the RC Mixer's RCL drafts only reach the FC through this global bar.
+    const writeRequests = orderDraftsByEnableGate(stagedParameterDrafts)
       .filter((draft) => draft.nextValue !== undefined)
       .map((draft) => ({
         paramId: draft.id,
@@ -3164,6 +3174,21 @@ export function App() {
       })
       return
     }
+
+    // Auto-backup the live config before a provisioning overwrite — the preset
+    // and AI-assisted apply paths both snapshot first, so a bulk fleet/template
+    // apply gets the same undo safety net (batch rollback only covers a mid-write
+    // failure, not a "restore what I had before" after a successful apply).
+    const provisioningBackup = createSavedSnapshot(
+      createParameterBackup(snapshot),
+      `Before provisioning — ${selectedProvisioningProfile.label}`,
+      'captured',
+      {
+        note: `Auto-saved before applying provisioning profile "${selectedProvisioningProfile.label}".`,
+        tags: ['auto-backup', 'provisioning']
+      }
+    )
+    setSavedSnapshots((current) => [provisioningBackup, ...current.filter((entry) => entry.id !== provisioningBackup.id)])
 
     await handleApplyScopedParameterDrafts(
       selectedProvisioningProfileDiffEntries,
@@ -3334,10 +3359,10 @@ export function App() {
       return
     }
 
-    if (selectedPresetInvalidEntries.length > 0) {
+    if (effectivePresetInvalidEntries.length > 0) {
       setPresetNotice({
         tone: 'danger',
-        text: `${selectedPresetsLabel} has ${selectedPresetInvalidEntries.length} invalid value(s) in the current metadata set.`
+        text: `${selectedPresetsLabel} has ${effectivePresetInvalidEntries.length} invalid value(s) in the current metadata set.`
       })
       return
     }
@@ -3370,7 +3395,9 @@ export function App() {
     try {
       const rebootRequiredCount = effectivePresetChangedEntries.filter((entry) => entry.definition?.rebootRequired).length
       const result = await runtime.setParameters(
-        effectivePresetChangedEntries
+        // Order by enable-gate so a preset that both enables a subsystem and sets
+        // its sub-params writes the ENABLE gate first (matches the scoped path).
+        orderDraftsByEnableGate(effectivePresetChangedEntries)
           .filter((entry) => entry.nextValue !== undefined)
           .map((entry) => ({
             paramId: entry.id,
@@ -5694,6 +5721,11 @@ export function App() {
 
   useEffect(() => {
     setSnapshotRestoreAcknowledged(false)
+    // Also clear the "force-write blocked values" opt-in when the selected
+    // snapshot (its diff) changes: otherwise enabling force for snapshot A then
+    // selecting B would silently force-write B's out-of-range/enum values to the
+    // live FC without the operator re-opting-in for that snapshot.
+    setSnapshotForceInvalid(false)
   }, [selectedSnapshotDiffSignature])
 
   useEffect(() => {
@@ -7769,7 +7801,7 @@ export function App() {
           selectedPresetApplicability={selectedPresetApplicability}
           selectedPresetDiffGroups={selectedPresetDiffGroups}
           selectedPresetChangedEntries={effectivePresetChangedEntries}
-          selectedPresetInvalidEntries={selectedPresetInvalidEntries}
+          selectedPresetInvalidEntries={effectivePresetInvalidEntries}
           droppedPresetParamIds={droppedPresetParamIds}
           onTogglePresetParamDrop={togglePresetParamDrop}
           savedSnapshots={savedSnapshots}
