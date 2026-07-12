@@ -167,3 +167,90 @@ test('a sync that drops the very first burst entirely falls back to a full re-st
     runtime.destroy()
   }
 })
+
+// Simple index-addressable session: the initial burst delivers `initialCount`
+// of `total` params; every PARAM_REQUEST_READ is answered by index (unless
+// answerReads is false). Used for convergence + fallback tests.
+function createIndexedSession(sentMessages, { total, initialCount, answerReads = true }) {
+  const messageListeners = []
+  const statusListeners = []
+  const value = (index) => index + 1000
+  const emitParam = (index) =>
+    messageListeners.forEach((l) =>
+      l({
+        header: { systemId: 1, componentId: 1, sequence: 0 },
+        message: { type: 'PARAM_VALUE', paramId: `P_${index}`, paramValue: value(index), paramType: 9, paramCount: total, paramIndex: index },
+        timestampMs: Date.now()
+      })
+    )
+  let firstList = true
+  return {
+    getTransportStatus: () => ({ kind: 'connected' }),
+    onStatus: (l) => (statusListeners.push(l), () => {}),
+    onMessage: (l) => (messageListeners.push(l), () => {}),
+    async connect() {
+      statusListeners.forEach((l) => l({ kind: 'connected' }))
+      messageListeners.forEach((l) =>
+        l({ header: { systemId: 1, componentId: 1, sequence: 0 }, message: { type: 'HEARTBEAT', autopilot: 3, vehicleType: 2, baseMode: 0, customMode: 0, systemStatus: 4, mavlinkVersion: 3 }, timestampMs: Date.now() })
+      )
+    },
+    async disconnect() {},
+    destroy() {},
+    async send(message) {
+      sentMessages.push(message)
+      if (message.type === 'PARAM_REQUEST_LIST') {
+        const count = firstList ? initialCount : total
+        firstList = false
+        for (let i = 0; i < count; i += 1) emitParam(i)
+      } else if (message.type === 'PARAM_REQUEST_READ' && answerReads) {
+        emitParam(message.paramIndex)
+      }
+    }
+  }
+}
+
+test('a gap larger than one gap-fill budget still converges (retry budget refunds on progress)', async () => {
+  // 1200 params, only 300 in the first burst → 900 missing, far beyond
+  // MAX_PARAMETER_GAP_FILL_PER_PASS (256) × MAX_PARAMETER_SYNC_RETRIES (3) = 768.
+  // Before the refund fix this stranded at ~1068/1200; now each pass that
+  // recovers params refunds the budget, so it converges.
+  const sentMessages = []
+  const session = createIndexedSession(sentMessages, { total: 1200, initialCount: 300 })
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, { parameterSyncStallRetryMs: 5 })
+  try {
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 2000 })
+    const stats = await runtime.waitForParameterSync({ timeoutMs: 5000 })
+    assert.equal(stats.status, 'complete', 'large gap converged')
+    assert.equal(stats.downloaded, 1200, 'all 1200 recovered (past the old 768 cap)')
+    const reads = sentMessages.filter((m) => m.type === 'PARAM_REQUEST_READ')
+    assert.ok(reads.length >= 900, `refetched all missing indices by gap-fill (${reads.length} reads)`)
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('gap-fill that recovers nothing falls back to a full re-stream', async () => {
+  // The initial burst drops the last index and the FC does NOT answer by-index
+  // reads (answerReads:false). The first pass gap-fills and recovers nothing, so
+  // the next pass must fall back to a full PARAM_REQUEST_LIST — which serves the
+  // whole table and completes. Guards an FC that ignores PARAM_REQUEST_READ.
+  const sentMessages = []
+  const session = createIndexedSession(sentMessages, { total: 5, initialCount: 4, answerReads: false })
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, { parameterSyncStallRetryMs: 5 })
+  try {
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 2000 })
+    const stats = await runtime.waitForParameterSync({ timeoutMs: 5000 })
+    assert.equal(stats.status, 'complete', 'fell back and completed')
+    assert.ok(
+      sentMessages.filter((m) => m.type === 'PARAM_REQUEST_LIST').length >= 2,
+      'issued a full re-stream after the unanswered gap-fill'
+    )
+    assert.ok(sentMessages.some((m) => m.type === 'PARAM_REQUEST_READ'), 'tried gap-fill first')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})

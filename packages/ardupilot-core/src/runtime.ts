@@ -448,6 +448,15 @@ export class ArduPilotConfiguratorRuntime {
   private preArmExpiryTimer?: ReturnType<typeof setTimeout>
   private parameterSyncRetryTimer?: ReturnType<typeof setTimeout>
   private parameterSyncRetryCount = 0
+  // Downloaded count observed at the last stall-retry, so a retry that recovered
+  // params can refund the retry budget (a working link with a large gap must be
+  // allowed to converge over many gap-fill passes, not give up at
+  // MAX_RETRIES × MAX_PER_PASS). Only CONSECUTIVE no-progress passes count.
+  private parameterSyncLastRetryDownloaded = 0
+  // Whether the previous stall-retry issued a by-index gap-fill; if it did and
+  // this pass made no progress, fall back to a full re-stream (guards an FC not
+  // honoring by-index reads).
+  private parameterSyncGapFillActive = false
   // Test-injectable per-instance override; defaults to the
   // module constant. Production callers never set this.
   private readonly parameterSyncStallRetryMs: number
@@ -816,6 +825,8 @@ export class ArduPilotConfiguratorRuntime {
       this.receivedParameterIndices.clear()
       this.totalParameters = 0
       this.parameterSyncRetryCount = 0
+      this.parameterSyncLastRetryDownloaded = 0
+      this.parameterSyncGapFillActive = false
       this.clearParameterSyncRetryTimer()
       this.parameterSync = {
         status: 'requesting',
@@ -2548,6 +2559,8 @@ export class ArduPilotConfiguratorRuntime {
     this.receivedParameterIndices.clear()
     this.totalParameters = 0
     this.parameterSyncRetryCount = 0
+    this.parameterSyncLastRetryDownloaded = 0
+    this.parameterSyncGapFillActive = false
     this.parameterSync = createIdleParameterSync()
     this.guidedActionService.reset()
     this.motorTestService.reset()
@@ -2690,31 +2703,45 @@ export class ArduPilotConfiguratorRuntime {
   private async retryParameterSync(): Promise<void> {
     this.parameterSyncRetryTimer = undefined
 
+    // Use the alias-free count throughout (matches the completion gate and the
+    // downloaded count getSnapshot() exposes).
+    const downloaded = this.realParameterIdsReceived.size
+    // Refund the retry budget whenever a pass recovered params: a working link
+    // with a gap larger than MAX_RETRIES × MAX_PER_PASS must be allowed to
+    // converge over many passes rather than give up mid-recovery. Only
+    // CONSECUTIVE no-progress passes count toward the cap.
+    const madeProgressSinceLastRetry = downloaded > this.parameterSyncLastRetryDownloaded
+    if (madeProgressSinceLastRetry) {
+      this.parameterSyncRetryCount = 0
+    }
+    this.parameterSyncLastRetryDownloaded = downloaded
+
     if (
       !this.vehicle ||
       (this.parameterSync.status !== 'requesting' && this.parameterSync.status !== 'streaming') ||
       // Gate on realParameterIdsReceived.size, NOT parameters.size (which
       // counts alias mirrors), against the alias-free FC-reported total — same
       // source the completion gate uses.
-      this.realParameterIdsReceived.size >= this.totalParameters && this.totalParameters > 0 ||
+      (downloaded >= this.totalParameters && this.totalParameters > 0) ||
       this.parameterSyncRetryCount >= MAX_PARAMETER_SYNC_RETRIES
     ) {
       return
     }
 
     this.parameterSyncRetryCount += 1
-    // Use the alias-free count for the "stalled at X/Y" label so it matches
-    // the downloaded count getSnapshot() exposes.
-    const downloaded = this.realParameterIdsReceived.size
     const total = this.totalParameters
     // Prefer targeting the exact indices the stream dropped. A full
     // PARAM_REQUEST_LIST re-stream re-runs the same fast burst that lost the
     // frames in the first place (and can re-drop them under a lossy transport);
     // PARAM_REQUEST_READ-by-index refetches only the gaps. Fall back to a full
-    // re-stream when nothing has arrived yet (no indices to target) or the FC
-    // has not reported a count.
+    // re-stream when nothing has arrived yet (no indices to target), the FC has
+    // not reported a count, OR the previous gap-fill pass recovered nothing —
+    // the last case guards an FC that isn't honoring by-index reads (or is
+    // dropping the by-index responses too), restoring the pre-gap-fill recovery.
     const missingIndices = this.missingParameterIndices()
-    const canGapFill = total > 0 && downloaded > 0 && missingIndices.length > 0
+    const gapFillStalled = this.parameterSyncGapFillActive && !madeProgressSinceLastRetry
+    const canGapFill = total > 0 && downloaded > 0 && missingIndices.length > 0 && !gapFillStalled
+    this.parameterSyncGapFillActive = canGapFill
 
     this.appendStatusEntry(
       'warning',
