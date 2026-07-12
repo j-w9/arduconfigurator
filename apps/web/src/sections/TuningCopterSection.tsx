@@ -215,10 +215,10 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
           <>
                 {activeTuningTaskId === 'rates' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack">
-                    <section className="bf-gui-box">
-                      <div className="bf-gui-box__titlebar">
+                    <details className="bf-gui-box">
+                      <summary className="bf-gui-box__titlebar">
                         <strong>Angle</strong>
-                      </div>
+                      </summary>
                       <div className="bf-gui-box__body">
                         <div className="switch-exercise-card__header">
                           <div>
@@ -241,12 +241,12 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           {flightFeelParameters.map((parameter) => renderTuningControl(parameter))}
                         </div>
                       </div>
-                    </section>
+                    </details>
 
-                    <section className="bf-gui-box">
-                      <div className="bf-gui-box__titlebar">
+                    <details className="bf-gui-box">
+                      <summary className="bf-gui-box__titlebar">
                         <strong>Attitude (Acro)</strong>
-                      </div>
+                      </summary>
                       <div className="bf-gui-box__body">
                         <div className="switch-exercise-card__header">
                           <div>
@@ -268,12 +268,12 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           {tuningAccelerationParameters.map((parameter) => renderTuningControl(parameter))}
                         </div>
                       </div>
-                    </section>
+                    </details>
 
-                    <section className="bf-gui-box">
-                      <div className="bf-gui-box__titlebar">
+                    <details className="bf-gui-box">
+                      <summary className="bf-gui-box__titlebar">
                         <strong>Alt Hold</strong>
-                      </div>
+                      </summary>
                       <div className="bf-gui-box__body">
                         <div className="switch-exercise-card__header">
                           <div>
@@ -290,12 +290,12 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           <p className="bf-note">No altitude-hold pilot parameters reported by this firmware.</p>
                         )}
                       </div>
-                    </section>
+                    </details>
 
-                    <section className="bf-gui-box">
-                      <div className="bf-gui-box__titlebar">
+                    <details className="bf-gui-box">
+                      <summary className="bf-gui-box__titlebar">
                         <strong>Loiter</strong>
-                      </div>
+                      </summary>
                       <div className="bf-gui-box__body">
                         <div className="switch-exercise-card__header">
                           <div>
@@ -312,7 +312,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           <p className="bf-note">No loiter pilot parameters reported by this firmware.</p>
                         )}
                       </div>
-                    </section>
+                    </details>
                   </div>
                 ) : null}
 
