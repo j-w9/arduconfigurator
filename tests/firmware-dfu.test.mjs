@@ -243,6 +243,17 @@ test('DfuSeDevice.flash: full erase falls back to a mass-erase when the layout i
   assert.equal(erases[0].data.length, 1, 'mass erase carries no address')
 })
 
+test('DfuSeDevice.flash: a partial erase with no sector map falls back to a mass-erase (never programs un-erased flash)', async () => {
+  const mock = mockDfu()
+  const device = new DfuSeDevice(mock.iface, [], 2048) // no memory layout
+  // Default (partial) erase path — no fullErase. Without a sector map the old
+  // code erased nothing and then programmed onto un-erased flash (corrupt image).
+  await device.flash([{ address: 0x08000000, data: new Uint8Array(64).fill(0xab) }])
+  const erases = mock.out.filter((o) => o.request === 1 && o.value === 0 && o.data[0] === 0x41)
+  assert.equal(erases.length, 1, 'a mass-erase ran instead of erasing nothing')
+  assert.equal(erases[0].data.length, 1, 'mass erase carries no address')
+})
+
 test('DfuSeDevice.flash: refuses an image outside the device memory map', async () => {
   const mock = mockDfu()
   const memory = parseDfuSeMemoryLayout('@Internal Flash  /0x08000000/16*128Kg')

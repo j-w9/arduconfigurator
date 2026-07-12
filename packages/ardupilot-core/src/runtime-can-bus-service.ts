@@ -768,7 +768,7 @@ export class CanBusService {
     if (!update || update.nodeId !== sourceNodeId) {
       return
     }
-    if (update.status === 'completed' || update.status === 'error') {
+    if (update.status === 'error') {
       return
     }
     const request = decodeDronecanFileReadRequest(payload)
@@ -784,14 +784,27 @@ export class CanBusService {
     if (node) {
       node.lastSeenAtMs = Date.now()
     }
+
+    // Always answer a read from the node under update — including AFTER the
+    // transfer is 'completed'. The final short/EOF response can be lost on the
+    // best-effort CAN tunnel, in which case the node re-Reads the same offset;
+    // ignoring it would strand the node in its bootloader while the UI already
+    // shows Complete. Re-serving the (short/empty) tail chunk re-runs the EOF
+    // handshake idempotently.
+    void this.sendFileReadResponse(sourceNodeId, transferId, chunk)
+
+    if (update.status === 'completed') {
+      // Already finished — this was just an EOF re-handshake for a dropped final
+      // response. Don't re-log completion or churn state.
+      return
+    }
+
     if (!update.readingStarted) {
       update.readingStarted = true
       update.status = 'in_progress'
     }
     update.bytesServed = Math.max(update.bytesServed, offset + chunk.length)
     update.updatedAtMs = Date.now()
-
-    void this.sendFileReadResponse(sourceNodeId, transferId, chunk)
 
     // A chunk shorter than the 256-byte capacity is the EOF handshake: the node
     // flashes it and boots the new app (AP_Bootloader/can.cpp). The whole image
