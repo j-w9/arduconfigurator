@@ -2520,11 +2520,16 @@ export class ArduPilotConfiguratorRuntime {
       this.cancelScheduledEmit()
       this.flushEmit()
     }
-    if (this.batchEmitMode) {
-      // Batch write: coalesce to the timer interval only (skip per-frame rAF).
-      // The full-snapshot rebuild + app re-render is expensive; doing it ~4x/s
-      // instead of ~60x/s frees the main thread to process the PARAM_VALUE
-      // readbacks that resolve each write, so the batch runs at link speed.
+    // Coalesce to the timer interval only (skip per-frame rAF) during a batch
+    // write OR the initial parameter sync. Both are a fast inbound PARAM_VALUE
+    // burst, and the full-snapshot rebuild + app re-render is expensive: doing it
+    // ~4x/s instead of ~60x/s frees the main thread to process the readbacks at
+    // link speed. Rendering per frame during the sync otherwise starves the Web
+    // Serial read loop, drops PARAM_VALUE packets, and stalls the stream —
+    // triggering repeated gap-fill retries ("parameter stream keeps stalling").
+    const syncingParameters =
+      this.parameterSync.status === 'requesting' || this.parameterSync.status === 'streaming'
+    if (this.batchEmitMode || syncingParameters) {
       this.emitTimer = setTimeout(run, EMIT_COALESCE_MAX_MS)
       return
     }
