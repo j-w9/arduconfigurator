@@ -268,9 +268,18 @@ export class DfuSeDevice {
         await this.massErase()
         onProgress?.({ phase: 'erase', ratio: 1, label: 'Full chip erase' })
       }
+    } else if (this.memory.length === 0) {
+      // No parseable sector map (the DFU alt exposed no memory layout), so we
+      // can't compute which sectors the image overlaps. Erasing nothing and then
+      // programming leaves stale bits set — STM32 flash only clears on erase — so
+      // the written image is corrupt and fails verify. Fall back to a mass-erase
+      // (same as the full-erase-without-a-layout path) rather than silently
+      // programming onto un-erased flash.
+      await this.massErase()
+      onProgress?.({ phase: 'erase', ratio: 1, label: 'Full chip erase (no sector map)' })
     } else {
       const eraseTargets = sectorsToErase(this.memory, segments)
-      if (this.memory.length > 0 && eraseTargets.length === 0) {
+      if (eraseTargets.length === 0) {
         throw new Error('Firmware image lies outside the device flash memory map — refusing to flash')
       }
       for (let i = 0; i < eraseTargets.length; i += 1) {
