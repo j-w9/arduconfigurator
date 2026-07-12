@@ -79,27 +79,31 @@ export function genericFailsafeRow(
 }
 
 // Vehicle-correct enum label for a failsafe-action summary value.
-// ArduCopter (and pre-connect / Unknown) returns the exact ARDUCOPTER_*
-// formatter output — byte-identical. A connected non-Copter resolves the
-// label from the param's bound catalog definition (metadataByVehicle
-// gives the right per-vehicle options): Plane/Rover/Sub battery & RC
-// failsafe action enums differ from Copter's, so the Copter map would
-// otherwise show a wrong action to the operator (safety-relevant).
+//
+// Resolve from the param's bound catalog definition first so the summary card
+// matches the editor dropdown that renders the same param — including the
+// version-gated 4.7 ArduCopter label overrides. The hard-coded copterFormat is
+// 4.6-only, so on a detected 4.7 build it made the summary describe a failsafe
+// action differently from the editor a few pixels below it (safety-relevant
+// honesty bug). On 4.6 / pre-connect / Unknown the bound options ARE the
+// ARDUCOPTER_* maps, so the label is unchanged; a value with no matching option
+// (or an unsynced param) falls back to copterFormat exactly as before. A
+// connected non-Copter resolves its own per-vehicle failsafe action enum via
+// metadataByVehicle — unchanged from before.
 export function failsafeActionLabel(
   snapshot: ConfiguratorSnapshot,
   paramId: string,
   value: number | undefined,
   copterFormat: (value: number | undefined) => string
 ): string {
-  if ((snapshot.vehicle?.vehicle ?? 'ArduCopter') === 'ArduCopter') {
-    return copterFormat(value)
+  if (value !== undefined) {
+    const definition = selectParameterById(snapshot, paramId)?.definition
+    const option = definition?.options?.find((entry) => entry.value === Math.round(value))
+    if (option) {
+      return option.label
+    }
   }
-  if (value === undefined) {
-    return copterFormat(undefined)
-  }
-  const definition = selectParameterById(snapshot, paramId)?.definition
-  const option = definition?.options?.find((entry) => entry.value === Math.round(value))
-  return option ? option.label : copterFormat(value)
+  return copterFormat(value)
 }
 
 export function buildSharedBatteryFailsafeRows(snapshot: ConfiguratorSnapshot): FailsafeViewRow[] {

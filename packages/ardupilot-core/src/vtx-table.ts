@@ -11,11 +11,12 @@
 //   per power (numPowerLevels ×):  value[u16]  label[3]
 //   [tail] crc[u32]  = crc_crc32(0, buf, len-4)  over everything before it
 //
-// `value` is the verbatim protocol value the VTX expects — mW for Tramp,
-// index/dBm for SmartAudio, dBm for MSP digital — and `label` is the authored
-// display string. The firmware resolves an exact power level by the position of
-// a non-zero entry in this table (index i = the i-th non-zero level, matching
-// the RC Mixer's level selector), so power is authoritative, not read-only.
+// `value` is power in mW for every protocol — the firmware stores it as mW and
+// derives the SmartAudio dBm/dac step from it (AP_VideoTX::load_power_levels_from_table),
+// so it is NOT a raw dBm/index even for SmartAudio/MSP — and `label` is the
+// authored display string. The firmware resolves an exact power level by the
+// position of a non-zero entry in this table (index i = the i-th non-zero level,
+// matching the RC Mixer's level selector), so power is authoritative, not read-only.
 
 /** MAVLink-FTP path the firmware exposes the table blob at. */
 export const VTX_TABLE_FTP_PATH = '@VTX/vtxtable.dat'
@@ -40,7 +41,9 @@ export interface VtxTableBand {
 }
 
 export interface VtxTablePowerLevel {
-  /** Protocol value sent to the VTX (mW for Tramp, index/dBm for SmartAudio). */
+  /** Power in mW. The firmware stores this as mW for every protocol and derives
+   *  the SmartAudio dBm/dac step from it (AP_VideoTX::load_power_levels_from_table),
+   *  so it is NOT a raw dBm/index value even for SmartAudio. */
   value: number
   /** Short display label ("25", "200", "1W"); trimmed of storage padding. */
   label: string
