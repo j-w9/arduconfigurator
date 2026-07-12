@@ -17,6 +17,7 @@ import type { NormalizedFirmwareMetadataBundle, NormalizedPresetDefinition, Pres
 import type { ParameterFollowUp, ParameterNotice } from '../hooks/use-parameter-feedback'
 import { formatParameterDelta, formatParameterValue } from '../parameter-format'
 import type { SavedParameterSnapshot } from '../snapshot-library'
+import { statusToneLabel } from '../status-tone'
 import { toneForPresetApplicability } from '../tone-helpers'
 import { PresetsView, type PresetsCard, type PresetsGroup } from '../views/Presets'
 
@@ -153,7 +154,7 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
             ? `${selectedPresetChangedEntries.length} diff`
             : `${presetDefinitions.length} presets`
       }
-      notice={presetNotice ? { tone: presetNotice.tone, toneLabel: presetNotice.tone, text: presetNotice.text } : null}
+      notice={presetNotice ? { tone: presetNotice.tone, toneLabel: statusToneLabel(presetNotice.tone), text: presetNotice.text } : null}
       followUp={parameterFollowUp ? { requiresReboot: parameterFollowUp.requiresReboot, text: parameterFollowUp.text } : null}
       familiesCount={presetGroups.length}
       totalCount={presetDefinitions.length}

@@ -8,6 +8,10 @@ import { downloadBinaryFile } from '../download-file'
 export interface MavftpCapableRuntime {
   listRemoteDirectory(path: string): Promise<MavftpDirectoryEntry[]>
   downloadRemoteFile(path: string): Promise<Uint8Array>
+  // Burst download for arbitrary files — handles the 16 MB+ regular files
+  // (logs, terrain tiles, crash dumps) the single-read downloadRemoteFile caps
+  // out on, and falls back to a single read for size-0 @SYS virtual files.
+  downloadRemoteFileBurst(path: string): Promise<Uint8Array>
   uploadRemoteFile(path: string, bytes: Uint8Array, options?: { overwrite?: boolean }): Promise<void>
   deleteRemotePath(path: string, kind: 'file' | 'directory'): Promise<void>
 }
@@ -127,7 +131,7 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
       setBusyAction('files:download')
       setError(undefined)
       try {
-        const bytes = await runtime.downloadRemoteFile(entry.path)
+        const bytes = await runtime.downloadRemoteFileBurst(entry.path)
         downloadBinaryFile(entry.name, bytes)
       } catch (err) {
         setError(err instanceof Error ? `Download failed: ${err.message}` : 'Download failed.')

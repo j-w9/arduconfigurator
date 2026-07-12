@@ -391,7 +391,7 @@ import {
   rcLogicUpdateLogicTermDrafts
 } from './view-models/rc-logic'
 import { armSwitchAssignmentDrafts, deriveArmSwitchAssignment } from './view-models/arm-switch'
-import { type StatusTone } from './status-tone'
+import { statusToneLabel, type StatusTone } from './status-tone'
 import {
   createSavedSnapshot,
   type SavedParameterSnapshot,
@@ -1074,7 +1074,22 @@ export function App() {
       })),
     [rcAxisObservations, snapshot]
   )
-  const { results: rcDirectionResults, activeAxis: rcDirectionActiveAxis } = useLatchedRcDirections(rcDirectionInputs)
+  const { results: rcDirectionResults, activeAxis: rcDirectionActiveAxis, reset: resetRcDirections } =
+    useLatchedRcDirections(rcDirectionInputs)
+  // Re-running the guided stick-range exercise starts a fresh direction check,
+  // so clear the latched verdicts AND the captured throttle rest-baseline. The
+  // baseline is grabbed from the first throttle sample and held for the whole
+  // session; without this, a first sample taken with throttle not at rest (e.g.
+  // raised at connect) permanently poisons the throttle correct/reversed verdict
+  // with no in-app way to clear it. Fires only on the idle/passed/failed→running
+  // transition (a deliberate re-check), never mid-run.
+  const previousRcRangeStatusRef = useRef(rcRangeExercise.status)
+  useEffect(() => {
+    if (rcRangeExercise.status === 'running' && previousRcRangeStatusRef.current !== 'running') {
+      resetRcDirections()
+    }
+    previousRcRangeStatusRef.current = rcRangeExercise.status
+  }, [rcRangeExercise.status, resetRcDirections])
   const receiverChannelDisplays = useReceiverChannelDisplays({
     snapshot,
     rcChannelDisplays,
@@ -7247,7 +7262,7 @@ export function App() {
           isBatteryVerified={snapshot.liveVerification.batteryTelemetry.verified}
           batteryHealthLabel={batteryHealthLabel(snapshot)}
           batteryHealthTone={batteryHealthTone(snapshot)}
-          parameterNotice={parameterNotice ? { tone: parameterNotice.tone, toneLabel: parameterNotice.tone, text: parameterNotice.text } : null}
+          parameterNotice={parameterNotice ? { tone: parameterNotice.tone, toneLabel: statusToneLabel(parameterNotice.tone), text: parameterNotice.text } : null}
           liveMetrics={{
             voltageText: formatVoltage(snapshot.liveVerification.batteryTelemetry.voltageV),
             currentText: formatCurrent(snapshot.liveVerification.batteryTelemetry.currentA),

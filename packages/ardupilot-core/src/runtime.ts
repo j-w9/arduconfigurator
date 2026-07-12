@@ -1057,6 +1057,18 @@ export class ArduPilotConfiguratorRuntime {
     return this.mavftp.downloadRemoteFile(path)
   }
 
+  /** Download an arbitrary remote file via MAVFTP burst read (512 MB cap),
+   *  falling back to a single read for size-0 `@SYS` virtual files. The file
+   *  browser uses this so a regular file over the 16 MB single-read cap
+   *  (an `/APM/LOGS/*.BIN`, a terrain tile, a crash dump) downloads instead of
+   *  failing with "read exceeded the 16777216-byte cap". */
+  async downloadRemoteFileBurst(
+    path: string,
+    onProgress?: (progress: LogDownloadProgress) => void
+  ): Promise<Uint8Array> {
+    return this.mavftp.downloadRemoteFileBurst(path, { onProgress, maxBytes: MAX_MAVFTP_LOG_BYTES })
+  }
+
   /**
    * Read the VTX band/power table over MAVLink FTP (@VTX/vtxtable.dat) and
    * parse it. Returns `undefined` when the firmware doesn't expose the table

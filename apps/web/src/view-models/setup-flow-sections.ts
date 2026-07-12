@@ -716,7 +716,15 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           }
           break
         }
-        case 'radio':
+        case 'radio': {
+          const radioDirectionAxes = ['roll', 'pitch', 'throttle', 'yaw'] as const
+          const radioDirectionsVerified = radioDirectionAxes.every((axis) => rcDirectionResults[axis] === 'correct')
+          const radioReversedAxes = radioDirectionAxes.filter((axis) => rcDirectionResults[axis] === 'reversed')
+          const radioDirectionsSummary = radioDirectionsVerified
+            ? 'all axes correct'
+            : radioReversedAxes.length > 0
+              ? `reversed: ${radioReversedAxes.join(', ')}`
+              : 'not checked yet'
           criteria = [
             {
               label: 'Live RC telemetry is present',
@@ -736,9 +744,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             },
             {
               label: 'RC channel directions verified — no axis reads backwards',
-              met: (['roll', 'pitch', 'throttle', 'yaw'] as const).every(
-                (axis) => rcDirectionResults[axis] === 'correct'
-              )
+              met: radioDirectionsVerified
             },
             {
               label: 'Operator reviewed RC mapping and calibration values',
@@ -765,15 +771,17 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                 : rcCalibrationSession.status === 'failed'
                   ? rcCalibrationSession.failureReason ?? 'RC endpoint capture failed.'
                   : 'Use the guided one-axis-at-a-time receiver mapping first, then verify stick travel, capture endpoints, and sign off the full radio review.'
+          // Include directions + review: they're the two things most likely to
+          // be the actual blocker, and the old 5-item .slice(0,4) always dropped
+          // the Review pill and never surfaced directions at all.
           evidence = [
             snapshot.liveVerification.rcInput.verified
               ? `${snapshot.liveVerification.rcInput.channelCount} RC channels live`
               : 'No live RC telemetry yet',
-            `Mapping: ${rcMappingSession.status}`,
-            `Ranges: ${rcRangeExercise.status}`,
-            `Endpoints: ${rcCalibrationSession.status}`,
+            `Mapping ${rcMappingSession.status}, ranges ${rcRangeExercise.status}, endpoints ${rcCalibrationSession.status}`,
+            `Directions: ${radioDirectionsSummary}`,
             `Review: ${radioConfirmation ? `confirmed at ${formatConfirmationTime(radioConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
-          ].slice(0, 4)
+          ]
           actions.unshift({
             kind: 'rc-mapping-exercise',
             label: rcMappingSession.status === 'ready' ? 'Run Guided Mapping Again' : 'Begin Guided Mapping',
@@ -791,11 +799,16 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             label: radioConfirmation ? 'Clear RC Review' : 'Confirm RC Review',
             tone: 'secondary',
             sectionId: 'radio',
+            // Gate on directions too: without this the operator could "Confirm RC
+            // Review" (ticking the confirmation) while the step stays incomplete
+            // because the directions criterion is unmet, with the real blocker
+            // hidden in the collapsed criteria list.
             disabled:
               !snapshot.liveVerification.rcInput.verified ||
               rcMappingSession.status !== 'ready' ||
               rcRangeExercise.status !== 'passed' ||
-              rcCalibrationSession.status !== 'ready'
+              rcCalibrationSession.status !== 'ready' ||
+              !radioDirectionsVerified
           })
           actions.splice(1, 0, {
             kind: 'scroll',
@@ -830,6 +843,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             }
           }
           break
+        }
         case 'failsafe':
           criteria = [
             {

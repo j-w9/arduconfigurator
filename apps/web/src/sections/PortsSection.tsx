@@ -24,6 +24,7 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { SERIAL_BAUD_PRESET_RATES, formatBaudRate, isPresetBaudRate, parseSerialBaudInput, selectedBaudPresetValue } from '../baud-helpers'
 import type { ParameterNotice } from '../hooks/use-parameter-feedback'
 import type { UsePortsViewResult } from '../hooks/use-ports-view'
+import { statusToneLabel } from '../status-tone'
 import { LiveGpsMapCard } from '../live-gps-map'
 import { MavlinkSigningPanel } from '../mavlink-signing-panel'
 import { normalizeBitmaskValue } from '../parameter-format'
@@ -835,7 +836,7 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 
 	            {parameterNotice ? (
 	              <div className="parameter-review__notice parameter-review__notice--inline">
-	                <StatusBadge tone={parameterNotice.tone}>{parameterNotice.tone}</StatusBadge>
+	                <StatusBadge tone={parameterNotice.tone}>{statusToneLabel(parameterNotice.tone)}</StatusBadge>
 	                <p>{parameterNotice.text}</p>
 	              </div>
 	            ) : null}
