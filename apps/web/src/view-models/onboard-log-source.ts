@@ -41,21 +41,38 @@ export function selectOnboardLogSource(snapshot: ConfiguratorSnapshot): OnboardL
   return snapshot.hardware.board?.ftpSupported ? 'mavftp' : 'mavlink'
 }
 
+// A real ArduPilot dataflash log file: a zero-padded log number + `.BIN`.
+// `/APM/LOGS` also holds non-log files (e.g. `LASTLOG.TXT`) which must not list
+// as downloadable "logs" — and whose index-fallback id can collide with a real
+// log's number, producing duplicate React keys and an ambiguous download.
+const DATAFLASH_LOG_NAME = /^\d+\.bin$/i
+
 /**
  * Normalize MAVFTP `/APM/LOGS` entries into shared log items, sorted by id.
- * Dedupes by path: a MAVFTP directory listing can repeat an entry across a
- * pagination boundary (observed against real SITL), which would otherwise
- * produce duplicate rows and colliding React keys.
+ * Keeps only real dataflash logs (`NNNNNNNN.BIN`), and dedupes by both path and
+ * id: a listing can repeat an entry across a pagination boundary (observed on
+ * real SITL), and — before the name filter — a non-log file's fallback id could
+ * collide with a real log's number; either would produce duplicate rows and
+ * colliding React keys.
  */
 export function mavftpEntriesToLogItems(entries: readonly MavftpDirectoryEntry[]): MavftpLogItem[] {
   const byPath = new Map<string, MavftpLogItem>()
+  const seenIds = new Set<number>()
   entries.forEach((entry, index) => {
+    if (!DATAFLASH_LOG_NAME.test(entry.name.trim())) {
+      return
+    }
     if (byPath.has(entry.path)) {
       return
     }
+    const id = parseMavftpLogId(entry.name, index)
+    if (seenIds.has(id)) {
+      return
+    }
+    seenIds.add(id)
     byPath.set(entry.path, {
       log: {
-        id: parseMavftpLogId(entry.name, index),
+        id,
         sizeBytes: entry.sizeBytes ?? 0,
         // MAVFTP directory listings carry no log timestamp; the filename
         // carries identity, so the UI shows the name rather than a date.

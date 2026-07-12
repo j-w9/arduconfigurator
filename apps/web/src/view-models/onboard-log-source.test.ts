@@ -68,4 +68,25 @@ describe('mavftpEntriesToLogItems', () => {
     ])
     expect(items.map((item) => item.path)).toEqual(['/APM/LOGS/00000001.BIN', '/APM/LOGS/00000002.BIN'])
   })
+
+  it('drops non-log files (LASTLOG.TXT etc.) instead of listing them as logs', () => {
+    const items = mavftpEntriesToLogItems([
+      entry('LASTLOG.TXT', 12),
+      entry('00000001.BIN', 600),
+      entry('README', 40)
+    ])
+    expect(items.map((item) => item.name)).toEqual(['00000001.BIN'])
+  })
+
+  it('never emits two items with the same id (would collide React keys / downloads)', () => {
+    // Before the name filter, LASTLOG.TXT fell back to id index+1, which could
+    // equal a real log's number — regression guard for that collision.
+    const items = mavftpEntriesToLogItems([
+      entry('LASTLOG.TXT'), // would have been id 1 via fallback
+      entry('00000001.BIN', 600)
+    ])
+    const ids = items.map((item) => item.log.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids).toEqual([1])
+  })
 })

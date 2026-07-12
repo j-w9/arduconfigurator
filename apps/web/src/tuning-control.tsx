@@ -16,6 +16,11 @@ export function tuningInputValue(parameter: ParameterState, editedValues: Record
     if (rawValue === undefined) {
       return String(Math.round(parameter.value / 100))
     }
+    // Operator cleared the field: applyTuningEditedValue stores '' — keep it
+    // blank instead of Number('')→0 snapping the display to "0" mid-edit.
+    if (rawValue === '') {
+      return ''
+    }
 
     const parsed = Number(rawValue)
     return Number.isFinite(parsed) ? String(Math.round(parsed / 100)) : ''
