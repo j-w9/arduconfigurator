@@ -12113,15 +12113,21 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .modes-status__card {
-  display: grid;
-  gap: 2px;
-  padding: 9px 12px;
+  /* Label + value share a baseline row; the help text wraps to its own line
+     below. Condenses each card from a 3-line stack to 2 lines. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  row-gap: 1px;
+  padding: 7px 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--card-outline);
   background: var(--bg-panel-raised);
 }
 
 .modes-status__card span {
+  flex: 0 0 auto;
   font-family: var(--font-data);
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -12130,14 +12136,17 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .modes-status__card strong {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 13px;
   color: var(--text);
 }
 
 .modes-status__card small {
+  flex: 1 0 100%;
   color: var(--text-muted);
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1.3;
 }
 
 .modes-table {
@@ -12204,6 +12213,22 @@ details.metadata-settings-section:not([open]) > summary::after {
 .modes-table__mode-readonly {
   display: flex;
   flex-direction: column;
+}
+
+/* The slot table already numbers each row (SLOT column) and labels the column
+   (ASSIGNED MODE header), so the embedded mode selector's own "Flight Mode N"
+   label is redundant and just adds height. Flatten the field's card chrome and
+   drop that label so each slot row is a compact single control — the param-id
+   hint (FLTMODEn) + dropdown carry the identity. */
+.modes-table .scoped-editor-field {
+  padding: 4px 0;
+  gap: 3px;
+  background: transparent;
+  border-color: transparent;
+}
+
+.modes-table .scoped-editor-field > span:first-child {
+  display: none;
 }
 
 .modes-table__row--head span {
