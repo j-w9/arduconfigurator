@@ -77,8 +77,10 @@ describe('buildVisibleAppViews', () => {
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasScriptingParams: false })))).not.toContain('lua')
   })
 
-  it('shows ELRS Flash only in Expert mode AND when the FC reports SERIAL_PASS2', () => {
-    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasSerialPassthrough: true })))).toContain('elrs-flash')
+  it('keeps ELRS Flash hidden (temporarily disabled in prod pending a reliable chunked flasher)', () => {
+    // Even with Expert mode + SERIAL_PASS2 advertised, the tab stays hidden while
+    // ELRS_FLASH_ENABLED is off (the single-shot flash corrupts through the bridge).
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasSerialPassthrough: true })))).not.toContain('elrs-flash')
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false, hasSerialPassthrough: true })))).not.toContain('elrs-flash')
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasSerialPassthrough: false })))).not.toContain('elrs-flash')
   })

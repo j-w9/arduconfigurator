@@ -192,6 +192,13 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
       ? { ...view, label: 'Status & Info', description: 'Vehicle health, live status, system info, and guided setup.' }
       : view
   )
+  // ELRS Flash is TEMPORARILY DISABLED in prod (2026-07-14). Bench testing on a
+  // real iFlight ESP8285 RX showed the single-shot esptool-js writeFlash corrupts
+  // through the ArduPilot SERIAL_PASS bridge — the bridge can't sustain the stub
+  // upload or a full-image erase; only small (~4KB) --no-stub chunked writes get
+  // through. The tab is hidden until the flasher is reworked to chunk the write
+  // (see the feature-elrs-passthrough-flash notes). Flip this to re-enable.
+  const ELRS_FLASH_ENABLED = false
   const combined = [
     ...relabelled,
     calibrationDescriptor,
@@ -202,8 +209,9 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     ...(isExpertMode && hasNetworkingParams ? [networkingDescriptor] : []),
     // Lua Scripts — Expert-only AND only when the FC advertises scripting (SCR_).
     ...(isExpertMode && hasScriptingParams ? [luaDescriptor] : []),
-    // ELRS Flash — Expert-only AND only when the FC advertises the SERIAL_PASS bridge.
-    ...(isExpertMode && hasSerialPassthrough ? [elrsFlashDescriptor] : []),
+    // ELRS Flash — Expert-only AND only when the FC advertises the SERIAL_PASS
+    // bridge. Gated OFF via ELRS_FLASH_ENABLED above until the chunked flasher lands.
+    ...(ELRS_FLASH_ENABLED && isExpertMode && hasSerialPassthrough ? [elrsFlashDescriptor] : []),
     // Expert-only views — only surfaced when Expert mode is on.
     ...(isExpertMode
       ? [rcMixerDescriptor, mavlinkInspectorDescriptor, dronecanInspectorDescriptor, aiAssistantDescriptor]

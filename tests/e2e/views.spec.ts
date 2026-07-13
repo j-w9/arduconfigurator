@@ -3858,31 +3858,18 @@ test.describe('Scoped write-progress bar', () => {
   })
 })
 
-test.describe('ELRS Flash (Expert + SERIAL_PASS2 gated)', () => {
-  test('detects the RCIN receiver port and arms the passthru bridge', async ({ page }) => {
+test.describe('ELRS Flash (temporarily disabled in prod)', () => {
+  test('stays hidden even in Expert mode with SERIAL_PASS2 advertised', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    // Passthru arm writes params, which are blocked until the initial sync
-    // completes (on hardware it's long done before you reach this tab).
     await expectParameterSyncComplete(page)
     await page.getByTestId('product-mode-expert').check()
 
-    // Tab is gated on Expert + SERIAL_PASS2 (both true in the demo mock).
-    await page.getByTestId('view-button-elrs-flash').click()
-    await expect(page.getByTestId('elrs-flasher')).toBeVisible()
-
-    // The demo FC has Serial1 = RCIN (protocol 23) — detected as the RX port.
-    await expect(page.getByTestId('elrs-flasher-port')).toContainText('Serial1')
-
-    // Arm the bridge — the mock emits "Passthru enabled" on the SERIAL_PASS2
-    // write, which resolves the runtime's STATUSTEXT gate.
-    await page.getByTestId('elrs-flasher-arm').click()
-    await expect(page.getByTestId('elrs-flasher-armed-note')).toBeVisible()
-    await expect(page.getByTestId('elrs-flasher-notice')).toContainText('Passthru enabled')
-
-    // Close the bridge to restore MAVLink.
-    await page.getByTestId('elrs-flasher-cancel').click()
-    await expect(page.getByTestId('elrs-flasher-armed-note')).toHaveCount(0)
+    // The demo FC advertises Expert + SERIAL_PASS2, which used to surface the ELRS
+    // Flash tab. It is now gated OFF (ELRS_FLASH_ENABLED=false) because the
+    // single-shot flash corrupts through the ArduPilot bridge on real hardware —
+    // the tab must not be reachable until the chunked flasher lands.
+    await expect(page.getByTestId('view-button-elrs-flash')).toHaveCount(0)
   })
 })
 
