@@ -57,6 +57,10 @@ export type AppViewId =
   // Injected at render time (no metadata-driven category) since
   // firmware management is orthogonal to vehicle catalogs.
   | 'flash'
+  // 'elrs-flash' flashes an ExpressLRS receiver through the FC's transparent
+  // SERIAL_PASS bridge (no Betaflight CLI / external ELRS Configurator).
+  // Expert + detection-gated (SERIAL_PASS2 present); injected at render time.
+  | 'elrs-flash'
   // 'files' is the MAVFTP file browser — lists/downloads/uploads/deletes
   // files on the FC filesystem (@SYS virtual files, /APM, scripts) over
   // the MAVLink FTP service. Injected at render time; request/response

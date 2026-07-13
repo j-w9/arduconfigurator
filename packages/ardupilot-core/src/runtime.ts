@@ -393,6 +393,9 @@ export class ArduPilotConfiguratorRuntime {
   private readonly receivedParameterIndices = new Set<number>()
   private readonly preArmIssues = new Map<string, PreArmIssueState>()
   private readonly statusTexts: StatusTextEntry[] = []
+  // One-shot waiters for a specific STATUSTEXT substring (e.g. "Passthru
+  // enabled"), resolved by emitStatusText when a matching message arrives.
+  private readonly statusTextWaiters: Array<{ substring: string; resolve: () => void }> = []
   // STATUSTEXT chunked-reassembly buffers. ArduPilot splits messages longer
   // than the 50-char v2 payload into frames sharing a `statusId` with an
   // incrementing `chunkSequence`; concatenate in sequence order into one
@@ -1343,6 +1346,61 @@ export class ArduPilotConfiguratorRuntime {
     this.emit()
   }
 
+  /**
+   * Resolve once a STATUSTEXT whose text CONTAINS `substring` arrives (matching
+   * any already in the recent history first), or reject on timeout. Used to gate
+   * on autopilot banners like "Passthru enabled" that have no MAVLink ACK.
+   */
+  waitForStatusText(substring: string, timeoutMs: number): Promise<void> {
+    if (this.statusTexts.some((entry) => entry.text.includes(substring))) {
+      return Promise.resolve()
+    }
+    return new Promise((resolve, reject) => {
+      const waiter = {
+        substring,
+        resolve: () => {
+          clearTimeout(timer)
+          resolve()
+        }
+      }
+      const timer = setTimeout(() => {
+        const index = this.statusTextWaiters.indexOf(waiter)
+        if (index >= 0) {
+          this.statusTextWaiters.splice(index, 1)
+        }
+        reject(new Error(`Timed out after ${timeoutMs}ms waiting for STATUSTEXT containing "${substring}".`))
+      }, timeoutMs)
+      this.statusTextWaiters.push(waiter)
+    })
+  }
+
+  /**
+   * Enable ArduPilot's transparent USB↔UART pass-through bridge so a host tool
+   * (e.g. esptool flashing an ELRS receiver) can talk to a UART-attached device
+   * through the FC. Sets SERIAL_PASS1 (source, default 0 = USB console),
+   * SERIAL_PASSTIMO (auto-restore timeout), then SERIAL_PASS2 (destination UART)
+   * LAST so the bridge only arms once the timeout is configured — each write is
+   * verified against the echoed PARAM_VALUE. Resolves when the FC reports
+   * "Passthru enabled". The caller must then release the transport (disconnect)
+   * and reopen the port at the flashing baud, since the FC forwards USB-CDC baud
+   * changes onto the target UART.
+   */
+  async enableSerialPassthrough(
+    destinationPort: number,
+    options: { timeoutSeconds?: number; sourcePort?: number; statusTextTimeoutMs?: number } = {}
+  ): Promise<void> {
+    const { timeoutSeconds = 15, sourcePort = 0, statusTextTimeoutMs = 5000 } = options
+    await this.setParameter('SERIAL_PASS1', sourcePort)
+    await this.setParameter('SERIAL_PASSTIMO', timeoutSeconds)
+    await this.setParameter('SERIAL_PASS2', destinationPort)
+    await this.waitForStatusText('Passthru enabled', statusTextTimeoutMs)
+    this.appendStatusEntry(
+      'info',
+      `Serial pass-through enabled (Serial${sourcePort} ↔ Serial${destinationPort}, ${timeoutSeconds}s timeout).`
+    )
+    this.emit()
+  }
+
   /** Start CompassMot (compass/motor interference) calibration via
    *  MAV_CMD_PREFLIGHT_CALIBRATION param6=1. The vehicle must be disarmed,
    *  restrained, and have its props removed — running it spins the motors.
@@ -2035,6 +2093,19 @@ export class ArduPilotConfiguratorRuntime {
       receivedAtMs: Date.now()
     })
     this.statusTexts.splice(STATUS_TEXT_HISTORY_LIMIT)
+    // Resolve any one-shot substring waiters (e.g. the passthru-enabled gate).
+    if (this.statusTextWaiters.length > 0) {
+      const remaining: typeof this.statusTextWaiters = []
+      for (const waiter of this.statusTextWaiters) {
+        if (text.includes(waiter.substring)) {
+          waiter.resolve()
+        } else {
+          remaining.push(waiter)
+        }
+      }
+      this.statusTextWaiters.length = 0
+      this.statusTextWaiters.push(...remaining)
+    }
     this.recordPreArmIssue(text, severity)
     this.guidedActionService.processStatusText(text)
     // Capture the physical PWM output count from the boot banner. Only the

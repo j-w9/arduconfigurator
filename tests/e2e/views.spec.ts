@@ -250,6 +250,9 @@ test.describe('Parameters tab (expert-only)', () => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')
     await connectViaHeader(page)
+    // Wait for the full param sync before counting rows — the table populates as
+    // params stream in, so an early count races the sync (and empties out).
+    await expectParameterSyncComplete(page)
     await page.getByTestId('product-mode-expert').click()
     await page.getByTestId('view-button-parameters').click()
 
@@ -3852,5 +3855,33 @@ test.describe('Scoped write-progress bar', () => {
     await expect(banner).toContainText('parameters')
     // It clears once the write completes.
     await expect(banner).toHaveCount(0)
+  })
+})
+
+test.describe('ELRS Flash (Expert + SERIAL_PASS2 gated)', () => {
+  test('detects the RCIN receiver port and arms the passthru bridge', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    // Passthru arm writes params, which are blocked until the initial sync
+    // completes (on hardware it's long done before you reach this tab).
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('product-mode-expert').check()
+
+    // Tab is gated on Expert + SERIAL_PASS2 (both true in the demo mock).
+    await page.getByTestId('view-button-elrs-flash').click()
+    await expect(page.getByTestId('elrs-flasher')).toBeVisible()
+
+    // The demo FC has Serial1 = RCIN (protocol 23) — detected as the RX port.
+    await expect(page.getByTestId('elrs-flasher-port')).toContainText('Serial1')
+
+    // Arm the bridge — the mock emits "Passthru enabled" on the SERIAL_PASS2
+    // write, which resolves the runtime's STATUSTEXT gate.
+    await page.getByTestId('elrs-flasher-arm').click()
+    await expect(page.getByTestId('elrs-flasher-armed-note')).toBeVisible()
+    await expect(page.getByTestId('elrs-flasher-notice')).toContainText('Passthru enabled')
+
+    // Close the bridge to restore MAVLink.
+    await page.getByTestId('elrs-flasher-cancel').click()
+    await expect(page.getByTestId('elrs-flasher-armed-note')).toHaveCount(0)
   })
 })

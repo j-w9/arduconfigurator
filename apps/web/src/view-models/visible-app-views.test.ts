@@ -24,6 +24,7 @@ function baseInputs(overrides: Partial<VisibleAppViewsInputs> = {}): VisibleAppV
     hasNetworkingParams: false,
     hasRcLogicParams: false,
     hasScriptingParams: false,
+    hasSerialPassthrough: false,
     ...overrides
   }
 }
@@ -74,6 +75,12 @@ describe('buildVisibleAppViews', () => {
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasScriptingParams: true })))).toContain('lua')
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false, hasScriptingParams: true })))).not.toContain('lua')
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasScriptingParams: false })))).not.toContain('lua')
+  })
+
+  it('shows ELRS Flash only in Expert mode AND when the FC reports SERIAL_PASS2', () => {
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasSerialPassthrough: true })))).toContain('elrs-flash')
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false, hasSerialPassthrough: true })))).not.toContain('elrs-flash')
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasSerialPassthrough: false })))).not.toContain('elrs-flash')
   })
 
   it('relabels the Setup tab as Status & Info', () => {
