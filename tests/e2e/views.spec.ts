@@ -250,6 +250,9 @@ test.describe('Parameters tab (expert-only)', () => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')
     await connectViaHeader(page)
+    // Wait for the full param sync before counting rows — the table populates as
+    // params stream in, so an early count races the sync (and empties out).
+    await expectParameterSyncComplete(page)
     await page.getByTestId('product-mode-expert').click()
     await page.getByTestId('view-button-parameters').click()
 
