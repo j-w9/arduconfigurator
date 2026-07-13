@@ -3899,16 +3899,19 @@ test.describe('OSD message shorthand editor (@OSD/shorthand.dat)', () => {
     await expect(page.getByTestId('osd-shorthand-from-0')).toHaveValue('PreArm:')
     await expect(page.getByTestId('osd-shorthand-to-0')).toHaveValue('PA:')
 
-    // The "from" field is a combobox: it references a datalist of common +
-    // live message suggestions (but stays free-text for substring fragments).
-    await expect(page.getByTestId('osd-shorthand-from-0')).toHaveAttribute('list', 'osd-shorthand-message-suggestions')
-    expect(await page.locator('#osd-shorthand-message-suggestions option').count()).toBeGreaterThan(5)
-
     // Edit a value + add a row, then save — the mock FTP write round-trips.
     await page.getByTestId('osd-shorthand-to-0').fill('PRE')
     await page.getByTestId('osd-shorthand-add').click()
-    await page.getByTestId('osd-shorthand-from-3').fill('Throttle')
-    await page.getByTestId('osd-shorthand-to-3').fill('THR')
+
+    // The "from" field is a searchable combobox over firmware messages: typing
+    // filters full messages; picking one inserts its ≤15-char key.
+    const from3 = page.getByTestId('osd-shorthand-from-3')
+    await from3.fill('sagetech')
+    const option = page.getByTestId('osd-shorthand-from-3-option').filter({ hasText: 'ADSB Sagetech MXS' }).first()
+    await expect(option).toBeVisible()
+    await option.click()
+    await expect(from3).toHaveValue('ADSB Sagetech')
+    await page.getByTestId('osd-shorthand-to-3').fill('ADSB')
     const save = page.getByTestId('osd-shorthand-save')
     await expect(save).toBeEnabled()
     await save.click()

@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import type { UseOsdShorthandResult } from '../hooks/use-osd-shorthand'
+import type { OsdCatalogEntry } from '../view-models/osd-message-suggestions'
+import { OsdMessageCombobox } from './OsdMessageCombobox'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import { ScopedField, ScopedSelectField, type ScopedFieldDraftMap } from './ScopedField'
@@ -170,8 +172,8 @@ export interface OsdViewProps {
   msgAbbrField: OsdSelectField | undefined
   /** Fork-only user shorthand dictionary editor state (@OSD/shorthand.dat). */
   osdShorthand: UseOsdShorthandResult
-  /** Datalist hints for the shorthand "from" field (common + live messages). */
-  osdMessageSuggestions: readonly string[]
+  /** Combobox entries for the shorthand "from" field (catalog + live messages). */
+  osdMessageSuggestions: readonly OsdCatalogEntry[]
   previewToolbar: OsdPreviewToolbarData
   previewElements: readonly OsdPreviewElement[]
   /** Per-element × per-screen (OSD1-4) enable matrix for the BF-style picker. */
@@ -554,11 +556,6 @@ export function OsdView(props: OsdViewProps) {
 
                 {osdShorthand.status === 'available' ? (
                   <div className="osd-shorthand" data-testid="osd-shorthand-editor">
-                    <datalist id="osd-shorthand-message-suggestions">
-                      {osdMessageSuggestions.map((message) => (
-                        <option key={message} value={message} />
-                      ))}
-                    </datalist>
                     <div className="osd-shorthand__header">
                       <strong>Custom abbreviations</strong>
                       <span>
@@ -570,16 +567,14 @@ export function OsdView(props: OsdViewProps) {
                     ) : (
                       osdShorthand.entries.map((entry, index) => (
                         <div key={index} className="osd-shorthand__row">
-                          <input
-                            aria-label={`abbreviation ${index + 1} from`}
-                            data-testid={`osd-shorthand-from-${index}`}
-                            type="text"
-                            list="osd-shorthand-message-suggestions"
-                            placeholder="Message text (or fragment)"
-                            maxLength={osdShorthand.fromMax}
+                          <OsdMessageCombobox
+                            testId={`osd-shorthand-from-${index}`}
+                            ariaLabel={`abbreviation ${index + 1} from`}
                             value={entry.from}
+                            maxLength={osdShorthand.fromMax}
                             disabled={osdShorthand.saving}
-                            onChange={(event) => osdShorthand.setEntry(index, { from: event.target.value })}
+                            suggestions={osdMessageSuggestions}
+                            onChange={(next) => osdShorthand.setEntry(index, { from: next })}
                           />
                           <span aria-hidden="true">→</span>
                           <input
