@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Generate the OSD message suggestion catalog from the ArduPilot firmware source.
-// Extracts GCS_SEND_TEXT/send_text + AP_Arming check_failed string literals,
-// normalizes them to <=15-char substring keys (the shorthand `from` field is
-// FROM_LEN=16 incl. NUL), filters/dedupes/ranks, and emits
-// apps/web/src/view-models/osd-message-catalog.generated.ts.
+// Generate the OSD message catalog from the ArduPilot firmware source. Extracts
+// every GCS_SEND_TEXT/send_text + AP_Arming check_failed string literal as a
+// { label, from } entry: `label` is the full message (with %… format args shown
+// as {n}/{f}/{s}/{c} placeholders), `from` is a ≤15-char substring key valid for
+// the shorthand table (FROM_LEN=16 incl. NUL). The OSD editor's combobox searches
+// labels and inserts the from key on select.
 //
 // Run manually per firmware release:  npm run gen:osd-catalog
 // (defaults to ../ardupilot; override with --ardupilot <path>).
@@ -25,14 +26,60 @@ const ARDUPILOT = resolve(argValue('--ardupilot', resolve(REPO_ROOT, '..', 'ardu
 const OUT_FILE = join(REPO_ROOT, 'apps/web/src/view-models/osd-message-catalog.generated.ts')
 
 const SCAN_DIRS = ['libraries', 'ArduCopter', 'ArduPlane', 'ArduSub', 'Rover', 'Blimp']
-const SEVERITY = { EMERGENCY: 0, ALERT: 1, CRITICAL: 2, ERROR: 3, WARNING: 4, NOTICE: 5, INFO: 6, DEBUG: 7 }
 
-const EMIT_RE = /(?:GCS_SEND_TEXT|send_text)\s*\(\s*MAV_SEVERITY_([A-Z]+)\s*,\s*"((?:[^"\\]|\\.)*)"/g
+const EMIT_RE = /(?:GCS_SEND_TEXT|send_text)\s*\(\s*MAV_SEVERITY_[A-Z]+\s*,\s*"((?:[^"\\]|\\.)*)"/g
 const ARMING_RE = /check_failed\s*\([^"]*"((?:[^"\\]|\\.)*)"/g
 
-const DROP_PREFIX =
-  /^(SBG|Siyi|GoPro|Gripper|Generator|Mount|IOMCU|UDP|ILAB|Scripting|Ping|Pong|media|record|focus|lens|fw:|v\.|Internal Error)/i
-const INFO_KEEP = /^(arm|disarm|throttle|mode|gps|ekf|batt|compass|calibrat|fence|rtl|land|takeoff|failsafe|radio)/i
+// A single printf conversion (used by both label + from).
+const FORMAT_RE = /%(%|[-+ 0#]*\d*(?:\.\d+)?(?:hh|h|ll|l|L|z|j|t)?[diouxXeEfFgGaAscp])/g
+
+function unescapeC(raw) {
+  return raw.replace(/\\"/g, '"').replace(/\\n/g, ' ').replace(/\\t/g, ' ').replace(/\\\\/g, '\\')
+}
+
+// Full message with %… format args replaced by typed placeholders.
+function label(raw) {
+  const s = unescapeC(raw).replace(FORMAT_RE, (match, spec) => {
+    if (spec === '%') return '%'
+    const conv = spec[spec.length - 1]
+    if ('diouxXp'.includes(conv)) return '{n}'
+    if ('eEfFgGaA'.includes(conv)) return '{f}'
+    if (conv === 's') return '{s}'
+    if (conv === 'c') return '{c}'
+    return match
+  })
+  return s.replace(/\s+/g, ' ').trim()
+}
+
+// ≤15-char substring key: cut at the first real format arg (%% literal), tidy,
+// then truncate on a word/`:`/`(` boundary.
+function fromKey(raw) {
+  let s = unescapeC(raw)
+  let cut = -1
+  for (let i = 0; i < s.length; i += 1) {
+    if (s[i] === '%') {
+      if (s[i + 1] === '%') {
+        i += 1
+        continue
+      }
+      cut = i
+      break
+    }
+  }
+  if (cut >= 0) s = s.slice(0, cut)
+  s = s.replace(/%%/g, '%').replace(/\s+/g, ' ').trim().replace(/[\s,:\-(]+$/, '')
+  if (s.length <= 15) return s
+  let k = s.slice(0, 15)
+  let back = -1
+  for (let i = k.length - 1; i >= 4; i -= 1) {
+    if (k[i] === ' ' || k[i] === ':' || k[i] === '(') {
+      back = i
+      break
+    }
+  }
+  if (back >= 4) k = k.slice(0, back)
+  return k.trim().replace(/[\s,:\-(]+$/, '')
+}
 
 function walk(dir, out) {
   let entries
@@ -49,72 +96,20 @@ function walk(dir, out) {
     } catch {
       continue
     }
-    if (st.isDirectory()) {
-      walk(full, out)
-    } else if (/\.(cpp|h)$/.test(entry)) {
-      out.push(full)
-    }
+    if (st.isDirectory()) walk(full, out)
+    else if (/\.(cpp|h)$/.test(entry)) out.push(full)
   }
 }
 
-// Minimal C unescape + strip a runtime format arg (treating %% as a literal
-// percent), then collapse whitespace, trim, and drop trailing , : - ( chars.
-function normalize(raw) {
-  let s = raw.replace(/\\"/g, '"').replace(/\\n/g, ' ').replace(/\\t/g, ' ').replace(/\\\\/g, '\\')
-  let cut = -1
-  for (let i = 0; i < s.length; i += 1) {
-    if (s[i] === '%') {
-      if (s[i + 1] === '%') {
-        i += 1
-        continue
-      }
-      cut = i
-      break
-    }
-  }
-  if (cut >= 0) s = s.slice(0, cut)
-  s = s.replace(/%%/g, '%')
-  s = s.replace(/\s+/g, ' ').trim()
-  s = s.replace(/[\s,:\-(]+$/, '')
-  return s
-}
+const ALL_PUNCT = /^[\s%{}.:()#=-]*$/
 
-function key15(s) {
-  if (s.length <= 15) return s
-  let k = s.slice(0, 15)
-  let cut = -1
-  for (let i = k.length - 1; i >= 4; i -= 1) {
-    if (k[i] === ' ' || k[i] === ':' || k[i] === '(') {
-      cut = i
-      break
-    }
-  }
-  if (cut >= 4) k = k.slice(0, cut)
-  return k.trim().replace(/[\s,:\-(]+$/, '')
-}
-
-function keep(key, severity) {
-  if (key.length < 4) return false
-  if (DROP_PREFIX.test(key)) return false
-  if (severity > 4 && !INFO_KEEP.test(key)) return false
-  return true
-}
-
-// Accumulate raw key -> { severity: min, sites: sum }.
-const acc = new Map()
-function record(rawString, severity) {
-  let key = key15(normalize(rawString))
-  if (!key) return
-  // Fold every PreArm reason into one key.
-  if (/^PreArm/i.test(key)) key = 'PreArm'
-  if (!keep(key, severity)) return
-  const existing = acc.get(key)
-  if (existing) {
-    existing.severity = Math.min(existing.severity, severity)
-    existing.sites += 1
-  } else {
-    acc.set(key, { severity, sites: 1 })
-  }
+const byLabel = new Map()
+function record(rawString, isArming) {
+  const raw = isArming ? `PreArm: ${rawString}` : rawString
+  const lbl = label(raw)
+  const from = fromKey(raw)
+  if (lbl.length < 3 || ALL_PUNCT.test(lbl) || from.length < 3) return
+  if (!byLabel.has(lbl)) byLabel.set(lbl, { label: lbl, from })
 }
 
 const files = []
@@ -127,25 +122,15 @@ for (const file of files) {
   } catch {
     continue
   }
-  for (const m of text.matchAll(EMIT_RE)) {
-    const severity = SEVERITY[m[1]]
-    if (severity === undefined) continue
-    record(m[2], severity)
-  }
+  for (const m of text.matchAll(EMIT_RE)) record(m[1], false)
   if (/libraries\/AP_Arming\//.test(file)) {
-    for (const m of text.matchAll(ARMING_RE)) {
-      record(`PreArm: ${m[1]}`, SEVERITY.CRITICAL)
-    }
+    for (const m of text.matchAll(ARMING_RE)) record(m[1], true)
   }
 }
 
-// Tighten: keep a key only if it's seen at least twice OR is high-severity.
-const kept = [...acc.entries()].filter(([, v]) => v.sites >= 2 || v.severity <= 1)
-
-// Rank: severity asc, sites desc, key asc.
-kept.sort((a, b) => a[1].severity - b[1].severity || b[1].sites - a[1].sites || a[0].localeCompare(b[0]))
-
-const keys = kept.map(([key]) => key)
+const entries = [...byLabel.values()].sort((a, b) =>
+  a.label.toLowerCase().localeCompare(b.label.toLowerCase())
+)
 
 let describe = 'unknown'
 try {
@@ -157,10 +142,11 @@ try {
 const body =
   `// AUTO-GENERATED by scripts/gen-osd-catalog.mjs from ArduPilot ${describe} — do not edit.\n` +
   `// Regenerate after a firmware bump:  npm run gen:osd-catalog\n` +
-  `// ${keys.length} keys extracted from libraries/ + vehicle dirs.\n\n` +
-  `export const OSD_MESSAGE_CATALOG: readonly string[] = [\n` +
-  keys.map((key) => `  ${JSON.stringify(key)}`).join(',\n') +
+  `// ${entries.length} messages extracted from libraries/ + vehicle dirs.\n\n` +
+  `export interface OsdCatalogEntry {\n  /** Full message text, %… args shown as {n}/{f}/{s}/{c}. */\n  label: string\n  /** ≤15-char substring key inserted into the shorthand "from" field. */\n  from: string\n}\n\n` +
+  `export const OSD_MESSAGE_CATALOG: readonly OsdCatalogEntry[] = [\n` +
+  entries.map((e) => `  { label: ${JSON.stringify(e.label)}, from: ${JSON.stringify(e.from)} }`).join(',\n') +
   `\n]\n`
 
 writeFileSync(OUT_FILE, body)
-process.stdout.write(`Wrote ${keys.length} keys to ${OUT_FILE} (ArduPilot ${describe})\n`)
+process.stdout.write(`Wrote ${entries.length} messages to ${OUT_FILE} (ArduPilot ${describe})\n`)

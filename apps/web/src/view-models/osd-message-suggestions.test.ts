@@ -1,34 +1,38 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildOsdMessageSuggestions, COMMON_OSD_MESSAGE_SUGGESTIONS } from './osd-message-suggestions'
+import { buildOsdMessageSuggestions, toFromKey } from './osd-message-suggestions'
+
+describe('toFromKey', () => {
+  it('keeps short messages as-is', () => {
+    expect(toFromKey('GPS Glitch')).toBe('GPS Glitch')
+  })
+
+  it('cuts at the first runtime format arg, stripping trailing punctuation', () => {
+    expect(toFromKey('EKF primary changed:%d')).toBe('EKF primary')
+  })
+
+  it('truncates >15-char messages on a word boundary', () => {
+    const key = toFromKey('ADSB Sagetech MXS: Init')
+    expect(key.length).toBeLessThanOrEqual(15)
+    expect(key).toBe('ADSB Sagetech')
+  })
+})
 
 describe('buildOsdMessageSuggestions', () => {
-  it('lists curated fragments first, then live messages', () => {
-    const result = buildOsdMessageSuggestions(['Custom live message'], ['PreArm:', 'GPS'])
-    expect(result).toEqual(['PreArm:', 'GPS', 'Custom live message'])
+  it('lists the favorites first as label===from entries', () => {
+    expect(buildOsdMessageSuggestions([])[0]).toEqual({ label: 'PreArm:', from: 'PreArm:' })
   })
 
-  it('dedupes case-insensitively across curated + live and drops blanks', () => {
-    const result = buildOsdMessageSuggestions(['gps', 'PreArm: GPS 1: not healthy', '  '], ['PreArm:', 'GPS'])
-    expect(result).toEqual(['PreArm:', 'GPS', 'PreArm: GPS 1: not healthy'])
+  it('includes the source-derived catalog', () => {
+    expect(buildOsdMessageSuggestions([]).some((entry) => entry.from === 'ADSB Sagetech')).toBe(true)
   })
 
-  it('defaults to the source-derived catalog: favorites first, a known key present, deduped', () => {
-    const result = buildOsdMessageSuggestions([])
-    // (a) favorites lead the list.
-    expect(result[0]).toBe('PreArm:')
-    expect(COMMON_OSD_MESSAGE_SUGGESTIONS[0]).toBe('PreArm:')
-    // (b) a known generated catalog key is present.
-    expect(result).toContain('EKF3 IMU')
-    // dedup: the result carries no case-insensitive duplicates.
-    const lower = result.map((entry) => entry.toLowerCase())
-    expect(new Set(lower).size).toBe(lower.length)
-  })
-
-  it('(c) live-seen messages still append and dedupe against the catalog', () => {
-    const result = buildOsdMessageSuggestions(['My custom message', 'ekf3 imu'])
-    expect(result).toContain('My custom message')
-    // 'ekf3 imu' collapses into the catalog's 'EKF3 IMU' (no case-dupe).
-    expect(result.filter((entry) => entry.toLowerCase() === 'ekf3 imu')).toHaveLength(1)
+  it('appends live-seen messages and dedupes by from (case-insensitively)', () => {
+    const result = buildOsdMessageSuggestions(['My custom message', 'ADSB Sagetech extra telem'])
+    // A brand-new live message is appended with its derived key.
+    expect(result.some((entry) => entry.label === 'My custom message' && entry.from === 'My custom')).toBe(true)
+    // 'ADSB Sagetech extra telem' → from 'ADSB Sagetech', already in the catalog → deduped out.
+    const froms = result.map((entry) => entry.from.toLowerCase())
+    expect(new Set(froms).size).toBe(froms.length)
   })
 })

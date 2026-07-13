@@ -12808,6 +12808,57 @@ details.metadata-settings-section:not([open]) > summary::after {
   min-width: 0;
   font-family: var(--font-mono, ui-monospace, monospace);
 }
+
+/* Searchable message combobox for the "from" field. */
+.osd-combobox {
+  position: relative;
+  min-width: 0;
+}
+.osd-combobox > input {
+  width: 100%;
+}
+.osd-combobox__list {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface, #141c28);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.osd-combobox__option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  font-size: 12px;
+}
+.osd-combobox__option:hover,
+.osd-combobox__option[aria-selected='true'] {
+  background: rgba(var(--fill-rgb, 20, 28, 40), 0.9);
+}
+.osd-combobox__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.osd-combobox__from {
+  flex: 0 0 auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--accent, #dab254);
+  font-size: 11px;
+}
 .osd-shorthand__actions {
   display: flex;
   gap: 8px;
