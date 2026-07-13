@@ -190,6 +190,12 @@ const mockParameters: ParameterState = {
   SERIAL8_PROTOCOL: 16,
   SERIAL8_BAUD: 115,
   SERIAL8_OPTIONS: 0,
+  // AP_SerialManager transparent passthru bridge (SERIAL_PASS*). Present so the
+  // Expert-only ELRS Flash tab is gated on (SERIAL_PASS2) and can target the
+  // RCIN receiver on Serial1 above. PASS2 defaults to -1 (bridge disabled).
+  SERIAL_PASS1: 0,
+  SERIAL_PASS2: -1,
+  SERIAL_PASSTIMO: 15,
   // AP_Networking (NET_*) — a native-Ethernet demo config so the Expert-only
   // Networking view is populated. NET_ENABLE present = the FC supports networking.
   NET_ENABLE: 1,

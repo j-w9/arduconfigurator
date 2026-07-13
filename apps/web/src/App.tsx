@@ -257,6 +257,7 @@ import { invertGuidedReorderMapping, pickedReorderPositions } from './view-model
 import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
+import { ElrsFlasher, type ElrsFlasherNotice } from './firmware/ElrsFlasher'
 import { MavlinkInspectorView } from './views/MavlinkInspector'
 import { intervalUsForRate } from './view-models/mavlink-inspector'
 import { MAX_MAVLINK_PLOTS, useMavlinkInspector } from './hooks/use-mavlink-inspector'
@@ -4885,6 +4886,58 @@ export function App() {
     () => snapshot.parameters.some((parameter) => parameter.id === 'SCR_ENABLE'),
     [snapshot.parameters]
   )
+  // SERIAL_PASS2 is the AP_SerialManager transparent USB↔UART bridge param —
+  // its presence is the "this FC can passthru-flash an ELRS RX" sentinel that
+  // gates the Expert-only ELRS Flash tab.
+  const hasSerialPassthrough = useMemo(
+    () => snapshot.parameters.some((parameter) => parameter.id === 'SERIAL_PASS2'),
+    [snapshot.parameters]
+  )
+
+  // ELRS passthrough flasher (Expert + SERIAL_PASS2-gated tab). Slice A wires the
+  // SERIAL_PASS bridge arm/teardown; esptool flashing over the reopened port is
+  // the next slice.
+  const [elrsFlasherBusy, setElrsFlasherBusy] = useState(false)
+  const [elrsBridgeArmed, setElrsBridgeArmed] = useState(false)
+  const [elrsFlasherNotice, setElrsFlasherNotice] = useState<ElrsFlasherNotice | undefined>(undefined)
+  async function handleArmElrsPassthrough(input: {
+    destinationPort: number
+    timeoutSeconds: number
+    baudRate: number
+  }): Promise<void> {
+    setElrsFlasherBusy(true)
+    setElrsFlasherNotice(undefined)
+    try {
+      await runtime.enableSerialPassthrough(input.destinationPort, { timeoutSeconds: input.timeoutSeconds })
+      setElrsBridgeArmed(true)
+      setElrsFlasherNotice({
+        tone: 'warning',
+        text: `Passthru enabled on Serial${input.destinationPort}. The bridge is open at ${input.baudRate.toLocaleString()} baud; receiver flashing lands in the next update.`
+      })
+    } catch (error) {
+      setElrsFlasherNotice({
+        tone: 'danger',
+        text: `Could not arm the pass-through bridge: ${error instanceof Error ? error.message : String(error)}`
+      })
+    } finally {
+      setElrsFlasherBusy(false)
+    }
+  }
+  async function handleCancelElrsPassthrough(): Promise<void> {
+    setElrsFlasherBusy(true)
+    try {
+      await runtime.setParameter('SERIAL_PASS2', -1)
+      setElrsFlasherNotice({ tone: 'neutral', text: 'Bridge closed — SERIAL_PASS2 reset to disabled; MAVLink restored.' })
+    } catch {
+      setElrsFlasherNotice({
+        tone: 'warning',
+        text: 'Could not reset SERIAL_PASS2 over the link; the bridge auto-restores after the timeout.'
+      })
+    } finally {
+      setElrsBridgeArmed(false)
+      setElrsFlasherBusy(false)
+    }
+  }
   // Lua Scripts view-model: scripting-capability gate + per-applet sanity, plus
   // the installed-file state machine (MAVFTP against /APM/scripts). The catalog
   // + capability logic is a pure builder (unit-tested); the hook owns the async
@@ -5200,7 +5253,8 @@ export function App() {
         connectionKind: snapshot.connection.kind,
         hasNetworkingParams,
         hasRcLogicParams,
-        hasScriptingParams
+        hasScriptingParams,
+        hasSerialPassthrough
       }),
     [
       appViews,
@@ -5210,7 +5264,8 @@ export function App() {
       snapshot.connection.kind,
       hasNetworkingParams,
       hasRcLogicParams,
-      hasScriptingParams
+      hasScriptingParams,
+      hasSerialPassthrough
     ]
   )
   const activeViewDescriptor = visibleAppViews.find((view) => view.id === activeViewId) ?? visibleAppViews[0]
@@ -8023,6 +8078,18 @@ export function App() {
                 : undefined
           }
           connectedVehicle={snapshot.vehicle?.vehicle}
+        />
+      ) : null}
+
+      {activeViewId === 'elrs-flash' ? (
+        <ElrsFlasher
+          snapshot={snapshot}
+          isConnected={snapshot.connection.kind === 'connected'}
+          busy={elrsFlasherBusy}
+          bridgeArmed={elrsBridgeArmed}
+          notice={elrsFlasherNotice}
+          onArmPassthrough={handleArmElrsPassthrough}
+          onCancel={handleCancelElrsPassthrough}
         />
       ) : null}
 

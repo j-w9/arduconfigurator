@@ -63,6 +63,13 @@ const enabledDisabledOptions: ParameterValueOption[] = [
   { value: 1, label: 'Enabled' }
 ]
 
+// SERIAL_PASS1/PASS2 port selector — -1 disables, 0..6 pick a serial port
+// (Serial0 = USB/console). Matches AP_SerialManager.cpp @Values.
+const serialPassPortOptions: ParameterValueOption[] = [
+  { value: -1, label: 'Disabled' },
+  ...Array.from({ length: 7 }, (_unused, index) => ({ value: index, label: `Serial${index}` }))
+]
+
 const rcEndpointNotes = [
   'Receiver endpoint changes should be followed by another live RC range verification pass.'
 ]
@@ -1308,6 +1315,43 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       step: 1
     },
     ...buildSerialPortParameterDefinitions(8),
+    // AP_SerialManager transparent USB↔UART passthru bridge (SERIAL_PASS1/PASS2/
+    // PASSTIMO). Setting both PASS1 (source, default 0=USB console) and PASS2
+    // (destination UART) pumps raw bytes both ways, detaching that UART's normal
+    // driver — used to flash an ELRS receiver through the FC. Verbatim from
+    // AP_SerialManager.cpp @Param blocks (PASS2 default -1, PASSTIMO default 15).
+    SERIAL_PASS1: {
+      id: 'SERIAL_PASS1',
+      label: 'Serial Passthru First Port',
+      description:
+        'One side of a transparent pass-through between two serial ports. Once both PASS1 and PASS2 are set, all data on either port is forwarded to the other. Normally the USB/console side (0).',
+      category: 'ports',
+      minimum: -1,
+      maximum: 6,
+      step: 1,
+      options: serialPassPortOptions
+    },
+    SERIAL_PASS2: {
+      id: 'SERIAL_PASS2',
+      label: 'Serial Passthru Second Port',
+      description:
+        'The other side of the pass-through. Reset to -1 (disabled) on reboot unless SERIAL_PASSTIMO is -1. Set this to the UART carrying the RC/ELRS receiver to bridge it to USB.',
+      category: 'ports',
+      minimum: -1,
+      maximum: 6,
+      step: 1,
+      options: serialPassPortOptions
+    },
+    SERIAL_PASSTIMO: {
+      id: 'SERIAL_PASSTIMO',
+      label: 'Serial Passthru Timeout',
+      description:
+        'Seconds of silence on the first port after which pass-through ends and the port reverts to normal use (e.g. MAVLink). 0 = no timeout; -1 = no timeout and SERIAL_PASS2 is not reset on reboot.',
+      category: 'ports',
+      minimum: -1,
+      maximum: 120,
+      step: 1
+    },
     // AP_Networking NET_* family (Ethernet/PPP IP setup + network serial
     // endpoints). Surfaced in the Expert-only Networking view, and only when the
     // FC actually reports these params (Ethernet/PPP-capable boards).

@@ -28,6 +28,10 @@ export interface VisibleAppViewsInputs {
   /** The FC reports the Lua scripting engine (SCR_ENABLE present) — the board's
    *  build has the VM compiled in, so it can run scripts. Gates the Lua tab. */
   hasScriptingParams: boolean
+  /** The FC reports the AP_SerialManager pass-through bridge (SERIAL_PASS2
+   *  present) — required to flash an ELRS receiver through the FC. Gates the
+   *  ELRS-flash tab. */
+  hasSerialPassthrough: boolean
 }
 
 export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDescriptor[] {
@@ -38,6 +42,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     canBusBus,
     connectionKind,
     hasNetworkingParams,
+    hasSerialPassthrough,
     hasRcLogicParams,
     hasScriptingParams
   } = inputs
@@ -92,6 +97,16 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     id: 'flash',
     label: 'Flash',
     description: 'Firmware flasher — pick an ArduPilot release or point at a custom build server, enter DFU bootloader, or drop a .apj for guided flashing.',
+    badge: 'tools',
+    tone: 'neutral'
+  }
+  // ELRS receiver flasher — flashes an ExpressLRS RX through the FC's transparent
+  // SERIAL_PASS bridge. Expert-only AND only when the FC advertises the bridge
+  // (SERIAL_PASS2), since it needs both a live link and the passthru capability.
+  const elrsFlashDescriptor: AppViewDescriptor = {
+    id: 'elrs-flash',
+    label: 'ELRS Flash',
+    description: 'Flash an ExpressLRS receiver through the flight controller — no Betaflight CLI or external ELRS Configurator needed.',
     badge: 'tools',
     tone: 'neutral'
   }
@@ -169,7 +184,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const CANONICAL_VIEW_ORDER = [
     'setup', 'calibration', 'config', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'power', 'failsafe', 'vtx', 'osd', 'tuning', 'presets',
-    'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'rc-mixer',
+    'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'elrs-flash', 'rc-mixer',
     'mavlink-inspector', 'dronecan-inspector', 'ai-assistant'
   ]
   const relabelled = base.map((view) =>
@@ -187,6 +202,8 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     ...(isExpertMode && hasNetworkingParams ? [networkingDescriptor] : []),
     // Lua Scripts — Expert-only AND only when the FC advertises scripting (SCR_).
     ...(isExpertMode && hasScriptingParams ? [luaDescriptor] : []),
+    // ELRS Flash — Expert-only AND only when the FC advertises the SERIAL_PASS bridge.
+    ...(isExpertMode && hasSerialPassthrough ? [elrsFlashDescriptor] : []),
     // Expert-only views — only surfaced when Expert mode is on.
     ...(isExpertMode
       ? [rcMixerDescriptor, mavlinkInspectorDescriptor, dronecanInspectorDescriptor, aiAssistantDescriptor]
