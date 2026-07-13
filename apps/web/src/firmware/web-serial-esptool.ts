@@ -25,13 +25,25 @@ export interface ElrsFlashProgress {
   message?: string
 }
 
+// The two bauds are DIFFERENT and must be decoupled (verified on real hardware,
+// iFlight ESP8285 nano through an ArduPilot SERIAL_PASS bridge):
+//  - the CRSF "enter bootloader" command is parsed by the RUNNING ELRS firmware,
+//    so it must go at the RC link's CRSF baud (420000 default);
+//  - esptool then syncs+flashes the ESP ROM bootloader at 115200. Higher bauds
+//    (esptool's changeBaud to 230400/420000) fail through the FC bridge with
+//    "No serial data received"; 115200 works reliably.
+export const ELRS_CRSF_BOOTLOADER_BAUD = 420000
+export const ELRS_ESPTOOL_BAUD = 115200
+
 export interface ElrsFlashInput {
   /** The live Web Serial port (already released by the MAVLink transport). */
   port: WebSerialPortLike
   /** The ELRS firmware image to write. */
   firmware: Uint8Array
-  /** Flashing baud — the FC forwards this from USB onto the RC UART. */
-  baudRate: number
+  /** The receiver's CRSF link baud for the bootloader-jump command (the running
+   *  firmware parses it at this baud). Defaults to 420000. esptool always runs
+   *  at 115200 regardless. */
+  crsfBaud?: number
   onProgress?: (progress: ElrsFlashProgress) => void
   onLog?: (line: string) => void
 }
@@ -68,19 +80,21 @@ async function sendElrsBootloaderJump(port: WebSerialPortLike, baudRate: number)
  * released the MAVLink transport first, so this owns the port exclusively.
  */
 export async function flashElrsReceiver(input: ElrsFlashInput): Promise<{ chipName: string }> {
-  const { port, firmware, baudRate, onProgress, onLog } = input
+  const { port, firmware, onProgress, onLog } = input
+  const crsfBaud = input.crsfBaud ?? ELRS_CRSF_BOOTLOADER_BAUD
 
+  // Jump at the CRSF baud so the running firmware parses the command.
   onProgress?.({ phase: 'bootloader', message: 'Sending ELRS bootloader command…' })
-  await sendElrsBootloaderJump(port, baudRate)
+  await sendElrsBootloaderJump(port, crsfBaud)
 
-  // no_reset: DTR/RTS can't reach the ESP through the FC bridge, and the RX is
-  // already in its bootloader from the CRSF jump above. romBaudrate === baudrate
-  // so esptool doesn't try to renegotiate (the FC pins the UART to USB's baud).
+  // esptool at 115200 (== esptool-js's fixed romBaudrate, so main() does NO
+  // changeBaud). no_reset: DTR/RTS can't reach the ESP through the FC bridge,
+  // and the RX is already in its bootloader from the CRSF jump above.
   onProgress?.({ phase: 'connect', message: 'Syncing with the ESP bootloader…' })
   const transport = new Transport(port as unknown as EsptoolSerialPort, false)
   const loader = new ESPLoader({
     transport,
-    baudrate: baudRate,
+    baudrate: ELRS_ESPTOOL_BAUD,
     enableTracing: false,
     terminal: onLog
       ? {

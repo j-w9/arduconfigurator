@@ -10,9 +10,12 @@ import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 export const ELRS_RCIN_PROTOCOL = 23
 export const ELRS_CRSF_PROTOCOL = 29
 
-/** Common ESP flashing baud rates ELRS uses over the passthru bridge. */
-export const ELRS_FLASH_BAUD_RATES = [420000, 460800, 230400, 115200] as const
-export const ELRS_DEFAULT_FLASH_BAUD = 420000
+// The receiver's CRSF link baud, used ONLY for the bootloader-jump command (the
+// running firmware parses it at this baud). esptool always flashes at 115200 —
+// higher bauds fail through the FC bridge (verified on hardware). 420000 is the
+// ELRS default; 400000/115200 cover non-standard link rates.
+export const ELRS_CRSF_BAUD_RATES = [420000, 400000, 115200] as const
+export const ELRS_DEFAULT_CRSF_BAUD = 420000
 
 export interface ElrsPortCandidate {
   /** Serial port index N (the value to write to SERIAL_PASS2). */

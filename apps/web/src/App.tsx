@@ -4923,7 +4923,7 @@ export function App() {
       setElrsBridgeArmed(true)
       setElrsFlasherNotice({
         tone: 'warning',
-        text: `Passthru enabled on Serial${input.destinationPort}. The bridge is open at ${input.baudRate.toLocaleString()} baud — choose the ELRS firmware .bin and flash the receiver below.`
+        text: `Passthru enabled on Serial${input.destinationPort}. The bridge is open — choose the ELRS firmware .bin and flash the receiver below.`
       })
     } catch (error) {
       setElrsFlasherNotice({
@@ -4986,7 +4986,7 @@ export function App() {
       const result = await flashElrsReceiver({
         port,
         firmware: firmwareToFlash,
-        baudRate: input.baudRate,
+        crsfBaud: input.baudRate,
         onProgress: (progress) => setElrsFlashProgress(progress)
       })
       setElrsFlasherNotice({
