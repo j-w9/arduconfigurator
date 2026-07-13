@@ -6302,6 +6302,66 @@ textarea:focus {
   gap: 12px;
 }
 
+/* Betaflight-style live monitor: RC channels on one side, the reactive craft
+   model on the other. The channel side takes a little more width; both collapse
+   to a single stacked column on narrow/phone screens (see the phone media
+   query). align-items:start so a tall channel list doesn't stretch the craft. */
+.receiver-live-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 12px;
+  align-items: start;
+}
+.receiver-live-columns__channels {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.receiver-live-columns__craft {
+  min-width: 0;
+}
+.receiver-live-columns__craft .receiver-stick-craft {
+  margin-bottom: 0;
+}
+
+/* Compact flight-mode readout (replaces the old per-axis summary cards' mode
+   card). One line: label · channel · estimated slot/mode · live PWM. Lifts to a
+   warning tint while the mode channel is actively moving. */
+.receiver-flight-mode-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--border);
+  background: rgba(var(--fill-rgb, 20, 28, 40), 0.5);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.receiver-flight-mode-line strong {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+.receiver-flight-mode-line__ch {
+  font-weight: 700;
+  color: var(--text-dim, #5a7088);
+}
+.receiver-flight-mode-line__state {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text);
+}
+.receiver-flight-mode-line__pwm {
+  font-variant-numeric: tabular-nums;
+}
+.receiver-flight-mode-line.is-attention {
+  border-color: var(--warning, #dab254);
+  background: var(--warning-weak, rgba(218, 178, 84, 0.14));
+}
+
 .tuning-overview__sticky {
   position: sticky;
   top: 16px;
@@ -11178,6 +11238,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   .outputs-summary-grid,
   .tuning-summary-grid,
   .receiver-live-primary-grid,
+  .receiver-live-columns,
   .receiver-monitor__meta,
   .ports-workspace,
   .outputs-workspace,
