@@ -6,8 +6,8 @@ import { Panel, StatusBadge } from '@arduconfig/ui-kit'
 
 import {
   detectElrsSerialPorts,
-  ELRS_DEFAULT_FLASH_BAUD,
-  ELRS_FLASH_BAUD_RATES
+  ELRS_DEFAULT_CRSF_BAUD,
+  ELRS_CRSF_BAUD_RATES
 } from '../view-models/elrs-flash'
 import type { ElrsFlashProgress } from './web-serial-esptool'
 
@@ -50,7 +50,7 @@ export function ElrsFlasher(props: ElrsFlasherProps): ReactElement {
 
   const candidates = useMemo(() => detectElrsSerialPorts(snapshot), [snapshot])
   const [destinationPort, setDestinationPort] = useState<number | undefined>(undefined)
-  const [baudRate, setBaudRate] = useState<number>(ELRS_DEFAULT_FLASH_BAUD)
+  const [baudRate, setBaudRate] = useState<number>(ELRS_DEFAULT_CRSF_BAUD)
   const [timeoutSeconds, setTimeoutSeconds] = useState<number>(DEFAULT_TIMEOUT_SECONDS)
   const [firmware, setFirmware] = useState<{ bytes: Uint8Array; name: string } | undefined>(undefined)
   const [bindPhrase, setBindPhrase] = useState('')
@@ -126,14 +126,14 @@ export function ElrsFlasher(props: ElrsFlasherProps): ReactElement {
             </label>
 
             <label className="scoped-editor-field">
-              <span>Flashing baud</span>
+              <span>Receiver CRSF baud</span>
               <select
                 data-testid="elrs-flasher-baud"
                 value={baudRate}
                 disabled={busy || bridgeArmed}
                 onChange={(event) => setBaudRate(Number(event.target.value))}
               >
-                {ELRS_FLASH_BAUD_RATES.map((rate) => (
+                {ELRS_CRSF_BAUD_RATES.map((rate) => (
                   <option key={rate} value={rate}>
                     {rate.toLocaleString()} baud
                   </option>
@@ -193,8 +193,9 @@ export function ElrsFlasher(props: ElrsFlasherProps): ReactElement {
         {bridgeArmed ? (
           <div className="elrs-flasher__flash" data-testid="elrs-flasher-armed-note">
             <p className="telemetry-note">
-              Bridge is open at {baudRate.toLocaleString()} baud. Choose the ELRS firmware <code>.bin</code> and flash the
-              receiver, or close the bridge to restore MAVLink.
+              Bridge is open. Choose the ELRS firmware <code>.bin</code> and flash the receiver, or close the bridge to
+              restore MAVLink. (The bootloader command is sent at {baudRate.toLocaleString()} baud; esptool then flashes at
+              115200.)
             </p>
             <label className="scoped-editor-field">
               <span>ELRS firmware (.bin)</span>
