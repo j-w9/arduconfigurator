@@ -170,6 +170,8 @@ export interface OsdViewProps {
   msgAbbrField: OsdSelectField | undefined
   /** Fork-only user shorthand dictionary editor state (@OSD/shorthand.dat). */
   osdShorthand: UseOsdShorthandResult
+  /** Datalist hints for the shorthand "from" field (common + live messages). */
+  osdMessageSuggestions: readonly string[]
   previewToolbar: OsdPreviewToolbarData
   previewElements: readonly OsdPreviewElement[]
   /** Per-element × per-screen (OSD1-4) enable matrix for the BF-style picker. */
@@ -229,6 +231,7 @@ export function OsdView(props: OsdViewProps) {
     switchMethodField,
     msgAbbrField,
     osdShorthand,
+    osdMessageSuggestions,
     previewToolbar,
     previewElements,
     elementMatrix,
@@ -551,6 +554,11 @@ export function OsdView(props: OsdViewProps) {
 
                 {osdShorthand.status === 'available' ? (
                   <div className="osd-shorthand" data-testid="osd-shorthand-editor">
+                    <datalist id="osd-shorthand-message-suggestions">
+                      {osdMessageSuggestions.map((message) => (
+                        <option key={message} value={message} />
+                      ))}
+                    </datalist>
                     <div className="osd-shorthand__header">
                       <strong>Custom abbreviations</strong>
                       <span>
@@ -566,7 +574,8 @@ export function OsdView(props: OsdViewProps) {
                             aria-label={`abbreviation ${index + 1} from`}
                             data-testid={`osd-shorthand-from-${index}`}
                             type="text"
-                            placeholder="Message text"
+                            list="osd-shorthand-message-suggestions"
+                            placeholder="Message text (or fragment)"
                             maxLength={osdShorthand.fromMax}
                             value={entry.from}
                             disabled={osdShorthand.saving}
