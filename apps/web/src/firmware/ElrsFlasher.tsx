@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
@@ -9,6 +9,7 @@ import {
   ELRS_DEFAULT_FLASH_BAUD,
   ELRS_FLASH_BAUD_RATES
 } from '../view-models/elrs-flash'
+import type { ElrsFlashProgress } from './web-serial-esptool'
 
 export interface ElrsFlasherNotice {
   tone: 'neutral' | 'success' | 'warning' | 'danger'
@@ -30,17 +31,38 @@ export interface ElrsFlasherProps {
   onArmPassthrough: (input: { destinationPort: number; timeoutSeconds: number; baudRate: number }) => void | Promise<void>
   /** Tear the bridge back down (close the raw port; the FC auto-restores MAVLink). */
   onCancel: () => void | Promise<void>
+  /** Flash the chosen firmware over the armed bridge (reopen port + esptool). */
+  onFlash: (input: { firmware: Uint8Array; baudRate: number; fileName: string }) => void | Promise<void>
+  /** Live flashing progress, or undefined when no flash is in flight. */
+  flashProgress: ElrsFlashProgress | undefined
 }
 
 const DEFAULT_TIMEOUT_SECONDS = 30
 
 export function ElrsFlasher(props: ElrsFlasherProps): ReactElement {
-  const { snapshot, isConnected, busy, bridgeArmed, notice, onArmPassthrough, onCancel } = props
+  const { snapshot, isConnected, busy, bridgeArmed, notice, onArmPassthrough, onCancel, onFlash, flashProgress } = props
 
   const candidates = useMemo(() => detectElrsSerialPorts(snapshot), [snapshot])
   const [destinationPort, setDestinationPort] = useState<number | undefined>(undefined)
   const [baudRate, setBaudRate] = useState<number>(ELRS_DEFAULT_FLASH_BAUD)
   const [timeoutSeconds, setTimeoutSeconds] = useState<number>(DEFAULT_TIMEOUT_SECONDS)
+  const [firmware, setFirmware] = useState<{ bytes: Uint8Array; name: string } | undefined>(undefined)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleFirmwareFile(file: File | undefined): Promise<void> {
+    if (!file) {
+      setFirmware(undefined)
+      return
+    }
+    const buffer = await file.arrayBuffer()
+    setFirmware({ bytes: new Uint8Array(buffer), name: file.name })
+  }
+
+  const flashing = flashProgress !== undefined && flashProgress.phase !== 'done'
+  const flashPercent =
+    flashProgress?.total && flashProgress.total > 0
+      ? Math.round(((flashProgress.written ?? 0) / flashProgress.total) * 100)
+      : undefined
 
   // Default the selection to the first detected ELRS port once we have one.
   const effectivePort = destinationPort ?? candidates[0]?.portNumber
@@ -162,10 +184,55 @@ export function ElrsFlasher(props: ElrsFlasherProps): ReactElement {
         </div>
 
         {bridgeArmed ? (
-          <p className="telemetry-note" data-testid="elrs-flasher-armed-note">
-            Bridge is open at {baudRate.toLocaleString()} baud. Receiver flashing (esptool sync + firmware write) lands in
-            the next update — for now, close the bridge to restore MAVLink.
-          </p>
+          <div className="elrs-flasher__flash" data-testid="elrs-flasher-armed-note">
+            <p className="telemetry-note">
+              Bridge is open at {baudRate.toLocaleString()} baud. Choose the ELRS firmware <code>.bin</code> and flash the
+              receiver, or close the bridge to restore MAVLink.
+            </p>
+            <label className="scoped-editor-field">
+              <span>ELRS firmware (.bin)</span>
+              <input
+                ref={fileInputRef}
+                data-testid="elrs-flasher-firmware"
+                type="file"
+                accept=".bin,application/octet-stream"
+                disabled={flashing}
+                onChange={(event) => void handleFirmwareFile(event.target.files?.[0])}
+              />
+            </label>
+            {firmware ? (
+              <p className="telemetry-note">
+                {firmware.name} · {(firmware.bytes.length / 1024).toFixed(0)} KB
+              </p>
+            ) : null}
+
+            {flashProgress ? (
+              <div className="elrs-flasher__progress" data-testid="elrs-flasher-progress">
+                <div className="rc-bar" aria-hidden="true">
+                  <div className="rc-bar__fill" style={{ width: `${flashPercent ?? 0}%` }} />
+                </div>
+                <span>
+                  {flashProgress.message ??
+                    (flashPercent !== undefined ? `Flashing… ${flashPercent}%` : 'Flashing…')}
+                </span>
+              </div>
+            ) : null}
+
+            <div className="snapshots-action-row snapshots-action-row--detail">
+              <button
+                data-testid="elrs-flasher-flash"
+                className="snapshots-button snapshots-button--primary"
+                disabled={flashing || firmware === undefined}
+                onClick={() =>
+                  firmware
+                    ? void onFlash({ firmware: firmware.bytes, baudRate, fileName: firmware.name })
+                    : undefined
+                }
+              >
+                {flashing ? 'Flashing…' : 'Flash receiver'}
+              </button>
+            </div>
+          </div>
         ) : null}
       </div>
     </Panel>

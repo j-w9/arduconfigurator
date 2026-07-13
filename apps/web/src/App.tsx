@@ -258,6 +258,7 @@ import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
 import { ElrsFlasher, type ElrsFlasherNotice } from './firmware/ElrsFlasher'
+import { flashElrsReceiver, type ElrsFlashProgress } from './firmware/web-serial-esptool'
 import { MavlinkInspectorView } from './views/MavlinkInspector'
 import { intervalUsForRate } from './view-models/mavlink-inspector'
 import { MAX_MAVLINK_PLOTS, useMavlinkInspector } from './hooks/use-mavlink-inspector'
@@ -4900,6 +4901,7 @@ export function App() {
   const [elrsFlasherBusy, setElrsFlasherBusy] = useState(false)
   const [elrsBridgeArmed, setElrsBridgeArmed] = useState(false)
   const [elrsFlasherNotice, setElrsFlasherNotice] = useState<ElrsFlasherNotice | undefined>(undefined)
+  const [elrsFlashProgress, setElrsFlashProgress] = useState<ElrsFlashProgress | undefined>(undefined)
   async function handleArmElrsPassthrough(input: {
     destinationPort: number
     timeoutSeconds: number
@@ -4912,7 +4914,7 @@ export function App() {
       setElrsBridgeArmed(true)
       setElrsFlasherNotice({
         tone: 'warning',
-        text: `Passthru enabled on Serial${input.destinationPort}. The bridge is open at ${input.baudRate.toLocaleString()} baud; receiver flashing lands in the next update.`
+        text: `Passthru enabled on Serial${input.destinationPort}. The bridge is open at ${input.baudRate.toLocaleString()} baud — choose the ELRS firmware .bin and flash the receiver below.`
       })
     } catch (error) {
       setElrsFlasherNotice({
@@ -4935,6 +4937,42 @@ export function App() {
       })
     } finally {
       setElrsBridgeArmed(false)
+      setElrsFlasherBusy(false)
+    }
+  }
+  async function handleFlashElrs(input: { firmware: Uint8Array; baudRate: number; fileName: string }): Promise<void> {
+    const port = selectedSerialPortRef.current
+    if (!port) {
+      setElrsFlasherNotice({
+        tone: 'warning',
+        text: 'Receiver flashing needs a direct Web Serial connection (not demo/bridge). Reconnect over USB serial first.'
+      })
+      return
+    }
+    setElrsFlasherBusy(true)
+    setElrsFlashProgress({ phase: 'bootloader', message: 'Preparing…' })
+    try {
+      // Release the MAVLink transport so esptool owns the raw port. The FC's
+      // pass-through bridge stays up (armed above) until SERIAL_PASSTIMO.
+      await runtime.disconnect().catch(() => {})
+      const result = await flashElrsReceiver({
+        port,
+        firmware: input.firmware,
+        baudRate: input.baudRate,
+        onProgress: (progress) => setElrsFlashProgress(progress)
+      })
+      setElrsFlasherNotice({
+        tone: 'success',
+        text: `Flashed ${result.chipName} with ${input.fileName}. Power-cycle the receiver, then reconnect to the flight controller.`
+      })
+      setElrsBridgeArmed(false)
+    } catch (error) {
+      setElrsFlasherNotice({
+        tone: 'danger',
+        text: `Flashing failed: ${error instanceof Error ? error.message : String(error)}. Power-cycle the receiver and reconnect before retrying.`
+      })
+    } finally {
+      setElrsFlashProgress(undefined)
       setElrsFlasherBusy(false)
     }
   }
@@ -8090,6 +8128,8 @@ export function App() {
           notice={elrsFlasherNotice}
           onArmPassthrough={handleArmElrsPassthrough}
           onCancel={handleCancelElrsPassthrough}
+          onFlash={handleFlashElrs}
+          flashProgress={elrsFlashProgress}
         />
       ) : null}
 
