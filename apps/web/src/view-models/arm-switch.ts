@@ -91,6 +91,28 @@ export function armSwitchAssignmentDrafts(
   return drafts
 }
 
+/** ArduPilot AUX_SWITCH_PWM_TRIGGER_HIGH: an aux switch reads HIGH — the arm
+ *  position for ARMDISARM (153) / ARMDISARM_AIRMODE (154) — above 1800µs. */
+export const ARM_SWITCH_HIGH_PWM_US = 1800
+
+/** True when a channel PWM puts the arm switch in the arm (HIGH) position.
+ *  Rejects undefined and the RC_CHANNELS no-data sentinel (0xffff) / other
+ *  out-of-band values so a silent or missing channel never reads as "armed". */
+export function isArmSwitchInArmPosition(pwm: number | undefined): boolean {
+  return pwm !== undefined && Number.isFinite(pwm) && pwm > ARM_SWITCH_HIGH_PWM_US && pwm < 2500
+}
+
+/** Whether the arm-switch channel row should be boxed red in the Receiver tab:
+ *  the vehicle is armed, an arm switch is assigned, and that channel is in the
+ *  arm (high) position — i.e. the switch is actively holding the craft armed. */
+export function isArmSwitchHighlightActive(
+  assignment: ArmSwitchAssignment,
+  armed: boolean,
+  armChannelPwm: number | undefined
+): boolean {
+  return armed && assignment.channel !== undefined && isArmSwitchInArmPosition(armChannelPwm)
+}
+
 export interface ArmSwitchChannelOption {
   value: number
   label: string

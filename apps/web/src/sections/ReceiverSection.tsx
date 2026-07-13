@@ -26,7 +26,7 @@ import {
 import { formatArducopterFlightModeChannel, formatArducopterRssiType } from '@arduconfig/param-metadata'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
-import { armSwitchChannelOptions, type ArmSwitchAssignment } from '../view-models/arm-switch'
+import { armSwitchChannelOptions, isArmSwitchHighlightActive, type ArmSwitchAssignment } from '../view-models/arm-switch'
 import type { useModeSwitchDerivations } from '../hooks/use-mode-switch-derivations'
 import type { useRcCalibrationDerivations } from '../hooks/use-rc-calibration-derivations'
 import type { useRcExercises } from '../hooks/use-rc-exercises'
@@ -285,6 +285,19 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     handleSetArmSwitchChannel
   } = handlers
 
+  // Arm-switch red box: the live PWM on the assigned arm-switch channel (0xffff
+  // = the RC_CHANNELS no-data sentinel), and whether the vehicle is armed via
+  // that switch (armed + channel in the arm/high position).
+  const armSwitchChannelPwm =
+    armSwitchAssignment.channel !== undefined
+      ? snapshot.liveVerification.rcInput.channels[armSwitchAssignment.channel - 1]
+      : undefined
+  const armSwitchHighlightActive = isArmSwitchHighlightActive(
+    armSwitchAssignment,
+    Boolean(snapshot.vehicle?.armed),
+    armSwitchChannelPwm === undefined || armSwitchChannelPwm === 0xffff ? undefined : armSwitchChannelPwm
+  )
+
   return (
         <ReceiverView
           taskCards={receiverTaskCards}
@@ -357,6 +370,8 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                     channels={receiverPrimaryChannelDisplays}
                     verified={snapshot.liveVerification.rcInput.verified}
                     testId="receiver-channel-bars"
+                    armSwitchChannel={armSwitchAssignment.channel}
+                    armSwitchActive={armSwitchHighlightActive}
                   />
 
                   {rcLogicChannelClaims && rcLogicChannelClaims.size > 0 ? (

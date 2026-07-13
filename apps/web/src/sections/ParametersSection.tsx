@@ -370,37 +370,31 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             </div>
 
             <div className="button-row">
-              <button
-                data-testid="export-parameter-backup"
-                style={buttonStyle('primary')}
-                onClick={handleExportParameterBackup}
-                disabled={busyAction !== undefined || snapshot.parameters.length === 0}
-                title="ArduConfigurator JSON backup with full metadata; round-trips through Import Backup. Use this unless another tool specifically needs a legacy format."
-              >
-                Export
-              </button>
-              {/* A third export format ("why do these exist?") collapsed into
-               *  one control: pick a legacy ground-station format here only
-               *  when you specifically need to hand the file to Mission
-               *  Planner or QGroundControl. Resets to the placeholder after
-               *  each export so it reads as a one-shot action, not a
-               *  persistent mode toggle. */}
+              {/* One Export control — pick the format on click (field request:
+               *  the old side-by-side "Export" + "Export Legacy…" read as two
+               *  competing buttons). ArduConfigurator JSON keeps full metadata
+               *  and round-trips through Import Backup; the two ground-station
+               *  formats are for handing the file to Mission Planner / QGC.
+               *  Controlled value="" resets to the placeholder after each pick
+               *  so it reads as a one-shot action, not a persistent mode. */}
               <select
-                data-testid="export-parameter-backup-legacy"
-                className="export-legacy-select"
-                style={buttonStyle()}
+                data-testid="export-parameter-backup"
+                className="export-format-select"
+                style={buttonStyle('primary')}
                 value=""
                 disabled={busyAction !== undefined || snapshot.parameters.length === 0}
-                title="Export in a legacy ground-station format for a specific tool, instead of ArduConfigurator's own JSON."
+                title="Export the current parameters — pick a format. ArduConfigurator JSON keeps full metadata and round-trips through Import Backup; Mission Planner / QGroundControl are for handing the file to those ground stations."
                 onChange={(event) => {
                   const format = event.target.value
-                  if (format === 'parm') handleExportParameterBackupAsParm()
+                  if (format === 'json') handleExportParameterBackup()
+                  else if (format === 'parm') handleExportParameterBackupAsParm()
                   else if (format === 'params') handleExportParameterBackupAsParams()
                 }}
               >
                 <option value="" disabled>
-                  Export Legacy…
+                  Export…
                 </option>
+                <option value="json">ArduConfigurator JSON</option>
                 <option value="parm">Mission Planner (.parm)</option>
                 <option value="params">QGroundControl (.params)</option>
               </select>
