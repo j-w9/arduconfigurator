@@ -31,8 +31,14 @@ export interface ElrsFlasherProps {
   onArmPassthrough: (input: { destinationPort: number; timeoutSeconds: number; baudRate: number }) => void | Promise<void>
   /** Tear the bridge back down (close the raw port; the FC auto-restores MAVLink). */
   onCancel: () => void | Promise<void>
-  /** Flash the chosen firmware over the armed bridge (reopen port + esptool). */
-  onFlash: (input: { firmware: Uint8Array; baudRate: number; fileName: string }) => void | Promise<void>
+  /** Flash the chosen firmware over the armed bridge (reopen port + esptool).
+   *  A non-empty bindPhrase patches the .bin's options region before flashing. */
+  onFlash: (input: {
+    firmware: Uint8Array
+    baudRate: number
+    fileName: string
+    bindPhrase?: string
+  }) => void | Promise<void>
   /** Live flashing progress, or undefined when no flash is in flight. */
   flashProgress: ElrsFlashProgress | undefined
 }
@@ -47,6 +53,7 @@ export function ElrsFlasher(props: ElrsFlasherProps): ReactElement {
   const [baudRate, setBaudRate] = useState<number>(ELRS_DEFAULT_FLASH_BAUD)
   const [timeoutSeconds, setTimeoutSeconds] = useState<number>(DEFAULT_TIMEOUT_SECONDS)
   const [firmware, setFirmware] = useState<{ bytes: Uint8Array; name: string } | undefined>(undefined)
+  const [bindPhrase, setBindPhrase] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleFirmwareFile(file: File | undefined): Promise<void> {
@@ -206,6 +213,24 @@ export function ElrsFlasher(props: ElrsFlasherProps): ReactElement {
               </p>
             ) : null}
 
+            <label className="scoped-editor-field">
+              <span>Bind phrase (optional)</span>
+              <input
+                data-testid="elrs-flasher-bind-phrase"
+                type="text"
+                placeholder="Leave blank to keep the .bin's bind phrase"
+                value={bindPhrase}
+                disabled={flashing}
+                onChange={(event) => setBindPhrase(event.target.value)}
+              />
+            </label>
+            {bindPhrase.trim() ? (
+              <p className="telemetry-note">
+                The firmware&apos;s options region will be patched with this bind phrase before flashing (requires a unified
+                ELRS release .bin).
+              </p>
+            ) : null}
+
             {flashProgress ? (
               <div className="elrs-flasher__progress" data-testid="elrs-flasher-progress">
                 <div className="rc-bar" aria-hidden="true">
@@ -225,7 +250,12 @@ export function ElrsFlasher(props: ElrsFlasherProps): ReactElement {
                 disabled={flashing || firmware === undefined}
                 onClick={() =>
                   firmware
-                    ? void onFlash({ firmware: firmware.bytes, baudRate, fileName: firmware.name })
+                    ? void onFlash({
+                        firmware: firmware.bytes,
+                        baudRate,
+                        fileName: firmware.name,
+                        bindPhrase: bindPhrase.trim() || undefined
+                      })
                     : undefined
                 }
               >

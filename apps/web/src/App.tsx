@@ -259,6 +259,7 @@ import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
 import { ElrsFlasher, type ElrsFlasherNotice } from './firmware/ElrsFlasher'
 import { flashElrsReceiver, type ElrsFlashProgress } from './firmware/web-serial-esptool'
+import { patchElrsFirmwareOptions } from './view-models/elrs-firmware-options'
 import { MavlinkInspectorView } from './views/MavlinkInspector'
 import { intervalUsForRate } from './view-models/mavlink-inspector'
 import { MAX_MAVLINK_PLOTS, useMavlinkInspector } from './hooks/use-mavlink-inspector'
@@ -4940,7 +4941,12 @@ export function App() {
       setElrsFlasherBusy(false)
     }
   }
-  async function handleFlashElrs(input: { firmware: Uint8Array; baudRate: number; fileName: string }): Promise<void> {
+  async function handleFlashElrs(input: {
+    firmware: Uint8Array
+    baudRate: number
+    fileName: string
+    bindPhrase?: string
+  }): Promise<void> {
     const port = selectedSerialPortRef.current
     if (!port) {
       setElrsFlasherNotice({
@@ -4948,6 +4954,20 @@ export function App() {
         text: 'Receiver flashing needs a direct Web Serial connection (not demo/bridge). Reconnect over USB serial first.'
       })
       return
+    }
+    // Patch the options region (bind phrase → UID) before flashing, if requested.
+    // A non-unified .bin throws here so we never write a corrupted image.
+    let firmwareToFlash = input.firmware
+    if (input.bindPhrase) {
+      try {
+        firmwareToFlash = patchElrsFirmwareOptions(input.firmware, { bindPhrase: input.bindPhrase })
+      } catch (error) {
+        setElrsFlasherNotice({
+          tone: 'danger',
+          text: `Could not set the bind phrase: ${error instanceof Error ? error.message : String(error)}`
+        })
+        return
+      }
     }
     setElrsFlasherBusy(true)
     setElrsFlashProgress({ phase: 'bootloader', message: 'Preparing…' })
@@ -4957,7 +4977,7 @@ export function App() {
       await runtime.disconnect().catch(() => {})
       const result = await flashElrsReceiver({
         port,
-        firmware: input.firmware,
+        firmware: firmwareToFlash,
         baudRate: input.baudRate,
         onProgress: (progress) => setElrsFlashProgress(progress)
       })
