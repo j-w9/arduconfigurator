@@ -1548,6 +1548,22 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
               })
             )
           )
+          // Serial passthru: a real FC emits "Passthru enabled" (then locks the
+          // bridge) once SERIAL_PASS2 is set to a valid port. Mirror that so the
+          // ELRS-flash arm flow's STATUSTEXT gate resolves in demo/tests.
+          if (paramSet.paramId === 'SERIAL_PASS2' && paramSet.paramValue >= 0) {
+            responses.push(
+              codec.encode(
+                envelope(103, {
+                  type: 'STATUSTEXT',
+                  severity: MAV_SEVERITY.INFO,
+                  text: 'Passthru enabled',
+                  statusId: 0,
+                  chunkSequence: 0
+                })
+              )
+            )
+          }
           break
         }
         case 'COMMAND_LONG':
