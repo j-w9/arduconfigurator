@@ -1804,6 +1804,29 @@ export function App() {
       next.add(paramId)
       return next
     })
+    // Snapshot "Apply" now stages a draft rather than writing, so dropping a row
+    // must also discard any draft it staged — otherwise the entry lingers in the
+    // global draft bar after being dropped from the restore diff.
+    clearDraft(paramId)
+  }
+  function handleDropAllSnapshotRestoreEntries(): void {
+    const ids = [
+      ...selectedSnapshotChangedEntries.map((entry) => entry.id),
+      ...selectedSnapshotInvalidEntries.map((entry) => entry.id)
+    ]
+    if (ids.length === 0) {
+      return
+    }
+    setSnapshotRestoreDroppedParamIds((current) => {
+      const next = new Set(current)
+      ids.forEach((id) => next.add(id))
+      return next
+    })
+    clearDrafts(ids)
+    setSnapshotNotice({
+      tone: 'neutral',
+      text: `Dropped ${ids.length} row(s) from this restore and un-staged any drafts. The live FC values are unchanged.`
+    })
   }
   function handleClearSnapshotRestoreDrops(): void {
     setSnapshotRestoreDroppedParamIds(new Set())
@@ -3223,7 +3246,11 @@ export function App() {
     })
   }
 
-  async function handleApplySelectedSnapshotRestore(): Promise<void> {
+  // "Stage All" — snapshot restore now STAGES the diff into the shared draft
+  // set (matching the Parameters tab) rather than writing straight to the FC.
+  // The write happens from the global draft bar's "Write all", the one verified,
+  // readback-checked, rollback-on-failure path the whole app shares.
+  function handleApplySelectedSnapshotRestore(): void {
     if (!selectedSnapshot) {
       return
     }
@@ -3231,36 +3258,45 @@ export function App() {
     if (!snapshotRestoreAcknowledged) {
       setSnapshotNotice({
         tone: 'warning',
-        text: 'Acknowledge the overwrite warning before applying a snapshot restore.'
+        text: 'Acknowledge the overwrite warning before staging a snapshot restore.'
       })
       return
     }
 
-    // Force-write path: reclassify the blocked (out-of-doc-range / outside-enum)
-    // entries as staged so they're written as-is. Common on a cross-board restore
-    // where a value valid on the source FC trips this app's documented range/enum;
-    // runtime.setParameters still verifies readback and tolerates FC clamping.
-    const forcedInvalidEntries: ParameterDraftEntry[] = snapshotForceInvalid
-      ? selectedSnapshotInvalidEntries
-          .map((entry): ParameterDraftEntry | null => {
-            const value = entry.nextValue ?? Number(entry.rawValue)
-            return Number.isFinite(value)
-              ? { ...entry, status: 'staged', nextValue: value, override: true, reason: undefined }
-              : null
-          })
-          .filter((entry): entry is ParameterDraftEntry => entry !== null)
-      : []
-    const entriesToWrite = [
-      ...selectedSnapshotDiffEntries.filter((entry) => entry.status === 'staged'),
-      ...forcedInvalidEntries
-    ]
+    // Force-invalid path: also stage the blocked (out-of-doc-range / outside-enum)
+    // raw values as drafts. They land as INVALID drafts the operator completes
+    // from the Parameters tab ("Override and write anyway") — same escape hatch
+    // the raw editor uses — instead of a snapshot-local force-write.
+    const forcedInvalidDraftValues: Record<string, string> = snapshotForceInvalid
+      ? Object.fromEntries(
+          selectedSnapshotInvalidEntries
+            .map((entry): [string, string] | null => {
+              const raw = entry.rawValue ?? (entry.nextValue !== undefined ? String(entry.nextValue) : undefined)
+              return raw !== undefined && raw !== '' ? [entry.id, raw] : null
+            })
+            .filter((pair): pair is [string, string] => pair !== null)
+        )
+      : {}
+    const stagedValues = { ...filteredSnapshotRestoreDraftValues, ...forcedInvalidDraftValues }
+    const stagedCount = Object.keys(stagedValues).length
+    if (stagedCount === 0) {
+      setSnapshotNotice({
+        tone: 'neutral',
+        text: `Snapshot "${selectedSnapshot.label}" already matches the live controller values.`
+      })
+      return
+    }
 
-    await handleApplyScopedParameterDrafts(entriesToWrite, 'snapshots:apply', `Snapshot restore: ${selectedSnapshot.label}`)
+    mergeDrafts(stagedValues)
     setSnapshotRestoreAcknowledged(false)
     setSnapshotForceInvalid(false)
-    trackAppEvent('Snapshot Restore Applied', {
-      changedCount: entriesToWrite.length,
-      forcedCount: forcedInvalidEntries.length
+    setSnapshotNotice({
+      tone: 'warning',
+      text: `Staged ${stagedCount} snapshot change(s) as drafts. Review and Write all from the draft bar to apply them.`
+    })
+    trackAppEvent('Snapshot Restore Staged', {
+      changedCount: stagedCount,
+      forcedCount: Object.keys(forcedInvalidDraftValues).length
     })
   }
 
@@ -7555,15 +7591,22 @@ export function App() {
           handlers={{
             handleApplySelectedProvisioningProfile,
             handleApplySelectedSnapshotRestore,
-            handleApplySnapshotEntry: (entry) =>
-              handleApplyScopedParameterDrafts(
-                [entry],
-                'snapshots:apply',
-                `Snapshot restore (single): ${entry.id}`
-              ),
+            // Per-row Apply STAGES the single change as a draft (like the
+            // Parameters tab) — the write happens from the global draft bar.
+            handleApplySnapshotEntry: (entry) => {
+              if (entry.nextValue === undefined) {
+                return
+              }
+              mergeDrafts({ [entry.id]: String(entry.nextValue) })
+              setSnapshotNotice({
+                tone: 'warning',
+                text: `Staged ${entry.id} as a draft. Write all from the draft bar to apply it.`
+              })
+            },
             handleCaptureLiveSnapshot,
             handleOverwriteSelectedSnapshot,
             handleDropSnapshotRestoreEntry,
+            handleDropAllSnapshotRestoreEntries,
             handleClearSnapshotRestoreDrops,
             setSnapshotImportCalibration,
             handleCreateProvisioningProfile,

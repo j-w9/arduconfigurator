@@ -121,6 +121,23 @@ test('internal-use-only params (BAROn_GND_PRESS) are ALWAYS dropped on import �
   assert.equal(result.changedCount, 1)
 })
 
+test('newParameterIds captures params live on the FC but absent from the saved snapshot (the reverse direction)', () => {
+  // "New vs old" breakout: the snapshot detail surfaces BOTH directions.
+  //   unknownParameterIds = in the saved snapshot (old side), missing on the FC.
+  //   newParameterIds     = on the FC (new side), missing from the snapshot.
+  const live = [
+    { id: 'ATC_RAT_RLL_P', value: 0.135 },
+    { id: 'NEW_47_PARAM', value: 3 }, // added by newer firmware; not in the old snapshot
+    { id: 'BARO1_GND_PRESS', value: 101000 } // internal-use-only — must NOT count as new
+  ]
+  const backup = backupOf({ ATC_RAT_RLL_P: 0.135, OLD_ONLY_PARAM: 7 })
+  const result = deriveDraftValuesFromParameterBackup(live, backup)
+  assert.deepEqual(result.unknownParameterIds, ['OLD_ONLY_PARAM'])
+  assert.deepEqual(result.newParameterIds, ['NEW_47_PARAM'])
+  // The reverse direction is informational only — nothing about it is staged.
+  assert.equal('NEW_47_PARAM' in result.draftValues, false)
+})
+
 test('excluded entries never count as unknown even when absent from the live table', () => {
   // SR7_* / MIS_* not present in the baseline at all: without exclusion they
   // would land in unknownParameterIds; excluded, they vanish cleanly.

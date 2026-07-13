@@ -56,6 +56,18 @@ function formatUsbId(vendorId: number, productId: number): string {
   return `${v}:${p}`
 }
 
+/**
+ * Compact preview of a missing-parameter-id list — first few ids inline with a
+ * "+N more" tail so the two directional "does not exist" notes stay readable
+ * even when a cross-version snapshot has dozens of one-sided params.
+ */
+function formatMissingParamList(ids: readonly string[], limit = 12): string {
+  if (ids.length <= limit) {
+    return ids.join(', ')
+  }
+  return `${ids.slice(0, limit).join(', ')} +${ids.length - limit} more`
+}
+
 export interface SnapshotsSectionDerived {
   selectedSnapshot: SavedParameterSnapshot | undefined
   selectedSnapshotRestore: ParameterBackupImportResult | undefined
@@ -99,8 +111,11 @@ export interface SnapshotsSectionHandlers {
    *  in place (same id) instead of creating a new saved entry. */
   handleOverwriteSelectedSnapshot: () => void | Promise<void>
   /** Per-row Drop for the restore diff — like Parameters, excludes one
-   *  param from the restore without leaving this view. */
+   *  param from the restore (and un-stages its draft) without leaving this view. */
   handleDropSnapshotRestoreEntry: (paramId: string) => void
+  /** Bulk Drop — clears every row from the restore diff and un-stages any
+   *  drafts it staged. Mirrors the Parameters tab's "Discard All". */
+  handleDropAllSnapshotRestoreEntries: () => void
   /** Restores every row dropped via handleDropSnapshotRestoreEntry for the
    *  selected snapshot. */
   handleClearSnapshotRestoreDrops: () => void
@@ -256,6 +271,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     handleCaptureLiveSnapshot,
     handleOverwriteSelectedSnapshot,
     handleDropSnapshotRestoreEntry,
+    handleDropAllSnapshotRestoreEntries,
     handleClearSnapshotRestoreDrops,
     setSnapshotImportCalibration,
     handleCreateProvisioningProfile,
@@ -631,9 +647,17 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     <span>Matched live</span>
                     <strong>{selectedSnapshotRestore?.unchangedCount ?? 0}</strong>
                   </article>
-                  <article className="telemetry-metric-card snapshots-metric-card">
-                    <span>Unknown on live</span>
+                  <article className="telemetry-metric-card snapshots-metric-card" data-testid="snapshot-missing-old">
+                    <span title="Present in the saved snapshot (old side) but absent from this FC's parameters — skipped on restore.">
+                      In snapshot, not on FC
+                    </span>
                     <strong>{selectedSnapshotRestore?.unknownParameterIds.length ?? 0}</strong>
+                  </article>
+                  <article className="telemetry-metric-card snapshots-metric-card" data-testid="snapshot-missing-new">
+                    <span title="Present on this FC (new side) but absent from the saved snapshot — typically params a newer firmware added since capture. Informational; a restore never removes params.">
+                      On FC, not in snapshot
+                    </span>
+                    <strong>{selectedSnapshotRestore?.newParameterIds.length ?? 0}</strong>
                   </article>
                   <article className="telemetry-metric-card snapshots-metric-card">
                     <span>Restore writes</span>
@@ -710,11 +734,24 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                 ) : null}
 
                 {selectedSnapshotRestore && selectedSnapshotRestore.unknownParameterIds.length > 0 ? (
-                  <div className="parameter-follow-up parameter-follow-up--warning">
-                    <StatusBadge tone="warning">partial</StatusBadge>
+                  <div className="parameter-follow-up parameter-follow-up--warning" data-testid="snapshot-missing-old-note">
+                    <StatusBadge tone="warning">in snapshot, not on FC</StatusBadge>
                     <p>
-                      {selectedSnapshotRestore.unknownParameterIds.length} snapshot parameter(s) do not exist in the current live metadata set and will
-                      be ignored during restore.
+                      {selectedSnapshotRestore.unknownParameterIds.length} parameter(s) exist in this saved snapshot (the old side) but not on the
+                      connected FC (the new side), so they can&apos;t be restored and are skipped:{' '}
+                      <span className="snapshot-missing-list">{formatMissingParamList(selectedSnapshotRestore.unknownParameterIds)}</span>
+                    </p>
+                  </div>
+                ) : null}
+
+                {selectedSnapshotRestore && selectedSnapshotRestore.newParameterIds.length > 0 ? (
+                  <div className="parameter-follow-up" data-testid="snapshot-missing-new-note">
+                    <StatusBadge tone="neutral">on FC, not in snapshot</StatusBadge>
+                    <p>
+                      {selectedSnapshotRestore.newParameterIds.length} parameter(s) exist on the connected FC (the new side) but not in this saved
+                      snapshot (the old side) — usually params a newer firmware added after this snapshot was captured. A restore never removes them; this
+                      is informational:{' '}
+                      <span className="snapshot-missing-list">{formatMissingParamList(selectedSnapshotRestore.newParameterIds)}</span>
                     </p>
                   </div>
                 ) : null}
@@ -791,9 +828,12 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                               ) : null}
                             </span>
                             <span className="parameter-diff-delta">{formatParameterDelta(draft.delta, draft.definition?.unit)}</span>
-                            {/* Per-row apply (field request: like the
-                             *  Parameters tab). Same overwrite ack gates it
-                             *  as the full restore. */}
+                            {/* Per-row Apply — like the Parameters tab, this
+                             *  STAGES the single change as a draft (it does not
+                             *  write). The write happens from the global draft
+                             *  bar's "Write all". Gated on the same ack as the
+                             *  bulk stage so a deliberate overwrite set is
+                             *  confirmed before it enters the write queue. */}
                             <button
                               type="button"
                               style={buttonStyle()}
@@ -802,7 +842,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                               disabled={busyAction !== undefined || !snapshotRestoreAcknowledged}
                               title={
                                 snapshotRestoreAcknowledged
-                                  ? `Write only ${draft.id} from this snapshot to the controller.`
+                                  ? `Stage ${draft.id} from this snapshot as a draft — write it from the draft bar.`
                                   : 'Acknowledge the overwrite warning below first.'
                               }
                             >
@@ -885,9 +925,9 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                       disabled={busyAction !== undefined}
                     />
                     <span>
-                      Force-write these {selectedSnapshotInvalidEntries.length} blocked value(s) anyway. They exceed this
-                      app&apos;s documented range/enum (common on a cross-board restore) — the flight controller may
-                      still accept them, or clamp/reject on write-back. Use when you know they&apos;re valid on this FC.
+                      Also stage these {selectedSnapshotInvalidEntries.length} blocked value(s). They exceed this
+                      app&apos;s documented range/enum (common on a cross-board restore) — staging them as drafts lets you
+                      complete the override from the Parameters tab (&ldquo;Override and write anyway&rdquo;) before writing.
                     </span>
                   </label>
                   </>
@@ -895,15 +935,16 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
 
                 <div className="snapshots-detail-section-heading snapshots-detail-section-heading--compact">
                   <div>
-                    <h4>Apply restore</h4>
+                    <h4>Stage restore</h4>
                   </div>
                 </div>
 
                 <div className="parameter-follow-up parameter-follow-up--warning">
                   <StatusBadge tone="warning">overwrite</StatusBadge>
                   <p>
-                    Snapshot restore writes only the diff against the current live controller, verifies readback, and rolls back earlier writes if a later
-                    write fails. It still overwrites the current live values for every changed parameter listed above.
+                    Staging loads the diff against the current live controller into the shared draft set — nothing is written yet. Review it, then
+                    <strong> Write all</strong> from the draft bar (the same verified, readback-checked, rollback-on-failure path the Parameters tab uses).
+                    Writing overwrites the current live values for every changed parameter listed above.
                   </p>
                 </div>
 
@@ -919,7 +960,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                         !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0))
                     }
                   />
-                  <span>I understand that applying this restore will overwrite the current live values shown in the diff above.</span>
+                  <span>I understand these staged changes will overwrite the current live values shown above when I write them.</span>
                 </label>
 
                 <div className="snapshots-action-row snapshots-action-row--detail">
@@ -931,14 +972,26 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                       busyAction !== undefined ||
                       (selectedSnapshotChangedEntries.length === 0 &&
                         !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0)) ||
-                      (selectedSnapshotInvalidEntries.length > 0 && !snapshotForceInvalid) ||
-                      !snapshotRestoreAcknowledged ||
-                      !canApplyDraftParameters
+                      !snapshotRestoreAcknowledged
                     }
+                    title="Stage every changed parameter as a draft, then Write all from the draft bar to apply."
                   >
-                    {busyAction === 'snapshots:apply'
-                      ? 'Applying…'
-                      : `Apply Snapshot Restore (${selectedSnapshotChangedEntries.length + (snapshotForceInvalid ? selectedSnapshotInvalidEntries.length : 0)})`}
+                    {`Stage All (${selectedSnapshotChangedEntries.length + (snapshotForceInvalid ? selectedSnapshotInvalidEntries.length : 0)})`}
+                  </button>
+                  {/* Drop next to Stage (field request) — clears every row from
+                   *  the restore diff and un-stages any drafts it already
+                   *  staged, mirroring the Parameters tab's "Discard All". */}
+                  <button
+                    data-testid="drop-all-snapshot-restore-button"
+                    className="snapshots-button snapshots-button--secondary"
+                    onClick={handleDropAllSnapshotRestoreEntries}
+                    disabled={
+                      busyAction !== undefined ||
+                      (selectedSnapshotChangedEntries.length === 0 && selectedSnapshotInvalidEntries.length === 0)
+                    }
+                    title="Drop every row from this restore diff (and un-stage any staged drafts). Keeps the live FC values as-is."
+                  >
+                    Drop All
                   </button>
                   {isExpertMode ? (
                     <button
@@ -1307,9 +1360,17 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     <span>Matched live</span>
                     <strong>{selectedProvisioningProfileRestore?.unchangedCount ?? 0}</strong>
                   </article>
-                  <article className="telemetry-metric-card snapshots-metric-card">
-                    <span>Unknown on live</span>
+                  <article className="telemetry-metric-card snapshots-metric-card" data-testid="provisioning-missing-old">
+                    <span title="Present in this profile (old side) but absent from this FC's parameters — skipped on apply.">
+                      In profile, not on FC
+                    </span>
                     <strong>{selectedProvisioningProfileRestore?.unknownParameterIds.length ?? 0}</strong>
+                  </article>
+                  <article className="telemetry-metric-card snapshots-metric-card" data-testid="provisioning-missing-new">
+                    <span title="Present on this FC (new side) but absent from this profile — usually params a newer firmware added. Informational.">
+                      On FC, not in profile
+                    </span>
+                    <strong>{selectedProvisioningProfileRestore?.newParameterIds.length ?? 0}</strong>
                   </article>
                   <article className="telemetry-metric-card snapshots-metric-card">
                     <span>Provisioning writes</span>
@@ -1355,11 +1416,23 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                 </div>
 
                 {selectedProvisioningProfileRestore && selectedProvisioningProfileRestore.unknownParameterIds.length > 0 ? (
-                  <div className="parameter-follow-up parameter-follow-up--warning">
-                    <StatusBadge tone="warning">partial</StatusBadge>
+                  <div className="parameter-follow-up parameter-follow-up--warning" data-testid="provisioning-missing-old-note">
+                    <StatusBadge tone="warning">in profile, not on FC</StatusBadge>
                     <p>
-                      {selectedProvisioningProfileRestore.unknownParameterIds.length} profile parameter(s) do not exist in the current live metadata
-                      set and will be ignored during apply.
+                      {selectedProvisioningProfileRestore.unknownParameterIds.length} parameter(s) exist in this profile (the old side) but not on the
+                      connected FC (the new side), so they can&apos;t be applied and are skipped:{' '}
+                      <span className="snapshot-missing-list">{formatMissingParamList(selectedProvisioningProfileRestore.unknownParameterIds)}</span>
+                    </p>
+                  </div>
+                ) : null}
+
+                {selectedProvisioningProfileRestore && selectedProvisioningProfileRestore.newParameterIds.length > 0 ? (
+                  <div className="parameter-follow-up" data-testid="provisioning-missing-new-note">
+                    <StatusBadge tone="neutral">on FC, not in profile</StatusBadge>
+                    <p>
+                      {selectedProvisioningProfileRestore.newParameterIds.length} parameter(s) exist on the connected FC (the new side) but not in this
+                      profile (the old side) — usually params a newer firmware added. Apply never removes them; this is informational:{' '}
+                      <span className="snapshot-missing-list">{formatMissingParamList(selectedProvisioningProfileRestore.newParameterIds)}</span>
                     </p>
                   </div>
                 ) : null}

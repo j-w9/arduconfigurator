@@ -10314,6 +10314,16 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-size: 11px;
 }
 
+/* The two directional "does not exist" notes list the affected param ids —
+   monospace + word-break so a long cross-version list stays readable and never
+   overflows the note width. */
+.snapshot-missing-list {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  word-break: break-word;
+  color: var(--text-muted);
+}
+
 .motor-test-card {
   display: grid;
   gap: 14px;
