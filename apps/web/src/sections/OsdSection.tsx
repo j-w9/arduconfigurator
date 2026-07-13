@@ -56,12 +56,15 @@ export function OsdSection(props: OsdSectionProps) {
   const osdType = readRoundedParameter(snapshot, 'OSD_TYPE')
   const osdChannel = readRoundedParameter(snapshot, 'OSD_CHAN')
   const osdSwitchMethod = readRoundedParameter(snapshot, 'OSD_SW_METHOD')
+  const osdMsgAbbr = readRoundedParameter(snapshot, 'OSD_MSG_ABBR')
   const mspOptions = readRoundedParameter(snapshot, 'MSP_OPTIONS')
   const mspOsdCellCount = readRoundedParameter(snapshot, 'MSP_OSD_NCELLS')
 
   const osdTypeParameter = osdParameterById.get('OSD_TYPE')
   const osdChannelParameter = osdParameterById.get('OSD_CHAN')
   const osdSwitchMethodParameter = osdParameterById.get('OSD_SW_METHOD')
+  // Fork-only: gates the "abbreviate messages" toggle. Absent → not rendered.
+  const msgAbbrParameter = osdParameterById.get('OSD_MSG_ABBR')
   const mspOptionsParameter = osdParameterById.get('MSP_OPTIONS')
   const mspOsdCellCountParameter = osdParameterById.get('MSP_OSD_NCELLS')
 
@@ -83,6 +86,7 @@ export function OsdSection(props: OsdSectionProps) {
       typeField={osdTypeParameter ? { parameter: osdTypeParameter, liveValue: osdType } : undefined}
       channelField={osdChannelParameter ? { parameter: osdChannelParameter, liveValue: osdChannel } : undefined}
       switchMethodField={osdSwitchMethodParameter ? { parameter: osdSwitchMethodParameter, liveValue: osdSwitchMethod } : undefined}
+      msgAbbrField={msgAbbrParameter ? { parameter: msgAbbrParameter, liveValue: osdMsgAbbr } : undefined}
       previewToolbar={{
         backendText: `Backend ${formatArducopterOsdType(osdType)}`,
         switchingText: `Switching ${formatArducopterOsdSwitchMethod(osdSwitchMethod)}`,

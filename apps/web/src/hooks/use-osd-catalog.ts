@@ -16,6 +16,9 @@ export interface UseOsdCatalogResult {
   osdSwitchMethodParameter: ParameterState | undefined
   mspOptionsParameter: ParameterState | undefined
   mspOsdCellCountParameter: ParameterState | undefined
+  /** Fork-only "abbreviate MESSAGE panel" toggle — undefined when the firmware
+   *  doesn't expose OSD_MSG_ABBR, which gates the whole Message-panel control. */
+  msgAbbrParameter: ParameterState | undefined
 }
 
 /**
@@ -33,6 +36,7 @@ export function useOsdCatalog(snapshot: ConfiguratorSnapshot): UseOsdCatalogResu
   const osdSwitchMethodParameter = osdParameterById.get('OSD_SW_METHOD')
   const mspOptionsParameter = osdParameterById.get('MSP_OPTIONS')
   const mspOsdCellCountParameter = osdParameterById.get('MSP_OSD_NCELLS')
+  const msgAbbrParameter = osdParameterById.get('OSD_MSG_ABBR')
 
   return {
     osdParameterById,
@@ -40,6 +44,7 @@ export function useOsdCatalog(snapshot: ConfiguratorSnapshot): UseOsdCatalogResu
     osdChannelParameter,
     osdSwitchMethodParameter,
     mspOptionsParameter,
-    mspOsdCellCountParameter
+    mspOsdCellCountParameter,
+    msgAbbrParameter
   }
 }

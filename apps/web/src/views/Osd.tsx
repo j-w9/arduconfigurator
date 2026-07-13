@@ -164,6 +164,8 @@ export interface OsdViewProps {
   typeField: OsdSelectField | undefined
   channelField: OsdSelectField | undefined
   switchMethodField: OsdSelectField | undefined
+  /** Fork-only "abbreviate MESSAGE panel" toggle; undefined hides it. */
+  msgAbbrField: OsdSelectField | undefined
   previewToolbar: OsdPreviewToolbarData
   previewElements: readonly OsdPreviewElement[]
   /** Per-element × per-screen (OSD1-4) enable matrix for the BF-style picker. */
@@ -221,6 +223,7 @@ export function OsdView(props: OsdViewProps) {
     typeField,
     channelField,
     switchMethodField,
+    msgAbbrField,
     previewToolbar,
     previewElements,
     elementMatrix,
@@ -515,6 +518,34 @@ export function OsdView(props: OsdViewProps) {
               </div>
             </div>
           </details>
+
+          {/* Fork-only MESSAGE-panel controls, gated on OSD_MSG_ABBR being
+              reported by the firmware. The per-screen severity filter
+              (OSDn_MSG_LVL) rides the Screen Options panel below. */}
+          {msgAbbrField ? (
+            <details className="bf-gui-box osd-messages-strip" data-testid="osd-messages-strip" open>
+              <summary className="bf-gui-box__titlebar">
+                <strong>Messages</strong>
+                <small>MESSAGE panel cleanliness</small>
+              </summary>
+              <div className="bf-gui-box__body">
+                <div className="bf-compact-field-grid">
+                  <ScopedSelectField
+                    parameter={msgAbbrField.parameter}
+                    liveValue={msgAbbrField.liveValue}
+                    editedValues={editedValues}
+                    onChange={onEditChange}
+                    draftStatusById={draftStatusById}
+                    layout="chips"
+                  />
+                </div>
+                <p className="bf-note">
+                  Per-screen message severity (which messages each screen shows) is under each screen&apos;s{' '}
+                  <strong>Screen Options</strong> below.
+                </p>
+              </div>
+            </details>
+          ) : null}
 
           {screenOptionFields.length > 0 ? (
             <details className="bf-gui-box osd-screen-options" data-testid="osd-screen-options" open>

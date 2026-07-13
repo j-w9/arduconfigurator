@@ -229,6 +229,10 @@ const mockParameters: ParameterState = {
   OSD_TYPE: 5,
   OSD_CHAN: 8,
   OSD_SW_METHOD: 2,
+  // Fork "OSD message cleanliness" params (sfd-osd-msg): abbreviate the MESSAGE
+  // panel + per-screen severity filter (OSD1_MSG_LVL below, mirrored to 2-4).
+  // Present here so the demo shows the detection-gated Message-panel controls.
+  OSD_MSG_ABBR: 1,
   MSP_OPTIONS: 4,
   MSP_OSD_NCELLS: 0,
   VTX_ENABLE: 1,
@@ -435,6 +439,7 @@ const mockParameters: ParameterState = {
   // Per-screen "Screen Options" (mirrored to OSD2-4 below). Seed sensible
   // ArduPilot defaults so the demo's OSD Screen Options panel is populated.
   OSD1_ENABLE: 1,
+  OSD1_MSG_LVL: 4, // Warning — mirrored to OSD2-4 by the loop below
   OSD1_TXT_RES: 0,
   OSD1_FONT: 0,
   OSD1_CHAN_MIN: 900,

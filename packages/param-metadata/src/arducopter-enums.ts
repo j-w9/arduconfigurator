@@ -393,6 +393,20 @@ export const ARDUCOPTER_OSD_SWITCH_METHOD_LABELS: Record<number, string> = {
   2: 'Advance On High Pulse'
 }
 
+// Per-screen OSD message severity filter (OSDn_MSG_LVL). Matches MAVLink
+// SEVERITY: lower numbers are MORE severe. A screen shows messages at least
+// this severe, so 4 (Warning) is quiet and 7 (Debug) shows everything.
+export const ARDUCOPTER_OSD_MSG_LVL_LABELS: Record<number, string> = {
+  0: 'Emergency',
+  1: 'Alert',
+  2: 'Critical',
+  3: 'Error',
+  4: 'Warning',
+  5: 'Notice',
+  6: 'Info',
+  7: 'Debug'
+}
+
 export const ARDUCOPTER_MSP_OSD_CELL_COUNT_LABELS: Record<number, string> = {
   0: 'Auto',
   1: '1 cell',
