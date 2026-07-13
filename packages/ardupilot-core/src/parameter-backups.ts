@@ -122,7 +122,20 @@ export interface ParameterBackupImportResult {
   matchedCount: number
   changedCount: number
   unchangedCount: number
+  /**
+   * Params that exist in the saved snapshot (the "old" side) but are absent from
+   * the live parameter set (the "new" side) — they can't be restored and are
+   * skipped. Directionally: present in snapshot, missing on the FC.
+   */
   unknownParameterIds: string[]
+  /**
+   * The reverse direction: params present on the live FC (the "new" side) but
+   * absent from the saved snapshot (the "old" side) — typically params a newer
+   * firmware added since the snapshot was captured. Informational only (a
+   * restore never removes params); internal-use-only / snapshot-excluded live
+   * params are filtered out so this reflects genuine new configuration.
+   */
+  newParameterIds: string[]
   /** Entries skipped because they matched an opt-in exclusion category. */
   excludedCount: number
 }
@@ -417,9 +430,11 @@ export function deriveDraftValuesFromParameterBackup(
   options?: ParameterBackupImportOptions
 ): ParameterBackupImportResult {
   const parameterById = new Map(parameters.map((parameter) => [parameter.id, parameter]))
+  const backupIds = new Set(backup.parameters.map((entry) => entry.id))
   const excludeCategories = new Set(options?.excludeCategories ?? [])
   const draftValues: Record<string, string> = {}
   const unknownParameterIds: string[] = []
+  const newParameterIds: string[] = []
   let matchedCount = 0
   let changedCount = 0
   let unchangedCount = 0
@@ -466,12 +481,26 @@ export function deriveDraftValuesFromParameterBackup(
     changedCount += 1
   })
 
+  // Reverse direction — params live on the FC (new side) but not in the saved
+  // snapshot (old side). Mirror the snapshot-side exclusions so firmware-managed
+  // / snapshot-excluded params never masquerade as genuinely new configuration.
+  parameters.forEach((parameter) => {
+    if (backupIds.has(parameter.id)) {
+      return
+    }
+    if (isSnapshotExcludedParameterState(parameter) || isInternalUseOnlyParameter(parameter.id)) {
+      return
+    }
+    newParameterIds.push(parameter.id)
+  })
+
   return {
     draftValues,
     matchedCount,
     changedCount,
     unchangedCount,
     unknownParameterIds: unknownParameterIds.sort((left, right) => left.localeCompare(right)),
+    newParameterIds: newParameterIds.sort((left, right) => left.localeCompare(right)),
     excludedCount
   }
 }

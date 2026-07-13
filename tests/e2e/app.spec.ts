@@ -692,15 +692,20 @@ test.describe('browser configurator regression flows', () => {
 
     await expect(page.getByTestId('snapshot-restore-ack')).not.toBeChecked()
     await page.getByTestId('snapshot-restore-ack').check()
-    // A previous write no longer blocks restore — writes self-verify against a
-    // live readback, so the post-write refresh follow-up is advisory, not a
-    // gate. Apply path also auto-refreshes (PR introducing auto-refresh),
-    // so the manual "pull resets the ack" step the old test ran here is now
-    // unreachable from this flow — the auto-refresh fired before the ack
-    // was set, so there's no further refresh to drive a reset.
+    // Snapshot "Apply" now STAGES the diff into the shared draft set (mirroring
+    // the Parameters tab) rather than writing straight to the FC — "Stage All".
     await expect(page.getByTestId('apply-snapshot-restore-button')).toBeEnabled()
     await page.getByTestId('apply-snapshot-restore-button').click()
 
+    // The write happens from the global draft bar, the one shared write path.
+    const draftBar = page.getByTestId('global-draft-bar')
+    await expect(draftBar).toBeVisible()
+    const writeAll = page.getByTestId('global-draft-write')
+    await expect(writeAll).toBeEnabled()
+    await writeAll.click()
+    await expect(draftBar).toHaveCount(0, { timeout: COMMAND_ACK_TIMEOUT })
+
+    // Once written, live matches the snapshot again.
     await expect(page.getByText('already matched')).toBeVisible()
     await expect(page.getByTestId('active-baseline-label')).toHaveText('E2E baseline')
   })
