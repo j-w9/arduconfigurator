@@ -3885,3 +3885,30 @@ test.describe('ELRS Flash (Expert + SERIAL_PASS2 gated)', () => {
     await expect(page.getByTestId('elrs-flasher-armed-note')).toHaveCount(0)
   })
 })
+
+test.describe('OSD message shorthand editor (@OSD/shorthand.dat)', () => {
+  test('reads the fork shorthand table, edits, adds a row, and saves', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-osd').click()
+
+    // The demo mock serves @OSD/shorthand.dat with 3 seeded entries.
+    const editor = page.getByTestId('osd-shorthand-editor')
+    await expect(editor).toBeVisible()
+    await expect(page.getByTestId('osd-shorthand-from-0')).toHaveValue('PreArm:')
+    await expect(page.getByTestId('osd-shorthand-to-0')).toHaveValue('PA:')
+
+    // Edit a value + add a row, then save — the mock FTP write round-trips.
+    await page.getByTestId('osd-shorthand-to-0').fill('PRE')
+    await page.getByTestId('osd-shorthand-add').click()
+    await page.getByTestId('osd-shorthand-from-3').fill('Throttle')
+    await page.getByTestId('osd-shorthand-to-3').fill('THR')
+    const save = page.getByTestId('osd-shorthand-save')
+    await expect(save).toBeEnabled()
+    await save.click()
+    // After a successful write the draft is clean again (Save disabled).
+    await expect(save).toBeDisabled()
+    await expect(page.getByTestId('osd-shorthand-to-0')).toHaveValue('PRE')
+  })
+})

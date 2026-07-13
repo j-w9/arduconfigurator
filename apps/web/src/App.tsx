@@ -69,6 +69,7 @@ import { createRuntime } from './runtime-factory'
 import { useOsdEditor } from './hooks/use-osd-editor'
 import { useRcMixer } from './hooks/use-rc-mixer'
 import { useVtxTable } from './hooks/use-vtx-table'
+import { useOsdShorthand } from './hooks/use-osd-shorthand'
 import { useCalibrationNotices } from './hooks/use-calibration-notices'
 import { useLibraryNotices } from './hooks/use-library-notices'
 import { useSafetyAcks } from './hooks/use-safety-acks'
@@ -2285,6 +2286,13 @@ export function App() {
     mspOsdCellCountParameter
   } = useOsdCatalog(snapshot)
   const osdEditor = useOsdEditor({ snapshot, osdParameterById, editedValues, setDraft, setParameterNotice })
+  // OSD message shorthand table (fork @OSD/shorthand.dat) — detected over MAVFTP
+  // when the OSD tab is open on a fork FC; drives the Messages-section editor.
+  const osdShorthand = useOsdShorthand({
+    runtime,
+    active: activeViewId === 'osd',
+    connected: snapshot.connection.kind === 'connected'
+  })
   const {
     vtxEnableParameter,
     vtxFrequencyParameter,
@@ -7318,6 +7326,7 @@ export function App() {
             canApplyDraftParameters={canApplyDraftParameters}
             busyAction={busyAction}
             osdEditor={osdEditor}
+            osdShorthand={osdShorthand}
             onApplyScopedDrafts={handleApplyScopedParameterDrafts}
             onDiscardScopedDrafts={handleDiscardScopedParameterDrafts}
           />

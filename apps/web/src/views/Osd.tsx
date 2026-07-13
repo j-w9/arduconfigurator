@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+
+import type { UseOsdShorthandResult } from '../hooks/use-osd-shorthand'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import { ScopedField, ScopedSelectField, type ScopedFieldDraftMap } from './ScopedField'
@@ -166,6 +168,8 @@ export interface OsdViewProps {
   switchMethodField: OsdSelectField | undefined
   /** Fork-only "abbreviate MESSAGE panel" toggle; undefined hides it. */
   msgAbbrField: OsdSelectField | undefined
+  /** Fork-only user shorthand dictionary editor state (@OSD/shorthand.dat). */
+  osdShorthand: UseOsdShorthandResult
   previewToolbar: OsdPreviewToolbarData
   previewElements: readonly OsdPreviewElement[]
   /** Per-element × per-screen (OSD1-4) enable matrix for the BF-style picker. */
@@ -224,6 +228,7 @@ export function OsdView(props: OsdViewProps) {
     channelField,
     switchMethodField,
     msgAbbrField,
+    osdShorthand,
     previewToolbar,
     previewElements,
     elementMatrix,
@@ -543,6 +548,94 @@ export function OsdView(props: OsdViewProps) {
                   Per-screen message severity (which messages each screen shows) is under each screen&apos;s{' '}
                   <strong>Screen Options</strong> below.
                 </p>
+
+                {osdShorthand.status === 'available' ? (
+                  <div className="osd-shorthand" data-testid="osd-shorthand-editor">
+                    <div className="osd-shorthand__header">
+                      <strong>Custom abbreviations</strong>
+                      <span>
+                        {osdShorthand.entries.length}/{osdShorthand.maxEntries}
+                      </span>
+                    </div>
+                    {osdShorthand.entries.length === 0 ? (
+                      <p className="bf-note">No custom abbreviations yet — add a row to define your own.</p>
+                    ) : (
+                      osdShorthand.entries.map((entry, index) => (
+                        <div key={index} className="osd-shorthand__row">
+                          <input
+                            aria-label={`abbreviation ${index + 1} from`}
+                            data-testid={`osd-shorthand-from-${index}`}
+                            type="text"
+                            placeholder="Message text"
+                            maxLength={osdShorthand.fromMax}
+                            value={entry.from}
+                            disabled={osdShorthand.saving}
+                            onChange={(event) => osdShorthand.setEntry(index, { from: event.target.value })}
+                          />
+                          <span aria-hidden="true">→</span>
+                          <input
+                            aria-label={`abbreviation ${index + 1} to`}
+                            data-testid={`osd-shorthand-to-${index}`}
+                            type="text"
+                            placeholder="Short"
+                            maxLength={osdShorthand.toMax}
+                            value={entry.to}
+                            disabled={osdShorthand.saving}
+                            onChange={(event) => osdShorthand.setEntry(index, { to: event.target.value })}
+                          />
+                          <button
+                            type="button"
+                            style={buttonStyle()}
+                            data-testid={`osd-shorthand-remove-${index}`}
+                            disabled={osdShorthand.saving}
+                            onClick={() => osdShorthand.removeEntry(index)}
+                            aria-label={`remove abbreviation ${index + 1}`}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))
+                    )}
+                    {osdShorthand.error ? (
+                      <p className="switch-exercise-warning" data-testid="osd-shorthand-error">
+                        {osdShorthand.error}
+                      </p>
+                    ) : null}
+                    <div className="osd-shorthand__actions">
+                      <button
+                        type="button"
+                        style={buttonStyle()}
+                        data-testid="osd-shorthand-add"
+                        disabled={osdShorthand.saving || osdShorthand.entries.length >= osdShorthand.maxEntries}
+                        onClick={osdShorthand.addEntry}
+                      >
+                        Add row
+                      </button>
+                      <button
+                        type="button"
+                        style={buttonStyle('primary')}
+                        data-testid="osd-shorthand-save"
+                        disabled={!osdShorthand.dirty || osdShorthand.saving}
+                        onClick={osdShorthand.save}
+                      >
+                        {osdShorthand.saving ? 'Saving…' : 'Save to FC'}
+                      </button>
+                      <button
+                        type="button"
+                        style={buttonStyle()}
+                        data-testid="osd-shorthand-reset"
+                        disabled={!osdShorthand.dirty || osdShorthand.saving}
+                        onClick={osdShorthand.reset}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <p className="bf-note">
+                      Your own from→to substitutions, applied to the MESSAGE panel on top of the built-in dictionary
+                      (from ≤{osdShorthand.fromMax} chars, to ≤{osdShorthand.toMax}). Matching is case-insensitive.
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </details>
           ) : null}
