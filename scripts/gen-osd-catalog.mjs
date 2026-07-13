@@ -1,0 +1,166 @@
+#!/usr/bin/env node
+// Generate the OSD message suggestion catalog from the ArduPilot firmware source.
+// Extracts GCS_SEND_TEXT/send_text + AP_Arming check_failed string literals,
+// normalizes them to <=15-char substring keys (the shorthand `from` field is
+// FROM_LEN=16 incl. NUL), filters/dedupes/ranks, and emits
+// apps/web/src/view-models/osd-message-catalog.generated.ts.
+//
+// Run manually per firmware release:  npm run gen:osd-catalog
+// (defaults to ../ardupilot; override with --ardupilot <path>).
+
+import { execFileSync } from 'node:child_process'
+import { readFileSync, readdirSync, writeFileSync, statSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = resolve(HERE, '..')
+
+function argValue(flag, fallback) {
+  const index = process.argv.indexOf(flag)
+  return index >= 0 && index + 1 < process.argv.length ? process.argv[index + 1] : fallback
+}
+
+const ARDUPILOT = resolve(argValue('--ardupilot', resolve(REPO_ROOT, '..', 'ardupilot')))
+const OUT_FILE = join(REPO_ROOT, 'apps/web/src/view-models/osd-message-catalog.generated.ts')
+
+const SCAN_DIRS = ['libraries', 'ArduCopter', 'ArduPlane', 'ArduSub', 'Rover', 'Blimp']
+const SEVERITY = { EMERGENCY: 0, ALERT: 1, CRITICAL: 2, ERROR: 3, WARNING: 4, NOTICE: 5, INFO: 6, DEBUG: 7 }
+
+const EMIT_RE = /(?:GCS_SEND_TEXT|send_text)\s*\(\s*MAV_SEVERITY_([A-Z]+)\s*,\s*"((?:[^"\\]|\\.)*)"/g
+const ARMING_RE = /check_failed\s*\([^"]*"((?:[^"\\]|\\.)*)"/g
+
+const DROP_PREFIX =
+  /^(SBG|Siyi|GoPro|Gripper|Generator|Mount|IOMCU|UDP|ILAB|Scripting|Ping|Pong|media|record|focus|lens|fw:|v\.|Internal Error)/i
+const INFO_KEEP = /^(arm|disarm|throttle|mode|gps|ekf|batt|compass|calibrat|fence|rtl|land|takeoff|failsafe|radio)/i
+
+function walk(dir, out) {
+  let entries
+  try {
+    entries = readdirSync(dir)
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    const full = join(dir, entry)
+    let st
+    try {
+      st = statSync(full)
+    } catch {
+      continue
+    }
+    if (st.isDirectory()) {
+      walk(full, out)
+    } else if (/\.(cpp|h)$/.test(entry)) {
+      out.push(full)
+    }
+  }
+}
+
+// Minimal C unescape + strip a runtime format arg (treating %% as a literal
+// percent), then collapse whitespace, trim, and drop trailing , : - ( chars.
+function normalize(raw) {
+  let s = raw.replace(/\\"/g, '"').replace(/\\n/g, ' ').replace(/\\t/g, ' ').replace(/\\\\/g, '\\')
+  let cut = -1
+  for (let i = 0; i < s.length; i += 1) {
+    if (s[i] === '%') {
+      if (s[i + 1] === '%') {
+        i += 1
+        continue
+      }
+      cut = i
+      break
+    }
+  }
+  if (cut >= 0) s = s.slice(0, cut)
+  s = s.replace(/%%/g, '%')
+  s = s.replace(/\s+/g, ' ').trim()
+  s = s.replace(/[\s,:\-(]+$/, '')
+  return s
+}
+
+function key15(s) {
+  if (s.length <= 15) return s
+  let k = s.slice(0, 15)
+  let cut = -1
+  for (let i = k.length - 1; i >= 4; i -= 1) {
+    if (k[i] === ' ' || k[i] === ':' || k[i] === '(') {
+      cut = i
+      break
+    }
+  }
+  if (cut >= 4) k = k.slice(0, cut)
+  return k.trim().replace(/[\s,:\-(]+$/, '')
+}
+
+function keep(key, severity) {
+  if (key.length < 4) return false
+  if (DROP_PREFIX.test(key)) return false
+  if (severity > 4 && !INFO_KEEP.test(key)) return false
+  return true
+}
+
+// Accumulate raw key -> { severity: min, sites: sum }.
+const acc = new Map()
+function record(rawString, severity) {
+  let key = key15(normalize(rawString))
+  if (!key) return
+  // Fold every PreArm reason into one key.
+  if (/^PreArm/i.test(key)) key = 'PreArm'
+  if (!keep(key, severity)) return
+  const existing = acc.get(key)
+  if (existing) {
+    existing.severity = Math.min(existing.severity, severity)
+    existing.sites += 1
+  } else {
+    acc.set(key, { severity, sites: 1 })
+  }
+}
+
+const files = []
+for (const dir of SCAN_DIRS) walk(join(ARDUPILOT, dir), files)
+
+for (const file of files) {
+  let text
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    continue
+  }
+  for (const m of text.matchAll(EMIT_RE)) {
+    const severity = SEVERITY[m[1]]
+    if (severity === undefined) continue
+    record(m[2], severity)
+  }
+  if (/libraries\/AP_Arming\//.test(file)) {
+    for (const m of text.matchAll(ARMING_RE)) {
+      record(`PreArm: ${m[1]}`, SEVERITY.CRITICAL)
+    }
+  }
+}
+
+// Tighten: keep a key only if it's seen at least twice OR is high-severity.
+const kept = [...acc.entries()].filter(([, v]) => v.sites >= 2 || v.severity <= 1)
+
+// Rank: severity asc, sites desc, key asc.
+kept.sort((a, b) => a[1].severity - b[1].severity || b[1].sites - a[1].sites || a[0].localeCompare(b[0]))
+
+const keys = kept.map(([key]) => key)
+
+let describe = 'unknown'
+try {
+  describe = execFileSync('git', ['-C', ARDUPILOT, 'describe', '--always'], { encoding: 'utf8' }).trim()
+} catch {
+  // leave as unknown
+}
+
+const body =
+  `// AUTO-GENERATED by scripts/gen-osd-catalog.mjs from ArduPilot ${describe} — do not edit.\n` +
+  `// Regenerate after a firmware bump:  npm run gen:osd-catalog\n` +
+  `// ${keys.length} keys extracted from libraries/ + vehicle dirs.\n\n` +
+  `export const OSD_MESSAGE_CATALOG: readonly string[] = [\n` +
+  keys.map((key) => `  ${JSON.stringify(key)}`).join(',\n') +
+  `\n]\n`
+
+writeFileSync(OUT_FILE, body)
+process.stdout.write(`Wrote ${keys.length} keys to ${OUT_FILE} (ArduPilot ${describe})\n`)

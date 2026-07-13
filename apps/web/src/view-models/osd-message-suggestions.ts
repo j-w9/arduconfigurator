@@ -3,9 +3,12 @@
 // are short fragments/prefixes (≤15 chars) that abbreviate a whole class of
 // messages. We offer these as datalist hints while keeping the field free-text.
 
-/** Common ArduPilot MESSAGE-panel strings / prefixes worth abbreviating. Short
- *  enough (≤15 chars) to drop straight into a `from` field. */
-export const COMMON_OSD_MESSAGE_SUGGESTIONS: readonly string[] = [
+import { OSD_MESSAGE_CATALOG } from './osd-message-catalog.generated'
+
+/** A short favorites list surfaced FIRST — common everyday fragments. The bulk
+ *  of the suggestions come from OSD_MESSAGE_CATALOG (generated from the ArduPilot
+ *  source; see scripts/gen-osd-catalog.mjs). */
+const HANDPICKED: readonly string[] = [
   'PreArm:',
   'Arm:',
   'Arming motors',
@@ -26,6 +29,11 @@ export const COMMON_OSD_MESSAGE_SUGGESTIONS: readonly string[] = [
   'Calibrat',
   'RC'
 ]
+
+/** Common ArduPilot MESSAGE-panel strings/prefixes worth abbreviating: the
+ *  favorites first, then the source-derived catalog. buildOsdMessageSuggestions
+ *  dedupes, so overlaps between the two collapse. */
+export const COMMON_OSD_MESSAGE_SUGGESTIONS: readonly string[] = [...HANDPICKED, ...OSD_MESSAGE_CATALOG]
 
 /**
  * Datalist suggestions for a shorthand `from` field: the curated common
