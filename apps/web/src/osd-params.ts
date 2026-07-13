@@ -102,7 +102,9 @@ export const OSD_ELEMENT_Y_PARAM_IDS = OSD_SCREEN_NUMBERS.flatMap((screen) =>
 
 // Per-screen "Screen Options" (Mission Planner panel): enable, HD text
 // resolution, font, RC channel switch range, and ESC telemetry index.
-export const OSD_SCREEN_OPTION_SUFFIXES = ['ENABLE', 'TXT_RES', 'FONT', 'CHAN_MIN', 'CHAN_MAX', 'ESC_IDX'] as const
+// MSG_LVL (per-screen message severity filter) is a fork param — absent params
+// are skipped by the Screen Options loop, so it's auto-gated on firmware support.
+export const OSD_SCREEN_OPTION_SUFFIXES = ['ENABLE', 'MSG_LVL', 'TXT_RES', 'FONT', 'CHAN_MIN', 'CHAN_MAX', 'ESC_IDX'] as const
 export const OSD_SCREEN_OPTION_PARAM_IDS = OSD_SCREEN_NUMBERS.flatMap((screen) =>
   OSD_SCREEN_OPTION_SUFFIXES.map((suffix) => `OSD${screen}_${suffix}` as const)
 )
@@ -111,6 +113,7 @@ export const OSD_PARAM_IDS = [
   'OSD_TYPE',
   'OSD_CHAN',
   'OSD_SW_METHOD',
+  'OSD_MSG_ABBR',
   'MSP_OPTIONS',
   'MSP_OSD_NCELLS',
   ...OSD_SCREEN_OPTION_PARAM_IDS,

@@ -30,6 +30,7 @@ import {
   ARDUCOPTER_NOTIFICATION_LED_BRIGHTNESS_LABELS,
   ARDUCOPTER_NOTIFICATION_LED_OVERRIDE_LABELS,
   ARDUCOPTER_OSD_CHANNEL_LABELS,
+  ARDUCOPTER_OSD_MSG_LVL_LABELS,
   ARDUCOPTER_OSD_SWITCH_METHOD_LABELS,
   ARDUCOPTER_OSD_TYPE_LABELS,
   ARDUCOPTER_DSHOT_RATE_LABELS,
@@ -393,6 +394,15 @@ function buildOsdScreenOptionDefinitions(screenNumber: number): FirmwareMetadata
       maximum: 1,
       notes: osdElementNotes,
       options: enabledDisabledOptions
+    },
+    [`${screenLabel}_MSG_LVL`]: {
+      id: `${screenLabel}_MSG_LVL`,
+      label: `${screenLabel} Message Level`,
+      description: `Least-severe message shown in ${screenLabel}'s MESSAGE panel. Messages less severe than this are hidden (lower = more severe), so you can keep one screen quiet (Warning) and another verbose (Debug).`,
+      category: 'osd',
+      minimum: 0,
+      maximum: 7,
+      options: enumOptions(ARDUCOPTER_OSD_MSG_LVL_LABELS)
     },
     [`${screenLabel}_TXT_RES`]: {
       id: `${screenLabel}_TXT_RES`,
@@ -1519,6 +1529,16 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       maximum: 2,
       notes: osdSwitchNotes,
       options: enumOptions(ARDUCOPTER_OSD_SWITCH_METHOD_LABELS)
+    },
+    OSD_MSG_ABBR: {
+      id: 'OSD_MSG_ABBR',
+      label: 'Abbreviate Messages',
+      description:
+        'Apply a built-in shorthand dictionary to the MESSAGE panel so common text is shorter and fits without scrolling (e.g. "PreArm:" → "PA:", "Arming motors" → "ARMED").',
+      category: 'osd',
+      minimum: 0,
+      maximum: 1,
+      options: enabledDisabledOptions
     },
     ...buildOsdElementParameterDefinitions(1),
     ...buildOsdElementParameterDefinitions(2),

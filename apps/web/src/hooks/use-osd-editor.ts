@@ -60,7 +60,13 @@ export function useOsdEditor({
         if (!parameter) {
           return []
         }
-        return [{ parameter, liveValue: parameter.value, kind: suffix === 'ENABLE' ? 'select' : 'number' }]
+        return [
+          {
+            parameter,
+            liveValue: parameter.value,
+            kind: suffix === 'ENABLE' || suffix === 'MSG_LVL' ? 'select' : 'number'
+          }
+        ]
       }),
     [osdParameterById, activeOsdScreen]
   )
