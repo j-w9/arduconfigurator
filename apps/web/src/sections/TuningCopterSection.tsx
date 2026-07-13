@@ -217,6 +217,33 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                   <div className="tuning-task-panel tuning-task-panel--stack">
                     <details className="bf-gui-box">
                       <summary className="bf-gui-box__titlebar">
+                        <strong>Attitude (Acro)</strong>
+                      </summary>
+                      <div className="bf-gui-box__body">
+                        <div className="switch-exercise-card__header">
+                          <div>
+                            <span className="tuning-card-title">
+                              <strong>Rates, expo, and accel shaping</strong>
+                              <InfoDot label="About rates, expo, and accel shaping" testId="tuning-info-acro" wide>
+                                <span className="info-dot-line">Rates set maximum rotation speed. Expo softens the center without reducing full-stick authority.</span>
+                                <span className="info-dot-line">Acceleration limits control how aggressively the controller tries to reach the commanded rate.</span>
+                                <span className="info-dot-line">Keep changes small and save a known-good snapshot before pushing responsiveness higher.</span>
+                              </InfoDot>
+                            </span>
+                            <p>Curated FPV-style rate shaping backed by real ArduPilot acro-rate and angular-acceleration parameters.</p>
+                          </div>
+                          <StatusBadge tone="neutral">{acroTuningParameters.length + tuningAccelerationParameters.length} controls</StatusBadge>
+                        </div>
+
+                        <div className="tuning-control-grid">
+                          {acroTuningParameters.map((parameter) => renderTuningControl(parameter))}
+                          {tuningAccelerationParameters.map((parameter) => renderTuningControl(parameter))}
+                        </div>
+                      </div>
+                    </details>
+
+                    <details className="bf-gui-box">
+                      <summary className="bf-gui-box__titlebar">
                         <strong>Angle</strong>
                       </summary>
                       <div className="bf-gui-box__body">
@@ -239,33 +266,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
 
                         <div className="tuning-control-grid">
                           {flightFeelParameters.map((parameter) => renderTuningControl(parameter))}
-                        </div>
-                      </div>
-                    </details>
-
-                    <details className="bf-gui-box">
-                      <summary className="bf-gui-box__titlebar">
-                        <strong>Attitude (Acro)</strong>
-                      </summary>
-                      <div className="bf-gui-box__body">
-                        <div className="switch-exercise-card__header">
-                          <div>
-                            <span className="tuning-card-title">
-                              <strong>Rates, expo, and accel shaping</strong>
-                              <InfoDot label="About rates, expo, and accel shaping" testId="tuning-info-acro" wide>
-                                <span className="info-dot-line">Rates set maximum rotation speed. Expo softens the center without reducing full-stick authority.</span>
-                                <span className="info-dot-line">Acceleration limits control how aggressively the controller tries to reach the commanded rate.</span>
-                                <span className="info-dot-line">Keep changes small and save a known-good snapshot before pushing responsiveness higher.</span>
-                              </InfoDot>
-                            </span>
-                            <p>Curated FPV-style rate shaping backed by real ArduPilot acro-rate and angular-acceleration parameters.</p>
-                          </div>
-                          <StatusBadge tone="neutral">{acroTuningParameters.length + tuningAccelerationParameters.length} controls</StatusBadge>
-                        </div>
-
-                        <div className="tuning-control-grid">
-                          {acroTuningParameters.map((parameter) => renderTuningControl(parameter))}
-                          {tuningAccelerationParameters.map((parameter) => renderTuningControl(parameter))}
                         </div>
                       </div>
                     </details>

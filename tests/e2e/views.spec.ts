@@ -291,28 +291,36 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(page.getByTestId('parameter-diff-grid')).toBeInViewport()
   })
 
-  test('Export collapses to one primary button + an Export Legacy format picker', async ({ page }) => {
-    // Was three buttons (Export JSON / .parm / .params) with no explanation of
-    // why they exist. Now: one primary Export (native JSON) plus a legacy
-    // select for the two ground-station formats, used only when a specific
-    // tool needs them.
+  test('Export is one picker where you choose the format', async ({ page }) => {
+    // Was a primary "Export" button sitting next to a separate "Export Legacy…"
+    // select, which read as two competing exports. Now a single picker: pick
+    // ArduConfigurator JSON or a ground-station format from one control.
     await page.goto('/')
     await connectViaHeader(page)
     await page.getByTestId('product-mode-expert').click()
     await page.getByTestId('view-button-parameters').click()
 
-    await expect(page.getByTestId('export-parameter-backup')).toHaveText('Export')
-    const legacySelect = page.getByTestId('export-parameter-backup-legacy')
-    await expect(legacySelect).toHaveValue('')
-    const optionLabels = await legacySelect.locator('option').allTextContents()
-    expect(optionLabels).toEqual(['Export Legacy…', 'Mission Planner (.parm)', 'QGroundControl (.params)'])
+    // No separate legacy control anymore.
+    await expect(page.getByTestId('export-parameter-backup-legacy')).toHaveCount(0)
 
-    // Picking a format triggers its export and resets to the placeholder —
+    const exportPicker = page.getByTestId('export-parameter-backup')
+    await expect(exportPicker).toHaveValue('')
+    const optionLabels = await exportPicker.locator('option').allTextContents()
+    expect(optionLabels).toEqual([
+      'Export…',
+      'ArduConfigurator JSON',
+      'Mission Planner (.parm)',
+      'QGroundControl (.params)'
+    ])
+
+    // Picking any format triggers its export and resets to the placeholder —
     // reads as a one-shot action, not a persistent mode.
-    const download = page.waitForEvent('download')
-    await legacySelect.selectOption('parm')
-    await download
-    await expect(legacySelect).toHaveValue('')
+    for (const format of ['json', 'parm', 'params']) {
+      const download = page.waitForEvent('download')
+      await exportPicker.selectOption(format)
+      await download
+      await expect(exportPicker).toHaveValue('')
+    }
   })
 })
 
@@ -858,11 +866,14 @@ test.describe('Tuning tab', () => {
     await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
     const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
     await expect(input).toBeVisible({ timeout: 10000 })
-    // The first tuning slider is the first Flight Feel control (ATC_INPUT_TC).
-    // Dragging it (input events, no pointer-up) must update the value live but
-    // NOT commit a staged draft yet — committing on every drag tick is what
-    // made the slider stutter and "jump to staged" before you could finish.
-    const slider = page.locator('.tuning-control__range').first()
+    // Scope to the ATC_INPUT_TC control's own slider (not `.first()` — the
+    // Pilot section order isn't guaranteed, and a collapsed section's sliders
+    // are still in the DOM). Dragging it (input events, no pointer-up) must
+    // update the value live but NOT commit a staged draft yet — committing on
+    // every drag tick is what made the slider stutter and "jump to staged".
+    const slider = page
+      .locator('.tuning-control', { has: page.getByTestId('tuning-input-ATC_INPUT_TC') })
+      .locator('.tuning-control__range')
     await slider.fill('0.3')
     await expect(input).toHaveValue('0.3')
     // Mid-drag (before release) nothing is staged.

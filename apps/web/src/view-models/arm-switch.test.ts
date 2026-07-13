@@ -5,7 +5,9 @@ import {
   ARM_SWITCH_OPTION_VALUE,
   armSwitchAssignmentDrafts,
   armSwitchChannelOptions,
-  deriveArmSwitchAssignment
+  deriveArmSwitchAssignment,
+  isArmSwitchHighlightActive,
+  isArmSwitchInArmPosition
 } from './arm-switch'
 
 function snapshotWith(params: Record<string, number>): any {
@@ -65,6 +67,36 @@ describe('armSwitchAssignmentDrafts', () => {
   it('toggling airmode on the SAME channel only rewrites that channel', () => {
     const drafts = armSwitchAssignmentDrafts({ channel: 6, airmode: false }, 6, true)
     expect(drafts).toEqual({ RC6_OPTION: String(ARM_SWITCH_AIRMODE_OPTION_VALUE) })
+  })
+})
+
+describe('isArmSwitchInArmPosition', () => {
+  it('is true only above the 1800µs HIGH trigger', () => {
+    expect(isArmSwitchInArmPosition(1801)).toBe(true)
+    expect(isArmSwitchInArmPosition(2000)).toBe(true)
+    expect(isArmSwitchInArmPosition(1800)).toBe(false)
+    expect(isArmSwitchInArmPosition(1500)).toBe(false)
+    expect(isArmSwitchInArmPosition(1000)).toBe(false)
+  })
+
+  it('rejects undefined and the 0xffff no-data sentinel (never reads as armed)', () => {
+    expect(isArmSwitchInArmPosition(undefined)).toBe(false)
+    expect(isArmSwitchInArmPosition(0xffff)).toBe(false)
+  })
+})
+
+describe('isArmSwitchHighlightActive', () => {
+  const assigned = { channel: 7, airmode: false }
+
+  it('is active only when armed AND the assigned channel is high', () => {
+    expect(isArmSwitchHighlightActive(assigned, true, 1900)).toBe(true)
+    expect(isArmSwitchHighlightActive(assigned, false, 1900)).toBe(false) // not armed
+    expect(isArmSwitchHighlightActive(assigned, true, 1200)).toBe(false) // switch low
+    expect(isArmSwitchHighlightActive(assigned, true, undefined)).toBe(false) // no telemetry
+  })
+
+  it('is inactive when no channel is assigned, even if armed', () => {
+    expect(isArmSwitchHighlightActive({ channel: undefined, airmode: false }, true, 1900)).toBe(false)
   })
 })
 

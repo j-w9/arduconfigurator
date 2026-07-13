@@ -25,8 +25,10 @@ interface FlightDeckPreviewProps {
   /** Bare quad only — strips the heading tape, HUD, caption, and readouts so the
    *  craft can live in a very small box (e.g. the RC direction-check corner). */
   mini?: boolean
-  /** 0..1 vertical lift for the mini quad (throttle): 0 sinks it low, 1 raises it,
-   *  0.5 is centred. Only applied in `mini` mode. */
+  /** 0..1 vertical lift from the throttle stick: 0 sinks the craft low, 1 raises
+   *  it, 0.5 is centred. Applied in both mini and full mode (full gets a larger
+   *  travel to match its size); previews that don't pass it default to 0.5 (no
+   *  movement). */
   liftNorm?: number
   testId?: string
   // Overrides the caption's source line. Defaults to the FC-attitude wording;
@@ -985,7 +987,13 @@ export function FlightDeckPreview({
           <canvas
             ref={canvasRef}
             className="flight-deck__canvas"
-            style={mini ? { transform: `translateY(${(0.5 - Math.max(0, Math.min(1, liftNorm))) * 64}px)` } : undefined}
+            // Throttle lift: raise/lower the craft with the throttle stick. Used
+            // by the Receiver endpoints mini-craft AND the main Receiver craft at
+            // the top of the tab (both StickCraftPreview) — the full model gets a
+            // larger travel to match its size. Other non-mini previews
+            // (AttitudePreview at Setup) never pass liftNorm, so it defaults to
+            // 0.5 → translateY 0 → no movement, leaving them unchanged.
+            style={{ transform: `translateY(${(0.5 - Math.max(0, Math.min(1, liftNorm))) * (mini ? 64 : 96)}px)` }}
           />
           {!mini ? (
           <div className="flight-deck__heading-tape" aria-hidden="true">

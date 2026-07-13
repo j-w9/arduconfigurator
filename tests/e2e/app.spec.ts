@@ -961,11 +961,11 @@ test.describe('browser configurator regression flows', () => {
     await connectToVehicle(page, 'demo')
     await page.getByTestId('product-mode-expert').click()
     await openView(page, 'parameters')
-    const exportButton = page.getByTestId('export-parameter-backup')
-    await expect(exportButton).toBeEnabled()
+    const exportPicker = page.getByTestId('export-parameter-backup')
+    await expect(exportPicker).toBeEnabled()
     const [download] = await Promise.all([
       page.waitForEvent('download'),
-      exportButton.click()
+      exportPicker.selectOption('json')
     ])
     expect(download.suggestedFilename().length).toBeGreaterThan(0)
   })
@@ -1005,7 +1005,7 @@ test.describe('browser configurator regression flows', () => {
 
     // Exporting reports the skipped category in the notice.
     const download = page.waitForEvent('download')
-    await page.getByTestId('export-parameter-backup').click()
+    await page.getByTestId('export-parameter-backup').selectOption('json')
     await download
     await expect(page.getByTestId('parameter-notice')).toContainText('skipped calibration')
   })

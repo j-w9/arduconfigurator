@@ -15,6 +15,13 @@ interface RcChannelBarsProps {
   }[]
   verified: boolean
   testId?: string
+  /** Channel currently mapped as the Arm/Disarm switch (RCn_OPTION 153/154),
+   *  or undefined. When it matches a row AND armSwitchActive is true, that row
+   *  is boxed red — a live "this switch is holding the craft armed" cue. */
+  armSwitchChannel?: number
+  /** True when the vehicle is armed and the arm-switch channel is in the arm
+   *  (high) position. Drives the red box on the arm-switch row. */
+  armSwitchActive?: boolean
 }
 
 /* ------------------------------------------------------------------ */
@@ -57,6 +64,14 @@ const STYLE_BLOCK = `
 .rc-bar-row--mode {
   border-color: var(--warning, #dab254);
   background: var(--warning-weak, rgba(218, 178, 84, 0.14));
+}
+
+/* Arm-switch row while the vehicle is armed via that switch — a red box so it
+   is unmistakable which channel is holding the craft armed. Declared after the
+   mode rule so it wins the border when a channel is somehow both. */
+.rc-bar-row--armed {
+  border-color: var(--danger, #d46b62);
+  background: var(--danger-weak, rgba(212, 107, 98, 0.16));
 }
 
 /* Label column */
@@ -191,7 +206,7 @@ function clampFillPct(pct: number): number {
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export function RcChannelBars({ channels, verified, testId }: RcChannelBarsProps) {
+export function RcChannelBars({ channels, verified, testId, armSwitchChannel, armSwitchActive }: RcChannelBarsProps) {
   const styleId = useId()
 
   return (
@@ -219,12 +234,16 @@ export function RcChannelBars({ channels, verified, testId }: RcChannelBarsProps
         const trimPct = clampFillPct(ch.trimPercent)
         const color = hasData ? fillColor(ch.pwm, ch.isModeChannel) : 'transparent'
         const fillOpacity = hasData ? 0.82 : 0
+        const armHighlight =
+          Boolean(armSwitchActive) && armSwitchChannel !== undefined && ch.channelNumber === armSwitchChannel
 
         return (
           <div
             key={ch.channelNumber}
-            className={`rc-bar-row${ch.isModeChannel ? ' rc-bar-row--mode' : ''}`}
+            className={`rc-bar-row${ch.isModeChannel ? ' rc-bar-row--mode' : ''}${armHighlight ? ' rc-bar-row--armed' : ''}`}
             data-testid={testId ? `${testId}-ch${ch.channelNumber}` : undefined}
+            data-arm-switch-armed={armHighlight ? 'true' : undefined}
+            title={armHighlight ? `Armed — CH${ch.channelNumber} is the arm switch and is in the arm position.` : undefined}
           >
             {/* Label */}
             <div className="rc-bar-label">

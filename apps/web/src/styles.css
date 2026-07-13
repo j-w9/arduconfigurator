@@ -13823,8 +13823,7 @@ details.bf-gui-box:not([open]) > summary::after {
   /* Exporting a backup file is a desktop task; on a phone keep Import Backup
    * (used for cross-vehicle migration) plus Apply/Discard, and drop the
    * export controls so the review card stops dominating the screen. */
-  [data-testid="export-parameter-backup"],
-  [data-testid="export-parameter-backup-legacy"] {
+  [data-testid="export-parameter-backup"] {
     display: none;
   }
 
