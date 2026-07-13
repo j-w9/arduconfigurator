@@ -10,6 +10,7 @@ import { useMemo } from 'react'
 import type { UseOsdEditorResult } from '../hooks/use-osd-editor'
 import type { UseOsdShorthandResult } from '../hooks/use-osd-shorthand'
 import { isOsdReviewParamId } from '../param-review'
+import { buildOsdMessageSuggestions } from '../view-models/osd-message-suggestions'
 import { normalizeBitmaskValue } from '../parameter-format'
 import { readRoundedParameter } from '../selectors/parameter-read'
 import { selectViewDrafts } from '../selectors/view-drafts'
@@ -83,6 +84,13 @@ export function OsdSection(props: OsdSectionProps) {
     [parameterDraftEntries]
   )
 
+  // Datalist hints for the shorthand "from" field — curated common ArduPilot
+  // MESSAGE strings + whatever the FC has actually sent this session.
+  const osdMessageSuggestions = useMemo(
+    () => buildOsdMessageSuggestions(snapshot.statusTexts.map((entry) => entry.text)),
+    [snapshot.statusTexts]
+  )
+
   return (
     <OsdView
       linkPorts={osdLinkPorts}
@@ -91,6 +99,7 @@ export function OsdSection(props: OsdSectionProps) {
       switchMethodField={osdSwitchMethodParameter ? { parameter: osdSwitchMethodParameter, liveValue: osdSwitchMethod } : undefined}
       msgAbbrField={msgAbbrParameter ? { parameter: msgAbbrParameter, liveValue: osdMsgAbbr } : undefined}
       osdShorthand={osdShorthand}
+      osdMessageSuggestions={osdMessageSuggestions}
       previewToolbar={{
         backendText: `Backend ${formatArducopterOsdType(osdType)}`,
         switchingText: `Switching ${formatArducopterOsdSwitchMethod(osdSwitchMethod)}`,

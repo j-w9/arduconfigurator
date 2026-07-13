@@ -3899,6 +3899,11 @@ test.describe('OSD message shorthand editor (@OSD/shorthand.dat)', () => {
     await expect(page.getByTestId('osd-shorthand-from-0')).toHaveValue('PreArm:')
     await expect(page.getByTestId('osd-shorthand-to-0')).toHaveValue('PA:')
 
+    // The "from" field is a combobox: it references a datalist of common +
+    // live message suggestions (but stays free-text for substring fragments).
+    await expect(page.getByTestId('osd-shorthand-from-0')).toHaveAttribute('list', 'osd-shorthand-message-suggestions')
+    expect(await page.locator('#osd-shorthand-message-suggestions option').count()).toBeGreaterThan(5)
+
     // Edit a value + add a row, then save — the mock FTP write round-trips.
     await page.getByTestId('osd-shorthand-to-0').fill('PRE')
     await page.getByTestId('osd-shorthand-add').click()
