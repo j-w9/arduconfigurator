@@ -113,11 +113,13 @@ export async function flashElrsReceiver(input: ElrsFlashInput): Promise<{ chipNa
     onProgress?.({ phase: 'flash', message: `Flashing ${chipName}…`, written: 0, total: firmware.length })
     await loader.writeFlash({
       fileArray: [{ data: firmware, address }],
-      // 'keep' preserves the flash mode/freq/size baked into the ELRS release
-      // image header rather than overriding it.
-      flashMode: 'keep',
-      flashFreq: 'keep',
-      flashSize: 'keep',
+      // ExpressLRS's own esptool params (binary_flash.py). 'keep' for flashSize
+      // left esptool without the size it needs to set up the erase, so the first
+      // compressed block failed with "status 193" — 'detect' fixes it. Verified
+      // on hardware (ESP8285 through an ArduPilot SERIAL_PASS bridge).
+      flashMode: 'dio',
+      flashFreq: '40m',
+      flashSize: 'detect',
       eraseAll: false,
       compress: true,
       reportProgress: (_fileIndex: number, written: number, total: number) =>
