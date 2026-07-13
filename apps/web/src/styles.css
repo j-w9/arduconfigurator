@@ -6302,13 +6302,15 @@ textarea:focus {
   gap: 12px;
 }
 
-/* Betaflight-style live monitor: RC channels on one side, the reactive craft
-   model on the other. The channel side takes a little more width; both collapse
-   to a single stacked column on narrow/phone screens (see the phone media
-   query). align-items:start so a tall channel list doesn't stretch the craft. */
+/* Betaflight-style live monitor: the reactive craft model on the left, RC
+   channels on the right (which takes a little more width). Craft is ordered
+   first via `order` so the DOM keeps channels-before-craft (screen-reader /
+   markup order) while the model paints on the left. Both collapse to a single
+   stacked column on narrow/phone screens (see the phone media query).
+   align-items:start so a tall channel list doesn't stretch the craft. */
 .receiver-live-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
   gap: 12px;
   align-items: start;
 }
@@ -6318,6 +6320,7 @@ textarea:focus {
   min-width: 0;
 }
 .receiver-live-columns__craft {
+  order: -1;
   min-width: 0;
 }
 .receiver-live-columns__craft .receiver-stick-craft {
