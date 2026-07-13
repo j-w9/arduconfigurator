@@ -31,7 +31,8 @@
     "desktop:dist:mac": "npm run build:web && npm run build:desktop && npm run dist:mac --workspace @arduconfig/desktop",
     "desktop:dist:win": "npm run build:web && npm run build:desktop && npm run dist:win --workspace @arduconfig/desktop",
     "desktop:dist:linux": "npm run build:web && npm run build:desktop && npm run dist:linux --workspace @arduconfig/desktop",
-    "bridge:websocket": "npm run bridge:websocket --workspace @arduconfig/desktop"
+    "bridge:websocket": "npm run bridge:websocket --workspace @arduconfig/desktop",
+    "gen:osd-catalog": "node scripts/gen-osd-catalog.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
