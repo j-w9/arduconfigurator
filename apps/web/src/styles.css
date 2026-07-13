@@ -12782,6 +12782,43 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 12px;
 }
 
+/* OSD custom-abbreviation (shorthand) editor — a small from→to table under the
+   Messages section. */
+.osd-shorthand {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+.osd-shorthand__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.osd-shorthand__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.osd-shorthand__row input {
+  min-width: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.osd-shorthand__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+@media (max-width: 480px) {
+  .osd-shorthand__row {
+    grid-template-columns: 1fr auto 1fr auto;
+  }
+}
+
 .osd-backend-strip .bf-gui-box__titlebar small {
   /* Dark, slightly subordinate to the strong title but legible on the yellow pill. */
   color: rgba(11, 17, 24, 0.7);

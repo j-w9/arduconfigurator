@@ -2478,9 +2478,42 @@ function createMockVtxTableBytes(): Uint8Array {
   return buf
 }
 
+// OSD message shorthand table (@OSD/shorthand.dat, ArduPilot fork). Same blob
+// shape as the VTX table: magic 'OS'/version/count, count×(from[16]+to[10]), CRC.
+function createMockOsdShorthandBytes(): Uint8Array {
+  const FROM_LEN = 16
+  const TO_LEN = 10
+  const entries = [
+    { from: 'PreArm:', to: 'PA:' },
+    { from: 'Arming motors', to: 'ARMED' },
+    { from: 'GPS: u-blox', to: 'GPS OK' }
+  ]
+  const buf = new Uint8Array(4 + entries.length * (FROM_LEN + TO_LEN) + 4)
+  let o = 0
+  buf[o++] = 0x4f // magic 0x534F LE ('OS')
+  buf[o++] = 0x53
+  buf[o++] = 1 // version
+  buf[o++] = entries.length
+  for (const entry of entries) {
+    for (let i = 0; i < FROM_LEN; i += 1) buf[o + i] = i < entry.from.length && i < FROM_LEN - 1 ? entry.from.charCodeAt(i) : 0
+    o += FROM_LEN
+    for (let i = 0; i < TO_LEN; i += 1) buf[o + i] = i < entry.to.length && i < TO_LEN - 1 ? entry.to.charCodeAt(i) : 0
+    o += TO_LEN
+  }
+  const crc = mockVtxCrc32(buf, o)
+  buf[o++] = crc & 0xff
+  buf[o++] = (crc >> 8) & 0xff
+  buf[o++] = (crc >> 16) & 0xff
+  buf[o++] = (crc >> 24) & 0xff
+  return buf
+}
+
 function createMockFtpFiles(): MockFtpFileMap {
   return new Map<string, Uint8Array>([
     ['@SYS/uarts.txt', mockUartsBytes.slice()],
+    // OSD message shorthand table (@OSD FTP mount, fork feature) — present so the
+    // demo shows the shorthand editor and supports read/write round-trips.
+    ['@OSD/shorthand.dat', createMockOsdShorthandBytes()],
     // VTX band/power table (@VTX FTP mount) — present so the demo Copter shows
     // the real table editor. Non-Copter/other demos can omit it to exercise the
     // "Table not available" preview fallback.
@@ -2528,7 +2561,7 @@ function directoryExists(files: MockFtpFileMap, path: string): boolean {
   // so it exists even after vtxtable.dat is deleted mid-overwrite (an
   // overwriting upload does REMOVE_FILE then CREATE_FILE; without this the
   // mount would vanish between the two and the re-create would fail).
-  if (normalizedPath === '@SYS' || normalizedPath === '@VTX') {
+  if (normalizedPath === '@SYS' || normalizedPath === '@VTX' || normalizedPath === '@OSD') {
     return true
   }
   const prefix = `${normalizedPath}/`

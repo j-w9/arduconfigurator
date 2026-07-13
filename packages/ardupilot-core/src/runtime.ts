@@ -67,6 +67,12 @@ import {
 import { applyArducopter47Override } from './firmware-overrides.js'
 import { listMavftpLogFiles } from './mavftp-log-directories.js'
 import { VTX_TABLE_FTP_PATH, parseVtxTable, serializeVtxTable, type VtxTable } from './vtx-table.js'
+import {
+  OSD_SHORTHAND_FTP_PATH,
+  parseOsdShorthand,
+  serializeOsdShorthand,
+  type OsdShorthand
+} from './osd-shorthand.js'
 import { CanBusService } from './runtime-can-bus-service.js'
 import { GuidedActionService } from './runtime-guided-action-service.js'
 import { LogDownloadService, type LogDownloadProgress, type OnboardLogInfo } from './runtime-log-download-service.js'
@@ -1122,6 +1128,31 @@ export class ArduPilotConfiguratorRuntime {
   async writeVtxTable(table: VtxTable): Promise<void> {
     await this.mavftp.uploadRemoteFile(VTX_TABLE_FTP_PATH, serializeVtxTable(table), { overwrite: true })
     this.appendStatusEntry('info', `Uploaded VTX table over MAVFTP (${table.bands.length} bands).`)
+  }
+
+  /** Read the OSD message shorthand table (@OSD/shorthand.dat), or undefined
+   *  when the mount is absent (feature not present) or the blob is unparseable —
+   *  same detection contract as {@link readVtxTable}. */
+  async readOsdShorthand(): Promise<OsdShorthand | undefined> {
+    let bytes: Uint8Array
+    try {
+      bytes = await this.mavftp.readRemoteFile(OSD_SHORTHAND_FTP_PATH)
+    } catch {
+      return undefined
+    }
+    try {
+      return parseOsdShorthand(bytes)
+    } catch {
+      return undefined
+    }
+  }
+
+  /** Serialize and upload the OSD shorthand table, overwriting
+   *  @OSD/shorthand.dat. The firmware re-validates (magic/version/CRC) and
+   *  rejects a malformed blob, leaving its table unchanged. */
+  async writeOsdShorthand(table: OsdShorthand): Promise<void> {
+    await this.mavftp.uploadRemoteFile(OSD_SHORTHAND_FTP_PATH, serializeOsdShorthand(table), { overwrite: true })
+    this.appendStatusEntry('info', `Uploaded OSD shorthand table over MAVFTP (${table.entries.length} entries).`)
   }
 
   /** List the onboard dataflash logs (`LOG_REQUEST_LIST`). */

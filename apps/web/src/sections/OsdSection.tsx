@@ -8,6 +8,7 @@ import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterState } from '
 import { useMemo } from 'react'
 
 import type { UseOsdEditorResult } from '../hooks/use-osd-editor'
+import type { UseOsdShorthandResult } from '../hooks/use-osd-shorthand'
 import { isOsdReviewParamId } from '../param-review'
 import { normalizeBitmaskValue } from '../parameter-format'
 import { readRoundedParameter } from '../selectors/parameter-read'
@@ -28,6 +29,7 @@ export interface OsdSectionProps {
   canApplyDraftParameters: boolean
   busyAction: string | undefined
   osdEditor: UseOsdEditorResult
+  osdShorthand: UseOsdShorthandResult
   onApplyScopedDrafts: (
     drafts: readonly ParameterDraftEntry[],
     busyKey: string,
@@ -49,6 +51,7 @@ export function OsdSection(props: OsdSectionProps) {
     canApplyDraftParameters,
     busyAction,
     osdEditor,
+    osdShorthand,
     onApplyScopedDrafts,
     onDiscardScopedDrafts
   } = props
@@ -87,6 +90,7 @@ export function OsdSection(props: OsdSectionProps) {
       channelField={osdChannelParameter ? { parameter: osdChannelParameter, liveValue: osdChannel } : undefined}
       switchMethodField={osdSwitchMethodParameter ? { parameter: osdSwitchMethodParameter, liveValue: osdSwitchMethod } : undefined}
       msgAbbrField={msgAbbrParameter ? { parameter: msgAbbrParameter, liveValue: osdMsgAbbr } : undefined}
+      osdShorthand={osdShorthand}
       previewToolbar={{
         backendText: `Backend ${formatArducopterOsdType(osdType)}`,
         switchingText: `Switching ${formatArducopterOsdSwitchMethod(osdSwitchMethod)}`,
