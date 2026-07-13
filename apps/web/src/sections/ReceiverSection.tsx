@@ -315,57 +315,11 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                     </StatusBadge>
                   </div>
 
-                  <div className="receiver-stick-craft" data-testid="receiver-stick-craft-card">
-                    <StickCraftPreview
-                      observations={rcAxisObservations}
-                      snapshot={snapshot}
-                      verified={snapshot.liveVerification.rcInput.verified}
-                      vehicleType={snapshot.vehicle?.vehicle}
-                      frameClassLabel={airframe.frameClassLabel}
-                      frameTypeLabel={airframe.frameTypeLabel}
-                    />
-                  </div>
-
-                  <div className="receiver-live-primary-grid">
-                    {rcAxisObservations.map((axis) => {
-                      const channel = receiverPrimaryChannelDisplays.find((entry) => entry.channelNumber === axis.channelNumber)
-                      return (
-                        <article key={axis.axisId} className="receiver-live-card">
-                          <div className="receiver-live-card__header">
-                            <strong>{axis.label}</strong>
-                            <span>CH{axis.channelNumber}</span>
-                          </div>
-                          <div className="rc-bar" aria-hidden="true">
-                            <div className="rc-bar__trim" style={{ left: `${channel?.trimPercent ?? 50}%` }} />
-                            <div className="rc-bar__fill" style={{ width: `${channel?.fillPercent ?? 0}%` }} />
-                          </div>
-                          <div className="receiver-live-card__footer">
-                            <span>{axis.pwm !== undefined ? `${axis.pwm} µs` : 'No data'}</span>
-                            <span>{channel?.role ?? 'Primary control'}</span>
-                          </div>
-                        </article>
-                      )
-                    })}
-
-                    <article className={`receiver-live-card receiver-live-card--mode${recentModeSwitchChange ? ' receiver-live-card--attention' : ''}`}>
-                      <div className="receiver-live-card__header">
-                        <strong>Flight mode</strong>
-                        <span>{modeSwitchEstimate.channelNumber !== undefined ? `CH${modeSwitchEstimate.channelNumber}` : 'Unset'}</span>
-                      </div>
-                      <p>
-                        {modeSwitchEstimate.channelNumber === undefined
-                          ? 'Mode channel not configured yet.'
-                          : modeSwitchEstimate.estimatedSlot !== undefined
-                            ? `Slot ${modeSwitchEstimate.estimatedSlot} · ${formatModeAssignment(modeSwitchEstimate.configuredValue, snapshot.vehicle?.vehicle)}`
-                            : 'Waiting for the configured mode channel to move.'}
-                      </p>
-                      <div className="receiver-live-card__footer">
-                        <span>{modeSwitchEstimate.pwm !== undefined ? `${modeSwitchEstimate.pwm} µs` : 'No data'}</span>
-                        <span>{recentModeSwitchChange ? 'Recent movement' : 'Mode switch'}</span>
-                      </div>
-                    </article>
-                  </div>
-
+                  {/* Betaflight-style side-by-side: live RC channels on one
+                   *  side, the reactive craft model on the other. Stacks back to
+                   *  a single column on narrow/phone widths. */}
+                  <div className="receiver-live-columns">
+                    <div className="receiver-live-columns__channels">
                   <RcChannelBars
                     channels={receiverPrimaryChannelDisplays}
                     verified={snapshot.liveVerification.rcInput.verified}
@@ -373,6 +327,46 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                     armSwitchChannel={armSwitchAssignment.channel}
                     armSwitchActive={armSwitchHighlightActive}
                   />
+
+                  {/* The per-axis summary cards were dropped as redundant with
+                   *  the labeled channel bars above (CH1 · ROLL, …). The
+                   *  flight-mode estimate they carried is folded into this one
+                   *  compact line so that readout isn't lost. */}
+                  <div
+                    className={`receiver-flight-mode-line${recentModeSwitchChange ? ' is-attention' : ''}`}
+                    data-testid="receiver-flight-mode-line"
+                  >
+                    <strong>Flight mode</strong>
+                    <span className="receiver-flight-mode-line__ch">
+                      {modeSwitchEstimate.channelNumber !== undefined ? `CH${modeSwitchEstimate.channelNumber}` : 'Unset'}
+                    </span>
+                    <span className="receiver-flight-mode-line__state">
+                      {modeSwitchEstimate.channelNumber === undefined
+                        ? 'Mode channel not configured yet.'
+                        : modeSwitchEstimate.estimatedSlot !== undefined
+                          ? `Slot ${modeSwitchEstimate.estimatedSlot} · ${formatModeAssignment(modeSwitchEstimate.configuredValue, snapshot.vehicle?.vehicle)}`
+                          : 'Waiting for the configured mode channel to move.'}
+                    </span>
+                    <span className="receiver-flight-mode-line__pwm">
+                      {modeSwitchEstimate.pwm !== undefined ? `${modeSwitchEstimate.pwm} µs` : 'No data'}
+                      {recentModeSwitchChange ? ' · moved' : ''}
+                    </span>
+                  </div>
+                    </div>
+
+                    <div className="receiver-live-columns__craft">
+                      <div className="receiver-stick-craft" data-testid="receiver-stick-craft-card">
+                        <StickCraftPreview
+                          observations={rcAxisObservations}
+                          snapshot={snapshot}
+                          verified={snapshot.liveVerification.rcInput.verified}
+                          vehicleType={snapshot.vehicle?.vehicle}
+                          frameClassLabel={airframe.frameClassLabel}
+                          frameTypeLabel={airframe.frameTypeLabel}
+                        />
+                      </div>
+                    </div>
+                  </div>
 
                   {rcLogicChannelClaims && rcLogicChannelClaims.size > 0 ? (
                     <p className="receiver-rcl-summary" data-testid="receiver-rcl-summary">
