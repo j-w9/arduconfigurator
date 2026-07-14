@@ -21,7 +21,8 @@ label, with five columns:
 - **Flow** — hardware flow control, editing ``BRD_SERn_RTSCTS`` (Disabled,
   Enabled, Auto, RS-485 RTS) on ports 1–6.
 - **Options** — a per-bit editor for ``SERIALn_OPTIONS`` (invert RX/TX, half
-  duplex, swap RX/TX, pull-ups, no-DMA, and so on).
+  duplex, swap RX/TX, pull-ups, no-DMA, and so on), opened with the **Bitmask**
+  button on the row.
 
 .. note::
 
@@ -55,7 +56,7 @@ DisplayPort, SmartAudio), among ArduPilot's full set of serial protocols.
 
 .. note::
 
-   The tab shows per-port draft status (in sync / staged / invalid) but does
+   The tab highlights staged and invalid changes on each port row, but does
    **not** detect two ports configured for the same role — assign each device to
    exactly one UART yourself.
 
