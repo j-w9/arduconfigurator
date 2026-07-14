@@ -552,7 +552,9 @@ test.describe('browser configurator regression flows', () => {
     // copy flips to "Retry…".
     await page.getByRole('button', { name: 'Mark Failed' }).first().click()
     await expect(page.getByTestId('wizard-orientation-primary')).toContainText('Retry Orientation Check')
-    await expect(page.getByTestId('workspace-view-title')).toHaveText('Status & Info')
+    // The guided wizard is now its own tab, so the nav title reads "Guided
+    // Setup" while in it (the Status & Info dashboard is a separate tab).
+    await expect(page.getByTestId('workspace-view-title')).toHaveText('Guided Setup')
 
     await openView(page, 'ports')
     await expect(page.getByRole('heading', { name: 'Ports & Peripherals' })).toBeVisible()

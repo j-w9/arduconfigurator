@@ -13,6 +13,11 @@ export type GuidedActionId =
 export type LiveSignalId = 'rc-input' | 'battery-telemetry'
 export type AppViewId =
   | 'setup'
+  // Guided Setup is its own top-level tab (the step-by-step wizard), sitting
+  // just below Status & Info. The 'setup' tab keeps the health/status/info
+  // dashboard; the wizard renders here. Injected as a nav descriptor at render
+  // time (like 'calibration'), not sourced from the metadata catalogs.
+  | 'guided-setup'
   | 'ports'
   | 'vtx'
   | 'osd'

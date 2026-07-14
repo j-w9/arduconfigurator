@@ -326,14 +326,15 @@ test.describe('Parameters tab (expert-only)', () => {
 })
 
 test.describe('tab order', () => {
-  test('nav leads with Status & Info, then Calibration, Config, Ports', async ({ page }) => {
+  test('nav leads with Status & Info, then Guided Setup, Config, Calibration', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    // The first four nav buttons follow the requested order.
+    // The first four nav buttons follow the canonical order (Status & Info,
+    // then the Guided Setup wizard tab, then Config and Calibration).
     const navIds = await page.locator('[data-testid^="view-button-"]').evaluateAll((els) =>
       els.map((el) => (el.getAttribute('data-testid') || '').replace('view-button-', ''))
     )
-    expect(navIds.slice(0, 4)).toEqual(['setup', 'calibration', 'config', 'ports'])
+    expect(navIds.slice(0, 4)).toEqual(['setup', 'guided-setup', 'config', 'calibration'])
     // The Setup tab is now labelled "Status & Info".
     await expect(page.getByTestId('view-button-setup')).toContainText('Status & Info')
   })
@@ -2664,8 +2665,9 @@ test.describe('ArduPlane demo', () => {
 
     // MOCK==REAL: the demo Copter seeds AUTOTUNE_AGGR=0.075, so the first numeric
     // field shows the seeded live value (not an empty box). Editing it stages a
-    // draft through the shared setDraft -> scoped-apply machinery.
-    const aggr = configGroup.locator('input[type="number"]').first()
+    // draft through the shared setDraft -> scoped-apply machinery. Exclude the
+    // bitmask raw-value inputs (e.g. AUTOTUNE_AXES) which are also type=number.
+    const aggr = configGroup.locator('input[type="number"]:not([aria-label*="raw bitmask"])').first()
     await aggr.scrollIntoViewIfNeeded()
     await expect(aggr).not.toHaveValue('')
     await expect(aggr).toHaveValue(/^0?\.0?7/)

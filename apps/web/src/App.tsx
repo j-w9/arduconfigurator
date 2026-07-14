@@ -1482,7 +1482,7 @@ export function App() {
   }, [activeViewId])
 
   useEffect(() => {
-    if (activeViewId !== 'setup' || setupMode !== 'wizard' || !selectedSetupSectionId) {
+    if (activeViewId !== 'guided-setup' || setupMode !== 'wizard' || !selectedSetupSectionId) {
       previousGuidedSectionRef.current = undefined
       return
     }
@@ -1599,7 +1599,7 @@ export function App() {
       modeSwitchExercise.status === 'passed' ||
       rcMappingSession.status === 'ready'
     if (exercisePassed && !returnedFromExerciseRef.current && activeViewId === 'receiver') {
-      setActiveViewId('setup')
+      setActiveViewId('guided-setup')
       setSetupMode('wizard')
     }
     returnedFromExerciseRef.current = exercisePassed
@@ -2778,13 +2778,18 @@ export function App() {
       setSelectedSetupSectionId(recommendedSetupSection.id)
     }
     setPendingSetupWizardFocusId(focusTargetId)
-    setActiveViewId('setup')
+    // The wizard now lives on its own 'guided-setup' tab (not the 'setup'
+    // overview). setupMode stays the "flow active" flag so a detour into an
+    // exercise view (receiver/motors) can bounce back here.
+    setActiveViewId('guided-setup')
     setSetupMode('wizard')
   }
 
   function closeSetupWizard(): void {
     setPendingSetupWizardFocusId(undefined)
     setSetupMode('overview')
+    // "Back to Setup" returns to the Status & Info dashboard tab.
+    setActiveViewId('setup')
   }
 
   function focusOutputsTarget(targetElementId: string): void {
@@ -2800,7 +2805,7 @@ export function App() {
   }
 
   useEffect(() => {
-    if (activeViewId !== 'setup' || setupMode !== 'wizard' || !pendingSetupWizardFocusId) {
+    if (activeViewId !== 'guided-setup' || setupMode !== 'wizard' || !pendingSetupWizardFocusId) {
       return
     }
 
@@ -2830,7 +2835,7 @@ export function App() {
 
     guidedSetupShortcutAppliedRef.current = true
     setSelectedSetupSectionId(guidedSetupShortcutSectionId)
-    setActiveViewId('setup')
+    setActiveViewId('guided-setup')
     setSetupMode('wizard')
   }, [guidedSetupShortcutSectionId])
 
@@ -5694,6 +5699,20 @@ export function App() {
     }
   }, [guidedSetupTestingShortcutActive, recommendedSetupSection, selectedSetupSectionCandidate])
 
+  // Keep the "flow active" flag (setupMode) synced to the tab. The Guided Setup
+  // tab always shows the wizard, so mark the flow active when it's open — this
+  // matters when the operator reaches the tab via the nav (not openSetupWizard),
+  // so the exercise-return effect still bounces them back after an RC/motor
+  // exercise. The Status & Info tab is always the overview. setupMode is NOT
+  // reset while on a detour view (receiver/motors), so the flow survives it.
+  useEffect(() => {
+    if (activeViewId === 'guided-setup' && setupMode !== 'wizard') {
+      setSetupMode('wizard')
+    } else if (activeViewId === 'setup' && setupMode !== 'overview') {
+      setSetupMode('overview')
+    }
+  }, [activeViewId, setupMode])
+
   // Auto-return to guided setup wizard when an exercise completes while on another page
   const exerciseReturnRef = useRef<{
     rcRange: string
@@ -5727,7 +5746,7 @@ export function App() {
       motorVerification: motorVerification.status
     }
 
-    if (setupMode !== 'wizard' || activeViewId === 'setup') {
+    if (setupMode !== 'wizard' || activeViewId === 'guided-setup') {
       return
     }
 
@@ -6224,7 +6243,7 @@ export function App() {
     }
   ] as const
 
-  const showLanding = activeViewId === 'setup' && snapshot.connection.kind !== 'connected'
+  const showLanding = (activeViewId === 'setup' || activeViewId === 'guided-setup') && snapshot.connection.kind !== 'connected'
 
   return (
     <>
@@ -6377,11 +6396,16 @@ export function App() {
               onConnect={() => void handleConnect()}
               connectDisabled={busyAction !== undefined || snapshot.connection.kind === 'connected'}
             />
-          ) : activeViewId === 'setup' ? (
+          ) : activeViewId === 'setup' || activeViewId === 'guided-setup' ? (
             <SetupView
-              mode={setupMode}
+              // The tab decides the surface: Status & Info ('setup') shows the
+              // health/status dashboard (overviewSlot); Guided Setup shows the
+              // wizard (wizardSlot). setupMode remains the "flow active" flag for
+              // effects, but the rendered surface is tab-driven so they can't
+              // desync.
+              mode={activeViewId === 'guided-setup' ? 'wizard' : 'overview'}
               actionsSlot={
-                setupMode === 'wizard' ? (
+                activeViewId === 'guided-setup' ? (
                   <div className="button-row">
                     {selectedSetupSection ? (
                       <StatusBadge tone={toneForSetup(selectedSetupSection.status)}>
