@@ -1694,6 +1694,13 @@ textarea:focus {
   flex: 1;
 }
 
+/* Guided Setup's "beta" nav badge — sits at the right of the row (item-copy
+   takes the flex space), never shrinks so it stays legible. */
+.workspace-nav__badge {
+  flex-shrink: 0;
+  display: inline-flex;
+}
+
 .workspace-nav__item-text {
   display: flex;
   align-items: center;
