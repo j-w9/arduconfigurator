@@ -10,7 +10,7 @@
 
 import { useCallback, useState, type ReactElement } from 'react'
 
-import { analyzeLogBuffer, type LogTuningResult, type TuningRecommendation } from '@arduconfig/log-analysis'
+import { analyzeLogBuffer, type AxisSpectrum, type LogTuningResult, type TuningRecommendation } from '@arduconfig/log-analysis'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 export interface LogTuningViewProps {
@@ -107,6 +107,50 @@ export function LogTuningView({ onStageParam, stagedParams }: LogTuningViewProps
   )
 }
 
+function SpectrumChart({ axis }: { axis: AxisSpectrum }): ReactElement | null {
+  const chart = axis.chart
+  if (!chart) {
+    return null
+  }
+  const width = 280
+  const height = 40
+  const n = chart.level.length
+  // Filled area under the spectrum curve.
+  const points = chart.level
+    .map((level, i) => `${((i / Math.max(1, n - 1)) * width).toFixed(1)},${(height - level * (height - 3) - 1).toFixed(1)}`)
+    .join(' ')
+  const peakX = axis.dominant ? (axis.dominant.freqHz / chart.maxFreqHz) * width : undefined
+  const isLimitCycleAxis = axis.dominant && (axis.prominence ?? 0) >= 40 && axis.dominant.freqHz >= 8 && axis.dominant.freqHz < 40
+
+  return (
+    <div className="log-tuning__spectrum" data-testid={`log-tuning-spectrum-${axis.axis}`}>
+      <span className="log-tuning__axis">{axis.axis}</span>
+      <svg
+        className="log-tuning__spectrum-svg"
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`${axis.axis} gyro spectrum`}
+      >
+        <polyline className="log-tuning__spectrum-area" points={`0,${height} ${points} ${width},${height}`} />
+        {peakX !== undefined ? (
+          <line
+            className={`log-tuning__spectrum-peak${isLimitCycleAxis ? ' is-limit-cycle' : ''}`}
+            x1={peakX}
+            y1={0}
+            x2={peakX}
+            y2={height}
+          />
+        ) : null}
+      </svg>
+      <small>
+        {axis.dominant ? `${axis.dominant.freqHz.toFixed(0)} Hz` : '—'}
+        <span className="log-tuning__spectrum-scale"> · 0–{chart.maxFreqHz.toFixed(0)} Hz</span>
+      </small>
+    </div>
+  )
+}
+
 function LogTuningResults({
   result,
   onStageParam,
@@ -172,17 +216,12 @@ function LogTuningResults({
         ) : null}
       </div>
 
-      {result.axisSpectra.some((axis) => axis.dominant) ? (
-        <div className="log-tuning__peaks">
-          <strong>Dominant gyro frequencies</strong>
-          <ul>
-            {result.axisSpectra.map((axis) => (
-              <li key={axis.axis}>
-                <span className="log-tuning__axis">{axis.axis}</span>
-                {axis.dominant ? `${axis.dominant.freqHz.toFixed(0)} Hz` : '—'}
-              </li>
-            ))}
-          </ul>
+      {result.axisSpectra.some((axis) => axis.chart) ? (
+        <div className="log-tuning__spectra" data-testid="log-tuning-spectra">
+          <strong>Gyro spectrum</strong>
+          {result.axisSpectra.map((axis) => (
+            <SpectrumChart key={axis.axis} axis={axis} />
+          ))}
         </div>
       ) : null}
 
