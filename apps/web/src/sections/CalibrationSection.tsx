@@ -10,6 +10,7 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import { AccelerometerPoseGuide } from '../accelerometer-pose-guide'
 import { CalibrationLocationButton } from './CalibrationLocationCard'
+import { TcalCalibrationCard } from './TcalCalibrationCard'
 import {
   accelerometerPoseFromAction,
   guidedActionBlockingReason,
@@ -29,6 +30,8 @@ export interface CalibrationSectionProps {
   canApplyDraftParameters: boolean
   airframe: AirframeSummary
   isCopterVehicle: boolean
+  /** Expert product-mode — gates the advanced Thermal Calibration (TCAL) card. */
+  isExpertMode: boolean
   uiParameterWriteOptions: ParameterWriteOptions
   editedValues: Record<string, string>
   calibrationNotices: UseCalibrationNoticesResult
@@ -48,6 +51,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     canApplyDraftParameters,
     airframe,
     isCopterVehicle,
+    isExpertMode,
     uiParameterWriteOptions: UI_PARAMETER_WRITE_OPTIONS,
     editedValues,
     calibrationNotices,
@@ -682,6 +686,16 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   </>
                 )
               })()}
+
+              {/* Thermal calibration (TCAL) — Expert-only advanced surface. */}
+              {isExpertMode ? (
+                <TcalCalibrationCard
+                  snapshot={snapshot}
+                  canApplyDraftParameters={canApplyDraftParameters}
+                  busyAction={busyAction}
+                  setDraft={setDraft}
+                />
+              ) : null}
             </div>
           </Panel>
         </section>

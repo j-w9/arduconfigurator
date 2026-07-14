@@ -15313,3 +15313,15 @@ button.mavlink-inspector__sent-row {
 .log-tuning__recs-note {
   color: var(--text-dim);
 }
+
+/* TCAL card ordered-step guidance (Calibration tab). */
+.calibration-card__steps {
+  margin: 8px 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 0.88em;
+}
+.calibration-card__steps li {
+  line-height: 1.5;
+}

@@ -8292,6 +8292,7 @@ export function App() {
           canApplyDraftParameters={canApplyDraftParameters}
           airframe={airframe}
           isCopterVehicle={isCopterVehicle}
+          isExpertMode={isExpertMode}
           uiParameterWriteOptions={UI_PARAMETER_WRITE_OPTIONS}
           editedValues={editedValues}
           calibrationNotices={calibrationNotices}

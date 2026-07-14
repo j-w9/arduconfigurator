@@ -2704,6 +2704,22 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('log-tuning-unusable')).toBeVisible()
   })
 
+  test('Calibration: the Thermal Calibration (TCAL) card is Expert-gated', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    // Default (non-Expert): the TCAL card is hidden.
+    await openView(page, 'calibration')
+    await expect(page.getByTestId('calibration-card-tcal')).toHaveCount(0)
+
+    // Expert mode reveals it.
+    await page.getByTestId('product-mode-expert').check()
+    await expect(page.getByTestId('calibration-card-tcal')).toBeVisible()
+    await expect(page.getByTestId('calibration-card-tcal')).toContainText('Thermal calibration')
+  })
+
   test('Plane AutoTune surface renders fixed-wing + VTOL groups with seeded values and stages a draft', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
