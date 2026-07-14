@@ -352,6 +352,20 @@ export function ScopedBitmaskField(props: CommonScopedFieldProps) {
           )
         })}
       </div>
+      {/* Raw value entry: paste/type a bitmask number directly (e.g. copying a
+          value out of another param file). Shares the same edited value as the
+          checkboxes above, so they stay in sync automatically. */}
+      <label className="scoped-bitmask-raw">
+        <span>Value</span>
+        <input
+          type="number"
+          min={0}
+          step={1}
+          aria-label={`${parameter.id} raw bitmask value`}
+          value={edited ?? String(safeCurrent)}
+          onChange={(event) => onChange(parameter.id, event.target.value)}
+        />
+      </label>
       <StagedWasLine status={status} liveValue={liveValue} />
     </div>
   )
@@ -449,6 +463,19 @@ export function ScopedBitmaskPopover(props: CommonScopedFieldProps) {
             )
           })}
         </div>
+        {/* Raw value entry: paste/type a bitmask number directly (e.g. copying a
+            value out of another param file) — the checkboxes track it. */}
+        <label className="scoped-bitmask-raw">
+          <span>Value</span>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            aria-label={`${parameter.id} raw bitmask value`}
+            value={edited ?? String(safeCurrent)}
+            onChange={(event) => onChange(parameter.id, event.target.value)}
+          />
+        </label>
       </div>
       <StagedWasLine status={status} liveValue={liveValue} />
     </details>

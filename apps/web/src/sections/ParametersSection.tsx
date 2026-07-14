@@ -11,12 +11,10 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import {
   formatParameterDelta,
-  formatParameterRange,
-  formatParameterStep,
   formatParameterValue,
   formatParameterDraftValue
 } from '../parameter-format'
-import { ScopedBitmaskPopover, ScopedField } from '../views/ScopedField'
+import { ScopedBitmaskPopover } from '../views/ScopedField'
 import { parameterApplyBlockedReason } from '../apply-gate'
 import { applyDraftSelectionClick, pruneDraftSelection } from '../view-models/draft-selection'
 import { parameterSearchPredicate } from '../view-models/filtered-parameters'
@@ -256,22 +254,12 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     [parameterDraftById]
   )
 
-  // The parameter inspector auto-selects the first param (FRAME_CLASS), which on
-  // a phone renders a tall box wedged above the editable table. Start it
-  // collapsed on phones (the operator taps "Show details" or any row to expand);
-  // desktop is unaffected — it initialises expanded and the toggle is CSS-hidden.
-  const [parameterDetailsCollapsed, setParameterDetailsCollapsed] = useState(
-    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 600px)').matches
-  )
-
-  // Selected-parameter derived state — small enough to recompute here rather
-  // than thread through the props.
+  // Row selection is kept only to highlight the last-clicked row in the table;
+  // the standalone detail/inspector card was removed (it wasted vertical space
+  // and duplicated the inline per-row editor). Editing happens directly in the
+  // row now.
   const selectedParameter =
     displayedParameters.find((parameter) => parameter.id === selectedParameterId) ?? displayedParameters[0]
-  const selectedParameterDefinition = selectedParameter
-    ? metadataCatalog.parameters[selectedParameter.id] ?? selectedParameter.definition
-    : undefined
-  const selectedParameterDraft = selectedParameter ? parameterDraftById.get(selectedParameter.id) : undefined
 
   return (
 
@@ -766,75 +754,6 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             </small>
           ) : null}
         </div>
-
-        {selectedParameter ? (
-          <div className={`parameter-details${parameterDetailsCollapsed ? ' parameter-details--collapsed' : ''}`}>
-            <div className="parameter-details__header">
-              <div>
-                <h3>{selectedParameterDefinition?.label ?? selectedParameter.id}</h3>
-                <p>{selectedParameterDefinition?.description ?? 'Metadata coverage for this parameter is still limited.'}</p>
-              </div>
-              <StatusBadge tone={toneForParameterDraftStatus(selectedParameterDraft?.status ?? 'unchanged')}>
-                {selectedParameterDraft?.status ?? 'unchanged'}
-              </StatusBadge>
-              <button
-                type="button"
-                className="parameter-details__toggle"
-                data-testid="parameter-details-toggle"
-                onClick={() => setParameterDetailsCollapsed((collapsed) => !collapsed)}
-                aria-expanded={!parameterDetailsCollapsed}
-              >
-                {parameterDetailsCollapsed ? 'Show details' : 'Hide details'}
-              </button>
-            </div>
-
-            {parameterDetailsCollapsed ? null : (
-              <>
-            {/* Editable value: click to change here (stages a draft) instead of
-                scrolling to the row. Shows current + staged via the field. */}
-            <div className="parameter-details__value-editor" data-testid="parameter-details-editor">
-              <small>Value</small>
-              <ScopedField
-                parameter={{ ...selectedParameter, definition: selectedParameterDefinition ?? undefined }}
-                liveValue={selectedParameter.value}
-                editedValues={editedValues}
-                onChange={setDraft}
-                draftStatusById={draftStatusMap}
-                compact={false}
-              />
-            </div>
-            <div className="parameter-details__grid">
-              <div className="parameter-details__metric">
-                <small>Category</small>
-                <strong>{formatCategoryLabel(selectedParameterDefinition?.category)}</strong>
-              </div>
-              <div className="parameter-details__metric">
-                <small>Range / Step</small>
-                <strong>
-                  {formatParameterRange(selectedParameterDefinition)}
-                  {selectedParameterDefinition?.step !== undefined ? ` · ${formatParameterStep(selectedParameterDefinition)}` : ''}
-                </strong>
-              </div>
-              <div className="parameter-details__metric">
-                <small>Reboot</small>
-                <strong>{selectedParameterDefinition?.rebootRequired ? 'Required' : 'Not required'}</strong>
-              </div>
-            </div>
-
-            {/* Active enum label + the enum option-list boxes are gone — the
-                inline editor above (select / bitmask chips) already surfaces the
-                value and the available options. */}
-            {selectedParameterDefinition?.notes && selectedParameterDefinition.notes.length > 0 ? (
-              <ul className="notes">
-                {selectedParameterDefinition.notes.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            ) : null}
-              </>
-            )}
-          </div>
-        ) : null}
 
         <div className="parameter-table">
           <div className="parameter-row parameter-row--header">

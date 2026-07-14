@@ -7588,6 +7588,25 @@ textarea:focus {
   flex-wrap: nowrap;
 }
 
+/* Raw numeric entry beneath the per-bit boxes: type/paste a bitmask value
+   directly (the checkboxes track it). */
+.scoped-bitmask-raw {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.scoped-bitmask-raw span {
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+
+.scoped-bitmask-raw input {
+  width: 8rem;
+  max-width: 100%;
+}
+
 .scoped-bitmask-bit,
 .scoped-option-chip {
   padding: 3px 8px;
@@ -10627,7 +10646,16 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .parameter-toolbar {
-  margin-bottom: 20px;
+  /* Freeze the search + filters at the top of the Parameter Editor so they stay
+     reachable while the (long) parameter table scrolls underneath, instead of
+     scrolling away. Solid panel background + z-index so rows pass cleanly under. */
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg-panel);
+  padding-top: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .parameter-review {
