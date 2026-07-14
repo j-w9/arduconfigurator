@@ -10647,11 +10647,14 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .parameter-toolbar {
   /* Freeze the search + filters at the top of the Parameter Editor so they stay
-     reachable while the (long) parameter table scrolls underneath, instead of
-     scrolling away. Solid panel background + z-index so rows pass cleanly under. */
+     reachable while the (long) parameter table scrolls underneath. The page
+     scrolls in the viewport and the app header is itself sticky (top:0,
+     z-index:100), so stick BELOW it at --header-height (same offset the side nav
+     uses) or the toolbar parks behind the header and looks like it scrolled away.
+     Solid panel background so rows pass cleanly under it. */
   position: sticky;
-  top: 0;
-  z-index: 5;
+  top: var(--header-height);
+  z-index: 20;
   background: var(--bg-panel);
   padding-top: 12px;
   padding-bottom: 12px;
@@ -10980,7 +10983,8 @@ details.metadata-settings-section:not([open]) > summary::after {
   border: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 1));
   color: var(--text);
-  padding: 4px 10px;
+  padding: 5px 10px;
+  font-size: 14px;
 }
 
 /* Matches the 28px control scale so selects sitting inline with
@@ -11149,16 +11153,17 @@ details.metadata-settings-section:not([open]) > summary::after {
   grid-template-columns: minmax(150px, 1fr) minmax(240px, 1.9fr) minmax(120px, 0.8fr) minmax(160px, 1fr) minmax(160px, 1fr);
   gap: 10px;
   align-items: center;
-  padding: 4px 12px;
+  padding: 5px 12px;
   background: var(--bg-panel-muted);
   cursor: pointer;
-  font-size: 12px;
+  /* Bumped 12 -> 14px for readability (Parameters is text-dense). */
+  font-size: 14px;
 }
 
 .parameter-row--header {
   background: var(--bg-panel);
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
