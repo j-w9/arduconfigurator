@@ -127,8 +127,10 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     id: 'guided-setup',
     label: 'Guided Setup',
     description: 'Step-by-step ArduPilot setup — walk the checklist one stage at a time, with verification at each step.',
-    badge: connectionKind === 'connected' ? 'ready' : 'idle',
-    tone: 'neutral'
+    // 'beta' flags the tab as still under active development (not a
+    // setup-progress indicator) — the guided flow is being built out.
+    badge: 'beta',
+    tone: 'warning'
   }
   // Dedicated Calibration surface — the accelerometer / level / compass
   // guided-action flow gathered into one tab (same actions as Setup).
