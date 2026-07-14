@@ -134,6 +134,15 @@ export function WorkspaceSidebar({
               <span className="workspace-nav__item-copy">
                 <strong>{view.label}</strong>
               </span>
+              {/* Only the Guided Setup tab surfaces a nav badge (its "beta"
+                  under-development flag). Other tabs carry badges too, but we
+                  intentionally show them only in the active-view header, not the
+                  sidebar, to keep the rail clean. */}
+              {view.id === 'guided-setup' && view.badge ? (
+                <span className="workspace-nav__badge">
+                  <StatusBadge tone={view.tone}>{view.badge}</StatusBadge>
+                </span>
+              ) : null}
             </button>
           ))}
         </nav>
