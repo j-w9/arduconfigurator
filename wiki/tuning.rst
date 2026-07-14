@@ -8,9 +8,9 @@ tune can be roughed in without diving into the raw parameter tree. Every change
 is staged as a local draft and reviewed before it is written to the controller,
 and known-good tunes can be saved as reusable profiles.
 
-The tab is split into six tasks: **Pilot**, **PID Gains**, **Filters**,
-**Autotune**, **Profiles**, and **Review**. The workspace is full-width — each
-task fills it — and every control carries an **"i" info bubble** with the
+The tab is split into seven tasks: **Pilot**, **PID Gains**, **Filters**,
+**Autotune**, **Profiles**, **Review**, and **Log Tuning**. The workspace is
+full-width — each task fills it — and every control carries an **"i" info bubble** with the
 parameter's plain-text description, its label, and its unit, so guidance is one
 hover away rather than a wall of text on the page.
 
@@ -157,6 +157,54 @@ in the app — each value is sent and confirmed against the controller's read-ba
    responsiveness higher, and validate every change with a short hover or
    line-of-sight test before stacking more. Treat a connected aircraft as a real
    aircraft.
+
+Log Tuning
+----------
+
+**Log Tuning** (beta) works backwards from a flight: upload a dataflash log and
+the in-browser analyzer looks for what needs fixing, then stages the parameter
+changes for you to review. It runs entirely in the browser — the log never
+leaves your machine — and it works on **compass-less** setups (no magnetometer
+needed).
+
+What it does:
+
+- **Vibration & oscillation** — FFTs the gyro (the high-rate IMU batch sampler
+  when present, otherwise the IMU log) to find the dominant frequencies, and
+  flags a sharp single-axis low-frequency peak as a **rate-loop limit cycle**
+  (the classic "it buzzes in the hover on one axis" problem).
+- **Motor noise / harmonic notch** — reads ESC RPM telemetry to find the motor
+  fundamental and recommends enabling / placing the harmonic notch
+  (``INS_HNTCH_*``).
+- **Rate gains** — when a limit cycle is found on an axis it recommends lowering
+  that axis's rate ``D``.
+
+**You need a good log.** The tool warns about this up front, and gates a bench
+session (no real flight data) as unusable. For the best results:
+
+#. Fly (or hover) for a real **30–60 s**, not a bench spin-up.
+#. Enable the IMU batch sampler for a proper high-frequency spectrum
+   (``INS_LOG_BAT_MASK``), and have ESC RPM telemetry for the notch.
+#. A poor log gives poor advice — treat the recommendations as a starting point,
+   apply one change, and re-fly.
+
+How to use it:
+
+#. **Tuning → Log Tuning**, then **Choose flight log (.bin)** and pick a log off
+   the SD card (or one you've already downloaded via the Files tab).
+#. Read the summary, the per-axis dominant frequencies, the vibration verdict,
+   and any detected limit cycle.
+#. For each recommendation, click **Stage** (or **Stage all**). Each confidence
+   is tagged (high / medium / low).
+#. The staged changes appear in the Tuning **Review** tab and the global draft
+   bar — **nothing is written to the aircraft** until you review and apply them
+   there through the normal verified-write path. Then re-fly and repeat.
+
+.. note::
+
+   Log Tuning is advisory: it reproduces the manual "read the log, place the
+   notch, break the limit cycle" analysis, but you stay in the loop. Apply one
+   change at a time so the next log cleanly shows its effect.
 
 For the underlying control theory and a recommended tuning order, see the
 ArduPilot `tuning guide <https://ardupilot.org/copter/docs/tuning.html>`__ and

@@ -93,7 +93,45 @@ can skip this and calibrate directly.
    (GPS-heading) magnetometer calibration — use the rotate-through-all-axes
    procedure above.
 
+Thermal calibration (TCAL)
+--------------------------
+
+**Thermal calibration** learns per-IMU gyro and accelerometer offsets *across
+temperature* so the estimator stays stable from a cold boot to warm — it removes
+the drift you'd otherwise see as the board heats up after power-on. It is an
+**Expert-only** card at the bottom of the Calibration tab (enable Expert product
+mode to see it), and it appears only on firmware that exposes the
+``INS_TCALn_*`` parameters.
+
+ArduPilot learns the fit **online**: you enable "learn", boot the board cold, and
+let it warm through its temperature range — the firmware computes and saves the
+coefficients at the top temperature on its own.
+
+.. warning::
+
+   Do this on the bench with **props removed**. The board must sit still and
+   simply warm up; you are not flying during the learn.
+
+Steps:
+
+#. **Start cold.** Power the board off and let it cool to ambient. A genuinely
+   cold board matters — the wider the temperature swing between cold boot and
+   warm, the better the fit.
+#. In **Calibration → Thermal calibration (TCAL)**, click **Prepare thermal
+   calibration**. This stages ``INS_TCALn_ENABLE = 2`` (learn) for each IMU;
+   **Apply** it in the draft bar.
+#. **Reboot the board cold**, props off, and leave it powered and still. It
+   self-heats through the range.
+#. At the top temperature the fit is computed and saved automatically, and each
+   IMU's enable flips back to ``1`` (enabled). **Reboot once more** to use it.
+
+The card shows each IMU's current state (disabled / enabled / learning) and its
+``TMIN → TMAX`` range. Live IMU-temperature progress isn't shown in the app yet —
+the firmware completes the fit on its own; you don't need to watch it.
+
 See also the ArduPilot wiki: `Accelerometer Calibration
-<https://ardupilot.org/copter/docs/common-accelerometer-calibration.html>`_ and
+<https://ardupilot.org/copter/docs/common-accelerometer-calibration.html>`_,
 `Compass Calibration
-<https://ardupilot.org/copter/docs/common-compass-calibration-in-mission-planner.html>`_.
+<https://ardupilot.org/copter/docs/common-compass-calibration-in-mission-planner.html>`_,
+and `IMU Temperature Calibration
+<https://ardupilot.org/copter/docs/common-imu-temperature-calibration.html>`_.
