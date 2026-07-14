@@ -33,6 +33,20 @@ import { getDesktopBridge } from './desktop-bridge'
 import { DesktopSocketTransport } from './desktop-socket-transport'
 import type { TransportMode } from './hooks/use-transport-selection'
 
+// Web Serial's SerialOptions.bufferSize defaults to a tiny 255 bytes, which
+// throttles every fast inbound burst ArduPilot sends:
+//  - PARAM_REQUEST_LIST dumps ~1300 PARAM_VALUE frames (~35 bytes) back-to-back;
+//  - a MAVFTP burst log download streams ~239-byte packets thousands deep;
+// A 255-byte OS read buffer holds only a handful of either, so the instant the
+// JS read loop can't drain fast enough the browser silently drops the overflow.
+// That surfaces as a stalled param stream (trickling in via by-index gap-fill)
+// and as a log download that crawls — every dropped packet forces a re-stream
+// from the gap (and can cost a burst-inactivity timeout). Give the read buffer
+// enough headroom to hold the whole burst while JS drains it. 256 KiB
+// comfortably covers a full 1300-param table (~45 KB) and a MAVFTP burst
+// segment (~478 KB is chunked across requests) with slack.
+const WEB_SERIAL_READ_BUFFER_BYTES = 256 * 1024
+
 // Parses the "UDP (direct)" target field into a neutral shape. "host:port"
 // connects to a fixed remote; ":port" or a bare "port" binds locally and learns
 // the peer from the first datagram (the ELRS / Mission-Planner-UDP-listen case).
@@ -79,6 +93,7 @@ export function createRuntime(
     if (mode === 'web-serial') {
       return new WebSerialTransport('browser-serial', {
         baudRate: 115200,
+        bufferSize: WEB_SERIAL_READ_BUFFER_BYTES,
         port: serialPort,
         onPortSelected: onSerialPortSelected
       })
