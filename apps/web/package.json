@@ -16,6 +16,7 @@
     "@arduconfig/ai-assistant": "1.1.1",
     "@arduconfig/ardupilot-core": "1.1.1",
     "@arduconfig/firmware-flash": "1.1.1",
+    "@arduconfig/log-analysis": "0.1.0",
     "@arduconfig/param-metadata": "1.1.1",
     "@arduconfig/protocol-mavlink": "1.1.1",
     "@arduconfig/transport": "1.1.1",

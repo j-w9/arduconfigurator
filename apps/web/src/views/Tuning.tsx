@@ -3,7 +3,7 @@ import { Panel, StatusBadge } from '@arduconfig/ui-kit'
 
 export type TuningStatusTone = 'neutral' | 'success' | 'warning' | 'danger'
 
-export type TuningTaskId = 'rates' | 'pid-gains' | 'filters' | 'autotune' | 'profiles' | 'review'
+export type TuningTaskId = 'rates' | 'pid-gains' | 'filters' | 'autotune' | 'profiles' | 'review' | 'log-tuning'
 
 export interface TuningTaskCard {
   id: TuningTaskId
