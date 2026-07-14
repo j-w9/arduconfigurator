@@ -346,20 +346,17 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                             {port.protocolValue ?? '—'}
                                           </small>
                                         </div>
-                                        <StatusBadge tone={rowHasInvalid ? 'danger' : rowHasStaged ? 'warning' : port.editable ? 'neutral' : 'warning'}>
-                                          {rowHasInvalid ? 'invalid' : rowHasStaged ? 'staged' : port.editable ? 'ready' : 'read only'}
-                                        </StatusBadge>
                                       </div>
-                                      <div className="config-pills">
-                                        {/* Physical UART/USART now leads (heading); show the SERIAL number
-                                            as a secondary pill (the id the params use) plus the descriptive
-                                            connector/role. Dedupe so a connector label that just repeats the
-                                            heading isn't shown twice. */}
-                                        {port.portNumber !== 0 ? <span>{`SERIAL ${port.portNumber}`}</span> : null}
-                                        <span>{port.usageSummary}</span>
-                                        {port.label && port.label !== portHeading ? <span>{port.label}</span> : null}
-                                        {port.boardTrafficSummary ? <span>{port.boardTrafficSummary}</span> : null}
-                                      </div>
+                                      {/* Physical UART/USART leads (heading), with the SERIALn_PROTOCOL id in
+                                          the sub-line above. Only the board connector label remains as a pill
+                                          (and only when it doesn't just repeat the heading). The SERIAL-number
+                                          pill was dropped as redundant with the SERIALn_PROTOCOL sub-line, and
+                                          the role/usage, live-traffic, and status pills as redundant chrome. */}
+                                      {port.label && port.label !== portHeading ? (
+                                        <div className="config-pills">
+                                          <span>{port.label}</span>
+                                        </div>
+                                      ) : null}
                                     </div>
 
                                     <div className="ports-matrix-row__cell">
@@ -490,7 +487,7 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                               }
                                               disabled={!port.editable}
                                             >
-                                              {expandedSerialOptionsPortNumber === port.portNumber ? 'Hide' : 'Edit'}
+                                              {expandedSerialOptionsPortNumber === port.portNumber ? 'Hide' : 'Bitmask'}
                                             </button>
                                           ) : null}
                                         </div>
