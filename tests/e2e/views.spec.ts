@@ -80,11 +80,9 @@ test.describe('Phone layout', () => {
     // Import (cross-vehicle migration) stays available on phone.
     await expect(page.getByTestId('import-parameter-backup')).toBeVisible()
 
-    // The inspector auto-defaults to the first param (FRAME_CLASS); on phone its
-    // tall body is collapsed by default and reachable via the toggle.
-    await expect(page.locator('.parameter-details__grid')).toBeHidden()
-    await page.getByTestId('parameter-details-toggle').click()
-    await expect(page.locator('.parameter-details__grid')).toBeVisible()
+    // The search/filter toolbar is frozen at the top of the editor so it stays
+    // reachable while the long parameter table scrolls under it.
+    await expect(page.getByTestId('parameter-search-input')).toBeVisible()
   })
 
   test('keeps the baseline panel on desktop width', async ({ page }) => {
