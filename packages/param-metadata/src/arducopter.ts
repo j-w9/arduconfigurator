@@ -2819,7 +2819,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Roll-axis rate P gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 1.5,
+      maximum: 0.5,
       step: 0.001,
       notes: pidTuningNotes
     },
@@ -2829,7 +2829,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Roll-axis rate I gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 1.5,
+      maximum: 2.0,
       step: 0.001,
       notes: pidTuningNotes
     },
@@ -2839,7 +2839,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Roll-axis rate D gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 0.1,
+      maximum: 0.05,
       step: 0.0001,
       notes: pidTuningNotes
     },
@@ -2849,7 +2849,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Roll-axis rate feedforward gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 1,
+      maximum: 0.5,
       step: 0.001,
       notes: pidTuningNotes
     },
@@ -2859,7 +2859,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Roll-axis derivative feedforward term.',
       category: 'pid',
       minimum: 0,
-      maximum: 0.1,
+      maximum: 0.02,
       step: 0.0001,
       notes: pidTuningNotes
     },
@@ -2899,7 +2899,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Pitch-axis rate P gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 1.5,
+      maximum: 0.5,
       step: 0.001,
       notes: pidTuningNotes
     },
@@ -2909,7 +2909,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Pitch-axis rate I gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 1.5,
+      maximum: 2.0,
       step: 0.001,
       notes: pidTuningNotes
     },
@@ -2919,7 +2919,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Pitch-axis rate D gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 0.1,
+      maximum: 0.05,
       step: 0.0001,
       notes: pidTuningNotes
     },
@@ -2929,7 +2929,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Pitch-axis rate feedforward gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 1,
+      maximum: 0.5,
       step: 0.001,
       notes: pidTuningNotes
     },
@@ -2939,7 +2939,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Pitch-axis derivative feedforward term.',
       category: 'pid',
       minimum: 0,
-      maximum: 0.1,
+      maximum: 0.02,
       step: 0.0001,
       notes: pidTuningNotes
     },
@@ -2979,7 +2979,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Yaw-axis rate P gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 1.5,
+      maximum: 2.5,
       step: 0.001,
       notes: pidTuningNotes
     },
@@ -2989,7 +2989,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Yaw-axis rate I gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 1.5,
+      maximum: 1.0,
       step: 0.001,
       notes: pidTuningNotes
     },
@@ -2999,7 +2999,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Yaw-axis rate D gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 0.1,
+      maximum: 0.02,
       step: 0.0001,
       notes: pidTuningNotes
     },
@@ -3009,7 +3009,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Yaw-axis rate feedforward gain.',
       category: 'pid',
       minimum: 0,
-      maximum: 1,
+      maximum: 0.5,
       step: 0.001,
       notes: pidTuningNotes
     },
@@ -3019,7 +3019,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Yaw-axis derivative feedforward term.',
       category: 'pid',
       minimum: 0,
-      maximum: 0.1,
+      maximum: 0.02,
       step: 0.0001,
       notes: pidTuningNotes
     },
