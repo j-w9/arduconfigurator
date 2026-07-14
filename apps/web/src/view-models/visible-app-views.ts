@@ -119,6 +119,17 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     badge: connectionKind === 'connected' ? 'live' : 'idle',
     tone: 'neutral'
   }
+  // Guided Setup — the step-by-step wizard, promoted out of the Status & Info
+  // tab into its own nav tab (just below Status & Info). Status & Info keeps the
+  // health/status/info dashboard; this tab hosts the wizard. Always visible so
+  // the guided flow is a first-class entry point, not a button buried in a card.
+  const guidedSetupDescriptor: AppViewDescriptor = {
+    id: 'guided-setup',
+    label: 'Guided Setup',
+    description: 'Step-by-step ArduPilot setup — walk the checklist one stage at a time, with verification at each step.',
+    badge: connectionKind === 'connected' ? 'ready' : 'idle',
+    tone: 'neutral'
+  }
   // Dedicated Calibration surface — the accelerometer / level / compass
   // guided-action flow gathered into one tab (same actions as Setup).
   const calibrationDescriptor: AppViewDescriptor = {
@@ -182,7 +193,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   // follow a setup -> tuning -> tools flow. Views not listed fall to the
   // end in their original order.
   const CANONICAL_VIEW_ORDER = [
-    'setup', 'config', 'calibration', 'ports', 'receiver', 'modes', 'motors',
+    'setup', 'guided-setup', 'config', 'calibration', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'power', 'failsafe', 'vtx', 'osd', 'tuning', 'presets',
     'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'elrs-flash', 'rc-mixer',
     'mavlink-inspector', 'dronecan-inspector', 'ai-assistant'
@@ -201,6 +212,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const ELRS_FLASH_ENABLED = false
   const combined = [
     ...relabelled,
+    guidedSetupDescriptor,
     calibrationDescriptor,
     canBusDescriptor,
     flashDescriptor,

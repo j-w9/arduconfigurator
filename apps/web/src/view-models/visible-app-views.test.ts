@@ -39,11 +39,17 @@ const byId = (views: AppViewDescriptor[], id: string): AppViewDescriptor => {
 }
 
 describe('buildVisibleAppViews', () => {
-  it('appends the non-metadata descriptors (calibration, can, flash, files)', () => {
+  it('appends the non-metadata descriptors (guided-setup, calibration, can, flash, files)', () => {
     const result = ids(buildVisibleAppViews(baseInputs()))
-    for (const extra of ['calibration', 'can', 'flash', 'files']) {
+    for (const extra of ['guided-setup', 'calibration', 'can', 'flash', 'files']) {
       expect(result).toContain(extra)
     }
+  })
+
+  it('places the Guided Setup tab immediately after Status & Info', () => {
+    const result = ids(buildVisibleAppViews(baseInputs({ appViews: [view('setup')] })))
+    expect(result[0]).toBe('setup')
+    expect(result[1]).toBe('guided-setup')
   })
 
   it('gates the RC Mixer view behind Expert mode', () => {
@@ -95,9 +101,11 @@ describe('buildVisibleAppViews', () => {
     const result = ids(
       buildVisibleAppViews(baseInputs({ appViews: [view('modes'), view('setup'), view('mystery-view')] }))
     )
-    // setup leads, calibration second, modes before the tools cluster, unknown id last.
+    // setup leads, guided-setup second, calibration third, modes before the
+    // tools cluster, unknown id last.
     expect(result[0]).toBe('setup')
-    expect(result[1]).toBe('calibration')
+    expect(result[1]).toBe('guided-setup')
+    expect(result[2]).toBe('calibration')
     expect(result.indexOf('modes')).toBeLessThan(result.indexOf('can'))
     expect(result[result.length - 1]).toBe('mystery-view')
   })

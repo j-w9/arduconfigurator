@@ -112,8 +112,11 @@ export function setupPanelActionForSection(
 export function appViewForPanel(panelId: string): AppViewId {
   switch (panelId) {
     case 'setup-panel-link':
-    case 'setup-panel-guided':
       return 'setup'
+    // The guided wizard lives on its own 'guided-setup' tab now, so a jump to
+    // the guided panel routes there (the 'setup' tab is the status dashboard).
+    case 'setup-panel-guided':
+      return 'guided-setup'
     case 'setup-panel-ports':
       return 'ports'
     case 'setup-panel-rc':
