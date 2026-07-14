@@ -27,6 +27,8 @@ export interface AxisSpectrum {
   peaks: SpectralPeak[]
   /** Dominant peak (strongest), if any. */
   dominant?: SpectralPeak
+  /** Dominant peak power / median band power — how sharply it stands out. */
+  prominence?: number
 }
 
 export interface LogTuningResult {
@@ -52,6 +54,21 @@ const GYRO_AXES: { axis: Axis; batchType: number; imuField: string }[] = [
   { axis: 'pitch', batchType: 1, imuField: 'GyrY' },
   { axis: 'yaw', batchType: 1, imuField: 'GyrZ' }
 ]
+
+// Limit-cycle detection: a sharp peak below this frequency, standing at least
+// this many times above the median spectral power, reads as a rate-loop
+// oscillation. Calibrated against real logs — a genuine ~12 Hz limit cycle
+// measured prominence in the thousands (5,000–90,000), while the threshold stays
+// well above ordinary flight motion, so it's caught without false positives.
+const LIMIT_CYCLE_MAX_HZ = 40
+const LIMIT_CYCLE_MIN_PROMINENCE = 40
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0
+  const sorted = values.slice().sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
 
 function num(msg: DataflashMessage, field: string): number | undefined {
   const v = msg[field]
@@ -255,20 +272,31 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
       const signal = gyro[axis]
       const spec = averagedSpectrum(signal, gyro.sampleRateHz)
       const peaks = findSpectralPeaks(spec, { minFreqHz: 5, maxFreqHz: nyquist, minRelative: 0.05 })
-      axisSpectra.push({ axis, peaks, dominant: peaks[0] })
-    }
-    // Limit-cycle heuristic: a sharp peak below ~40 Hz that dominates ONE axis
-    // far more than the others reads as a rate-loop oscillation.
-    const dominants = axisSpectra.filter((a) => a.dominant && a.dominant.freqHz < 40)
-    if (dominants.length > 0) {
-      const strongest = dominants.reduce((best, a) =>
-        (a.dominant?.power ?? 0) > (best.dominant?.power ?? 0) ? a : best
-      )
-      const others = axisSpectra.filter((a) => a.axis !== strongest.axis)
-      const otherMax = Math.max(0, ...others.map((a) => a.dominant?.power ?? 0))
-      if (strongest.dominant && strongest.dominant.power > otherMax * 4) {
-        limitCycle = { axis: strongest.axis, freqHz: strongest.dominant.freqHz }
+      const dominant = peaks[0]
+      // Prominence = dominant-peak power vs the median spectral power in the
+      // analysis band. A sharp resonance/limit cycle spikes far above the
+      // broadband floor (high prominence); ordinary flight motion does not.
+      const bandPower: number[] = []
+      for (let i = 0; i < spec.freqHz.length; i += 1) {
+        if (spec.freqHz[i] >= 5 && spec.freqHz[i] <= nyquist) {
+          bandPower.push(spec.power[i])
+        }
       }
+      const med = median(bandPower)
+      const prominence = dominant && med > 0 ? dominant.power / med : undefined
+      axisSpectra.push({ axis, peaks, dominant, prominence })
+    }
+    // Limit-cycle heuristic: a sharp LOW-frequency peak (below ~40 Hz) that
+    // stands far above the broadband floor (high prominence) on any axis — the
+    // rate-loop oscillation signature. Cross-axis dominance is NOT required: a
+    // real limit cycle can appear on roll and pitch together. Report the axis
+    // where it's sharpest.
+    const candidates = axisSpectra.filter(
+      (a) => a.dominant && a.dominant.freqHz < LIMIT_CYCLE_MAX_HZ && (a.prominence ?? 0) >= LIMIT_CYCLE_MIN_PROMINENCE
+    )
+    if (candidates.length > 0) {
+      const sharpest = candidates.reduce((best, a) => ((a.prominence ?? 0) > (best.prominence ?? 0) ? a : best))
+      limitCycle = { axis: sharpest.axis, freqHz: sharpest.dominant!.freqHz }
     }
   } else {
     gateWarnings.push('No usable gyro data (neither ISBD batch nor IMU) — cannot analyse vibration or oscillation.')
@@ -309,17 +337,9 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
         confidence: 'high'
       })
     }
-    const minFreqFloor = Math.max(20, Math.round(esc.minHz * 0.7))
-    const currentFreq = params.get('INS_HNTCH_FREQ')
-    if (currentFreq === undefined || Math.abs(currentFreq - minFreqFloor) > 15) {
-      recommendations.push({
-        param: 'INS_HNTCH_FREQ',
-        currentValue: currentFreq,
-        suggestedValue: minFreqFloor,
-        reason: `Set the notch minimum tracking frequency near the lowest motor fundamental seen (~${esc.minHz.toFixed(0)} Hz).`,
-        confidence: 'medium'
-      })
-    }
+    // NB: we intentionally do NOT recommend an INS_HNTCH_FREQ from the log's min
+    // RPM — the minimum includes idle / spin-up, which produces a nonsensically
+    // low floor. The default floor works with ESC-telemetry tracking; leave it.
   }
 
   // Rate-loop limit cycle → lower that axis's rate D.
