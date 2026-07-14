@@ -15325,3 +15325,48 @@ button.mavlink-inspector__sent-row {
 .calibration-card__steps li {
   line-height: 1.5;
 }
+
+/* Log Tuning per-axis gyro spectrum charts. */
+.log-tuning__spectra {
+  display: grid;
+  gap: 8px;
+}
+.log-tuning__spectrum {
+  display: grid;
+  grid-template-columns: 48px 1fr 88px;
+  align-items: center;
+  gap: 10px;
+}
+.log-tuning__spectrum-svg {
+  width: 100%;
+  height: 40px;
+  display: block;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-panel-muted);
+  border: 1px solid rgba(var(--edge-rgb), 0.05);
+}
+.log-tuning__spectrum-area {
+  fill: rgba(var(--accent-rgb, 90, 160, 255), 0.28);
+  stroke: var(--accent, #5aa0ff);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.log-tuning__spectrum-peak {
+  stroke: var(--text-dim);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+}
+.log-tuning__spectrum-peak.is-limit-cycle {
+  stroke: var(--warning, #ff6600);
+  stroke-width: 1.5;
+  stroke-dasharray: none;
+}
+.log-tuning__spectrum small {
+  font-family: var(--font-data);
+  font-size: 0.78em;
+  color: var(--text-dim);
+}
+.log-tuning__spectrum-scale {
+  opacity: 0.6;
+}

@@ -29,6 +29,32 @@ export interface AxisSpectrum {
   dominant?: SpectralPeak
   /** Dominant peak power / median band power — how sharply it stands out. */
   prominence?: number
+  /** Compact spectrum for display: per-bin frequency (Hz) + power normalised to
+   *  this axis's max (0..1), downsampled to a fixed bin count over the plot band. */
+  chart?: { freqHz: number[]; level: number[]; maxFreqHz: number }
+}
+
+/** Downsample a spectrum to `bins` display bins over [0, maxFreqHz], taking the
+ *  peak power in each bin (preserves spikes) and normalising to the max. */
+function downsampleSpectrum(
+  spectrum: PowerSpectrum,
+  maxFreqHz: number,
+  bins = 120
+): { freqHz: number[]; level: number[]; maxFreqHz: number } {
+  const freqHz: number[] = new Array(bins)
+  const power: number[] = new Array(bins).fill(0)
+  const step = maxFreqHz / bins
+  for (let b = 0; b < bins; b += 1) {
+    freqHz[b] = b * step + step / 2
+  }
+  for (let i = 0; i < spectrum.freqHz.length; i += 1) {
+    const f = spectrum.freqHz[i]
+    if (f > maxFreqHz) break
+    const b = Math.min(bins - 1, Math.floor(f / step))
+    if (spectrum.power[i] > power[b]) power[b] = spectrum.power[i]
+  }
+  const max = Math.max(...power, 1e-12)
+  return { freqHz, level: power.map((p) => p / max), maxFreqHz }
 }
 
 export interface LogTuningResult {
@@ -60,6 +86,11 @@ const GYRO_AXES: { axis: Axis; batchType: number; imuField: string }[] = [
 // oscillation. Calibrated against real logs — a genuine ~12 Hz limit cycle
 // measured prominence in the thousands (5,000–90,000), while the threshold stays
 // well above ordinary flight motion, so it's caught without false positives.
+// Band for a rate-loop (D-term) limit cycle. The lower bound excludes very-low
+// frequency sharp peaks (5–7 Hz), which are more likely a slow P/attitude
+// oscillation or maneuvering than the classic rate-D buzz — mis-attributing
+// those to rate D would give bad advice.
+const LIMIT_CYCLE_MIN_HZ = 8
 const LIMIT_CYCLE_MAX_HZ = 40
 const LIMIT_CYCLE_MIN_PROMINENCE = 40
 
@@ -284,7 +315,8 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
       }
       const med = median(bandPower)
       const prominence = dominant && med > 0 ? dominant.power / med : undefined
-      axisSpectra.push({ axis, peaks, dominant, prominence })
+      const chart = downsampleSpectrum(spec, Math.min(nyquist, 250))
+      axisSpectra.push({ axis, peaks, dominant, prominence, chart })
     }
     // Limit-cycle heuristic: a sharp LOW-frequency peak (below ~40 Hz) that
     // stands far above the broadband floor (high prominence) on any axis — the
@@ -292,7 +324,11 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
     // real limit cycle can appear on roll and pitch together. Report the axis
     // where it's sharpest.
     const candidates = axisSpectra.filter(
-      (a) => a.dominant && a.dominant.freqHz < LIMIT_CYCLE_MAX_HZ && (a.prominence ?? 0) >= LIMIT_CYCLE_MIN_PROMINENCE
+      (a) =>
+        a.dominant &&
+        a.dominant.freqHz >= LIMIT_CYCLE_MIN_HZ &&
+        a.dominant.freqHz < LIMIT_CYCLE_MAX_HZ &&
+        (a.prominence ?? 0) >= LIMIT_CYCLE_MIN_PROMINENCE
     )
     if (candidates.length > 0) {
       const sharpest = candidates.reduce((best, a) => ((a.prominence ?? 0) > (best.prominence ?? 0) ? a : best))
