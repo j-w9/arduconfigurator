@@ -7,6 +7,10 @@ step against the **live vehicle** rather than just telling you what to do. Steps
 unlock in sequence: you can't sign off a later step until the ones it depends on
 are satisfied.
 
+Open it from the **Guided Setup** tab in the left navigation (just below
+**Status & Info**). The Status & Info tab is the health and live-status
+dashboard; the step-by-step wizard runs on its own Guided Setup tab.
+
 How it works
 ------------
 

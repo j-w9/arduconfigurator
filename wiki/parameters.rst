@@ -16,12 +16,14 @@ enriched with labels, descriptions, units, ranges, and categories from the
 metadata catalog, which is firmware-version-aware — a 4.7 (or newer) controller
 gets the 4.7 labels, ranges, and enum values, while older firmware and the
 pre-connect view keep the stable set, so each value's options and limits match
-the running firmware. A **search** box filters by name with wildcards (for example
-``ARMING_*`` or ``*VOLT*``), and a **category** dropdown narrows to a single
-group such as rangefinder, gimbal, or serial. A **Refresh** button pulls the
-tree fresh from the controller, bypassing the auto-refresh, and selecting any
-row opens a detail card with the parameter's description, range/step, and whether
-it is reboot-required.
+the running firmware. A **search** box — pinned to the top of the editor so it stays in reach while you
+scroll the table — filters by name with wildcards (for example ``ARMING_*`` or
+``*VOLT*``), and a **category** dropdown narrows to a single group such as
+rangefinder, gimbal, or serial. A **Refresh** button pulls the tree fresh from
+the controller, bypassing the auto-refresh. Each row shows the parameter's
+name, description, unit, and current value alongside an inline editor: a number
+field, or — for bitmask parameters — a grid of per-bit checkboxes with a
+raw-value box so you can paste a mask straight from another configuration.
 
 Editing and staged drafts
 -------------------------
