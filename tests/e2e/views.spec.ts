@@ -352,11 +352,10 @@ test.describe('Ports view', () => {
     // peripheral number (USART1,2,3 then UART4,5,6…), USB/console first.
     await expect(page.locator('.ports-matrix-row__title strong').first()).toBeVisible()
     await expect(page.locator('.ports-matrix-row__title small', { hasText: /SERIAL\d+_PROTOCOL/ }).first()).toBeVisible()
-    // Edit serial options on the first editable port, toggle one bit (clicking
-    // the click-to-highlight chip). Scope to the ports matrix:
-    // a bare hasText 'Edit' also matches the header build-info button on
-    // branches whose name contains "edit" (case-insensitive substring).
-    await page.locator('.ports-matrix button:enabled', { hasText: 'Edit' }).first().click()
+    // Open the serial-options bitmask editor on the first editable port and
+    // toggle one bit (clicking the click-to-highlight chip). The button reads
+    // "Bitmask" (collapsed) / "Hide" (expanded); scope to the ports matrix.
+    await page.locator('.ports-matrix button:enabled', { hasText: 'Bitmask' }).first().click()
     await page.locator('.ports-matrix-row__expanded .scoped-bitmask-bit').first().click()
     // The selected option now shows as a chip in the Options cell.
     await expect(page.locator('[data-testid^="serial-options-chips-"]').first()).toBeVisible()
