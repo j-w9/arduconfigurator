@@ -141,6 +141,14 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
             ? 'Some tuning changes need attention before they can be applied safely.'
             : 'Tuning values are currently in sync with the live controller snapshot.',
       tone: reviewInvalidCount > 0 ? 'danger' : reviewStagedCount > 0 ? 'warning' : 'success'
+    },
+    {
+      id: 'log-tuning',
+      label: 'Log Tuning',
+      value: 'beta',
+      detail:
+        'Upload a flight log (.bin) and let the analyzer work through what needs doing — gyro-FFT vibration/oscillation, motor-RPM harmonic-notch placement, and rate-loop limit cycles — then stage the recommended parameter changes for review.',
+      tone: 'warning'
     }
   ]
 }

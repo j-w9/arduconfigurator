@@ -333,6 +333,7 @@ import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
 import { ConfigView } from './views/Config'
 import { FilesView } from './views/Files'
 import { SetupView } from './views/Setup'
+import { LogTuningView } from './views/LogTuning'
 import type { TuningTaskCard } from './views/Tuning'
 import { useRuntimeSnapshot } from './hooks/use-runtime-snapshot'
 import { useMavftpBrowser } from './hooks/use-mavftp-browser'
@@ -5602,6 +5603,14 @@ export function App() {
     })
   }
 
+  // Stage a Log-Tuning recommendation as a draft: the analyzer produces a raw
+  // param id + numeric value, which goes into the shared editedValues draft set
+  // (the same one the Tuning Review tab and the global draft bar read), so it is
+  // reviewed and written through the normal verified path — never auto-applied.
+  function handleStageLogTuningParam(param: string, value: number): void {
+    updateDrafts((existing) => ({ ...existing, [param]: String(value) }))
+  }
+
   function handleResetTuningMasterSliders(): void {
     setTuningMasterPiGain(1)
     setTuningMasterDGain(1)
@@ -7949,6 +7958,15 @@ export function App() {
             renderTuningControl,
             formatCategoryLabel
           }}
+          logTuningSlot={
+            /* Rendered inside the Tuning task body when the 'log-tuning' sub-tab
+               is active. Self-contained: it owns the uploaded log + analysis, and
+               stages recommendations into the shared draft set via onStageParam. */
+            <LogTuningView
+              onStageParam={handleStageLogTuningParam}
+              stagedParams={new Set(parameterDraftById.keys())}
+            />
+          }
           autotuneSlot={
             /* Rendered INSIDE the Tuning task body when the 'autotune' tab is
                active (see TuningCopterSection), so it no longer trails below the

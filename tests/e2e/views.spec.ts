@@ -2679,6 +2679,31 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('autotune-copter-review')).toContainText('AUTOTUNE_AGGR')
   })
 
+  test('Tuning: the Log Tuning sub-tab uploads a log and shows the quality gate', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    await openView(page, 'tuning')
+    await page.getByTestId('tuning-tab-log-tuning').click()
+    const panel = page.getByTestId('tuning-log-tuning-panel')
+    await expect(panel).toBeVisible()
+    // The "you need a good flight log" gate is always shown up front.
+    await expect(page.getByTestId('log-tuning-gate-note')).toBeVisible()
+    await expect(page.getByTestId('log-tuning')).toContainText('Choose flight log')
+
+    // Upload a trivial (empty) buffer: it parses to no usable data, so the
+    // analyzer must gate it as unusable rather than throw.
+    await page.getByTestId('log-tuning-file').setInputFiles({
+      name: 'empty.bin',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    })
+    await expect(page.getByTestId('log-tuning-results')).toBeVisible()
+    await expect(page.getByTestId('log-tuning-unusable')).toBeVisible()
+  })
+
   test('Plane AutoTune surface renders fixed-wing + VTOL groups with seeded values and stages a draft', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
