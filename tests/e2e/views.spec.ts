@@ -1903,6 +1903,24 @@ test.describe('OSD view preview', () => {
     expect(width).toBeLessThanOrEqual(241)
   })
 
+  test('Messages strip shows the fork style toggle + category allow-list bitmask', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'osd')
+
+    const strip = page.getByTestId('osd-messages-strip')
+    await strip.scrollIntoViewIfNeeded()
+    await expect(strip).toBeVisible()
+    // OSD_MSG_STYLE (blink/invert) toggle renders (demo seeds it = 1).
+    await expect(strip).toContainText('Message Style')
+    // OSD_MSG_CAT bitmask renders its per-bit checkbox grid.
+    const categories = page.getByTestId('osd-message-categories')
+    await expect(categories).toBeVisible()
+    await expect(page.getByTestId('scoped-bitmask-OSD_MSG_CAT')).toBeVisible()
+    await expect(categories).toContainText('PreArm')
+    await expect(categories).toContainText('Arm/Disarm')
+  })
+
   test('per-element units is a clear placeholder (AP applies units globally)', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
