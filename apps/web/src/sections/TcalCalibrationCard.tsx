@@ -8,8 +8,8 @@
 // parameters and stages the "learn" enable (INS_TCALn_ENABLE=2) as a draft; the
 // operator applies it through the normal verified-write path, then reboots cold.
 //
-// Live IMU-temperature progress isn't surfaced yet (the FC IMU temperature isn't
-// in the telemetry snapshot) — that's a follow-up; the firmware self-completes.
+// Live IMU temperature (from SCALED_IMU, streamed at 1 Hz) is shown for warm-up
+// progress; the firmware itself computes and saves the fit at the top temperature.
 
 import type { ReactElement } from 'react'
 
@@ -66,6 +66,17 @@ export function TcalCalibrationCard({
   const connected = snapshot.connection.kind === 'connected'
   const canStart = connected && canApplyDraftParameters && busyAction === undefined && !anyLearning
 
+  // Live IMU temperature (from SCALED_IMU) + warm-up progress toward the target.
+  const imuTempC = snapshot.liveVerification.imuTemperatureC
+  const tmaxValues = imus.map((imu) => imu.tmax ?? 0).filter((t) => t > 0)
+  const tminValues = imus.map((imu) => imu.tmin).filter((t): t is number => typeof t === 'number')
+  const targetTmax = tmaxValues.length > 0 ? Math.max(...tmaxValues) : undefined
+  const baseTmin = tminValues.length > 0 ? Math.min(...tminValues) : undefined
+  const warmPct =
+    imuTempC !== undefined && targetTmax !== undefined && baseTmin !== undefined && targetTmax > baseTmin
+      ? Math.min(100, Math.max(0, ((imuTempC - baseTmin) / (targetTmax - baseTmin)) * 100))
+      : undefined
+
   const startLearning = (): void => {
     for (const imu of imus) {
       setDraft(`INS_TCAL${imu.i}_ENABLE`, '2')
@@ -95,6 +106,15 @@ export function TcalCalibrationCard({
         })}
       </div>
 
+      {imuTempC !== undefined ? (
+        <div className="config-pills" data-testid="tcal-imu-temp">
+          <span>IMU temp: {imuTempC.toFixed(1)}&thinsp;°C</span>
+          {anyLearning && warmPct !== undefined && targetTmax !== undefined ? (
+            <span>warming: {warmPct.toFixed(0)}% → {targetTmax.toFixed(0)}&thinsp;°C</span>
+          ) : null}
+        </div>
+      ) : null}
+
       <ol className="calibration-card__steps">
         <li>
           <strong>Start cold.</strong> Power the board off and let it cool to ambient — a genuinely cold board is
@@ -114,8 +134,9 @@ export function TcalCalibrationCard({
       <div className="parameter-follow-up parameter-follow-up--warning">
         <StatusBadge tone="warning">props off</StatusBadge>
         <p>
-          Do this on the bench with props removed — the board just needs to sit still and warm up, not fly. Live
-          IMU-temperature progress isn't shown here yet; the firmware completes the fit at the max temperature on its own.
+          Do this on the bench with props removed — the board just needs to sit still and warm up, not fly. The live
+          IMU temperature is shown above; the firmware completes and saves the fit automatically once it reaches the
+          target temperature.
         </p>
       </div>
 

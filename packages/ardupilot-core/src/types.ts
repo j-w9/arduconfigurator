@@ -300,6 +300,9 @@ export interface LiveVerificationState {
   rcInput: RcInputState
   batteryTelemetry: BatteryTelemetryState
   attitudeTelemetry: AttitudeTelemetryState
+  /** Primary IMU temperature (°C) from SCALED_IMU — for the thermal-calibration
+   *  (TCAL) live readout. undefined until a reading arrives. */
+  imuTemperatureC?: number
   globalPosition: GlobalPositionTelemetryState
   baroSensor: BaroSensorState
   /** 3D gyro present/health from SYS_STATUS. */
