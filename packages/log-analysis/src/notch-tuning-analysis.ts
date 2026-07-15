@@ -72,6 +72,10 @@ export interface LogTuningResult {
   /** A sharp single-axis low-frequency peak that reads as a rate-loop limit cycle. */
   limitCycle?: { axis: Axis; freqHz: number }
   recommendations: TuningRecommendation[]
+  /** Non-parameter findings the operator should act on (e.g. high vibration is a
+   *  mechanical fix, not a PID change) — surfaced even when there are no param
+   *  recommendations so a bad log is never called "clean". */
+  advisories: string[]
   summary: string
 }
 
@@ -393,6 +397,26 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
     }
   }
 
+  // ---- Advisories (non-parameter findings the operator should act on) ----
+  const advisories: string[] = []
+  if (vibe && vibe.verdict !== 'good') {
+    const peak = Math.max(...vibe.max)
+    const clip = Math.max(...vibe.clip)
+    if (clip > 0) {
+      advisories.push(
+        `IMU clipping detected (${clip}) — the accelerometer is saturating, which corrupts the state estimate and makes any tuning unreliable. Fix this mechanically first: balance or replace props, check motor bearings, and secure or re-damp the flight-controller mount.`
+      )
+    } else if (vibe.verdict === 'bad') {
+      advisories.push(
+        `High vibration (peak ${peak.toFixed(0)} m/s²) — this is a mechanical problem, not a PID fix. Balance props, check motor and frame mounts, and the FC soft-mount. High vibration also makes the harmonic-notch and rate-tuning advice below less reliable.`
+      )
+    } else {
+      advisories.push(
+        `Moderate vibration (peak ${peak.toFixed(0)} m/s²) — not critical, but worth reducing (prop balance, mounts) for a cleaner tune and spectrum.`
+      )
+    }
+  }
+
   // ---- Summary ----
   const summaryParts: string[] = []
   if (source === 'batch') summaryParts.push(`Gyro spectrum from the batch sampler (~${gyro?.sampleRateHz.toFixed(0)} Hz).`)
@@ -400,7 +424,15 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
   if (vibe) summaryParts.push(`Vibration ${vibe.verdict} (peak ${Math.max(...vibe.max).toFixed(0)} m/s², clip ${Math.max(...vibe.clip)}).`)
   if (limitCycle) summaryParts.push(`Likely ${limitCycle.freqHz.toFixed(0)} Hz ${limitCycle.axis}-axis limit cycle.`)
   if (motorFundamentalHz) summaryParts.push(`Motor fundamental ~${motorFundamentalHz.toFixed(0)} Hz.`)
-  if (recommendations.length === 0 && usable) summaryParts.push('No parameter changes recommended — the tune looks clean.')
+  if (recommendations.length === 0 && usable) {
+    // Don't call a high-vibration log "clean" just because there's no param to
+    // stage — the vibration advisory is the actionable finding.
+    summaryParts.push(
+      vibe && vibe.verdict !== 'good'
+        ? 'No parameter changes to stage — the priority here is the vibration above (a mechanical fix), not PID.'
+        : 'No parameter changes recommended — the tune looks clean.'
+    )
+  }
 
   return {
     usable,
@@ -413,6 +445,7 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
     vibe,
     limitCycle,
     recommendations,
+    advisories,
     summary: summaryParts.join(' ')
   }
 }

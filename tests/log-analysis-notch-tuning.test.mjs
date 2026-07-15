@@ -102,3 +102,25 @@ test('vibration verdict is good for low VIBE with no clipping', () => {
   assert.ok(result.vibe)
   assert.equal(result.vibe.verdict, 'good')
 })
+
+test('high vibration produces a mechanical advisory and is NOT called "clean"', () => {
+  // No oscillation + notch already on => zero parameter recommendations, but
+  // high VIBE must still surface as an advisory (the reported real-log bug).
+  const log = makeLog({ oscAmp: 0, hntchEnable: 1 })
+  log.messagesByType.set('VIBE', Array.from({ length: 50 }, () => ({ name: 'VIBE', VibeX: 40, VibeY: 10, VibeZ: 10, Clip: 0 })))
+  const r = analyzeLogTuning(log)
+
+  assert.equal(r.vibe.verdict, 'bad')
+  assert.equal(r.recommendations.length, 0, 'no param changes for a purely mechanical vibration problem')
+  assert.ok(r.advisories.length >= 1, 'expected a vibration advisory')
+  assert.match(r.advisories[0], /vibration/i)
+  assert.doesNotMatch(r.summary, /looks clean/i)
+})
+
+test('IMU clipping produces a clipping-specific advisory', () => {
+  const log = makeLog({ oscAmp: 0, hntchEnable: 1 })
+  log.messagesByType.set('VIBE', Array.from({ length: 50 }, () => ({ name: 'VIBE', VibeX: 25, VibeY: 10, VibeZ: 10, Clip: 9 })))
+  const r = analyzeLogTuning(log)
+  assert.equal(r.vibe.verdict, 'bad')
+  assert.match(r.advisories[0], /clipping/i)
+})
