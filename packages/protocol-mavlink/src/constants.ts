@@ -128,8 +128,10 @@ export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.ATTITUDE]: 28,
   // time_boot_ms(4) + q1..q4(16) + rollspeed/pitchspeed/yawspeed(12) = 32.
   [MAVLINK_MESSAGE_IDS.ATTITUDE_QUATERNION]: 32,
-  // time_boot_ms(4) + xacc..zmag(9×2=18) + temperature(2) = 24.
-  [MAVLINK_MESSAGE_IDS.SCALED_IMU]: 24,
+  // time_boot_ms(4) + xacc..zmag(9×2=18) = 22. `temperature` is a v2 extension
+  // field, excluded from the min length (ArduPilot: SCALED_IMU_MIN_LEN = 22) — a
+  // sender may truncate it when zero, so the min must not require it.
+  [MAVLINK_MESSAGE_IDS.SCALED_IMU]: 22,
   [MAVLINK_MESSAGE_IDS.RC_CHANNELS]: 42,
   [MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL]: 254,
   [MAVLINK_MESSAGE_IDS.COMMAND_ACK]: 3,

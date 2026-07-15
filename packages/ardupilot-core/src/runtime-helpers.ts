@@ -335,7 +335,12 @@ export function cloneLiveVerification(liveVerification: LiveVerificationState): 
     },
     opticalFlow: {
       ...liveVerification.opticalFlow
-    }
+    },
+    // Scalar carried straight through — omitting it here silently dropped the
+    // live IMU temperature (from SCALED_IMU) out of every emitted snapshot, so
+    // the thermal-calibration readout never populated even though the runtime
+    // had decoded it. Kept last to mirror the LiveVerificationState field order.
+    imuTemperatureC: liveVerification.imuTemperatureC
   }
 }
 

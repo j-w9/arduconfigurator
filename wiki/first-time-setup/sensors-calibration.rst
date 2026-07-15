@@ -126,8 +126,10 @@ Steps:
    IMU's enable flips back to ``1`` (enabled). **Reboot once more** to use it.
 
 The card shows each IMU's current state (disabled / enabled / learning) and its
-``TMIN → TMAX`` range. Live IMU-temperature progress isn't shown in the app yet —
-the firmware completes the fit on its own; you don't need to watch it.
+``TMIN → TMAX`` range. When the flight controller streams IMU temperature (from
+``SCALED_IMU``), the card also shows the live temperature and warm-up progress
+toward ``TMAX``; the firmware completes and saves the fit on its own once it
+reaches the target, so you don't need to watch it.
 
 Baro thrust calibration (VALT)
 ------------------------------
