@@ -2745,15 +2745,17 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'calibration')
-    // Default (non-Expert): hidden.
+    // Default (non-Expert): hidden even though the demo vehicle has a rangefinder.
     await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
 
-    // Expert mode alone is NOT enough — the demo vehicle has no rangefinder
-    // (RNGFND1_TYPE = 0), so the VALT card must still be hidden while the
-    // Expert-only TCAL card is shown.
+    // Expert mode + a configured rangefinder (demo seeds RNGFND1_TYPE = 100)
+    // reveals the card, with its log-upload control and the current scale.
     await page.getByTestId('product-mode-expert').check()
-    await expect(page.getByTestId('calibration-card-tcal')).toBeVisible()
-    await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
+    const valt = page.getByTestId('calibration-card-valt')
+    await valt.scrollIntoViewIfNeeded()
+    await expect(valt).toBeVisible()
+    await expect(valt).toContainText('Baro thrust calibration')
+    await expect(page.getByTestId('valt-file')).toBeAttached()
   })
 
   test('Plane AutoTune surface renders fixed-wing + VTOL groups with seeded values and stages a draft', async ({ page }) => {
