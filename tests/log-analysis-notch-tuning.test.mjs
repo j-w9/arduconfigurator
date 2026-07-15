@@ -9,7 +9,17 @@ import { analyzeLogTuning } from '../packages/log-analysis/dist/index.js'
 // rate-D. The binary parser is tested separately, so we build the parsed
 // structure directly to isolate the analysis logic.
 
-function makeLog({ oscHz = 12, oscAmp = 500, sampleRate = 1000, rpm = 6000, rllD = 0.01, hntchEnable = 0 } = {}) {
+function makeLog({
+  oscHz = 12,
+  oscAmp = 500,
+  pitchOscHz = 7,
+  pitchOscAmp = 8,
+  sampleRate = 1000,
+  rpm = 6000,
+  rllD = 0.01,
+  pitD = 0.008,
+  hntchEnable = 0
+} = {}) {
   const messagesByType = new Map()
 
   // --- Gyro batch sampler (ISBH header + ISBD data) ---
@@ -23,9 +33,10 @@ function makeLog({ oscHz = 12, oscAmp = 500, sampleRate = 1000, rpm = 6000, rllD
     const y = []
     const z = []
     for (let k = 0; k < perRecord; k += 1) {
-      // Roll (x): strong 12 Hz sine. Pitch/yaw: tiny noise only.
+      // Roll (x) + pitch (y): configurable sines (defaults: strong roll, tiny
+      // sub-band pitch). Yaw (z): tiny noise only.
       x.push(Math.round(oscAmp * Math.sin((2 * Math.PI * oscHz * idx) / sampleRate)))
-      y.push(Math.round(8 * Math.sin((2 * Math.PI * 7 * idx) / sampleRate)))
+      y.push(Math.round(pitchOscAmp * Math.sin((2 * Math.PI * pitchOscHz * idx) / sampleRate)))
       z.push(Math.round(4 * Math.sin((2 * Math.PI * 5 * idx) / sampleRate)))
       idx += 1
     }
@@ -50,7 +61,7 @@ function makeLog({ oscHz = 12, oscAmp = 500, sampleRate = 1000, rpm = 6000, rllD
   // --- Params captured in the log ---
   messagesByType.set('PARM', [
     { name: 'PARM', Name: 'ATC_RAT_RLL_D', Value: rllD },
-    { name: 'PARM', Name: 'ATC_RAT_PIT_D', Value: 0.008 },
+    { name: 'PARM', Name: 'ATC_RAT_PIT_D', Value: pitD },
     { name: 'PARM', Name: 'INS_HNTCH_ENABLE', Value: hntchEnable }
   ])
 
@@ -72,6 +83,37 @@ test('detects a single-axis roll limit cycle and recommends halving roll rate-D'
   assert.ok(dRec, 'expected a roll rate-D recommendation')
   assert.ok(Math.abs(dRec.suggestedValue - 0.005) < 1e-6, `suggested ${dRec.suggestedValue}`)
   assert.equal(dRec.currentValue, 0.01)
+})
+
+test('a limit cycle on two axes with both rate-D high recommends halving BOTH', () => {
+  // Same 12 Hz oscillation strong on roll AND pitch, both D above the floor.
+  const result = analyzeLogTuning(
+    makeLog({ oscHz: 12, oscAmp: 500, pitchOscHz: 12, pitchOscAmp: 500, rllD: 0.01, pitD: 0.008 })
+  )
+  const rll = result.recommendations.find((r) => r.param === 'ATC_RAT_RLL_D')
+  const pit = result.recommendations.find((r) => r.param === 'ATC_RAT_PIT_D')
+  assert.ok(rll, 'expected a roll rate-D recommendation')
+  assert.ok(pit, 'expected a pitch rate-D recommendation')
+  assert.ok(Math.abs(rll.suggestedValue - 0.005) < 1e-6, `roll suggested ${rll.suggestedValue}`)
+  assert.ok(Math.abs(pit.suggestedValue - 0.004) < 1e-6, `pitch suggested ${pit.suggestedValue}`)
+})
+
+test('a secondary axis already at default D yields a coupling advisory, not a D cut', () => {
+  // This mirrors the real vibration log: pitch is the sharp/primary oscillator
+  // with high D, roll carries the same frequency but is already at default D.
+  const result = analyzeLogTuning(
+    makeLog({ oscHz: 12, oscAmp: 200, pitchOscHz: 12, pitchOscAmp: 500, rllD: 0.004, pitD: 0.008 })
+  )
+  // Pitch (primary, high D) → halve; roll (secondary, already low D) → no cut.
+  const pit = result.recommendations.find((r) => r.param === 'ATC_RAT_PIT_D')
+  assert.ok(pit && Math.abs(pit.suggestedValue - 0.004) < 1e-6, 'pitch D halved')
+  assert.ok(!result.recommendations.some((r) => r.param === 'ATC_RAT_RLL_D'), 'roll D not cut further')
+  assert.ok(
+    result.advisories.some((a) => /roll/i.test(a) && /coupling/i.test(a)),
+    'expected a roll coupling advisory'
+  )
+  // The primary rec should note the coupled axis.
+  assert.match(pit.reason, /also appears on roll/i)
 })
 
 test('recommends enabling the ESC-telemetry harmonic notch when RPM is present and it is off', () => {
