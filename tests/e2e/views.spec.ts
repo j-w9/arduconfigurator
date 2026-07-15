@@ -2720,6 +2720,24 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('calibration-card-tcal')).toContainText('Thermal calibration')
   })
 
+  test('Calibration: the Baro Thrust (VALT) card is gated on Expert AND a rangefinder', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    await openView(page, 'calibration')
+    // Default (non-Expert): hidden.
+    await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
+
+    // Expert mode alone is NOT enough — the demo vehicle has no rangefinder
+    // (RNGFND1_TYPE = 0), so the VALT card must still be hidden while the
+    // Expert-only TCAL card is shown.
+    await page.getByTestId('product-mode-expert').check()
+    await expect(page.getByTestId('calibration-card-tcal')).toBeVisible()
+    await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
+  })
+
   test('Plane AutoTune surface renders fixed-wing + VTOL groups with seeded values and stages a draft', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')

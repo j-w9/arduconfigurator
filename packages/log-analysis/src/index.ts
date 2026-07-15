@@ -27,3 +27,10 @@ export {
   type Axis,
   type Confidence
 } from './notch-tuning-analysis.js'
+
+export {
+  analyzeValtLog,
+  analyzeValtBuffer,
+  type ValtResult,
+  type ValtPoint
+} from './valt-analysis.js'

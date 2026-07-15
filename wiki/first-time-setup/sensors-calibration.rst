@@ -129,6 +129,46 @@ The card shows each IMU's current state (disabled / enabled / learning) and its
 ``TMIN → TMAX`` range. Live IMU-temperature progress isn't shown in the app yet —
 the firmware completes the fit on its own; you don't need to watch it.
 
+Baro thrust calibration (VALT)
+------------------------------
+
+A multirotor's prop wash lowers the static pressure over the barometer as
+throttle rises, so the baro reads a *higher* altitude the harder the motors
+work. ArduPilot compensates for this linearly with ``BARO1_THST_SCALE`` (in
+Pascals, subtracted per unit of normalized throttle). **Baro thrust calibration
+(VALT)** fits that scale from a flight log.
+
+It is an **Expert-only** card that appears only when a **downward rangefinder is
+configured** on the connected vehicle (``RNGFND1_TYPE`` set), because the
+calibration needs a rangefinder as the ground-truth height. It is **log-based**:
+the app connects on the bench, not in flight, so you fly the hover first and then
+upload that log.
+
+Steps:
+
+#. Fit a **downward-facing rangefinder** and confirm it logs (an ``RFND`` message
+   with orientation *Down*).
+#. Fly a **steady hover** at a fixed height in a stable mode, holding the throttle
+   as constant as you can for several seconds. Repeat at **2–3 different heights**
+   so the fit has more than one point.
+#. Download that flight's ``.bin`` log.
+#. In **Calibration → Baro thrust calibration (VALT)**, upload the log. The app
+   pairs the barometer altitude (``CTUN.BAlt``) with the rangefinder ground truth
+   (``RFND.Dist``) over the steady windows and fits
+
+   .. math::
+
+      \mathtt{BARO1\_THST\_SCALE} = -\frac{(\mathrm{baro\_error_m} \times 12)}{\mathrm{throttle}}
+
+   (across several points, a least-squares fit through the origin of the pressure
+   error against throttle; ~12 Pa per metre near sea level).
+#. Review the fitted points, then **Stage** and **Apply** ``BARO1_THST_SCALE`` in
+   the draft bar.
+#. Re-fly and confirm the baro altitude holds steadier through throttle changes.
+
+The card is hidden on firmware that doesn't expose ``BARO1_THST_SCALE`` (it is a
+compile-time option).
+
 See also the ArduPilot wiki: `Accelerometer Calibration
 <https://ardupilot.org/copter/docs/common-accelerometer-calibration.html>`_,
 `Compass Calibration

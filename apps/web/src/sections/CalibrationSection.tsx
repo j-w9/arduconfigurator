@@ -11,6 +11,7 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { AccelerometerPoseGuide } from '../accelerometer-pose-guide'
 import { CalibrationLocationButton } from './CalibrationLocationCard'
 import { TcalCalibrationCard } from './TcalCalibrationCard'
+import { ValtCalibrationCard } from './ValtCalibrationCard'
 import {
   accelerometerPoseFromAction,
   guidedActionBlockingReason,
@@ -690,6 +691,19 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
               {/* Thermal calibration (TCAL) — Expert-only advanced surface. */}
               {isExpertMode ? (
                 <TcalCalibrationCard
+                  snapshot={snapshot}
+                  canApplyDraftParameters={canApplyDraftParameters}
+                  busyAction={busyAction}
+                  setDraft={setDraft}
+                />
+              ) : null}
+
+              {/* Baro thrust calibration (VALT) — Expert-only, and only when a
+                * downward rangefinder is configured on the connected vehicle
+                * (RNGFND1_TYPE > 0). It's a log-based calibration; the card
+                * itself handles the .bin upload and the fit. */}
+              {isExpertMode && (readRoundedParameter(snapshot, 'RNGFND1_TYPE') ?? 0) > 0 ? (
+                <ValtCalibrationCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
                   busyAction={busyAction}
