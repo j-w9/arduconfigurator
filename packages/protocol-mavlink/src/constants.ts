@@ -17,6 +17,7 @@ export const MAVLINK_MESSAGE_IDS = {
   PARAM_SET: 23,
   ATTITUDE: 30,
   ATTITUDE_QUATERNION: 31,
+  SCALED_IMU: 26,
   RC_CHANNELS: 65,
   FILE_TRANSFER_PROTOCOL: 110,
   COMMAND_ACK: 77,
@@ -51,6 +52,8 @@ export const MAVLINK_MESSAGE_CRCS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.ATTITUDE]: 39,
   // crc_extra 246 (c_library_v2 mavlink_msg_attitude_quaternion.h).
   [MAVLINK_MESSAGE_IDS.ATTITUDE_QUATERNION]: 246,
+  // crc_extra 170 (pymavlink ardupilotmega SCALED_IMU) — decode-only, for IMU temp.
+  [MAVLINK_MESSAGE_IDS.SCALED_IMU]: 170,
   [MAVLINK_MESSAGE_IDS.RC_CHANNELS]: 118,
   [MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL]: 84,
   [MAVLINK_MESSAGE_IDS.COMMAND_ACK]: 143,
@@ -88,6 +91,8 @@ export const MAVLINK_PAYLOAD_LENGTHS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.ATTITUDE]: 28,
   // time_boot_ms(4) + q1..q4(16) + rollspeed/pitchspeed/yawspeed(12) = 32.
   [MAVLINK_MESSAGE_IDS.ATTITUDE_QUATERNION]: 32,
+  // time_boot_ms(4) + xacc..zmag(9×2=18) + temperature(2) = 24.
+  [MAVLINK_MESSAGE_IDS.SCALED_IMU]: 24,
   [MAVLINK_MESSAGE_IDS.RC_CHANNELS]: 42,
   [MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL]: 254,
   [MAVLINK_MESSAGE_IDS.COMMAND_ACK]: 10,
@@ -123,6 +128,8 @@ export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.ATTITUDE]: 28,
   // time_boot_ms(4) + q1..q4(16) + rollspeed/pitchspeed/yawspeed(12) = 32.
   [MAVLINK_MESSAGE_IDS.ATTITUDE_QUATERNION]: 32,
+  // time_boot_ms(4) + xacc..zmag(9×2=18) + temperature(2) = 24.
+  [MAVLINK_MESSAGE_IDS.SCALED_IMU]: 24,
   [MAVLINK_MESSAGE_IDS.RC_CHANNELS]: 42,
   [MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL]: 254,
   [MAVLINK_MESSAGE_IDS.COMMAND_ACK]: 3,

@@ -66,6 +66,18 @@ export interface GlobalPositionIntMessage {
   headingCdeg: number
 }
 
+/**
+ * Scaled IMU (msgid 26) — we decode only the fields we use: the boot timestamp
+ * and the IMU temperature (0.01 °C). Streamed for the thermal-calibration (TCAL)
+ * live-temperature readout. Acc/gyro/mag are present on the wire but not decoded.
+ */
+export interface ScaledImuMessage {
+  type: 'SCALED_IMU'
+  timeBootMs: number
+  /** IMU temperature in centidegrees Celsius; 0 = not reported. */
+  temperatureCdeg: number
+}
+
 export interface AttitudeMessage {
   type: 'ATTITUDE'
   timeBootMs: number
@@ -403,6 +415,7 @@ export type MavlinkMessage =
   | CanFrameMessage
   | GlobalPositionIntMessage
   | AttitudeMessage
+  | ScaledImuMessage
   | AttitudeQuaternionMessage
   | FileTransferProtocolMessage
   | ParamValueMessage

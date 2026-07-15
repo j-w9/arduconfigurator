@@ -5,6 +5,7 @@ import type {
 } from '@arduconfig/param-metadata'
 import type {
   AttitudeMessage,
+  ScaledImuMessage,
   AttitudeQuaternionMessage,
   AutopilotVersionMessage,
   CommandAckMessage,
@@ -290,6 +291,13 @@ const LIVE_TELEMETRY_REQUESTS = [
     messageId: MAVLINK_MESSAGE_IDS.ATTITUDE_QUATERNION,
     label: 'ATTITUDE_QUATERNION',
     intervalUs: 25000
+  },
+  {
+    // Primary IMU temperature for the thermal-calibration (TCAL) readout.
+    // 1 Hz — temperature changes slowly; negligible bandwidth.
+    messageId: MAVLINK_MESSAGE_IDS.SCALED_IMU,
+    label: 'SCALED_IMU',
+    intervalUs: 1000000
   },
   {
     messageId: MAVLINK_MESSAGE_IDS.RC_CHANNELS,
@@ -1833,6 +1841,9 @@ export class ArduPilotConfiguratorRuntime {
       case 'ATTITUDE_QUATERNION':
         this.processAttitudeQuaternion(envelope.message)
         break
+      case 'SCALED_IMU':
+        this.processScaledImu(envelope.message)
+        break
       case 'AUTOPILOT_VERSION':
         this.processAutopilotVersion(envelope.message)
         break
@@ -2215,6 +2226,14 @@ export class ArduPilotConfiguratorRuntime {
       verified: true,
       quaternion: { w: message.qw, x: message.qx, y: message.qy, z: message.qz },
       lastSeenAtMs: Date.now()
+    }
+  }
+
+  private processScaledImu(message: ScaledImuMessage): void {
+    // IMU temperature (°C) for the thermal-calibration readout. 0 = not
+    // reported by this IMU; keep the last good reading rather than flicker.
+    if (message.temperatureCdeg !== 0) {
+      this.liveVerification.imuTemperatureC = message.temperatureCdeg / 100
     }
   }
 

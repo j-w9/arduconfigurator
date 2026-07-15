@@ -14,6 +14,7 @@ import { sha256 } from './sha256.js'
 import type { StreamingCodec } from './json-lines-codec.js'
 import type {
   AttitudeMessage,
+  ScaledImuMessage,
   AttitudeQuaternionMessage,
   AutopilotVersionMessage,
   CommandAckMessage,
@@ -699,6 +700,8 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
       return decodeAttitudePayload(payload)
     case MAVLINK_MESSAGE_IDS.ATTITUDE_QUATERNION:
       return decodeAttitudeQuaternionPayload(payload)
+    case MAVLINK_MESSAGE_IDS.SCALED_IMU:
+      return decodeScaledImuPayload(payload)
     case MAVLINK_MESSAGE_IDS.RC_CHANNELS:
       return decodeRcChannelsPayload(payload)
     case MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL:
@@ -904,6 +907,17 @@ function decodeAttitudePayload(payload: Uint8Array): AttitudeMessage {
     rollSpeedRadS: view.getFloat32(16, true),
     pitchSpeedRadS: view.getFloat32(20, true),
     yawSpeedRadS: view.getFloat32(24, true)
+  }
+}
+
+function decodeScaledImuPayload(payload: Uint8Array): ScaledImuMessage {
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  return {
+    type: 'SCALED_IMU',
+    timeBootMs: view.getUint32(0, true),
+    // temperature (cdegC) is the last field at offset 22; the codec zero-pads
+    // the payload to the declared length before decode, so this is in bounds.
+    temperatureCdeg: view.getInt16(22, true)
   }
 }
 

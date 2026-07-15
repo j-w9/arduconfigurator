@@ -1504,6 +1504,8 @@ test('live telemetry requests use responsive attitude rates and slower support s
         // Quaternion attitude for the singularity-free craft view, same 40 Hz
         // cadence as ATTITUDE.
         [MAVLINK_MESSAGE_IDS.ATTITUDE_QUATERNION, 25000],
+        // 1 Hz IMU temperature (SCALED_IMU) for the thermal-calibration readout.
+        [MAVLINK_MESSAGE_IDS.SCALED_IMU, 1000000],
         [MAVLINK_MESSAGE_IDS.RC_CHANNELS, 50000],
         [MAVLINK_MESSAGE_IDS.SYS_STATUS, 500000],
         // DroneCAN node discovery requires explicitly streaming
