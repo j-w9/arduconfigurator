@@ -407,6 +407,30 @@ export const ARDUCOPTER_OSD_MSG_LVL_LABELS: Record<number, string> = {
   7: 'Debug'
 }
 
+// OSD_MSG_STYLE (fork param). Visual emphasis for the MESSAGE panel: CRITICAL+
+// blink, ERROR/WARNING invert (analog MAX7456). Off/On.
+export const ARDUCOPTER_OSD_MSG_STYLE_LABELS: Record<number, string> = {
+  0: 'Off',
+  1: 'On (blink/invert)'
+}
+
+// OSD_MSG_CAT (fork param) — category allow-list bitmask. Keys are BIT INDICES
+// (bit 0 = value 1, bit 9 = value 512); ScopedBitmaskField renders the per-bit
+// checkbox grid. 0 (no bits) shows all categories. CRITICAL+ is always shown
+// regardless of this filter.
+export const ARDUCOPTER_OSD_MSG_CAT_LABELS: Record<number, string> = {
+  0: 'PreArm',
+  1: 'EKF/AHRS',
+  2: 'GPS',
+  3: 'Battery',
+  4: 'Compass',
+  5: 'RC/Failsafe',
+  6: 'Vibration',
+  7: 'IMU',
+  8: 'Calibration',
+  9: 'Arm/Disarm'
+}
+
 export const ARDUCOPTER_MSP_OSD_CELL_COUNT_LABELS: Record<number, string> = {
   0: 'Auto',
   1: '1 cell',

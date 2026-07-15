@@ -239,6 +239,8 @@ const mockParameters: ParameterState = {
   // panel + per-screen severity filter (OSD1_MSG_LVL below, mirrored to 2-4).
   // Present here so the demo shows the detection-gated Message-panel controls.
   OSD_MSG_ABBR: 1,
+  OSD_MSG_STYLE: 1, // blink/invert emphasis by severity (analog primary target)
+  OSD_MSG_CAT: 0, // category allow-list bitmask; 0 = show all categories
   MSP_OPTIONS: 4,
   MSP_OSD_NCELLS: 0,
   VTX_ENABLE: 1,

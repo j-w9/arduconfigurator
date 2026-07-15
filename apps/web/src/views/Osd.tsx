@@ -7,7 +7,7 @@ import type { OsdCatalogEntry } from '../view-models/osd-message-suggestions'
 import { OsdMessageCombobox } from './OsdMessageCombobox'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
-import { ScopedField, ScopedSelectField, type ScopedFieldDraftMap } from './ScopedField'
+import { ScopedField, ScopedSelectField, ScopedBitmaskField, type ScopedFieldDraftMap } from './ScopedField'
 import { clampCellToLayout, gridCellSize, pointerDragToCell } from '../view-models/osd-preview'
 
 // Character-cell grids per analog/HD video standard. PAL/NTSC are the
@@ -170,6 +170,10 @@ export interface OsdViewProps {
   switchMethodField: OsdSelectField | undefined
   /** Fork-only "abbreviate MESSAGE panel" toggle; undefined hides it. */
   msgAbbrField: OsdSelectField | undefined
+  /** Fork-only "message style" (blink/invert by severity) toggle; undefined hides it. */
+  msgStyleField: OsdSelectField | undefined
+  /** Fork-only category allow-list bitmask (OSD_MSG_CAT); undefined hides it. */
+  msgCatField: OsdSelectField | undefined
   /** Fork-only user shorthand dictionary editor state (@OSD/shorthand.dat). */
   osdShorthand: UseOsdShorthandResult
   /** Combobox entries for the shorthand "from" field (catalog + live messages). */
@@ -232,6 +236,8 @@ export function OsdView(props: OsdViewProps) {
     channelField,
     switchMethodField,
     msgAbbrField,
+    msgStyleField,
+    msgCatField,
     osdShorthand,
     osdMessageSuggestions,
     previewToolbar,
@@ -532,7 +538,7 @@ export function OsdView(props: OsdViewProps) {
           {/* Fork-only MESSAGE-panel controls, gated on OSD_MSG_ABBR being
               reported by the firmware. The per-screen severity filter
               (OSDn_MSG_LVL) rides the Screen Options panel below. */}
-          {msgAbbrField ? (
+          {msgAbbrField || msgStyleField || msgCatField ? (
             <details className="bf-gui-box osd-messages-strip" data-testid="osd-messages-strip" open>
               <summary className="bf-gui-box__titlebar">
                 <strong>Messages</strong>
@@ -540,15 +546,43 @@ export function OsdView(props: OsdViewProps) {
               </summary>
               <div className="bf-gui-box__body">
                 <div className="bf-compact-field-grid">
-                  <ScopedSelectField
-                    parameter={msgAbbrField.parameter}
-                    liveValue={msgAbbrField.liveValue}
-                    editedValues={editedValues}
-                    onChange={onEditChange}
-                    draftStatusById={draftStatusById}
-                    layout="chips"
-                  />
+                  {msgAbbrField ? (
+                    <ScopedSelectField
+                      parameter={msgAbbrField.parameter}
+                      liveValue={msgAbbrField.liveValue}
+                      editedValues={editedValues}
+                      onChange={onEditChange}
+                      draftStatusById={draftStatusById}
+                      layout="chips"
+                    />
+                  ) : null}
+                  {msgStyleField ? (
+                    <ScopedSelectField
+                      parameter={msgStyleField.parameter}
+                      liveValue={msgStyleField.liveValue}
+                      editedValues={editedValues}
+                      onChange={onEditChange}
+                      draftStatusById={draftStatusById}
+                      layout="chips"
+                    />
+                  ) : null}
                 </div>
+                {msgCatField ? (
+                  <div className="osd-messages-categories" data-testid="osd-message-categories">
+                    <ScopedBitmaskField
+                      parameter={msgCatField.parameter}
+                      liveValue={msgCatField.liveValue}
+                      editedValues={editedValues}
+                      onChange={onEditChange}
+                      draftStatusById={draftStatusById}
+                    />
+                    <p className="bf-note">
+                      Tick the categories to show; leave all unticked to show everything.{' '}
+                      <strong>Critical</strong> and above always show regardless. Classification is keyword-based
+                      (best-effort).
+                    </p>
+                  </div>
+                ) : null}
                 <p className="bf-note">
                   Per-screen message severity (which messages each screen shows) is under each screen&apos;s{' '}
                   <strong>Screen Options</strong> below.

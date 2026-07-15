@@ -31,6 +31,8 @@ import {
   ARDUCOPTER_NOTIFICATION_LED_OVERRIDE_LABELS,
   ARDUCOPTER_OSD_CHANNEL_LABELS,
   ARDUCOPTER_OSD_MSG_LVL_LABELS,
+  ARDUCOPTER_OSD_MSG_STYLE_LABELS,
+  ARDUCOPTER_OSD_MSG_CAT_LABELS,
   ARDUCOPTER_OSD_SWITCH_METHOD_LABELS,
   ARDUCOPTER_OSD_TYPE_LABELS,
   ARDUCOPTER_DSHOT_RATE_LABELS,
@@ -1583,6 +1585,39 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       minimum: 0,
       maximum: 1,
       options: enabledDisabledOptions
+    },
+    OSD_MSG_STYLE: {
+      id: 'OSD_MSG_STYLE',
+      label: 'Message Style',
+      description:
+        'Visual emphasis for the MESSAGE panel by severity: CRITICAL and above blink, ERROR and WARNING invert. Display-only and safe on an armed vehicle.',
+      category: 'osd',
+      minimum: 0,
+      maximum: 1,
+      notes: [
+        'Analog OSD (MAX7456, OSD_TYPE = 1): blink and invert both render — the primary target.',
+        'HD OSD (MSP DisplayPort): blink renders, invert does not (no protocol attribute); severity colour is a future addition.',
+        'The CRITICAL-and-above blink is always on and is not configurable.'
+      ],
+      options: enumOptions(ARDUCOPTER_OSD_MSG_STYLE_LABELS)
+    },
+    OSD_MSG_CAT: {
+      id: 'OSD_MSG_CAT',
+      label: 'Message Categories',
+      description:
+        'Category allow-list for the MESSAGE panel. Tick the categories to show; leave all unticked (0) to show everything. CRITICAL-and-above messages are always shown regardless of this filter.',
+      category: 'osd',
+      minimum: 0,
+      maximum: 1023,
+      // Bitmask over 10 keyword-classified categories (bit 0 = value 1 … bit 9 =
+      // value 512). Classification is best-effort — status text has no type
+      // field — so treat it as a filter, not a guarantee.
+      bitmask: true,
+      notes: [
+        'Categories are matched by keyword against the status text (there is no message type field), so classification is best-effort.',
+        'Unticking everything (0) shows all categories; CRITICAL and above always show regardless.'
+      ],
+      options: enumOptions(ARDUCOPTER_OSD_MSG_CAT_LABELS)
     },
     ...buildOsdElementParameterDefinitions(1),
     ...buildOsdElementParameterDefinitions(2),

@@ -51,6 +51,29 @@ test('metadata catalog exposes VTX parameters on the dedicated VTX surface', () 
   assert.equal(vtxOptions.categoryDefinition.viewId, 'vtx')
 })
 
+test('metadata catalog exposes the OSD message style + category params (sfd-osd-msg fork)', () => {
+  const metadata = normalizeFirmwareMetadata(arducopterMetadata)
+
+  const style = metadata.parameters.OSD_MSG_STYLE
+  const cat = metadata.parameters.OSD_MSG_CAT
+
+  // Style: a simple Off/On toggle on the OSD surface.
+  assert.equal(style.categoryDefinition.id, 'osd')
+  assert.equal(style.options.length, 2)
+  assert.equal(style.minimum, 0)
+  assert.equal(style.maximum, 1)
+
+  // Category: a 10-bit allow-list bitmask; keys are BIT INDICES (bit 0 = value 1).
+  assert.equal(cat.categoryDefinition.id, 'osd')
+  assert.equal(cat.bitmask, true)
+  assert.equal(cat.options.length, 10)
+  assert.equal(cat.maximum, 1023)
+  const byValue = new Map(cat.options.map((o) => [o.value, o.label]))
+  assert.equal(byValue.get(0), 'PreArm')
+  assert.equal(byValue.get(3), 'Battery')
+  assert.equal(byValue.get(9), 'Arm/Disarm')
+})
+
 test('metadata catalog exposes AP_Networking (NET_) parameters on the Networking surface', () => {
   const metadata = normalizeFirmwareMetadata(arducopterMetadata)
 
