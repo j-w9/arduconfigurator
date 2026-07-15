@@ -98,6 +98,14 @@ const LIMIT_CYCLE_MIN_HZ = 8
 const LIMIT_CYCLE_MAX_HZ = 40
 const LIMIT_CYCLE_MIN_PROMINENCE = 40
 
+// Rate D at/below this is already at (or near) the ArduCopter default
+// (ATC_RAT_*_D ≈ 0.0036). An axis that still oscillates at a limit-cycle
+// frequency while its D is already this low is unlikely to be a D-term problem
+// on that axis — it's far more likely coupling from the primary (sharpest) axis,
+// or a mechanical / gyro-filter issue. Pushing D below the default in that case
+// just makes the axis mushy, so we advise instead of recommending a cut.
+const D_REDUCE_FLOOR = 0.005
+
 function median(values: number[]): number {
   if (values.length === 0) return 0
   const sorted = values.slice().sort((a, b) => a - b)
@@ -301,6 +309,12 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
 
   const axisSpectra: AxisSpectrum[] = []
   let limitCycle: LogTuningResult['limitCycle']
+  // Every axis that carries the same limit-cycle-band oscillation, sharpest
+  // first. A real limit cycle commonly shows on more than one axis at the SAME
+  // frequency (roll/pitch share a tune, and one axis's oscillation couples into
+  // the other), so we keep the full set — not just the single sharpest axis —
+  // to drive per-axis recommendations vs. coupling advisories below.
+  let affectedAxes: { axis: Axis; freqHz: number; prominence: number }[] = []
   if (gyro) {
     const nyquist = gyro.sampleRateHz / 2
     for (const { axis } of GYRO_AXES) {
@@ -327,16 +341,18 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
     // rate-loop oscillation signature. Cross-axis dominance is NOT required: a
     // real limit cycle can appear on roll and pitch together. Report the axis
     // where it's sharpest.
-    const candidates = axisSpectra.filter(
-      (a) =>
-        a.dominant &&
-        a.dominant.freqHz >= LIMIT_CYCLE_MIN_HZ &&
-        a.dominant.freqHz < LIMIT_CYCLE_MAX_HZ &&
-        (a.prominence ?? 0) >= LIMIT_CYCLE_MIN_PROMINENCE
-    )
-    if (candidates.length > 0) {
-      const sharpest = candidates.reduce((best, a) => ((a.prominence ?? 0) > (best.prominence ?? 0) ? a : best))
-      limitCycle = { axis: sharpest.axis, freqHz: sharpest.dominant!.freqHz }
+    affectedAxes = axisSpectra
+      .filter(
+        (a) =>
+          a.dominant &&
+          a.dominant.freqHz >= LIMIT_CYCLE_MIN_HZ &&
+          a.dominant.freqHz < LIMIT_CYCLE_MAX_HZ &&
+          (a.prominence ?? 0) >= LIMIT_CYCLE_MIN_PROMINENCE
+      )
+      .map((a) => ({ axis: a.axis, freqHz: a.dominant!.freqHz, prominence: a.prominence ?? 0 }))
+      .sort((x, y) => y.prominence - x.prominence)
+    if (affectedAxes.length > 0) {
+      limitCycle = { axis: affectedAxes[0].axis, freqHz: affectedAxes[0].freqHz }
     }
   } else {
     gateWarnings.push('No usable gyro data (neither ISBD batch nor IMU) — cannot analyse vibration or oscillation.')
@@ -358,6 +374,9 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
 
   // ---- Recommendations (advisory; staged for human approval) ----
   const recommendations: TuningRecommendation[] = []
+  // Non-parameter findings the operator should act on (mechanical/coupling), built
+  // alongside the recommendations so the rate-loop block can add coupling notes.
+  const advisories: string[] = []
 
   // Harmonic notch, driven by motor RPM (ESC telemetry present).
   if (esc && motorFundamentalHz) {
@@ -382,23 +401,49 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
     // low floor. The default floor works with ESC-telemetry tracking; leave it.
   }
 
-  // Rate-loop limit cycle → lower that axis's rate D.
-  if (limitCycle) {
-    const dParam = `ATC_RAT_${limitCycle.axis === 'roll' ? 'RLL' : limitCycle.axis === 'pitch' ? 'PIT' : 'YAW'}_D`
-    const current = params.get(dParam)
-    if (current !== undefined && current > 0.001) {
-      recommendations.push({
-        param: dParam,
-        currentValue: current,
-        suggestedValue: Number((current / 2).toFixed(4)),
-        reason: `A sharp ~${limitCycle.freqHz.toFixed(0)} Hz oscillation dominates the ${limitCycle.axis} axis and not the others — the classic rate-loop limit cycle. Halve ${limitCycle.axis} rate D and re-fly.`,
-        confidence: 'medium'
-      })
+  // Rate-loop limit cycle → lower rate D on each oscillating axis. A real limit
+  // cycle often shows on more than one axis at the same frequency, so we act per
+  // axis: halve D where it's still meaningfully high, but for an axis already at
+  // or below the default floor, don't push D lower — that reads as coupling from
+  // the primary axis (or mechanical), so surface an advisory instead.
+  if (affectedAxes.length > 0) {
+    const primary = affectedAxes[0]
+    const alsoAxes = affectedAxes.slice(1).map((a) => a.axis)
+    for (const affected of affectedAxes) {
+      const code = affected.axis === 'roll' ? 'RLL' : affected.axis === 'pitch' ? 'PIT' : 'YAW'
+      const dParam = `ATC_RAT_${code}_D`
+      const current = params.get(dParam)
+      if (current === undefined || current <= 0.0001) {
+        continue // e.g. yaw D is usually 0 — nothing to lower
+      }
+      if (current > D_REDUCE_FLOOR) {
+        const alsoNote =
+          affected.axis === primary.axis && alsoAxes.length > 0
+            ? ` It also appears on ${alsoAxes.join(' and ')} at the same frequency (a shared-tune / coupled oscillation).`
+            : ''
+        recommendations.push({
+          param: dParam,
+          currentValue: current,
+          suggestedValue: Number((current / 2).toFixed(4)),
+          reason: `A sharp ~${affected.freqHz.toFixed(0)} Hz oscillation stands far above the noise floor on the ${affected.axis} axis — the classic rate-loop limit cycle.${alsoNote} Halve ${affected.axis} rate D and re-fly.`,
+          confidence: affected.axis === primary.axis ? 'medium' : 'low'
+        })
+      } else if (affected.axis !== primary.axis) {
+        // Already-low D on a secondary axis → coupling from the primary axis.
+        advisories.push(
+          `The ~${affected.freqHz.toFixed(0)} Hz oscillation also shows on the ${affected.axis} axis, but its rate D (${Number(current.toFixed(4))}) is already at/near default — pushing it lower is unlikely to help. This is most likely coupling from the ${primary.axis} axis (or a mechanical / gyro-filter issue); reduce ${primary.axis} rate D first and re-fly.`
+        )
+      } else {
+        // The sharpest axis itself is already at/near default D yet still
+        // oscillating — a D cut won't fix it; point at the real causes.
+        advisories.push(
+          `A ~${affected.freqHz.toFixed(0)} Hz oscillation dominates the ${affected.axis} axis, but its rate D (${Number(current.toFixed(4))}) is already at/near default — this isn't a D-term problem. Look at gyro filtering (INS_GYRO_FILTER), the harmonic notch, or a mechanical cause (loose FC mount, prop/motor balance).`
+        )
+      }
     }
   }
 
   // ---- Advisories (non-parameter findings the operator should act on) ----
-  const advisories: string[] = []
   if (vibe && vibe.verdict !== 'good') {
     const peak = Math.max(...vibe.max)
     const clip = Math.max(...vibe.clip)
@@ -425,11 +470,12 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
   if (limitCycle) summaryParts.push(`Likely ${limitCycle.freqHz.toFixed(0)} Hz ${limitCycle.axis}-axis limit cycle.`)
   if (motorFundamentalHz) summaryParts.push(`Motor fundamental ~${motorFundamentalHz.toFixed(0)} Hz.`)
   if (recommendations.length === 0 && usable) {
-    // Don't call a high-vibration log "clean" just because there's no param to
-    // stage — the vibration advisory is the actionable finding.
+    // Don't call a log "clean" just because there's no param to stage — an
+    // advisory (high vibration, or a limit cycle whose axis is already at
+    // default D) is the actionable finding.
     summaryParts.push(
-      vibe && vibe.verdict !== 'good'
-        ? 'No parameter changes to stage — the priority here is the vibration above (a mechanical fix), not PID.'
+      advisories.length > 0
+        ? 'No parameter changes to stage — the priority here is the finding above, not a PID change.'
         : 'No parameter changes recommended — the tune looks clean.'
     )
   }
