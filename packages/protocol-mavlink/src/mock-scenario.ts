@@ -105,6 +105,12 @@ const mockParameters: ParameterState = {
   // Fork param (AP_BARO_THST_COMP_ENABLED build) so the VALT card shows its full
   // editor rather than the "firmware doesn't expose this" n/a state.
   BARO1_THST_SCALE: 0,
+  // Per-IMU thermal-calibration enable (INS_TCALn_ENABLE) so the Expert-only TCAL
+  // card renders its full (per-IMU state) surface in demo instead of the n/a
+  // variant. 0 = thermal cal off (the default), matching a fresh board.
+  INS_TCAL1_ENABLE: 0,
+  INS_TCAL2_ENABLE: 0,
+  INS_TCAL3_ENABLE: 0,
   RNGFND1_GNDCLR: 0.1,
   RNGFND1_ADDR: 0,
   RNGFND1_POS_X: 0,

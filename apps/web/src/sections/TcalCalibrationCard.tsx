@@ -27,11 +27,14 @@ export interface TcalCalibrationCardProps {
 
 const IMU_INSTANCES = [1, 2, 3]
 
+// Per-IMU THERMAL-CAL state — labelled to make clear it's the calibration that's
+// off, not the IMU itself ("disabled" read as "IMU disabled"). enable: 0 = no
+// thermal cal, 1 = a learned cal is loaded, 2 = currently learning.
 function enableState(value: number | undefined): { label: string; tone: 'neutral' | 'success' | 'warning' } {
   if (value === undefined) return { label: 'n/a', tone: 'neutral' }
   if (value >= 2) return { label: 'learning', tone: 'warning' }
-  if (value >= 1) return { label: 'enabled', tone: 'success' }
-  return { label: 'disabled', tone: 'neutral' }
+  if (value >= 1) return { label: 'on', tone: 'success' }
+  return { label: 'off', tone: 'neutral' }
 }
 
 export function TcalCalibrationCard({
@@ -89,55 +92,26 @@ export function TcalCalibrationCard({
         <strong>Thermal calibration (TCAL)</strong>
         <StatusBadge tone={anyLearning ? 'warning' : 'neutral'}>{anyLearning ? 'learning' : 'idle'}</StatusBadge>
       </div>
-      <p>
-        Learns per-IMU gyro/accel offsets across temperature so the estimator stays stable from a cold boot to warm.
-        It learns online while the board heats through its temperature range.
-      </p>
+      <p>Learns per-IMU gyro/accel offsets across temperature — online, as the board warms from a cold boot.</p>
 
       <div className="config-pills">
         {imus.map((imu) => {
           const state = enableState(imu.enable)
           return (
             <span key={imu.i} data-tone={state.tone}>
-              IMU{imu.i}: {state.label}
+              IMU{imu.i} TCAL: {state.label}
               {imu.tmin !== undefined && imu.tmax !== undefined ? ` (${imu.tmin.toFixed(0)}→${imu.tmax.toFixed(0)}°C)` : ''}
             </span>
           )
         })}
-      </div>
-
-      {imuTempC !== undefined ? (
-        <div className="config-pills" data-testid="tcal-imu-temp">
-          <span>IMU temp: {imuTempC.toFixed(1)}&thinsp;°C</span>
-          {anyLearning && warmPct !== undefined && targetTmax !== undefined ? (
-            <span>warming: {warmPct.toFixed(0)}% → {targetTmax.toFixed(0)}&thinsp;°C</span>
-          ) : null}
-        </div>
-      ) : null}
-
-      <ol className="calibration-card__steps">
-        <li>
-          <strong>Start cold.</strong> Power the board off and let it cool to ambient — a genuinely cold board is
-          essential; the wider the temperature swing, the better the fit.
-        </li>
-        <li>
-          Click <strong>Prepare thermal calibration</strong> below, then <strong>Apply</strong> in the draft bar. This
-          sets each IMU to <em>learn</em> (<code>INS_TCALn_ENABLE = 2</code>).
-        </li>
-        <li>Reboot the board <strong>cold</strong>, props off, and leave it powered and still — it self-heats through the range.</li>
-        <li>
-          At the top temperature the fit is computed and saved automatically (enable flips back to <em>enabled</em>).
-          Reboot once more to use it.
-        </li>
-      </ol>
-
-      <div className="parameter-follow-up parameter-follow-up--warning">
-        <StatusBadge tone="warning">props off</StatusBadge>
-        <p>
-          Do this on the bench with props removed — the board just needs to sit still and warm up, not fly. The live
-          IMU temperature is shown above; the firmware completes and saves the fit automatically once it reaches the
-          target temperature.
-        </p>
+        {imuTempC !== undefined ? (
+          <span data-testid="tcal-imu-temp" data-tone={anyLearning ? 'warning' : 'neutral'}>
+            IMU temp: {imuTempC.toFixed(1)}&thinsp;°C
+            {anyLearning && warmPct !== undefined && targetTmax !== undefined
+              ? ` · warming ${warmPct.toFixed(0)}% → ${targetTmax.toFixed(0)}°C`
+              : ''}
+          </span>
+        ) : null}
       </div>
 
       <button
@@ -149,11 +123,23 @@ export function TcalCalibrationCard({
       >
         {anyLearning ? 'Learning already enabled' : 'Prepare thermal calibration'}
       </button>
-      {!connected ? (
-        <small>Connect to a vehicle first.</small>
-      ) : !canApplyDraftParameters ? (
-        <small>Finish parameter sync and disarm first.</small>
-      ) : null}
+      <small>
+        {!connected
+          ? 'Connect to a vehicle first.'
+          : !canApplyDraftParameters
+            ? 'Finish parameter sync and disarm first.'
+            : 'Bench only, props off — the board just sits still and warms up.'}
+      </small>
+
+      <details className="calibration-card__howto">
+        <summary>How thermal calibration works (cold boot → warm)</summary>
+        <ol>
+          <li><strong>Start cold.</strong> Power off and let the board cool to ambient — the wider the cold-to-warm swing, the better the fit.</li>
+          <li>Click <strong>Prepare thermal calibration</strong>, then <strong>Apply</strong> in the draft bar (sets <code>INS_TCALn_ENABLE = 2</code>, learn).</li>
+          <li>Reboot <strong>cold</strong>, props off, and leave it powered and still — it self-heats through the range.</li>
+          <li>At the top temperature the fit saves automatically (state flips back to <em>on</em>). Reboot once more to use it.</li>
+        </ol>
+      </details>
     </article>
   )
 }
