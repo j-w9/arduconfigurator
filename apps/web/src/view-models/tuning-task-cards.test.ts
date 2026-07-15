@@ -32,7 +32,8 @@ describe('buildTuningTaskCards', () => {
       'filters',
       'autotune',
       'profiles',
-      'review'
+      'review',
+      'log-tuning'
     ])
   })
 
