@@ -95,10 +95,16 @@ const mockParameters: ParameterState = {
   // Rangefinder / Lidar (RNGFND1) — seeded so the demo surfaces the
   // Rangefinder/Lidar config section (downward-facing, disabled by default).
   // The analog/PWM knobs are seeded too so they reveal when TYPE is changed.
-  RNGFND1_TYPE: 0,
+  // Downward rangefinder (MAVLink type, orientation Down) so the demo exercises
+  // the rangefinder-gated surfaces — including the Expert-only Baro Thrust (VALT)
+  // calibration card, which needs RNGFND1_TYPE > 0 to render.
+  RNGFND1_TYPE: 100,
   RNGFND1_ORIENT: 25,
   RNGFND1_MIN: 0.2,
   RNGFND1_MAX: 7,
+  // Fork param (AP_BARO_THST_COMP_ENABLED build) so the VALT card shows its full
+  // editor rather than the "firmware doesn't expose this" n/a state.
+  BARO1_THST_SCALE: 0,
   RNGFND1_GNDCLR: 0.1,
   RNGFND1_ADDR: 0,
   RNGFND1_POS_X: 0,
