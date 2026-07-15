@@ -2732,10 +2732,16 @@ test.describe('ArduPlane demo', () => {
     await openView(page, 'calibration')
     await expect(page.getByTestId('calibration-card-tcal')).toHaveCount(0)
 
-    // Expert mode reveals it.
+    // Expert mode reveals the full card (demo seeds INS_TCALn_ENABLE = 0).
     await page.getByTestId('product-mode-expert').check()
-    await expect(page.getByTestId('calibration-card-tcal')).toBeVisible()
-    await expect(page.getByTestId('calibration-card-tcal')).toContainText('Thermal calibration')
+    const tcal = page.getByTestId('calibration-card-tcal')
+    await expect(tcal).toBeVisible()
+    await expect(tcal).toContainText('Thermal calibration')
+    // Per-IMU state reads "TCAL: off" (not "disabled", which read as IMU-off).
+    await expect(tcal).toContainText('IMU1 TCAL: off')
+    // The step-by-step is collapsed into a How-it-works disclosure (compact card).
+    await expect(tcal.locator('.calibration-card__howto summary')).toHaveText(/How thermal calibration works/i)
+    await expect(page.getByTestId('tcal-start')).toBeVisible()
   })
 
   test('Calibration: the Baro Thrust (VALT) card is gated on Expert AND a rangefinder', async ({ page }) => {
