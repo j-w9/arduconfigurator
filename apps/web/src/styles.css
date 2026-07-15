@@ -15370,3 +15370,8 @@ button.mavlink-inspector__sent-row {
 .log-tuning__spectrum-scale {
   opacity: 0.6;
 }
+
+.log-tuning__advisories {
+  display: grid;
+  gap: 8px;
+}

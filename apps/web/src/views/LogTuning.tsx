@@ -216,6 +216,17 @@ function LogTuningResults({
         ) : null}
       </div>
 
+      {result.advisories.length > 0 ? (
+        <div className="log-tuning__advisories" data-testid="log-tuning-advisories">
+          {result.advisories.map((advisory) => (
+            <div key={advisory} className="parameter-follow-up parameter-follow-up--warning">
+              <StatusBadge tone="warning">action needed</StatusBadge>
+              <p>{advisory}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {result.axisSpectra.some((axis) => axis.chart) ? (
         <div className="log-tuning__spectra" data-testid="log-tuning-spectra">
           <strong>Gyro spectrum</strong>
@@ -268,7 +279,11 @@ function LogTuningResults({
           </small>
         </div>
       ) : result.usable ? (
-        <p className="bf-note" data-testid="log-tuning-no-recs">No parameter changes recommended — the tune looks clean.</p>
+        <p className="bf-note" data-testid="log-tuning-no-recs">
+          {result.advisories.length > 0
+            ? 'No parameter changes to stage — address the finding above first.'
+            : 'No parameter changes recommended — the tune looks clean.'}
+        </p>
       ) : null}
     </div>
   )
