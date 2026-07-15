@@ -13800,9 +13800,13 @@ details.bf-gui-box:not([open]) > summary::after {
 .calibration-card__howto code {
   font-family: var(--font-data);
   font-size: 10px;
-  background: var(--surface-800);
+  /* Theme-safe tint + readable text. --surface-800 is a light mid-tone in dark
+     mode (#7f8aa0), so with the inherited light step text the code read as a
+     washed-out solid block ("redacted"). Match the config-pills treatment. */
+  background: rgba(var(--edge-rgb), 0.08);
+  color: var(--text);
   padding: 0 3px;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 .guided-current-cal {
   display: flex;
