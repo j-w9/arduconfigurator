@@ -698,11 +698,12 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 />
               ) : null}
 
-              {/* Baro thrust calibration (VALT) — Expert-only, and only when a
-                * downward rangefinder is configured on the connected vehicle
-                * (RNGFND1_TYPE > 0). It's a log-based calibration; the card
-                * itself handles the .bin upload and the fit. */}
-              {isExpertMode && (readRoundedParameter(snapshot, 'RNGFND1_TYPE') ?? 0) > 0 ? (
+              {/* Baro thrust calibration (VALT) — Expert-only, log-based. The
+                * card fits against a downward rangefinder in the log when present,
+                * and otherwise against a manually-entered hover height, so it no
+                * longer requires a rangefinder to be configured. Shows n/a on
+                * firmware without BARO1_THST_SCALE. */}
+              {isExpertMode ? (
                 <ValtCalibrationCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}

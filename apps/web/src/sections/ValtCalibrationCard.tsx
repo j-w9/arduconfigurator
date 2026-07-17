@@ -1,14 +1,15 @@
 // Baro thrust-compensation (VALT) calibration card for the Calibration tab —
-// Expert-gated, and shown only when a rangefinder is detected on the connected
-// vehicle (CalibrationSection does that gating).
+// Expert-gated (CalibrationSection). Shows the n/a state on firmware without
+// BARO1_THST_SCALE.
 //
 // A multirotor's prop wash lowers static pressure over the barometer as throttle
 // rises, so the baro reads high under load. ArduPilot corrects this with
 // BARO1_THST_SCALE (Pascals subtracted per unit throttle). We can't measure this
 // live on the bench — it needs a real hover — so this is a LOG-based calibration:
-// fly a steady hover (ideally at 2–3 heights) with a downward rangefinder, then
-// upload that .bin here. The analyzer (@arduconfig/log-analysis) fits the scale
-// from CTUN throttle/baro-altitude vs the rangefinder ground truth and stages
+// fly a steady hover, then upload that .bin here. The analyzer
+// (@arduconfig/log-analysis) fits the scale from CTUN throttle/baro-altitude vs a
+// ground-truth height — a downward rangefinder (RFND.Dist) when the log has one,
+// otherwise a manually-entered measured hover height — and stages
 // BARO1_THST_SCALE as a draft for the normal verified-write path.
 
 import { useCallback, useState, type ReactElement } from 'react'
@@ -33,30 +34,49 @@ export function ValtCalibrationCard({
   setDraft
 }: ValtCalibrationCardProps): ReactElement {
   const [result, setResult] = useState<ValtResult | null>(null)
+  // Keep the uploaded buffer so a manual-height entry can re-fit the same log
+  // without re-uploading (logs without a rangefinder need a ground-truth height).
+  const [buffer, setBuffer] = useState<ArrayBuffer | null>(null)
   const [filename, setFilename] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
   const [staged, setStaged] = useState(false)
+  const [manualHeight, setManualHeight] = useState('')
 
   const currentScale = readParameterValue(snapshot, 'BARO1_THST_SCALE')
 
-  const handleFile = useCallback(async (file: File) => {
-    setBusy(true)
-    setError(undefined)
-    setResult(null)
-    setStaged(false)
+  const runAnalysis = useCallback((buf: ArrayBuffer, manualTrueAltM?: number) => {
     try {
-      const buffer = await file.arrayBuffer()
-      await new Promise((resolve) => setTimeout(resolve, 0))
-      const analysis = analyzeValtBuffer(buffer)
+      const analysis = analyzeValtBuffer(buf, manualTrueAltM !== undefined ? { manualTrueAltM } : {})
       setResult(analysis)
-      setFilename(file.name)
+      setStaged(false)
+      setError(undefined)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not read or parse that log.')
-    } finally {
-      setBusy(false)
     }
   }, [])
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      setBusy(true)
+      setError(undefined)
+      setResult(null)
+      setStaged(false)
+      setManualHeight('')
+      try {
+        const buf = await file.arrayBuffer()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        setBuffer(buf)
+        setFilename(file.name)
+        runAnalysis(buf) // auto: uses the rangefinder if the log has one
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Could not read or parse that log.')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [runAnalysis]
+  )
 
   // BARO1_THST_SCALE is compiled out on some builds (AP_BARO_THST_COMP_ENABLED).
   // If the synced params don't include it, the firmware can't apply a scale.
@@ -86,8 +106,9 @@ export function ValtCalibrationCard({
       </div>
       <p>
         Corrects the barometer altitude error that prop wash induces under throttle
-        (<code>BARO1_THST_SCALE</code>). This is measured from a flight log — upload a steady hover flown with a
-        downward rangefinder and the scale is fit from baro altitude vs the rangefinder ground truth.
+        (<code>BARO1_THST_SCALE</code>). Measured from a flight log — upload a steady hover. If the log has a
+        downward rangefinder the scale is fit automatically against it; otherwise enter the height you hovered at
+        and it's fit against that.
       </p>
 
       <div className="log-tuning__upload">
@@ -130,6 +151,39 @@ export function ValtCalibrationCard({
             {result.summary}
           </p>
 
+          {result.groundTruth !== 'rangefinder' && buffer ? (
+            <div className="valt-manual" data-testid="valt-manual">
+              <p className="bf-note">
+                {result.groundTruth === 'manual'
+                  ? 'Fit from your measured height. Adjust and re-fit if needed:'
+                  : 'No downward rangefinder in this log — enter the height you actually hovered at to fit manually (best with a single steady hover at that height):'}
+              </p>
+              <div className="valt-manual__row">
+                <label className="scoped-editor-field scoped-editor-field--compact">
+                  <span>Measured hover height (m)</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    inputMode="decimal"
+                    data-testid="valt-manual-height"
+                    value={manualHeight}
+                    onChange={(event) => setManualHeight(event.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  style={buttonStyle('secondary')}
+                  data-testid="valt-manual-fit"
+                  disabled={!(Number.parseFloat(manualHeight) > 0) || busy}
+                  onClick={() => runAnalysis(buffer, Number.parseFloat(manualHeight))}
+                >
+                  Fit with manual height
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {result.points.length > 0 ? (
             <div className="config-pills" data-testid="valt-points">
               {result.points.map((p, i) => (
@@ -171,10 +225,10 @@ export function ValtCalibrationCard({
       <details className="calibration-card__howto">
         <summary>How to calibrate baro thrust scale (VALT, from a log)</summary>
         <ol>
-          <li>Fit a <strong>downward rangefinder</strong> and confirm it logs (RFND, orientation Down).</li>
-          <li>Hover as steadily as you can at a fixed height in a stable mode, holding throttle constant for several seconds. Repeat at 2–3 different heights for a better fit.</li>
-          <li>Download that flight's <code>.bin</code> log and upload it above.</li>
-          <li>The scale is fit from baro altitude vs the rangefinder ground truth: <code>BARO1_THST_SCALE = −(baro_error_m × 12) / throttle</code>. Review the points, then <em>Stage</em> and apply in the draft bar.</li>
+          <li>Hover as steadily as you can at a fixed height in a stable mode, holding throttle constant for several seconds.</li>
+          <li><strong>With a downward rangefinder</strong> (RFND, orientation Down): repeat at 2–3 heights for a better fit — it's fit automatically against the rangefinder.</li>
+          <li><strong>Without a rangefinder</strong>: hover once at a <em>measured</em> height (tape/known height), then enter that height above — it's the ground truth for the fit.</li>
+          <li>Download that flight's <code>.bin</code> log and upload it. The scale is fit as <code>BARO1_THST_SCALE = −(baro_error_m × 12) / throttle</code>. Review the points, then <em>Stage</em> and apply in the draft bar.</li>
           <li>Re-fly and re-check that baro altitude holds steadier through throttle changes.</li>
         </ol>
       </details>

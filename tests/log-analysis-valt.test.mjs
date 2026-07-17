@@ -70,13 +70,38 @@ test('reports the current scale from PARM and no single-point caveat for 2+ poin
   assert.match(r.summary, /current value is -8/i)
 })
 
-test('warns and is unusable when there is no downward rangefinder', () => {
+test('no rangefinder and no manual height: unusable, prompts for a manual height', () => {
   const log = makeValtLog([hoverWindow({ startS: 10, tho: 0.4, trueAlt: 2, baroErr: 0.5 })], {
     rfndOverride: [] // no RFND at all
   })
   const r = analyzeValtLog(log)
   assert.equal(r.usable, false)
-  assert.ok(r.warnings.some((w) => /rangefinder/i.test(w)))
+  assert.equal(r.groundTruth, 'none')
+  assert.ok(r.warnings.some((w) => /rangefinder/i.test(w) && /manual|measured height/i.test(w)))
+})
+
+test('fits from a MANUAL hover height when there is no rangefinder', () => {
+  // baro reads 0.6 m high at 45% throttle, true height 3 m -> scale = -(0.6*12)/0.45 ≈ -16 Pa
+  const log = makeValtLog([hoverWindow({ startS: 10, tho: 0.45, trueAlt: 3, baroErr: 0.6 })], { rfndOverride: [] })
+  const r = analyzeValtLog(log, { manualTrueAltM: 3 })
+  assert.equal(r.groundTruth, 'manual')
+  assert.equal(r.usable, true)
+  assert.ok(Math.abs(r.suggestedScale - -((0.6 * 12) / 0.45)) < 0.6, `scale ${r.suggestedScale}`)
+  assert.match(r.summary, /entered height/i)
+})
+
+test('manual mode flags a log that spans more than one hover height', () => {
+  // Two steady windows at clearly different baro-alt levels (2.5 m vs 6 m).
+  const log = makeValtLog(
+    [
+      hoverWindow({ startS: 10, tho: 0.4, trueAlt: 2, baroErr: 0.5 }),
+      hoverWindow({ startS: 30, tho: 0.4, trueAlt: 5.5, baroErr: 0.5 })
+    ],
+    { rfndOverride: [] }
+  )
+  const r = analyzeValtLog(log, { manualTrueAltM: 2 })
+  assert.equal(r.groundTruth, 'manual')
+  assert.ok(r.warnings.some((w) => /more than one hover height/i.test(w)))
 })
 
 test('ignores forward/upward rangefinder readings (Orient != down)', () => {

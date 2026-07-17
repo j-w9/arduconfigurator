@@ -2744,18 +2744,19 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('tcal-start')).toBeVisible()
   })
 
-  test('Calibration: the Baro Thrust (VALT) card is gated on Expert AND a rangefinder', async ({ page }) => {
+  test('Calibration: the Baro Thrust (VALT) card is Expert-gated (no rangefinder required)', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'calibration')
-    // Default (non-Expert): hidden even though the demo vehicle has a rangefinder.
+    // Default (non-Expert): hidden.
     await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
 
-    // Expert mode + a configured rangefinder (demo seeds RNGFND1_TYPE = 100)
-    // reveals the card, with its log-upload control and the current scale.
+    // Expert mode reveals the card — the gate no longer requires a rangefinder
+    // (the card fits against a rangefinder in the log if present, else a manual
+    // height). Full card shows because the demo firmware exposes BARO1_THST_SCALE.
     await page.getByTestId('product-mode-expert').check()
     const valt = page.getByTestId('calibration-card-valt')
     await valt.scrollIntoViewIfNeeded()

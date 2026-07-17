@@ -13808,6 +13808,21 @@ details.bf-gui-box:not([open]) > summary::after {
   padding: 0 3px;
   border-radius: 3px;
 }
+.valt-manual {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+.valt-manual__row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.valt-manual__row .scoped-editor-field {
+  flex: 1 1 150px;
+}
 .guided-current-cal {
   display: flex;
   flex-direction: column;
