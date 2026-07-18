@@ -741,24 +741,22 @@ test.describe('Motors direction test', () => {
 })
 
 test.describe('Calibration tab — motor-spin (ESC)', () => {
-  test('gated on motor-safety acks; ESC two-step confirm appears (copter)', async ({ page }) => {
-    // CompassMot was removed from the Calibration tab; bench-procedure
-    // CompassMot doesn't match real flight conditions so the recommended
-    // path is now in-flight log-driven calibration. ESC remains because
-    // it's a true bench operation (throttle-high power-cycle sequence).
+  test('ESC calibration is blocked (n/a) for a DShot vehicle — no arm flow', async ({ page }) => {
+    // The demo copter is DShot300 (MOT_PWM_TYPE = 5). ESC endpoint calibration is
+    // a PWM-era procedure and must NOT be offered for DShot (digital, no
+    // endpoints) — the card shows a "not applicable" explanation instead of the
+    // arm/confirm flow, and the motor-safety acks (which only gate ESC cal) hide.
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
     await expect(page.getByTestId('calibration-card-esc')).toBeVisible()
     await expect(page.getByTestId('calibration-card-compassmot')).toHaveCount(0)
-    // ESC arm button needs the same motor-safety acks the old card did.
-    await expect(page.getByTestId('esc-cal-arm')).toBeDisabled()
-    await page.getByTestId('cal-props-ack').check()
-    await page.getByTestId('cal-area-ack').check()
-    await expect(page.getByTestId('esc-cal-arm')).toBeEnabled({ timeout: 30000 })
-    // ESC is a two-step confirm (sets ESC_CALIBRATION + reboots).
-    await page.getByTestId('esc-cal-arm').click()
-    await expect(page.getByTestId('esc-cal-confirm')).toBeVisible()
+    const unsupported = page.getByTestId('esc-cal-unsupported')
+    await expect(unsupported).toBeVisible()
+    await expect(unsupported).toContainText('DShot')
+    // The arm button + safety-ack card are not rendered for DShot.
+    await expect(page.getByTestId('esc-cal-arm')).toHaveCount(0)
+    await expect(page.getByTestId('calibration-card-motor-safety')).toHaveCount(0)
   })
 
   test('motor-spin calibrations are hidden on a plane', async ({ page }) => {

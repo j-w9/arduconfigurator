@@ -7,6 +7,7 @@ import type { ReactElement } from 'react'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+import { formatArducopterMotorPwmType } from '@arduconfig/param-metadata'
 
 import { AccelerometerPoseGuide } from '../accelerometer-pose-guide'
 import { CalibrationLocationButton } from './CalibrationLocationCard'
@@ -594,6 +595,15 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 }
                 const motorSafetyOk = propsRemovedAcknowledged && testAreaAcknowledged
                 const baseReady = snapshot.connection.kind === 'connected' && snapshot.vehicle?.armed !== true && busyAction === undefined
+                // ESC endpoint calibration is a PWM-era procedure — the ESCs learn
+                // min/max from the analog throttle-range pulses. It only applies to
+                // MOT_PWM_TYPE Normal (0) / OneShot (1) / OneShot125 (2). DShot (4–7)
+                // is digital with no endpoints; Brushed (3) and PWMRange/PWMAngle
+                // (8/9) don't calibrate this way either — block all of them.
+                const motPwmType = readRoundedParameter(snapshot, 'MOT_PWM_TYPE')
+                const escCalUnsupported = motPwmType !== undefined && (motPwmType < 0 || motPwmType > 2)
+                const escProtocolLabel = formatArducopterMotorPwmType(motPwmType)
+                const escIsDShot = motPwmType !== undefined && motPwmType >= 4 && motPwmType <= 7
                 const blockedBase = snapshot.connection.kind !== 'connected'
                   ? 'Connect to a vehicle first.'
                   : snapshot.vehicle?.armed
@@ -603,21 +613,25 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       : undefined
                 return (
                   <>
-                    <article className="calibration-card calibration-card--danger" data-testid="calibration-card-motor-safety">
-                      <div className="calibration-card__header">
-                        <strong>Motor-spin safety</strong>
-                        <StatusBadge tone={motorSafetyOk ? 'success' : 'warning'}>{motorSafetyOk ? 'acknowledged' : 'required'}</StatusBadge>
-                      </div>
-                      <p>CompassMot and ESC calibration spin the motors. Confirm before running either.</p>
-                      <label className="scoped-checkbox-option">
-                        <input type="checkbox" checked={propsRemovedAcknowledged} onChange={(e) => setPropsRemovedAcknowledged(e.target.checked)} data-testid="cal-props-ack" />
-                        <span>All propellers are removed.</span>
-                      </label>
-                      <label className="scoped-checkbox-option">
-                        <input type="checkbox" checked={testAreaAcknowledged} onChange={(e) => setTestAreaAcknowledged(e.target.checked)} data-testid="cal-area-ack" />
-                        <span>The vehicle is restrained and the area is clear.</span>
-                      </label>
-                    </article>
+                    {/* Motor-spin safety acks gate ESC calibration; hide them when
+                      * ESC cal isn't applicable (DShot/Brushed/etc.) — nothing spins. */}
+                    {!escCalUnsupported ? (
+                      <article className="calibration-card calibration-card--danger" data-testid="calibration-card-motor-safety">
+                        <div className="calibration-card__header">
+                          <strong>Motor-spin safety</strong>
+                          <StatusBadge tone={motorSafetyOk ? 'success' : 'warning'}>{motorSafetyOk ? 'acknowledged' : 'required'}</StatusBadge>
+                        </div>
+                        <p>ESC calibration spins the motors. Confirm before running it.</p>
+                        <label className="scoped-checkbox-option">
+                          <input type="checkbox" checked={propsRemovedAcknowledged} onChange={(e) => setPropsRemovedAcknowledged(e.target.checked)} data-testid="cal-props-ack" />
+                          <span>All propellers are removed.</span>
+                        </label>
+                        <label className="scoped-checkbox-option">
+                          <input type="checkbox" checked={testAreaAcknowledged} onChange={(e) => setTestAreaAcknowledged(e.target.checked)} data-testid="cal-area-ack" />
+                          <span>The vehicle is restrained and the area is clear.</span>
+                        </label>
+                      </article>
+                    ) : null}
 
                     {/* CompassMot was removed from the Calibration tab — the
                       * bench procedure (spin motors at fixed throttle, log
@@ -632,57 +646,73 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                     <article className="calibration-card" data-testid="calibration-card-esc">
                       <div className="calibration-card__header">
                         <strong>ESC calibration</strong>
-                        <StatusBadge tone={escCalNotice?.tone ?? 'neutral'}>
-                          {escCalNotice ? (escCalNotice.tone === 'danger' ? 'failed' : 'armed') : 'idle'}
+                        <StatusBadge tone={escCalUnsupported ? 'neutral' : (escCalNotice?.tone ?? 'neutral')}>
+                          {escCalUnsupported ? 'n/a' : escCalNotice ? (escCalNotice.tone === 'danger' ? 'failed' : 'armed') : 'idle'}
                         </StatusBadge>
                       </div>
-                      <p>Calibrates the ESC throttle endpoints. Sets ESC_CALIBRATION=3 and reboots; on the next boot (safety off) the ESCs learn min/max from the throttle range. Reconnect after the reboot.</p>
-                      {!escCalArmed ? (
-                        <button
-                          type="button"
-                          style={buttonStyle('secondary')}
-                          data-testid="esc-cal-arm"
-                          disabled={!baseReady || !motorSafetyOk || !canApplyDraftParameters}
-                          onClick={() => setEscCalArmed(true)}
-                        >
-                          Set ESC calibration mode
-                        </button>
-                      ) : (
-                        <div className="setup-bench__dfu-confirm">
-                          <button
-                            type="button"
-                            style={buttonStyle('secondary')}
-                            className="setup-bench__dfu-danger"
-                            data-testid="esc-cal-confirm"
-                            onClick={() => {
-                              setEscCalArmed(false)
-                              void (async () => {
-                                try {
-                                  await runtime.setParameter('ESC_CALIBRATION', 3, UI_PARAMETER_WRITE_OPTIONS)
-                                  await runtime.reboot()
-                                  setEscCalNotice({ tone: 'success', text: 'ESC_CALIBRATION=3 set and reboot sent. Reconnect, then raise throttle to complete on the bench.' })
-                                } catch (error) {
-                                  setEscCalNotice({ tone: 'danger', text: error instanceof Error ? error.message : 'Failed to start ESC calibration.' })
-                                }
-                              })()
-                            }}
-                          >
-                            Confirm: set + reboot
-                          </button>
-                          <button type="button" style={buttonStyle()} onClick={() => setEscCalArmed(false)}>Cancel</button>
+                      {escCalUnsupported ? (
+                        <div className="parameter-follow-up parameter-follow-up--warning" data-testid="esc-cal-unsupported">
+                          <StatusBadge tone="neutral">not applicable</StatusBadge>
+                          <p>
+                            ESC endpoint calibration only applies to PWM / OneShot ESCs. This vehicle's motor output is
+                            {' '}<strong>{escProtocolLabel}</strong> (<code>MOT_PWM_TYPE</code>)
+                            {escIsDShot
+                              ? ' — a digital protocol with no throttle endpoints to calibrate.'
+                              : ' — which does not use throttle-endpoint calibration.'}
+                            {' '}Change <code>MOT_PWM_TYPE</code> to a PWM/OneShot type in Motors if you truly need to calibrate analog ESCs.
+                          </p>
                         </div>
+                      ) : (
+                        <>
+                          <p>Calibrates the ESC throttle endpoints. Sets ESC_CALIBRATION=3 and reboots; on the next boot (safety off) the ESCs learn min/max from the throttle range. Reconnect after the reboot.</p>
+                          {!escCalArmed ? (
+                            <button
+                              type="button"
+                              style={buttonStyle('secondary')}
+                              data-testid="esc-cal-arm"
+                              disabled={!baseReady || !motorSafetyOk || !canApplyDraftParameters}
+                              onClick={() => setEscCalArmed(true)}
+                            >
+                              Set ESC calibration mode
+                            </button>
+                          ) : (
+                            <div className="setup-bench__dfu-confirm">
+                              <button
+                                type="button"
+                                style={buttonStyle('secondary')}
+                                className="setup-bench__dfu-danger"
+                                data-testid="esc-cal-confirm"
+                                onClick={() => {
+                                  setEscCalArmed(false)
+                                  void (async () => {
+                                    try {
+                                      await runtime.setParameter('ESC_CALIBRATION', 3, UI_PARAMETER_WRITE_OPTIONS)
+                                      await runtime.reboot()
+                                      setEscCalNotice({ tone: 'success', text: 'ESC_CALIBRATION=3 set and reboot sent. Reconnect, then raise throttle to complete on the bench.' })
+                                    } catch (error) {
+                                      setEscCalNotice({ tone: 'danger', text: error instanceof Error ? error.message : 'Failed to start ESC calibration.' })
+                                    }
+                                  })()
+                                }}
+                              >
+                                Confirm: set + reboot
+                              </button>
+                              <button type="button" style={buttonStyle()} onClick={() => setEscCalArmed(false)}>Cancel</button>
+                            </div>
+                          )}
+                          {blockedBase ? <p className="calibration-card__blocked">{blockedBase}</p> : null}
+                          {escCalNotice ? <p className="calibration-card__blocked">{escCalNotice.text}</p> : null}
+                          <details className="calibration-card__howto">
+                            <summary>How to calibrate ESC throttle endpoints (PWM ESCs only)</summary>
+                            <ol>
+                              <li>Confirm props are off and the airframe is restrained.</li>
+                              <li>Click <em>Set ESC calibration mode</em> then <em>Confirm: set + reboot</em> — the FC reboots with ESC_CALIBRATION=3 set.</li>
+                              <li>On the next boot, raise the throttle stick to full, power-cycle the ESCs (or wait for the FC to drive max PWM), then drop to zero. ESCs learn the new endpoints from the pulse range.</li>
+                              <li>Reconnect once the ESCs finish their startup chime. Skip entirely for DShot ESCs — they don't need endpoint calibration.</li>
+                            </ol>
+                          </details>
+                        </>
                       )}
-                      {blockedBase ? <p className="calibration-card__blocked">{blockedBase}</p> : null}
-                      {escCalNotice ? <p className="calibration-card__blocked">{escCalNotice.text}</p> : null}
-                      <details className="calibration-card__howto">
-                        <summary>How to calibrate ESC throttle endpoints (PWM ESCs only)</summary>
-                        <ol>
-                          <li>Confirm props are off and the airframe is restrained.</li>
-                          <li>Click <em>Set ESC calibration mode</em> then <em>Confirm: set + reboot</em> — the FC reboots with ESC_CALIBRATION=3 set.</li>
-                          <li>On the next boot, raise the throttle stick to full, power-cycle the ESCs (or wait for the FC to drive max PWM), then drop to zero. ESCs learn the new endpoints from the pulse range.</li>
-                          <li>Reconnect once the ESCs finish their startup chime. Skip entirely for DShot ESCs — they don't need endpoint calibration.</li>
-                        </ol>
-                      </details>
                     </article>
                   </>
                 )
