@@ -32,5 +32,6 @@ export {
   analyzeValtLog,
   analyzeValtBuffer,
   type ValtResult,
-  type ValtPoint
+  type ValtPoint,
+  type ValtOptions
 } from './valt-analysis.js'

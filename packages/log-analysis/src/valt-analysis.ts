@@ -5,8 +5,10 @@
 // ArduPilot corrects this linearly: it subtracts `BARO1_THST_SCALE × throttle`
 // (Pascals × normalized-throttle) from the measured pressure. This module fits
 // that scale from a flight log by comparing the baro altitude against a
-// downward rangefinder (the ground-truth height) over steady-hover windows —
-// the same idea as ArduPilot's VALT WebTool, done offline in the browser.
+// ground-truth height over steady-hover windows — the same idea as ArduPilot's
+// VALT WebTool, done offline in the browser. Ground truth is a downward
+// rangefinder (RFND.Dist) when present; otherwise the operator can enter a
+// measured hover height (options.manualTrueAltM) for a single steady hover.
 //
 // Data used (all from the dataflash log, no live connection):
 //   - CTUN.ThO   normalized throttle out (0..1), time-aligned with…
@@ -58,9 +60,18 @@ export interface ValtPoint {
   durationS: number
 }
 
+export interface ValtOptions {
+  /** Measured true hover height (m) for logs without a rangefinder. When set,
+   *  it's used as the ground-truth altitude instead of RFND — for a single
+   *  steady hover actually flown at this height. */
+  manualTrueAltM?: number
+}
+
 export interface ValtResult {
   /** True when a scale could be fit from at least one steady hover window. */
   usable: boolean
+  /** Which ground-truth altitude the fit used (or would need). */
+  groundTruth: 'rangefinder' | 'manual' | 'none'
   /** Reasons the log can't be used, or caveats on the fit. */
   warnings: string[]
   /** Steady-hover points the fit was built from. */
@@ -111,8 +122,12 @@ function alignSamples(
   return aligned
 }
 
-/** Split aligned samples into steady-hover windows (stable throttle + height). */
-function findSteadyWindows(aligned: AlignedSample[]): ValtPoint[] {
+/** Split aligned samples into steady-hover windows. Always requires a stable
+ *  throttle; when `requireHeightStable` is set (rangefinder mode) it also
+ *  requires the ground-truth height to hold steady, confirming the aircraft
+ *  isn't drifting. Manual mode has no per-sample height (it's one entered
+ *  constant), so it relies on throttle stability alone. */
+function findSteadyWindows(aligned: AlignedSample[], requireHeightStable: boolean): ValtPoint[] {
   const points: ValtPoint[] = []
   let cur: AlignedSample[] = []
 
@@ -139,11 +154,10 @@ function findSteadyWindows(aligned: AlignedSample[]): ValtPoint[] {
       cur = [s]
       continue
     }
-    const meanThr = mean(cur.map((c) => c.throttle))
-    const meanDist = mean(cur.map((c) => c.trueAlt))
-    const withinBand = Math.abs(s.throttle - meanThr) <= THROTTLE_BAND && Math.abs(s.trueAlt - meanDist) <= DIST_BAND
+    const throttleSteady = Math.abs(s.throttle - mean(cur.map((c) => c.throttle))) <= THROTTLE_BAND
+    const heightSteady = !requireHeightStable || Math.abs(s.trueAlt - mean(cur.map((c) => c.trueAlt))) <= DIST_BAND
     const contiguous = s.t - cur[cur.length - 1].t <= MAX_SAMPLE_GAP_S
-    if (withinBand && contiguous) {
+    if (throttleSteady && heightSteady && contiguous) {
       cur.push(s)
     } else {
       close()
@@ -171,9 +185,15 @@ function fitScale(points: ValtPoint[]): number | undefined {
   return Math.max(SCALE_MIN, Math.min(SCALE_MAX, Number(scale.toFixed(1))))
 }
 
-/** Analyse a parsed dataflash log for VALT baro thrust-scale calibration. */
-export function analyzeValtLog(log: ParsedDataflashLog): ValtResult {
+/** Analyse a parsed dataflash log for VALT baro thrust-scale calibration.
+ *  Ground truth is a downward rangefinder when present; otherwise pass
+ *  `options.manualTrueAltM` (a measured hover height) to fit without one. */
+export function analyzeValtLog(log: ParsedDataflashLog, options: ValtOptions = {}): ValtResult {
   const warnings: string[] = []
+  const manualTrueAltM =
+    typeof options.manualTrueAltM === 'number' && Number.isFinite(options.manualTrueAltM) && options.manualTrueAltM > 0
+      ? options.manualTrueAltM
+      : undefined
 
   const ctunRaw = log.messagesByType.get('CTUN') ?? []
   const ctun: { t: number; throttle: number; baroAlt: number }[] = []
@@ -213,16 +233,35 @@ export function analyzeValtLog(log: ParsedDataflashLog): ValtResult {
   if (ctun.length === 0) {
     warnings.push('No throttle/altitude data (CTUN) in this log — it needs an actual flight log.')
   }
-  if (rfnd.length === 0) {
-    warnings.push(
-      'No downward rangefinder data (RFND, Orient=25, status Good) in this log. VALT needs a downward-facing rangefinder logged during the hover for ground truth.'
-    )
-  }
 
+  // Ground truth: an entered manual height takes precedence (the operator is
+  // telling us the true height); otherwise a downward rangefinder; otherwise
+  // nothing to compare against.
+  let groundTruth: ValtResult['groundTruth'] = 'none'
   let points: ValtPoint[] = []
-  if (ctun.length > 0 && rfnd.length > 0) {
+
+  if (ctun.length > 0 && manualTrueAltM !== undefined) {
+    groundTruth = 'manual'
+    const aligned = ctun.map((c) => ({ t: c.t, throttle: c.throttle, baroAlt: c.baroAlt, trueAlt: manualTrueAltM }))
+    points = findSteadyWindows(aligned, false)
+    if (points.length === 0) {
+      warnings.push('No steady hover found — hold a stable throttle at your fixed height for several seconds.')
+    }
+    // Manual entry is a single height. If the baro altitude spans a wide range
+    // across the steady windows, the log holds more than one hover height and a
+    // single entered value can't be right for all of them.
+    if (points.length > 1) {
+      const levels = points.map((p) => p.baroAltM)
+      if (Math.max(...levels) - Math.min(...levels) > 1) {
+        warnings.push(
+          'Baro altitude varied by more than 1 m across the steady windows — that reads as more than one hover height, but a manual height applies one value to the whole log. Use manual mode for a single steady hover at the entered height, or fly with a rangefinder.'
+        )
+      }
+    }
+  } else if (ctun.length > 0 && rfnd.length > 0) {
+    groundTruth = 'rangefinder'
     const aligned = alignSamples(ctun, rfnd)
-    points = findSteadyWindows(aligned)
+    points = findSteadyWindows(aligned, true)
     if (points.length === 0) {
       warnings.push(
         'No steady hover found — hold a stable throttle at a fixed height for several seconds (ideally at 2–3 different heights).'
@@ -232,6 +271,10 @@ export function analyzeValtLog(log: ParsedDataflashLog): ValtResult {
         'Only one steady hover point — the fit is from a single sample. Fly 2–3 steady heights for a more reliable scale.'
       )
     }
+  } else if (ctun.length > 0) {
+    warnings.push(
+      'No downward rangefinder data (RFND, Orient=25, status Good) in this log. Enter the measured height you hovered at below to fit VALT manually, or fly the hover with a downward-facing rangefinder for an automatic fit.'
+    )
   }
 
   const suggestedScale = points.length > 0 ? fitScale(points) : undefined
@@ -239,8 +282,9 @@ export function analyzeValtLog(log: ParsedDataflashLog): ValtResult {
 
   const summaryParts: string[] = []
   if (usable) {
+    const source = groundTruth === 'manual' ? `your entered height (${manualTrueAltM!.toFixed(1)} m)` : 'the rangefinder'
     summaryParts.push(
-      `Fitted BARO1_THST_SCALE = ${suggestedScale} Pa from ${points.length} steady hover ${points.length === 1 ? 'point' : 'points'}.`
+      `Fitted BARO1_THST_SCALE = ${suggestedScale} Pa from ${points.length} steady hover ${points.length === 1 ? 'point' : 'points'} vs ${source}.`
     )
     if (currentScale !== undefined) summaryParts.push(`Current value is ${Number(currentScale.toFixed(1))} Pa.`)
     const worst = points.reduce((a, b) => (Math.abs(b.errorM) > Math.abs(a.errorM) ? b : a))
@@ -251,6 +295,7 @@ export function analyzeValtLog(log: ParsedDataflashLog): ValtResult {
 
   return {
     usable,
+    groundTruth,
     warnings,
     points,
     suggestedScale,
@@ -260,6 +305,6 @@ export function analyzeValtLog(log: ParsedDataflashLog): ValtResult {
 }
 
 /** Convenience: parse a raw `.bin` buffer and run the VALT analysis. */
-export function analyzeValtBuffer(input: ArrayBuffer | Uint8Array): ValtResult {
-  return analyzeValtLog(parseDataflashLog(input))
+export function analyzeValtBuffer(input: ArrayBuffer | Uint8Array, options: ValtOptions = {}): ValtResult {
+  return analyzeValtLog(parseDataflashLog(input), options)
 }
