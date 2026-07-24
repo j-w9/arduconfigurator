@@ -388,6 +388,15 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                         <div className="ports-matrix-row__baud">
                                           <label className="scoped-editor-field scoped-editor-field--compact">
                                             <span>Baud</span>
+                                            {/* The port matrix hand-rolls its fields instead of using the
+                                                Scoped* components, so it doesn't inherit their param-name
+                                                hint — add it here so Baud/Flow/Options aren't the only
+                                                editable knobs in the app with no visible raw param name.
+                                                aria-hidden for the same reason ScopedField does it: a
+                                                <label> folds all its text into the control's a11y name. */}
+                                            <small className="scoped-editor-field__param-id" aria-hidden="true">
+                                              {baudParameter.id}
+                                            </small>
                                             <select
                                               value={selectedBaudPresetValue(currentBaudRate)}
                                               onChange={(event) => {
@@ -455,6 +464,9 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                       {flowControlParameter ? (
                                         <label className="scoped-editor-field scoped-editor-field--compact">
                                           <span>Flow</span>
+                                          <small className="scoped-editor-field__param-id" aria-hidden="true">
+                                            {flowControlParameter.id}
+                                          </small>
                                           <select
                                             value={editedValues[flowControlParameter.id] ?? String(port.flowControlValue ?? '')}
                                             onChange={(event) =>
@@ -478,7 +490,12 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                     <div className="ports-matrix-row__cell">
                                       <div className="ports-matrix-row__options">
                                         <div className="ports-matrix-row__options-header">
-                                          <strong>Serial options</strong>
+                                          <strong>
+                                            Serial options
+                                            {optionsParameter ? (
+                                              <small className="scoped-editor-field__param-id">{optionsParameter.id}</small>
+                                            ) : null}
+                                          </strong>
                                           {optionsParameter ? (
                                             <button
                                               style={buttonStyle()}

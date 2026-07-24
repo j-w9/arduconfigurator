@@ -7430,6 +7430,7 @@ textarea:focus {
   color: var(--text-dim, var(--text-muted));
   font-family: var(--font-data);
   font-size: 10px;
+  font-weight: 400;
   letter-spacing: 0.02em;
   text-transform: none;
 }
