@@ -361,6 +361,20 @@ test.describe('Ports view', () => {
     // The selected option now shows as a chip in the Options cell.
     await expect(page.locator('[data-testid^="serial-options-chips-"]').first()).toBeVisible()
   })
+
+  test('the port matrix names the raw param behind Baud, Flow and Serial options', async ({ page }) => {
+    // The matrix hand-rolls its fields rather than using the Scoped* components,
+    // so it does NOT inherit their param-name hint for free — these were the last
+    // editable knobs in the app showing only a generic word ("Baud", "Flow") with
+    // no way to tell which SERIALn_* parameter they write.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'ports')
+    const hints = page.locator('.ports-matrix .scoped-editor-field__param-id')
+    await expect(hints.filter({ hasText: /^SERIAL\d+_BAUD$/ }).first()).toBeVisible()
+    await expect(hints.filter({ hasText: /_RTSCTS$/ }).first()).toBeVisible()
+    await expect(hints.filter({ hasText: /^SERIAL\d+_OPTIONS$/ }).first()).toBeVisible()
+  })
 })
 
 test.describe('Networking view (Expert + networking-capable FC)', () => {
