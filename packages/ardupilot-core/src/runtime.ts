@@ -499,25 +499,26 @@ export class ArduPilotConfiguratorRuntime {
   // Test-injectable per-instance override; defaults to the
   // module constant. Production callers never set this.
   private readonly parameterSyncStallRetryMs: number
-  // Partial parameter table kept when a link drops mid-download, so the next
-  // connect resumes by index instead of restarting from zero. A board that
-  // resets every few seconds can never finish a table in one window; carrying
-  // the partial set across drops turns N short windows into one download.
-  // Deliberately NOT surfaced in the snapshot: while disconnected the UI must
-  // keep showing nothing, since these values belong to a board that is gone.
-  // Parameter count the carried-over table was captured against, while a
-  // resumed download is still unproven. The first PARAM_VALUE of the new link
-  // settles it: a different count means the table itself changed (reflash,
-  // defaults reset, different build) and the carried values must be thrown out.
+  // Parameter count the retained table was captured against, while a resumed
+  // download is still unproven. The first PARAM_VALUE of the new link settles
+  // it: a different count means the table itself changed (reflash, defaults
+  // reset, different build) and the retained values must be thrown out.
   private parameterSyncResumedTotal: number | undefined
-  private parameterCarryOver:
+  // Set when a link drops with parameters in hand. The table itself STAYS in
+  // `this.parameters`: a board that watchdog-resets every few seconds would
+  // otherwise blank the whole app on each reset, and those values are still the
+  // last truth we had. This marks them as no longer live — the UI says so
+  // loudly, and everything that can act on the vehicle stays gated on
+  // `connection.kind === 'connected'`, which a retained table cannot satisfy.
+  // It also carries the identity + timestamp that decide whether the next
+  // connect may resume the download instead of restarting from zero.
+  private staleLink:
     | {
         readonly key: string
-        readonly parameters: Map<string, ParameterState>
-        readonly realIds: Set<string>
-        readonly indices: Set<number>
+        readonly sinceMs: number
+        readonly vehicle: VehicleIdentity
+        readonly downloaded: number
         readonly total: number
-        readonly capturedAtMs: number
       }
     | undefined
   private autopilotVersionRequested = false
@@ -656,6 +657,17 @@ export class ArduPilotConfiguratorRuntime {
     return {
       connection: this.connection,
       vehicle: this.vehicle,
+      // Retained-table marker. Present only while the values on screen came
+      // from a link that has since dropped; cleared the moment a live download
+      // resumes or restarts.
+      staleLink: this.staleLink
+        ? {
+            sinceMs: this.staleLink.sinceMs,
+            vehicle: this.staleLink.vehicle,
+            downloaded: this.staleLink.downloaded,
+            total: this.staleLink.total
+          }
+        : undefined,
       hardware: cloneHardwareState({
         board: this.hardwareBoard ? { ...this.hardwareBoard } : undefined,
         uartsFile: cloneBoardFileState(this.uartsFile),
@@ -892,39 +904,37 @@ export class ArduPilotConfiguratorRuntime {
 
     try {
       const vehicle = await this.waitForVehicle(options)
-      this.parameters.clear()
-      this.realParameterIdsReceived.clear()
-      this.receivedParameterIndices.clear()
-      this.totalParameters = 0
+
+      // Resume the table the previous link dropped mid-download, when this is
+      // the same board and it is still fresh. `fresh: true` opts out — a caller
+      // that just reflashed or rebooted the board must not inherit values from
+      // the firmware that was on it before.
+      const resuming = options.fresh !== true && this.canResumeStaleLink(vehicle)
+      if (!resuming) {
+        this.discardStaleLink()
+      }
+      const resumedFrom = resuming ? this.staleLink : undefined
+      this.staleLink = undefined
+
       this.parameterSyncRetryCount = 0
-      this.parameterSyncLastRetryDownloaded = 0
+      this.parameterSyncLastRetryDownloaded = resumedFrom ? resumedFrom.downloaded : 0
       this.parameterSyncGapFillActive = false
+      this.parameterSyncResumedTotal = resumedFrom?.total
       this.clearParameterSyncRetryTimer()
 
-      // Resume a table the previous link dropped mid-download, when this is the
-      // same board and the stash is still fresh. `fresh: true` opts out — a
-      // caller that just reflashed or rebooted the board must not inherit values
-      // from the firmware that was on it before.
-      const resumed = options.fresh === true ? undefined : this.takeParameterCarryOver(vehicle)
-      if (resumed) {
-        resumed.parameters.forEach((parameter, id) => this.parameters.set(id, parameter))
-        resumed.realIds.forEach((id) => this.realParameterIdsReceived.add(id))
-        resumed.indices.forEach((index) => this.receivedParameterIndices.add(index))
-        this.totalParameters = resumed.total
-        this.parameterSyncResumedTotal = resumed.total
-        this.parameterSyncLastRetryDownloaded = resumed.realIds.size
+      if (resumedFrom) {
         this.appendStatusEntry(
           'info',
-          `Resuming the parameter download: ${resumed.realIds.size}/${resumed.total} carried over from the previous link.`
+          `Resuming the parameter download: ${resumedFrom.downloaded}/${resumedFrom.total} kept from the previous link.`
         )
       }
 
       this.parameterSync = {
         status: 'requesting',
-        downloaded: resumed ? resumed.realIds.size : 0,
-        total: resumed ? resumed.total : 0,
+        downloaded: resumedFrom ? resumedFrom.downloaded : 0,
+        total: resumedFrom ? resumedFrom.total : 0,
         duplicateFrames: 0,
-        progress: resumed ? Math.min(resumed.realIds.size / resumed.total, 1) : null,
+        progress: resumedFrom ? Math.min(resumedFrom.downloaded / resumedFrom.total, 1) : null,
         targetSystemId: vehicle.systemId,
         targetComponentId: vehicle.componentId,
         requestedAtMs: Date.now()
@@ -932,8 +942,8 @@ export class ArduPilotConfiguratorRuntime {
       this.setGuidedAction('request-parameters', {
         actionId: 'request-parameters',
         status: 'running',
-        summary: resumed
-          ? `Resuming the parameter download at ${resumed.realIds.size}/${resumed.total} (sys=${vehicle.systemId} comp=${vehicle.componentId}).`
+        summary: resumedFrom
+          ? `Resuming the parameter download at ${resumedFrom.downloaded}/${resumedFrom.total} (sys=${vehicle.systemId} comp=${vehicle.componentId}).`
           : `Parameter request sent to sys=${vehicle.systemId} comp=${vehicle.componentId}.`,
         instructions: ['Waiting for the autopilot to stream the full parameter table.'],
         statusTexts: [],
@@ -943,7 +953,7 @@ export class ArduPilotConfiguratorRuntime {
       })
       this.emit()
 
-      if (resumed) {
+      if (resumedFrom) {
         // Refetch only what the dropped link never delivered. A full re-stream
         // here would re-send everything we already hold and — on a board that
         // resets every few seconds — never get further than the last attempt.
@@ -958,6 +968,21 @@ export class ArduPilotConfiguratorRuntime {
       this.emit()
       throw error
     }
+  }
+
+  /**
+   * Drop the retained parameter table from a dropped link. The operator closing
+   * the link on purpose expects a clean slate — "link lost, showing the last
+   * data" is only honest about a link that went away on its own. NOT called on
+   * the internal disconnect()s inside a reconnect attempt, which must leave the
+   * retained table intact for the resume.
+   */
+  discardRetainedParameters(): void {
+    if (!this.staleLink && this.parameters.size === 0) {
+      return
+    }
+    this.discardStaleLink()
+    this.emit()
   }
 
   async waitForParameterSync(options: WaitForParameterSyncOptions = {}): Promise<ConfiguratorSnapshot['parameterStats']> {
@@ -1424,8 +1449,8 @@ export class ArduPilotConfiguratorRuntime {
    *  REJECTED / TIMEOUT — the caller surfaces that to the operator. */
   async rebootToBootloader(): Promise<void> {
     // Whatever is flashed next may have a different parameter table, so no
-    // partial table from this session may survive to be resumed against it.
-    this.parameterCarryOver = undefined
+    // table from this session may survive to be resumed against it.
+    this.discardStaleLink()
     await this.sendCommand(MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN, [3, 0, 0, 0, 0, 0, 0], {
       waitForAck: true,
       ackTimeoutMs: 3000
@@ -1980,6 +2005,13 @@ export class ArduPilotConfiguratorRuntime {
 
     this.vehicle = createVehicleIdentity(message, systemId, componentId)
     this.applyFirmwareMetadata(this.vehicle.vehicle)
+
+    // Retained values from a different board must never linger once this one
+    // announces itself — better an empty screen than another vehicle's config
+    // shown against this heartbeat.
+    if (this.staleLink && this.staleLink.key !== this.staleLinkKey(this.vehicle)) {
+      this.discardStaleLink()
+    }
 
     if (this.parameterSync.status === 'awaiting-vehicle') {
       this.parameterSync = createIdleParameterSync()
@@ -2815,71 +2847,76 @@ export class ArduPilotConfiguratorRuntime {
   }
 
   /**
-   * Identity a carried-over partial table is bound to. Includes the vehicle
-   * kind and autopilot alongside the MAVLink addresses so a resume can't graft
-   * one board's parameters onto another that happens to share sys/comp ids.
+   * Identity the retained table is bound to. Includes the vehicle kind and
+   * firmware alongside the MAVLink addresses so a resume can't graft one
+   * board's parameters onto another that happens to share sys/comp ids.
    */
-  private carryOverKey(vehicle: VehicleIdentity): string {
+  private staleLinkKey(vehicle: VehicleIdentity): string {
     return `${vehicle.systemId}:${vehicle.componentId}:${vehicle.firmware}:${vehicle.vehicle}`
   }
 
   /**
-   * Stash the partial parameter table before live state is torn down, so the
-   * next connect to the same board resumes instead of restarting. Only worth
-   * keeping while a download is genuinely mid-flight: a complete table will be
-   * re-streamed cheaply anyway, and an empty one has nothing to resume.
+   * Mark the parameters left on screen as belonging to a link that has gone
+   * away. Called as live state is torn down, BEFORE `this.vehicle` is cleared.
+   * Nothing to mark when the table is empty — there is no stale data to warn
+   * about, and no partial download worth resuming.
    */
-  private captureParameterCarryOver(): void {
+  private markStaleLink(): void {
     const vehicle = this.vehicle
-    if (
-      !vehicle ||
-      this.realParameterIdsReceived.size === 0 ||
-      this.parameterSync.status === 'complete' ||
-      this.totalParameters <= 0
-    ) {
+    if (!vehicle || this.parameters.size === 0) {
+      // Nothing new to record — and crucially, do NOT clear an existing marker.
+      // resetLiveState() runs again on connect(), by which point the vehicle is
+      // already gone; clearing here would destroy the marker moments before the
+      // reconnect that needs it. Retained values are dropped explicitly, via
+      // discardStaleLink().
       return
     }
 
-    this.parameterCarryOver = {
-      key: this.carryOverKey(vehicle),
-      parameters: new Map(this.parameters),
-      realIds: new Set(this.realParameterIdsReceived),
-      indices: new Set(this.receivedParameterIndices),
-      total: this.totalParameters,
-      capturedAtMs: Date.now()
+    this.staleLink = {
+      key: this.staleLinkKey(vehicle),
+      sinceMs: Date.now(),
+      vehicle,
+      downloaded: this.realParameterIdsReceived.size,
+      total: this.totalParameters
     }
   }
 
-  /**
-   * Consume the stashed partial table if it belongs to this board and is still
-   * fresh. Always clears the stash — a resume that turns out to be wrong (the
-   * FC reports a different parameter count, see processParamValue) restarts
-   * clean rather than half-resuming twice.
-   */
-  private takeParameterCarryOver(vehicle: VehicleIdentity):
-    | NonNullable<ArduPilotConfiguratorRuntime['parameterCarryOver']>
-    | undefined {
-    const carryOver = this.parameterCarryOver
-    this.parameterCarryOver = undefined
-    if (!carryOver || carryOver.key !== this.carryOverKey(vehicle)) {
-      return undefined
-    }
-    if (Date.now() - carryOver.capturedAtMs > PARAMETER_CARRY_OVER_TTL_MS) {
-      return undefined
-    }
-    return carryOver
-  }
-
-  private resetLiveState(): void {
-    this.captureParameterCarryOver()
-    this.vehicle = undefined
-    this.hardwareBoard = undefined
-    this.uartsFile = createIdleUartsFileState()
-    this.pwmOutputCount = undefined
+  /** Drop the retained table and the stale marker together. */
+  private discardStaleLink(): void {
+    this.staleLink = undefined
     this.parameters.clear()
     this.realParameterIdsReceived.clear()
     this.receivedParameterIndices.clear()
     this.totalParameters = 0
+  }
+
+  /**
+   * Whether the retained table may be resumed against the vehicle that just
+   * identified itself: same board, still within the freshness window, and the
+   * download was actually incomplete (a complete table is re-pulled normally).
+   */
+  private canResumeStaleLink(vehicle: VehicleIdentity): boolean {
+    const stale = this.staleLink
+    return (
+      stale !== undefined &&
+      stale.key === this.staleLinkKey(vehicle) &&
+      stale.total > 0 &&
+      stale.downloaded < stale.total &&
+      Date.now() - stale.sinceMs <= PARAMETER_CARRY_OVER_TTL_MS
+    )
+  }
+
+  private resetLiveState(): void {
+    // Retain the parameter table (see `staleLink`) — it is the last data we
+    // had, and blanking the app on every watchdog reset helps nobody. Live
+    // telemetry, verification and guided actions are all cleared below: those
+    // are moment-in-time signals, and a frozen attitude or RC reading shown as
+    // if current would be genuinely misleading.
+    this.markStaleLink()
+    this.vehicle = undefined
+    this.hardwareBoard = undefined
+    this.uartsFile = createIdleUartsFileState()
+    this.pwmOutputCount = undefined
     this.parameterSyncRetryCount = 0
     this.parameterSyncLastRetryDownloaded = 0
     this.parameterSyncGapFillActive = false

@@ -340,6 +340,23 @@ test.describe('tab order', () => {
   })
 })
 
+test.describe('Disconnect behaviour', () => {
+  test('a deliberate disconnect clears the vehicle data instead of leaving a stale-link banner', async ({ page }) => {
+    // The retained table + "link lost" banner exist for a link that went away on
+    // its own (a watchdogging board). Closing the link on purpose must give a
+    // clean slate — showing "showing the last data received" after the operator
+    // clicked Disconnect would be both wrong and alarming.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'config')
+    await expect(page.locator('.scoped-editor-field').first()).toBeVisible()
+
+    await page.getByTestId('disconnect-button').click()
+    await expect(page.getByTestId('stale-link-banner')).toHaveCount(0)
+    await expect(page.locator('.scoped-editor-field')).toHaveCount(0)
+  })
+})
+
 test.describe('Ports view', () => {
   test('serial options show as chips in the matrix (Notes column removed)', async ({ page }) => {
     await page.goto('/')

@@ -13,10 +13,13 @@ import { buttonStyle } from '@arduconfig/ui-kit'
 
 import { canRunGuidedAction } from '../guided-action-helpers'
 import type { ParameterFollowUp, ParameterNotice } from '../hooks/use-parameter-feedback'
+import { buildStaleLinkNotice } from '../view-models/stale-link-notice'
 
 export interface WorkspaceNotesProps {
   snapshot: ConfiguratorSnapshot
   sessionNotice: ParameterNotice | undefined
+  /** Reconnect action for the stale-link banner. */
+  onReconnect?: () => void
   parameterFollowUp: ParameterFollowUp | undefined
   isExpertMode: boolean
   stagedParameterDraftCount: number
@@ -28,6 +31,7 @@ export interface WorkspaceNotesProps {
 export function WorkspaceNotes({
   snapshot,
   sessionNotice,
+  onReconnect,
   parameterFollowUp,
   isExpertMode,
   stagedParameterDraftCount,
@@ -35,12 +39,44 @@ export function WorkspaceNotes({
   onRebootAutopilot,
   onPullParameters
 }: WorkspaceNotesProps) {
-  if (!sessionNotice && !parameterFollowUp && !(!isExpertMode && stagedParameterDraftCount > 0)) {
+  const staleLink = snapshot.staleLink
+
+  if (!staleLink && !sessionNotice && !parameterFollowUp && !(!isExpertMode && stagedParameterDraftCount > 0)) {
     return null
   }
 
   return (
     <div className="workspace-main__notes">
+      {/* Everything below the banner is a snapshot of a link that has dropped.
+          It has to be unmissable: values that look live but are minutes old are
+          how someone flies a stale config. */}
+      {staleLink ? (
+        (() => {
+          const notice = buildStaleLinkNotice(staleLink)
+          return (
+            <div className="workspace-note workspace-note--stale" data-testid="stale-link-banner" role="status">
+              <div className="workspace-note--stale__headline">
+                <span className="workspace-note--stale__dot" aria-hidden="true" />
+                <strong>{notice.headline}</strong>
+              </div>
+              <p>{notice.detail}</p>
+              <small>{notice.hint}</small>
+              {onReconnect ? (
+                <div className="button-row">
+                  <button
+                    type="button"
+                    style={buttonStyle('primary')}
+                    data-testid="stale-link-reconnect"
+                    onClick={onReconnect}
+                  >
+                    Reconnect
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )
+        })()
+      ) : null}
       {sessionNotice ? (
         <div className="workspace-note workspace-note--danger" data-testid="session-connection-notice">
           <strong>Connection issue</strong>

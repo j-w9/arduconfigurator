@@ -15395,3 +15395,49 @@ button.mavlink-inspector__sent-row {
   display: grid;
   gap: 8px;
 }
+
+/* Stale-link banner: the values on screen came from a link that has dropped
+ * (a watchdogging board resets every few seconds, and blanking the app each
+ * time helps nobody). Sized and coloured to be impossible to skim past —
+ * mistaking retained values for live ones is the failure mode this prevents. */
+.workspace-note--stale {
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+  background: var(--warning-weak);
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+.workspace-note--stale__headline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-note--stale__headline strong {
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+
+.workspace-note--stale__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--warning);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 25%, transparent);
+  animation: stale-link-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes stale-link-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-note--stale__dot {
+    animation: none;
+  }
+}

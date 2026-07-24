@@ -128,7 +128,15 @@ test('a partial table survives a watchdog link drop and the next connect resumes
 
     session.watchdogReset()
     await sleep(20)
-    assert.equal(runtime.getSnapshot().parameters.length, 0, 'a dropped link still shows nothing while disconnected')
+    // The values stay on screen after the drop — blanking the app on every
+    // watchdog reset helps nobody — but they are explicitly marked stale.
+    const dropped = runtime.getSnapshot()
+    assert.equal(dropped.parameters.length, 5, 'the last table is retained while disconnected')
+    assert.ok(dropped.staleLink, 'and flagged as stale so the UI can say so')
+    assert.equal(dropped.staleLink.downloaded, 5)
+    assert.equal(dropped.staleLink.total, TOTAL)
+    assert.equal(dropped.vehicle, undefined, 'but the vehicle is gone: nothing may act on it')
+    assert.equal(dropped.parameterStats.status, 'idle', 'and no sync is considered live')
 
     // Operator reconnects; the board is up long enough to answer by-index reads.
     await runtime.connect()
