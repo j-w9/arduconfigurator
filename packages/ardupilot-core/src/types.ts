@@ -542,10 +542,33 @@ export interface CanBusState {
   escTelemetry: DronecanEscTelemetry[]
 }
 
+/**
+ * What is left on screen after the link goes away. The parameter table is kept
+ * (a board that watchdog-resets would otherwise blank the whole app every few
+ * seconds, and the values are still the last truth we had), but it is NOT live
+ * — every consumer that can act on the vehicle stays gated on
+ * `connection.kind === 'connected'`, and the UI must say plainly that what is
+ * shown is a snapshot of a link that has dropped.
+ */
+export interface StaleLinkState {
+  /** When the link dropped. */
+  sinceMs: number
+  /** Identity of the vehicle the retained values came from. */
+  vehicle?: VehicleIdentity
+  /** Parameters actually received before the drop, and the FC-reported total. */
+  downloaded: number
+  total: number
+}
+
 export interface ConfiguratorSnapshot {
   connection: TransportStatus
   vehicle?: VehicleIdentity
   hardware: HardwareState
+  /**
+   * Present only while showing retained values from a dropped link. Absent
+   * whenever the data on screen is live (or there is nothing to show).
+   */
+  staleLink?: StaleLinkState
   parameterStats: {
     downloaded: number
     total: number

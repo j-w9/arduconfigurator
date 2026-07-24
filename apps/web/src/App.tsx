@@ -66,6 +66,7 @@ import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { describeConnectionError } from './connection-error-help'
 import { getDesktopBridge } from './desktop-bridge'
 import { createRuntime } from './runtime-factory'
+import { attemptSerialPortReconnect } from './serial-reconnect'
 import { useOsdEditor } from './hooks/use-osd-editor'
 import { useRcMixer } from './hooks/use-rc-mixer'
 import { useVtxTable } from './hooks/use-vtx-table'
@@ -955,6 +956,15 @@ export function App() {
   // stale-handle reacquire, which the first attempt at this feature was missing.
   const expectRebootReconnectRef = useRef(false)
   const rebootReconnectingRef = useRef(false)
+  // Owns the watchdog auto-resume loop (below): true while it is cycling
+  // reconnects to finish a parameter download a resetting board keeps cutting
+  // short. Separate from the reboot reconnect so the two can never both drive
+  // the port.
+  const watchdogResumingRef = useRef(false)
+  // Set by the Disconnect button. Any auto-reconnect loop must stand down when
+  // the operator closes the link on purpose — re-opening a port someone just
+  // closed is the one thing an automatic retry must never do.
+  const intentionalDisconnectRef = useRef(false)
   const previousConnectionKindRef = useRef(snapshot.connection.kind)
   const previousGuidedSectionRef = useRef<string | undefined>(undefined)
   const boardCatalogEntry = useMemo(() => findBoardCatalogEntry(snapshot.hardware.board?.boardType), [snapshot.hardware.board?.boardType])
@@ -1278,48 +1288,25 @@ export function App() {
       // interface / a bootloader just times out and we move on. Returns true
       // once a heartbeating vehicle is synced.
       const targetInfo = getWebSerialPortInfo(selectedSerialPortRef.current)
-      const attempt = async (): Promise<boolean> => {
-        let ports: WebSerialPortLike[]
-        try {
-          ports = await getAvailableWebSerialPorts()
-        } catch {
-          return false
-        }
-        const matching = ports.filter((port) => {
-          const info = getWebSerialPortInfo(port)
-          return (
-            targetInfo !== undefined &&
-            info !== undefined &&
-            info.usbVendorId === targetInfo.usbVendorId &&
-            info.usbProductId === targetInfo.usbProductId
-          )
-        })
-        const candidates = matching.length > 0 ? matching : ports
-        for (const candidate of candidates) {
-          if (!rebootReconnectingRef.current) {
-            return false
-          }
+      const attempt = async (): Promise<boolean> =>
+        attemptSerialPortReconnect({
+          runtime,
+          targetInfo,
           // Point the transport resolver at this handle synchronously; the
           // setSelectedSerialPort state update lags a render.
-          selectedSerialPortRef.current = candidate
-          try {
-            await runtime.connect()
-            await runtime.waitForVehicle({ timeoutMs: 4000 })
-            // fresh: the board just rebooted on purpose — re-read every value
-            // rather than inheriting a partial table from before the reboot.
-            await runtime.requestParameterList({ fresh: true })
-            // The reboot's pull is done — clear the "pull parameters again"
-            // follow-up so it doesn't linger after the auto-refresh.
+          setActivePort: (port) => {
+            selectedSerialPortRef.current = port
+          },
+          rememberPort: rememberSelectedSerialPort,
+          isCancelled: () => !rebootReconnectingRef.current,
+          // fresh: the board just rebooted on purpose — re-read every value
+          // rather than inheriting a partial table from before the reboot.
+          fresh: true,
+          // The reboot's pull is done — clear the "pull parameters again"
+          // follow-up so it doesn't linger after the auto-refresh.
+          onConnected: () =>
             setParameterFollowUp((current) => (current?.refreshRequired && !current.requiresReboot ? undefined : current))
-            // This interface heartbeats — remember it as the live port.
-            rememberSelectedSerialPort(candidate)
-            return true
-          } catch {
-            await runtime.disconnect().catch(() => {})
-          }
-        }
-        return false
-      }
+        })
       setSessionNotice({ tone: 'neutral', text: 'Rebooting — waiting for the flight controller to reconnect…' })
       // Give the board time to drop off USB and start re-enumerating.
       await wait(2500)
@@ -1346,6 +1333,109 @@ export function App() {
       }
     })()
   }, [snapshot.connection.kind, transportMode, selectedSerialPort, runtime, rememberSelectedSerialPort])
+
+  // Auto-resume a parameter download that a resetting board keeps interrupting.
+  // Field case: a watchdogging FC drops the USB link a few seconds into every
+  // connect, delivering ~120 of 1320 parameters per window — finishing by hand
+  // would take a dozen manual reconnects. Each cycle resumes where the last one
+  // stopped (runtime keeps the partial table), so the count climbs across
+  // attempts until the table is complete. Deliberately narrow: web-serial only,
+  // only while a genuinely incomplete download is outstanding, never when the
+  // operator disconnected on purpose or a reboot reconnect owns the link.
+  useEffect(() => {
+    if (transportMode !== 'web-serial' || !selectedSerialPort) {
+      return
+    }
+    if (snapshot.connection.kind !== 'disconnected' && snapshot.connection.kind !== 'error') {
+      return
+    }
+    if (
+      expectRebootReconnectRef.current ||
+      rebootReconnectingRef.current ||
+      watchdogResumingRef.current ||
+      intentionalDisconnectRef.current ||
+      busyAction !== undefined
+    ) {
+      return
+    }
+    const stale = snapshot.staleLink
+    if (!stale || stale.total <= 0 || stale.downloaded >= stale.total) {
+      return
+    }
+
+    watchdogResumingRef.current = true
+    void (async () => {
+      const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+      const targetInfo = getWebSerialPortInfo(selectedSerialPortRef.current)
+      // Bounded so a board that never comes back can't reconnect forever; the
+      // operator can start another run with Connect.
+      const deadlineMs = Date.now() + 5 * 60_000
+      let cycles = 0
+      try {
+        while (watchdogResumingRef.current && !intentionalDisconnectRef.current && Date.now() < deadlineMs) {
+          cycles += 1
+          const before = runtime.getSnapshot().staleLink?.downloaded ?? 0
+          setSessionNotice({
+            tone: 'neutral',
+            text: `Board reset with the parameter download incomplete (${before}/${stale.total}). Reconnecting to resume — attempt ${cycles}.`
+          })
+          // Let the board finish dropping off USB and re-enumerate.
+          await wait(2000)
+          if (!watchdogResumingRef.current || intentionalDisconnectRef.current) {
+            return
+          }
+          await attemptSerialPortReconnect({
+            runtime,
+            targetInfo,
+            setActivePort: (port) => {
+              selectedSerialPortRef.current = port
+            },
+            rememberPort: rememberSelectedSerialPort,
+            isCancelled: () => !watchdogResumingRef.current || intentionalDisconnectRef.current,
+            // NOT fresh: resuming is the whole point.
+            fresh: false
+          })
+
+          // Give the reconnected board a window to stream before judging it.
+          const streamDeadline = Date.now() + 20_000
+          while (Date.now() < streamDeadline && watchdogResumingRef.current) {
+            const current = runtime.getSnapshot()
+            if (current.parameterStats.status === 'complete') {
+              setSessionNotice({
+                tone: 'success',
+                text: `Parameter download finished across ${cycles} reconnect${cycles === 1 ? '' : 's'} — ${current.parameterStats.downloaded}/${current.parameterStats.total} values.`
+              })
+              return
+            }
+            if (current.connection.kind === 'disconnected' || current.connection.kind === 'error') {
+              break // reset again: go round for another window
+            }
+            await wait(500)
+          }
+          if (runtime.getSnapshot().connection.kind === 'connected') {
+            return // link is up and streaming; leave it alone
+          }
+        }
+        if (watchdogResumingRef.current && !intentionalDisconnectRef.current) {
+          const current = runtime.getSnapshot()
+          setSessionNotice({
+            tone: 'warning',
+            text: `Gave up auto-reconnecting after ${cycles} attempt${cycles === 1 ? '' : 's'} (${current.staleLink?.downloaded ?? 0}/${stale.total} parameters). The values on screen are from the last link — click Connect to keep trying.`
+          })
+        }
+      } finally {
+        watchdogResumingRef.current = false
+      }
+    })()
+  }, [
+    snapshot.connection.kind,
+    snapshot.staleLink,
+    transportMode,
+    selectedSerialPort,
+    busyAction,
+    runtime,
+    rememberSelectedSerialPort
+  ])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -2526,6 +2616,9 @@ export function App() {
   }
 
   async function handleConnect(): Promise<void> {
+    // Connecting again re-arms the auto-resume loop that a deliberate
+    // disconnect stood down.
+    intentionalDisconnectRef.current = false
     setBusyAction('connect')
     try {
       setSessionNotice(undefined)
@@ -2627,10 +2720,16 @@ export function App() {
     // loop can't fight the operator by re-opening the link they just closed.
     expectRebootReconnectRef.current = false
     rebootReconnectingRef.current = false
+    watchdogResumingRef.current = false
+    intentionalDisconnectRef.current = true
     setBusyAction('disconnect')
     try {
       setSessionNotice(undefined)
       await runtime.disconnect()
+      // Closing the link on purpose means a clean slate: the retained table and
+      // its "link lost" banner only make sense for a link that went away on its
+      // own (a watchdog reset), not one the operator just closed.
+      runtime.discardRetainedParameters()
     } finally {
       setBusyAction(undefined)
     }
@@ -6368,6 +6467,7 @@ export function App() {
           <WorkspaceNotes
             snapshot={snapshot}
             sessionNotice={sessionNotice}
+            onReconnect={() => void handleConnect()}
             parameterFollowUp={parameterFollowUp}
             isExpertMode={isExpertMode}
             stagedParameterDraftCount={stagedParameterDrafts.length}
