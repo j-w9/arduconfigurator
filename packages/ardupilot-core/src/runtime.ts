@@ -152,7 +152,15 @@ export interface WaitForVehicleOptions {
   timeoutMs?: number
 }
 
-export interface RequestParameterListOptions extends WaitForVehicleOptions {}
+export interface RequestParameterListOptions extends WaitForVehicleOptions {
+  /**
+   * Force a clean download, ignoring any partial table carried over from a
+   * link that dropped mid-sync. Required after anything that can change what
+   * the table holds — a firmware flash, a defaults reset, a reboot into new
+   * firmware — where inheriting the previous board state would be wrong.
+   */
+  fresh?: boolean
+}
 
 export interface WaitForParameterSyncOptions {
   timeoutMs?: number
@@ -186,7 +194,21 @@ export interface ArduPilotConfiguratorRuntimeOptions {
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 20000
 const DEFAULT_PARAMETER_SYNC_TIMEOUT_MS = 20000
 const PARAMETER_SYNC_STALL_RETRY_MS = 1500
-const MAX_PARAMETER_SYNC_RETRIES = 3
+// Consecutive no-progress stall passes before the retry interval starts backing
+// off. The retry itself is NOT capped: a board that watchdog-resets mid-download
+// is silent for far longer than a few passes, and giving up permanently left the
+// operator with a partial table and no way back short of a reconnect (field
+// repro: a 4.8-dev board resetting on every connect never delivered a single
+// full table, while a GCS that retries indefinitely pulled it off fine).
+const PARAMETER_SYNC_BACKOFF_AFTER_PASSES = 3
+// Ceiling for the backed-off stall interval. Slow enough not to spam a dead
+// link, fast enough to catch a board the moment it finishes rebooting.
+const MAX_PARAMETER_SYNC_STALL_RETRY_MS = 8000
+// How long a partial table carried over from a dropped link stays eligible for
+// resume. Long enough to cover a watchdog reboot + USB re-enumeration + the
+// operator re-connecting; short enough that it can't silently resurface hours
+// later against a board that has since been reflashed.
+const PARAMETER_CARRY_OVER_TTL_MS = 10 * 60 * 1000
 // Cap on how many PARAM_REQUEST_READ frames a single gap-fill pass emits, so a
 // pathological gap streams in bounded bursts rather than thousands at once. The
 // real-world gap is a handful of dropped frames; any remainder rolls to the
@@ -477,6 +499,27 @@ export class ArduPilotConfiguratorRuntime {
   // Test-injectable per-instance override; defaults to the
   // module constant. Production callers never set this.
   private readonly parameterSyncStallRetryMs: number
+  // Partial parameter table kept when a link drops mid-download, so the next
+  // connect resumes by index instead of restarting from zero. A board that
+  // resets every few seconds can never finish a table in one window; carrying
+  // the partial set across drops turns N short windows into one download.
+  // Deliberately NOT surfaced in the snapshot: while disconnected the UI must
+  // keep showing nothing, since these values belong to a board that is gone.
+  // Parameter count the carried-over table was captured against, while a
+  // resumed download is still unproven. The first PARAM_VALUE of the new link
+  // settles it: a different count means the table itself changed (reflash,
+  // defaults reset, different build) and the carried values must be thrown out.
+  private parameterSyncResumedTotal: number | undefined
+  private parameterCarryOver:
+    | {
+        readonly key: string
+        readonly parameters: Map<string, ParameterState>
+        readonly realIds: Set<string>
+        readonly indices: Set<number>
+        readonly total: number
+        readonly capturedAtMs: number
+      }
+    | undefined
   private autopilotVersionRequested = false
   private uartsFileRequested = false
 
@@ -857,12 +900,31 @@ export class ArduPilotConfiguratorRuntime {
       this.parameterSyncLastRetryDownloaded = 0
       this.parameterSyncGapFillActive = false
       this.clearParameterSyncRetryTimer()
+
+      // Resume a table the previous link dropped mid-download, when this is the
+      // same board and the stash is still fresh. `fresh: true` opts out — a
+      // caller that just reflashed or rebooted the board must not inherit values
+      // from the firmware that was on it before.
+      const resumed = options.fresh === true ? undefined : this.takeParameterCarryOver(vehicle)
+      if (resumed) {
+        resumed.parameters.forEach((parameter, id) => this.parameters.set(id, parameter))
+        resumed.realIds.forEach((id) => this.realParameterIdsReceived.add(id))
+        resumed.indices.forEach((index) => this.receivedParameterIndices.add(index))
+        this.totalParameters = resumed.total
+        this.parameterSyncResumedTotal = resumed.total
+        this.parameterSyncLastRetryDownloaded = resumed.realIds.size
+        this.appendStatusEntry(
+          'info',
+          `Resuming the parameter download: ${resumed.realIds.size}/${resumed.total} carried over from the previous link.`
+        )
+      }
+
       this.parameterSync = {
         status: 'requesting',
-        downloaded: 0,
-        total: 0,
+        downloaded: resumed ? resumed.realIds.size : 0,
+        total: resumed ? resumed.total : 0,
         duplicateFrames: 0,
-        progress: null,
+        progress: resumed ? Math.min(resumed.realIds.size / resumed.total, 1) : null,
         targetSystemId: vehicle.systemId,
         targetComponentId: vehicle.componentId,
         requestedAtMs: Date.now()
@@ -870,7 +932,9 @@ export class ArduPilotConfiguratorRuntime {
       this.setGuidedAction('request-parameters', {
         actionId: 'request-parameters',
         status: 'running',
-        summary: `Parameter request sent to sys=${vehicle.systemId} comp=${vehicle.componentId}.`,
+        summary: resumed
+          ? `Resuming the parameter download at ${resumed.realIds.size}/${resumed.total} (sys=${vehicle.systemId} comp=${vehicle.componentId}).`
+          : `Parameter request sent to sys=${vehicle.systemId} comp=${vehicle.componentId}.`,
         instructions: ['Waiting for the autopilot to stream the full parameter table.'],
         statusTexts: [],
         startedAtMs: this.guidedActionService.getAction('request-parameters').startedAtMs ?? Date.now(),
@@ -879,7 +943,16 @@ export class ArduPilotConfiguratorRuntime {
       })
       this.emit()
 
-      await this.requestParameterTable(vehicle.systemId, vehicle.componentId)
+      if (resumed) {
+        // Refetch only what the dropped link never delivered. A full re-stream
+        // here would re-send everything we already hold and — on a board that
+        // resets every few seconds — never get further than the last attempt.
+        this.parameterSyncGapFillActive = true
+        await this.requestMissingParameters(this.missingParameterIndices())
+        this.scheduleParameterSyncRetry()
+      } else {
+        await this.requestParameterTable(vehicle.systemId, vehicle.componentId)
+      }
     } catch (error) {
       this.failGuidedAction('request-parameters', error)
       this.emit()
@@ -1350,6 +1423,9 @@ export class ArduPilotConfiguratorRuntime {
    *  ArduPilot boards then enumerate as a DFU device on USB. Throws on
    *  REJECTED / TIMEOUT — the caller surfaces that to the operator. */
   async rebootToBootloader(): Promise<void> {
+    // Whatever is flashed next may have a different parameter table, so no
+    // partial table from this session may survive to be resumed against it.
+    this.parameterCarryOver = undefined
     await this.sendCommand(MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN, [3, 0, 0, 0, 0, 0, 0], {
       waitForAck: true,
       ackTimeoutMs: 3000
@@ -1919,6 +1995,17 @@ export class ArduPilotConfiguratorRuntime {
       this.autopilotVersionRequested = true
       void this.requestAutopilotVersion(systemId, componentId)
     }
+
+    // A heartbeat from a board that just finished rebooting is the earliest
+    // signal it can answer again. If a download is still open but no retry is
+    // armed (nothing can re-arm it once the stream went quiet at exactly the
+    // wrong moment), restart the stall timer so the recovery continues.
+    if (
+      !this.parameterSyncRetryTimer &&
+      (this.parameterSync.status === 'requesting' || this.parameterSync.status === 'streaming')
+    ) {
+      this.scheduleParameterSyncRetry()
+    }
   }
 
   /**
@@ -1944,7 +2031,47 @@ export class ArduPilotConfiguratorRuntime {
     return this.metadata
   }
 
+  /**
+   * Settle a resumed download against the first count the reconnected board
+   * reports. Same count: the carried values describe this table, keep them.
+   * Different count: the parameter table itself changed while we were away, so
+   * every carried value is suspect — drop the lot and re-stream from scratch
+   * rather than serve the operator a blend of two firmwares.
+   */
+  private reconcileResumedParameterTable(paramCount: number): void {
+    const resumedTotal = this.parameterSyncResumedTotal
+    if (resumedTotal === undefined) {
+      return
+    }
+    this.parameterSyncResumedTotal = undefined
+    if (paramCount === resumedTotal) {
+      return
+    }
+
+    this.parameters.clear()
+    this.realParameterIdsReceived.clear()
+    this.receivedParameterIndices.clear()
+    this.totalParameters = 0
+    this.parameterSyncLastRetryDownloaded = 0
+    this.parameterSyncGapFillActive = false
+    this.parameterSync = {
+      ...this.parameterSync,
+      status: 'requesting',
+      downloaded: 0,
+      total: 0,
+      progress: null
+    }
+    this.appendStatusEntry(
+      'warning',
+      `The board now reports ${paramCount} parameters (was ${resumedTotal}) — its table changed, so the carried-over values were discarded and the download restarted.`
+    )
+    if (this.vehicle) {
+      void this.requestParameterTable(this.vehicle.systemId, this.vehicle.componentId)
+    }
+  }
+
   private processParamValue(message: ParamValueMessage): void {
+    this.reconcileResumedParameterTable(message.paramCount)
     // "Known" tracks REAL arrivals (excludes alias-mirror entries) so a
     // mirrored entry placed under one id by a later message does not mark
     // an earlier real arrival under the other id as a duplicate.
@@ -2687,7 +2814,64 @@ export class ArduPilotConfiguratorRuntime {
     })
   }
 
+  /**
+   * Identity a carried-over partial table is bound to. Includes the vehicle
+   * kind and autopilot alongside the MAVLink addresses so a resume can't graft
+   * one board's parameters onto another that happens to share sys/comp ids.
+   */
+  private carryOverKey(vehicle: VehicleIdentity): string {
+    return `${vehicle.systemId}:${vehicle.componentId}:${vehicle.firmware}:${vehicle.vehicle}`
+  }
+
+  /**
+   * Stash the partial parameter table before live state is torn down, so the
+   * next connect to the same board resumes instead of restarting. Only worth
+   * keeping while a download is genuinely mid-flight: a complete table will be
+   * re-streamed cheaply anyway, and an empty one has nothing to resume.
+   */
+  private captureParameterCarryOver(): void {
+    const vehicle = this.vehicle
+    if (
+      !vehicle ||
+      this.realParameterIdsReceived.size === 0 ||
+      this.parameterSync.status === 'complete' ||
+      this.totalParameters <= 0
+    ) {
+      return
+    }
+
+    this.parameterCarryOver = {
+      key: this.carryOverKey(vehicle),
+      parameters: new Map(this.parameters),
+      realIds: new Set(this.realParameterIdsReceived),
+      indices: new Set(this.receivedParameterIndices),
+      total: this.totalParameters,
+      capturedAtMs: Date.now()
+    }
+  }
+
+  /**
+   * Consume the stashed partial table if it belongs to this board and is still
+   * fresh. Always clears the stash — a resume that turns out to be wrong (the
+   * FC reports a different parameter count, see processParamValue) restarts
+   * clean rather than half-resuming twice.
+   */
+  private takeParameterCarryOver(vehicle: VehicleIdentity):
+    | NonNullable<ArduPilotConfiguratorRuntime['parameterCarryOver']>
+    | undefined {
+    const carryOver = this.parameterCarryOver
+    this.parameterCarryOver = undefined
+    if (!carryOver || carryOver.key !== this.carryOverKey(vehicle)) {
+      return undefined
+    }
+    if (Date.now() - carryOver.capturedAtMs > PARAMETER_CARRY_OVER_TTL_MS) {
+      return undefined
+    }
+    return carryOver
+  }
+
   private resetLiveState(): void {
+    this.captureParameterCarryOver()
     this.vehicle = undefined
     this.hardwareBoard = undefined
     this.uartsFile = createIdleUartsFileState()
@@ -2699,6 +2883,7 @@ export class ArduPilotConfiguratorRuntime {
     this.parameterSyncRetryCount = 0
     this.parameterSyncLastRetryDownloaded = 0
     this.parameterSyncGapFillActive = false
+    this.parameterSyncResumedTotal = undefined
     this.parameterSync = createIdleParameterSync()
     this.guidedActionService.reset()
     this.motorTestService.reset()
@@ -2817,16 +3002,32 @@ export class ArduPilotConfiguratorRuntime {
   private scheduleParameterSyncRetry(): void {
     this.clearParameterSyncRetryTimer()
 
-    if (
-      (this.parameterSync.status !== 'requesting' && this.parameterSync.status !== 'streaming') ||
-      this.parameterSyncRetryCount >= MAX_PARAMETER_SYNC_RETRIES
-    ) {
+    if (this.parameterSync.status !== 'requesting' && this.parameterSync.status !== 'streaming') {
       return
     }
 
     this.parameterSyncRetryTimer = setTimeout(() => {
       void this.retryParameterSync()
-    }, this.parameterSyncStallRetryMs)
+    }, this.parameterSyncStallRetryDelayMs())
+  }
+
+  /**
+   * Stall interval for the next pass. Stays at the base rate while passes are
+   * still recovering parameters, then backs off exponentially once several
+   * consecutive passes have found nothing — the signature of a board that is
+   * down (rebooting) rather than a link merely dropping frames. Retries never
+   * stop while the sync is live: the board may come back at any moment, and it
+   * is the operator who decides to give up, not the runtime.
+   */
+  private parameterSyncStallRetryDelayMs(): number {
+    const overBudget = this.parameterSyncRetryCount - PARAMETER_SYNC_BACKOFF_AFTER_PASSES
+    if (overBudget <= 0) {
+      return this.parameterSyncStallRetryMs
+    }
+    const backedOff = this.parameterSyncStallRetryMs * 2 ** Math.min(overBudget, 8)
+    // Honour a test-injected fast timer: never back off past the module ceiling,
+    // and never below the caller's base interval.
+    return Math.max(this.parameterSyncStallRetryMs, Math.min(backedOff, MAX_PARAMETER_SYNC_STALL_RETRY_MS))
   }
 
   private clearParameterSyncRetryTimer(): void {
@@ -2844,10 +3045,9 @@ export class ArduPilotConfiguratorRuntime {
     // Use the alias-free count throughout (matches the completion gate and the
     // downloaded count getSnapshot() exposes).
     const downloaded = this.realParameterIdsReceived.size
-    // Refund the retry budget whenever a pass recovered params: a working link
-    // with a gap larger than MAX_RETRIES × MAX_PER_PASS must be allowed to
-    // converge over many passes rather than give up mid-recovery. Only
-    // CONSECUTIVE no-progress passes count toward the cap.
+    // A pass that recovered parameters resets the streak, which drops the
+    // interval back to the base rate. Only CONSECUTIVE no-progress passes back
+    // it off — a working link with a large gap must converge at full speed.
     const madeProgressSinceLastRetry = downloaded > this.parameterSyncLastRetryDownloaded
     if (madeProgressSinceLastRetry) {
       this.parameterSyncRetryCount = 0
@@ -2860,8 +3060,7 @@ export class ArduPilotConfiguratorRuntime {
       // Gate on realParameterIdsReceived.size, NOT parameters.size (which
       // counts alias mirrors), against the alias-free FC-reported total — same
       // source the completion gate uses.
-      (downloaded >= this.totalParameters && this.totalParameters > 0) ||
-      this.parameterSyncRetryCount >= MAX_PARAMETER_SYNC_RETRIES
+      (downloaded >= this.totalParameters && this.totalParameters > 0)
     ) {
       return
     }
@@ -2881,19 +3080,27 @@ export class ArduPilotConfiguratorRuntime {
     const canGapFill = total > 0 && downloaded > 0 && missingIndices.length > 0 && !gapFillStalled
     this.parameterSyncGapFillActive = canGapFill
 
-    this.appendStatusEntry(
-      'warning',
-      canGapFill
-        ? `Parameter stream stalled at ${downloaded}/${total}. Refetching ${missingIndices.length} missing parameter(s) by index (${this.parameterSyncRetryCount}/${MAX_PARAMETER_SYNC_RETRIES}).`
-        : `Parameter stream stalled at ${downloaded}/${total || 'unknown'}. Re-requesting the table (${this.parameterSyncRetryCount}/${MAX_PARAMETER_SYNC_RETRIES}).`
-    )
+    // Retries are unbounded, so every pass must NOT write a notice — a board
+    // that stays down would bury the log. Report the first few passes, then
+    // only every fifth, which is enough to show the retry is still alive.
+    if (this.parameterSyncRetryCount <= PARAMETER_SYNC_BACKOFF_AFTER_PASSES || this.parameterSyncRetryCount % 5 === 0) {
+      this.appendStatusEntry(
+        'warning',
+        canGapFill
+          ? `Parameter stream stalled at ${downloaded}/${total}. Refetching ${missingIndices.length} missing parameter(s) by index (attempt ${this.parameterSyncRetryCount}).`
+          : `Parameter stream stalled at ${downloaded}/${total || 'unknown'}. Re-requesting the table (attempt ${this.parameterSyncRetryCount}).`
+      )
+    }
     this.setGuidedAction('request-parameters', {
       ...this.guidedActionService.getAction('request-parameters'),
       status: 'running',
       summary: canGapFill
         ? `Parameter stream stalled at ${downloaded}/${total}. Refetching ${missingIndices.length} missing parameter(s).`
         : `Parameter stream stalled at ${downloaded}/${total || 'unknown'}. Re-requesting the full parameter table.`,
-      instructions: ['Keep the link open while the configurator retries the parameter stream.'],
+      instructions: [
+        'Keep the link open while the configurator retries the parameter stream.',
+        'If the board is resetting, leave this running (or reconnect) — the download resumes where it left off instead of restarting.'
+      ],
       updatedAtMs: Date.now(),
       completedAtMs: undefined
     })

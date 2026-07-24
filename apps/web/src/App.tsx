@@ -1305,7 +1305,9 @@ export function App() {
           try {
             await runtime.connect()
             await runtime.waitForVehicle({ timeoutMs: 4000 })
-            await runtime.requestParameterList()
+            // fresh: the board just rebooted on purpose — re-read every value
+            // rather than inheriting a partial table from before the reboot.
+            await runtime.requestParameterList({ fresh: true })
             // The reboot's pull is done — clear the "pull parameters again"
             // follow-up so it doesn't linger after the auto-refresh.
             setParameterFollowUp((current) => (current?.refreshRequired && !current.requiresReboot ? undefined : current))
@@ -2665,7 +2667,7 @@ export function App() {
           void (async () => {
             await new Promise((resolve) => setTimeout(resolve, 3000))
             try {
-              await runtime.requestParameterList()
+              await runtime.requestParameterList({ fresh: true })
               setParameterFollowUp((current) =>
                 current?.refreshRequired && !current.requiresReboot ? undefined : current
               )
@@ -3011,7 +3013,7 @@ export function App() {
       // first or the pull races the still-old running firmware.
       if (rebootRequiredCount === 0 && result.applied.length > 0) {
         try {
-          await runtime.requestParameterList()
+          await runtime.requestParameterList({ fresh: true })
           await runtime.waitForParameterSync()
           setParameterFollowUp((current) => (current?.refreshRequired && !current.requiresReboot ? undefined : current))
         } catch {
@@ -3138,7 +3140,7 @@ export function App() {
       // still-old running firmware.
       if (applyingRebootRequiredCount === 0 && result.applied.length > 0) {
         try {
-          await runtime.requestParameterList()
+          await runtime.requestParameterList({ fresh: true })
           await runtime.waitForParameterSync()
           setParameterFollowUp((current) => (current?.refreshRequired && !current.requiresReboot ? undefined : current))
         } catch {
@@ -5071,7 +5073,7 @@ export function App() {
       setSavedSnapshots((current) => [autoBackup, ...current.filter((entry) => entry.id !== autoBackup.id)])
       const result = await runtime.setParameters(requests, UI_PARAMETER_WRITE_OPTIONS, onProgress)
       if (result.applied.length > 0) {
-        void runtime.requestParameterList().then(() => runtime.waitForParameterSync()).catch(() => undefined)
+        void runtime.requestParameterList({ fresh: true }).then(() => runtime.waitForParameterSync()).catch(() => undefined)
       }
       return result
     },
