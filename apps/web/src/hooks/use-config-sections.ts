@@ -25,6 +25,10 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   // gate on PILOT_Y_RATE too for symmetry / partial param tables.
   const hasFastRate = configParametersById.has('FSTRATE_ENABLE')
   const hasPilotRates = configParametersById.has('PILOT_Y_RATE')
+  // Compass section — gate on COMPASS_USE (present whenever a compass subsystem
+  // is compiled in). Extra compasses / the disable mask only render when the FC
+  // actually reports them, so a single-compass board stays uncluttered.
+  const hasCompass = configParametersById.has('COMPASS_USE')
   // Frame class/type — present on Copter (and Heli); Plane/Rover use different
   // frame params, so gate on FRAME_CLASS actually being in the synced tree.
   const hasFrame = configParametersById.has('FRAME_CLASS')
@@ -73,6 +77,32 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
         { paramId: 'AHRS_TRIM_Z', label: 'Yaw trim', unit: 'rad', digits: 4 }
       ]
     },
+    ...(hasCompass
+      ? [
+          {
+            id: 'compass',
+            title: 'Compass',
+            description:
+              'Which compasses to use for yaw, how the primary external compass is mounted, and (advanced) which driver types to block. ArduPilot auto-detects compasses — internal ones follow the board orientation; an external one uses its own orientation below.',
+            fields: [
+              { paramId: 'COMPASS_USE', label: 'Use compass 1', digits: 0 },
+              ...(configParametersById.has('COMPASS_USE2')
+                ? [{ paramId: 'COMPASS_USE2', label: 'Use compass 2', digits: 0 }]
+                : []),
+              ...(configParametersById.has('COMPASS_USE3')
+                ? [{ paramId: 'COMPASS_USE3', label: 'Use compass 3', digits: 0 }]
+                : []),
+              { paramId: 'COMPASS_AUTODEC', label: 'Auto declination', digits: 0 },
+              { paramId: 'COMPASS_EXTERNAL', label: 'Compass 1 mounting', digits: 0 },
+              { paramId: 'COMPASS_ORIENT', label: 'Compass 1 orientation', digits: 0 },
+              { paramId: 'COMPASS_AUTO_ROT', label: 'Auto-check orientation', digits: 0 },
+              ...(configParametersById.has('COMPASS_DISBLMSK')
+                ? [{ paramId: 'COMPASS_DISBLMSK', label: 'Disabled compass drivers', digits: 0 }]
+                : [])
+            ]
+          }
+        ]
+      : []),
     {
       id: 'esc-dshot',
       title: 'ESC & DShot',

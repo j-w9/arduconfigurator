@@ -1390,6 +1390,23 @@ test.describe('Config view', () => {
     await expect(page.getByTestId('config-section-fast-loop-rate')).toHaveCount(0)
   })
 
+  test('Compass section groups use / mounting / orientation / disabled-drivers', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+
+    const compass = page.getByTestId('config-section-compass')
+    await expect(compass).toBeVisible()
+    // The curated compass knobs render with their param-name hints.
+    for (const id of ['COMPASS_EXTERNAL', 'COMPASS_ORIENT', 'COMPASS_AUTO_ROT', 'COMPASS_DISBLMSK']) {
+      await expect(compass.locator('.scoped-editor-field__param-id', { hasText: id }).first()).toBeVisible()
+    }
+    // Editing a compass field stages into the Config apply scope.
+    await compass.getByText('Disabled', { exact: true }).first().click()
+    await expect(page.getByTestId('config-apply')).toBeEnabled()
+  })
+
   test('Board orientation shows a picture of the mounting that reacts to the dropdown', async ({ page }) => {
     // The board-orientation section carries a top-down FC picture (footer slot)
     // driven by the selected AHRS_ORIENTATION — flat rotation for pure yaw,

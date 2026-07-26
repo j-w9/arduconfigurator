@@ -58,6 +58,9 @@ import {
   ARDUCOPTER_VTX_ENABLE_LABELS,
   ARDUCOPTER_VTX_OPTIONS_BIT_LABELS,
   ARDUCOPTER_VTX_TYPES_BIT_LABELS,
+  ARDUCOPTER_COMPASS_EXTERNAL_LABELS,
+  ARDUCOPTER_COMPASS_AUTO_ROT_LABELS,
+  ARDUCOPTER_COMPASS_DISBLMSK_BIT_LABELS,
 } from './arducopter-enums.js'
 
 const enabledDisabledOptions: ParameterValueOption[] = [
@@ -1205,6 +1208,54 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       minimum: 0,
       maximum: 1,
       options: enabledDisabledOptions
+    },
+    COMPASS_AUTODEC: {
+      id: 'COMPASS_AUTODEC',
+      label: 'Auto declination',
+      description: 'Automatically calculate the magnetic declination from the GPS position.',
+      category: 'sensors',
+      minimum: 0,
+      maximum: 1,
+      options: enabledDisabledOptions
+    },
+    COMPASS_EXTERNAL: {
+      id: 'COMPASS_EXTERNAL',
+      label: 'Compass 1 mounting',
+      description:
+        'Whether the first compass is connected externally. Auto-detected on most boards; set External so its orientation follows Compass orientation rather than the board orientation. Forced external disables auto-detection.',
+      category: 'sensors',
+      minimum: 0,
+      maximum: 2,
+      options: enumOptions(ARDUCOPTER_COMPASS_EXTERNAL_LABELS)
+    },
+    COMPASS_ORIENT: {
+      id: 'COMPASS_ORIENT',
+      label: 'Compass 1 orientation',
+      description:
+        'Orientation of the first EXTERNAL compass relative to the vehicle. Ignored for internal compasses (they use the board orientation). Same rotation set as the board orientation.',
+      category: 'sensors',
+      minimum: 0,
+      maximum: 102,
+      options: AHRS_ORIENTATION_OPTIONS
+    },
+    COMPASS_AUTO_ROT: {
+      id: 'COMPASS_AUTO_ROT',
+      label: 'Auto-check orientation',
+      description:
+        'During compass calibration, check (and optionally fix) the external compass orientation automatically.',
+      category: 'sensors',
+      minimum: 0,
+      maximum: 3,
+      options: enumOptions(ARDUCOPTER_COMPASS_AUTO_ROT_LABELS)
+    },
+    COMPASS_DISBLMSK: {
+      id: 'COMPASS_DISBLMSK',
+      label: 'Disabled compass drivers',
+      description:
+        'Bitmask of compass driver types to block from being used. Set a bit to stop that chip/driver from being detected — useful to silence a noisy or duplicate onboard mag.',
+      category: 'sensors',
+      bitmask: true,
+      options: enumOptions(ARDUCOPTER_COMPASS_DISBLMSK_BIT_LABELS)
     },
     // MAVLink system / GCS identifiers. The ArduPilot master branch renamed
     // these to MAV_SYSID / MAV_GCS_SYSID (same range 1..255, no unit change),
