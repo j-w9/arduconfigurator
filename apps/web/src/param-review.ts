@@ -12,6 +12,7 @@ import {
 } from './param-groups'
 import { AUTOTUNE_COPTER_PARAM_IDS, AUTOTUNE_PLANE_REVIEW_PARAM_IDS } from './autotune-params'
 import { OSD_PARAM_IDS } from './osd-params'
+import { PORT_PAIRING_PARAM_IDS } from './view-models/port-protocol-pairings'
 import { PLANE_SOARING_ADSB_PARAM_IDS } from './plane-soaring-adsb-params'
 import { TUNING_PARAM_IDS, TUNING_PLANE_PARAM_IDS, TUNING_ROVER_PARAM_IDS, TUNING_SUB_PARAM_IDS } from './tuning-params'
 
@@ -44,7 +45,12 @@ export function isPortsReviewParamId(paramId: string): boolean {
   return (
     /^SERIAL\d+_(PROTOCOL|BAUD|OPTIONS)$/.test(paramId) ||
     /^BRD_SER\d+_RTSCTS$/.test(paramId) ||
-    GPS_PARAM_IDS.includes(paramId as (typeof GPS_PARAM_IDS)[number])
+    GPS_PARAM_IDS.includes(paramId as (typeof GPS_PARAM_IDS)[number]) ||
+    // Peripheral-enable params a protocol pairing stages (DisplayPort->OSD_TYPE,
+    // Tramp/SmartAudio->VTX_ENABLE/VTX_TYPES) live in the ports scope too, so a
+    // staged pairing commits together with the SERIALn_PROTOCOL change. They
+    // stay editable from the OSD/VTX tabs as well (both scopes include them).
+    PORT_PAIRING_PARAM_IDS.includes(paramId as (typeof PORT_PAIRING_PARAM_IDS)[number])
   )
 }
 

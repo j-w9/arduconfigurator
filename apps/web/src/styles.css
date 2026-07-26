@@ -7442,6 +7442,16 @@ textarea:focus {
 /* The raw ArduPilot parameter name shown under every friendly label (e.g.
  * "Vertical speed" / VSPEED) — muted and monospace so it reads as metadata,
  * not as a second label competing with the one above it. */
+/* Note under a port's Function select when the chosen protocol auto-stages a
+   paired peripheral param (DisplayPort->OSD_TYPE, Tramp/SmartAudio->VTX_*). */
+.ports-matrix-row__pairing-note {
+  display: block;
+  margin-top: 3px;
+  color: var(--accent, var(--text-muted));
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .scoped-editor-field__param-id {
   display: block;
   margin-top: 1px;
