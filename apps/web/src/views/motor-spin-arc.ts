@@ -8,9 +8,11 @@
 // — matching how operators draw prop directions on a frame. Callers that don't
 // know a motor's position keep the historical default (centred over the top).
 
-// Half-span of the arc, degrees. 125° each side → a 250° sweep, leaving a ~110°
-// gap on the hub-facing side where the arm meets the ring.
-const ARC_HALF_SPAN_DEG = 125
+// Half-span of the arc, degrees. 80° each side → a 160° sweep: a compact curved
+// arrow that sits as a dome ABOVE a front motor / BELOW a rear one (rather than a
+// band wrapping the whole ring), matching how spin direction is sketched on a
+// frame. The wide hub-facing gap keeps the glyph clearly outside the ring.
+const ARC_HALF_SPAN_DEG = 80
 
 /**
  * @param outwardAngleDeg math angle (y-up, 0°=+x/right, 90°=up) pointing from
