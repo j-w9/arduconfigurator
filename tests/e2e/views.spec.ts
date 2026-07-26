@@ -429,6 +429,25 @@ test.describe('Ports view', () => {
   })
 })
 
+test.describe('CAN bus enable prompt', () => {
+  test('prompts to enable the bus when a DroneCAN peripheral is selected but CAN is off', async ({ page }) => {
+    // Demo: GPS_TYPE=9 (DroneCAN) with CAN_P1_DRIVER=0 / CAN_D1_PROTOCOL=0 — the
+    // "I picked DroneCAN but the bus is off" trap. The CAN tab surfaces a
+    // one-click enable (CAN_P1_DRIVER=1 + CAN_D1_PROTOCOL=1, reboot-required).
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-can').click()
+
+    const prompt = page.getByTestId('can-enable-prompt')
+    await expect(prompt).toBeVisible()
+    await expect(prompt).toContainText('GPS is set to DroneCAN')
+    await expect(prompt).toContainText('CAN_P1_DRIVER')
+    await expect(page.getByTestId('can-enable-button')).toBeEnabled()
+  })
+})
+
 test.describe('Networking view (Expert + networking-capable FC)', () => {
   test('appears only in Expert mode when the FC reports NET_ params, then renders IP + endpoint settings', async ({ page }) => {
     await page.goto('/')

@@ -49,6 +49,13 @@ export interface CanBusViewProps {
    *  param list all derive from `state`. */
   title?: string
   subtitle?: string
+  /** "A DroneCAN peripheral is selected but the CAN bus is off" prompt: the
+   *  reasons to show and the one-click enable handler. Absent when the bus is
+   *  already enabled or no DroneCAN driver is selected. */
+  enablement?: { triggerLabels: string[] }
+  onEnableCanBus?: () => void
+  /** Disables the enable button while a write is in flight. */
+  enableBusy?: boolean
 }
 
 export function CanBusView(props: CanBusViewProps) {
@@ -63,7 +70,10 @@ export function CanBusView(props: CanBusViewProps) {
     onApplyAndSave,
     paramMetadata,
     title = 'DroneCAN Bus',
-    subtitle = 'Discover DroneCAN devices on the CAN bus and read, edit, and save their parameters — without dropping your vehicle connection.'
+    subtitle = 'Discover DroneCAN devices on the CAN bus and read, edit, and save their parameters — without dropping your vehicle connection.',
+    enablement,
+    onEnableCanBus,
+    enableBusy = false
   } = props
 
   const rows = useMemo(() => buildCanBusNodeRows(state), [state])
@@ -136,6 +146,26 @@ export function CanBusView(props: CanBusViewProps) {
   return (
     <div id="setup-panel-can">
       <Panel title={title} subtitle={subtitle}>
+        {enablement && onEnableCanBus ? (
+          <div className="can-bus-enable-prompt" role="status" data-testid="can-enable-prompt">
+            <div className="can-bus-enable-prompt__body">
+              <strong>Enable the CAN bus for DroneCAN?</strong>
+              <p>
+                {enablement.triggerLabels.join(', ')}, but CAN bus 1 isn’t enabled — nodes won’t be found until it is.
+                This sets <code>CAN_P1_DRIVER=1</code> and <code>CAN_D1_PROTOCOL=1</code> (DroneCAN) and needs a reboot.
+              </p>
+            </div>
+            <button
+              type="button"
+              style={buttonStyle('primary')}
+              data-testid="can-enable-button"
+              onClick={onEnableCanBus}
+              disabled={enableBusy}
+            >
+              {enableBusy ? 'Enabling…' : 'Enable CAN bus & reboot'}
+            </button>
+          </div>
+        ) : null}
         <header className="can-bus-header">
           <div className="can-bus-header__status">
             <StatusBadge tone={headerTone}>

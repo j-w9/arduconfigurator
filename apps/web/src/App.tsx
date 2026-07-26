@@ -251,6 +251,7 @@ import type {
 import { AP_PERIPH_PARAM_METADATA } from './view-models/ap-periph-param-metadata'
 import { parseParamPck } from './view-models/param-pck'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
+import { deriveCanEnablement } from './view-models/can-enablement'
 import { buildRecentNotices } from './view-models/recent-notices'
 import { deriveExternalChannelClaims, deriveRcLogicChannelClaims } from './view-models/channel-usage'
 import { orderDraftsByEnableGate } from './view-models/enable-gate-write-order'
@@ -970,6 +971,8 @@ export function App() {
   const boardCatalogEntry = useMemo(() => findBoardCatalogEntry(snapshot.hardware.board?.boardType), [snapshot.hardware.board?.boardType])
   const rcChannelDisplays = buildRcChannelDisplays(snapshot)
   const airframe = deriveAirframe(snapshot, snapshot.vehicle?.vehicle)
+  // "DroneCAN peripheral selected but CAN bus off" detector for the CAN tab.
+  const canEnablement = useMemo(() => deriveCanEnablement(snapshot), [snapshot])
   // Copter (and the pre-connect / Unknown default) keeps motor-matrix
   // framing; Plane/Rover/Sub are not a quad, so vehicle-specific surfaces
   // branch off this instead of showing Copter motor logic.
@@ -2710,6 +2713,44 @@ export function App() {
   // a different port — the fix for "can't get back to choose a port" and for
   // landing on the SLCAN interface. The MAVLink port is auto-detected at connect
   // once more than one is granted.
+  // Enable the CAN bus for DroneCAN (CAN_P1_DRIVER=1, CAN_D1_PROTOCOL=1) from
+  // the CAN tab's prompt when a DroneCAN peripheral is selected but the bus is
+  // off. Verified write + auto-backup + reboot follow-up (both params are
+  // @RebootRequired), mirroring the preset-apply path.
+  async function handleEnableCanBus(): Promise<void> {
+    if (!runtime) {
+      return
+    }
+    const writes = deriveCanEnablement(runtime.getSnapshot()).writes
+    if (writes.length === 0) {
+      return
+    }
+    const autoBackup = createSavedSnapshot(
+      createParameterBackup(runtime.getSnapshot()),
+      'Before enabling CAN bus',
+      'captured',
+      { note: 'Auto-saved before enabling the CAN bus for DroneCAN.', tags: ['auto-backup', 'can-enable'] }
+    )
+    setSavedSnapshots((current) => [autoBackup, ...current.filter((entry) => entry.id !== autoBackup.id)])
+    setBusyAction('can:enable')
+    try {
+      const result = await runtime.setParameters(writes, UI_PARAMETER_WRITE_OPTIONS)
+      setParameterFollowUp({
+        requiresReboot: true,
+        refreshRequired: true,
+        changedCount: result.applied.length,
+        text: `Enabled the CAN bus for DroneCAN (${result.applied.length} write(s)). Reboot the flight controller, then pull parameters — DroneCAN nodes appear after the reboot.`
+      })
+    } catch (error) {
+      setSessionNotice({
+        tone: 'danger',
+        text: `Failed to enable the CAN bus: ${error instanceof Error ? error.message : 'unknown error'}. Pre-write snapshot "${autoBackup.label}" was saved.`
+      })
+    } finally {
+      setBusyAction((current) => (current === 'can:enable' ? undefined : current))
+    }
+  }
+
   async function handleChooseSerialPort(): Promise<void> {
     const serial = getWebSerialNavigator()
     if (!serial) {
@@ -8267,6 +8308,9 @@ export function App() {
         onFetchAllParameters={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
         onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
         paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
+        enablement={canEnablement.needsEnable ? { triggerLabels: canEnablement.triggerLabels } : undefined}
+        onEnableCanBus={runtime ? () => { void handleEnableCanBus() } : undefined}
+        enableBusy={busyAction === 'can:enable'}
       />
       ) : null}
 

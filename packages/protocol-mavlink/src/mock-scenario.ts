@@ -240,6 +240,10 @@ const mockParameters: ParameterState = {
   NET_P4_TYPE: 0,
   GPS_TYPE: 9,
   GPS_TYPE2: 0,
+  // DroneCAN GPS selected (GPS_TYPE=9) but the CAN bus is still off — the state
+  // the CAN tab's "enable CAN bus" prompt is built for.
+  CAN_P1_DRIVER: 0,
+  CAN_D1_PROTOCOL: 0,
   GPS_AUTO_CONFIG: 1,
   GPS_AUTO_SWITCH: 0,
   GPS_PRIMARY: 0,
