@@ -8518,6 +8518,40 @@ details.metadata-settings-section:not([open]) > summary::after {
    mechanism Mission Planner uses) so MAVLink stays alive on the same
    channel. The layout mirrors Ports / RC Mixer to keep operators in
    familiar visual territory while the data underneath is different. */
+/* "DroneCAN peripheral selected but CAN bus off" prompt at the top of the CAN
+   tab — an actionable amber banner with the one-click enable. */
+.can-bus-enable-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--warning) 55%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--warning-weak);
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+.can-bus-enable-prompt__body {
+  min-width: min(100%, 22ch);
+  flex: 1 1 320px;
+}
+.can-bus-enable-prompt__body strong {
+  display: block;
+  margin-bottom: 2px;
+}
+.can-bus-enable-prompt__body p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.can-bus-enable-prompt__body code {
+  font-family: var(--font-data);
+  font-size: 11px;
+}
+
 .can-bus-header {
   display: flex;
   flex-wrap: wrap;
