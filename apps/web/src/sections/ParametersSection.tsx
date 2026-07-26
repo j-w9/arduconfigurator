@@ -571,7 +571,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                 <section key={group.category} className="parameter-diff-group">
                   <header>
                     <strong>{formatCategoryLabel(group.category)}</strong>
-                    <span>{group.entries.length} staged</span>
+                    <span>{group.entries.filter((entry) => entry.status === 'staged').length} staged</span>
                   </header>
 
                   {group.entries.map((draft) => {
@@ -590,8 +590,15 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                     const isBitmask = draft.definition?.bitmask === true
                     const inputId = `parameter-diff-edit-${draft.id}`
                     const currentRawValue = editedValues[draft.id] ?? String(draft.nextValue)
+                    // 'unchanged' = the operator edited this back to the live
+                    // value. Keep the row (so the input never vanishes mid-edit)
+                    // but render it muted — it won't write.
+                    const isUnchanged = draft.status === 'unchanged'
                     return (
-                    <div key={draft.id} className="parameter-diff-item parameter-diff-item--selectable">
+                    <div
+                      key={draft.id}
+                      className={`parameter-diff-item parameter-diff-item--selectable${isUnchanged ? ' parameter-diff-item--unchanged' : ''}`}
+                    >
                       <input
                         type="checkbox"
                         className="parameter-diff-item__select"
@@ -641,7 +648,9 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                           />
                         )}
                       </span>
-                      <span className="parameter-diff-delta">{formatParameterDelta(draft.delta, draft.definition?.unit)}</span>
+                      <span className="parameter-diff-delta">
+                        {isUnchanged ? 'matches current — won’t write' : formatParameterDelta(draft.delta, draft.definition?.unit)}
+                      </span>
                       {/* Per-row Discard so the operator can deselect a
                        *  single staged change from the Apply All set
                        *  without leaving the Show Changes view. Apply All

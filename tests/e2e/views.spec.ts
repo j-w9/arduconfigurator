@@ -319,6 +319,30 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(page.getByTestId('parameter-diff-grid')).toBeInViewport()
   })
 
+  test('a staged review row edited back to the original stays put (no vanish mid-edit)', async ({ page }) => {
+    // Bug: editing a staged value in the Show Changes review to equal the live
+    // value dropped the row from under the operator's cursor — how a half-typed
+    // value (ANGLE_MAX = 3 instead of 3000) got committed. The touched row now
+    // stays as a muted "won't write" row until Discard.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+    await page.getByTestId('parameter-search-input').fill('ANGLE_MAX')
+
+    const tableInput = page.locator('.parameter-table input[type=number]').first()
+    await tableInput.fill('3000') // stage 4500 -> 3000
+    const reviewInput = page.getByTestId('parameter-diff-edit-ANGLE_MAX')
+    await expect(reviewInput).toBeVisible()
+
+    // Edit the staged value back to the original — the row must NOT disappear.
+    await reviewInput.fill('4500')
+    await expect(page.getByTestId('parameter-diff-edit-ANGLE_MAX')).toBeVisible()
+    await expect(page.locator('.parameter-diff-item--unchanged')).toContainText('won’t write')
+    // It's not counted toward the writable staged set.
+    await expect(page.getByRole('button', { name: /Apply All \(0\)/ })).toBeVisible()
+  })
+
   test('Export is one picker where you choose the format', async ({ page }) => {
     // Was a primary "Export" button sitting next to a separate "Export Legacy…"
     // select, which read as two competing exports. Now a single picker: pick

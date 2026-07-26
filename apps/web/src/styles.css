@@ -11046,6 +11046,16 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-top: 1px solid rgba(39, 49, 59, 0.72);
 }
 
+/* Touched then edited back to the live value — kept in the review so the input
+   never vanishes mid-edit, but muted since it won't write. */
+.parameter-diff-item--unchanged {
+  opacity: 0.62;
+}
+.parameter-diff-item--unchanged .parameter-diff-delta {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* A preset change the operator dropped before applying. */
 .parameter-diff-item--dropped {
   opacity: 0.5;
