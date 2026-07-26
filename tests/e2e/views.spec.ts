@@ -2021,6 +2021,17 @@ test.describe('Presets erase settings', () => {
 })
 
 test.describe('OSD view preview', () => {
+  test('Backend strip is open by default so the OSD backend is visible', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'osd')
+
+    const strip = page.getByTestId('osd-backend-strip')
+    await expect(strip).toHaveAttribute('open', '')
+    // The OSD_TYPE backend selector is visible without expanding anything.
+    await expect(strip.locator('.scoped-editor-field__param-id', { hasText: 'OSD_TYPE' })).toBeVisible()
+  })
+
   test('MSP cell count is compact and nudges an explicit value when Auto', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
