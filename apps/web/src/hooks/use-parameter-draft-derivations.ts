@@ -39,8 +39,14 @@ export function useParameterDraftDerivations(input: {
     () => parameterDraftEntries.filter((entry) => entry.status === 'invalid'),
     [parameterDraftEntries]
   )
+  // The review list keeps a row for every TOUCHED param — staged (will write)
+  // AND unchanged (edited back to the current value). Without 'unchanged' the
+  // row vanished the instant a typed value matched the original, yanking the
+  // input out from under the operator mid-edit (the "param disappears" bug that
+  // led to a wrong value being committed). Unchanged rows render muted and are
+  // never written; only Discard removes them.
   const stagedParameterGroups = useMemo(
-    () => groupParameterDraftEntries(parameterDraftEntries, ['staged']),
+    () => groupParameterDraftEntries(parameterDraftEntries, ['staged', 'unchanged']),
     [parameterDraftEntries]
   )
   const invalidParameterGroups = useMemo(
