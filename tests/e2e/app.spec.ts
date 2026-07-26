@@ -659,6 +659,8 @@ test.describe('browser configurator regression flows', () => {
   test('Config arming checks render as a bitmask chip grid', async ({ page }) => {
     await connectToVehicle(page, 'demo')
     await openView(page, 'config')
+    // Arming lives under the "RC & Arming" category tab now.
+    await page.getByTestId('config-category-rc-arming').click()
 
     // ARMING_CHECK is flagged bitmask, so the Config arming section shows
     // per-bit chips. Demo seeds ARMING_CHECK=1 (bit 0 = "All checks").

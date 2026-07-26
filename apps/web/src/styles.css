@@ -12891,13 +12891,75 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .config-grid {
-  /* Masonry packing via CSS multicolumn: short sections (frame, identity,
-     fast-loop) tuck under tall ones (arming/RC bitmasks, ESC) instead of
-     leaving a row's worth of dead space beside them. The Apply/Revert toolbar
-     below stays reachable via the sticky rule on .config-toolbar. */
-  columns: 300px;
+  /* Masonry packing via CSS multicolumn: short sections tuck under tall ones
+     instead of leaving dead space. With the category tabs, a group holds only a
+     few cards, so cap the width so 2-3 cards read as a calm flow rather than
+     spreading thin across a wide screen. */
+  columns: 360px 3;
   column-gap: var(--space-3, 12px);
   padding-right: 6px;
+  max-width: 1180px;
+}
+
+/* Category tab strip — reuses .tab-strip; a little breathing room + the
+   unsaved-changes dot on a group you're not looking at. */
+.config-category-nav {
+  margin-bottom: var(--space-3, 12px);
+}
+.config-category-nav__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  vertical-align: middle;
+}
+
+/* Per-card Advanced disclosure — rarely-touched fields folded so each card
+   leads with the essentials. */
+.config-section__advanced {
+  margin-top: 4px;
+  border-top: 1px solid rgba(var(--edge-rgb), 0.08);
+  padding-top: 6px;
+}
+.config-section__advanced > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 2px 0;
+}
+.config-section__advanced > summary::-webkit-details-marker {
+  display: none;
+}
+.config-section__advanced > summary::before {
+  content: '▸';
+  font-size: 9px;
+  transition: transform 0.15s ease;
+}
+.config-section__advanced[open] > summary::before {
+  transform: rotate(90deg);
+}
+.config-section__advanced-count {
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(var(--edge-rgb), 0.12);
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 15px;
+  text-align: center;
+  letter-spacing: 0;
+}
+.config-section__editors--advanced {
+  margin-top: 6px;
 }
 
 .config-section {
