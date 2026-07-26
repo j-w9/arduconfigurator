@@ -5,7 +5,7 @@
 // beside the throttle sliders).
 
 import type { MotorPreviewNode } from '../view-models/motor-preview'
-import { motorSpinArcPath } from './motor-spin-arc'
+import { motorOutwardAngleDeg, motorSpinArcPath } from './motor-spin-arc'
 
 export interface MotorMixerDiagramProps {
   nodes: readonly MotorPreviewNode[]
@@ -42,7 +42,7 @@ export function MotorMixerDiagram({ nodes, geometryMode, outputLabelByMotor, cla
               {node.stack ? <circle cx={x} cy={y} r={19} className="motor-mixer-preview__stack" /> : null}
               {node.spin ? (
                 <path
-                  d={motorSpinArcPath(x, y, (node.stack ? 29 : 24) + 6, node.spin)}
+                  d={motorSpinArcPath(x, y, (node.stack ? 29 : 24) + 6, node.spin, motorOutwardAngleDeg(node.x, node.y))}
                   className="motor-mixer-preview__spin"
                   markerEnd="url(#spinArrowTest)"
                 />

@@ -80,6 +80,8 @@ export interface OutputsSectionDerived {
   motorPreviewNodes: ReturnType<typeof createMotorPreviewNodes>
   motorPreviewCount: number
   motorPreviewGeometryMode: string
+  /** False until FRAME_CLASS/FRAME_TYPE are known — the diagram shows a prompt. */
+  motorPreviewFrameKnown: boolean
   motorTestEligibility: ReturnType<typeof evaluateMotorTestEligibility>
   isCopterVehicle: boolean
   configuredOutputs: readonly ConfiguredOutput[]
@@ -258,6 +260,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     vehicleOutputSummary,
     motorPreviewNodes,
     motorPreviewGeometryMode,
+    motorPreviewFrameKnown,
     frameClassParameter,
     frameTypeParameter,
     frameDraftEntries,
@@ -545,18 +548,31 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             testId="motor-test-sliders"
                           />
                           {/* Small read-only motor map beside the sliders so the
-                              operator can see which OUTx/spin each Mn is. */}
-                          <MotorMixerDiagram
-                            nodes={motorPreviewNodes}
-                            geometryMode={motorPreviewGeometryMode}
-                            outputLabelByMotor={Object.fromEntries(
-                              outputMapping.motorOutputs
-                                .filter((output) => output.motorNumber !== undefined)
-                                .map((output) => [output.motorNumber as number, `OUT${output.channelNumber}`])
-                            )}
-                            className="motor-mixer-preview--test"
-                            testId="motor-test-diagram"
-                          />
+                              operator can see which OUTx/spin each Mn is — drawn
+                              from the vehicle's real FRAME_CLASS/FRAME_TYPE. Until
+                              the frame is known (or for non-matrix frames with no
+                              layout), prompt rather than draw a guessed shape. */}
+                          {motorPreviewFrameKnown && motorPreviewNodes.length > 0 ? (
+                            <MotorMixerDiagram
+                              nodes={motorPreviewNodes}
+                              geometryMode={motorPreviewGeometryMode}
+                              outputLabelByMotor={Object.fromEntries(
+                                outputMapping.motorOutputs
+                                  .filter((output) => output.motorNumber !== undefined)
+                                  .map((output) => [output.motorNumber as number, `OUT${output.channelNumber}`])
+                              )}
+                              className="motor-mixer-preview--test"
+                              testId="motor-test-diagram"
+                            />
+                          ) : (
+                            <div className="motor-mixer-preview motor-mixer-preview--test motor-mixer-preview--empty" data-testid="motor-test-diagram-empty">
+                              <p>
+                                {motorPreviewFrameKnown
+                                  ? 'No motor map for this frame class — the layout diagram covers the multirotor matrix frames.'
+                                  : 'Connect to the flight controller to read FRAME_CLASS / FRAME_TYPE and draw your frame’s motor layout and spin directions.'}
+                              </p>
+                            </div>
+                          )}
                          </div>
                         </div>
 

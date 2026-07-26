@@ -1,9 +1,15 @@
-// Motor-preview geometry for the Outputs view.
+// Motor-preview geometry for the Outputs / Motor Test views.
 //
-// First module of the App.tsx view-model decomposition: a self-contained,
-// pure cluster (a frame layout → motor node positions) lifted out verbatim
-// so App.tsx consumes `createMotorPreviewNodes` instead of carrying the
-// geometry inline. Behavior-preserving — no caller-visible change.
+// Two paths:
+//  - When the numeric FRAME_CLASS / FRAME_TYPE are known, the layout comes from
+//    FRAME_MOTOR_LAYOUTS — generated from ArduPilot's AP_MotorsMatrix, so every
+//    frame class/type draws its REAL motor positions and prop directions
+//    (an H-frame no longer renders as a quad-X, a hexa shows six arms, Y6 shows
+//    coaxial stacks, etc).
+//  - Without numeric frame values, the original label-based heuristic still runs
+//    (unchanged) as a fallback for callers that only have a frame-type string.
+
+import { FRAME_MOTOR_LAYOUTS } from '@arduconfig/param-metadata'
 
 export interface MotorPreviewNode {
   motorNumber: number
@@ -84,7 +90,48 @@ function quadPlusPreviewNodes(motorNumbersByPosition: [number, number, number, n
     .sort((left, right) => left.motorNumber - right.motorNumber)
 }
 
-export function createMotorPreviewNodes(motorCount: number, frameTypeLabel: string): MotorPreviewNode[] {
+/** Numeric FRAME_CLASS / FRAME_TYPE, when the vehicle has reported them. */
+export interface FrameSelection {
+  classValue?: number
+  typeValue?: number
+}
+
+/**
+ * Layout straight from the ArduPilot-derived table for a known frame. Returns
+ * [] when the frame class/type isn't a motor-matrix frame in the table (heli,
+ * single, tailsitter, scripting) — the caller shows a "no diagram for this
+ * frame" prompt rather than an invented one.
+ */
+export function frameMotorPreviewNodes(frame: FrameSelection): MotorPreviewNode[] {
+  if (frame.classValue === undefined || frame.typeValue === undefined) {
+    return []
+  }
+  const layout = FRAME_MOTOR_LAYOUTS[frame.classValue]?.[frame.typeValue]
+  if (!layout) {
+    return []
+  }
+  return layout.map((node) => ({
+    motorNumber: node.motorNumber,
+    x: node.x,
+    y: node.y,
+    ...(node.stack ? { stack: node.stack } : {}),
+    // 'none' (NYT yaw-neutral motors) carries no arrow.
+    ...(node.spin === 'cw' || node.spin === 'ccw' ? { spin: node.spin } : {})
+  }))
+}
+
+export function createMotorPreviewNodes(
+  motorCount: number,
+  frameTypeLabel: string,
+  frame?: FrameSelection
+): MotorPreviewNode[] {
+  // Prefer the real per-frame table whenever the numeric frame is known. When a
+  // frame IS given but isn't in the table, return [] (don't silently fall back
+  // to a guessed count-based ring — that's the "wrong frame" the table fixes).
+  if (frame && (frame.classValue !== undefined || frame.typeValue !== undefined)) {
+    return frameMotorPreviewNodes(frame)
+  }
+
   const normalizedFrameType = frameTypeLabel.toLowerCase()
 
   if (motorCount <= 0) {
