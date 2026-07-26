@@ -8552,7 +8552,9 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-size: 11px;
 }
 
-/* Top-down board-mounting picture under the Board orientation dropdown. */
+/* 3D board-mounting picture under the Board orientation dropdown. A thin slab
+   posed by roll/pitch/yaw inside a tilted scene, so every orientation — flat,
+   upside down, on its edge — is visible. */
 .board-orientation-diagram {
   display: flex;
   flex-direction: column;
@@ -8562,14 +8564,17 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .board-orientation-diagram__stage {
   position: relative;
-  width: 150px;
-  height: 150px;
+  width: 160px;
+  height: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px dashed rgba(var(--edge-rgb), 0.18);
   border-radius: var(--radius-md);
   background: rgba(var(--fill-rgb), 0.4);
+}
+.board-orientation-diagram__stage--3d {
+  perspective: 480px;
 }
 .board-orientation-diagram__front {
   position: absolute;
@@ -8580,31 +8585,69 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-size: 9px;
   letter-spacing: 0.16em;
   color: var(--text-dim, var(--text-muted));
+  z-index: 1;
 }
-.board-orientation-diagram__svg {
-  width: 108px;
-  height: 108px;
-  transition: transform 0.25s ease;
+/* Oblique (isometric-ish) camera: tilted back AND yawed a little, so no board
+   face is ever edge-on — an on-its-side (Roll/Pitch 90) mount stays visible. */
+.board-orientation-diagram__scene {
+  transform-style: preserve-3d;
+  transform: rotateX(56deg) rotateY(-26deg);
 }
-.board-orientation-diagram__board {
-  fill: rgba(var(--fill-rgb), 0.9);
-  stroke: rgba(var(--edge-rgb), 0.4);
-  stroke-width: 2;
+.board-orientation-diagram__board3d {
+  position: relative;
+  width: 80px;
+  height: 104px;
+  transform-style: preserve-3d;
+  transition: transform 0.3s ease;
 }
+.board-orientation-diagram__face {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  backface-visibility: hidden;
+  border: 1.5px solid rgba(var(--edge-rgb), 0.5);
+}
+.board-orientation-diagram__face--top {
+  background: linear-gradient(160deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 0.86));
+  transform: translateZ(3px);
+}
+.board-orientation-diagram__face--bottom {
+  /* A warm underside so an upside-down mount is unmistakable. */
+  background: color-mix(in srgb, var(--warning) 40%, rgba(var(--fill-rgb), 0.9));
+  transform: rotateY(180deg) translateZ(3px);
+}
+/* Forward arrow on the top face (points to the board's nose / +X). */
 .board-orientation-diagram__arrow {
-  fill: var(--accent, var(--primary-500));
-}
-.board-orientation-diagram__arrow-stem {
-  stroke: var(--accent, var(--primary-500));
-  stroke-width: 2.5;
-}
-.board-orientation-diagram__usb {
-  fill: rgba(var(--edge-rgb), 0.5);
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 16px solid var(--accent, var(--primary-500));
 }
 .board-orientation-diagram__imu {
-  fill: rgba(var(--edge-rgb), 0.28);
-  stroke: rgba(var(--edge-rgb), 0.45);
-  stroke-width: 1;
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  width: 26px;
+  height: 26px;
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: rgba(var(--edge-rgb), 0.28);
+  border: 1px solid rgba(var(--edge-rgb), 0.45);
+}
+.board-orientation-diagram__usb {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  width: 22px;
+  height: 8px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: rgba(var(--edge-rgb), 0.55);
 }
 .board-orientation-diagram__note {
   max-width: 22ch;
@@ -8623,19 +8666,12 @@ details.metadata-settings-section:not([open]) > summary::after {
   line-height: 1.4;
 }
 .board-orientation-diagram__caption {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 12px;
 }
-.board-orientation-diagram__badge {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--warning-weak);
-  color: var(--warning);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+@media (prefers-reduced-motion: reduce) {
+  .board-orientation-diagram__board3d {
+    transition: none;
+  }
 }
 
 .can-bus-header {

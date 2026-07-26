@@ -1,33 +1,21 @@
-// Turn an AHRS_ORIENTATION value into what a top-down board picture should show.
-//
-// The enum labels encode Yaw/Roll/Pitch rotations (e.g. "Yaw 90 Roll 180").
-// A flat top-down diagram can faithfully show:
-//   - pure Yaw (the board rotated in its mounting plane), and
-//   - a 180° flip (Roll 180 / Pitch 180 = mounted upside down),
-// but NOT a 90°/270°/45° roll or pitch (the board is on its edge or tilted),
-// where a flat rotation would mislead. Those get a "non-flat mounting" note
-// instead of a wrong picture.
+// Turn an AHRS_ORIENTATION value into a 3D board pose. The enum labels encode a
+// composition of Yaw/Roll/Pitch rotations (e.g. "Yaw 90 Roll 180"); a 3D board
+// can show every one — flat yaw, upside-down flips, and the edge/tilted mounts a
+// flat 2D picture couldn't. Only the Custom orientations (>=100, set by explicit
+// angles) aren't depictable.
 
-export type BoardOrientationKind = 'flat' | 'inverted' | 'edge' | 'custom'
+export type BoardOrientationKind = 'depictable' | 'custom'
 
 export interface BoardOrientationVisual {
   kind: BoardOrientationKind
-  /** Yaw to rotate the top-down board by, degrees clockwise. 0 for non-flat. */
-  yawDeg: number
-  /** True when the board is mounted upside down (a 180° roll or pitch). */
-  inverted: boolean
-  /**
-   * Which axis a 180° flip mirrors, applied after the yaw rotation:
-   *   - Roll 180 flips about the forward axis: nose stays forward, board sees
-   *     its underside → mirror LEFT-RIGHT ('x').
-   *   - Pitch 180 flips about the right axis: nose points backward → mirror
-   *     TOP-BOTTOM ('y').
-   * Undefined when not inverted.
-   */
-  mirror?: 'x' | 'y'
+  /** Rotation to pose the board by, degrees. Applied intrinsically roll→pitch→yaw
+   *  (ArduPilot's order) by the 3D view. All 0 for "None". */
+  roll: number
+  pitch: number
+  yaw: number
   /** The human label (e.g. "Yaw 90 Roll 180"). */
   label: string
-  /** Set for 'edge'/'custom' — why no flat picture is drawn. */
+  /** Set for 'custom' — why no board is posed. */
   note?: string
 }
 
@@ -53,41 +41,13 @@ export function deriveBoardOrientationVisual(
 
   // Custom orientations (100-102) are a quaternion/angle set we can't depict.
   if (value >= 100) {
-    return { kind: 'custom', yawDeg: 0, inverted: false, label, note: 'Custom orientation — set by explicit angles.' }
+    return { kind: 'custom', roll: 0, pitch: 0, yaw: 0, label, note: 'Custom orientation — set by explicit angles.' }
   }
 
   if (value === 0 || /^none$/i.test(label)) {
-    return { kind: 'flat', yawDeg: 0, inverted: false, label }
+    return { kind: 'depictable', roll: 0, pitch: 0, yaw: 0, label }
   }
 
   const { yaw, roll, pitch } = parseAngles(label)
-
-  // A flat picture is only honest when roll and pitch are each either 0 or a
-  // full 180° flip. Any 45/90/270/315 (or the odd 68/293/315) roll/pitch means
-  // the board sits on its edge or at an angle — depict a note, not a rotation.
-  const flipRoll = roll === 180
-  const flipPitch = pitch === 180
-  const rollIsFlatOrFlip = roll === 0 || roll === 180
-  const pitchIsFlatOrFlip = pitch === 0 || pitch === 180
-
-  if (!rollIsFlatOrFlip || !pitchIsFlatOrFlip) {
-    return {
-      kind: 'edge',
-      yawDeg: 0,
-      inverted: false,
-      label,
-      note: 'Board is mounted on its side or at an angle — see the label for the exact rotation.'
-    }
-  }
-
-  const inverted = flipRoll || flipPitch
-  return {
-    kind: inverted ? 'inverted' : 'flat',
-    yawDeg: yaw % 360,
-    inverted,
-    // Roll 180 mirrors left-right (nose stays forward); Pitch 180 mirrors
-    // top-bottom (nose points backward).
-    ...(flipRoll ? { mirror: 'x' as const } : flipPitch ? { mirror: 'y' as const } : {}),
-    label
-  }
+  return { kind: 'depictable', roll, pitch, yaw, label }
 }
