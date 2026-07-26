@@ -127,6 +127,17 @@ parameter read/write/save plumbing, but is aimed at routine DroneCAN node setup
 rather than the full expert toolkit (firmware update and ESC telemetry live in
 the Inspector). It is available without Expert mode.
 
+.. tip::
+
+   **"Enable the CAN bus?"** A common trap is to set a peripheral's driver to
+   DroneCAN (for example ``GPS_TYPE`` = 9/22/23, or ``BATT_MONITOR`` = 8) and
+   then find nothing on the bus because the CAN interface was never turned on.
+   When the CAN tab detects that situation — a DroneCAN peripheral selected but
+   CAN bus 1 not enabled for DroneCAN — it shows a one-click **Enable CAN bus &
+   reboot** prompt that writes ``CAN_P1_DRIVER = 1`` and ``CAN_D1_PROTOCOL = 1``
+   (both reboot-required) after an automatic backup. Nodes appear after the
+   reboot.
+
 See also :doc:`parameters` for editing flight-controller parameters and
 :doc:`logs-inspectors` for the live MAVLink stream.
 

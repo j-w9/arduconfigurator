@@ -49,3 +49,11 @@ After connecting
 Once connected, the header shows the vehicle type, firmware version, and a live
 link indicator, and the parameter table syncs. From here, head to
 :doc:`guided-setup` for a fresh vehicle, or jump straight to any tab.
+
+If the link drops mid-sync — for example a board that watchdog-resets partway
+through the parameter download — the configurator keeps the parameters it
+already read behind a **"link lost"** banner (they are marked as no longer
+live, and nothing can be written while disconnected). On reconnect the download
+**resumes from where it stopped** rather than restarting from zero, and it keeps
+retrying while the board is coming back, so a resetting board still ends up with
+a complete parameter table. A dropped link is not data loss.

@@ -4,9 +4,10 @@ Parameters (Expert)
 The **Parameters** tab is the raw parameter editor — the full ArduPilot
 parameter tree with search, inline editing, staged drafts, verified writes, and
 import/export. It is an **Expert** surface: the product-shaped tabs (Setup,
-Ports, Receiver, Outputs, Power, Tuning) cover routine workflow changes more
-safely, so reach for this tab when you need a parameter those surfaces do not
-expose, or when you are migrating a configuration between aircraft.
+:doc:`Config <config>`, Ports, Receiver, Outputs, Power, Tuning) cover routine
+workflow changes more safely, so reach for this tab when you need a parameter
+those surfaces do not expose, or when you are migrating a configuration between
+aircraft.
 
 Browsing, search, and categories
 ---------------------------------
@@ -20,10 +21,28 @@ the running firmware. A **search** box — pinned to the top of the editor so it
 scroll the table — filters by name with wildcards (for example ``ARMING_*`` or
 ``*VOLT*``), and a **category** dropdown narrows to a single group such as
 rangefinder, gimbal, or serial. A **Refresh** button pulls the tree fresh from
-the controller, bypassing the auto-refresh. Each row shows the parameter's
-name, description, unit, and current value alongside an inline editor: a number
-field, or — for bitmask parameters — a grid of per-bit checkboxes with a
-raw-value box so you can paste a mask straight from another configuration.
+the controller, bypassing the auto-refresh. Each row is compact — name, current
+value, and the draft editor — so more of the tree stays on screen.
+
+Expanding a row for detail
+--------------------------
+
+Click a row to **expand it in place**. The expanded panel brings back the full
+metadata for that parameter:
+
+- the friendly **label**, full **description**, **unit**, and documented
+  **range**;
+- the parameter's **old / renamed name**, when ArduPilot has renamed it (for
+  example ``GPS_TYPE`` is *also known as* ``GPS1_TYPE``, and ``MAV_SYSID`` shows
+  its *old name* ``SYSID_THISMAV``) — so you know what to search the ArduPilot
+  wiki or an older configuration for;
+- for an **enum**, what the current value **means** (for example ``9 —
+  DroneCAN``); and
+- a richer editor: type a raw **Value** directly, **or** pick a named option
+  from the enum **dropdown** — both edit the same draft. Bitmask parameters edit
+  as a grid of per-bit checkboxes, each labelled with its bit meaning.
+
+Click the row again to collapse it.
 
 Editing and staged drafts
 -------------------------
@@ -31,8 +50,11 @@ Editing and staged drafts
 Editing a value does not write it immediately — it stages a local **draft**.
 Drafts are reviewed as a grouped diff (current → new, with the delta) before
 anything reaches the aircraft, and each draft is classified as **staged** or
-**invalid** (out of range, or outside the known enum values). Apply a single row
-with its **Apply** button, or write the whole set with **Apply All**.
+**invalid** (out of range, or outside the known enum values). A row you have
+touched but edited back to the live value stays in the review as a muted
+"matches current — won't write" entry until you **Drop** it, so the row never
+disappears out from under you mid-edit. Apply a single row with its **Apply**
+button, or write the whole set with **Apply All**.
 
 Writes use the verified ``PARAM_SET`` → ``PARAM_VALUE`` path: each value is sent
 and then confirmed against the controller's read-back within a tolerance. A

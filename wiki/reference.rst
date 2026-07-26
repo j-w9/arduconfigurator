@@ -40,6 +40,15 @@ Some parameters only apply after a reboot. When a change needs one, the app
 surfaces a reboot prompt — reboot the flight controller (or power-cycle it) and
 re-check the value. See :doc:`parameters`.
 
+**The link dropped and I saw a "link lost" banner.**
+This is not data loss. If the connection drops — including a board that
+watchdog-resets partway through the parameter sync — the app keeps the
+parameters it already read behind a **link lost** banner (marked as no longer
+live; writes are blocked while disconnected). On reconnect the parameter
+download **resumes from where it stopped** instead of restarting, so even a
+board that keeps resetting eventually reaches a complete table. See
+:doc:`getting-connected`.
+
 Supported hardware
 ------------------
 

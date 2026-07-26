@@ -37,6 +37,7 @@ each tab. If you are new, start with :doc:`introduction` and
    :maxdepth: 2
    :caption: Configuration & Tools
 
+   config
    tuning
    parameters
    lua
