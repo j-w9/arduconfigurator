@@ -177,6 +177,33 @@ async function openView(page: Page, viewId: string): Promise<void> {
   await page.getByTestId(`view-button-${viewId}`).click()
 }
 
+// The Config tab groups its sections into top-tab categories; click the tab that
+// holds a given section before asserting on it.
+const CONFIG_SECTION_CATEGORY: Record<string, string> = {
+  frame: 'airframe',
+  'board-orientation': 'airframe',
+  'esc-dshot': 'airframe',
+  compass: 'sensors',
+  'active-imu': 'sensors',
+  'system-rates': 'sensors',
+  'fast-loop-rate': 'sensors',
+  gps: 'gps',
+  'receiver-signal': 'rc-arming',
+  arming: 'rc-arming',
+  'pilot-rates': 'rc-arming',
+  identity: 'system',
+  logging: 'system',
+  beeper: 'system',
+  'camera-trigger': 'system'
+}
+
+async function openConfigSection(page: Page, sectionId: string): Promise<void> {
+  const category = CONFIG_SECTION_CATEGORY[sectionId]
+  if (category) {
+    await page.getByTestId(`config-category-${category}`).click()
+  }
+}
+
 test.describe('a11y', () => {
   const transitionMs = (value: string): number =>
     Math.max(
@@ -730,6 +757,8 @@ test.describe('Config — vehicle-aware mode channel', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduRover', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expectParameterSyncComplete(page)
     await openView(page, 'config')
+    await openConfigSection(page, 'receiver-signal')
+    await expect(page.getByTestId('config-section-receiver-signal')).toBeVisible()
     await expect(page.getByTestId('config-field-missing-FLTMODE_CH')).toHaveCount(0)
     await expect(page.getByTestId('config-field-missing-MODE_CH')).toHaveCount(0)
 
@@ -740,6 +769,7 @@ test.describe('Config — vehicle-aware mode channel', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduSub', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expectParameterSyncComplete(page)
     await openView(page, 'config')
+    await openConfigSection(page, 'receiver-signal')
     await expect(page.getByTestId('config-field-missing-FLTMODE_CH')).toHaveCount(0)
   })
 })
@@ -1369,24 +1399,26 @@ test.describe('Config view', () => {
     await page.getByTestId('view-button-config').click()
 
     await expect(page.getByTestId('config-section-grid')).toBeVisible()
-    for (const id of [
-      'board-orientation',
-      'arming',
-      'identity',
-      'beeper',
-      'camera-trigger',
-      'gps',
-      'logging'
-    ]) {
-      await expect(page.getByTestId(`config-section-${id}`)).toBeVisible()
+    // Sections live under top-tab categories now — the category strip shows the
+    // five groups, and each holds its sections.
+    await expect(page.getByTestId('config-category-nav')).toBeVisible()
+    for (const [sectionId, category] of [
+      ['board-orientation', 'airframe'],
+      ['gps', 'gps'],
+      ['arming', 'rc-arming'],
+      ['pilot-rates', 'rc-arming'],
+      ['identity', 'system'],
+      ['beeper', 'system'],
+      ['camera-trigger', 'system'],
+      ['logging', 'system']
+    ] as const) {
+      await page.getByTestId(`config-category-${category}`).click()
+      await expect(page.getByTestId(`config-section-${sectionId}`)).toBeVisible()
     }
     // Statistics moved to the Setup side panel — no longer a Config section.
     await expect(page.getByTestId('config-section-statistics')).toHaveCount(0)
-    // Pilot-rate knobs are mirrored into Config (demo Copter streams the full set).
-    await expect(page.getByTestId('config-section-pilot-rates')).toBeVisible()
     // Fast-rate thread is build-gated: the demo Copter mock does not stream
-    // FSTRATE_*, so the Fast loop rate section must be hidden rather than
-    // rendering empty "(not reported)" rows.
+    // FSTRATE_*, so the Fast loop rate section must never render.
     await expect(page.getByTestId('config-section-fast-loop-rate')).toHaveCount(0)
   })
 
@@ -1395,10 +1427,13 @@ test.describe('Config view', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-config').click()
+    await openConfigSection(page, 'compass')
 
     const compass = page.getByTestId('config-section-compass')
     await expect(compass).toBeVisible()
-    // The curated compass knobs render with their param-name hints.
+    // The curated compass knobs render with their param-name hints. AUTO_ROT and
+    // DISBLMSK are in the card's Advanced fold — open it first.
+    await compass.getByTestId('config-advanced-compass').click()
     for (const id of ['COMPASS_EXTERNAL', 'COMPASS_ORIENT', 'COMPASS_AUTO_ROT', 'COMPASS_DISBLMSK']) {
       await expect(compass.locator('.scoped-editor-field__param-id', { hasText: id }).first()).toBeVisible()
     }
@@ -1415,6 +1450,7 @@ test.describe('Config view', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-config').click()
+    await openConfigSection(page, 'board-orientation')
 
     const section = page.getByTestId('config-section-board-orientation')
     const diagram = page.getByTestId('board-orientation-diagram')
@@ -1540,9 +1576,9 @@ test.describe('Config view', () => {
     await page.getByTestId('view-button-config').click()
     const esc = page.getByTestId('config-section-esc-dshot')
     await esc.scrollIntoViewIfNeeded()
-    // Wait for SERVO_BLH_BDMASK to be synced (its presence is how the app knows
-    // the firmware supports BDShot) before changing the protocol — otherwise the
-    // auto-enable correctly treats it as unsupported.
+    // BLH_BDMASK is folded under Advanced; open it so the synced bits are in the
+    // DOM (their presence is how the app knows the firmware supports BDShot).
+    await esc.getByTestId('config-advanced-esc-dshot').click()
     const bits = page.getByTestId('scoped-bitmask-SERVO_BLH_BDMASK').locator('.scoped-bitmask-bit')
     await expect(bits.first()).toBeVisible()
     // MOT_PWM_TYPE is the first field (a select); switch it to a different DShot
@@ -1581,10 +1617,11 @@ test.describe('Config view', () => {
     await openView(page, 'config')
     const grid = page.getByTestId('config-section-grid')
     await expect(grid).toBeVisible()
-    // Sections pack via CSS multicolumn (columns: 300px) so short cards tuck
-    // under tall ones instead of leaving a row of dead space.
+    // Sections pack via CSS multicolumn so short cards tuck under tall ones
+    // instead of leaving a row of dead space (capped at 3 columns now that a
+    // category holds only a few cards).
     const columnWidth = await grid.evaluate((el) => getComputedStyle(el).columnWidth)
-    expect(columnWidth).toBe('300px')
+    expect(columnWidth).toBe('360px')
   })
 
   test('Receiver & signal section mirrors RSSI / mode-channel / RC options into Config', async ({ page }) => {
@@ -1592,9 +1629,11 @@ test.describe('Config view', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-config').click()
+    await openConfigSection(page, 'receiver-signal')
     const section = page.getByTestId('config-section-receiver-signal')
-    await section.scrollIntoViewIfNeeded()
     await expect(section).toBeVisible()
+    // RC_OPTIONS is a set-once bitmask, folded under Advanced — open it.
+    await section.getByTestId('config-advanced-receiver-signal').click()
     // RC_OPTIONS renders as a chip grid here too (shared bitmask field).
     await expect(page.getByTestId('scoped-bitmask-RC_OPTIONS')).toBeVisible()
   })
@@ -1608,7 +1647,9 @@ test.describe('Config view', () => {
     const esc = page.getByTestId('config-section-esc-dshot')
     await esc.scrollIntoViewIfNeeded()
     await expect(esc).toBeVisible()
-    // Reverse + bidirectional-DShot masks render as per-output chip grids.
+    // Reverse + bidirectional-DShot masks are set-once, folded under Advanced.
+    await esc.getByTestId('config-advanced-esc-dshot').click()
+    // …then render as per-output chip grids.
     await expect(page.getByTestId('scoped-bitmask-SERVO_BLH_RVMASK')).toBeVisible()
     await expect(page.getByTestId('scoped-bitmask-SERVO_BLH_BDMASK')).toBeVisible()
     // Reverse is off by default (demo SERVO_BLH_RVMASK=0).
@@ -1650,23 +1691,30 @@ test.describe('Config view', () => {
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-config').click()
 
+    // system-rates + active-imu live under the Sensors tab.
+    await openConfigSection(page, 'system-rates')
     await expect(page.getByTestId('config-section-system-rates')).toBeVisible()
     await expect(page.getByTestId('config-section-active-imu')).toBeVisible()
-    // Max lean angle resolves to the param the FC actually streams (ANGLE_MAX on
-    // <=4.6, ATC_ANGLE_MAX on 4.7+) — the demo streams ANGLE_MAX, so the field
-    // reports a value rather than "(not reported)".
-    const pilotRates = page.getByTestId('config-section-pilot-rates')
-    await expect(pilotRates.getByText('Max lean angle')).toBeVisible()
-    await expect(pilotRates).not.toContainText('not reported')
     // Main loop rate renders as a dropdown (enum), defaulting to 400 Hz.
     const rates = page.getByTestId('config-section-system-rates')
     await expect(rates.getByText('Main loop rate')).toBeVisible()
-    // GPS behavior section now carries the multi-GPS knobs.
+
+    // Max lean angle (pilot-rates, RC & Arming tab). Resolves to the param the
+    // FC actually streams (ANGLE_MAX <=4.6, ATC_ANGLE_MAX 4.7+) — demo streams
+    // ANGLE_MAX, so it reports a value rather than "(not reported)".
+    await openConfigSection(page, 'pilot-rates')
+    const pilotRates = page.getByTestId('config-section-pilot-rates')
+    await expect(pilotRates.getByText('Max lean angle')).toBeVisible()
+    await expect(pilotRates).not.toContainText('not reported')
+
+    // GPS behavior — the multi-GPS knobs (Auto switch / Primary select) are
+    // set-once, folded under Advanced.
+    await openConfigSection(page, 'gps')
     const gps = page.getByTestId('config-section-gps')
+    await gps.getByTestId('config-advanced-gps').click()
     await expect(gps.getByText('Auto switch')).toBeVisible()
     // GPS_TYPE renders as "Primary GPS Type" and GPS_PRIMARY as "Primary GPS
-    // Select" (metadata labels), so match the specific GPS_PRIMARY knob rather
-    // than the ambiguous "Primary GPS" substring shared by both.
+    // Select"; match the specific GPS_PRIMARY knob.
     await expect(gps.getByText('Primary GPS Select')).toBeVisible()
   })
 
@@ -1684,8 +1732,10 @@ test.describe('Config view', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-config').click()
-
+    // system-rates is under Sensors; Fast sampling is folded under Advanced.
+    await openConfigSection(page, 'system-rates')
     const rates = page.getByTestId('config-section-system-rates')
+    await rates.getByTestId('config-advanced-system-rates').click()
     const field = rates.locator('.scoped-editor-field', { hasText: 'Fast sampling' })
     await expect(field.locator('.scoped-editor-field__param-id')).toHaveText('INS_FAST_SAMPLE')
 
@@ -4072,8 +4122,9 @@ test.describe('Scoped write-progress bar', () => {
     await expectParameterSyncComplete(page)
 
     await page.getByTestId('view-button-config').click()
+    await openConfigSection(page, 'system-rates')
     const rates = page.getByTestId('config-section-system-rates')
-    await rates.scrollIntoViewIfNeeded()
+    await rates.getByTestId('config-advanced-system-rates').click()
     // Stage a config edit (INS_FAST_SAMPLE) so config:apply has something to write.
     await rates.locator('.scoped-editor-field', { hasText: 'Fast sampling' }).locator('input[type=number]').fill('3')
 

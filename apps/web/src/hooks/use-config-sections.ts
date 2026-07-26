@@ -9,7 +9,60 @@ import { useCallback, useMemo } from 'react'
 
 import { firmwareVersionAtLeast, type ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
-import type { ConfigSection } from '../views/Config'
+import type { ConfigCategoryId, ConfigSection } from '../views/Config'
+
+// Which top-tab group each section belongs to. Sections not listed fall back to
+// 'system' (the catch-all), so a new section is never orphaned off the tabs.
+const CATEGORY_BY_SECTION: Record<string, ConfigCategoryId> = {
+  frame: 'airframe',
+  'board-orientation': 'airframe',
+  'esc-dshot': 'airframe',
+  compass: 'sensors',
+  'active-imu': 'sensors',
+  'system-rates': 'sensors',
+  'fast-loop-rate': 'sensors',
+  gps: 'gps',
+  'receiver-signal': 'rc-arming',
+  arming: 'rc-arming',
+  'pilot-rates': 'rc-arming',
+  identity: 'system',
+  logging: 'system',
+  beeper: 'system',
+  'camera-trigger': 'system'
+}
+
+// Rarely-touched fields folded into each card's "Advanced" disclosure, so a card
+// leads with the knobs an operator actually reaches for. Everything not listed
+// stays in the always-visible common set.
+const ADVANCED_FIELDS: Record<string, readonly string[]> = {
+  'board-orientation': ['AHRS_TRIM_X', 'AHRS_TRIM_Y', 'AHRS_TRIM_Z'],
+  compass: ['COMPASS_USE2', 'COMPASS_USE3', 'COMPASS_AUTO_ROT', 'COMPASS_DISBLMSK'],
+  'esc-dshot': ['SERVO_DSHOT_RATE', 'SERVO_BLH_POLES', 'SERVO_BLH_BDMASK', 'SERVO_BLH_RVMASK'],
+  'system-rates': ['INS_GYRO_RATE', 'INS_FAST_SAMPLE'],
+  'fast-loop-rate': ['FSTRATE_DIV'],
+  'pilot-rates': ['ACRO_RP_RATE', 'ACRO_Y_RATE', 'ACRO_RP_EXPO', 'ACRO_Y_EXPO'],
+  'active-imu': ['INS_USE2', 'INS_USE3'],
+  gps: ['GPS_GNSS_MODE', 'GPS_AUTO_SWITCH', 'GPS_PRIMARY'],
+  'receiver-signal': ['RC_OPTIONS', 'RC_PROTOCOLS'],
+  arming: ['ARMING_RUDDER'],
+  identity: ['SYSID_MYGCS', 'BRD_BOOT_DELAY'],
+  logging: ['LOG_BITMASK', 'LOG_DISARMED', 'LOG_REPLAY'],
+  beeper: ['NTF_BUZZ_TYPES'],
+  'camera-trigger': ['CAM_DURATION', 'CAM_AUTO_ONLY', 'CAM_SERVO_ON', 'CAM_SERVO_OFF']
+}
+
+// Tag a built section with its category + which of its fields are advanced.
+// Centralised here so the section definitions below stay declarative.
+function categorize(section: ConfigSection): ConfigSection {
+  const advanced = ADVANCED_FIELDS[section.id]
+  return {
+    ...section,
+    category: CATEGORY_BY_SECTION[section.id] ?? 'system',
+    fields: advanced
+      ? section.fields.map((field) => (advanced.includes(field.paramId) ? { ...field, advanced: true } : field))
+      : section.fields
+  }
+}
 
 export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   const activeVehicle = snapshot.vehicle?.vehicle
@@ -51,7 +104,7 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   const armingDescription = armingIsSkip
     ? 'Pre-arm checks to skip + which inputs may arm. ARMING_SKIPCHK = 0 runs every check (recommended); set bits skip individual checks (ArduPilot 4.7+).'
     : 'Pre-arm checks bitmask + which inputs are allowed to arm. ARMING_CHECK "All checks" runs every check; clear it to disable individual checks.'
-  const configSections: readonly ConfigSection[] = useMemo(() => [
+  const configSections: readonly ConfigSection[] = useMemo(() => ([
     ...(hasFrame
       ? [
           {
@@ -266,7 +319,7 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     // Statistics (STAT_*) moved to the Setup view's side panel — lifetime
     // counters read better next to the live instruments than buried in the
     // Config grab-bag.
-  ], [
+  ] as readonly ConfigSection[]).map(categorize), [
     activeVehicle,
     hasFastRate,
     hasPilotRates,
