@@ -8552,6 +8552,92 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-size: 11px;
 }
 
+/* Top-down board-mounting picture under the Board orientation dropdown. */
+.board-orientation-diagram {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.board-orientation-diagram__stage {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(var(--edge-rgb), 0.18);
+  border-radius: var(--radius-md);
+  background: rgba(var(--fill-rgb), 0.4);
+}
+.board-orientation-diagram__front {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-data);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--text-dim, var(--text-muted));
+}
+.board-orientation-diagram__svg {
+  width: 108px;
+  height: 108px;
+  transition: transform 0.25s ease;
+}
+.board-orientation-diagram__board {
+  fill: rgba(var(--fill-rgb), 0.9);
+  stroke: rgba(var(--edge-rgb), 0.4);
+  stroke-width: 2;
+}
+.board-orientation-diagram__arrow {
+  fill: var(--accent, var(--primary-500));
+}
+.board-orientation-diagram__arrow-stem {
+  stroke: var(--accent, var(--primary-500));
+  stroke-width: 2.5;
+}
+.board-orientation-diagram__usb {
+  fill: rgba(var(--edge-rgb), 0.5);
+}
+.board-orientation-diagram__imu {
+  fill: rgba(var(--edge-rgb), 0.28);
+  stroke: rgba(var(--edge-rgb), 0.45);
+  stroke-width: 1;
+}
+.board-orientation-diagram__note {
+  max-width: 22ch;
+  padding: 8px;
+  text-align: center;
+}
+.board-orientation-diagram__note strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.board-orientation-diagram__note p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.board-orientation-diagram__caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.board-orientation-diagram__badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--warning-weak);
+  color: var(--warning);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .can-bus-header {
   display: flex;
   flex-wrap: wrap;

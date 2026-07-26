@@ -50,6 +50,7 @@ import {
   findBoardCatalogEntry,
   normalizeFirmwareMetadata,
   mergeUpstreamParameters,
+  AHRS_ORIENTATION_OPTIONS,
   type AppViewId,
   type UpstreamParameterMap,
 } from '@arduconfig/param-metadata'
@@ -252,6 +253,8 @@ import { AP_PERIPH_PARAM_METADATA } from './view-models/ap-periph-param-metadata
 import { parseParamPck } from './view-models/param-pck'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
 import { deriveCanEnablement } from './view-models/can-enablement'
+import { deriveBoardOrientationVisual } from './view-models/board-orientation-visual'
+import { BoardOrientationDiagram } from './views/BoardOrientationDiagram'
 import { buildRecentNotices } from './view-models/recent-notices'
 import { deriveExternalChannelClaims, deriveRcLogicChannelClaims } from './view-models/channel-usage'
 import { orderDraftsByEnableGate } from './view-models/enable-gate-write-order'
@@ -5563,6 +5566,22 @@ export function App() {
   // (BLH_BDMASK=0b1111) AND turns on BLHeli auto (BLH_AUTO=1), since AP needs
   // both; gated on a DShot protocol with a note that most boards only do
   // bdshot on the first 4 outputs (some do 8).
+  function renderBoardOrientationFooter(): ReactNode {
+    // Reflect the SELECTED orientation (staged draft if any, else live) so the
+    // picture updates as the operator changes the dropdown, before Apply.
+    const raw = editedValues.AHRS_ORIENTATION ?? readRoundedParameter(snapshot, 'AHRS_ORIENTATION')
+    const value = raw === undefined || raw === '' ? undefined : Math.round(Number(raw))
+    if (value === undefined || Number.isNaN(value)) {
+      return null
+    }
+    const label = AHRS_ORIENTATION_OPTIONS.find((option) => option.value === value)?.label
+    const visual = deriveBoardOrientationVisual(value, label)
+    if (!visual) {
+      return null
+    }
+    return <BoardOrientationDiagram visual={visual} testId="board-orientation-diagram" />
+  }
+
   function renderEscDshotFooter(): ReactNode {
     const motPwmType = Math.round(
       Number(editedValues.MOT_PWM_TYPE ?? readRoundedParameter(snapshot, 'MOT_PWM_TYPE') ?? 0)
@@ -8464,9 +8483,15 @@ export function App() {
 
       {activeViewId === 'config' ? (
         <ConfigView
-          sections={configSections.map((section) =>
-            section.id === 'esc-dshot' ? { ...section, footer: renderEscDshotFooter() } : section
-          )}
+          sections={configSections.map((section) => {
+            if (section.id === 'esc-dshot') {
+              return { ...section, footer: renderEscDshotFooter() }
+            }
+            if (section.id === 'board-orientation') {
+              return { ...section, footer: renderBoardOrientationFooter() }
+            }
+            return section
+          })}
           parametersById={configParametersById}
           editedValues={editedValues}
           onEditChange={(paramId, value) => setDraft(paramId, value)}

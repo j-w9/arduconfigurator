@@ -1390,6 +1390,32 @@ test.describe('Config view', () => {
     await expect(page.getByTestId('config-section-fast-loop-rate')).toHaveCount(0)
   })
 
+  test('Board orientation shows a picture of the mounting that reacts to the dropdown', async ({ page }) => {
+    // The board-orientation section carries a top-down FC picture (footer slot)
+    // driven by the selected AHRS_ORIENTATION — flat rotation for pure yaw,
+    // "upside down" for a 180° flip, a note for edge/tilted mounts.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+
+    const section = page.getByTestId('config-section-board-orientation')
+    const diagram = page.getByTestId('board-orientation-diagram')
+    await expect(diagram).toBeVisible() // demo AHRS_ORIENTATION=0 (None)
+    await expect(diagram).toContainText('None')
+
+    const select = section.locator('select').first()
+    // Roll 180 -> "Upside down" badge; the SVG stays (a depictable flip).
+    await select.selectOption('8')
+    await expect(diagram).toContainText('Upside down')
+    await expect(diagram.locator('svg')).toBeVisible()
+
+    // Roll 90 -> edge mount: a note, no flat SVG (never a misleading rotation).
+    await select.selectOption('16')
+    await expect(page.getByTestId('board-orientation-note')).toBeVisible()
+    await expect(diagram.locator('svg')).toHaveCount(0)
+  })
+
   test('Config tab exposes an Apply / Revert toolbar wired to the Config draft scope', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
