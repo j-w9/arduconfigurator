@@ -52,17 +52,24 @@ Direction tab (both gated behind the props-off acknowledgement):
 
 .. note::
 
-   ArduPilot expects motors numbered and spinning in a specific pattern for your
-   frame class and type. The schematic only draws spin arrows for frames whose
-   direction table is known, so cross-check against the ArduPilot motor-order
-   diagram for your exact frame.
+   The schematic draws the **real layout for your frame**. It reads
+   ``FRAME_CLASS`` / ``FRAME_TYPE`` and renders that frame's actual motor
+   positions and per-motor spin directions from ArduPilot's motor matrix — so an
+   H-frame reads as an H, a hexa shows six arms, a Y6 shows its coaxial stacks,
+   and so on, rather than always drawing a quad-X. Each motor's spin arrow
+   curves above (front) or below (rear) its ring in the correct CW/CCW
+   direction. Still confirm each motor physically spins the way its arrow shows
+   before flying.
 
 Motor test (props off)
 ----------------------
 
-The **Test** sub-tab spins motors at a set throttle for a set time. Pick a single
-output, all motors in sequence, or all at once; set **Throttle %** (1–100) and
-**Duration** (up to 5 s, 30 s in Expert mode). It sends
+The **Test** sub-tab spins motors at a set throttle for a set time, with the
+frame diagram (the real per-frame layout and spin arrows described above)
+alongside the sliders so you can see which numbered motor maps to which output
+and expected direction. Pick a single output, all motors in sequence, or all at
+once; set **Throttle %** (1–100) and **Duration** (up to 5 s, 30 s in Expert
+mode). It sends
 ``MAV_CMD_DO_MOTOR_TEST`` and is gated by eligibility checks — the vehicle must be
 connected, disarmed, parameter-synced, with no other guided action running — plus
 the physical-safety acknowledgements. There's no "test finished" message from the

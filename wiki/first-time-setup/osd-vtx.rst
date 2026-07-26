@@ -35,10 +35,13 @@ The tab works like Betaflight's OSD editor:
 Backend and screen options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The **Backend** strip selects how the OSD is rendered:
+The **Backend** strip — shown expanded by default, since the backend is the
+first thing to confirm — selects how the OSD is rendered:
 
 - ``OSD_TYPE`` — the OSD backend: *Disabled*, *MAX7456* (analog), *SITL*, *MSP*,
-  *TXONLY*, or *MSP DisplayPort*. (Changing it requires a reboot.)
+  *TXONLY*, or *MSP DisplayPort*. (Changing it requires a reboot.) Choosing
+  **MSP DisplayPort** as a serial-port function on the :doc:`ports-serial` tab
+  sets this for you.
 - ``OSD_CHAN`` and ``OSD_SW_METHOD`` — the RC channel and method used to switch
   between screens.
 
@@ -59,8 +62,10 @@ VTX configuration
 -----------------
 
 The **VTX** tab controls a video transmitter over a SmartAudio or Tramp control
-link (assign the control UART on the :doc:`ports-serial` tab first). The
-parameters the app exposes are:
+link. Assign the control UART on the :doc:`ports-serial` tab first — choosing
+**IRC Tramp** or **SmartAudio** there stages ``VTX_ENABLE`` and the matching
+``VTX_TYPES`` transport bit for you, so the transmitter is already enabled when
+you reach this tab. The parameters the app exposes are:
 
 - ``VTX_ENABLE`` — turns VTX control on or off.
 - ``VTX_FREQ`` — the transmit frequency in MHz.

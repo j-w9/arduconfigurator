@@ -31,6 +31,23 @@ label, with five columns:
    MAVLink2 = 2, GPS = 5, ESC Telemetry = 16, **RC Input = 23**, MSP = 32. A
    value of ``-1`` (None) disables the port.
 
+Paired peripheral settings
+--------------------------
+
+A serial protocol alone isn't always enough to bring a peripheral up — the
+peripheral itself has to be enabled too. When you pick one of these, Ports also
+**stages the paired parameter** so it works without a second trip, shown as a
+note under the Function dropdown:
+
+- **MSP DisplayPort** also stages ``OSD_TYPE = 5`` (the MSP DisplayPort OSD
+  backend).
+- **IRC Tramp** or **SmartAudio** also stages ``VTX_ENABLE = 1`` and sets the
+  matching transport bit in ``VTX_TYPES``.
+
+These are staged as visible, revertible drafts applied **together** with the
+``SERIALn_PROTOCOL`` change — nothing is written until you apply — and are
+skipped if the value is already correct.
+
 Assigning RC input
 ------------------
 
