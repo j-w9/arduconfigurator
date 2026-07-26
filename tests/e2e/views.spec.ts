@@ -343,6 +343,35 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(page.getByRole('button', { name: /Apply All \(0\)/ })).toBeVisible()
   })
 
+  test('expanding a param row reveals its metadata, old name, enum meaning, and a type-or-pick editor', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+    await page.getByTestId('parameter-search-input').fill('GPS_TYPE')
+
+    // Rows are collapsed by default — no detail until you click one.
+    await expect(page.getByTestId('parameter-detail-GPS_TYPE')).toHaveCount(0)
+    await page.locator('.parameter-row:not(.parameter-row--header)').first().click()
+
+    const detail = page.getByTestId('parameter-detail-GPS_TYPE')
+    await expect(detail).toBeVisible()
+    // Friendly label + description (metadata the flat table dropped).
+    await expect(detail).toContainText('Primary GPS Type')
+    await expect(detail).toContainText('Driver type')
+    // Old/renamed name.
+    await expect(page.getByTestId('parameter-detail-alias-GPS_TYPE')).toContainText('GPS1_TYPE')
+    // Enum meaning of the current value (demo GPS_TYPE=9).
+    await expect(detail).toContainText('9 — DroneCAN')
+
+    // Type-or-pick editor, both edit the same draft.
+    await page.getByTestId('parameter-detail-select-GPS_TYPE').selectOption('2')
+    await expect(page.getByTestId('parameter-detail-input-GPS_TYPE')).toHaveValue('2')
+    await expect(page.getByRole('button', { name: /Apply All \(1\)/ })).toBeVisible()
+    await page.getByTestId('parameter-detail-input-GPS_TYPE').fill('5')
+    await expect(page.getByTestId('parameter-detail-select-GPS_TYPE')).toHaveValue('5')
+  })
+
   test('Export is one picker where you choose the format', async ({ page }) => {
     // Was a primary "Export" button sitting next to a separate "Export Legacy…"
     // select, which read as two competing exports. Now a single picker: pick

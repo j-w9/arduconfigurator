@@ -2612,13 +2612,12 @@ export function App() {
   const { rcRangeExerciseCompletedCount, rcRangeExerciseSummary } = rcRangeDerivations
 
   useEffect(() => {
-    if (filteredParameters.length === 0) {
+    // selectedParameterId now drives the inline row EXPANSION in the Parameters
+    // table. Collapse the expanded row if it scrolls out of the current filter
+    // (e.g. the search no longer matches it) — but never auto-EXPAND a row the
+    // operator didn't click, so a plain search doesn't pop a detail open.
+    if (selectedParameterId && !filteredParameters.some((parameter) => parameter.id === selectedParameterId)) {
       setSelectedParameterId(undefined)
-      return
-    }
-
-    if (!selectedParameterId || !filteredParameters.some((parameter) => parameter.id === selectedParameterId)) {
-      setSelectedParameterId(filteredParameters[0]?.id)
     }
   }, [filteredParameters, selectedParameterId])
 

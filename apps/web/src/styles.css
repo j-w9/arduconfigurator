@@ -11363,6 +11363,102 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-size: 14px;
 }
 
+/* Click-to-expand affordance on the first cell. */
+.parameter-row__name {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.parameter-row__caret {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.parameter-row--expanded {
+  background: var(--bg-panel);
+}
+
+/* Inline detail revealed under an expanded row (full-width child of the table
+   grid). Brings back the metadata + a richer editor without a separate panel. */
+.parameter-row-detail {
+  padding: 12px 14px 16px 30px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+.parameter-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 720px;
+}
+.parameter-detail__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.parameter-detail__head strong {
+  font-size: 15px;
+}
+.parameter-detail__alias {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.parameter-detail__alias code,
+.parameter-detail__meta code {
+  font-family: var(--font-data);
+}
+.parameter-detail__desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.parameter-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 0;
+}
+.parameter-detail__meta > div {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.parameter-detail__meta dt {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.parameter-detail__meta dd {
+  margin: 0;
+  font-size: 13px;
+  font-family: var(--font-data);
+}
+.parameter-detail__value-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+}
+.parameter-detail__field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.parameter-detail__field > span {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.parameter-detail__field input,
+.parameter-detail__field select {
+  min-width: 160px;
+  min-height: 30px;
+}
+
 .parameter-row--header {
   background: var(--bg-panel);
   color: var(--text-dim);

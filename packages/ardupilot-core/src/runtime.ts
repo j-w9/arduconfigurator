@@ -66,6 +66,7 @@ import {
   type MavftpDirectoryEntry,
 } from './mavftp.js'
 import { applyArducopter47Override } from './firmware-overrides.js'
+import { LEGACY_PARAM_ALIASES, MODERN_TO_LEGACY_ALIASES } from './parameter-aliases.js'
 import { listMavftpLogFiles } from './mavftp-log-directories.js'
 import { VTX_TABLE_FTP_PATH, parseVtxTable, serializeVtxTable, type VtxTable } from './vtx-table.js'
 import {
@@ -251,33 +252,6 @@ const STATUSTEXT_MAX_CHUNKS_PER_BUFFER = 32
 // under the modern name when that's what the FC exposes. Only renames where
 // units AND range are identical are listed — value-changing renames are NOT,
 // since mirroring the raw value would be wrong.
-const LEGACY_PARAM_ALIASES: Record<string, string> = {
-  // legacy -> modern (ArduPilot 4.5+ GPS family rename)
-  GPS_TYPE: 'GPS1_TYPE',
-  GPS_TYPE2: 'GPS2_TYPE',
-  GPS_RATE_MS: 'GPS1_RATE_MS',
-  GPS_GNSS_MODE: 'GPS1_GNSS_MODE',
-  // ArduPlane 4.5+ airspeed-bounds rename (same m/s unit). NOT included:
-  // TRIM_ARSPD_CM / AIRSPEED_CRUISE — that rename changed cm/s -> m/s.
-  ARSPD_FBW_MIN: 'AIRSPEED_MIN',
-  ARSPD_FBW_MAX: 'AIRSPEED_MAX',
-  // QuadPlane attitude rate limits (axis-name abbreviation, same deg/s unit).
-  // NOT included: Q_A_ACCEL_* -> Q_A_ACC_*, which also changed units.
-  Q_A_RATE_RLL_MAX: 'Q_A_RATE_R_MAX',
-  Q_A_RATE_PIT_MAX: 'Q_A_RATE_P_MAX',
-  Q_A_RATE_YAW_MAX: 'Q_A_RATE_Y_MAX',
-  // Rover 4.3 cornering-limit rehome (same g unit/range). The retired
-  // WP_OVERSHOOT / NAVL1_* family have no modern replacement, so no alias.
-  TURN_MAX_G: 'ATC_TURN_MAX_G',
-  // ArduPilot 4.5+ MAVLink identifier rename (same range, no unit), plus the
-  // MODE_CH -> FLTMODE_CH flight-mode channel rename.
-  SYSID_THISMAV: 'MAV_SYSID',
-  SYSID_MYGCS: 'MAV_GCS_SYSID',
-  MODE_CH: 'FLTMODE_CH'
-}
-const MODERN_TO_LEGACY_ALIASES: Record<string, string> = Object.fromEntries(
-  Object.entries(LEGACY_PARAM_ALIASES).map(([legacy, modern]) => [modern, legacy])
-)
 // DroneCAN node lifecycle thresholds.
 //   - REFRESH_DEBOUNCE: minimum interval between MAV_CMD_UAVCAN_GET_NODE_INFO
 //     broadcasts, so the bridge isn't asked again immediately if NODE_INFO
