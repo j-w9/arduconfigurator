@@ -11212,126 +11212,6 @@ details.metadata-settings-section:not([open]) > summary::after {
   overflow-y: hidden;
 }
 
-.parameter-details {
-  /* User feedback: this sticky detail box was eating so much vertical
-     room (~210px) that only 2 param rows were visible at a time.
-     Tightened every spacing knob: outer padding 18→10, gap 16→8,
-     bottom margin 20→10. The description can now scroll vertically
-     if long — the user explicitly OK'd that since it keeps the box
-     short for the common case. Trimmed to ~110px tall when the
-     description fits, ~150px max when it scrolls. */
-  display: grid;
-  gap: 6px;
-  margin-bottom: 8px;
-  padding: 8px 12px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 1));
-  position: sticky;
-  top: var(--header-height, 64px);
-  z-index: 4;
-}
-
-.parameter-details__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-/* Collapse toggle for the parameter inspector — only used on phones (shown via
- * the <=600px media query); hidden on desktop so the inspector reads exactly as
- * before there. */
-.parameter-details__toggle {
-  display: none;
-  flex-shrink: 0;
-  align-self: center;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-200);
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.parameter-details__header h3,
-.parameter-details__header p {
-  margin: 0;
-}
-
-.parameter-details__header h3 {
-  font-size: 14px;
-  line-height: 1.2;
-}
-
-.parameter-details__header p {
-  /* User: "i do think scrolling on param detail text is reasonable."
-     Cap the description at ~2 lines and scroll the rest so a long
-     desc doesn't push the metric grid below the fold. */
-  margin-top: 2px;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.35;
-  max-height: 2.7em;
-  overflow-y: auto;
-}
-
-.parameter-details__value-editor {
-  display: grid;
-  gap: 3px;
-  margin-bottom: 6px;
-}
-
-/* The breakout value editor reuses the shared scoped field; trim its card
-   padding so the inspector stays short and more table rows stay visible. */
-.parameter-details__value-editor .scoped-editor-field {
-  padding: 6px 8px;
-  gap: 4px;
-}
-
-.parameter-details__value-editor > small {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  opacity: 0.7;
-}
-
-.parameter-details__grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.parameter-details__metric {
-  display: grid;
-  gap: 2px;
-  padding: 4px 8px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 1));
-}
-
-.parameter-details__metric small {
-  color: var(--text-muted);
-  font-size: 10px;
-  line-height: 1.1;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.parameter-details__metric strong {
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.2;
-}
-
-.parameter-details__option {
-  margin: 0;
-  color: var(--text);
-}
-
 .parameter-option-list {
   display: flex;
   flex-wrap: wrap;
@@ -11903,8 +11783,6 @@ details.metadata-settings-section:not([open]) > summary::after {
   .parameter-review__summary,
   .board-media-lightbox__header,
   .parameter-follow-up,
-  .parameter-details__header,
-  .parameter-details__grid,
   .parameter-diff-item,
   .snapshot-capture-row,
   .preset-group__header,
@@ -14392,13 +14270,6 @@ details.bf-gui-box:not([open]) > summary::after {
     display: none;
   }
 
-  /* The parameter inspector auto-selects the first param (FRAME_CLASS), which on
-   * a phone renders as a tall box wedged above the editable table. It starts
-   * collapsed on phone (the body is omitted until expanded); show the toggle so
-   * it stays reachable. */
-  .parameter-details__toggle {
-    display: inline-flex;
-  }
 }
 
 /* No-GPS calibration location card (Calibration page). */
