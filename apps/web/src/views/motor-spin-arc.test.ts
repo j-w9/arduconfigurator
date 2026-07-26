@@ -29,13 +29,16 @@ describe('motorOutwardAngleDeg', () => {
 })
 
 describe('motorSpinArcPath', () => {
-  it('is unchanged (arc over the top) when no outward angle is given', () => {
-    // Historical default: endpoints at 215° / -35° around a 100,100 ring, r=30.
+  it('defaults to a 160° dome over the top when no outward angle is given', () => {
+    // Endpoints at 90±80 = 170° / 10° (math) around a 100,100 ring, r=30.
     const cw = parseArc(motorSpinArcPath(100, 100, 30, 'cw'))
-    // start at 215° math → x = 100 + 30cos215 ≈ 75.4, y = 100 - 30sin215 ≈ 117.2
-    expect(cw.x0).toBeCloseTo(100 + 30 * Math.cos((215 * Math.PI) / 180), 0)
-    expect(cw.y0).toBeCloseTo(100 - 30 * Math.sin((215 * Math.PI) / 180), 0)
+    // cw start at 170° math → x = 100 + 30cos170 ≈ 70.5, y = 100 - 30sin170 ≈ 94.8
+    expect(cw.x0).toBeCloseTo(100 + 30 * Math.cos((170 * Math.PI) / 180), 0)
+    expect(cw.y0).toBeCloseTo(100 - 30 * Math.sin((170 * Math.PI) / 180), 0)
     expect(cw.sweep).toBe(1)
+    // Both endpoints sit above the ring centre (the dome caps the top).
+    expect(cw.y0).toBeLessThan(100)
+    expect(cw.y1).toBeLessThan(100)
   })
 
   it('flips the sweep flag between cw and ccw', () => {
@@ -43,27 +46,21 @@ describe('motorSpinArcPath', () => {
     expect(parseArc(motorSpinArcPath(0, 0, 10, 'ccw')).sweep).toBe(0)
   })
 
-  it('centres the gap on the hub side: a rear motor arcs below its ring', () => {
-    // Rear motor: outward points down (-90°). The arc spans ±125° around -90°,
-    // i.e. from 35° to -215°, so its midpoint (-90°, straight down in screen =
-    // BELOW the ring centre) has the largest y. Sample both endpoints and the
-    // midpoint; the arc's lowest point on screen must be below the ring centre.
+  it('a rear motor domes BELOW its ring (outward = down)', () => {
+    // Outward -90°: endpoints at -90±80 = -10° / -170°, belly straight down.
+    // Both endpoints sit below the ring centre; the belly is further below.
     const cy = 100
     const r = 30
     const arc = parseArc(motorSpinArcPath(100, cy, r, 'cw', -90))
-    const mid = cy + r // straight-down point of the ring
-    // Both endpoints sit near the top gap (small y), the swept belly is at the
-    // bottom — assert the endpoints straddle the vertical and the belly is below.
-    expect(Math.max(arc.y0, arc.y1)).toBeLessThan(mid) // endpoints above the belly
-    expect(arc.y0).toBeLessThan(cy + r) // sanity: within ring vertical extent
+    expect(arc.y0).toBeGreaterThan(cy) // endpoint below centre
+    expect(arc.y1).toBeGreaterThan(cy)
   })
 
-  it('a front motor arcs above its ring (mirror of the rear case)', () => {
+  it('a front motor domes ABOVE its ring (mirror of the rear case)', () => {
     const cy = 100
     const r = 30
     const arc = parseArc(motorSpinArcPath(100, cy, r, 'cw', 90))
-    // Endpoints near the bottom gap → larger y than the ring centre.
-    expect(Math.min(arc.y0, arc.y1)).toBeGreaterThan(cy - r) // belly is above (small y)
-    expect(Math.max(arc.y0, arc.y1)).toBeGreaterThan(cy) // gap endpoints below centre
+    expect(arc.y0).toBeLessThan(cy) // endpoint above centre
+    expect(arc.y1).toBeLessThan(cy)
   })
 })

@@ -226,8 +226,8 @@ export function MotorReorderDialog({
                 <div className="motor-mixer-preview motor-mixer-preview--dialog">
                   <svg viewBox="0 0 260 260" role="img" aria-label="Schematic reordered motor map preview">
                     <defs>
-                      <marker id="spinArrowReorder" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                        <path d="M 0 0 L 6 3 L 0 6 z" className="motor-mixer-preview__spin-head" />
+                      <marker id="spinArrowReorder" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+                        <path d="M 0 0 L 8 4 L 0 8 z" className="motor-mixer-preview__spin-head" />
                       </marker>
                     </defs>
                     <rect x="0" y="0" width="260" height="260" rx="18" className="motor-mixer-preview__backdrop" />
@@ -261,7 +261,7 @@ export function MotorReorderDialog({
                           {node.stack ? <circle cx={x} cy={y} r={19} className="motor-mixer-preview__stack" /> : null}
                           {node.spin ? (
                             <path
-                              d={motorSpinArcPath(x, y, (node.stack ? 29 : 24) + 6, node.spin, motorOutwardAngleDeg(node.x, node.y))}
+                              d={motorSpinArcPath(x, y, (node.stack ? 29 : 24) + 13, node.spin, motorOutwardAngleDeg(node.x, node.y))}
                               className="motor-mixer-preview__spin"
                               markerEnd="url(#spinArrowReorder)"
                             />
@@ -458,8 +458,8 @@ export function MotorReorderDialog({
                 <div className="motor-mixer-preview motor-mixer-preview--dialog">
                   <svg viewBox="0 0 260 260" role="img" aria-label="Clickable motor map — click a motor to spin it">
                     <defs>
-                      <marker id="spinArrowDirection" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-                        <path d="M 0 0 L 6 3 L 0 6 z" className="motor-mixer-preview__spin-head" />
+                      <marker id="spinArrowDirection" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+                        <path d="M 0 0 L 8 4 L 0 8 z" className="motor-mixer-preview__spin-head" />
                       </marker>
                     </defs>
                     <rect x="0" y="0" width="260" height="260" rx="18" className="motor-mixer-preview__backdrop" />
@@ -491,7 +491,7 @@ export function MotorReorderDialog({
                           {node.stack ? <circle cx={x} cy={y} r={19} className="motor-mixer-preview__stack" /> : null}
                           {node.spin ? (
                             <path
-                              d={motorSpinArcPath(x, y, (node.stack ? 29 : 24) + 6, node.spin, motorOutwardAngleDeg(node.x, node.y))}
+                              d={motorSpinArcPath(x, y, (node.stack ? 29 : 24) + 13, node.spin, motorOutwardAngleDeg(node.x, node.y))}
                               className="motor-mixer-preview__spin"
                               markerEnd="url(#spinArrowDirection)"
                             />
