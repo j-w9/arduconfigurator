@@ -2443,10 +2443,20 @@ export function App() {
     effectiveMotorOutputs.length,
     outputMapping.motorOutputs.length
   )
+  // Drive the motor-test diagram off the REAL frame (FRAME_CLASS/FRAME_TYPE) so
+  // an H-frame/hexa/Y6/etc. shows its own geometry and prop directions, not a
+  // hardcoded quad-X. Empty until the frame params are known — the diagram then
+  // renders a "connect to read your frame" prompt rather than a guessed shape.
   const motorPreviewNodes = useMemo(
-    () => createMotorPreviewNodes(motorPreviewCount, airframe.frameTypeLabel),
-    [airframe.frameTypeLabel, motorPreviewCount]
+    () =>
+      createMotorPreviewNodes(motorPreviewCount, airframe.frameTypeLabel, {
+        classValue: airframe.frameClassValue,
+        typeValue: airframe.frameTypeValue
+      }),
+    [airframe.frameClassValue, airframe.frameTypeValue, airframe.frameTypeLabel, motorPreviewCount]
   )
+  const motorPreviewFrameKnown =
+    airframe.frameClassValue !== undefined && airframe.frameTypeValue !== undefined
   const motorPreviewGeometryMode = airframe.frameTypeLabel.includes('+') ? 'plus' : 'x'
   const outputAssignmentVisibility = useOutputAssignmentVisibility({
     expectedMotorCount: airframe.expectedMotorCount,
@@ -7723,6 +7733,7 @@ export function App() {
           motorPreviewNodes,
           motorPreviewCount,
           motorPreviewGeometryMode,
+          motorPreviewFrameKnown,
           motorTestEligibility,
           isCopterVehicle,
           configuredOutputs,

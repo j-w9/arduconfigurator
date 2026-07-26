@@ -3675,6 +3675,24 @@ textarea:focus {
   max-width: 100%;
 }
 
+/* Shown in place of the diagram until the frame is known (or for non-matrix
+   frames with no layout) — a prompt, never a guessed shape. */
+.motor-mixer-preview--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 24px;
+  text-align: center;
+}
+.motor-mixer-preview--empty p {
+  margin: 0;
+  max-width: 34ch;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .motor-mixer-preview svg {
   width: min(100%, 380px);
   height: auto;

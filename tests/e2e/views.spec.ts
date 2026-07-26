@@ -357,6 +357,26 @@ test.describe('Disconnect behaviour', () => {
   })
 })
 
+test.describe('Motor Test diagram', () => {
+  test('draws the connected frame (demo quad-X): four motors with outward spin arcs', async ({ page }) => {
+    // The diagram is built from the vehicle's real FRAME_CLASS/FRAME_TYPE, so an
+    // H-frame/hexa/Y6 no longer renders as a hardcoded quad-X. The demo is a
+    // quad-X (FRAME_CLASS=1, FRAME_TYPE=1): expect four motor rings, four spin
+    // arcs, and no "frame unknown" placeholder.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'motors')
+    await page.getByTestId('outputs-summary-direction-test').click()
+
+    const diagram = page.getByTestId('motor-test-diagram')
+    await expect(diagram).toBeVisible()
+    await expect(page.getByTestId('motor-test-diagram-empty')).toHaveCount(0)
+    // Four motor rings and four spin arcs (one per motor — quad has all four known).
+    await expect(diagram.locator('.motor-mixer-preview__ring')).toHaveCount(4)
+    await expect(diagram.locator('.motor-mixer-preview__spin')).toHaveCount(4)
+  })
+})
+
 test.describe('Ports view', () => {
   test('serial options show as chips in the matrix (Notes column removed)', async ({ page }) => {
     await page.goto('/')
