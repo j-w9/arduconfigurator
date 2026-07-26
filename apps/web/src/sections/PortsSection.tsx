@@ -32,6 +32,7 @@ import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '..
 import type { SerialPortViewModel } from '../serial-port-helpers'
 import { toneForScopedDraftReview } from '../tone-helpers'
 import type { AdditionalSettingsGroup, CanNodePeripheralViewModel, GpsPeripheralViewModel } from '../view-models/peripherals'
+import { pairedDraftsForSerialProtocol, pairingNoteForSerialProtocol } from '../view-models/port-protocol-pairings'
 import { ScopedField, ScopedSelectField } from '../views/ScopedField'
 
 export interface PortsSectionProps {
@@ -182,6 +183,21 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
   // verbatim move; aliasing avoids touching the JSX.
   const handleApplyScopedParameterDrafts = onApplyScopedDrafts
   const handleDiscardScopedParameterDrafts = onDiscardScopedDrafts
+
+  // Set a port's protocol AND stage any paired peripheral-enable drafts, so
+  // picking DisplayPort also turns on the OSD backend and picking a VTX-control
+  // protocol enables the VTX — staged (visible, revertible), applied with the
+  // port change. See view-models/port-protocol-pairings.
+  const handleSelectSerialProtocol = (protocolParamId: string, rawValue: string) => {
+    setDraft(protocolParamId, rawValue)
+    const protocolValue = Number(rawValue)
+    if (Number.isNaN(protocolValue)) {
+      return
+    }
+    for (const paired of pairedDraftsForSerialProtocol(protocolValue, snapshot)) {
+      setDraft(paired.paramId, String(paired.value))
+    }
+  }
 
   return (
 
@@ -366,7 +382,7 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                           <select
                                             value={editedValues[protocolParameter.id] ?? String(port.protocolValue ?? '')}
                                             onChange={(event) =>
-                                              setDraft(protocolParameter.id, event.target.value)
+                                              handleSelectSerialProtocol(protocolParameter.id, event.target.value)
                                             }
                                             disabled={!port.editable}
                                           >
@@ -377,6 +393,16 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                             ))}
                                           </select>
                                           <small>{protocolParameter ? formatArducopterSerialProtocol(Number(editedValues[protocolParameter.id] ?? port.protocolValue)) : port.protocolLabel}</small>
+                                          {(() => {
+                                            const note = pairingNoteForSerialProtocol(
+                                              Number(editedValues[protocolParameter.id] ?? port.protocolValue)
+                                            )
+                                            return note ? (
+                                              <small className="ports-matrix-row__pairing-note" data-testid={`port-pairing-note-${port.portNumber}`}>
+                                                {note}
+                                              </small>
+                                            ) : null
+                                          })()}
                                         </label>
                                       ) : (
                                         <div className="ports-matrix-row__readout">{port.protocolLabel}</div>

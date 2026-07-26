@@ -412,6 +412,21 @@ test.describe('Ports view', () => {
     await expect(hints.filter({ hasText: /_RTSCTS$/ }).first()).toBeVisible()
     await expect(hints.filter({ hasText: /^SERIAL\d+_OPTIONS$/ }).first()).toBeVisible()
   })
+
+  test('a DisplayPort / VTX-control protocol shows what it also auto-configures', async ({ page }) => {
+    // Picking DisplayPort or a VTX-control protocol on a UART also needs a second
+    // param flipped (OSD backend / VTX enable) to work. The pairing stages those
+    // as visible drafts; each such port surfaces a note saying so. The demo seeds
+    // a DisplayPort port (SERIAL6=42) and a SmartAudio port (SERIAL5=37).
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'ports')
+    const notes = page.locator('.ports-matrix-row__pairing-note')
+    await expect(notes.filter({ hasText: /OSD backend to MSP DisplayPort/i })).toBeVisible()
+    await expect(notes.filter({ hasText: /SmartAudio control/i })).toBeVisible()
+    // A plain protocol (GPS on SERIAL3) carries no pairing note.
+    await expect(notes.filter({ hasText: /GPS/i })).toHaveCount(0)
+  })
 })
 
 test.describe('Networking view (Expert + networking-capable FC)', () => {
