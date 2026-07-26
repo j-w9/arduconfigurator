@@ -1235,3 +1235,44 @@ export const ARDUCOPTER_AUTOTUNE_AXES_BIT_LABELS: Record<number, string> = {
   2: 'Yaw',
   3: 'YawD'
 }
+
+// Compass config (AP_Compass). Values verified against libraries/AP_Compass.
+export const ARDUCOPTER_COMPASS_EXTERNAL_LABELS: Record<number, string> = {
+  0: 'Internal',
+  1: 'External',
+  2: 'Forced external'
+}
+
+export const ARDUCOPTER_COMPASS_AUTO_ROT_LABELS: Record<number, string> = {
+  0: 'Disabled',
+  1: 'Check only',
+  2: 'Check and fix',
+  3: 'Check and fix (incl. 45°)'
+}
+
+// COMPASS_DISBLMSK — driver types to DISABLE (bit set = that compass driver is
+// blocked from being used). @Bitmask from AP_Compass.cpp.
+export const ARDUCOPTER_COMPASS_DISBLMSK_BIT_LABELS: Record<number, string> = {
+  0: 'HMC5883',
+  1: 'LSM303D',
+  2: 'AK8963',
+  3: 'BMM150',
+  4: 'LSM9DS1',
+  5: 'LIS3MDL',
+  6: 'AK0991x',
+  7: 'IST8310',
+  8: 'ICM20948',
+  9: 'MMC3416',
+  11: 'DroneCAN',
+  12: 'QMC5883',
+  14: 'MAG3110',
+  15: 'IST8308',
+  16: 'RM3100',
+  17: 'MSP',
+  18: 'ExternalAHRS',
+  19: 'MMC5XX3',
+  20: 'QMC5883P',
+  21: 'BMM350',
+  22: 'IIS2MDC',
+  23: 'LIS2MDL'
+}
