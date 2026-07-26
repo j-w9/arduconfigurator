@@ -18,7 +18,7 @@ import { hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
 import type { MotorPreviewNode } from '../view-models/motor-preview'
 import { resolveMotorReverseEligibility } from '../view-models/motor-reverse'
-import { motorSpinArcPath } from '../views/motor-spin-arc'
+import { motorOutwardAngleDeg, motorSpinArcPath } from '../views/motor-spin-arc'
 import type { MotorReorderRow } from '../hooks/use-motor-reorder'
 
 export interface MotorReorderDialogProps {
@@ -261,7 +261,7 @@ export function MotorReorderDialog({
                           {node.stack ? <circle cx={x} cy={y} r={19} className="motor-mixer-preview__stack" /> : null}
                           {node.spin ? (
                             <path
-                              d={motorSpinArcPath(x, y, (node.stack ? 29 : 24) + 6, node.spin)}
+                              d={motorSpinArcPath(x, y, (node.stack ? 29 : 24) + 6, node.spin, motorOutwardAngleDeg(node.x, node.y))}
                               className="motor-mixer-preview__spin"
                               markerEnd="url(#spinArrowReorder)"
                             />
@@ -491,7 +491,7 @@ export function MotorReorderDialog({
                           {node.stack ? <circle cx={x} cy={y} r={19} className="motor-mixer-preview__stack" /> : null}
                           {node.spin ? (
                             <path
-                              d={motorSpinArcPath(x, y, (node.stack ? 29 : 24) + 6, node.spin)}
+                              d={motorSpinArcPath(x, y, (node.stack ? 29 : 24) + 6, node.spin, motorOutwardAngleDeg(node.x, node.y))}
                               className="motor-mixer-preview__spin"
                               markerEnd="url(#spinArrowDirection)"
                             />
