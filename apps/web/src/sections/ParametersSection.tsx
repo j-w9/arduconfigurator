@@ -3,8 +3,9 @@
 // staged / invalid / reboot-required draft groups, the import-backup file
 // input + three export buttons, and the selected-parameter detail card.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactElement, RefObject, SetStateAction } from 'react'
+import { parameterAlias } from '@arduconfig/ardupilot-core'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterDraftGroup, ParameterDraftSummary, ParameterImportCategory, ParameterState } from '@arduconfig/ardupilot-core'
 import type { NormalizedFirmwareMetadataBundle } from '@arduconfig/param-metadata'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
@@ -15,6 +16,7 @@ import {
   formatParameterDraftValue
 } from '../parameter-format'
 import { ScopedBitmaskPopover } from '../views/ScopedField'
+import { ParameterDetail } from '../views/ParameterDetail'
 import { parameterApplyBlockedReason } from '../apply-gate'
 import { applyDraftSelectionClick, pruneDraftSelection } from '../view-models/draft-selection'
 import { parameterSearchPredicate } from '../view-models/filtered-parameters'
@@ -254,12 +256,9 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     [parameterDraftById]
   )
 
-  // Row selection is kept only to highlight the last-clicked row in the table;
-  // the standalone detail/inspector card was removed (it wasted vertical space
-  // and duplicated the inline per-row editor). Editing happens directly in the
-  // row now.
-  const selectedParameter =
-    displayedParameters.find((parameter) => parameter.id === selectedParameterId) ?? displayedParameters[0]
+  // selectedParameterId now drives the inline row EXPANSION (click a row to
+  // reveal its ParameterDetail — metadata, old name, enum meanings, richer
+  // editor). It no longer feeds a separate inspector card.
 
   return (
 
@@ -785,15 +784,22 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                   ? 'parameter-row parameter-row--invalid'
                   : 'parameter-row'
 
+            const isExpanded = selectedParameterId === parameter.id
             return (
+              <Fragment key={parameter.id}>
               <div
-                key={parameter.id}
-                className={`${rowClassName}${selectedParameter?.id === parameter.id ? ' parameter-row--selected' : ''}`}
-                onClick={() => setSelectedParameterId(parameter.id)}
+                className={`${rowClassName}${isExpanded ? ' parameter-row--selected parameter-row--expanded' : ''}`}
+                // Click the row to expand its detail; toggle to collapse. The
+                // Draft + Actions cells stop propagation so editing/clicking a
+                // control never collapses the row under the operator.
+                onClick={() => setSelectedParameterId(isExpanded ? undefined : parameter.id)}
               >
-                <span>
-                  <strong>{parameter.id}</strong>
-                  <small>{formatCategoryLabel(definition?.category)}</small>
+                <span className="parameter-row__name">
+                  <span className="parameter-row__caret" aria-hidden="true">{isExpanded ? '▾' : '▸'}</span>
+                  <span>
+                    <strong>{parameter.id}</strong>
+                    <small>{formatCategoryLabel(definition?.category)}</small>
+                  </span>
                 </span>
                 <span>
                   {definition?.description ?? 'Metadata to be expanded from upstream ArduPilot bundles.'}
@@ -805,7 +811,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                     <small>Delta {formatParameterDelta(draft.delta, definition?.unit)}</small>
                   ) : null}
                 </span>
-                <span className="parameter-row__value">
+                <span className="parameter-row__value" onClick={(event) => event.stopPropagation()}>
                   {definition?.bitmask === true && (definition.options?.length ?? 0) > 0 ? (
                     // Bitmask params edit as Mission-Planner-style per-bit
                     // checkboxes (each labelled with its bit meaning) instead
@@ -836,7 +842,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                     </small>
                   ) : null}
                 </span>
-                <span>
+                <span onClick={(event) => event.stopPropagation()}>
                   <div className="parameter-actions">
                     {draft?.status === 'staged' ? (
                       <>
@@ -872,6 +878,19 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                   </div>
                 </span>
               </div>
+              {isExpanded ? (
+                <div className="parameter-row-detail" onClick={(event) => event.stopPropagation()}>
+                  <ParameterDetail
+                    parameter={parameter}
+                    definition={definition}
+                    alias={parameterAlias(parameter.id)}
+                    editedValues={editedValues}
+                    onChange={setDraft}
+                    draftStatusById={draftStatusMap}
+                  />
+                </div>
+              ) : null}
+              </Fragment>
             )
           })}
         </div>
