@@ -487,14 +487,13 @@ export function OsdView(props: OsdViewProps) {
             </button>
           </div>
 
-          {/* Backend strip moved above Screen Options — the FC-side
-           *  backend selection (analog / DisplayPort / MSP) is conceptually
-           *  the parent of the per-screen options below, and BF puts the
-           *  backend selectors near the top too. Collapsed details<summary>
-           *  so it occupies one line when the operator isn't editing
-           *  backends — keeps the page from front-loading three big
-           *  selects on every visit. */}
-          <details className="bf-gui-box osd-backend-strip" data-testid="osd-backend-strip">
+          {/* Backend strip above Screen Options — the FC-side backend selection
+           *  (analog / DisplayPort / MSP) is conceptually the parent of the
+           *  per-screen options below, and BF puts the backend selectors near
+           *  the top too. Open by default (operator request): the backend is
+           *  the first thing to confirm on the OSD tab, so it shouldn't be
+           *  hidden behind a collapsed summary. */}
+          <details className="bf-gui-box osd-backend-strip" data-testid="osd-backend-strip" open>
             <summary className="bf-gui-box__titlebar">
               <strong>Backend</strong>
               <small>{previewToolbar.backendText} · {previewToolbar.switchingText} · {previewToolbar.cellsText}</small>
