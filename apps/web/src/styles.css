@@ -8587,11 +8587,12 @@ details.metadata-settings-section:not([open]) > summary::after {
   color: var(--text-dim, var(--text-muted));
   z-index: 1;
 }
-/* Oblique (isometric-ish) camera: tilted back AND yawed a little, so no board
-   face is ever edge-on — an on-its-side (Roll/Pitch 90) mount stays visible. */
+/* Gentle top-down-ish camera: a flat ("None") board reads as lying flat, with
+   just enough tilt + a small yaw that an on-its-side (Roll/Pitch 90) mount is
+   never perfectly edge-on and still shows. */
 .board-orientation-diagram__scene {
   transform-style: preserve-3d;
-  transform: rotateX(56deg) rotateY(-26deg);
+  transform: rotateX(32deg) rotateY(-14deg);
 }
 .board-orientation-diagram__board3d {
   position: relative;
