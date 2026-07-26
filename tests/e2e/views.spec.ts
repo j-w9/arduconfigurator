@@ -1420,17 +1420,24 @@ test.describe('Config view', () => {
     const diagram = page.getByTestId('board-orientation-diagram')
     await expect(diagram).toBeVisible() // demo AHRS_ORIENTATION=0 (None)
     await expect(diagram).toContainText('None')
+    const board = page.getByTestId('board-orientation-3d')
+    await expect(board).toBeVisible()
 
     const select = section.locator('select').first()
-    // Roll 180 -> "Upside down" badge; the SVG stays (a depictable flip).
+    // Roll 180 (upside down) — 3D board posed, caption updates.
     await select.selectOption('8')
-    await expect(diagram).toContainText('Upside down')
-    await expect(diagram.locator('svg')).toBeVisible()
+    await expect(diagram).toContainText('Roll 180')
+    await expect(board).toHaveAttribute('style', /rotateY\(180deg\)/)
 
-    // Roll 90 -> edge mount: a note, no flat SVG (never a misleading rotation).
+    // Roll 90 (on its edge) — now depictable in 3D (2D couldn't show it).
     await select.selectOption('16')
+    await expect(diagram).toContainText('Roll 90')
+    await expect(board).toHaveAttribute('style', /rotateY\(90deg\)/)
+
+    // A Custom orientation can't be posed — shows a note instead of a board.
+    await select.selectOption('101')
     await expect(page.getByTestId('board-orientation-note')).toBeVisible()
-    await expect(diagram.locator('svg')).toHaveCount(0)
+    await expect(page.getByTestId('board-orientation-3d')).toHaveCount(0)
   })
 
   test('Config tab exposes an Apply / Revert toolbar wired to the Config draft scope', async ({ page }) => {
