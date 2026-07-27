@@ -150,7 +150,20 @@ export function createRuntime(
     // tests drive subsystem-disabled states (e.g. BATT_MONITOR=0 to
     // exercise the Failsafe view's #481 disabled-monitor collapse).
     const parameterOverrides = readDemoParamOverridesFromUrl()
-    const scenarioOptions = { dynamicCadenceMs: 7000, parameterOverrides }
+    // guidedMotionCadenceMs additionally streams a scripted attitude + stick
+    // rehearsal, without which the guided-setup exercises (orientation check,
+    // RC mapping, stick range, mode switch) can never complete against a fixed
+    // level attitude and fixed stick positions — guided setup could not get
+    // past the Airframe step in demo mode.
+    //
+    // Test-only hook: ?demoMotion=off pins the demo back to a fixed level
+    // attitude and centred sticks, for e2e that asserts invariants about a
+    // vehicle at rest (e.g. "centred sticks must not integrate yaw heading").
+    const scenarioOptions = {
+      dynamicCadenceMs: 7000,
+      guidedMotionCadenceMs: readDemoMotionEnabledFromUrl() ? 250 : undefined,
+      parameterOverrides
+    }
     const scenario = mode === 'demo-plane'
       ? createArduPlaneMockScenario(scenarioOptions)
       : mode === 'demo-rover'
@@ -211,6 +224,16 @@ export function createRuntime(
 // query param is absent or empty, so production users see no behaviour
 // change. Numbers must parse as finite; an unparseable value is skipped
 // (silently — this is a test affordance, not a UI feature).
+// The demo's scripted attitude/stick motion is ON by default — without it the
+// guided-setup exercises can never complete. `?demoMotion=off` pins the vehicle
+// back to rest for tests that need a motionless baseline.
+function readDemoMotionEnabledFromUrl(): boolean {
+  if (typeof window === 'undefined') {
+    return true
+  }
+  return new URLSearchParams(window.location.search).get('demoMotion')?.trim().toLowerCase() !== 'off'
+}
+
 function readDemoParamOverridesFromUrl(): Record<string, number | null> | undefined {
   if (typeof window === 'undefined') {
     return undefined

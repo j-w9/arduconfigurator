@@ -47,7 +47,10 @@ describe('buildSetupConfirmationSignatures', () => {
 
   it('produces a signature for every guided-setup section', () => {
     expect(Object.keys(sig()).sort()).toEqual(
-      ['accelerometer', 'airframe', 'compass', 'esc-range', 'failsafe', 'level', 'outputs', 'power', 'radio'].sort()
+      // 'modes' was missing here, which meant getSetupConfirmationRecord always
+      // found an undefined signature for the Modes step and silently discarded
+      // any confirmation stored against it.
+      ['accelerometer', 'airframe', 'compass', 'esc-range', 'failsafe', 'level', 'modes', 'outputs', 'power', 'radio'].sort()
     )
   })
 

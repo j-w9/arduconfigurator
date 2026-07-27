@@ -20,12 +20,26 @@ export interface SetupWizardDetailProps {
 }
 
 export function SetupWizardDetail({ selectedSetupSection, snapshot }: SetupWizardDetailProps): ReactElement {
+  // The criteria list is what actually gates the step, but it lived inside a
+  // collapsed <details> and the header only showed "2/5 criteria" — never WHICH
+  // one was unmet. That is the mechanical reason a blocked step reads as
+  // "unclear what's wanted". Name the first unmet criterion up front, and leave
+  // the full list open whenever the step is not complete.
+  const nextUnmetCriterion = selectedSetupSection.criteria.find((criterion) => !criterion.met)
+  const stepComplete = selectedSetupSection.status === 'complete'
+
   return (
     <div className="setup-wizard__detail">
       <div>
         <h4>What to do</h4>
         <p>{selectedSetupSection.detail}</p>
       </div>
+
+      {nextUnmetCriterion ? (
+        <p className="setup-wizard__next-criterion" data-testid="setup-wizard-next-criterion">
+          <strong>Still needed:</strong> {nextUnmetCriterion.label}
+        </p>
+      ) : null}
 
       {selectedSetupSection.id === 'accelerometer' ? (
         <AccelerometerPoseGuide
@@ -36,7 +50,7 @@ export function SetupWizardDetail({ selectedSetupSection, snapshot }: SetupWizar
         />
       ) : null}
 
-      <details className="setup-flow__criteria" data-testid="setup-wizard-criteria">
+      <details className="setup-flow__criteria" data-testid="setup-wizard-criteria" open={!stepComplete}>
         <summary>
           <strong>Completion Criteria</strong>
           <span className="setup-flow__criteria-count">

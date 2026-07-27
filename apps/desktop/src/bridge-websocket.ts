@@ -81,7 +81,9 @@ async function createBridgeTransport(options: BridgeOptions) {
       // voltage sags, the RC link blips once, and an EKF notice fires. Tests
       // that construct the scenario without options still see the static
       // legacy behavior.
-      const scenario = createArduCopterMockScenario({ dynamicCadenceMs: 7000 })
+      // guidedMotionCadenceMs streams the scripted attitude + stick rehearsal
+      // the guided-setup exercises need to be completable over the bridge.
+      const scenario = createArduCopterMockScenario({ dynamicCadenceMs: 7000, guidedMotionCadenceMs: 250 })
       return new MockTransport('bridge-demo-transport', {
         initialFrames: scenario.initialFrames,
         respondToOutbound: scenario.respondToOutbound,

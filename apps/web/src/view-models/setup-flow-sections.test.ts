@@ -249,3 +249,143 @@ describe('radio section RCIN preflight', () => {
     expect(directionMet({ roll: 'correct', pitch: 'correct', throttle: 'correct', yaw: 'correct' })).toBe(true)
   })
 })
+
+// The physical exercises (orientation tilt, RC stick sweeps, mode-switch walk)
+// cannot always be performed: a bench FC, an airframe too large to tilt, a
+// replay/demo feed with a fixed attitude. Each of those steps gates the WHOLE
+// wizard — an unmet criterion leaves every later step sequenceState 'locked'
+// with its rail button disabled — so each carries an operator waiver recorded
+// as an 'already-done' confirmation, mirroring the calibration steps.
+describe('exercise waivers unblock the sequential flow', () => {
+  const waived = (sectionId: string) => ({
+    setupConfirmations: { [sectionId]: { signature: 'sig', confirmedAtMs: 1, outcome: 'already-done' as const } },
+    setupConfirmationSignatures: { [sectionId]: 'sig' }
+  })
+
+  const airframeStub = () =>
+    ({
+      frameClassValue: 1,
+      frameClassLabel: 'Quad',
+      frameTypeValue: 1,
+      frameTypeLabel: 'X',
+      expectedMotorCount: 4,
+      frameTypeIgnored: false
+    }) as unknown as SetupFlowSectionsInputs['airframe']
+
+  const AIRFRAME = [{ id: 'airframe', title: 'Airframe' }]
+  const buildAirframe = (over: Partial<SetupFlowSectionsInputs> = {}) =>
+    buildSetupFlowSections(
+      inputs(AIRFRAME, {
+        snapshot: snapshot(AIRFRAME, { liveVerification: { attitudeTelemetry: { verified: true } } }),
+        airframe: airframeStub(),
+        ...over
+      })
+    )[0]
+
+  it('airframe: a level-only attitude feed leaves the step incomplete without a waiver', () => {
+    const airframe = buildAirframe()
+    expect(airframe.status).not.toBe('complete')
+    expect(airframe.criteria.find((criterion) => /Orientation exercise/.test(criterion.label))?.met).toBe(false)
+  })
+
+  it('airframe: offers the orientation waiver while the exercise has not passed', () => {
+    const waiver = buildAirframe().actions.find(
+      (action) => 'label' in action && action.label === 'Orientation Verified Elsewhere — Continue'
+    )
+    expect(waiver?.confirmationOutcome).toBe('already-done')
+  })
+
+  it('airframe: the waiver completes the step so later steps can unlock', () => {
+    const airframe = buildAirframe(waived('airframe'))
+    expect(airframe.status).toBe('complete')
+    expect(airframe.confirmationOutcome).toBe('already-done')
+  })
+
+  it('airframe: the waiver also covers the live-attitude criterion it depends on', () => {
+    const airframe = buildSetupFlowSections(
+      inputs(AIRFRAME, {
+        snapshot: snapshot(AIRFRAME, { liveVerification: { attitudeTelemetry: { verified: false } } }),
+        airframe: airframeStub(),
+        ...waived('airframe')
+      })
+    )[0]
+    expect(airframe.status).toBe('complete')
+  })
+
+  it('airframe: withholds the confirm while FRAME_CLASS is present-but-unset (0)', () => {
+    // The completion criterion requires FRAME_CLASS != 0, so a confirm enabled
+    // at 0 ticked nothing and explained nothing.
+    const airframe = buildSetupFlowSections(
+      inputs(AIRFRAME, {
+        snapshot: snapshot(AIRFRAME, { liveVerification: { attitudeTelemetry: { verified: true } } }),
+        airframe: { ...airframeStub(), frameClassValue: 0 } as unknown as SetupFlowSectionsInputs['airframe']
+      })
+    )[0]
+    const confirm = airframe.actions.find((action) => 'label' in action && action.label === 'Confirm Airframe Review')
+    expect(confirm && 'disabled' in confirm ? confirm.disabled : undefined).toBe(true)
+    const waiver = airframe.actions.find(
+      (action) => 'label' in action && action.label === 'Orientation Verified Elsewhere — Continue'
+    )
+    expect(waiver && 'disabled' in waiver ? waiver.disabled : undefined).toBe(true)
+  })
+
+  const RADIO = [{ id: 'radio', title: 'Radio' }]
+  it('radio: the waiver satisfies mapping, range, endpoints and directions at once', () => {
+    const radio = buildSetupFlowSections(
+      inputs(RADIO, {
+        snapshot: snapshot(RADIO, { liveVerification: { rcInput: { verified: true, channelCount: 8 } } }),
+        ...waived('radio')
+      })
+    )[0]
+    expect(radio.status).toBe('complete')
+    expect(radio.criteria.every((criterion) => criterion.met)).toBe(true)
+  })
+
+  it('radio: offers the waiver only while the directions are unverified', () => {
+    const label = 'Radio Verified Elsewhere — Continue'
+    const unverified = buildSetupFlowSections(
+      inputs(RADIO, { snapshot: snapshot(RADIO, { liveVerification: { rcInput: { verified: true, channelCount: 8 } } }) })
+    )[0]
+    expect(unverified.actions.some((action) => 'label' in action && action.label === label)).toBe(true)
+
+    const verified = buildSetupFlowSections(
+      inputs(RADIO, {
+        rcDirectionResults: { roll: 'correct', pitch: 'correct', throttle: 'correct', yaw: 'correct' },
+        snapshot: snapshot(RADIO, { liveVerification: { rcInput: { verified: true, channelCount: 8 } } })
+      })
+    )[0]
+    expect(verified.actions.some((action) => 'label' in action && action.label === label)).toBe(false)
+  })
+
+  const MODES = [{ id: 'modes', title: 'Flight Modes' }]
+  it('modes: gains a waiver where it previously had no operator escape at all', () => {
+    const modes = buildSetupFlowSections(inputs(MODES))[0]
+    expect(modes.status).not.toBe('complete')
+    const waiver = modes.actions.find(
+      (action) => 'label' in action && action.label === 'Flight Modes Verified Elsewhere — Continue'
+    )
+    expect(waiver?.confirmationOutcome).toBe('already-done')
+
+    const escaped = buildSetupFlowSections(inputs(MODES, waived('modes')))[0]
+    expect(escaped.status).toBe('complete')
+  })
+})
+
+describe('locked-step blocking reason', () => {
+  it('keeps naming the blocking step even when a follow-up is pending', () => {
+    // A pending follow-up used to REPLACE the sequence reason outright, so a
+    // locked step reported e.g. "Reboot required" and never said which step
+    // was actually holding the flow.
+    const sections = buildSetupFlowSections(
+      inputs([{ id: 'link', title: 'Link' }, { id: 'mystery', title: 'Mystery' }], {
+        snapshot: snapshot([{ id: 'link', title: 'Link' }, { id: 'mystery', title: 'Mystery' }], {
+          connection: { kind: 'disconnected' }
+        }),
+        setupFlowFollowUp: { title: 'Reboot required', tone: 'warning', text: '', actions: [] }
+      })
+    )
+    const locked = sections.find((section) => section.id === 'mystery')
+    expect(locked?.blockingReason).toContain('Complete Link before moving on to Mystery.')
+    expect(locked?.blockingReason).toContain('Reboot required')
+  })
+})

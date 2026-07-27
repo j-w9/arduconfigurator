@@ -51,6 +51,25 @@ export interface MockScenarioOptions {
    */
   dynamicCadenceMs?: number
   /**
+   * How often to emit the guided-setup motion stream (ATTITUDE + RC_CHANNELS),
+   * in milliseconds. Leave undefined (the default) and the mock emits attitude
+   * and stick positions only as static one-shots, exactly as before.
+   *
+   * The demo needs this because the guided-setup exercises are driven ENTIRELY
+   * by live motion: the orientation check waits for pitch <= -12 deg then roll
+   * >= +12 deg, RC mapping waits for one channel at a time to move off its
+   * baseline, and the stick-range exercise waits for each axis to reach both
+   * ends of travel. Against a fixed level attitude and fixed stick positions
+   * none of them can ever complete, which left guided setup unable to progress
+   * past the Airframe step in demo mode.
+   *
+   * This is deliberately separate from `dynamicCadenceMs`: that cadence is the
+   * slow scenario-event tick (~7 s in the demo), far too slow to drive an
+   * exercise, and the existing state-machine tests depend on its exact framing.
+   * Demo runtimes typically pass 250.
+   */
+  guidedMotionCadenceMs?: number
+  /**
    * Clock override for deterministic tests. Defaults to `Date.now`.
    */
   now?: () => number
@@ -1471,6 +1490,7 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
   // the same scenario instance.
   const dynamicState = createDynamicState()
   const dynamicCadenceMs = options.dynamicCadenceMs
+  const guidedMotionCadenceMs = options.guidedMotionCadenceMs
   const now = options.now ?? (() => Date.now())
   // MAVLink v2 sequence is a single byte that the codec masks to 0..255.
   // Wrap explicitly so long-running demos don't drift to silly numbers.
@@ -1948,9 +1968,11 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
       return responses
     },
     attachDynamicEmitter: (emit) => {
+      const stopMotion = attachGuidedMotionEmitter(emit)
+
       if (!dynamicCadenceMs || dynamicCadenceMs <= 0) {
         // State machine disabled — preserve the static behavior.
-        return () => {}
+        return stopMotion
       }
 
       // Pin the first tick's wall-clock baseline so battery sag math is
@@ -1981,9 +2003,187 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
 
       return () => {
         clearInterval(timer)
+        stopMotion()
       }
     }
   }
+
+  /**
+   * The guided-setup motion stream. Opt-in via `guidedMotionCadenceMs`, so
+   * every existing caller (and every test that omits it) keeps the previous
+   * static attitude / stick behavior unchanged.
+   */
+  function attachGuidedMotionEmitter(emit: (frame: Uint8Array) => void): () => void {
+    if (!guidedMotionCadenceMs || guidedMotionCadenceMs <= 0) {
+      return () => {}
+    }
+
+    let motionTick = 0
+    const motionTimer = setInterval(() => {
+      motionTick += 1
+      const timeBootMs = Math.max(0, now() - (dynamicState.startedAtMs || now()))
+      const { rollDeg, pitchDeg } = mockAttitudeForTick(motionTick)
+      emit(
+        codec.encode(
+          envelope(
+            nextDynamicSequence(),
+            attitudeMessage(timeBootMs, (rollDeg * Math.PI) / 180, (pitchDeg * Math.PI) / 180)
+          )
+        )
+      )
+
+      // Hold the sticks silent through the scripted RC link blip, otherwise
+      // this stream would immediately paper over the zero-channel frame the
+      // state machine emits and the link loss would never register.
+      if (dynamicState.rcLinkStage === 'dropping') {
+        return
+      }
+
+      emit(
+        codec.encode(
+          envelope(nextDynamicSequence(), {
+            type: 'RC_CHANNELS',
+            timeBootMs,
+            channelCount: 8,
+            channels: mockRcChannelsForTick(motionTick),
+            rssi: 100
+          })
+        )
+      )
+    }, guidedMotionCadenceMs)
+
+    if (typeof (motionTimer as { unref?: () => void }).unref === 'function') {
+      ;(motionTimer as { unref?: () => void }).unref?.()
+    }
+
+    return () => {
+      clearInterval(motionTimer)
+    }
+  }
+}
+
+// --- Guided-setup motion choreography ------------------------------------
+//
+// A deterministic, endlessly repeating rehearsal of the physical actions the
+// guided-setup exercises wait for. Frame counts below are in motion ticks, so
+// at the demo's 250 ms cadence the attitude loop runs ~13 s and the stick loop
+// ~15 s — long enough to read on screen, short enough that an operator who
+// starts an exercise sees it complete without waiting.
+//
+// Both loops are pure functions of the tick index: no wall clock, no RNG, so a
+// replayed or re-run session produces the identical stream.
+
+/** Degrees of tilt held during the pitch/roll legs. The orientation exercise
+ *  needs |angle| > 12; 22 clears it with margin for the ramp in/out. */
+const MOCK_MOTION_TILT_DEG = 22
+
+interface MockAttitudeLeg {
+  ticks: number
+  rollDeg: number
+  pitchDeg: number
+}
+
+// Ordered to match ORIENTATION_EXERCISE_ORDER in the web app (level ->
+// pitch-forward -> roll-right), so an exercise started at any point in the loop
+// completes within at most two cycles. Nose-forward is NEGATIVE pitch, matching
+// ArduPilot's ATTITUDE convention.
+const MOCK_ATTITUDE_LEGS: MockAttitudeLeg[] = [
+  { ticks: 12, rollDeg: 0, pitchDeg: 0 },
+  { ticks: 12, rollDeg: 0, pitchDeg: -MOCK_MOTION_TILT_DEG },
+  { ticks: 8, rollDeg: 0, pitchDeg: 0 },
+  { ticks: 12, rollDeg: MOCK_MOTION_TILT_DEG, pitchDeg: 0 },
+  { ticks: 8, rollDeg: 0, pitchDeg: 0 }
+]
+
+const MOCK_ATTITUDE_LOOP_TICKS = MOCK_ATTITUDE_LEGS.reduce((total, leg) => total + leg.ticks, 0)
+
+/** Ease between legs so the demo horizon glides instead of snapping. */
+function easeInOut(progress: number): number {
+  return progress < 0.5 ? 2 * progress * progress : 1 - 2 * (1 - progress) * (1 - progress)
+}
+
+export function mockAttitudeForTick(tick: number): { rollDeg: number; pitchDeg: number } {
+  const loopTick = ((tick % MOCK_ATTITUDE_LOOP_TICKS) + MOCK_ATTITUDE_LOOP_TICKS) % MOCK_ATTITUDE_LOOP_TICKS
+  let offset = 0
+  for (let index = 0; index < MOCK_ATTITUDE_LEGS.length; index += 1) {
+    const leg = MOCK_ATTITUDE_LEGS[index]
+    if (loopTick < offset + leg.ticks) {
+      const previous = MOCK_ATTITUDE_LEGS[(index - 1 + MOCK_ATTITUDE_LEGS.length) % MOCK_ATTITUDE_LEGS.length]
+      // Ramp over the first third of the leg, then hold — the exercise samples
+      // the held portion, so the target angle is stable while it checks.
+      const legProgress = (loopTick - offset) / leg.ticks
+      const blend = easeInOut(Math.min(1, legProgress / 0.34))
+      return {
+        rollDeg: previous.rollDeg + (leg.rollDeg - previous.rollDeg) * blend,
+        pitchDeg: previous.pitchDeg + (leg.pitchDeg - previous.pitchDeg) * blend
+      }
+    }
+    offset += leg.ticks
+  }
+  return { rollDeg: 0, pitchDeg: 0 }
+}
+
+interface MockStickLeg {
+  ticks: number
+  /** 1-based RC channel this leg moves; every other channel sits at rest. */
+  channelNumber?: number
+  pwm?: number
+}
+
+// One axis at a time, in RCMAP order (roll=1, pitch=2, throttle=3, yaw=4), with
+// a rest gap between axes. The gap matters: RC mapping locks onto the channel
+// that moves ALONE, so overlapping legs would make it ambiguous.
+//
+// Each axis sweeps to the wrong end FIRST and finishes on its named positive
+// direction (roll right, pitch up, throttle up, yaw right), because the
+// direction latch keeps the last decisive sample. Pitch "up" is stick-back =
+// LOW pwm, which the demo deliberately reads as reversed while RC2_REVERSED=0 —
+// that is the teaching moment the Receiver tab's direction card exists for, and
+// it flips to correct as soon as the operator writes RC2_REVERSED=1.
+const MOCK_STICK_REST_PWM: Record<number, number> = { 1: 1500, 2: 1500, 3: 1100, 4: 1500 }
+const MOCK_STICK_LEGS: MockStickLeg[] = [
+  { ticks: 4 },
+  { ticks: 5, channelNumber: 1, pwm: 1200 },
+  { ticks: 6, channelNumber: 1, pwm: 1800 },
+  { ticks: 4 },
+  { ticks: 5, channelNumber: 2, pwm: 1800 },
+  { ticks: 6, channelNumber: 2, pwm: 1200 },
+  { ticks: 4 },
+  { ticks: 6, channelNumber: 3, pwm: 1900 },
+  { ticks: 4 },
+  { ticks: 5, channelNumber: 4, pwm: 1200 },
+  { ticks: 6, channelNumber: 4, pwm: 1800 },
+  { ticks: 4 }
+]
+
+const MOCK_STICK_LOOP_TICKS = MOCK_STICK_LEGS.reduce((total, leg) => total + leg.ticks, 0)
+
+export function mockRcChannelsForTick(tick: number): number[] {
+  const loopTick = ((tick % MOCK_STICK_LOOP_TICKS) + MOCK_STICK_LOOP_TICKS) % MOCK_STICK_LOOP_TICKS
+  const channels = [
+    MOCK_STICK_REST_PWM[1],
+    MOCK_STICK_REST_PWM[2],
+    MOCK_STICK_REST_PWM[3],
+    MOCK_STICK_REST_PWM[4],
+    // CH5/CH6 are the endpoint exercise's optional switch channels. They toggle
+    // on a slow independent divisor so the capture can see both ends.
+    tick % 40 < 20 ? 1000 : 2000,
+    tick % 60 < 30 ? 1000 : 2000,
+    1500,
+    1500
+  ]
+
+  let offset = 0
+  for (const leg of MOCK_STICK_LEGS) {
+    if (loopTick < offset + leg.ticks) {
+      if (leg.channelNumber !== undefined && leg.pwm !== undefined) {
+        channels[leg.channelNumber - 1] = leg.pwm
+      }
+      return channels
+    }
+    offset += leg.ticks
+  }
+  return channels
 }
 
 interface DynamicMockState {

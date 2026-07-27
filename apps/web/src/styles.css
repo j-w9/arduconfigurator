@@ -2300,6 +2300,22 @@ textarea:focus {
   color: var(--warning);
 }
 
+/* The single unmet criterion that is actually holding the step, promoted out of
+ * the criteria disclosure so a blocked step says what it wants. */
+.setup-wizard__next-criterion {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--warning);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  color: var(--text);
+}
+
+.setup-wizard__next-criterion strong {
+  color: var(--warning);
+  margin-right: 6px;
+}
+
 .setup-flow__actions {
   display: flex;
   flex-wrap: wrap;
