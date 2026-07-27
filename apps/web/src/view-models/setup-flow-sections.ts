@@ -200,7 +200,21 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             disabled: busyAction !== undefined || !canRunGuidedAction(snapshot, 'request-parameters')
           })
           break
-        case 'airframe':
+        case 'airframe': {
+          // An 'already-done' airframe sign-off is the orientation waiver: the
+          // operator is asserting the frame geometry AND the horizon behaviour
+          // were verified outside the configurator. A plain 'complete' sign-off
+          // still requires the exercise to pass.
+          const airframeOrientationWaived = airframeConfirmation?.outcome === 'already-done'
+          // FRAME_CLASS=0 is present-but-unset. The completion criterion below
+          // requires it non-zero, so letting the operator "confirm" at zero
+          // produced a button that ticked nothing and explained nothing.
+          const airframeFrameUnusable =
+            isCopterVehicle
+              ? airframe.frameClassValue === undefined ||
+                airframe.frameClassValue === 0 ||
+                (!airframe.frameTypeIgnored && airframe.frameTypeValue === undefined)
+              : (snapshot.vehicle?.vehicle ?? 'Unknown') === 'Unknown'
           criteria = [
             ...(isCopterVehicle
               ? [
@@ -229,12 +243,25 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               met: boardOrientation !== undefined
             },
             {
+              // Waived alongside the exercise below: both depend on the same
+              // live ATTITUDE stream, so leaving this one hard would rebuild the
+              // wall the waiver exists to remove.
               label: 'Live attitude telemetry is present',
-              met: snapshot.liveVerification.attitudeTelemetry.verified
+              met: snapshot.liveVerification.attitudeTelemetry.verified || airframeOrientationWaived
             },
             {
-              label: 'Orientation exercise passed',
-              met: orientationExercise.status === 'passed'
+              // The orientation check needs the operator to physically tilt the
+              // aircraft past ±12°. That is not always possible (a bench FC, a
+              // large airframe, a static demo/replay feed with a level attitude
+              // stream), and this criterion gates the WHOLE wizard: without a
+              // waiver every later step stays sequenceState 'locked' with its
+              // rail button disabled and no way forward. So it accepts an
+              // explicit operator waiver, exactly like the calibration steps'
+              // "Already Calibrated — Continue".
+              label: airframeOrientationWaived
+                ? 'Orientation verified outside the configurator'
+                : 'Orientation exercise passed',
+              met: orientationExercise.status === 'passed' || airframeOrientationWaived
             },
             {
               label: 'Operator confirmed the detected frame geometry matches the build',
@@ -250,7 +277,9 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           // the criteria list for what's wrong.
           detail = isCopterVehicle && airframe.frameClassValue === 0
             ? 'FRAME_CLASS is unset (0) — set a valid frame class in Motors → ESC & Protocol (Frame) or Config → Frame before continuing. The autopilot reports "Frame: UNSUPPORTED" and will refuse every calibration command in this state.'
-            : 'Confirm the detected frame geometry, verify the live horizon behavior against the board orientation, then explicitly sign off before moving on to output review or motor testing.'
+            : airframeOrientationWaived
+              ? 'Orientation was signed off as verified outside the configurator, so the tilt exercise is not required for this build. Run the orientation check any time you want to confirm the horizon behavior in-app.'
+              : 'Confirm the detected frame geometry, verify the live horizon behavior against the board orientation, then explicitly sign off before moving on to output review or motor testing. If the aircraft cannot be tilted here, sign the orientation off as verified elsewhere.'
           evidence = [
             ...(isCopterVehicle
               ? [
@@ -281,13 +310,29 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           })
           actions.splice(1, 0, {
             kind: airframeConfirmation ? 'clear-confirmation' : 'confirm-step',
-            label: airframeConfirmation ? 'Clear Review Confirmation' : 'Confirm Airframe Review',
+            label: airframeConfirmation
+              ? airframeOrientationWaived
+                ? 'Clear Orientation Waiver'
+                : 'Clear Review Confirmation'
+              : 'Confirm Airframe Review',
             tone: 'secondary',
             sectionId: 'airframe',
-            disabled: isCopterVehicle
-              ? airframe.frameClassValue === undefined || (!airframe.frameTypeIgnored && airframe.frameTypeValue === undefined)
-              : (snapshot.vehicle?.vehicle ?? 'Unknown') === 'Unknown'
+            confirmationOutcome: 'complete',
+            disabled: airframeFrameUnusable
           })
+          // The escape hatch. Without it a vehicle that cannot be tilted past
+          // ±12° (bench FC, large airframe, static attitude feed) leaves this
+          // step permanently incomplete and every later step locked.
+          if (!airframeConfirmation && orientationExercise.status !== 'passed') {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Orientation Verified Elsewhere — Continue',
+              tone: 'secondary',
+              sectionId: 'airframe',
+              confirmationOutcome: 'already-done',
+              disabled: busyAction !== undefined || airframeFrameUnusable
+            })
+          }
           // FRAME_CLASS/FRAME_TYPE always exist on a connected Copter, so a
           // missing value here is never a real misconfiguration — it's a param
           // the sync never received (a dropped frame under a lossy link). Left
@@ -309,7 +354,9 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               disabled: busyAction !== undefined || !canRunGuidedAction(snapshot, 'request-parameters')
             })
           }
+          confirmationOutcome = airframeConfirmation?.outcome
           break
+        }
         case 'outputs':
           criteria = isCopterVehicle
             ? [
@@ -725,26 +772,35 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             : radioReversedAxes.length > 0
               ? `reversed: ${radioReversedAxes.join(', ')}`
               : 'not checked yet'
+          // Same waiver shape as the airframe orientation check and the
+          // calibration steps: an 'already-done' sign-off means the radio was
+          // mapped, ranged and direction-checked outside the configurator. It
+          // exists so a build the in-app exercises cannot drive (no live stick
+          // feed, a radio already set up in Mission Planner) does not leave this
+          // step permanently incomplete and every later step locked.
+          const radioWaived = radioConfirmation?.outcome === 'already-done'
           criteria = [
             {
               label: 'Live RC telemetry is present',
-              met: snapshot.liveVerification.rcInput.verified
+              met: snapshot.liveVerification.rcInput.verified || radioWaived
             },
             {
               label: 'RC mapping exercise captured roll, pitch, throttle, and yaw',
-              met: rcMappingSession.status === 'ready'
+              met: rcMappingSession.status === 'ready' || radioWaived
             },
             {
               label: 'Stick range exercise passed',
-              met: rcRangeExercise.status === 'passed'
+              met: rcRangeExercise.status === 'passed' || radioWaived
             },
             {
               label: 'RC endpoint capture completed',
-              met: rcCalibrationSession.status === 'ready'
+              met: rcCalibrationSession.status === 'ready' || radioWaived
             },
             {
-              label: 'RC channel directions verified — no axis reads backwards',
-              met: radioDirectionsVerified
+              label: radioWaived
+                ? 'RC channel directions verified outside the configurator'
+                : 'RC channel directions verified — no axis reads backwards',
+              met: radioDirectionsVerified || radioWaived
             },
             {
               label: 'Operator reviewed RC mapping and calibration values',
@@ -770,7 +826,9 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                 ? rcRangeExercise.failureReason ?? 'Stick range exercise failed.'
                 : rcCalibrationSession.status === 'failed'
                   ? rcCalibrationSession.failureReason ?? 'RC endpoint capture failed.'
-                  : 'Use the guided one-axis-at-a-time receiver mapping first, then verify stick travel, capture endpoints, and sign off the full radio review.'
+                  : radioWaived
+                    ? 'The radio was signed off as mapped, ranged and direction-checked outside the configurator, so the in-app exercises are not required for this build. Run them any time you want to reconfirm the channel directions here.'
+                    : 'Use the guided one-axis-at-a-time receiver mapping first, then verify stick travel, capture endpoints, and sign off the full radio review. If this radio was already set up and direction-checked elsewhere, sign it off as verified elsewhere instead.'
           // Include directions + review: they're the two things most likely to
           // be the actual blocker, and the old 5-item .slice(0,4) always dropped
           // the Review pill and never surfaced directions at all.
@@ -796,9 +854,10 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           })
           actions.splice(1, 0, {
             kind: radioConfirmation ? 'clear-confirmation' : 'confirm-step',
-            label: radioConfirmation ? 'Clear RC Review' : 'Confirm RC Review',
+            label: radioConfirmation ? (radioWaived ? 'Clear RC Waiver' : 'Clear RC Review') : 'Confirm RC Review',
             tone: 'secondary',
             sectionId: 'radio',
+            confirmationOutcome: 'complete',
             // Gate on directions too: without this the operator could "Confirm RC
             // Review" (ticking the confirmation) while the step stays incomplete
             // because the directions criterion is unmet, with the real blocker
@@ -842,6 +901,20 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               })
             }
           }
+          // The escape hatch. Deliberately worded so the operator knows exactly
+          // what they are asserting — a reversed throttle or pitch axis is a
+          // flyaway hazard, so this must never read as a generic "skip".
+          if (!radioConfirmation && !radioDirectionsVerified) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Radio Verified Elsewhere — Continue',
+              tone: 'secondary',
+              sectionId: 'radio',
+              confirmationOutcome: 'already-done',
+              disabled: busyAction !== undefined
+            })
+          }
+          confirmationOutcome = radioConfirmation?.outcome
           break
         }
         case 'failsafe':
@@ -899,19 +972,26 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               !snapshot.liveVerification.batteryTelemetry.verified
           })
           break
-        case 'modes':
+        case 'modes': {
+          // Modes previously had NO operator escape of any kind: the switch
+          // exercise had to pass, full stop. On a build the exercise cannot
+          // drive that left the final steps of the wizard unreachable.
+          const modesConfirmation = getSetupConfirmationRecord('modes')
+          const modesWaived = modesConfirmation?.outcome === 'already-done'
           criteria = [
             {
               label: 'Mode channel is configured',
-              met: modeSwitchEstimate.channelNumber !== undefined
+              met: modeSwitchEstimate.channelNumber !== undefined || modesWaived
             },
             {
               label: 'At least two distinct flight-mode positions are assigned',
-              met: modeExerciseAssignments.length >= 2
+              met: modeExerciseAssignments.length >= 2 || modesWaived
             },
             {
-              label: 'Mode switch exercise passed',
-              met: modeSwitchExercise.status === 'passed'
+              label: modesWaived
+                ? 'Flight modes verified outside the configurator'
+                : 'Mode switch exercise passed',
+              met: modeSwitchExercise.status === 'passed' || modesWaived
             }
           ]
           summary =
@@ -936,7 +1016,30 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             tone: 'primary',
             disabled: !canRunModeSwitchExercise || modeSwitchExercise.status === 'running'
           })
+          if (modesConfirmation) {
+            actions.push({
+              kind: 'clear-confirmation',
+              label: 'Clear Flight Mode Waiver',
+              tone: 'secondary',
+              sectionId: 'modes'
+            })
+          } else if (modeSwitchExercise.status !== 'passed') {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Flight Modes Verified Elsewhere — Continue',
+              tone: 'secondary',
+              sectionId: 'modes',
+              confirmationOutcome: 'already-done',
+              disabled: busyAction !== undefined
+            })
+          }
+          if (modesWaived) {
+            detail =
+              'Flight modes were signed off as verified outside the configurator, so the in-app switch exercise is not required for this build. Run it any time you want to reconfirm every switch position here.'
+          }
+          confirmationOutcome = modesConfirmation?.outcome
           break
+        }
         case 'power':
           criteria = [
             {
@@ -1029,12 +1132,16 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
         }
       }
 
+      // The sequence reason is the one the operator can act on ("go finish step
+      // N"). A pending follow-up used to REPLACE it outright, so a locked step
+      // reported e.g. "Reboot required" and never said which step was actually
+      // holding the flow — and it clobbered any section-specific blocking copy
+      // built above. Lead with the sequence reason and append the follow-up.
+      const sequenceReason = `Complete ${currentIncompleteSectionTitle} before moving on to ${section.title}.`
       return {
         ...section,
         sequenceState: 'locked',
-        blockingReason: setupFlowFollowUp
-          ? setupFlowFollowUp.title
-          : `Complete ${currentIncompleteSectionTitle} before moving on to ${section.title}.`
+        blockingReason: setupFlowFollowUp ? `${sequenceReason} ${setupFlowFollowUp.title}` : sequenceReason
       }
     })
 }

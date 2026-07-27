@@ -120,6 +120,15 @@ export function buildSetupConfirmationSignatures(inputs: SetupConfirmationSignat
           trim: readRoundedParameter(snapshot, `RC${observation.channelNumber}_TRIM`)
         }))
       }),
+      // The modes signature pins the reviewed mode CONFIGURATION (which channel
+      // selects modes and what each position is assigned to). A waiver stops
+      // counting exactly when the operator re-assigns a mode position, which is
+      // when it should. Without an entry here getSetupConfirmationRecord finds
+      // an undefined signature and silently discards every 'modes' record.
+      modes: JSON.stringify({
+        modeChannel: readRoundedParameter(snapshot, 'FLTMODE_CH'),
+        modes: [1, 2, 3, 4, 5, 6].map((slot) => readRoundedParameter(snapshot, `FLTMODE${slot}`))
+      }),
       // Failsafe/power signatures pin the reviewed CONFIGURATION only.
       // Live state (telemetry-verified flags, pre-arm issue text) churns
       // across every reboot — fresh pre-arm checks re-run, telemetry flags

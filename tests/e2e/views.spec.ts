@@ -1918,7 +1918,11 @@ test.describe('Receiver channel-direction check', () => {
 
 test.describe('Receiver stick-driven craft', () => {
   test('centred sticks hold heading and sit level (no yaw spin)', async ({ page }) => {
-    await page.goto('/')
+    // demoMotion=off pins the demo to a level attitude and centred sticks. The
+    // demo otherwise streams a scripted stick rehearsal (so the guided-setup
+    // exercises can complete), which would deflect yaw and defeat the point of
+    // this test — it guards that a CENTRED stick does not integrate heading.
+    await page.goto('/?demoMotion=off')
     await connectViaHeader(page)
     await openView(page, 'receiver')
     const att = page.getByTestId('receiver-stick-attitude')
@@ -2734,15 +2738,21 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.getByTestId('setup-wizard')).toBeVisible()
 
-    // The completion-criteria checklist is collapsed into a disclosure with an
-    // at-a-glance "N/N done" summary, so the checklist items are hidden until
-    // expanded — this is the anti-scrolling condense pass.
+    // The completion-criteria checklist is a disclosure with an at-a-glance
+    // "N/N done" summary, but on an INCOMPLETE step it starts open: leaving the
+    // one unmet criterion collapsed behind a "2/5 criteria" badge was why a
+    // blocked step read as "unclear what's wanted". The operator can still fold
+    // it away.
     const criteria = page.getByTestId('setup-wizard-criteria')
     await expect(criteria).toContainText('done')
     const firstCriterion = criteria.locator('li').first()
-    await expect(firstCriterion).toBeHidden()
-    await criteria.locator('summary').click()
     await expect(firstCriterion).toBeVisible()
+    await criteria.locator('summary').click()
+    await expect(firstCriterion).toBeHidden()
+
+    // The single blocking criterion is also promoted out of the disclosure, so
+    // the step says what it still wants without any expanding at all.
+    await expect(page.getByTestId('setup-wizard-next-criterion')).toContainText('Still needed:')
 
     // The advanced-settings parameter editor is behind its own disclosure on the
     // airframe step instead of always stacked open below the checklist.
@@ -2753,6 +2763,38 @@ test.describe('ArduPlane demo', () => {
     // the live session is preserved.
     await page.getByRole('button', { name: /Vehicle Link/ }).click()
     await expect(page.getByTestId('setup-wizard-complete-banner')).toContainText('complete')
+  })
+
+  test('the orientation waiver unblocks the Airframe step and unlocks the rest of the flow', async ({ page }) => {
+    // Airframe (step 2) required the physical orientation exercise to pass, and
+    // every later step is locked behind it, so a vehicle that cannot be tilted
+    // hard-stopped the whole wizard with no way forward.
+    // Deliberately NOT using ?guidedSetupStep= here: that dev shortcut also
+    // un-disables locked steps, which is precisely the gate under test. The
+    // wizard auto-selects Airframe anyway once Vehicle Link completes.
+    await page.goto('/?demoMotion=off')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await openView(page, 'guided-setup')
+    await expect(page.getByTestId('setup-wizard')).toBeVisible()
+
+    // Locked: the Outputs step cannot be selected while Airframe is incomplete.
+    const outputsStep = page.getByRole('button', { name: /Step 3/ })
+    await expect(outputsStep).toBeDisabled()
+
+    // Airframe unlocks as soon as the initial parameter sync finishes.
+    const airframeStep = page.getByRole('button', { name: /Step 2/ })
+    await expect(airframeStep).toBeEnabled({ timeout: VEHICLE_CONNECT_TIMEOUT })
+    await airframeStep.click()
+
+    // The waiver IS the step's operator sign-off, so one click satisfies both
+    // the orientation criterion and the frame-geometry confirmation.
+    await page.getByRole('button', { name: 'Orientation Verified Elsewhere — Continue' }).click()
+    await expect(page.getByRole('button', { name: 'Clear Orientation Waiver' })).toBeVisible()
+
+    await expect(page.getByTestId('setup-wizard-complete-banner')).toContainText('complete')
+    await expect(outputsStep).toBeEnabled()
   })
 
   test('Plane Outputs Direction & Test shows an honest note, not the quad motor bench', async ({ page }) => {
