@@ -927,12 +927,27 @@ export class ArduPilotConfiguratorRuntime {
       })
       this.emit()
 
-      if (resumedFrom) {
-        // Refetch only what the dropped link never delivered. A full re-stream
-        // here would re-send everything we already hold and — on a board that
-        // resets every few seconds — never get further than the last attempt.
+      // Refetch only what the dropped link never delivered — a full re-stream
+      // re-sends everything we already hold and, on a board that resets every
+      // few seconds, never gets further than the last attempt.
+      //
+      // But by-index refetch is paced: MAX_PARAMETER_GAP_FILL_PER_PASS reads
+      // per pass, and the next pass waits out the stall timer
+      // (PARAMETER_SYNC_STALL_RETRY_MS, 1.5s+). That is the right shape for the
+      // handful of frames a lossy link drops, and the wrong shape for a gap of
+      // hundreds: a full table then costs several passes of pure waiting, so a
+      // reconnect after a reboot took far longer than a first connect and the
+      // operator's fastest move was to disconnect (which discards the carry-over
+      // via discardRetainedParameters) and reconnect for a clean bulk stream.
+      //
+      // So: target the gap when it fits in ONE pass, otherwise bulk-stream. The
+      // retained values stay on screen either way, and if the bulk stream stalls
+      // the existing retry path gap-fills automatically — which is what keeps a
+      // constantly-resetting board converging.
+      const resumeMissingIndices = resumedFrom ? this.missingParameterIndices() : []
+      if (resumedFrom && resumeMissingIndices.length <= MAX_PARAMETER_GAP_FILL_PER_PASS) {
         this.parameterSyncGapFillActive = true
-        await this.requestMissingParameters(this.missingParameterIndices())
+        await this.requestMissingParameters(resumeMissingIndices)
         this.scheduleParameterSyncRetry()
       } else {
         await this.requestParameterTable(vehicle.systemId, vehicle.componentId)
