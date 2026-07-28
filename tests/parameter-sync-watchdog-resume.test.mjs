@@ -250,3 +250,84 @@ test('a board whose parameter count changed discards the carried-over values', a
     runtime.destroy()
   }
 })
+
+// By-index refetch is PACED: MAX_PARAMETER_GAP_FILL_PER_PASS (256) reads per
+// pass, and the next pass waits out the stall timer (1.5s+). That is right for
+// the handful of frames a lossy link drops and wrong for a gap of hundreds —
+// a full table then costs several passes of pure waiting, which is why a
+// reconnect after a reboot was slower than a first connect and the operator's
+// fastest move was to disconnect (discarding the carry-over) and reconnect.
+// So the resume targets the gap only when it fits in ONE pass.
+test('a resume with a gap larger than one gap-fill pass bulk-streams instead of trickling by index', async () => {
+  const sent = []
+  const BIG_TOTAL = 600
+  // 100 delivered, 500 missing — far more than one 256-read pass.
+  const session = createResettingSession(sent, { windowSize: 100 })
+  session.setTotal(BIG_TOTAL)
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    parameterSyncStallRetryMs: 10_000
+  })
+  try {
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 500 })
+    assert.equal(runtime.getSnapshot().parameters.length, 100, 'first window delivered 100 of 600')
+
+    session.watchdogReset()
+    await sleep(20)
+    assert.equal(runtime.getSnapshot().staleLink.downloaded, 100, 'the partial table is carried over')
+
+    // Board is healthy again and the whole table streams on the reconnect.
+    session.setWindow(BIG_TOTAL)
+    const sentBefore = sent.length
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 500 })
+    await runtime.waitForParameterSync({ timeoutMs: 2000 })
+
+    const afterReconnect = sent.slice(sentBefore)
+    const reads = afterReconnect.filter((m) => m.type === 'PARAM_REQUEST_READ')
+    const lists = afterReconnect.filter((m) => m.type === 'PARAM_REQUEST_LIST')
+    assert.equal(lists.length, 1, 'the big gap took the bulk re-stream path')
+    assert.equal(reads.length, 0, 'and did NOT trickle 500 reads out at 256 per paced pass')
+    assert.equal(runtime.getSnapshot().parameterStats.downloaded, BIG_TOTAL, 'the table completed')
+  } finally {
+    runtime.destroy()
+  }
+})
+
+// The small-gap case must keep targeting indices: re-streaming 600 params to
+// recover 3 is the waste the gap-fill was built to avoid, and a constantly
+// resetting board depends on it to ever reach the tail of the table.
+test('a resume with a small gap still refetches by index', async () => {
+  const sent = []
+  const SMALL_TOTAL = 300
+  const session = createResettingSession(sent, { windowSize: 297 })
+  session.setTotal(SMALL_TOTAL)
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    parameterSyncStallRetryMs: 10_000
+  })
+  try {
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 500 })
+    session.watchdogReset()
+    await sleep(20)
+
+    const sentBefore = sent.length
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 500 })
+    await runtime.waitForParameterSync({ timeoutMs: 2000 })
+
+    const afterReconnect = sent.slice(sentBefore)
+    assert.equal(
+      afterReconnect.filter((m) => m.type === 'PARAM_REQUEST_LIST').length,
+      0,
+      'a 3-param gap must not re-stream the whole table'
+    )
+    assert.deepEqual(
+      afterReconnect.filter((m) => m.type === 'PARAM_REQUEST_READ').map((m) => m.paramIndex).sort((a, b) => a - b),
+      [297, 298, 299],
+      'only the missing indices were requested'
+    )
+  } finally {
+    runtime.destroy()
+  }
+})
