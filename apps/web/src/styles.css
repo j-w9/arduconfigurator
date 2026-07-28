@@ -11062,6 +11062,30 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-top: 1px solid rgba(39, 49, 59, 0.72);
 }
 
+/* Row actions share the single trailing grid cell. Before this they were
+ * separate grid children, so a second (or third) button overflowed the
+ * 4-column track and wrapped onto the next row stretched to the full width of
+ * column 1 — the "Drop is huge and below Stage" report. Equal-basis buttons
+ * keep Stage/Drop/Override the same size next to each other. */
+.parameter-diff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.parameter-diff-actions > button {
+  flex: 0 0 auto;
+  min-width: 92px;
+}
+
+/* On a group header the actions sit after the count, pushed to the trailing
+ * edge without stretching the header's own layout. */
+.parameter-diff-actions--group {
+  margin-left: auto;
+}
+
 /* Touched then edited back to the live value — kept in the review so the input
    never vanishes mid-edit, but muted since it won't write. */
 .parameter-diff-item--unchanged {

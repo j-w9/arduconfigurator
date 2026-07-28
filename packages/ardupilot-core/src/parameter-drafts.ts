@@ -17,11 +17,18 @@ export interface ParameterDraftEntry {
   status: ParameterDraftStatus
   reason?: string
   /** True when this draft was rescued from `invalid` by an operator
-   *  "Override and write anyway" choice — currently only used for the
-   *  enum-mismatch reason, since metadata can lag the firmware and a
-   *  legitimate value can be flagged as outside-enum even when the FC
-   *  would accept it. Min/max violations are NOT overridable here. */
+   *  "Override and write anyway" choice. Applies to the three
+   *  metadata-derived rejections — below-minimum, above-maximum, and
+   *  enum-mismatch — because the curated metadata can lag the firmware and
+   *  flag a value the FC would accept. */
   override?: boolean
+  /** Only meaningful on `invalid` entries: can an operator "Override and
+   *  write anyway" rescue this one? True for the metadata-derived
+   *  rejections (min / max / enum). False for rejections no override can
+   *  fix — a param absent from the synced snapshot, or a non-numeric /
+   *  non-finite draft value. Lets the UI offer the override affordance only
+   *  where it would actually do something. */
+  overridable?: boolean
 }
 
 export interface ParameterDraftSummary {
@@ -120,7 +127,8 @@ function deriveParameterDraftEntry(
       category,
       rawValue,
       status: 'invalid',
-      reason: 'Parameter is not present in the synced snapshot.'
+      reason: 'Parameter is not present in the synced snapshot.',
+      overridable: false
     }
   }
 
@@ -133,7 +141,8 @@ function deriveParameterDraftEntry(
       rawValue,
       currentValue: parameter.value,
       status: 'invalid',
-      reason: 'Enter a numeric value before staging this parameter.'
+      reason: 'Enter a numeric value before staging this parameter.',
+      overridable: false
     }
   }
 
@@ -147,7 +156,8 @@ function deriveParameterDraftEntry(
       rawValue,
       currentValue: parameter.value,
       status: 'invalid',
-      reason: 'Only finite numeric values can be written to the controller.'
+      reason: 'Only finite numeric values can be written to the controller.',
+      overridable: false
     }
   }
 
@@ -168,7 +178,8 @@ function deriveParameterDraftEntry(
         currentValue: parameter.value,
         nextValue: parsedValue,
         status: 'invalid',
-        reason: `Value is below the documented minimum of ${parameter.definition.minimum}.`
+        reason: `Value is below the documented minimum of ${parameter.definition.minimum}.`,
+        overridable: true
       }
     }
   }
@@ -184,7 +195,8 @@ function deriveParameterDraftEntry(
         currentValue: parameter.value,
         nextValue: parsedValue,
         status: 'invalid',
-        reason: `Value is above the documented maximum of ${parameter.definition.maximum}.`
+        reason: `Value is above the documented maximum of ${parameter.definition.maximum}.`,
+        overridable: true
       }
     }
   }
@@ -218,7 +230,8 @@ function deriveParameterDraftEntry(
           currentValue: parameter.value,
           nextValue: parsedValue,
           status: 'invalid',
-          reason: 'Value is outside the known enum values for this parameter.'
+          reason: 'Value is outside the known enum values for this parameter.',
+          overridable: true
         }
       }
     }

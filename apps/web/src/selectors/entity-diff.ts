@@ -56,9 +56,14 @@ export interface EntityDiff {
  */
 export function selectEntityDiff(
   snapshotParameters: ParameterState[],
-  draftValues: Record<string, string> | undefined
+  draftValues: Record<string, string> | undefined,
+  /** Params the operator rescued with "Override and write anyway". Without
+   *  this the snapshot restore preview kept showing an overridden value as
+   *  invalid, because the override only reached the global draft set — so
+   *  the operator had no way to see their own override take effect here. */
+  enumOverrides?: ReadonlySet<string>
 ): EntityDiff {
-  const entries = deriveParameterDraftEntries(snapshotParameters, draftValues ?? {})
+  const entries = deriveParameterDraftEntries(snapshotParameters, draftValues ?? {}, enumOverrides)
   return {
     entries,
     groups: groupParameterDraftEntries(entries, ['staged']),

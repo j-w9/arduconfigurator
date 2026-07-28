@@ -85,6 +85,9 @@ export interface SnapshotsSectionDerived {
   /** Param ids individually dropped from this restore via the per-row Drop
    *  button — used to grey out/hide already-dropped rows. */
   snapshotRestoreDroppedParamIds: ReadonlySet<string>
+  /** Params currently carrying an operator "Override and write anyway", so
+   *  the invalid rows can show the override as active and offer to undo it. */
+  parameterEnumOverrides: ReadonlySet<string>
   stagedProvisioningOverlayParameters: readonly ParameterBackupEntry[]
   selectedProvisioningProfile: SavedProvisioningProfile | undefined
   selectedProvisioningProfileRestore: ParameterBackupImportResult | undefined
@@ -106,6 +109,20 @@ export interface SnapshotsSectionHandlers {
    *  individual parameters like the Parameters tab). Same overwrite ack
    *  gates it as the full restore. */
   handleApplySnapshotEntry: (entry: ParameterDraftEntry) => void | Promise<void>
+  /** Stage every row of one category at once. The restore preview is
+   *  already grouped by category, so this is the group-level counterpart to
+   *  the per-row Stage — staging 30 Tuning rows one click at a time was the
+   *  actual cost of a partial restore. */
+  handleApplySnapshotGroup: (entries: ParameterDraftEntry[]) => void
+  /** Drop every row of one category at once. */
+  handleDropSnapshotGroup: (paramIds: string[]) => void
+  /** Toggle "Override and write anyway" for one param, WITHOUT leaving
+   *  Snapshots. A metadata-derived rejection (min/max/enum) used to be
+   *  fixable only by staging the invalid set, navigating to Parameters,
+   *  re-filtering, and overriding each row there. */
+  handleToggleParameterEnumOverride: (paramId: string) => void
+  /** Override every invalid row that CAN be overridden, in one action. */
+  handleOverrideAllSnapshotInvalid: (paramIds: string[]) => void
   handleCaptureLiveSnapshot: () => void | Promise<void>
   /** Refreshes the SELECTED snapshot's backup with current live values
    *  in place (same id) instead of creating a new saved entry. */
@@ -241,6 +258,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     snapshotImportCalibration,
     snapshotRestoreExcludedCalibrationCount,
     snapshotRestoreDroppedParamIds,
+    parameterEnumOverrides,
     stagedProvisioningOverlayParameters,
     selectedProvisioningProfile,
     selectedProvisioningProfileRestore,
@@ -268,6 +286,10 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     handleApplySelectedProvisioningProfile,
     handleApplySelectedSnapshotRestore,
     handleApplySnapshotEntry,
+    handleApplySnapshotGroup,
+    handleDropSnapshotGroup,
+    handleToggleParameterEnumOverride,
+    handleOverrideAllSnapshotInvalid,
     handleCaptureLiveSnapshot,
     handleOverwriteSelectedSnapshot,
     handleDropSnapshotRestoreEntry,
@@ -293,6 +315,14 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     handleToggleSelectedProvisioningProfileProtection,
     handleToggleSelectedSnapshotProtection
   } = handlers
+
+  // Only the metadata-derived rejections (min / max / enum) can be rescued by
+  // an override; a param missing from the sync or a non-numeric draft cannot.
+  // Drives both the per-row affordance and the "Override all (n)" count, so the
+  // count never promises more than it can deliver.
+  const selectedSnapshotOverridableInvalidIds = selectedSnapshotInvalidEntries
+    .filter((entry) => entry.overridable === true && !parameterEnumOverrides.has(entry.id))
+    .map((entry) => entry.id)
 
   return (
 
@@ -808,6 +838,36 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                         <header>
                           <strong>{formatCategoryLabel(group.category)}</strong>
                           <span>{group.entries.length} changed</span>
+                          {/* Group-level Stage/Drop. The preview is already
+                           *  grouped by category, so a whole group is the
+                           *  natural unit for a partial restore — clicking 30
+                           *  Tuning rows one at a time was the real cost. */}
+                          <div className="parameter-diff-actions parameter-diff-actions--group">
+                            <button
+                              type="button"
+                              style={buttonStyle()}
+                              data-testid={`snapshot-diff-stage-group-${group.category}`}
+                              onClick={() => handleApplySnapshotGroup(group.entries)}
+                              disabled={busyAction !== undefined || !snapshotRestoreAcknowledged}
+                              title={
+                                snapshotRestoreAcknowledged
+                                  ? `Stage all ${group.entries.length} ${formatCategoryLabel(group.category)} change(s) as drafts.`
+                                  : 'Acknowledge the overwrite warning below first.'
+                              }
+                            >
+                              Stage group
+                            </button>
+                            <button
+                              type="button"
+                              style={buttonStyle()}
+                              data-testid={`snapshot-diff-drop-group-${group.category}`}
+                              onClick={() => handleDropSnapshotGroup(group.entries.map((entry) => entry.id))}
+                              disabled={busyAction !== undefined}
+                              title={`Drop all ${group.entries.length} ${formatCategoryLabel(group.category)} change(s) from this restore.`}
+                            >
+                              Drop group
+                            </button>
+                          </div>
                         </header>
 
                         {group.entries.map((draft) => (
@@ -828,39 +888,46 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                               ) : null}
                             </span>
                             <span className="parameter-diff-delta">{formatParameterDelta(draft.delta, draft.definition?.unit)}</span>
-                            {/* Per-row Apply — like the Parameters tab, this
-                             *  STAGES the single change as a draft (it does not
-                             *  write). The write happens from the global draft
-                             *  bar's "Write all". Gated on the same ack as the
-                             *  bulk stage so a deliberate overwrite set is
-                             *  confirmed before it enters the write queue. */}
-                            <button
-                              type="button"
-                              style={buttonStyle()}
-                              data-testid={`snapshot-diff-apply-${draft.id}`}
-                              onClick={() => void handleApplySnapshotEntry(draft)}
-                              disabled={busyAction !== undefined || !snapshotRestoreAcknowledged}
-                              title={
-                                snapshotRestoreAcknowledged
-                                  ? `Stage ${draft.id} from this snapshot as a draft — write it from the draft bar.`
-                                  : 'Acknowledge the overwrite warning below first.'
-                              }
-                            >
-                              Apply
-                            </button>
-                            {/* Per-row Drop — same contract as Parameters:
-                             *  excludes this param from the restore diff
-                             *  without leaving this view. */}
-                            <button
-                              type="button"
-                              style={buttonStyle()}
-                              data-testid={`snapshot-diff-drop-${draft.id}`}
-                              onClick={() => handleDropSnapshotRestoreEntry(draft.id)}
-                              disabled={busyAction !== undefined}
-                              title={`Drop the staged change to ${draft.id} (excludes it from this restore; keeps the live FC value as-is).`}
-                            >
-                              Drop
-                            </button>
+                            {/* Stage + Drop share ONE grid cell. As separate
+                             *  cells they overflowed the 4-column row and Drop
+                             *  wrapped to the next line at full column width. */}
+                            <div className="parameter-diff-actions">
+                              {/* Per-row Stage — like the Parameters tab, this
+                               *  STAGES the single change as a draft (it does
+                               *  not write). The write happens from the global
+                               *  draft bar's "Write all". Gated on the same ack
+                               *  as the bulk stage so a deliberate overwrite set
+                               *  is confirmed before it enters the write queue.
+                               *  (Labelled "Apply" until the field report — it
+                               *  never applied anything, it staged.) */}
+                              <button
+                                type="button"
+                                style={buttonStyle()}
+                                data-testid={`snapshot-diff-apply-${draft.id}`}
+                                onClick={() => void handleApplySnapshotEntry(draft)}
+                                disabled={busyAction !== undefined || !snapshotRestoreAcknowledged}
+                                title={
+                                  snapshotRestoreAcknowledged
+                                    ? `Stage ${draft.id} from this snapshot as a draft — write it from the draft bar.`
+                                    : 'Acknowledge the overwrite warning below first.'
+                                }
+                              >
+                                Stage
+                              </button>
+                              {/* Per-row Drop — same contract as Parameters:
+                               *  excludes this param from the restore diff
+                               *  without leaving this view. */}
+                              <button
+                                type="button"
+                                style={buttonStyle()}
+                                data-testid={`snapshot-diff-drop-${draft.id}`}
+                                onClick={() => handleDropSnapshotRestoreEntry(draft.id)}
+                                disabled={busyAction !== undefined}
+                                title={`Drop the staged change to ${draft.id} (excludes it from this restore; keeps the live FC value as-is).`}
+                              >
+                                Drop
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </section>
@@ -889,6 +956,26 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                       <header>
                         <strong>Invalid restore values</strong>
                         <span>{selectedSnapshotInvalidEntries.length} invalid</span>
+                        {/* Bulk override for every row an override can
+                         *  actually rescue. These are metadata-derived
+                         *  rejections (min / max / enum) where the curated
+                         *  range can lag the firmware — common on a
+                         *  cross-board restore, which is exactly when a
+                         *  handful of rows block "Write all". */}
+                        {selectedSnapshotOverridableInvalidIds.length > 0 ? (
+                          <div className="parameter-diff-actions parameter-diff-actions--group">
+                            <button
+                              type="button"
+                              style={buttonStyle()}
+                              data-testid="snapshot-diff-override-all"
+                              onClick={() => handleOverrideAllSnapshotInvalid(selectedSnapshotOverridableInvalidIds)}
+                              disabled={busyAction !== undefined}
+                              title={`Override and write anyway for all ${selectedSnapshotOverridableInvalidIds.length} rescuable value(s), so they stop blocking the write.`}
+                            >
+                              Override all ({selectedSnapshotOverridableInvalidIds.length})
+                            </button>
+                          </div>
+                        ) : null}
                       </header>
 
                       {selectedSnapshotInvalidEntries.map((draft) => (
@@ -899,6 +986,30 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                           </span>
                           <span className="parameter-diff-values">{draft.rawValue || 'Empty draft'}</span>
                           <span className="parameter-diff-delta">{draft.reason ?? 'Invalid value'}</span>
+                          <div className="parameter-diff-actions">
+                            {/* Override without leaving Snapshots. Previously
+                             *  the only route was: tick "also stage these" →
+                             *  Show changes → Parameters tab → re-find each row
+                             *  → override it there. Offered only when an
+                             *  override can actually rescue the row (min / max
+                             *  / enum); a missing param or a non-numeric draft
+                             *  is not rescuable by any override. */}
+                            {draft.overridable ? (
+                              <button
+                                type="button"
+                                style={buttonStyle(parameterEnumOverrides.has(draft.id) ? 'secondary' : undefined)}
+                                data-testid={`snapshot-diff-override-${draft.id}`}
+                                onClick={() => handleToggleParameterEnumOverride(draft.id)}
+                                disabled={busyAction !== undefined}
+                                title={
+                                  parameterEnumOverrides.has(draft.id)
+                                    ? `Remove the override for ${draft.id} and flag it invalid again.`
+                                    : `Override and write anyway for ${draft.id} — the documented range/enum may lag this firmware.`
+                                }
+                              >
+                                {parameterEnumOverrides.has(draft.id) ? 'Overridden' : 'Override'}
+                              </button>
+                            ) : null}
                           {/* Every invalid row offers Drop — same contract
                               as Parameters — so the operator can dismiss a
                               bad restore value without first fixing it. */}
@@ -912,6 +1023,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                           >
                             Drop
                           </button>
+                          </div>
                         </div>
                       ))}
                     </section>
