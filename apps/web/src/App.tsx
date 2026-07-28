@@ -1955,8 +1955,8 @@ export function App() {
     invalid: selectedSnapshotInvalidEntries,
     signature: selectedSnapshotDiffSignature
   } = useMemo(
-    () => selectEntityDiff(snapshot.parameters, filteredSnapshotRestoreDraftValues),
-    [snapshot.parameters, filteredSnapshotRestoreDraftValues]
+    () => selectEntityDiff(snapshot.parameters, filteredSnapshotRestoreDraftValues, parameterEnumOverrides),
+    [snapshot.parameters, filteredSnapshotRestoreDraftValues, parameterEnumOverrides]
   )
   const {
     handleCaptureLiveSnapshot,
@@ -7907,6 +7907,7 @@ export function App() {
             snapshotImportCalibration,
             snapshotRestoreExcludedCalibrationCount,
             snapshotRestoreDroppedParamIds,
+            parameterEnumOverrides,
             stagedProvisioningOverlayParameters,
             selectedProvisioningProfile,
             selectedProvisioningProfileRestore,
@@ -7928,6 +7929,45 @@ export function App() {
               setSnapshotNotice({
                 tone: 'warning',
                 text: `Staged ${entry.id} as a draft. Write all from the draft bar to apply it.`
+              })
+            },
+            // Group-level Stage/Drop over one category of the restore diff.
+            handleApplySnapshotGroup: (entries) => {
+              const stageable = entries.filter((entry) => entry.nextValue !== undefined)
+              if (stageable.length === 0) {
+                return
+              }
+              mergeDrafts(
+                Object.fromEntries(stageable.map((entry) => [entry.id, String(entry.nextValue)]))
+              )
+              setSnapshotNotice({
+                tone: 'warning',
+                text: `Staged ${stageable.length} change(s) as drafts. Write all from the draft bar to apply them.`
+              })
+            },
+            handleDropSnapshotGroup: (paramIds) => {
+              paramIds.forEach((paramId) => handleDropSnapshotRestoreEntry(paramId))
+              setSnapshotNotice({
+                tone: 'neutral',
+                text: `Dropped ${paramIds.length} change(s) from this restore.`
+              })
+            },
+            handleToggleParameterEnumOverride,
+            // Bulk "Override and write anyway" for the rescuable invalid rows,
+            // so a cross-board restore blocked by a handful of metadata-range
+            // rejections doesn't require a per-row detour through Parameters.
+            handleOverrideAllSnapshotInvalid: (paramIds) => {
+              if (paramIds.length === 0) {
+                return
+              }
+              setParameterEnumOverrides((current) => {
+                const next = new Set(current)
+                paramIds.forEach((paramId) => next.add(paramId))
+                return next
+              })
+              setSnapshotNotice({
+                tone: 'warning',
+                text: `Overrode ${paramIds.length} blocked value(s). They no longer block the write — review them before writing.`
               })
             },
             handleCaptureLiveSnapshot,

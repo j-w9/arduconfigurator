@@ -4062,6 +4062,24 @@ test.describe('Snapshot restore', () => {
     await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toBeVisible()
     await expect(page.getByTestId('snapshot-restore-dropped-note')).toHaveCount(0)
 
+    // Group-level Stage/Drop: the preview is grouped by category, and acting
+    // on a whole group is the natural unit for a partial restore. Staging is
+    // gated on the same overwrite ack as the per-row Stage.
+    const groupDrop = page.getByTestId('snapshot-diff-drop-group-failsafe')
+    const groupStage = page.getByTestId('snapshot-diff-stage-group-failsafe')
+    await expect(groupDrop).toBeVisible()
+    await expect(groupStage).toBeDisabled()
+    await page.getByTestId('snapshot-restore-ack').check()
+    await expect(groupStage).toBeEnabled()
+
+    // Dropping the group clears every row in it, not just one.
+    await groupDrop.click()
+    await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toHaveCount(0)
+    await expect(page.getByTestId('snapshot-restore-dropped-note')).toContainText('dropped')
+    await page.getByTestId('snapshot-restore-undo-drops').click()
+    await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toBeVisible()
+    await page.getByTestId('snapshot-restore-ack').uncheck()
+
     // Overwrite Selected refreshes the SAME saved entry in place rather
     // than creating a new one.
     await page.getByTestId('overwrite-selected-snapshot-button').click()

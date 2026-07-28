@@ -215,3 +215,51 @@ test('group filters by status and sorts categories then ids', () => {
   )
   assert.equal(invalidGroups[0].entries[0].status, 'invalid')
 })
+
+// `overridable` tells the UI which invalid rows an "Override and write anyway"
+// can actually rescue. It drives the Snapshots restore preview's per-row
+// Override button and its "Override all (n)" count, so a wrong value here
+// either hides a usable escape or promises one that does nothing.
+test('metadata-derived rejections are flagged overridable (min / max / enum)', () => {
+  const below = entryFor([param('P', 5, def({ minimum: 10 }))], { P: '2' }, 'P')
+  assert.equal(below.status, 'invalid')
+  assert.equal(below.overridable, true)
+
+  const above = entryFor([param('P', 5, def({ maximum: 10 }))], { P: '99' }, 'P')
+  assert.equal(above.status, 'invalid')
+  assert.equal(above.overridable, true)
+
+  const enumMismatch = entryFor(
+    [param('P', 1, def({ options: [{ value: 0, label: 'A' }, { value: 1, label: 'B' }] }))],
+    { P: '7' },
+    'P'
+  )
+  assert.equal(enumMismatch.status, 'invalid')
+  assert.equal(enumMismatch.overridable, true)
+})
+
+test('rejections no override can fix are flagged NOT overridable', () => {
+  const missing = entryFor([], { GHOST_PARAM: '1' }, 'GHOST_PARAM')
+  assert.equal(missing.overridable, false)
+
+  const empty = entryFor([param('P', 1, def())], { P: '   ' }, 'P')
+  assert.equal(empty.status, 'invalid')
+  assert.equal(empty.overridable, false)
+
+  const nonNumeric = entryFor([param('P', 1, def())], { P: 'abc' }, 'P')
+  assert.equal(nonNumeric.status, 'invalid')
+  assert.equal(nonNumeric.overridable, false)
+})
+
+test('an override actually rescues each metadata-derived rejection', () => {
+  const overrides = new Set(['P'])
+  const staged = (parameters, draftValues) =>
+    deriveParameterDraftEntries(parameters, draftValues, overrides).find((e) => e.id === 'P')
+
+  assert.equal(staged([param('P', 5, def({ minimum: 10 }))], { P: '2' }).status, 'staged')
+  assert.equal(staged([param('P', 5, def({ maximum: 10 }))], { P: '99' }).status, 'staged')
+  assert.equal(
+    staged([param('P', 1, def({ options: [{ value: 0, label: 'A' }] }))], { P: '7' }).status,
+    'staged'
+  )
+})
