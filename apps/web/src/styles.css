@@ -15766,3 +15766,29 @@ button.mavlink-inspector__sent-row {
     animation: none;
   }
 }
+
+/* Tool/technique hint inside a calibration card — reads as guidance rather than
+   as the procedure itself, so it doesn't compete with the actual steps. */
+.calibration-card__tip {
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(var(--ink-rgb), 0.72);
+  border-left: 2px solid rgba(var(--edge-rgb), 0.18);
+  padding-left: 10px;
+  margin: 4px 0 0;
+}
+
+/* Load-spin control on the battery-current card: throttle + spin button on one
+   row so it reads as a single "apply a load" step between zeroing the offset
+   and entering the measured value. */
+.guided-current-cal__load {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.guided-current-cal__load small {
+  flex-basis: 100%;
+  color: var(--warning);
+}
