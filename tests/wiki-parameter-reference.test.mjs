@@ -88,6 +88,24 @@ test('generated pages carry no directive that a theme renders as an error block'
   assert.deepEqual(offenders.slice(0, 3), [], `${offenders.length} page(s) still use .. contents::`)
 })
 
+test('the index IS the search page, and generated pages stay out of the nav tree', () => {
+  // Two things this pins:
+  //   - the search box lives on the index; a separate page that only links to a
+  //     search box is a pointless hop when finding a parameter is the whole job.
+  //   - group/letter pages are :orphan:. A :hidden: toctree was not enough —
+  //     it hides the tree from the page body but Furo still renders every entry
+  //     into the sidebar of EVERY page in the section, which put 45-53 KB of
+  //     nav on each one (a group page was 76 KB, mostly sidebar).
+  generate()
+  const index = readFileSync(path.join(PARAMS_DIR, 'index.rst'), 'utf8')
+  assert.match(index, /param-search-input/, 'the index must carry the search box itself')
+
+  const group = readFileSync(path.join(PARAMS_DIR, 'group-arming.rst'), 'utf8')
+  assert.match(group, /^:orphan:/, 'group pages must stay out of the nav tree')
+  const letter = readFileSync(path.join(PARAMS_DIR, 'letter-a.rst'), 'utf8')
+  assert.match(letter, /^:orphan:/, 'letter pages must stay out of the nav tree')
+})
+
 test('page titles escape the trailing underscore every ArduPilot family name has', () => {
   // An unescaped trailing underscore is RST hyperlink-reference syntax: it
   // produced ~290 "Unknown target name" build errors and a mangled heading.

@@ -214,6 +214,22 @@ def generate(source: str, vehicle: str, firmware: str) -> None:
         # 288 build errors and a mangled heading. Escape it.
         title = f"{group.replace('_', chr(92) + '_')} parameters"
         lines = [
+            # :orphan: keeps this page out of the NAV TREE. A :hidden: toctree
+            # was not enough — it hides the tree from the page body but Furo
+            # still renders every entry into the sidebar of every page in the
+            # section, which is what put 45-53 KB of nav on each one. Orphaned
+            # pages are still fully linkable (:doc:, the search index) and no
+            # longer warn about being outside a toctree; browsing happens
+            # through the body links on the index and letter pages.
+            ":orphan:",
+            "",
+            # Keep these 387 pages OUT of Sphinx's global search index. They
+            # inflated searchindex.js to ~830 KB, which every wiki page then
+            # downloaded before its own search worked — the opposite of the
+            # "loads on a phone" goal. Parameters have their own dedicated
+            # search page, which is both faster and better ranked for them.
+            ":nosearch:",
+            "",
             f".. _params-{page_slug}:",
             "",
             title,
@@ -251,6 +267,48 @@ def generate(source: str, vehicle: str, firmware: str) -> None:
         "page slugs collided — parameters would be silently dropped"
     )
     total = sum(count for _, _, count in group_rows)
+    # Nav shape drives page weight here: Furo renders the toctree into the
+    # sidebar of EVERY page in the section, so a flat tree of 387 families put
+    # 45 KB of nav on each one. The toctrees below are :hidden: — Sphinx still
+    # knows the pages exist (no orphan warnings, search and links work), but
+    # browsing happens in the page BODY, which only the page you are on pays
+    # for. The A-Z tier then keeps each body list short.
+    by_letter: dict[str, list[tuple[str, str, int]]] = {}
+    for group, page_slug, count in group_rows:
+        by_letter.setdefault(group[0].upper(), []).append((group, page_slug, count))
+
+    for stale in OUT.glob("letter-*.rst"):
+        stale.unlink()
+
+    for letter, entries in sorted(by_letter.items()):
+        letter_total = sum(count for _, _, count in entries)
+        title = f"{letter} families"
+        lines = [
+            ":orphan:",
+            "",
+            ":nosearch:",
+            "",
+            f".. _params-letter-{letter.lower()}:",
+            "",
+            title,
+            "=" * len(title),
+            "",
+            f"{len(entries)} parameter families beginning with {letter} "
+            f"({letter_total} parameters). "
+            ":doc:`Back to the parameter search <index>`.",
+            "",
+        ]
+        lines.append(
+            " · ".join(
+                f":doc:`{group.replace('_', chr(92) + '_')} <group-{page_slug}>` ({count})"
+                for group, page_slug, count in entries
+            )
+        )
+        lines.append("")
+        (OUT / f"letter-{letter.lower()}.rst").write_text("\n".join(lines) + "\n")
+
+    # The index IS the search. Landing on a page whose only job is to link to a
+    # search box is a pointless hop — you came here to find a parameter.
     index_lines = [
         ".. _parameter-reference:",
         "",
@@ -258,11 +316,34 @@ def generate(source: str, vehicle: str, firmware: str) -> None:
         "===================",
         "",
         f"Every {vehicle} {firmware} parameter — **{total}** of them, across "
-        f"{len(group_rows)} families.",
+        f"{len(group_rows)} families. Start typing to find one.",
         "",
-        "Upstream publishes this as a single page per vehicle, which is too large to",
-        "open comfortably on a phone. Here each family is its own small page, and",
-        ":doc:`search` filters the whole set as you type.",
+        ".. raw:: html",
+        "",
+        '   <div class="param-search">',
+        '     <input',
+        '       id="param-search-input"',
+        '       type="search"',
+        '       placeholder="e.g. BATT_ or arming or gyro rate"',
+        '       autocomplete="off"',
+        '       autocapitalize="off"',
+        '       spellcheck="false"',
+        '       aria-label="Search parameters"',
+        '     />',
+        '     <p id="param-search-status" class="param-search__status">Loading parameter index…</p>',
+        '     <ol id="param-search-results" class="param-search__results"></ol>',
+        "   </div>",
+        "",
+        "Browse by family",
+        "----------------",
+        "",
+    ]
+    index_lines.append(
+        " · ".join(
+            f":doc:`{letter} <letter-{letter.lower()}>`" for letter in sorted(by_letter)
+        )
+    )
+    index_lines += [
         "",
         ".. note::",
         "",
@@ -272,28 +353,7 @@ def generate(source: str, vehicle: str, firmware: str) -> None:
         "   Parameters tab in ArduConfigurator shows what your controller actually",
         "   reports.",
         "",
-        ".. toctree::",
-        "   :hidden:",
-        "",
-        "   search",
     ]
-    for _, page_slug, _ in group_rows:
-        index_lines.append(f"   group-{page_slug}")
-    index_lines += [
-        "",
-        ".. list-table::",
-        "   :header-rows: 1",
-        "   :widths: 30 15 55",
-        "",
-        "   * - Family",
-        "     - Count",
-        "     - ",
-    ]
-    for group, page_slug, count in group_rows:
-        index_lines.append(f"   * - :doc:`{group} <group-{page_slug}>`")
-        index_lines.append(f"     - {count}")
-        index_lines.append("     - ")
-    index_lines.append("")
     (OUT / "index.rst").write_text("\n".join(index_lines) + "\n")
 
     print(f"{vehicle} {firmware}: {total} parameters across {len(group_rows)} pages")

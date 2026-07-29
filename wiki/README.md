@@ -21,8 +21,13 @@ guided-setup order. See `index.rst` for the table of contents.
 
 `parameters/` holds the full ArduPilot parameter reference. Upstream publishes
 it as one page per vehicle — 5689 parameters for Copter 4.7, which will not load
-on a phone. Here it is split into one page per parameter family, plus a
-type-ahead search page backed by a small prebuilt index.
+on a phone. Here it is split into one page per parameter family, and the section index IS a
+type-ahead search over all of them, backed by a small prebuilt index.
+
+The generated pages are `:orphan:` and `:nosearch:` on purpose: Furo renders a
+toctree into the sidebar of every page in a section, so including 387 families
+put ~45 KB of navigation on each one, and indexing them inflated Sphinx's global
+`searchindex.js` to ~830 KB. Browsing happens through body links instead.
 
 The pages are **generated, not committed**. Before building locally:
 
