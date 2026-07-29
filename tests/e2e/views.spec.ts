@@ -372,6 +372,28 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(page.getByTestId('parameter-detail-select-GPS_TYPE')).toHaveValue('5')
   })
 
+  test('clicking the row value editor also reveals the metadata detail', async ({ page }) => {
+    // The editor cell swallows the row click so editing can never COLLAPSE an
+    // expanded row (the control would vanish mid-edit). That also meant a click
+    // into the value field on a COLLAPSED row only focused the input and never
+    // revealed the metadata — exactly when an operator wants the range and the
+    // enum meanings in front of them.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+    await page.getByTestId('parameter-search-input').fill('GPS_TYPE')
+
+    await expect(page.getByTestId('parameter-detail-GPS_TYPE')).toHaveCount(0)
+    // Click the row's value input rather than the row body.
+    await page.locator('input[aria-label="GPS_TYPE value"]').first().click()
+    await expect(page.getByTestId('parameter-detail-GPS_TYPE')).toBeVisible()
+
+    // And clicking it again must NOT collapse the row back under the operator.
+    await page.locator('input[aria-label="GPS_TYPE value"]').first().click()
+    await expect(page.getByTestId('parameter-detail-GPS_TYPE')).toBeVisible()
+  })
+
   test('Export is one picker where you choose the format', async ({ page }) => {
     // Was a primary "Export" button sitting next to a separate "Export Legacy…"
     // select, which read as two competing exports. Now a single picker: pick
@@ -1685,8 +1707,10 @@ test.describe('Config view', () => {
     await openConfigSection(page, 'receiver-signal')
     const section = page.getByTestId('config-section-receiver-signal')
     await expect(section).toBeVisible()
-    // RC_OPTIONS is a set-once bitmask, folded under Advanced — open it.
-    await section.getByTestId('config-advanced-receiver-signal').click()
+    // RC_OPTIONS is visible without opening anything: RC & Arming no longer
+    // folds fields under Advanced (an operator setting up a radio needs the
+    // protocol and options in front of them).
+    await expect(section.getByTestId('config-advanced-receiver-signal')).toHaveCount(0)
     // RC_OPTIONS renders as a chip grid here too (shared bitmask field).
     await expect(page.getByTestId('scoped-bitmask-RC_OPTIONS')).toBeVisible()
   })
@@ -1943,6 +1967,39 @@ test.describe('Receiver stick-driven craft', () => {
     const card = page.getByTestId('receiver-stick-craft-card')
     await expect(card).toBeVisible()
     await expect(page.getByTestId('receiver-stick-craft')).toHaveAttribute('data-craft-model', /.+/)
+  })
+})
+
+test.describe('Receiver functions tab', () => {
+  test('assigns an auxiliary function to an AUX channel and flags a duplicate', async ({ page }) => {
+    // Before this tab the only RCn_OPTION reachable from the app was the Arm
+    // switch; every other aux function meant hand-editing raw parameters, which
+    // needs both the parameter name and the numeric function id.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Functions' }).click()
+
+    const panel = page.getByTestId('receiver-functions-panel')
+    await expect(panel).toBeVisible()
+    // Stick axes are not aux channels — the list starts at CH5.
+    await expect(page.getByTestId('receiver-function-5')).toBeVisible()
+    await expect(page.getByTestId('receiver-function-4')).toHaveCount(0)
+
+    // Assign RTL (4) to CH7 — staged as a draft on RC7_OPTION.
+    const ch7 = page.getByTestId('receiver-function-7').locator('select')
+    await ch7.selectOption('4')
+    await expect(ch7).toHaveValue('4')
+
+    // The same function on a second channel is undefined behaviour in
+    // ArduPilot, so it must be called out rather than silently accepted.
+    await page.getByTestId('receiver-function-8').locator('select').selectOption('4')
+    await expect(page.getByTestId('receiver-functions-conflict')).toContainText('CH7')
+    await expect(page.getByTestId('receiver-functions-conflict')).toContainText('CH8')
+
+    // Clearing one side resolves it.
+    await page.getByTestId('receiver-function-8').locator('select').selectOption('0')
+    await expect(page.getByTestId('receiver-functions-conflict')).toHaveCount(0)
   })
 })
 
@@ -2206,9 +2263,15 @@ test.describe('OSD view preview', () => {
     expect(await columnCount()).toBe(50)
     await expect(page.getByTestId('osd-analog-submode')).toHaveCount(0)
 
+    // Walksnail is 50x20, set from hands-on measurement on real Avatar
+    // hardware (its spec sheet says 60x22, which put elements in the wrong
+    // cells and left the bottom rows unreachable).
     await page.getByTestId('osd-analog-layout').locator('select').selectOption('walksnail')
-    await expect(screen).toHaveAttribute('data-osd-layout', 'hd_60x22')
-    expect(await columnCount()).toBe(60)
+    await expect(screen).toHaveAttribute('data-osd-layout', 'hd_50x20')
+    expect(await columnCount()).toBe(50)
+    expect(
+      await grid.evaluate((el) => getComputedStyle(el).gridTemplateRows.split(' ').length)
+    ).toBe(20)
 
     await page.getByTestId('osd-analog-layout').locator('select').selectOption('dji_o3')
     await expect(screen).toHaveAttribute('data-osd-layout', 'hd_60x22')

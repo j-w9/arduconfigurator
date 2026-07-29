@@ -1497,6 +1497,11 @@ test('live telemetry requests use responsive attitude rates and slower support s
     assert.deepEqual(
       telemetryRequests.map((message) => [message.params[0], message.params[1]]),
       [
+        // 1 Hz GPS_RAW_INT — the RAW receiver report. GLOBAL_POSITION_INT only
+        // appears once the EKF has a position, so without this a GPS that was
+        // never wired up looks identical to a healthy one waiting on a fix,
+        // and the UI called both "configured".
+        [MAVLINK_MESSAGE_IDS.GPS_RAW_INT, 1000000],
         // 5 Hz GLOBAL_POSITION_INT — bumped from 2 Hz so the Setup-page
         // Live GPS map looks like it's actually moving when a Here3 is.
         [MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT, 200000],

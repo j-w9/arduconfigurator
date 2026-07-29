@@ -23,6 +23,7 @@ const OSD_ANALOG_LAYOUTS = {
   pal: { label: 'PAL', columns: 30, rows: 16 },
   ntsc: { label: 'NTSC', columns: 30, rows: 13 },
   hd_50x18: { label: 'HD', columns: 50, rows: 18 },
+  hd_50x20: { label: 'HD', columns: 50, rows: 20 },
   hd_60x22: { label: 'HD', columns: 60, rows: 22 }
 } as const
 type OsdAnalogLayout = keyof typeof OSD_ANALOG_LAYOUTS
@@ -34,13 +35,17 @@ type OsdAnalogLayout = keyof typeof OSD_ANALOG_LAYOUTS
 // depending on the camera/goggles, picked via the secondary selector.
 // Grid sizes verified against ArduPilot's own DisplayPort OSD documentation
 // (HDZero: ardupilot.org/copter/docs/common-displayport.html, explicit
-// "set OSDx_TXT_RES to 0 or 1") and hardware specs (Walksnail Avatar HD
-// defaults to 60x22; the whole DJI HD family — O3 Air Unit, Goggles 2,
-// Goggles V2, Goggles 3 — shares the same 810p/60x22 grid).
+// "set OSDx_TXT_RES to 0 or 1") and hardware specs (the whole DJI HD family —
+// O3 Air Unit, Goggles 2, Goggles V2, Goggles 3 — shares the same 810p/60x22
+// grid). Walksnail was listed at 60x22 from its spec sheet but measures 50x20
+// in practice, so it now carries the measured value.
 const OSD_VIDEO_SYSTEMS = {
   analog: { label: 'Analog', layout: undefined },
   hdzero: { label: 'HDZero', layout: 'hd_50x18' },
-  walksnail: { label: 'Walksnail Avatar', layout: 'hd_60x22' },
+  // Walksnail is 50x20 (rows 0..19), set from hands-on measurement on real
+  // Avatar hardware — elements placed against the old 60x22 assumption landed
+  // in the wrong cells and the bottom two rows were unreachable.
+  walksnail: { label: 'Walksnail Avatar', layout: 'hd_50x20' },
   dji_o3: { label: 'DJI O3 Air Unit', layout: 'hd_60x22' },
   dji_goggles_2: { label: 'DJI Goggles 2', layout: 'hd_60x22' },
   dji_goggles_v: { label: 'DJI Goggles V2', layout: 'hd_60x22' },

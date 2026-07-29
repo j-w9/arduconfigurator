@@ -88,7 +88,7 @@ export const ACCELEROMETER_CALIBRATION_STEPS = [
     summary: 'Place the vehicle level and keep it still.',
     instructions: [
       'Set the frame level on a stable surface.',
-      'When the frame is motionless, press Confirm Level Position.'
+      'When the frame is motionless, press Confirm Level Position — the remaining postures then record themselves.'
     ],
     ctaLabel: 'Confirm Level Position'
   },
@@ -97,7 +97,7 @@ export const ACCELEROMETER_CALIBRATION_STEPS = [
     summary: 'Place the vehicle on its left side and keep it still.',
     instructions: [
       'Move the frame onto its left side.',
-      'When the frame is motionless, press Confirm Left Side Position.'
+      'Hold it still — this posture records itself once the frame settles.'
     ],
     ctaLabel: 'Confirm Left Side Position'
   },
@@ -106,7 +106,7 @@ export const ACCELEROMETER_CALIBRATION_STEPS = [
     summary: 'Place the vehicle on its right side and keep it still.',
     instructions: [
       'Move the frame onto its right side.',
-      'When the frame is motionless, press Confirm Right Side Position.'
+      'Hold it still — this posture records itself once the frame settles.'
     ],
     ctaLabel: 'Confirm Right Side Position'
   },
@@ -115,7 +115,7 @@ export const ACCELEROMETER_CALIBRATION_STEPS = [
     summary: 'Place the vehicle nose down and keep it still.',
     instructions: [
       'Tilt the frame nose-down.',
-      'When the frame is motionless, press Confirm Nose Down Position.'
+      'Hold it still — this posture records itself once the frame settles.'
     ],
     ctaLabel: 'Confirm Nose Down Position'
   },
@@ -124,7 +124,7 @@ export const ACCELEROMETER_CALIBRATION_STEPS = [
     summary: 'Place the vehicle nose up and keep it still.',
     instructions: [
       'Tilt the frame nose-up.',
-      'When the frame is motionless, press Confirm Nose Up Position.'
+      'Hold it still — this posture records itself once the frame settles.'
     ],
     ctaLabel: 'Confirm Nose Up Position'
   },
@@ -133,7 +133,7 @@ export const ACCELEROMETER_CALIBRATION_STEPS = [
     summary: 'Place the vehicle on its back and keep it still.',
     instructions: [
       'Flip the frame onto its back.',
-      'When the frame is motionless, press Confirm Back Position.'
+      'Hold it still — this posture records itself once the frame settles.'
     ],
     ctaLabel: 'Confirm Back Position'
   }
@@ -199,6 +199,9 @@ export function createIdleLiveVerification(): LiveVerificationState {
     },
     globalPosition: {
       verified: false
+    },
+    gpsReceiver: {
+      detected: false
     },
     baroSensor: {
       verified: false,
@@ -317,6 +320,11 @@ export function cloneLiveVerification(liveVerification: LiveVerificationState): 
     },
     globalPosition: {
       ...liveVerification.globalPosition
+    },
+    // Must be cloned like every other field — a previous field (imuTemperatureC)
+    // was silently dropped here and its live readout died for four releases.
+    gpsReceiver: {
+      ...liveVerification.gpsReceiver
     },
     baroSensor: {
       ...liveVerification.baroSensor

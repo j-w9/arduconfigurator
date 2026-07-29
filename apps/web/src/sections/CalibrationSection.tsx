@@ -3,7 +3,7 @@
 // actions + battery voltage / battery current / airspeed / ESC throttle
 // calibration cards. ~470 lines of inline JSX moved verbatim.
 
-import type { ReactElement } from 'react'
+import { useState, type ReactElement } from 'react'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
@@ -46,6 +46,9 @@ export interface CalibrationSectionProps {
 }
 
 export function CalibrationSection(props: CalibrationSectionProps): ReactElement {
+  // Throttle used for the current-calibration load spin. Local to this card:
+  // it is a transient bench choice, not something worth persisting.
+  const [currentCalThrottlePercent, setCurrentCalThrottlePercent] = useState('20')
   const {
     snapshot,
     runtime,
@@ -339,6 +342,13 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       </StatusBadge>
                     </div>
                     <p>Calibrates the analog current sensor: <code>amps = (sensor_voltage − BATT_AMP_OFFSET) × BATT_AMP_PERVLT</code>. Offset is the sensor voltage at 0 A; per-volt is amps per volt of sensor output.</p>
+                    <p className="calibration-card__tip">
+                      You need a reference reading to calibrate against. An inline watt/current meter between the
+                      pack and the craft is the easiest option — e.g. a ToolkitRC (WM series) or a Turnigy/HobbyKing
+                      inline meter; a DC clamp meter around the positive lead works too and avoids breaking the
+                      circuit. Take the reading under a steady load, not at idle: the per-volt fit is
+                      measured&nbsp;÷&nbsp;reported at one operating point, and near 0&nbsp;A that ratio is mostly noise.
+                    </p>
                     <div className="config-pills">
                       <span>FC reads: {reportedA !== undefined ? `${reportedA.toFixed(2)} A` : 'no telemetry'}</span>
                       <span>Offset: {currentOffset !== undefined ? `${currentOffset.toFixed(3)} V` : 'unknown'}</span>
@@ -406,6 +416,76 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                               Zero offset now ({reportedA !== undefined ? `${reportedA.toFixed(2)} A` : '—'} → 0 A)
                             </button>
                           </div>
+                          {/* Step 2: put a real load on the pack. Current
+                           *  calibration needs a steady draw to scale against —
+                           *  BATT_AMP_PERVLT is fitted from (measured / reported)
+                           *  at one operating point, and at ~0 A that ratio is
+                           *  noise. The operator previously had to leave for the
+                           *  Motors bench to get any load at all, so the two
+                           *  halves of the procedure lived on different pages.
+                           *  Spins every motor together (Mission Planner's "test
+                           *  all motors"), gated on the SAME props-off /
+                           *  restrained acknowledgements as every other
+                           *  motor-spinning action here. */}
+                          {isCopterVehicle ? (
+                            <div className="guided-current-cal__load" data-testid="battery-current-load">
+                              <label className="scoped-editor-field scoped-editor-field--compact">
+                                <span>Load throttle (%)</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="35"
+                                  step="1"
+                                  inputMode="numeric"
+                                  value={currentCalThrottlePercent}
+                                  onChange={(event) => setCurrentCalThrottlePercent(event.target.value)}
+                                  data-testid="battery-current-load-throttle"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                style={buttonStyle()}
+                                data-testid="battery-current-spin-motors"
+                                disabled={
+                                  busyAction !== undefined ||
+                                  snapshot.connection.kind !== 'connected' ||
+                                  snapshot.vehicle?.armed === true ||
+                                  !(propsRemovedAcknowledged && testAreaAcknowledged) ||
+                                  snapshot.motorTest.status === 'requested' ||
+                                  snapshot.motorTest.status === 'running'
+                                }
+                                onClick={() => {
+                                  const throttlePercent = Number.parseFloat(currentCalThrottlePercent)
+                                  if (!Number.isFinite(throttlePercent) || throttlePercent <= 0) {
+                                    return
+                                  }
+                                  void (async () => {
+                                    try {
+                                      await runtime.runMotorTest({
+                                        runAllOutputsSimultaneous: true,
+                                        throttlePercent,
+                                        durationSeconds: 8
+                                      })
+                                      setBatteryCalNotice({
+                                        tone: 'warning',
+                                        text: `Spinning all motors at ${throttlePercent}% for 8 s — read your meter NOW and type the value below.`
+                                      })
+                                    } catch (error) {
+                                      setBatteryCalNotice({
+                                        tone: 'danger',
+                                        text: error instanceof Error ? error.message : 'Failed to start the motor load.'
+                                      })
+                                    }
+                                  })()
+                                }}
+                              >
+                                {snapshot.motorTest.status === 'running' ? 'Motors spinning…' : 'Spin motors for 8 s'}
+                              </button>
+                              {!(propsRemovedAcknowledged && testAreaAcknowledged) ? (
+                                <small>Acknowledge the motor-spin safety checks below before applying a load.</small>
+                              ) : null}
+                            </div>
+                          ) : null}
                           <label className="scoped-editor-field scoped-editor-field--compact">
                             <span>Measured current (A)</span>
                             <input

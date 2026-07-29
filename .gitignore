@@ -14,3 +14,10 @@ apps/web/iwa/signing-key.pem
 
 # Local audit / analysis notes — not part of the shipped repo
 .audit/
+
+# Generated ArduPilot parameter reference (wiki/tools/generate_parameter_reference.py).
+# ~390 pages regenerated from the pinned wiki/data/*.json at build time — the
+# source data is committed, the output is not.
+wiki/parameters/group-*.rst
+wiki/parameters/index.rst
+wiki/_static/parameter-index.json

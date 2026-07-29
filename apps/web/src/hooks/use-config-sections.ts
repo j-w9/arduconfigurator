@@ -34,19 +34,32 @@ const CATEGORY_BY_SECTION: Record<string, ConfigCategoryId> = {
 // Rarely-touched fields folded into each card's "Advanced" disclosure, so a card
 // leads with the knobs an operator actually reaches for. Everything not listed
 // stays in the always-visible common set.
+//
+// Field feedback: this was folding away far too much. The disclosure mechanism
+// is worth keeping — some of these genuinely are set-once-and-forget — but the
+// bar is now "an operator would have to go looking for this", not "it isn't one
+// of the first two knobs". Notably RC & Arming is fully visible (an operator
+// tuning a radio needs the protocol and options in front of them), and the
+// logging + gyro-rate settings are visible because they are routinely changed
+// per-build rather than once at bring-up.
 const ADVANCED_FIELDS: Record<string, readonly string[]> = {
   'board-orientation': ['AHRS_TRIM_X', 'AHRS_TRIM_Y', 'AHRS_TRIM_Z'],
-  compass: ['COMPASS_USE2', 'COMPASS_USE3', 'COMPASS_AUTO_ROT', 'COMPASS_DISBLMSK'],
-  'esc-dshot': ['SERVO_DSHOT_RATE', 'SERVO_BLH_POLES', 'SERVO_BLH_BDMASK', 'SERVO_BLH_RVMASK'],
-  'system-rates': ['INS_GYRO_RATE', 'INS_FAST_SAMPLE'],
+  compass: ['COMPASS_AUTO_ROT', 'COMPASS_DISBLMSK'],
+  'esc-dshot': ['SERVO_BLH_POLES', 'SERVO_BLH_BDMASK', 'SERVO_BLH_RVMASK'],
+  // INS_GYRO_RATE moved out: it is a selectable per-build choice (and the
+  // field report asked for it directly under Sensors).
+  'system-rates': ['INS_FAST_SAMPLE'],
   'fast-loop-rate': ['FSTRATE_DIV'],
-  'pilot-rates': ['ACRO_RP_RATE', 'ACRO_Y_RATE', 'ACRO_RP_EXPO', 'ACRO_Y_EXPO'],
-  'active-imu': ['INS_USE2', 'INS_USE3'],
-  gps: ['GPS_GNSS_MODE', 'GPS_AUTO_SWITCH', 'GPS_PRIMARY'],
-  'receiver-signal': ['RC_OPTIONS', 'RC_PROTOCOLS'],
-  arming: ['ARMING_RUDDER'],
+  'pilot-rates': [],
+  'active-imu': [],
+  gps: ['GPS_GNSS_MODE'],
+  // RC & Arming: everything visible, per the field report.
+  'receiver-signal': [],
+  arming: [],
   identity: ['SYSID_MYGCS', 'BRD_BOOT_DELAY'],
-  logging: ['LOG_BITMASK', 'LOG_DISARMED', 'LOG_REPLAY'],
+  // LOG_DISARMED / LOG_REPLAY are routinely set per-build (LOG_DISARMED=2 +
+  // LOG_REPLAY=1 is a common "full logs" pairing), so they lead the card.
+  logging: ['LOG_BITMASK'],
   beeper: ['NTF_BUZZ_TYPES'],
   'camera-trigger': ['CAM_DURATION', 'CAM_AUTO_ONLY', 'CAM_SERVO_ON', 'CAM_SERVO_OFF']
 }

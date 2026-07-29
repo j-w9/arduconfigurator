@@ -18,6 +18,7 @@ import type {
   CommandAckMessage,
   CommandLongMessage,
   FileTransferProtocolMessage,
+  GpsRawIntMessage,
   GlobalPositionIntMessage,
   LogRequestDataMessage,
   MavlinkEnvelope,
@@ -801,6 +802,23 @@ function globalPositionMessage(timeBootMs: number): GlobalPositionIntMessage {
   }
 }
 
+/** A healthy GPS with a 3D fix — the demo's happy path. */
+function gpsRawIntMessage(): GpsRawIntMessage {
+  return {
+    type: 'GPS_RAW_INT',
+    timeUsec: 1_700_000_000_000,
+    fixType: 3,
+    latitudeE7: 377749300,
+    longitudeE7: -1224194200,
+    altitudeMm: 18420,
+    eph: 90,
+    epv: 130,
+    vel: 120,
+    cog: 27450,
+    satellitesVisible: 14
+  }
+}
+
 function buildParameterFrames(parameterState: ParameterState): Uint8Array[] {
   const codec = new TruncatingMavlinkV2Codec()
   const entries = Object.entries(parameterState)
@@ -1533,7 +1551,8 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
       codec.encode(envelope(3, sysStatusMessage(16420, 72))),
       codec.encode(envelope(4, rcChannelsMessage(1200))),
       codec.encode(envelope(5, attitudeMessage(1200))),
-      codec.encode(envelope(6, globalPositionMessage(1200)))
+      codec.encode(envelope(6, globalPositionMessage(1200))),
+      codec.encode(envelope(7, gpsRawIntMessage()))
     ],
     respondToOutbound: (frame) => {
       // The mock only decodes the message types it knows how to answer.
@@ -1637,6 +1656,9 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
             }
             if (requestedMessageId === MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT) {
               responses.push(codec.encode(envelope(94, globalPositionMessage(1600))))
+            }
+            if (requestedMessageId === MAVLINK_MESSAGE_IDS.GPS_RAW_INT) {
+              responses.push(codec.encode(envelope(96, gpsRawIntMessage())))
             }
           } else if (
             outbound.message.command === MAV_CMD.REQUEST_MESSAGE &&

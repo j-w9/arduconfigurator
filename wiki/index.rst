@@ -51,4 +51,5 @@ each tab. If you are new, start with :doc:`introduction` and
    :caption: Reference
 
    reference
+   parameters/index
    about

@@ -3,7 +3,7 @@ import { Panel, StatusBadge } from '@arduconfig/ui-kit'
 
 export type ReceiverStatusTone = 'neutral' | 'success' | 'warning' | 'danger'
 
-export type ReceiverTaskId = 'mapping' | 'endpoints' | 'flight-modes' | 'advanced' | 'review'
+export type ReceiverTaskId = 'mapping' | 'endpoints' | 'flight-modes' | 'functions' | 'advanced' | 'review'
 
 export interface ReceiverTaskCard {
   id: ReceiverTaskId

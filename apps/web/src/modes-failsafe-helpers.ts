@@ -19,11 +19,17 @@ import { readParameterValue, readRoundedParameter, selectParameterById } from '.
 import type { DetectedVehicle } from './app-types'
 import type { FailsafeViewRow } from './views/Failsafe'
 
-// A flight-mode slot can hold a value that doesn't map to a real selectable
-// mode (a gap in the vehicle's mode list, or a value from a firmware our map
-// doesn't cover). Rather than surfacing a confusing "Mode 23" placeholder in
-// the receiver/modes UI, render unknown (and unset) assignments as an em
-// dash so the operator reads it as "nothing here" instead of a fake mode.
+// A flight-mode slot can hold a value that doesn't map to a mode name we know
+// (a gap in the vehicle's mode list, a custom mode, or a value from a firmware
+// our map doesn't cover).
+//
+// Unset slots still read as an em dash — "nothing here". But a slot that HOLDS
+// a value we can't name now shows the raw mode number instead of hiding behind
+// that same dash: operators running custom modes need to see which number is
+// assigned, and an em dash on a configured slot reads as "empty", which is
+// worse than an unfamiliar number. (This reverses the earlier
+// "no confusing Mode 23 placeholder" call — the placeholder is only confusing
+// when the slot is empty, and that case is still a dash.)
 export function formatModeAssignment(value: number | undefined, vehicle: DetectedVehicle = 'ArduCopter'): string {
   const label =
     vehicle === 'ArduPlane'
@@ -33,7 +39,10 @@ export function formatModeAssignment(value: number | undefined, vehicle: Detecte
         : vehicle === 'ArduSub'
           ? ardusubFlightModeLabel(value)
           : arducopterFlightModeLabel(value)
-  return label ?? '—'
+  if (label) {
+    return label
+  }
+  return value === undefined || !Number.isFinite(value) ? '—' : `Mode ${value}`
 }
 
 export type FltModeParamId = 'FLTMODE1' | 'FLTMODE2' | 'FLTMODE3' | 'FLTMODE4' | 'FLTMODE5' | 'FLTMODE6'

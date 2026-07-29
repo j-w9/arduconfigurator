@@ -53,6 +53,34 @@ export interface SysStatusMessage {
   sensorsHealthExtended: number
 }
 
+/**
+ * GPS_RAW_INT (msgid 24) — the RAW receiver report, decoded for the fields that
+ * answer "is a GPS actually talking to the FC?": fix type and satellite count.
+ *
+ * GLOBAL_POSITION_INT alone cannot answer that. It only appears once the EKF
+ * has a position, so a correctly-wired GPS sitting indoors without a fix looks
+ * identical to a GPS that was never wired up at all — which is how a miswired
+ * unit (TX/RX swapped, or landed on I2C pins) read as "configured" in the UI.
+ * GPS_RAW_INT arrives as soon as the driver is talking to a module, fix or no
+ * fix, so the two cases finally separate.
+ *
+ * Base payload only (30 bytes); the v2 extension fields (alt_ellipsoid,
+ * h/v/vel/hdg accuracy, yaw) are on the wire but not decoded.
+ */
+export interface GpsRawIntMessage {
+  type: 'GPS_RAW_INT'
+  timeUsec: number
+  fixType: number
+  latitudeE7: number
+  longitudeE7: number
+  altitudeMm: number
+  eph: number
+  epv: number
+  vel: number
+  cog: number
+  satellitesVisible: number
+}
+
 export interface GlobalPositionIntMessage {
   type: 'GLOBAL_POSITION_INT'
   timeBootMs: number
@@ -413,6 +441,7 @@ export type MavlinkMessage =
   | SysStatusMessage
   | OpticalFlowMessage
   | CanFrameMessage
+  | GpsRawIntMessage
   | GlobalPositionIntMessage
   | AttitudeMessage
   | ScaledImuMessage

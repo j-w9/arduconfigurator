@@ -48,6 +48,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r wiki/requirements.txt
+          # Regenerate the ArduPilot parameter reference from the PINNED
+          # metadata in wiki/data. Generated (not committed) so the ~390 pages
+          # don't sit in the diff, but hermetic — no network at build time.
+          python wiki/tools/generate_parameter_reference.py
           sphinx-build -b html wiki apps/web/dist/wiki
 
       - name: Deploy to Cloudflare Pages

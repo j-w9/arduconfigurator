@@ -1,5 +1,6 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
-import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
+import { AHRS_ORIENTATION_OPTIONS, LOG_DISARMED_OPTIONS } from './shared-enums.js'
+import { ARDUCOPTER_RC_OPTION_LABELS } from './arducopter-rc-options.generated.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
 import { buildNetworkParameterDefinitions } from './shared-network.js'
 import { buildRcLogicParameterDefinitions } from './shared-rc-logic.js'
@@ -554,6 +555,34 @@ function buildSerialPortParameterDefinitions(maxPortNumber: number): FirmwareMet
 // bounds even on high-output boards. The runtime filters channels by what
 // the FC actually reports (see deriveServoOutputAssignments), so this is
 // pure metadata coverage — no behavior change for low-output boards.
+// RCn_OPTION for the AUX channels — the auxiliary-function assignment an
+// operator actually reaches for when wiring up switches (arm, RTL, gripper,
+// camera trigger...). Only RC5..RC16 get one here: 1-4 are the primary stick
+// axes, where an aux function does not belong.
+//
+// The option list is generated from ArduPilot's own @Values annotations rather
+// than curated, because a hand-picked subset is exactly how an operator ends up
+// unable to find the function they need.
+function buildRcOptionParameterDefinitions(
+  minChannelNumber: number,
+  maxChannelNumber: number
+): FirmwareMetadataBundle['parameters'] {
+  const definitions: FirmwareMetadataBundle['parameters'] = {}
+
+  for (let channelNumber = minChannelNumber; channelNumber <= maxChannelNumber; channelNumber += 1) {
+    definitions[`RC${channelNumber}_OPTION`] = {
+      id: `RC${channelNumber}_OPTION`,
+      label: `CH${channelNumber} Function`,
+      description: `Auxiliary function assigned to RC channel ${channelNumber}. "Do Nothing" leaves the channel unused by the flight controller.`,
+      category: 'receiver',
+      notes: ['Assigning the same function to two channels is undefined — clear the old channel first.'],
+      options: enumOptions(ARDUCOPTER_RC_OPTION_LABELS)
+    }
+  }
+
+  return definitions
+}
+
 function buildServoChannelParameterDefinitions(maxChannelNumber: number): FirmwareMetadataBundle['parameters'] {
   const definitions: FirmwareMetadataBundle['parameters'] = {}
 
@@ -1367,6 +1396,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       maximum: 1000,
       step: 1
     },
+    ...buildRcOptionParameterDefinitions(5, 16),
     ...buildSerialPortParameterDefinitions(8),
     // AP_SerialManager transparent USB↔UART passthru bridge (SERIAL_PASS1/PASS2/
     // PASSTIMO). Setting both PASS1 (source, default 0=USB console) and PASS2
@@ -3499,13 +3529,18 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     },
     LOG_DISARMED: {
       id: 'LOG_DISARMED',
+      // Values verified against AP_Logger.cpp (@Values on LOG_DISARMED) — this
+      // was modelled as a plain 0/1 enable, which hid 2 and 3 entirely. 2 is
+      // the common field setting (log while disarmed, but not over USB, so
+      // bench sessions don't fill the card), and LOG_REPLAY needs
+      // LOG_DISARMED at 1 or 2 to capture the pre-flight data replay requires.
       label: 'Log While Disarmed',
       description: 'Continue writing log data while the vehicle is disarmed.',
       category: 'logging',
       minimum: 0,
-      maximum: 1,
+      maximum: 3,
       notes: loggingBehaviorNotes,
-      options: enabledDisabledOptions
+      options: LOG_DISARMED_OPTIONS
     }
   },
   setupSections: [

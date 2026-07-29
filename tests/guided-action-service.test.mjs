@@ -818,3 +818,137 @@ test('cancelAction is a no-op for idle and terminal actions', async () => {
     service.destroy()
   }
 })
+
+// --- Accelerometer auto-confirm -------------------------------------------
+// Field request: the operator should only click twice (Start, then "I'm
+// level") and the remaining five postures should record themselves once the
+// frame is placed. These pin the behaviour that makes that safe — a posture is
+// only captured when the frame is BOTH aligned and holding still, because
+// sampling mid-settle is how a calibration ends up silently wrong.
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Drive the service to the posture the FC is currently asking for. */
+function promptPose(service, commandValue) {
+  service.handleCommandLong({ command: MAV_CMD.ACCELCAL_VEHICLE_POS, params: [commandValue] }, 1, 1)
+}
+
+/** COMMAND_ACK is what advanceAccelerometerCalibration emits to confirm a pose. */
+const confirmCount = (harness) => harness.sent.filter((m) => m.type === 'COMMAND_ACK').length
+
+async function startCalibration(harness) {
+  const service = new GuidedActionService(harness.host)
+  await service.runCalibrationAction('calibrate-accelerometer')
+  return service
+}
+
+test('auto-confirm records a posture once the frame is aligned AND has held still', async () => {
+  const harness = createHostHarness({
+    accelerometerAutoHoldMs: 40,
+    accelerometerStepAdvanceMs: 10000,
+    accelerometerInitialWarmupMs: 10000
+  })
+  const service = await startCalibration(harness)
+  try {
+    promptPose(service, 2) // left side: roll -90
+    const before = confirmCount(harness)
+
+    // Arrives in the pose — but the hold has not elapsed yet.
+    service.handleAttitudeSample(-90, 0)
+    assert.equal(confirmCount(harness), before, 'must not capture the instant the pose is reached')
+
+    await sleep(60)
+    service.handleAttitudeSample(-90, 0)
+    assert.equal(confirmCount(harness), before + 1, 'captures once the frame has held the pose still')
+  } finally {
+    service.destroy()
+  }
+})
+
+test('auto-confirm does NOT fire for the level posture — that stays the operator click', async () => {
+  // A bench vehicle is already level when the calibration starts, so
+  // auto-confirming level would fire before the operator had placed anything.
+  const harness = createHostHarness({
+    accelerometerAutoHoldMs: 20,
+    accelerometerStepAdvanceMs: 10000,
+    accelerometerInitialWarmupMs: 10000
+  })
+  const service = await startCalibration(harness)
+  try {
+    promptPose(service, 1) // level
+    const before = confirmCount(harness)
+    service.handleAttitudeSample(0, 0)
+    await sleep(40)
+    service.handleAttitudeSample(0, 0)
+    assert.equal(confirmCount(harness), before, 'level must wait for the explicit click')
+  } finally {
+    service.destroy()
+  }
+})
+
+test('auto-confirm restarts the hold when the frame is still moving', async () => {
+  const harness = createHostHarness({
+    accelerometerAutoHoldMs: 40,
+    accelerometerStepAdvanceMs: 10000,
+    accelerometerInitialWarmupMs: 10000
+  })
+  const service = await startCalibration(harness)
+  try {
+    promptPose(service, 3) // right side: roll +90
+    const before = confirmCount(harness)
+
+    service.handleAttitudeSample(90, 0)
+    await sleep(30)
+    // Still inside the acceptance window, but visibly moving — the hold resets.
+    service.handleAttitudeSample(82, 0)
+    await sleep(30)
+    assert.equal(confirmCount(harness), before, 'a drifting frame must not be captured')
+
+    // Now settled: the fresh hold elapses and it captures.
+    service.handleAttitudeSample(82, 0)
+    await sleep(60)
+    service.handleAttitudeSample(82, 0)
+    assert.equal(confirmCount(harness), before + 1, 'captures once it settles')
+  } finally {
+    service.destroy()
+  }
+})
+
+test('auto-confirm ignores an attitude that is not the requested posture', async () => {
+  const harness = createHostHarness({
+    accelerometerAutoHoldMs: 20,
+    accelerometerStepAdvanceMs: 10000,
+    accelerometerInitialWarmupMs: 10000
+  })
+  const service = await startCalibration(harness)
+  try {
+    promptPose(service, 6) // back: roll 180
+    const before = confirmCount(harness)
+    // Sitting level instead of on its back.
+    service.handleAttitudeSample(0, 0)
+    await sleep(40)
+    service.handleAttitudeSample(0, 0)
+    assert.equal(confirmCount(harness), before, 'the wrong posture must never be captured')
+  } finally {
+    service.destroy()
+  }
+})
+
+test('accelerometerAutoHoldMs = 0 disables auto-confirm (click-every-pose flow)', async () => {
+  const harness = createHostHarness({
+    accelerometerAutoHoldMs: 0,
+    accelerometerStepAdvanceMs: 10000,
+    accelerometerInitialWarmupMs: 10000
+  })
+  const service = await startCalibration(harness)
+  try {
+    promptPose(service, 2)
+    const before = confirmCount(harness)
+    service.handleAttitudeSample(-90, 0)
+    await sleep(40)
+    service.handleAttitudeSample(-90, 0)
+    assert.equal(confirmCount(harness), before, 'auto-confirm must be fully defeatable')
+  } finally {
+    service.destroy()
+  }
+})

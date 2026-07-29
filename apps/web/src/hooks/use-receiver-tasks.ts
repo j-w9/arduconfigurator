@@ -81,10 +81,15 @@ export function useReceiverTasks(input: {
   receiverAdvancedDraftCount: number
   receiverAdvancedInvalidCount: number
   receiverLinkPorts: SerialPortViewModel[]
+  /** RCn_OPTION assignment counts for the Functions task card. */
+  rcFunctionAssignedCount: number
+  rcFunctionConflictCount: number
   receiverTaskOverride: ReceiverTaskId | undefined
 }): UseReceiverTasksResult {
   const {
     snapshot,
+    rcFunctionAssignedCount,
+    rcFunctionConflictCount,
     rcRangeExercise,
     rcCalibrationSession,
     modeSwitchExercise,
@@ -255,6 +260,24 @@ export function useReceiverTasks(input: {
         tone: receiverFlightModesTask.tone
       },
       {
+        // Switch/aux-function assignment (RCn_OPTION). Sits after Flight Modes
+        // because it is the same mental step — "what does this switch do" —
+        // just for everything that is not a mode change.
+        id: 'functions' as const,
+        label: 'Functions',
+        value:
+          rcFunctionConflictCount > 0
+            ? `${rcFunctionConflictCount} conflict${rcFunctionConflictCount === 1 ? '' : 's'}`
+            : rcFunctionAssignedCount > 0
+              ? `${rcFunctionAssignedCount} assigned`
+              : 'None assigned',
+        detail:
+          rcFunctionConflictCount > 0
+            ? 'The same auxiliary function is assigned to more than one channel — ArduPilot does not define which one wins.'
+            : 'Assign auxiliary functions (arm, RTL, gripper, camera trigger…) to the AUX channels.',
+        tone: rcFunctionConflictCount > 0 ? 'danger' : rcFunctionAssignedCount > 0 ? 'success' : 'neutral'
+      },
+      {
         id: 'advanced' as const,
         label: 'Signal Setup',
         value:
@@ -309,6 +332,8 @@ export function useReceiverTasks(input: {
       receiverFlightModesTask.value,
       receiverAdvancedDraftCount,
       receiverAdvancedInvalidCount,
+      rcFunctionAssignedCount,
+      rcFunctionConflictCount,
       receiverLinkPorts,
       receiverWorkflowDraftCount,
       receiverWorkflowInvalidCount,

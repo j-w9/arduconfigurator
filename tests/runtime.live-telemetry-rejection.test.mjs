@@ -154,12 +154,15 @@ test('a DENIED on a non-UAVCAN stream still surfaces a labelled warning', async 
   const session = createScriptedSession()
   const runtime = await bootRuntimeAndWaitForStreamRequests(session)
   try {
-    // Order: GLOBAL_POSITION_INT, ATTITUDE, RC_CHANNELS, SYS_STATUS,
-    // UAVCAN_NODE_STATUS, MAG_CAL_PROGRESS, MAG_CAL_REPORT.
-    // Deny the second (ATTITUDE) so we exercise the still-warning path.
+    // Order: GPS_RAW_INT, GLOBAL_POSITION_INT, ATTITUDE, ATTITUDE_QUATERNION,
+    // SCALED_IMU, RC_CHANNELS, SYS_STATUS, UAVCAN_NODE_STATUS,
+    // MAG_CAL_PROGRESS, MAG_CAL_REPORT.
+    // Deny the THIRD (ATTITUDE) so we exercise the still-warning path. These
+    // acks are positional, so they shift whenever LIVE_TELEMETRY_REQUESTS
+    // gains an entry — GPS_RAW_INT was added at the head of that list.
+    session.inject(commandAck(MAV_RESULT.ACCEPTED))
     session.inject(commandAck(MAV_RESULT.ACCEPTED))
     session.inject(commandAck(MAV_RESULT.DENIED))
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
     session.inject(commandAck(MAV_RESULT.ACCEPTED))
     session.inject(commandAck(MAV_RESULT.ACCEPTED))
     session.inject(commandAck(MAV_RESULT.ACCEPTED))

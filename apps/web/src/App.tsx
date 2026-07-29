@@ -1731,6 +1731,28 @@ export function App() {
     setModeSwitchExercise((current) => advanceModeSwitchExerciseState(current, snapshot, snapshot.vehicle?.vehicle))
   }, [modeSwitchExercise.status, snapshot])
 
+  // A finished compass calibration writes new COMPASS_OFS_*/DEV_ID values on
+  // the FC, and those only take full effect after a reboot + fresh parameter
+  // pull. The action's own instruction line said so, but a line of text inside
+  // a completed card is easy to walk past — surface the same reboot follow-up
+  // banner (with its Request Reboot action) the reboot-sensitive parameter
+  // writes already use, so the next step is offered rather than just described.
+  const compassCalibrationStatusRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    const status = snapshot.guidedActions['calibrate-compass']?.status
+    const previous = compassCalibrationStatusRef.current
+    compassCalibrationStatusRef.current = status
+    if (status !== 'succeeded' || previous === 'succeeded' || previous === undefined) {
+      return
+    }
+    setParameterFollowUp({
+      requiresReboot: true,
+      refreshRequired: true,
+      changedCount: 0,
+      text: 'Compass calibration stored new offsets. Reboot the flight controller, then pull parameters again before flight.'
+    })
+  }, [snapshot.guidedActions, setParameterFollowUp])
+
   useEffect(() => {
     if (orientationExercise.status !== 'running') {
       return
@@ -1748,21 +1770,31 @@ export function App() {
   }, [rcRangeExercise.status, snapshot])
 
   useEffect(() => {
-    if (rcCalibrationSession.status !== 'capturing') {
+    // CH5/CH6 keep capturing after the four control axes finish. The four axes
+    // completing flips the session to 'ready', and switch capture used to stop
+    // with it — but the on-screen instructions list "flick CH5/CH6" as step 3,
+    // AFTER the stick sweeps that end the capture. So the UI asked for the
+    // switches right after it had stopped listening, and they read
+    // Min == Max == resting pwm no matter how far the operator threw them.
+    if (rcCalibrationSession.status !== 'capturing' && rcCalibrationSession.status !== 'ready') {
       return
     }
 
     setRcCalibrationSession((current) => {
-      if (current.status !== 'capturing') {
+      if (current.status !== 'capturing' && current.status !== 'ready') {
         return current
       }
+      const axesStillCapturing = current.status === 'capturing'
 
       let changed = false
       const nextCaptures = { ...current.captures }
 
       rcAxisObservations.forEach((observation) => {
         const existing = nextCaptures[observation.axisId]
-        if (!existing) {
+        // Once the axes are ready their captured endpoints are what the
+        // operator reviewed and is about to stage; only the switches keep
+        // accumulating past that point.
+        if (!existing || !axesStillCapturing) {
           return
         }
 
@@ -1832,7 +1864,8 @@ export function App() {
         }
       }
 
-      const completed = RC_CALIBRATION_AXIS_ORDER.every((axisId) => rcCalibrationCaptureComplete(nextCaptures[axisId]))
+      const completed =
+        axesStillCapturing && RC_CALIBRATION_AXIS_ORDER.every((axisId) => rcCalibrationCaptureComplete(nextCaptures[axisId]))
       if (completed) {
         return {
           ...current,
@@ -2399,7 +2432,7 @@ export function App() {
     vtxMaxPowerParameter,
     vtxOptionsParameter
   } = useVtxCatalog(snapshot)
-  const receiverSupportCatalog = useReceiverSupportCatalog(snapshot)
+  const receiverSupportCatalog = useReceiverSupportCatalog(snapshot, editedValues)
   const {
     batteryMonitorParameter,
     batteryCapacityParameter,
@@ -4411,6 +4444,9 @@ export function App() {
   const receiverHasPendingReview =
     receiverWorkflowDraftCount + receiverWorkflowInvalidCount + receiverAdvancedDraftCount + receiverAdvancedInvalidCount > 0
   const receiverTasks = useReceiverTasks({
+    // Receiver -> Functions task card counts (RCn_OPTION assignment).
+    rcFunctionAssignedCount: receiverSupportCatalog.rcFunctionAssigned,
+    rcFunctionConflictCount: receiverSupportCatalog.rcFunctionConflicts.length,
     snapshot,
     rcRangeExercise,
     rcCalibrationSession,

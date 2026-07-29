@@ -51,11 +51,22 @@ export function BoardOrientationDiagram({ visual, testId }: BoardOrientationDiag
             {/* Top face — the component side, with the forward arrow. */}
             <div className="board-orientation-diagram__face board-orientation-diagram__face--top">
               <div className="board-orientation-diagram__arrow" aria-hidden="true" />
+              {/* Body axes. X forward / Y right are the frame ArduPilot's roll
+               *  and pitch are defined about, so naming them makes the arrow
+               *  mean something specific rather than just "this way up". */}
+              <div className="board-orientation-diagram__axes" aria-hidden="true">
+                <span className="board-orientation-diagram__axis board-orientation-diagram__axis--x">X</span>
+                <span className="board-orientation-diagram__axis board-orientation-diagram__axis--y">Y</span>
+              </div>
               <div className="board-orientation-diagram__imu" aria-hidden="true" />
               <div className="board-orientation-diagram__usb" aria-hidden="true" />
             </div>
-            {/* Bottom face — a distinct colour so an upside-down mount is obvious. */}
-            <div className="board-orientation-diagram__face board-orientation-diagram__face--bottom" aria-hidden="true" />
+            {/* Bottom face — a distinct colour AND an explicit label, so an
+             *  upside-down mount is unmistakable even in a still screenshot
+             *  where the colour alone could read as a lighting effect. */}
+            <div className="board-orientation-diagram__face board-orientation-diagram__face--bottom" aria-hidden="true">
+              <span className="board-orientation-diagram__bottom-label">BOTTOM</span>
+            </div>
           </div>
         </div>
       </div>

@@ -11,6 +11,12 @@ import type { ConfiguratorSnapshot, ParameterState } from '@arduconfig/ardupilot
 
 import { RECEIVER_SUPPORT_PARAM_IDS } from '../param-groups'
 import { selectViewCatalog } from '../selectors/view-catalog'
+import {
+  buildRcFunctionRows,
+  countAssignedRcFunctions,
+  rcFunctionConflicts as deriveRcFunctionConflicts,
+  type RcFunctionRow
+} from '../view-models/rc-functions'
 
 export interface UseReceiverSupportCatalogResult {
   receiverSupportParameterById: Map<string, ParameterState>
@@ -20,6 +26,11 @@ export interface UseReceiverSupportCatalogResult {
   rssiChannelLowParameter: ParameterState | undefined
   rssiChannelHighParameter: ParameterState | undefined
   rcOptionsParameter: ParameterState | undefined
+  /** Receiver -> Functions tab: one row per AUX channel (RCn_OPTION), with the
+   *  live PWM and any duplicate-assignment conflict already resolved. */
+  rcFunctionRows: RcFunctionRow[]
+  rcFunctionAssigned: number
+  rcFunctionConflicts: RcFunctionRow[]
 }
 
 /**
@@ -27,7 +38,10 @@ export interface UseReceiverSupportCatalogResult {
  * exposes the 6 named parameters the Receiver workbench renders inline.
  * Output values are byte-identical to the App.tsx originals.
  */
-export function useReceiverSupportCatalog(snapshot: ConfiguratorSnapshot): UseReceiverSupportCatalogResult {
+export function useReceiverSupportCatalog(
+  snapshot: ConfiguratorSnapshot,
+  editedValues: Record<string, string> = {}
+): UseReceiverSupportCatalogResult {
   const { byId: receiverSupportParameterById } = useMemo(
     () => selectViewCatalog(snapshot.parameters, RECEIVER_SUPPORT_PARAM_IDS),
     [snapshot.parameters]
@@ -39,6 +53,9 @@ export function useReceiverSupportCatalog(snapshot: ConfiguratorSnapshot): UseRe
   const rssiChannelLowParameter = receiverSupportParameterById.get('RSSI_CHAN_LOW')
   const rssiChannelHighParameter = receiverSupportParameterById.get('RSSI_CHAN_HIGH')
   const rcOptionsParameter = receiverSupportParameterById.get('RC_OPTIONS')
+  const rcFunctionRows = useMemo(() => buildRcFunctionRows(snapshot, editedValues), [snapshot, editedValues])
+  const rcFunctionAssigned = countAssignedRcFunctions(rcFunctionRows)
+  const rcFunctionConflicts = deriveRcFunctionConflicts(rcFunctionRows)
 
   return {
     receiverSupportParameterById,
@@ -47,6 +64,9 @@ export function useReceiverSupportCatalog(snapshot: ConfiguratorSnapshot): UseRe
     rssiChannelParameter,
     rssiChannelLowParameter,
     rssiChannelHighParameter,
-    rcOptionsParameter
+    rcOptionsParameter,
+    rcFunctionRows,
+    rcFunctionAssigned,
+    rcFunctionConflicts
   }
 }

@@ -258,6 +258,23 @@ export interface AttitudeTelemetryState {
   lastSeenAtMs?: number
 }
 
+/**
+ * GPS receiver state from GPS_RAW_INT — "is a module actually talking?", which
+ * is a different question from "do we have a position". A GPS with swapped
+ * TX/RX (or landed on I2C pins) never produces this at all, while a healthy
+ * GPS indoors produces it continuously with fixType 0/1 and few satellites.
+ * Reporting only the position state conflated the two and showed a
+ * never-connected GPS as "configured".
+ */
+export interface GpsReceiverState {
+  /** True once any GPS_RAW_INT has arrived — the module is talking. */
+  detected: boolean
+  /** MAV_GPS_FIX_TYPE: 0 no GPS, 1 no fix, 2 = 2D, 3 = 3D, 4+ augmented. */
+  fixType?: number
+  satellitesVisible?: number
+  lastSeenAtMs?: number
+}
+
 export interface GlobalPositionTelemetryState {
   verified: boolean
   latitudeDeg?: number
@@ -304,6 +321,7 @@ export interface LiveVerificationState {
    *  (TCAL) live readout. undefined until a reading arrives. */
   imuTemperatureC?: number
   globalPosition: GlobalPositionTelemetryState
+  gpsReceiver: GpsReceiverState
   baroSensor: BaroSensorState
   /** 3D gyro present/health from SYS_STATUS. */
   gyroSensor: SensorBitState
