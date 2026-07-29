@@ -27,6 +27,11 @@ html_title = 'ArduConfigurator Wiki'
 html_show_copyright = False
 html_static_path = ['_static']
 html_css_files = ['custom.css']
+# Loaded as an external file rather than an inline <script>: the wiki is served
+# from the same origin as the app, so the app's CSP (script-src 'self') applies
+# here and blocks inline execution. The script early-returns on pages without
+# the search elements.
+html_js_files = ['parameter-search.js']
 
 # Served under arduconfigurator.com/wiki. Sphinx emits relative asset/link URLs,
 # so the build works unchanged under that subpath; html_baseurl only sets the
