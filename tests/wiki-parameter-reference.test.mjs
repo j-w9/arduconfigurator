@@ -74,6 +74,20 @@ test('every indexed parameter is reachable: its page exists and declares its anc
   assert.deepEqual(broken.slice(0, 5), [], `${broken.length} unreachable parameter(s)`)
 })
 
+test('generated pages carry no directive that a theme renders as an error block', () => {
+  // Furo builds its own "On this page" sidebar and REJECTS a `.. contents::`
+  // directive by rendering a red ERROR block into the page body. sphinx-build
+  // reports that as neither an error nor a warning, so a clean build log said
+  // nothing while all 387 pages shipped the banner. Asserting on the source is
+  // the cheap guard; the expensive one (scanning built HTML for
+  // docutils system-message nodes) needs a full Sphinx build.
+  generate()
+  const offenders = readdirSync(PARAMS_DIR)
+    .filter((name) => name.startsWith('group-') && name.endsWith('.rst'))
+    .filter((name) => readFileSync(path.join(PARAMS_DIR, name), 'utf8').includes('.. contents::'))
+  assert.deepEqual(offenders.slice(0, 3), [], `${offenders.length} page(s) still use .. contents::`)
+})
+
 test('page titles escape the trailing underscore every ArduPilot family name has', () => {
   // An unescaped trailing underscore is RST hyperlink-reference syntax: it
   // produced ~290 "Unknown target name" build errors and a mangled heading.

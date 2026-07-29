@@ -222,11 +222,12 @@ def generate(source: str, vehicle: str, firmware: str) -> None:
             f"{len(params)} parameters in the ``{group}`` family "
             f"({vehicle} {firmware}).",
             "",
-            ".. contents::",
-            "   :local:",
-            "   :depth: 1",
-            "",
         ]
+        # NO ".. contents::" here. Furo builds its own "On this page" sidebar
+        # from the headings and rejects the directive by rendering a red ERROR
+        # block INTO the page — which sphinx-build reports as neither an error
+        # nor a warning, so a clean build log said nothing while all 387 pages
+        # carried the banner.
         for name in sorted(params):
             meta = params[name]
             if not isinstance(meta, dict):
