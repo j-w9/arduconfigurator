@@ -2,3 +2,45 @@
    Keep this light — the goal is to match the ArduPilot wiki's familiar look. */
 .wy-side-nav-search { background-color: #1f2a37; }
 .wy-nav-top { background-color: #1f2a37; }
+
+/* --- Parameter search ---------------------------------------------------
+   Client-side filter over a prebuilt name index. Sized for a phone first:
+   the upstream single-page parameter list is what this replaces. */
+.param-search input[type='search'] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  font-size: 16px; /* >=16px stops iOS Safari zooming the page on focus */
+  border-radius: 8px;
+  border: 1px solid var(--color-background-border, #ccc);
+  background: var(--color-background-primary, #fff);
+  color: var(--color-foreground-primary, #111);
+}
+
+.param-search__status {
+  margin: 8px 0 4px;
+  font-size: 0.9em;
+  color: var(--color-foreground-secondary, #666);
+}
+
+.param-search__results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.param-search__results li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-background-border, #eee);
+}
+
+.param-search__results a {
+  font-family: var(--font-stack--monospace, monospace);
+  font-weight: 600;
+}
+
+.param-search__meta {
+  display: block;
+  font-size: 0.85em;
+  color: var(--color-foreground-secondary, #666);
+}
