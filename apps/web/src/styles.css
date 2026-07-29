@@ -15863,3 +15863,35 @@ button.mavlink-inspector__sent-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Pending-import prompt. Sits where the auto-staged diff used to appear, so the
+   "stage all" action is exactly where an operator's eye already goes after
+   choosing a file. */
+.parameter-import-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--warning) 55%, transparent);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+
+.parameter-import-prompt strong {
+  display: block;
+}
+
+.parameter-import-prompt small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+.parameter-import-prompt__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

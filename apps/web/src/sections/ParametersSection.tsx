@@ -9,6 +9,7 @@ import { parameterAlias } from '@arduconfig/ardupilot-core'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterDraftGroup, ParameterDraftSummary, ParameterImportCategory, ParameterState } from '@arduconfig/ardupilot-core'
 import type { NormalizedFirmwareMetadataBundle } from '@arduconfig/param-metadata'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+import type { PendingParameterImport } from '../hooks/use-parameter-backup-io'
 
 import {
   formatParameterDelta,
@@ -87,6 +88,10 @@ export interface ParametersSectionProps {
   nonDefaultParamIds: ReadonlySet<string> | null
   /** "Show only changed" — restrict the table (and export) to non-default params. */
   showOnlyNonDefault: boolean
+  /** A backup that has been read but NOT staged. */
+  pendingParameterImport: PendingParameterImport | undefined
+  onStagePendingParameterImport: () => void
+  onDismissPendingParameterImport: () => void
   /** Params verified-written in the last few seconds — briefly flagged green. */
   recentlyWrittenParamIds: ReadonlySet<string>
   onToggleShowOnlyNonDefault: () => void
@@ -142,6 +147,9 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     onRequestReboot: handleRequestReboot,
     nonDefaultParamIds,
     showOnlyNonDefault,
+    pendingParameterImport,
+    onStagePendingParameterImport,
+    onDismissPendingParameterImport,
     recentlyWrittenParamIds,
     onToggleShowOnlyNonDefault: handleToggleShowOnlyNonDefault,
     fetchDefaultsBusy
@@ -516,6 +524,44 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
 	              )}
 	            </div>
 	          ) : null}
+
+          {/* An import used to stage every differing value the moment the file
+            * was read, turning "let me look at this backup" into a pending write
+            * of hundreds of parameters. It is held unstaged now, and this is the
+            * prominent way to take it — the operator can also stage individual
+            * rows from the source fields instead. */}
+          {pendingParameterImport ? (
+            <div className="parameter-import-prompt" data-testid="parameter-import-prompt" role="status">
+              <div>
+                <strong>
+                  {pendingParameterImport.changedCount} value
+                  {pendingParameterImport.changedCount === 1 ? '' : 's'} read from{' '}
+                  {pendingParameterImport.fileName}
+                </strong>
+                <small>Nothing is staged yet. Staging only queues the writes — you still review and Apply All.</small>
+              </div>
+              <div className="parameter-import-prompt__actions">
+                <button
+                  type="button"
+                  data-testid="parameter-import-stage-all"
+                  style={buttonStyle('primary')}
+                  onClick={onStagePendingParameterImport}
+                  disabled={busyAction !== undefined || pendingParameterImport.changedCount === 0}
+                >
+                  Stage all ({pendingParameterImport.changedCount})
+                </button>
+                <button
+                  type="button"
+                  data-testid="parameter-import-dismiss"
+                  style={buttonStyle()}
+                  onClick={onDismissPendingParameterImport}
+                  disabled={busyAction !== undefined}
+                >
+                  Discard import
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {parameterDraftSummary.stagedCategories.length > 0 ? (
             <small className="parameter-review__hint">

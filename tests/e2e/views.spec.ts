@@ -372,6 +372,37 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(page.getByTestId('parameter-detail-select-GPS_TYPE')).toHaveValue('5')
   })
 
+  test('importing a backup stages nothing until Stage all is pressed', async ({ page }) => {
+    // An import used to stage every differing value the instant the file was
+    // read, turning "let me look at this backup" into a pending write of
+    // hundreds of parameters.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+    await expectParameterSyncComplete(page)
+
+    // A Mission Planner .parm file — one differing value. Simpler to hand-write
+    // than the app's own JSON schema, and it exercises the same import path.
+    // The testid is the visible button; the file input is the hidden sibling.
+    await page.locator('input[aria-label="Import parameter backup file"]').setInputFiles({
+      name: 'e2e-backup.parm',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('BATT_LOW_VOLT,13.5\n')
+    })
+
+    // Read, but NOT staged.
+    const prompt = page.getByTestId('parameter-import-prompt')
+    await expect(prompt).toBeVisible()
+    await expect(prompt).toContainText('e2e-backup.parm')
+    await expect(page.getByRole('button', { name: /^Apply All \(0\)/ })).toBeVisible()
+
+    // Stage all is the explicit, obvious action.
+    await page.getByTestId('parameter-import-stage-all').click()
+    await expect(page.getByRole('button', { name: /^Apply All \(1\)/ })).toBeVisible()
+    await expect(prompt).toHaveCount(0)
+  })
+
   test('dropping a category drops every staged row in it', async ({ page }) => {
     // The review list is grouped by category, so a category is the unit an
     // operator thinks in when abandoning part of a change set. Before this the
