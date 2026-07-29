@@ -43,6 +43,26 @@ SOURCES = [
 ]
 
 
+SEARCH_MARKUP = [
+    ".. raw:: html",
+    "",
+    '   <div class="param-search param-search--sticky">',
+    '     <input',
+    '       id="param-search-input"',
+    '       type="search"',
+    '       placeholder="Search all ArduCopter 4.7 parameters…"',
+    '       autocomplete="off"',
+    '       autocapitalize="off"',
+    '       spellcheck="false"',
+    '       aria-label="Search parameters"',
+    "     />",
+    '     <p id="param-search-status" class="param-search__status"></p>',
+    '     <ol id="param-search-results" class="param-search__results"></ol>',
+    "   </div>",
+    "",
+]
+
+
 def rst_escape(text: str) -> str:
     """Neutralise the inline markup characters that appear in upstream prose.
 
@@ -110,11 +130,13 @@ def render_values(values) -> list[str]:
         except ValueError:
             return (1, 0.0)
 
-    lines = ["   .. list-table::", "      :header-rows: 1", "      :widths: 20 80", "",
-             "      * - Value", "        - Meaning"]
+    # NOT indented: a leading indent made docutils treat the whole table as a
+    # blockquote, so every Values/Bitmask table rendered inset and grey.
+    lines = [".. list-table::", "   :header-rows: 1", "   :widths: 20 80", "",
+             "   * - Value", "     - Meaning"]
     for key, label in sorted(pairs, key=sort_key):
-        lines.append(f"      * - ``{rst_escape(clean(key))}``")
-        lines.append(f"        - {rst_escape(clean(label))}")
+        lines.append(f"   * - ``{rst_escape(clean(key))}``")
+        lines.append(f"     - {rst_escape(clean(label))}")
     lines.append("")
     return lines
 
@@ -180,12 +202,21 @@ def render_parameter(name: str, meta: dict) -> tuple[list[str], dict]:
         lines.append("")
         lines.extend(render_values(values))
 
+    # Enough metadata to answer the question in the results list itself. Raw
+    # this is ~900 KB, but it gzips to ~114 KB and Cloudflare compresses on the
+    # wire, so the cost of not needing a page load is small.
     index_entry = {
         "n": name,
         "d": display,
         "u": clean(units) if units else "",
         "r": bool(meta.get("RebootRequired")),
+        "x": clean(meta.get("Description", "")),
+        "lv": clean(user) if user else "",
     }
+    if isinstance(rng, dict) and ("low" in rng or "high" in rng):
+        index_entry["rg"] = f"{clean(rng.get('low', '?'))} to {clean(rng.get('high', '?'))}"
+    if meta.get("Values") or meta.get("Bitmask"):
+        index_entry["opt"] = True
     return lines, index_entry
 
 
@@ -235,9 +266,11 @@ def generate(source: str, vehicle: str, firmware: str) -> None:
             title,
             "=" * len(title),
             "",
-            f"{len(params)} parameters in the ``{group}`` family "
-            f"({vehicle} {firmware}).",
+            f"{len(params)} parameters in the ``{group}`` family. "
+            f"**{vehicle} {firmware} only** — other vehicles share many of these "
+            "names but not always the same ranges or meanings.",
             "",
+            *SEARCH_MARKUP,
         ]
         # NO ".. contents::" here. Furo builds its own "On this page" sidebar
         # from the headings and rejects the directive by rendering a red ERROR
@@ -294,9 +327,10 @@ def generate(source: str, vehicle: str, firmware: str) -> None:
             "=" * len(title),
             "",
             f"{len(entries)} parameter families beginning with {letter} "
-            f"({letter_total} parameters). "
-            ":doc:`Back to the parameter search <index>`.",
+            f"({letter_total} parameters). **{vehicle} {firmware} only.** "
+            ":doc:`Back to the parameter reference <index>`.",
             "",
+            *SEARCH_MARKUP,
         ]
         lines.append(
             " · ".join(
@@ -318,22 +352,13 @@ def generate(source: str, vehicle: str, firmware: str) -> None:
         f"Every {vehicle} {firmware} parameter — **{total}** of them, across "
         f"{len(group_rows)} families. Start typing to find one.",
         "",
-        ".. raw:: html",
+        ".. warning::",
         "",
-        '   <div class="param-search">',
-        '     <input',
-        '       id="param-search-input"',
-        '       type="search"',
-        '       placeholder="e.g. BATT_ or arming or gyro rate"',
-        '       autocomplete="off"',
-        '       autocapitalize="off"',
-        '       spellcheck="false"',
-        '       aria-label="Search parameters"',
-        '     />',
-        '     <p id="param-search-status" class="param-search__status">Loading parameter index…</p>',
-        '     <ol id="param-search-results" class="param-search__results"></ol>',
-        "   </div>",
+        f"   These are **{vehicle} {firmware}** parameters only. Plane, Rover and Sub",
+        "   share many of the same names, but not always the same ranges, defaults or",
+        "   value meanings — do not read this page for another vehicle.",
         "",
+        *SEARCH_MARKUP,
         "Browse by family",
         "----------------",
         "",

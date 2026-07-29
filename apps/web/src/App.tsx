@@ -920,6 +920,36 @@ export function App() {
   // hook) so the export can honour the same set.
   const [nonDefaultParamIds, setNonDefaultParamIds] = useState<ReadonlySet<string> | null>(null)
   const [showOnlyNonDefault, setShowOnlyNonDefault] = useState(false)
+  // Params written successfully in the last few seconds. Purely a visual
+  // confirmation: a staged row reads yellow, and on a verified write it turns
+  // green briefly before settling back. Without this there was no visible
+  // difference between "I typed a value" and "the controller took it" — the
+  // draft just disappeared.
+  const [recentlyWrittenParamIds, setRecentlyWrittenParamIds] = useState<ReadonlySet<string>>(
+    () => new Set<string>()
+  )
+  const recentlyWrittenTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const markParametersWritten = useCallback((paramIds: string[]) => {
+    if (paramIds.length === 0) {
+      return
+    }
+    setRecentlyWrittenParamIds(new Set(paramIds))
+    if (recentlyWrittenTimerRef.current) {
+      clearTimeout(recentlyWrittenTimerRef.current)
+    }
+    recentlyWrittenTimerRef.current = setTimeout(() => {
+      recentlyWrittenTimerRef.current = undefined
+      setRecentlyWrittenParamIds(new Set<string>())
+    }, 4000)
+  }, [])
+  useEffect(
+    () => () => {
+      if (recentlyWrittenTimerRef.current) {
+        clearTimeout(recentlyWrittenTimerRef.current)
+      }
+    },
+    []
+  )
   const [fetchDefaultsBusy, setFetchDefaultsBusy] = useState(false)
   const {
     handleExportParameterBackup,
@@ -3174,6 +3204,7 @@ export function App() {
         (progress) => setScopedWriteProgress({ completed: progress.completed, total: progress.total, scopeLabel })
       )
       appliedParamIds.push(...result.applied.map((entry) => entry.paramId))
+      markParametersWritten(result.applied.map((entry) => entry.paramId))
       setParameterNotice({
         tone: result.unconfirmed.length > 0 ? 'warning' : 'success',
         text:
@@ -3302,6 +3333,7 @@ export function App() {
         (progress) => setApplyAllProgress({ completed: progress.completed, total: progress.total })
       )
       appliedParamIds.push(...result.applied.map((entry) => entry.paramId))
+      markParametersWritten(result.applied.map((entry) => entry.paramId))
       setParameterNotice({
         tone: result.unconfirmed.length > 0 ? 'warning' : 'success',
         text:
@@ -8638,7 +8670,24 @@ export function App() {
           onRequestReboot={() => void handleGuidedAction('reboot-autopilot')}
           nonDefaultParamIds={nonDefaultParamIds}
           showOnlyNonDefault={showOnlyNonDefault}
-          onToggleShowOnlyNonDefault={() => setShowOnlyNonDefault((previous) => !previous)}
+          // Ticking "show only changed" fetches the firmware defaults it needs,
+          // rather than requiring the operator to press a separate button first.
+          // Fetching defaults was never the goal — it only ever existed to make
+          // this filter possible, so making it a prerequisite step pushed the
+          // app's bookkeeping onto the operator. Already-fetched defaults are
+          // reused; only turning the filter ON triggers a fetch.
+          recentlyWrittenParamIds={recentlyWrittenParamIds}
+          onToggleShowOnlyNonDefault={() => {
+            const enabling = !showOnlyNonDefault
+            if (enabling && !nonDefaultParamIds && !fetchDefaultsBusy) {
+              // handleFetchParamDefaults flips the filter on itself once the
+              // defaults land, so a failed fetch leaves the filter off rather
+              // than on-but-showing-everything.
+              void handleFetchParamDefaults()
+              return
+            }
+            setShowOnlyNonDefault(enabling)
+          }}
           onFetchParamDefaults={handleFetchParamDefaults}
           fetchDefaultsBusy={fetchDefaultsBusy}
         />

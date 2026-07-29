@@ -87,6 +87,8 @@ export interface ParametersSectionProps {
   nonDefaultParamIds: ReadonlySet<string> | null
   /** "Show only changed" — restrict the table (and export) to non-default params. */
   showOnlyNonDefault: boolean
+  /** Params verified-written in the last few seconds — briefly flagged green. */
+  recentlyWrittenParamIds: ReadonlySet<string>
   onToggleShowOnlyNonDefault: () => void
   /** Fetch the packed defaults from the FC to populate nonDefaultParamIds. */
   onFetchParamDefaults: () => void | Promise<void>
@@ -140,8 +142,8 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     onRequestReboot: handleRequestReboot,
     nonDefaultParamIds,
     showOnlyNonDefault,
+    recentlyWrittenParamIds,
     onToggleShowOnlyNonDefault: handleToggleShowOnlyNonDefault,
-    onFetchParamDefaults: handleFetchParamDefaults,
     fetchDefaultsBusy
   } = props
 
@@ -299,22 +301,18 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
           >
             Refresh
           </button>
-          <button
-            type="button"
-            data-testid="parameter-fetch-defaults-button"
-            style={buttonStyle()}
-            onClick={() => void handleFetchParamDefaults()}
-            disabled={fetchDefaultsBusy || refreshDisabled}
-            title="Fetch firmware defaults from the FC (ArduPilot 4.5+) so 'Show only changed' can filter to non-default params."
-          >
-            {fetchDefaultsBusy ? 'Fetching…' : nonDefaultParamIds ? 'Refresh defaults' : 'Fetch defaults'}
-          </button>
+          {/* The separate Fetch/Refresh-defaults button is gone. Fetching
+            * defaults was never a goal in itself — it existed only so this
+            * filter could work, so asking for it as a prerequisite step made the
+            * operator do the app's bookkeeping. Ticking the box now fetches on
+            * demand (see handleToggleShowOnlyNonDefault) and the label reports
+            * progress inline. */}
           <label
             className="parameter-show-changed"
             title={
               nonDefaultParamIds
                 ? 'Show only params that differ from their firmware default.'
-                : 'Fetch defaults first to enable this filter.'
+                : 'Show only params that differ from their firmware default. Fetches the defaults from the FC on first use (needs ArduPilot 4.5+).'
             }
           >
             <input
@@ -322,9 +320,13 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
               data-testid="parameter-show-changed-toggle"
               checked={showOnlyNonDefault}
               onChange={handleToggleShowOnlyNonDefault}
-              disabled={!nonDefaultParamIds}
+              disabled={fetchDefaultsBusy || refreshDisabled}
             />
-            <span>Show only changed{nonDefaultParamIds ? ` (${nonDefaultParamIds.size})` : ''}</span>
+            <span>
+              {fetchDefaultsBusy
+                ? 'Fetching defaults…'
+                : `Show only changed${nonDefaultParamIds ? ` (${nonDefaultParamIds.size})` : ''}`}
+            </span>
           </label>
         </div>
 
@@ -777,12 +779,19 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             // parameter table shows real descriptions/units/categories for the
             // whole tree, not just curated params.
             const definition = metadataCatalog.parameters[parameter.id] ?? parameter.definition
+            // Row state reads as colour rather than as a button tint: yellow
+            // staged (typed, not written), green just-written (the controller
+            // confirmed it), red invalid. A staged row used to be a barely
+            // perceptible gradient, so "have my edits gone in?" was not
+            // answerable at a glance.
             const rowClassName =
               draft?.status === 'staged'
                 ? 'parameter-row parameter-row--staged'
                 : draft?.status === 'invalid'
                   ? 'parameter-row parameter-row--invalid'
-                  : 'parameter-row'
+                  : recentlyWrittenParamIds.has(parameter.id)
+                    ? 'parameter-row parameter-row--written'
+                    : 'parameter-row'
 
             const isExpanded = selectedParameterId === parameter.id
             return (

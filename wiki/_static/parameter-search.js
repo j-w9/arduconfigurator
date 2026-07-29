@@ -44,6 +44,9 @@
     if (name.indexOf(needle) === 0) return 1
     if (name.indexOf(needle) !== -1) return 2
     if (display.indexOf(needle) !== -1) return 3
+    // Descriptions are in the index now, so a prose search finds things a name
+    // search cannot — ranked last so a named parameter always wins.
+    if ((entry.x || '').toLowerCase().indexOf(needle) !== -1) return 4
     return -1
   }
 
@@ -88,8 +91,24 @@
       li.appendChild(link)
       var meta = document.createElement('span')
       meta.className = 'param-search__meta'
-      meta.textContent = entry.d + (entry.u ? ' · ' + entry.u : '') + (entry.r ? ' · reboot required' : '')
+      var facts = [entry.d]
+      if (entry.u) facts.push(entry.u)
+      if (entry.rg) facts.push('range ' + entry.rg)
+      if (entry.lv) facts.push(entry.lv)
+      if (entry.r) facts.push('reboot required')
+      if (entry.opt) facts.push('has value list')
+      meta.textContent = facts.join(' · ')
       li.appendChild(meta)
+
+      // The full upstream description, inline. Answering "what does this do" in
+      // the results list is the point of searching; making the operator open a
+      // page to read one sentence defeats it.
+      if (entry.x) {
+        var desc = document.createElement('span')
+        desc.className = 'param-search__desc'
+        desc.textContent = entry.x
+        li.appendChild(desc)
+      }
       fragment.appendChild(li)
     }
     results.appendChild(fragment)
