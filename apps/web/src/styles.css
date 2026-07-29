@@ -11455,12 +11455,27 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: block;
 }
 
+/* Row state as colour. Previously a staged row was a near-imperceptible fill
+   gradient, so "did my edit go in?" could not be answered at a glance. The left
+   bar carries the signal at any zoom / colour profile; the wash keeps the text
+   readable rather than shouting. Red is reserved for invalid (and, later, for a
+   dropped row). */
 .parameter-row--staged {
-  background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 1));
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+.parameter-row--written {
+  background: color-mix(in srgb, var(--success, #4ade80) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--success, #4ade80);
+  /* Fades out on its own — a permanent green would claim the row is still
+     special long after the write. */
+  transition: background 600ms ease-out, box-shadow 600ms ease-out;
 }
 
 .parameter-row--invalid {
-  background: rgba(53, 23, 23, 0.42);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--danger);
 }
 
 .parameter-row--selected {

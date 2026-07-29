@@ -44,3 +44,28 @@
   font-size: 0.85em;
   color: var(--color-foreground-secondary, #666);
 }
+
+/* Search stays put while results scroll — it is on every parameter page, so it
+   should behave like a persistent tool rather than page content. */
+.param-search--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 8px 0;
+  background: var(--color-background-primary, #fff);
+}
+
+.param-search__desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.85em;
+  line-height: 1.45;
+  color: var(--color-foreground-primary, #222);
+}
+
+/* Empty until a query is typed, so it must not reserve vertical space above
+   the page's real content. */
+.param-search__status:empty {
+  display: none;
+  margin: 0;
+}
