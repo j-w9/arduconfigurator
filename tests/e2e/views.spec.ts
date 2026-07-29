@@ -372,6 +372,34 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(page.getByTestId('parameter-detail-select-GPS_TYPE')).toHaveValue('5')
   })
 
+  test('dropping a category drops every staged row in it', async ({ page }) => {
+    // The review list is grouped by category, so a category is the unit an
+    // operator thinks in when abandoning part of a change set. Before this the
+    // options were one row at a time, or hand-selecting the group's checkboxes
+    // before "Drop selected".
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+
+    // Stage two failsafe params so the group has more than one row.
+    const search = page.getByTestId('parameter-search-input')
+    await search.fill('BATT_LOW_VOLT')
+    await page.locator('input[aria-label="BATT_LOW_VOLT value"]').first().fill('13.5')
+    await search.fill('BATT_CRT_VOLT')
+    await page.locator('input[aria-label="BATT_CRT_VOLT value"]').first().fill('12.9')
+    await search.fill('')
+
+    const dropGroup = page.getByTestId('parameter-diff-drop-group-failsafe')
+    await expect(dropGroup).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Apply All \(2\)/ })).toBeVisible()
+
+    await dropGroup.click()
+    // Both rows gone in one click, and the group header with them.
+    await expect(page.getByRole('button', { name: /^Apply All \(0\)/ })).toBeVisible()
+    await expect(dropGroup).toHaveCount(0)
+  })
+
   test('clicking the row value editor also reveals the metadata detail', async ({ page }) => {
     // The editor cell swallows the row click so editing can never COLLAPSE an
     // expanded row (the control would vanish mid-edit). That also meant a click

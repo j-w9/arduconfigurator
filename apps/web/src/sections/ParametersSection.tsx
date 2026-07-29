@@ -244,6 +244,21 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     )
     selectionAnchorRef.current = draftId
   }
+  // Drop every staged row in one category. Also clears those ids from the
+  // checkbox selection, so a subsequent "Drop selected" count doesn't include
+  // rows that are already gone.
+  const handleDropDraftGroup = (draftIds: string[]): void => {
+    draftIds.forEach((draftId) => handleDiscardParameterDraft(draftId))
+    setSelectedDraftIds((current) => {
+      if (current.size === 0) {
+        return current
+      }
+      const next = new Set(current)
+      draftIds.forEach((draftId) => next.delete(draftId))
+      return next.size === current.size ? current : next
+    })
+  }
+
   const handleDropSelectedDrafts = (): void => {
     selectedDraftIds.forEach((draftId) => handleDiscardParameterDraft(draftId))
     setSelectedDraftIds(new Set())
@@ -573,6 +588,23 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                   <header>
                     <strong>{formatCategoryLabel(group.category)}</strong>
                     <span>{group.entries.filter((entry) => entry.status === 'staged').length} staged</span>
+                    {/* Drop a whole category at once. The review is already
+                      * grouped by category, so that is the unit an operator
+                      * thinks in when abandoning part of a change set — the
+                      * alternatives were one row at a time, or checkbox-select
+                      * the group by hand before "Drop selected". */}
+                    <div className="parameter-diff-actions parameter-diff-actions--group">
+                      <button
+                        type="button"
+                        style={buttonStyle()}
+                        data-testid={`parameter-diff-drop-group-${group.category}`}
+                        onClick={() => handleDropDraftGroup(group.entries.map((entry) => entry.id))}
+                        disabled={busyAction !== undefined || group.entries.length === 0}
+                        title={`Drop all ${group.entries.length} staged change(s) in ${formatCategoryLabel(group.category)}.`}
+                      >
+                        Drop group
+                      </button>
+                    </div>
                   </header>
 
                   {group.entries.map((draft) => {

@@ -11114,6 +11114,21 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-size: 12px;
 }
 
+/* A group header carrying an action switches to centre alignment — a button
+   sitting on a text baseline reads as misaligned. The action's margin-left:auto
+   absorbs the free space, so the title and count stay together on the left. */
+.parameter-diff-group header:has(.parameter-diff-actions) {
+  align-items: center;
+}
+
+.parameter-diff-group header .parameter-diff-actions button {
+  text-transform: none;
+  letter-spacing: normal;
+  min-width: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
 .parameter-diff-item {
   display: grid;
   grid-template-columns: minmax(140px, 1fr) minmax(180px, 1fr) minmax(140px, 0.8fr) auto;
