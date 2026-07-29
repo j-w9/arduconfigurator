@@ -1970,6 +1970,39 @@ test.describe('Receiver stick-driven craft', () => {
   })
 })
 
+test.describe('Receiver functions tab', () => {
+  test('assigns an auxiliary function to an AUX channel and flags a duplicate', async ({ page }) => {
+    // Before this tab the only RCn_OPTION reachable from the app was the Arm
+    // switch; every other aux function meant hand-editing raw parameters, which
+    // needs both the parameter name and the numeric function id.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Functions' }).click()
+
+    const panel = page.getByTestId('receiver-functions-panel')
+    await expect(panel).toBeVisible()
+    // Stick axes are not aux channels — the list starts at CH5.
+    await expect(page.getByTestId('receiver-function-5')).toBeVisible()
+    await expect(page.getByTestId('receiver-function-4')).toHaveCount(0)
+
+    // Assign RTL (4) to CH7 — staged as a draft on RC7_OPTION.
+    const ch7 = page.getByTestId('receiver-function-7').locator('select')
+    await ch7.selectOption('4')
+    await expect(ch7).toHaveValue('4')
+
+    // The same function on a second channel is undefined behaviour in
+    // ArduPilot, so it must be called out rather than silently accepted.
+    await page.getByTestId('receiver-function-8').locator('select').selectOption('4')
+    await expect(page.getByTestId('receiver-functions-conflict')).toContainText('CH7')
+    await expect(page.getByTestId('receiver-functions-conflict')).toContainText('CH8')
+
+    // Clearing one side resolves it.
+    await page.getByTestId('receiver-function-8').locator('select').selectOption('0')
+    await expect(page.getByTestId('receiver-functions-conflict')).toHaveCount(0)
+  })
+})
+
 test.describe('Receiver stick-range bar', () => {
   test('stick-range exercise cards show a live channel-movement bar', async ({ page }) => {
     await page.goto('/')

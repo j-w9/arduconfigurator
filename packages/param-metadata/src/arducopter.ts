@@ -1,5 +1,6 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS, LOG_DISARMED_OPTIONS } from './shared-enums.js'
+import { ARDUCOPTER_RC_OPTION_LABELS } from './arducopter-rc-options.generated.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
 import { buildNetworkParameterDefinitions } from './shared-network.js'
 import { buildRcLogicParameterDefinitions } from './shared-rc-logic.js'
@@ -554,6 +555,34 @@ function buildSerialPortParameterDefinitions(maxPortNumber: number): FirmwareMet
 // bounds even on high-output boards. The runtime filters channels by what
 // the FC actually reports (see deriveServoOutputAssignments), so this is
 // pure metadata coverage — no behavior change for low-output boards.
+// RCn_OPTION for the AUX channels — the auxiliary-function assignment an
+// operator actually reaches for when wiring up switches (arm, RTL, gripper,
+// camera trigger...). Only RC5..RC16 get one here: 1-4 are the primary stick
+// axes, where an aux function does not belong.
+//
+// The option list is generated from ArduPilot's own @Values annotations rather
+// than curated, because a hand-picked subset is exactly how an operator ends up
+// unable to find the function they need.
+function buildRcOptionParameterDefinitions(
+  minChannelNumber: number,
+  maxChannelNumber: number
+): FirmwareMetadataBundle['parameters'] {
+  const definitions: FirmwareMetadataBundle['parameters'] = {}
+
+  for (let channelNumber = minChannelNumber; channelNumber <= maxChannelNumber; channelNumber += 1) {
+    definitions[`RC${channelNumber}_OPTION`] = {
+      id: `RC${channelNumber}_OPTION`,
+      label: `CH${channelNumber} Function`,
+      description: `Auxiliary function assigned to RC channel ${channelNumber}. "Do Nothing" leaves the channel unused by the flight controller.`,
+      category: 'receiver',
+      notes: ['Assigning the same function to two channels is undefined — clear the old channel first.'],
+      options: enumOptions(ARDUCOPTER_RC_OPTION_LABELS)
+    }
+  }
+
+  return definitions
+}
+
 function buildServoChannelParameterDefinitions(maxChannelNumber: number): FirmwareMetadataBundle['parameters'] {
   const definitions: FirmwareMetadataBundle['parameters'] = {}
 
@@ -1367,6 +1396,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       maximum: 1000,
       step: 1
     },
+    ...buildRcOptionParameterDefinitions(5, 16),
     ...buildSerialPortParameterDefinitions(8),
     // AP_SerialManager transparent USB↔UART passthru bridge (SERIAL_PASS1/PASS2/
     // PASSTIMO). Setting both PASS1 (source, default 0=USB console) and PASS2

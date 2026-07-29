@@ -221,7 +221,11 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     rssiChannelParameter,
     rssiChannelLowParameter,
     rssiChannelHighParameter,
-    rcOptionsParameter
+    rcOptionsParameter,
+    receiverSupportParameterById,
+    rcFunctionRows,
+    rcFunctionAssigned,
+    rcFunctionConflicts
   } = receiverSupportCatalog
 
   const {
@@ -1011,6 +1015,64 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                         </div>
                       </div>
                     ) : null}
+                  </div>
+                ) : null}
+
+                {activeReceiverTaskId === 'functions' ? (
+                  <div className="receiver-task-panel receiver-task-panel--stack" data-testid="receiver-functions-panel">
+                    <div className="scoped-review-card scoped-review-card--compact">
+                      <div className="switch-exercise-card__header">
+                        <div>
+                          <strong>Auxiliary functions</strong>
+                          <p>
+                            What each AUX channel does (RCn_OPTION). Live PWM is shown beside each channel so you can flick a
+                            switch and see which row moves. Channels 1–4 are the stick axes and are not listed.
+                          </p>
+                        </div>
+                        <StatusBadge tone={rcFunctionConflicts.length > 0 ? 'danger' : rcFunctionAssigned > 0 ? 'success' : 'neutral'}>
+                          {rcFunctionConflicts.length > 0
+                            ? `${rcFunctionConflicts.length} conflict${rcFunctionConflicts.length === 1 ? '' : 's'}`
+                            : `${rcFunctionAssigned} assigned`}
+                        </StatusBadge>
+                      </div>
+
+                      {rcFunctionConflicts.length > 0 ? (
+                        <p className="switch-exercise-warning" data-testid="receiver-functions-conflict">
+                          ⚠ The same function is on more than one channel
+                          ({rcFunctionConflicts.map((row) => `CH${row.channelNumber}`).join(', ')}). ArduPilot does not define
+                          which one wins — clear the channel you do not want.
+                        </p>
+                      ) : null}
+
+                      <div className="receiver-functions-grid">
+                        {rcFunctionRows.map((row) => {
+                          const parameter = receiverSupportParameterById.get(row.paramId)
+                          if (!parameter) {
+                            return null
+                          }
+                          return (
+                            <div
+                              key={row.paramId}
+                              className={`receiver-functions-row${row.duplicateChannels.length > 0 ? ' receiver-functions-row--conflict' : ''}`}
+                              data-testid={`receiver-function-${row.channelNumber}`}
+                            >
+                              <span className="receiver-functions-row__channel">
+                                <strong>CH{row.channelNumber}</strong>
+                                <small>{row.pwm !== undefined ? `${row.pwm} µs` : 'no signal'}</small>
+                              </span>
+                              <ScopedSelectField
+                                parameter={parameter}
+                                liveValue={parameter.value}
+                                editedValues={editedValues}
+                                onChange={(paramId, value) => setDraft(paramId, value)}
+                                draftStatusById={parameterDraftById}
+                                compact
+                              />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
                   </div>
                 ) : null}
 

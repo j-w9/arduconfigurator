@@ -48,7 +48,20 @@ export const POWER_REVIEW_PARAM_IDS = [
   'BATT_ARM_VOLT',
   'BATT_ARM_MAH'
 ] as const
-export const RECEIVER_SUPPORT_PARAM_IDS = ['FLTMODE_CH', 'MODE_CH', 'RSSI_TYPE', 'RSSI_CHANNEL', 'RSSI_CHAN_LOW', 'RSSI_CHAN_HIGH', 'RC_OPTIONS'] as const
+// RCn_OPTION for the AUX channels (5..16) backs the Receiver -> Functions tab.
+// Generated rather than listed so the range stays in one place.
+const RC_AUX_OPTION_PARAM_IDS = Array.from({ length: 12 }, (_, index) => `RC${index + 5}_OPTION`)
+
+export const RECEIVER_SUPPORT_PARAM_IDS = [
+  'FLTMODE_CH',
+  'MODE_CH',
+  'RSSI_TYPE',
+  'RSSI_CHANNEL',
+  'RSSI_CHAN_LOW',
+  'RSSI_CHAN_HIGH',
+  'RC_OPTIONS',
+  ...RC_AUX_OPTION_PARAM_IDS
+] as const
 
 // AP_Relay per-instance params (RELAY1_FUNCTION/_PIN/_DEFAULT/_INVERTED ..
 // RELAYn_*). Dynamic per-instance, so matched by shape rather than a static

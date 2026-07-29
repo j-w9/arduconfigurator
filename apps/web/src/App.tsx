@@ -2432,7 +2432,7 @@ export function App() {
     vtxMaxPowerParameter,
     vtxOptionsParameter
   } = useVtxCatalog(snapshot)
-  const receiverSupportCatalog = useReceiverSupportCatalog(snapshot)
+  const receiverSupportCatalog = useReceiverSupportCatalog(snapshot, editedValues)
   const {
     batteryMonitorParameter,
     batteryCapacityParameter,
@@ -4444,6 +4444,9 @@ export function App() {
   const receiverHasPendingReview =
     receiverWorkflowDraftCount + receiverWorkflowInvalidCount + receiverAdvancedDraftCount + receiverAdvancedInvalidCount > 0
   const receiverTasks = useReceiverTasks({
+    // Receiver -> Functions task card counts (RCn_OPTION assignment).
+    rcFunctionAssignedCount: receiverSupportCatalog.rcFunctionAssigned,
+    rcFunctionConflictCount: receiverSupportCatalog.rcFunctionConflicts.length,
     snapshot,
     rcRangeExercise,
     rcCalibrationSession,
