@@ -175,3 +175,60 @@ test('createParameterBackup leaves opt-in categories out of the exported backup'
   assert.ok(ids(lean).includes('ATC_RAT_RLL_P'), 'tuning kept')
   assert.equal(lean.parameterCount, 2)
 })
+
+// Cross-check the calibration classifier against ArduPilot's OWN metadata.
+// Upstream marks per-unit calibration data with a `Calibration` flag in
+// apm.pdef.json, so that flag is the authority on what "exclude calibrations"
+// must strip — not our recollection of which families exist.
+//
+// This audit is how the gap was found: the hand-written pattern list matched
+// only 63 of 192 flagged parameters. The entire thermal-calibration family
+// (INS_TCALn_*) and every IMU instance 4/5 leaked through, so a cross-board
+// restore with "exclude calibrations" ticked still carried 129 per-unit values
+// onto a different airframe — silently, since nothing reports what a filter
+// failed to catch.
+test('the calibration classifier covers every parameter ArduPilot flags as calibration', async () => {
+  const { readFileSync, existsSync } = await import('node:fs')
+  const { fileURLToPath } = await import('node:url')
+  const path = await import('node:path')
+
+  const pinned = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..',
+    'wiki',
+    'data',
+    'apm.pdef.Copter-4.7.json'
+  )
+  // The wiki's pinned upstream metadata doubles as the reference set here.
+  assert.ok(existsSync(pinned), `missing pinned upstream metadata: ${pinned}`)
+
+  const payload = JSON.parse(readFileSync(pinned, 'utf8'))
+  const flagged = []
+  for (const params of Object.values(payload)) {
+    if (!params || typeof params !== 'object') continue
+    for (const [id, meta] of Object.entries(params)) {
+      if (meta && typeof meta === 'object' && meta.Calibration) flagged.push(id)
+    }
+  }
+  assert.ok(flagged.length > 150, `expected the full flagged set, saw ${flagged.length}`)
+
+  const missed = flagged.filter((id) => parameterImportExclusionCategory(id) !== 'calibration')
+  assert.deepEqual(
+    missed.sort().slice(0, 10),
+    [],
+    `${missed.length} calibration parameter(s) would survive an "exclude calibrations" import`
+  )
+})
+
+test('configuration parameters that merely live in a calibration family are NOT excluded', () => {
+  // The boundary matters in both directions: TCAL_ENABLE turns the thermal
+  // calibration on and is a per-build choice, so stripping it from an import
+  // would silently disable a feature the operator asked for.
+  for (const id of ['INS_TCAL1_ENABLE', 'INS_TCAL_OPTIONS', 'AHRS_ORIENTATION', 'COMPASS_DEV_ID', 'COMPASS_USE']) {
+    assert.notEqual(
+      parameterImportExclusionCategory(id),
+      'calibration',
+      `${id} is configuration, not calibration`
+    )
+  }
+})

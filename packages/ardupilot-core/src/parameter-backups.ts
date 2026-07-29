@@ -10,23 +10,42 @@ const SNAPSHOT_COMPARE_TOLERANCE = 0.0001
  *
  * - `calibration` — sensor offsets/scales re-measured per airframe: compass
  *   offsets/diagonals/off-diagonals/motor-comp/scale, accel & gyro offsets and
- *   accel scale, and the AHRS board-level trims. Does NOT touch compass
- *   identity (COMPASS_DEV_ID, PRIO_ID, USE families) or orientation — those
- *   are configuration, not calibration.
+ *   accel scale, the accel/gyro calibration temperatures, the whole thermal
+ *   calibration (INS_TCALn_*) family, and the AHRS board-level trims. Does NOT
+ *   touch compass identity (COMPASS_DEV_ID, PRIO_ID, USE families) or
+ *   orientation — those are configuration, not calibration.
  * - `stream-rates` — the SRn_* MAVLink telemetry stream-rate group.
  * - `mission` — the MIS_* mission parameters.
  */
 export type ParameterImportCategory = 'calibration' | 'stream-rates' | 'mission'
 
+// Cross-checked against ArduPilot's own `Calibration` metadata flag (see
+// tests/parameter-import-exclusions.test.mjs, which asserts every upstream
+// Calibration-flagged id is matched here). That audit found this list was
+// catching only 63 of 192 such parameters: the entire thermal-calibration
+// family (INS_TCALn_*) and every IMU instance 4/5 leaked through, so an
+// "exclude calibrations" import was still carrying 129 per-unit values onto a
+// different airframe.
+//
+// The INS prefix has two shapes upstream — INS_ACC1_CALTEMP (instances 1-3) and
+// INS4_ACC_CALTEMP (instances 4-5) — hence the `INS\d*_` prefix throughout.
 const CALIBRATION_PATTERNS: readonly RegExp[] = [
   /^COMPASS_OFS\d?_[XYZ]$/, // COMPASS_OFS_X/Y/Z, COMPASS_OFS2_*, COMPASS_OFS3_*
   /^COMPASS_DIA\d?_[XYZ]$/,
   /^COMPASS_ODI\d?_[XYZ]$/,
   /^COMPASS_MOT\d?_[XYZ]$/,
+  /^COMPASS_MOTCT$/, // motor-compensation type is measured with the cal
   /^COMPASS_SCALE\d?$/,
-  /^INS_ACC\d?OFFS_[XYZ]$/, // first instance has no digit (INS_ACCOFFS_*)
-  /^INS_ACC\d?SCAL_[XYZ]$/,
-  /^INS_GYR\d?OFFS_[XYZ]$/,
+  /^INS\d*_ACC\d?OFFS_[XYZ]$/, // first instance has no digit (INS_ACCOFFS_*)
+  /^INS\d*_ACC\d?SCAL_[XYZ]$/,
+  /^INS\d*_GYR\d?OFFS_[XYZ]$/,
+  // Temperature the accel/gyro calibration was taken at.
+  /^INS\d*_(ACC|GYR)\d?_CALTEMP$/,
+  // Thermal calibration (TCAL): per-unit coefficients and the temperature range
+  // they were fitted over. Meaningless — and actively misleading — on any other
+  // physical IMU.
+  /^INS\d*_TCAL\d*_(ACC|GYR)\d_[XYZ]$/,
+  /^INS\d*_TCAL\d*_TM(IN|AX)$/,
   /^AHRS_TRIM_[XYZ]$/
 ]
 const STREAM_RATE_PATTERN = /^SR\d+_/
