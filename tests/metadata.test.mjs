@@ -443,14 +443,28 @@ test('metadata catalog exposes onboard logging parameters under a dedicated logg
   assert.equal(metadata.parameters.LOG_FILE_MB_FREE.unit, 'MB')
   assert.ok(metadata.parameters.LOG_FILE_MB_FREE.maximum >= 1024)
 
-  // The boolean LOG_* knobs reuse the shared Disabled/Enabled option pair
-  for (const id of ['LOG_FILE_DSRMROT', 'LOG_REPLAY', 'LOG_DISARMED']) {
+  // The genuinely boolean LOG_* knobs reuse the shared Disabled/Enabled pair.
+  for (const id of ['LOG_FILE_DSRMROT', 'LOG_REPLAY']) {
     const entry = metadata.parameters[id]
     assert.equal(entry.categoryDefinition.id, 'logging')
     assert.equal(entry.options.length, 2)
     assert.equal(entry.options[0].label, 'Disabled')
     assert.equal(entry.options[1].label, 'Enabled')
   }
+
+  // LOG_DISARMED is NOT boolean — AP_Logger.cpp documents four values, and
+  // modelling it as 0/1 hid the two an operator actually reaches for: 2 keeps
+  // disarmed logging without filling the card over USB, and 3 discards the log
+  // if the vehicle never armed. LOG_REPLAY additionally requires LOG_DISARMED
+  // at 1 or 2 to capture the pre-flight data replay needs.
+  const logDisarmed = metadata.parameters.LOG_DISARMED
+  assert.equal(logDisarmed.categoryDefinition.id, 'logging')
+  assert.deepEqual(
+    logDisarmed.options.map((option) => option.value),
+    [0, 1, 2, 3]
+  )
+  assert.equal(logDisarmed.options[2].label, 'Disabled on USB connection')
+  assert.equal(logDisarmed.options[3].label, 'Discard log on reboot if never armed')
 })
 
 test('Log-backend formatting stays user-facing', () => {

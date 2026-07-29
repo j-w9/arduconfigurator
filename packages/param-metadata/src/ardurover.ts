@@ -1,5 +1,5 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
-import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
+import { AHRS_ORIENTATION_OPTIONS, LOG_DISARMED_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
 import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
@@ -490,7 +490,7 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     LOG_BACKEND_TYPE: { id: 'LOG_BACKEND_TYPE', label: 'Log Backend', description: 'Where dataflash logs are written.', category: 'logging', options: enumOptions(ARDUCOPTER_LOG_BACKEND_LABELS) },
     LOG_BITMASK: { id: 'LOG_BITMASK', label: 'Log Bitmask', description: 'Bitmask selecting which message groups are logged.', category: 'logging', minimum: 0, maximum: 65535, step: 1 },
     LOG_FILE_DSRMROT: { id: 'LOG_FILE_DSRMROT', label: 'Rotate Log On Disarm', description: 'Start a new log file each time the rover disarms.', category: 'logging', options: enabledDisabledOptions },
-    LOG_DISARMED: { id: 'LOG_DISARMED', label: 'Log While Disarmed', description: 'Continue logging while the rover is disarmed.', category: 'logging', options: enabledDisabledOptions }
+    LOG_DISARMED: { id: 'LOG_DISARMED', label: 'Log While Disarmed', description: 'Continue logging while the rover is disarmed.', category: 'logging', minimum: 0, maximum: 3, options: LOG_DISARMED_OPTIONS }
   },
   setupSections: [
     {

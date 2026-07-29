@@ -9,6 +9,13 @@ import type {
 import { MAV_CMD, MAV_RESULT } from '@arduconfig/protocol-mavlink'
 
 import {
+  ACCELEROMETER_POSE_ALIGNED_DEG,
+  ACCELEROMETER_POSE_ORDER,
+  attitudeDeltaDegrees,
+  normalizeSignedDegrees,
+  poseErrorDegrees
+} from './accelerometer-pose.js'
+import {
   ACCELEROMETER_CALIBRATION_STEPS,
   GUIDED_ACTION_IDS,
   appendGuidedActionText,
@@ -36,6 +43,14 @@ const DEFAULT_COMPASS_GUIDANCE_TIMEOUT_MS = 5000
 // human-paced) so it only fires when the terminal MAG_CAL_REPORTs were lost,
 // which would otherwise leave the action 'running' and write-block forever.
 const DEFAULT_COMPASS_REPORT_WATCHDOG_MS = 90000
+// Auto-confirm: once the frame is inside the pose's acceptance window it must
+// also HOLD there this long before the posture is recorded. The operator's hand
+// is still on the frame when it first arrives, and sampling mid-settle is
+// exactly how a calibration ends up subtly wrong — this is the "hold still"
+// beat, not a cosmetic delay.
+const DEFAULT_ACCELEROMETER_AUTO_HOLD_MS = 1200
+// How far the frame may drift during that hold and still count as still.
+const ACCELEROMETER_AUTO_STILL_DEG = 3
 
 const ACCELCAL_SUCCESS_VALUE = 16777215
 const ACCELCAL_FAILED_VALUE = 16777216
@@ -91,6 +106,9 @@ export interface GuidedActionServiceOptions {
   accelerometerInitialWarmupMs?: number
   accelerometerStepAdvanceMs?: number
   accelerometerCompletionFallbackMs?: number
+  /** Hold time before an aligned posture auto-confirms. 0 disables
+   *  auto-confirm entirely and restores the click-every-pose flow. */
+  accelerometerAutoHoldMs?: number
   compassGuidanceTimeoutMs?: number
   compassReportWatchdogMs?: number
 }
@@ -118,6 +136,7 @@ export class GuidedActionService {
   private readonly accelerometerInitialWarmupMs: number
   private readonly accelerometerStepAdvanceMs: number
   private readonly accelerometerCompletionFallbackMs: number
+  private readonly accelerometerAutoHoldMs: number
   private readonly compassGuidanceTimeoutMs: number
   private readonly compassReportWatchdogMs: number
 
@@ -125,6 +144,16 @@ export class GuidedActionService {
   private accelerometerCalibration?: AccelerometerCalibrationProgressState
   private accelerometerPromptFallbackTimer?: ReturnType<typeof setTimeout>
   private accelerometerAdvanceTimer?: ReturnType<typeof setTimeout>
+  /** Auto-confirm hold tracker for the posture currently being requested.
+   *  Reset whenever the frame leaves the window, moves, or the step changes. */
+  private accelerometerHold?: {
+    stepIndex: number
+    sinceMs: number
+    rollDeg: number
+    pitchDeg: number
+  }
+  /** Guards against a second auto-confirm racing the first for one posture. */
+  private accelerometerAutoConfirmInFlight = false
   private compassGuidanceTimer?: ReturnType<typeof setTimeout>
   private compassReportWatchdogTimer?: ReturnType<typeof setTimeout>
   // ArduPilot emits one MAG_CAL_REPORT per compass (common.xml marks
@@ -149,6 +178,8 @@ export class GuidedActionService {
       options.accelerometerStepAdvanceMs ?? DEFAULT_ACCELEROMETER_STEP_ADVANCE_MS
     this.accelerometerCompletionFallbackMs =
       options.accelerometerCompletionFallbackMs ?? DEFAULT_ACCELEROMETER_COMPLETION_FALLBACK_MS
+    this.accelerometerAutoHoldMs =
+      options.accelerometerAutoHoldMs ?? DEFAULT_ACCELEROMETER_AUTO_HOLD_MS
     this.compassGuidanceTimeoutMs =
       options.compassGuidanceTimeoutMs ?? DEFAULT_COMPASS_GUIDANCE_TIMEOUT_MS
     this.compassReportWatchdogMs =
@@ -524,6 +555,8 @@ export class GuidedActionService {
   }
 
   private clearAccelerometerAdvanceTimer(): void {
+    // The hold is per-posture; any step change or teardown invalidates it.
+    this.accelerometerHold = undefined
     if (!this.accelerometerAdvanceTimer) {
       return
     }
@@ -798,6 +831,86 @@ export class GuidedActionService {
     }
   }
 
+  /**
+   * Live attitude during an accelerometer calibration. Once the frame is inside
+   * the requested posture's acceptance window AND has held there for
+   * accelerometerAutoHoldMs, the posture is confirmed automatically — so the
+   * operator sets the frame down and the calibration walks itself through the
+   * remaining postures instead of demanding a click for each one.
+   *
+   * The FIRST posture (level) is deliberately NOT auto-confirmed: a bench
+   * vehicle is already sitting level when the calibration starts, so an
+   * auto-confirm would fire the instant the calibration began — before the
+   * operator had any chance to actually place the frame. Level stays an
+   * explicit "I'm level" click, and everything after it is hands-off.
+   *
+   * The manual confirm stays available for every posture: this only removes
+   * the NEED to click, it never removes the ability to.
+   */
+  handleAttitudeSample(rollDeg: number | undefined, pitchDeg: number | undefined): void {
+    if (this.accelerometerAutoHoldMs <= 0 || rollDeg === undefined || pitchDeg === undefined) {
+      return
+    }
+    if (!Number.isFinite(rollDeg) || !Number.isFinite(pitchDeg)) {
+      return
+    }
+
+    const state = this.accelerometerCalibration
+    const current = this.guidedActions['calibrate-accelerometer']
+    if (
+      !state ||
+      state.waitingForCompletion ||
+      this.accelerometerAutoConfirmInFlight ||
+      current.status !== 'running' ||
+      // Level is the operator's own "I'm level" click — see above.
+      state.stepIndex <= 0 ||
+      state.stepIndex >= ACCELEROMETER_POSE_ORDER.length
+    ) {
+      this.accelerometerHold = undefined
+      return
+    }
+
+    const poseId = ACCELEROMETER_POSE_ORDER[state.stepIndex]
+    const roll = normalizeSignedDegrees(rollDeg)
+    const pitch = normalizeSignedDegrees(pitchDeg)
+
+    if (poseErrorDegrees(poseId, roll, pitch) > ACCELEROMETER_POSE_ALIGNED_DEG) {
+      this.accelerometerHold = undefined
+      return
+    }
+
+    const hold = this.accelerometerHold
+    const now = Date.now()
+    if (
+      !hold ||
+      hold.stepIndex !== state.stepIndex ||
+      // Still drifting: restart the hold rather than averaging through the
+      // movement, so the sample is taken on a settled frame.
+      attitudeDeltaDegrees({ rollDeg: hold.rollDeg, pitchDeg: hold.pitchDeg }, { rollDeg: roll, pitchDeg: pitch }) >
+        ACCELEROMETER_AUTO_STILL_DEG
+    ) {
+      this.accelerometerHold = { stepIndex: state.stepIndex, sinceMs: now, rollDeg: roll, pitchDeg: pitch }
+      return
+    }
+
+    if (now - hold.sinceMs < this.accelerometerAutoHoldMs) {
+      return
+    }
+
+    this.accelerometerHold = undefined
+    this.accelerometerAutoConfirmInFlight = true
+    const stepIndex = state.stepIndex
+    void this.advanceAccelerometerCalibration(stepIndex)
+      .catch(() => {
+        // advanceAccelerometerCalibration already failed the action and
+        // reported it; swallow here so an auto-confirm can never surface as an
+        // unhandled rejection on a telemetry callback.
+      })
+      .finally(() => {
+        this.accelerometerAutoConfirmInFlight = false
+      })
+  }
+
   private async runAccelerometerCalibrationAction(): Promise<void> {
     const current = this.guidedActions['calibrate-accelerometer']
     const calibrationState = this.accelerometerCalibration
@@ -860,7 +973,7 @@ export class GuidedActionService {
     this.setAction('calibrate-accelerometer', {
       ...current,
       status: 'running',
-      summary: `Confirming ${step.ctaLabel.replace(/^Confirm /, '').replace(/ Position$/, '').toLowerCase()}...`,
+      summary: `Hold still — calibrating ${step.ctaLabel.replace(/^Confirm /, '').replace(/ Position$/, '').toLowerCase()}…`,
       instructions: [`Hold the frame still while ArduPilot records the ${step.ctaLabel.replace(/^Confirm /, '').replace(/ Position$/, '').toLowerCase()} posture.`],
       ctaLabel: undefined,
       updatedAtMs: Date.now(),

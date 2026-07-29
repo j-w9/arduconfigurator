@@ -1685,8 +1685,10 @@ test.describe('Config view', () => {
     await openConfigSection(page, 'receiver-signal')
     const section = page.getByTestId('config-section-receiver-signal')
     await expect(section).toBeVisible()
-    // RC_OPTIONS is a set-once bitmask, folded under Advanced — open it.
-    await section.getByTestId('config-advanced-receiver-signal').click()
+    // RC_OPTIONS is visible without opening anything: RC & Arming no longer
+    // folds fields under Advanced (an operator setting up a radio needs the
+    // protocol and options in front of them).
+    await expect(section.getByTestId('config-advanced-receiver-signal')).toHaveCount(0)
     // RC_OPTIONS renders as a chip grid here too (shared bitmask field).
     await expect(page.getByTestId('scoped-bitmask-RC_OPTIONS')).toBeVisible()
   })
@@ -2206,9 +2208,15 @@ test.describe('OSD view preview', () => {
     expect(await columnCount()).toBe(50)
     await expect(page.getByTestId('osd-analog-submode')).toHaveCount(0)
 
+    // Walksnail is 50x20, set from hands-on measurement on real Avatar
+    // hardware (its spec sheet says 60x22, which put elements in the wrong
+    // cells and left the bottom rows unreachable).
     await page.getByTestId('osd-analog-layout').locator('select').selectOption('walksnail')
-    await expect(screen).toHaveAttribute('data-osd-layout', 'hd_60x22')
-    expect(await columnCount()).toBe(60)
+    await expect(screen).toHaveAttribute('data-osd-layout', 'hd_50x20')
+    expect(await columnCount()).toBe(50)
+    expect(
+      await grid.evaluate((el) => getComputedStyle(el).gridTemplateRows.split(' ').length)
+    ).toBe(20)
 
     await page.getByTestId('osd-analog-layout').locator('select').selectOption('dji_o3')
     await expect(screen).toHaveAttribute('data-osd-layout', 'hd_60x22')

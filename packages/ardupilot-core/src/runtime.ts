@@ -2366,6 +2366,12 @@ export class ArduPilotConfiguratorRuntime {
       yawDeg: radiansToDegrees(message.yawRad),
       lastSeenAtMs: Date.now()
     }
+    // Feeds the accelerometer calibration's auto-confirm: once the frame holds
+    // the requested posture it records it without waiting for a click.
+    this.guidedActionService.handleAttitudeSample(
+      this.liveVerification.attitudeTelemetry.rollDeg,
+      this.liveVerification.attitudeTelemetry.pitchDeg
+    )
   }
 
   private processAttitudeQuaternion(message: AttitudeQuaternionMessage): void {

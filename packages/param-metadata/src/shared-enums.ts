@@ -60,3 +60,18 @@ export const AHRS_ORIENTATION_OPTIONS: ParameterValueOption[] = [
   { value: 101, label: 'Custom 1' },
   { value: 102, label: 'Custom 2' }
 ]
+
+/**
+ * LOG_DISARMED value set, verified against ArduPilot's AP_Logger.cpp @Values
+ * annotation. Shared across vehicles because every bundle had modelled this as
+ * a plain 0/1 enable, which hid 2 and 3 entirely — 2 ("disabled on USB") is the
+ * common field setting, since it logs while disarmed without filling the card
+ * during bench sessions, and LOG_REPLAY needs LOG_DISARMED at 1 or 2 to capture
+ * the pre-flight data replay requires.
+ */
+export const LOG_DISARMED_OPTIONS: ParameterValueOption[] = [
+  { value: 0, label: 'Disabled' },
+  { value: 1, label: 'Enabled' },
+  { value: 2, label: 'Disabled on USB connection' },
+  { value: 3, label: 'Discard log on reboot if never armed' }
+]

@@ -1,6 +1,19 @@
+import {
+  ACCELEROMETER_POSE_ALIGNED_DEG,
+  normalizeSignedDegrees,
+  poseErrorDegrees,
+  type AccelerometerPoseId
+} from '@arduconfig/ardupilot-core'
+
 import { assetUrl } from './asset-url'
 
-export type AccelerometerPoseId = 'level' | 'left' | 'right' | 'nose-down' | 'nose-up' | 'back'
+// Pose geometry (targets, gravity projection, poseErrorDegrees, the acceptance
+// window) now lives in @arduconfig/ardupilot-core so the runtime's auto-confirm
+// and this guide agree on what "aligned" means. A second copy here would let
+// the picture say "aligned" while the capture disagreed — on a calibration
+// that is a silently bad result rather than a visible bug.
+export type { AccelerometerPoseId }
+export { poseErrorDegrees }
 
 type PoseValidationTone = 'waiting' | 'ready' | 'adjust' | 'mismatch'
 
@@ -26,59 +39,6 @@ const POSES: Array<{
   { id: 'nose-up', title: 'Nose Up', instruction: 'Tilt the nose straight up.', imageSrc: assetUrl('accel-poses/VehicleTailDown.png') },
   { id: 'back', title: 'Back', instruction: 'Flip the vehicle onto its back.', imageSrc: assetUrl('accel-poses/VehicleUpsideDown.png') }
 ]
-
-const POSE_TARGETS: Record<AccelerometerPoseId, { rollDeg: number; pitchDeg: number }> = {
-  level: { rollDeg: 0, pitchDeg: 0 },
-  left: { rollDeg: -90, pitchDeg: 0 },
-  right: { rollDeg: 90, pitchDeg: 0 },
-  'nose-down': { rollDeg: 0, pitchDeg: -90 },
-  'nose-up': { rollDeg: 0, pitchDeg: 90 },
-  back: { rollDeg: 180, pitchDeg: 0 }
-}
-
-function normalizeSignedDegrees(value: number): number {
-  let normalized = value % 360
-  if (normalized > 180) {
-    normalized -= 360
-  } else if (normalized < -180) {
-    normalized += 360
-  }
-  return normalized
-}
-
-const DEG2RAD = Math.PI / 180
-const RAD2DEG = 180 / Math.PI
-
-/**
- * Gravity direction in the body frame for a given attitude (standard aircraft
- * convention: roll about +X/nose, pitch about +Y/right wing). This is the third
- * column of the earth->body rotation and depends ONLY on roll+pitch — yaw is a
- * rotation about the gravity axis, so it leaves gravity-in-body unchanged. That
- * makes this identical to the attitude quaternion's gravity projection, just
- * computed from the Euler pair the FC already streams. Returns a unit vector.
- */
-function gravityBody(rollDeg: number, pitchDeg: number): [number, number, number] {
-  const r = rollDeg * DEG2RAD
-  const p = pitchDeg * DEG2RAD
-  return [-Math.sin(p), Math.sin(r) * Math.cos(p), Math.cos(r) * Math.cos(p)]
-}
-
-/**
- * Pose error = the angle between the live gravity-in-body vector and the pose's
- * target gravity vector. This is the physically meaningful quantity for accel
- * calibration (the accelerometer measures gravity), and unlike comparing raw
- * Euler roll/pitch it is singularity-free: at ±90° pitch (nose-down/up) the
- * cos(pitch) factor zeroes the roll term, so a gimbal-locked / jittery roll no
- * longer injects a phantom error that kept those poses from ever reading
- * aligned. Each of the six poses maps to a distinct ±axis gravity vector.
- */
-export function poseErrorDegrees(poseId: AccelerometerPoseId, rollDeg: number, pitchDeg: number): number {
-  const target = POSE_TARGETS[poseId]
-  const live = gravityBody(rollDeg, pitchDeg)
-  const want = gravityBody(target.rollDeg, target.pitchDeg)
-  const dot = live[0] * want[0] + live[1] * want[1] + live[2] * want[2]
-  return Math.acos(Math.max(-1, Math.min(1, dot))) * RAD2DEG
-}
 
 function adjustmentHintForPose(poseId: AccelerometerPoseId): string {
   switch (poseId) {
@@ -125,14 +85,13 @@ export function validationStateForPose(
     return error < best.error ? { pose, error } : best
   }, { pose: POSES[0], error: poseErrorDegrees(POSES[0].id, normalizedRoll, normalizedPitch) })
 
-  // Acceptance window for "pose aligned". Tightened from 25° to ~17° (down a
-  // third) now that pose detection uses the gravity vector (accurate, no
-  // gimbal-lock false positives), so a sloppy/off posture is caught sooner.
-  if (currentError <= 17) {
+  // Acceptance window for "pose aligned" — shared with the runtime's
+  // auto-confirm (ACCELEROMETER_POSE_ALIGNED_DEG).
+  if (currentError <= ACCELEROMETER_POSE_ALIGNED_DEG) {
     return {
       tone: 'ready',
       label: 'Pose aligned',
-      detail: 'This posture looks good. Hold the frame still and confirm this step.'
+      detail: 'This posture looks good. Hold the frame still — it records itself.'
     }
   }
 

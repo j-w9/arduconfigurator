@@ -3510,6 +3510,10 @@ textarea:focus {
   min-height: 240px;
 }
 
+.osd-preview-screen[data-osd-layout='hd_50x20'] {
+  min-height: 260px;
+}
+
 .osd-preview-screen[data-osd-layout='hd_60x22'] {
   min-height: 280px;
 }
@@ -3529,7 +3533,14 @@ textarea:focus {
      doesn't expand a track and shove the others (the drag "avoid each other"). */
   grid-template-columns: repeat(30, minmax(0, 1fr));
   grid-template-rows: repeat(16, minmax(0, 1fr));
-  padding: 6px 8px;
+  /* Extra top/bottom room so an element on row 0 (or the last row) isn't
+     sliced by the canvas's overflow:hidden. Elements are align-self:center in
+     a row track barely taller than their own line box, so at the very edges
+     half the glyph fell outside the padding box and got clipped — the top-row
+     item read as a cut-off smear. The drag pixel->cell maths reads the grid's
+     COMPUTED padding (see startElementDrag), so widening it here does not
+     skew cell mapping. */
+  padding: 10px 8px;
 }
 
 .osd-preview-screen__element {
@@ -8632,8 +8643,28 @@ details.metadata-settings-section:not([open]) > summary::after {
   /* A warm underside so an upside-down mount is unmistakable. */
   background: color-mix(in srgb, var(--warning) 40%, rgba(var(--fill-rgb), 0.9));
   transform: rotateY(180deg) translateZ(3px);
+  /* Dashed edge marks this as the face you should NOT be looking at when the
+     board is mounted the usual way up. */
+  border: 1px dashed color-mix(in srgb, var(--warning) 70%, transparent);
+  display: grid;
+  place-items: center;
 }
-/* Forward arrow on the top face (points to the board's nose / +X). */
+
+/* Explicit "BOTTOM" so the underside is named, not just tinted — colour alone
+   reads as a shading artifact in a screenshot. */
+.board-orientation-diagram__bottom-label {
+  font-family: var(--font-data);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--warning) 35%, #1b1205);
+  opacity: 0.85;
+}
+
+/* Forward arrow on the top face (points to the board's nose / +X). Deliberately
+   NOT the accent colour: the accent is used all over this view, so the arrow
+   blended into the board. A dedicated success-green keeps "this edge faces
+   forward" readable at a glance against the slab. */
 .board-orientation-diagram__arrow {
   position: absolute;
   top: 8px;
@@ -8643,7 +8674,37 @@ details.metadata-settings-section:not([open]) > summary::after {
   transform: translateX(-50%);
   border-left: 9px solid transparent;
   border-right: 9px solid transparent;
-  border-bottom: 16px solid var(--accent, var(--primary-500));
+  border-bottom: 16px solid var(--success, #4ade80);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--success, #4ade80) 55%, transparent));
+}
+
+/* Body axes on the top face: +X out the nose (arrow direction), +Y out the
+   right edge — the frame ArduPilot's roll/pitch are defined about. */
+.board-orientation-diagram__axes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.board-orientation-diagram__axis {
+  position: absolute;
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--success, #4ade80) 80%, var(--ink, #fff));
+  opacity: 0.75;
+}
+
+.board-orientation-diagram__axis--x {
+  top: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.board-orientation-diagram__axis--y {
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
 }
 .board-orientation-diagram__imu {
   position: absolute;

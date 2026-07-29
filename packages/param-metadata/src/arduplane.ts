@@ -1,5 +1,5 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
-import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
+import { AHRS_ORIENTATION_OPTIONS, LOG_DISARMED_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
 import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
@@ -3780,9 +3780,9 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       description: 'Continue writing log data while the vehicle is disarmed.',
       category: 'logging',
       minimum: 0,
-      maximum: 1,
+      maximum: 3,
       notes: loggingBehaviorNotes,
-      options: enabledDisabledOptions
+      options: LOG_DISARMED_OPTIONS
     },
     // ----------------------------------------------------------------------
     // Soaring (SOAR_*). Sourced verbatim from ArduPilot

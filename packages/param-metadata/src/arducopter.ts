@@ -1,5 +1,5 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
-import { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
+import { AHRS_ORIENTATION_OPTIONS, LOG_DISARMED_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
 import { buildNetworkParameterDefinitions } from './shared-network.js'
 import { buildRcLogicParameterDefinitions } from './shared-rc-logic.js'
@@ -3499,13 +3499,18 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     },
     LOG_DISARMED: {
       id: 'LOG_DISARMED',
+      // Values verified against AP_Logger.cpp (@Values on LOG_DISARMED) — this
+      // was modelled as a plain 0/1 enable, which hid 2 and 3 entirely. 2 is
+      // the common field setting (log while disarmed, but not over USB, so
+      // bench sessions don't fill the card), and LOG_REPLAY needs
+      // LOG_DISARMED at 1 or 2 to capture the pre-flight data replay requires.
       label: 'Log While Disarmed',
       description: 'Continue writing log data while the vehicle is disarmed.',
       category: 'logging',
       minimum: 0,
-      maximum: 1,
+      maximum: 3,
       notes: loggingBehaviorNotes,
-      options: enabledDisabledOptions
+      options: LOG_DISARMED_OPTIONS
     }
   },
   setupSections: [
