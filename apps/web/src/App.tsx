@@ -955,7 +955,10 @@ export function App() {
     handleExportParameterBackup,
     handleExportParameterBackupAsParm,
     handleExportParameterBackupAsParams,
-    handleImportParameterBackup
+    handleImportParameterBackup,
+    pendingParameterImport,
+    stagePendingParameterImport,
+    dismissPendingParameterImport
   } = useParameterBackupIo({
     snapshot,
     parameterImportExclusions,
@@ -8663,6 +8666,9 @@ export function App() {
           onExportParameterBackupAsParm={handleExportParameterBackupAsParm}
           onExportParameterBackupAsParams={handleExportParameterBackupAsParams}
           onImportParameterBackup={handleImportParameterBackup}
+          pendingParameterImport={pendingParameterImport}
+          onStagePendingParameterImport={stagePendingParameterImport}
+          onDismissPendingParameterImport={dismissPendingParameterImport}
           onRefreshParameters={() => handleGuidedAction('request-parameters')}
           refreshDisabled={busyAction !== undefined || !canRunGuidedAction(snapshot, 'request-parameters')}
           parameterEnumOverrides={parameterEnumOverrides}

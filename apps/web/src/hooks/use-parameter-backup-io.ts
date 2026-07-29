@@ -1,13 +1,15 @@
 // Parameter backup import/export I/O. Owns the three "Export Backup"
 // serializers (ArduConfigurator JSON / Mission Planner .parm /
 // QGroundControl .params) and the "Import Backup" file handler that parses a
-// backup, stages the differing values as drafts (honouring the opt-in import
+// backup, holds the differing values as a PENDING import for the operator to
+// stage (honouring the opt-in import
 // exclusions), and scrolls the diff into view.
 //
 // `handleOpenParameterBackup` (a one-line `.click()` on an App-owned <input>
 // ref) lives in App.tsx: the ref is a DOM concern this hook has no need to
 // know about, and none of the logic-bearing handlers touch it.
 
+import { useState } from 'react'
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react'
 
 import {
@@ -44,11 +46,27 @@ export interface UseParameterBackupIoParams {
   setParameterFollowUp: Dispatch<SetStateAction<ParameterFollowUp | undefined>>
 }
 
+/** An import that has been READ but not staged. */
+export interface PendingParameterImport {
+  /** Draft values the import would stage, keyed by param id. */
+  draftValues: ParameterDraftValues
+  /** How many of those differ from the currently synced value. */
+  changedCount: number
+  /** Where it came from, for the prompt copy. */
+  fileName: string
+}
+
 export interface UseParameterBackupIoResult {
   handleExportParameterBackup: () => void
   handleExportParameterBackupAsParm: () => void
   handleExportParameterBackupAsParams: () => void
   handleImportParameterBackup: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
+  /** Set once a file is read; cleared by staging or dismissing it. */
+  pendingParameterImport: PendingParameterImport | undefined
+  /** Stage every value from the pending import. */
+  stagePendingParameterImport: () => void
+  /** Throw the pending import away without staging anything. */
+  dismissPendingParameterImport: () => void
 }
 
 export function useParameterBackupIo({
@@ -60,6 +78,10 @@ export function useParameterBackupIo({
   setParameterNotice,
   setParameterFollowUp
 }: UseParameterBackupIoParams): UseParameterBackupIoResult {
+  // An import used to stage every differing value the instant the file was
+  // read, which turns "let me look at this backup" into a pending write of
+  // hundreds of parameters. Hold it here instead and let the operator decide.
+  const [pendingParameterImport, setPendingParameterImport] = useState<PendingParameterImport>()
   function buildBackupAppInfo(): { appVersion: string; appGitHash: string; appGitBranch: string } {
     return { appVersion: APP_VERSION, appGitHash: GIT_HASH, appGitBranch: GIT_BRANCH }
   }
@@ -123,7 +145,12 @@ export function useParameterBackupIo({
       const restore = deriveDraftValuesFromParameterBackup(snapshot.parameters, backup, {
         excludeCategories
       })
-      replaceDrafts(restore.draftValues)
+      // NOT staged yet — see pendingParameterImport.
+      setPendingParameterImport({
+        draftValues: restore.draftValues,
+        changedCount: restore.changedCount,
+        fileName: file.name
+      })
       setParameterFollowUp(undefined)
       const unknownNote =
         restore.unknownParameterIds.length > 0
@@ -167,7 +194,7 @@ export function useParameterBackupIo({
         tone: isMigration || restore.changedCount > 0 ? 'warning' : 'neutral',
         text:
           restore.changedCount > 0
-            ? `Loaded ${restore.changedCount} differing parameter value(s) from backup — review the staged diff below, then click Apply All to write to the controller.${unknownNote}${excludedNote}${migrationNote}${firmwareMismatchNote}`
+            ? `Read ${restore.changedCount} differing parameter value(s) from backup. Nothing is staged yet — stage all of them, or pick individual ones from the list.${unknownNote}${excludedNote}${migrationNote}${firmwareMismatchNote}`
             : `Backup matched the current synced values.${unknownNote}${excludedNote}${migrationNote}${firmwareMismatchNote}`
       })
       // Auto-scroll the staged diff into view so the operator sees the
@@ -198,6 +225,22 @@ export function useParameterBackupIo({
     handleExportParameterBackup,
     handleExportParameterBackupAsParm,
     handleExportParameterBackupAsParams,
-    handleImportParameterBackup
+    handleImportParameterBackup,
+    pendingParameterImport,
+    stagePendingParameterImport: () => {
+      if (!pendingParameterImport) {
+        return
+      }
+      replaceDrafts(pendingParameterImport.draftValues)
+      setPendingParameterImport(undefined)
+      setParameterNotice({
+        tone: 'warning',
+        text: `Staged ${pendingParameterImport.changedCount} value(s) from ${pendingParameterImport.fileName}. Review the diff, then Apply All to write them.`
+      })
+    },
+    dismissPendingParameterImport: () => {
+      setPendingParameterImport(undefined)
+      setParameterNotice(undefined)
+    }
   }
 }
