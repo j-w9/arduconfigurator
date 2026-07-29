@@ -37,6 +37,8 @@ import { describeBitmaskDraftValue, formatParameterDelta, formatParameterValue }
 import type { SavedParameterSnapshot } from '../snapshot-library'
 import type { SavedProvisioningProfile } from '../provisioning-library'
 import { SnapshotsView } from '../views/Snapshots'
+import { overridableInvalidParamIds, paramIdsForGroup } from '../view-models/parameter-diff-actions'
+import { ParameterDiffGroupActions } from '../views/ParameterDiffGroupActions'
 
 /**
  * The full STM32 UID is a 24-hex (96-bit) string — too wide for a
@@ -320,9 +322,10 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
   // an override; a param missing from the sync or a non-numeric draft cannot.
   // Drives both the per-row affordance and the "Override all (n)" count, so the
   // count never promises more than it can deliver.
-  const selectedSnapshotOverridableInvalidIds = selectedSnapshotInvalidEntries
-    .filter((entry) => entry.overridable === true && !parameterEnumOverrides.has(entry.id))
-    .map((entry) => entry.id)
+  const selectedSnapshotOverridableInvalidIds = overridableInvalidParamIds(
+    selectedSnapshotInvalidEntries,
+    parameterEnumOverrides
+  )
 
   return (
 
@@ -841,33 +844,28 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                           {/* Group-level Stage/Drop. The preview is already
                            *  grouped by category, so a whole group is the
                            *  natural unit for a partial restore — clicking 30
-                           *  Tuning rows one at a time was the real cost. */}
-                          <div className="parameter-diff-actions parameter-diff-actions--group">
-                            <button
-                              type="button"
-                              style={buttonStyle()}
-                              data-testid={`snapshot-diff-stage-group-${group.category}`}
-                              onClick={() => handleApplySnapshotGroup(group.entries)}
-                              disabled={busyAction !== undefined || !snapshotRestoreAcknowledged}
-                              title={
-                                snapshotRestoreAcknowledged
+                           *  Tuning rows one at a time was the real cost.
+                           *  Shares the component with the Parameters tab. */}
+                          <ParameterDiffGroupActions
+                            actions={[
+                              {
+                                label: 'Stage group',
+                                testId: `snapshot-diff-stage-group-${group.category}`,
+                                onClick: () => handleApplySnapshotGroup(group.entries),
+                                disabled: busyAction !== undefined || !snapshotRestoreAcknowledged,
+                                title: snapshotRestoreAcknowledged
                                   ? `Stage all ${group.entries.length} ${formatCategoryLabel(group.category)} change(s) as drafts.`
                                   : 'Acknowledge the overwrite warning below first.'
+                              },
+                              {
+                                label: 'Drop group',
+                                testId: `snapshot-diff-drop-group-${group.category}`,
+                                onClick: () => handleDropSnapshotGroup(paramIdsForGroup(group)),
+                                disabled: busyAction !== undefined,
+                                title: `Drop all ${group.entries.length} ${formatCategoryLabel(group.category)} change(s) from this restore.`
                               }
-                            >
-                              Stage group
-                            </button>
-                            <button
-                              type="button"
-                              style={buttonStyle()}
-                              data-testid={`snapshot-diff-drop-group-${group.category}`}
-                              onClick={() => handleDropSnapshotGroup(group.entries.map((entry) => entry.id))}
-                              disabled={busyAction !== undefined}
-                              title={`Drop all ${group.entries.length} ${formatCategoryLabel(group.category)} change(s) from this restore.`}
-                            >
-                              Drop group
-                            </button>
-                          </div>
+                            ]}
+                          />
                         </header>
 
                         {group.entries.map((draft) => (
@@ -963,18 +961,17 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                          *  cross-board restore, which is exactly when a
                          *  handful of rows block "Write all". */}
                         {selectedSnapshotOverridableInvalidIds.length > 0 ? (
-                          <div className="parameter-diff-actions parameter-diff-actions--group">
-                            <button
-                              type="button"
-                              style={buttonStyle()}
-                              data-testid="snapshot-diff-override-all"
-                              onClick={() => handleOverrideAllSnapshotInvalid(selectedSnapshotOverridableInvalidIds)}
-                              disabled={busyAction !== undefined}
-                              title={`Override and write anyway for all ${selectedSnapshotOverridableInvalidIds.length} rescuable value(s), so they stop blocking the write.`}
-                            >
-                              Override all ({selectedSnapshotOverridableInvalidIds.length})
-                            </button>
-                          </div>
+                          <ParameterDiffGroupActions
+                            actions={[
+                              {
+                                label: `Override all (${selectedSnapshotOverridableInvalidIds.length})`,
+                                testId: 'snapshot-diff-override-all',
+                                onClick: () => handleOverrideAllSnapshotInvalid(selectedSnapshotOverridableInvalidIds),
+                                disabled: busyAction !== undefined,
+                                title: `Override and write anyway for all ${selectedSnapshotOverridableInvalidIds.length} rescuable value(s), so they stop blocking the write.`
+                              }
+                            ]}
+                          />
                         ) : null}
                       </header>
 
