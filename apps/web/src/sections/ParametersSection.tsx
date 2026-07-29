@@ -10,6 +10,12 @@ import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterDraftGroup, Pa
 import type { NormalizedFirmwareMetadataBundle } from '@arduconfig/param-metadata'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { PendingParameterImport } from '../hooks/use-parameter-backup-io'
+import {
+  isOverridableInvalidEntry,
+  overridableInvalidParamIds,
+  paramIdsForGroup
+} from '../view-models/parameter-diff-actions'
+import { ParameterDiffGroupActions } from '../views/ParameterDiffGroupActions'
 
 import {
   formatParameterDelta,
@@ -255,6 +261,11 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   // Drop every staged row in one category. Also clears those ids from the
   // checkbox selection, so a subsequent "Drop selected" count doesn't include
   // rows that are already gone.
+  // Invalid rows in a group that an override can still rescue, excluding ones
+  // already overridden — shared with the Snapshots restore preview.
+  const overridableGroupIds = (group: ParameterDraftGroup): string[] =>
+    overridableInvalidParamIds(group.entries, parameterEnumOverrides)
+
   const handleDropDraftGroup = (draftIds: string[]): void => {
     draftIds.forEach((draftId) => handleDiscardParameterDraft(draftId))
     setSelectedDraftIds((current) => {
@@ -636,21 +647,20 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                     <span>{group.entries.filter((entry) => entry.status === 'staged').length} staged</span>
                     {/* Drop a whole category at once. The review is already
                       * grouped by category, so that is the unit an operator
-                      * thinks in when abandoning part of a change set — the
-                      * alternatives were one row at a time, or checkbox-select
-                      * the group by hand before "Drop selected". */}
-                    <div className="parameter-diff-actions parameter-diff-actions--group">
-                      <button
-                        type="button"
-                        style={buttonStyle()}
-                        data-testid={`parameter-diff-drop-group-${group.category}`}
-                        onClick={() => handleDropDraftGroup(group.entries.map((entry) => entry.id))}
-                        disabled={busyAction !== undefined || group.entries.length === 0}
-                        title={`Drop all ${group.entries.length} staged change(s) in ${formatCategoryLabel(group.category)}.`}
-                      >
-                        Drop group
-                      </button>
-                    </div>
+                      * thinks in when abandoning part of a change set. Shares the
+                      * group-action component with the Snapshots restore preview
+                      * so both review surfaces behave identically. */}
+                    <ParameterDiffGroupActions
+                      actions={[
+                        {
+                          label: 'Drop group',
+                          testId: `parameter-diff-drop-group-${group.category}`,
+                          onClick: () => handleDropDraftGroup(paramIdsForGroup(group)),
+                          disabled: busyAction !== undefined || group.entries.length === 0,
+                          title: `Drop all ${group.entries.length} staged change(s) in ${formatCategoryLabel(group.category)}.`
+                        }
+                      ]}
+                    />
                   </header>
 
                   {group.entries.map((draft) => {
@@ -760,6 +770,36 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                   <header>
                     <strong>{formatCategoryLabel(group.category)}</strong>
                     <span>{group.entries.length} invalid</span>
+                    {/* Bulk override, matching the Snapshots restore preview — a
+                      * cross-board import blocked by a handful of metadata-range
+                      * rejections should not need a click per row. Counts only
+                      * rows an override can actually rescue, so the number never
+                      * over-promises. */}
+                    <ParameterDiffGroupActions
+                      actions={[
+                        ...(overridableGroupIds(group).length > 0
+                          ? [
+                              {
+                                label: `Override all (${overridableGroupIds(group).length})`,
+                                testId: `parameter-diff-override-group-${group.category}`,
+                                onClick: () =>
+                                  overridableGroupIds(group).forEach((paramId) =>
+                                    handleToggleParameterEnumOverride(paramId)
+                                  ),
+                                disabled: busyAction !== undefined,
+                                title: 'Override and write anyway for every rescuable value in this category.'
+                              }
+                            ]
+                          : []),
+                        {
+                          label: 'Drop group',
+                          testId: `parameter-diff-drop-invalid-group-${group.category}`,
+                          onClick: () => handleDropDraftGroup(paramIdsForGroup(group)),
+                          disabled: busyAction !== undefined || group.entries.length === 0,
+                          title: `Drop all ${group.entries.length} invalid draft(s) in ${formatCategoryLabel(group.category)}.`
+                        }
+                      ]}
+                    />
                   </header>
 
                   {group.entries.map((draft) => {
@@ -768,11 +808,12 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                     // Non-numeric input ("Value must be numeric.") stays
                     // hard-invalid — that's a syntax problem, not a metadata
                     // disagreement the user can vouch for.
-                    const reason = draft.reason ?? ''
-                    const isOverridableValidation =
-                      reason === 'Value is outside the known enum values for this parameter.' ||
-                      reason.startsWith('Value is below the documented minimum of') ||
-                      reason.startsWith('Value is above the documented maximum of')
+                    // Reads the core's `overridable` flag. This used to
+                    // string-match the reason text the validator writes, so
+                    // rewording a message in parameter-drafts.ts would have
+                    // silently removed the Override button here while the
+                    // Snapshots preview (which reads the flag) kept it.
+                    const isOverridableValidation = isOverridableInvalidEntry(draft)
                     return (
                       <div key={draft.id} className="parameter-diff-item">
                         <span>
