@@ -200,6 +200,9 @@ export function createIdleLiveVerification(): LiveVerificationState {
     globalPosition: {
       verified: false
     },
+    gpsReceiver: {
+      detected: false
+    },
     baroSensor: {
       verified: false,
       present: false,
@@ -317,6 +320,11 @@ export function cloneLiveVerification(liveVerification: LiveVerificationState): 
     },
     globalPosition: {
       ...liveVerification.globalPosition
+    },
+    // Must be cloned like every other field — a previous field (imuTemperatureC)
+    // was silently dropped here and its live readout died for four releases.
+    gpsReceiver: {
+      ...liveVerification.gpsReceiver
     },
     baroSensor: {
       ...liveVerification.baroSensor

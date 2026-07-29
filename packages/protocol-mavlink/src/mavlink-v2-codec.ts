@@ -21,6 +21,7 @@ import type {
   CommandLongMessage,
   GpsInputMessage,
   FileTransferProtocolMessage,
+  GpsRawIntMessage,
   GlobalPositionIntMessage,
   HeartbeatMessage,
   LogDataMessage,
@@ -625,6 +626,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeHeartbeatPayload(message)
     case 'SYS_STATUS':
       return encodeSysStatusPayload(message)
+    case 'GPS_RAW_INT':
+      return encodeGpsRawIntPayload(message)
     case 'GLOBAL_POSITION_INT':
       return encodeGlobalPositionIntPayload(message)
     case 'PARAM_REQUEST_LIST':
@@ -686,6 +689,8 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
       return decodeHeartbeatPayload(payload)
     case MAVLINK_MESSAGE_IDS.SYS_STATUS:
       return decodeSysStatusPayload(payload)
+    case MAVLINK_MESSAGE_IDS.GPS_RAW_INT:
+      return decodeGpsRawIntPayload(payload)
     case MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT:
       return decodeGlobalPositionIntPayload(payload)
     case MAVLINK_MESSAGE_IDS.PARAM_REQUEST_LIST:
@@ -747,6 +752,8 @@ function messageIdFor(message: MavlinkMessage): number {
       return MAVLINK_MESSAGE_IDS.HEARTBEAT
     case 'SYS_STATUS':
       return MAVLINK_MESSAGE_IDS.SYS_STATUS
+    case 'GPS_RAW_INT':
+      return MAVLINK_MESSAGE_IDS.GPS_RAW_INT
     case 'GLOBAL_POSITION_INT':
       return MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT
     case 'PARAM_REQUEST_LIST':
@@ -956,6 +963,41 @@ function decodeSysStatusPayload(payload: Uint8Array): SysStatusMessage {
     sensorsPresentExtended: payload.byteLength >= 35 ? view.getUint32(31, true) : 0,
     sensorsEnabledExtended: payload.byteLength >= 39 ? view.getUint32(35, true) : 0,
     sensorsHealthExtended: payload.byteLength >= 43 ? view.getUint32(39, true) : 0
+  }
+}
+
+function encodeGpsRawIntPayload(message: GpsRawIntMessage): Uint8Array {
+  const payload = new Uint8Array(MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.GPS_RAW_INT])
+  const view = new DataView(payload.buffer)
+  // time_usec is uint64; the demo/tests stay well inside 2^53 so a Number is
+  // safe here and keeps the message record plain-JSON.
+  view.setBigUint64(0, BigInt(Math.max(0, Math.trunc(message.timeUsec))), true)
+  view.setInt32(8, message.latitudeE7, true)
+  view.setInt32(12, message.longitudeE7, true)
+  view.setInt32(16, message.altitudeMm, true)
+  view.setUint16(20, message.eph, true)
+  view.setUint16(22, message.epv, true)
+  view.setUint16(24, message.vel, true)
+  view.setUint16(26, message.cog, true)
+  payload[28] = message.fixType & 0xff
+  payload[29] = message.satellitesVisible & 0xff
+  return payload
+}
+
+function decodeGpsRawIntPayload(payload: Uint8Array): GpsRawIntMessage {
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  return {
+    type: 'GPS_RAW_INT',
+    timeUsec: Number(view.getBigUint64(0, true)),
+    latitudeE7: view.getInt32(8, true),
+    longitudeE7: view.getInt32(12, true),
+    altitudeMm: view.getInt32(16, true),
+    eph: view.getUint16(20, true),
+    epv: view.getUint16(22, true),
+    vel: view.getUint16(24, true),
+    cog: view.getUint16(26, true),
+    fixType: payload[28] ?? 0,
+    satellitesVisible: payload[29] ?? 0
   }
 }
 

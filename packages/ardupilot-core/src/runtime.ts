@@ -4,6 +4,7 @@ import type {
   LiveSignalId,
 } from '@arduconfig/param-metadata'
 import type {
+  GpsRawIntMessage,
   AttitudeMessage,
   ScaledImuMessage,
   AttitudeQuaternionMessage,
@@ -268,6 +269,16 @@ const CAN_NODE_OFFLINE_AFTER_MS = 3000
 const CAN_NODE_REMOVE_AFTER_MS = 30000
 const CAN_NODE_STALE_SWEEP_INTERVAL_MS = 1000
 const LIVE_TELEMETRY_REQUESTS = [
+  {
+    // The RAW receiver report. Distinct from GLOBAL_POSITION_INT, which only
+    // appears once the EKF has a position: GPS_RAW_INT arrives as soon as a
+    // module is talking to the driver, fix or no fix, so "configured but
+    // nothing wired up" stops looking identical to "working GPS, no fix yet".
+    // 1 Hz is plenty for a detection + sat-count readout.
+    messageId: MAVLINK_MESSAGE_IDS.GPS_RAW_INT,
+    label: 'GPS_RAW_INT',
+    intervalUs: 1000000
+  },
   {
     messageId: MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT,
     label: 'GLOBAL_POSITION_INT',
@@ -1925,6 +1936,9 @@ export class ArduPilotConfiguratorRuntime {
       case 'GLOBAL_POSITION_INT':
         this.processGlobalPosition(envelope.message)
         break
+      case 'GPS_RAW_INT':
+        this.processGpsRawInt(envelope.message)
+        break
       case 'ATTITUDE':
         this.processAttitude(envelope.message)
         break
@@ -2353,6 +2367,17 @@ export class ArduPilotConfiguratorRuntime {
       lastSeenAtMs: Date.now()
     }
     this.liveVerification.satisfiedSignals = recomputeSatisfiedSignals(this.liveVerification)
+  }
+
+  private processGpsRawInt(message: GpsRawIntMessage): void {
+    // Arrival alone is the "a module is talking" signal — fix type and sat
+    // count then say how well. A miswired GPS produces none of these.
+    this.liveVerification.gpsReceiver = {
+      detected: true,
+      fixType: message.fixType,
+      satellitesVisible: message.satellitesVisible,
+      lastSeenAtMs: Date.now()
+    }
   }
 
   private processAttitude(message: AttitudeMessage): void {

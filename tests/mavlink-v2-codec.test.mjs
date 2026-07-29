@@ -948,3 +948,49 @@ test('MavlinkV2Codec decodes SCALED_IMU temperature (msgid 26, crc_extra 170)', 
   assert.equal(msg.temperatureCdeg, 3756)
   assert.equal(MAVLINK_MESSAGE_CRCS[MAVLINK_MESSAGE_IDS.SCALED_IMU], 170)
 })
+
+// GPS_RAW_INT is the "is a module actually talking?" signal. GLOBAL_POSITION_INT
+// only appears once the EKF has a position, so without this a GPS that was never
+// wired up (TX/RX swapped, or landed on I2C pins) looked identical to a healthy
+// GPS indoors waiting for a fix — and the UI reported both as "configured".
+test('MavlinkV2Codec round-trips GPS_RAW_INT including fix type and satellite count', () => {
+  const { frame, message } = roundTrip({
+    type: 'GPS_RAW_INT',
+    timeUsec: 1700000000000,
+    fixType: 3,
+    latitudeE7: 377749300,
+    longitudeE7: -1224194200,
+    altitudeMm: 18420,
+    eph: 90,
+    epv: 130,
+    vel: 120,
+    cog: 27450,
+    satellitesVisible: 14
+  })
+  assert.equal(frame[1], MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.GPS_RAW_INT])
+  assert.equal(message.type, 'GPS_RAW_INT')
+  assert.equal(message.fixType, 3)
+  assert.equal(message.satellitesVisible, 14)
+  assert.equal(message.latitudeE7, 377749300)
+  assert.equal(message.timeUsec, 1700000000000)
+})
+
+test('MavlinkV2Codec decodes a no-fix GPS_RAW_INT (the indoors / just-powered case)', () => {
+  // fixType 1 = GPS present but no fix. This MUST decode cleanly: it is the
+  // exact frame that separates "wired but unfixed" from "not wired at all".
+  const { message } = roundTrip({
+    type: 'GPS_RAW_INT',
+    timeUsec: 0,
+    fixType: 1,
+    latitudeE7: 0,
+    longitudeE7: 0,
+    altitudeMm: 0,
+    eph: 65535,
+    epv: 65535,
+    vel: 0,
+    cog: 0,
+    satellitesVisible: 0
+  })
+  assert.equal(message.fixType, 1)
+  assert.equal(message.satellitesVisible, 0)
+})
