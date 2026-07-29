@@ -811,7 +811,23 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                     <small>Delta {formatParameterDelta(draft.delta, definition?.unit)}</small>
                   ) : null}
                 </span>
-                <span className="parameter-row__value" onClick={(event) => event.stopPropagation()}>
+                <span
+                  className="parameter-row__value"
+                  // Editing must never COLLAPSE an expanded row (the control
+                  // would vanish mid-edit), which is why this cell swallows the
+                  // row click. But swallowing it also meant clicking into the
+                  // editor on a COLLAPSED row did nothing except focus the
+                  // input — so reaching for the value field never revealed the
+                  // metadata detail, which is exactly when an operator wants to
+                  // know the range and the enum meanings. Expand on the way in,
+                  // never collapse on the way out.
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (!isExpanded) {
+                      setSelectedParameterId(parameter.id)
+                    }
+                  }}
+                >
                   {definition?.bitmask === true && (definition.options?.length ?? 0) > 0 ? (
                     // Bitmask params edit as Mission-Planner-style per-bit
                     // checkboxes (each labelled with its bit meaning) instead

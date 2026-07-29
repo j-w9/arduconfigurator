@@ -372,6 +372,28 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(page.getByTestId('parameter-detail-select-GPS_TYPE')).toHaveValue('5')
   })
 
+  test('clicking the row value editor also reveals the metadata detail', async ({ page }) => {
+    // The editor cell swallows the row click so editing can never COLLAPSE an
+    // expanded row (the control would vanish mid-edit). That also meant a click
+    // into the value field on a COLLAPSED row only focused the input and never
+    // revealed the metadata — exactly when an operator wants the range and the
+    // enum meanings in front of them.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+    await page.getByTestId('parameter-search-input').fill('GPS_TYPE')
+
+    await expect(page.getByTestId('parameter-detail-GPS_TYPE')).toHaveCount(0)
+    // Click the row's value input rather than the row body.
+    await page.locator('input[aria-label="GPS_TYPE value"]').first().click()
+    await expect(page.getByTestId('parameter-detail-GPS_TYPE')).toBeVisible()
+
+    // And clicking it again must NOT collapse the row back under the operator.
+    await page.locator('input[aria-label="GPS_TYPE value"]').first().click()
+    await expect(page.getByTestId('parameter-detail-GPS_TYPE')).toBeVisible()
+  })
+
   test('Export is one picker where you choose the format', async ({ page }) => {
     // Was a primary "Export" button sitting next to a separate "Export Legacy…"
     // select, which read as two competing exports. Now a single picker: pick
