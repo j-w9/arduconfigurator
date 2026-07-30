@@ -16,6 +16,7 @@ import {
   paramIdsForGroup
 } from '../view-models/parameter-diff-actions'
 import { ParameterDiffGroupActions } from '../views/ParameterDiffGroupActions'
+import { ParameterDiffIdentity, ParameterDiffInvalidRow } from '../views/ParameterDiffRow'
 
 import {
   formatParameterDelta,
@@ -699,10 +700,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                         onClick={(event) => handleDraftSelectionClick(draft.id, event.shiftKey)}
                         onChange={() => {}}
                       />
-                      <span>
-                        <strong>{draft.id}</strong>
-                        <small>{draft.label}</small>
-                      </span>
+                      <ParameterDiffIdentity draft={draft} />
                       <span className="parameter-diff-values">
                         <em>Current:</em> {formatParameterDraftValue(draft.definition, draft.currentValue)}
                         {' → '}
@@ -813,43 +811,40 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                     // rewording a message in parameter-drafts.ts would have
                     // silently removed the Override button here while the
                     // Snapshots preview (which reads the flag) kept it.
-                    const isOverridableValidation = isOverridableInvalidEntry(draft)
                     return (
-                      <div key={draft.id} className="parameter-diff-item">
-                        <span>
-                          <strong>{draft.id}</strong>
-                          <small>{draft.label}</small>
-                        </span>
-                        <span className="parameter-diff-values">{draft.rawValue || 'Empty draft'}</span>
-                        <span className="parameter-diff-delta">{draft.reason ?? 'Invalid value'}</span>
-                        <div className="parameter-diff-item__actions">
-                          {isOverridableValidation ? (
+                      <ParameterDiffInvalidRow
+                        key={draft.id}
+                        draft={draft}
+                        actions={
+                          <>
+                            {isOverridableInvalidEntry(draft) ? (
+                              <button
+                                type="button"
+                                data-testid={`parameter-diff-override-${draft.id}`}
+                                style={buttonStyle()}
+                                onClick={() => handleToggleParameterEnumOverride(draft.id)}
+                                disabled={busyAction !== undefined}
+                                title="Treat this value as valid and let it write through — useful when the firmware accepts a value the metadata's documented range or enum doesn't yet include."
+                              >
+                                Override and write anyway
+                              </button>
+                            ) : null}
+                            {/* Every invalid row offers Drop — same contract
+                                as staged rows — so the operator can dismiss a
+                                bad draft without first having to fix it. */}
                             <button
                               type="button"
-                              data-testid={`parameter-diff-override-${draft.id}`}
+                              data-testid={`parameter-diff-discard-${draft.id}`}
                               style={buttonStyle()}
-                              onClick={() => handleToggleParameterEnumOverride(draft.id)}
+                              onClick={() => handleDiscardParameterDraft(draft.id)}
                               disabled={busyAction !== undefined}
-                              title="Treat this value as valid and let it write through — useful when the firmware accepts a value the metadata's documented range or enum doesn't yet include."
+                              title={`Drop the invalid draft to ${draft.id} (clears the local edit; keeps the live FC value as-is).`}
                             >
-                              Override and write anyway
+                              Drop
                             </button>
-                          ) : null}
-                          {/* Every invalid row offers Drop — same contract
-                              as staged rows — so the operator can dismiss a
-                              bad draft without first having to fix it. */}
-                          <button
-                            type="button"
-                            data-testid={`parameter-diff-discard-${draft.id}`}
-                            style={buttonStyle()}
-                            onClick={() => handleDiscardParameterDraft(draft.id)}
-                            disabled={busyAction !== undefined}
-                            title={`Drop the invalid draft to ${draft.id} (clears the local edit; keeps the live FC value as-is).`}
-                          >
-                            Drop
-                          </button>
-                        </div>
-                      </div>
+                          </>
+                        }
+                      />
                     )
                   })}
                 </section>

@@ -37,8 +37,13 @@ import { describeBitmaskDraftValue, formatParameterDelta, formatParameterValue }
 import type { SavedParameterSnapshot } from '../snapshot-library'
 import type { SavedProvisioningProfile } from '../provisioning-library'
 import { SnapshotsView } from '../views/Snapshots'
-import { overridableInvalidParamIds, paramIdsForGroup } from '../view-models/parameter-diff-actions'
+import {
+  isOverridableInvalidEntry,
+  overridableInvalidParamIds,
+  paramIdsForGroup
+} from '../view-models/parameter-diff-actions'
 import { ParameterDiffGroupActions } from '../views/ParameterDiffGroupActions'
+import { ParameterDiffIdentity, ParameterDiffInvalidRow } from '../views/ParameterDiffRow'
 
 /**
  * The full STM32 UID is a 24-hex (96-bit) string — too wide for a
@@ -870,10 +875,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
 
                         {group.entries.map((draft) => (
                           <div key={draft.id} className="parameter-diff-item">
-                            <span>
-                              <strong>{draft.id}</strong>
-                              <small>{draft.label}</small>
-                            </span>
+                            <ParameterDiffIdentity draft={draft} />
                             <span className="parameter-diff-values">
                               {formatParameterValue(draft.currentValue, draft.definition?.unit)} to{' '}
                               {formatParameterValue(draft.nextValue, draft.definition?.unit)}
@@ -976,52 +978,50 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                       </header>
 
                       {selectedSnapshotInvalidEntries.map((draft) => (
-                        <div key={draft.id} className="parameter-diff-item">
-                          <span>
-                            <strong>{draft.id}</strong>
-                            <small>{draft.label}</small>
-                          </span>
-                          <span className="parameter-diff-values">{draft.rawValue || 'Empty draft'}</span>
-                          <span className="parameter-diff-delta">{draft.reason ?? 'Invalid value'}</span>
-                          <div className="parameter-diff-actions">
-                            {/* Override without leaving Snapshots. Previously
-                             *  the only route was: tick "also stage these" →
-                             *  Show changes → Parameters tab → re-find each row
-                             *  → override it there. Offered only when an
-                             *  override can actually rescue the row (min / max
-                             *  / enum); a missing param or a non-numeric draft
-                             *  is not rescuable by any override. */}
-                            {draft.overridable ? (
+                        <ParameterDiffInvalidRow
+                          key={draft.id}
+                          draft={draft}
+                          actions={
+                            <>
+                              {/* Override without leaving Snapshots. Previously
+                               *  the only route was: tick "also stage these" →
+                               *  Show changes → Parameters tab → re-find each
+                               *  row → override it there. Offered only when an
+                               *  override can actually rescue the row (min /
+                               *  max / enum); a missing param or a non-numeric
+                               *  draft is not rescuable by any override. */}
+                              {isOverridableInvalidEntry(draft) ? (
+                                <button
+                                  type="button"
+                                  style={buttonStyle(parameterEnumOverrides.has(draft.id) ? 'secondary' : undefined)}
+                                  data-testid={`snapshot-diff-override-${draft.id}`}
+                                  onClick={() => handleToggleParameterEnumOverride(draft.id)}
+                                  disabled={busyAction !== undefined}
+                                  title={
+                                    parameterEnumOverrides.has(draft.id)
+                                      ? `Remove the override for ${draft.id} and flag it invalid again.`
+                                      : `Override and write anyway for ${draft.id} — the documented range/enum may lag this firmware.`
+                                  }
+                                >
+                                  {parameterEnumOverrides.has(draft.id) ? 'Overridden' : 'Override'}
+                                </button>
+                              ) : null}
+                              {/* Every invalid row offers Drop — same contract
+                                  as Parameters — so the operator can dismiss a
+                                  bad restore value without first fixing it. */}
                               <button
                                 type="button"
-                                style={buttonStyle(parameterEnumOverrides.has(draft.id) ? 'secondary' : undefined)}
-                                data-testid={`snapshot-diff-override-${draft.id}`}
-                                onClick={() => handleToggleParameterEnumOverride(draft.id)}
+                                style={buttonStyle()}
+                                data-testid={`snapshot-diff-drop-${draft.id}`}
+                                onClick={() => handleDropSnapshotRestoreEntry(draft.id)}
                                 disabled={busyAction !== undefined}
-                                title={
-                                  parameterEnumOverrides.has(draft.id)
-                                    ? `Remove the override for ${draft.id} and flag it invalid again.`
-                                    : `Override and write anyway for ${draft.id} — the documented range/enum may lag this firmware.`
-                                }
+                                title={`Drop the invalid restore value for ${draft.id} (excludes it from this restore).`}
                               >
-                                {parameterEnumOverrides.has(draft.id) ? 'Overridden' : 'Override'}
+                                Drop
                               </button>
-                            ) : null}
-                          {/* Every invalid row offers Drop — same contract
-                              as Parameters — so the operator can dismiss a
-                              bad restore value without first fixing it. */}
-                          <button
-                            type="button"
-                            style={buttonStyle()}
-                            data-testid={`snapshot-diff-drop-${draft.id}`}
-                            onClick={() => handleDropSnapshotRestoreEntry(draft.id)}
-                            disabled={busyAction !== undefined}
-                            title={`Drop the invalid restore value for ${draft.id} (excludes it from this restore).`}
-                          >
-                            Drop
-                          </button>
-                          </div>
-                        </div>
+                            </>
+                          }
+                        />
                       ))}
                     </section>
                   </div>
@@ -1564,10 +1564,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
 
                         {group.entries.map((draft) => (
                           <div key={draft.id} className="parameter-diff-item">
-                            <span>
-                              <strong>{draft.id}</strong>
-                              <small>{draft.label}</small>
-                            </span>
+                            <ParameterDiffIdentity draft={draft} />
                             <span className="parameter-diff-values">
                               {formatParameterValue(draft.currentValue, draft.definition?.unit)} to{' '}
                               {formatParameterValue(draft.nextValue, draft.definition?.unit)}
@@ -1607,15 +1604,11 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                         <span>{selectedProvisioningProfileInvalidEntries.length} blocked</span>
                       </header>
 
+                      {/* No per-row action here on purpose: a blocked
+                          provisioning value is fixed by editing the profile,
+                          not by overriding or dropping it from this preview. */}
                       {selectedProvisioningProfileInvalidEntries.map((draft) => (
-                        <div key={draft.id} className="parameter-diff-item">
-                          <span>
-                            <strong>{draft.id}</strong>
-                            <small>{draft.label}</small>
-                          </span>
-                          <span className="parameter-diff-values">{draft.rawValue || 'Empty draft'}</span>
-                          <span className="parameter-diff-delta">{draft.reason ?? 'Invalid value'}</span>
-                        </div>
+                        <ParameterDiffInvalidRow key={draft.id} draft={draft} />
                       ))}
                     </section>
                   </div>
