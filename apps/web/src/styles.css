@@ -11149,6 +11149,11 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 8px;
   align-items: center;
   justify-content: flex-end;
+  /* .parameter-diff-item is a grid, so the actions cell also has to place
+     itself at the trailing edge — this came from .parameter-diff-item__actions,
+     the second copy of this rule that the invalid rows used before both
+     surfaces moved onto the shared row component. */
+  justify-self: end;
 }
 
 .parameter-diff-actions > button {
@@ -11229,13 +11234,6 @@ details.metadata-settings-section:not([open]) > summary::after {
    (always available so the operator can dismiss a bad draft
    without first fixing or overriding it). User feedback: 'i cant
    drop the invalid param at all as work around.' */
-.parameter-diff-item__actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-self: end;
-}
-
 /* Inline editor in the staged-diff list — user feedback: 'when i load
    params and see changes can i also edit here please?' Lets the
    operator nudge a value (FLTMODE_CH 8 → 6) without leaving the

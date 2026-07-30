@@ -251,6 +251,7 @@ import type {
 } from './app-types'
 import { AP_PERIPH_PARAM_METADATA } from './view-models/ap-periph-param-metadata'
 import { parseParamPck } from './view-models/param-pck'
+import { stageableDraftValues } from './view-models/parameter-diff-actions'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
 import { deriveCanEnablement } from './view-models/can-enablement'
 import { deriveBoardOrientationVisual } from './view-models/board-orientation-visual'
@@ -8004,16 +8005,19 @@ export function App() {
             },
             // Group-level Stage/Drop over one category of the restore diff.
             handleApplySnapshotGroup: (entries) => {
-              const stageable = entries.filter((entry) => entry.nextValue !== undefined)
-              if (stageable.length === 0) {
+              // stageableDraftValues is shared with the Parameters review: it
+              // skips rows with no resolved value rather than staging an empty
+              // string, which would turn an unreadable row into an invalid
+              // draft that then blocks the whole write.
+              const values = stageableDraftValues(entries)
+              const count = Object.keys(values).length
+              if (count === 0) {
                 return
               }
-              mergeDrafts(
-                Object.fromEntries(stageable.map((entry) => [entry.id, String(entry.nextValue)]))
-              )
+              mergeDrafts(values)
               setSnapshotNotice({
                 tone: 'warning',
-                text: `Staged ${stageable.length} change(s) as drafts. Write all from the draft bar to apply them.`
+                text: `Staged ${count} change(s) as drafts. Write all from the draft bar to apply them.`
               })
             },
             handleDropSnapshotGroup: (paramIds) => {
