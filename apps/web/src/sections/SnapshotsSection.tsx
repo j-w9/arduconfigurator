@@ -8,6 +8,7 @@
 // No behaviour change — every JSX attribute and inline closure is verbatim
 // from the original block.
 
+import { useMemo } from 'react'
 import type { ChangeEvent, ReactElement, RefObject } from 'react'
 import type {
   ConfiguratorSnapshot,
@@ -42,6 +43,7 @@ import {
   overridableInvalidParamIds,
   paramIdsForGroup
 } from '../view-models/parameter-diff-actions'
+import { useDraftSelection } from '../hooks/use-draft-selection'
 import { ParameterDiffGroupActions } from '../views/ParameterDiffGroupActions'
 import { ParameterDiffIdentity, ParameterDiffInvalidRow } from '../views/ParameterDiffRow'
 
@@ -327,6 +329,22 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
   // an override; a param missing from the sync or a non-numeric draft cannot.
   // Drives both the per-row affordance and the "Override all (n)" count, so the
   // count never promises more than it can deliver.
+  // Bulk selection over the restore diff — shift-click ranges and a one-press
+  // "Drop selected", the same controls the Parameters review has had. Without
+  // it, abandoning part of a restore meant dropping rows one at a time.
+  const snapshotRestoreOrderedIds = useMemo(
+    () => selectedSnapshotDiffGroups.flatMap((group) => group.entries.map((entry) => entry.id)),
+    [selectedSnapshotDiffGroups]
+  )
+  const {
+    selectedIds: selectedRestoreIds,
+    handleSelectionClick: handleRestoreSelectionClick,
+    setAllSelected: setAllRestoreSelected,
+    forgetIds: forgetRestoreIds,
+    clearSelection: clearRestoreSelection,
+    allSelected: allRestoreSelected
+  } = useDraftSelection(snapshotRestoreOrderedIds)
+
   const selectedSnapshotOverridableInvalidIds = overridableInvalidParamIds(
     selectedSnapshotInvalidEntries,
     parameterEnumOverrides
@@ -840,6 +858,35 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                 </label>
 
                 {selectedSnapshotChangedEntries.length > 0 ? (
+                  <div className="parameter-diff-bulk" data-testid="snapshot-diff-bulk">
+                    <label className="parameter-diff-bulk__all">
+                      <input
+                        type="checkbox"
+                        data-testid="snapshot-diff-select-all"
+                        checked={allRestoreSelected}
+                        onChange={(event) => setAllRestoreSelected(event.target.checked)}
+                        disabled={busyAction !== undefined}
+                      />
+                      <span>Select all</span>
+                    </label>
+                    <button
+                      type="button"
+                      data-testid="snapshot-diff-drop-selected"
+                      style={buttonStyle()}
+                      onClick={() => {
+                        const ids = [...selectedRestoreIds]
+                        ids.forEach((paramId) => handleDropSnapshotRestoreEntry(paramId))
+                        clearRestoreSelection()
+                      }}
+                      disabled={busyAction !== undefined || selectedRestoreIds.size === 0}
+                      title="Drop every selected row from this restore. Shift-click checkboxes to select a range."
+                    >
+                      Drop selected ({selectedRestoreIds.size})
+                    </button>
+                  </div>
+                ) : null}
+
+                {selectedSnapshotChangedEntries.length > 0 ? (
                   <div className="parameter-diff-grid">
                     {selectedSnapshotDiffGroups.map((group) => (
                       <section key={group.category} className="parameter-diff-group">
@@ -865,7 +912,11 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                               {
                                 label: 'Drop group',
                                 testId: `snapshot-diff-drop-group-${group.category}`,
-                                onClick: () => handleDropSnapshotGroup(paramIdsForGroup(group)),
+                                onClick: () => {
+                                  const ids = paramIdsForGroup(group)
+                                  handleDropSnapshotGroup(ids)
+                                  forgetRestoreIds(ids)
+                                },
                                 disabled: busyAction !== undefined,
                                 title: `Drop all ${group.entries.length} ${formatCategoryLabel(group.category)} change(s) from this restore.`
                               }
@@ -874,7 +925,18 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                         </header>
 
                         {group.entries.map((draft) => (
-                          <div key={draft.id} className="parameter-diff-item">
+                          <div key={draft.id} className="parameter-diff-item parameter-diff-item--selectable">
+                            <input
+                              type="checkbox"
+                              className="parameter-diff-item__select"
+                              data-testid={`snapshot-diff-select-${draft.id}`}
+                              checked={selectedRestoreIds.has(draft.id)}
+                              aria-label={`Select ${draft.id} for bulk drop`}
+                              title="Select for bulk drop. Shift-click selects a range."
+                              disabled={busyAction !== undefined}
+                              onClick={(event) => handleRestoreSelectionClick(draft.id, event.shiftKey)}
+                              onChange={() => {}}
+                            />
                             <ParameterDiffIdentity draft={draft} />
                             <span className="parameter-diff-values">
                               {formatParameterValue(draft.currentValue, draft.definition?.unit)} to{' '}

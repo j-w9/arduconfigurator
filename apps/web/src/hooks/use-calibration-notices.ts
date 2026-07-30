@@ -9,13 +9,16 @@
 // App body used to declare them inline.
 
 import { useState, type Dispatch, type SetStateAction } from 'react'
+import type { ParameterNotice } from './use-parameter-feedback'
 
-import type { StatusTone } from '../status-tone'
 
-export interface CalibrationNotice {
-  tone: StatusTone
-  text: string
-}
+/**
+ * A calibration banner is the same shape as every other status banner in the
+ * app — tone + text — so it is an alias rather than a second declaration. Kept
+ * as a named alias (not a bare re-export) so calibration call sites still read
+ * as calibration, while a change to the banner shape lands in one place.
+ */
+export type CalibrationNotice = ParameterNotice
 
 export interface UseCalibrationNoticesResult {
   /** Voltage value the operator types from a multimeter for BATT_VOLT_MULT rescale. */

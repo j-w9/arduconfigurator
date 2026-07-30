@@ -10,6 +10,7 @@ import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterDraftGroup, Pa
 import type { NormalizedFirmwareMetadataBundle } from '@arduconfig/param-metadata'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { PendingParameterImport } from '../hooks/use-parameter-backup-io'
+import { useDraftSelection } from '../hooks/use-draft-selection'
 import {
   isOverridableInvalidEntry,
   overridableInvalidParamIds,
@@ -26,7 +27,6 @@ import {
 import { ScopedBitmaskPopover } from '../views/ScopedField'
 import { ParameterDetail } from '../views/ParameterDetail'
 import { parameterApplyBlockedReason } from '../apply-gate'
-import { applyDraftSelectionClick, pruneDraftSelection } from '../view-models/draft-selection'
 import { parameterSearchPredicate } from '../view-models/filtered-parameters'
 import { toneForParameterDraftStatus } from '../tone-helpers'
 import type { ParameterFollowUp, ParameterNotice } from '../hooks/use-parameter-feedback'
@@ -167,8 +167,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   // state, so it lives here. Shift-click range semantics are in
   // view-models/draft-selection.ts (unit-tested); the anchor is the last
   // row whose checkbox was clicked.
-  const [selectedDraftIds, setSelectedDraftIds] = useState<ReadonlySet<string>>(new Set())
-  const selectionAnchorRef = useRef<string | null>(null)
+
   // After a write, bring the reboot-required follow-up (and its inline Request
   // Reboot button) into view, so a reboot-required change can be completed
   // without scrolling back up the param list to find the prompt.
@@ -245,20 +244,16 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     () => visibleStagedGroups.flatMap((group) => group.entries.map((entry) => entry.id)),
     [visibleStagedGroups]
   )
-  useEffect(() => {
-    // Rows leave the staged list via apply/drop/discard-all — selection
-    // must not keep ghost ids (the "Drop selected (N)" count would lie).
-    setSelectedDraftIds((current) => pruneDraftSelection(current, stagedOrderedIds))
-  }, [stagedOrderedIds])
-  const handleDraftSelectionClick = (draftId: string, shiftKey: boolean): void => {
-    setSelectedDraftIds((current) =>
-      applyDraftSelectionClick(current, stagedOrderedIds, draftId, {
-        shiftKey,
-        anchorId: selectionAnchorRef.current
-      })
-    )
-    selectionAnchorRef.current = draftId
-  }
+  // Shift-click ranges, select-all, pruning of ids that have left the list —
+  // shared with the Snapshots restore preview via useDraftSelection.
+  const {
+    selectedIds: selectedDraftIds,
+    handleSelectionClick: handleDraftSelectionClick,
+    setAllSelected: setAllDraftsSelected,
+    forgetIds: forgetSelectedDraftIds,
+    clearSelection: clearDraftSelection,
+    allSelected: allDraftsSelected
+  } = useDraftSelection(stagedOrderedIds)
   // Drop every staged row in one category. Also clears those ids from the
   // checkbox selection, so a subsequent "Drop selected" count doesn't include
   // rows that are already gone.
@@ -269,20 +264,12 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
 
   const handleDropDraftGroup = (draftIds: string[]): void => {
     draftIds.forEach((draftId) => handleDiscardParameterDraft(draftId))
-    setSelectedDraftIds((current) => {
-      if (current.size === 0) {
-        return current
-      }
-      const next = new Set(current)
-      draftIds.forEach((draftId) => next.delete(draftId))
-      return next.size === current.size ? current : next
-    })
+    forgetSelectedDraftIds(draftIds)
   }
 
   const handleDropSelectedDrafts = (): void => {
     selectedDraftIds.forEach((draftId) => handleDiscardParameterDraft(draftId))
-    setSelectedDraftIds(new Set())
-    selectionAnchorRef.current = null
+    clearDraftSelection()
   }
 
   // Draft-status lookup for the bitmask checkbox editor (ScopedBitmaskField
@@ -587,10 +574,8 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                 <input
                   type="checkbox"
                   data-testid="parameter-diff-select-all"
-                  checked={selectedDraftIds.size === stagedOrderedIds.length && stagedOrderedIds.length > 0}
-                  onChange={(event) =>
-                    setSelectedDraftIds(event.target.checked ? new Set(stagedOrderedIds) : new Set())
-                  }
+                  checked={allDraftsSelected}
+                  onChange={(event) => setAllDraftsSelected(event.target.checked)}
                   disabled={busyAction !== undefined}
                 />
                 <span>Select all</span>

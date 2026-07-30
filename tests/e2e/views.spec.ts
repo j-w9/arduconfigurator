@@ -4184,6 +4184,20 @@ test.describe('Snapshot restore', () => {
     await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toBeVisible()
     await expect(page.getByTestId('snapshot-restore-dropped-note')).toHaveCount(0)
 
+    // Bulk selection, shared with the Parameters review: the restore preview
+    // had no way to abandon several rows at once, so a partial restore meant
+    // dropping them one at a time.
+    await expect(page.getByTestId('snapshot-diff-drop-selected')).toBeDisabled()
+    await page.getByTestId('snapshot-diff-select-BATT_LOW_VOLT').click()
+    await expect(page.getByTestId('snapshot-diff-drop-selected')).toContainText('Drop selected (1)')
+    await page.getByTestId('snapshot-diff-drop-selected').click()
+    await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toHaveCount(0)
+    await page.getByTestId('snapshot-restore-undo-drops').click()
+    await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toBeVisible()
+    // The selection must not survive the drop — otherwise the count would
+    // include a row that is no longer there.
+    await expect(page.getByTestId('snapshot-diff-drop-selected')).toContainText('Drop selected (0)')
+
     // Group-level Stage/Drop: the preview is grouped by category, and acting
     // on a whole group is the natural unit for a partial restore. Staging is
     // gated on the same overwrite ack as the per-row Stage.
