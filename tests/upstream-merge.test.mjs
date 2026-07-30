@@ -75,3 +75,64 @@ test('real upstream import enriches the curated ArduCopter catalog', () => {
   assert.ok(advanced, 'advanced category should be created for upstream-only params')
   assert.equal(advanced.viewId, 'parameters')
 })
+
+// Upstream publishes metadata under the MODERN name only. A controller on older
+// firmware streams the LEGACY one, so the row rendered with no metadata at all
+// even though the description existed under the other name — found by loading
+// the app against the demo vehicle and counting rows showing the
+// "Metadata to be expanded from upstream ArduPilot bundles" placeholder.
+test('upstream metadata resolves through a legacy parameter rename', () => {
+  const merged = mergeUpstreamParameters(
+    {},
+    {
+      CAM1_SERVO_ON: {
+        label: 'Camera servo ON PWM value',
+        description: 'PWM value in microseconds to move servo to when shutter is activated',
+        unit: 'PWM',
+        minimum: 1000,
+        maximum: 2000
+      }
+    },
+    { CAM_SERVO_ON: 'CAM1_SERVO_ON' }
+  )
+
+  assert.ok(merged.CAM_SERVO_ON, 'the legacy name must resolve to the modern metadata')
+  assert.equal(merged.CAM_SERVO_ON.label, 'Camera servo ON PWM value')
+  assert.equal(merged.CAM_SERVO_ON.unit, 'PWM')
+  // The id stays the LEGACY one: it is what the controller reports and what the
+  // UI must show, even though the description came from the modern entry.
+  assert.equal(merged.CAM_SERVO_ON.id, 'CAM_SERVO_ON')
+  // The modern entry is untouched.
+  assert.equal(merged.CAM1_SERVO_ON.id, 'CAM1_SERVO_ON')
+})
+
+test('a curated legacy definition always wins over the alias mirror', () => {
+  // The mirror fills a GAP; it must never overwrite curation. CAM_DURATION is
+  // the case that matters — it is curated deliberately because its rename also
+  // changed units, so borrowing the modern metadata would be wrong.
+  const merged = mergeUpstreamParameters(
+    {
+      CAM_DURATION: {
+        id: 'CAM_DURATION',
+        label: 'Camera Shutter Duration',
+        description: 'deci-seconds',
+        category: 'peripherals',
+        unit: 'ds',
+        minimum: 0,
+        maximum: 50
+      }
+    },
+    { CAM1_DURATION: { label: 'Camera shutter duration held open', unit: 's', minimum: 0, maximum: 5 } },
+    { CAM_DURATION: 'CAM1_DURATION' }
+  )
+
+  assert.equal(merged.CAM_DURATION.unit, 'ds', 'the curated deci-second unit must survive')
+  assert.equal(merged.CAM_DURATION.maximum, 50)
+})
+
+test('no alias map leaves the merge exactly as it was', () => {
+  const upstream = { CAM1_SERVO_ON: { label: 'Camera servo ON PWM value' } }
+  const withoutAliases = mergeUpstreamParameters({}, upstream)
+  assert.equal(withoutAliases.CAM_SERVO_ON, undefined)
+  assert.ok(withoutAliases.CAM1_SERVO_ON)
+})

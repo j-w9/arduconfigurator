@@ -1540,6 +1540,22 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       rebootRequired: true,
       options: enumOptions(ARDUCOPTER_CAM_TRIGG_TYPE_LABELS)
     },
+    // Curated rather than aliased to CAM1_DURATION on purpose: AP_Camera.cpp
+    // converts "CAM_DURATION (in deci-seconds) to CAM1_DURATION (in seconds)"
+    // with a *0.1 factor, so borrowing the modern parameter's metadata would
+    // put a seconds unit and a 0-5 range against a deci-second value. The
+    // legacy bounds below are the modern 0-5 s range expressed in deci-seconds.
+    CAM_DURATION: {
+      id: 'CAM_DURATION',
+      label: 'Camera Shutter Duration',
+      description:
+        'How long the camera shutter is held open, in DECI-seconds (0.1 s units) — a value of 10 is one second. Legacy camera parameter; firmware 4.5+ replaces it with CAM1_DURATION, which is expressed in whole seconds.',
+      category: 'peripherals',
+      unit: 'ds',
+      minimum: 0,
+      maximum: 50,
+      step: 1
+    },
     CAM_AUTO_ONLY: {
       id: 'CAM_AUTO_ONLY',
       label: 'Distance Trigger in AUTO Only',

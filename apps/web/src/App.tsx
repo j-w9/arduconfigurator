@@ -41,6 +41,7 @@ import {
   type ParameterWriteRequest,
   type RcAxisId,
   type RcMappingCandidate,
+  LEGACY_PARAM_ALIASES,
 } from '@arduconfig/ardupilot-core'
 import {
   arducopterMetadata,
@@ -561,7 +562,11 @@ export function App() {
     if (upstreamParameters && upstreamParameters.vehicle === activeVehicle) {
       return {
         ...base,
-        parameters: mergeUpstreamParameters(base.parameters, upstreamParameters.params)
+        // LEGACY_PARAM_ALIASES lets upstream metadata published under a
+        // modern name (CAM1_SERVO_ON) also resolve for a controller streaming
+        // the legacy one (CAM_SERVO_ON), which otherwise rendered with no
+        // metadata at all.
+        parameters: mergeUpstreamParameters(base.parameters, upstreamParameters.params, LEGACY_PARAM_ALIASES)
       }
     }
     return base

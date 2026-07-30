@@ -38,7 +38,16 @@ function isNonEmptyString(value: string | undefined): value is string {
  */
 export function mergeUpstreamParameters(
   handAuthored: Record<string, ParameterDefinition>,
-  upstream: UpstreamParameterMap
+  upstream: UpstreamParameterMap,
+  /**
+   * legacy -> modern parameter renames, so upstream metadata published under
+   * the modern name also resolves for a controller streaming the legacy one.
+   * Passed IN rather than imported: the alias table lives in ardupilot-core,
+   * which depends on this package, so importing it here would invert the
+   * layering. Defaults to none, leaving the merge unchanged for callers that
+   * do not care.
+   */
+  legacyAliases: Record<string, string> = {}
 ): Record<string, ParameterDefinition> {
   const merged: Record<string, ParameterDefinition> = { ...handAuthored }
 
@@ -73,6 +82,25 @@ export function mergeUpstreamParameters(
       bitmask: up.bitmask,
       rebootRequired: up.rebootRequired
     }
+  }
+
+  // Mirror upstream metadata onto the LEGACY name of any renamed parameter.
+  //
+  // Upstream ships only the modern name (CAM1_SERVO_ON), but a controller on
+  // older firmware streams the legacy one (CAM_SERVO_ON) — so the row rendered
+  // with no metadata at all even though the description existed under the other
+  // name. The alias table already promises "byId lookups resolve either way";
+  // this is what makes that true for metadata as well as values.
+  //
+  // Only renames the alias table vouches for are mirrored. Renames that also
+  // changed units are deliberately absent from it (CAM_DURATION's deci-seconds
+  // to seconds, TRIM_ARSPD_CM's cm/s to m/s), because borrowing the modern
+  // metadata there would put the wrong unit and range on a legacy value.
+  for (const [legacyId, modernId] of Object.entries(legacyAliases)) {
+    if (merged[legacyId] || !merged[modernId]) {
+      continue
+    }
+    merged[legacyId] = { ...merged[modernId], id: legacyId }
   }
 
   return merged
