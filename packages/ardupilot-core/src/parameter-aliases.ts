@@ -26,7 +26,19 @@ export const LEGACY_PARAM_ALIASES: Record<string, string> = {
   // MODE_CH -> FLTMODE_CH flight-mode channel rename.
   SYSID_THISMAV: 'MAV_SYSID',
   SYSID_MYGCS: 'MAV_GCS_SYSID',
-  MODE_CH: 'FLTMODE_CH'
+  MODE_CH: 'FLTMODE_CH',
+  // ArduPilot 4.5+ per-instance camera rename. Verified against AP_Camera.cpp's
+  // own conversion table (k_param_camera_key indices 2 and 3): these two are
+  // pure renames of the same INT16 PWM value.
+  //
+  // NOT included: CAM_DURATION -> CAM1_DURATION. That conversion also changes
+  // units — AP_Camera.cpp converts "CAM_DURATION (in deci-seconds) to
+  // CAM1_DURATION (in seconds)" with a *0.1 factor — so aliasing it would show
+  // a seconds range/unit against a deci-second value. Same reason
+  // TRIM_ARSPD_CM and Q_A_ACCEL_* are excluded above. CAM_DURATION is curated
+  // directly instead, with its real deci-second metadata.
+  CAM_SERVO_ON: 'CAM1_SERVO_ON',
+  CAM_SERVO_OFF: 'CAM1_SERVO_OFF'
 }
 
 // modern -> legacy (the reverse map).
