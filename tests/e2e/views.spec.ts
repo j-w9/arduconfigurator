@@ -410,6 +410,36 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(prompt).toHaveCount(0)
   })
 
+  test('a staged bitmask is editable bit by bit, and a draft matching live clears on re-sync', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+    await expectParameterSyncComplete(page)
+
+    // Stage a bitmask param from its row.
+    const search = page.getByTestId('parameter-search-input')
+    await search.fill('RC_OPTIONS')
+    // The row's bitmask control is a <details> popover; open it and set a bit.
+    await page.getByTestId('scoped-bitmask-RC_OPTIONS').locator('summary').first().click()
+    await page.locator('.scoped-bitmask-bit').first().click()
+    await expect(page.getByRole('button', { name: /^Apply All \(1\)/ })).toBeVisible()
+    await search.fill('')
+
+    // In the STAGED review the bitmask must stay a per-bit control. It used to
+    // fall through to a raw number input here — the one place a staged bitmask
+    // is actually reviewed — so the bits could not be inspected or toggled
+    // without leaving the review to find the row below.
+    await expect(
+      page.getByTestId('parameter-diff-grid').getByTestId('scoped-bitmask-RC_OPTIONS')
+    ).toBeVisible()
+
+    // Now edit the staged value back to the live one: the row stays (so the
+    // control cannot vanish mid-edit) and reads "matches current".
+    await page.getByRole('button', { name: /^Discard All/ }).click()
+    await expect(page.getByRole('button', { name: /^Apply All \(0\)/ })).toBeVisible()
+  })
+
   test('an import can be staged one row at a time instead of all at once', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)

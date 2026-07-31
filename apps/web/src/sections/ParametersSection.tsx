@@ -3,7 +3,7 @@
 // staged / invalid / reboot-required draft groups, the import-backup file
 // input + three export buttons, and the selected-parameter detail card.
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactElement, RefObject, SetStateAction } from 'react'
 import { parameterAlias } from '@arduconfig/ardupilot-core'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterDraftGroup, ParameterDraftSummary, ParameterImportCategory, ParameterState } from '@arduconfig/ardupilot-core'
@@ -196,11 +196,23 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   // dependency changing on the very first render still fires the effect.
   const stagedDiffGridRef = useRef<HTMLDivElement>(null)
   const invalidDiffGridRef = useRef<HTMLDivElement>(null)
+  // The app header is sticky, so a plain scrollIntoView({block:'start'}) — and a
+  // plain "#id" anchor jump — parks the target UNDER it. The invalid callout's
+  // "jump to them" landed with the invalid block scrolled off the top, showing
+  // the parameter table instead of the thing it promised to jump to. Same
+  // header offset scrollToPanel uses in App.tsx.
+  const HEADER_OFFSET_PX = 112
+  const scrollToReviewTarget = useCallback((target: HTMLElement | null) => {
+    if (!target) return
+    window.scrollTo({
+      top: Math.max(0, window.scrollY + target.getBoundingClientRect().top - HEADER_OFFSET_PX),
+      behavior: 'smooth'
+    })
+  }, [])
   useEffect(() => {
     if (scrollToChangesRequestId === 0) return
-    const target = invalidDiffGridRef.current ?? stagedDiffGridRef.current
-    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [scrollToChangesRequestId])
+    scrollToReviewTarget(invalidDiffGridRef.current ?? stagedDiffGridRef.current)
+  }, [scrollToChangesRequestId, scrollToReviewTarget])
   // The search box filters the staged review too: filtering only the
   // table while the review list (where you look mid-import) ignores it
   // makes wildcard search appear broken. Selection, Select all, and Drop
@@ -696,6 +708,12 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             <a
               href="#parameter-invalid-grid"
               data-testid="parameter-review-invalid-callout"
+              onClick={(event) => {
+                // Take over from the native anchor jump, which ignores the
+                // sticky header and leaves the invalid block above the viewport.
+                event.preventDefault()
+                scrollToReviewTarget(invalidDiffGridRef.current)
+              }}
               role="alert"
               style={{
                 display: 'flex',
@@ -801,7 +819,27 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                           </>
                         ) : null}
                         <em>New:</em>{' '}
-                        {options && options.length > 0 && !isBitmask ? (
+                        {/* Bitmask params get the same per-bit popover the
+                          * parameter row uses. They used to fall through to the
+                          * raw number input here — the one place a staged
+                          * bitmask is actually reviewed — so RC_OPTIONS could
+                          * not be inspected or toggled bit by bit without
+                          * leaving the review and finding the row below. */}
+                        {isBitmask && (draft.definition?.options?.length ?? 0) > 0 && draft.definition ? (
+                          <ScopedBitmaskPopover
+                            parameter={{
+                              id: draft.id,
+                              value: draft.currentValue ?? 0,
+                              definition: draft.definition,
+                              index: 0,
+                              count: 0
+                            }}
+                            liveValue={draft.currentValue}
+                            editedValues={editedValues}
+                            draftStatusById={draftStatusMap}
+                            onChange={setDraft}
+                          />
+                        ) : options && options.length > 0 && !isBitmask ? (
                           <select
                             id={inputId}
                             data-testid={`parameter-diff-edit-${draft.id}`}

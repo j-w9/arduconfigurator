@@ -2388,6 +2388,36 @@ export function App() {
     relayStagedDrafts,
     relayInvalidDrafts
   } = useViewDraftSelectors({ parameterDraftEntries, isConfigParamId })
+
+  // Drop drafts that match the live value once a FRESH parameter sync lands.
+  //
+  // An 'unchanged' draft (one edited back to the live value) is kept on screen
+  // on purpose: removing it the instant it matched used to yank the input out
+  // from under the operator mid-edit. But after a reboot or a Refresh, nobody
+  // is mid-edit, and a draft that equals the controller's value can never
+  // write — it just sits in the review reading "matches current — won't write"
+  // with 0 STAGED, and the only way to clear it is to hunt for its Drop.
+  //
+  // A completed sync is the natural boundary: keyed on requestedAtMs so it
+  // fires once per sync, not on every snapshot.
+  const prunedSyncRef = useRef<number | undefined>(undefined)
+  useEffect(() => {
+    const requestedAtMs = snapshot.parameterStats.requestedAtMs
+    if (snapshot.parameterStats.status !== 'complete' || requestedAtMs === undefined) {
+      return
+    }
+    if (prunedSyncRef.current === requestedAtMs) {
+      return
+    }
+    prunedSyncRef.current = requestedAtMs
+    const matchingLive = parameterDraftEntries
+      .filter((entry) => entry.status === 'unchanged')
+      .map((entry) => entry.id)
+    if (matchingLive.length > 0) {
+      clearDrafts(matchingLive)
+    }
+  }, [snapshot.parameterStats.status, snapshot.parameterStats.requestedAtMs, parameterDraftEntries, clearDrafts])
+
   const canApplyAllDraftParameters =
     canApplyDraftParameters && stagedParameterDrafts.length > 0 && invalidParameterDrafts.length === 0
   const rcMappingDerivations = useRcMappingDerivations({
