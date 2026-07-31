@@ -397,10 +397,83 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(prompt).toContainText('e2e-backup.parm')
     await expect(page.getByRole('button', { name: /^Apply All \(0\)/ })).toBeVisible()
 
+    // The import is REVIEWABLE: every value shows as a current->imported row
+    // with its own Stage/Drop, grouped by category. Without this the prompt was
+    // all-or-nothing, since the pending values are held out of the draft set and
+    // so never appear in the parameter rows below.
+    await expect(page.getByTestId('parameter-import-preview')).toBeVisible()
+    await expect(page.getByTestId('parameter-import-stage-BATT_LOW_VOLT')).toBeVisible()
+
     // Stage all is the explicit, obvious action.
     await page.getByTestId('parameter-import-stage-all').click()
     await expect(page.getByRole('button', { name: /^Apply All \(1\)/ })).toBeVisible()
     await expect(prompt).toHaveCount(0)
+  })
+
+  test('a staged bitmask is editable bit by bit, and a draft matching live clears on re-sync', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+    await expectParameterSyncComplete(page)
+
+    // Stage a bitmask param from its row.
+    const search = page.getByTestId('parameter-search-input')
+    await search.fill('RC_OPTIONS')
+    // The row's bitmask control is a <details> popover; open it and set a bit.
+    await page.getByTestId('scoped-bitmask-RC_OPTIONS').locator('summary').first().click()
+    await page.locator('.scoped-bitmask-bit').first().click()
+    await expect(page.getByRole('button', { name: /^Apply All \(1\)/ })).toBeVisible()
+    await search.fill('')
+
+    // In the STAGED review the bitmask must stay a per-bit control. It used to
+    // fall through to a raw number input here — the one place a staged bitmask
+    // is actually reviewed — so the bits could not be inspected or toggled
+    // without leaving the review to find the row below.
+    await expect(
+      page.getByTestId('parameter-diff-grid').getByTestId('scoped-bitmask-RC_OPTIONS')
+    ).toBeVisible()
+
+    // Now edit the staged value back to the live one: the row stays (so the
+    // control cannot vanish mid-edit) and reads "matches current".
+    await page.getByRole('button', { name: /^Discard All/ }).click()
+    await expect(page.getByRole('button', { name: /^Apply All \(0\)/ })).toBeVisible()
+  })
+
+  test('an import can be staged one row at a time instead of all at once', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+    await expectParameterSyncComplete(page)
+
+    // Two differing values, so a partial take is observable.
+    await page.locator('input[aria-label="Import parameter backup file"]').setInputFiles({
+      name: 'partial.parm',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('BATT_LOW_VOLT,13.5\nBATT_CRT_VOLT,12.9\n')
+    })
+    await expect(page.getByTestId('parameter-import-prompt')).toContainText('2 values')
+
+    // Take one row. The other stays pending — the prompt count drops rather
+    // than the whole import being consumed.
+    await page.getByTestId('parameter-import-stage-BATT_LOW_VOLT').click()
+    await expect(page.getByRole('button', { name: /^Apply All \(1\)/ })).toBeVisible()
+    await expect(page.getByTestId('parameter-import-prompt')).toContainText('1 value')
+    await expect(page.getByTestId('parameter-import-stage-BATT_LOW_VOLT')).toHaveCount(0)
+
+    // Drop the remainder: nothing more is staged and the prompt clears.
+    await page.getByTestId('parameter-import-drop-BATT_CRT_VOLT').click()
+    await expect(page.getByRole('button', { name: /^Apply All \(1\)/ })).toBeVisible()
+    await expect(page.getByTestId('parameter-import-prompt')).toHaveCount(0)
+
+    // The staged row keeps showing what the FILE asked for, next to the live
+    // value and the editable one. Editing the draft — including back to the
+    // live value, where the row reads "matches current" — must not erase it.
+    const imported = page.getByTestId('parameter-diff-import-BATT_LOW_VOLT')
+    await expect(imported).toContainText('13.5')
+    await page.getByTestId('parameter-diff-edit-BATT_LOW_VOLT').fill('12')
+    await expect(imported).toContainText('13.5')
   })
 
   test('dropping a category drops every staged row in it', async ({ page }) => {

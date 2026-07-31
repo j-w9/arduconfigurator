@@ -3,7 +3,7 @@
 // staged / invalid / reboot-required draft groups, the import-backup file
 // input + three export buttons, and the selected-parameter detail card.
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactElement, RefObject, SetStateAction } from 'react'
 import { parameterAlias } from '@arduconfig/ardupilot-core'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterDraftGroup, ParameterDraftSummary, ParameterImportCategory, ParameterState } from '@arduconfig/ardupilot-core'
@@ -11,6 +11,7 @@ import type { NormalizedFirmwareMetadataBundle } from '@arduconfig/param-metadat
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { PendingParameterImport } from '../hooks/use-parameter-backup-io'
 import { useDraftSelection } from '../hooks/use-draft-selection'
+import { selectEntityDiff } from '../selectors/entity-diff'
 import {
   isOverridableInvalidEntry,
   overridableInvalidParamIds,
@@ -98,6 +99,12 @@ export interface ParametersSectionProps {
   /** A backup that has been read but NOT staged. */
   pendingParameterImport: PendingParameterImport | undefined
   onStagePendingParameterImport: () => void
+  /** Stage one row or one category of the pending import. */
+  onStagePendingParameterImportSubset: (paramIds: readonly string[]) => void
+  /** What an imported draft originally asked for, keyed by param id. */
+  importedDraftOrigins: Record<string, string>
+  /** Drop rows from the pending import without staging them. */
+  onDropPendingParameterImportEntries: (paramIds: readonly string[]) => void
   onDismissPendingParameterImport: () => void
   /** Params verified-written in the last few seconds — briefly flagged green. */
   recentlyWrittenParamIds: ReadonlySet<string>
@@ -156,6 +163,9 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     showOnlyNonDefault,
     pendingParameterImport,
     onStagePendingParameterImport,
+    onStagePendingParameterImportSubset,
+    onDropPendingParameterImportEntries,
+    importedDraftOrigins,
     onDismissPendingParameterImport,
     recentlyWrittenParamIds,
     onToggleShowOnlyNonDefault: handleToggleShowOnlyNonDefault,
@@ -186,11 +196,23 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   // dependency changing on the very first render still fires the effect.
   const stagedDiffGridRef = useRef<HTMLDivElement>(null)
   const invalidDiffGridRef = useRef<HTMLDivElement>(null)
+  // The app header is sticky, so a plain scrollIntoView({block:'start'}) — and a
+  // plain "#id" anchor jump — parks the target UNDER it. The invalid callout's
+  // "jump to them" landed with the invalid block scrolled off the top, showing
+  // the parameter table instead of the thing it promised to jump to. Same
+  // header offset scrollToPanel uses in App.tsx.
+  const HEADER_OFFSET_PX = 112
+  const scrollToReviewTarget = useCallback((target: HTMLElement | null) => {
+    if (!target) return
+    window.scrollTo({
+      top: Math.max(0, window.scrollY + target.getBoundingClientRect().top - HEADER_OFFSET_PX),
+      behavior: 'smooth'
+    })
+  }, [])
   useEffect(() => {
     if (scrollToChangesRequestId === 0) return
-    const target = invalidDiffGridRef.current ?? stagedDiffGridRef.current
-    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [scrollToChangesRequestId])
+    scrollToReviewTarget(invalidDiffGridRef.current ?? stagedDiffGridRef.current)
+  }, [scrollToChangesRequestId, scrollToReviewTarget])
   // The search box filters the staged review too: filtering only the
   // table while the review list (where you look mid-import) ignores it
   // makes wildcard search appear broken. Selection, Select all, and Drop
@@ -257,6 +279,20 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   // Drop every staged row in one category. Also clears those ids from the
   // checkbox selection, so a subsequent "Drop selected" count doesn't include
   // rows that are already gone.
+  // The pending import rendered as a real diff (current -> imported), grouped by
+  // category. Held OUT of the draft set, these values were previously invisible:
+  // the prompt offered only "Stage all" or "Discard", and the parameter rows
+  // below showed "No local draft" because nothing was staged. So there was no
+  // way to take part of an import — worse than the old auto-stage-everything
+  // behaviour it replaced.
+  const pendingImportDiff = useMemo(
+    () =>
+      pendingParameterImport
+        ? selectEntityDiff(snapshot.parameters, pendingParameterImport.draftValues, parameterEnumOverrides)
+        : undefined,
+    [pendingParameterImport, snapshot.parameters, parameterEnumOverrides]
+  )
+
   // Invalid rows in a group that an override can still rescue, excluding ones
   // already overridden — shared with the Snapshots restore preview.
   const overridableGroupIds = (group: ParameterDraftGroup): string[] =>
@@ -562,6 +598,76 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             </div>
           ) : null}
 
+          {/* Per-row and per-group control over the import, using the same
+            * grouped-diff shape as the staged review and the Snapshots restore
+            * preview. */}
+          {pendingParameterImport && pendingImportDiff && pendingImportDiff.groups.length > 0 ? (
+            <div className="parameter-diff-grid" data-testid="parameter-import-preview">
+              {pendingImportDiff.groups.map((group) => (
+                <section key={`import:${group.category}`} className="parameter-diff-group">
+                  <header>
+                    <strong>{formatCategoryLabel(group.category)}</strong>
+                    <span>{group.entries.length} to stage</span>
+                    <ParameterDiffGroupActions
+                      actions={[
+                        {
+                          label: 'Stage group',
+                          testId: `parameter-import-stage-group-${group.category}`,
+                          onClick: () => onStagePendingParameterImportSubset(paramIdsForGroup(group)),
+                          disabled: busyAction !== undefined,
+                          title: `Stage all ${group.entries.length} ${formatCategoryLabel(group.category)} value(s) from this import.`
+                        },
+                        {
+                          label: 'Drop group',
+                          testId: `parameter-import-drop-group-${group.category}`,
+                          onClick: () => onDropPendingParameterImportEntries(paramIdsForGroup(group)),
+                          disabled: busyAction !== undefined,
+                          title: `Drop all ${group.entries.length} ${formatCategoryLabel(group.category)} value(s) from this import.`
+                        }
+                      ]}
+                    />
+                  </header>
+
+                  {group.entries.map((draft) => (
+                    <div key={draft.id} className="parameter-diff-item">
+                      <ParameterDiffIdentity draft={draft} />
+                      <span className="parameter-diff-values">
+                        {formatParameterDraftValue(draft.definition, draft.currentValue)}
+                        {' → '}
+                        {formatParameterDraftValue(draft.definition, draft.nextValue)}
+                      </span>
+                      <span className="parameter-diff-delta">
+                        {formatParameterDelta(draft.delta, draft.definition?.unit)}
+                      </span>
+                      <div className="parameter-diff-actions">
+                        <button
+                          type="button"
+                          style={buttonStyle()}
+                          data-testid={`parameter-import-stage-${draft.id}`}
+                          onClick={() => onStagePendingParameterImportSubset([draft.id])}
+                          disabled={busyAction !== undefined}
+                          title={`Stage ${draft.id} from this import.`}
+                        >
+                          Stage
+                        </button>
+                        <button
+                          type="button"
+                          style={buttonStyle()}
+                          data-testid={`parameter-import-drop-${draft.id}`}
+                          onClick={() => onDropPendingParameterImportEntries([draft.id])}
+                          disabled={busyAction !== undefined}
+                          title={`Drop ${draft.id} from this import (keeps the live value).`}
+                        >
+                          Drop
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              ))}
+            </div>
+          ) : null}
+
           {parameterDraftSummary.stagedCategories.length > 0 ? (
             <small className="parameter-review__hint">
               Categories in review: {parameterDraftSummary.stagedCategories.map((categoryId) => formatCategoryLabel(categoryId)).join(', ')}
@@ -602,6 +708,12 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             <a
               href="#parameter-invalid-grid"
               data-testid="parameter-review-invalid-callout"
+              onClick={(event) => {
+                // Take over from the native anchor jump, which ignores the
+                // sticky header and leaves the invalid block above the viewport.
+                event.preventDefault()
+                scrollToReviewTarget(invalidDiffGridRef.current)
+              }}
               role="alert"
               style={{
                 display: 'flex',
@@ -669,6 +781,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                     // value. Keep the row (so the input never vanishes mid-edit)
                     // but render it muted — it won't write.
                     const isUnchanged = draft.status === 'unchanged'
+                    const importedValue = importedDraftOrigins[draft.id]
                     return (
                     <div
                       key={draft.id}
@@ -689,8 +802,44 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                       <span className="parameter-diff-values">
                         <em>Current:</em> {formatParameterDraftValue(draft.definition, draft.currentValue)}
                         {' → '}
+                        {/* What the imported file asked for, shown whenever this
+                          * draft came from an import. The editor below is free
+                          * to be nudged afterwards — including back to the live
+                          * value, where the row reads "matches current" — and
+                          * without this the imported number is gone from the
+                          * screen with no way to recover it. Mission Planner
+                          * shows the imported value for the same reason. */}
+                        {importedValue !== undefined ? (
+                          <>
+                            <em>Import:</em>{' '}
+                            <span data-testid={`parameter-diff-import-${draft.id}`}>
+                              {formatParameterDraftValue(draft.definition, Number(importedValue))}
+                            </span>
+                            {' → '}
+                          </>
+                        ) : null}
                         <em>New:</em>{' '}
-                        {options && options.length > 0 && !isBitmask ? (
+                        {/* Bitmask params get the same per-bit popover the
+                          * parameter row uses. They used to fall through to the
+                          * raw number input here — the one place a staged
+                          * bitmask is actually reviewed — so RC_OPTIONS could
+                          * not be inspected or toggled bit by bit without
+                          * leaving the review and finding the row below. */}
+                        {isBitmask && (draft.definition?.options?.length ?? 0) > 0 && draft.definition ? (
+                          <ScopedBitmaskPopover
+                            parameter={{
+                              id: draft.id,
+                              value: draft.currentValue ?? 0,
+                              definition: draft.definition,
+                              index: 0,
+                              count: 0
+                            }}
+                            liveValue={draft.currentValue}
+                            editedValues={editedValues}
+                            draftStatusById={draftStatusMap}
+                            onChange={setDraft}
+                          />
+                        ) : options && options.length > 0 && !isBitmask ? (
                           <select
                             id={inputId}
                             data-testid={`parameter-diff-edit-${draft.id}`}

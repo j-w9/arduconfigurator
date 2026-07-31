@@ -42,6 +42,9 @@ export interface UseParameterBackupIoParams {
   /** When set, export only these param ids ("export only changed / non-default"). */
   exportIncludeParamIds?: ReadonlySet<string>
   replaceDrafts: (drafts: ParameterDraftValues) => void
+  /** Merge without clearing existing drafts — used when staging PART of an
+   *  import, which must not wipe drafts staged from elsewhere. */
+  mergeDrafts: (drafts: ParameterDraftValues) => void
   setParameterNotice: Dispatch<SetStateAction<ParameterNotice | undefined>>
   setParameterFollowUp: Dispatch<SetStateAction<ParameterFollowUp | undefined>>
 }
@@ -65,8 +68,26 @@ export interface UseParameterBackupIoResult {
   pendingParameterImport: PendingParameterImport | undefined
   /** Stage every value from the pending import. */
   stagePendingParameterImport: () => void
+  /**
+   * Stage SOME of the pending import — one row, or one category — leaving the
+   * rest pending. Without this the import was all-or-nothing: the values were
+   * held out of the draft set, so there was no per-row control anywhere to
+   * reach them with.
+   */
+  stagePendingParameterImportSubset: (paramIds: readonly string[]) => void
+  /** Drop rows from the pending import without staging them. */
+  dropPendingParameterImportEntries: (paramIds: readonly string[]) => void
   /** Throw the pending import away without staging anything. */
   dismissPendingParameterImport: () => void
+  /**
+   * Values a staged draft ORIGINALLY came from an import with, keyed by param
+   * id. The staged row's editor is free to be nudged afterwards, at which point
+   * the imported number is gone from the screen entirely — including the case
+   * where the operator sets it back to the live value and the row reads
+   * "matches current", with no way to see what the file had asked for. Keeping
+   * the origin lets the row show Current / Import / New side by side.
+   */
+  importedDraftOrigins: Record<string, string>
 }
 
 export function useParameterBackupIo({
@@ -75,6 +96,7 @@ export function useParameterBackupIo({
   parameterExportExclusions,
   exportIncludeParamIds,
   replaceDrafts,
+  mergeDrafts,
   setParameterNotice,
   setParameterFollowUp
 }: UseParameterBackupIoParams): UseParameterBackupIoResult {
@@ -82,6 +104,7 @@ export function useParameterBackupIo({
   // read, which turns "let me look at this backup" into a pending write of
   // hundreds of parameters. Hold it here instead and let the operator decide.
   const [pendingParameterImport, setPendingParameterImport] = useState<PendingParameterImport>()
+  const [importedDraftOrigins, setImportedDraftOrigins] = useState<Record<string, string>>({})
   function buildBackupAppInfo(): { appVersion: string; appGitHash: string; appGitBranch: string } {
     return { appVersion: APP_VERSION, appGitHash: GIT_HASH, appGitBranch: GIT_BRANCH }
   }
@@ -227,17 +250,80 @@ export function useParameterBackupIo({
     handleExportParameterBackupAsParams,
     handleImportParameterBackup,
     pendingParameterImport,
+    stagePendingParameterImportSubset: (paramIds) => {
+      if (!pendingParameterImport || paramIds.length === 0) {
+        return
+      }
+      const taking: Record<string, string> = {}
+      const remaining: Record<string, string> = { ...pendingParameterImport.draftValues }
+      for (const paramId of paramIds) {
+        const value = remaining[paramId]
+        if (value === undefined) {
+          continue
+        }
+        taking[paramId] = value
+        delete remaining[paramId]
+      }
+      const takenCount = Object.keys(taking).length
+      if (takenCount === 0) {
+        return
+      }
+      // mergeDrafts, not replaceDrafts: staging part of an import must not wipe
+      // drafts the operator staged from anywhere else.
+      mergeDrafts(taking)
+      setImportedDraftOrigins((current) => ({ ...current, ...taking }))
+      const remainingCount = Object.keys(remaining).length
+      setPendingParameterImport(
+        remainingCount === 0 ? undefined : { ...pendingParameterImport, draftValues: remaining, changedCount: remainingCount }
+      )
+      setParameterNotice({
+        tone: 'warning',
+        text: `Staged ${takenCount} value(s) from ${pendingParameterImport.fileName}.${
+          remainingCount > 0 ? ` ${remainingCount} still pending.` : ''
+        } Review the diff, then Apply All to write them.`
+      })
+    },
+    dropPendingParameterImportEntries: (paramIds) => {
+      if (!pendingParameterImport || paramIds.length === 0) {
+        return
+      }
+      const remaining: Record<string, string> = { ...pendingParameterImport.draftValues }
+      let dropped = 0
+      for (const paramId of paramIds) {
+        if (remaining[paramId] !== undefined) {
+          delete remaining[paramId]
+          dropped += 1
+        }
+      }
+      if (dropped === 0) {
+        return
+      }
+      const remainingCount = Object.keys(remaining).length
+      setPendingParameterImport(
+        remainingCount === 0 ? undefined : { ...pendingParameterImport, draftValues: remaining, changedCount: remainingCount }
+      )
+      setParameterNotice({
+        tone: 'neutral',
+        text: `Dropped ${dropped} value(s) from the import.${remainingCount > 0 ? ` ${remainingCount} still pending.` : ''}`
+      })
+    },
     stagePendingParameterImport: () => {
       if (!pendingParameterImport) {
         return
       }
+      // Whole-import staging still REPLACES: it is the "load this backup"
+      // action, and the operator asked for that file's set.
       replaceDrafts(pendingParameterImport.draftValues)
+      // replaceDrafts clears the draft set, so the origin map is replaced too
+      // rather than merged — a stale origin would label an unrelated draft.
+      setImportedDraftOrigins({ ...pendingParameterImport.draftValues })
       setPendingParameterImport(undefined)
       setParameterNotice({
         tone: 'warning',
         text: `Staged ${pendingParameterImport.changedCount} value(s) from ${pendingParameterImport.fileName}. Review the diff, then Apply All to write them.`
       })
     },
+    importedDraftOrigins,
     dismissPendingParameterImport: () => {
       setPendingParameterImport(undefined)
       setParameterNotice(undefined)
