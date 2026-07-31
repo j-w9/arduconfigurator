@@ -8392,6 +8392,8 @@ export function App() {
         busyAction={luaScripts.busyAction}
         onEnableScripting={luaScripts.enableScripting}
         onReboot={luaScripts.reboot}
+        onRestartScripting={luaScripts.restartScripting}
+        onStopScripting={luaScripts.stopScripting}
         onRefresh={luaScripts.refresh}
         onInstall={luaScripts.install}
         onRemove={luaScripts.remove}

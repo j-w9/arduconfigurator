@@ -18,6 +18,8 @@ export interface LuaScriptsCapableRuntime {
     options?: { verifyTimeoutMs?: number }
   ): Promise<{ paramId: string; confirmedValue: number }>
   reboot(): Promise<void>
+  restartScripting(): Promise<void>
+  stopScripting(): Promise<void>
 }
 
 export interface LuaScriptsNotice {
@@ -49,6 +51,8 @@ export interface LuaScriptsController {
   upload: (file: File) => void
   enableScripting: () => void
   reboot: () => void
+  restartScripting: () => void
+  stopScripting: () => void
 }
 
 /**
@@ -260,6 +264,52 @@ export function useLuaScripts(options: UseLuaScriptsOptions): LuaScriptsControll
     }
   }, [runtime])
 
+  // Restarting scripting is what ArduPilot actually asks for when a script
+  // changes — a full reboot drops the link, re-runs every startup check and
+  // re-syncs the parameter table to achieve the same thing.
+  const restartScripting = useCallback(async () => {
+    if (!runtime) return
+    setBusyAction('lua:restart-scripting')
+    setNotice(undefined)
+    try {
+      await runtime.restartScripting()
+      setNotice({
+        tone: 'success',
+        text: 'Scripting restarted. Scripts re-run from the start; the flight controller stayed up.'
+      })
+    } catch (error) {
+      setNotice({
+        tone: 'danger',
+        text:
+          error instanceof Error
+            ? `Restart scripting failed: ${error.message}`
+            : 'Restart scripting failed.'
+      })
+    } finally {
+      setBusyAction(undefined)
+    }
+  }, [runtime])
+
+  const stopScripting = useCallback(async () => {
+    if (!runtime) return
+    setBusyAction('lua:stop-scripting')
+    setNotice(undefined)
+    try {
+      await runtime.stopScripting()
+      setNotice({
+        tone: 'success',
+        text: 'Scripting stopped. It stays stopped until you restart scripting or reboot.'
+      })
+    } catch (error) {
+      setNotice({
+        tone: 'danger',
+        text: error instanceof Error ? `Stop scripting failed: ${error.message}` : 'Stop scripting failed.'
+      })
+    } finally {
+      setBusyAction(undefined)
+    }
+  }, [runtime])
+
   return {
     installed,
     installedLoading,
@@ -271,6 +321,8 @@ export function useLuaScripts(options: UseLuaScriptsOptions): LuaScriptsControll
     remove: (name) => void remove(name),
     upload: (file) => void upload(file),
     enableScripting: () => void enableScripting(),
-    reboot: () => void reboot()
+    reboot: () => void reboot(),
+    restartScripting: () => void restartScripting(),
+    stopScripting: () => void stopScripting()
   }
 }

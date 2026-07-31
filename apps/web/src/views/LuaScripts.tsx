@@ -36,6 +36,10 @@ export interface LuaScriptsViewProps {
   busyAction?: string
   onEnableScripting: () => void
   onReboot: () => void
+  /** Restart Lua scripting without rebooting the flight controller. */
+  onRestartScripting: () => void
+  /** Stop Lua scripting until the next restart/reboot. */
+  onStopScripting: () => void
   onRefresh: () => void
   onInstall: (appletId: string) => void
   onRemove: (name: string) => void
@@ -57,10 +61,14 @@ function CapabilityBanner(props: {
   busyAction?: string
   onEnableScripting: () => void
   onReboot: () => void
+  onRestartScripting: () => void
+  onStopScripting: () => void
 }) {
-  const { capability, busyAction, onEnableScripting, onReboot } = props
+  const { capability, busyAction, onEnableScripting, onReboot, onRestartScripting, onStopScripting } = props
   const enabling = busyAction === 'lua:enable'
   const rebooting = busyAction === 'lua:reboot'
+  const restartingScripting = busyAction === 'lua:restart-scripting'
+  const stoppingScripting = busyAction === 'lua:stop-scripting'
 
   // A genuine warning: this build has no Lua VM at all.
   if (capability.capability === 'unsupported') {
@@ -114,12 +122,37 @@ function CapabilityBanner(props: {
       <p className="lua-status-line lua-status-line--success">
         <StatusBadge tone="success">Scripting on</StatusBadge>
         <span className="lua-status-text">
-          Lua is enabled{capability.heapSizePresent ? ` · heap ${kib(capability.heapSizeBytes)} KiB` : ''}. A reboot
-          applies newly-installed scripts.
+          Lua is enabled{capability.heapSizePresent ? ` · heap ${kib(capability.heapSizeBytes)} KiB` : ''}. Restart
+          scripting to apply newly-installed scripts — a full reboot is not needed.
         </span>
+        {/* Restart scripting is the action ArduPilot actually asks for when a
+         *  script changes ("restart scripting" STATUSTEXT). It is listed first
+         *  and styled as the primary because a reboot to achieve the same thing
+         *  drops the link, re-runs every startup check and re-syncs the whole
+         *  parameter table. */}
         <button
           type="button"
           className="lua-status-spacer"
+          style={buttonStyle('primary')}
+          onClick={onRestartScripting}
+          disabled={Boolean(busyAction)}
+          data-testid="lua-restart-scripting"
+          title="Stop and restart onboard Lua scripting (MAV_CMD_SCRIPTING). The flight controller stays up."
+        >
+          {restartingScripting ? 'Restarting scripting…' : 'Restart scripting'}
+        </button>
+        <button
+          type="button"
+          style={buttonStyle()}
+          onClick={onStopScripting}
+          disabled={Boolean(busyAction)}
+          data-testid="lua-stop-scripting"
+          title="Stop onboard Lua scripting until the next restart or reboot."
+        >
+          {stoppingScripting ? 'Stopping…' : 'Stop scripting'}
+        </button>
+        <button
+          type="button"
           style={buttonStyle()}
           onClick={onReboot}
           disabled={Boolean(busyAction)}
@@ -228,6 +261,8 @@ export function LuaScriptsView(props: LuaScriptsViewProps) {
     busyAction,
     onEnableScripting,
     onReboot,
+    onRestartScripting,
+    onStopScripting,
     onRefresh,
     onInstall,
     onRemove,
@@ -255,6 +290,8 @@ export function LuaScriptsView(props: LuaScriptsViewProps) {
               busyAction={busyAction}
               onEnableScripting={onEnableScripting}
               onReboot={onReboot}
+              onRestartScripting={onRestartScripting}
+              onStopScripting={onStopScripting}
             />
 
             {notice ? (

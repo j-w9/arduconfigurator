@@ -251,6 +251,8 @@ export const MAV_CMD = {
   PREFLIGHT_CALIBRATION: 241,
   PREFLIGHT_STORAGE: 245,
   PREFLIGHT_REBOOT_SHUTDOWN: 246,
+  /** ArduPilot-specific: control onboard Lua scripting (ardupilotmega.xml). */
+  SCRIPTING: 42701,
   // Put the RC receiver into bind/pair mode. ArduPilot routes this to the
   // active RC protocol's bind: CRSF/ExpressLRS sends the CRSF bind command
   // frame to the RX, Spektrum pulses the satellite bind. Params are ignored
