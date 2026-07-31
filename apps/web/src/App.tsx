@@ -964,6 +964,9 @@ export function App() {
     handleImportParameterBackup,
     pendingParameterImport,
     stagePendingParameterImport,
+    stagePendingParameterImportSubset,
+    dropPendingParameterImportEntries,
+    importedDraftOrigins,
     dismissPendingParameterImport
   } = useParameterBackupIo({
     snapshot,
@@ -971,6 +974,7 @@ export function App() {
     parameterExportExclusions,
     exportIncludeParamIds: showOnlyNonDefault && nonDefaultParamIds ? nonDefaultParamIds : undefined,
     replaceDrafts,
+    mergeDrafts,
     setParameterNotice,
     setParameterFollowUp
   })
@@ -8679,6 +8683,9 @@ export function App() {
           onImportParameterBackup={handleImportParameterBackup}
           pendingParameterImport={pendingParameterImport}
           onStagePendingParameterImport={stagePendingParameterImport}
+          onStagePendingParameterImportSubset={stagePendingParameterImportSubset}
+          importedDraftOrigins={importedDraftOrigins}
+          onDropPendingParameterImportEntries={dropPendingParameterImportEntries}
           onDismissPendingParameterImport={dismissPendingParameterImport}
           onRefreshParameters={() => handleGuidedAction('request-parameters')}
           refreshDisabled={busyAction !== undefined || !canRunGuidedAction(snapshot, 'request-parameters')}

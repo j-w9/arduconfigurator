@@ -11,6 +11,7 @@ import type { NormalizedFirmwareMetadataBundle } from '@arduconfig/param-metadat
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { PendingParameterImport } from '../hooks/use-parameter-backup-io'
 import { useDraftSelection } from '../hooks/use-draft-selection'
+import { selectEntityDiff } from '../selectors/entity-diff'
 import {
   isOverridableInvalidEntry,
   overridableInvalidParamIds,
@@ -98,6 +99,12 @@ export interface ParametersSectionProps {
   /** A backup that has been read but NOT staged. */
   pendingParameterImport: PendingParameterImport | undefined
   onStagePendingParameterImport: () => void
+  /** Stage one row or one category of the pending import. */
+  onStagePendingParameterImportSubset: (paramIds: readonly string[]) => void
+  /** What an imported draft originally asked for, keyed by param id. */
+  importedDraftOrigins: Record<string, string>
+  /** Drop rows from the pending import without staging them. */
+  onDropPendingParameterImportEntries: (paramIds: readonly string[]) => void
   onDismissPendingParameterImport: () => void
   /** Params verified-written in the last few seconds — briefly flagged green. */
   recentlyWrittenParamIds: ReadonlySet<string>
@@ -156,6 +163,9 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     showOnlyNonDefault,
     pendingParameterImport,
     onStagePendingParameterImport,
+    onStagePendingParameterImportSubset,
+    onDropPendingParameterImportEntries,
+    importedDraftOrigins,
     onDismissPendingParameterImport,
     recentlyWrittenParamIds,
     onToggleShowOnlyNonDefault: handleToggleShowOnlyNonDefault,
@@ -257,6 +267,20 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   // Drop every staged row in one category. Also clears those ids from the
   // checkbox selection, so a subsequent "Drop selected" count doesn't include
   // rows that are already gone.
+  // The pending import rendered as a real diff (current -> imported), grouped by
+  // category. Held OUT of the draft set, these values were previously invisible:
+  // the prompt offered only "Stage all" or "Discard", and the parameter rows
+  // below showed "No local draft" because nothing was staged. So there was no
+  // way to take part of an import — worse than the old auto-stage-everything
+  // behaviour it replaced.
+  const pendingImportDiff = useMemo(
+    () =>
+      pendingParameterImport
+        ? selectEntityDiff(snapshot.parameters, pendingParameterImport.draftValues, parameterEnumOverrides)
+        : undefined,
+    [pendingParameterImport, snapshot.parameters, parameterEnumOverrides]
+  )
+
   // Invalid rows in a group that an override can still rescue, excluding ones
   // already overridden — shared with the Snapshots restore preview.
   const overridableGroupIds = (group: ParameterDraftGroup): string[] =>
@@ -562,6 +586,76 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             </div>
           ) : null}
 
+          {/* Per-row and per-group control over the import, using the same
+            * grouped-diff shape as the staged review and the Snapshots restore
+            * preview. */}
+          {pendingParameterImport && pendingImportDiff && pendingImportDiff.groups.length > 0 ? (
+            <div className="parameter-diff-grid" data-testid="parameter-import-preview">
+              {pendingImportDiff.groups.map((group) => (
+                <section key={`import:${group.category}`} className="parameter-diff-group">
+                  <header>
+                    <strong>{formatCategoryLabel(group.category)}</strong>
+                    <span>{group.entries.length} to stage</span>
+                    <ParameterDiffGroupActions
+                      actions={[
+                        {
+                          label: 'Stage group',
+                          testId: `parameter-import-stage-group-${group.category}`,
+                          onClick: () => onStagePendingParameterImportSubset(paramIdsForGroup(group)),
+                          disabled: busyAction !== undefined,
+                          title: `Stage all ${group.entries.length} ${formatCategoryLabel(group.category)} value(s) from this import.`
+                        },
+                        {
+                          label: 'Drop group',
+                          testId: `parameter-import-drop-group-${group.category}`,
+                          onClick: () => onDropPendingParameterImportEntries(paramIdsForGroup(group)),
+                          disabled: busyAction !== undefined,
+                          title: `Drop all ${group.entries.length} ${formatCategoryLabel(group.category)} value(s) from this import.`
+                        }
+                      ]}
+                    />
+                  </header>
+
+                  {group.entries.map((draft) => (
+                    <div key={draft.id} className="parameter-diff-item">
+                      <ParameterDiffIdentity draft={draft} />
+                      <span className="parameter-diff-values">
+                        {formatParameterDraftValue(draft.definition, draft.currentValue)}
+                        {' → '}
+                        {formatParameterDraftValue(draft.definition, draft.nextValue)}
+                      </span>
+                      <span className="parameter-diff-delta">
+                        {formatParameterDelta(draft.delta, draft.definition?.unit)}
+                      </span>
+                      <div className="parameter-diff-actions">
+                        <button
+                          type="button"
+                          style={buttonStyle()}
+                          data-testid={`parameter-import-stage-${draft.id}`}
+                          onClick={() => onStagePendingParameterImportSubset([draft.id])}
+                          disabled={busyAction !== undefined}
+                          title={`Stage ${draft.id} from this import.`}
+                        >
+                          Stage
+                        </button>
+                        <button
+                          type="button"
+                          style={buttonStyle()}
+                          data-testid={`parameter-import-drop-${draft.id}`}
+                          onClick={() => onDropPendingParameterImportEntries([draft.id])}
+                          disabled={busyAction !== undefined}
+                          title={`Drop ${draft.id} from this import (keeps the live value).`}
+                        >
+                          Drop
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              ))}
+            </div>
+          ) : null}
+
           {parameterDraftSummary.stagedCategories.length > 0 ? (
             <small className="parameter-review__hint">
               Categories in review: {parameterDraftSummary.stagedCategories.map((categoryId) => formatCategoryLabel(categoryId)).join(', ')}
@@ -669,6 +763,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                     // value. Keep the row (so the input never vanishes mid-edit)
                     // but render it muted — it won't write.
                     const isUnchanged = draft.status === 'unchanged'
+                    const importedValue = importedDraftOrigins[draft.id]
                     return (
                     <div
                       key={draft.id}
@@ -689,6 +784,22 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                       <span className="parameter-diff-values">
                         <em>Current:</em> {formatParameterDraftValue(draft.definition, draft.currentValue)}
                         {' → '}
+                        {/* What the imported file asked for, shown whenever this
+                          * draft came from an import. The editor below is free
+                          * to be nudged afterwards — including back to the live
+                          * value, where the row reads "matches current" — and
+                          * without this the imported number is gone from the
+                          * screen with no way to recover it. Mission Planner
+                          * shows the imported value for the same reason. */}
+                        {importedValue !== undefined ? (
+                          <>
+                            <em>Import:</em>{' '}
+                            <span data-testid={`parameter-diff-import-${draft.id}`}>
+                              {formatParameterDraftValue(draft.definition, Number(importedValue))}
+                            </span>
+                            {' → '}
+                          </>
+                        ) : null}
                         <em>New:</em>{' '}
                         {options && options.length > 0 && !isBitmask ? (
                           <select
