@@ -193,6 +193,11 @@ export interface ArduPilotConfiguratorRuntimeOptions {
 // A real flight controller can take well over 5s to emit its first HEARTBEAT
 // (peripheral/compass/GPS init), so 20s covers a realistic cold boot. Tests
 // pass their own short timeoutMs.
+// SCRIPTING_CMD values (ardupilotmega.xml). Only the two AP_Scripting actually
+// accepts — REPL_START (0) / REPL_STOP (1) return MAV_RESULT_DENIED.
+const SCRIPTING_CMD_STOP = 2
+const SCRIPTING_CMD_STOP_AND_RESTART = 3
+
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 20000
 const DEFAULT_PARAMETER_SYNC_TIMEOUT_MS = 20000
 const PARAMETER_SYNC_STALL_RETRY_MS = 1500
@@ -1452,6 +1457,37 @@ export class ArduPilotConfiguratorRuntime {
     // table from this session may survive to be resumed against it.
     this.discardStaleLink()
     await this.sendCommand(MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN, [3, 0, 0, 0, 0, 0, 0], {
+      waitForAck: true,
+      ackTimeoutMs: 3000
+    })
+  }
+
+  /**
+   * Restart onboard Lua scripting WITHOUT rebooting the autopilot
+   * (MAV_CMD_SCRIPTING, param1 = SCRIPTING_CMD_STOP_AND_RESTART).
+   *
+   * ArduPilot asks for this whenever a script changes on disk — it emits a
+   * "restart scripting" STATUSTEXT — and until now the only way to act on it
+   * from here was a full flight-controller reboot, which drops the link,
+   * re-runs every startup check and re-syncs the whole parameter table.
+   *
+   * Values verified against AP_Scripting.cpp's handle_command_int_packet:
+   * STOP = 2, STOP_AND_RESTART = 3. REPL_START/REPL_STOP (0/1) are deliberately
+   * not exposed — that handler returns MAV_RESULT_DENIED for both.
+   */
+  async restartScripting(): Promise<void> {
+    await this.sendCommand(MAV_CMD.SCRIPTING, [SCRIPTING_CMD_STOP_AND_RESTART, 0, 0, 0, 0, 0, 0], {
+      waitForAck: true,
+      ackTimeoutMs: 3000
+    })
+  }
+
+  /**
+   * Stop onboard Lua scripting until the next restart or reboot
+   * (MAV_CMD_SCRIPTING, param1 = SCRIPTING_CMD_STOP).
+   */
+  async stopScripting(): Promise<void> {
+    await this.sendCommand(MAV_CMD.SCRIPTING, [SCRIPTING_CMD_STOP, 0, 0, 0, 0, 0, 0], {
       waitForAck: true,
       ackTimeoutMs: 3000
     })

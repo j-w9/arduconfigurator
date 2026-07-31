@@ -693,6 +693,19 @@ test.describe('Lua Scripts view (Expert + scripting-capable FC)', () => {
     await expect(page.getByTestId('lua-card-smartaudio')).toBeVisible()
     await expect(page.getByTestId('lua-card-leds-on-switch')).toBeVisible()
 
+    // Restart/stop scripting sit beside Reboot. Restarting is what ArduPilot
+    // actually asks for when a script changes, and it keeps the link up — a
+    // reboot to achieve the same thing re-runs every startup check and re-syncs
+    // the parameter table.
+    await expect(page.getByTestId('lua-restart-scripting')).toBeVisible()
+    await expect(page.getByTestId('lua-stop-scripting')).toBeVisible()
+    await expect(page.getByTestId('lua-reboot')).toBeVisible()
+
+    await page.getByTestId('lua-restart-scripting').click()
+    await expect(page.getByTestId('lua-notice')).toContainText('Scripting restarted')
+    // The link must survive it — that is the whole point over a reboot.
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+
     // Install a curated applet → uploads over MAVFTP, then the file appears in
     // the installed list and the card flips to "Reinstall".
     await page.getByTestId('lua-install-leds-on-switch').click()

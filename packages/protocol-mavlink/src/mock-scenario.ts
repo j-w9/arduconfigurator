@@ -1848,6 +1848,39 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
                 })
               )
             )
+          } else if (outbound.message.command === MAV_CMD.SCRIPTING) {
+            // The demo advertises SCR_ params, so it must also answer the
+            // scripting control command — otherwise "Restart scripting" only
+            // ever demonstrates its timeout path. param1 2 = STOP,
+            // 3 = STOP_AND_RESTART (AP_Scripting.cpp).
+            const scriptingCommand = Math.round(outbound.message.params[0] ?? 0)
+            responses.push(
+              codec.encode(
+                envelope(106, {
+                  type: 'COMMAND_ACK',
+                  command: MAV_CMD.SCRIPTING,
+                  // AP_Scripting accepts STOP and STOP_AND_RESTART and DENIES
+                  // the REPL commands; mirror that rather than blanket-accepting.
+                  result:
+                    scriptingCommand === 2 || scriptingCommand === 3
+                      ? MAV_RESULT.ACCEPTED
+                      : MAV_RESULT.DENIED,
+                  progress: 0,
+                  resultParam2: 0,
+                  targetSystem: outbound.header.systemId,
+                  targetComponent: outbound.header.componentId
+                })
+              ),
+              codec.encode(
+                envelope(107, {
+                  type: 'STATUSTEXT',
+                  severity: MAV_SEVERITY.INFO,
+                  text: scriptingCommand === 3 ? 'Scripting restarted' : 'Scripting stopped',
+                  statusId: 0,
+                  chunkSequence: 0
+                })
+              )
+            )
           } else if (outbound.message.command === MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN) {
             responses.push(
               codec.encode(
