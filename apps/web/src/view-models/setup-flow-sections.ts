@@ -587,6 +587,13 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           confirmationOutcome = compassConfirmation?.outcome
           const compassCalibrationRecorded =
             actionState.status === 'succeeded' || compassConfirmation !== undefined
+          // A live global position — from a real GPS fix or the synthetic
+          // GPS_INPUT the "Set location (no GPS)" control streams. Either
+          // satisfies the EKF; the cal cannot complete without one.
+          const hasCompassCalibrationPosition =
+            snapshot.liveVerification.globalPosition.verified &&
+            snapshot.liveVerification.globalPosition.latitudeDeg !== undefined &&
+            snapshot.liveVerification.globalPosition.longitudeDeg !== undefined
           if (compassConfirmation?.outcome === 'not-applicable') {
             criteria = [
               {
@@ -700,6 +707,16 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             }
           } else {
             criteria = [
+              // Compass calibration needs the EKF to have a position to finish
+              // yaw alignment. Without a fix it starts and then silently never
+              // progresses — the reported "doesn't progress in guided setup,
+              // works in the Calibration tab", where a fake-GPS control exists.
+              // Naming it as a criterion makes a stalled cal explain itself
+              // instead of just sitting at 0%.
+              {
+                label: 'Vehicle has a position (GPS fix, or a location set below) for yaw alignment',
+                met: hasCompassCalibrationPosition
+              },
               {
                 label: 'Compass calibration completed successfully',
                 met: actionState.status === 'succeeded' || section.status === 'complete'
