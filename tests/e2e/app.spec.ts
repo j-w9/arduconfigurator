@@ -340,6 +340,12 @@ test.describe('browser configurator regression flows', () => {
     // Ack the safety gate in the inline panel (gates the guided spin).
     await page.getByTestId('motor-reorder-props-off-ack').locator('input').check()
 
+    // The one-click "Save changes" finish is gated on a COMPLETED identify run
+    // that actually changed something — before any motor has spun there is
+    // nothing to save, so only the plain Stage action is offered.
+    await expect(page.getByTestId('motor-reorder-save')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Stage Reorder/ })).toBeVisible()
+
     const startButton = page.getByTestId('motor-reorder-guided-start')
     await expect(startButton).toBeVisible()
     await expect(startButton).toBeEnabled()
