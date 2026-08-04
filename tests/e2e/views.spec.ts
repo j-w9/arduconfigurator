@@ -2987,12 +2987,14 @@ test.describe('ArduPlane demo', () => {
     await openView(page, 'guided-setup')
     await expect(page.getByTestId('setup-wizard')).toBeVisible()
 
+    // Step numbering: Link (1), Ports (2), Airframe (3), Outputs (4). Ports was
+    // inserted after Link so every peripheral step inherits a correct port map.
     // Locked: the Outputs step cannot be selected while Airframe is incomplete.
-    const outputsStep = page.getByRole('button', { name: /Step 3/ })
+    const outputsStep = page.getByRole('button', { name: /Step 4/ })
     await expect(outputsStep).toBeDisabled()
 
     // Airframe unlocks as soon as the initial parameter sync finishes.
-    const airframeStep = page.getByRole('button', { name: /Step 2/ })
+    const airframeStep = page.getByRole('button', { name: /Step 3/ })
     await expect(airframeStep).toBeEnabled({ timeout: VEHICLE_CONNECT_TIMEOUT })
     await airframeStep.click()
 
