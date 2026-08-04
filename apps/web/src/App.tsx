@@ -30,6 +30,8 @@ import {
   formatRcAxisLabel,
   type MotorTestRequest,
   applyArducopter47CatalogOverrides,
+  applySfdValtCatalogOverrides,
+  detectSfdValtMode,
   type ParameterBackupFile,
   type ParameterBackupImportOptions,
   type ParameterBatchWriteProgress,
@@ -576,14 +578,30 @@ export function App() {
   // The Params view reads definitions from this catalog. Apply the version-gated
   // ArduCopter 4.7 overrides when a >= 4.7 build is detected; pre-connect /
   // Unknown / 4.6 / non-copter get the untouched base catalog.
+  // VALT (mode 29) exists only on fork builds with MODE_VALT_ENABLED; detected
+  // by the presence of VALT_POS_EXPO rather than by a version-string match.
+  const valtModeAvailable = useMemo(
+    () => detectSfdValtMode(snapshot.parameters.map((parameter) => parameter.id)),
+    [snapshot.parameters]
+  )
   const metadataCatalog = useMemo(
     () =>
-      applyArducopter47CatalogOverrides(
-        normalizeFirmwareMetadata(activeMetadataBundle),
-        snapshot.hardware.board?.firmwareVersionParts,
-        snapshot.vehicle?.vehicle === 'ArduCopter'
+      // Fork gate runs AFTER the version gate: it only ever appends VALT to the
+      // flight-mode enums, and returns the catalog by identity on stock builds.
+      applySfdValtCatalogOverrides(
+        applyArducopter47CatalogOverrides(
+          normalizeFirmwareMetadata(activeMetadataBundle),
+          snapshot.hardware.board?.firmwareVersionParts,
+          snapshot.vehicle?.vehicle === 'ArduCopter'
+        ),
+        valtModeAvailable
       ),
-    [activeMetadataBundle, snapshot.hardware.board?.firmwareVersionParts, snapshot.vehicle?.vehicle]
+    [
+      activeMetadataBundle,
+      snapshot.hardware.board?.firmwareVersionParts,
+      snapshot.vehicle?.vehicle,
+      valtModeAvailable
+    ]
   )
   const setupSectionIds = useMemo(
     () => activeMetadataBundle.setupSections.map((section) => section.id),
