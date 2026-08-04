@@ -41,6 +41,7 @@ import type { ParameterFollowUp } from '../hooks/use-parameter-feedback'
 import type { RcDirectionResult } from './receiver-direction-check'
 import { canRunGuidedAction, deriveCompassStepSkipReason, guidedActionButtonLabel } from '../guided-action-helpers'
 import { readRoundedParameter } from '../selectors/parameter-read'
+import { buildSetupPortsEvidence, describeUnconfiguredPort } from './setup-ports-evidence'
 import { isReceiverSerialProtocol } from '../serial-port-helpers'
 import { batteryHealthLabel, describeBatteryMonitor, formatRemaining, formatVoltage } from '../device-display'
 import { failsafeActionLabel } from '../modes-failsafe-helpers'
@@ -200,6 +201,77 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             disabled: busyAction !== undefined || !canRunGuidedAction(snapshot, 'request-parameters')
           })
           break
+        case 'ports': {
+          // Ports is the step that unblocks every peripheral after it. The
+          // failure it exists to prevent: a receiver wired to a pad whose
+          // SERIALn_PROTOCOL is still 2 (MAVLink2), which cannot work and
+          // which nothing else in the flow explains — the Radio step just
+          // never completes. uarts.txt already carries the evidence, so name
+          // the mismatch rather than leave it to be found with a scope.
+          const portsConfirmation = getSetupConfirmationRecord('ports')
+          confirmationOutcome = portsConfirmation?.outcome
+          const portsEvidence = buildSetupPortsEvidence({
+            rawText: snapshot.hardware.uartsFile?.rawText,
+            protocolByPort: Object.fromEntries(
+              Array.from({ length: 10 }, (_, port) => [
+                port,
+                readRoundedParameter(snapshot, `SERIAL${port}_PROTOCOL`)
+              ])
+            )
+          })
+          const portsMismatched = portsEvidence.unconfigured.length > 0
+          criteria = [
+            {
+              label: 'Serial port protocols are synced from the flight controller',
+              met: snapshot.parameterStats.status === 'complete'
+            },
+            {
+              // Blocks on a DETECTED mismatch only. Absent counters (demo, or
+              // a board that serves no uarts.txt) must not gate the flow —
+              // a step that blocks on evidence it may never receive is a dead
+              // end, not a safeguard. The summary says the check could not run
+              // rather than claiming the ports are right.
+              label: 'No port is receiving data while configured as unused',
+              met: !portsMismatched
+            }
+          ]
+          summary = portsMismatched
+            ? `${portsEvidence.unconfigured.length} port(s) receiving data but configured as unused.`
+            : portsEvidence.trafficUnknown
+              ? 'Port traffic counters are unavailable — review the assignments manually.'
+              : 'Configured port protocols match the ports that are carrying traffic.'
+          detail = portsMismatched
+            ? 'A peripheral is talking on a port the flight controller thinks is unused, so whatever is wired there cannot work. Set that port to the right protocol before setting up the receiver, GPS or OSD that depends on it.'
+            : 'Set each serial port to whatever is physically wired to it. Do this before the receiver, GPS and OSD steps — they configure peripherals that only work once their port is right.'
+          evidence = [
+            ...portsEvidence.unconfigured.slice(0, 2).map(describeUnconfiguredPort),
+            portsEvidence.trafficUnknown
+              ? 'Port traffic: counters unavailable'
+              : `Ports carrying traffic: ${portsEvidence.ports.filter((port) => port.rxBytes > 0).length}`,
+            portsConfirmation
+              ? `Review: confirmed at ${formatConfirmationTime(portsConfirmation.confirmedAtMs)}`
+              : 'Review: pending'
+          ].slice(0, 4)
+          if (panel) {
+            actions.unshift({
+              kind: 'scroll',
+              label: 'Open Ports',
+              panelId: panel.panelId
+            })
+          }
+          // Available as a record that the operator looked, but deliberately
+          // not a criterion: ports that are already correct should not demand
+          // ceremony on every setup.
+          actions.push({
+            kind: 'confirm-step',
+            label: portsConfirmation ? 'Clear Port Review' : 'Confirm Port Assignments',
+            tone: 'secondary',
+            sectionId: 'ports',
+            confirmationOutcome: 'complete',
+            disabled: busyAction !== undefined
+          })
+          break
+        }
         case 'airframe': {
           // An 'already-done' airframe sign-off is the orientation waiver: the
           // operator is asserting the frame geometry AND the horizon behaviour

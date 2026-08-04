@@ -3568,6 +3568,19 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       actions: ['request-parameters']
     },
     {
+      // Ports comes BEFORE everything that depends on a peripheral. A receiver
+      // cannot be set up while the UART feeding it is still SERIALn_PROTOCOL=2
+      // (MAVLink2), and the same is true of GPS, ESC telemetry and DisplayPort
+      // OSD. Putting this after `link` means every later step inherits a
+      // correct port map instead of discovering a missing one — and it matches
+      // the physical build order: wire the craft, tell the FC what is on each
+      // wire, then configure the things on those wires.
+      id: 'ports',
+      title: 'Ports',
+      description: 'Tell the flight controller what is wired to each serial port before setting up the peripherals on them.',
+      requiredParameters: ['SERIAL1_PROTOCOL', 'SERIAL2_PROTOCOL']
+    },
+    {
       id: 'airframe',
       title: 'Airframe',
       description: 'Verify the frame class and geometry before motor output setup.',

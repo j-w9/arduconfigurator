@@ -52,6 +52,8 @@ export function panelAnchorForSetupSection(sectionId: string): { panelId: string
   switch (sectionId) {
     case 'link':
       return { panelId: 'setup-panel-link', panelLabel: 'Vehicle Link' }
+    case 'ports':
+      return { panelId: 'setup-panel-ports', panelLabel: 'Serial Ports' }
     case 'airframe':
     case 'outputs':
       return { panelId: 'setup-panel-outputs', panelLabel: 'Airframe & Outputs' }
