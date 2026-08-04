@@ -208,8 +208,6 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           // which nothing else in the flow explains — the Radio step just
           // never completes. uarts.txt already carries the evidence, so name
           // the mismatch rather than leave it to be found with a scope.
-          const portsConfirmation = getSetupConfirmationRecord('ports')
-          confirmationOutcome = portsConfirmation?.outcome
           const portsEvidence = buildSetupPortsEvidence({
             rawText: snapshot.hardware.uartsFile?.rawText,
             protocolByPort: Object.fromEntries(
@@ -248,28 +246,18 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             portsEvidence.trafficUnknown
               ? 'Port traffic: counters unavailable'
               : `Ports carrying traffic: ${portsEvidence.ports.filter((port) => port.rxBytes > 0).length}`,
-            portsConfirmation
-              ? `Review: confirmed at ${formatConfirmationTime(portsConfirmation.confirmedAtMs)}`
-              : 'Review: pending'
+            // No "Review: pending" pill — there is no confirm action on this
+            // step, so promising a review would describe a control that does
+            // not exist.
+            ...section.notes
           ].slice(0, 4)
-          if (panel) {
-            actions.unshift({
-              kind: 'scroll',
-              label: 'Open Ports',
-              panelId: panel.panelId
-            })
-          }
-          // Available as a record that the operator looked, but deliberately
-          // not a criterion: ports that are already correct should not demand
-          // ceremony on every setup.
-          actions.push({
-            kind: 'confirm-step',
-            label: portsConfirmation ? 'Clear Port Review' : 'Confirm Port Assignments',
-            tone: 'secondary',
-            sectionId: 'ports',
-            confirmationOutcome: 'complete',
-            disabled: busyAction !== undefined
-          })
+          // No confirm-step action here. Completion is driven entirely by the
+          // traffic check, so a sign-off button would record a confirmation
+          // that satisfies no criterion and changes nothing on screen — it
+          // read as a dead button promoted to "do this now". When a mismatch
+          // IS found the remedy is to fix the port protocol, which is what the
+          // generic panel action already offers; that action is left as the
+          // step's own navigation rather than adding a second one beside it.
           break
         }
         case 'airframe': {

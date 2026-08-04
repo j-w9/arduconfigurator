@@ -100,8 +100,11 @@ export interface SetupPortsEvidence {
 /**
  * Ports that are receiving data while configured as if nothing were attached.
  *
- * SERIAL0 is excluded: it is the USB/GCS link, which is by definition busy with
- * MAVLink and is how the configurator is talking to the vehicle right now.
+ * USB ports are excluded, identified by their OTG hardware name rather than by
+ * index: a board exposes more than one (OTG1 as SERIAL0, OTG2 as SERIAL9 on
+ * H743), both legitimately carry MAVLink, and one of them is how the
+ * configurator is talking to the vehicle right now. Excluding only SERIAL0
+ * reported the second USB port as a misconfigured peripheral.
  */
 export function buildSetupPortsEvidence({
   rawText,
@@ -112,7 +115,7 @@ export function buildSetupPortsEvidence({
   const unconfigured: UnconfiguredPortFinding[] = []
 
   for (const port of ports) {
-    if (port.portNumber === 0 || port.rxBytes < minimumRxBytes) {
+    if (port.hardwarePort.toUpperCase().startsWith('OTG') || port.rxBytes < minimumRxBytes) {
       continue
     }
     const protocolValue = protocolByPort[port.portNumber]

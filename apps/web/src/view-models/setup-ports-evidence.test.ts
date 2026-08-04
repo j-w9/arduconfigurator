@@ -55,6 +55,36 @@ describe('buildSetupPortsEvidence', () => {
     expect(evidence.unconfigured[0].garbled).toBe(true)
   })
 
+  it('never flags a second USB port either (OTG2 / SERIAL9)', () => {
+    // Field report: SERIAL9 (OTG2) was reported as a misconfigured peripheral.
+    // H743 boards expose two USB ports; both legitimately carry MAVLink, and
+    // excluding only SERIAL0 by index missed the other one.
+    const twoUsbPorts = `UARTV1
+SERIAL0 OTG1  TX =  106511 RX =    3410 TXBD= 18692 RXBD=   598 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=1
+SERIAL9 OTG2  TX =       0 RX =    1128 TXBD=     0 RXBD=   235 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=1
+`
+    const evidence = buildSetupPortsEvidence({
+      rawText: twoUsbPorts,
+      protocolByPort: { 0: 2, 9: 2 }
+    })
+    expect(evidence.unconfigured).toEqual([])
+  })
+
+  it('still flags a real UART carrying traffic on the same board', () => {
+    // The genuine finding that must survive the USB exclusion: the GPS pad
+    // receiving heavily while the port is still MAVLink2.
+    const withGpsPad = `UARTV1
+SERIAL0 OTG1  TX =  106511 RX =    3410 TXBD= 18692 RXBD=   598 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=1
+SERIAL7 UART7 TX =       0 RX =   72144 TXBD=     0 RXBD= 12024 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0
+SERIAL9 OTG2  TX =       0 RX =    1128 TXBD=     0 RXBD=   235 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=1
+`
+    const evidence = buildSetupPortsEvidence({
+      rawText: withGpsPad,
+      protocolByPort: { 0: 2, 7: 2, 9: 2 }
+    })
+    expect(evidence.unconfigured.map((finding) => finding.portNumber)).toEqual([7])
+  })
+
   it('never flags SERIAL0 — that is the USB link we are talking over', () => {
     const evidence = buildSetupPortsEvidence({
       rawText: REAL_UARTS_TXT,
