@@ -821,6 +821,9 @@ export function App() {
   // motor-reorder workbench and a direction-test surface so the operator
   // never has to leave the popout to spin a motor or flip a reversal.
   const [motorDialogTab, setMotorDialogTab] = useState<'reorder' | 'direction'>('reorder')
+  // Armed by the one-click "Save changes" finish; consumed by the effect that
+  // writes the reorder once the staged drafts have actually landed in state.
+  const [pendingMotorReorderSave, setPendingMotorReorderSave] = useState(false)
   // Guided motor-identify auto-spin: after the operator spins the FIRST motor,
   // automatically spin each subsequent motor once the previous test window has
   // fully closed, so they only ever click the position that moved. The wait is
@@ -2596,6 +2599,23 @@ export function App() {
     () => stagedParameterDrafts.filter((draft) => motorReorderDialogParamIds.has(draft.id)),
     [stagedParameterDrafts, motorReorderDialogParamIds]
   )
+  // "Save changes" completion: the drafts staged by handleSaveMotorReorder are
+  // only visible here on the following render, so the write is deferred to this
+  // effect rather than chained inline where it would see a stale empty list.
+  useEffect(() => {
+    if (!pendingMotorReorderSave || motorReorderDialogStagedDrafts.length === 0) {
+      return
+    }
+    setPendingMotorReorderSave(false)
+    void (async () => {
+      await handleApplyScopedParameterDrafts(motorReorderDialogStagedDrafts, 'motor-reorder:apply', 'Motor setup')
+      await handleGuidedAction('reboot-autopilot')
+    })()
+    // handleApplyScopedParameterDrafts / handleGuidedAction are stable function
+    // declarations on the component body; re-running on their identity would
+    // fire the write on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingMotorReorderSave, motorReorderDialogStagedDrafts])
   const {
     groups: setupAdditionalGroups,
     entries: setupAdditionalDraftEntries,
@@ -4370,9 +4390,17 @@ export function App() {
     }
   }
 
-  function handleStageMotorReorderDrafts(): void {
+  /**
+   * Stage the identified motor order as parameter drafts.
+   *
+   * `keepDialogOpen` exists for the one-click "Save changes" finish: staging
+   * normally closes the dialog and hands the operator off to Outputs to write,
+   * which reads as two disjoint steps across two screens. The save path stages
+   * and writes without ever leaving the dialog.
+   */
+  function handleStageMotorReorderDrafts(options: { keepDialogOpen?: boolean } = {}): number {
     if (!motorReorderCanStage) {
-      return
+      return 0
     }
 
     const nextAssignmentValues = new Map<string, string>()
@@ -4399,21 +4427,44 @@ export function App() {
 
     replaceDrafts(nextEditedValues)
     clearSetupSectionConfirmation('outputs')
-    setMotorReorderDialogOpen(false)
+    if (!options.keepDialogOpen) {
+      setMotorReorderDialogOpen(false)
+    }
 
     if (changedParamIds.length === 0) {
       setParameterNotice({
         tone: 'neutral',
         text: 'Motor output order already matches the selected layout.'
       })
-      return
+      return 0
     }
 
-    setSelectedParameterId(changedParamIds[0] ?? selectedParameterId)
-    setParameterNotice({
-      tone: 'warning',
-      text: `Staged ${changedParamIds.length} motor output remap change(s). Apply them from Outputs, then rerun the guarded motor direction check before flight.`
-    })
+    if (!options.keepDialogOpen) {
+      setSelectedParameterId(changedParamIds[0] ?? selectedParameterId)
+      setParameterNotice({
+        tone: 'warning',
+        text: `Staged ${changedParamIds.length} motor output remap change(s). Apply them from Outputs, then rerun the guarded motor direction check before flight.`
+      })
+    }
+    return changedParamIds.length
+  }
+
+  /**
+   * One-click finish for the guided identify run: stage the reorder and write
+   * it without closing the dialog.
+   *
+   * The write cannot happen in this same tick — `motorReorderDialogStagedDrafts`
+   * is derived from `stagedParameterDrafts`, which has not re-rendered yet, so
+   * applying here would write a stale (usually empty) list. Instead this arms
+   * `pendingMotorReorderSave` and an effect performs the write once the drafts
+   * actually land, reusing the normal scoped-apply path so validation, notices
+   * and rollback behave identically to the two-step flow.
+   */
+  function handleSaveMotorReorder(): void {
+    const staged = handleStageMotorReorderDrafts({ keepDialogOpen: true })
+    if (staged > 0) {
+      setPendingMotorReorderSave(true)
+    }
   }
 
   function handleStartMotorVerification(preferredOutputChannel?: number): void {
@@ -5654,7 +5705,8 @@ export function App() {
         onSpinGuidedReorderCurrent={handleSpinGuidedReorderCurrent}
         onToggleGuidedReorderAutoSpin={setGuidedReorderAutoSpin}
         onPickGuidedReorderPosition={handlePickGuidedReorderPosition}
-        onStageReorderDrafts={handleStageMotorReorderDrafts}
+        onStageReorderDrafts={() => handleStageMotorReorderDrafts()}
+        onSaveReorder={handleSaveMotorReorder}
         onSpinSingleMotor={handleDialogSpinSingleMotor}
         setDraft={setDraft}
         motorReorderStagedCount={motorReorderDialogStagedDrafts.length}

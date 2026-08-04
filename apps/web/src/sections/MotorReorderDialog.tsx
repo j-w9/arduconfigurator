@@ -66,6 +66,9 @@ export interface MotorReorderDialogProps {
   onToggleGuidedReorderAutoSpin: (next: boolean) => void
   onPickGuidedReorderPosition: (motorNumber: number) => void
   onStageReorderDrafts: () => void
+  /** One-click finish after a guided identify run: stage the reorder AND write
+   *  it, without closing the dialog or bouncing the operator to Outputs. */
+  onSaveReorder: () => void
   onSpinSingleMotor: (channelNumber: number) => void
   setDraft: (paramId: string, value: string) => void
 
@@ -120,6 +123,7 @@ export function MotorReorderDialog({
   onToggleGuidedReorderAutoSpin,
   onPickGuidedReorderPosition,
   onStageReorderDrafts,
+  onSaveReorder,
   onSpinSingleMotor,
   setDraft,
   motorReorderStagedCount,
@@ -425,15 +429,40 @@ export function MotorReorderDialog({
                 </button>
                 {/* Primary emphasis only after an identify run has produced
                  *  something to stage — an untested green button read as
-                 *  "click me" before any motor had ever spun. */}
-                <button
-                  type="button"
-                  style={buttonStyle(guidedReorderCompleted && motorReorderChangedCount > 0 ? 'primary' : undefined)}
-                  onClick={onStageReorderDrafts}
-                  disabled={!motorReorderCanStage}
-                >
-                  {motorReorderChangedCount > 0 ? `Stage Reorder (${motorReorderChangedCount})` : 'Stage Reorder'}
-                </button>
+                 *  "click me" before any motor had ever spun.
+                 *
+                 *  After a completed identify run this is a single "Save
+                 *  changes" that stages AND writes without closing the dialog.
+                 *  Staging used to close the dialog and hand the operator off
+                 *  to Outputs to write, which read as two disjoint steps across
+                 *  two screens. Outside that finish (manual edits, no identify
+                 *  run yet) it stays the plain stage action so the shared
+                 *  apply-bar can still batch reorder + reverse-mask into one
+                 *  write. */}
+                {guidedReorderCompleted && motorReorderChangedCount > 0 ? (
+                  <button
+                    type="button"
+                    style={buttonStyle('primary')}
+                    onClick={onSaveReorder}
+                    disabled={!motorReorderCanStage || !canApplyMotorDrafts || busyAction !== undefined}
+                    data-testid="motor-reorder-save"
+                  >
+                    {busyAction === 'motor-reorder:apply'
+                      ? 'Saving…'
+                      : busyAction === 'reboot-autopilot'
+                        ? 'Rebooting…'
+                        : `Save changes (${motorReorderChangedCount})`}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    style={buttonStyle()}
+                    onClick={onStageReorderDrafts}
+                    disabled={!motorReorderCanStage}
+                  >
+                    {motorReorderChangedCount > 0 ? `Stage Reorder (${motorReorderChangedCount})` : 'Stage Reorder'}
+                  </button>
+                )}
               </div>
             </div>
           </section>
