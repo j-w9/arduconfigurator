@@ -330,6 +330,7 @@ import { SetupWizardHeader } from './sections/SetupWizardHeader'
 import { SetupWizardDetail } from './sections/SetupWizardDetail'
 import { SetupBenchActions } from './sections/SetupBenchActions'
 import { StatusDfuCard } from './sections/StatusDfuCard'
+import { resolveSetupConfirmationRecord } from './view-models/setup-confirmation-resolve'
 import { buildSetupConfirmationSignatures } from './view-models/setup-confirmation-signatures'
 import { buildTuningTaskCards } from './view-models/tuning-task-cards'
 import { buildOutputTaskCards, recommendOutputTaskId, type OutputTaskCard } from './view-models/output-task-cards'
@@ -4802,13 +4803,14 @@ export function App() {
   )
 
   function getSetupConfirmationRecord(sectionId: string): SetupConfirmationRecord | undefined {
-    const record = setupConfirmations[sectionId]
-    const signature = setupConfirmationSignatures[sectionId]
-    if (!record || signature === undefined || record.signature !== signature) {
-      return undefined
-    }
-
-    return record
+    return resolveSetupConfirmationRecord({
+      record: setupConfirmations[sectionId],
+      signature: setupConfirmationSignatures[sectionId],
+      // Signatures are derived from parameters; mid-sync they are meaningless
+      // and must not be allowed to invalidate stored progress. See
+      // setup-confirmation-resolve.ts.
+      parameterSyncComplete: snapshot.parameterStats.status === 'complete'
+    })
   }
 
   const escReviewConfirmation = getSetupConfirmationRecord('esc-range')
