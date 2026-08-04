@@ -330,6 +330,7 @@ import { SetupWizardHeader } from './sections/SetupWizardHeader'
 import { SetupWizardDetail } from './sections/SetupWizardDetail'
 import { SetupBenchActions } from './sections/SetupBenchActions'
 import { StatusDfuCard } from './sections/StatusDfuCard'
+import { CalibrationLocationButton } from './sections/CalibrationLocationCard'
 import { resolveSetupConfirmationRecord } from './view-models/setup-confirmation-resolve'
 import { buildSetupConfirmationSignatures } from './view-models/setup-confirmation-signatures'
 import { buildTuningTaskCards } from './view-models/tuning-task-cards'
@@ -7558,7 +7559,17 @@ export function App() {
                         </div>
                       ) : null}
 
-                      <SetupWizardDetail selectedSetupSection={selectedSetupSection} snapshot={snapshot} />
+                      <SetupWizardDetail
+                        selectedSetupSection={selectedSetupSection}
+                        snapshot={snapshot}
+                        // Compass cal stalls without a position; give the
+                        // guided step the same fake-GPS control the
+                        // Calibration tab has instead of leaving the operator
+                        // to discover it two tabs over.
+                        compassLocationSlot={
+                          runtime ? <CalibrationLocationButton snapshot={snapshot} runtime={runtime} /> : undefined
+                        }
+                      />
 
                       {['airframe', 'accelerometer', 'compass'].includes(selectedSetupSection.id) ? (
                         <details className="setup-wizard__advanced-disclosure" data-testid="setup-wizard-advanced">
