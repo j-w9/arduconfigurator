@@ -257,14 +257,19 @@ test('identify(): handshake, BL-rev gate, board id / flash size', async () => {
     ...le32(5), INSYNC, OK, // BL_REV = 5
     ...le32(50), INSYNC, OK, // BOARD_ID
     ...le32(0), INSYNC, OK, // BOARD_REV
-    ...le32(2080768), INSYNC, OK // FLASH_SIZE (~2MB)
+    ...le32(2080768), INSYNC, OK, // FLASH_SIZE (~2MB)
+    // PROTO_GET_VERSION reply: <length:4><git string>/INSYNC/OK. This is the
+    // ONLY way to learn which bootloader is installed — running firmware never
+    // knows (flash_bootloader() only memcmps against its own ROMFS copy).
+    ...le32(7), 0x61, 0x62, 0x63, 0x31, 0x32, 0x33, 0x34, INSYNC, OK
   ])
   const id = await new BootloaderClient(io).identify()
   assert.deepEqual(id, {
     bootloaderRevision: 5,
     boardId: 50,
     boardRevision: 0,
-    flashSize: 2080768
+    flashSize: 2080768,
+    bootloaderVersion: 'abc1234'
   })
   // First write is GET_SYNC + EOC; the four queries are GET_DEVICE,param,EOC.
   assert.deepEqual(io.writes[0], [0x21, 0x20])
@@ -273,6 +278,42 @@ test('identify(): handshake, BL-rev gate, board id / flash size', async () => {
 
   const stale = new ScriptedSerial([INSYNC, OK, ...le32(99), INSYNC, OK])
   await assert.rejects(() => new BootloaderClient(stale).identify(), /unsupported protocol revision 99/)
+})
+
+test('identify(): a board without PROTO_GET_VERSION still identifies cleanly', async () => {
+  // PROTO_GET_VERSION is compiled in only when HAL_PROGRAM_SIZE_LIMIT_KB > 1024,
+  // so smaller-flash boards answer INVALID. That must NOT cost us the board
+  // identity — losing it would break flashing entirely over a nice-to-have.
+  const io = new ScriptedSerial([
+    INSYNC, OK, // sync()
+    ...le32(5), INSYNC, OK, // BL_REV
+    ...le32(50), INSYNC, OK, // BOARD_ID
+    ...le32(0), INSYNC, OK, // BOARD_REV
+    ...le32(1032192), INSYNC, OK, // FLASH_SIZE (1MB board)
+    INSYNC, INVALID, // GET_VERSION unsupported
+    INSYNC, OK // the re-sync getVersion() issues before giving up
+  ])
+  const id = await new BootloaderClient(io).identify()
+  assert.equal(id.boardId, 50, 'board identity survives an unsupported GET_VERSION')
+  assert.equal(id.flashSize, 1032192)
+  assert.equal(id.bootloaderVersion, undefined, 'no version reported, and that is not an error')
+})
+
+test('identify(): a nonsense GET_VERSION length is ignored rather than trusted', async () => {
+  // A length beyond MAX_VERSION_LENGTH (32) means we misread something that is
+  // not a version reply; reading it as a string would emit garbage.
+  const io = new ScriptedSerial([
+    INSYNC, OK,
+    ...le32(5), INSYNC, OK,
+    ...le32(50), INSYNC, OK,
+    ...le32(0), INSYNC, OK,
+    ...le32(2080768), INSYNC, OK,
+    ...le32(9999), // implausible length
+    INSYNC, OK // re-sync
+  ])
+  const id = await new BootloaderClient(io).identify()
+  assert.equal(id.bootloaderVersion, undefined)
+  assert.equal(id.boardId, 50)
 })
 
 test('identify(): BL rev floor is 2 (audit-24 accepts rev 2 via byte-compare verify)', async () => {
