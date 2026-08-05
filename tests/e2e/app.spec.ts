@@ -371,6 +371,12 @@ test.describe('browser configurator regression flows', () => {
     await expect(banner).toContainText('2 / 4')
     await expect(banner).toContainText(/OUT\d+ spun/, { timeout: COMMAND_ACK_TIMEOUT })
 
+    // The hand-off to Direction only appears once a run COMPLETES — identifying
+    // the order is only half the job (the order can be right while a motor
+    // still spins backwards), but offering it mid-sequence would invite
+    // abandoning the run.
+    await expect(page.getByTestId('motor-reorder-next-direction')).toHaveCount(0)
+
     // Cancel cleanly even if mid-sequence.
     const cancel = page.getByTestId('motor-reorder-guided-cancel')
     if (await cancel.count()) {
