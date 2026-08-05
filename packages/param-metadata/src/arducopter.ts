@@ -1204,12 +1204,24 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     AHRS_ORIENTATION: {
       id: 'AHRS_ORIENTATION',
       label: 'Board Orientation',
-      description: 'Mounting orientation for the flight controller.',
+      description: 'Mounting orientation for the flight controller. Takes effect on the next boot.',
       category: 'sensors',
       minimum: 0,
       maximum: 102,
       options: AHRS_ORIENTATION_OPTIONS,
-      notes: ['If the board orientation changes, repeat accelerometer calibration before flight.']
+      // AP_AHRS.cpp @Param: ORIENTATION — "This option takes affect on next
+      // boot. After changing you will need to re-level your vehicle."
+      //
+      // ArduPilot states that in the DESCRIPTION PROSE and does NOT tag the
+      // parameter @RebootRequired: True, so a metadata scrape of apm.pdef.json
+      // misses it entirely — which is how this shipped untagged. Written by
+      // hand, and pinned by a test, because regenerating from upstream would
+      // silently drop it again.
+      rebootRequired: true,
+      notes: [
+        'Takes effect on the next boot — reboot the flight controller after changing it.',
+        'After changing orientation, re-level the vehicle and repeat accelerometer calibration before flight.'
+      ]
     },
     COMPASS_USE: {
       id: 'COMPASS_USE',

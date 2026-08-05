@@ -6,6 +6,7 @@
 import { useState, type ReactElement } from 'react'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
+import { MAX_MOTOR_TEST_DURATION_SECONDS } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { formatArducopterMotorPwmType } from '@arduconfig/param-metadata'
 
@@ -44,6 +45,12 @@ export interface CalibrationSectionProps {
   handleGuidedAction: (actionId: GuidedActionId) => void | Promise<void>
   handleCancelGuidedAction: (actionId: GuidedActionId) => void
 }
+
+/** Load-spin duration for battery-current calibration. Pinned to the shared
+ *  motor-test cap: the card used to hardcode 8 s, which every non-Expert
+ *  session rejected outright with "Duration must stay between ...", so the
+ *  button could never work. */
+const BATTERY_CURRENT_LOAD_SECONDS = MAX_MOTOR_TEST_DURATION_SECONDS
 
 export function CalibrationSection(props: CalibrationSectionProps): ReactElement {
   // Throttle used for the current-calibration load spin. Local to this card:
@@ -464,11 +471,11 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                       await runtime.runMotorTest({
                                         runAllOutputsSimultaneous: true,
                                         throttlePercent,
-                                        durationSeconds: 8
+                                        durationSeconds: BATTERY_CURRENT_LOAD_SECONDS
                                       })
                                       setBatteryCalNotice({
                                         tone: 'warning',
-                                        text: `Spinning all motors at ${throttlePercent}% for 8 s — read your meter NOW and type the value below.`
+                                        text: `Spinning all motors at ${throttlePercent}% for ${BATTERY_CURRENT_LOAD_SECONDS} s — read your meter NOW and type the value below.`
                                       })
                                     } catch (error) {
                                       setBatteryCalNotice({
@@ -479,7 +486,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   })()
                                 }}
                               >
-                                {snapshot.motorTest.status === 'running' ? 'Motors spinning…' : 'Spin motors for 8 s'}
+                                {snapshot.motorTest.status === 'running' ? 'Motors spinning…' : `Spin motors for ${BATTERY_CURRENT_LOAD_SECONDS} s`}
                               </button>
                               {!(propsRemovedAcknowledged && testAreaAcknowledged) ? (
                                 <small>Acknowledge the motor-spin safety checks below before applying a load.</small>
@@ -693,15 +700,24 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       : undefined
                 return (
                   <>
-                    {/* Motor-spin safety acks gate ESC calibration; hide them when
-                      * ESC cal isn't applicable (DShot/Brushed/etc.) — nothing spins. */}
-                    {!escCalUnsupported ? (
-                      <article className="calibration-card calibration-card--danger" data-testid="calibration-card-motor-safety">
+                    {/* These acks gate EVERY motor-spinning action on this page,
+                      * not just ESC calibration — the battery-current load spin
+                      * uses them too. They used to be hidden whenever ESC cal was
+                      * inapplicable (DShot/Brushed/PWMRange), which on any DShot
+                      * build left the current-calibration card telling the
+                      * operator to "acknowledge the checks below" with no
+                      * checkboxes anywhere: permanently blocked. Always shown for
+                      * a copter; the copy names whichever action still applies. */}
+                    <article className="calibration-card calibration-card--danger" data-testid="calibration-card-motor-safety">
                         <div className="calibration-card__header">
                           <strong>Motor-spin safety</strong>
                           <StatusBadge tone={motorSafetyOk ? 'success' : 'warning'}>{motorSafetyOk ? 'acknowledged' : 'required'}</StatusBadge>
                         </div>
-                        <p>ESC calibration spins the motors. Confirm before running it.</p>
+                        <p>
+                          {escCalUnsupported
+                            ? 'Applying a battery-current load spins the motors. Confirm before running it.'
+                            : 'ESC calibration and the battery-current load both spin the motors. Confirm before running either.'}
+                        </p>
                         <label className="scoped-checkbox-option">
                           <input type="checkbox" checked={propsRemovedAcknowledged} onChange={(e) => setPropsRemovedAcknowledged(e.target.checked)} data-testid="cal-props-ack" />
                           <span>All propellers are removed.</span>
@@ -711,7 +727,6 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                           <span>The vehicle is restrained and the area is clear.</span>
                         </label>
                       </article>
-                    ) : null}
 
                     {/* CompassMot was removed from the Calibration tab — the
                       * bench procedure (spin motors at fixed throttle, log
