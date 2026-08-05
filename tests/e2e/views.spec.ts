@@ -365,10 +365,14 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(detail).toContainText('9 — DroneCAN')
 
     // Type-or-pick editor, both edit the same draft.
+    // The detail no longer carries its own number field — the row's Draft cell
+    // is the single editor, so the named-option Pick and that field drive the
+    // same draft. Two number inputs for one parameter meant typing into one
+    // while watching the other.
     await page.getByTestId('parameter-detail-select-GPS_TYPE').selectOption('2')
-    await expect(page.getByTestId('parameter-detail-input-GPS_TYPE')).toHaveValue('2')
+    await expect(page.getByTestId('parameter-row-input-GPS_TYPE')).toHaveValue('2')
     await expect(page.getByRole('button', { name: /Apply All \(1\)/ })).toBeVisible()
-    await page.getByTestId('parameter-detail-input-GPS_TYPE').fill('5')
+    await page.getByTestId('parameter-row-input-GPS_TYPE').fill('5')
     await expect(page.getByTestId('parameter-detail-select-GPS_TYPE')).toHaveValue('5')
   })
 

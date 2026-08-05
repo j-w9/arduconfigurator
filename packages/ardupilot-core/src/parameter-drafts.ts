@@ -184,7 +184,13 @@ function deriveParameterDraftEntry(
     }
   }
 
-  if (parameter.definition?.maximum !== undefined && parsedValue > parameter.definition.maximum) {
+  // ArduPilot ships no @Range for bitmask params, so an out-of-range bitmask
+  // (a typo'd 500 into an 8-bit mask) sailed through unchallenged. The ceiling
+  // is derivable: `options` on a bitmask enumerate BIT INDICES, so the highest
+  // representable value is every documented bit set.
+  const effectiveMaximum =
+    parameter.definition?.maximum ?? bitmaskMaximum(parameter.definition)
+  if (effectiveMaximum !== undefined && parsedValue > effectiveMaximum) {
     if (!enumOverride) {
       return {
         id: paramId,
@@ -195,7 +201,10 @@ function deriveParameterDraftEntry(
         currentValue: parameter.value,
         nextValue: parsedValue,
         status: 'invalid',
-        reason: `Value is above the documented maximum of ${parameter.definition.maximum}.`,
+        reason:
+          parameter.definition?.maximum !== undefined
+            ? `Value is above the documented maximum of ${effectiveMaximum}.`
+            : `Value is above ${effectiveMaximum}, the highest value these ${parameter.definition?.options?.length ?? 0} bits can represent.`,
         overridable: true
       }
     }
@@ -278,4 +287,38 @@ function compareParameterDraftEntries(left: ParameterDraftEntry, right: Paramete
   }
 
   return left.id.localeCompare(right.id)
+}
+
+/**
+ * Highest value a bitmask parameter can represent — every documented bit set.
+ *
+ * ArduPilot does not publish an @Range for bitmask params (verified against the
+ * EK3_GPS_CHECK metadata), so without this a typo'd value far beyond the mask's
+ * width was accepted as valid and written to the FC.
+ *
+ * `options` on a bitmask hold BIT INDICES (0, 1, 2 …), not values — see
+ * ParameterDefinition.bitmask — so the ceiling is the OR of 1 << index.
+ * Returns undefined for anything that is not a bitmask with documented bits,
+ * so a plain parameter keeps whatever range its metadata declares.
+ */
+export function bitmaskMaximum(
+  definition: { bitmask?: boolean; options?: readonly { value: number }[] } | undefined
+): number | undefined {
+  if (definition?.bitmask !== true) {
+    return undefined
+  }
+  const options = definition.options
+  if (!options || options.length === 0) {
+    return undefined
+  }
+  let mask = 0
+  for (const option of options) {
+    // Guard the 32-bit boundary: 1 << 31 is negative in JS bitwise ops, and a
+    // bit index beyond that cannot be represented at all.
+    if (!Number.isInteger(option.value) || option.value < 0 || option.value > 30) {
+      return undefined
+    }
+    mask |= 1 << option.value
+  }
+  return mask >>> 0
 }

@@ -54,7 +54,15 @@ export function ParameterDetail({
         ) : null}
       </div>
 
+      {/* Two columns on a wide screen: prose on the left, the numbers and the
+        * editor in the dead space on the right, which is otherwise empty on a
+        * desktop. Collapses back to a single stack below 900px — the same
+        * layout on a phone would squeeze the description to a ribbon. */}
+      <div className="parameter-detail__body">
+        <div className="parameter-detail__prose">
       {definition?.description ? <p className="parameter-detail__desc">{definition.description}</p> : null}
+        </div>
+        <div className="parameter-detail__side">
 
       <dl className="parameter-detail__meta">
         {definition?.unit ? (
@@ -121,19 +129,11 @@ export function ParameterDetail({
           />
         ) : (
           <div className="parameter-detail__value-row">
-            {/* Type the raw value directly… */}
-            <label className="parameter-detail__field">
-              <span>Value</span>
-              <input
-                type="number"
-                step="any"
-                data-testid={`parameter-detail-input-${parameter.id}`}
-                value={raw}
-                onChange={(event) => onChange(parameter.id, event.target.value)}
-                aria-label={`Edit ${parameter.id}`}
-              />
-            </label>
-            {/* …or pick a named option (enums only). Both edit the same draft. */}
+            {/* No raw number field here: the row's own Draft cell already edits
+              * this parameter, and having both meant typing into one while
+              * staring at the other. The bitmask branch above keeps ITS value
+              * box, because a bitmask row shows chips rather than a number and
+              * there would otherwise be nowhere to enter a raw value. */}
             {isEnum ? (
               <label className="parameter-detail__field">
                 <span>Pick</span>
@@ -158,6 +158,8 @@ export function ParameterDetail({
             ) : null}
           </div>
         )}
+      </div>
+        </div>
       </div>
     </div>
   )
