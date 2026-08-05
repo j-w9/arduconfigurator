@@ -332,6 +332,7 @@ import { SetupWizardHeader } from './sections/SetupWizardHeader'
 import { SetupWizardDetail } from './sections/SetupWizardDetail'
 import { SetupBenchActions } from './sections/SetupBenchActions'
 import { StatusDfuCard } from './sections/StatusDfuCard'
+import { ResetToDefaultsButton } from './views/ResetToDefaultsButton'
 import { CalibrationLocationButton } from './sections/CalibrationLocationCard'
 import { resolveSetupConfirmationRecord } from './view-models/setup-confirmation-resolve'
 import { buildSetupConfirmationSignatures } from './view-models/setup-confirmation-signatures'
@@ -8075,6 +8076,28 @@ export function App() {
 
       {activeViewId === 'snapshots' ? (
         <SnapshotsSection
+          resetToDefaultsSlot={
+            <ResetToDefaultsButton
+              // Same gated handler the Presets view uses — one destructive
+              // code path, one set of guards, rather than a second
+              // reimplementation per surface.
+              onReset={
+                runtime && snapshot.connection.kind === 'connected'
+                  ? () => void handleEraseSettings()
+                  : undefined
+              }
+              disabledReason={
+                snapshot.connection.kind !== 'connected'
+                  ? 'Connect to a vehicle first.'
+                  : snapshot.vehicle?.armed
+                    ? 'Disarm the vehicle before erasing settings.'
+                    : undefined
+              }
+              isResetting={busyAction === 'presets:erase'}
+              isBusy={busyAction !== undefined}
+              suggestSnapshot={false}
+            />
+          }
           snapshot={snapshot}
           desktopBridge={desktopBridge}
           desktopSnapshotLibraryPath={desktopSnapshotLibraryPath}
@@ -8761,6 +8784,28 @@ export function App() {
 
       {activeViewId === 'parameters' ? (
         <ParametersSection
+          resetToDefaultsSlot={
+            <ResetToDefaultsButton
+              // Same gated handler the Presets view uses — one destructive
+              // code path, one set of guards, rather than a second
+              // reimplementation per surface.
+              onReset={
+                runtime && snapshot.connection.kind === 'connected'
+                  ? () => void handleEraseSettings()
+                  : undefined
+              }
+              disabledReason={
+                snapshot.connection.kind !== 'connected'
+                  ? 'Connect to a vehicle first.'
+                  : snapshot.vehicle?.armed
+                    ? 'Disarm the vehicle before erasing settings.'
+                    : undefined
+              }
+              isResetting={busyAction === 'presets:erase'}
+              isBusy={busyAction !== undefined}
+              suggestSnapshot={true}
+            />
+          }
           snapshot={snapshot}
           metadataCatalog={metadataCatalog}
           canApplyDraftParameters={canApplyDraftParameters}

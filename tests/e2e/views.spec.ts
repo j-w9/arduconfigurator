@@ -1102,6 +1102,31 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     await expect(page.getByTestId('cal-area-ack')).toBeVisible()
   })
 
+  test('Reset to Defaults is armed before it can erase, on Parameters and Snapshots', async ({ page }) => {
+    // Erasing every parameter sits near the top of two high-traffic screens, so
+    // the first click must only arm — a misclick here costs a full retune.
+    await page.goto('/')
+    await connectViaHeader(page)
+    // Raw parameter editing is an Expert surface, so the tab only exists here.
+    await page.getByTestId('product-mode-expert').check()
+
+    for (const view of ['parameters', 'snapshots'] as const) {
+      await openView(page, view)
+      const reset = page.getByTestId('reset-to-defaults')
+      await expect(reset).toBeVisible()
+      await expect(page.getByTestId('reset-to-defaults-confirm')).toHaveCount(0)
+
+      await reset.click()
+      await expect(page.getByTestId('reset-to-defaults-warning')).toBeVisible()
+      await expect(page.getByTestId('reset-to-defaults-confirm')).toBeVisible()
+
+      // Cancel returns to the unarmed state without erasing anything.
+      await page.getByTestId('reset-to-defaults-cancel').click()
+      await expect(page.getByTestId('reset-to-defaults')).toBeVisible()
+      await expect(page.getByTestId('reset-to-defaults-confirm')).toHaveCount(0)
+    }
+  })
+
   test('motor-spin calibrations are hidden on a plane', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')

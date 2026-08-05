@@ -9,7 +9,7 @@
 // from the original block.
 
 import { useMemo } from 'react'
-import type { ChangeEvent, ReactElement, RefObject } from 'react'
+import type { ChangeEvent, ReactElement, ReactNode, RefObject } from 'react'
 import type {
   ConfiguratorSnapshot,
   ParameterDraftEntry,
@@ -175,6 +175,8 @@ export interface SnapshotsSectionProps {
   canApplyDraftParameters: boolean
   parameterFollowUp: ParameterFollowUp | undefined
   isExpertMode: boolean
+  /** Rendered near the top of the page — see ResetToDefaultsButton. */
+  resetToDefaultsSlot?: ReactNode
   snapshotNotice: ParameterNotice | undefined
   provisioningNotice: ParameterNotice | undefined
   formatCategoryLabel: (categoryId: string | undefined) => string
@@ -356,6 +358,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
         snapshotsCount={savedSnapshots.length}
         profilesCount={savedProvisioningProfiles.length}
         activeDiffCount={selectedSnapshotChangedEntries.length + selectedProvisioningProfileChangedEntries.length}
+        resetToDefaultsSlot={props.resetToDefaultsSlot}
         hiddenInputsSlot={
           <>
             <input
