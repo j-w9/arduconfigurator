@@ -8588,6 +8588,20 @@ export function App() {
                 ? 'Disarm the vehicle before requesting a DFU reboot.'
                 : undefined
           }
+          onFlashBootloader={
+            // Re-flashes the bootloader embedded in the RUNNING firmware, so it
+            // needs a live MAVLink link and no DFU cable.
+            runtime && snapshot.connection.kind === 'connected'
+              ? async () => { await runtime.flashBootloader() }
+              : undefined
+          }
+          flashBootloaderDisabledReason={
+            snapshot.connection.kind !== 'connected'
+              ? 'Connect to a vehicle first to update the bootloader.'
+              : snapshot.vehicle?.armed
+                ? 'Disarm the vehicle before updating the bootloader.'
+                : undefined
+          }
           onReboot={
             runtime && snapshot.connection.kind === 'connected'
               ? async () => { await runtime.reboot() }

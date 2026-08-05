@@ -195,6 +195,9 @@ export interface ArduPilotConfiguratorRuntimeOptions {
 // pass their own short timeoutMs.
 // SCRIPTING_CMD values (ardupilotmega.xml). Only the two AP_Scripting actually
 // accepts — REPL_START (0) / REPL_STOP (1) return MAV_RESULT_DENIED.
+/** MAV_CMD_FLASH_BOOTLOADER param5. GCS_Common.cpp rejects anything else with
+ *  "Magic not set" — it exists so a stray command cannot rewrite a bootloader. */
+const FLASH_BOOTLOADER_MAGIC = 290876
 const SCRIPTING_CMD_STOP = 2
 const SCRIPTING_CMD_STOP_AND_RESTART = 3
 
@@ -1459,6 +1462,31 @@ export class ArduPilotConfiguratorRuntime {
     await this.sendCommand(MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN, [3, 0, 0, 0, 0, 0, 0], {
       waitForAck: true,
       ackTimeoutMs: 3000
+    })
+  }
+
+  /**
+   * Re-flash the bootloader from the image embedded in the RUNNING firmware
+   * (MAV_CMD_FLASH_BOOTLOADER, param5 = the 290876 magic).
+   *
+   * This is not a file upload: the autopilot writes the bootloader it was
+   * built with, so the firmware currently flashed determines the bootloader
+   * you get. It is the recommended way to update a bootloader in the field
+   * because it needs no DFU cable and no external tooling.
+   *
+   * Deliberately NOT wrapped in discardStaleLink(): unlike rebootToBootloader
+   * this leaves the vehicle running the same firmware with the same parameter
+   * table, so there is nothing stale to drop. ArduPilot answers ACCEPTED on
+   * both OK and NO_CHANGE (an already-current bootloader is a success, not an
+   * error the operator should see).
+   */
+  async flashBootloader(): Promise<void> {
+    await this.sendCommand(MAV_CMD.FLASH_BOOTLOADER, [0, 0, 0, 0, FLASH_BOOTLOADER_MAGIC, 0, 0], {
+      waitForAck: true,
+      // Erasing and rewriting the bootloader sector takes appreciably longer
+      // than a normal command round-trip.
+      ackTimeoutMs: 20000,
+      rejectAckOnFailure: true
     })
   }
 
