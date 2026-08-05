@@ -36,11 +36,29 @@ const CURRENT_CACHES = new Set([SHELL_CACHE, ASSET_CACHE])
 // deep link resolves to the SPA shell when offline.
 const SHELL_URL = '/index.html'
 
-// The craft view's generic airframe. Precached so the 3D preview always renders
-// SOMETHING offline: the frame-specific models total ~12 MB, which must not be
-// pushed at every visitor, so those are cached opportunistically as they are
-// viewed while online. Without this, an offline launch drew an empty box.
-const FALLBACK_MODEL_URL = '/models/fallback.gltf'
+// Craft models, precached in full (~12 MB) so an installed app shows the RIGHT
+// airframe offline rather than a generic stand-in. Deliberate: the app is used
+// on benches with no network, where an empty or wrong-looking 3D view is worse
+// than the one-off download. Precaching is best-effort per file, so a partial
+// download degrades to "some models offline" rather than failing the install.
+//
+// Keep in sync with apps/web/public/models/ — pinned by a test, since a model
+// added later would otherwise silently not be available offline.
+const MODEL_URLS = [
+  '/models/fallback.gltf',
+  '/models/alti.gltf',
+  '/models/bixler.gltf',
+  '/models/hex_plus.gltf',
+  '/models/hex_x.gltf',
+  '/models/plane.gltf',
+  '/models/quad_atail.gltf',
+  '/models/quad_vtail.gltf',
+  '/models/quad_x.gltf',
+  '/models/rover.gltf',
+  '/models/sub.gltf',
+  '/models/tricopter.gltf',
+  '/models/y6.gltf'
+]
 
 /**
  * The hashed /assets/ URLs index.html references — the entry JS and CSS.
@@ -73,7 +91,7 @@ self.addEventListener('install', (event) => {
 
           const assets = await caches.open(ASSET_CACHE)
           await Promise.all(
-            [...assetUrlsFrom(html), FALLBACK_MODEL_URL].map(async (url) => {
+            [...assetUrlsFrom(html), ...MODEL_URLS].map(async (url) => {
               try {
                 const asset = await fetch(new Request(url, { cache: 'reload' }))
                 if (isCacheableResponse(asset)) {

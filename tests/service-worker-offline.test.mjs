@@ -277,9 +277,9 @@ test('install precaches the entry bundle, not just the shell', async () => {
   assert.ok(await caches.match(`${ORIGIN}/assets/index-abc.js`) ?? await caches.match('/assets/index-abc.js'))
 })
 
-test('install precaches the fallback craft model so the 3D view is never empty offline', async () => {
-  // Frame-specific models total ~12 MB and are cached opportunistically; the
-  // small generic one ships up front so something always renders.
+test('install precaches the craft models so the 3D view shows the right airframe offline', async () => {
+  // All models ship up front (~12 MB) so an installed app on a bench with no
+  // network shows the operator's actual airframe, not a generic stand-in.
   const requested = []
   const { dispatch } = loadWorker({
     network: async (url) => {
@@ -294,6 +294,17 @@ test('install precaches the fallback craft model so the 3D view is never empty o
     requested.some((url) => url.endsWith('/models/fallback.gltf')),
     'the fallback model must be precached'
   )
+})
+
+test('every craft model in the repo is listed for precache — no silent drift', async () => {
+  // A model added to apps/web/public/models/ but not to MODEL_URLS would simply
+  // never be available offline, with nothing failing to say so.
+  const { readdirSync } = await import('node:fs')
+  const onDisk = readdirSync(new URL('../apps/web/public/models', import.meta.url))
+    .filter((name) => name.endsWith('.gltf'))
+    .sort()
+  const listed = [...SOURCE.matchAll(/'\/models\/([A-Za-z0-9._-]+\.gltf)'/g)].map((match) => match[1]).sort()
+  assert.deepEqual(listed, onDisk, 'MODEL_URLS must list exactly the models on disk')
 })
 
 test('a precache failure does not abort installation', async () => {
