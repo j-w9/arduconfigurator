@@ -11368,7 +11368,10 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .parameter-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(240px, 1.9fr) minmax(120px, 0.8fr) minmax(160px, 1fr) minmax(160px, 1fr);
+  /* Parameter | Description | Default | Current | Draft | Actions.
+   * Default sits immediately left of Current so the pair reads as a
+   * comparison rather than as two unrelated numbers. */
+  grid-template-columns: minmax(150px, 1fr) minmax(240px, 1.7fr) minmax(90px, 0.6fr) minmax(110px, 0.7fr) minmax(160px, 1fr) minmax(160px, 1fr);
   gap: 10px;
   align-items: center;
   padding: 5px 12px;
@@ -15946,4 +15949,48 @@ button.mavlink-inspector__sent-row {
    * the 390px e2e fails on horizontal overflow. */
   flex: 1 1 16rem;
   min-width: 0;
+}
+
+
+.parameter-row__default {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.parameter-row__default-unknown {
+  opacity: 0.5;
+}
+
+/* Flags the row as differing from firmware default WITHOUT competing with the
+ * staged/written row colours, which mean something else entirely. */
+.parameter-row__default-differs {
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Parameter detail: prose left, numbers + editor right on a wide screen. The
+ * meta and editor previously sat under the description with a large empty
+ * gutter beside them on desktop. Single column below 900px — a phone needs the
+ * description at full width, not squeezed into a ribbon. */
+.parameter-detail__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr);
+  gap: var(--space-3, 12px) 24px;
+  align-items: start;
+}
+
+.parameter-detail__prose,
+.parameter-detail__side {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .parameter-detail__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

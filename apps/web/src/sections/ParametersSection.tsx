@@ -1030,6 +1030,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
           <div className="parameter-row parameter-row--header">
             <span>Parameter</span>
             <span>Description</span>
+            <span>Default</span>
             <span>Current</span>
             <span>Draft</span>
             <span>Actions</span>
@@ -1075,6 +1076,26 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                   {definition?.description ?? 'Metadata to be expanded from upstream ArduPilot bundles.'}
                   {definition?.unit ? <small>Unit: {definition.unit}</small> : null}
                 </span>
+                {/* Firmware default, from the FC's own param.pck. Blank until
+                  * the defaults have been pulled — an empty cell says "not
+                  * known", which is honest, where a guessed value would not
+                  * be. */}
+                <span className="parameter-row__default">
+                  {(() => {
+                    const defaultValue = parameterDefaults?.get(parameter.id)
+                    if (defaultValue === undefined) {
+                      return <small className="parameter-row__default-unknown">—</small>
+                    }
+                    return (
+                      <>
+                        <span>{formatParameterValue(defaultValue, definition?.unit)}</span>
+                        {defaultValue === parameter.value ? null : (
+                          <small className="parameter-row__default-differs">changed</small>
+                        )}
+                      </>
+                    )
+                  })()}
+                </span>
                 <span className="parameter-row__value">
                   <strong>{formatParameterValue(parameter.value, definition?.unit)}</strong>
                   {draft?.status === 'staged' ? (
@@ -1113,6 +1134,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                   ) : (
                     <input
                       type="number"
+                      data-testid={`parameter-row-input-${parameter.id}`}
                       aria-label={`${parameter.id} value`}
                       value={editedValues[parameter.id] ?? String(parameter.value)}
                       onChange={(event) =>
