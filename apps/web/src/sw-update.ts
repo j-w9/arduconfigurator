@@ -1,15 +1,19 @@
-// The offline-shell service worker was RETIRED — it stranded users on a stale
-// app shell across deploys (white screen until a hard refresh). apps/web/public/
-// sw.js is now a self-destructing SW; registerServiceWorker() makes the running
-// app unregister any lingering SW and clear its caches, and registers nothing.
+// Service-worker registration + the "new version is ready" prompt.
 //
-// But retiring the SW also removed the "new version is ready — Refresh" prompt:
-// a tab left open across a deploy keeps running the old bundle with no signal.
-// useServiceWorkerUpdate() brings that prompt back WITHOUT a service worker, by
-// polling the deployed index.html and comparing its hashed entry-bundle name to
-// the one THIS tab loaded. No SW = no stale-shell risk; the check is pure
-// network polling. Refresh does a plain location.reload() to pick up the new
-// bundle.
+// The offline shell was retired once for stranding users on a stale shell
+// across deploys (white screen until a hard refresh), and registerServiceWorker
+// then existed purely to unregister the corpse. Offline support is back for the
+// installed app — see apps/web/public/sw.js, which is network-first for
+// navigations precisely so an online user can never be served a shell that
+// references purged asset hashes.
+//
+// The update prompt stays a pure NETWORK POLL rather than an SW lifecycle
+// event: useServiceWorkerUpdate() fetches the deployed index.html and compares
+// its hashed entry-bundle name to the one THIS tab loaded. That keeps the
+// "is there a new deploy" signal independent of SW state, so a wedged or
+// superseded worker cannot suppress the prompt. The poll uses cache:'no-store'
+// and the SW is network-first for navigations, so it always reflects the
+// server while online, and simply reports nothing while offline.
 
 import { useEffect, useRef, useState } from 'react'
 
@@ -26,28 +30,24 @@ const REFOCUS_DEBOUNCE_MS = 30 * 1000
 let cleanupStarted = false
 
 /**
- * Unregister any previously-installed service worker and clear its caches;
- * register nothing. Idempotent, safe to call once on app boot.
+ * Register the offline service worker. Idempotent, safe to call once on boot.
+ *
+ * Registration is deferred to window 'load' so the SW install (which warms the
+ * shell cache) never competes with the first paint for bandwidth.
+ *
+ * Failure is swallowed: an unavailable SW (private window, blocked by policy,
+ * insecure origin) must leave a perfectly working online app, not an error.
+ * The previous worker at this URL self-unregistered on activate, so returning
+ * users simply pick this one up on their next navigation.
  */
 export function registerServiceWorker(): void {
   if (cleanupStarted) return
   cleanupStarted = true
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
   window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .getRegistrations()
-      .then((registrations) => {
-        for (const registration of registrations) void registration.unregister()
-      })
-      .catch(() => {})
-    if ('caches' in window) {
-      caches
-        .keys()
-        .then((keys) => {
-          for (const key of keys) void caches.delete(key)
-        })
-        .catch(() => {})
-    }
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Offline support is a bonus, never a requirement to run.
+    })
   })
 }
 
