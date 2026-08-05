@@ -1080,7 +1080,12 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     // The demo copter is DShot300 (MOT_PWM_TYPE = 5). ESC endpoint calibration is
     // a PWM-era procedure and must NOT be offered for DShot (digital, no
     // endpoints) — the card shows a "not applicable" explanation instead of the
-    // arm/confirm flow, and the motor-safety acks (which only gate ESC cal) hide.
+    // arm/confirm flow.
+    //
+    // The motor-safety acks DO stay, though: they gate every motor-spinning
+    // action here, including the battery-current load spin. Hiding them on DShot
+    // (i.e. on most modern quads) left that card telling the operator to
+    // "acknowledge the checks below" with no checkboxes anywhere on the page.
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
@@ -1089,9 +1094,12 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     const unsupported = page.getByTestId('esc-cal-unsupported')
     await expect(unsupported).toBeVisible()
     await expect(unsupported).toContainText('DShot')
-    // The arm button + safety-ack card are not rendered for DShot.
+    // The arm button is not rendered for DShot...
     await expect(page.getByTestId('esc-cal-arm')).toHaveCount(0)
-    await expect(page.getByTestId('calibration-card-motor-safety')).toHaveCount(0)
+    // ...but the safety acks are, so battery-current calibration stays usable.
+    await expect(page.getByTestId('calibration-card-motor-safety')).toBeVisible()
+    await expect(page.getByTestId('cal-props-ack')).toBeVisible()
+    await expect(page.getByTestId('cal-area-ack')).toBeVisible()
   })
 
   test('motor-spin calibrations are hidden on a plane', async ({ page }) => {
