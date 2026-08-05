@@ -19,6 +19,12 @@ export interface ParameterDetailProps {
   editedValues: Record<string, string>
   onChange: (paramId: string, value: string) => void
   draftStatusById: ScopedFieldDraftMap
+  /**
+   * Firmware default from the FC's own param.pck, when it has been fetched.
+   * Undefined means "not known", NOT "no default" — the app must not guess one
+   * from metadata, since the authoritative value depends on the board and build.
+   */
+  defaultValue?: number
 }
 
 export function ParameterDetail({
@@ -27,7 +33,8 @@ export function ParameterDetail({
   alias,
   editedValues,
   onChange,
-  draftStatusById
+  draftStatusById,
+  defaultValue
 }: ParameterDetailProps) {
   const options = definition?.options ?? []
   const isBitmask = definition?.bitmask === true
@@ -61,6 +68,33 @@ export function ParameterDetail({
             <dt>Range</dt>
             <dd>
               {definition?.minimum ?? '−∞'} – {definition?.maximum ?? '∞'}
+            </dd>
+          </div>
+        ) : null}
+        {defaultValue !== undefined ? (
+          <div data-testid={`parameter-detail-default-${parameter.id}`}>
+            <dt>Default</dt>
+            <dd>
+              {defaultValue}
+              {/* Restoring is offered only when the live value actually differs,
+                * so the control never appears as a no-op. It stages a draft like
+                * any other edit rather than writing — nothing reaches the FC
+                * without the usual review and Apply. */}
+              {defaultValue !== parameter.value ? (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="parameter-detail__restore"
+                    data-testid={`parameter-restore-default-${parameter.id}`}
+                    onClick={() => onChange(parameter.id, String(defaultValue))}
+                  >
+                    Restore default
+                  </button>
+                </>
+              ) : (
+                <span className="parameter-detail__at-default"> (at default)</span>
+              )}
             </dd>
           </div>
         ) : null}

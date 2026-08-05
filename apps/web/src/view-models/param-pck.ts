@@ -13,13 +13,22 @@
 //         high nibble = (name_len - 1)
 //     name suffix: name_len bytes (append to prev-name[0..common])
 //     value: type_len bytes, little-endian (int8/16/32 signed, float32)
-//     default: type_len bytes, only when the flag is set (we skip it)
+//     default: type_len bytes, only when the flag is set
 
 export interface ParamPckEntry {
   name: string
   value: number
   /** FC flagged this param as differing from its default (i.e. non-default). */
   nonDefault: boolean
+  /**
+   * The firmware default.
+   *
+   * Known for EVERY parameter, not just changed ones: when the non-default flag
+   * is set the FC appends the default after the value, and when it is clear the
+   * parameter IS its default, so the value doubles as it. Undefined only when
+   * the pack was fetched without ?withdefaults=1.
+   */
+  defaultValue?: number
 }
 
 export interface ParamPckResult {
@@ -27,6 +36,8 @@ export interface ParamPckResult {
   entries: ParamPckEntry[]
   /** Names the FC reported as non-default (empty when !withDefaults). */
   nonDefaultParamIds: Set<string>
+  /** Firmware default per parameter id (empty when !withDefaults). */
+  defaultsByParamId: Map<string, number>
 }
 
 const TYPE_SIZE: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 4 }
@@ -46,6 +57,7 @@ export function parseParamPck(bytes: Uint8Array): ParamPckResult {
 
   const entries: ParamPckEntry[] = []
   const nonDefaultParamIds = new Set<string>()
+  const defaultsByParamId = new Map<string, number>()
   let lastName = ''
   let ofs = 6 // sizeof(header)
 
@@ -78,14 +90,25 @@ export function parseParamPck(bytes: Uint8Array): ParamPckResult {
     const name = lastName.slice(0, commonLen) + suffix
     lastName = name
 
-    entries.push({ name, value: readTypedValue(view, valueOfs, type), nonDefault: hasDefault })
+    const value = readTypedValue(view, valueOfs, type)
+    // hasDefault set  -> the default follows the value.
+    // hasDefault clear -> the param sits AT its default, so value is the default.
+    const defaultValue = withDefaults
+      ? hasDefault
+        ? readTypedValue(view, valueOfs + typeSize, type)
+        : value
+      : undefined
+    entries.push({ name, value, nonDefault: hasDefault, defaultValue })
     if (hasDefault) {
       nonDefaultParamIds.add(name)
+    }
+    if (defaultValue !== undefined) {
+      defaultsByParamId.set(name, defaultValue)
     }
     ofs = next
   }
 
-  return { withDefaults, entries, nonDefaultParamIds }
+  return { withDefaults, entries, nonDefaultParamIds, defaultsByParamId }
 }
 
 function readTypedValue(view: DataView, ofs: number, type: number): number {
