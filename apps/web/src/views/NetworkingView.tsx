@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 
-import { buttonStyle } from '@arduconfig/ui-kit'
 
 export type NetworkingTab = 'fc' | 'dronenet'
 
@@ -21,8 +20,10 @@ export interface NetworkingViewProps {
   scanning: boolean
 }
 
-function tabStyle(active: boolean) {
-  return active ? buttonStyle('primary') : buttonStyle()
+/** Shared tab treatment — Networking previously rendered its tabs as ordinary
+ *  buttons, which made them read as actions rather than as navigation. */
+function tabClassName(active: boolean): string {
+  return `tab-strip__tab${active ? ' is-active' : ''}`
 }
 
 /**
@@ -44,12 +45,12 @@ export function NetworkingView({
 }: NetworkingViewProps) {
   return (
     <div data-testid="networking-view">
-      <div className="networking-tabs" role="tablist" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      <div className="tab-strip networking-tabs" role="tablist">
         <button
           type="button"
           role="tab"
           aria-selected={activeTab === 'fc'}
-          style={tabStyle(activeTab === 'fc')}
+          className={tabClassName(activeTab === 'fc')}
           onClick={() => onTabChange('fc')}
           data-testid="networking-tab-fc"
         >
@@ -59,7 +60,7 @@ export function NetworkingView({
           type="button"
           role="tab"
           aria-selected={activeTab === 'dronenet'}
-          style={tabStyle(activeTab === 'dronenet')}
+          className={tabClassName(activeTab === 'dronenet')}
           onClick={() => onTabChange('dronenet')}
           data-testid="networking-tab-dronenet"
         >

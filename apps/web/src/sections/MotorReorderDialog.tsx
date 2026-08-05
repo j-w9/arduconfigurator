@@ -190,12 +190,12 @@ export function MotorReorderDialog({
          *  with a 6%/2.5s window); Direction tab gives the operator
          *  per-motor spin buttons plus the SERVO_BLH_RVMASK reverse
          *  toggles for DShot ESCs in one place. */}
-        <div className="motor-reorder-lightbox__tabs" role="tablist" data-testid="motor-reorder-lightbox-tabs">
+        <div className="tab-strip motor-reorder-lightbox__tabs" role="tablist" data-testid="motor-reorder-lightbox-tabs">
           <button
             type="button"
             role="tab"
             aria-selected={motorDialogTab === 'reorder'}
-            className={`motor-reorder-lightbox__tab${motorDialogTab === 'reorder' ? ' is-active' : ''}`}
+            className={`tab-strip__tab${motorDialogTab === 'reorder' ? ' is-active' : ''}`}
             onClick={() => onTabChange('reorder')}
             data-testid="motor-reorder-lightbox-tab-reorder"
           >
@@ -205,7 +205,7 @@ export function MotorReorderDialog({
             type="button"
             role="tab"
             aria-selected={motorDialogTab === 'direction'}
-            className={`motor-reorder-lightbox__tab${motorDialogTab === 'direction' ? ' is-active' : ''}`}
+            className={`tab-strip__tab${motorDialogTab === 'direction' ? ' is-active' : ''}`}
             onClick={() => onTabChange('direction')}
             data-testid="motor-reorder-lightbox-tab-direction"
           >
@@ -420,6 +420,31 @@ export function MotorReorderDialog({
               {guidedReorderCompleted && motorReorderChangedCount === 0 ? (
                 <div className="bf-note" data-testid="motor-reorder-no-changes">
                   <p>Motor order already matches — no changes needed.</p>
+                </div>
+              ) : null}
+
+              {/* Identifying the motors is only half the job — the order can be
+                * right while a motor still spins backwards. The flow used to
+                * end here silently, leaving the operator to notice the
+                * Direction tab on their own. Once a run completes, hand them
+                * the next step explicitly. Primary only when there is nothing
+                * left to save, so it never competes with Save changes. */}
+              {guidedReorderCompleted ? (
+                <div className="bf-note bf-note--accent" data-testid="motor-reorder-next-step">
+                  <p>
+                    Order identified.{' '}
+                    {motorReorderChangedCount > 0
+                      ? 'Save the changes, then check that each motor spins the right way.'
+                      : 'Next, check that each motor spins the right way.'}
+                  </p>
+                  <button
+                    type="button"
+                    style={buttonStyle(motorReorderChangedCount === 0 ? 'primary' : undefined)}
+                    data-testid="motor-reorder-next-direction"
+                    onClick={() => onTabChange('direction')}
+                  >
+                    Next: Check Motor Direction →
+                  </button>
                 </div>
               ) : null}
 
