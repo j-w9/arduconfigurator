@@ -29,6 +29,13 @@ const CHIP_VERIFY = 0x24
 const PROG_MULTI = 0x27
 const READ_MULTI = 0x28
 const GET_CRC = 0x29
+// PROTO_GET_VERSION (bl_protocol.cpp:110): replies <length:4><git version
+// string>/INSYNC/OK. Compiled in only when HAL_PROGRAM_SIZE_LIMIT_KB > 1024,
+// so smaller-flash boards answer INVALID and simply do not report a version.
+const GET_VERSION = 0x2f
+// MAX_VERSION_LENGTH in bl_protocol.h — the bootloader truncates to this, so a
+// longer declared length means the reply is not a version string.
+const MAX_VERSION_LENGTH = 32
 const REBOOT = 0x30
 
 // extflash opcodes for dual-image boards (CubeOrange+, Pixhawk6X,
@@ -72,6 +79,17 @@ export interface BoardIdentity {
   boardId: number
   boardRevision: number
   flashSize: number
+  /**
+   * The bootloader's own git version (GIT_VERSION_EXTENDED), when the board
+   * reports one. Undefined on boards built without PROTO_GET_VERSION — that is
+   * a normal outcome for smaller-flash targets, not an error.
+   *
+   * This is the ONLY way to learn which bootloader is installed: running
+   * firmware never knows. AP_HAL_ChibiOS/Util.cpp flash_bootloader() only
+   * memcmps the whole image against the copy in its own ROMFS, so it can tell
+   * "same as mine" from "different" but can never name what is there.
+   */
+  bootloaderVersion?: string
 }
 
 export type FlashPhase =
@@ -165,7 +183,39 @@ export class BootloaderClient {
     const boardId = await this.getInfo(INFO_BOARD_ID)
     const boardRevision = await this.getInfo(INFO_BOARD_REV)
     const flashSize = await this.getInfo(INFO_FLASH_SIZE)
-    return { bootloaderRevision, boardId, boardRevision, flashSize }
+    const bootloaderVersion = await this.getVersion()
+    return { bootloaderRevision, boardId, boardRevision, flashSize, bootloaderVersion }
+  }
+
+  /**
+   * The bootloader's git version string, or undefined when this board does not
+   * implement PROTO_GET_VERSION.
+   *
+   * Never throws: an unsupported command answers INVALID, and identify() must
+   * not fail — losing the board identity over a missing nice-to-have would
+   * break flashing on every smaller-flash target. A failed attempt leaves
+   * unread bytes, so the link is re-synced before returning.
+   */
+  async getVersion(): Promise<string | undefined> {
+    try {
+      await this.io.flushInput?.()
+      await this.io.write(new Uint8Array([GET_VERSION, EOC]))
+      const lengthBytes = await this.io.read(4, SYNC_TIMEOUT_MS)
+      const length = (lengthBytes[0] | (lengthBytes[1] << 8) | (lengthBytes[2] << 16) | (lengthBytes[3] << 24)) >>> 0
+      if (length === 0 || length > MAX_VERSION_LENGTH) {
+        // Not a version reply — most likely INSYNC/INVALID misread as a
+        // length. Re-sync so the next command starts clean.
+        await this.sync().catch(() => {})
+        return undefined
+      }
+      const raw = await this.io.read(length, SYNC_TIMEOUT_MS)
+      await this.getSync()
+      const text = new TextDecoder().decode(raw).replace(/\0+$/, '').trim()
+      return text.length > 0 ? text : undefined
+    } catch {
+      await this.sync().catch(() => {})
+      return undefined
+    }
   }
 
   private async trySync(): Promise<boolean> {

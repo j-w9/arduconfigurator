@@ -1330,6 +1330,14 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             <span>Board id {formatBoardId(identity.boardId)}</span>
             <span>BL rev {identity.bootloaderRevision}</span>
             <span>{Math.round(identity.flashSize / 1024)} KiB flash</span>
+            {/* The bootloader's own git version, readable ONLY here — running
+              * firmware never learns which bootloader is installed. Absent on
+              * boards built without PROTO_GET_VERSION (smaller-flash targets),
+              * which is normal rather than a fault, so the pill is simply
+              * omitted instead of showing an error. */}
+            {identity.bootloaderVersion ? (
+              <span data-testid="firmware-bootloader-version">BL {identity.bootloaderVersion}</span>
+            ) : null}
           </div>
         ) : null}
 
