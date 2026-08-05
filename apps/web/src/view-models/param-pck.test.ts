@@ -102,6 +102,50 @@ describe('parseParamPck', () => {
     expect(result.nonDefaultParamIds.size).toBe(0)
   })
 
+  // The FIRMWARE DEFAULT is what makes "show the default" possible at all. The
+  // parser used to skip these bytes outright.
+  it('reads the firmware default that follows a changed value', () => {
+    const bytes = buildPck(0x671c, [
+      { type: 4, name: 'ATC_RAT_RLL_P', value: 0.25, nonDefault: true, def: 0.135 }
+    ])
+    const [entry] = parseParamPck(bytes).entries
+    expect(entry.value).not.toBe(entry.defaultValue)
+    expect(entry.defaultValue).toBeCloseTo(0.135, 5)
+  })
+
+  it('treats an unflagged parameter as sitting AT its default', () => {
+    // No default is transmitted when the flag is clear, because the value IS
+    // the default — which is what lets every parameter report one, not just
+    // the changed ones.
+    const bytes = buildPck(0x671c, [
+      { type: 2, name: 'SERIAL1_PROTOCOL', value: 23, nonDefault: false }
+    ])
+    const result = parseParamPck(bytes)
+    expect(result.entries[0].defaultValue).toBe(23)
+    expect(result.defaultsByParamId.get('SERIAL1_PROTOCOL')).toBe(23)
+  })
+
+  it('builds a default map covering changed and unchanged parameters alike', () => {
+    const bytes = buildPck(0x671c, [
+      { type: 3, name: 'BATT_CAPACITY', value: 5200, nonDefault: true, def: 3300 },
+      { type: 3, name: 'BATT_MONITOR', value: 4, nonDefault: false }
+    ])
+    const { defaultsByParamId, nonDefaultParamIds } = parseParamPck(bytes)
+    expect(defaultsByParamId.get('BATT_CAPACITY')).toBe(3300)
+    expect(defaultsByParamId.get('BATT_MONITOR')).toBe(4)
+    expect([...nonDefaultParamIds]).toEqual(['BATT_CAPACITY'])
+  })
+
+  it('reports no defaults at all for a pack fetched without ?withdefaults', () => {
+    // A 0x671b pack carries no defaults; inventing them from values would
+    // claim every parameter is at its default, which is worse than saying
+    // nothing.
+    const bytes = buildPck(0x671b, [{ type: 1, name: 'A', value: 7, nonDefault: false }])
+    const result = parseParamPck(bytes)
+    expect(result.defaultsByParamId.size).toBe(0)
+    expect(result.entries[0].defaultValue).toBeUndefined()
+  })
+
   it('rejects a blob with the wrong magic', () => {
     expect(isParamPck(new Uint8Array([0, 0, 0, 0, 0, 0]))).toBe(false)
     expect(() => parseParamPck(new Uint8Array([1, 2, 3, 4, 5, 6]))).toThrow(/magic/)

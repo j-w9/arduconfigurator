@@ -97,6 +97,8 @@ export interface ParametersSectionProps {
   /** Params the FC reports as differing from firmware default (from MAVFTP
    *  param.pck?withdefaults, 4.5+). null = not fetched yet. */
   nonDefaultParamIds: ReadonlySet<string> | null
+  /** Firmware defaults from param.pck, once fetched. Null = not fetched. */
+  parameterDefaults?: ReadonlyMap<string, number> | null
   /** "Show only changed" — restrict the table (and export) to non-default params. */
   showOnlyNonDefault: boolean
   /** A backup that has been read but NOT staged. */
@@ -164,6 +166,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     onToggleParameterEnumOverride: handleToggleParameterEnumOverride,
     onRequestReboot: handleRequestReboot,
     nonDefaultParamIds,
+    parameterDefaults,
     showOnlyNonDefault,
     pendingParameterImport,
     onStagePendingParameterImport,
@@ -1170,6 +1173,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                     editedValues={editedValues}
                     onChange={setDraft}
                     draftStatusById={draftStatusMap}
+                    defaultValue={parameterDefaults?.get(parameter.id)}
                   />
                 </div>
               ) : null}

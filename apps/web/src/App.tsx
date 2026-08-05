@@ -949,6 +949,10 @@ export function App() {
   // changed" filter and the non-default export. Declared here (above the export
   // hook) so the export can honour the same set.
   const [nonDefaultParamIds, setNonDefaultParamIds] = useState<ReadonlySet<string> | null>(null)
+  // Firmware default per parameter, from the same param.pck fetch. Known for
+  // EVERY parameter, not just changed ones — an unflagged param sits at its
+  // default, so its value doubles as one.
+  const [parameterDefaults, setParameterDefaults] = useState<ReadonlyMap<string, number> | null>(null)
   const [showOnlyNonDefault, setShowOnlyNonDefault] = useState(false)
   // Params written successfully in the last few seconds. Purely a visual
   // confirmation: a staged row reads yellow, and on a verified write it turns
@@ -3186,31 +3190,73 @@ export function App() {
   // derive the non-default set that drives "Show only changed" + the non-default
   // export. Parse is pure (parseParamPck); the flag on each entry IS the
   // non-default signal, so no value/default comparison is needed here.
-  async function handleFetchParamDefaults(): Promise<void> {
+  /**
+   * Pull the FC's defaults the first time a parameter row is expanded.
+   *
+   * Defaults previously loaded only as a side effect of switching on the
+   * "changed only" filter, so the per-row Default line would sit empty for
+   * anyone who never touched that toggle. A ref guard makes this fire at most
+   * once per session: the fetch is a MAVFTP transfer, and a firmware that
+   * cannot serve it (pre-4.5, or no MAVFTP) must not be re-asked on every
+   * click. The explicit filter toggle still retries on demand.
+   */
+  const autoFetchedDefaultsRef = useRef(false)
+  useEffect(() => {
+    if (
+      selectedParameterId === undefined ||
+      parameterDefaults !== null ||
+      autoFetchedDefaultsRef.current ||
+      fetchDefaultsBusy ||
+      snapshot.connection.kind !== 'connected' ||
+      snapshot.parameterStats.status !== 'complete'
+    ) {
+      return
+    }
+    autoFetchedDefaultsRef.current = true
+    void handleFetchParamDefaults({ silent: true })
+    // handleFetchParamDefaults is a stable function declaration on the body.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedParameterId, parameterDefaults, fetchDefaultsBusy, snapshot.connection.kind, snapshot.parameterStats.status])
+
+  async function handleFetchParamDefaults(options: { silent?: boolean } = {}): Promise<void> {
     setFetchDefaultsBusy(true)
     try {
       const result = parseParamPck(await runtime.downloadParamPack())
       if (!result.withDefaults) {
         setNonDefaultParamIds(new Set())
-        setParameterNotice({
-          tone: 'warning',
-          text: 'This firmware returned params without default flags — update to ArduPilot 4.5+ to use the "changed only" filter.'
-        })
+        setParameterDefaults(null)
+        if (!options.silent) {
+          setParameterNotice({
+            tone: 'warning',
+            text: 'This firmware returned params without default flags — update to ArduPilot 4.5+ to use the "changed only" filter.'
+          })
+        }
         return
       }
       setNonDefaultParamIds(result.nonDefaultParamIds)
+      setParameterDefaults(result.defaultsByParamId)
+      if (options.silent) {
+        // Opening a row asked for a Default line, not a filter change or a
+        // banner — populate quietly and leave the view as the operator left it.
+        return
+      }
       setShowOnlyNonDefault(true)
       setParameterNotice({
         tone: 'neutral',
         text: `Defaults fetched: ${result.nonDefaultParamIds.size} of ${result.entries.length} params differ from firmware default.`
       })
     } catch (error) {
-      setParameterNotice({
-        tone: 'danger',
-        text: `Couldn't fetch packed defaults over MAVFTP (needs a MAVFTP-capable FC on ArduPilot 4.5+): ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      })
+      // A silent pull was speculative — the operator expanded a row, they did
+      // not ask for a MAVFTP transfer. A board that cannot serve defaults just
+      // shows no Default line rather than an error they did not provoke.
+      if (!options.silent) {
+        setParameterNotice({
+          tone: 'danger',
+          text: `Couldn't fetch packed defaults over MAVFTP (needs a MAVFTP-capable FC on ArduPilot 4.5+): ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        })
+      }
     } finally {
       setFetchDefaultsBusy(false)
     }
@@ -8865,6 +8911,7 @@ export function App() {
           onToggleParameterEnumOverride={handleToggleParameterEnumOverride}
           onRequestReboot={() => void handleGuidedAction('reboot-autopilot')}
           nonDefaultParamIds={nonDefaultParamIds}
+          parameterDefaults={parameterDefaults}
           showOnlyNonDefault={showOnlyNonDefault}
           // Ticking "show only changed" fetches the firmware defaults it needs,
           // rather than requiring the operator to press a separate button first.
