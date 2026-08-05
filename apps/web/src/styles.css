@@ -15893,3 +15893,36 @@ button.mavlink-inspector__sent-row {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* "Reset to Defaults" on Parameters and Snapshots. Mirrors the Flash tab's
+ * arm/confirm treatment so a destructive control looks the same everywhere it
+ * appears, rather than reading as an ordinary toolbar button. */
+.parameter-reset-row,
+.snapshots-page__reset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.reset-defaults-button--danger {
+  border-color: var(--danger, #e2123f);
+  color: var(--danger, #e2123f);
+}
+
+.reset-defaults-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.reset-defaults-confirm__warning {
+  color: var(--danger, #e2123f);
+  font-size: 0.85rem;
+  /* Keep the warning from pushing the buttons off a phone-width viewport —
+   * the 390px e2e fails on horizontal overflow. */
+  flex: 1 1 16rem;
+  min-width: 0;
+}

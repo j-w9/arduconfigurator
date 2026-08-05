@@ -4,7 +4,7 @@
 // input + three export buttons, and the selected-parameter detail card.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Dispatch, ReactElement, RefObject, SetStateAction } from 'react'
+import type { Dispatch, ReactElement, ReactNode, RefObject, SetStateAction } from 'react'
 import { parameterAlias } from '@arduconfig/ardupilot-core'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterDraftGroup, ParameterDraftSummary, ParameterImportCategory, ParameterState } from '@arduconfig/ardupilot-core'
 import type { NormalizedFirmwareMetadataBundle } from '@arduconfig/param-metadata'
@@ -37,6 +37,9 @@ export interface ParametersSectionProps {
   metadataCatalog: NormalizedFirmwareMetadataBundle
   canApplyDraftParameters: boolean
   canApplyAllDraftParameters: boolean
+  /** "Reset to Defaults" control, rendered near the top — see
+   *  ResetToDefaultsButton. */
+  resetToDefaultsSlot?: ReactNode
   busyAction: string | undefined
   /** Label for the Apply-All button while the batch write is in flight, e.g. "Writing… (12/200)". */
   applyAllBusyLabel: string
@@ -121,6 +124,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     metadataCatalog,
     canApplyDraftParameters,
     canApplyAllDraftParameters,
+    resetToDefaultsSlot,
     busyAction,
     applyAllBusyLabel,
     editedValues,
@@ -327,6 +331,12 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
           <StatusBadge tone="warning">expert</StatusBadge>
           <p>Raw parameter editing is an Expert surface. Use Setup, Ports, Receiver, Outputs, and Power for routine workflow changes first.</p>
         </div>
+
+        {resetToDefaultsSlot ? (
+          <div className="parameter-reset-row" data-testid="parameters-reset-row">
+            {resetToDefaultsSlot}
+          </div>
+        ) : null}
 
         <div className="parameter-toolbar">
           <input

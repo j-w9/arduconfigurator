@@ -6,6 +6,9 @@ export interface SnapshotsViewProps {
   profilesCount: number
   activeDiffCount: number
   hiddenInputsSlot?: ReactNode
+  /** "Reset to Defaults" control, near the top where the operator already is
+   *  when deciding they want a clean slate. */
+  resetToDefaultsSlot?: ReactNode
   libraryFormSlot: ReactNode
   selectedSnapshotSlot: ReactNode
   provisioningFormSlot: ReactNode
@@ -18,6 +21,7 @@ export function SnapshotsView(props: SnapshotsViewProps) {
     profilesCount,
     activeDiffCount,
     hiddenInputsSlot,
+    resetToDefaultsSlot,
     libraryFormSlot,
     selectedSnapshotSlot,
     provisioningFormSlot,
@@ -54,6 +58,12 @@ export function SnapshotsView(props: SnapshotsViewProps) {
               </div>
             </div>
           </div>
+
+          {resetToDefaultsSlot ? (
+            <div className="snapshots-page__reset" data-testid="snapshots-reset-row">
+              {resetToDefaultsSlot}
+            </div>
+          ) : null}
 
           <section className="snapshots-slab snapshots-slab--library">
             {libraryFormSlot}
