@@ -1472,6 +1472,16 @@ test.describe('Flash view', () => {
     await expect(page.getByTestId('firmware-enter-dfu')).toBeVisible()
     await expect(page.getByTestId('firmware-enter-dfu-confirm')).toHaveCount(0)
 
+    // Update Bootloader (MAV_CMD_FLASH_BOOTLOADER) gets the same two-step gate:
+    // rewriting the bootloader sector can brick the board if interrupted, so
+    // the first click must only arm, never send.
+    await expect(page.getByTestId('firmware-flash-bootloader')).toBeVisible()
+    await page.getByTestId('firmware-flash-bootloader').click()
+    await expect(page.getByTestId('firmware-flash-bootloader-confirm')).toBeVisible()
+    await page.getByTestId('firmware-flash-bootloader-cancel').click()
+    await expect(page.getByTestId('firmware-flash-bootloader')).toBeVisible()
+    await expect(page.getByTestId('firmware-flash-bootloader-confirm')).toHaveCount(0)
+
     // Custom server toggle expands a URL + token panel.
     await expect(page.getByTestId('firmware-custom-server')).toHaveCount(0)
     await page.getByTestId('firmware-toggle-custom-server').click()

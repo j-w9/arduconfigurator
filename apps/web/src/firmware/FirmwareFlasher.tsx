@@ -54,6 +54,13 @@ export interface FirmwareFlasherProps {
   /** Optional: send a normal reboot (MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN
    *  param1=1). Surfaces a "Request Reboot" button above the DFU control;
    *  hidden when omitted (e.g. the disconnected modal landing path). */
+  /** Re-flash the bootloader from the image embedded in the RUNNING firmware
+   *  (MAV_CMD_FLASH_BOOTLOADER). Not a file upload — the firmware currently on
+   *  the board decides which bootloader you get. Wired only over a live
+   *  MAVLink link. */
+  onFlashBootloader?: () => Promise<void>
+  /** Why the bootloader update cannot run right now (disconnected/armed). */
+  flashBootloaderDisabledReason?: string
   onReboot?: () => Promise<void>
   /** Disabled reason for the reboot button, same contract as the DFU one. */
   rebootDisabledReason?: string
@@ -202,7 +209,15 @@ function persistCustomServer(value: string): void {
 }
 
 export function FirmwareFlasher(props: FirmwareFlasherProps) {
-  const { onClose, onEnterDfu, enterDfuDisabledReason, onReboot, rebootDisabledReason } = props
+  const {
+    onClose,
+    onEnterDfu,
+    enterDfuDisabledReason,
+    onReboot,
+    rebootDisabledReason,
+    onFlashBootloader,
+    flashBootloaderDisabledReason
+  } = props
   const requestPort = props.requestPort ?? defaultRequestPort
   const listPorts = props.listPorts ?? defaultListPorts
   const inflate = props.inflate ?? inflateZlib
@@ -250,6 +265,10 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   // a confirm/cancel pair, the confirm actually sends the command.
   const [dfuConfirmArmed, setDfuConfirmArmed] = useState(false)
   const [rebootBusy, setRebootBusy] = useState(false)
+  // Rewriting the bootloader sector can brick the board if it is interrupted,
+  // so it gets the same two-click arm/confirm gate as the DFU reboot.
+  const [bootloaderConfirmArmed, setBootloaderConfirmArmed] = useState(false)
+  const [bootloaderBusy, setBootloaderBusy] = useState(false)
 
   const serialRef = useRef<WebSerialBootloaderSerial | null>(null)
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -326,6 +345,26 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       setRebootBusy(false)
     }
   }, [onReboot])
+
+  const handleFlashBootloader = useCallback(async () => {
+    if (!onFlashBootloader) return
+    setBootloaderConfirmArmed(false)
+    setBootloaderBusy(true)
+    setDfuNotice('Updating bootloader — do not unplug the board.')
+    try {
+      await onFlashBootloader()
+      // ArduPilot answers ACCEPTED for both OK and NO_CHANGE, so a board that
+      // was already current reports success rather than an error.
+      setDfuNotice(
+        'Bootloader updated (or already current). Reboot the board for the new bootloader to be used.'
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update the bootloader.'
+      setDfuNotice(message)
+    } finally {
+      setBootloaderBusy(false)
+    }
+  }, [onFlashBootloader])
 
   useEffect(
     () => () => {
@@ -989,6 +1028,44 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                 onClick={() => setDfuConfirmArmed(true)}
               >
                 Activate Bootloader (DFU)
+              </button>
+            )
+          ) : null}
+          {onFlashBootloader ? (
+            bootloaderConfirmArmed ? (
+              <span
+                className="firmware-wizard__dfu-confirm"
+                data-testid="firmware-flash-bootloader-confirm-row"
+              >
+                <button
+                  type="button"
+                  className="firmware-wizard__dfu-button firmware-wizard__dfu-button--danger"
+                  data-testid="firmware-flash-bootloader-confirm"
+                  disabled={bootloaderBusy}
+                  onClick={() => void handleFlashBootloader()}
+                >
+                  {bootloaderBusy ? 'Updating…' : 'Confirm: update bootloader'}
+                </button>
+                <button
+                  type="button"
+                  className="firmware-wizard__dfu-cancel"
+                  data-testid="firmware-flash-bootloader-cancel"
+                  disabled={bootloaderBusy}
+                  onClick={() => setBootloaderConfirmArmed(false)}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="firmware-wizard__dfu-button"
+                data-testid="firmware-flash-bootloader"
+                disabled={bootloaderBusy || Boolean(flashBootloaderDisabledReason)}
+                title={flashBootloaderDisabledReason}
+                onClick={() => setBootloaderConfirmArmed(true)}
+              >
+                Update Bootloader
               </button>
             )
           ) : null}

@@ -253,6 +253,19 @@ export const MAV_CMD = {
   PREFLIGHT_REBOOT_SHUTDOWN: 246,
   /** ArduPilot-specific: control onboard Lua scripting (ardupilotmega.xml). */
   SCRIPTING: 42701,
+  /**
+   * Re-flash the bootloader from the image embedded in the running firmware
+   * (ardupilotmega.xml, "Update the bootloader"). param5 must be the magic
+   * 290876 or ArduPilot answers "Magic not set" and FAILED — see
+   * GCS_Common.cpp handle_command_flash_bootloader, which reads it from the
+   * COMMAND_INT `x` field. The entry is hasLocation="false", so the autopilot's
+   * COMMAND_LONG -> COMMAND_INT conversion copies param5 into x WITHOUT the
+   * 1e7 latitude scaling that location commands get.
+   *
+   * Compile-gated behind AP_BOOTLOADER_FLASHING_ENABLED: a build without it
+   * answers UNSUPPORTED rather than failing silently.
+   */
+  FLASH_BOOTLOADER: 42650,
   // Put the RC receiver into bind/pair mode. ArduPilot routes this to the
   // active RC protocol's bind: CRSF/ExpressLRS sends the CRSF bind command
   // frame to the RX, Spektrum pulses the satellite bind. Params are ignored
