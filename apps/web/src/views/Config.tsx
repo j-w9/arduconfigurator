@@ -33,7 +33,7 @@ export interface ConfigSectionField {
 }
 
 /** Config category ids — the top tab groups. */
-export type ConfigCategoryId = 'airframe' | 'sensors' | 'gps' | 'rc-arming' | 'system'
+export type ConfigCategoryId = 'airframe' | 'sensors' | 'gps' | 'rc' | 'arming' | 'system'
 
 export interface ConfigCategory {
   id: ConfigCategoryId
@@ -42,11 +42,19 @@ export interface ConfigCategory {
 
 // Tab order across the top of the Config surface. One calm group at a time
 // instead of 14 stacked cards.
+//
+// RC and Arming used to share one "RC & Arming" tab. Field report: they are
+// unrelated jobs that happen to both involve the pilot — an operator wiring a
+// receiver is not thinking about pre-arm checks, and an operator debugging a
+// refused arm is not thinking about RSSI. Splitting them means the RC tab can
+// lead with the two knobs that are prerequisites for the radio working at all
+// (protocol + options) instead of burying them under someone else's card.
 export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
   { id: 'airframe', label: 'Airframe' },
   { id: 'sensors', label: 'Sensors' },
   { id: 'gps', label: 'GPS' },
-  { id: 'rc-arming', label: 'RC & Arming' },
+  { id: 'rc', label: 'RC' },
+  { id: 'arming', label: 'Arming' },
   { id: 'system', label: 'System' }
 ]
 
@@ -224,7 +232,7 @@ export function ConfigView(props: ConfigViewProps) {
     <div id="setup-panel-config">
       <Panel
         title="Config"
-        subtitle="Airframe, sensors, GPS, RC & arming, and system settings — grouped so you only see one area at a time."
+        subtitle="Airframe, sensors, GPS, RC, arming, and system settings — grouped so you only see one area at a time."
       >
         {presentCategories.length > 1 ? (
           <div className="tab-strip config-category-nav" data-testid="config-category-nav" role="tablist">
