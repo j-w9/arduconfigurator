@@ -52,7 +52,24 @@ interface MavftpWaiterHandle {
   cancel: (error: Error) => void
 }
 
+/**
+ * A burst that was cancelled by its caller, not one that failed.
+ *
+ * Distinct from a generic Error so a caller can tell "I stood this down" from
+ * "the link broke" — background work must swallow its own cancellation
+ * silently, while a real failure is worth knowing about.
+ */
+export class MavftpAbortError extends Error {
+  readonly aborted = true
+  constructor() {
+    super('MAVFTP burst download was aborted.')
+    this.name = 'MavftpAbortError'
+  }
+}
+
 interface BurstOperation {
+  /** Detaches the abort listener, if one was attached. Called on every exit. */
+  cleanup?: () => void
   session: number
   declaredSize: number
   buffer: Uint8Array
@@ -327,9 +344,28 @@ export class MavftpService {
       timeoutMs?: number
       maxBytes?: number
       onProgress?: (progress: LogDownloadProgress) => void
+      /**
+       * Cancels an in-flight burst.
+       *
+       * Exists for BACKGROUND reads. A burst holds the single activeBurst slot
+       * for its whole duration and a second one throws, so an uncancellable
+       * multi-megabyte read in the background would make an operator's own
+       * download fail while they waited on it. With a signal the background
+       * work can stand down instead.
+       *
+       * Aborting rejects through the normal failure path, so the session is
+       * still terminated by the caller's finally — the flight controller is
+       * never left streaming into a dead operation.
+       */
+      signal?: AbortSignal
     } = {}
   ): Promise<Uint8Array> {
     await this.ensureSupport()
+    if (options.signal?.aborted) {
+      // Checked before opening a session so an already-cancelled request costs
+      // the flight controller nothing at all.
+      throw new MavftpAbortError()
+    }
     if (this.activeBurst) {
       throw new Error('A MAVFTP burst download is already in progress.')
     }
@@ -374,7 +410,7 @@ export class MavftpService {
     }
 
     try {
-      return await this.runBurst(session, declaredSize, timeoutMs, options.onProgress)
+      return await this.runBurst(session, declaredSize, timeoutMs, options.onProgress, options.signal)
     } finally {
       await this.terminateSession(session)
     }
@@ -407,7 +443,8 @@ export class MavftpService {
     session: number,
     declaredSize: number,
     timeoutMs: number | undefined,
-    onProgress?: (progress: LogDownloadProgress) => void
+    onProgress?: (progress: LogDownloadProgress) => void,
+    signal?: AbortSignal
   ): Promise<Uint8Array> {
     const effectiveTimeoutMs = timeoutMs ?? DEFAULT_MAVFTP_BURST_TIMEOUT_MS
     return new Promise<Uint8Array>((resolve, reject) => {
@@ -423,6 +460,16 @@ export class MavftpService {
         resolve,
         reject,
         timer: setTimeout(() => this.onBurstTimeout(), effectiveTimeoutMs)
+      }
+      // Abort routes through failBurst, the SAME path a timeout takes, so
+      // cancellation cannot leave the service in a state the normal failure
+      // path does not already handle.
+      if (signal) {
+        const onAbort = (): void => this.failBurst(new MavftpAbortError())
+        signal.addEventListener('abort', onAbort, { once: true })
+        // Detached however the op ends — resolve, reject or abort — so a long
+        // session cannot accumulate listeners on a shared signal.
+        op.cleanup = () => signal.removeEventListener('abort', onAbort)
       }
       this.activeBurst = op
       this.sendBurstReadRequest(op, 0)
@@ -563,6 +610,7 @@ export class MavftpService {
       return
     }
     clearTimeout(op.timer)
+    op.cleanup?.()
     this.activeBurst = undefined
     const bytes = op.received >= op.declaredSize ? op.buffer : op.buffer.slice(0, op.received)
     op.resolve(bytes)
@@ -574,6 +622,7 @@ export class MavftpService {
       return
     }
     clearTimeout(op.timer)
+    op.cleanup?.()
     this.activeBurst = undefined
     op.reject(error)
   }
