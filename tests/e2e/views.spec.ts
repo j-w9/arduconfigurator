@@ -1265,6 +1265,58 @@ test.describe('Tuning tab', () => {
     await angleSummary.click()
     await expect(page.getByTestId('tuning-input-ATC_INPUT_TC')).toBeVisible()
   })
+
+  test('the curated control info bubble reveals the raw param name and a wiki link', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'tuning')
+    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
+
+    // The card only ever shows the friendly label ("Stick feel smoothing"), so
+    // the bubble is the operator's ONLY route from that label to ATC_INPUT_TC.
+    const info = page.getByTestId('tuning-info-ATC_INPUT_TC')
+    await expect(info).toBeVisible({ timeout: 10000 })
+    const tip = info.locator('xpath=following-sibling::span[@role="tooltip"]')
+    await expect(tip).toBeHidden()
+    await info.hover()
+    await expect(tip).toBeVisible()
+    await expect(tip).toContainText('ATC_INPUT_TC')
+
+    const link = tip.getByTestId('param-wiki-ATC_INPUT_TC')
+    await expect(link).toHaveAttribute('href', 'https://ardupilot.org/copter/docs/parameters.html#atc-input-tc')
+    await expect(link).toHaveAttribute('target', '_blank')
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+
+    // The tip hangs a few px below the "i", and hover state follows the DOM, so
+    // without the invisible bridge the pointer crossing that dead band closed
+    // the tip and the link was unclickable in practice. Park the mouse IN the
+    // gap and assert the tip survives, then click through to the link.
+    const iconBox = (await info.boundingBox())!
+    const tipBox = (await tip.boundingBox())!
+    await page.mouse.move(iconBox.x + iconBox.width / 2, (iconBox.y + iconBox.height + tipBox.y) / 2)
+    await expect(tip).toBeVisible()
+    await link.hover()
+    await expect(tip).toBeVisible()
+  })
+
+  test('the info bubble stays open while tabbing onto its wiki link', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'tuning')
+    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
+
+    const info = page.getByTestId('tuning-info-ATC_INPUT_TC')
+    await expect(info).toBeVisible({ timeout: 10000 })
+    const tip = info.locator('xpath=following-sibling::span[@role="tooltip"]')
+    // Keyboard route: focusing the "i" opens the tip, and focus-within keeps it
+    // open when Tab moves on to the link inside it (button-only :focus-visible
+    // would close it and strand the link).
+    await info.focus()
+    await expect(tip).toBeVisible()
+    await page.keyboard.press('Tab')
+    await expect(page.getByTestId('param-wiki-ATC_INPUT_TC')).toBeFocused()
+    await expect(tip).toBeVisible()
+  })
 })
 
 test.describe('Failsafe view', () => {
@@ -1940,6 +1992,25 @@ test.describe('Config view', () => {
     await info.hover()
     await expect(tip).toBeVisible()
     await expect(tip).not.toHaveText('')
+  })
+
+  test('Config info bubble names the raw parameter and links the ArduPilot wiki', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+    const info = page.getByTestId('config-field-info-FRAME_CLASS')
+    await info.scrollIntoViewIfNeeded()
+    await info.hover()
+    const tip = info.locator('xpath=following-sibling::span[@role="tooltip"]')
+    await expect(tip).toBeVisible()
+    await expect(tip).toContainText('FRAME_CLASS')
+    const link = tip.getByTestId('param-wiki-FRAME_CLASS')
+    await expect(link).toHaveAttribute('href', 'https://ardupilot.org/copter/docs/parameters.html#frame-class')
+    // Plain external link in a new tab — the wiki must never be pulled into the
+    // SPA (an earlier in-app wiki poisoned the PWA shell; that was a P1).
+    await expect(link).toHaveAttribute('target', '_blank')
+    await expect(link).toHaveAttribute('rel', 'noopener noreferrer')
   })
 
   test('Config exposes a Frame section to set FRAME_CLASS / FRAME_TYPE', async ({ page }) => {

@@ -277,6 +277,7 @@ import { DronecanInspectorView, type DronecanFirmwareOnlineSource } from './view
 import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
 import { dronecanNodeBoardId, parseApj, decodeApjImage } from '@arduconfig/firmware-flash'
 import { inflateZlib } from './firmware/web-serial-bootloader'
+import { ParamInfoBubble } from './views/ParamInfoBubble'
 import { ScopedField, ScopedSelectField } from './views/ScopedField'
 import { ModesView } from './views/Modes'
 import { FailsafeSection } from './sections/FailsafeSection'
@@ -5897,29 +5898,22 @@ export function App() {
   // ArduPilot description right next to the control, so the operator knows what
   // each NET_ param does without leaving the tab. Mirrors the Config "i".
   function withNetworkingFieldInfo(parameter: ParameterState, node: ReactNode): ReactNode {
-    const description = parameter.definition?.description
-    if (node === null || node === undefined || !description) {
+    if (node === null || node === undefined) {
       return node
     }
-    // Same per-field "i" affordance as the Config tab (config-section__info) —
-    // hover/focus reveals the styled description box — so it's consistent with
-    // the rest of the app.
+    // Same shared per-field "i" affordance as the Config tab — hover/focus
+    // reveals the raw parameter id, the ArduPilot description and a wiki deep
+    // link, so it's consistent with the rest of the app. No longer gated on
+    // there being a description: the id and the link are always worth having.
     return (
       <div key={parameter.id} className="config-section__field-row">
         {node}
-        <span className="config-section__info-wrap">
-          <button
-            type="button"
-            className="config-section__info"
-            data-testid={`networking-field-info-${parameter.id}`}
-            aria-label={`About ${parameter.definition?.label ?? parameter.id}`}
-          >
-            i
-          </button>
-          <span className="config-section__info-tip" role="tooltip">
-            {description}
-          </span>
-        </span>
+        <ParamInfoBubble
+          paramId={parameter.id}
+          label={parameter.definition?.label ?? parameter.id}
+          description={parameter.definition?.description}
+          testId={`networking-field-info-${parameter.id}`}
+        />
       </div>
     )
   }

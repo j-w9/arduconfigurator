@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { ParamInfoBubble } from './ParamInfoBubble'
 import { ScopedField, ScopedSelectField, ScopedBitmaskField, type ScopedFieldDraftMap } from './ScopedField'
 
 // BF-style "Configuration" catch-all surface. Mission Planner and BF
@@ -201,21 +202,15 @@ export function ConfigView(props: ConfigViewProps) {
     return (
       <div key={field.paramId} className="config-section__field-row">
         {editor}
-        {description ? (
-          <span className="config-section__info-wrap">
-            <button
-              type="button"
-              className="config-section__info"
-              data-testid={`config-field-info-${field.paramId}`}
-              aria-label={`About ${parameter.definition?.label ?? field.label}`}
-            >
-              i
-            </button>
-            <span className="config-section__info-tip" role="tooltip">
-              {description}
-            </span>
-          </span>
-        ) : null}
+        {/* Unconditional now: the bubble also carries the raw parameter id and
+            the wiki deep link, both of which exist even for the params whose
+            metadata has no description. */}
+        <ParamInfoBubble
+          paramId={field.paramId}
+          label={parameter.definition?.label ?? field.label}
+          description={description}
+          testId={`config-field-info-${field.paramId}`}
+        />
       </div>
     )
   }
