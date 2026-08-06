@@ -563,6 +563,30 @@ function buildSerialPortParameterDefinitions(maxPortNumber: number): FirmwareMet
 // The option list is generated from ArduPilot's own @Values annotations rather
 // than curated, because a hand-picked subset is exactly how an operator ends up
 // unable to find the function they need.
+/**
+ * RCn_OPTION options in ALPHABETICAL order rather than by value.
+ *
+ * The generated list is ~120 entries in firmware value order, which is an
+ * implementation detail of RC_Channel.cpp and means nothing to an operator:
+ * finding "Motor Emergency Stop" means scanning the whole list because there is
+ * no rule saying where it sits. Mission Planner sorts these by name and that is
+ * what people are used to.
+ *
+ * "Do Nothing" (0) is pinned first. It is the cleared state rather than a
+ * function, so it belongs where you look to unassign a channel — not filed
+ * under D.
+ */
+function rcOptionsAlphabetical(labelMap: Record<number, string>): ParameterValueOption[] {
+  const options = enumOptions(labelMap)
+  const none = options.filter((option) => option.value === 0)
+  const rest = options
+    .filter((option) => option.value !== 0)
+    // Numeric-aware so Relay2 sorts before Relay10, and case-insensitive so
+    // capitalisation in the firmware annotations does not split the list.
+    .sort((left, right) => left.label.localeCompare(right.label, 'en', { numeric: true, sensitivity: 'base' }))
+  return [...none, ...rest]
+}
+
 function buildRcOptionParameterDefinitions(
   minChannelNumber: number,
   maxChannelNumber: number
@@ -576,7 +600,7 @@ function buildRcOptionParameterDefinitions(
       description: `Auxiliary function assigned to RC channel ${channelNumber}. "Do Nothing" leaves the channel unused by the flight controller.`,
       category: 'receiver',
       notes: ['Assigning the same function to two channels is undefined — clear the old channel first.'],
-      options: enumOptions(ARDUCOPTER_RC_OPTION_LABELS)
+      options: rcOptionsAlphabetical(ARDUCOPTER_RC_OPTION_LABELS)
     }
   }
 
