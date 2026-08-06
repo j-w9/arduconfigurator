@@ -357,6 +357,56 @@ export interface OpticalFlowMessage {
   flowRateY: number
 }
 
+/**
+ * DISTANCE_SENSOR (msgid 132) — one message per rangefinder instance.
+ *
+ * ArduPilot emits this from `GCS_MAVLINK::send_distance_sensor()`
+ * (libraries/GCS_MAVLink/GCS_Common.cpp), which iterates every rangefinder
+ * backend and skips any whose `has_data()` is false. That skip is the whole
+ * reason this message — rather than RANGEFINDER (msgid 173) — is the one we
+ * decode: a configured-but-not-talking lidar produces NO DISTANCE_SENSOR at
+ * all, so silence is a truthful "wired wrong / broken" signal. RANGEFINDER
+ * has no such guard, carries no signal-quality field, and only ever covers
+ * the single ROTATION_PITCH_270 instance.
+ *
+ * Proximity backends share the message: AP_Proximity sends its sectors with
+ * `id >= PROXIMITY_SENSOR_ID_START` (10, AP_Proximity.h), which is how a
+ * consumer separates real rangefinder instances (id == instance, 0..9) from
+ * 360° proximity sectors.
+ */
+export interface DistanceSensorMessage {
+  type: 'DISTANCE_SENSOR'
+  /** Milliseconds since vehicle boot. */
+  timeBootMs: number
+  /** Minimum measurable distance, centimetres (RNGFNDn_MIN × 100). */
+  minDistanceCm: number
+  /** Maximum measurable distance, centimetres (RNGFNDn_MAX × 100). */
+  maxDistanceCm: number
+  /** The live reading, centimetres. This is the number the operator wants. */
+  currentDistanceCm: number
+  /** MAV_DISTANCE_SENSOR enum (0 laser, 1 ultrasound, 2 infrared, 3 radar). */
+  sensorType: number
+  /** Onboard sensor ID. For rangefinders this equals the backend instance
+   * (0 = RNGFND1); values >= 10 are AP_Proximity sectors, not rangefinders. */
+  id: number
+  /** MAV_SENSOR_ORIENTATION; 25 = ROTATION_PITCH_270 = downward-facing. */
+  orientation: number
+  /** Measurement variance in cm²; 0 = unknown. */
+  covariance: number
+  /** Horizontal field of view (rad); 0 when unknown. Extension field. */
+  horizontalFov: number
+  /** Vertical field of view (rad); 0 when unknown. Extension field. */
+  verticalFov: number
+  /**
+   * Signal quality as a percentage, with two reserved sentinels that
+   * ArduPilot sets deliberately (GCS_Common.cpp): 0 = unknown/unset (the
+   * driver does not report quality at all), 1 = invalid signal, 2..100 =
+   * a real quality percentage. Extension field, so it is 0 on a truncated
+   * payload too — which is why "0" must never be rendered as "0% quality".
+   */
+  signalQuality: number
+}
+
 export interface UavcanNodeStatusMessage {
   type: 'UAVCAN_NODE_STATUS'
   /** Timestamp (UNIX epoch microseconds or microseconds since system boot). */
@@ -440,6 +490,7 @@ export type MavlinkMessage =
   | RcChannelsMessage
   | SysStatusMessage
   | OpticalFlowMessage
+  | DistanceSensorMessage
   | CanFrameMessage
   | GpsRawIntMessage
   | GlobalPositionIntMessage

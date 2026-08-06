@@ -19,6 +19,7 @@ import type {
   CommandLongMessage,
   FileTransferProtocolMessage,
   GpsRawIntMessage,
+  DistanceSensorMessage,
   GlobalPositionIntMessage,
   LogRequestDataMessage,
   MavlinkEnvelope,
@@ -143,6 +144,21 @@ const mockParameters: ParameterState = {
   RNGFND1_RMETRIC: 1,
   RNGFND1_STOP_PIN: -1,
   RNGFND1_PWRRNG: 0,
+  // Optical flow, seeded CONFIGURED BUT DELIBERATELY SILENT: FLOW_TYPE is
+  // non-zero so the Status & Info flow card renders, but the mock never emits
+  // an OPTICAL_FLOW message, so the card sits in the "no data received" state.
+  //
+  // That state is the load-bearing one. A field report on this feature was an
+  // operator with a DroneCAN flow sensor they had hand-soldered (no room for
+  // the connector) with the wires crossed: the sensor was configured, no data
+  // arrived, and the card saying so is what told them the solder job was wrong
+  // instead of sending them to Mission Planner or the logs. The happy path is
+  // covered by the rangefinder card, which the mock does stream.
+  //
+  // 6 = DroneCAN (AP_OpticalFlow.h Type::UAVCAN, i.e. HereFlow) — matching
+  // that report, and specifically exercising the CAN-attached variant rather
+  // than a directly-wired one.
+  FLOW_TYPE: 6,
   // Relays (RELAY1/RELAY2) — seeded so the demo surfaces the Relays tab
   // populated: relay 1 is a plain operator relay on an AUX pin (default off),
   // relay 2 is mapped to the camera shutter. Metadata ships RELAY1..RELAY6.
@@ -800,6 +816,49 @@ function globalPositionMessage(timeBootMs: number): GlobalPositionIntMessage {
     velocityZcms: 0,
     headingCdeg: 27450
   }
+}
+
+/**
+ * A downward lidar that IS reporting — the demo's rangefinder happy path,
+ * and the counterweight to the deliberately-silent optical flow above.
+ *
+ * Mirrors what ArduPilot's send_distance_sensor() would emit for RNGFND1 as
+ * seeded in mockParameters: instance/id 0, MAV_DISTANCE_SENSOR_LASER (0),
+ * orientation 25 (ROTATION_PITCH_270, downward), and min/max taken straight
+ * from RNGFND1_MIN 0.2 m / RNGFND1_MAX 7 m. signal_quality 87 exercises the
+ * "real percentage" branch rather than either sentinel (0 unknown, 1 invalid).
+ *
+ * `distanceCm` is walked by the caller so the card visibly updates instead of
+ * showing one frozen number that could just as easily be a stale render.
+ */
+function distanceSensorMessage(timeBootMs: number, distanceCm: number): DistanceSensorMessage {
+  return {
+    type: 'DISTANCE_SENSOR',
+    timeBootMs,
+    minDistanceCm: 20,
+    maxDistanceCm: 700,
+    currentDistanceCm: distanceCm,
+    sensorType: 0,
+    id: 0,
+    orientation: 25,
+    covariance: 0,
+    horizontalFov: 0,
+    verticalFov: 0,
+    signalQuality: 87
+  }
+}
+
+/**
+ * A deterministic sawtooth between 0.62 m and 2.42 m, stepping 0.20 m per
+ * tick. Pure function of the tick index — no wall clock, no RNG — so a test
+ * that pumps N ticks always sees the same distance, matching how the
+ * attitude/stick choreography is built.
+ */
+function mockRangefinderDistanceCmForTick(tick: number): number {
+  const steps = 10
+  const phase = ((tick % (steps * 2)) + steps * 2) % (steps * 2)
+  const rising = phase < steps ? phase : steps * 2 - phase
+  return 62 + rising * 20
 }
 
 /** A healthy GPS with a 3D fix — the demo's happy path. */
@@ -1660,6 +1719,20 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
             if (requestedMessageId === MAVLINK_MESSAGE_IDS.GPS_RAW_INT) {
               responses.push(codec.encode(envelope(96, gpsRawIntMessage())))
             }
+            // Answered ONLY on request, and absent from initialFrames. That is
+            // deliberate: it makes the demo prove the same thing hardware does
+            // — DISTANCE_SENSOR rides STREAM_EXTRA3 and arrives only because
+            // the runtime asked for it. If the LIVE_TELEMETRY_REQUESTS entry
+            // is ever dropped, the demo card goes dark too instead of quietly
+            // passing while real hardware fails.
+            if (requestedMessageId === MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR) {
+              responses.push(
+                codec.encode(envelope(97, distanceSensorMessage(1600, mockRangefinderDistanceCmForTick(0))))
+              )
+            }
+            // No OPTICAL_FLOW response, on purpose. FLOW_TYPE is seeded
+            // non-zero so the flow card renders, but nothing ever answers —
+            // the demo's standing rehearsal of "configured but no data".
           } else if (
             outbound.message.command === MAV_CMD.REQUEST_MESSAGE &&
             Math.round(outbound.message.params[0] ?? 0) === MAVLINK_MESSAGE_IDS.AUTOPILOT_VERSION
@@ -2391,6 +2464,26 @@ function tickDynamicState(
         nextSequence,
         MAV_SEVERITY.INFO,
         'EKF variance cleared.'
+      )
+    )
+  }
+
+  // --- Rangefinder ---------------------------------------------------------
+  // Keep the downward lidar alive for as long as the demo runs, walking the
+  // distance so the Status & Info card reads as a live measurement rather
+  // than a value frozen at connect. Gated on RNGFND1_TYPE so a test using
+  // ?demoParamOverrides=RNGFND1_TYPE:0 gets a genuinely unconfigured
+  // rangefinder — no card, and no stray frames contradicting that.
+  if ((parameters.RNGFND1_TYPE ?? 0) !== 0) {
+    frames.push(
+      codec.encode(
+        envelope(
+          nextSequence(),
+          distanceSensorMessage(
+            Math.max(0, nowMs - (state.startedAtMs || nowMs)),
+            mockRangefinderDistanceCmForTick(state.tickCount)
+          )
+        )
       )
     )
   }

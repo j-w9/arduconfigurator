@@ -2908,6 +2908,65 @@ textarea:focus {
   box-shadow: inset 0 0 0 1px rgba(150, 226, 18, 0.08);
 }
 
+/* Advanced sensor boxes (rangefinder / optical flow).
+ *
+ * "More colours might be good" — the operator wants the state readable at a
+ * glance, so the whole card border and a left rail carry the tone rather than
+ * just the badge. Colour is never the ONLY signal: the badge text and the
+ * headline copy say the same thing in words, and the state also lands on a
+ * `data-sensor-state` attribute for tests and assistive tooling.
+ *
+ * Tokens are the same --success / --warning / --danger the StatusBadge uses,
+ * so these cards stay in step with the rest of the app under any theme. */
+.setup-gui-box--sensor-reporting {
+  border-color: color-mix(in srgb, var(--success, #7fb966) 45%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--success, #7fb966);
+}
+
+.setup-gui-box--sensor-degraded {
+  border-color: color-mix(in srgb, var(--warning, #ff6600) 55%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--warning, #ff6600);
+}
+
+/* `silent` and `stalled` are both hard faults and share the danger treatment;
+ * the words distinguish them ("never reported" vs "was reporting, then
+ * stopped"), because a fourth colour would be noise, not information. */
+.setup-gui-box--sensor-silent,
+.setup-gui-box--sensor-stalled {
+  border-color: color-mix(in srgb, var(--danger, #e2123f) 55%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--danger, #e2123f);
+}
+
+/* The fault/OK headline, on the face of the card. This is deliberately NOT a
+ * tooltip: in the field the hover-only version made an operator go looking
+ * for the one line that diagnosed their problem. */
+.setup-gui-box__sensor-headline {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.setup-gui-box__sensor-headline--success {
+  color: var(--success, #7fb966);
+}
+
+.setup-gui-box__sensor-headline--warning {
+  color: var(--warning, #ff6600);
+}
+
+.setup-gui-box__sensor-headline--danger {
+  color: var(--danger, #e2123f);
+}
+
+/* The headline measurement row — the number the operator actually came for.
+ * Slightly larger and tabular so a changing distance doesn't jitter the
+ * layout as digits change width. */
+.setup-gui-box__kv-row--measurement strong {
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .setup-gui-box__titlebar {
   position: absolute;
   top: -10px;

@@ -4571,3 +4571,97 @@ test.describe('OSD message shorthand editor (@OSD/shorthand.dat)', () => {
     await expect(page.getByTestId('osd-shorthand-to-0')).toHaveValue('PRE')
   })
 })
+
+test.describe('Status & Info advanced sensor cards', () => {
+  // The ask: "I'd like to see rangefinder and optical flow so as a user I know
+  // they are working and reporting data. Right now I'm not sure how to do that
+  // besides look at logs or go back to MP."
+  //
+  // The Copter demo is seeded to hold the two states that matter at once:
+  // RNGFND1_TYPE=100 with the mock streaming DISTANCE_SENSOR (reporting), and
+  // FLOW_TYPE=6 with nothing ever answering (configured but silent). The third
+  // state — not configured — is asserted separately via ?demoParamOverrides,
+  // because "no card at all" is only provable against a build where the params
+  // say the sensor is off.
+
+  test('rangefinder card shows a live distance, not just a health adjective', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    const card = page.getByTestId('setup-rangefinder-card')
+    await expect(card).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    // A real measurement in metres is the primary content. The regex refuses a
+    // bare "0" or a dash: an unexplained zero is the same dead end the operator
+    // was already stuck in.
+    await expect(page.getByTestId('setup-rangefinder-card-distance')).toHaveText(/^\d+\.\d{2} m$/, {
+      timeout: VEHICLE_CONNECT_TIMEOUT
+    })
+    // Signal quality comes off the DISTANCE_SENSOR extension field.
+    await expect(page.getByTestId('setup-rangefinder-card-signal')).toHaveText('87%')
+    // Colour carries the state, but never alone — the state also lands on an
+    // attribute and in the headline copy.
+    await expect(card).toHaveAttribute('data-sensor-state', 'reporting')
+    await expect(page.getByTestId('setup-rangefinder-card-headline')).toContainText('Reporting live distance')
+  })
+
+  test('optical flow card says "no data received" on its face when the sensor is silent', async ({ page }) => {
+    // The load-bearing state. A field report closed the loop on exactly this:
+    // a DroneCAN flow sensor, hand-soldered with the wires crossed, configured
+    // but silent — and this message is what told the operator the solder job
+    // was wrong instead of sending them back to Mission Planner.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    const card = page.getByTestId('setup-optical-flow-card')
+    await expect(card).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(card).toHaveAttribute('data-sensor-state', 'silent')
+
+    // Visible copy, NOT a tooltip. The first cut of this idea hid the diagnosis
+    // behind a hover and the operator had to go looking for it.
+    const headline = page.getByTestId('setup-optical-flow-card-headline')
+    await expect(headline).toBeVisible()
+    await expect(headline).toContainText('No data received')
+
+    // No fake reading stands in for the missing one.
+    await expect(page.getByTestId('setup-optical-flow-card-quality')).toHaveText('No data')
+    await expect(page.getByTestId('setup-optical-flow-card-last-data')).toHaveText('never')
+
+    // The CAN-attached driver is recognised as configured — a card that only
+    // knew the directly-wired variants would have hidden this exact fault.
+    await expect(page.getByTestId('setup-optical-flow-card-driver')).toHaveText('FLOW_TYPE 6 · DroneCAN')
+  })
+
+  test('an unconfigured sensor gets no card at all', async ({ page }) => {
+    // "Only show those boxes if setup. Anything above GPS and compass I'm
+    // calling advanced." GPS stays unconditional; these two disappear.
+    await page.goto('/?demoParamOverrides=RNGFND1_TYPE:0,FLOW_TYPE:0')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    // GPS is the baseline sensor and is still there...
+    await expect(page.getByTestId('setup-gps-format-select')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+    // ...while the advanced boxes are genuinely absent, not zeroed out.
+    await expect(page.getByTestId('setup-rangefinder-card')).toHaveCount(0)
+    await expect(page.getByTestId('setup-optical-flow-card')).toHaveCount(0)
+  })
+
+  test('the sensor cards do not overflow the phone layout', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('setup-optical-flow-card')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )
+    expect(overflow).toBeLessThanOrEqual(2)
+  })
+})

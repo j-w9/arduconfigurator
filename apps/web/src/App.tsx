@@ -332,6 +332,9 @@ import { SetupWizardHeader } from './sections/SetupWizardHeader'
 import { SetupWizardDetail } from './sections/SetupWizardDetail'
 import { SetupBenchActions } from './sections/SetupBenchActions'
 import { StatusDfuCard } from './sections/StatusDfuCard'
+import { AdvancedSensorCard } from './views/AdvancedSensorCard'
+import { buildAdvancedSensorCards } from './view-models/advanced-sensor-cards'
+import { useStatusClock } from './hooks/use-status-clock'
 import { ResetToDefaultsButton } from './views/ResetToDefaultsButton'
 import { CalibrationLocationButton } from './sections/CalibrationLocationCard'
 import { resolveSetupConfirmationRecord } from './view-models/setup-confirmation-resolve'
@@ -1632,6 +1635,11 @@ export function App() {
     setupConfirmations,
     setupProgressKey
   ])
+
+  // Drives the "last data / no data for N s" freshness readouts on the
+  // Status & Info sensor cards. Only runs while that tab is open and a
+  // vehicle is connected — nothing else in the app needs a wall clock.
+  const statusClockMs = useStatusClock(activeViewId === 'setup' && snapshot.connection.kind === 'connected')
 
   useEffect(() => {
     trackViewPageview(activeViewId)
@@ -6527,9 +6535,14 @@ export function App() {
   const headerMagActive =
     snapshot.connection.kind === 'connected' &&
     (compassSetupAvailability.enabledCompassCount > 0 || snapshot.liveVerification.magSensor.verified)
+  // RNGFND1_TYPE, falling back to the pre-4.5 unnumbered RNGFND_TYPE. Kept as
+  // `undefined` when neither is in the table: "not synced yet" is not the same
+  // claim as "the sensor is switched off", and the Status card must not make
+  // the second claim while only the first is true.
+  const rangefinderTypeValue = (selectParameterById(snapshot, 'RNGFND1_TYPE') ?? selectParameterById(snapshot, 'RNGFND_TYPE'))
+    ?.value
   const headerRangefinderActive =
-    snapshot.connection.kind === 'connected' &&
-    ((selectParameterById(snapshot, 'RNGFND1_TYPE') ?? selectParameterById(snapshot, 'RNGFND_TYPE'))?.value ?? 0) !== 0
+    snapshot.connection.kind === 'connected' && (rangefinderTypeValue ?? 0) !== 0
   // Flow chip: lit if OPTICAL_FLOW (msgid 100) is heartbeating. ArduCopter
   // streams it at 10 Hz when an optical-flow sensor is wired, so a 2s
   // freshness window comfortably covers ~20 expected messages — a single
@@ -6555,14 +6568,36 @@ export function App() {
     }
     if (!flowTypeConfigured) {
       return flowTypeValue === undefined
-        ? 'FLOW_TYPE is not in the parameter table yet — finish parameter sync, then set FLOW_TYPE to your sensor (e.g. 10 HereFlow, 8 PMW3901) to enable the optical flow stream.'
-        : 'FLOW_TYPE is 0 (disabled). Set FLOW_TYPE to your sensor (e.g. 10 HereFlow, 8 PMW3901) and reboot to enable the optical flow stream.'
+        // Driver numbers per AP_OpticalFlow.h `Type` / the FLOW_TYPE @Values
+        // block in AP_OpticalFlow.cpp — 6 is DroneCAN (HereFlow) and 8 is
+        // UPFLOW. The previous copy here said "10 HereFlow, 8 PMW3901"; 10 is
+        // SITL and PMW3901 is not a FLOW_TYPE option at all, so it pointed
+        // operators at a value that would never work.
+        ? 'FLOW_TYPE is not in the parameter table yet — finish parameter sync, then set FLOW_TYPE to your sensor (e.g. 6 DroneCAN/HereFlow, 4 CXOF, 1 PX4Flow) to enable the optical flow stream.'
+        : 'FLOW_TYPE is 0 (disabled). Set FLOW_TYPE to your sensor (e.g. 6 DroneCAN/HereFlow, 4 CXOF, 1 PX4Flow) and reboot to enable the optical flow stream.'
     }
     if (snapshot.liveVerification.opticalFlow.lastSeenAtMs !== undefined) {
       return `FLOW_TYPE=${flowTypeValue} is configured and the sensor was reporting, but the OPTICAL_FLOW stream has gone silent. Check the sensor wiring or the driver-specific bus.`
     }
     return `FLOW_TYPE=${flowTypeValue} is configured but no OPTICAL_FLOW messages have arrived yet. Verify the sensor wiring; some drivers need a reboot after FLOW_TYPE changes.`
   })()
+  // Status & Info advanced sensor cards (rangefinder + optical flow). The
+  // builder decides both the state and whether a card exists at all, so an
+  // unconfigured sensor simply produces nothing to render here — GPS and
+  // compass stay unconditional, everything above them is opt-in.
+  //
+  // `nowMs` is `statusClockMs`, a ~1 Hz ticking clock rather than Date.now():
+  // the card has to be able to age from "reporting" into "data stopped"
+  // without a snapshot arriving, and a snapshot is exactly what stops arriving
+  // when the sensor dies. Reading Date.now() during render would freeze the
+  // age at the last snapshot and the card would sit on a stale number forever.
+  const advancedSensorCards = buildAdvancedSensorCards({
+    connected: snapshot.connection.kind === 'connected',
+    liveVerification: snapshot.liveVerification,
+    rangefinderType: rangefinderTypeValue,
+    flowType: flowTypeValue,
+    nowMs: statusClockMs
+  })
   const headerWarningActive =
     !snapshot.preArmStatus.healthy || snapshot.statusTexts.some((entry) => entry.severity === 'warning' || entry.severity === 'error')
   const headerBatteryLabel = snapshot.liveVerification.batteryTelemetry.verified
@@ -7200,6 +7235,15 @@ export function App() {
                             ) : null}
                           </div>
                         </article>
+
+                        {/* Advanced sensors, below GPS. Each card only exists
+                         *  when the operator has actually configured that
+                         *  sensor — GPS and compass are the baseline, anything
+                         *  past them is opt-in, so an FPV quad with no lidar
+                         *  and no flow sees this space unchanged. */}
+                        {advancedSensorCards.map((card) => (
+                          <AdvancedSensorCard key={card.id} card={card} />
+                        ))}
 
                       </div>
                     </div>
