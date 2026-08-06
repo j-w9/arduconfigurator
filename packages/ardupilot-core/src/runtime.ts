@@ -1308,16 +1308,30 @@ export class ArduPilotConfiguratorRuntime {
   }
 
   /** Download one onboard log over MAVFTP burst read, reporting progress. */
+  /**
+   * Download one onboard log over MAVFTP burst read, reporting progress.
+   *
+   * `silent` suppresses the status entry and the snapshot emit. Background work
+   * the operator did not ask for must leave no trace in the status feed: a
+   * "Downloaded /APM/LOGS/00000042.BIN" line appearing unprompted reads as the
+   * app doing something behind their back, and buries the entries they were
+   * actually watching for. An operator-initiated download still reports, since
+   * there the line is the confirmation they are waiting on.
+   */
   async downloadMavftpLog(
     path: string,
-    onProgress?: (progress: LogDownloadProgress) => void
+    onProgress?: (progress: LogDownloadProgress) => void,
+    options: { silent?: boolean; signal?: AbortSignal } = {}
   ): Promise<Uint8Array> {
     const bytes = await this.mavftp.downloadRemoteFileBurst(path, {
       onProgress,
-      maxBytes: MAX_MAVFTP_LOG_BYTES
+      maxBytes: MAX_MAVFTP_LOG_BYTES,
+      signal: options.signal
     })
-    this.appendStatusEntry('info', `Downloaded ${path} via MAVFTP (${bytes.length} bytes).`)
-    this.emit()
+    if (!options.silent) {
+      this.appendStatusEntry('info', `Downloaded ${path} via MAVFTP (${bytes.length} bytes).`)
+      this.emit()
+    }
     return bytes
   }
 
