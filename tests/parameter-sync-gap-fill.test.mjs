@@ -209,11 +209,18 @@ function createIndexedSession(sentMessages, { total, initialCount, answerReads =
   }
 }
 
-test('a gap larger than one gap-fill budget still converges (retry budget refunds on progress)', async () => {
-  // 1200 params, only 300 in the first burst → 900 missing, far beyond
-  // MAX_PARAMETER_GAP_FILL_PER_PASS (256) × MAX_PARAMETER_SYNC_RETRIES (3) = 768.
-  // Before the refund fix this stranded at ~1068/1200; now each pass that
-  // recovers params refunds the budget, so it converges.
+test('a mostly-absent table converges by RE-STREAMING, not by-index refetch', async () => {
+  // 1200 params, only 300 in the first burst → 900 missing (75%).
+  //
+  // This used to gap-fill all 900 by index, and did converge — but measured on
+  // a real board that path runs at ~11 params/s against ~146 for a bulk
+  // stream, because the FC answers only a few dozen of each pass's by-index
+  // reads and the rest waits out the stall timer. A reconnect made while the
+  // board was still booting therefore took 96 s where a cold sync took 8 s.
+  //
+  // A table this empty now re-streams instead. The guarantee under test is
+  // unchanged — a large gap must still CONVERGE — but the mechanism that gets
+  // there is deliberately different.
   const sentMessages = []
   const session = createIndexedSession(sentMessages, { total: 1200, initialCount: 300 })
   const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, { parameterSyncStallRetryMs: 5 })
@@ -222,9 +229,16 @@ test('a gap larger than one gap-fill budget still converges (retry budget refund
     await runtime.requestParameterList({ timeoutMs: 2000 })
     const stats = await runtime.waitForParameterSync({ timeoutMs: 5000 })
     assert.equal(stats.status, 'complete', 'large gap converged')
-    assert.equal(stats.downloaded, 1200, 'all 1200 recovered (past the old 768 cap)')
+    assert.equal(stats.downloaded, 1200, 'all 1200 recovered')
+    // More than one PARAM_REQUEST_LIST means it re-streamed rather than
+    // grinding through by-index reads.
+    const lists = sentMessages.filter((m) => m.type === 'PARAM_REQUEST_LIST')
+    assert.ok(lists.length >= 2, `expected a re-stream, saw ${lists.length} PARAM_REQUEST_LIST`)
     const reads = sentMessages.filter((m) => m.type === 'PARAM_REQUEST_READ')
-    assert.ok(reads.length >= 900, `refetched all missing indices by gap-fill (${reads.length} reads)`)
+    assert.ok(
+      reads.length < 900,
+      `should not grind 900 by-index reads for a 75% gap (${reads.length} reads)`
+    )
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()

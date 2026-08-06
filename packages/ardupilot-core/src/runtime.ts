@@ -224,6 +224,14 @@ const PARAMETER_CARRY_OVER_TTL_MS = 10 * 60 * 1000
 // real-world gap is a handful of dropped frames; any remainder rolls to the
 // next stall-retry pass.
 const MAX_PARAMETER_GAP_FILL_PER_PASS = 256
+// Above this share of the table missing, a full re-stream beats by-index
+// refetch. See the reasoning at the canGapFill decision — bulk measured 13x
+// faster than gap-fill on the same link when most of the table was absent.
+const PARAMETER_GAP_FILL_MAX_FRACTION = 0.2
+// Below this many missing parameters the fraction rule does not apply at all —
+// a small table with a couple of holes is the case by-index refetch is FOR, and
+// re-streaming it would be slower, not faster.
+const MIN_MISSING_FOR_FRACTION_RESTREAM = 64
 // Hard upper bound on emit() coalescing. requestAnimationFrame is suspended
 // in a backgrounded tab, so a setTimeout fallback at this bound guarantees a
 // coalesced terminal snapshot still reaches the UI.
@@ -473,6 +481,9 @@ export class ArduPilotConfiguratorRuntime {
   private fakeGpsOriginalType: number | undefined
   private liveVerification = createIdleLiveVerification()
   private totalParameters = 0
+  /** Set when the FC's reported parameter count grew mid-sync — a board that
+   *  was still registering parameters when it answered. */
+  private parameterTableGrewDuringSync = false
   private liveTelemetryRequestsIssued = false
   // FIFO of un-ACKed SET_MESSAGE_INTERVAL requests, dequeued in arrival order
   // so processCommandAck can name which stream the autopilot rejected.
@@ -2151,6 +2162,7 @@ export class ArduPilotConfiguratorRuntime {
     this.realParameterIdsReceived.clear()
     this.receivedParameterIndices.clear()
     this.totalParameters = 0
+    this.parameterTableGrewDuringSync = false
     this.parameterSyncLastRetryDownloaded = 0
     this.parameterSyncGapFillActive = false
     this.parameterSync = {
@@ -2176,6 +2188,17 @@ export class ArduPilotConfiguratorRuntime {
     // an earlier real arrival under the other id as a duplicate.
     const known = this.realParameterIdsReceived.has(message.paramId)
     this.realParameterIdsReceived.add(message.paramId)
+    // A board still booting answers PARAM_REQUEST_LIST from a table its
+    // libraries have not finished registering, so the count it reports GROWS
+    // mid-stream (measured: 953, then 1125 on the same board seconds later).
+    // Every index recorded against the smaller table is suspect — the FC
+    // renumbers as entries appear — so the coverage map is dropped and the
+    // stream re-requested against the real table rather than gap-filling
+    // against indices that no longer mean anything.
+    if (this.totalParameters > 0 && message.paramCount > this.totalParameters) {
+      this.receivedParameterIndices.clear()
+      this.parameterTableGrewDuringSync = true
+    }
     this.totalParameters = message.paramCount
     // Record the streamed index so a stalled sync can target the gaps. A
     // by-name write echo carries paramIndex 0xffff (no valid index) — ignore it
@@ -2972,6 +2995,7 @@ export class ArduPilotConfiguratorRuntime {
     this.realParameterIdsReceived.clear()
     this.receivedParameterIndices.clear()
     this.totalParameters = 0
+    this.parameterTableGrewDuringSync = false
   }
 
   /**
@@ -3198,7 +3222,30 @@ export class ArduPilotConfiguratorRuntime {
     // dropping the by-index responses too), restoring the pre-gap-fill recovery.
     const missingIndices = this.missingParameterIndices()
     const gapFillStalled = this.parameterSyncGapFillActive && !madeProgressSinceLastRetry
-    const canGapFill = total > 0 && downloaded > 0 && missingIndices.length > 0 && !gapFillStalled
+    // Gap-fill is right for a HANDFUL of dropped frames and badly wrong for a
+    // table that never arrived. Measured on a real board: a bulk stream lands
+    // 146 params/s, while by-index refetch of a near-empty table crawls at 11 —
+    // it asks for up to MAX_PARAMETER_GAP_FILL_PER_PASS by index and gets a few
+    // dozen answers back, then waits out the stall timer and asks again. A
+    // reconnect made while the FC is still booting drops into exactly that
+    // state and took 96 s where a cold sync took 8 s.
+    //
+    // So a large gap re-streams instead. The threshold is deliberately
+    // generous toward re-streaming: the cost of a needless re-stream is one
+    // fast bulk transfer, and the cost of gap-filling a mostly-missing table is
+    // minutes.
+    // The FRACTION rule is gated on an absolute count as well: two dropped
+    // frames out of a six-parameter table is 33% and is precisely the case
+    // gap-fill exists for. Only a table that is substantially absent — many
+    // parameters AND most of them — is better served by re-streaming.
+    const gapTooLargeToFill =
+      this.parameterTableGrewDuringSync ||
+      missingIndices.length > MAX_PARAMETER_GAP_FILL_PER_PASS ||
+      (total > 0 &&
+        missingIndices.length >= MIN_MISSING_FOR_FRACTION_RESTREAM &&
+        missingIndices.length / total > PARAMETER_GAP_FILL_MAX_FRACTION)
+    const canGapFill =
+      total > 0 && downloaded > 0 && missingIndices.length > 0 && !gapFillStalled && !gapTooLargeToFill
     this.parameterSyncGapFillActive = canGapFill
 
     // Retries are unbounded, so every pass must NOT write a notice — a board
