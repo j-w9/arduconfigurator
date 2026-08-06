@@ -43,8 +43,9 @@ describe('parseUartTraffic', () => {
 })
 
 describe('buildSetupPortsEvidence', () => {
-  it('flags a port receiving real traffic while set to MAVLink2', () => {
-    // The reported case: receiver wired to SERIAL2, port still MAVLink2.
+  it('flags a port receiving UNDECODABLE traffic while set to MAVLink2', () => {
+    // The reported case: receiver wired to SERIAL2, port still MAVLink2, and
+    // the stream unframeable as a result.
     const evidence = buildSetupPortsEvidence({
       rawText: REAL_UARTS_TXT,
       protocolByPort: { 0: 2, 1: 23, 2: 2, 3: 5, 7: -1 },
@@ -70,19 +71,48 @@ SERIAL9 OTG2  TX =       0 RX =    1128 TXBD=     0 RXBD=   235 RXDRP=       0 F
     expect(evidence.unconfigured).toEqual([])
   })
 
-  it('still flags a real UART carrying traffic on the same board', () => {
-    // The genuine finding that must survive the USB exclusion: the GPS pad
-    // receiving heavily while the port is still MAVLink2.
-    const withGpsPad = `UARTV1
+  it('does NOT flag a MAVLink2 port carrying clean traffic — that is a working link', () => {
+    // Field report: SERIAL7 (TELEM2) was deliberately MAVLink2 for an ATAK
+    // integration and was flagged as misconfigured simply for carrying data.
+    // A telemetry radio, companion computer or ATAK link is a port doing its
+    // job. It is the GARBLE that identifies a mismatch, not the traffic —
+    // calling a working link broken trains operators to ignore this step.
+    const withTelemetry = `UARTV1
 SERIAL0 OTG1  TX =  106511 RX =    3410 TXBD= 18692 RXBD=   598 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=1
-SERIAL7 UART7 TX =       0 RX =   72144 TXBD=     0 RXBD= 12024 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0
+SERIAL7 UART7 TX =   40000 RX =   40061 TXBD=  6600 RXBD=  6677 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0
 SERIAL9 OTG2  TX =       0 RX =    1128 TXBD=     0 RXBD=   235 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=1
 `
     const evidence = buildSetupPortsEvidence({
-      rawText: withGpsPad,
+      rawText: withTelemetry,
       protocolByPort: { 0: 2, 7: 2, 9: 2 }
     })
-    expect(evidence.unconfigured.map((finding) => finding.portNumber)).toEqual([7])
+    expect(evidence.unconfigured).toEqual([])
+  })
+
+  it('DOES flag a MAVLink2 port whose traffic cannot be framed', () => {
+    // The original motivating failure: a receiver wired to a pad still set to
+    // MAVLink2, producing far more framing errors than bytes.
+    const evidence = buildSetupPortsEvidence({
+      rawText: REAL_UARTS_TXT,
+      protocolByPort: { 0: 2, 2: 2 },
+      minimumRxBytes: 8
+    })
+    expect(evidence.unconfigured.map((finding) => finding.portNumber)).toEqual([2])
+    expect(evidence.unconfigured[0].garbled).toBe(true)
+  })
+
+  it('flags a DISABLED port carrying traffic however cleanly it frames', () => {
+    // Nothing should be listening on a -1 port, so clean traffic there is still
+    // worth reporting — unlike MAVLink2, which is a legitimate listener.
+    const cleanOnDisabled = `UARTV1
+SERIAL3 UART3 TX =       0 RX =    9000 TXBD=     0 RXBD=  1500 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0
+`
+    const evidence = buildSetupPortsEvidence({
+      rawText: cleanOnDisabled,
+      protocolByPort: { 3: -1 }
+    })
+    expect(evidence.unconfigured.map((finding) => finding.portNumber)).toEqual([3])
+    expect(describeUnconfiguredPort(evidence.unconfigured[0])).toContain('the port is disabled')
   })
 
   it('never flags SERIAL0 — that is the USB link we are talking over', () => {
@@ -141,14 +171,17 @@ SERIAL9 OTG2  TX =       0 RX =    1128 TXBD=     0 RXBD=   235 RXDRP=       0 F
 })
 
 describe('describeUnconfiguredPort', () => {
-  it('names the port, the traffic and what it is wrongly set to', () => {
+  it('says the traffic cannot be DECODED, not merely that the port carries data', () => {
+    // Wording matters here: "receiving data but set to MAVLink2" described a
+    // working telemetry link just as well as a broken receiver, which is how a
+    // deliberate ATAK link on TELEM2 came to be reported as misconfigured.
     const [finding] = buildSetupPortsEvidence({
       rawText: REAL_UARTS_TXT,
       protocolByPort: { 2: 2 },
       minimumRxBytes: 8
     }).unconfigured
     expect(describeUnconfiguredPort(finding)).toBe(
-      'SERIAL2 (UART2) is receiving 39 bytes, 80357 framing errors but is set to MAVLink2'
+      'SERIAL2 (UART2) is receiving 39 bytes it cannot decode (80357 framing errors) while set to MAVLink2'
     )
   })
 })
