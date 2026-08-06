@@ -14,8 +14,8 @@ export * from './provisioning-library.js'
 export * from './runtime.js'
 export { GuidedActionService } from './runtime-guided-action-service.js'
 export type { GuidedActionServiceOptions } from './runtime-guided-action-service.js'
-export { MavftpService, MavftpAbortError } from './runtime-mavftp-service.js'
-export type { MavftpServiceOptions } from './runtime-mavftp-service.js'
+export { MavftpService, MavftpAbortError, partialTransferOf } from './runtime-mavftp-service.js'
+export type { MavftpServiceOptions, PartialTransfer } from './runtime-mavftp-service.js'
 export { LogDownloadService } from './runtime-log-download-service.js'
 export type {
   LogDownloadServiceOptions,

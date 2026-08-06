@@ -67,6 +67,45 @@ export class MavftpAbortError extends Error {
   }
 }
 
+/**
+ * Bytes recovered from a transfer that did not finish.
+ *
+ * A failed burst is not necessarily a worthless one. The reader tracks a
+ * CONTIGUOUS frontier, so everything below it is known-good, and a dataflash
+ * log carries its FMT definitions at the front — which makes a prefix a
+ * genuinely parseable log that simply ends early. Throwing that away because
+ * the last packet never arrived discards a whole flight to save nothing.
+ */
+export interface PartialTransfer {
+  /** The contiguous prefix actually received. Never has holes. */
+  bytes: Uint8Array
+  /** Size the vehicle said the file was, for judging how much is missing. */
+  declaredSize: number
+}
+
+/**
+ * Carried on the rejected error rather than as a distinct error type, because
+ * callers already discriminate on MavftpAbortError / MavftpRequestError and a
+ * new type would silently change which branch they take. A symbol keeps it off
+ * the error's own enumerable surface.
+ */
+const PARTIAL_TRANSFER = Symbol.for('arduconfig.mavftp.partialTransfer')
+
+/** The bytes salvaged from a failed transfer, when there were any. */
+export function partialTransferOf(error: unknown): PartialTransfer | undefined {
+  if (typeof error !== 'object' || error === null) return undefined
+  const value = (error as Record<symbol, unknown>)[PARTIAL_TRANSFER]
+  return value as PartialTransfer | undefined
+}
+
+function attachPartialTransfer(error: Error, partial: PartialTransfer): void {
+  Object.defineProperty(error, PARTIAL_TRANSFER, {
+    value: partial,
+    enumerable: false,
+    configurable: true
+  })
+}
+
 interface BurstOperation {
   /** Detaches the abort listener, if one was attached. Called on every exit. */
   cleanup?: () => void
@@ -624,6 +663,15 @@ export class MavftpService {
     clearTimeout(op.timer)
     op.cleanup?.()
     this.activeBurst = undefined
+    // Hand back whatever arrived. `received` is the contiguous frontier, so the
+    // prefix is hole-free; the caller decides whether a partial file is worth
+    // anything, but it cannot decide that if we drop it here.
+    if (op.received > 0) {
+      attachPartialTransfer(error, {
+        bytes: op.buffer.slice(0, op.received),
+        declaredSize: op.declaredSize
+      })
+    }
     op.reject(error)
   }
 
