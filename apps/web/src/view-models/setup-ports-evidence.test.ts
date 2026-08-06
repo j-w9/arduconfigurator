@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildSetupPortsEvidence,
+  describeDuplicateRcin,
   describeUnconfiguredPort,
   parseUartTraffic
 } from './setup-ports-evidence'
@@ -51,9 +52,13 @@ describe('buildSetupPortsEvidence', () => {
       protocolByPort: { 0: 2, 1: 23, 2: 2, 3: 5, 7: -1 },
       minimumRxBytes: 8
     })
-    expect(evidence.unconfigured).toHaveLength(1)
-    expect(evidence.unconfigured[0].portNumber).toBe(2)
-    expect(evidence.unconfigured[0].garbled).toBe(true)
+    // SERIAL1 (429 framing errors on 29 bytes) is garbled too and is now
+    // reported alongside SERIAL2 — both are genuinely undecodable, and the
+    // narrower check used to skip SERIAL1 purely because it was set to RCIN.
+    const flagged = evidence.unconfigured.filter((finding) => finding.portNumber === 2)
+    expect(flagged).toHaveLength(1)
+    expect(flagged[0].garbled).toBe(true)
+    expect(flagged[0].kind).toBe('undecodable')
   })
 
   it('never flags a second USB port either (OTG2 / SERIAL9)', () => {
@@ -101,6 +106,32 @@ SERIAL9 OTG2  TX =       0 RX =    1128 TXBD=     0 RXBD=   235 RXDRP=       0 F
     expect(evidence.unconfigured[0].garbled).toBe(true)
   })
 
+  // The gap that made this widening worth doing: SERIAL2 sat at PROTOCOL=23
+  // (RCIN) baud 420 for hours, receiving 4867 bytes with 1508 framing errors,
+  // and the step said nothing — because it only ever examined ports set to -1
+  // or MAVLink2. A correctly-protocol'd port that still cannot decode its
+  // peripheral is the version of this failure nobody suspects.
+  it('flags undecodable traffic on a port whose protocol is already RCIN', () => {
+    const rcinWrongBaud = `UARTV1
+SERIAL2 UART2 TX =       0 RX*=    4867 TXBD=     0 RXBD=  3163 RXDRP=       0 FE=1508 OE=0 NE=1400 FlowCtrl=0
+`
+    const evidence = buildSetupPortsEvidence({
+      rawText: rcinWrongBaud,
+      protocolByPort: { 2: 23 }
+    })
+    expect(evidence.unconfigured.map((finding) => finding.portNumber)).toEqual([2])
+    expect(evidence.unconfigured[0].kind).toBe('undecodable')
+    expect(describeUnconfiguredPort(evidence.unconfigured[0])).toContain('cannot decode')
+  })
+
+  it('leaves a clean RCIN port alone', () => {
+    const healthyRcin = `UARTV1
+SERIAL2 UART2 TX =     500 RX*=   40000 TXBD=    80 RXBD=  6600 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0
+`
+    const evidence = buildSetupPortsEvidence({ rawText: healthyRcin, protocolByPort: { 2: 23 } })
+    expect(evidence.unconfigured).toEqual([])
+  })
+
   it('flags a DISABLED port carrying traffic however cleanly it frames', () => {
     // Nothing should be listening on a -1 port, so clean traffic there is still
     // worth reporting — unlike MAVLink2, which is a legitimate listener.
@@ -123,10 +154,18 @@ SERIAL3 UART3 TX =       0 RX =    9000 TXBD=     0 RXBD=  1500 RXDRP=       0 F
     expect(evidence.unconfigured.some((finding) => finding.portNumber === 0)).toBe(false)
   })
 
-  it('stays quiet once the port is configured for what is on it', () => {
+  it('stays quiet once the port is configured AND its traffic decodes', () => {
+    // Setting the protocol is not on its own sufficient: SERIAL2 in the real
+    // capture is set to RCIN and still cannot frame what arrives, so the quiet
+    // case needs clean counters too.
+    const healthy = `UARTV1
+SERIAL0 OTG1  TX =  106511 RX =    3410 TXBD= 18692 RXBD=   598 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=1
+SERIAL2 UART2 TX =     500 RX*=   40000 TXBD=    80 RXBD=  6600 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0
+SERIAL3 UART3 TX =       0 RX*=    9000 TXBD=     0 RXBD=  1500 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0
+`
     const evidence = buildSetupPortsEvidence({
-      rawText: REAL_UARTS_TXT,
-      protocolByPort: { 0: 2, 1: 23, 2: 23, 3: 5, 7: -1 }
+      rawText: healthy,
+      protocolByPort: { 0: 2, 2: 23, 3: 5 }
     })
     expect(evidence.unconfigured).toEqual([])
   })
@@ -140,7 +179,9 @@ SERIAL3 UART3 TX =       0 RX =    9000 TXBD=     0 RXBD=  1500 RXDRP=       0 F
       protocolByPort: { 1: -1, 2: 23 },
       minimumRxBytes: 32
     })
-    expect(evidence.unconfigured).toEqual([])
+    // Scoped to SERIAL1: SERIAL2 in this capture is genuinely undecodable and
+    // is reported on its own merits.
+    expect(evidence.unconfigured.some((finding) => finding.portNumber === 1)).toBe(false)
   })
 
   it('reports traffic as unknown when uarts.txt was unavailable', () => {
@@ -154,6 +195,26 @@ SERIAL3 UART3 TX =       0 RX =    9000 TXBD=     0 RXBD=  1500 RXDRP=       0 F
     expect(
       buildSetupPortsEvidence({ rawText: REAL_UARTS_TXT, protocolByPort: {} }).trafficUnknown
     ).toBe(false)
+  })
+
+  // AP_SerialManager.cpp: exactly one RCIN port is permitted, the lowest index
+  // wins, and later ones are refused with a boot STATUSTEXT nobody reads. A
+  // receiver moved to a second port therefore looks configured and is ignored.
+  it('reports every RCIN port beyond the first, lowest index winning', () => {
+    const evidence = buildSetupPortsEvidence({
+      rawText: REAL_UARTS_TXT,
+      protocolByPort: { 1: 23, 2: 23, 7: 23 }
+    })
+    expect(evidence.duplicateRcinPorts).toEqual([2, 7])
+    expect(describeDuplicateRcin(evidence.duplicateRcinPorts)).toContain('SERIAL2, SERIAL7')
+  })
+
+  it('says nothing when exactly one port claims RC input', () => {
+    const evidence = buildSetupPortsEvidence({
+      rawText: REAL_UARTS_TXT,
+      protocolByPort: { 1: 23, 2: 2, 7: -1 }
+    })
+    expect(evidence.duplicateRcinPorts).toEqual([])
   })
 
   it('says nothing about a port whose protocol has not synced yet', () => {
@@ -181,7 +242,7 @@ describe('describeUnconfiguredPort', () => {
       minimumRxBytes: 8
     }).unconfigured
     expect(describeUnconfiguredPort(finding)).toBe(
-      'SERIAL2 (UART2) is receiving 39 bytes it cannot decode (80357 framing errors) while set to MAVLink2'
+      'SERIAL2 (UART2) is receiving 39 bytes it cannot decode (80357 framing errors) — check the baud and protocol for whatever is wired there'
     )
   })
 })

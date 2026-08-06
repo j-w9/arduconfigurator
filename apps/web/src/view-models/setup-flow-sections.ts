@@ -41,7 +41,7 @@ import type { ParameterFollowUp } from '../hooks/use-parameter-feedback'
 import type { RcDirectionResult } from './receiver-direction-check'
 import { canRunGuidedAction, deriveCompassStepSkipReason, guidedActionButtonLabel } from '../guided-action-helpers'
 import { readRoundedParameter } from '../selectors/parameter-read'
-import { buildSetupPortsEvidence, describeUnconfiguredPort } from './setup-ports-evidence'
+import { buildSetupPortsEvidence, describeDuplicateRcin, describeUnconfiguredPort } from './setup-ports-evidence'
 import { isReceiverSerialProtocol } from '../serial-port-helpers'
 import { batteryHealthLabel, describeBatteryMonitor, formatRemaining, formatVoltage } from '../device-display'
 import { failsafeActionLabel } from '../modes-failsafe-helpers'
@@ -217,7 +217,8 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               ])
             )
           })
-          const portsMismatched = portsEvidence.unconfigured.length > 0
+          const portsDuplicateRcin = portsEvidence.duplicateRcinPorts.length > 0
+          const portsMismatched = portsEvidence.unconfigured.length > 0 || portsDuplicateRcin
           criteria = [
             {
               label: 'Serial port protocols are synced from the flight controller',
@@ -229,19 +230,24 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               // a step that blocks on evidence it may never receive is a dead
               // end, not a safeguard. The summary says the check could not run
               // rather than claiming the ports are right.
-              label: 'No port is receiving data while configured as unused',
+              label: 'Every port carrying traffic can decode it, and only one port claims RC input',
               met: !portsMismatched
             }
           ]
-          summary = portsMismatched
-            ? `${portsEvidence.unconfigured.length} port(s) receiving data but configured as unused.`
+          summary = portsDuplicateRcin
+            ? `${portsEvidence.duplicateRcinPorts.length + 1} ports claim RC input — only the lowest-numbered one is used.`
+            : portsMismatched
+            ? `${portsEvidence.unconfigured.length} port(s) carrying traffic the flight controller cannot use.`
             : portsEvidence.trafficUnknown
               ? 'Port traffic counters are unavailable — review the assignments manually.'
               : 'Configured port protocols match the ports that are carrying traffic.'
-          detail = portsMismatched
-            ? 'A peripheral is talking on a port the flight controller thinks is unused, so whatever is wired there cannot work. Set that port to the right protocol before setting up the receiver, GPS or OSD that depends on it.'
+          detail = portsDuplicateRcin
+            ? 'ArduPilot accepts only one RC input port: the lowest-numbered one wins and the others are refused at boot, so a receiver on a later port is silently ignored. Disable RC input on the ports that are not carrying the receiver.'
+            : portsMismatched
+            ? 'A peripheral is talking on a port the flight controller cannot decode it on, so whatever is wired there cannot work. Fix that port\u2019s protocol and baud before setting up the receiver, GPS or OSD that depends on it.'
             : 'Set each serial port to whatever is physically wired to it. Do this before the receiver, GPS and OSD steps — they configure peripherals that only work once their port is right.'
           evidence = [
+            ...(portsDuplicateRcin ? [describeDuplicateRcin(portsEvidence.duplicateRcinPorts)] : []),
             ...portsEvidence.unconfigured.slice(0, 2).map(describeUnconfiguredPort),
             portsEvidence.trafficUnknown
               ? 'Port traffic: counters unavailable'
