@@ -319,6 +319,61 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(page.getByTestId('parameter-diff-grid')).toBeInViewport()
   })
 
+  test('editing a bitmask row keeps that row under the operator, with no scroll anchoring to lean on', async ({ page }) => {
+    // Reported by an operator ticking AUTOTUNE_AXES bits in the full param list:
+    // "when I make a change it takes me to the top of the page so I have to
+    // scroll back down to where I was". Root cause, measured on the demo copter:
+    // staging the first draft inserts the staged-review block ABOVE the table, so
+    // the edited row's DOCUMENT position moves down by that block's height
+    // (3557 -> 3759px, +202). Blink/Gecko hide it with native scroll anchoring;
+    // WebKit has no scroll anchoring at all, so there the row visibly slides
+    // ~202px down the viewport mid-edit.
+    //
+    // Chromium (what this suite runs) would therefore pass on the browser's
+    // anchoring alone and never see the regression, so `overflow-anchor: none`
+    // is injected HERE, in the test only, to model an engine without it — that
+    // is what makes this test exercise the app's own compensation rather than
+    // Blink's. Nothing in the app disables anchoring.
+    await page.setViewportSize({ width: 1496, height: 715 })
+    await page.goto('/')
+    await page.addStyleTag({ content: '* { overflow-anchor: none !important; }' })
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('product-mode-expert').click()
+    await page.getByTestId('view-button-parameters').click()
+    await page.addStyleTag({ content: '* { overflow-anchor: none !important; }' })
+
+    const popover = page.locator('.parameter-row details[data-testid="scoped-bitmask-AUTOTUNE_AXES"]')
+    await expect(popover).toBeVisible()
+    await popover.locator('summary').click()
+
+    // Park the row 300px down the viewport: clear of the sticky header, so the
+    // bit button is a real unobstructed hit and Playwright's actionability check
+    // never scrolls the page itself (which would mask the measurement).
+    await popover.evaluate((el) => {
+      const row = el.closest('.parameter-row') as HTMLElement
+      window.scrollTo({ top: window.scrollY + row.getBoundingClientRect().top - 300, behavior: 'instant' as ScrollBehavior })
+    })
+    // Reach the row through the popover rather than by any attribute the fix
+    // itself adds, so this measures behaviour and would still run (and fail) if
+    // the compensation were reverted.
+    const rowTop = () => popover.evaluate((el) => el.closest('.parameter-row')!.getBoundingClientRect().top)
+    const rowClass = () => popover.evaluate((el) => el.closest('.parameter-row')!.className)
+    const before = await rowTop()
+
+    const bits = popover.locator('.scoped-bitmask-popover__panel .scoped-bitmask-bit')
+    // First toggle: stages a draft, which is what inserts the review block.
+    await bits.first().click()
+    await expect.poll(rowClass).toContain('parameter-row--staged')
+    expect(Math.abs((await rowTop()) - before)).toBeLessThanOrEqual(4)
+
+    // And back to the original value, which DROPS the draft and removes the
+    // review block again — the shrink direction has to hold the row too.
+    await bits.first().click()
+    await expect.poll(rowClass).not.toContain('parameter-row--staged')
+    expect(Math.abs((await rowTop()) - before)).toBeLessThanOrEqual(4)
+  })
+
   test('a staged review row edited back to the original stays put (no vanish mid-edit)', async ({ page }) => {
     // Bug: editing a staged value in the Show Changes review to equal the live
     // value dropped the row from under the operator's cursor — how a half-typed
