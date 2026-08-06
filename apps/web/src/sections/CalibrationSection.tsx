@@ -102,6 +102,15 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
   // signature change.
   void airframe
 
+  /**
+   * Both motor-spin acknowledgements, named once.
+   *
+   * The gate, the button's colour and the hint text must agree — they were
+   * three separate spellings of the same condition, which is how a button that
+   * could not run ended up looking exactly like one that could.
+   */
+  const motorSpinReady = propsRemovedAcknowledged && testAreaAcknowledged
+
   return (
 
         <section className="grid one-up">
@@ -449,15 +458,23 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   data-testid="battery-current-load-throttle"
                                 />
                               </label>
+                              {/* Green once the safety checks are acknowledged.
+                                *  The button sat in the neutral style whether or
+                                *  not it was armed to run, so "have I done the
+                                *  thing that lets me press this?" was not
+                                *  answerable from the button — the operator had
+                                *  to look at a DIFFERENT card to find out. Same
+                                *  grammar as "Calibrate from measured current"
+                                *  below it, which is green when it can run. */}
                               <button
                                 type="button"
-                                style={buttonStyle()}
+                                style={buttonStyle(motorSpinReady ? 'primary' : 'secondary')}
                                 data-testid="battery-current-spin-motors"
                                 disabled={
                                   busyAction !== undefined ||
                                   snapshot.connection.kind !== 'connected' ||
                                   snapshot.vehicle?.armed === true ||
-                                  !(propsRemovedAcknowledged && testAreaAcknowledged) ||
+                                  !motorSpinReady ||
                                   snapshot.motorTest.status === 'requested' ||
                                   snapshot.motorTest.status === 'running'
                                 }
@@ -488,8 +505,11 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                               >
                                 {snapshot.motorTest.status === 'running' ? 'Motors spinning…' : `Spin motors for ${BATTERY_CURRENT_LOAD_SECONDS} s`}
                               </button>
-                              {!(propsRemovedAcknowledged && testAreaAcknowledged) ? (
-                                <small>Acknowledge the motor-spin safety checks below before applying a load.</small>
+                              {!motorSpinReady ? (
+                                <small>
+                                  Tick both boxes in the <strong>Motor-spin safety</strong> card before applying a
+                                  load. This button turns green when it can run.
+                                </small>
                               ) : null}
                             </div>
                           ) : null}
@@ -680,7 +700,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 if (!isCopterVehicle) {
                   return null
                 }
-                const motorSafetyOk = propsRemovedAcknowledged && testAreaAcknowledged
+                const motorSafetyOk = motorSpinReady
                 const baseReady = snapshot.connection.kind === 'connected' && snapshot.vehicle?.armed !== true && busyAction === undefined
                 // ESC endpoint calibration is a PWM-era procedure — the ESCs learn
                 // min/max from the analog throttle-range pulses. It only applies to
