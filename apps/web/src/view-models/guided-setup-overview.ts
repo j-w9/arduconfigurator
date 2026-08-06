@@ -163,8 +163,16 @@ export function buildGuidedSetupOverview(inputs: GuidedSetupOverviewInputs): Gui
               action !== guidedSetupTaskAction && action.kind !== 'scroll' && action.kind !== 'clear-confirmation'
           ) ??
           selectedSetupSection?.actions[0]
-  const guidedSetupContextAction =
-    selectedSetupSection?.actions.find((action) => action.kind === 'scroll' && action.panelId !== 'setup-panel-guided')
+  // Must not re-offer whatever became the primary action. When a section's ONLY
+  // action is a scroll (Ports), the primary chain falls through to actions[0]
+  // and picks it — and this then picked the same object again, rendering the
+  // identical button twice, once as the hero and once beneath it.
+  const guidedSetupContextAction = selectedSetupSection?.actions.find(
+    (action) =>
+      action !== guidedSetupPrimaryAction &&
+      action.kind === 'scroll' &&
+      action.panelId !== 'setup-panel-guided'
+  )
   const guidedSetupSupportActions =
     selectedSetupSection?.actions.filter(
       (action) =>

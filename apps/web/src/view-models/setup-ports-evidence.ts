@@ -122,15 +122,30 @@ export function buildSetupPortsEvidence({
     if (protocolValue !== PROTOCOL_NONE && protocolValue !== PROTOCOL_MAVLINK2) {
       continue
     }
+    // A tenth of the received bytes failing to frame is well beyond incidental
+    // noise and means the port is mis-clocked for what is on it.
+    const garbled = port.framingErrors > port.rxBytes / 10
+
+    // MAVLink2 carrying CLEAN traffic is a port doing its job — a telemetry
+    // radio, a companion computer, an ATAK link. Flagging it was wrong: the
+    // original failure was a receiver on a MAVLink2 port producing 80357
+    // framing errors against 39 bytes, and it is the GARBLE that identifies a
+    // mismatch, not the traffic. A working telemetry link is not a
+    // misconfiguration, and saying so trains operators to ignore this step.
+    //
+    // A DISABLED port (-1) is different: nothing should be listening at all, so
+    // any real traffic there is worth reporting however cleanly it frames.
+    if (protocolValue === PROTOCOL_MAVLINK2 && !garbled) {
+      continue
+    }
+
     unconfigured.push({
       portNumber: port.portNumber,
       hardwarePort: port.hardwarePort,
       rxBytes: port.rxBytes,
       framingErrors: port.framingErrors,
       protocolValue,
-      // A tenth of the received bytes failing to frame is well beyond
-      // incidental noise and means the port is mis-clocked for what is on it.
-      garbled: port.framingErrors > port.rxBytes / 10
+      garbled
     })
   }
 
@@ -139,7 +154,10 @@ export function buildSetupPortsEvidence({
 
 /** One-line description of a finding, for the wizard's evidence pills. */
 export function describeUnconfiguredPort(finding: UnconfiguredPortFinding): string {
-  const configured = finding.protocolValue === PROTOCOL_NONE ? 'disabled' : 'MAVLink2'
-  const garbled = finding.garbled ? `, ${finding.framingErrors} framing errors` : ''
-  return `SERIAL${finding.portNumber} (${finding.hardwarePort}) is receiving ${finding.rxBytes} bytes${garbled} but is set to ${configured}`
+  if (finding.protocolValue === PROTOCOL_NONE) {
+    return `SERIAL${finding.portNumber} (${finding.hardwarePort}) is receiving ${finding.rxBytes} bytes but the port is disabled`
+  }
+  // Only reachable when the stream cannot be framed — a clean MAVLink2 port is
+  // not a finding at all.
+  return `SERIAL${finding.portNumber} (${finding.hardwarePort}) is receiving ${finding.rxBytes} bytes it cannot decode (${finding.framingErrors} framing errors) while set to MAVLink2`
 }
