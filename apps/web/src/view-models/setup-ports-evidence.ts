@@ -12,10 +12,8 @@
 
 /** SERIALn_PROTOCOL values that mean "nothing meaningful is expected here". */
 const PROTOCOL_NONE = -1
-/** SERIALn_PROTOCOL = 2 is MAVLink2 — the default on unused ports, and so the
- *  overwhelmingly common value to find still sitting on a port that has had a
- *  peripheral soldered to it. */
-const PROTOCOL_MAVLINK2 = 2
+/** SerialProtocol_RCIN. ArduPilot permits exactly ONE — see below. */
+const PROTOCOL_RCIN = 23
 
 export interface UartPortTraffic {
   /** SERIALn index, as printed by uarts.txt. */
@@ -67,16 +65,27 @@ export function parseUartTraffic(rawText: string | undefined): UartPortTraffic[]
   return ports
 }
 
+export type PortFindingKind =
+  /** Traffic arriving that the UART cannot frame — a peripheral talking at a
+   *  rate or in a protocol the port is not set up for. Reported for ANY
+   *  protocol: a receiver on a port already set to RCIN but at the wrong baud
+   *  looks correctly configured and still cannot work, which is the harder
+   *  version of this failure to spot. */
+  | 'undecodable'
+  /** A disabled port (-1) carrying real traffic — something is wired to a port
+   *  the flight controller ignores entirely. */
+  | 'unclaimed'
+
 export interface UnconfiguredPortFinding {
   portNumber: number
   hardwarePort: string
   rxBytes: number
   framingErrors: number
-  /** The SERIALn_PROTOCOL currently set, or undefined if not synced. */
-  protocolValue: number | undefined
-  /** True when the traffic is arriving but cannot be framed — the signature of
-   *  a peripheral talking at a rate/protocol the port is not set up for. */
+  /** The SERIALn_PROTOCOL currently set. */
+  protocolValue: number
+  /** True when the traffic is arriving but cannot be framed. */
   garbled: boolean
+  kind: PortFindingKind
 }
 
 export interface SetupPortsEvidenceInputs {
@@ -90,8 +99,18 @@ export interface SetupPortsEvidenceInputs {
 
 export interface SetupPortsEvidence {
   ports: UartPortTraffic[]
-  /** Ports receiving real traffic while configured as None or MAVLink2. */
+  /** Ports whose traffic cannot be decoded, or which carry traffic while
+   *  disabled. */
   unconfigured: UnconfiguredPortFinding[]
+  /**
+   * SERIALn indices beyond the first that also claim RCIN.
+   *
+   * AP_SerialManager.cpp permits exactly one RCIN port: the lowest index wins
+   * and every later one is refused with "duplicate RCIN not permitted". The
+   * refusal appears only in a boot STATUSTEXT, so a receiver moved to a second
+   * port looks correctly configured and is silently ignored.
+   */
+  duplicateRcinPorts: number[]
   /** True when uarts.txt was unavailable, so absence of findings proves
    *  nothing and the step must not claim the ports are correct. */
   trafficUnknown: boolean
@@ -119,45 +138,69 @@ export function buildSetupPortsEvidence({
       continue
     }
     const protocolValue = protocolByPort[port.portNumber]
-    if (protocolValue !== PROTOCOL_NONE && protocolValue !== PROTOCOL_MAVLINK2) {
+    // Unknown is not misconfigured. Judging a port before its SERIALn_PROTOCOL
+    // has arrived would fire on every connection during the sync window.
+    if (protocolValue === undefined) {
       continue
     }
     // A tenth of the received bytes failing to frame is well beyond incidental
     // noise and means the port is mis-clocked for what is on it.
     const garbled = port.framingErrors > port.rxBytes / 10
 
-    // MAVLink2 carrying CLEAN traffic is a port doing its job — a telemetry
-    // radio, a companion computer, an ATAK link. Flagging it was wrong: the
-    // original failure was a receiver on a MAVLink2 port producing 80357
-    // framing errors against 39 bytes, and it is the GARBLE that identifies a
-    // mismatch, not the traffic. A working telemetry link is not a
-    // misconfiguration, and saying so trains operators to ignore this step.
-    //
-    // A DISABLED port (-1) is different: nothing should be listening at all, so
-    // any real traffic there is worth reporting however cleanly it frames.
-    if (protocolValue === PROTOCOL_MAVLINK2 && !garbled) {
+    if (garbled) {
+      // Checked BEFORE the protocol, deliberately. Undecodable traffic is a
+      // fault whatever the port claims to be — a receiver on a port already set
+      // to RCIN but at the wrong baud reads as correctly configured and still
+      // cannot work, which is the version of this that goes undiagnosed.
+      unconfigured.push({
+        portNumber: port.portNumber,
+        hardwarePort: port.hardwarePort,
+        rxBytes: port.rxBytes,
+        framingErrors: port.framingErrors,
+        protocolValue,
+        garbled,
+        kind: 'undecodable'
+      })
       continue
     }
 
+    // Clean traffic on a configured port is a port doing its job — a telemetry
+    // radio, a companion computer, an ATAK link. Only a DISABLED port is
+    // suspect, because nothing should be listening there at all.
+    if (protocolValue !== PROTOCOL_NONE) {
+      continue
+    }
     unconfigured.push({
       portNumber: port.portNumber,
       hardwarePort: port.hardwarePort,
       rxBytes: port.rxBytes,
       framingErrors: port.framingErrors,
       protocolValue,
-      garbled
+      garbled,
+      kind: 'unclaimed'
     })
   }
 
-  return { ports, unconfigured, trafficUnknown: ports.length === 0 }
+  // Duplicate RCIN: lowest index wins, the rest are silently refused.
+  const rcinPorts = Object.entries(protocolByPort)
+    .filter(([, value]) => value === PROTOCOL_RCIN)
+    .map(([port]) => Number(port))
+    .sort((a, b) => a - b)
+  const duplicateRcinPorts = rcinPorts.slice(1)
+
+  return { ports, unconfigured, duplicateRcinPorts, trafficUnknown: ports.length === 0 }
 }
 
 /** One-line description of a finding, for the wizard's evidence pills. */
 export function describeUnconfiguredPort(finding: UnconfiguredPortFinding): string {
-  if (finding.protocolValue === PROTOCOL_NONE) {
+  if (finding.kind === 'unclaimed') {
     return `SERIAL${finding.portNumber} (${finding.hardwarePort}) is receiving ${finding.rxBytes} bytes but the port is disabled`
   }
-  // Only reachable when the stream cannot be framed — a clean MAVLink2 port is
-  // not a finding at all.
-  return `SERIAL${finding.portNumber} (${finding.hardwarePort}) is receiving ${finding.rxBytes} bytes it cannot decode (${finding.framingErrors} framing errors) while set to MAVLink2`
+  return `SERIAL${finding.portNumber} (${finding.hardwarePort}) is receiving ${finding.rxBytes} bytes it cannot decode (${finding.framingErrors} framing errors) — check the baud and protocol for whatever is wired there`
+}
+
+/** One-line description of the duplicate-RCIN condition. */
+export function describeDuplicateRcin(duplicateRcinPorts: readonly number[]): string {
+  const list = duplicateRcinPorts.map((port) => `SERIAL${port}`).join(', ')
+  return `${list} also set to RCIN — ArduPilot uses only the lowest-numbered RC input port and silently ignores the rest`
 }
