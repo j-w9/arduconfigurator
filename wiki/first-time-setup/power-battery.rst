@@ -34,11 +34,12 @@ sensible voltage before trusting calibration.
 
 .. note::
 
-   This tab does **not** include an analog voltage/current calibration widget.
-   The analog multipliers — ``BATT_VOLT_MULT`` (voltage multiplier) and
-   ``BATT_AMP_PERVLT`` (amps per volt) — are edited from the raw **Parameters**
-   tab (Expert mode). Calibrate voltage against a meter and current against a
-   known load there if your readings are off.
+   The analog scale factors — :param:`BATT_VOLT_MULT` (volts per pin volt),
+   :param:`BATT_AMP_PERVLT` (amps per pin volt) and :param:`BATT_AMP_OFFSET`
+   (the sensor's zero-current output) — are **not** edited here. They have
+   guided calibration cards on the :doc:`sensors-calibration` tab, which walk
+   you through comparing the flight controller against a multimeter and a clamp
+   meter. If the live readout above disagrees with a meter, start there.
 
 Low-battery failsafe
 --------------------
