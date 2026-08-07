@@ -172,7 +172,14 @@ export function ConfigView(props: ConfigViewProps) {
           data-testid={`config-field-missing-${field.paramId}`}
         >
           <span>{field.label}</span>
-          <small>{field.paramId}</small>
+          {/* Same "i" affordance as a live row rather than a bare id string: the
+              parameter is absent from this firmware, so the wiki deep link is
+              the only place left to find out what it would have done. */}
+          <ParamInfoBubble
+            paramId={field.paramId}
+            label={field.label}
+            testId={`config-field-info-${field.paramId}`}
+          />
           <span className="config-section__missing-value">— (not reported)</span>
         </div>
       )
@@ -281,7 +288,16 @@ export function ConfigView(props: ConfigViewProps) {
                       <div key={field.paramId} className="config-section__value-row">
                         <dt>
                           <span>{field.label}</span>
-                          <small>{field.paramId}</small>
+                          {/* Read-only rows carried the raw id as a bare second
+                              line while every editable row beside them offered
+                              the "i". Same affordance here, so a read-only
+                              value is just as traceable to its parameter. */}
+                          <ParamInfoBubble
+                            paramId={field.paramId}
+                            label={field.label}
+                            description={parameter?.definition?.description}
+                            testId={`config-field-info-${field.paramId}`}
+                          />
                         </dt>
                         <dd>{formatReadOnlyValue(parameter, field)}</dd>
                       </div>

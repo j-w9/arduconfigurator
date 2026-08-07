@@ -395,7 +395,7 @@ export function LuaScriptsView(props: LuaScriptsViewProps) {
               <div className="lua-section-head">
                 <h3>
                   Common scripts
-                  <InfoDot label="About the curated catalog" wide testId="lua-catalog-info">
+                  <InfoDot label="About the curated catalog" wide testId="lua-catalog-info" wikiTopic="luaInstallingScripts">
                     Curated single-file ArduPilot applets (GPL-3.0), each bundled in the app so install is one click —
                     no network fetch. The “prerequisites” on a card are best-effort warnings, never blockers.
                   </InfoDot>

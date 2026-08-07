@@ -226,7 +226,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           <div>
                             <span className="tuning-card-title">
                               <strong>Rates, expo, and accel shaping</strong>
-                              <InfoDot label="About rates, expo, and accel shaping" testId="tuning-info-acro" wide>
+                              <InfoDot label="About rates, expo, and accel shaping" testId="tuning-info-acro" wide wikiTopic="tuningPilot">
                                 <span className="info-dot-line">Rates set maximum rotation speed. Expo softens the center without reducing full-stick authority.</span>
                                 <span className="info-dot-line">Acceleration limits control how aggressively the controller tries to reach the commanded rate.</span>
                                 <span className="info-dot-line">Keep changes small and save a known-good snapshot before pushing responsiveness higher.</span>
@@ -253,7 +253,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           <div>
                             <span className="tuning-card-title">
                               <strong>General response</strong>
-                              <InfoDot label="About general response" testId="tuning-info-angle" wide>
+                              <InfoDot label="About general response" testId="tuning-info-angle" wide wikiTopic="tuningPilot">
                                 <span className="info-dot-line">Lower smoothing makes the quad feel more immediate; higher smoothing makes it calmer and softer.</span>
                                 <span className="info-dot-line">Lean-angle changes are shown in degrees even though ANGLE_MAX is stored in centidegrees.</span>
                                 <span className="info-dot-line">Increase yaw values slowly and validate feel with a short hover or line-of-sight test before pushing further.</span>
@@ -329,7 +329,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           <div>
                             <span className="tuning-card-title">
                               <strong>Axis controller gains</strong>
-                              <InfoDot label="About axis controller gains" testId="tuning-info-pid" wide>
+                              <InfoDot label="About axis controller gains" testId="tuning-info-pid" wide wikiTopic="tuningPidGains">
                                 <span className="info-dot-line">Keep roll and pitch close unless the aircraft has a real asymmetry that justifies diverging them.</span>
                                 <span className="info-dot-line">Feedforward increases stick-to-rate immediacy; use it deliberately rather than masking a weak base tune.</span>
                                 <span className="info-dot-line">If you move P, I, or D significantly, re-check filters and do a short test flight before stacking more changes.</span>
@@ -562,7 +562,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           <div>
                             <span className="tuning-card-title">
                               <strong>Axis bandwidth and smoothing</strong>
-                              <InfoDot label="About axis bandwidth and smoothing" testId="tuning-info-filters" wide>
+                              <InfoDot label="About axis bandwidth and smoothing" testId="tuning-info-filters" wide wikiTopic="tuningFilters">
                                 <span className="info-dot-line">Higher filter frequencies preserve response but pass more noise. Lower values smooth noise at the cost of latency.</span>
                                 <span className="info-dot-line">Zero values are valid for some ArduPilot filter parameters and can intentionally disable a filter path.</span>
                                 <span className="info-dot-line">Change filters carefully and listen for noise or oscillation before moving on to more aggressive gain changes.</span>

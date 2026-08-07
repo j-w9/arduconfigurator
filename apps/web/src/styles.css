@@ -6226,6 +6226,37 @@ textarea:focus {
   opacity: 1;
   visibility: visible;
 }
+/* A tip carrying a wiki link has to be reachable. Three things block that on the
+   plain tip, and all three are deliberate there: it has pointer-events: none, it
+   sits 6px below a 14px dot with a dead band in between, and it only opens while
+   the DOT itself is hovered/focused. Undo each of them — for linked tips only. */
+.receiver-info-tip--linked {
+  pointer-events: auto;
+}
+/* Invisible bridge across the 6px gap so a pointer travelling from the dot to
+   the link never leaves the dot's hover area and close the tip under the cursor. */
+.receiver-info-tip--linked::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  height: 8px;
+}
+/* focus-within, not the dot's own :focus-visible: tabbing onto the link inside
+   blurs the dot, which would close the tip and make the link unreachable by
+   keyboard. Scoped to linked tips so text-only dots keep their existing rules. */
+.receiver-info-dot:focus-within .receiver-info-tip--linked {
+  opacity: 1;
+  visibility: visible;
+}
+.receiver-info-wiki {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--accent-strong, var(--accent));
+  font-size: 11px;
+  text-decoration: underline;
+}
 /* Multi-point guidance inside a tip: each point on its own line so a card's
    condensed help stays scannable in the hover box (replaces the always-on
    output-note-list bullet walls on the tuning cards). */

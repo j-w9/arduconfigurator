@@ -48,6 +48,7 @@ import { RC_CALIBRATION_AXIS_ORDER, RC_CALIBRATION_SWITCH_CHANNELS, rcCalibratio
 import { StickCraftPreview } from '../preview-components'
 import { formatRxRssi } from '../status-formatters'
 import { toneForModeSwitchExercise, toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
+import { InfoDot } from '../views/InfoDot'
 import { ReceiverView } from '../views/Receiver'
 import { ScopedBitmaskField, ScopedField, ScopedSelectField } from '../views/ScopedField'
 
@@ -442,14 +443,15 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                     >
                       {bindFlash ? 'Bind sent ✓' : 'Bind RX (ELRS / CRSF)'}
                     </button>
-                    <span className="receiver-info-dot" aria-hidden="true">
-                      i
-                      <span className="receiver-info-tip" role="tooltip">
-                        Tells ArduPilot to send the bind command to the receiver (MAV_CMD_START_RX_PAIR).
-                        Put your transmitter / ELRS module into bind mode too; the receiver LED confirms pairing.
-                        ELRS receivers with a bind phrase set ignore this — bind by phrase or power-cycle instead.
-                      </span>
-                    </span>
+                    {/* The shared InfoDot rather than a hand-rolled copy of its
+                        markup: the copy could not carry the wiki link, and being
+                        aria-hidden it hid the only explanation of what Bind does
+                        from screen-reader users entirely. */}
+                    <InfoDot label="About binding an ELRS / CRSF receiver" testId="receiver-bind-info" wikiTopic="receiverBind">
+                      Tells ArduPilot to send the bind command to the receiver (MAV_CMD_START_RX_PAIR).
+                      Put your transmitter / ELRS module into bind mode too; the receiver LED confirms pairing.
+                      ELRS receivers with a bind phrase set ignore this — bind by phrase or power-cycle instead.
+                    </InfoDot>
                   </div>
                   ) : null}
                 </div>

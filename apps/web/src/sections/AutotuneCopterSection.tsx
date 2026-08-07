@@ -18,33 +18,30 @@ import { formatParameterValue } from '../parameter-format'
 import { selectParameterById } from '../selectors/parameter-read'
 import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
 import { InfoDot } from '../views/InfoDot'
+import { ParamInfoBubble } from '../views/ParamInfoBubble'
 import { ScopedBitmaskField, ScopedField } from '../views/ScopedField'
 
 // Wrap a scoped Autotune field with the same per-field "i" info bubble used on
 // the Config / Networking tabs and the curated tuning controls — hover/focus
 // reveals the ArduPilot parameter description right next to the control, so the
 // always-on explanatory paragraph can be retired without losing the guidance.
+//
+// Now the SHARED ParamInfoBubble rather than a local copy of its markup. Two
+// things were wrong with the copy: it rendered only when the metadata carried a
+// description, so an Autotune knob whose description we don't ship showed a
+// friendly label with no route to its raw name at all; and it had no link to the
+// parameter reference. Both exist for every parameter, so the bubble is
+// unconditional and the description is the optional part.
 function withAutotuneFieldInfo(parameter: ParameterState, node: ReactNode): ReactNode {
-  const description = parameter.definition?.description
-  if (!description) {
-    return node
-  }
   return (
     <div key={parameter.id} className="config-section__field-row">
       {node}
-      <span className="config-section__info-wrap">
-        <button
-          type="button"
-          className="config-section__info"
-          data-testid={`autotune-field-info-${parameter.id}`}
-          aria-label={`About ${parameter.definition?.label ?? parameter.id}`}
-        >
-          i
-        </button>
-        <span className="config-section__info-tip" role="tooltip">
-          {description}
-        </span>
-      </span>
+      <ParamInfoBubble
+        paramId={parameter.id}
+        label={parameter.definition?.label ?? parameter.id}
+        description={parameter.definition?.description}
+        testId={`autotune-field-info-${parameter.id}`}
+      />
     </div>
   )
 }
@@ -124,7 +121,7 @@ export function AutotuneCopterSection(props: AutotuneCopterSectionProps): ReactE
       <div className="bf-gui-box__titlebar">
         <span className="tuning-card-title">
           <strong>ArduCopter AutoTune</strong>
-          <InfoDot label="About the AutoTune surface" testId="autotune-copter-info" wide>
+          <InfoDot label="About the AutoTune surface" testId="autotune-copter-info" wide wikiTopic="tuningAutotune">
             <span className="info-dot-line">Each control is the real ArduPilot parameter from the loaded catalog.</span>
             <span className="info-dot-line">Edits stage here and apply through the same verified review path as the other tabs — nothing is written until you apply.</span>
             <span className="info-dot-line">These set up AutoTune; the tuning itself happens in the air.</span>
@@ -137,7 +134,7 @@ export function AutotuneCopterSection(props: AutotuneCopterSectionProps): ReactE
           <div className="tuning-axis-card__header">
             <span className="tuning-card-title">
               <strong>AutoTune configuration</strong>
-              <InfoDot label="About the AutoTune configuration parameters" testId="autotune-config-info" wide>
+              <InfoDot label="About the AutoTune configuration parameters" testId="autotune-config-info" wide wikiTopic="tuningAutotune">
                 <span className="info-dot-line">AUTOTUNE_AXES picks which axes are tuned (Roll / Pitch / Yaw / YawD).</span>
                 <span className="info-dot-line">AUTOTUNE_AGGR is the bounce-back aggressiveness used to size the D term.</span>
                 <span className="info-dot-line">AUTOTUNE_MIN_D is the lowest D gain AutoTune may set.</span>
