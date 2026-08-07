@@ -4986,6 +4986,27 @@ test.describe('Status & Info advanced sensor cards', () => {
     await expect(page.getByTestId('setup-optical-flow-card')).toHaveCount(0)
   })
 
+  test('GPS, rangefinder and optical flow sit in one row on a desktop viewport', async ({ page }) => {
+    // "Can we make it so that GPS, rangefinder and optical flow are all next to
+    // each other." They answer the same question and used to be split across
+    // two columns and two scroll positions. Same row means same top edge.
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('setup-optical-flow-card')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    const tops = await page.evaluate(() => {
+      const group = document.querySelector('[data-testid="setup-sensor-group"]')!
+      return [...group.children].map((child) => Math.round(child.getBoundingClientRect().top))
+    })
+    expect(tops).toHaveLength(3)
+    // Every card starts on the same line — no wrap onto a second row, which is
+    // what a too-large grid track floor silently does.
+    expect(new Set(tops).size).toBe(1)
+  })
+
   test('the sensor cards do not overflow the phone layout', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/')

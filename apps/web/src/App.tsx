@@ -337,7 +337,6 @@ import { SetupWizardAside } from './sections/SetupWizardAside'
 import { SetupWizardHeader } from './sections/SetupWizardHeader'
 import { SetupWizardDetail } from './sections/SetupWizardDetail'
 import { SetupBenchActions } from './sections/SetupBenchActions'
-import { StatusDfuCard } from './sections/StatusDfuCard'
 import { AdvancedSensorCard } from './views/AdvancedSensorCard'
 import { buildAdvancedSensorCards } from './view-models/advanced-sensor-cards'
 import { useStatusClock } from './hooks/use-status-clock'
@@ -877,8 +876,6 @@ export function App() {
   // operator sees WHY no motor moved.
   const [motorDialogSpinError, setMotorDialogSpinError] = useState<string | undefined>(undefined)
 
-  // Two-step confirm for the Status-page "Enter DFU / bootloader" action.
-  const [statusDfuArmed, setStatusDfuArmed] = useState(false)
   // Calibration-tab feedback (battery voltage input + per-card notices +
   // ESC two-step arm gate) lives in a focused hook now — see use-calibration-notices.ts.
   // CompassMot was removed from the Calibration tab in favour of in-flight
@@ -6980,18 +6977,17 @@ export function App() {
                       onAction={(actionId) => void handleGuidedAction(actionId)}
                     />
 
-                    <StatusDfuCard
-                      connected={snapshot.connection.kind === 'connected'}
-                      vehicleArmed={snapshot.vehicle?.armed === true}
-                      armed={statusDfuArmed}
-                      onArm={() => setStatusDfuArmed(true)}
-                      onConfirm={() => {
-                        setStatusDfuArmed(false)
-                        void runtime.rebootToBootloader()
-                      }}
-                      onCancel={() => setStatusDfuArmed(false)}
-                    />
-
+                    {/* "Enter DFU / bootloader mode" used to sit here, as a
+                     *  two-step armed confirm directly above the craft view.
+                     *  It is gone: entering DFU drops the MAVLink link and
+                     *  re-enumerates the board, which is the opening move of a
+                     *  flashing session, not a status readout — and the Flash
+                     *  tab already offers the identical control (FirmwareFlasher
+                     *  `onEnterDfu`, same connected/disarmed guards) alongside
+                     *  the firmware picker and the flash wizard that follow it.
+                     *  Nothing was lost; a disconnect-the-vehicle button simply
+                     *  stopped living one stray click from read-only status.
+                     *  The route in is the FW version value in System Info. */}
                     <div className="setup-bench__workspace">
                       <div className="setup-bench__viewer">
                         <div className="setup-bench__viewer-header">
@@ -7015,70 +7011,112 @@ export function App() {
                           frameTypeLabel={airframe.frameTypeLabel}
                         />
 
-                        {/* System Info / Statistics / Recent Notices live UNDER
-                         *  the 3D craft model in the main column (not in the
-                         *  sidebar) so the operator can read them at-glance
-                         *  alongside the model without having their eye dragged
-                         *  to the right column. The sidebar keeps action-oriented
-                         *  cards (Instruments / Guided Setup / GPS). */}
-                        <div className="setup-bench__status-trio">
-                        {/* First column: System Info, then the advanced sensor
-                         *  cards directly beneath it. They used to sit at the
-                         *  very bottom of the right-hand sidebar, below the GPS
-                         *  card and its map — roughly 1350px down a 2373px page
-                         *  at 1440x900, i.e. a full screen and a half of
-                         *  scrolling to answer "is my lidar alive?". They are
-                         *  system health, so they belong with the system health
-                         *  block, and moving them here also fills the dead space
-                         *  the main column left below the status trio. */}
-                        <div className="setup-status-syscol">
+                        {/* The sensor group: GPS, then whichever advanced sensor
+                         *  cards exist (rangefinder / optical flow), all in one
+                         *  row directly under the 3D craft model.
+                         *
+                         *  "Can we make it so that GPS, rangefinder and optical
+                         *  flow are all next to each other" — they answer the
+                         *  same question ("is the thing I bolted on actually
+                         *  reporting?") and used to be answered in two different
+                         *  places: GPS at the bottom of the right sidebar,
+                         *  rangefinder and flow stacked under System Info in the
+                         *  main column. Reading them meant scanning two columns
+                         *  and scrolling twice. One row, one glance.
+                         *
+                         *  Row and not column: stacking three sensor cards is
+                         *  what made this page long in the first place. GPS is
+                         *  unconditional, so this row is never empty and never
+                         *  collapses — with no lidar and no flow sensor (the
+                         *  common board) it is a single full-width GPS card,
+                         *  which reads as a deliberate panel rather than a
+                         *  widow, and gives the map the width a map wants. */}
+                        <div className="setup-status-sensors" data-testid="setup-sensor-group">
                         <article className="setup-gui-box">
                           <div className="setup-gui-box__titlebar">
-                            <strong>System Info</strong>
-                            <StatusBadge tone={toneForConnection(snapshot.connection.kind)}>{snapshot.connection.kind}</StatusBadge>
+                            <strong>GPS</strong>
+                            <StatusBadge tone={snapshot.preArmStatus.healthy ? 'success' : 'warning'}>
+                              {snapshot.preArmStatus.healthy ? 'ready' : 'attention'}
+                            </StatusBadge>
                           </div>
                           <div className="setup-gui-box__body">
                             <div className="setup-gui-box__kv-list">
-                              <div className="setup-gui-box__kv-row"><span>Transport</span><strong>{setupTransportLabel}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Vehicle</span><strong>{snapshot.vehicle?.vehicle ?? '—'}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Firmware</span><strong>{snapshot.vehicle?.firmware ?? '—'}</strong></div>
-                              {snapshot.hardware.board?.firmwareVersion ? (
-                                <div className="setup-gui-box__kv-row"><span>FW version</span><strong>{snapshot.hardware.board.firmwareVersion}</strong></div>
-                              ) : null}
-                              {snapshot.hardware.board?.firmwareGitHash ? (
-                                <div className="setup-gui-box__kv-row">
-                                  <span>FW git hash</span>
-                                  <strong><code>{snapshot.hardware.board.firmwareGitHash}</code></strong>
-                                </div>
-                              ) : null}
-                              <div className="setup-gui-box__kv-row">
-                                <span>Configurator build</span>
-                                <strong><code>{GIT_BRANCH}@{GIT_HASH}</code></strong>
+                              <div className="setup-gui-box__kv-row"><span>Driver</span><strong>{setupGpsConfigured ? 'Configured' : 'Not configured'}</strong></div>
+                              <div className="setup-gui-box__kv-row"><span>Fix</span><strong>{setupHasGpsCard && snapshot.liveVerification.globalPosition.verified ? 'Verified' : 'Waiting'}</strong></div>
+                              <div className="setup-gui-box__kv-row setup-gui-box__kv-row--control">
+                                <span>Format</span>
+                                <select
+                                  className="setup-gui-box__inline-select"
+                                  value={gpsCoordFormat}
+                                  onChange={(event) => setGpsCoordFormat(event.target.value as GpsCoordFormat)}
+                                  data-testid="setup-gps-format-select"
+                                  aria-label="GPS coordinate display format"
+                                  title="Display format only — does not affect OSD or vehicle."
+                                >
+                                  {GPS_COORD_FORMAT_VALUES.map((value) => (
+                                    <option key={value} value={value}>{GPS_COORD_FORMAT_LABELS[value]}</option>
+                                  ))}
+                                </select>
                               </div>
-                              <div className="setup-gui-box__kv-row">
-                                <span>Parameters</span>
-                                <strong>{snapshot.parameterStats.status === 'complete' ? `${snapshot.parameterStats.downloaded}` : formatParameterSync(snapshot)}</strong>
-                              </div>
-                              <div className="setup-gui-box__kv-row"><span>Battery</span><strong>{formatBatteryTelemetry(snapshot)}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>RC link</span><strong>{formatRcLink(snapshot)}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Pre-arm</span><strong>{snapshot.preArmStatus.healthy ? 'Clear' : `${snapshot.preArmStatus.issues.length} issues`}</strong></div>
+                              {gpsCoordFormat === 'mgrs' ? (
+                                <div className="setup-gui-box__kv-row"><span>Grid (MGRS)</span><strong data-testid="setup-gps-mgrs">{formatMgrs(snapshot.liveVerification.globalPosition.latitudeDeg, snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
+                              ) : gpsCoordFormat === 'utm' ? (
+                                <div className="setup-gui-box__kv-row"><span>Grid (UTM)</span><strong data-testid="setup-gps-utm">{formatUtm(snapshot.liveVerification.globalPosition.latitudeDeg, snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
+                              ) : gpsCoordFormat === 'dms' ? (
+                                <>
+                                  <div className="setup-gui-box__kv-row"><span>Latitude</span><strong>{formatLatitudeDms(snapshot.liveVerification.globalPosition.latitudeDeg)}</strong></div>
+                                  <div className="setup-gui-box__kv-row"><span>Longitude</span><strong>{formatLongitudeDms(snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="setup-gui-box__kv-row"><span>Latitude</span><strong>{formatLatitudeDecimal(snapshot.liveVerification.globalPosition.latitudeDeg)}</strong></div>
+                                  <div className="setup-gui-box__kv-row"><span>Longitude</span><strong>{formatLongitudeDecimal(snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
+                                </>
+                              )}
                             </div>
+                            <p className="setup-gui-box__note">
+                              {setupHasGpsCard
+                                ? snapshot.liveVerification.globalPosition.verified
+                                  ? 'Live GPS is arriving. Treat the map as a side check while the craft preview stays primary.'
+                                  : 'A GPS driver is configured, but live position is not verified yet. Finish the port and GPS workflow, then return here.'
+                                : 'No verified GPS source yet. That is acceptable for bench work, but guided modes should wait until GPS is configured.'}
+                            </p>
+                            {setupHasGpsCard ? (
+                              <div className="setup-gui-box__map">
+                                <LiveGpsMapCard
+                                  snapshot={snapshot}
+                                  title="GPS map"
+                                  subtitle="Side check"
+                                  compact
+                                  testId="setup-gps-map-widget"
+                                />
+                              </div>
+                            ) : null}
                           </div>
                         </article>
 
-                        {/* Advanced sensors, directly under System Info. The
-                         *  builder still decides whether a card exists at all:
-                         *  an unconfigured rangefinder or flow sensor produces
-                         *  nothing and this space collapses back to System Info
-                         *  alone, exactly as before. A CONFIGURED sensor always
-                         *  gets a card, silent or not — that silence is the
-                         *  diagnosis, and it is now the first thing in reach
-                         *  rather than the last. */}
+                        {/* The builder still decides whether a card exists at
+                         *  all: an unconfigured rangefinder or flow sensor
+                         *  produces nothing and the row falls back to GPS
+                         *  alone. A CONFIGURED sensor always gets a card,
+                         *  silent or not — that silence is the diagnosis, and
+                         *  it now sits beside GPS instead of a screen and a
+                         *  half further down the page. */}
                         {advancedSensorCards.map((card) => (
                           <AdvancedSensorCard key={card.id} card={card} />
                         ))}
                         </div>
 
+                        {/* Pre-arm / Statistics / Recent Notices live UNDER the
+                         *  sensor group in the main column (not in the sidebar)
+                         *  so the operator can read them at-glance alongside the
+                         *  model without having their eye dragged to the right
+                         *  column. System Info moved OUT of here to the top of
+                         *  the sidebar: it is reference data (transport, build
+                         *  strings, counters) that the operator goes looking for,
+                         *  not something they scan, so it does not deserve prime
+                         *  main-column space above the pre-arm state. */}
+                        <div className="setup-bench__status-trio">
                         {/* Middle column: pre-arm on top (it gates flight, so it
                             matters most), lifetime stats compact below it. */}
                         <div className="setup-status-midcol">
@@ -7150,6 +7188,81 @@ export function App() {
                       </div>
 
                       <div className="setup-bench__sidebar">
+                        {/* System Info leads the sidebar, above Instruments. It
+                         *  is the "what am I talking to" card — transport, board,
+                         *  firmware, build hash, param count — which the operator
+                         *  reads once on connect and then only returns to when
+                         *  something is wrong. Keeping it in the main column cost
+                         *  a full column of prime space above the pre-arm state
+                         *  and pushed the sensor cards down with it; the sidebar
+                         *  is where reference material belongs. It stays ABOVE
+                         *  Instruments because "am I connected to the right
+                         *  board?" is the question that comes first, and because
+                         *  Instruments and Guided Setup are the action pair that
+                         *  should stay adjacent. */}
+                        <article className="setup-gui-box">
+                          <div className="setup-gui-box__titlebar">
+                            <strong>System Info</strong>
+                            <StatusBadge tone={toneForConnection(snapshot.connection.kind)}>{snapshot.connection.kind}</StatusBadge>
+                          </div>
+                          <div className="setup-gui-box__body">
+                            <div className="setup-gui-box__kv-list">
+                              <div className="setup-gui-box__kv-row"><span>Transport</span><strong>{setupTransportLabel}</strong></div>
+                              <div className="setup-gui-box__kv-row"><span>Vehicle</span><strong>{snapshot.vehicle?.vehicle ?? '—'}</strong></div>
+                              <div className="setup-gui-box__kv-row"><span>Firmware</span><strong>{snapshot.vehicle?.firmware ?? '—'}</strong></div>
+                              {/* The FW version doubles as the way into the
+                               *  Flash tab. It replaces the "Enter DFU mode"
+                               *  button that used to sit above the craft view:
+                               *  flashing is discoverable from the value that
+                               *  makes an operator want to flash in the first
+                               *  place, without a link-drops-the-vehicle action
+                               *  living on a read-only status page.
+                               *
+                               *  A <button>, not an <a>: routing here is state
+                               *  (`setActiveViewId`), and an href would reload
+                               *  the SPA and drop the MAVLink link — the exact
+                               *  thing this change is trying to stop happening
+                               *  by accident. The row renders at all only when
+                               *  a version is known, so there is no dead link
+                               *  before the board has answered. */}
+                              {snapshot.hardware.board?.firmwareVersion ? (
+                                <div className="setup-gui-box__kv-row">
+                                  <span>FW version</span>
+                                  <strong>
+                                    <button
+                                      type="button"
+                                      className="setup-gui-box__value-link"
+                                      data-testid="setup-firmware-flash-link"
+                                      onClick={() => setActiveViewId('flash')}
+                                      aria-label={`Firmware ${snapshot.hardware.board.firmwareVersion} — open Flash tab`}
+                                      title="Open the Flash tab (firmware, DFU / bootloader, flash wizard)"
+                                    >
+                                      {snapshot.hardware.board.firmwareVersion}
+                                    </button>
+                                  </strong>
+                                </div>
+                              ) : null}
+                              {snapshot.hardware.board?.firmwareGitHash ? (
+                                <div className="setup-gui-box__kv-row">
+                                  <span>FW git hash</span>
+                                  <strong><code>{snapshot.hardware.board.firmwareGitHash}</code></strong>
+                                </div>
+                              ) : null}
+                              <div className="setup-gui-box__kv-row">
+                                <span>Configurator build</span>
+                                <strong><code>{GIT_BRANCH}@{GIT_HASH}</code></strong>
+                              </div>
+                              <div className="setup-gui-box__kv-row">
+                                <span>Parameters</span>
+                                <strong>{snapshot.parameterStats.status === 'complete' ? `${snapshot.parameterStats.downloaded}` : formatParameterSync(snapshot)}</strong>
+                              </div>
+                              <div className="setup-gui-box__kv-row"><span>Battery</span><strong>{formatBatteryTelemetry(snapshot)}</strong></div>
+                              <div className="setup-gui-box__kv-row"><span>RC link</span><strong>{formatRcLink(snapshot)}</strong></div>
+                              <div className="setup-gui-box__kv-row"><span>Pre-arm</span><strong>{snapshot.preArmStatus.healthy ? 'Clear' : `${snapshot.preArmStatus.issues.length} issues`}</strong></div>
+                            </div>
+                          </div>
+                        </article>
+
                         <article className="setup-gui-box">
                           <div className="setup-gui-box__titlebar">
                             <strong>Instruments</strong>
@@ -7169,12 +7282,11 @@ export function App() {
                           </div>
                         </article>
 
-                        {/* Guided setup pulled up next to Instruments so the
-                         *  primary action ("Start / Resume Setup") lives right
-                         *  under the 3D craft model — the operator's eye
-                         *  flows from "is the model responding?" → "what's
-                         *  the next step?" without scrolling past GPS /
-                         *  System Info / Statistics first. */}
+                        {/* Guided setup sits directly under Instruments so the
+                         *  primary action ("Start / Resume Setup") stays high in
+                         *  the sidebar — the operator's eye flows from "is the
+                         *  model responding?" → "what's the next step?" without
+                         *  scrolling past GPS or Statistics first. */}
                         <article className={`setup-gui-box setup-gui-box--guided${guidedSetupComplete ? ' is-complete' : ''}`}>
                           <div className="setup-gui-box__titlebar">
                             <strong>{guidedSetupComplete ? 'Guided setup complete' : 'Guided setup'}</strong>
@@ -7206,69 +7318,6 @@ export function App() {
                                 {guidedSetupComplete ? 'Review Setup' : completedSetupSectionCount > 0 ? 'Resume Setup' : 'Start Guided Setup'}
                               </button>
                             </div>
-                          </div>
-                        </article>
-
-                        <article className="setup-gui-box">
-                          <div className="setup-gui-box__titlebar">
-                            <strong>GPS</strong>
-                            <StatusBadge tone={snapshot.preArmStatus.healthy ? 'success' : 'warning'}>
-                              {snapshot.preArmStatus.healthy ? 'ready' : 'attention'}
-                            </StatusBadge>
-                          </div>
-                          <div className="setup-gui-box__body">
-                            <div className="setup-gui-box__kv-list">
-                              <div className="setup-gui-box__kv-row"><span>Driver</span><strong>{setupGpsConfigured ? 'Configured' : 'Not configured'}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Fix</span><strong>{setupHasGpsCard && snapshot.liveVerification.globalPosition.verified ? 'Verified' : 'Waiting'}</strong></div>
-                              <div className="setup-gui-box__kv-row setup-gui-box__kv-row--control">
-                                <span>Format</span>
-                                <select
-                                  className="setup-gui-box__inline-select"
-                                  value={gpsCoordFormat}
-                                  onChange={(event) => setGpsCoordFormat(event.target.value as GpsCoordFormat)}
-                                  data-testid="setup-gps-format-select"
-                                  aria-label="GPS coordinate display format"
-                                  title="Display format only — does not affect OSD or vehicle."
-                                >
-                                  {GPS_COORD_FORMAT_VALUES.map((value) => (
-                                    <option key={value} value={value}>{GPS_COORD_FORMAT_LABELS[value]}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              {gpsCoordFormat === 'mgrs' ? (
-                                <div className="setup-gui-box__kv-row"><span>Grid (MGRS)</span><strong data-testid="setup-gps-mgrs">{formatMgrs(snapshot.liveVerification.globalPosition.latitudeDeg, snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
-                              ) : gpsCoordFormat === 'utm' ? (
-                                <div className="setup-gui-box__kv-row"><span>Grid (UTM)</span><strong data-testid="setup-gps-utm">{formatUtm(snapshot.liveVerification.globalPosition.latitudeDeg, snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
-                              ) : gpsCoordFormat === 'dms' ? (
-                                <>
-                                  <div className="setup-gui-box__kv-row"><span>Latitude</span><strong>{formatLatitudeDms(snapshot.liveVerification.globalPosition.latitudeDeg)}</strong></div>
-                                  <div className="setup-gui-box__kv-row"><span>Longitude</span><strong>{formatLongitudeDms(snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="setup-gui-box__kv-row"><span>Latitude</span><strong>{formatLatitudeDecimal(snapshot.liveVerification.globalPosition.latitudeDeg)}</strong></div>
-                                  <div className="setup-gui-box__kv-row"><span>Longitude</span><strong>{formatLongitudeDecimal(snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
-                                </>
-                              )}
-                            </div>
-                            <p className="setup-gui-box__note">
-                              {setupHasGpsCard
-                                ? snapshot.liveVerification.globalPosition.verified
-                                  ? 'Live GPS is arriving. Treat the map as a side check while the craft preview stays primary.'
-                                  : 'A GPS driver is configured, but live position is not verified yet. Finish the port and GPS workflow, then return here.'
-                                : 'No verified GPS source yet. That is acceptable for bench work, but guided modes should wait until GPS is configured.'}
-                            </p>
-                            {setupHasGpsCard ? (
-                              <div className="setup-gui-box__map">
-                                <LiveGpsMapCard
-                                  snapshot={snapshot}
-                                  title="GPS map"
-                                  subtitle="Side check"
-                                  compact
-                                  testId="setup-gps-map-widget"
-                                />
-                              </div>
-                            ) : null}
                           </div>
                         </article>
 
