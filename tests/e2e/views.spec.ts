@@ -1283,7 +1283,16 @@ test.describe('Tuning tab', () => {
     await expect(tip).toContainText('ATC_INPUT_TC')
 
     const link = tip.getByTestId('param-wiki-ATC_INPUT_TC')
-    await expect(link).toHaveAttribute('href', 'https://ardupilot.org/copter/docs/parameters.html#atc-input-tc')
+    // Our own reference, addressed by parameter NAME — the wiki resolves the
+    // name to its family page (see wiki/_static/parameter-search.js), so the
+    // app never ships a copy of that map and can't point at a stale page.
+    await expect(link).toHaveAttribute(
+      'href',
+      'https://arduconfigurator.com/wiki/parameters/index.html?param=ATC_INPUT_TC'
+    )
+    // The reference is generated from the pinned Copter-4.7 metadata; say so
+    // before the click, since nothing here knows the connected firmware.
+    await expect(link).toContainText('ArduCopter 4.7')
     await expect(link).toHaveAttribute('target', '_blank')
     await expect(link).toHaveAttribute('rel', 'noopener noreferrer')
 
@@ -1994,7 +2003,7 @@ test.describe('Config view', () => {
     await expect(tip).not.toHaveText('')
   })
 
-  test('Config info bubble names the raw parameter and links the ArduPilot wiki', async ({ page }) => {
+  test('Config info bubble names the raw parameter and links our parameter reference', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -2006,7 +2015,10 @@ test.describe('Config view', () => {
     await expect(tip).toBeVisible()
     await expect(tip).toContainText('FRAME_CLASS')
     const link = tip.getByTestId('param-wiki-FRAME_CLASS')
-    await expect(link).toHaveAttribute('href', 'https://ardupilot.org/copter/docs/parameters.html#frame-class')
+    await expect(link).toHaveAttribute(
+      'href',
+      'https://arduconfigurator.com/wiki/parameters/index.html?param=FRAME_CLASS'
+    )
     // Plain external link in a new tab — the wiki must never be pulled into the
     // SPA (an earlier in-app wiki poisoned the PWA shell; that was a P1).
     await expect(link).toHaveAttribute('target', '_blank')

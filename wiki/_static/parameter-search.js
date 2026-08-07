@@ -22,12 +22,44 @@
   // path, or a local file build) rather than assuming a site root.
   var root = (window.DOCUMENTATION_OPTIONS && window.DOCUMENTATION_OPTIONS.URL_ROOT) || '../'
 
+  // ?param=<NAME> — the app's per-field "i" bubble links here by NAME rather
+  // than by page, because which family page a parameter lands on is not
+  // derivable from its name (top-level Copter params all live on group-copter,
+  // and ARSPD_ vs ARSPD collide onto suffixed slugs). Resolving the name here,
+  // against the index this page already loads, keeps the page layout owned by
+  // the side that generates it — the app never has to ship a copy of the map,
+  // and a regenerated reference can't leave the app pointing at a 404.
+  var requested = ''
+  try {
+    requested = (new URLSearchParams(window.location.search).get('param') || '').trim()
+  } catch (error) {
+    requested = ''
+  }
+  if (requested) input.value = requested
+
   fetch(root + '_static/parameter-index.json')
     .then(function (response) { return response.json() })
     .then(function (payload) {
       params = payload.params || []
       status.textContent = params.length + ' parameters indexed (' +
         (payload.vehicle || '') + ' ' + (payload.firmware || '') + '). Start typing.'
+      // An exact hit makes the link behave like a real deep link: land on the
+      // parameter's own section, where its Values/Bitmask tables are (the
+      // results list only says "has value list"). replace(), not assign(), so
+      // Back returns to the app rather than bouncing through this page again.
+      // No match — a fork-only or newer-firmware parameter — falls through to
+      // the rendered search, which says so instead of dead-ending.
+      if (requested && input.value === requested) {
+        var needle = requested.toLowerCase()
+        for (var k = 0; k < params.length; k += 1) {
+          if (params[k].n.toLowerCase() === needle) {
+            window.location.replace(
+              root + 'parameters/group-' + params[k].g + '.html#param-' + needle.replace(/_/g, '-')
+            )
+            return
+          }
+        }
+      }
       render(input.value)
     })
     .catch(function () {

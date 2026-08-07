@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 
-import { parameterWikiUrl } from '../view-models/param-docs'
+import { WIKI_PARAMETER_FIRMWARE, parameterWikiUrl } from '../view-models/param-docs'
 
 export interface ParamInfoBubbleProps {
   /** Raw ArduPilot parameter id, e.g. `ATC_INPUT_TC`. */
@@ -56,7 +56,11 @@ export function ParamInfoBubble({ paramId, label, description, testId }: ParamIn
           rel="noopener noreferrer"
           data-testid={`param-wiki-${paramId}`}
         >
-          ArduPilot wiki ↗
+          {/* Name the documented firmware in the label, not just on the far
+              side of the click: the reference is generated from the pinned
+              Copter-4.7 metadata, and on a 4.6 board a range or value list can
+              differ. Nothing here knows the connected firmware to gate on. */}
+          Parameter reference ({WIKI_PARAMETER_FIRMWARE}) ↗
         </a>
       </span>
     </span>
