@@ -55,6 +55,71 @@ For a serial receiver (CRSF/ELRS, etc.), set the port wired to the receiver's
 RX/TX to **RC Input** (``SERIALn_PROTOCOL = 23``). Once that's set and the board
 has rebooted, the :doc:`receiver` tab's live monitor should show channels.
 
+Only one port may be RC input
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ArduPilot accepts **exactly one** serial RC input port. It walks the ports in
+ascending order at boot, binds the RC protocol decoder to the first one set to
+RC Input, and for every later one emits::
+
+   SERIALn_PROTOCOL: duplicate RCIN not permitted
+
+The lowest-numbered RCIN port wins; the rest are inert. Worse, the condition is
+also a **mandatory** pre-arm failure — ``Multiple SERIAL ports configured for RC
+input`` — and mandatory checks cannot be switched off with the arming-check
+bitmask (see :doc:`arming`). So a stray second RCIN port does not degrade
+gracefully; it stops the vehicle arming.
+
+This bites on boards whose factory defaults already claim a UART for RC — a
+great many board definitions ship one port defaulted to RC Input — so setting a
+second port to RC Input for the receiver you actually wired leaves two
+configured. Scan the **Function** column for a second *RC Input* row and set the
+one you are not using to **None**.
+
+.. tip::
+
+   The guided setup's **Ports** step checks for this and names the offending
+   ports for you: *"SERIAL1, SERIAL7 also set to RCIN — ArduPilot uses only the
+   lowest-numbered RC input port and silently ignores the rest."* It reports
+   only; you make the change on this tab. See :doc:`../guided-setup`.
+
+Is the port dead, or just mis-configured?
+-----------------------------------------
+
+"Nothing is working on that port" has two very different causes, and the flight
+controller can tell them apart. It keeps per-UART counters — bytes received,
+bytes transmitted, and low-level **framing errors** — and publishes them as the
+onboard file ``@SYS/uarts.txt``, which you can read yourself from the
+:doc:`../files` tab.
+
+Read them like this:
+
+- **RX bytes not increasing.** Nothing is arriving. That is a wiring, power, or
+  device problem, not a protocol one — check the TX/RX pair is crossed, the
+  device is powered, and grounds are common. No amount of parameter changing
+  fixes a silent port.
+- **RX bytes increasing, framing errors increasing with them.** Bytes are
+  arriving but the UART cannot frame them. That is almost always the **wrong
+  baud rate**, and occasionally an inversion problem (many receivers need
+  ``SERIALn_OPTIONS`` invert bits, or a half-duplex bit). The device is alive and
+  talking; the port is listening wrong.
+- **RX bytes increasing, framing errors flat, still nothing works.** The link is
+  clean and the port is decoding fine — so the **protocol** assignment is wrong
+  for what is wired there, or the peripheral needs its own enable parameter (see
+  *Paired peripheral settings* above).
+
+.. note::
+
+   The guided setup's **Ports** step applies exactly this reasoning
+   automatically. It flags a port receiving traffic it cannot decode — *"is
+   receiving 4867 bytes it cannot decode (1508 framing errors) — check the baud
+   and protocol for whatever is wired there"* — on **any** protocol, and flags a
+   *disabled* port that is nonetheless receiving clean traffic as an unclaimed
+   peripheral. It deliberately does **not** flag a port carrying clean traffic on
+   a protocol you configured on purpose: it is the garbling that identifies a
+   mismatch, not the traffic. USB ports are skipped, since one of them is the
+   link you are connected over.
+
 .. warning::
 
    ``SERIALn_PROTOCOL``, ``SERIALn_OPTIONS``, and ``BRD_SERn_RTSCTS`` are
@@ -73,9 +138,10 @@ DisplayPort, SmartAudio), among ArduPilot's full set of serial protocols.
 
 .. note::
 
-   The tab highlights staged and invalid changes on each port row, but does
-   **not** detect two ports configured for the same role — assign each device to
-   exactly one UART yourself.
+   The tab highlights staged and invalid changes on each port row. It does not
+   police duplicates beyond the RC-input case above — two ports set to GPS, or
+   to MAVLink2, are both legal configurations, so assign each device to exactly
+   one UART yourself.
 
 For the firmware semantics behind these settings, see the ArduPilot wiki:
 `Serial Port Configuration Options

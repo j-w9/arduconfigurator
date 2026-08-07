@@ -69,3 +69,21 @@
   display: none;
   margin: 0;
 }
+
+/* :param:`NAME` — a literal that links into the generated parameter reference
+   (the role lives in conf.py). Furo renders a bare literal as plain code, so
+   without this a linked parameter is indistinguishable from an unlinked one. */
+a.param-ref,
+a.param-ref:visited {
+  text-decoration: none;
+  border-bottom: 1px dotted var(--color-brand-content, #0a7);
+}
+
+a.param-ref code,
+a.param-ref:visited code {
+  color: var(--color-brand-content, #0a7);
+}
+
+a.param-ref:hover {
+  border-bottom-style: solid;
+}

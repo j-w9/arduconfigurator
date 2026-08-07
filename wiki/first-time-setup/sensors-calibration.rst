@@ -93,6 +93,86 @@ can skip this and calibrate directly.
    (GPS-heading) magnetometer calibration — use the rotate-through-all-axes
    procedure above.
 
+Battery voltage and current
+---------------------------
+
+An analog power module does not measure volts and amps — it measures a voltage
+on two flight-controller pins, and ArduPilot converts each one with a scale
+factor you have to set. Out of the box those factors are a guess for a generic
+brick, which is why a fresh build so often reads a 6S pack as 21 V, or claims
+55 A in a hover. Everything downstream — the OSD, the remaining-capacity
+estimate, and the battery failsafe on the :doc:`failsafe` tab — is only as good
+as these two numbers.
+
+The **Battery voltage** and **Battery current** cards on this tab calibrate
+them against a meter.
+
+Voltage
+~~~~~~~
+
+ArduPilot computes pack voltage as the sensing pin's voltage multiplied by
+:param:`BATT_VOLT_MULT`. Calibrating it is one measurement:
+
+#. Connect a charged pack and read its voltage at the balance lead or the XT
+   connector with a multimeter.
+#. In **Calibration → Battery voltage**, compare the meter against the *FC
+   reads* pill and enter the meter's figure in **Measured voltage (V)**.
+#. The card shows the **new multiplier** it will write — your current multiplier
+   scaled by measured ÷ reported — and **Apply voltage calibration** writes
+   :param:`BATT_VOLT_MULT`.
+
+Repeat the reading afterwards to confirm the two now agree. If they do not track
+each other across a range — right at full charge, wrong at storage charge — the
+problem is the sensing divider or a bad ground, not the multiplier.
+
+Current
+~~~~~~~
+
+ArduPilot computes current as
+
+   ``amps = (sensing_pin_voltage − BATT_AMP_OFFSET) × BATT_AMP_PERVLT``
+
+so there are two numbers, and they do different jobs.
+:param:`BATT_AMP_OFFSET` is the sensor's output **at zero current** — a
+hall-effect sensor rarely sits at exactly 0 V — and :param:`BATT_AMP_PERVLT` is
+the sensor's **gain**: how many amps a one-volt change on that pin represents.
+An offset error puts a constant bias on every reading; a gain error scales with
+throttle. Fix the offset first, or you will fold it into the gain.
+
+The card appears only for the analog current monitors — :param:`BATT_MONITOR`
+values 4 (*Analog Voltage and Current*), 25 (*Synthetic Current and Analog
+Voltage*), 28 (*AD7091R5*) and 31 (*Analog Current Only*). A DroneCAN, ESC, or
+smart battery reports amps directly and needs none of this.
+
+.. warning::
+
+   Calibrating current means drawing real current. **Props off**, vehicle
+   restrained, and clear of the frame. The card gates its motor-spin control
+   behind explicit props-removed and area-clear acknowledgements, and refuses
+   while the vehicle is armed — do not work around that.
+
+#. **Zero the offset.** With the pack connected and nothing drawing current,
+   press **Zero offset now**. It writes the :param:`BATT_AMP_OFFSET` that makes
+   the present reading exactly 0 A.
+#. **Draw a known load.** Clamp an ammeter on the pack lead. On Copter the card
+   can generate the load for you: set a **Load throttle** between 1 % and 35 %
+   and press **Spin motors** (after the acknowledgements). Anything that pulls a
+   steady, measurable current works just as well.
+#. **Enter what the meter says.** With the load steady, type the clamp meter's
+   amps into **Calibrate from measured current**. The card scales
+   :param:`BATT_AMP_PERVLT` by measured ÷ reported and writes it.
+
+A **manual override** block below lets you type :param:`BATT_AMP_OFFSET` and
+:param:`BATT_AMP_PERVLT` directly, for transferring known-good values from an
+identical build or from a power module's datasheet.
+
+.. note::
+
+   Calibrate at a current you actually fly at. A gain fitted at 2 A can be
+   several amps out at hover current, and it is hover current the capacity
+   estimate and the battery failsafe care about. Re-check after changing the
+   power module, the ESC, or the battery lead.
+
 Thermal calibration (TCAL)
 --------------------------
 

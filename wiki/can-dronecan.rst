@@ -130,13 +130,21 @@ the Inspector). It is available without Expert mode.
 .. tip::
 
    **"Enable the CAN bus?"** A common trap is to set a peripheral's driver to
-   DroneCAN (for example ``GPS_TYPE`` = 9/22/23, or ``BATT_MONITOR`` = 8) and
-   then find nothing on the bus because the CAN interface was never turned on.
-   When the CAN tab detects that situation — a DroneCAN peripheral selected but
-   CAN bus 1 not enabled for DroneCAN — it shows a one-click **Enable CAN bus &
-   reboot** prompt that writes ``CAN_P1_DRIVER = 1`` and ``CAN_D1_PROTOCOL = 1``
-   (both reboot-required) after an automatic backup. Nodes appear after the
-   reboot.
+   DroneCAN and then find nothing on the bus, because the CAN interface itself
+   was never turned on. There is no error — the node is powered, on the wire,
+   and completely invisible. The triggers the app watches for are
+   :param:`GPS_TYPE` or :param:`GPS_TYPE2` = 9 / 22 / 23 (DroneCAN, and the two
+   moving-baseline variants), :param:`BATT_MONITOR` or :param:`BATT2_MONITOR`
+   = 8, and :param:`FLOW_TYPE` = 6.
+
+   When one of those is selected but CAN bus 1 is not enabled for DroneCAN, a
+   one-click **Enable CAN bus & reboot** prompt writes ``CAN_P1_DRIVER = 1``
+   (bind physical interface 1 to virtual driver 1) and ``CAN_D1_PROTOCOL = 1``
+   (run DroneCAN on that driver) after an automatic backup. Both are
+   reboot-required; nodes appear after the reboot. The prompt shows on the CAN
+   tab for any of those triggers, and on the optical-flow section of the
+   Peripherals surface for the :param:`FLOW_TYPE` trigger — see
+   :doc:`first-time-setup/peripherals-gimbal`.
 
 See also :doc:`parameters` for editing flight-controller parameters and
 :doc:`logs-inspectors` for the live MAVLink stream.
