@@ -204,16 +204,26 @@ test.describe('browser configurator regression flows', () => {
     await expect(rows.first().locator('small').first()).toHaveText(label)
   })
 
-  test('Status page offers a two-step Enter DFU control and no calibration buttons', async ({ page }) => {
+  test('Status page routes to Flash from the firmware value and carries no DFU or calibration buttons', async ({ page }) => {
     await connectToVehicle(page, 'demo')
     // Calibration is gone from the Status page (it's in the Calibration tab).
     await expect(page.getByRole('button', { name: 'Calibrate Accelerometer' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Calibrate Compass' })).toHaveCount(0)
-    // Enter DFU is a two-step confirm.
-    const dfu = page.getByTestId('status-dfu-button')
-    await expect(dfu).toBeVisible()
-    await dfu.click()
-    await expect(page.getByTestId('status-dfu-confirm')).toBeVisible()
+    // ...and so is "Enter DFU mode". Entering DFU drops the MAVLink link and
+    // re-enumerates the board; it belongs with the rest of the flashing
+    // workflow, not one click from a read-only status page.
+    await expect(page.getByTestId('status-dfu-button')).toHaveCount(0)
+    await expect(page.getByTestId('status-dfu')).toHaveCount(0)
+
+    // The route in is the FW version value in System Info. Keyboard-first:
+    // if it can only be reached with a mouse it is not a replacement for a
+    // button that used to sit in the flow.
+    const link = page.getByTestId('setup-firmware-flash-link')
+    await expect(link).toBeVisible()
+    await expect(link).toHaveAccessibleName(/open Flash tab/i)
+    await link.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('workspace-view-title')).toHaveText('Flash')
   })
 
   test('calibration tab shows the inline accelerometer pose guide while calibration is active', async ({ page }) => {
@@ -538,10 +548,12 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('view-button-parameters')).toHaveCount(0)
     await expect(page.getByTestId('workspace-view-title')).toHaveText('Status & Info')
     await expect(page.getByTestId('setup-craft-preview')).toBeVisible()
-    // Calibration moved to the dedicated Calibration tab; the Status page no
-    // longer carries the calibration buttons, and now offers Enter DFU.
+    // Calibration moved to the dedicated Calibration tab and Enter DFU moved to
+    // the Flash tab; the Status page carries neither, and reaches flashing
+    // through the FW version value in System Info instead.
     await expect(page.getByRole('button', { name: 'Calibrate Accelerometer' })).toHaveCount(0)
-    await expect(page.getByTestId('status-dfu-button')).toBeVisible()
+    await expect(page.getByTestId('status-dfu-button')).toHaveCount(0)
+    await expect(page.getByTestId('setup-firmware-flash-link')).toBeVisible()
     // Pre-arm has its own box (above the lifetime stats) with the blocker list.
     await expect(page.getByTestId('setup-prearm')).toBeVisible()
     await expect(page.getByTestId('setup-prearm')).toContainText('Pre-arm')
