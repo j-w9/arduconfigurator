@@ -17,6 +17,7 @@ import type {
   ParamValueMessage,
   RcChannelsMessage,
   OpticalFlowMessage,
+  DistanceSensorMessage,
   StatusTextMessage,
   SysStatusMessage,
   UavcanNodeInfoMessage,
@@ -284,6 +285,13 @@ const CAN_NODE_INFO_REFRESH_DEBOUNCE_MS = 5000
 const CAN_NODE_OFFLINE_AFTER_MS = 3000
 const CAN_NODE_REMOVE_AFTER_MS = 30000
 const CAN_NODE_STALE_SWEEP_INTERVAL_MS = 1000
+
+// AP_Proximity.h: PROXIMITY_SENSOR_ID_START. AP_Proximity publishes its
+// 360-degree sectors as DISTANCE_SENSOR messages with ids from this value
+// upwards, sharing the message with real rangefinder instances (ids 0..9,
+// where the id IS the backend instance). Anything at or above this is an
+// avoidance sector, not the downward lidar the Status card reports.
+const PROXIMITY_SENSOR_ID_START = 10
 const LIVE_TELEMETRY_REQUESTS = [
   {
     // The RAW receiver report. Distinct from GLOBAL_POSITION_INT, which only
@@ -352,6 +360,36 @@ const LIVE_TELEMETRY_REQUESTS = [
     messageId: MAVLINK_MESSAGE_IDS.MAG_CAL_REPORT,
     label: 'MAG_CAL_REPORT',
     intervalUs: 1000000
+  },
+  // Rangefinder + optical flow both live in STREAM_EXTRA3
+  // (libraries/GCS_MAVLink/GCS_MAVLink_Parameters.cpp), which ArduPilot does
+  // NOT stream unless a GCS asks for it. Without these two entries the
+  // Status & Info sensor cards render perfectly in demo mode — the mock
+  // scenario emits whatever it likes — and are stone dead on a real FC.
+  // That is the exact failure this feature must not ship: an operator
+  // checking a sensor would read our silence as "sensor broken".
+  {
+    // The per-instance rangefinder report. Chosen over RANGEFINDER (msgid
+    // 173) because send_distance_sensor() skips a backend whose has_data()
+    // is false, so no-message genuinely means no-data — see
+    // RangefinderSensorState in types.ts for the full justification.
+    // 5 Hz: fast enough that an operator waving a hand under the craft sees
+    // the number track their hand, slow enough to be free on a 57k6 link
+    // (39-byte payload × a handful of instances).
+    messageId: MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR,
+    label: 'DISTANCE_SENSOR',
+    intervalUs: 200000
+  },
+  {
+    // OPTICAL_FLOW was already decoded and already drove the header Flow
+    // chip, but was never requested — so on real hardware that chip could
+    // only ever be grey. Requesting it here is what makes both the chip and
+    // the new flow card work off a flight controller instead of the mock.
+    // 5 Hz matches the rangefinder cadence; flow quality is the number an
+    // operator watches while they change lighting or height.
+    messageId: MAVLINK_MESSAGE_IDS.OPTICAL_FLOW,
+    label: 'OPTICAL_FLOW',
+    intervalUs: 200000
   }
 ] as const
 /**
@@ -2081,6 +2119,9 @@ export class ArduPilotConfiguratorRuntime {
       case 'OPTICAL_FLOW':
         this.processOpticalFlow(envelope.message)
         break
+      case 'DISTANCE_SENSOR':
+        this.processDistanceSensor(envelope.message)
+        break
       default:
         break
     }
@@ -2658,15 +2699,61 @@ export class ArduPilotConfiguratorRuntime {
     })
   }
 
-  // OPTICAL_FLOW (msgid 100) is the "pulse on the flow sensor" signal. This
-  // only records whether the sensor is producing telemetry (no EKF
-  // innovations); the UI computes the freshness window against lastSeenAtMs.
+  // OPTICAL_FLOW (msgid 100) is both the "pulse on the flow sensor" signal
+  // and the sensor's actual reading. ArduPilot's send_opticalflow()
+  // (GCS_Common.cpp) returns early unless `optflow->healthy()`, so receiving
+  // this message at all already means the driver is enumerating and updating
+  // the sensor; `quality` then says whether the image it sees is usable.
+  // Those are different failures — a live message with quality 0 is a sensor
+  // that is wired correctly and staring at a featureless surface — so both
+  // are recorded and the UI reports them separately.
+  //
+  // Still no EKF-innovation processing; the UI computes its own freshness
+  // window against lastSeenAtMs.
   private processOpticalFlow(message: OpticalFlowMessage): void {
     this.liveVerification.opticalFlow = {
       verified: true,
       lastSeenAtMs: Date.now(),
       sensorId: message.sensorId,
-      quality: message.quality
+      quality: message.quality,
+      flowRateX: message.flowRateX,
+      flowRateY: message.flowRateY,
+      // MAVLink reserves negative ground_distance for "unknown", and
+      // ArduPilot substitutes 0 when AHRS has no HAGL estimate. Normalise
+      // both to undefined so the UI never prints a fake altitude.
+      groundDistanceM: message.groundDistance > 0 ? message.groundDistance : undefined
+    }
+  }
+
+  // DISTANCE_SENSOR (msgid 132). ArduPilot multiplexes rangefinder instances
+  // AND AP_Proximity sectors onto this message; proximity uses
+  // PROXIMITY_SENSOR_ID_START (10, AP_Proximity.h) as its id base, so ids at
+  // or above that are 360° avoidance sectors and must not be mistaken for the
+  // downward rangefinder the Status card is about.
+  //
+  // Among genuine rangefinder instances we keep the LOWEST id. RNGFND1 is
+  // instance 0 and is what a Copter build uses for terrain/altitude, so a
+  // second forward-facing lidar on RNGFND2 cannot displace the reading the
+  // operator is checking. Same-instance updates always win, so the value
+  // stays live.
+  private processDistanceSensor(message: DistanceSensorMessage): void {
+    if (message.id >= PROXIMITY_SENSOR_ID_START) {
+      return
+    }
+    const current = this.liveVerification.rangefinder
+    if (current.sensorId !== undefined && message.id > current.sensorId) {
+      return
+    }
+    this.liveVerification.rangefinder = {
+      verified: true,
+      lastSeenAtMs: Date.now(),
+      sensorId: message.id,
+      distanceM: message.currentDistanceCm / 100,
+      minDistanceM: message.minDistanceCm / 100,
+      maxDistanceM: message.maxDistanceCm / 100,
+      orientation: message.orientation,
+      sensorType: message.sensorType,
+      signalQuality: message.signalQuality
     }
   }
 

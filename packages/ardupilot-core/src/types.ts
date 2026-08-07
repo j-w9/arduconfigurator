@@ -344,18 +344,31 @@ export interface LiveVerificationState {
    */
   gpsSensor: SensorBitState
   /**
-   * Optical flow sensor liveness, derived from OPTICAL_FLOW (msgid 100).
-   * Phase 1 surfaces only a "pulse on the sensor" check — was a flow
-   * message recently received — plus the most recent quality / sensor ID.
-   * No flow-rate processing; that lives in the EKF on the autopilot side
-   * and the GCS does not need to recompute it.
+   * Optical flow sensor liveness AND its last reading, derived from
+   * OPTICAL_FLOW (msgid 100). The "pulse on the sensor" check drives the
+   * header Flow chip; the flow rates / ground distance are what the
+   * Status & Info card actually prints, because "configured" and "healthy"
+   * are adjectives an operator cannot act on — a number they can watch
+   * change while they wave a hand under the craft is.
+   *
+   * Still no EKF-innovation processing: that lives on the autopilot and
+   * the GCS has no business recomputing it.
    */
   opticalFlow: OpticalFlowSensorState
+  /**
+   * Downward rangefinder liveness AND its last reading, derived from
+   * DISTANCE_SENSOR (msgid 132). See RangefinderSensorState for why that
+   * message and not RANGEFINDER (msgid 173).
+   */
+  rangefinder: RangefinderSensorState
 }
 
 export interface OpticalFlowSensorState {
-  /** True iff an OPTICAL_FLOW message has arrived within the freshness
-   * window (Phase 1: 2s). Drives the header "Flow" chip. */
+  /** True once an OPTICAL_FLOW message has ever arrived. Deliberately NOT
+   * self-expiring: consumers compare `lastSeenAtMs` against their own
+   * freshness window, and the sticky flag is what lets the UI tell
+   * "reported, then went silent" apart from "never reported at all" —
+   * two different faults with the same live symptom. */
   verified: boolean
   lastSeenAtMs?: number
   /** Sensor ID from the most recent OPTICAL_FLOW message; FCs with a
@@ -364,6 +377,57 @@ export interface OpticalFlowSensorState {
   /** Quality 0..255 from the most recent OPTICAL_FLOW message. 0 = bad
    * track (sensor present but no usable optical features), 255 = max. */
   quality?: number
+  /** Flow rate about the sensor X axis, rad/s (OPTICAL_FLOW extension). */
+  flowRateX?: number
+  /** Flow rate about the sensor Y axis, rad/s (OPTICAL_FLOW extension). */
+  flowRateY?: number
+  /** Ground distance (HAGL) the FC attached to the flow report, metres.
+   * ArduPilot sends 0 when AHRS has no HAGL estimate, and the MAVLink spec
+   * reserves negative for "unknown" — so this is context, never a
+   * substitute for the rangefinder card's own reading. */
+  groundDistanceM?: number
+}
+
+/**
+ * Latest DISTANCE_SENSOR (msgid 132) reading for the primary rangefinder.
+ *
+ * Why DISTANCE_SENSOR and not RANGEFINDER (msgid 173), from
+ * libraries/GCS_MAVLink/GCS_Common.cpp:
+ *   - `send_distance_sensor()` walks every rangefinder backend and returns
+ *     early on `!sensor->has_data()`. So a lidar that is configured but not
+ *     actually talking emits NOTHING, which makes silence a truthful fault
+ *     signal. `send_rangefinder()` has no such guard and will happily keep
+ *     publishing a stale distance for a dead sensor.
+ *   - DISTANCE_SENSOR carries signal_quality, min/max range, orientation and
+ *     an instance id. RANGEFINDER carries distance + voltage only.
+ *   - DISTANCE_SENSOR is a member of STREAM_EXTRA3
+ *     (GCS_MAVLink_Parameters.cpp); RANGEFINDER is in no stream group at all
+ *     and is additionally compiled out unless
+ *     AP_MAVLINK_MSG_RANGEFINDER_SENDING_ENABLED.
+ * Both still require an explicit SET_MESSAGE_INTERVAL from us — see
+ * LIVE_TELEMETRY_REQUESTS in runtime.ts.
+ */
+export interface RangefinderSensorState {
+  /** True once a DISTANCE_SENSOR for a rangefinder instance has ever
+   * arrived. Sticky for the same reason as OpticalFlowSensorState.verified. */
+  verified: boolean
+  lastSeenAtMs?: number
+  /** Onboard sensor id (== backend instance; 0 is RNGFND1). */
+  sensorId?: number
+  /** The live reading in metres — the headline number on the card. */
+  distanceM?: number
+  /** Configured measurable range in metres (RNGFNDn_MIN / _MAX), so the UI
+   * can say "1.42 m of 0.20–7.00 m" instead of an unanchored figure. */
+  minDistanceM?: number
+  maxDistanceM?: number
+  /** MAV_SENSOR_ORIENTATION; 25 = ROTATION_PITCH_270 = downward. */
+  orientation?: number
+  /** MAV_DISTANCE_SENSOR type (0 laser, 1 ultrasound, 2 infrared, 3 radar). */
+  sensorType?: number
+  /** Raw signal_quality with ArduPilot's sentinels intact: 0 = the driver
+   * does not report quality, 1 = invalid signal, 2..100 = percent. The UI
+   * must branch on these rather than printing "0%". */
+  signalQuality?: number
 }
 
 export interface MotorTestState {

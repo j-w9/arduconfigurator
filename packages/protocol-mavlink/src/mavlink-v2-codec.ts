@@ -39,6 +39,7 @@ import type {
   ParamValueMessage,
   CanFrameMessage,
   OpticalFlowMessage,
+  DistanceSensorMessage,
   RcChannelsMessage,
   SetupSigningMessage,
   StatusTextMessage,
@@ -674,6 +675,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeUavcanNodeInfoPayload(message)
     case 'OPTICAL_FLOW':
       return encodeOpticalFlowPayload(message)
+    case 'DISTANCE_SENSOR':
+      return encodeDistanceSensorPayload(message)
     case 'CAN_FRAME':
       return encodeCanFramePayload(message)
     case 'SETUP_SIGNING':
@@ -739,6 +742,8 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
       return decodeUavcanNodeInfoPayload(payload)
     case MAVLINK_MESSAGE_IDS.OPTICAL_FLOW:
       return decodeOpticalFlowPayload(payload)
+    case MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR:
+      return decodeDistanceSensorPayload(payload)
     case MAVLINK_MESSAGE_IDS.CAN_FRAME:
       return decodeCanFramePayload(payload)
     default:
@@ -800,6 +805,8 @@ function messageIdFor(message: MavlinkMessage): number {
       return MAVLINK_MESSAGE_IDS.UAVCAN_NODE_INFO
     case 'OPTICAL_FLOW':
       return MAVLINK_MESSAGE_IDS.OPTICAL_FLOW
+    case 'DISTANCE_SENSOR':
+      return MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR
     case 'CAN_FRAME':
       return MAVLINK_MESSAGE_IDS.CAN_FRAME
     case 'SETUP_SIGNING':
@@ -1551,6 +1558,55 @@ function decodeOpticalFlowPayload(payload: Uint8Array): OpticalFlowMessage {
     quality: view.getUint8(25),
     flowRateX: payload.byteLength >= 30 ? view.getFloat32(26, true) : 0,
     flowRateY: payload.byteLength >= 34 ? view.getFloat32(30, true) : 0
+  }
+}
+
+// DISTANCE_SENSOR (msgid 132). Wire layout per c_library_v2's
+// mavlink_msg_distance_sensor.h — MAVLink v2 orders fields by descending
+// type size, NOT by XML declaration order, so the offsets below are the
+// generated ones: time_boot_ms(0), min_distance(4), max_distance(6),
+// current_distance(8), type(10), id(11), orientation(12), covariance(13),
+// then the extension block horizontal_fov(14), vertical_fov(18),
+// quaternion[4](22..37), signal_quality(38). LEN 39, MIN_LEN 14.
+//
+// Every extension read is length-guarded: ArduPilot trims trailing zero
+// bytes before transmitting, so a plain downward lidar with no FOV, no
+// custom quaternion and quality 0 arrives as a 14-byte payload. Decoding
+// that as "short frame, ignore" would blind us to the most common setup.
+function encodeDistanceSensorPayload(message: DistanceSensorMessage): Uint8Array {
+  const payload = new Uint8Array(39)
+  const view = new DataView(payload.buffer)
+  view.setUint32(0, message.timeBootMs, true)
+  view.setUint16(4, message.minDistanceCm, true)
+  view.setUint16(6, message.maxDistanceCm, true)
+  view.setUint16(8, message.currentDistanceCm, true)
+  view.setUint8(10, message.sensorType)
+  view.setUint8(11, message.id)
+  view.setUint8(12, message.orientation)
+  view.setUint8(13, message.covariance)
+  view.setFloat32(14, message.horizontalFov, true)
+  view.setFloat32(18, message.verticalFov, true)
+  // quaternion[4] at 22..37 stays zero — ArduPilot only fills it for
+  // MAV_SENSOR_ROTATION_CUSTOM, which no rangefinder backend uses.
+  view.setUint8(38, message.signalQuality)
+  return payload
+}
+
+function decodeDistanceSensorPayload(payload: Uint8Array): DistanceSensorMessage {
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  return {
+    type: 'DISTANCE_SENSOR',
+    timeBootMs: view.getUint32(0, true),
+    minDistanceCm: view.getUint16(4, true),
+    maxDistanceCm: view.getUint16(6, true),
+    currentDistanceCm: view.getUint16(8, true),
+    sensorType: view.getUint8(10),
+    id: view.getUint8(11),
+    orientation: view.getUint8(12),
+    covariance: view.getUint8(13),
+    horizontalFov: payload.byteLength >= 18 ? view.getFloat32(14, true) : 0,
+    verticalFov: payload.byteLength >= 22 ? view.getFloat32(18, true) : 0,
+    signalQuality: payload.byteLength >= 39 ? view.getUint8(38) : 0
   }
 }
 

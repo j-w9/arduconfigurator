@@ -1524,7 +1524,16 @@ test('live telemetry requests use responsive attitude rates and slower support s
         // timeout falsely fails the guided action. Idle cost is zero —
         // ArduPilot only fills these while a calibrator is running.
         [MAVLINK_MESSAGE_IDS.MAG_CAL_PROGRESS, 500000],
-        [MAVLINK_MESSAGE_IDS.MAG_CAL_REPORT, 1000000]
+        [MAVLINK_MESSAGE_IDS.MAG_CAL_REPORT, 1000000],
+        // 5 Hz DISTANCE_SENSOR + OPTICAL_FLOW for the Status & Info sensor
+        // cards. Both live in STREAM_EXTRA3, which ArduPilot does not stream
+        // unless a GCS asks — so without these two entries the cards render
+        // beautifully against the mock and are stone dead on real hardware.
+        // This assertion is the guard: it is the only automated place that
+        // notices if someone deletes the requests, because the mock scenario
+        // will happily emit whichever messages it likes regardless.
+        [MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR, 200000],
+        [MAVLINK_MESSAGE_IDS.OPTICAL_FLOW, 200000]
       ]
     )
   } finally {

@@ -230,6 +230,9 @@ export function createIdleLiveVerification(): LiveVerificationState {
     },
     opticalFlow: {
       verified: false
+    },
+    rangefinder: {
+      verified: false
     }
   }
 }
@@ -343,6 +346,13 @@ export function cloneLiveVerification(liveVerification: LiveVerificationState): 
     },
     opticalFlow: {
       ...liveVerification.opticalFlow
+    },
+    // Spread, not a field-by-field copy: the TCAL regression (#88) was
+    // caused by cloneLiveVerification silently dropping a newly added
+    // field, so every new sensor block goes in as a whole-object spread
+    // and any new field is carried by construction.
+    rangefinder: {
+      ...liveVerification.rangefinder
     },
     // Scalar carried straight through — omitting it here silently dropped the
     // live IMU temperature (from SCALED_IMU) out of every emitted snapshot, so

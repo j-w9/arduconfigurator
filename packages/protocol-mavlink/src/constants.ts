@@ -8,6 +8,7 @@ export const MAVLINK_MESSAGE_IDS = {
   HEARTBEAT: 0,
   SYS_STATUS: 1,
   OPTICAL_FLOW: 100,
+  DISTANCE_SENSOR: 132,
   CAN_FRAME: 386,
   CANFD_FRAME: 387,
   GPS_RAW_INT: 24,
@@ -42,6 +43,11 @@ export const MAVLINK_MESSAGE_CRCS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.HEARTBEAT]: 50,
   [MAVLINK_MESSAGE_IDS.SYS_STATUS]: 124,
   [MAVLINK_MESSAGE_IDS.OPTICAL_FLOW]: 175,
+  // crc_extra 85 (c_library_v2 mavlink_msg_distance_sensor.h:
+  // MAVLINK_MSG_ID_DISTANCE_SENSOR_CRC 85). Decode-only — nothing in the
+  // configurator ever sends a DISTANCE_SENSOR to the vehicle; the encoder
+  // exists purely so the mock scenario can play one back.
+  [MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR]: 85,
   [MAVLINK_MESSAGE_IDS.CAN_FRAME]: 132,
   [MAVLINK_MESSAGE_IDS.CANFD_FRAME]: 4,
   [MAVLINK_MESSAGE_IDS.GPS_RAW_INT]: 24,
@@ -82,6 +88,10 @@ export const MAVLINK_PAYLOAD_LENGTHS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.HEARTBEAT]: 9,
   [MAVLINK_MESSAGE_IDS.SYS_STATUS]: 43,
   [MAVLINK_MESSAGE_IDS.OPTICAL_FLOW]: 34,
+  // time_boot_ms(4) + min/max/current_distance(3×2=6) + type(1) + id(1) +
+  // orientation(1) + covariance(1) + horizontal_fov(4) + vertical_fov(4) +
+  // quaternion[4](16) + signal_quality(1) = 39 (MAVLINK_MSG_ID_DISTANCE_SENSOR_LEN).
+  [MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR]: 39,
   [MAVLINK_MESSAGE_IDS.CAN_FRAME]: 16,
   [MAVLINK_MESSAGE_IDS.CANFD_FRAME]: 72,
   [MAVLINK_MESSAGE_IDS.GPS_RAW_INT]: 30,
@@ -121,6 +131,12 @@ export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.HEARTBEAT]: 9,
   [MAVLINK_MESSAGE_IDS.SYS_STATUS]: 31,
   [MAVLINK_MESSAGE_IDS.OPTICAL_FLOW]: 26,
+  // MAVLINK_MSG_ID_DISTANCE_SENSOR_MIN_LEN = 14: everything from
+  // horizontal_fov onwards (incl. signal_quality) is a v2 extension field.
+  // ArduPilot's own send truncates trailing zeros, so a downward lidar with
+  // no FOV, no quaternion and signal_quality 0 arrives as a 14-byte payload —
+  // requiring more here would drop exactly the frames we care about.
+  [MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR]: 14,
   [MAVLINK_MESSAGE_IDS.CAN_FRAME]: 16,
   [MAVLINK_MESSAGE_IDS.CANFD_FRAME]: 72,
   [MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT]: 28,
