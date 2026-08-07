@@ -11963,9 +11963,22 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 /* Row-select checkbox, inside the name cell so the table's column template is
-   untouched. */
-.parameter-row__select {
+   untouched.
+
+   The type selector is load-bearing, not decoration. `.parameter-row input`
+   (~12245) is the VALUE-EDITOR rule — width:100%, padding, border, panel
+   background — and it also matches this checkbox, which it out-specifies
+   (0,1,1 vs 0,1,0). That stretched the checkbox across the whole name cell,
+   and since the name text sits beside it in a flex row, the id and its
+   category badge were squeezed to zero width: the Parameter column rendered
+   BLANK. Mirrors the `.scoped-checkbox-option input` reset used by the
+   bitmask grids for the same inherited-sizing reason. */
+.parameter-row input[type='checkbox'].parameter-row__select {
   flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
   margin: 0 6px 0 0;
   cursor: pointer;
 }
@@ -12298,7 +12311,13 @@ details.metadata-settings-section:not([open]) > summary::after {
   /* Parameter | Description | Default | Current | Draft | Actions.
    * Default sits immediately left of Current so the pair reads as a
    * comparison rather than as two unrelated numbers. */
-  grid-template-columns: minmax(150px, 1fr) minmax(240px, 1.7fr) minmax(90px, 0.6fr) minmax(110px, 0.7fr) minmax(160px, 1fr) minmax(160px, 1fr);
+  /* The name track's floor is 172px, not 150px, because the row-select
+   * checkbox added in #167 lives INSIDE the name cell and consumes 22px
+   * (16px box + 6px margin) that used to be available to the id. 150px was
+   * chosen for a cell holding only the caret and the text; leaving it there
+   * silently cut ~1.5 characters off every long id. This gives back exactly
+   * what the checkbox took and nothing more. */
+  grid-template-columns: minmax(172px, 1fr) minmax(240px, 1.7fr) minmax(90px, 0.6fr) minmax(110px, 0.7fr) minmax(160px, 1fr) minmax(160px, 1fr);
   gap: 10px;
   align-items: center;
   padding: 5px 12px;
@@ -12323,6 +12342,19 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-row__name > span {
   min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* text-overflow only takes effect on a nowrap line, and the id and its
+ * category badge are separate block lines inside the name cell. Without this
+ * an id too long for the track was chopped mid-word with no visual signal at
+ * all — ATC_RAT_PIT_FLTD and ATC_RAT_PIT_FLTE both read "ATC_RAT_PIT_FL".
+ * An ellipsis at least says "there is more of this name". */
+.parameter-row__name > span > strong,
+.parameter-row__name > span > small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
 }
 .parameter-row__caret {
