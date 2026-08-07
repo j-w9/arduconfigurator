@@ -4285,11 +4285,41 @@ test('Recent Notices pops out into its own styled, live window', async ({ page, 
   expect(background).not.toBe('rgba(0, 0, 0, 0)')
   expect(background).not.toBe('transparent')
 
-  // Live: the window is a portal into the opener's tree, so clearing the feed
-  // from the main window empties the popped-out copy in the same render.
+  // Live: the window is a portal into the opener's tree, so opener state
+  // reaches it in the same render with no reload and no second session.
+  // Asserted on Expert mode rather than on the feed itself: the feed never
+  // settles (the runtime appends its own notices — the post-connect
+  // "Fetched @SYS/uarts.txt via MAVFTP." lands seconds after connect — and the
+  // demo state machine emits STATUSTEXT on a 7s cadence), so anything that
+  // asserts an *emptied* feed is racing a live stream it cannot win.
+  const noticeRows = popout.locator('.setup-gui-box__status-entry[data-testid^="notices-popout-notice-"]')
   await expect(popout.getByTestId('notices-popout-list')).toBeVisible()
+  await expect(noticeRows.first()).toBeVisible({ timeout: 15_000 })
+  await expect(popout.getByTestId('notices-popout-search')).toHaveCount(0)
+  await page.getByTestId('product-mode-expert').click()
+  await expect(popout.getByTestId('notices-popout-search')).toBeVisible()
+
+  // …and the filter typed in the window filters the window: a term nothing can
+  // match empties the list deterministically, which is the only way to assert
+  // the empty state against a feed that keeps producing.
+  await popout.getByTestId('notices-popout-search').fill('zzz-no-such-notice')
+  await expect(popout.getByText('No status text yet')).toBeVisible()
+  await expect(noticeRows).toHaveCount(0)
+  await popout.getByTestId('notices-popout-search').fill('')
+  await expect(noticeRows.first()).toBeVisible()
+
+  // Clear all in the main window drops the popped-out rows in the same render.
+  // Asserted as "the rows that were there are gone" rather than "the list is
+  // empty": every notice text the demo produces is one-shot, so a cleared row
+  // never comes back, while a *new* row may land at any moment.
+  const clearedTexts = await popout
+    .locator('.setup-gui-box__status-entry .setup-gui-box__status-text')
+    .allTextContents()
+  expect(clearedTexts.length).toBeGreaterThan(0)
   await page.getByTestId('setup-notices-clear-all').click()
-  await expect(popout.getByText('No status text yet')).toBeVisible({ timeout: 10_000 })
+  for (const text of clearedTexts) {
+    await expect(popout.getByText(text, { exact: true })).toHaveCount(0)
+  }
 
   // The inline panel says where the feed went, and the button closes it again.
   await expect(page.getByTestId('setup-notices-popped-out')).toBeVisible()
