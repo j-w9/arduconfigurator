@@ -35,7 +35,10 @@ export interface RecentNoticesFeedProps {
   copied: boolean
   onCopyAll: () => void
   onClearAll: () => void
-  /** Expand-in-place: undefined in the popout, where the window IS the room. */
+  /** Expand-in-place: undefined in the popout, where the window IS the room —
+   *  so the operator's persisted inline height (see
+   *  hooks/use-recent-notices-expanded.ts) deliberately does not reach the
+   *  popped-out copy, and toggling one never resizes the other. */
   expanded?: boolean
   onToggleExpanded?: () => void
   /** Pop-out control. Undefined in the popped-out copy itself. */
