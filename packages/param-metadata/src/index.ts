@@ -1,6 +1,9 @@
 export * from './arducopter.js'
 export * from './arducopter-4.7-overrides.js'
 export * from './arducopter-enums.js'
+// The raw generated RCn_OPTION label map — public so tests (and any future
+// surface) can assert the AUX picker's regrouping drops nothing.
+export * from './arducopter-rc-options.generated.js'
 export * from './arduplane.js'
 export * from './arduplane-enums.js'
 export * from './ardurover.js'
