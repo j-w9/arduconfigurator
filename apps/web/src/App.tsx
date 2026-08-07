@@ -340,6 +340,13 @@ import { SetupBenchActions } from './sections/SetupBenchActions'
 import { AdvancedSensorCard } from './views/AdvancedSensorCard'
 import { buildAdvancedSensorCards } from './view-models/advanced-sensor-cards'
 import { useStatusClock } from './hooks/use-status-clock'
+import {
+  StatusDashboardProvider,
+  StatusDashboardZone,
+  type StatusDashboardCardEntry
+} from './views/StatusDashboard'
+import { useStatusDashboardLayout } from './hooks/use-status-dashboard-layout'
+import type { StatusDashboardCardSpec } from './view-models/status-dashboard-layout'
 import { ResetToDefaultsButton } from './views/ResetToDefaultsButton'
 import { CalibrationLocationButton } from './sections/CalibrationLocationCard'
 import { resolveSetupConfirmationRecord } from './view-models/setup-confirmation-resolve'
@@ -6708,6 +6715,328 @@ export function App() {
     flowType: flowTypeValue,
     nowMs: statusClockMs
   })
+
+  // ── Status & Info dashboard ─────────────────────────────────────────────
+  //
+  // Every status card is built here, exactly as it was built inline before,
+  // and handed to the dashboard as an opaque node. The dashboard decides only
+  // WHERE a card sits — never what it says, whether it exists, or what it
+  // requests. The conditional sensor cards keep coming straight from
+  // buildAdvancedSensorCards, so an unconfigured sensor still produces no
+  // card and a configured-but-silent one still produces its fault card.
+  const statusDashboardCards: StatusDashboardCardEntry[] = [
+    {
+      id: 'gps',
+      label: 'GPS',
+      node: (
+        <article className="setup-gui-box">
+          <div className="setup-gui-box__titlebar">
+            <strong>GPS</strong>
+            <StatusBadge tone={snapshot.preArmStatus.healthy ? 'success' : 'warning'}>
+              {snapshot.preArmStatus.healthy ? 'ready' : 'attention'}
+            </StatusBadge>
+          </div>
+          <div className="setup-gui-box__body">
+            <div className="setup-gui-box__kv-list">
+              <div className="setup-gui-box__kv-row"><span>Driver</span><strong>{setupGpsConfigured ? 'Configured' : 'Not configured'}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>Fix</span><strong>{setupHasGpsCard && snapshot.liveVerification.globalPosition.verified ? 'Verified' : 'Waiting'}</strong></div>
+              <div className="setup-gui-box__kv-row setup-gui-box__kv-row--control">
+                <span>Format</span>
+                <select
+                  className="setup-gui-box__inline-select"
+                  value={gpsCoordFormat}
+                  onChange={(event) => setGpsCoordFormat(event.target.value as GpsCoordFormat)}
+                  data-testid="setup-gps-format-select"
+                  aria-label="GPS coordinate display format"
+                  title="Display format only — does not affect OSD or vehicle."
+                >
+                  {GPS_COORD_FORMAT_VALUES.map((value) => (
+                    <option key={value} value={value}>{GPS_COORD_FORMAT_LABELS[value]}</option>
+                  ))}
+                </select>
+              </div>
+              {gpsCoordFormat === 'mgrs' ? (
+                <div className="setup-gui-box__kv-row"><span>Grid (MGRS)</span><strong data-testid="setup-gps-mgrs">{formatMgrs(snapshot.liveVerification.globalPosition.latitudeDeg, snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
+              ) : gpsCoordFormat === 'utm' ? (
+                <div className="setup-gui-box__kv-row"><span>Grid (UTM)</span><strong data-testid="setup-gps-utm">{formatUtm(snapshot.liveVerification.globalPosition.latitudeDeg, snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
+              ) : gpsCoordFormat === 'dms' ? (
+                <>
+                  <div className="setup-gui-box__kv-row"><span>Latitude</span><strong>{formatLatitudeDms(snapshot.liveVerification.globalPosition.latitudeDeg)}</strong></div>
+                  <div className="setup-gui-box__kv-row"><span>Longitude</span><strong>{formatLongitudeDms(snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
+                </>
+              ) : (
+                <>
+                  <div className="setup-gui-box__kv-row"><span>Latitude</span><strong>{formatLatitudeDecimal(snapshot.liveVerification.globalPosition.latitudeDeg)}</strong></div>
+                  <div className="setup-gui-box__kv-row"><span>Longitude</span><strong>{formatLongitudeDecimal(snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
+                </>
+              )}
+            </div>
+            <p className="setup-gui-box__note">
+              {setupHasGpsCard
+                ? snapshot.liveVerification.globalPosition.verified
+                  ? 'Live GPS is arriving. Treat the map as a side check while the craft preview stays primary.'
+                  : 'A GPS driver is configured, but live position is not verified yet. Finish the port and GPS workflow, then return here.'
+                : 'No verified GPS source yet. That is acceptable for bench work, but guided modes should wait until GPS is configured.'}
+            </p>
+            {setupHasGpsCard ? (
+              <div className="setup-gui-box__map">
+                <LiveGpsMapCard
+                  snapshot={snapshot}
+                  title="GPS map"
+                  subtitle="Side check"
+                  compact
+                  testId="setup-gps-map-widget"
+                />
+              </div>
+            ) : null}
+          </div>
+        </article>
+      )
+    },
+    ...advancedSensorCards.map((card) => ({
+      id: card.id,
+      label: card.title,
+      node: <AdvancedSensorCard card={card} />
+    })),
+    {
+      id: 'prearm',
+      label: 'Pre-arm',
+      node: (
+        <article className="setup-gui-box" data-testid="setup-prearm">
+          <div className="setup-gui-box__titlebar">
+            <strong>Pre-arm</strong>
+            <StatusBadge tone={snapshot.preArmStatus.healthy ? 'success' : 'warning'}>
+              {snapshot.preArmStatus.healthy ? 'Clear' : `${snapshot.preArmStatus.issues.length} issues`}
+            </StatusBadge>
+          </div>
+          <div className="setup-gui-box__body">
+            {snapshot.preArmStatus.healthy ? (
+              <p className="telemetry-note">No active pre-arm issues.</p>
+            ) : (
+              <ul className="setup-statistics__prearm-list">
+                {snapshot.preArmStatus.issues.map((issue, index) => (
+                  <li key={`prearm:${index}:${issue.text}`}>{issue.text}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </article>
+      )
+    },
+    {
+      id: 'statistics',
+      label: 'Statistics',
+      node: (
+        <article className="setup-gui-box setup-gui-box--compact" data-testid="setup-statistics">
+          <div className="setup-gui-box__titlebar">
+            <strong>Statistics</strong>
+            <StatusBadge tone="neutral">lifetime</StatusBadge>
+          </div>
+          <div className="setup-gui-box__body">
+            <div className="setup-gui-box__kv-list">
+              <div className="setup-gui-box__kv-row"><span>Total runtime</span><strong>{formatStatHours(readRoundedParameter(snapshot, 'STAT_RUNTIME'))}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>Flight time</span><strong>{formatStatHours(readRoundedParameter(snapshot, 'STAT_FLTTIME'))}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>Boot count</span><strong>{readRoundedParameter(snapshot, 'STAT_BOOTCNT') ?? '—'}</strong></div>
+            </div>
+          </div>
+        </article>
+      )
+    },
+    {
+      id: 'notices',
+      label: 'Recent Notices',
+      node: (
+        <article className="setup-gui-box" data-testid="setup-notices-panel">
+          <div className="setup-gui-box__titlebar">
+            <strong>Recent Notices</strong>
+            {recentNoticesBadge(recentNotices)}
+          </div>
+          <div className="setup-gui-box__body">
+            <RecentNoticesFeed
+              {...sharedNoticeFeedProps}
+              variant="inline"
+              testIdPrefix="setup-notices"
+              entryTestIdPrefix="setup-notice"
+              expanded={noticesExpanded}
+              onToggleExpanded={toggleNoticesExpanded}
+              poppedOut={noticesPopoutHandle !== undefined}
+              popoutBlocked={noticesPopout.blockedKey === NOTICES_POPOUT_KEY}
+              onTogglePopout={() => {
+                // Synchronous with the click: window.open only
+                // survives a popup blocker inside the browser's
+                // user-activation window, so nothing may await
+                // before this call.
+                if (noticesPopoutHandle) {
+                  noticesPopout.close(NOTICES_POPOUT_KEY)
+                } else {
+                  noticesPopout.open(NOTICES_POPOUT_KEY, 'Recent Notices')
+                }
+              }}
+            />
+          </div>
+        </article>
+      )
+    },
+    {
+      id: 'system-info',
+      label: 'System Info',
+      node: (
+        <article className="setup-gui-box">
+          <div className="setup-gui-box__titlebar">
+            <strong>System Info</strong>
+            <StatusBadge tone={toneForConnection(snapshot.connection.kind)}>{snapshot.connection.kind}</StatusBadge>
+          </div>
+          <div className="setup-gui-box__body">
+            <div className="setup-gui-box__kv-list">
+              <div className="setup-gui-box__kv-row"><span>Transport</span><strong>{setupTransportLabel}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>Vehicle</span><strong>{snapshot.vehicle?.vehicle ?? '—'}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>Firmware</span><strong>{snapshot.vehicle?.firmware ?? '—'}</strong></div>
+              {/* The FW version doubles as the way into the
+               *  Flash tab. It replaces the "Enter DFU mode"
+               *  button that used to sit above the craft view:
+               *  flashing is discoverable from the value that
+               *  makes an operator want to flash in the first
+               *  place, without a link-drops-the-vehicle action
+               *  living on a read-only status page.
+               *
+               *  A <button>, not an <a>: routing here is state
+               *  (`setActiveViewId`), and an href would reload
+               *  the SPA and drop the MAVLink link — the exact
+               *  thing this change is trying to stop happening
+               *  by accident. The row renders at all only when
+               *  a version is known, so there is no dead link
+               *  before the board has answered. */}
+              {snapshot.hardware.board?.firmwareVersion ? (
+                <div className="setup-gui-box__kv-row">
+                  <span>FW version</span>
+                  <strong>
+                    <button
+                      type="button"
+                      className="setup-gui-box__value-link"
+                      data-testid="setup-firmware-flash-link"
+                      onClick={() => setActiveViewId('flash')}
+                      aria-label={`Firmware ${snapshot.hardware.board.firmwareVersion} — open Flash tab`}
+                      title="Open the Flash tab (firmware, DFU / bootloader, flash wizard)"
+                    >
+                      {snapshot.hardware.board.firmwareVersion}
+                    </button>
+                  </strong>
+                </div>
+              ) : null}
+              {snapshot.hardware.board?.firmwareGitHash ? (
+                <div className="setup-gui-box__kv-row">
+                  <span>FW git hash</span>
+                  <strong><code>{snapshot.hardware.board.firmwareGitHash}</code></strong>
+                </div>
+              ) : null}
+              <div className="setup-gui-box__kv-row">
+                <span>Configurator build</span>
+                <strong><code>{GIT_BRANCH}@{GIT_HASH}</code></strong>
+              </div>
+              <div className="setup-gui-box__kv-row">
+                <span>Parameters</span>
+                <strong>{snapshot.parameterStats.status === 'complete' ? `${snapshot.parameterStats.downloaded}` : formatParameterSync(snapshot)}</strong>
+              </div>
+              <div className="setup-gui-box__kv-row"><span>Battery</span><strong>{formatBatteryTelemetry(snapshot)}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>RC link</span><strong>{formatRcLink(snapshot)}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>Pre-arm</span><strong>{snapshot.preArmStatus.healthy ? 'Clear' : `${snapshot.preArmStatus.issues.length} issues`}</strong></div>
+            </div>
+          </div>
+        </article>
+      )
+    },
+    {
+      id: 'instruments',
+      label: 'Instruments',
+      node: (
+        <article className="setup-gui-box">
+          <div className="setup-gui-box__titlebar">
+            <strong>Instruments</strong>
+            <StatusBadge tone={snapshot.liveVerification.attitudeTelemetry.verified ? 'success' : 'warning'}>
+              {snapshot.liveVerification.attitudeTelemetry.verified ? 'live' : 'waiting'}
+            </StatusBadge>
+          </div>
+          <div className="setup-gui-box__body">
+            <div className="setup-gui-box__kv-list">
+              <div className="setup-gui-box__kv-row"><span>Flight mode</span><strong>{snapshot.vehicle?.flightMode ?? 'Waiting'}</strong></div>
+              <div className="setup-gui-box__kv-row" data-testid="setup-vehicle-system-status"><span>System state</span><strong>{formatVehicleSystemStatus(snapshot.vehicle?.systemStatus)}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>Roll</span><strong>{formatDegreeTelemetry(snapshot.liveVerification.attitudeTelemetry.rollDeg)}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>Pitch</span><strong>{formatDegreeTelemetry(snapshot.liveVerification.attitudeTelemetry.pitchDeg)}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>Heading</span><strong>{formatHeadingTelemetry(snapshot.liveVerification.attitudeTelemetry.yawDeg)}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>Link state</span><strong>{snapshot.liveVerification.attitudeTelemetry.verified ? 'Synced' : 'Waiting'}</strong></div>
+            </div>
+          </div>
+        </article>
+      )
+    },
+    {
+      id: 'guided-setup',
+      label: 'Guided setup',
+      node: (
+        <article className={`setup-gui-box setup-gui-box--guided${guidedSetupComplete ? ' is-complete' : ''}`}>
+          <div className="setup-gui-box__titlebar">
+            <strong>{guidedSetupComplete ? 'Guided setup complete' : 'Guided setup'}</strong>
+            <StatusBadge tone={guidedSetupComplete ? 'success' : 'warning'}>
+              {completedSetupSectionCount}/{setupFlowSections.length}
+            </StatusBadge>
+          </div>
+          <div className="setup-gui-box__body">
+            <p className="setup-gui-box__note">
+              {guidedSetupComplete
+                ? guidedSetupHasExceptions
+                  ? 'All steps were resolved, but there are deferred or skipped decisions to review before flight.'
+                  : 'All setup steps were verified. Use the task rail for refinement.'
+                : selectedSetupSection
+                  ? `Next recommended step: ${selectedSetupSection.title}.`
+                  : 'Start guided setup to move through the ArduPilot-specific checklist one step at a time.'}
+            </p>
+            {guidedSetupComplete && guidedSetupOutcomeSummary ? (
+              <p className="setup-gui-box__note">{guidedSetupOutcomeSummary}</p>
+            ) : null}
+            <div className="setup-gui-box__button-row">
+              <button
+                className="setup-launch-button"
+                style={buttonStyle('hero')}
+                onClick={() => openSetupWizard()}
+                disabled={!recommendedSetupSection}
+                data-testid="setup-start-guided-button"
+              >
+                {guidedSetupComplete ? 'Review Setup' : completedSetupSectionCount > 0 ? 'Resume Setup' : 'Start Guided Setup'}
+              </button>
+            </div>
+          </div>
+        </article>
+      )
+    }
+  ]
+
+  // The DEFAULT arrangement, and the ONLY description of it: this list is what
+  // the page renders when nothing has been dragged, so it has to be the shipped
+  // layout exactly.
+  //
+  //   * the sensor row under the craft model — GPS plus whichever advanced
+  //     sensor cards exist — because the three answer one question and used to
+  //     be split across two columns and two scroll positions;
+  //   * Pre-arm above Statistics in the first status column, Recent Notices
+  //     beside them in the second;
+  //   * System Info at the TOP of the sidebar, above Instruments and Guided
+  //     setup: it is reference data the operator goes looking for, not
+  //     something they scan, so it does not hold prime main-column space.
+  //
+  // A stored layout is reconciled against this list every render, which is how
+  // a sensor card appearing or disappearing mid-session stays graceful.
+  const statusDashboardSpecs: StatusDashboardCardSpec[] = [
+    { id: 'gps', label: 'GPS', zone: 'sensors' },
+    ...advancedSensorCards.map((card) => ({ id: card.id, label: card.title, zone: 'sensors' as const })),
+    { id: 'prearm', label: 'Pre-arm', zone: 'midcol' },
+    { id: 'statistics', label: 'Statistics', zone: 'midcol' },
+    { id: 'notices', label: 'Recent Notices', zone: 'noticecol' },
+    { id: 'system-info', label: 'System Info', zone: 'sidebar' },
+    { id: 'instruments', label: 'Instruments', zone: 'sidebar' },
+    { id: 'guided-setup', label: 'Guided setup', zone: 'sidebar' }
+  ]
+  const statusDashboard = useStatusDashboardLayout(statusDashboardSpecs)
+
   const headerWarningActive =
     !snapshot.preArmStatus.healthy || snapshot.statusTexts.some((entry) => entry.severity === 'warning' || entry.severity === 'error')
   const headerBatteryLabel = snapshot.liveVerification.batteryTelemetry.verified
@@ -6995,6 +7324,32 @@ export function App() {
                      *  Nothing was lost; a disconnect-the-vehicle button simply
                      *  stopped living one stray click from read-only status.
                      *  The route in is the FW version value in System Info. */}
+
+                    {/* The arrangement below is user-rearrangeable: drag a card
+                     *  by its handle, drag its bottom edge to cap its height.
+                     *  The controls only appear on viewports wide enough for
+                     *  the multi-column layout to mean anything — on a phone
+                     *  the page is one column and the default order stands. */}
+                    <StatusDashboardProvider controller={statusDashboard} cards={statusDashboardCards}>
+                    {statusDashboard.customisable ? (
+                      <div className="status-dash-toolbar" data-testid="status-dash-toolbar">
+                        <span className="status-dash-toolbar__hint">
+                          Drag a card by its ⠿ handle to rearrange, or focus a handle and use the arrow keys. Drag a
+                          card's bottom edge to set its height.
+                        </span>
+                        {statusDashboard.customised ? (
+                          <button
+                            type="button"
+                            style={buttonStyle()}
+                            data-testid="status-dash-reset-layout"
+                            onClick={statusDashboard.resetLayout}
+                            title="Put every Status card back where it shipped"
+                          >
+                            Reset Layout to Default
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="setup-bench__workspace">
                       <div className="setup-bench__viewer">
                         <div className="setup-bench__viewer-header">
@@ -7018,318 +7373,33 @@ export function App() {
                           frameTypeLabel={airframe.frameTypeLabel}
                         />
 
-                        {/* The sensor group: GPS, then whichever advanced sensor
-                         *  cards exist (rangefinder / optical flow), all in one
-                         *  row directly under the 3D craft model.
+                        {/* The sensor row, the two status columns and the
+                         *  sidebar are all DROP ZONES now. Each keeps the class
+                         *  name — and therefore the grid/flex behaviour — that
+                         *  it had before the dashboard existed, and the default
+                         *  arrangement in `statusDashboardSpecs` puts every card
+                         *  back exactly where it shipped, so with nothing
+                         *  dragged this renders identically to the static tree
+                         *  it replaced.
                          *
-                         *  "Can we make it so that GPS, rangefinder and optical
-                         *  flow are all next to each other" — they answer the
-                         *  same question ("is the thing I bolted on actually
-                         *  reporting?") and used to be answered in two different
-                         *  places: GPS at the bottom of the right sidebar,
-                         *  rangefinder and flow stacked under System Info in the
-                         *  main column. Reading them meant scanning two columns
-                         *  and scrolling twice. One row, one glance.
-                         *
-                         *  Row and not column: stacking three sensor cards is
-                         *  what made this page long in the first place. GPS is
-                         *  unconditional, so this row is never empty and never
-                         *  collapses — with no lidar and no flow sensor (the
-                         *  common board) it is a single full-width GPS card,
-                         *  which reads as a deliberate panel rather than a
-                         *  widow, and gives the map the width a map wants. */}
-                        <div className="setup-status-sensors" data-testid="setup-sensor-group">
-                        <article className="setup-gui-box">
-                          <div className="setup-gui-box__titlebar">
-                            <strong>GPS</strong>
-                            <StatusBadge tone={snapshot.preArmStatus.healthy ? 'success' : 'warning'}>
-                              {snapshot.preArmStatus.healthy ? 'ready' : 'attention'}
-                            </StatusBadge>
-                          </div>
-                          <div className="setup-gui-box__body">
-                            <div className="setup-gui-box__kv-list">
-                              <div className="setup-gui-box__kv-row"><span>Driver</span><strong>{setupGpsConfigured ? 'Configured' : 'Not configured'}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Fix</span><strong>{setupHasGpsCard && snapshot.liveVerification.globalPosition.verified ? 'Verified' : 'Waiting'}</strong></div>
-                              <div className="setup-gui-box__kv-row setup-gui-box__kv-row--control">
-                                <span>Format</span>
-                                <select
-                                  className="setup-gui-box__inline-select"
-                                  value={gpsCoordFormat}
-                                  onChange={(event) => setGpsCoordFormat(event.target.value as GpsCoordFormat)}
-                                  data-testid="setup-gps-format-select"
-                                  aria-label="GPS coordinate display format"
-                                  title="Display format only — does not affect OSD or vehicle."
-                                >
-                                  {GPS_COORD_FORMAT_VALUES.map((value) => (
-                                    <option key={value} value={value}>{GPS_COORD_FORMAT_LABELS[value]}</option>
-                                  ))}
-                                </select>
-                              </div>
-                              {gpsCoordFormat === 'mgrs' ? (
-                                <div className="setup-gui-box__kv-row"><span>Grid (MGRS)</span><strong data-testid="setup-gps-mgrs">{formatMgrs(snapshot.liveVerification.globalPosition.latitudeDeg, snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
-                              ) : gpsCoordFormat === 'utm' ? (
-                                <div className="setup-gui-box__kv-row"><span>Grid (UTM)</span><strong data-testid="setup-gps-utm">{formatUtm(snapshot.liveVerification.globalPosition.latitudeDeg, snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
-                              ) : gpsCoordFormat === 'dms' ? (
-                                <>
-                                  <div className="setup-gui-box__kv-row"><span>Latitude</span><strong>{formatLatitudeDms(snapshot.liveVerification.globalPosition.latitudeDeg)}</strong></div>
-                                  <div className="setup-gui-box__kv-row"><span>Longitude</span><strong>{formatLongitudeDms(snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="setup-gui-box__kv-row"><span>Latitude</span><strong>{formatLatitudeDecimal(snapshot.liveVerification.globalPosition.latitudeDeg)}</strong></div>
-                                  <div className="setup-gui-box__kv-row"><span>Longitude</span><strong>{formatLongitudeDecimal(snapshot.liveVerification.globalPosition.longitudeDeg)}</strong></div>
-                                </>
-                              )}
-                            </div>
-                            <p className="setup-gui-box__note">
-                              {setupHasGpsCard
-                                ? snapshot.liveVerification.globalPosition.verified
-                                  ? 'Live GPS is arriving. Treat the map as a side check while the craft preview stays primary.'
-                                  : 'A GPS driver is configured, but live position is not verified yet. Finish the port and GPS workflow, then return here.'
-                                : 'No verified GPS source yet. That is acceptable for bench work, but guided modes should wait until GPS is configured.'}
-                            </p>
-                            {setupHasGpsCard ? (
-                              <div className="setup-gui-box__map">
-                                <LiveGpsMapCard
-                                  snapshot={snapshot}
-                                  title="GPS map"
-                                  subtitle="Side check"
-                                  compact
-                                  testId="setup-gps-map-widget"
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-                        </article>
+                         *  The comments that used to justify each card's
+                         *  position now live on `statusDashboardSpecs`, which is
+                         *  the single place the default arrangement is stated. */}
+                        <StatusDashboardZone
+                          zone="sensors"
+                          className="setup-status-sensors"
+                          testId="setup-sensor-group"
+                        />
 
-                        {/* The builder still decides whether a card exists at
-                         *  all: an unconfigured rangefinder or flow sensor
-                         *  produces nothing and the row falls back to GPS
-                         *  alone. A CONFIGURED sensor always gets a card,
-                         *  silent or not — that silence is the diagnosis, and
-                         *  it now sits beside GPS instead of a screen and a
-                         *  half further down the page. */}
-                        {advancedSensorCards.map((card) => (
-                          <AdvancedSensorCard key={card.id} card={card} />
-                        ))}
-                        </div>
-
-                        {/* Pre-arm / Statistics / Recent Notices live UNDER the
-                         *  sensor group in the main column (not in the sidebar)
-                         *  so the operator can read them at-glance alongside the
-                         *  model without having their eye dragged to the right
-                         *  column. System Info moved OUT of here to the top of
-                         *  the sidebar: it is reference data (transport, build
-                         *  strings, counters) that the operator goes looking for,
-                         *  not something they scan, so it does not deserve prime
-                         *  main-column space above the pre-arm state. */}
                         <div className="setup-bench__status-trio">
-                        {/* Middle column: pre-arm on top (it gates flight, so it
-                            matters most), lifetime stats compact below it. */}
-                        <div className="setup-status-midcol">
-                          <article className="setup-gui-box" data-testid="setup-prearm">
-                            <div className="setup-gui-box__titlebar">
-                              <strong>Pre-arm</strong>
-                              <StatusBadge tone={snapshot.preArmStatus.healthy ? 'success' : 'warning'}>
-                                {snapshot.preArmStatus.healthy ? 'Clear' : `${snapshot.preArmStatus.issues.length} issues`}
-                              </StatusBadge>
-                            </div>
-                            <div className="setup-gui-box__body">
-                              {snapshot.preArmStatus.healthy ? (
-                                <p className="telemetry-note">No active pre-arm issues.</p>
-                              ) : (
-                                <ul className="setup-statistics__prearm-list">
-                                  {snapshot.preArmStatus.issues.map((issue, index) => (
-                                    <li key={`prearm:${index}:${issue.text}`}>{issue.text}</li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-                          </article>
-
-                          <article className="setup-gui-box setup-gui-box--compact" data-testid="setup-statistics">
-                            <div className="setup-gui-box__titlebar">
-                              <strong>Statistics</strong>
-                              <StatusBadge tone="neutral">lifetime</StatusBadge>
-                            </div>
-                            <div className="setup-gui-box__body">
-                              <div className="setup-gui-box__kv-list">
-                                <div className="setup-gui-box__kv-row"><span>Total runtime</span><strong>{formatStatHours(readRoundedParameter(snapshot, 'STAT_RUNTIME'))}</strong></div>
-                                <div className="setup-gui-box__kv-row"><span>Flight time</span><strong>{formatStatHours(readRoundedParameter(snapshot, 'STAT_FLTTIME'))}</strong></div>
-                                <div className="setup-gui-box__kv-row"><span>Boot count</span><strong>{readRoundedParameter(snapshot, 'STAT_BOOTCNT') ?? '—'}</strong></div>
-                              </div>
-                            </div>
-                          </article>
-                        </div>
-
-                        <article className="setup-gui-box" data-testid="setup-notices-panel">
-                          <div className="setup-gui-box__titlebar">
-                            <strong>Recent Notices</strong>
-                            {recentNoticesBadge(recentNotices)}
-                          </div>
-                          <div className="setup-gui-box__body">
-                            <RecentNoticesFeed
-                              {...sharedNoticeFeedProps}
-                              variant="inline"
-                              testIdPrefix="setup-notices"
-                              entryTestIdPrefix="setup-notice"
-                              expanded={noticesExpanded}
-                              onToggleExpanded={toggleNoticesExpanded}
-                              poppedOut={noticesPopoutHandle !== undefined}
-                              popoutBlocked={noticesPopout.blockedKey === NOTICES_POPOUT_KEY}
-                              onTogglePopout={() => {
-                                // Synchronous with the click: window.open only
-                                // survives a popup blocker inside the browser's
-                                // user-activation window, so nothing may await
-                                // before this call.
-                                if (noticesPopoutHandle) {
-                                  noticesPopout.close(NOTICES_POPOUT_KEY)
-                                } else {
-                                  noticesPopout.open(NOTICES_POPOUT_KEY, 'Recent Notices')
-                                }
-                              }}
-                            />
-                          </div>
-                        </article>
+                          <StatusDashboardZone zone="midcol" className="setup-status-midcol" />
+                          <StatusDashboardZone zone="noticecol" className="setup-status-noticecol" />
                         </div>
                       </div>
 
-                      <div className="setup-bench__sidebar">
-                        {/* System Info leads the sidebar, above Instruments. It
-                         *  is the "what am I talking to" card — transport, board,
-                         *  firmware, build hash, param count — which the operator
-                         *  reads once on connect and then only returns to when
-                         *  something is wrong. Keeping it in the main column cost
-                         *  a full column of prime space above the pre-arm state
-                         *  and pushed the sensor cards down with it; the sidebar
-                         *  is where reference material belongs. It stays ABOVE
-                         *  Instruments because "am I connected to the right
-                         *  board?" is the question that comes first, and because
-                         *  Instruments and Guided Setup are the action pair that
-                         *  should stay adjacent. */}
-                        <article className="setup-gui-box">
-                          <div className="setup-gui-box__titlebar">
-                            <strong>System Info</strong>
-                            <StatusBadge tone={toneForConnection(snapshot.connection.kind)}>{snapshot.connection.kind}</StatusBadge>
-                          </div>
-                          <div className="setup-gui-box__body">
-                            <div className="setup-gui-box__kv-list">
-                              <div className="setup-gui-box__kv-row"><span>Transport</span><strong>{setupTransportLabel}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Vehicle</span><strong>{snapshot.vehicle?.vehicle ?? '—'}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Firmware</span><strong>{snapshot.vehicle?.firmware ?? '—'}</strong></div>
-                              {/* The FW version doubles as the way into the
-                               *  Flash tab. It replaces the "Enter DFU mode"
-                               *  button that used to sit above the craft view:
-                               *  flashing is discoverable from the value that
-                               *  makes an operator want to flash in the first
-                               *  place, without a link-drops-the-vehicle action
-                               *  living on a read-only status page.
-                               *
-                               *  A <button>, not an <a>: routing here is state
-                               *  (`setActiveViewId`), and an href would reload
-                               *  the SPA and drop the MAVLink link — the exact
-                               *  thing this change is trying to stop happening
-                               *  by accident. The row renders at all only when
-                               *  a version is known, so there is no dead link
-                               *  before the board has answered. */}
-                              {snapshot.hardware.board?.firmwareVersion ? (
-                                <div className="setup-gui-box__kv-row">
-                                  <span>FW version</span>
-                                  <strong>
-                                    <button
-                                      type="button"
-                                      className="setup-gui-box__value-link"
-                                      data-testid="setup-firmware-flash-link"
-                                      onClick={() => setActiveViewId('flash')}
-                                      aria-label={`Firmware ${snapshot.hardware.board.firmwareVersion} — open Flash tab`}
-                                      title="Open the Flash tab (firmware, DFU / bootloader, flash wizard)"
-                                    >
-                                      {snapshot.hardware.board.firmwareVersion}
-                                    </button>
-                                  </strong>
-                                </div>
-                              ) : null}
-                              {snapshot.hardware.board?.firmwareGitHash ? (
-                                <div className="setup-gui-box__kv-row">
-                                  <span>FW git hash</span>
-                                  <strong><code>{snapshot.hardware.board.firmwareGitHash}</code></strong>
-                                </div>
-                              ) : null}
-                              <div className="setup-gui-box__kv-row">
-                                <span>Configurator build</span>
-                                <strong><code>{GIT_BRANCH}@{GIT_HASH}</code></strong>
-                              </div>
-                              <div className="setup-gui-box__kv-row">
-                                <span>Parameters</span>
-                                <strong>{snapshot.parameterStats.status === 'complete' ? `${snapshot.parameterStats.downloaded}` : formatParameterSync(snapshot)}</strong>
-                              </div>
-                              <div className="setup-gui-box__kv-row"><span>Battery</span><strong>{formatBatteryTelemetry(snapshot)}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>RC link</span><strong>{formatRcLink(snapshot)}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Pre-arm</span><strong>{snapshot.preArmStatus.healthy ? 'Clear' : `${snapshot.preArmStatus.issues.length} issues`}</strong></div>
-                            </div>
-                          </div>
-                        </article>
-
-                        <article className="setup-gui-box">
-                          <div className="setup-gui-box__titlebar">
-                            <strong>Instruments</strong>
-                            <StatusBadge tone={snapshot.liveVerification.attitudeTelemetry.verified ? 'success' : 'warning'}>
-                              {snapshot.liveVerification.attitudeTelemetry.verified ? 'live' : 'waiting'}
-                            </StatusBadge>
-                          </div>
-                          <div className="setup-gui-box__body">
-                            <div className="setup-gui-box__kv-list">
-                              <div className="setup-gui-box__kv-row"><span>Flight mode</span><strong>{snapshot.vehicle?.flightMode ?? 'Waiting'}</strong></div>
-                              <div className="setup-gui-box__kv-row" data-testid="setup-vehicle-system-status"><span>System state</span><strong>{formatVehicleSystemStatus(snapshot.vehicle?.systemStatus)}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Roll</span><strong>{formatDegreeTelemetry(snapshot.liveVerification.attitudeTelemetry.rollDeg)}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Pitch</span><strong>{formatDegreeTelemetry(snapshot.liveVerification.attitudeTelemetry.pitchDeg)}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Heading</span><strong>{formatHeadingTelemetry(snapshot.liveVerification.attitudeTelemetry.yawDeg)}</strong></div>
-                              <div className="setup-gui-box__kv-row"><span>Link state</span><strong>{snapshot.liveVerification.attitudeTelemetry.verified ? 'Synced' : 'Waiting'}</strong></div>
-                            </div>
-                          </div>
-                        </article>
-
-                        {/* Guided setup sits directly under Instruments so the
-                         *  primary action ("Start / Resume Setup") stays high in
-                         *  the sidebar — the operator's eye flows from "is the
-                         *  model responding?" → "what's the next step?" without
-                         *  scrolling past GPS or Statistics first. */}
-                        <article className={`setup-gui-box setup-gui-box--guided${guidedSetupComplete ? ' is-complete' : ''}`}>
-                          <div className="setup-gui-box__titlebar">
-                            <strong>{guidedSetupComplete ? 'Guided setup complete' : 'Guided setup'}</strong>
-                            <StatusBadge tone={guidedSetupComplete ? 'success' : 'warning'}>
-                              {completedSetupSectionCount}/{setupFlowSections.length}
-                            </StatusBadge>
-                          </div>
-                          <div className="setup-gui-box__body">
-                            <p className="setup-gui-box__note">
-                              {guidedSetupComplete
-                                ? guidedSetupHasExceptions
-                                  ? 'All steps were resolved, but there are deferred or skipped decisions to review before flight.'
-                                  : 'All setup steps were verified. Use the task rail for refinement.'
-                                : selectedSetupSection
-                                  ? `Next recommended step: ${selectedSetupSection.title}.`
-                                  : 'Start guided setup to move through the ArduPilot-specific checklist one step at a time.'}
-                            </p>
-                            {guidedSetupComplete && guidedSetupOutcomeSummary ? (
-                              <p className="setup-gui-box__note">{guidedSetupOutcomeSummary}</p>
-                            ) : null}
-                            <div className="setup-gui-box__button-row">
-                              <button
-                                className="setup-launch-button"
-                                style={buttonStyle('hero')}
-                                onClick={() => openSetupWizard()}
-                                disabled={!recommendedSetupSection}
-                                data-testid="setup-start-guided-button"
-                              >
-                                {guidedSetupComplete ? 'Review Setup' : completedSetupSectionCount > 0 ? 'Resume Setup' : 'Start Guided Setup'}
-                              </button>
-                            </div>
-                          </div>
-                        </article>
-
-                      </div>
+                      <StatusDashboardZone zone="sidebar" className="setup-bench__sidebar" />
                     </div>
+                    </StatusDashboardProvider>
   	              </div>
 
                   {setupFlowFollowUp ? (

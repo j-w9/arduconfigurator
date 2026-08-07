@@ -3102,8 +3102,17 @@ textarea:focus {
  * CARD's width rather than the viewport's. The same card is 856px wide when
  * GPS is alone in the row, 421px when there are two, 276px when there are
  * three and 330px on a phone — four widths that no viewport media query can
- * tell apart, because they depend on how many sensors the vehicle has. */
-.setup-status-sensors > .setup-gui-box {
+ * tell apart, because they depend on how many sensors the vehicle has.
+ *
+ * `.status-dash-card` is in the selector because the dashboard wraps every card
+ * in one, which makes the WRAPPER the grid item and pushes `.setup-gui-box` a
+ * level down where `>` no longer reaches it. Naming only the card would have
+ * silently dropped the container off the sensor row and taken the GPS map's
+ * whole compaction ruleset with it — the `@container` queries below would find
+ * no container and never match. The wrapper is the same width as the card it
+ * holds, so measuring it measures the same thing. */
+.setup-status-sensors > .setup-gui-box,
+.setup-status-sensors > .status-dash-card {
   container-type: inline-size;
 }
 
@@ -3202,6 +3211,166 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+/* Status third column. Recent Notices used to be a bare child of the trio
+ * grid; it now has the same stacking wrapper as the other two columns purely
+ * so a dragged card has somewhere to land next to it. With one card in it the
+ * rendering is identical to the bare article it replaced. */
+.setup-status-noticecol {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Status & Info dashboard: drag / resize chrome ─────────────────────────
+ *
+ * Purely additive around the existing cards. With nothing dragged and no
+ * height cap set, every rule below is inert and the page renders exactly as
+ * it did before the dashboard existed. */
+
+.status-dash-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.status-dash-toolbar__hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.status-dash-zone {
+  position: relative;
+}
+
+/* Only while a drag is in flight: give an emptied column enough height to
+ * still be a target, and outline the one under the pointer. */
+.status-dash-zone--armed {
+  min-height: 72px;
+  border-radius: 12px;
+}
+
+.status-dash-zone--armed.is-drop-target {
+  outline: 1px dashed color-mix(in srgb, var(--primary-500) 55%, transparent);
+  outline-offset: 6px;
+}
+
+.status-dash-card {
+  position: relative;
+  min-width: 0;
+}
+
+/* The dragged card stays in place, ghosted, and stops swallowing hit-tests so
+ * `elementFromPoint` can see the zone underneath it. */
+.status-dash-card.is-dragging {
+  opacity: 0.32;
+  pointer-events: none;
+}
+
+/* A user-set height cap. The negative margin + matching padding keeps the
+ * card's floating titlebar pill (top: -10px) inside the scroll container
+ * instead of being clipped off by `overflow`. */
+.status-dash-card.is-capped > .status-dash-card__content {
+  max-height: var(--status-dash-height);
+  overflow-y: auto;
+  padding-top: 14px;
+  margin-top: -14px;
+}
+
+.status-dash-card__handle {
+  position: absolute;
+  top: -11px;
+  right: 10px;
+  z-index: 4;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--surface-400);
+  border-radius: 999px;
+  background: var(--surface-300);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: grab;
+  opacity: 0.5;
+  transition: opacity 120ms ease, background 120ms ease;
+  touch-action: none;
+}
+
+.status-dash-card:hover > .status-dash-card__handle,
+.status-dash-card__handle:focus-visible {
+  opacity: 1;
+  background: var(--primary-500);
+  color: #000;
+}
+
+.status-dash-card__handle:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
+}
+
+.status-dash-card__resize {
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  transform: translateX(-50%);
+  z-index: 4;
+  width: 48px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.status-dash-card__resize > span {
+  display: block;
+  width: 34px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-400);
+  opacity: 0.55;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.status-dash-card:hover > .status-dash-card__resize > span,
+.status-dash-card__resize:focus-visible > span {
+  opacity: 1;
+  background: var(--primary-500);
+}
+
+.status-dash-card__resize:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Where the card will land. */
+.status-dash-drop {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--primary-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-500) 22%, transparent);
+}
+
+body.is-status-dash-dragging {
+  user-select: none;
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dash-card__handle,
+  .status-dash-card__resize > span {
+    transition: none;
+  }
 }
 /* Lifetime stats are secondary to pre-arm — render them smaller/denser. */
 .setup-gui-box--compact .setup-gui-box__body {

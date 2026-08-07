@@ -5057,3 +5057,145 @@ test.describe('Status & Info advanced sensor cards', () => {
     expect(overflow).toBeLessThanOrEqual(2)
   })
 })
+
+test.describe('Status & Info dashboard layout', () => {
+  // The ask: "can we just make all the various boxes click and drag and
+  // resizable so users can click and drag them around how they want it?"
+  //
+  // The mechanism is chrome AROUND the existing cards — no card content, gate
+  // or telemetry changed — so these tests assert ARRANGEMENT: where a card
+  // sits, that a move sticks, that a reload keeps it, that Reset puts it back,
+  // and that a stale saved arrangement can never render a broken page.
+
+  const STORAGE_KEY = 'arduconfig.status-dashboard.v1'
+
+  async function connectDemo(page: Page): Promise<void> {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+  }
+
+  async function zoneIds(page: Page, zone: string): Promise<string[]> {
+    return page.$$eval(`[data-status-dash-zone="${zone}"] [data-status-dash-card]`, (nodes) =>
+      nodes.map((node) => node.getAttribute('data-status-dash-card') ?? '')
+    )
+  }
+
+  test('ships the familiar arrangement, with no Reset offered until something moves', async ({ page }) => {
+    // "Familiar" is the whole acceptance test: with nothing dragged the page has
+    // to be the page that shipped — the sensor row under the craft model, the
+    // two status columns below it, System Info leading the sidebar.
+    await connectDemo(page)
+    // Poll: the two advanced sensor cards appear only once RNGFND1_TYPE /
+    // FLOW_TYPE have arrived, which is later than the unconditional cards.
+    await expect.poll(() => zoneIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
+    expect(await zoneIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
+    expect(await zoneIds(page, 'noticecol')).toEqual(['notices'])
+    expect(await zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    // Reset only appears once there is something to reset — an always-on
+    // "Reset Layout" on a page nobody has customised is just noise.
+    await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
+  })
+
+  test('a card can be moved with the keyboard alone, and Reset puts it back', async ({ page }) => {
+    // Drag-only reordering is inaccessible, so the handle is a real button:
+    // left/right walk the card between columns, up/down reorder within one.
+    await connectDemo(page)
+    await page.getByTestId('status-dash-handle-guided-setup').focus()
+    await page.keyboard.press('ArrowLeft')
+    await expect.poll(() => zoneIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
+    expect(await zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments'])
+
+    // The move is saved, so it survives a reload.
+    await page.reload()
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('status-dash-card-guided-setup')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+    expect(await zoneIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
+
+    await page.getByTestId('status-dash-reset-layout').click()
+    await expect.poll(() => zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
+    // Reset CLEARS the saved arrangement rather than saving a copy of today's
+    // default, so a later default change still reaches the operator.
+    expect(await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY)).toBeNull()
+  })
+
+  test('a card height cap is applied and saved', async ({ page }) => {
+    await connectDemo(page)
+    const card = page.getByTestId('status-dash-card-system-info')
+    const before = (await card.boundingBox())?.height ?? 0
+    expect(before).toBeGreaterThan(150)
+
+    // Each press is one 24px row, so the shrink is deterministic.
+    await page.getByTestId('status-dash-resize-system-info').focus()
+    await page.keyboard.press('ArrowUp')
+    await page.keyboard.press('ArrowUp')
+    await page.keyboard.press('ArrowUp')
+    await expect(card).toHaveClass(/is-capped/)
+    expect((await card.boundingBox())?.height ?? 0).toBeLessThan(before)
+
+    expect(await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY)).toContain('heightRows')
+  })
+
+  test('a layout saved with the sensor cards present degrades when they are gone', async ({ page }) => {
+    // The most likely source of a broken-looking page: the rangefinder and
+    // optical-flow cards only exist when the sensor is configured, so a saved
+    // arrangement routinely names cards that are not there.
+    await connectDemo(page)
+    await expect.poll(() => zoneIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
+    await page.getByTestId('status-dash-handle-rangefinder').focus()
+    await page.keyboard.press('ArrowRight')
+    await expect.poll(() => zoneIds(page, 'midcol')).toContain('rangefinder')
+
+    await page.goto('/?demoParamOverrides=RNGFND1_TYPE:0,FLOW_TYPE:0')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    // The absent cards are simply not placed; every card that IS present is.
+    expect(await zoneIds(page, 'sensors')).toEqual(['gps'])
+    expect(await zoneIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
+    expect(await zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+  })
+
+  test('an unreadable saved layout falls back to the default silently', async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(
+      ([key, value]) => window.localStorage.setItem(key, value),
+      [STORAGE_KEY, '{"version":1,"cards":[{"id":"gho'] as const
+    )
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+    expect(await zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+  })
+
+  test('phone width drops the drag affordances and keeps the default order', async ({ page }) => {
+    // Dragging a card on a phone fights the scroll gesture, and a four-zone
+    // arrangement means nothing in a single column. Below the breakpoint the
+    // controls are gone and a saved arrangement is ignored.
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/')
+    await page.evaluate(
+      ([key, value]) => window.localStorage.setItem(key, value),
+      [STORAGE_KEY, JSON.stringify({ version: 1, cards: [{ id: 'gps', zone: 'sidebar', heightRows: 6 }] })] as const
+    )
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    await expect(page.getByTestId('status-dash-toolbar')).toHaveCount(0)
+    await expect(page.locator('.status-dash-card__handle')).toHaveCount(0)
+    expect(await zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )
+    expect(overflow).toBeLessThanOrEqual(2)
+  })
+})
