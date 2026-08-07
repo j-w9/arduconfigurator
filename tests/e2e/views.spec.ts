@@ -1144,6 +1144,9 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     // action here, including the battery-current load spin. Hiding them on DShot
     // (i.e. on most modern quads) left that card telling the operator to
     // "acknowledge the checks below" with no checkboxes anywhere on the page.
+    // They now render inline next to the button they unlock (in the Battery
+    // current card) instead of in a standalone "Motor-spin safety" card, so the
+    // operator reads gate-then-button in one place.
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
@@ -1155,9 +1158,13 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     // The arm button is not rendered for DShot...
     await expect(page.getByTestId('esc-cal-arm')).toHaveCount(0)
     // ...but the safety acks are, so battery-current calibration stays usable.
-    await expect(page.getByTestId('calibration-card-motor-safety')).toBeVisible()
+    await expect(page.getByTestId('calibration-card-battery-current')).toBeVisible()
+    await expect(page.getByTestId('cal-motor-acks')).toBeVisible()
     await expect(page.getByTestId('cal-props-ack')).toBeVisible()
     await expect(page.getByTestId('cal-area-ack')).toBeVisible()
+    // The gate sits with the button it unlocks, not in a separate card.
+    await expect(page.getByTestId('calibration-card-motor-safety')).toHaveCount(0)
+    await expect(page.getByTestId('battery-current-spin-motors')).toBeVisible()
   })
 
   test('Reset to Defaults is armed before it can erase, on Parameters and Snapshots', async ({ page }) => {

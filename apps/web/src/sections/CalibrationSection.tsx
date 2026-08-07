@@ -52,6 +52,58 @@ export interface CalibrationSectionProps {
  *  button could never work. */
 const BATTERY_CURRENT_LOAD_SECONDS = MAX_MOTOR_TEST_DURATION_SECONDS
 
+/**
+ * The two motor-spin acknowledgements, rendered next to whichever control
+ * they gate.
+ *
+ * They used to live in one standalone "Motor-spin safety" card beside the
+ * cards whose buttons they unlocked, and operators did not connect the two:
+ * the button that would not run was in one box and the reason was in another.
+ * Colouring the button and naming the card in the hint helped but did not fix
+ * the adjacency, so the widget now goes where the action is.
+ *
+ * Presentation is duplicated; STATE IS NOT. Both copies are controlled by the
+ * single `propsRemovedAcknowledged` / `testAreaAcknowledged` pair from
+ * `useSafetyAcks`, so ticking either copy ticks all of them and every gate
+ * (here, the motor test, the reorder dialog) still reads one truth. A second
+ * copy of the state would let one surface look armed while another gate it
+ * shares is still closed.
+ */
+function MotorSpinAcknowledgements(props: {
+  propsRemovedAcknowledged: boolean
+  setPropsRemovedAcknowledged: (value: boolean) => void
+  testAreaAcknowledged: boolean
+  setTestAreaAcknowledged: (value: boolean) => void
+  /** Prefix for the two checkbox test ids — each copy needs unique hooks. */
+  testIdPrefix: string
+}): ReactElement {
+  // Deliberately minimal: two checkboxes on one line, short labels, no card,
+  // heading or badge. Sitting directly against the button supplies the context
+  // the old standalone card's long sentences were compensating for.
+  return (
+    <div className="motor-spin-acks" data-testid={`${props.testIdPrefix}-motor-acks`}>
+      <label>
+        <input
+          type="checkbox"
+          checked={props.propsRemovedAcknowledged}
+          onChange={(event) => props.setPropsRemovedAcknowledged(event.target.checked)}
+          data-testid={`${props.testIdPrefix}-props-ack`}
+        />
+        <span>Props removed</span>
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={props.testAreaAcknowledged}
+          onChange={(event) => props.setTestAreaAcknowledged(event.target.checked)}
+          data-testid={`${props.testIdPrefix}-area-ack`}
+        />
+        <span>Area clear, craft restrained</span>
+      </label>
+    </div>
+  )
+}
+
 export function CalibrationSection(props: CalibrationSectionProps): ReactElement {
   // Throttle used for the current-calibration load spin. Local to this card:
   // it is a transient bench choice, not something worth persisting.
@@ -357,14 +409,25 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                         {currentOffset !== undefined && currentPerVolt !== undefined ? 'edit' : 'idle'}
                       </StatusBadge>
                     </div>
-                    <p>Calibrates the analog current sensor: <code>amps = (sensor_voltage − BATT_AMP_OFFSET) × BATT_AMP_PERVLT</code>. Offset is the sensor voltage at 0 A; per-volt is amps per volt of sensor output.</p>
-                    <p className="calibration-card__tip">
-                      You need a reference reading to calibrate against. An inline watt/current meter between the
-                      pack and the craft is the easiest option — e.g. a ToolkitRC (WM series) or a Turnigy/HobbyKing
-                      inline meter; a DC clamp meter around the positive lead works too and avoids breaking the
-                      circuit. Take the reading under a steady load, not at idle: the per-volt fit is
-                      measured&nbsp;÷&nbsp;reported at one operating point, and near 0&nbsp;A that ratio is mostly noise.
-                    </p>
+                    {/* One line stays visible so the card still says what it is
+                      * at a glance; the formula and the "which meter, measured
+                      * under load" advice fold away by default. They are worth
+                      * reading once and then never again, and at full length
+                      * they pushed the actual controls (and the safety gate)
+                      * below the fold. Same disclosure pattern as the how-to and
+                      * manual-value blocks further down this card. */}
+                    <p>Makes reported current match a meter. Needs a reference reading taken under a steady load.</p>
+                    <details className="calibration-card__howto">
+                      <summary>What this calibrates, and what you need to measure it</summary>
+                      <p>Calibrates the analog current sensor: <code>amps = (sensor_voltage − BATT_AMP_OFFSET) × BATT_AMP_PERVLT</code>. Offset is the sensor voltage at 0 A; per-volt is amps per volt of sensor output.</p>
+                      <p className="calibration-card__tip">
+                        You need a reference reading to calibrate against. An inline watt/current meter between the
+                        pack and the craft is the easiest option — e.g. a ToolkitRC (WM series) or a Turnigy/HobbyKing
+                        inline meter; a DC clamp meter around the positive lead works too and avoids breaking the
+                        circuit. Take the reading under a steady load, not at idle: the per-volt fit is
+                        measured&nbsp;÷&nbsp;reported at one operating point, and near 0&nbsp;A that ratio is mostly noise.
+                      </p>
+                    </details>
                     <div className="config-pills">
                       <span>FC reads: {reportedA !== undefined ? `${reportedA.toFixed(2)} A` : 'no telemetry'}</span>
                       <span>Offset: {currentOffset !== undefined ? `${currentOffset.toFixed(3)} V` : 'unknown'}</span>
@@ -458,14 +521,27 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   data-testid="battery-current-load-throttle"
                                 />
                               </label>
+                              {/* The gate, inline, immediately above the button
+                                *  it unlocks — same shared state as every other
+                                *  motor-spinning action, just rendered here so
+                                *  the operator reads "confirm these, then press
+                                *  this" without leaving the card. Legacy
+                                *  cal-props-ack / cal-area-ack test ids stay on
+                                *  this copy. */}
+                              <MotorSpinAcknowledgements
+                                propsRemovedAcknowledged={propsRemovedAcknowledged}
+                                setPropsRemovedAcknowledged={setPropsRemovedAcknowledged}
+                                testAreaAcknowledged={testAreaAcknowledged}
+                                setTestAreaAcknowledged={setTestAreaAcknowledged}
+                                testIdPrefix="cal"
+                              />
                               {/* Green once the safety checks are acknowledged.
                                 *  The button sat in the neutral style whether or
                                 *  not it was armed to run, so "have I done the
                                 *  thing that lets me press this?" was not
-                                *  answerable from the button — the operator had
-                                *  to look at a DIFFERENT card to find out. Same
-                                *  grammar as "Calibrate from measured current"
-                                *  below it, which is green when it can run. */}
+                                *  answerable from the button. Same grammar as
+                                *  "Calibrate from measured current" below it,
+                                *  which is green when it can run. */}
                               <button
                                 type="button"
                                 style={buttonStyle(motorSpinReady ? 'primary' : 'secondary')}
@@ -507,8 +583,8 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                               </button>
                               {!motorSpinReady ? (
                                 <small>
-                                  Tick both boxes in the <strong>Motor-spin safety</strong> card before applying a
-                                  load. This button turns green when it can run.
+                                  Tick both boxes above before applying a load. This button turns green when it
+                                  can run.
                                 </small>
                               ) : null}
                             </div>
@@ -716,37 +792,23 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   : snapshot.vehicle?.armed
                     ? 'Disarm the vehicle first.'
                     : !motorSafetyOk
-                      ? 'Acknowledge the motor-safety checks below first.'
+                      ? 'Acknowledge the motor-safety checks above first.'
                       : undefined
                 return (
                   <>
-                    {/* These acks gate EVERY motor-spinning action on this page,
-                      * not just ESC calibration — the battery-current load spin
-                      * uses them too. They used to be hidden whenever ESC cal was
-                      * inapplicable (DShot/Brushed/PWMRange), which on any DShot
-                      * build left the current-calibration card telling the
-                      * operator to "acknowledge the checks below" with no
-                      * checkboxes anywhere: permanently blocked. Always shown for
-                      * a copter; the copy names whichever action still applies. */}
-                    <article className="calibration-card calibration-card--danger" data-testid="calibration-card-motor-safety">
-                        <div className="calibration-card__header">
-                          <strong>Motor-spin safety</strong>
-                          <StatusBadge tone={motorSafetyOk ? 'success' : 'warning'}>{motorSafetyOk ? 'acknowledged' : 'required'}</StatusBadge>
-                        </div>
-                        <p>
-                          {escCalUnsupported
-                            ? 'Applying a battery-current load spins the motors. Confirm before running it.'
-                            : 'ESC calibration and the battery-current load both spin the motors. Confirm before running either.'}
-                        </p>
-                        <label className="scoped-checkbox-option">
-                          <input type="checkbox" checked={propsRemovedAcknowledged} onChange={(e) => setPropsRemovedAcknowledged(e.target.checked)} data-testid="cal-props-ack" />
-                          <span>All propellers are removed.</span>
-                        </label>
-                        <label className="scoped-checkbox-option">
-                          <input type="checkbox" checked={testAreaAcknowledged} onChange={(e) => setTestAreaAcknowledged(e.target.checked)} data-testid="cal-area-ack" />
-                          <span>The vehicle is restrained and the area is clear.</span>
-                        </label>
-                      </article>
+                    {/* The standalone "Motor-spin safety" card that used to sit
+                      * here is gone. It carried the acknowledgements for BOTH
+                      * motor-spinning actions on this page (ESC calibration and
+                      * the battery-current load spin) from a third box, which is
+                      * exactly what confused operators: the gate and the button
+                      * it gates were never in the same place. Each action now
+                      * renders its own copy of the checkbox pair next to its own
+                      * button, off the same shared state, so an action can no
+                      * longer be blocked by something the operator cannot see.
+                      * Nothing else depended on the card: the acks themselves
+                      * live in useSafetyAcks and are also rendered by the Motors
+                      * view and the motor-reorder dialog, which have always drawn
+                      * their own widgets. */}
 
                     {/* CompassMot was removed from the Calibration tab — the
                       * bench procedure (spin motors at fixed throttle, log
@@ -780,6 +842,17 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       ) : (
                         <>
                           <p>Calibrates the ESC throttle endpoints. Sets ESC_CALIBRATION=3 and reboots; on the next boot (safety off) the ESCs learn min/max from the throttle range. Reconnect after the reboot.</p>
+                          {/* Second copy of the same shared acknowledgements —
+                            *  this card spins motors too, so the gate belongs
+                            *  next to its own button rather than in a card the
+                            *  operator has to go find. */}
+                          <MotorSpinAcknowledgements
+                            propsRemovedAcknowledged={propsRemovedAcknowledged}
+                            setPropsRemovedAcknowledged={setPropsRemovedAcknowledged}
+                            testAreaAcknowledged={testAreaAcknowledged}
+                            setTestAreaAcknowledged={setTestAreaAcknowledged}
+                            testIdPrefix="esc-cal"
+                          />
                           {!escCalArmed ? (
                             <button
                               type="button"
