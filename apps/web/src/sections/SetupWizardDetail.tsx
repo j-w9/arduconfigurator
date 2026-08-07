@@ -1,10 +1,20 @@
 // Guided-setup wizard detail panel — the "What to do" copy, the
-// accelerometer pose guide (accelerometer step only), the completion-criteria
-// checklist, the live-evidence pills, and any blocking-reason copy.
+// accelerometer pose guide (accelerometer step only), and any blocking-reason
+// copy.
 //
 // Extracted verbatim from the wizardSlot JSX in App.tsx as part of the setup
 // view decomposition. Purely presentational over the selected section
-// descriptor and the live snapshot. Behavior-preserving.
+// descriptor and the live snapshot.
+//
+// The completion-criteria checklist and the live-evidence pills used to live
+// here, at the bottom of the LEFT column. That is why every step scrolled: the
+// left column carried the task card, the copy, the criteria AND the evidence
+// while the right column held only a short action card, so the page was as tall
+// as the tallest single column instead of the taller of two balanced ones. They
+// now render in SetupWizardAside — "left = what you do, right = where you
+// stand" — which is the one layout rule every step follows. The criteria are
+// still shown (same data-testid, same open-when-incomplete behaviour); only the
+// column they sit in changed.
 
 import type { ReactElement, ReactNode } from 'react'
 
@@ -33,10 +43,9 @@ export function SetupWizardDetail({
   // The criteria list is what actually gates the step, but it lived inside a
   // collapsed <details> and the header only showed "2/5 criteria" — never WHICH
   // one was unmet. That is the mechanical reason a blocked step reads as
-  // "unclear what's wanted". Name the first unmet criterion up front, and leave
-  // the full list open whenever the step is not complete.
+  // "unclear what's wanted". Name the first unmet criterion up front; the full
+  // list is one column over in the aside.
   const nextUnmetCriterion = selectedSetupSection.criteria.find((criterion) => !criterion.met)
-  const stepComplete = selectedSetupSection.status === 'complete'
 
   return (
     <div className="setup-wizard__detail">
@@ -64,34 +73,6 @@ export function SetupWizardDetail({
           pitchDeg={snapshot.liveVerification.attitudeTelemetry.pitchDeg}
           attitudeVerified={snapshot.liveVerification.attitudeTelemetry.verified}
         />
-      ) : null}
-
-      <details className="setup-flow__criteria" data-testid="setup-wizard-criteria" open={!stepComplete}>
-        <summary>
-          <strong>Completion Criteria</strong>
-          <span className="setup-flow__criteria-count">
-            {selectedSetupSection.criteriaMetCount}/{selectedSetupSection.criteria.length} done
-          </span>
-        </summary>
-        <ul>
-          {selectedSetupSection.criteria.map((criterion) => (
-            <li key={criterion.label} className={criterion.met ? 'is-met' : undefined}>
-              <span>{criterion.met ? 'Complete' : 'Pending'}</span>
-              <span>{criterion.label}</span>
-            </li>
-          ))}
-        </ul>
-      </details>
-
-      {selectedSetupSection.evidence.length > 0 ? (
-        <div className="setup-wizard__evidence">
-          <strong>Live Evidence</strong>
-          <div className="config-pills">
-            {selectedSetupSection.evidence.map((item) => (
-              <span key={item}>{item}</span>
-            ))}
-          </div>
-        </div>
       ) : null}
 
       {selectedSetupSection.blockingReason ? <p className="setup-flow__blocking-copy">{selectedSetupSection.blockingReason}</p> : null}

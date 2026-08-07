@@ -3239,6 +3239,15 @@ test.describe('ArduPlane demo', () => {
     await expect(firstCriterion).toBeVisible()
     await criteria.locator('summary').click()
     await expect(firstCriterion).toBeHidden()
+    await criteria.locator('summary').click()
+    await expect(firstCriterion).toBeVisible()
+
+    // The checklist lives in the RIGHT column now ("left = what you do, right =
+    // where you stand"). Both columns used to be lopsided — the left one
+    // carried the task card AND the criteria AND the evidence while the right
+    // held a short action card, so every step was as tall as one long column.
+    await expect(page.locator('.setup-wizard__aside [data-testid="setup-wizard-criteria"]')).toBeVisible()
+    await expect(page.locator('.setup-wizard__aside .setup-wizard__evidence')).toBeVisible()
 
     // The single blocking criterion is also promoted out of the disclosure, so
     // the step says what it still wants without any expanding at all.
@@ -3253,6 +3262,42 @@ test.describe('ArduPlane demo', () => {
     // the live session is preserved.
     await page.getByRole('button', { name: /Vehicle Link/ }).click()
     await expect(page.getByTestId('setup-wizard-complete-banner')).toContainText('complete')
+  })
+
+  test('a guided step keeps its primary action and Continue on screen without scrolling', async ({ page }) => {
+    // Operator report: "i dont love the airframe tab, i dont think people
+    // should need to be scrolling up and down". Airframe was the worst step
+    // (1992px of document against a 900px viewport) but every step had the same
+    // shape, so the fix is one layout rule applied to all of them: the task on
+    // the left, the action + criteria on the right, a one-row step rail, and
+    // the shared 3D preview scoped down inside the wizard.
+    //
+    // Assert the OUTCOME the operator cares about — the thing to click is on
+    // screen at rest — not a pixel height, which moves with font rendering.
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/?guidedSetupStep=airframe')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('setup-wizard')).toBeVisible()
+
+    const onScreen = async (testId: string): Promise<boolean> =>
+      page.getByTestId(testId).evaluate((el) => {
+        const rect = el.getBoundingClientRect()
+        return rect.top >= 0 && rect.bottom <= window.innerHeight
+      })
+
+    expect(await page.evaluate(() => window.scrollY)).toBe(0)
+    expect(await onScreen('setup-wizard-primary-action')).toBe(true)
+    expect(await onScreen('setup-wizard-next-step')).toBe(true)
+
+    // The step rail is one scrollable row of chips, so its own overflow must
+    // never become the page's — a side-by-side layout at phone width is exactly
+    // what breaks the horizontal-overflow gate.
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(page.getByTestId('setup-wizard')).toBeVisible()
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow).toBeLessThanOrEqual(2)
   })
 
   test('the orientation waiver unblocks the Airframe step and unlocks the rest of the flow', async ({ page }) => {
