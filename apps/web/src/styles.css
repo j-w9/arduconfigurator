@@ -3009,6 +3009,10 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Four controls (filter, Expand, Pop out, Copy/Clear) do not fit on one line
+   * at phone width — wrapping is what keeps the 390px layout from scrolling
+   * sideways. */
+  flex-wrap: wrap;
 }
 
 .setup-gui-box__notice-controls .setup-gui-box__notice-filter-input {
@@ -3142,6 +3146,48 @@ textarea:focus {
   max-height: 240px;
   overflow-y: auto;
   padding-right: 4px;
+  /* Newest notices sort to the TOP, so an arriving message inserts above what
+   * the operator is reading and would shove it down. Scroll anchoring (on by
+   * default, stated here so it is not "optimised" away) pins the row under the
+   * cursor instead, which is why this feed deliberately has no auto-scroll:
+   * nothing jumps, and the newest row is one flick away at the top. */
+  overflow-anchor: auto;
+}
+
+/* Expand-in-place: opt-in extra height, never the default — Status & Info is a
+ * long page and the collapsed 240px box is what keeps it navigable. Capped
+ * against the viewport so a chatty FC cannot make the panel taller than the
+ * screen. */
+.setup-gui-box__status-list--expanded {
+  max-height: min(70vh, 620px);
+}
+
+/* Inside a popped-out window the window IS the scrollport, so the list must not
+ * impose a second one — a nested scroller there is just a smaller box inside a
+ * big empty one. */
+.setup-gui-box__status-list--window {
+  max-height: none;
+  overflow-y: visible;
+}
+
+/* Long STATUSTEXT lines (and unbroken tokens like file paths or a 50-char
+ * parameter dump) must wrap rather than push the panel wide — a 390px phone
+ * must never scroll horizontally, and a notice the operator cannot read is a
+ * notice the FC did not send. No ellipsis, no tooltip-only text. */
+.setup-gui-box__status-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.setup-gui-box__popped-out,
+.setup-gui-box__popout-blocked {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.setup-gui-box__popout-blocked {
+  color: var(--warning);
 }
 
 .setup-gui-box__icon-button {
@@ -16273,6 +16319,12 @@ button.mavlink-inspector__sent-row {
 .arduconfig-popout {
   display: block;
   max-width: 100%;
+}
+
+/* The notices window is a single panel filling the whole child window, so drop
+ * the inline bench's fixed box height and let the article grow with the feed. */
+.arduconfig-popout .setup-gui-box {
+  height: auto;
 }
 
 /* Inside a popout there is no surrounding panel, so give the device body its own

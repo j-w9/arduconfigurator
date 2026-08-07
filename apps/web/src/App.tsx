@@ -277,6 +277,8 @@ import { MAX_MAVLINK_PLOTS, useMavlinkInspector } from './hooks/use-mavlink-insp
 import { CanDeviceInspectorView, type DronecanFirmwareOnlineSource } from './views/CanDeviceInspector'
 import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
 import { useCanDevicePopouts } from './hooks/use-can-device-popouts'
+import { usePopoutWindows } from './hooks/use-popout-windows'
+import { RecentNoticesFeed, recentNoticesBadge } from './views/RecentNoticesFeed'
 import { filterEscTelemetryForNode } from './view-models/can-device-inspector'
 import { dronecanNodeBoardId, parseApj, decodeApjImage } from '@arduconfig/firmware-flash'
 import { inflateZlib } from './firmware/web-serial-bootloader'
@@ -446,6 +448,11 @@ function describeUnconfirmedWrites(unconfirmed: ParameterUnconfirmedWrite[]): st
 
 const PRESET_AUTO_BACKUP_TAGS = ['auto-backup', 'preset'] as const
 
+// One notices window at a time — the feed is a single stream, so a second
+// window would just be a duplicate of the first. Constant so the open/close/
+// lookup calls can never drift apart.
+const NOTICES_POPOUT_KEY = 'recent-notices'
+
 // 900ms felt "too fast" — the channel locked before the operator had fully
 // exercised the stick — so require a longer, more deliberate sustained
 // movement, with a slightly roomier gap tolerance so a brief stick pause
@@ -500,6 +507,10 @@ export function App() {
   const [activeViewId, setActiveViewId] = useState<AppViewId>('setup')
   // Expert-mode text filter for the Recent Notices panel.
   const [noticeFilter, setNoticeFilter] = useState('')
+  // Expand-in-place for Recent Notices. Collapsed by DEFAULT and deliberately
+  // not persisted: Status & Info is already a long page, so extra height has to
+  // be something the operator asks for every time they want it.
+  const [noticesExpanded, setNoticesExpanded] = useState(false)
   // The selected port is supplied to the transport LAZILY via this ref.
   // It must NOT be a runtime-useMemo dependency: the WebSerial transport
   // calls onPortSelected(port) during connect (with the just-picked
@@ -5724,6 +5735,13 @@ export function App() {
   // bus service keeps MAV_CMD_CAN_FORWARD re-armed for as long as the bus is
   // connected, no matter how many windows are watching it.
   const canDevicePopouts = useCanDevicePopouts()
+  // Recent Notices reuses the SAME popout machinery as the CAN inspectors
+  // (usePopoutWindows: gesture-synchronous window.open, stylesheet + theme
+  // cloning, three-way reaping). A second independent instance rather than a
+  // shared registry, because the two surfaces key their windows differently and
+  // nothing about a notices window should be able to reap a device window.
+  const noticesPopout = usePopoutWindows()
+  const noticesPopoutHandle = noticesPopout.popouts.find((handle) => handle.key === NOTICES_POPOUT_KEY)
   // The destructive per-device actions, shared by the inline and popped-out
   // inspectors. Passed only under Expert mode — they used to be reachable solely
   // from the expert-only DroneCAN Inspector tab.
@@ -6497,6 +6515,51 @@ export function App() {
     ? snapshot.statusTexts.filter((entry) => entry.text.toLowerCase().includes(trimmedNoticeFilter))
     : snapshot.statusTexts
   const recentNotices = buildRecentNotices(filteredNoticeEntries)
+  // Shared by the inline panel and the popped-out window so both do exactly the
+  // same thing — clipboard API first, hidden-textarea execCommand fallback for
+  // the non-secure-context / older-browser case.
+  const copyAllNotices = (): void => {
+    if (setupStatusEntries.length === 0) {
+      return
+    }
+    const payload = setupStatusEntries.map((entry) => `[${entry.severity.toUpperCase()}] ${entry.text}`).join('\n')
+    const finish = (): void => {
+      setNoticesCopied(true)
+      window.setTimeout(() => setNoticesCopied(false), 1500)
+    }
+    const fallbackCopy = (): void => {
+      const textarea = document.createElement('textarea')
+      textarea.value = payload
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      try { document.execCommand('copy') } catch {}
+      document.body.removeChild(textarea)
+      finish()
+    }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(payload).then(finish).catch(fallbackCopy)
+    } else {
+      fallbackCopy()
+    }
+  }
+  // Props every copy of the feed shares. The popped-out window renders the same
+  // component over the same model: it is a portal into this tree, so each new
+  // STATUSTEXT that lands in the snapshot re-renders BOTH copies from the one
+  // subscription. A reconnect can neither stall it (the snapshot is the only
+  // source) nor duplicate entries (buildRecentNotices coalesces by
+  // severity+text, so a repeated message bumps ×N instead of adding a row).
+  const sharedNoticeFeedProps = {
+    notices: recentNotices,
+    hasEntries: setupStatusEntries.length > 0,
+    copied: noticesCopied,
+    onCopyAll: copyAllNotices,
+    onClearAll: () => void runtime.clearStatusTexts(),
+    filterValue: productMode === 'expert' ? noticeFilter : undefined,
+    onFilterChange: productMode === 'expert' ? setNoticeFilter : undefined
+  }
   const setupHasGpsCard = gpsPeripheralViewModels.length > 0 || snapshot.liveVerification.globalPosition.verified
   // "Configured" means "the GPS chain is set up and working." Two routes:
   //   - A non-zero GPS_TYPE / GPS_TYPE2 parameter in the parameter table
@@ -7054,126 +7117,33 @@ export function App() {
                           </article>
                         </div>
 
-                        <article className="setup-gui-box">
+                        <article className="setup-gui-box" data-testid="setup-notices-panel">
                           <div className="setup-gui-box__titlebar">
                             <strong>Recent Notices</strong>
-                            <StatusBadge tone={recentNotices.tone}>
-                              {recentNotices.distinctCount > 0
-                                ? `${recentNotices.distinctCount} notice${recentNotices.distinctCount === 1 ? '' : 's'}${
-                                    recentNotices.totalCount > recentNotices.distinctCount ? ` · ${recentNotices.totalCount} total` : ''
-                                  }`
-                                : 'quiet'}
-                            </StatusBadge>
+                            {recentNoticesBadge(recentNotices)}
                           </div>
                           <div className="setup-gui-box__body">
-                            {/* Controls live in the body (normal flow), not the
-                                floating titlebar pill — the pill grows tall when
-                                the count badge wraps and would cover them. */}
-                            <div className="setup-gui-box__notice-controls">
-                              {productMode === 'expert' ? (
-                                <input
-                                  type="search"
-                                  data-testid="setup-notices-search"
-                                  className="setup-gui-box__notice-filter-input"
-                                  placeholder="Filter notices…"
-                                  value={noticeFilter}
-                                  onChange={(event) => setNoticeFilter(event.target.value)}
-                                  aria-label="Filter recent notices"
-                                />
-                              ) : null}
-                              <button
-                                type="button"
-                                className="setup-gui-box__icon-button"
-                                data-testid="setup-notices-copy-all"
-                                onClick={() => {
-                                  if (setupStatusEntries.length === 0) {
-                                    return
-                                  }
-                                  const payload = setupStatusEntries
-                                    .map((entry) => `[${entry.severity.toUpperCase()}] ${entry.text}`)
-                                    .join('\n')
-                                  const finish = () => {
-                                    setNoticesCopied(true)
-                                    window.setTimeout(() => setNoticesCopied(false), 1500)
-                                  }
-                                  if (navigator.clipboard?.writeText) {
-                                    navigator.clipboard.writeText(payload).then(finish).catch(() => {
-                                      const textarea = document.createElement('textarea')
-                                      textarea.value = payload
-                                      textarea.setAttribute('readonly', '')
-                                      textarea.style.position = 'fixed'
-                                      textarea.style.opacity = '0'
-                                      document.body.appendChild(textarea)
-                                      textarea.select()
-                                      try { document.execCommand('copy') } catch {}
-                                      document.body.removeChild(textarea)
-                                      finish()
-                                    })
-                                  } else {
-                                    const textarea = document.createElement('textarea')
-                                    textarea.value = payload
-                                    textarea.setAttribute('readonly', '')
-                                    textarea.style.position = 'fixed'
-                                    textarea.style.opacity = '0'
-                                    document.body.appendChild(textarea)
-                                    textarea.select()
-                                    try { document.execCommand('copy') } catch {}
-                                    document.body.removeChild(textarea)
-                                    finish()
-                                  }
-                                }}
-                                disabled={setupStatusEntries.length === 0}
-                                title="Copy all notices to clipboard"
-                                aria-label="Copy all notices to clipboard"
-                              >
-                                {noticesCopied ? 'Copied' : 'Copy all'}
-                              </button>
-                              <button
-                                type="button"
-                                className="setup-gui-box__icon-button"
-                                data-testid="setup-notices-clear-all"
-                                onClick={() => void runtime.clearStatusTexts()}
-                                disabled={setupStatusEntries.length === 0}
-                                title="Clear all notices (local display only — the FC keeps sending new ones)"
-                                aria-label="Clear all notices"
-                              >
-                                Clear all
-                              </button>
-                            </div>
-                            <div className="setup-gui-box__status-list setup-gui-box__status-list--scroll" data-testid="setup-notices-list">
-                              {recentNotices.groups.length === 0 ? <span className="setup-gui-box__empty">No status text yet</span> : null}
-                              {recentNotices.groups.map((group) => (
-                                <div
-                                  key={group.key}
-                                  className={`setup-gui-box__status-group setup-gui-box__status-group--${group.key}`}
-                                  data-testid={`setup-notices-group-${group.key}`}
-                                >
-                                  <header className="setup-gui-box__status-group-header">
-                                    <strong>{group.label}</strong>
-                                    <span>{group.notices.length}</span>
-                                  </header>
-                                  {group.notices.map((notice) => (
-                                    <div
-                                      key={`${notice.severity}-${notice.text}`}
-                                      className={`setup-gui-box__status-entry is-${notice.severity}`}
-                                      data-testid={`setup-notice-${group.key}`}
-                                    >
-                                      <strong>{notice.severity}</strong>
-                                      <span>{notice.text}</span>
-                                      {notice.count > 1 ? (
-                                        <span
-                                          className="setup-gui-box__status-count"
-                                          data-testid="setup-notice-count"
-                                          title={`${notice.count} occurrences`}
-                                        >
-                                          ×{notice.count}
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                  ))}
-                                </div>
-                              ))}
-                            </div>
+                            <RecentNoticesFeed
+                              {...sharedNoticeFeedProps}
+                              variant="inline"
+                              testIdPrefix="setup-notices"
+                              entryTestIdPrefix="setup-notice"
+                              expanded={noticesExpanded}
+                              onToggleExpanded={() => setNoticesExpanded((current) => !current)}
+                              poppedOut={noticesPopoutHandle !== undefined}
+                              popoutBlocked={noticesPopout.blockedKey === NOTICES_POPOUT_KEY}
+                              onTogglePopout={() => {
+                                // Synchronous with the click: window.open only
+                                // survives a popup blocker inside the browser's
+                                // user-activation window, so nothing may await
+                                // before this call.
+                                if (noticesPopoutHandle) {
+                                  noticesPopout.close(NOTICES_POPOUT_KEY)
+                                } else {
+                                  noticesPopout.open(NOTICES_POPOUT_KEY, 'Recent Notices')
+                                }
+                              }}
+                            />
                           </div>
                         </article>
                         </div>
@@ -8907,6 +8877,34 @@ export function App() {
           handle.key
         )
       })}
+
+      {/* Popped-out Recent Notices — the same portal contract as the CAN
+          inspectors above, and hosted here at App level for the same reason: the
+          operator pops the feed out precisely so it survives leaving Status &
+          Info. Because it is a portal into this tree it re-renders off the one
+          runtime subscription, so every STATUSTEXT that lands in the snapshot
+          appears in the window with no second session, no second stream request,
+          and nothing to re-arm on reconnect. */}
+      {noticesPopoutHandle
+        ? createPortal(
+            <article className="setup-gui-box" data-testid="notices-popout-panel">
+              <div className="setup-gui-box__titlebar">
+                <strong>Recent Notices</strong>
+                {recentNoticesBadge(recentNotices)}
+              </div>
+              <div className="setup-gui-box__body">
+                <RecentNoticesFeed
+                  {...sharedNoticeFeedProps}
+                  variant="popout"
+                  testIdPrefix="notices-popout"
+                  entryTestIdPrefix="notices-popout-notice"
+                />
+              </div>
+            </article>,
+            noticesPopoutHandle.container,
+            noticesPopoutHandle.key
+          )
+        : null}
 
       {activeViewId === 'calibration' ? (
         <CalibrationSection
