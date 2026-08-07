@@ -4133,6 +4133,60 @@ test('Recent Notices: clear-all button and expert-mode search bar', async ({ pag
   await expect(page.getByTestId('setup-notices-search')).toBeVisible()
 })
 
+test('Recent Notices expands in place and stays collapsed by default', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('transport-mode-select').selectOption('demo')
+  await page.getByTestId('connect-button').click()
+  await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+  const list = page.getByTestId('setup-notices-list')
+  await expect(list).toBeVisible({ timeout: 15_000 })
+  // Collapsed is the default — Status & Info is long enough already, so the
+  // extra height has to be asked for.
+  const collapsed = await list.evaluate((node) => getComputedStyle(node).maxHeight)
+  expect(collapsed).toBe('240px')
+  await page.getByTestId('setup-notices-expand').click()
+  const expanded = await list.evaluate((node) => getComputedStyle(node).maxHeight)
+  expect(Number.parseFloat(expanded)).toBeGreaterThan(240)
+  await page.getByTestId('setup-notices-expand').click()
+  expect(await list.evaluate((node) => getComputedStyle(node).maxHeight)).toBe('240px')
+})
+
+test('Recent Notices pops out into its own styled, live window', async ({ page, context }) => {
+  await page.goto('/')
+  await page.getByTestId('transport-mode-select').selectOption('demo')
+  await page.getByTestId('connect-button').click()
+  await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+  await expect(page.getByTestId('setup-notices-popout')).toBeVisible({ timeout: 15_000 })
+
+  // window.open fires straight from the click, so the popup survives the blocker.
+  const [popout] = await Promise.all([
+    context.waitForEvent('page'),
+    page.getByTestId('setup-notices-popout').click()
+  ])
+  await popout.waitForLoadState('domcontentloaded')
+  await expect(popout.getByTestId('notices-popout-panel')).toBeVisible()
+  // The window has no nested scroller and no pop-out button of its own.
+  await expect(popout.getByTestId('notices-popout-popout')).toHaveCount(0)
+
+  // The opener's stylesheets were cloned in — an unstyled popout is the classic
+  // failure, and it shows up as a transparent body with no themed background.
+  const background = await popout.evaluate(() => getComputedStyle(document.body).backgroundColor)
+  expect(background).not.toBe('rgba(0, 0, 0, 0)')
+  expect(background).not.toBe('transparent')
+
+  // Live: the window is a portal into the opener's tree, so clearing the feed
+  // from the main window empties the popped-out copy in the same render.
+  await expect(popout.getByTestId('notices-popout-list')).toBeVisible()
+  await page.getByTestId('setup-notices-clear-all').click()
+  await expect(popout.getByText('No status text yet')).toBeVisible({ timeout: 10_000 })
+
+  // The inline panel says where the feed went, and the button closes it again.
+  await expect(page.getByTestId('setup-notices-popped-out')).toBeVisible()
+  await page.getByTestId('setup-notices-popout').click()
+  await expect(page.getByTestId('setup-notices-popped-out')).toHaveCount(0)
+  expect(popout.isClosed()).toBe(true)
+})
+
 test.describe('Direct Sockets (IWA) transport options', () => {
   test('exposes UDP + TCP (direct) options and fields when Direct Sockets exist', async ({ page }) => {
     // Simulate the Isolated Web App context where the Direct Sockets API is
