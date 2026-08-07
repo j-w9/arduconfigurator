@@ -188,9 +188,8 @@ const CONFIG_SECTION_CATEGORY: Record<string, string> = {
   'system-rates': 'sensors',
   'fast-loop-rate': 'sensors',
   gps: 'gps',
-  'receiver-signal': 'rc-arming',
-  arming: 'rc-arming',
-  'pilot-rates': 'rc-arming',
+  'receiver-signal': 'rc',
+  arming: 'arming',
   identity: 'system',
   logging: 'system',
   beeper: 'system',
@@ -1228,6 +1227,28 @@ test.describe('Tuning tab', () => {
     await expect(input).toHaveValue('0.15')
   })
 
+  test('pilot rates (lean angle, yaw rate, acro rates) are reachable here', async ({ page }) => {
+    // Coverage moved from the Config "pilot rates" mirror card, which was
+    // dropped when Arming and RC split into their own Config tabs: Tuning is
+    // the single home for stick shaping now, so every param that card carried
+    // has to be reachable here or the split lost a surface.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'tuning')
+
+    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
+    // Lean angle resolves to whichever param the FC streams (ANGLE_MAX <= 4.6,
+    // ATC_ANGLE_MAX 4.7+); the demo Copter streams ANGLE_MAX.
+    await expect(page.getByTestId('tuning-input-ANGLE_MAX')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByTestId('tuning-input-PILOT_Y_RATE')).toBeVisible()
+    await expect(page.getByTestId('tuning-input-PILOT_Y_EXPO')).toBeVisible()
+    await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Acro' }).click()
+    await expect(page.getByTestId('tuning-input-ACRO_RP_RATE')).toBeVisible()
+    await expect(page.getByTestId('tuning-input-ACRO_Y_RATE')).toBeVisible()
+    await expect(page.getByTestId('tuning-input-ACRO_RP_EXPO')).toBeVisible()
+    await expect(page.getByTestId('tuning-input-ACRO_Y_EXPO')).toBeVisible()
+  })
+
   test('the slider tracks live while dragging and only stages on release', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
@@ -1667,13 +1688,13 @@ test.describe('Config view', () => {
 
     await expect(page.getByTestId('config-section-grid')).toBeVisible()
     // Sections live under top-tab categories now — the category strip shows the
-    // five groups, and each holds its sections.
+    // six groups, and each holds its sections.
     await expect(page.getByTestId('config-category-nav')).toBeVisible()
     for (const [sectionId, category] of [
       ['board-orientation', 'airframe'],
       ['gps', 'gps'],
-      ['arming', 'rc-arming'],
-      ['pilot-rates', 'rc-arming'],
+      ['receiver-signal', 'rc'],
+      ['arming', 'arming'],
       ['identity', 'system'],
       ['beeper', 'system'],
       ['camera-trigger', 'system'],
@@ -1899,12 +1920,43 @@ test.describe('Config view', () => {
     await openConfigSection(page, 'receiver-signal')
     const section = page.getByTestId('config-section-receiver-signal')
     await expect(section).toBeVisible()
-    // RC_OPTIONS is visible without opening anything: RC & Arming no longer
-    // folds fields under Advanced (an operator setting up a radio needs the
-    // protocol and options in front of them).
+    // RC_OPTIONS is visible without opening anything: the RC tab does not fold
+    // fields under Advanced (an operator setting up a radio needs the protocol
+    // and options in front of them).
     await expect(section.getByTestId('config-advanced-receiver-signal')).toHaveCount(0)
     // RC_OPTIONS renders as a chip grid here too (shared bitmask field).
     await expect(page.getByTestId('scoped-bitmask-RC_OPTIONS')).toBeVisible()
+    // Protocol + options lead the card. Radio calibration is impossible until
+    // the link decodes, so the prerequisite knobs must read first — assert on
+    // DOM order rather than mere presence, which is what regressed before.
+    const fieldOrder = await section
+      .locator('[data-testid^="scoped-"], [data-testid^="config-field-missing-"]')
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-testid') ?? ''))
+    const indexOfParam = (paramId: string): number =>
+      fieldOrder.findIndex((testId) => testId.endsWith(`-${paramId}`))
+    expect(indexOfParam('RC_PROTOCOLS')).toBeGreaterThanOrEqual(0)
+    expect(indexOfParam('RC_PROTOCOLS')).toBeLessThan(indexOfParam('RC_OPTIONS'))
+    expect(indexOfParam('RC_OPTIONS')).toBeLessThan(indexOfParam('RSSI_TYPE'))
+  })
+
+  test('Arming has its own category tab, separate from RC', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+
+    // Arming is its own group now: its tab exists, holds the arming card, and
+    // the RC tab must NOT also carry it (the old shared "RC & Arming" tab).
+    await page.getByTestId('config-category-arming').click()
+    await expect(page.getByTestId('config-section-arming')).toBeVisible()
+    await expect(page.getByTestId('config-section-receiver-signal')).toHaveCount(0)
+
+    await page.getByTestId('config-category-rc').click()
+    await expect(page.getByTestId('config-section-receiver-signal')).toBeVisible()
+    await expect(page.getByTestId('config-section-arming')).toHaveCount(0)
+    // Pilot rates left Config entirely — Tuning is the single home for stick
+    // shaping now, so no Config tab may resurrect the mirror.
+    await expect(page.getByTestId('config-section-pilot-rates')).toHaveCount(0)
   })
 
   test('ESC & DShot section exposes protocol + reverse/bdshot masks as chips', async ({ page }) => {
@@ -1967,14 +2019,6 @@ test.describe('Config view', () => {
     // Main loop rate renders as a dropdown (enum), defaulting to 400 Hz.
     const rates = page.getByTestId('config-section-system-rates')
     await expect(rates.getByText('Main loop rate')).toBeVisible()
-
-    // Max lean angle (pilot-rates, RC & Arming tab). Resolves to the param the
-    // FC actually streams (ANGLE_MAX <=4.6, ATC_ANGLE_MAX 4.7+) — demo streams
-    // ANGLE_MAX, so it reports a value rather than "(not reported)".
-    await openConfigSection(page, 'pilot-rates')
-    const pilotRates = page.getByTestId('config-section-pilot-rates')
-    await expect(pilotRates.getByText('Max lean angle')).toBeVisible()
-    await expect(pilotRates).not.toContainText('not reported')
 
     // GPS behavior — the multi-GPS knobs (Auto switch / Primary select) are
     // set-once, folded under Advanced.

@@ -22,9 +22,8 @@ const CATEGORY_BY_SECTION: Record<string, ConfigCategoryId> = {
   'system-rates': 'sensors',
   'fast-loop-rate': 'sensors',
   gps: 'gps',
-  'receiver-signal': 'rc-arming',
-  arming: 'rc-arming',
-  'pilot-rates': 'rc-arming',
+  'receiver-signal': 'rc',
+  arming: 'arming',
   identity: 'system',
   logging: 'system',
   beeper: 'system',
@@ -38,7 +37,7 @@ const CATEGORY_BY_SECTION: Record<string, ConfigCategoryId> = {
 // Field feedback: this was folding away far too much. The disclosure mechanism
 // is worth keeping — some of these genuinely are set-once-and-forget — but the
 // bar is now "an operator would have to go looking for this", not "it isn't one
-// of the first two knobs". Notably RC & Arming is fully visible (an operator
+// of the first two knobs". Notably RC and Arming are fully visible (an operator
 // tuning a radio needs the protocol and options in front of them), and the
 // logging + gyro-rate settings are visible because they are routinely changed
 // per-build rather than once at bring-up.
@@ -50,10 +49,9 @@ const ADVANCED_FIELDS: Record<string, readonly string[]> = {
   // field report asked for it directly under Sensors).
   'system-rates': ['INS_FAST_SAMPLE'],
   'fast-loop-rate': ['FSTRATE_DIV'],
-  'pilot-rates': [],
   'active-imu': [],
   gps: ['GPS_GNSS_MODE'],
-  // RC & Arming: everything visible, per the field report.
+  // RC + Arming: everything visible, per the field report.
   'receiver-signal': [],
   arming: [],
   identity: ['SYSID_MYGCS', 'BRD_BOOT_DELAY'],
@@ -87,10 +85,8 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   // build-time option — plenty of Copter builds (e.g. the RADIX 2 HD) compile
   // without it and never stream FSTRATE_ENABLE. Gate the section on the param
   // actually being present so those FCs don't render an empty "(not reported)"
-  // Fast loop rate card. Pilot-rate params are always present on Copter, but
-  // gate on PILOT_Y_RATE too for symmetry / partial param tables.
+  // Fast loop rate card.
   const hasFastRate = configParametersById.has('FSTRATE_ENABLE')
-  const hasPilotRates = configParametersById.has('PILOT_Y_RATE')
   // Compass section — gate on COMPASS_USE (present whenever a compass subsystem
   // is compiled in). Extra compasses / the disable mask only render when the FC
   // actually reports them, so a single-compass board stays uncluttered.
@@ -98,12 +94,6 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   // Frame class/type — present on Copter (and Heli); Plane/Rover use different
   // frame params, so gate on FRAME_CLASS actually being in the synced tree.
   const hasFrame = configParametersById.has('FRAME_CLASS')
-  // Max lean angle was renamed ANGLE_MAX (cdeg) -> ATC_ANGLE_MAX (deg) in
-  // ArduPilot 4.7. Bind the field to whichever the FC actually streams so it
-  // stops reading "(not reported)" on 4.7+.
-  const leanAngleParamId = configParametersById.has('ATC_ANGLE_MAX') ? 'ATC_ANGLE_MAX' : 'ANGLE_MAX'
-  const leanAngleUnit = leanAngleParamId === 'ATC_ANGLE_MAX' ? 'deg' : 'cdeg'
-  const leanAngleDigits = leanAngleParamId === 'ATC_ANGLE_MAX' ? 1 : 0
   // Pre-arm checks bitmask: ArduPilot 4.7 replaced ARMING_CHECK (checks to
   // PERFORM, with an "All" bit) with ARMING_SKIPCHK (checks to SKIP, inverted,
   // no "All"; default 0 = run everything). Can't be aliased — the meaning
@@ -210,29 +200,16 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
           }
         ]
       : []),
-    // Pilot rates — the same curated knobs the Tuning tab exposes
-    // (PILOT_Y_RATE/EXPO yaw stick shaping, ANGLE_MAX lean limit, ACRO_*
-    // acro rates/expo), mirrored here so they can be reviewed alongside the
-    // rest of the config. Copter-only; ACRO_*/PILOT_Y_* are not Plane/Rover
-    // params.
-    ...(activeVehicle === 'ArduCopter' && hasPilotRates
-      ? [
-          {
-            id: 'pilot-rates',
-            title: 'Pilot rates',
-            description: 'Stick-response shaping: yaw rate/expo, the max lean angle, and acro roll/pitch/yaw rates + expo. Mirrored from the Tuning tab for review alongside the rest of the config.',
-            fields: [
-              { paramId: 'PILOT_Y_RATE', label: 'Pilot yaw rate', unit: 'deg/s', digits: 0 },
-              { paramId: 'PILOT_Y_EXPO', label: 'Pilot yaw expo', digits: 2 },
-              { paramId: leanAngleParamId, label: 'Max lean angle', unit: leanAngleUnit, digits: leanAngleDigits },
-              { paramId: 'ACRO_RP_RATE', label: 'Acro roll/pitch rate', unit: 'deg/s', digits: 0 },
-              { paramId: 'ACRO_Y_RATE', label: 'Acro yaw rate', unit: 'deg/s', digits: 0 },
-              { paramId: 'ACRO_RP_EXPO', label: 'Acro roll/pitch expo', digits: 2 },
-              { paramId: 'ACRO_Y_EXPO', label: 'Acro yaw expo', digits: 2 }
-            ]
-          }
-        ]
-      : []),
+    // Pilot rates (PILOT_Y_RATE/EXPO, the lean-angle limit, ACRO_* rates/expo)
+    // used to be mirrored here as a third card on the RC tab. Field report:
+    // they read as the FIRST thing on a tab whose job is getting a radio
+    // talking, which is the wrong order — and they were only ever a mirror of
+    // the Tuning tab, which already renders every one of those params
+    // (TUNING_FLIGHT_FEEL_PARAM_IDS + TUNING_ACRO_PARAM_IDS) with sliders,
+    // unit handling and the 4.5+/4.7 ANGLE_MAX -> ATC_ANGLE_MAX rename already
+    // covered. Stick shaping is a tuning job, so Tuning is the home; the mirror
+    // is dropped rather than moved to another Config tab so there is exactly one
+    // place these are edited. Nothing became unreachable.
     {
       id: 'active-imu',
       title: 'Active IMU',
@@ -259,21 +236,25 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     {
       id: 'receiver-signal',
       title: 'Receiver & signal',
-      description: 'RC link and signal settings, mirrored from the Receiver tab so they can be reviewed alongside the rest of the config. Use the Receiver tab for the guided stage/review signal-setup flow; RSSI source, mode channel, RC options, and accepted RC protocols are all here too.',
+      description: 'RC link and signal settings, mirrored from the Receiver tab so they can be reviewed alongside the rest of the config. Set the accepted RC protocols and RC options first — radio calibration cannot run until the link is actually decoding. Use the Receiver tab for the guided stage/review signal-setup flow; RSSI source and mode channel are here too.',
       fields: [
+        // Protocol + options lead the card. Earlier ordering put RC_PROTOCOLS at
+        // the BOTTOM on the theory that it is set once at install — but the
+        // field report is that radio calibration is impossible until the
+        // protocol is right, so the operator who most needs this knob is
+        // exactly the one who cannot yet see any RC values on screen. Reading
+        // order now matches setup order: make the link decode, then shape it.
+        // (Display order only — writes are staged/applied from the draft pool,
+        // which is keyed by parameter id and unaffected by card layout.)
+        { paramId: 'RC_PROTOCOLS', label: 'RC protocols (type)', digits: 0 },
+        { paramId: 'RC_OPTIONS', label: 'RC options', digits: 0 },
         { paramId: 'RSSI_TYPE', label: 'RSSI source', digits: 0 },
         { paramId: 'RSSI_CHANNEL', label: 'RSSI channel', digits: 0 },
         // Mode channel param is vehicle-specific: Rover uses MODE_CH, Copter/
         // Plane use FLTMODE_CH, and Sub has no RC mode channel (button modes).
         ...(activeVehicle === 'ArduSub'
           ? []
-          : [{ paramId: activeVehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH', label: 'Flight-mode channel', digits: 0 }]),
-        { paramId: 'RC_OPTIONS', label: 'RC options', digits: 0 },
-        // RC protocol bitmask moves to the BOTTOM of the section so the
-        // higher-frequency knobs (RSSI / mode channel / RC options) stay
-        // above the fold — RC_PROTOCOLS is set once at install and rarely
-        // touched afterwards.
-        { paramId: 'RC_PROTOCOLS', label: 'RC protocols (type)', digits: 0 }
+          : [{ paramId: activeVehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH', label: 'Flight-mode channel', digits: 0 }])
       ]
     },
     {
@@ -335,11 +316,7 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   ] as readonly ConfigSection[]).map(categorize), [
     activeVehicle,
     hasFastRate,
-    hasPilotRates,
     hasFrame,
-    leanAngleParamId,
-    leanAngleUnit,
-    leanAngleDigits,
     armingChecksParamId,
     armingChecksLabel,
     armingDescription
