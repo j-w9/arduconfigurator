@@ -4728,9 +4728,22 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(toggle).toBeVisible({ timeout: 12000 })
     await toggle.click()
 
+    // A node row appears on its first NodeStatus broadcast, which is BEFORE its
+    // GetNodeInfo answer — and the online lookup matches on the board id
+    // reconstructed from that answer's hardware_version. Wait for the identity
+    // (HW x.y in the row) before asking for a lookup that depends on it; the
+    // button is held disabled until then, and clicking in that gap is what a
+    // contended runner used to do.
+    await expect(page.getByTestId('can-bus-node-50')).toContainText('HW 2.1', { timeout: COMMAND_ACK_TIMEOUT })
+
     // Find firmware online -> the matched AP_Periph build appears.
+    await expect(page.getByTestId('dronecan-fwupdate-online-waiting-50')).toHaveCount(0)
     await page.getByTestId('dronecan-fwupdate-online-find-50').click()
     await expect(page.getByTestId('dronecan-fwupdate-online-list-50')).toBeVisible({ timeout: COMMAND_ACK_TIMEOUT })
+    // The lookup must actually have matched — never silently fall through to the
+    // "couldn't look it up" note on a path that ends in a flash.
+    await expect(page.getByTestId('dronecan-fwupdate-online-error-50')).toHaveCount(0)
+    await expect(page.getByTestId('dronecan-fwupdate-online-empty-50')).toHaveCount(0)
     await expect(page.getByTestId('dronecan-fwupdate-online-list-50')).toContainText('1.7.0')
 
     // Use the build: it downloads + decodes, then stages the image for the
