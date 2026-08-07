@@ -359,6 +359,7 @@ import { useRuntimeSnapshot } from './hooks/use-runtime-snapshot'
 import { useMavftpBrowser } from './hooks/use-mavftp-browser'
 import { useOnboardLogs } from './hooks/use-onboard-logs'
 import { useProductMode } from './hooks/use-product-mode'
+import { useRecentNoticesExpanded } from './hooks/use-recent-notices-expanded'
 import { useGpsCoordFormat } from './hooks/use-gps-coord-format'
 import {
   formatLatitudeDecimal,
@@ -506,10 +507,16 @@ export function App() {
   const [activeViewId, setActiveViewId] = useState<AppViewId>('setup')
   // Expert-mode text filter for the Recent Notices panel.
   const [noticeFilter, setNoticeFilter] = useState('')
-  // Expand-in-place for Recent Notices. Collapsed by DEFAULT and deliberately
-  // not persisted: Status & Info is already a long page, so extra height has to
-  // be something the operator asks for every time they want it.
-  const [noticesExpanded, setNoticesExpanded] = useState(false)
+  // Expand-in-place for the INLINE Recent Notices list. Collapsed for a fresh
+  // profile — Status & Info is a long page and nobody who never touches this
+  // control pays for it — but the choice is remembered once made, because
+  // wanting to read the FC's message feed is a standing preference, not a
+  // per-visit one. See hooks/use-recent-notices-expanded.ts.
+  //
+  // Scope note: this is the inline height ONLY. The popped-out window sizes
+  // itself and is passed no `expanded` at all, so toggling here can never make
+  // that window jump.
+  const [noticesExpanded, toggleNoticesExpanded] = useRecentNoticesExpanded()
   // The selected port is supplied to the transport LAZILY via this ref.
   // It must NOT be a runtime-useMemo dependency: the WebSerial transport
   // calls onPortSelected(port) during connect (with the just-picked
@@ -7167,7 +7174,7 @@ export function App() {
                               testIdPrefix="setup-notices"
                               entryTestIdPrefix="setup-notice"
                               expanded={noticesExpanded}
-                              onToggleExpanded={() => setNoticesExpanded((current) => !current)}
+                              onToggleExpanded={toggleNoticesExpanded}
                               poppedOut={noticesPopoutHandle !== undefined}
                               popoutBlocked={noticesPopout.blockedKey === NOTICES_POPOUT_KEY}
                               onTogglePopout={() => {

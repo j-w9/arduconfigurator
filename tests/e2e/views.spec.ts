@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { deflateSync } from 'node:zlib'
 
 // The in-browser demo transport delivers inbound frames (param sync, command
@@ -4133,22 +4133,58 @@ test('Recent Notices: clear-all button and expert-mode search bar', async ({ pag
   await expect(page.getByTestId('setup-notices-search')).toBeVisible()
 })
 
-test('Recent Notices expands in place and stays collapsed by default', async ({ page }) => {
+test('Recent Notices expands in place, and the choice survives a reload', async ({ page }) => {
+  const connect = async (): Promise<Locator> => {
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', {
+      timeout: VEHICLE_CONNECT_TIMEOUT
+    })
+    const list = page.getByTestId('setup-notices-list')
+    await expect(list).toBeVisible({ timeout: 15_000 })
+    return list
+  }
+  const maxHeight = (list: Locator) =>
+    list.evaluate((node) => getComputedStyle(node).maxHeight)
+
   await page.goto('/')
-  await page.getByTestId('transport-mode-select').selectOption('demo')
-  await page.getByTestId('connect-button').click()
-  await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
-  const list = page.getByTestId('setup-notices-list')
-  await expect(list).toBeVisible({ timeout: 15_000 })
-  // Collapsed is the default — Status & Info is long enough already, so the
-  // extra height has to be asked for.
-  const collapsed = await list.evaluate((node) => getComputedStyle(node).maxHeight)
-  expect(collapsed).toBe('240px')
+  // A fresh Playwright context IS a fresh profile — nothing stored for this
+  // origin — so this leg asserts what someone who has never touched the control
+  // gets, and it must stay collapsed: Status & Info is long enough already.
+  // (Don't assert the key is absent here: App mounts and persists the resolved
+  // default immediately, so the key exists by the time anything can read it.
+  // The height is the behaviour that matters.)
+  let list = await connect()
+  expect(await maxHeight(list)).toBe('240px')
+
   await page.getByTestId('setup-notices-expand').click()
-  const expanded = await list.evaluate((node) => getComputedStyle(node).maxHeight)
-  expect(Number.parseFloat(expanded)).toBeGreaterThan(240)
+  expect(Number.parseFloat(await maxHeight(list))).toBeGreaterThan(240)
+
+  // Expanded must be inherited on the next visit: re-clicking Expand after
+  // every reload (and every reboot-driven refresh) was the operator complaint.
+  await page.reload()
+  list = await connect()
+  expect(Number.parseFloat(await maxHeight(list))).toBeGreaterThan(240)
+
+  // …and collapsing must stick just as hard, or the setting is a one-way door.
   await page.getByTestId('setup-notices-expand').click()
-  expect(await list.evaluate((node) => getComputedStyle(node).maxHeight)).toBe('240px')
+  expect(await maxHeight(list)).toBe('240px')
+  await page.reload()
+  list = await connect()
+  expect(await maxHeight(list)).toBe('240px')
+
+  // Corrupt and stale-version values are both treated as "never set" rather
+  // than throwing: the panel height is not worth a white screen, and a bumped
+  // version must fall back to the safe default instead of restoring a meaning
+  // the stored flag no longer has.
+  for (const poison of ['{not json', '{"version":999,"expanded":true}', 'true']) {
+    await page.evaluate((value) => {
+      window.localStorage.setItem('arduconfig:recent-notices-expanded', value)
+    }, poison)
+    await page.reload()
+    list = await connect()
+    expect(await maxHeight(list)).toBe('240px')
+  }
 })
 
 test('Recent Notices pops out into its own styled, live window', async ({ page, context }) => {
