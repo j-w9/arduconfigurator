@@ -19,6 +19,17 @@ import {
 } from '../view-models/parameter-diff-actions'
 import { ParameterDiffGroupActions } from '../views/ParameterDiffGroupActions'
 import { ParameterDiffIdentity, ParameterDiffInvalidRow } from '../views/ParameterDiffRow'
+import { applyDraftSelectionClick } from '../view-models/draft-selection'
+import {
+  detectPresetDependencies,
+  inferBatteryCellCount,
+  presetDependencyClass,
+  type PresetDependencyClassId,
+  type PresetDependencyContext,
+  type PresetDependencyRecord
+} from '../view-models/preset-dependencies'
+import { CreatePresetDialog, type CreatePresetParam, type CreatePresetQuestion } from '../views/CreatePresetDialog'
+import type { UserPresetDraft } from '../user-preset-library'
 
 import {
   formatParameterDelta,
@@ -118,6 +129,9 @@ export interface ParametersSectionProps {
   onFetchParamDefaults: () => void | Promise<void>
   /** True while the defaults fetch is in flight. */
   fetchDefaultsBusy: boolean
+  /** Save a group of selected parameters as a reusable preset. Read-only —
+   *  nothing is written to the aircraft. Omitting it hides the whole control. */
+  onCreateUserPreset?: (draft: UserPresetDraft) => void
 }
 
 export function ParametersSection(props: ParametersSectionProps): ReactElement {
@@ -176,7 +190,8 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     onDismissPendingParameterImport,
     recentlyWrittenParamIds,
     onToggleShowOnlyNonDefault: handleToggleShowOnlyNonDefault,
-    fetchDefaultsBusy
+    fetchDefaultsBusy,
+    onCreateUserPreset
   } = props
 
   // Bulk-drop selection over the staged review rows — dropping unwanted
@@ -308,6 +323,229 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filteredParameters, categoryFilter, metadataCatalog, showOnlyNonDefault, nonDefaultParamIds]
   )
+  // ---------------------------------------------------------------------
+  // "Create preset" — row selection over the parameter TABLE
+  // ---------------------------------------------------------------------
+  // A second selection set, distinct from the staged-review bulk-drop one below
+  // because it selects live parameters rather than pending drafts. It shares the
+  // shift-click RULE (applyDraftSelectionClick) but deliberately not
+  // useDraftSelection: that hook prunes any selected id missing from the ordered
+  // list, which is right when a row leaves by being dropped and wrong here,
+  // where rows leave because the operator typed in the search box. Pruning on a
+  // filter change would silently empty a selection built across two categories.
+  //
+  // The visible-rows-only rule from bulk drop still holds, and is stated in the
+  // UI: Select all and Create preset act on what is on screen, so a filtered
+  // action can never reach into rows the filter is hiding. Ids selected and then
+  // filtered away are kept, counted separately, and come back with the filter.
+  const [presetSelection, setPresetSelection] = useState<ReadonlySet<string>>(() => new Set())
+  const presetSelectionAnchorRef = useRef<string | null>(null)
+  const displayedParameterIds = useMemo(() => displayedParameters.map((parameter) => parameter.id), [displayedParameters])
+  const visibleSelectedParamIds = useMemo(
+    () => displayedParameterIds.filter((id) => presetSelection.has(id)),
+    [displayedParameterIds, presetSelection]
+  )
+  const hiddenSelectedCount = presetSelection.size - visibleSelectedParamIds.length
+  const allVisibleSelected = displayedParameterIds.length > 0 && visibleSelectedParamIds.length === displayedParameterIds.length
+
+  const handlePresetSelectionClick = useCallback(
+    (paramId: string, shiftKey: boolean) => {
+      setPresetSelection((current) =>
+        applyDraftSelectionClick(current, displayedParameterIds, paramId, {
+          shiftKey,
+          anchorId: presetSelectionAnchorRef.current
+        })
+      )
+      presetSelectionAnchorRef.current = paramId
+    },
+    [displayedParameterIds]
+  )
+
+  const handleSelectAllVisible = useCallback(
+    (selected: boolean) => {
+      setPresetSelection((current) => {
+        const next = new Set(current)
+        displayedParameterIds.forEach((id) => (selected ? next.add(id) : next.delete(id)))
+        return next
+      })
+      presetSelectionAnchorRef.current = null
+    },
+    [displayedParameterIds]
+  )
+
+  // Live values + metadata, looked up often enough while the dialog is open to
+  // be worth a map rather than a linear scan per parameter.
+  const liveValueById = useMemo(
+    () => new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value])),
+    [snapshot.parameters]
+  )
+  const readLiveParameter = useCallback((paramId: string) => liveValueById.get(paramId), [liveValueById])
+  const definitionOf = useCallback(
+    (paramId: string) =>
+      metadataCatalog.parameters[paramId] ?? snapshot.parameters.find((parameter) => parameter.id === paramId)?.definition,
+    [metadataCatalog, snapshot.parameters]
+  )
+
+  // Dialog state. `presetDraftIds` is a snapshot of the selection taken when the
+  // dialog opens: the table underneath stays live, and a filter change (or an
+  // auto-refresh dropping a row) must not silently change what is about to be
+  // saved.
+  const [createPresetOpen, setCreatePresetOpen] = useState(false)
+  const [presetDraftIds, setPresetDraftIds] = useState<readonly string[]>([])
+  const [presetName, setPresetName] = useState('')
+  const [presetDescription, setPresetDescription] = useState('')
+  const [presetExcludedIds, setPresetExcludedIds] = useState<ReadonlySet<string>>(() => new Set())
+  const [presetAnsweredClasses, setPresetAnsweredClasses] = useState<ReadonlySet<string>>(() => new Set())
+  const [presetCellCount, setPresetCellCount] = useState('')
+
+  const presetKeptIds = useMemo(
+    () => presetDraftIds.filter((id) => !presetExcludedIds.has(id)),
+    [presetDraftIds, presetExcludedIds]
+  )
+  // Re-detect over what is actually KEPT, so dropping the last SERIAL3 row also
+  // removes the serial-port question instead of leaving a dependency recorded
+  // against parameters the preset no longer contains.
+  const presetDetection = useMemo(
+    () =>
+      detectPresetDependencies({
+        paramIds: presetKeptIds,
+        readParameter: readLiveParameter,
+        isRebootRequired: (paramId) => definitionOf(paramId)?.rebootRequired === true
+      }),
+    [presetKeptIds, readLiveParameter, definitionOf]
+  )
+
+  // Calibration ids come from the FULL selection, not from presetDetection:
+  // they are excluded by default, so by the time detection runs over the kept
+  // set the class has disappeared — and the warning explaining why they were
+  // dropped would disappear with it.
+  const presetCalibrationParamIds = useMemo(
+    () =>
+      detectPresetDependencies({ paramIds: presetDraftIds, readParameter: readLiveParameter }).dependencies.find(
+        (entry) => entry.classId === 'calibration'
+      )?.paramIds ?? [],
+    [presetDraftIds, readLiveParameter]
+  )
+
+  const handleOpenCreatePreset = useCallback(() => {
+    const ids = visibleSelectedParamIds
+    const initial = detectPresetDependencies({ paramIds: ids, readParameter: readLiveParameter })
+    setPresetDraftIds(ids)
+    // Per-board calibration is excluded BY DEFAULT rather than merely flagged:
+    // a compass offset is never valid on another board, so the safe default is
+    // to leave it out. Fully reversible per row ("Keep"), and the dialog says
+    // so in a warning banner, so this is a default and not a decision taken
+    // away from the operator.
+    setPresetExcludedIds(
+      new Set(initial.dependencies.find((entry) => entry.classId === 'calibration')?.paramIds ?? [])
+    )
+    setPresetAnsweredClasses(new Set(initial.dependencies.map((entry) => entry.classId)))
+    setPresetCellCount(String(inferBatteryCellCount(readLiveParameter) ?? ''))
+    setPresetName('')
+    setPresetDescription('')
+    setCreatePresetOpen(true)
+  }, [visibleSelectedParamIds, readLiveParameter])
+
+  const handleToggleDependencyAnswer = useCallback((classId: string) => {
+    setPresetAnsweredClasses((current) => {
+      const next = new Set(current)
+      if (next.has(classId)) {
+        next.delete(classId)
+      } else {
+        next.add(classId)
+      }
+      return next
+    })
+  }, [])
+
+  const handleTogglePresetParamExcluded = useCallback((paramId: string) => {
+    setPresetExcludedIds((current) => {
+      const next = new Set(current)
+      if (next.has(paramId)) {
+        next.delete(paramId)
+      } else {
+        next.add(paramId)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSaveUserPreset = useCallback(() => {
+    if (!onCreateUserPreset) {
+      return
+    }
+    const values = presetKeptIds
+      .map((paramId) => ({ paramId, value: liveValueById.get(paramId) }))
+      .filter((entry): entry is { paramId: string; value: number } => entry.value !== undefined && Number.isFinite(entry.value))
+
+    const typedCells = Number.parseInt(presetCellCount, 10)
+    const dependencies: PresetDependencyRecord[] = presetDetection.dependencies
+      .filter((entry) => presetAnsweredClasses.has(entry.classId))
+      .map((entry) => {
+        const context: PresetDependencyContext = { ...entry.context }
+        // The operator's typed cell count wins over the MOT_BAT_VOLT_MAX
+        // inference — they know the pack, the inference only guessed at it.
+        if (entry.classId === 'battery-pack') {
+          if (Number.isFinite(typedCells) && typedCells >= 2 && typedCells <= 14) {
+            context.batteryCells = typedCells
+          } else {
+            delete context.batteryCells
+          }
+        }
+        return { classId: entry.classId, paramIds: entry.paramIds, context }
+      })
+
+    onCreateUserPreset({
+      label: presetName.trim(),
+      description: presetDescription.trim(),
+      values,
+      dependencies
+    })
+    setCreatePresetOpen(false)
+    setPresetSelection(new Set())
+    presetSelectionAnchorRef.current = null
+  }, [
+    onCreateUserPreset,
+    presetKeptIds,
+    liveValueById,
+    presetCellCount,
+    presetDetection,
+    presetAnsweredClasses,
+    presetName,
+    presetDescription
+  ])
+
+  const createPresetParams = useMemo<CreatePresetParam[]>(
+    () =>
+      presetDraftIds.map((paramId) => {
+        const definition = definitionOf(paramId)
+        return {
+          id: paramId,
+          label: definition?.label ?? paramId,
+          description: definition?.description,
+          valueText: formatParameterValue(liveValueById.get(paramId) ?? Number.NaN, definition?.unit),
+          excluded: presetExcludedIds.has(paramId)
+        }
+      }),
+    [presetDraftIds, presetExcludedIds, definitionOf, liveValueById]
+  )
+
+  const createPresetQuestions = useMemo<CreatePresetQuestion[]>(
+    () =>
+      presetDetection.dependencies.map((entry) => {
+        const descriptor = presetDependencyClass(entry.classId as PresetDependencyClassId)
+        return {
+          classId: entry.classId,
+          label: descriptor.label,
+          question: descriptor.question,
+          rationale: descriptor.rationale,
+          detail: entry.detail,
+          checked: presetAnsweredClasses.has(entry.classId)
+        }
+      }),
+    [presetDetection, presetAnsweredClasses]
+  )
+
   const visibleStagedGroups = useMemo(() => {
     if (!searchPredicate) {
       return stagedParameterGroups
@@ -1076,6 +1314,59 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
           ) : null}
         </div>
 
+        {/* Group-to-preset selection. Sits directly above the table because it
+          * acts on the table's rows, and states the visible-rows-only rule
+          * inline — the same rule the staged bulk drop follows. */}
+        {onCreateUserPreset ? (
+          <div className="parameter-preset-bulk" data-testid="parameter-preset-bulk">
+            <label className="parameter-diff-bulk__all">
+              <input
+                type="checkbox"
+                data-testid="parameter-preset-select-all"
+                checked={allVisibleSelected}
+                onChange={(event) => handleSelectAllVisible(event.target.checked)}
+                disabled={busyAction !== undefined || displayedParameterIds.length === 0}
+              />
+              <span>Select all visible ({displayedParameterIds.length})</span>
+            </label>
+            <button
+              type="button"
+              data-testid="parameter-create-preset"
+              style={buttonStyle('primary')}
+              onClick={handleOpenCreatePreset}
+              disabled={busyAction !== undefined || visibleSelectedParamIds.length === 0}
+              title="Save the selected parameters' current values as a reusable preset. Reads only — nothing is written to the aircraft."
+            >
+              Create preset ({visibleSelectedParamIds.length})
+            </button>
+            <button
+              type="button"
+              data-testid="parameter-preset-clear-selection"
+              style={buttonStyle()}
+              onClick={() => {
+                setPresetSelection(new Set())
+                presetSelectionAnchorRef.current = null
+              }}
+              disabled={presetSelection.size === 0}
+            >
+              Clear selection
+            </button>
+            <small>
+              Tick rows to build a preset. Shift-click selects a range. Select all and Create preset act on the rows currently visible,
+              so the search and category filters can never pull in a row you cannot see.
+              {hiddenSelectedCount > 0 ? (
+                <>
+                  {' '}
+                  <strong data-testid="parameter-preset-hidden-count">
+                    {hiddenSelectedCount} selected row{hiddenSelectedCount === 1 ? '' : 's'} hidden by the current filter
+                  </strong>{' '}
+                  — they stay selected and return when you clear it.
+                </>
+              ) : null}
+            </small>
+          </div>
+        ) : null}
+
         <div className="parameter-table">
           <div className="parameter-row parameter-row--header">
             <span>Parameter</span>
@@ -1120,6 +1411,26 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                 onClick={() => setSelectedParameterId(isExpanded ? undefined : parameter.id)}
               >
                 <span className="parameter-row__name">
+                  {/* Lives inside the name cell rather than as a seventh grid
+                    * column so the table's column template (and every surface
+                    * that styles it) is untouched. stopPropagation keeps a
+                    * selection click from also expanding the row detail. */}
+                  {onCreateUserPreset ? (
+                    <input
+                      type="checkbox"
+                      className="parameter-row__select"
+                      data-testid={`parameter-preset-select-${parameter.id}`}
+                      checked={presetSelection.has(parameter.id)}
+                      aria-label={`Select ${parameter.id} for a preset`}
+                      title="Select for Create preset. Shift-click selects a range."
+                      disabled={busyAction !== undefined}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handlePresetSelectionClick(parameter.id, event.shiftKey)
+                      }}
+                      onChange={() => {}}
+                    />
+                  ) : null}
                   <span className="parameter-row__caret" aria-hidden="true">{isExpanded ? '▾' : '▸'}</span>
                   <span>
                     <strong>{parameter.id}</strong>
@@ -1258,6 +1569,28 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
           })}
         </div>
         {displayedParameters.length === 0 ? <p className="parameter-empty-state">No parameters match the current filter.</p> : null}
+
+        {createPresetOpen && onCreateUserPreset ? (
+          <CreatePresetDialog
+            params={createPresetParams}
+            savedCount={presetKeptIds.length}
+            name={presetName}
+            onNameChange={setPresetName}
+            description={presetDescription}
+            onDescriptionChange={setPresetDescription}
+            questions={createPresetQuestions}
+            onToggleQuestion={handleToggleDependencyAnswer}
+            showCellCount={presetAnsweredClasses.has('battery-pack')}
+            cellCount={presetCellCount}
+            onCellCountChange={setPresetCellCount}
+            calibrationParamIds={presetCalibrationParamIds}
+            rebootRequiredParamIds={presetDetection.rebootRequiredParamIds}
+            unclassifiedCount={presetDetection.unclassifiedParamIds.length}
+            onToggleParamExcluded={handleTogglePresetParamExcluded}
+            onSave={handleSaveUserPreset}
+            onCancel={() => setCreatePresetOpen(false)}
+          />
+        ) : null}
       </Panel>
 
   )

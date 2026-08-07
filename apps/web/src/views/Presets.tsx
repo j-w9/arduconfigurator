@@ -77,6 +77,22 @@ export interface PresetsSelected {
   cautions: readonly string[]
   diffGroups: readonly PresetsDiffGroup[]
   invalidEntries: readonly PresetsInvalidEntry[]
+  /** Dependency classes an operator-authored preset declared, for the pills. */
+  dependencyLabels?: readonly string[]
+  /** Operator-authored — enables the Delete control. Curated presets cannot be deleted. */
+  deletable?: boolean
+  /**
+   * Serial-port remap offer, present only for a saved preset that recorded the
+   * UART its values came from. The transform is exact (SERIAL3_* -> SERIAL4_*);
+   * what cannot be inferred is whether it is wanted, so it is an explicit
+   * choice that defaults to the saved port.
+   */
+  serialRemap?: {
+    savedPort: number
+    availablePorts: readonly number[]
+    selectedPort: number
+    missingOnTarget: readonly string[]
+  } | null
 }
 
 export interface PresetsViewProps {
@@ -91,6 +107,10 @@ export interface PresetsViewProps {
   groups: readonly PresetsGroup[]
   selected: PresetsSelected | null
   onToggleDropParam: (paramId: string) => void
+  /** Re-target a saved preset's SERIALn_* values at a different UART. */
+  onSerialRemapChange?: (port: number) => void
+  /** Delete the selected operator-authored preset. */
+  onDeleteSelectedPreset?: () => void
   applyAcknowledged: boolean
   onAcknowledgedChange: (acknowledged: boolean) => void
   onSelectPreset: (presetId: string) => void
@@ -126,6 +146,8 @@ export function PresetsView(props: PresetsViewProps) {
     groups,
     selected,
     onToggleDropParam,
+    onSerialRemapChange,
+    onDeleteSelectedPreset,
     applyAcknowledged,
     onAcknowledgedChange,
     onSelectPreset,
@@ -340,9 +362,50 @@ export function PresetsView(props: PresetsViewProps) {
                 {selected.tags.map((tag) => (
                   <span key={`selected:tag:${tag}`}>#{tag}</span>
                 ))}
+                {(selected.dependencyLabels ?? []).map((label) => (
+                  <span key={`selected:dep:${label}`} data-testid={`preset-dependency-pill-${label}`}>
+                    depends on: {label}
+                  </span>
+                ))}
               </div>
 
               {selected.note ? <p className="snapshot-selected__note">{selected.note}</p> : null}
+
+              {/* Port remap. Rendered only when the preset recorded which UART
+                * it came from, so it never appears as a mystery control on a
+                * curated preset. Defaults to the saved port — no remap happens
+                * unless the operator asks for one. */}
+              {selected.serialRemap && onSerialRemapChange ? (
+                <div className="preset-serial-remap" data-testid="preset-serial-remap">
+                  <label>
+                    <span>Serial port</span>
+                    <select
+                      data-testid="preset-serial-remap-select"
+                      value={String(selected.serialRemap.selectedPort)}
+                      onChange={(event) => onSerialRemapChange(Number(event.target.value))}
+                    >
+                      {selected.serialRemap.availablePorts.map((port) => (
+                        <option key={port} value={String(port)}>
+                          SERIAL{port}
+                          {port === selected.serialRemap?.savedPort ? ' (as saved)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <small>
+                    This preset was captured with the device on SERIAL{selected.serialRemap.savedPort}. Pick the UART it is wired to on
+                    this board and the diff below is rewritten to match.
+                    {selected.serialRemap.missingOnTarget.length > 0 ? (
+                      <>
+                        {' '}
+                        <strong>
+                          {selected.serialRemap.missingOnTarget.join(', ')} do not exist on this aircraft and will be ignored.
+                        </strong>
+                      </>
+                    ) : null}
+                  </small>
+                </div>
+              ) : null}
 
               {selected.prerequisites.length > 0 ? (
                 <div className="preset-notes">
@@ -477,6 +540,18 @@ export function PresetsView(props: PresetsViewProps) {
                 >
                   Load as Manual Tuning Draft
                 </button>
+                {selected.deletable && onDeleteSelectedPreset ? (
+                  <button
+                    type="button"
+                    style={buttonStyle()}
+                    data-testid="preset-delete-button"
+                    onClick={onDeleteSelectedPreset}
+                    disabled={isBusy}
+                    title="Remove this saved preset from your browser's preset library. Nothing is written to the aircraft."
+                  >
+                    Delete preset
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}

@@ -24,6 +24,12 @@ import {
   type SavedTuningProfile,
   type TuningProfileStorageLoadResult
 } from '../tuning-profile-library'
+import {
+  loadStoredUserPresets,
+  persistUserPresets,
+  type UserPresetRecord,
+  type UserPresetStorageLoadResult
+} from '../user-preset-library'
 
 /**
  * A storage-warning banner. Structurally compatible with App's
@@ -55,6 +61,11 @@ export interface Libraries {
   selectedTuningProfileId: string | undefined
   setSelectedTuningProfileId: Dispatch<SetStateAction<string | undefined>>
   tuningProfileStorageNotice: LibraryStorageNotice
+
+  /** Operator-authored parameter-group presets — see user-preset-library.ts. */
+  savedUserPresets: UserPresetRecord[]
+  setSavedUserPresets: Dispatch<SetStateAction<UserPresetRecord[]>>
+  userPresetStorageNotice: LibraryStorageNotice
 }
 
 /**
@@ -104,6 +115,17 @@ export function useLibraries(): Libraries {
     warningNotice(initialTuningProfileStorage.warning)
   )
 
+  const initialUserPresetStorage = useMemo<UserPresetStorageLoadResult>(() => loadStoredUserPresets(), [])
+  const [savedUserPresets, setSavedUserPresets] = useState<UserPresetRecord[]>(initialUserPresetStorage.presets)
+  const [userPresetStorageNotice, setUserPresetStorageNotice] = useState<LibraryStorageNotice>(() =>
+    warningNotice(initialUserPresetStorage.warning)
+  )
+
+  useEffect(() => {
+    const persistence = persistUserPresets(savedUserPresets)
+    setUserPresetStorageNotice(warningNotice(persistence.warning))
+  }, [savedUserPresets])
+
   useEffect(() => {
     const persistence = persistSnapshots(savedSnapshots)
     setSnapshotStorageNotice(warningNotice(persistence.warning))
@@ -134,6 +156,9 @@ export function useLibraries(): Libraries {
     setSavedTuningProfiles,
     selectedTuningProfileId,
     setSelectedTuningProfileId,
-    tuningProfileStorageNotice
+    tuningProfileStorageNotice,
+    savedUserPresets,
+    setSavedUserPresets,
+    userPresetStorageNotice
   }
 }
