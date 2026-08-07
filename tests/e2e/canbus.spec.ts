@@ -111,4 +111,48 @@ test.describe('DroneCAN inspector', () => {
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-node-124').getByText('Front GPS')).toBeVisible()
   })
+
+  test('a device pops out into its own styled window, scoped to that node', async ({ page, context }) => {
+    await page.goto('/')
+    await connectDemo(page)
+    // Expert mode so the popout carries the device actions that used to live in
+    // the separate DroneCAN Inspector tab (restart / firmware update).
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-node-124')).toBeVisible()
+
+    // window.open fires straight from the click, so the popup survives.
+    const [popout] = await Promise.all([
+      context.waitForEvent('page'),
+      page.getByTestId('can-bus-node-popout-124').click()
+    ])
+    await popout.waitForLoadState('domcontentloaded')
+
+    // The window is scoped to node 124 and to nothing else on the bus.
+    await expect(popout.getByTestId('can-device-inspector-124')).toBeVisible()
+    await expect(popout.getByTestId('can-device-inspector-50')).toHaveCount(0)
+    await expect(popout.getByTestId('can-bus-param-input-124-GPS_TYPE')).toBeVisible({ timeout: 12000 })
+    // Expert device actions came along with it.
+    await expect(popout.getByTestId('dronecan-restart-124')).toBeVisible()
+
+    // The opener's stylesheets were cloned in — an unstyled popout is the classic
+    // failure, and it shows up as a transparent body with no themed background.
+    const background = await popout.evaluate(() => getComputedStyle(document.body).backgroundColor)
+    expect(background).not.toBe('rgba(0, 0, 0, 0)')
+    expect(background).not.toBe('transparent')
+
+    // The window keeps updating from the same session: forwarding is owned by the
+    // runtime (and re-armed by it), so the popout is still live well past
+    // ArduPilot's 5s CAN_FORWARD timeout.
+    await page.waitForTimeout(7000)
+    await expect(popout.getByTestId('can-bus-param-input-124-GPS_TYPE')).toBeVisible()
+    await expect(page.getByTestId('can-bus-stop')).toBeVisible()
+
+    // The row says where the device went, and closing the window brings it back.
+    await expect(page.getByTestId('can-bus-node-popped-out-124')).toBeVisible()
+    await page.getByTestId('can-bus-node-popout-124').click()
+    await expect(page.getByTestId('can-bus-node-popped-out-124')).toHaveCount(0)
+    expect(popout.isClosed()).toBe(true)
+  })
 })

@@ -2,28 +2,30 @@ import { useMemo, useState } from 'react'
 
 import type {
   CanBusState,
+  DronecanEscTelemetry,
   DronecanParamValueState
 } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
-import {
-  buildCanBusNodeRows,
-  buildCanBusStagedChanges,
-  compareParamEntries,
-  formatParamValue,
-  healthLabel,
-  modeLabel,
-  parseParamInput
-} from '../view-models/can-bus'
-import { describeDronecanParam, type DronecanParamCatalogLookup } from '../view-models/dronecan-param-display'
+import { buildCanBusNodeRows, healthLabel, modeLabel } from '../view-models/can-bus'
+import { buildCanBusTrafficSummary } from '../view-models/can-device-inspector'
+import { buildDronecanEscRows, summarizeDronecanNodes } from '../view-models/dronecan-inspector'
+import type { DronecanParamCatalogLookup } from '../view-models/dronecan-param-display'
 import { useCanNodeNames } from '../hooks/use-can-node-names'
+import { CanDeviceInspectorView, type CanDeviceExpertActions } from './CanDeviceInspector'
 
-// Mission Planner-equivalent DroneCAN inspector. Connects via
-// MAV_CMD_CAN_FORWARD (so MAVLink stays alive on the same channel), then
-// discovers nodes from passive uavcan.protocol.NodeStatus broadcasts +
-// active uavcan.protocol.GetNodeInfo polling, lists every node's
-// parameters via uavcan.protocol.param.GetSet, and supports per-node
-// write + ExecuteOpcode(SAVE) so changes persist across reboots.
+// The single CAN surface. Mission Planner-equivalent DroneCAN workflow: connect
+// via MAV_CMD_CAN_FORWARD (so MAVLink stays alive on the same channel), discover
+// nodes from passive uavcan.protocol.NodeStatus broadcasts + active
+// uavcan.protocol.GetNodeInfo polling, then inspect ONE device at a time —
+// identity, parameters (GetSet walk, staged edits, write + ExecuteOpcode(SAVE)),
+// restart, firmware update, ESC telemetry.
+//
+// This tab used to have a twin: an expert-only "DroneCAN Inspector" tab showing
+// the same bus over the same tunnel from a different angle. The two are merged
+// here, and every device row can instead pop its inspector out into its own
+// window (see use-can-device-popouts) so several devices are watchable side by
+// side, the way Mission Planner and the DroneCAN GUI do it.
 
 export interface CanBusViewProps {
   state: CanBusState
@@ -56,6 +58,38 @@ export interface CanBusViewProps {
   onEnableCanBus?: () => void
   /** Disables the enable button while a write is in flight. */
   enableBusy?: boolean
+  /** Smoothed frames/s over the tunnel — the bus-traffic read-out the standalone
+   *  inspector used to own. Omitted by the DroneNet embed, which is about one
+   *  peripheral's settings rather than bus health. */
+  framesPerSec?: number
+  /** Bus-wide ESC telemetry (uavcan.equipment.esc.Status), rendered under the
+   *  device list. Omitted by the DroneNet embed. */
+  escTelemetry?: readonly DronecanEscTelemetry[]
+  /** Some other write is in flight; gates the destructive device actions. */
+  busy?: boolean
+  /** Expert-only per-device actions (restart, firmware update) — see
+   *  CanDeviceExpertActions. Omitted outside Expert mode, which is exactly where
+   *  they lived before the tab merge. */
+  expertActions?: CanDeviceExpertActions
+  /** Pop-out wiring, supplied by App.tsx (the windows outlive this tab). Absent
+   *  in the DroneNet embed, which has no pop-out affordance. */
+  popout?: {
+    openNodeIds: number[]
+    /** Called straight from the click handler — window.open needs the gesture. */
+    onOpen: (nodeId: number, label: string | undefined) => void
+    onClose: (nodeId: number) => void
+    /** Node whose window the browser blocked, so we can say so in place. */
+    blockedNodeId?: number
+  }
+}
+
+/** "12.3s ago" / "now" for a node's last NodeStatus broadcast. */
+function lastSeenLabel(lastSeenAtMs: number): string {
+  const age = Math.max(0, Date.now() - lastSeenAtMs)
+  if (age < 1500) {
+    return 'now'
+  }
+  return `${(age / 1000).toFixed(age < 10000 ? 1 : 0)}s ago`
 }
 
 export function CanBusView(props: CanBusViewProps) {
@@ -73,7 +107,12 @@ export function CanBusView(props: CanBusViewProps) {
     subtitle = 'Discover DroneCAN devices on the CAN bus and read, edit, and save their parameters — without dropping your vehicle connection.',
     enablement,
     onEnableCanBus,
-    enableBusy = false
+    enableBusy = false,
+    framesPerSec,
+    escTelemetry,
+    busy = false,
+    expertActions,
+    popout
   } = props
 
   const rows = useMemo(() => buildCanBusNodeRows(state), [state])
@@ -95,6 +134,8 @@ export function CanBusView(props: CanBusViewProps) {
         : state.status === 'idle'
           ? 'neutral'
           : 'warning'
+  const busSummary = summarizeDronecanNodes(state.nodes)
+  const escRows = escTelemetry ? buildDronecanEscRows(escTelemetry) : []
 
   function draftKey(nodeId: number, name: string): string {
     return `${nodeId}:${name}`
@@ -105,6 +146,10 @@ export function CanBusView(props: CanBusViewProps) {
   // draftValues; the comparison panel shows current → new per row and
   // one Apply all writes the whole set, after which Save to node
   // persists it. Nothing is written until Apply all.
+  function setDraft(nodeId: number, name: string, raw: string) {
+    setDraftValues((current) => ({ ...current, [draftKey(nodeId, name)]: raw }))
+  }
+
   function dropDraft(nodeId: number, name: string) {
     setDraftValues((current) => {
       const next = { ...current }
@@ -120,13 +165,7 @@ export function CanBusView(props: CanBusViewProps) {
     })
   }
 
-  function applyAndSaveDrafts(nodeId: number, changes: ReturnType<typeof buildCanBusStagedChanges>) {
-    const writes = changes
-      .filter((change) => change.parsed !== undefined)
-      .map((change) => ({ name: change.name, value: change.parsed as DronecanParamValueState }))
-    if (writes.length === 0) {
-      return
-    }
+  function applyAndSave(nodeId: number, writes: Array<{ name: string; value: DronecanParamValueState }>) {
     // Write all staged values, then persist to flash + re-fetch (handled in the
     // runtime once every write is acked).
     onApplyAndSave(nodeId, writes)
@@ -134,10 +173,8 @@ export function CanBusView(props: CanBusViewProps) {
     // GetSet read-back the moment it arrives. Invalid rows stay staged.
     setDraftValues((current) => {
       const next = { ...current }
-      for (const change of changes) {
-        if (change.parsed) {
-          delete next[draftKey(nodeId, change.name)]
-        }
+      for (const write of writes) {
+        delete next[draftKey(nodeId, write.name)]
       }
       return next
     })
@@ -180,10 +217,23 @@ export function CanBusView(props: CanBusViewProps) {
                       : 'Disconnected'}
             </StatusBadge>
             {state.status === 'active' ? (
-              <small>
-                {state.framesReceived} frames received · {state.nodes.length} node
-                {state.nodes.length === 1 ? '' : 's'}
-              </small>
+              framesPerSec !== undefined ? (
+                // Bus-traffic read-out inherited from the standalone inspector:
+                // node count, unhealthy count, live frame rate, session frames.
+                <small data-testid="can-bus-traffic-summary">
+                  {buildCanBusTrafficSummary({
+                    nodeCount: busSummary.nodeCount,
+                    unhealthyCount: busSummary.unhealthyCount,
+                    framesPerSec,
+                    framesReceived: state.framesReceived
+                  })}
+                </small>
+              ) : (
+                <small>
+                  {state.framesReceived} frames received · {state.nodes.length} node
+                  {state.nodes.length === 1 ? '' : 's'}
+                </small>
+              )
             ) : null}
             {state.error ? <small className="can-bus-header__error">{state.error}</small> : null}
           </div>
@@ -252,6 +302,7 @@ export function CanBusView(props: CanBusViewProps) {
           <ul className="can-bus-nodes">
             {rows.map((row) => {
               const node = state.nodes.find((n) => n.nodeId === row.nodeId)
+              const isPoppedOut = popout?.openNodeIds.includes(row.nodeId) ?? false
               const isExpanded = expandedNode === row.nodeId
               // Prefer the stable hardware UID; fall back to the node id so a
               // node that hasn't returned GetNodeInfo yet (e.g. the autopilot's
@@ -321,6 +372,7 @@ export function CanBusView(props: CanBusViewProps) {
                       <small>
                         {customName ? `${row.label} · ` : ''}Node {row.nodeId}
                         {row.uptimeSec !== undefined ? ` · up ${row.uptimeSec}s` : ''}
+                        {node ? ` · seen ${lastSeenLabel(node.lastSeenAtMs)}` : ''}
                         {row.hwVersion ? ` · HW ${row.hwVersion}` : ''}
                         {row.swVersion ? ` · SW ${row.swVersion}` : ''}
                         {row.gitHash ? ` · git ${row.gitHash}` : ''}
@@ -340,166 +392,106 @@ export function CanBusView(props: CanBusViewProps) {
                         type="button"
                         style={buttonStyle()}
                         onClick={() => setExpandedNode(isExpanded ? undefined : row.nodeId)}
+                        disabled={isPoppedOut}
+                        title={isPoppedOut ? 'This device is open in its own window.' : undefined}
                         data-testid={`can-bus-node-toggle-${row.nodeId}`}
                       >
                         {isExpanded ? 'Collapse' : `Params (${row.paramCount})`}
                       </button>
+                      {popout ? (
+                        // window.open is called straight out of this click: a
+                        // popout opened from an effect (or any async hop) is
+                        // killed by the browser's popup blocker.
+                        <button
+                          type="button"
+                          style={buttonStyle()}
+                          onClick={() =>
+                            isPoppedOut
+                              ? popout.onClose(row.nodeId)
+                              : popout.onOpen(row.nodeId, customName ?? baseLabel)
+                          }
+                          title={
+                            isPoppedOut
+                              ? 'Close this device’s inspector window'
+                              : 'Open this device’s inspector in its own window'
+                          }
+                          data-testid={`can-bus-node-popout-${row.nodeId}`}
+                        >
+                          {isPoppedOut ? 'Close window' : 'Pop out'}
+                        </button>
+                      ) : null}
                     </div>
                   </header>
-                  {isExpanded && node ? (
-                    <div className="can-bus-node__body">
-                      {(() => {
-                        const stagedChanges = buildCanBusStagedChanges(node, draftValues)
-                        const validChanges = stagedChanges.filter((change) => change.parsed !== undefined)
-                        if (stagedChanges.length === 0) {
-                          return null
-                        }
-                        return (
-                          <div className="can-bus-staged" data-testid={`can-bus-staged-${node.nodeId}`}>
-                            <header className="can-bus-staged__header">
-                              <strong>
-                                {stagedChanges.length} staged change{stagedChanges.length === 1 ? '' : 's'}
-                              </strong>
-                              <div className="can-bus-staged__buttons">
-                                <button
-                                  type="button"
-                                  style={buttonStyle('primary')}
-                                  onClick={() => applyAndSaveDrafts(node.nodeId, stagedChanges)}
-                                  disabled={validChanges.length === 0}
-                                  data-testid={`can-bus-apply-all-${node.nodeId}`}
-                                  title="Write every staged value to the node, persist it to flash (survives a power cycle), then re-fetch."
-                                >
-                                  Apply &amp; Save ({validChanges.length})
-                                </button>
-                                <button
-                                  type="button"
-                                  style={buttonStyle()}
-                                  onClick={() => dropAllDrafts(node.nodeId)}
-                                  data-testid={`can-bus-drop-all-${node.nodeId}`}
-                                >
-                                  Drop all
-                                </button>
-                              </div>
-                            </header>
-                            <ul className="can-bus-staged__list">
-                              {stagedChanges.map((change) => (
-                                <li key={change.name} data-testid={`can-bus-staged-row-${node.nodeId}-${change.name}`}>
-                                  <code>{change.name}</code>
-                                  <span>
-                                    {change.currentLabel} → {change.nextLabel}
-                                    {change.parsed === undefined ? <em> (invalid)</em> : null}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    style={buttonStyle()}
-                                    onClick={() => dropDraft(node.nodeId, change.name)}
-                                    data-testid={`can-bus-staged-drop-${node.nodeId}-${change.name}`}
-                                  >
-                                    Drop
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )
-                      })()}
-                      <div className="can-bus-node__toolbar">
-                        <small>
-                          Param fetch:{' '}
-                          {node.paramFetch.status === 'fetching'
-                            ? `walking index ${node.paramFetch.nextIndex}…`
-                            : node.paramFetch.status === 'complete'
-                              ? `${node.parameters.length} parameters loaded`
-                              : node.paramFetch.status === 'stalled'
-                                ? 'stalled — retry?'
-                                : 'idle'}
-                        </small>
-                        <div className="can-bus-node__toolbar-buttons">
-                          <button
-                            type="button"
-                            style={buttonStyle()}
-                            onClick={() => onRefreshNode(node.nodeId)}
-                            data-testid={`can-bus-refresh-${node.nodeId}`}
-                          >
-                            Refresh identity
-                          </button>
-                          <button
-                            type="button"
-                            style={buttonStyle()}
-                            onClick={() => onFetchAllParameters(node.nodeId)}
-                            data-testid={`can-bus-refetch-${node.nodeId}`}
-                          >
-                            Re-fetch params
-                          </button>
-                        </div>
-                      </div>
-                      {node.parameters.length === 0 ? (
-                        <p className="can-bus-empty">
-                          {isSelf
-                            ? "This is the autopilot's own node — its parameters live on the Parameters tab (over MAVLink), not DroneCAN."
-                            : 'No parameters discovered yet.'}
-                        </p>
-                      ) : (
-                        <table className="can-bus-params">
-                          <thead>
-                            <tr>
-                              <th>Name</th>
-                              <th>Value</th>
-                              <th>Default</th>
-                              <th>Range</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {[...node.parameters].sort(compareParamEntries).map((entry) => {
-                              const key = draftKey(node.nodeId, entry.name)
-                              const draft = draftValues[key]
-                              const displayed = draft ?? formatParamValue(entry.value)
-                              const editable = entry.value.tag !== 'empty'
-                              const draftValid = draft === undefined ? true : parseParamInput(draft, entry.value) !== undefined
-                              const meta = describeDronecanParam(entry, paramMetadata(entry.name))
-                              return (
-                                <tr key={entry.name} data-testid={`can-bus-param-${node.nodeId}-${entry.name}`}>
-                                  <td title={meta.description}>
-                                    <code>{entry.name}</code>
-                                    {meta.label !== entry.name ? (
-                                      <small className="can-bus-params__label">{meta.label}</small>
-                                    ) : (
-                                      <small>({entry.value.tag})</small>
-                                    )}
-                                  </td>
-                                  <td>
-                                    {editable ? (
-                                      <input
-                                        type="text"
-                                        value={displayed}
-                                        onChange={(event) =>
-                                          setDraftValues((current) => ({ ...current, [key]: event.target.value }))
-                                        }
-                                        className={!draftValid ? 'can-bus-params__input--invalid' : undefined}
-                                        data-testid={`can-bus-param-input-${node.nodeId}-${entry.name}`}
-                                      />
-                                    ) : (
-                                      <span>{displayed}</span>
-                                    )}
-                                    {meta.valueIsEnum && draft === undefined ? (
-                                      <small className="can-bus-params__enum">{meta.valueLabel}</small>
-                                    ) : null}
-                                  </td>
-                                  <td>{meta.defaultLabel ?? '—'}</td>
-                                  <td>{meta.rangeLabel ?? '—'}</td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
+                  {isPoppedOut ? (
+                    <p className="can-bus-node__popped-out" data-testid={`can-bus-node-popped-out-${row.nodeId}`}>
+                      Inspecting this device in its own window. Close that window to bring it back inline.
+                    </p>
+                  ) : popout?.blockedNodeId === row.nodeId ? (
+                    <p className="can-bus-node__popout-blocked" data-testid={`can-bus-node-popout-blocked-${row.nodeId}`}>
+                      Your browser blocked the inspector window. Allow pop-ups for this site, then try again — the device
+                      stays fully usable inline in the meantime.
+                    </p>
+                  ) : null}
+                  {isExpanded && node && !isPoppedOut ? (
+                    <CanDeviceInspectorView
+                      node={node}
+                      isSelf={isSelf}
+                      paramMetadata={paramMetadata}
+                      draftValues={draftValues}
+                      onDraftChange={setDraft}
+                      onDropDraft={dropDraft}
+                      onDropAllDrafts={dropAllDrafts}
+                      onApplyAndSave={applyAndSave}
+                      onRefreshNode={onRefreshNode}
+                      onFetchAllParameters={onFetchAllParameters}
+                      busy={busy}
+                      expertActions={expertActions}
+                    />
                   ) : null}
                 </li>
               )
             })}
           </ul>
         )}
+
+        {/* ---- Bus-wide ESC telemetry (observe-only), from the merged inspector ---- */}
+        {escRows.length > 0 ? (
+          <div className="dronecan-inspector__esc" data-testid="dronecan-esc-telemetry">
+            <h3>ESC telemetry</h3>
+            <p className="telemetry-note">Live uavcan.equipment.esc.Status per ESC index. Observe-only.</p>
+            <div className="mavlink-inspector__table" data-testid="dronecan-esc-table">
+              <div className="dronecan-inspector__esc-row dronecan-inspector__esc-row--head">
+                <span>ESC</span>
+                <span>RPM</span>
+                <span>Voltage</span>
+                <span>Current</span>
+                <span>Temp</span>
+                <span>Power</span>
+                <span>Errors</span>
+                <span>Last</span>
+              </div>
+              {escRows.map((row) => (
+                <div
+                  key={row.escIndex}
+                  className="dronecan-inspector__esc-row"
+                  data-testid={`dronecan-esc-${row.escIndex}`}
+                >
+                  <span>
+                    #{row.escIndex}
+                    <small className="dronecan-inspector__esc-node"> (node {row.nodeId})</small>
+                  </span>
+                  <span>{row.rpmLabel}</span>
+                  <span>{row.voltageLabel}</span>
+                  <span>{row.currentLabel}</span>
+                  <span>{row.temperatureLabel}</span>
+                  <span>{row.powerLabel}</span>
+                  <span>{row.errorCountLabel}</span>
+                  <span>{row.ageLabel}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </Panel>
     </div>
   )

@@ -15994,3 +15994,72 @@ button.mavlink-inspector__sent-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* --- Popped-out CAN device inspectors ------------------------------------
+ * A popout is a child window whose document is empty until we clone the app's
+ * stylesheets into it (see use-popout-windows), so it inherits everything above
+ * — these rules only give the window's own root sensible padding/width and mark
+ * the inline row that a device has been torn off. */
+.arduconfig-popout-body {
+  padding: 12px;
+  color: var(--text);
+}
+
+.arduconfig-popout {
+  display: block;
+  max-width: 100%;
+}
+
+/* Inside a popout there is no surrounding panel, so give the device body its own
+ * card treatment rather than the flush-to-row look it has inline. */
+.arduconfig-popout .can-bus-node__body {
+  border-top: none;
+  padding-top: 0;
+}
+
+.can-device-inspector__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.can-device-inspector__heading div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.can-device-inspector__heading small {
+  color: var(--text-muted);
+}
+
+/* Identity/detail rows are secondary to the parameter editor, so they collapse
+ * behind a disclosure instead of pushing the params down the window. */
+.can-device-inspector__detail-block > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.can-device-inspector__detail-block[open] > summary {
+  margin-bottom: 8px;
+}
+
+.can-bus-node__popped-out,
+.can-bus-node__popout-blocked {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.can-bus-node__popout-blocked {
+  color: var(--warning);
+}
+
+/* The five-column DroneCAN parameter table scrolls inside its own box so a
+ * narrow popout window (or a 390px phone) never scrolls horizontally. */
+.can-bus-params-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}

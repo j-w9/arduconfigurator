@@ -3885,14 +3885,17 @@ test.describe('Direct Sockets (IWA) transport options', () => {
 })
 
 test.describe('Inspectors (expert-only)', () => {
-  test('Expert mode reveals the MAVLink + DroneCAN inspectors', async ({ page }) => {
+  test('Expert mode reveals the MAVLink inspector; CAN is the single DroneCAN surface', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
 
     // Hidden until Expert mode is on.
     await expect(page.getByTestId('view-button-mavlink-inspector')).toHaveCount(0)
+    // The DroneCAN inspector is no longer a tab of its own — it was folded into
+    // the CAN tab, which is visible without Expert mode.
     await expect(page.getByTestId('view-button-dronecan-inspector')).toHaveCount(0)
+    await expect(page.getByTestId('view-button-can')).toBeVisible()
 
     await page.getByTestId('product-mode-expert').check()
 
@@ -3924,12 +3927,15 @@ test.describe('Inspectors (expert-only)', () => {
     await pause.click()
     await expect(pause).toHaveText('Pause')
 
-    // DroneCAN inspector offers a CAN1/CAN2 bus selector + start control.
-    await page.getByTestId('view-button-dronecan-inspector').click()
-    await expect(page.getByTestId('dronecan-inspector')).toBeVisible()
-    await expect(page.getByTestId('dronecan-inspector-summary')).toContainText('frames/s')
-    await expect(page.getByTestId('dronecan-inspector-bus')).toBeVisible()
-    await expect(page.getByTestId('dronecan-inspector-start')).toBeVisible()
+    // The merged CAN tab carries what the inspector tab used to: a CAN1/CAN2 bus
+    // selector, a start control, and the live bus-traffic read-out once forwarding
+    // is up. Expert mode is still on here, but the tab itself is not gated on it.
+    await expect(page.getByTestId('view-button-dronecan-inspector')).toHaveCount(0)
+    await page.getByTestId('view-button-can').click()
+    await expect(page.getByTestId('can-bus-select')).toBeVisible()
+    await expect(page.getByTestId('can-bus-start')).toBeVisible()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-traffic-summary')).toContainText('frames/s', { timeout: 12000 })
   })
 
   test('MAVLink inspector shows per-source link health', async ({ page }) => {
@@ -4057,13 +4063,14 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(fieldTable).toContainText('Field')
     await expect(fieldTable.locator('[data-testid^="mavlink-field-copy-"]').first()).toHaveCount(1)
 
-    // Start the DroneCAN bus and expand the first discovered node's detail.
-    await page.getByTestId('view-button-dronecan-inspector').click()
-    await page.getByTestId('dronecan-inspector-start').click()
-    const table = page.getByTestId('dronecan-inspector-table')
-    await expect(table).toBeVisible({ timeout: 12000 })
-    const firstNode = table.locator('[data-testid^="dronecan-node-"]').first()
-    await firstNode.getByRole('button').first().click()
+    // Start the CAN bus and expand the first discovered device's inspector; the
+    // identity detail the standalone inspector used to own now sits inside it.
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    const firstNode = page.locator('[data-testid^="can-bus-node-toggle-"]').first()
+    await expect(firstNode).toBeVisible({ timeout: 12000 })
+    await firstNode.click()
+    await page.locator('[data-testid^="can-device-detail-toggle-"]').first().click()
     await expect(page.locator('[data-testid^="dronecan-node-detail-"]').first()).toContainText('Node ID')
   })
 
@@ -4112,32 +4119,29 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.getByTestId('mavlink-plots')).toHaveCount(0)
   })
 
-  test('DroneCAN inspector manages a node: param grid, restart, ESC telemetry', async ({ page }) => {
+  test('CAN tab manages a device: param grid, restart, ESC telemetry', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('product-mode-expert').check()
 
-    await page.getByTestId('view-button-dronecan-inspector').click()
-    await page.getByTestId('dronecan-inspector-start').click()
-    const table = page.getByTestId('dronecan-inspector-table')
-    await expect(table).toBeVisible({ timeout: 12000 })
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
 
     // Expand node 50 (ap_periph) and read its DroneCAN parameter grid.
-    const node = page.getByTestId('dronecan-node-50')
-    await node.getByRole('button').first().click()
-    await expect(page.getByTestId('dronecan-params-50')).toBeVisible()
-    // Parameters are collapsed by default — open them (also triggers the fetch).
-    await page.getByTestId('dronecan-params-toggle-50').click()
-    const battInput = page.getByTestId('dronecan-param-input-50-BATT_MONITOR')
+    const toggle = page.getByTestId('can-bus-node-toggle-50')
+    await expect(toggle).toContainText(/Params \([1-9]/, { timeout: 12000 })
+    await toggle.click()
+    await expect(page.getByTestId('can-device-inspector-50')).toBeVisible()
+    const battInput = page.getByTestId('can-bus-param-input-50-BATT_MONITOR')
     await expect(battInput).toBeVisible({ timeout: 12000 })
     // The node reports no labels/enums, so the grid enriches from the curated
     // FC catalog by name: BATT_MONITOR=4 shows its enum label.
-    await expect(page.getByTestId('dronecan-param-50-BATT_MONITOR')).toContainText('Analog Voltage and Current')
+    await expect(page.getByTestId('can-bus-param-50-BATT_MONITOR')).toContainText('Analog Voltage and Current')
 
     // Editing a parameter stages a change and reveals Apply & Save.
     await battInput.fill('3')
-    const apply = page.getByTestId('dronecan-apply-save-50')
+    const apply = page.getByTestId('can-bus-apply-all-50')
     await expect(apply).toBeVisible()
     await apply.click()
 
@@ -4152,20 +4156,19 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.getByTestId('dronecan-esc-0')).toBeVisible()
   })
 
-  test('DroneCAN inspector updates a node firmware: pick image, confirm brick risk, reach 100%', async ({ page }) => {
+  test('CAN tab updates a device firmware: pick image, confirm brick risk, reach 100%', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('product-mode-expert').check()
 
-    await page.getByTestId('view-button-dronecan-inspector').click()
-    await page.getByTestId('dronecan-inspector-start').click()
-    const table = page.getByTestId('dronecan-inspector-table')
-    await expect(table).toBeVisible({ timeout: 12000 })
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
 
     // Expand node 50 (ap_periph) and open its firmware-update affordance.
-    const node = page.getByTestId('dronecan-node-50')
-    await node.getByRole('button').first().click()
+    const toggle = page.getByTestId('can-bus-node-toggle-50')
+    await expect(toggle).toBeVisible({ timeout: 12000 })
+    await toggle.click()
     const fileInput = page.getByTestId('dronecan-fwupdate-file-50')
     await expect(fileInput).toBeVisible()
 
@@ -4192,7 +4195,7 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.getByTestId('dronecan-fwupdate-file-50')).toBeVisible()
   })
 
-  test('DroneCAN inspector finds firmware online, downloads + decodes it, and updates the node', async ({ page }) => {
+  test('CAN tab finds firmware online, downloads + decodes it, and updates the node', async ({ page }) => {
     // Mock the desktop firmware bridge: the browser can't reach
     // firmware.ardupilot.org (no CORS), so the online path is desktop-only. The
     // mock ap_periph node 50 reports hardware_version 2.1 -> board id (2<<8)|1 =
@@ -4221,13 +4224,12 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('connect-button').click()
     await page.getByTestId('product-mode-expert').check()
 
-    await page.getByTestId('view-button-dronecan-inspector').click()
-    await page.getByTestId('dronecan-inspector-start').click()
-    const table = page.getByTestId('dronecan-inspector-table')
-    await expect(table).toBeVisible({ timeout: 12000 })
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
 
-    const node = page.getByTestId('dronecan-node-50')
-    await node.getByRole('button').first().click()
+    const toggle = page.getByTestId('can-bus-node-toggle-50')
+    await expect(toggle).toBeVisible({ timeout: 12000 })
+    await toggle.click()
 
     // Find firmware online -> the matched AP_Periph build appears.
     await page.getByTestId('dronecan-fwupdate-online-find-50').click()
@@ -4247,7 +4249,7 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.getByTestId('dronecan-fwupdate-progress-50')).toHaveAttribute('aria-valuenow', '100')
   })
 
-  test('DroneCAN inspector: online firmware lookup degrades gracefully in the browser', async ({ page }) => {
+  test('CAN tab: online firmware lookup degrades gracefully in the browser', async ({ page }) => {
     // No desktop bridge -> the online affordance shows the desktop-only note,
     // and the local .bin picker stays available.
     await page.goto('/')
@@ -4255,13 +4257,12 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('connect-button').click()
     await page.getByTestId('product-mode-expert').check()
 
-    await page.getByTestId('view-button-dronecan-inspector').click()
-    await page.getByTestId('dronecan-inspector-start').click()
-    const table = page.getByTestId('dronecan-inspector-table')
-    await expect(table).toBeVisible({ timeout: 12000 })
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
 
-    const node = page.getByTestId('dronecan-node-50')
-    await node.getByRole('button').first().click()
+    const toggle = page.getByTestId('can-bus-node-toggle-50')
+    await expect(toggle).toBeVisible({ timeout: 12000 })
+    await toggle.click()
     await expect(page.getByTestId('dronecan-fwupdate-online-unavailable-50')).toContainText('desktop app')
     await expect(page.getByTestId('dronecan-fwupdate-online-find-50')).toHaveCount(0)
     // Browser degrade still offers a link to the firmware server so the operator

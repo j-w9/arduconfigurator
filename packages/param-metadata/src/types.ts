@@ -50,11 +50,13 @@ export type AppViewId =
   // the firmware supports it, a preview scaffold otherwise. The configurator
   // injects the nav descriptor at render time.
   | 'rc-mixer'
-  // 'can' is the DroneCAN inspector tab — connects via MAV_CMD_CAN_FORWARD,
-  // discovers nodes from passive NodeStatus broadcasts, fetches identity
-  // via GetNodeInfo, and supports per-node parameter read/write/save via
-  // the param.GetSet and param.ExecuteOpcode services. Like 'rc-mixer',
-  // injected at render time rather than via the metadata catalogs.
+  // 'can' is THE DroneCAN surface — connects via MAV_CMD_CAN_FORWARD, discovers
+  // nodes from passive NodeStatus broadcasts, fetches identity via GetNodeInfo,
+  // supports per-node parameter read/write/save via the param.GetSet and
+  // param.ExecuteOpcode services, and hosts the per-device inspector (identity,
+  // restart, firmware update, ESC telemetry) inline or popped out into its own
+  // window. Like 'rc-mixer', injected at render time rather than via the
+  // metadata catalogs.
   | 'can'
   // 'flash' is the firmware-flasher tab — promotes the previously
   // modal-only flasher to a first-class nav surface so DFU entry,
@@ -75,11 +77,11 @@ export type AppViewId =
   // (accelerometer / level / compass) — the same guided-action flow the
   // Setup wizard drives, gathered into one tab. Injected at render time.
   | 'calibration'
-  // Expert-only read-only inspectors, injected at render time:
+  // Expert-only read-only inspector, injected at render time:
   // 'mavlink-inspector' — live decoded MAVLink message stream (type/rate/last
-  // value); 'dronecan-inspector' — live DroneCAN bus traffic by node/message.
+  // value). (A separate 'dronecan-inspector' id existed until the DroneCAN
+  // inspector was folded into the 'can' tab — same bus, same tunnel, one tab.)
   | 'mavlink-inspector'
-  | 'dronecan-inspector'
   // 'networking' is the Expert-only IP/PPP/DroneNet surface — the NET_* family
   // (Ethernet/PPP IP setup + network serial endpoints). Injected at render time,
   // shown only when the FC reports networking support (NET_ENABLE present).
