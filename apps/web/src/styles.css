@@ -2886,23 +2886,10 @@ textarea:focus {
   gap: 10px;
 }
 
-/* Status boxes (Pre-arm + Statistics / Recent Notices) render directly
- * underneath the sensor group in the main column — the operator reads them
- * at-glance alongside the model rather than having to glance over to the
- * sidebar. Auto-fit so they shape up as columns on wide screens and stack on
- * narrow. The class is still named "trio" from when System Info was the third
- * column here; it moved to the sidebar, and renaming the class would collide
- * with concurrent work on the notices panel for no behavioural gain. */
-.setup-bench__status-trio {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-  margin-top: 14px;
-  /* Size every column to its own content instead of stretching them all to the
-   * tallest — stretching leaves hundreds of pixels of empty box below the
-   * shorter one, empty space the operator still has to scroll past. */
-  align-items: start;
-}
+/* `.setup-bench__status-trio` used to live here: a hard-coded `auto-fit` pair
+ * holding Pre-arm/Statistics and Recent Notices. Those two are now band 1 of
+ * the main dashboard region, two 6-of-12 columns, which is the same width and
+ * the same gutter — see `.status-dash-region`. */
 
 .setup-gui-box {
   display: grid;
@@ -3090,11 +3077,12 @@ textarea:focus {
  * card carries a map and is taller than the two readout cards even after the
  * compaction below, and stretching would hang dead space off the bottom of
  * the short ones. */
+/* The row's own top margin is gone: the region grid below owns the 14px gap
+ * between bands now, and keeping both would double it. */
 .setup-status-sensors {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 14px;
-  margin-top: 14px;
   align-items: start;
 }
 
@@ -3206,28 +3194,148 @@ textarea:focus {
   }
 }
 
-/* Status middle column: pre-arm box on top, compact lifetime stats below. */
-.setup-status-midcol {
+/* ── Status & Info dashboard: the free grid ────────────────────────────────
+ *
+ * A REGION is a 12-column grid with AUTO rows. Auto rows are the whole reason
+ * cards can be placed freely without any of them being clipped or padded out:
+ * a card is exactly as tall as its content, decided by the layout engine, and
+ * a pre-arm card that grows an issue simply makes its column taller.
+ *
+ * `align-items: start` is load-bearing, not cosmetic. It is what stops a tall
+ * column in a band from stretching a short one beside it — and, in the default
+ * arrangement, what keeps Statistics sitting directly under Pre-arm instead of
+ * below the bottom of a much taller Recent Notices. Cards stack inside a
+ * COLUMN, so a column packs tightly regardless of its neighbours' height.
+ *
+ * The default arrangement is arithmetically identical to the page that shipped
+ * before this feature: with a uniform 14px gutter, `span 6` of 12 is exactly
+ * the width of one of two `auto-fit minmax(220px, 1fr)` tracks, and `span 4`
+ * exactly one of three. */
+.status-dash-region {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: start;
+}
+
+.status-dash-region--main {
+  gap: 14px;
+  margin-top: 14px;
+}
+
+/* The sidebar region keeps the 10px rhythm `.setup-bench__sidebar` always had. */
+.status-dash-region--side {
+  gap: 10px;
+}
+
+/* A column: a stack of cards, or a wrapping shelf of them. */
+.status-dash-col {
+  position: relative;
+  min-width: 0;
+}
+
+.status-dash-col--stack {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-/* Status third column. Recent Notices used to be a bare child of the trio
- * grid; it now has the same stacking wrapper as the other two columns purely
- * so a dragged card has somewhere to land next to it. With one card in it the
- * rendering is identical to the bare article it replaced. */
-.setup-status-noticecol {
+.status-dash-region--side .status-dash-col--stack {
+  gap: 10px;
+}
+
+/* A shelf also carries `.setup-status-sensors`, which supplies the auto-fit
+ * grid and the GPS map compaction; nothing more is needed here. */
+
+/* An emptied column still has to be a target you can hit. */
+.status-dash-col--empty {
+  min-height: 64px;
+  border-radius: 12px;
+  border: 1px dashed color-mix(in srgb, var(--surface-400) 70%, transparent);
+}
+
+/* Column chrome sits OUTSIDE the flow — inside a shelf column it would
+ * otherwise become an auto-fit grid track and steal a sensor card's width. */
+.status-dash-col__chrome {
+  position: absolute;
+  inset: 0 -7px 0 auto;
+  width: 14px;
+  pointer-events: none;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  z-index: 3;
+}
+
+.status-dash-col__flow,
+.status-dash-col__width {
+  pointer-events: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.status-dash-col:hover .status-dash-col__flow,
+.status-dash-col:hover .status-dash-col__width,
+.status-dash-col__flow:focus-visible,
+.status-dash-col__width:focus-visible {
+  opacity: 1;
+}
+
+.status-dash-col__flow {
+  margin-top: -2px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--surface-400);
+  background: var(--surface-300);
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* The horizontal resize: drag a column's right edge to change its width in
+ * twelfths. Snapping to a whole twelfth is also the throttle — the layout
+ * changes at most eleven times across a whole gesture. */
+.status-dash-col__width {
+  flex: 1;
+  width: 14px;
+  cursor: ew-resize;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+}
+
+.status-dash-col__width > span {
+  display: block;
+  width: 4px;
+  height: min(48px, 100%);
+  border-radius: 999px;
+  background: var(--primary-500);
+  opacity: 0.55;
+}
+
+.status-dash-col__width:focus-visible,
+.status-dash-col__flow:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.status-dash-col__width:disabled {
+  display: none;
 }
 
 /* ── Status & Info dashboard: drag / resize chrome ─────────────────────────
  *
  * Purely additive around the existing cards. With nothing dragged and no
- * height cap set, every rule below is inert and the page renders exactly as
- * it did before the dashboard existed. */
+ * height cap set, every rule below is inert. */
 
 .status-dash-toolbar {
   display: flex;
@@ -3242,32 +3350,21 @@ textarea:focus {
   font-size: 12px;
 }
 
-.status-dash-zone {
-  position: relative;
-}
-
-/* Only while a drag is in flight: give an emptied column enough height to
- * still be a target, and outline the one under the pointer. */
-.status-dash-zone--armed {
-  min-height: 72px;
-  border-radius: 12px;
-}
-
-.status-dash-zone--armed.is-drop-target {
-  outline: 1px dashed color-mix(in srgb, var(--primary-500) 55%, transparent);
-  outline-offset: 6px;
-}
-
 .status-dash-card {
   position: relative;
   min-width: 0;
 }
 
-/* The dragged card stays in place, ghosted, and stops swallowing hit-tests so
- * `elementFromPoint` can see the zone underneath it. */
+/* The dragged card is LIFTED, not removed: it keeps its slot in the flow (so
+ * nothing below it moves) and follows the pointer on a composited transform,
+ * which costs no layout at all. `will-change` promotes it to its own layer for
+ * the duration; leaving that on permanently would pin a layer per card. */
 .status-dash-card.is-dragging {
-  opacity: 0.32;
+  z-index: 30;
   pointer-events: none;
+  will-change: transform;
+  opacity: 0.92;
+  filter: drop-shadow(0 12px 22px rgba(0, 0, 0, 0.45));
 }
 
 /* A user-set height cap. The negative margin + matching padding keeps the
@@ -3353,9 +3450,17 @@ textarea:focus {
   border-radius: 6px;
 }
 
-/* Where the card will land. */
+/* Where the card will land.
+ *
+ * Fixed-position and OUT OF FLOW. v1 inserted a real element into the target
+ * column to show this, which pushed every card below it down and relaid the
+ * page out on every pointer move — the single biggest reason the drag felt
+ * clunky, and the reason a drop could land somewhere the indicator had not
+ * promised. Painting a line over the page moves nothing. */
 .status-dash-drop {
-  height: 4px;
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
   border-radius: 999px;
   background: var(--primary-500);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-500) 22%, transparent);
@@ -3366,9 +3471,27 @@ body.is-status-dash-dragging {
   cursor: grabbing;
 }
 
+/* Below the multi-column breakpoint the whole page is one column, so every
+ * column spans the full width and the bands simply stack in order — which is
+ * the phone rendering the page has always had. Customisation is off here
+ * (`useStatusDashboardLayout` renders the default), so this only ever lays out
+ * the four default columns. */
+@media (max-width: 1024px) {
+  .status-dash-region {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .status-dash-region > .status-dash-col {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .status-dash-card__handle,
-  .status-dash-card__resize > span {
+  .status-dash-card__resize > span,
+  .status-dash-col__flow,
+  .status-dash-col__width {
     transition: none;
   }
 }
