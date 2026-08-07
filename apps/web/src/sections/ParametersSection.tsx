@@ -3,7 +3,7 @@
 // staged / invalid / reboot-required draft groups, the import-backup file
 // input + three export buttons, and the selected-parameter detail card.
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactElement, ReactNode, RefObject, SetStateAction } from 'react'
 import { parameterAlias } from '@arduconfig/ardupilot-core'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterDraftGroup, ParameterDraftSummary, ParameterImportCategory, ParameterState } from '@arduconfig/ardupilot-core'
@@ -220,6 +220,56 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     if (scrollToChangesRequestId === 0) return
     scrollToReviewTarget(invalidDiffGridRef.current ?? stagedDiffGridRef.current)
   }, [scrollToChangesRequestId, scrollToReviewTarget])
+
+  // Editing a row must not move that row out from under the operator. Staging
+  // the first draft inserts the whole staged-review block (~200px, more once it
+  // carries several categories) ABOVE the parameter table, so every row below it
+  // moves that far down the DOCUMENT — measured on the demo copter: the edited
+  // row's document top went 3557 -> 3759 (+202) on a single AUTOTUNE_AXES bit
+  // toggle. Blink and Gecko hide that with native scroll anchoring (scrollY
+  // silently absorbs the +202 and the row's viewport position is unchanged), so
+  // the shift is invisible THERE and only there: WebKit implements no scroll
+  // anchoring at all, and Blink itself suppresses the adjustment in several
+  // documented cases. With anchoring off the same toggle slides the row 202px
+  // down the viewport mid-edit, which is the reported "changing a bitmask throws
+  // me up the page and I have to scroll back down to where I was" — an operator
+  // report whose browser was not captured, so the app must not depend on a
+  // browser feature to hold the row. Rather than disable or fight
+  // the browser's anchoring, measure what it did NOT absorb and make up only the
+  // difference: record the row's viewport top at the moment of the edit, then in
+  // the layout effect after React commits (before paint, so no flicker) scroll by
+  // the residual drift. Where the browser already anchored, the residual is 0 and
+  // this does nothing at all.
+  const pendingRowAnchorRef = useRef<{ paramId: string; top: number } | undefined>(undefined)
+  const parameterRowElement = (paramId: string): HTMLElement | null => {
+    if (typeof document === 'undefined') return null
+    return document.querySelector<HTMLElement>(`.parameter-row[data-param-row="${CSS.escape(paramId)}"]`)
+  }
+  const setDraftKeepingRowInPlace = useCallback(
+    (paramId: string, value: string) => {
+      const top = parameterRowElement(paramId)?.getBoundingClientRect().top
+      pendingRowAnchorRef.current = top === undefined ? undefined : { paramId, top }
+      setDraft(paramId, value)
+    },
+    [setDraft]
+  )
+  // Deliberately un-keyed: it has to run on the commit that follows the edit,
+  // and the pending anchor (cleared on every commit) is what gates the work, so
+  // an unrelated re-render costs one ref read.
+  useLayoutEffect(() => {
+    const pending = pendingRowAnchorRef.current
+    pendingRowAnchorRef.current = undefined
+    if (!pending) return
+    // The row can legitimately be gone (a search/category filter re-evaluated,
+    // or "show only changed" dropped it) — there is nothing to hold still then.
+    const top = parameterRowElement(pending.paramId)?.getBoundingClientRect().top
+    if (top === undefined) return
+    const drift = top - pending.top
+    // Sub-pixel drift is layout rounding, not a jump; scrolling for it would
+    // just add noise.
+    if (Math.abs(drift) < 1) return
+    window.scrollBy({ top: drift, left: 0, behavior: 'instant' as ScrollBehavior })
+  })
   // The search box filters the staged review too: filtering only the
   // table while the review list (where you look mid-import) ignores it
   // makes wildcard search appear broken. Selection, Select all, and Drop
@@ -1060,6 +1110,10 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
               <Fragment key={parameter.id}>
               <div
                 className={`${rowClassName}${isExpanded ? ' parameter-row--selected parameter-row--expanded' : ''}`}
+                // Lets the edit-time scroll compensation above find this row
+                // again after the commit, without threading a ref per row
+                // through the (unbounded) parameter list.
+                data-param-row={parameter.id}
                 // Click the row to expand its detail; toggle to collapse. The
                 // Draft + Actions cells stop propagation so editing/clicking a
                 // control never collapses the row under the operator.
@@ -1129,7 +1183,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                       liveValue={parameter.value}
                       editedValues={editedValues}
                       draftStatusById={draftStatusMap}
-                      onChange={setDraft}
+                      onChange={setDraftKeepingRowInPlace}
                     />
                   ) : (
                     <input
@@ -1138,7 +1192,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                       aria-label={`${parameter.id} value`}
                       value={editedValues[parameter.id] ?? String(parameter.value)}
                       onChange={(event) =>
-                        setDraft(parameter.id, event.target.value)
+                        setDraftKeepingRowInPlace(parameter.id, event.target.value)
                       }
                     />
                   )}
@@ -1193,7 +1247,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                     definition={definition}
                     alias={parameterAlias(parameter.id)}
                     editedValues={editedValues}
-                    onChange={setDraft}
+                    onChange={setDraftKeepingRowInPlace}
                     draftStatusById={draftStatusMap}
                     defaultValue={parameterDefaults?.get(parameter.id)}
                   />
