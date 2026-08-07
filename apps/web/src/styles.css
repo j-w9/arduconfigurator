@@ -11941,6 +11941,233 @@ details.metadata-settings-section:not([open]) > summary::after {
   align-items: center;
 }
 
+/* Group-to-preset selection strip above the parameter table. Wraps rather than
+   scrolling so the visible-rows-only explanation stays readable at 390px. */
+.parameter-preset-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--surface-400);
+  border-radius: 8px;
+  background: var(--surface-200);
+}
+
+.parameter-preset-bulk > small {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Row-select checkbox, inside the name cell so the table's column template is
+   untouched. */
+.parameter-row__select {
+  flex: 0 0 auto;
+  margin: 0 6px 0 0;
+  cursor: pointer;
+}
+
+/* ---- Create preset dialog ---- */
+.create-preset {
+  width: min(760px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--surface-400);
+  border-radius: 12px;
+  background: var(--surface-100);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+}
+
+.create-preset__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.create-preset__header h3 {
+  margin: 0 0 4px;
+}
+
+.create-preset__header p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.create-preset__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.create-preset__field > span {
+  color: var(--text-muted);
+}
+
+.create-preset__field input {
+  width: 100%;
+  min-width: 0;
+}
+
+.create-preset__questions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.create-preset__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.create-preset__question {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--surface-400);
+  border-radius: 8px;
+  background: var(--surface-200);
+}
+
+.create-preset__question > label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.create-preset__question > label > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.create-preset__question-detail {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.create-preset__question-rationale {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.create-preset__cells {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.create-preset__cells input {
+  width: 84px;
+}
+
+.create-preset__params > header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.create-preset__param-list {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--surface-400);
+  border-radius: 8px;
+}
+
+.create-preset__param {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 0.8fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(var(--edge-rgb), 0.08);
+}
+
+.create-preset__param:last-child {
+  border-bottom: none;
+}
+
+.create-preset__param--excluded {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.create-preset__param-id {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+}
+
+.create-preset__param-label,
+.create-preset__param-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+
+.create-preset__actions {
+  justify-content: flex-end;
+}
+
+/* Serial-port remap control in the selected-preset panel. */
+.preset-serial-remap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--surface-400);
+  border-radius: 8px;
+  background: var(--surface-200);
+}
+
+.preset-serial-remap > label {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.preset-serial-remap > small {
+  flex: 1 1 240px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Phone: the four-column param row is unreadable under ~520px, so it stacks. */
+@media (max-width: 640px) {
+  .create-preset__param {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .create-preset__param-label {
+    grid-column: 1 / -1;
+  }
+}
+
 .parameter-diff-bulk__all {
   display: inline-flex;
   gap: 6px;

@@ -12,9 +12,11 @@ import type {
   ParameterPresetDiffResult
 } from '@arduconfig/ardupilot-core'
 import { deriveParameterDraftEntries } from '@arduconfig/ardupilot-core'
-import type { NormalizedFirmwareMetadataBundle, NormalizedPresetDefinition, PresetGroupDefinition } from '@arduconfig/param-metadata'
+import type { NormalizedPresetDefinition, PresetGroupDefinition } from '@arduconfig/param-metadata'
 
 import type { ParameterFollowUp, ParameterNotice } from '../hooks/use-parameter-feedback'
+import type { PresetSerialRemapState } from '../hooks/use-preset-catalog'
+import { isUserPresetId } from '../user-preset-library'
 import { formatParameterDelta, formatParameterValue } from '../parameter-format'
 import type { SavedParameterSnapshot } from '../snapshot-library'
 import { statusToneLabel } from '../status-tone'
@@ -28,13 +30,19 @@ interface PresetPreview {
 
 export interface PresetsSectionProps {
   snapshot: ConfiguratorSnapshot
-  metadataCatalog: NormalizedFirmwareMetadataBundle
   busyAction: string | undefined
   canApplyDraftParameters: boolean
   parameterFollowUp: ParameterFollowUp | undefined
   presetNotice: ParameterNotice | undefined
   presetDefinitions: readonly NormalizedPresetDefinition[]
   presetGroups: readonly PresetGroupDefinition[]
+  /** Group -> presets, already merged with the operator's saved presets. */
+  presetsByGroup: Record<string, readonly NormalizedPresetDefinition[]>
+  /** Present when exactly one saved preset with a serial dependency is selected. */
+  selectedPresetSerialRemap: PresetSerialRemapState | undefined
+  onSerialRemapChange: (port: number) => void
+  selectedPresetDependencyLabels: readonly string[]
+  onDeleteUserPreset: (presetId: string) => void
   presetPreviewById: ReadonlyMap<string, PresetPreview>
   selectedPresets: readonly NormalizedPresetDefinition[]
   selectedPresetConflicts: readonly string[]
@@ -61,13 +69,17 @@ export interface PresetsSectionProps {
 export function PresetsSection(props: PresetsSectionProps): ReactElement {
   const {
     snapshot,
-    metadataCatalog,
     busyAction,
     canApplyDraftParameters,
     parameterFollowUp,
     presetNotice,
     presetDefinitions,
     presetGroups,
+    presetsByGroup,
+    selectedPresetSerialRemap,
+    onSerialRemapChange,
+    selectedPresetDependencyLabels,
+    onDeleteUserPreset,
     presetPreviewById,
     selectedPresets,
     selectedPresetConflicts,
@@ -140,7 +152,19 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
           label: draft.label,
           rawValue: draft.rawValue,
           reason: draft.reason ?? 'Invalid value'
-        }))
+        })),
+        dependencyLabels: selectedPresetDependencyLabels,
+        // Only the operator's own presets can be deleted — the curated bundle
+        // ones ship with the app and are not the library's to remove.
+        deletable: single !== undefined && isUserPresetId(single.id),
+        serialRemap: selectedPresetSerialRemap
+          ? {
+              savedPort: selectedPresetSerialRemap.savedPort,
+              availablePorts: selectedPresetSerialRemap.availablePorts,
+              selectedPort: selectedPresetSerialRemap.selectedPort,
+              missingOnTarget: selectedPresetSerialRemap.missingOnTarget
+            }
+          : null
       }
     : null
 
@@ -164,8 +188,8 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
         id: group.id,
         label: group.label,
         description: group.description,
-        cardCount: metadataCatalog.presetsByGroup[group.id]?.length ?? 0,
-        cards: (metadataCatalog.presetsByGroup[group.id] ?? []).map((preset): PresetsCard => {
+        cardCount: presetsByGroup[group.id]?.length ?? 0,
+        cards: (presetsByGroup[group.id] ?? []).map((preset): PresetsCard => {
           const preview = presetPreviewById.get(preset.id)
           const isActive = selectedPresets.some((selected) => selected.id === preset.id)
           const cardChangedCount = preview?.diff.changedCount ?? 0
@@ -201,6 +225,8 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
       }))}
       selected={selectedPanel}
       onToggleDropParam={onTogglePresetParamDrop}
+      onSerialRemapChange={onSerialRemapChange}
+      onDeleteSelectedPreset={single ? () => onDeleteUserPreset(single.id) : undefined}
       applyAcknowledged={presetApplyAcknowledged}
       onAcknowledgedChange={setPresetApplyAcknowledged}
       onSelectPreset={onTogglePreset}

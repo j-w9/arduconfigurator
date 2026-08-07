@@ -389,6 +389,13 @@ import {
   tcpSupported
 } from './hooks/use-transport-selection'
 import { useLibraries } from './hooks/use-libraries'
+import {
+  createUserPresetId,
+  isUserPresetId,
+  sortUserPresets,
+  type UserPresetDraft,
+  type UserPresetRecord
+} from './user-preset-library'
 import { useParameterDrafts } from './hooks/use-parameter-drafts'
 import { useTuningProfiles } from './hooks/use-tuning-profiles'
 import { useParameterBackupIo } from './hooks/use-parameter-backup-io'
@@ -2244,9 +2251,16 @@ export function App() {
     tuningMasterPitchRatio,
     tuningMasterFilterStrength
   })
+  // Serial-port remap targets for saved presets, keyed by preset id. Session
+  // state only — a remap is a decision about the aircraft in front of you, not
+  // a property of the preset, so it must not persist into the next connection.
+  const [presetSerialRemapTargets, setPresetSerialRemapTargets] = useState<Record<string, number>>({})
   const {
     presetDefinitions,
+    presetsByGroup,
     presetGroups,
+    selectedPresetSerialRemap,
+    selectedPresetDependencyLabels,
     presetPreviewById,
     selectedPresets,
     selectedPresetDraftValues,
@@ -2258,7 +2272,50 @@ export function App() {
     selectedPresetChangedEntries,
     selectedPresetInvalidEntries,
     selectedPresetDiffSignature
-  } = usePresetCatalog({ snapshot, metadataCatalog, selectedPresetIds })
+  } = usePresetCatalog({
+    snapshot,
+    metadataCatalog,
+    selectedPresetIds,
+    userPresets: libraries.savedUserPresets,
+    serialRemapTargets: presetSerialRemapTargets
+  })
+
+  // Create / delete of operator-authored presets. Creating is read-only — it
+  // captures values already synced from the aircraft — and applying one runs the
+  // existing preset apply path (verified setParameters with rollback, pre-apply
+  // auto-backup), so there is no new write path anywhere in this feature.
+  const sourceFirmwareForPresets = snapshot.vehicle?.firmware
+  const handleCreateUserPreset = useCallback(
+    (draft: UserPresetDraft) => {
+      const record: UserPresetRecord = {
+        id: createUserPresetId(draft.label),
+        label: draft.label,
+        description: draft.description || `${draft.values.length} parameter(s) saved from the Parameter Editor.`,
+        createdAt: new Date().toISOString(),
+        sourceFirmware: sourceFirmwareForPresets,
+        tags: ['user'],
+        values: draft.values,
+        dependencies: draft.dependencies
+      }
+      libraries.setSavedUserPresets((current) => sortUserPresets([...current, record]))
+      setParameterNotice({
+        tone: 'success',
+        text: `Saved preset "${record.label}" (${record.values.length} parameters). Apply it from the Presets tab.`
+      })
+    },
+    [libraries, setParameterNotice, sourceFirmwareForPresets]
+  )
+
+  const handleDeleteUserPreset = useCallback(
+    (presetId: string) => {
+      if (!isUserPresetId(presetId)) {
+        return
+      }
+      libraries.setSavedUserPresets((current) => current.filter((record) => record.id !== presetId))
+      setSelectedPresetIds((current) => current.filter((id) => id !== presetId))
+    },
+    [libraries]
+  )
   // The preset changes that will actually be written — the combined diff minus
   // any params the operator dropped in the review list.
   const effectivePresetChangedEntries = selectedPresetChangedEntries.filter(
@@ -8716,13 +8773,22 @@ export function App() {
       {activeViewId === 'presets' ? (
         <PresetsSection
           snapshot={snapshot}
-          metadataCatalog={metadataCatalog}
           busyAction={busyAction}
           canApplyDraftParameters={canApplyDraftParameters}
           parameterFollowUp={parameterFollowUp}
           presetNotice={presetNotice}
           presetDefinitions={presetDefinitions}
           presetGroups={presetGroups}
+          presetsByGroup={presetsByGroup}
+          selectedPresetSerialRemap={selectedPresetSerialRemap}
+          selectedPresetDependencyLabels={selectedPresetDependencyLabels}
+          onSerialRemapChange={(port) => {
+            const presetId = selectedPresetSerialRemap?.presetId
+            if (presetId) {
+              setPresetSerialRemapTargets((current) => ({ ...current, [presetId]: port }))
+            }
+          }}
+          onDeleteUserPreset={handleDeleteUserPreset}
           presetPreviewById={presetPreviewById}
           selectedPresets={selectedPresets}
           selectedPresetConflicts={selectedPresetConflicts}
@@ -9232,6 +9298,7 @@ export function App() {
           }}
           onFetchParamDefaults={handleFetchParamDefaults}
           fetchDefaultsBusy={fetchDefaultsBusy}
+          onCreateUserPreset={handleCreateUserPreset}
         />
       ) : null}
         </div>
