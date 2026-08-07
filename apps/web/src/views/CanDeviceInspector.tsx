@@ -51,6 +51,15 @@ export interface DronecanFirmwareCandidate {
   latest: boolean
 }
 
+/** Whether a node can be matched against the firmware server yet. A node row
+ *  appears on its first uavcan.protocol.NodeStatus broadcast, but the online
+ *  lookup is matched on the APJ board id reconstructed from the hardware_version
+ *  in its GetNodeInfo answer — which lands later. Until it does, there is
+ *  nothing to look up, so the affordance stays closed rather than failing. */
+export function canLookUpFirmwareOnline(node: Pick<DronecanInspectedNode, 'hwVersion'>): boolean {
+  return node.hwVersion !== undefined
+}
+
 /** Online firmware lookup capability, injected by the host. Only reachable in
  *  the desktop shell (the browser can't fetch firmware.ardupilot.org — no CORS),
  *  so the browser build passes `available: false` and the UI degrades to the
@@ -241,6 +250,12 @@ function NodeFirmwareUpdate(props: {
   }
 
   const disabled = busy || anotherUpdateActive
+  // A node row appears as soon as its first NodeStatus broadcast lands, which is
+  // BEFORE its GetNodeInfo answer — and the online lookup is matched purely on
+  // the APJ board id reconstructed from that answer's hardware_version. Offering
+  // the button in that gap only ever produced "hasn't reported its hardware
+  // version yet", so hold it closed until the identity is actually in hand.
+  const identified = canLookUpFirmwareOnline(node)
 
   const pickFile = (selected: File | undefined): void => {
     setAcknowledged(false)
@@ -322,7 +337,12 @@ function NodeFirmwareUpdate(props: {
             <button
               type="button"
               style={buttonStyle()}
-              disabled={disabled || onlineBusy || downloadingUrl !== null}
+              disabled={disabled || onlineBusy || downloadingUrl !== null || !identified}
+              title={
+                identified
+                  ? undefined
+                  : 'Waiting for this device to answer GetNodeInfo — its hardware version is the match key for the firmware server.'
+              }
               onClick={findOnline}
               data-testid={`dronecan-fwupdate-online-find-${nodeId}`}
             >
@@ -331,6 +351,12 @@ function NodeFirmwareUpdate(props: {
             <span className="dronecan-inspector__fwupdate-online-id">
               {node.name ? node.name : `node #${nodeId}`}
             </span>
+            {identified ? null : (
+              <p className="telemetry-note" data-testid={`dronecan-fwupdate-online-waiting-${nodeId}`}>
+                Waiting for this device’s identity (<code>GetNodeInfo</code>) — the firmware server is matched on the
+                hardware version it reports, so the lookup can’t run until it arrives.
+              </p>
+            )}
             {onlineError ? (
               <p
                 className="dronecan-inspector__fwupdate-error"
