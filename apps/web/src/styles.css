@@ -12313,6 +12313,17 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: baseline;
   gap: 6px;
+  /* A flex item defaults to min-width:auto, so it refuses to shrink below its
+   * content. Without these the name text cannot give way inside its grid
+   * track: adding the preset checkbox consumed enough of the cell to push the
+   * name straight out of it and draw it on top of the Description column.
+   * min-width:0 lets the text shrink and ellipsize inside the cell instead. */
+  min-width: 0;
+}
+.parameter-row__name > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .parameter-row__caret {
   color: var(--text-muted);
