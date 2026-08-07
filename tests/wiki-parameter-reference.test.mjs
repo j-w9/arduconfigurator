@@ -106,6 +106,58 @@ test('the index IS the search page, and generated pages stay out of the nav tree
   assert.match(letter, /^:orphan:/, 'letter pages must stay out of the nav tree')
 })
 
+test("the app's per-parameter link resolves against this reference", () => {
+  // The "i" bubble in the app links parameters by NAME
+  // (parameters/index.html?param=ATC_INPUT_TC) and this reference's search
+  // script resolves the name to a family page. That contract spans two
+  // packages, so neither side's own tests can catch it drifting: the app can't
+  // see the generated pages, and the generator doesn't know the app exists.
+  generate()
+  const docs = readFileSync(path.join(REPO, 'apps', 'web', 'src', 'view-models', 'param-docs.ts'), 'utf8')
+
+  // 1. The page the app links to is a page this generator emits.
+  const target = /WIKI_PARAMETER_REFERENCE_URL = '([^']+)'/.exec(docs)?.[1]
+  assert.ok(target?.endsWith('/wiki/parameters/index.html'), `unexpected link target: ${target}`)
+  assert.ok(existsSync(path.join(PARAMS_DIR, 'index.rst')), 'the app links a page the generator does not emit')
+
+  // 2. The query key the app writes is the one the search script reads.
+  const key = /WIKI_PARAMETER_QUERY_KEY = '([^']+)'/.exec(docs)?.[1]
+  const search = readFileSync(path.join(WIKI, '_static', 'parameter-search.js'), 'utf8')
+  assert.ok(key, 'the app must declare the query key it uses')
+  assert.match(search, new RegExp(`\\.get\\('${key}'\\)`), 'the search script does not read that query key')
+
+  // 3. A named parameter resolves to a page and an anchor that both exist —
+  //    including the two shapes whose page is NOT derivable from the name
+  //    (top-level Copter params, and the underscore-collision suffix), which is
+  //    the whole reason the link is name-addressed.
+  const byName = new Map(
+    JSON.parse(readFileSync(INDEX_JSON, 'utf8')).params.map((entry) => [entry.n, entry])
+  )
+  for (const [name, expectedPage] of [
+    ['ATC_INPUT_TC', 'group-atc.rst'],
+    ['BATT_MONITOR', 'group-batt.rst'],
+    ['SERVO1_FUNCTION', 'group-servo1.rst'],
+    ['ACRO_RP_EXPO', 'group-copter.rst'],
+    ['ARSPD_TYPE', 'group-arspd-2.rst'],
+  ]) {
+    const entry = byName.get(name)
+    assert.ok(entry, `${name} is not in the index the search resolves against`)
+    const page = path.join(PARAMS_DIR, `group-${entry.g}.rst`)
+    assert.equal(path.basename(page), expectedPage, `${name} moved family page`)
+    assert.match(
+      readFileSync(page, 'utf8'),
+      new RegExp(`^\\.\\. _param-${name.toLowerCase()}:$`, 'm'),
+      `${name}: no anchor to land on`
+    )
+  }
+
+  // 4. The firmware the app puts in the link label is the one this reference
+  //    documents — a regenerate for a new release must not leave it lying.
+  const labelled = /WIKI_PARAMETER_FIRMWARE = '([^']+)'/.exec(docs)?.[1]
+  const { vehicle, firmware } = JSON.parse(readFileSync(INDEX_JSON, 'utf8'))
+  assert.equal(labelled, `${vehicle} ${firmware}`, 'the app advertises a firmware the reference is not for')
+})
+
 test('page titles escape the trailing underscore every ArduPilot family name has', () => {
   // An unescaped trailing underscore is RST hyperlink-reference syntax: it
   // produced ~290 "Unknown target name" build errors and a mangled heading.

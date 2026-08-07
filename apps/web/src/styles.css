@@ -6761,8 +6761,29 @@ textarea:focus {
   letter-spacing: normal;
   text-transform: none;
 }
+/* The header's blanket span styling (block/uppercase/muted/tracked) would also
+   claim the tip's inner spans, so restate those two here as well — the param id
+   keeps its data font, the description reads as prose. */
+.tuning-control__header .config-section__info-param {
+  display: block;
+  margin-bottom: 0;
+  color: var(--text);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.tuning-control__header .config-section__info-text {
+  display: block;
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
 .tuning-control__header .config-section__info-wrap:hover .config-section__info-tip,
-.tuning-control__header .config-section__info:focus-visible + .config-section__info-tip {
+.tuning-control__header .config-section__info:focus-visible + .config-section__info-tip,
+.tuning-control__header .config-section__info-wrap:focus-within .config-section__info-tip {
   display: block;
 }
 
@@ -13501,7 +13522,10 @@ details.bf-gui-box:not([open]) > summary::after {
   top: 24px;
   z-index: 20;
   width: max-content;
-  max-width: 260px;
+  /* Clamp to the viewport as well as the 260px design width: the box is
+     right-anchored to an 18px icon, so on a 390px phone a fixed 260px box can
+     run past the left edge of the screen and clip its own text. */
+  max-width: min(260px, calc(100vw - 32px));
   padding: 8px 10px;
   border-radius: 6px;
   border: 1px solid var(--surface-400);
@@ -13518,9 +13542,54 @@ details.bf-gui-box:not([open]) > summary::after {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
 }
 
+/* The tip sits 24px down while the button is only 18px tall, so there is a 6px
+   dead band between them. Hover state follows the DOM (the tip is a descendant
+   of the wrap), not the visual box, so a pointer crossing that band leaves the
+   wrap and the tip disappears — which made the wiki link inside it impossible
+   to click. This invisible bridge covers the gap so the pointer never leaves. */
+.config-section__info-tip::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  height: 8px;
+}
+
 .config-section__info-wrap:hover .config-section__info-tip,
-.config-section__info:focus-visible + .config-section__info-tip {
+.config-section__info:focus-visible + .config-section__info-tip,
+/* focus-within, not just the button's own focus: tabbing from the "i" onto the
+   wiki link inside the tip would otherwise blur the button and close the tip
+   out from under the link, leaving it unreachable by keyboard. */
+.config-section__info-wrap:focus-within .config-section__info-tip {
   display: block;
+}
+
+/* Raw ArduPilot parameter name — the whole point of the bubble for an operator
+   who only ever sees the friendly label. Monospaced and select-all so it can be
+   copied straight into the Parameters tab search. */
+.config-section__info-param {
+  display: block;
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  user-select: all;
+}
+
+.config-section__info-text {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+}
+
+.config-section__info-wiki {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--accent-strong, var(--accent));
+  font-size: 11px;
+  text-decoration: underline;
 }
 
 .config-section__missing-row {

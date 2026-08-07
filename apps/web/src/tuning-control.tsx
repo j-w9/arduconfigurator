@@ -9,6 +9,7 @@ import type { ParameterDraftStatus, ParameterState } from '@arduconfig/ardupilot
 import { StatusBadge } from '@arduconfig/ui-kit'
 
 import { formatNumericDisplayValue, formatParameterDisplayValue, formatAngleMaxDegrees } from './parameter-format'
+import { ParamInfoBubble } from './views/ParamInfoBubble'
 
 export function tuningInputValue(parameter: ParameterState, editedValues: Record<string, string>): string {
   const rawValue = editedValues[parameter.id]
@@ -180,24 +181,17 @@ export function TuningControl(props: TuningControlProps): ReactElement {
         </div>
         {draftStatus === 'staged' ? <StatusBadge tone="warning">staged</StatusBadge> : null}
         {draftStatus === 'invalid' ? <StatusBadge tone="danger">invalid</StatusBadge> : null}
-        {description ? (
-          // Same per-field "i" affordance as the Config / Networking tabs
-          // (config-section__info) — hover/focus reveals the styled description
-          // box — so it reads consistently across the app.
-          <span className="config-section__info-wrap">
-            <button
-              type="button"
-              className="config-section__info"
-              data-testid={`tuning-info-${parameter.id}`}
-              aria-label={`About ${label}`}
-            >
-              i
-            </button>
-            <span className="config-section__info-tip" role="tooltip">
-              {description}
-            </span>
-          </span>
-        ) : null}
+        {/* Shared per-field "i" affordance (Config / Networking use the same
+            component). Unconditional: a curated tuning card shows ONLY the
+            friendly label ("Stick Feel Smoothing"), so the bubble is the only
+            place the operator can learn the parameter is ATC_INPUT_TC — that
+            has to work whether or not the metadata carries a description. */}
+        <ParamInfoBubble
+          paramId={parameter.id}
+          label={label}
+          description={description}
+          testId={`tuning-info-${parameter.id}`}
+        />
       </div>
 
       <input
