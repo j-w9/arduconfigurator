@@ -68,9 +68,10 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
         badge: 'preview',
         tone: 'warning'
       }
-  // DroneCAN inspector. Mirrors Mission Planner's workflow over the
-  // MAVLink CAN_FORWARD tunnel so MAVLink stays alive on the same
-  // channel during inspection. Badge reflects live session status.
+  // The single CAN surface: device list, per-device inspector (identity, params,
+  // restart, firmware update), and ESC telemetry. Mirrors Mission Planner's
+  // workflow over the MAVLink CAN_FORWARD tunnel so MAVLink stays alive on the
+  // same channel during inspection. Badge reflects live session status.
   const canBusBadge =
     canBusStatus === 'active'
       ? `CAN${canBusBus} live`
@@ -84,7 +85,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const canBusDescriptor: AppViewDescriptor = {
     id: 'can',
     label: 'CAN',
-    description: 'DroneCAN bus inspector — discover nodes, read identity, edit and save per-node parameters via the MAVLink CAN_FORWARD tunnel.',
+    description: 'DroneCAN bus inspector — discover nodes, read identity, edit and save per-node parameters, restart or update a node, and watch ESC telemetry via the MAVLink CAN_FORWARD tunnel. Any device can pop out into its own window.',
     badge: canBusBadge,
     tone: canBusStatus === 'active' ? 'success' : canBusStatus === 'error' ? 'danger' : 'neutral'
   }
@@ -143,19 +144,15 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   }
   // Read-only live-traffic inspectors — expert-only advanced tools, injected
   // at render time and only when Expert mode is on.
+  // (The DroneCAN inspector used to be a second descriptor here. It inspected the
+  // same bus over the same CAN_FORWARD tunnel as the CAN tab, so it was folded
+  // into that tab — one CAN surface, with a per-device pop-out window.)
   const mavlinkInspectorDescriptor: AppViewDescriptor = {
     id: 'mavlink-inspector',
     label: 'MAVLink Inspector',
     description: 'Live decoded MAVLink message stream — per-type rate, count, and last value. Read-only.',
     badge: connectionKind === 'connected' ? 'live' : 'idle',
     tone: 'neutral'
-  }
-  const dronecanInspectorDescriptor: AppViewDescriptor = {
-    id: 'dronecan-inspector',
-    label: 'DroneCAN Inspector',
-    description: 'Live DroneCAN bus traffic over the CAN_FORWARD tunnel — messages by node, rate, and last value. Read-only.',
-    badge: canBusStatus === 'active' ? `CAN${canBusBus} live` : 'idle',
-    tone: canBusStatus === 'active' ? 'success' : 'neutral'
   }
   // Networking (NET_*): Ethernet/PPP IP setup + network serial endpoints, and
   // the DroneNet peripheral path. Expert-only AND only when the FC reports
@@ -198,7 +195,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     'setup', 'guided-setup', 'config', 'calibration', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'power', 'failsafe', 'vtx', 'osd', 'tuning', 'presets',
     'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'elrs-flash', 'rc-mixer',
-    'mavlink-inspector', 'dronecan-inspector', 'ai-assistant'
+    'mavlink-inspector', 'ai-assistant'
   ]
   const relabelled = base.map((view) =>
     view.id === 'setup'
@@ -228,7 +225,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     ...(ELRS_FLASH_ENABLED && isExpertMode && hasSerialPassthrough ? [elrsFlashDescriptor] : []),
     // Expert-only views — only surfaced when Expert mode is on.
     ...(isExpertMode
-      ? [rcMixerDescriptor, mavlinkInspectorDescriptor, dronecanInspectorDescriptor, aiAssistantDescriptor]
+      ? [rcMixerDescriptor, mavlinkInspectorDescriptor, aiAssistantDescriptor]
       : [])
   ]
   const rankOf = (id: string): number => {

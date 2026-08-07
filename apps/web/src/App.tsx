@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import {
   EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS,
@@ -273,8 +274,10 @@ import { patchElrsFirmwareOptions } from './view-models/elrs-firmware-options'
 import { MavlinkInspectorView } from './views/MavlinkInspector'
 import { intervalUsForRate } from './view-models/mavlink-inspector'
 import { MAX_MAVLINK_PLOTS, useMavlinkInspector } from './hooks/use-mavlink-inspector'
-import { DronecanInspectorView, type DronecanFirmwareOnlineSource } from './views/DronecanInspector'
+import { CanDeviceInspectorView, type DronecanFirmwareOnlineSource } from './views/CanDeviceInspector'
 import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
+import { useCanDevicePopouts } from './hooks/use-can-device-popouts'
+import { filterEscTelemetryForNode } from './view-models/can-device-inspector'
 import { dronecanNodeBoardId, parseApj, decodeApjImage } from '@arduconfig/firmware-flash'
 import { inflateZlib } from './firmware/web-serial-bootloader'
 import { ParamInfoBubble } from './views/ParamInfoBubble'
@@ -5708,6 +5711,34 @@ export function App() {
         onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
       />
     ))
+  // --- CAN device inspectors (merged CAN tab + per-device popout windows) ---
+  // The autopilot's own DroneCAN node id(s) (CAN_Dn_UC_NODE): such a node is the
+  // FC itself and answers no DroneCAN param walk, so both the inline and the
+  // popped-out inspector label it rather than showing an empty table.
+  const canSelfNodeIds = [
+    readRoundedParameter(snapshot, 'CAN_D1_UC_NODE'),
+    readRoundedParameter(snapshot, 'CAN_D2_UC_NODE')
+  ].filter((id): id is number => typeof id === 'number' && id > 0)
+  // Popout windows live at App level so they survive a tab switch (see
+  // use-can-device-popouts). They never touch CAN forwarding — the runtime's CAN
+  // bus service keeps MAV_CMD_CAN_FORWARD re-armed for as long as the bus is
+  // connected, no matter how many windows are watching it.
+  const canDevicePopouts = useCanDevicePopouts()
+  // The destructive per-device actions, shared by the inline and popped-out
+  // inspectors. Passed only under Expert mode — they used to be reachable solely
+  // from the expert-only DroneCAN Inspector tab.
+  const canDeviceExpertActions = useMemo(
+    () => ({
+      firmwareUpdate: snapshot.canBus.firmwareUpdate,
+      onRestartNode: (nodeId: number) => { void runtime?.restartCanBusNode(nodeId) },
+      onStartFirmwareUpdate: (nodeId: number, fileName: string, image: Uint8Array) => {
+        void runtime?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image)
+      },
+      onCancelFirmwareUpdate: () => { runtime?.cancelCanBusNodeFirmwareUpdate() },
+      firmwareOnline: dronecanFirmwareOnline
+    }),
+    [snapshot.canBus.firmwareUpdate, runtime, dronecanFirmwareOnline]
+  )
   const visibleAppViews = useMemo(
     () =>
       buildVisibleAppViews({
@@ -8586,10 +8617,7 @@ export function App() {
           <CanBusView
             state={networkCanBusState}
             vehicleConnected={snapshot.connection.kind === 'connected'}
-            selfNodeIds={[
-              readRoundedParameter(snapshot, 'CAN_D1_UC_NODE'),
-              readRoundedParameter(snapshot, 'CAN_D2_UC_NODE')
-            ].filter((id): id is number => typeof id === 'number' && id > 0)}
+            selfNodeIds={canSelfNodeIds}
             onStartForward={(bus) => { void runtime?.startCanBusForward(bus) }}
             onStopForward={() => { void runtime?.stopCanBusForward() }}
             onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
@@ -8662,10 +8690,7 @@ export function App() {
       <CanBusView
         state={snapshot.canBus}
         vehicleConnected={snapshot.connection.kind === 'connected'}
-        selfNodeIds={[
-          readRoundedParameter(snapshot, 'CAN_D1_UC_NODE'),
-          readRoundedParameter(snapshot, 'CAN_D2_UC_NODE')
-        ].filter((id): id is number => typeof id === 'number' && id > 0)}
+        selfNodeIds={canSelfNodeIds}
         onStartForward={(bus) => { void runtime?.startCanBusForward(bus) }}
         onStopForward={() => { void runtime?.stopCanBusForward() }}
         onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
@@ -8675,6 +8700,20 @@ export function App() {
         enablement={canEnablement.needsEnable ? { triggerLabels: canEnablement.triggerLabels } : undefined}
         onEnableCanBus={runtime ? () => { void handleEnableCanBus() } : undefined}
         enableBusy={busyAction === 'can:enable'}
+        // --- folded-in DroneCAN inspector (was a separate expert-only tab) ---
+        framesPerSec={dronecanFramesPerSec}
+        escTelemetry={snapshot.canBus.escTelemetry}
+        busy={busyAction !== undefined}
+        // Restart + firmware update were expert-gated by living in the expert-only
+        // inspector tab; the CAN tab is always visible, so the gate moves here
+        // rather than being lost in the merge.
+        expertActions={isExpertMode ? canDeviceExpertActions : undefined}
+        popout={{
+          openNodeIds: canDevicePopouts.openNodeIds,
+          onOpen: (nodeId, label) => canDevicePopouts.openDevice(nodeId, label),
+          onClose: (nodeId) => canDevicePopouts.closeDevice(nodeId),
+          blockedNodeId: canDevicePopouts.blockedNodeId
+        }}
       />
       ) : null}
 
@@ -8795,29 +8834,47 @@ export function App() {
         />
       ) : null}
 
-      {activeViewId === 'dronecan-inspector' ? (
-        <DronecanInspectorView
-          status={snapshot.canBus.status}
-          bus={snapshot.canBus.bus}
-          framesReceived={snapshot.canBus.framesReceived}
-          framesPerSec={dronecanFramesPerSec}
-          error={snapshot.canBus.error}
-          nodes={snapshot.canBus.nodes}
-          escTelemetry={snapshot.canBus.escTelemetry}
-          firmwareUpdate={snapshot.canBus.firmwareUpdate}
-          connected={snapshot.connection.kind === 'connected'}
-          busy={busyAction !== undefined}
-          onStart={(bus) => { void runtime?.startCanBusForward(bus) }}
-          onStop={() => { void runtime?.stopCanBusForward() }}
-          onFetchParams={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
-          onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
-          onRestartNode={(nodeId) => { void runtime?.restartCanBusNode(nodeId) }}
-          onStartFirmwareUpdate={(nodeId, fileName, image) => { void runtime?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image) }}
-          onCancelFirmwareUpdate={() => { runtime?.cancelCanBusNodeFirmwareUpdate() }}
-          firmwareOnline={dronecanFirmwareOnline}
-          paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
-        />
-      ) : null}
+      {/* Popped-out CAN device inspectors. Rendered OUTSIDE the activeViewId
+          switch (and portalled into their own windows) so a device an operator
+          tore off stays up while they work in another tab — the windows are
+          views onto the one runtime snapshot, never a second session. CAN
+          forwarding is untouched by opening/closing them: the runtime's CAN bus
+          service owns the MAV_CMD_CAN_FORWARD keep-alive for as long as the bus
+          is connected. */}
+      {canDevicePopouts.windows.map(({ nodeId, handle }) => {
+        const node = snapshot.canBus.nodes.find((entry) => entry.nodeId === nodeId)
+        return createPortal(
+          node ? (
+            <CanDeviceInspectorView
+              node={node}
+              isSelf={canSelfNodeIds.includes(nodeId)}
+              paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
+              draftValues={canDevicePopouts.draftValues}
+              onDraftChange={canDevicePopouts.setDraft}
+              onDropDraft={canDevicePopouts.dropDraft}
+              onDropAllDrafts={canDevicePopouts.dropAllDrafts}
+              onApplyAndSave={(id, writes) => {
+                void runtime?.applyAndSaveCanBusParameters(id, writes)
+                canDevicePopouts.dropDrafts(id, writes.map((write) => write.name))
+              }}
+              onRefreshNode={(id) => { runtime?.refreshCanBusNode(id) }}
+              onFetchAllParameters={(id) => { runtime?.fetchAllCanBusParameters(id) }}
+              busy={busyAction !== undefined}
+              expertActions={isExpertMode ? canDeviceExpertActions : undefined}
+              // Real filtering, not a label: this window only ever shows this
+              // node's ESC telemetry out of the bus-wide stream.
+              escTelemetry={filterEscTelemetryForNode(snapshot.canBus.escTelemetry, nodeId)}
+              heading={node.name && node.name.length > 0 ? node.name : `Node ${nodeId}`}
+            />
+          ) : (
+            <p className="can-bus-empty" data-testid={`can-device-popout-missing-${nodeId}`}>
+              Node {nodeId} is no longer reporting on the bus. This window updates again if it comes back.
+            </p>
+          ),
+          handle.container,
+          handle.key
+        )
+      })}
 
       {activeViewId === 'calibration' ? (
         <CalibrationSection

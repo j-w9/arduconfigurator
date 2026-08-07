@@ -562,7 +562,7 @@ export interface DronecanInspectedNode {
 }
 
 // Latest observed uavcan.equipment.esc.Status (DT 1034) for one ESC, keyed by
-// its esc_index. Observe-only telemetry surfaced in the DroneCAN Inspector;
+// its esc_index. Observe-only telemetry surfaced in the CAN tab;
 // values are snapshot-safe numbers (NaN is normalized to undefined so the
 // JSON snapshot round-trips and the UI can show "—" for unreported fields).
 export interface DronecanEscTelemetry {
