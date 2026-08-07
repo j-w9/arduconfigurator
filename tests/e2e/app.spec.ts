@@ -374,12 +374,41 @@ test.describe('browser configurator regression flows', () => {
     await page.getByTestId('motor-reorder-guided-spin').click()
     await expect(banner).toContainText(/OUT\d+ spun/, { timeout: COMMAND_ACK_TIMEOUT })
 
-    // Picking a position advances to the next output and — with auto-spin on —
-    // spins it automatically once the previous motor's test window closes, so
-    // the operator never has to click Spin again.
+    // Picking a position is the operator's answer, so the spin has served its
+    // purpose: it is stopped with a zero-throttle abort and the next output
+    // starts behind that stop's ACK — no waiting out the rest of the window.
+    const pickedAtMs = Date.now()
     await page.getByTestId('motor-reorder-pick-1').click()
     await expect(banner).toContainText('2 / 4')
     await expect(banner).toContainText(/OUT\d+ spun/, { timeout: COMMAND_ACK_TIMEOUT })
+    // The old flow could only advance after the full 2.5 s test window closed.
+    // A generous ceiling — this asserts "did not wait out the window", not a
+    // latency budget.
+    expect(Date.now() - pickedAtMs).toBeLessThan(2500)
+
+    // A second click on an already-claimed position is ignored: the run stays
+    // on output 2 rather than re-answering or firing a second spin.
+    await expect(page.getByTestId('motor-reorder-pick-1')).toHaveCount(0)
+    await expect(banner).toContainText('2 / 4')
+
+    // Picking the LAST outputs finishes the run — and nothing spins after the
+    // final answer (the banner is gone, so there is no "spun" state to reach).
+    await page.getByTestId('motor-reorder-pick-2').click()
+    await expect(banner).toContainText('3 / 4')
+    await expect(banner).toContainText(/OUT\d+ spun/, { timeout: COMMAND_ACK_TIMEOUT })
+    await page.getByTestId('motor-reorder-pick-3').click()
+    await expect(banner).toContainText('4 / 4')
+    await expect(banner).toContainText(/OUT\d+ spun/, { timeout: COMMAND_ACK_TIMEOUT })
+    await page.getByTestId('motor-reorder-pick-4').click()
+    await expect(banner).toHaveCount(0)
+    await expect(page.getByTestId('motor-reorder-next-direction')).toBeVisible()
+    await expect(page.getByTestId('motor-reorder-guided-start')).toBeVisible()
+
+    // Re-open a run so the remaining mid-sequence assertions below still have
+    // one in progress.
+    await page.getByTestId('motor-reorder-guided-start').click()
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText('1 / 4')
 
     // The hand-off to Direction only appears once a run COMPLETES — identifying
     // the order is only half the job (the order can be right while a motor

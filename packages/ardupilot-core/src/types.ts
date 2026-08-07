@@ -449,6 +449,23 @@ export interface MotorTestState {
   completedAtMs?: number
 }
 
+/**
+ * Outcome of an operator-initiated motor-test abort. Callers that chain
+ * another spin behind the stop (the guided-identify advance) MUST NOT
+ * start the next motor unless the abort was acknowledged — an unACKed
+ * stop means we have no evidence the previous motor was commanded down,
+ * and a fresh DO_MOTOR_TEST would then be racing an unknown FC state.
+ */
+export interface MotorTestStopResult {
+  /** True when an abort command was actually put on the wire. False when
+   *  there was no active test to stop (nothing to prove, nothing racing). */
+  sent: boolean
+  /** True when the autopilot COMMAND_ACKed the zero-throttle abort. Always
+   *  true when `sent` is false, so `sent && !acknowledged` is the single
+   *  "the stop is unproven" condition. */
+  acknowledged: boolean
+}
+
 export interface MotorTestRequest {
   outputChannel?: number
   /** Spin every mapped motor ONE AT A TIME in test-order sequence. */
