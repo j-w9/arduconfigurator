@@ -1,6 +1,7 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS, LOG_DISARMED_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
+import { buildOpticalFlowParameterDefinitions } from './shared-optical-flow.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
 import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
 import {
@@ -575,6 +576,14 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       label: 'Rangefinder / Lidar',
       description: 'Rangefinder/lidar driver, orientation, range limits, and mounting offsets (RNGFND1).',
       order: 1.6,
+      viewId: 'motors'
+    },
+    // Paired with Rangefinder above — flow needs a height reference.
+    'optical-flow': {
+      id: 'optical-flow',
+      label: 'Optical Flow',
+      description: 'Optical flow sensor driver, yaw alignment, scale correction, and mounting offsets (FLOW_).',
+      order: 1.65,
       viewId: 'motors'
     },
     relays: {
@@ -3371,6 +3380,7 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
     ...buildMountParameterDefinitions(1),
     ...buildMountParameterDefinitions(2),
     ...buildRangefinderParameterDefinitions(1),
+    ...buildOpticalFlowParameterDefinitions(),
     ...Array.from({ length: RELAY_INSTANCE_COUNT }, (_, index) =>
       buildRelayParameterDefinitions(index + 1)
     ).reduce((merged, family) => ({ ...merged, ...family }), {}),

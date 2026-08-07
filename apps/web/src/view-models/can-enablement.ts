@@ -18,7 +18,15 @@ const DRONECAN_DRIVER_TRIGGERS: ReadonlyArray<{ paramId: string; values: readonl
   { paramId: 'GPS_TYPE', values: [9, 22, 23], label: 'GPS is set to DroneCAN' },
   { paramId: 'GPS_TYPE2', values: [9, 22, 23], label: 'GPS 2 is set to DroneCAN' },
   { paramId: 'BATT_MONITOR', values: [8], label: 'Battery monitor is set to DroneCAN' },
-  { paramId: 'BATT2_MONITOR', values: [8], label: 'Battery monitor 2 is set to DroneCAN' }
+  { paramId: 'BATT2_MONITOR', values: [8], label: 'Battery monitor 2 is set to DroneCAN' },
+  // FLOW_TYPE 6 = DroneCAN (HereFlow and friends). Verified against
+  // libraries/AP_OpticalFlow/AP_OpticalFlow.cpp @Values `6:DroneCAN` and
+  // AP_OpticalFlow.h `Type::UAVCAN = 6` (branch origin/ArduPilot-4.7; the
+  // 4.6.3 tag carries the identical value). Added because a CAN flow sensor is
+  // exactly as dead-on-a-disabled-bus as a CAN GPS, and the operator report
+  // that drove the flow config section was a DroneCAN sensor that reported
+  // nothing.
+  { paramId: 'FLOW_TYPE', values: [6], label: 'Optical flow is set to DroneCAN' }
 ]
 
 export interface CanEnablementState {
@@ -26,11 +34,18 @@ export interface CanEnablementState {
   needsEnable: boolean
   /** Human-readable reasons (e.g. "GPS is set to DroneCAN"). */
   triggerLabels: string[]
+  /**
+   * The driver params that fired, so a surface can decide whether the prompt is
+   * ITS business. The CAN tab shows the prompt for any trigger; the Servos ▸
+   * Peripherals optical-flow section only shows it when FLOW_TYPE is one of
+   * them (a DroneCAN GPS is not a reason to interrupt someone editing flow).
+   */
+  triggerParamIds: string[]
   /** The exact writes to enable DroneCAN on bus 1 (only params not already correct). */
   writes: Array<{ paramId: string; paramValue: number }>
 }
 
-const EMPTY: CanEnablementState = { needsEnable: false, triggerLabels: [], writes: [] }
+const EMPTY: CanEnablementState = { needsEnable: false, triggerLabels: [], triggerParamIds: [], writes: [] }
 
 function value(snapshot: ConfiguratorSnapshot, paramId: string): number | undefined {
   return snapshot.parameters.find((p) => p.id === paramId)?.value
@@ -43,10 +58,12 @@ export function deriveCanEnablement(snapshot: ConfiguratorSnapshot): CanEnableme
     return EMPTY
   }
 
-  const triggerLabels = DRONECAN_DRIVER_TRIGGERS.filter((trigger) => {
+  const firedTriggers = DRONECAN_DRIVER_TRIGGERS.filter((trigger) => {
     const current = value(snapshot, trigger.paramId)
     return current !== undefined && trigger.values.includes(Math.round(current))
-  }).map((trigger) => trigger.label)
+  })
+  const triggerLabels = firedTriggers.map((trigger) => trigger.label)
+  const triggerParamIds = firedTriggers.map((trigger) => trigger.paramId)
 
   if (triggerLabels.length === 0) {
     return EMPTY
@@ -71,5 +88,5 @@ export function deriveCanEnablement(snapshot: ConfiguratorSnapshot): CanEnableme
     return EMPTY
   }
 
-  return { needsEnable: true, triggerLabels, writes }
+  return { needsEnable: true, triggerLabels, triggerParamIds, writes }
 }

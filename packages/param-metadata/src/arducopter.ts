@@ -3,6 +3,7 @@ import { AHRS_ORIENTATION_OPTIONS, LOG_DISARMED_OPTIONS } from './shared-enums.j
 import { buildMountParameterDefinitions } from './shared-mount.js'
 import { buildNetworkParameterDefinitions } from './shared-network.js'
 import { buildRcLogicParameterDefinitions } from './shared-rc-logic.js'
+import { buildOpticalFlowParameterDefinitions } from './shared-optical-flow.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
 import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
 import {
@@ -858,6 +859,16 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       order: 9.6,
       viewId: 'motors'
     },
+    // Sits immediately after Rangefinder because the two are a pair in
+    // practice: flow needs a height reference, and that is almost always the
+    // downward rangefinder configured in the section above.
+    'optical-flow': {
+      id: 'optical-flow',
+      label: 'Optical Flow',
+      description: 'Optical flow sensor driver, yaw alignment, scale correction, and mounting offsets (FLOW_).',
+      order: 9.65,
+      viewId: 'motors'
+    },
     relays: {
       id: 'relays',
       label: 'Relays',
@@ -1204,6 +1215,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     ...buildMountParameterDefinitions(1),
     ...buildMountParameterDefinitions(2),
     ...buildRangefinderParameterDefinitions(1),
+    ...buildOpticalFlowParameterDefinitions(),
     ...Array.from({ length: RELAY_INSTANCE_COUNT }, (_, index) =>
       buildRelayParameterDefinitions(index + 1)
     ).reduce((merged, family) => ({ ...merged, ...family }), {}),

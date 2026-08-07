@@ -146,6 +146,15 @@ export interface OutputsSectionDerived {
   relayDraftEntries: ParameterDraftEntry[]
   relayStagedDrafts: ParameterDraftEntry[]
   relayInvalidDrafts: ParameterDraftEntry[]
+  /**
+   * Optional "enable the CAN bus for DroneCAN" offer rendered at the top of the
+   * Peripherals task, above the metadata sections. Supplied by App.tsx ONLY when
+   * a DroneCAN optical-flow sensor (FLOW_TYPE = 6) is selected while CAN bus 1
+   * is off — the trap that makes a correctly wired flow sensor look dead. A
+   * ReactNode slot (the established pattern for complex sub-surfaces here) so
+   * this section keeps no runtime wiring of its own.
+   */
+  peripheralsCanEnableSlot?: ReactNode
 }
 
 export interface OutputsSectionHandlers {
@@ -342,7 +351,8 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     relayGroups,
     relayDraftEntries,
     relayStagedDrafts,
-    relayInvalidDrafts
+    relayInvalidDrafts,
+    peripheralsCanEnableSlot
   } = derived
 
   const {
@@ -973,6 +983,10 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
 
               {activeOutputTaskId === 'peripherals' ? (
                 <div className="outputs-task-panel outputs-task-panel--stack">
+                  {/* Sits ABOVE the cards: a DroneCAN sensor on a disabled bus
+                      reports nothing at all, so the fix has to be visible before
+                      the operator starts second-guessing the fields below it. */}
+                  {peripheralsCanEnableSlot}
                   {notificationLedTypesParameter || notificationLedLengthParameter || notificationLedBrightnessParameter || notificationLedOverrideParameter || notificationBuzzTypesParameter || notificationBuzzVolumeParameter ? (
                     <div className="scoped-review-card scoped-review-card--compact">
                       <div className="switch-exercise-card__header">

@@ -305,6 +305,7 @@ import { TuningSubSection } from './sections/TuningSubSection'
 import { VtxSection } from './sections/VtxSection'
 import { PowerView, type PowerDraftItem, type PowerFieldSpec } from './views/Power'
 import { CanBusView } from './views/CanBus'
+import { CanEnablePrompt } from './views/CanEnablePrompt'
 import { NetworkingView, type NetworkingTab } from './views/NetworkingView'
 import { LuaScriptsView } from './views/LuaScripts'
 import { useLuaScripts } from './hooks/use-lua-scripts'
@@ -5741,6 +5742,23 @@ export function App() {
     readRoundedParameter(snapshot, 'CAN_D1_UC_NODE'),
     readRoundedParameter(snapshot, 'CAN_D2_UC_NODE')
   ].filter((id): id is number => typeof id === 'number' && id > 0)
+  // The SAME "enable CAN bus & reboot" offer the CAN tab makes, mirrored into
+  // Servos ▸ Peripherals — but ONLY when the optical-flow driver is what fired
+  // it (FLOW_TYPE = 6 / DroneCAN). A DroneCAN GPS is a real problem too, and the
+  // CAN tab still says so; it just isn't this card's business to interrupt with.
+  // Reason: a CAN sensor on a disabled bus reports absolutely nothing, so the
+  // operator is looking straight at the flow config wondering why it's dead —
+  // which is precisely where the one-click fix belongs.
+  const opticalFlowCanEnablePrompt =
+    canEnablement.needsEnable && canEnablement.triggerParamIds.includes('FLOW_TYPE') && runtime ? (
+      <CanEnablePrompt
+        triggerLabels={canEnablement.triggerLabels}
+        onEnable={() => { void handleEnableCanBus() }}
+        busy={busyAction === 'can:enable'}
+        testId="peripherals-can-enable-prompt"
+        buttonTestId="peripherals-can-enable-button"
+      />
+    ) : undefined
   // Popout windows live at App level so they survive a tab switch (see
   // use-can-device-popouts). They never touch CAN forwarding — the runtime's CAN
   // bus service keeps MAV_CMD_CAN_FORWARD re-armed for as long as the bus is
@@ -8293,7 +8311,8 @@ export function App() {
           relayGroups,
           relayDraftEntries,
           relayStagedDrafts,
-          relayInvalidDrafts
+          relayInvalidDrafts,
+          peripheralsCanEnableSlot: opticalFlowCanEnablePrompt
         }}
         handlers={{
           handleApplyScopedParameterDrafts,
