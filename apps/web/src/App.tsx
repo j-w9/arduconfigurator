@@ -342,7 +342,7 @@ import { buildAdvancedSensorCards } from './view-models/advanced-sensor-cards'
 import { useStatusClock } from './hooks/use-status-clock'
 import {
   StatusDashboardProvider,
-  StatusDashboardZone,
+  StatusDashboardRegion,
   type StatusDashboardCardEntry
 } from './views/StatusDashboard'
 import { useStatusDashboardLayout } from './hooks/use-status-dashboard-layout'
@@ -7010,13 +7010,16 @@ export function App() {
     }
   ]
 
-  // The DEFAULT arrangement, and the ONLY description of it: this list is what
-  // the page renders when nothing has been dragged, so it has to be the shipped
-  // layout exactly.
+  // The DEFAULT arrangement, and the ONLY description of it: this list — with
+  // `DEFAULT_STATUS_DASHBOARD_COLUMNS`, which names the columns themselves —
+  // is what the page renders when nothing has been dragged, so between them
+  // they have to be the shipped layout exactly.
   //
   //   * the sensor row under the craft model — GPS plus whichever advanced
   //     sensor cards exist — because the three answer one question and used to
-  //     be split across two columns and two scroll positions;
+  //     be split across two columns and two scroll positions. It is a SHELF
+  //     column, so a sensor card that appears mid-session lands beside its
+  //     neighbours rather than under them;
   //   * Pre-arm above Statistics in the first status column, Recent Notices
   //     beside them in the second;
   //   * System Info at the TOP of the sidebar, above Instruments and Guided
@@ -7026,14 +7029,14 @@ export function App() {
   // A stored layout is reconciled against this list every render, which is how
   // a sensor card appearing or disappearing mid-session stays graceful.
   const statusDashboardSpecs: StatusDashboardCardSpec[] = [
-    { id: 'gps', label: 'GPS', zone: 'sensors' },
-    ...advancedSensorCards.map((card) => ({ id: card.id, label: card.title, zone: 'sensors' as const })),
-    { id: 'prearm', label: 'Pre-arm', zone: 'midcol' },
-    { id: 'statistics', label: 'Statistics', zone: 'midcol' },
-    { id: 'notices', label: 'Recent Notices', zone: 'noticecol' },
-    { id: 'system-info', label: 'System Info', zone: 'sidebar' },
-    { id: 'instruments', label: 'Instruments', zone: 'sidebar' },
-    { id: 'guided-setup', label: 'Guided setup', zone: 'sidebar' }
+    { id: 'gps', label: 'GPS', column: 'sensors' },
+    ...advancedSensorCards.map((card) => ({ id: card.id, label: card.title, column: 'sensors' })),
+    { id: 'prearm', label: 'Pre-arm', column: 'midcol' },
+    { id: 'statistics', label: 'Statistics', column: 'midcol' },
+    { id: 'notices', label: 'Recent Notices', column: 'noticecol' },
+    { id: 'system-info', label: 'System Info', column: 'sidebar' },
+    { id: 'instruments', label: 'Instruments', column: 'sidebar' },
+    { id: 'guided-setup', label: 'Guided setup', column: 'sidebar' }
   ]
   const statusDashboard = useStatusDashboardLayout(statusDashboardSpecs)
 
@@ -7326,27 +7329,46 @@ export function App() {
                      *  The route in is the FW version value in System Info. */}
 
                     {/* The arrangement below is user-rearrangeable: drag a card
-                     *  by its handle, drag its bottom edge to cap its height.
-                     *  The controls only appear on viewports wide enough for
-                     *  the multi-column layout to mean anything — on a phone
-                     *  the page is one column and the default order stands. */}
+                     *  by its handle anywhere on the page, drag a column's edge
+                     *  to set its width, drag a card's bottom edge to cap its
+                     *  height. The controls only appear on viewports wide
+                     *  enough for the multi-column layout to mean anything —
+                     *  on a phone the page is one column and the default order
+                     *  stands. */}
                     <StatusDashboardProvider controller={statusDashboard} cards={statusDashboardCards}>
                     {statusDashboard.customisable ? (
                       <div className="status-dash-toolbar" data-testid="status-dash-toolbar">
                         <span className="status-dash-toolbar__hint">
-                          Drag a card by its ⠿ handle to rearrange, or focus a handle and use the arrow keys. Drag a
-                          card's bottom edge to set its height.
+                          Drag a card by its ⠿ handle to put it anywhere — beside another card, into a gap to open a new
+                          column, or above or below everything for a new row. Drag a column's right edge to set its
+                          width, or a card's bottom edge to set its height. Keyboard: focus a handle and use the arrow
+                          keys, with shift for width.
                         </span>
                         {statusDashboard.customised ? (
-                          <button
-                            type="button"
-                            style={buttonStyle()}
-                            data-testid="status-dash-reset-layout"
-                            onClick={statusDashboard.resetLayout}
-                            title="Put every Status card back where it shipped"
-                          >
-                            Reset Layout to Default
-                          </button>
+                          <>
+                            {/* Tidy is the way out of a mess that is not a full
+                             *  Reset: it drops the columns the operator emptied
+                             *  and evens up the widths, keeping the arrangement
+                             *  they actually built. */}
+                            <button
+                              type="button"
+                              style={buttonStyle()}
+                              data-testid="status-dash-tidy-layout"
+                              onClick={statusDashboard.tidyLayout}
+                              title="Close up empty columns and even out the widths, keeping your arrangement"
+                            >
+                              Tidy Up
+                            </button>
+                            <button
+                              type="button"
+                              style={buttonStyle()}
+                              data-testid="status-dash-reset-layout"
+                              onClick={statusDashboard.resetLayout}
+                              title="Put every Status card back where it shipped"
+                            >
+                              Reset Layout to Default
+                            </button>
+                          </>
                         ) : null}
                       </div>
                     ) : null}
@@ -7373,31 +7395,38 @@ export function App() {
                           frameTypeLabel={airframe.frameTypeLabel}
                         />
 
-                        {/* The sensor row, the two status columns and the
-                         *  sidebar are all DROP ZONES now. Each keeps the class
-                         *  name — and therefore the grid/flex behaviour — that
-                         *  it had before the dashboard existed, and the default
-                         *  arrangement in `statusDashboardSpecs` puts every card
-                         *  back exactly where it shipped, so with nothing
-                         *  dragged this renders identically to the static tree
-                         *  it replaced.
+                        {/* Everything below the craft model is one 12-column
+                         *  grid with auto rows: the sensor shelf is band 0, the
+                         *  two status columns are band 1, and the operator can
+                         *  put any card in any column, at any width, in either
+                         *  band — or open new ones.
+                         *
+                         *  There are two regions rather than one because the
+                         *  sidebar is a SIBLING of the viewer in the page shell
+                         *  and runs alongside the craft preview; folding it in
+                         *  would move it below the preview.
+                         *
+                         *  The default arrangement (`statusDashboardSpecs` plus
+                         *  `DEFAULT_STATUS_DASHBOARD_COLUMNS`) reproduces the
+                         *  shipped page exactly — span 6 of 12 with a 14px
+                         *  gutter is the same width as one of the two auto-fit
+                         *  tracks it replaces — so with nothing dragged this
+                         *  renders identically to the static tree it replaced.
                          *
                          *  The comments that used to justify each card's
                          *  position now live on `statusDashboardSpecs`, which is
                          *  the single place the default arrangement is stated. */}
-                        <StatusDashboardZone
-                          zone="sensors"
-                          className="setup-status-sensors"
-                          testId="setup-sensor-group"
+                        <StatusDashboardRegion
+                          region="main"
+                          className="status-dash-region--main"
+                          testId="setup-sensor-group-region"
                         />
-
-                        <div className="setup-bench__status-trio">
-                          <StatusDashboardZone zone="midcol" className="setup-status-midcol" />
-                          <StatusDashboardZone zone="noticecol" className="setup-status-noticecol" />
-                        </div>
                       </div>
 
-                      <StatusDashboardZone zone="sidebar" className="setup-bench__sidebar" />
+                      <StatusDashboardRegion
+                        region="side"
+                        className="setup-bench__sidebar status-dash-region--side"
+                      />
                     </div>
                     </StatusDashboardProvider>
   	              </div>

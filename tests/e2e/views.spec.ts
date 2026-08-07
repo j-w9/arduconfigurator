@@ -5035,7 +5035,11 @@ test.describe('Status & Info advanced sensor cards', () => {
 
     const tops = await page.evaluate(() => {
       const group = document.querySelector('[data-testid="setup-sensor-group"]')!
-      return [...group.children].map((child) => Math.round(child.getBoundingClientRect().top))
+      // The cards specifically: the shelf column also carries its own
+      // (absolutely positioned, out-of-flow) width/flow chrome as a child.
+      return [...group.querySelectorAll('[data-status-dash-card]')].map((child) =>
+        Math.round(child.getBoundingClientRect().top)
+      )
     })
     expect(tops).toHaveLength(3)
     // Every card starts on the same line — no wrap onto a second row, which is
@@ -5059,15 +5063,19 @@ test.describe('Status & Info advanced sensor cards', () => {
 })
 
 test.describe('Status & Info dashboard layout', () => {
-  // The ask: "can we just make all the various boxes click and drag and
-  // resizable so users can click and drag them around how they want it?"
+  // The ask, after the first cut shipped: "pretty good, but its fairly clunky.
+  // can we make that more responsive and free so i can drag and drop how i
+  // please". So the arrangement is now a real 12-column grid with auto rows —
+  // free columns, free widths, new bands — and the drag never relays the page
+  // out while it is in flight.
   //
-  // The mechanism is chrome AROUND the existing cards — no card content, gate
-  // or telemetry changed — so these tests assert ARRANGEMENT: where a card
-  // sits, that a move sticks, that a reload keeps it, that Reset puts it back,
-  // and that a stale saved arrangement can never render a broken page.
+  // The mechanism is still chrome AROUND the existing cards — no card content,
+  // gate or telemetry changed — so these tests assert ARRANGEMENT: where a card
+  // sits, how wide its column is, that a move sticks, that a reload keeps it,
+  // that Reset and Tidy do what they say, and that a stale saved arrangement
+  // can never render a broken page.
 
-  const STORAGE_KEY = 'arduconfig.status-dashboard.v1'
+  const STORAGE_KEY = 'arduconfig.status-dashboard.v2'
 
   async function connectDemo(page: Page): Promise<void> {
     await page.goto('/')
@@ -5077,8 +5085,8 @@ test.describe('Status & Info dashboard layout', () => {
     await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
   }
 
-  async function zoneIds(page: Page, zone: string): Promise<string[]> {
-    return page.$$eval(`[data-status-dash-zone="${zone}"] [data-status-dash-card]`, (nodes) =>
+  async function columnIds(page: Page, column: string): Promise<string[]> {
+    return page.$$eval(`[data-status-dash-col="${column}"] [data-status-dash-card]`, (nodes) =>
       nodes.map((node) => node.getAttribute('data-status-dash-card') ?? '')
     )
   }
@@ -5090,13 +5098,39 @@ test.describe('Status & Info dashboard layout', () => {
     await connectDemo(page)
     // Poll: the two advanced sensor cards appear only once RNGFND1_TYPE /
     // FLOW_TYPE have arrived, which is later than the unconditional cards.
-    await expect.poll(() => zoneIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
-    expect(await zoneIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
-    expect(await zoneIds(page, 'noticecol')).toEqual(['notices'])
-    expect(await zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
+    expect(await columnIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
+    expect(await columnIds(page, 'noticecol')).toEqual(['notices'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
     // Reset only appears once there is something to reset — an always-on
     // "Reset Layout" on a page nobody has customised is just noise.
     await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
+    await expect(page.getByTestId('status-dash-tidy-layout')).toHaveCount(0)
+  })
+
+  test('the default columns are the widths the page shipped with', async ({ page }) => {
+    // The guarantee that survived the model change: the two status columns are
+    // half the main area each, exactly as the `auto-fit` pair they replaced
+    // were, and the sensor shelf spans it all. Six twelfths with a uniform
+    // 14px gutter IS half — this asserts the arithmetic actually holds in a
+    // browser rather than only on paper.
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await connectDemo(page)
+    await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
+
+    const widths = await page.evaluate(() => {
+      const read = (id: string): { left: number; width: number } => {
+        const rect = document.querySelector(`[data-status-dash-col="${id}"]`)!.getBoundingClientRect()
+        return { left: Math.round(rect.left), width: Math.round(rect.width) }
+      }
+      return { sensors: read('sensors'), midcol: read('midcol'), noticecol: read('noticecol') }
+    })
+
+    expect(widths.midcol.left).toBe(widths.sensors.left)
+    expect(widths.midcol.width).toBe(widths.noticecol.width)
+    // The pair plus one 14px gutter fills the shelf above them.
+    expect(widths.midcol.width + 14 + widths.noticecol.width).toBe(widths.sensors.width)
+    expect(widths.noticecol.left).toBe(widths.midcol.left + widths.midcol.width + 14)
   })
 
   test('a card can be moved with the keyboard alone, and Reset puts it back', async ({ page }) => {
@@ -5105,18 +5139,18 @@ test.describe('Status & Info dashboard layout', () => {
     await connectDemo(page)
     await page.getByTestId('status-dash-handle-guided-setup').focus()
     await page.keyboard.press('ArrowLeft')
-    await expect.poll(() => zoneIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
-    expect(await zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments'])
+    await expect.poll(() => columnIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments'])
 
     // The move is saved, so it survives a reload.
     await page.reload()
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.getByTestId('status-dash-card-guided-setup')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
-    expect(await zoneIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
+    expect(await columnIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
 
     await page.getByTestId('status-dash-reset-layout').click()
-    await expect.poll(() => zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    await expect.poll(() => columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
     await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
     // Reset CLEARS the saved arrangement rather than saving a copy of today's
     // default, so a later default change still reaches the operator.
@@ -5145,10 +5179,10 @@ test.describe('Status & Info dashboard layout', () => {
     // optical-flow cards only exist when the sensor is configured, so a saved
     // arrangement routinely names cards that are not there.
     await connectDemo(page)
-    await expect.poll(() => zoneIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
+    await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
     await page.getByTestId('status-dash-handle-rangefinder').focus()
     await page.keyboard.press('ArrowRight')
-    await expect.poll(() => zoneIds(page, 'midcol')).toContain('rangefinder')
+    await expect.poll(() => columnIds(page, 'midcol')).toContain('rangefinder')
 
     await page.goto('/?demoParamOverrides=RNGFND1_TYPE:0,FLOW_TYPE:0')
     await page.getByTestId('connect-button').click()
@@ -5156,33 +5190,169 @@ test.describe('Status & Info dashboard layout', () => {
     await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
 
     // The absent cards are simply not placed; every card that IS present is.
-    expect(await zoneIds(page, 'sensors')).toEqual(['gps'])
-    expect(await zoneIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
-    expect(await zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    expect(await columnIds(page, 'sensors')).toEqual(['gps'])
+    expect(await columnIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+  })
+
+  test('a column can be widened, and the width is saved', async ({ page }) => {
+    // The horizontal resize the zone model did not have: width was a property
+    // of the zone, so moving a card between columns WAS the only way to change
+    // it. Now a column has a span, and the space comes off its neighbour.
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await connectDemo(page)
+    const before = await page.evaluate(
+      () => document.querySelector('[data-status-dash-col="midcol"]')!.getBoundingClientRect().width
+    )
+
+    await page.getByTestId('status-dash-width-midcol').focus()
+    await page.keyboard.press('ArrowRight')
+    await page.keyboard.press('ArrowRight')
+
+    await expect(page.getByTestId('status-dash-col-midcol')).toHaveAttribute('data-status-dash-col-span', '8')
+    await expect(page.getByTestId('status-dash-col-noticecol')).toHaveAttribute('data-status-dash-col-span', '4')
+    const after = await page.evaluate(
+      () => document.querySelector('[data-status-dash-col="midcol"]')!.getBoundingClientRect().width
+    )
+    expect(after).toBeGreaterThan(before)
+
+    expect(await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY)).toContain('"span":8')
+  })
+
+  test('a card dragged into a gutter opens a new column, and Tidy closes the mess up', async ({ page }) => {
+    // The freedom the operator asked for: a card can go somewhere there was no
+    // column at all. Tidy is the way back out without a full Reset.
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await connectDemo(page)
+    await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
+
+    const handle = page.getByTestId('status-dash-handle-optical-flow')
+    const box = (await handle.boundingBox())!
+    // Drop it just past the right-hand edge of the midcol column — the gutter
+    // between the two status columns.
+    const midcol = (await page.getByTestId('status-dash-col-midcol').boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(midcol.x + midcol.width + 4, midcol.y + 40, { steps: 12 })
+    await page.mouse.up()
+
+    // A brand new column exists, holding exactly the dragged card, and the
+    // sensor shelf has given it up.
+    await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder'])
+    const created = await page.$$eval('[data-status-dash-col]', (nodes) =>
+      nodes
+        .map((node) => node.getAttribute('data-status-dash-col') ?? '')
+        .filter((id) => !['sensors', 'midcol', 'noticecol', 'sidebar'].includes(id))
+    )
+    expect(created).toHaveLength(1)
+    expect(await columnIds(page, created[0]!)).toEqual(['optical-flow'])
+
+    // Tidy keeps the arrangement but evens the widths back out to fill the row.
+    await page.getByTestId('status-dash-tidy-layout').click()
+    const spans = await page.$$eval('[data-status-dash-col-band="1"][data-status-dash-col-region="main"]', (nodes) =>
+      nodes.map((node) => Number(node.getAttribute('data-status-dash-col-span')))
+    )
+    expect(spans.reduce((total, span) => total + span, 0)).toBe(12)
+    // The card the operator placed is still where they put it.
+    expect(await columnIds(page, created[0]!)).toEqual(['optical-flow'])
+  })
+
+  test('a drag does not relayout the page under the pointer', async ({ page }) => {
+    // The clunkiness fix, asserted rather than asserted-about. v1 previewed a
+    // drop by inserting a real element into the target column, so every card
+    // below it moved — measured at 56px — and the page reflowed on every
+    // pointer move. The indicator is now fixed-position and out of flow, and
+    // the dragged card moves on a transform, so NOTHING that is not being
+    // dragged may change position mid-gesture.
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await connectDemo(page)
+    await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
+
+    const positions = async (): Promise<Record<string, number[]>> =>
+      page.$$eval('[data-status-dash-card]', (nodes) =>
+        Object.fromEntries(
+          nodes.map((node) => {
+            const rect = node.getBoundingClientRect()
+            return [node.getAttribute('data-status-dash-card') ?? '', [Math.round(rect.left), Math.round(rect.top)]]
+          })
+        )
+      )
+
+    const before = await positions()
+    const handle = page.getByTestId('status-dash-handle-gps')
+    const box = (await handle.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    const midcol = (await page.getByTestId('status-dash-col-midcol').boundingBox())!
+    await page.mouse.move(midcol.x + midcol.width / 2, midcol.y + 30, { steps: 20 })
+
+    // Mid-drag: the indicator is up, and every card except the lifted one is
+    // exactly where it was.
+    await expect(page.getByTestId('status-dash-drop-indicator')).toBeVisible()
+    const during = await positions()
+    for (const [id, position] of Object.entries(before)) {
+      if (id === 'gps') {
+        continue
+      }
+      expect(during[id], `${id} moved during the drag`).toEqual(position)
+    }
+
+    await page.keyboard.press('Escape')
+    await page.mouse.up()
+    // Escape cancels: nothing moved at all.
+    await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
   })
 
   test('an unreadable saved layout falls back to the default silently', async ({ page }) => {
     await page.goto('/')
     await page.evaluate(
       ([key, value]) => window.localStorage.setItem(key, value),
-      [STORAGE_KEY, '{"version":1,"cards":[{"id":"gho'] as const
+      [STORAGE_KEY, '{"version":2,"columns":[{"id":"gho'] as const
     )
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
-    expect(await zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+  })
+
+  test('a layout saved by the zone model is dropped, not half-read', async ({ page }) => {
+    // v1 stored `{version:1, cards:[{id, zone}]}` under its own key. There are
+    // no columns in it to migrate, so the version bump means those operators
+    // get the (unchanged) default back rather than a broken page.
+    await page.goto('/')
+    await page.evaluate(() => {
+      window.localStorage.setItem(
+        'arduconfig.status-dashboard.v1',
+        JSON.stringify({ version: 1, cards: [{ id: 'gps', zone: 'sidebar', heightRows: 6 }] })
+      )
+    })
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
   })
 
   test('phone width drops the drag affordances and keeps the default order', async ({ page }) => {
-    // Dragging a card on a phone fights the scroll gesture, and a four-zone
+    // Dragging a card on a phone fights the scroll gesture, and a multi-column
     // arrangement means nothing in a single column. Below the breakpoint the
-    // controls are gone and a saved arrangement is ignored.
+    // controls are gone, a saved arrangement is ignored, and every column
+    // spans the full width so the bands simply stack in order.
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/')
     await page.evaluate(
       ([key, value]) => window.localStorage.setItem(key, value),
-      [STORAGE_KEY, JSON.stringify({ version: 1, cards: [{ id: 'gps', zone: 'sidebar', heightRows: 6 }] })] as const
+      [
+        STORAGE_KEY,
+        JSON.stringify({
+          version: 2,
+          columns: [{ id: 'sidebar', region: 'side', band: 0, span: 12, flow: 'stack' }],
+          cards: [{ id: 'gps', column: 'sidebar', heightRows: 6 }]
+        })
+      ] as const
     )
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -5191,7 +5361,13 @@ test.describe('Status & Info dashboard layout', () => {
 
     await expect(page.getByTestId('status-dash-toolbar')).toHaveCount(0)
     await expect(page.locator('.status-dash-card__handle')).toHaveCount(0)
-    expect(await zoneIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    await expect(page.locator('.status-dash-col__width')).toHaveCount(0)
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    // Every column is full width, so nothing sits beside anything else.
+    const lefts = await page.$$eval('[data-status-dash-col-region="main"]', (nodes) =>
+      nodes.map((node) => Math.round(node.getBoundingClientRect().left))
+    )
+    expect(new Set(lefts).size).toBe(1)
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth

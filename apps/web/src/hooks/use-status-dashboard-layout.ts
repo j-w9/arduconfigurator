@@ -4,30 +4,39 @@
 // `arduconfig.can-node-names.v1`: the version is part of the KEY, so shipping a
 // new default arrangement is a one-line bump that makes every stale saved
 // layout simply not be found. Unreadable or untrusted values fall back to the
-// default silently — see `parseStoredStatusDashboardLayout`.
+// default silently — see `parseStoredStatusDashboardLayout`. The v1 key from
+// the zone model is left alone rather than migrated: a v1 layout has no columns
+// to migrate, so those operators get the (unchanged) default back and rearrange
+// once on the much freer model.
 //
-// Customisation is deliberately a desktop-only affordance. Below the width at
-// which the workspace collapses to a single column (1024px, the existing
-// `.setup-bench__workspace` breakpoint) a stored arrangement is IGNORED and the
-// default stacking order renders instead: pointer-dragging a card on a phone
-// fights the scroll gesture, and a four-zone arrangement has no meaning in one
-// column anyway.
+// Customisation is a POINTER-WIDTH affordance, not a desktop-only one. Below
+// the width at which the workspace collapses to a single column (1024px, the
+// existing `.setup-bench__workspace` breakpoint) a stored arrangement is
+// IGNORED and the default stacking order renders instead: a multi-column
+// arrangement has no meaning in one column, and a drag gesture on a phone
+// fights the scroll. At or above it, touch and pen drags work exactly like
+// mouse drags — a landscape tablet is a real target for this page.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import {
   STATUS_DASHBOARD_STORAGE_KEY,
+  applyStatusDashboardDrop,
   defaultStatusDashboardLayout,
   isDefaultStatusDashboardLayout,
   moveStatusDashboardCard,
   nudgeStatusDashboardCard,
+  nudgeStatusDashboardCardWidth,
   parseStoredStatusDashboardLayout,
   reconcileStatusDashboardLayout,
   resizeStatusDashboardCard,
-  shiftStatusDashboardCardZone,
+  resizeStatusDashboardColumn,
+  shiftStatusDashboardCardColumn,
+  tidyStatusDashboardLayout,
+  toggleStatusDashboardColumnFlow,
   type StatusDashboardCardSpec,
-  type StatusDashboardLayout,
-  type StatusDashboardZoneId
+  type StatusDashboardDropTarget,
+  type StatusDashboardLayout
 } from '../view-models/status-dashboard-layout'
 
 /** Width below which the Status workspace is a single column; see styles.css. */
@@ -74,10 +83,16 @@ export interface StatusDashboardLayoutController {
   customisable: boolean
   /** True when the operator has changed something, so "Reset layout" is useful. */
   customised: boolean
-  moveCard: (id: string, zone: StatusDashboardZoneId, index: number) => void
+  moveCard: (id: string, columnId: string, index: number) => void
+  /** Commit a resolved drop target — a move, a new column, or a new band. */
+  dropCard: (id: string, target: StatusDashboardDropTarget) => void
   nudgeCard: (id: string, delta: -1 | 1) => void
-  shiftCardZone: (id: string, delta: -1 | 1) => void
+  shiftCardColumn: (id: string, delta: -1 | 1) => void
+  nudgeCardWidth: (id: string, delta: -1 | 1) => void
+  resizeColumn: (columnId: string, span: number) => void
+  toggleColumnFlow: (columnId: string) => void
   resizeCard: (id: string, heightRows: number | undefined) => void
+  tidyLayout: () => void
   resetLayout: () => void
 }
 
@@ -115,8 +130,14 @@ export function useStatusDashboardLayout(
   )
 
   const moveCard = useCallback(
-    (id: string, zone: StatusDashboardZoneId, index: number) =>
-      apply((current) => moveStatusDashboardCard(current, id, zone, index)),
+    (id: string, columnId: string, index: number) =>
+      apply((current) => moveStatusDashboardCard(current, id, columnId, index)),
+    [apply]
+  )
+
+  const dropCard = useCallback(
+    (id: string, target: StatusDashboardDropTarget) =>
+      apply((current) => applyStatusDashboardDrop(current, id, target)),
     [apply]
   )
 
@@ -125,8 +146,23 @@ export function useStatusDashboardLayout(
     [apply]
   )
 
-  const shiftCardZone = useCallback(
-    (id: string, delta: -1 | 1) => apply((current) => shiftStatusDashboardCardZone(current, id, delta)),
+  const shiftCardColumn = useCallback(
+    (id: string, delta: -1 | 1) => apply((current) => shiftStatusDashboardCardColumn(current, id, delta)),
+    [apply]
+  )
+
+  const nudgeCardWidth = useCallback(
+    (id: string, delta: -1 | 1) => apply((current) => nudgeStatusDashboardCardWidth(current, id, delta)),
+    [apply]
+  )
+
+  const resizeColumn = useCallback(
+    (columnId: string, span: number) => apply((current) => resizeStatusDashboardColumn(current, columnId, span)),
+    [apply]
+  )
+
+  const toggleColumnFlow = useCallback(
+    (columnId: string) => apply((current) => toggleStatusDashboardColumnFlow(current, columnId)),
     [apply]
   )
 
@@ -135,6 +171,8 @@ export function useStatusDashboardLayout(
       apply((current) => resizeStatusDashboardCard(current, id, heightRows)),
     [apply]
   )
+
+  const tidyLayout = useCallback(() => apply((current) => tidyStatusDashboardLayout(current)), [apply])
 
   const resetLayout = useCallback(() => {
     setStored(undefined)
@@ -150,5 +188,19 @@ export function useStatusDashboardLayout(
     [customisable, stored, layout, specs]
   )
 
-  return { layout, customisable, customised, moveCard, nudgeCard, shiftCardZone, resizeCard, resetLayout }
+  return {
+    layout,
+    customisable,
+    customised,
+    moveCard,
+    dropCard,
+    nudgeCard,
+    shiftCardColumn,
+    nudgeCardWidth,
+    resizeColumn,
+    toggleColumnFlow,
+    resizeCard,
+    tidyLayout,
+    resetLayout
+  }
 }
