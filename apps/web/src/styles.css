@@ -2266,34 +2266,41 @@ textarea:focus {
 
 .setup-flow__criteria ul {
   display: grid;
-  gap: 10px;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* Compact rows. Each criterion used to be a bordered card with an 88px column
+   spelling out "Complete"/"Pending" — six of those ran 335px tall on the Radio
+   and Airframe steps, which is most of a laptop viewport spent on a checklist.
+   Same information, a glyph instead of the repeated word, no per-row border. */
 .setup-flow__criteria li {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  padding: 10px 12px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: rgba(var(--fill-rgb), 0.9);
-  color: var(--text);
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 2px;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
 }
 
 .setup-flow__criteria li.is-met {
-  border-color: rgba(111, 143, 120, 0.52);
-  box-shadow: inset 0 0 0 1px rgba(111, 143, 120, 0.12);
+  color: var(--text);
 }
 
-.setup-flow__criteria li span:first-child {
-  color: var(--text-muted);
+.setup-flow__criteria-mark {
+  color: var(--text-dim);
   font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.setup-flow__criteria li.is-met .setup-flow__criteria-mark {
+  color: rgba(111, 143, 120, 0.95);
 }
 
 .setup-flow__blocking-copy {
@@ -4297,17 +4304,26 @@ textarea:focus {
   gap: 10px;
 }
 
+/* The step rail is navigation, not content: 11 chunky two-line cards wrapped
+   to two rows and cost ~146px of every step before the operator saw anything
+   they had to do. One scrollable row of compact chips instead — same buttons,
+   same accessible names ("Step 4 · Outputs"), ~46px. */
 .setup-wizard__steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 6px;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
 }
 
 .setup-wizard-step {
   position: relative;
   display: grid;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 1px;
+  flex: 1 1 0;
+  min-width: 96px;
+  padding: 6px 10px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-soft);
   background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.96), rgba(var(--fill-rgb), 1));
@@ -4331,23 +4347,34 @@ textarea:focus {
 
 .setup-wizard-step small {
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   font-family: var(--font-data);
+  white-space: nowrap;
 }
 
 .setup-wizard-step span {
-  font-size: 13px;
+  font-size: 11.5px;
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.25;
+  /* One line per chip keeps the rail a fixed height regardless of how long a
+     step title is; the full title stays in the accessible name. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* The compact rail marks the current step with the is-current border + the ::after
+   arrow, so this second "Do this now →" line would only add a row of height to
+   every chip. Kept in the DOM for assistive tech, hidden visually. */
 .setup-wizard-step__cue {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
   color: rgba(230, 194, 108, 0.96);
   font-size: 10px;
   font-style: normal;
@@ -4375,10 +4402,10 @@ textarea:focus {
 .setup-wizard-step.is-current::after {
   content: "→";
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 6px;
+  right: 7px;
   color: rgba(230, 194, 108, 0.96);
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 1;
 }
@@ -4409,7 +4436,7 @@ textarea:focus {
 
 .setup-wizard__detail,
 .setup-wizard__action-card,
-.setup-wizard__nav,
+.setup-wizard__status-card,
 .setup-wizard__task-card {
   display: grid;
   gap: 10px;
@@ -4420,7 +4447,7 @@ textarea:focus {
 }
 
 .setup-wizard__detail h4,
-.setup-wizard__action-card strong,
+.setup-wizard__action-card > strong,
 .setup-wizard__evidence strong,
 .setup-wizard__task-header strong {
   margin: 0;
@@ -4747,6 +4774,27 @@ textarea:focus {
   background: rgba(var(--fill-rgb), 0.64);
 }
 
+/* The Airframe step's orientation card embeds the shared FlightDeckPreview. In
+   its compact mode that came to 564px inside the wizard — the single tallest
+   thing in guided setup — because the model frame is sized for the Status tab
+   and the instrument cards stack one per row. Scoped down here only: shorter
+   model box, instruments two-up. The shared preview is untouched everywhere
+   else (same override pattern as .setup-bench__viewer). */
+.setup-wizard__task-visual .flight-deck--compact .flight-deck__model-frame {
+  height: clamp(150px, 13vw, 200px);
+}
+
+.setup-wizard__task-visual .flight-deck--compact {
+  gap: 10px;
+}
+
+/* Compact mode stacks the four live readouts two-up, which is right for a
+   narrow Status-tab column but costs a second row inside the wizard's wide
+   left column. One row here. */
+.setup-wizard__task-visual .flight-deck--compact .flight-deck__readout-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .setup-wizard__task-copy {
   display: grid;
   gap: 12px;
@@ -4841,9 +4889,20 @@ textarea:focus {
   gap: 10px;
 }
 
+/* Support actions (waivers, "run it instead", re-sync, jump-to-view) are the
+   long tail of the action card — the Radio step has five. Two-up on a desktop
+   aside halves the rows without hiding any of them; a waiver folded away is a
+   dead-ended step, so none of these may become a disclosure. */
 .setup-wizard__support-actions {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 1100px) {
+  .setup-wizard__support-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .setup-wizard__context-hint {
@@ -4853,22 +4912,11 @@ textarea:focus {
   line-height: 1.5;
 }
 
-.setup-wizard__action-pointer {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin: -2px 0 2px;
-  color: rgba(230, 194, 108, 0.96);
-  font-family: var(--font-data);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.setup-wizard__action-pointer span {
-  font-size: 15px;
-  line-height: 1;
+/* The "Where you stand" card (criteria + live evidence). Sits under the action
+   card in the right column so the left column carries only the task — the
+   single layout rule every guided step follows. */
+.setup-wizard__status-card {
+  gap: 12px;
 }
 
 .guided-action-pulse {
@@ -4892,13 +4940,13 @@ textarea:focus {
   }
 }
 
+/* Prev/Continue now live INSIDE the action card (one card, not two stacked
+   bordered cards) — so this is a plain two-up row, not a card of its own. */
 .setup-wizard__nav {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.setup-wizard__continue-slot {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
 }
 
 .setup-wizard__continue-button--target {
@@ -12030,9 +12078,9 @@ details.metadata-settings-section:not([open]) > summary::after {
     display: grid;
   }
 
-  .setup-flow__criteria li {
-    grid-template-columns: 1fr;
-  }
+  /* The criterion rows stay glyph + label inline at phone width — the 14px
+     mark column costs nothing, and stacking it put a lone tick on its own
+     line above every label. */
 }
 
 .landing {
