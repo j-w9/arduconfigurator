@@ -18,6 +18,9 @@ import {
   arducopterSerialBaudRate,
   encodeArducopterSerialBaud,
   arducopterSerialProtocolOptions,
+  arducopterRcOptionOptions,
+  ARDUCOPTER_RC_OPTION_COMMON_VALUES,
+  ARDUCOPTER_RC_OPTION_LABELS,
   ARDUCOPTER_SERIAL_PROTOCOL_LABELS,
   ARDUCOPTER_SERIAL_OPTION_BIT_LABELS,
   formatArducopterVtxEnable,
@@ -1538,6 +1541,47 @@ test('Serial protocol options put the common roles first, then alphabetical', ()
   assert.deepEqual(tail, sortedTail)
   // No duplicates and every label present.
   assert.equal(new Set(labels).size, labels.length)
+})
+
+// The AUX function picker copies the Ports picker's mechanism (a curated
+// common-VALUES const pinned above the long tail of one flat dropdown), so it
+// gets the same shape of test, plus a strict "nothing was dropped" assertion:
+// this is a REGROUPING, not a curation, and a typo in the common list must not
+// be able to make a function unreachable.
+test('RCn_OPTION options put the common AUX functions first, then the long tail', () => {
+  const options = arducopterRcOptionOptions()
+
+  // "Do Nothing" (0) is pinned above BOTH groups — cleared state, not a function.
+  assert.equal(options[0].value, 0)
+  assert.equal(options[0].label, 'Do Nothing')
+
+  const commonValues = new Set(ARDUCOPTER_RC_OPTION_COMMON_VALUES)
+  const common = options.slice(1, 1 + ARDUCOPTER_RC_OPTION_COMMON_VALUES.length)
+  const tail = options.slice(1 + ARDUCOPTER_RC_OPTION_COMMON_VALUES.length)
+
+  // Group 1 is exactly the curated set; group 2 is exactly the complement.
+  assert.deepEqual(new Set(common.map((option) => option.value)), commonValues)
+  assert.ok(tail.every((option) => !commonValues.has(option.value)))
+
+  // Both groups alphabetical internally, by the same numeric-aware,
+  // case-insensitive collation the builder uses (Relay2 before Relay10).
+  const collate = (left, right) =>
+    left.label.localeCompare(right.label, 'en', { numeric: true, sensitivity: 'base' })
+  assert.deepEqual(common, [...common].sort(collate))
+  assert.deepEqual(tail, [...tail].sort(collate))
+
+  // NOTHING DROPPED: the two groups plus "Do Nothing" reproduce the generated
+  // firmware list exactly — same values, same labels, no duplicates.
+  const allValues = Object.keys(ARDUCOPTER_RC_OPTION_LABELS).map(Number)
+  assert.equal(options.length, allValues.length)
+  assert.deepEqual(new Set(options.map((option) => option.value)), new Set(allValues))
+  for (const option of options) {
+    assert.equal(option.label, ARDUCOPTER_RC_OPTION_LABELS[option.value])
+  }
+
+  // And the catalog the UI actually reads carries that exact ordering.
+  const rc5 = arducopterMetadata.parameters.RC5_OPTION
+  assert.deepEqual(rc5.options, options)
 })
 
 test('FLTMODE_CH offers a Disable option, and unknown flight modes have no label', () => {

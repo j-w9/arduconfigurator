@@ -1,3 +1,6 @@
+import { ARDUCOPTER_RC_OPTION_LABELS } from './arducopter-rc-options.generated.js'
+import type { ParameterValueOption } from './types.js'
+
 export const ARDUCOPTER_FLIGHT_MODE_LABELS: Record<number, string> = {
   0: 'Stabilize',
   1: 'Acro',
@@ -1275,4 +1278,130 @@ export const ARDUCOPTER_COMPASS_DISBLMSK_BIT_LABELS: Record<number, string> = {
   21: 'BMM350',
   22: 'IIS2MDC',
   23: 'LIS2MDL'
+}
+
+// ---------------------------------------------------------------------------
+// RCn_OPTION auxiliary functions — common group first, then the long tail.
+// ---------------------------------------------------------------------------
+
+/**
+ * The RCn_OPTION functions an ArduCopter FPV/bench operator actually assigns to
+ * a switch, pinned above the long tail in the AUX function picker.
+ *
+ * This is the SAME mechanism the Ports function picker already uses for
+ * SERIALn_PROTOCOL (see SERIAL_PROTOCOL_PRIORITY_VALUES /
+ * arducopterSerialProtocolOptions above): a curated list of common VALUES
+ * pinned to the top of one flat dropdown, with everything else following. The
+ * two surfaces are deliberately identical so an operator learns the shape once.
+ *
+ * Rationale for membership — the generated list is ~120 entries, and the great
+ * majority of them are for airframes, payloads or bring-up work this
+ * configurator's audience never touches. Included here:
+ *
+ *   - Arming and motor safety: ArmDisarm (4.2+), ArmDisarm with AirMode,
+ *     Arm/Emergency Motor Stop, Disarm, Motor Emergency Stop, Motor Interlock.
+ *     These are the switches that decide whether the aircraft is dangerous.
+ *   - Flight-mode slots an FPV Copter operator flies: STABILIZE, ALTHOLD,
+ *     POSHOLD, LOITER, ACRO, AUTO, AUTO RTL, AUTOTUNE, BRAKE, CIRCLE, FLIP,
+ *     GUIDED, LAND, RTL, SMARTRTL, STANDBY, THROW, TURTLE.
+ *   - Setup/bench work: Save Trim, Save WP, Acro Trainer, Simple Mode,
+ *     Super Simple Mode, Fence Enable, GPS Disable, RangeFinder Enable,
+ *     PrecLoiter Enable, AirMode.
+ *   - Hardware an FPV build carries: VTX Power, Camera Trigger,
+ *     Camera Record Video, Relay1..4 On/Off, Parachute Enable/Release.
+ *
+ * Deliberately left in the tail: mission/companion-specific modes (ZigZag,
+ * Follow, FlowHold, Drift), payload gear (sprayer, winch, gripper, landing
+ * gear, generator, Loweheiser), EKF/IMU bring-up and debug switches (EKF Source
+ * Set, EKF lane switch, Kill IMU 1..3, Force IS_Flying), gimbal/mount minutiae
+ * (Mount1/2 axes, retract, POI/yaw locks), user/scripting function slots,
+ * legacy ArmDisarm (4.1 and lower), Relay5/6, Parachute 3pos, and the
+ * calibration switches that belong in the configurator rather than on a stick.
+ *
+ * Presentation only: no option is added, removed or relabelled by this split,
+ * and nothing written to the FC changes. Edit this one const to retune the
+ * split — it is the only place membership is decided.
+ */
+export const ARDUCOPTER_RC_OPTION_COMMON_VALUES: readonly number[] = [
+  2, // FLIP Mode
+  3, // Simple Mode
+  4, // RTL
+  5, // Save Trim
+  7, // Save WP
+  9, // Camera Trigger
+  10, // RangeFinder Enable
+  11, // Fence Enable
+  13, // Super Simple Mode
+  14, // Acro Trainer
+  16, // AUTO Mode
+  17, // AUTOTUNE Mode
+  18, // LAND Mode
+  21, // Parachute Enable
+  22, // Parachute Release
+  28, // Relay1 On/Off
+  31, // Motor Emergency Stop
+  32, // Motor Interlock
+  33, // BRAKE Mode
+  34, // Relay2 On/Off
+  35, // Relay3 On/Off
+  36, // Relay4 On/Off
+  37, // THROW Mode
+  39, // PrecLoiter Enable
+  42, // SMARTRTL Mode
+  52, // ACRO Mode
+  55, // GUIDED Mode
+  56, // LOITER Mode
+  65, // GPS Disable
+  68, // STABILIZE Mode
+  69, // POSHOLD Mode
+  70, // ALTHOLD Mode
+  72, // CIRCLE Mode
+  76, // STANDBY Mode
+  81, // Disarm
+  84, // AirMode
+  94, // VTX Power
+  99, // AUTO RTL
+  151, // TURTLE Mode
+  153, // ArmDisarm (4.2 and higher)
+  154, // ArmDisarm with AirMode (4.2 and higher)
+  165, // Arm/Emergency Motor Stop
+  166 // Camera Record Video
+]
+
+/**
+ * Numeric- and case-insensitive label sort. Numeric-aware so Relay2 sorts
+ * before Relay10, case-insensitive so capitalisation drift in the firmware
+ * annotations ("use Custom Controller") cannot strand an entry after Z.
+ */
+function compareRcOptionLabels(left: ParameterValueOption, right: ParameterValueOption): number {
+  return left.label.localeCompare(right.label, 'en', { numeric: true, sensitivity: 'base' })
+}
+
+/**
+ * RCn_OPTION options ordered for the AUX function picker: "Do Nothing" first,
+ * then the common group alphabetically, then the long tail alphabetically.
+ *
+ * "Do Nothing" (0) is pinned above BOTH groups rather than filed under D, and
+ * is not a member of either — it is the cleared state, not a function, so it
+ * belongs where you look to UNASSIGN a channel. This mirrors how "None" (-1)
+ * is pinned above the Ports priority group.
+ *
+ * Every value in ARDUCOPTER_RC_OPTION_LABELS appears exactly once: this is a
+ * regrouping, not a curation, so nothing an operator could select before
+ * becomes unreachable. Asserted in tests/metadata.test.mjs.
+ */
+export function arducopterRcOptionOptions(): ParameterValueOption[] {
+  const all: ParameterValueOption[] = Object.entries(ARDUCOPTER_RC_OPTION_LABELS).map(([value, label]) => ({
+    value: Number(value),
+    label
+  }))
+  const common = new Set<number>(ARDUCOPTER_RC_OPTION_COMMON_VALUES)
+  const doNothing = all.filter((option) => option.value === 0)
+  const useful = all
+    .filter((option) => option.value !== 0 && common.has(option.value))
+    .sort(compareRcOptionLabels)
+  const rest = all
+    .filter((option) => option.value !== 0 && !common.has(option.value))
+    .sort(compareRcOptionLabels)
+  return [...doNothing, ...useful, ...rest]
 }

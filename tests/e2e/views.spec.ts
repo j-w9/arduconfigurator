@@ -2344,6 +2344,12 @@ test.describe('Receiver stick-driven craft', () => {
   })
 })
 
+// Size of ARDUCOPTER_RC_OPTION_COMMON_VALUES (packages/param-metadata/src/
+// arducopter-enums.ts) — the curated AUX functions pinned above the long tail.
+// Mirrored here rather than imported because this spec runs against the built
+// bundle; the exact membership is asserted in tests/metadata.test.mjs.
+const AUX_COMMON_FUNCTION_COUNT = 43
+
 test.describe('Receiver functions tab', () => {
   test('assigns an auxiliary function to an AUX channel and flags a duplicate', async ({ page }) => {
     // Before this tab the only RCn_OPTION reachable from the app was the Arm
@@ -2374,6 +2380,46 @@ test.describe('Receiver functions tab', () => {
     // Clearing one side resolves it.
     await page.getByTestId('receiver-function-8').locator('select').selectOption('0')
     await expect(page.getByTestId('receiver-functions-conflict')).toHaveCount(0)
+  })
+
+  test('the AUX function list leads with the common functions, then the alphabetical tail', async ({ page }) => {
+    // Same grammar as the Ports function picker (SERIALn_PROTOCOL): the cleared
+    // state pinned first, then a curated common group, then everything else —
+    // one flat dropdown, no hidden entries. ~120 firmware AUX functions in raw
+    // value order is unusable; this proves the operator-facing ordering without
+    // removing anything they could previously select.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Functions' }).click()
+
+    const select = page.getByTestId('receiver-function-5').locator('select')
+    await expect(select).toBeVisible()
+    const labels = await select.locator('option').allTextContents()
+
+    // "Do Nothing" (0) is pinned above both groups — the cleared state.
+    expect(labels[0]).toBe('Do Nothing')
+
+    // The common group leads, alphabetically: ACRO Mode is its first entry and
+    // the flight-mode/arming staples sit inside it.
+    const common = labels.slice(1, 1 + AUX_COMMON_FUNCTION_COUNT)
+    expect(common[0]).toBe('ACRO Mode')
+    for (const label of ['ALTHOLD Mode', 'Motor Emergency Stop', 'RTL', 'VTX Power']) {
+      expect(common).toContain(label)
+    }
+
+    // The long tail follows, also alphabetical, and holds the niche entries.
+    const tail = labels.slice(1 + AUX_COMMON_FUNCTION_COUNT)
+    for (const label of ['Gripper', 'KillIMU1', 'Sprayer Enable', 'Winch Enable']) {
+      expect(tail).toContain(label)
+    }
+
+    // Nothing was dropped: every function is still selectable exactly once.
+    expect(new Set(labels).size).toBe(labels.length)
+    expect(labels.length).toBeGreaterThan(100)
+    // And a tail entry is still assignable, not merely listed.
+    await select.selectOption({ label: 'Sprayer Enable' })
+    await expect(select).toHaveValue('15')
   })
 })
 
