@@ -5894,7 +5894,7 @@ export function App() {
     )
   }
 
-  function renderMetadataParameterField(parameter: ParameterState) {
+  function renderMetadataParameterField(parameter: ParameterState, infoTestIdPrefix = 'metadata-field-info') {
     // Shared metadata-driven editor used across Power additional
     // settings, Output additional settings, Tuning, and other generic
     // surfaces. The ScopedField dispatcher picks: bitmask -> per-bit
@@ -5916,16 +5916,29 @@ export function App() {
       }
     }
 
+    // Every "Additional settings" card in the app (Servos ▸ Peripherals &
+    // Alerts, Power, Failsafe, Ports, Receiver, guided Setup) funnels through
+    // this one renderer, so the per-parameter "i" is attached here rather than
+    // at each of those call sites. The bubble is a SIBLING of the editor, not a
+    // child: ScopedField wraps its control in a <label>, and an anchor (the
+    // wiki link) nested inside a <label> is both invalid and unclickable.
     return (
-      <ScopedField
-        key={parameter.id}
-        parameter={parameter}
-        liveValue={parameter.value}
-        editedValues={editedValues}
-        onChange={(paramId, value) => setDraft(paramId, value)}
-        draftStatusById={parameterDraftById}
-        stepFallback={parameter.definition?.step ?? 1}
-      />
+      <div key={parameter.id} className="config-section__field-row">
+        <ScopedField
+          parameter={parameter}
+          liveValue={parameter.value}
+          editedValues={editedValues}
+          onChange={(paramId, value) => setDraft(paramId, value)}
+          draftStatusById={parameterDraftById}
+          stepFallback={parameter.definition?.step ?? 1}
+        />
+        <ParamInfoBubble
+          paramId={parameter.id}
+          label={parameter.definition?.label ?? parameter.id}
+          description={parameter.definition?.description}
+          testId={`${infoTestIdPrefix}-${parameter.id}`}
+        />
+      </div>
     )
   }
 
@@ -6018,7 +6031,12 @@ export function App() {
     if (/^NET_(?:IPADDR|GWADDR|REMPPP_IP|P\d+_IP)[1-3]$/.test(parameter.id)) {
       return null
     }
-    return withNetworkingFieldInfo(parameter, renderMetadataParameterField(parameter))
+    // Plain NET_ params go through the generic renderer, which now attaches the
+    // "i" itself — wrapping again here would render two bubbles per field. Pass
+    // the networking test-id prefix through so `networking-field-info-*` hooks
+    // keep resolving. withNetworkingFieldInfo stays for the composed
+    // dotted-quad/MAC editors above, which the generic renderer never sees.
+    return renderMetadataParameterField(parameter, 'networking-field-info')
   }
 
   function handleStageTuningParameterValue(parameter: ParameterState, nextValue: string): void {

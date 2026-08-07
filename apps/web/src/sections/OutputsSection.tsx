@@ -63,6 +63,7 @@ import {
   toneForScopedDraftReview
 } from '../tone-helpers'
 import { OutputsView } from '../views/Outputs'
+import { ParamInfoBubble } from '../views/ParamInfoBubble'
 import type { OutputsTaskId, OutputsViewProps } from '../views/Outputs'
 import { ScopedField, ScopedSelectField } from '../views/ScopedField'
 import { RelaysView } from '../views/RelaysView'
@@ -202,6 +203,38 @@ export interface OutputsSectionProps {
    *  expert ceiling when product-mode is 'expert' so a longer soak is
    *  allowed; basic mode keeps the 5-second cap. */
   motorTestMaxDurationSeconds: number
+}
+
+/**
+ * One field of the Peripherals & Alerts (LED & buzzer) card plus the shared
+ * per-parameter "i". The card is curated: it shows "LED drivers" / "Buzzer
+ * volume", never NTF_LED_TYPES / NTF_BUZZ_VOLUME, so without this an operator
+ * had no route from the friendly name to the parameter they'd have to search
+ * for in Parameters or look up in the reference.
+ *
+ * The bubble is a SIBLING of the editor, never a child: these editors wrap
+ * their control in a <label>, and the bubble contains the wiki anchor — an
+ * anchor inside a <label> is invalid markup and the label's click handling
+ * swallows it.
+ */
+function NotificationFieldRow({
+  parameter,
+  children
+}: {
+  parameter: ParameterState
+  children: ReactNode
+}): ReactElement {
+  return (
+    <div className="config-section__field-row">
+      {children}
+      <ParamInfoBubble
+        paramId={parameter.id}
+        label={parameter.definition?.label ?? parameter.id}
+        description={parameter.definition?.description}
+        testId={`peripheral-field-info-${parameter.id}`}
+      />
+    </div>
+  )
 }
 
 export function OutputsSection(props: OutputsSectionProps): ReactElement {
@@ -970,121 +1003,133 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
 
                       <div className="scoped-editor-grid">
                         {notificationLedTypesParameter ? (
-                          <label className={`scoped-editor-field scoped-editor-field--${parameterDraftById.get(notificationLedTypesParameter.id)?.status ?? 'unchanged'}`}>
-                            <span>{notificationLedTypesParameter.definition?.label ?? notificationLedTypesParameter.id}</span>
-                            <div className="scoped-bitmask-bits">
-                              {Object.entries(ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS).map(([bit, label]) => {
-                                const numericBit = Number(bit)
-                                const checked = hasBitmaskFlag(editedNotificationLedTypes, numericBit)
-                                return (
-                                  <button
-                                    type="button"
-                                    key={`${notificationLedTypesParameter.id}:${bit}`}
-                                    className={`scoped-bitmask-bit${checked ? ' is-set' : ''}`}
-                                    aria-pressed={checked}
-                                    onClick={() =>
-                                      updateDrafts((existing) => {
-                                        const currentValue = normalizeBitmaskValue(existing[notificationLedTypesParameter.id], notificationLedTypes)
-                                        const nextValue = toggleBitmaskFlag(currentValue, numericBit, !checked)
+                          <NotificationFieldRow parameter={notificationLedTypesParameter}>
+                            <label className={`scoped-editor-field scoped-editor-field--${parameterDraftById.get(notificationLedTypesParameter.id)?.status ?? 'unchanged'}`}>
+                              <span>{notificationLedTypesParameter.definition?.label ?? notificationLedTypesParameter.id}</span>
+                              <div className="scoped-bitmask-bits">
+                                {Object.entries(ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS).map(([bit, label]) => {
+                                  const numericBit = Number(bit)
+                                  const checked = hasBitmaskFlag(editedNotificationLedTypes, numericBit)
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={`${notificationLedTypesParameter.id}:${bit}`}
+                                      className={`scoped-bitmask-bit${checked ? ' is-set' : ''}`}
+                                      aria-pressed={checked}
+                                      onClick={() =>
+                                        updateDrafts((existing) => {
+                                          const currentValue = normalizeBitmaskValue(existing[notificationLedTypesParameter.id], notificationLedTypes)
+                                          const nextValue = toggleBitmaskFlag(currentValue, numericBit, !checked)
 
-                                        return {
-                                          ...existing,
-                                          [notificationLedTypesParameter.id]: String(nextValue)
-                                        }
-                                      })
-                                    }
-                                  >
-                                    {label}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                            <small>
-                              {parameterDraftById.get(notificationLedTypesParameter.id)?.status === 'staged'
-                                ? `Staged ${describeBitmaskSelections(parameterDraftById.get(notificationLedTypesParameter.id)?.nextValue, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}`
-                                : parameterDraftById.get(notificationLedTypesParameter.id)?.reason ??
-                                  `Current ${describeBitmaskSelections(notificationLedTypes, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}`}
-                            </small>
-                          </label>
+                                          return {
+                                            ...existing,
+                                            [notificationLedTypesParameter.id]: String(nextValue)
+                                          }
+                                        })
+                                      }
+                                    >
+                                      {label}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                              <small>
+                                {parameterDraftById.get(notificationLedTypesParameter.id)?.status === 'staged'
+                                  ? `Staged ${describeBitmaskSelections(parameterDraftById.get(notificationLedTypesParameter.id)?.nextValue, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}`
+                                  : parameterDraftById.get(notificationLedTypesParameter.id)?.reason ??
+                                    `Current ${describeBitmaskSelections(notificationLedTypes, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}`}
+                              </small>
+                            </label>
+                          </NotificationFieldRow>
                         ) : null}
 
                         {notificationLedBrightnessParameter ? (
-                          <ScopedSelectField
-                            parameter={notificationLedBrightnessParameter}
-                            liveValue={notificationLedBrightness}
-                            editedValues={editedValues}
-                            onChange={(paramId, value) => setDraft(paramId, value)}
-                            draftStatusById={parameterDraftById}
-                          />
+                          <NotificationFieldRow parameter={notificationLedBrightnessParameter}>
+                            <ScopedSelectField
+                              parameter={notificationLedBrightnessParameter}
+                              liveValue={notificationLedBrightness}
+                              editedValues={editedValues}
+                              onChange={(paramId, value) => setDraft(paramId, value)}
+                              draftStatusById={parameterDraftById}
+                            />
+                          </NotificationFieldRow>
                         ) : null}
 
                         {notificationLedLengthParameter ? (
-                          <ScopedField
-                            parameter={notificationLedLengthParameter}
-                            liveValue={notificationLedLength}
-                            editedValues={editedValues}
-                            onChange={(paramId, value) => setDraft(paramId, value)}
-                            draftStatusById={parameterDraftById}
-                          />
+                          <NotificationFieldRow parameter={notificationLedLengthParameter}>
+                            <ScopedField
+                              parameter={notificationLedLengthParameter}
+                              liveValue={notificationLedLength}
+                              editedValues={editedValues}
+                              onChange={(paramId, value) => setDraft(paramId, value)}
+                              draftStatusById={parameterDraftById}
+                            />
+                          </NotificationFieldRow>
                         ) : null}
 
                         {notificationLedOverrideParameter ? (
-                          <ScopedSelectField
-                            parameter={notificationLedOverrideParameter}
-                            liveValue={notificationLedOverride}
-                            editedValues={editedValues}
-                            onChange={(paramId, value) => setDraft(paramId, value)}
-                            draftStatusById={parameterDraftById}
-                          />
+                          <NotificationFieldRow parameter={notificationLedOverrideParameter}>
+                            <ScopedSelectField
+                              parameter={notificationLedOverrideParameter}
+                              liveValue={notificationLedOverride}
+                              editedValues={editedValues}
+                              onChange={(paramId, value) => setDraft(paramId, value)}
+                              draftStatusById={parameterDraftById}
+                            />
+                          </NotificationFieldRow>
                         ) : null}
 
                         {notificationBuzzTypesParameter ? (
-                          <label className={`scoped-editor-field scoped-editor-field--${parameterDraftById.get(notificationBuzzTypesParameter.id)?.status ?? 'unchanged'}`}>
-                            <span>{notificationBuzzTypesParameter.definition?.label ?? notificationBuzzTypesParameter.id}</span>
-                            <div className="scoped-bitmask-bits">
-                              {Object.entries(ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS).map(([bit, label]) => {
-                                const numericBit = Number(bit)
-                                const checked = hasBitmaskFlag(editedNotificationBuzzTypes, numericBit)
-                                return (
-                                  <button
-                                    type="button"
-                                    key={`${notificationBuzzTypesParameter.id}:${bit}`}
-                                    className={`scoped-bitmask-bit${checked ? ' is-set' : ''}`}
-                                    aria-pressed={checked}
-                                    onClick={() =>
-                                      updateDrafts((existing) => {
-                                        const currentValue = normalizeBitmaskValue(existing[notificationBuzzTypesParameter.id], notificationBuzzTypes)
-                                        const nextValue = toggleBitmaskFlag(currentValue, numericBit, !checked)
+                          <NotificationFieldRow parameter={notificationBuzzTypesParameter}>
+                            <label className={`scoped-editor-field scoped-editor-field--${parameterDraftById.get(notificationBuzzTypesParameter.id)?.status ?? 'unchanged'}`}>
+                              <span>{notificationBuzzTypesParameter.definition?.label ?? notificationBuzzTypesParameter.id}</span>
+                              <div className="scoped-bitmask-bits">
+                                {Object.entries(ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS).map(([bit, label]) => {
+                                  const numericBit = Number(bit)
+                                  const checked = hasBitmaskFlag(editedNotificationBuzzTypes, numericBit)
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={`${notificationBuzzTypesParameter.id}:${bit}`}
+                                      className={`scoped-bitmask-bit${checked ? ' is-set' : ''}`}
+                                      aria-pressed={checked}
+                                      onClick={() =>
+                                        updateDrafts((existing) => {
+                                          const currentValue = normalizeBitmaskValue(existing[notificationBuzzTypesParameter.id], notificationBuzzTypes)
+                                          const nextValue = toggleBitmaskFlag(currentValue, numericBit, !checked)
 
-                                        return {
-                                          ...existing,
-                                          [notificationBuzzTypesParameter.id]: String(nextValue)
-                                        }
-                                      })
-                                    }
-                                  >
-                                    {label}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                            <small>
-                              {parameterDraftById.get(notificationBuzzTypesParameter.id)?.status === 'staged'
-                                ? `Staged ${describeBitmaskSelections(parameterDraftById.get(notificationBuzzTypesParameter.id)?.nextValue, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}`
-                                : parameterDraftById.get(notificationBuzzTypesParameter.id)?.reason ??
-                                  `Current ${describeBitmaskSelections(notificationBuzzTypes, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}`}
-                            </small>
-                          </label>
+                                          return {
+                                            ...existing,
+                                            [notificationBuzzTypesParameter.id]: String(nextValue)
+                                          }
+                                        })
+                                      }
+                                    >
+                                      {label}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                              <small>
+                                {parameterDraftById.get(notificationBuzzTypesParameter.id)?.status === 'staged'
+                                  ? `Staged ${describeBitmaskSelections(parameterDraftById.get(notificationBuzzTypesParameter.id)?.nextValue, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}`
+                                  : parameterDraftById.get(notificationBuzzTypesParameter.id)?.reason ??
+                                    `Current ${describeBitmaskSelections(notificationBuzzTypes, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}`}
+                              </small>
+                            </label>
+                          </NotificationFieldRow>
                         ) : null}
 
                         {notificationBuzzVolumeParameter ? (
-                          <ScopedField
-                            parameter={notificationBuzzVolumeParameter}
-                            liveValue={notificationBuzzVolume}
-                            editedValues={editedValues}
-                            onChange={(paramId, value) => setDraft(paramId, value)}
-                            draftStatusById={parameterDraftById}
-                          />
+                          <NotificationFieldRow parameter={notificationBuzzVolumeParameter}>
+                            <ScopedField
+                              parameter={notificationBuzzVolumeParameter}
+                              liveValue={notificationBuzzVolume}
+                              editedValues={editedValues}
+                              onChange={(paramId, value) => setDraft(paramId, value)}
+                              draftStatusById={parameterDraftById}
+                            />
+                          </NotificationFieldRow>
                         ) : null}
                       </div>
 

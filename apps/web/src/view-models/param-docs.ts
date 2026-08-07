@@ -84,3 +84,52 @@ export function parameterWikiUrl(paramId: string): string {
   }
   return `${WIKI_PARAMETER_REFERENCE_URL}?${WIKI_PARAMETER_QUERY_KEY}=${encodeURIComponent(paramId)}`
 }
+
+/**
+ * Root of our own wiki (the Sphinx build that ships into the app bundle at
+ * /wiki — see .github/workflows/web-deploy.yml).
+ *
+ * The parameter reference above is one page of it; the wiki also carries
+ * hand-written topic pages (Tuning, Config, Lua, CAN/DroneCAN, Networking,
+ * Files, Logs & Inspectors, and the First Time Setup walkthroughs). Those are
+ * what the app's NON-parameter "i" bubbles — the ones that explain a card or a
+ * workflow rather than a single parameter — can point at.
+ */
+export const WIKI_BASE_URL = 'https://arduconfigurator.com/wiki'
+
+/**
+ * Wiki destinations for concept-level "i" bubbles, as `page.html#anchor`
+ * relative to WIKI_BASE_URL.
+ *
+ * Every entry here is asserted against the wiki sources by
+ * tests/wiki-topic-links.test.mjs: the page must exist and the anchor must be
+ * the docutils slug of a real heading on it. That test is the whole reason this
+ * map is centralised rather than each bubble carrying its own string — a
+ * concept link that 404s teaches operators the "i" is unreliable, and renaming
+ * a wiki heading is exactly the silent way that happens.
+ *
+ * ONLY topics with a genuinely matching page belong here. Where the wiki has
+ * nothing to say about a surface, the bubble stays text-only — an approximate
+ * destination is worse than none.
+ */
+export const WIKI_TOPIC_PATHS = {
+  /** Tuning ▸ Pilot: stick feel, acro rates/expo, accel limits, Loiter/AltHold. */
+  tuningPilot: 'tuning.html#pilot',
+  /** Tuning ▸ PID Gains: the per-axis rate controllers. */
+  tuningPidGains: 'tuning.html#rate-controllers-pid-gains',
+  /** Tuning ▸ Filters: rate-controller filtering and the notch set. */
+  tuningFilters: 'tuning.html#filters',
+  /** Tuning ▸ Autotune: running the on-vehicle tune and its configuration. */
+  tuningAutotune: 'tuning.html#autotune',
+  /** Lua ▸ how scripts get onto the vehicle and what the catalog is. */
+  luaInstallingScripts: 'lua.html#installing-scripts',
+  /** Receiver ▸ binding an ELRS / CRSF receiver from the configurator. */
+  receiverBind: 'first-time-setup/receiver.html#bind-elrs-crsf'
+} as const
+
+export type WikiTopic = keyof typeof WIKI_TOPIC_PATHS
+
+/** Absolute URL for a concept-level wiki topic. */
+export function wikiTopicUrl(topic: WikiTopic): string {
+  return `${WIKI_BASE_URL}/${WIKI_TOPIC_PATHS[topic]}`
+}

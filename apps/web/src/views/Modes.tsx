@@ -1,6 +1,7 @@
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { ParamInfoBubble } from './ParamInfoBubble'
 import { ScopedSelectField, type ScopedFieldDraftMap } from './ScopedField'
 
 export interface ModesViewSlot {
@@ -152,8 +153,16 @@ export function ModesView(props: ModesViewProps) {
                   ) : (
                     <span className="modes-table__mode-readonly">
                       {slot.modeLabel}
+                      {/* The read-only slot used to trail a bare "FLTMODE3"; the
+                          bubble keeps that id one hover away and adds the
+                          description and reference link the plain text lacked. */}
                       {slot.parameter ? (
-                        <small className="scoped-editor-field__param-id">{slot.parameter.id}</small>
+                        <ParamInfoBubble
+                          paramId={slot.parameter.id}
+                          label={`Flight mode slot ${slot.position}`}
+                          description={slot.parameter.definition?.description}
+                          testId={`modes-slot-info-${slot.parameter.id}`}
+                        />
                       ) : null}
                     </span>
                   )}
