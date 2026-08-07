@@ -2889,6 +2889,12 @@ textarea:focus {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
   margin-top: 14px;
+  /* Size every column to its own content instead of stretching all three to
+   * the tallest. With the sensor cards stacked under System Info the first
+   * column can be twice the height of Recent Notices, and stretching left
+   * hundreds of pixels of empty box below the pre-arm and notices content —
+   * empty space the operator still has to scroll past. */
+  align-items: start;
 }
 
 .setup-gui-box {
@@ -3022,6 +3028,17 @@ textarea:focus {
 .setup-gui-box__kv-list {
   display: grid;
   gap: 0;
+}
+
+/* Status first column: System Info on top, then whichever advanced sensor
+ * cards exist (rangefinder / optical flow). Same stacking contract as the
+ * middle column, so a column with no sensor cards is byte-for-byte the old
+ * bare System Info box — the wrapper adds no border, background or padding
+ * of its own, only the gap between stacked boxes. */
+.setup-status-syscol {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 /* Status middle column: pre-arm box on top, compact lifetime stats below. */

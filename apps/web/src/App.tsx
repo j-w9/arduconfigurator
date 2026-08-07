@@ -6941,6 +6941,16 @@ export function App() {
                          *  to the right column. The sidebar keeps action-oriented
                          *  cards (Instruments / Guided Setup / GPS). */}
                         <div className="setup-bench__status-trio">
+                        {/* First column: System Info, then the advanced sensor
+                         *  cards directly beneath it. They used to sit at the
+                         *  very bottom of the right-hand sidebar, below the GPS
+                         *  card and its map — roughly 1350px down a 2373px page
+                         *  at 1440x900, i.e. a full screen and a half of
+                         *  scrolling to answer "is my lidar alive?". They are
+                         *  system health, so they belong with the system health
+                         *  block, and moving them here also fills the dead space
+                         *  the main column left below the status trio. */}
+                        <div className="setup-status-syscol">
                         <article className="setup-gui-box">
                           <div className="setup-gui-box__titlebar">
                             <strong>System Info</strong>
@@ -6974,6 +6984,19 @@ export function App() {
                             </div>
                           </div>
                         </article>
+
+                        {/* Advanced sensors, directly under System Info. The
+                         *  builder still decides whether a card exists at all:
+                         *  an unconfigured rangefinder or flow sensor produces
+                         *  nothing and this space collapses back to System Info
+                         *  alone, exactly as before. A CONFIGURED sensor always
+                         *  gets a card, silent or not — that silence is the
+                         *  diagnosis, and it is now the first thing in reach
+                         *  rather than the last. */}
+                        {advancedSensorCards.map((card) => (
+                          <AdvancedSensorCard key={card.id} card={card} />
+                        ))}
+                        </div>
 
                         {/* Middle column: pre-arm on top (it gates flight, so it
                             matters most), lifetime stats compact below it. */}
@@ -7260,15 +7283,6 @@ export function App() {
                             ) : null}
                           </div>
                         </article>
-
-                        {/* Advanced sensors, below GPS. Each card only exists
-                         *  when the operator has actually configured that
-                         *  sensor — GPS and compass are the baseline, anything
-                         *  past them is opt-in, so an FPV quad with no lidar
-                         *  and no flow sees this space unchanged. */}
-                        {advancedSensorCards.map((card) => (
-                          <AdvancedSensorCard key={card.id} card={card} />
-                        ))}
 
                       </div>
                     </div>
