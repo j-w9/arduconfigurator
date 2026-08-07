@@ -1361,8 +1361,12 @@ test.describe('Tuning tab', () => {
     await expect(info).toBeVisible({ timeout: 10000 })
     const tip = info.locator('xpath=following-sibling::span[@role="tooltip"]')
     await expect(tip).toBeHidden()
-    await info.hover()
-    await expect(tip).toBeVisible()
+    // Re-place the pointer if the still-settling page slides the button out
+    // from under it; see the Config tooltip test for why.
+    await expect(async () => {
+      await info.hover()
+      await expect(tip).toBeVisible({ timeout: 2_000 })
+    }).toPass({ timeout: 15_000 })
     await expect(tip).toContainText('ATC_INPUT_TC')
 
     const link = tip.getByTestId('param-wiki-ATC_INPUT_TC')
@@ -2106,14 +2110,28 @@ test.describe('Config view', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-config').click()
-    const info = page.locator('[data-testid^="config-field-info-"]').first()
+    // Pin the first field's bubble to ITS OWN test id rather than re-resolving
+    // `.first()` on every step: the Config surface fills in as parameters sync,
+    // and a locator that re-resolves can end up hovering one bubble while
+    // asserting about another's tooltip.
+    const firstInfoId = await page.locator('[data-testid^="config-field-info-"]').first().getAttribute('data-testid')
+    expect(firstInfoId).toBeTruthy()
+    const info = page.getByTestId(firstInfoId!)
     await info.scrollIntoViewIfNeeded()
     await expect(info).toBeVisible()
     // Tooltip is hidden until hover, then reveals the param description.
     const tip = info.locator('xpath=following-sibling::span[@role="tooltip"]')
     await expect(tip).toBeHidden()
-    await info.hover()
-    await expect(tip).toBeVisible()
+    // The reveal is pure CSS :hover, so it is only as durable as the pointer
+    // staying over the button — and this page is still laying itself out as
+    // parameters arrive, so a shift can slide the button out from under a
+    // pointer that has already been placed. Re-place the pointer and re-check:
+    // the contract asserted is unchanged (hovering the "i" shows the tooltip),
+    // it is simply not asserted against a single throw of the dice.
+    await expect(async () => {
+      await info.hover()
+      await expect(tip).toBeVisible({ timeout: 2_000 })
+    }).toPass({ timeout: 15_000 })
     await expect(tip).not.toHaveText('')
   })
 
@@ -2124,9 +2142,13 @@ test.describe('Config view', () => {
     await page.getByTestId('view-button-config').click()
     const info = page.getByTestId('config-field-info-FRAME_CLASS')
     await info.scrollIntoViewIfNeeded()
-    await info.hover()
     const tip = info.locator('xpath=following-sibling::span[@role="tooltip"]')
-    await expect(tip).toBeVisible()
+    // Re-place the pointer if the still-settling page slides the button out
+    // from under it; see the sibling tooltip test for why.
+    await expect(async () => {
+      await info.hover()
+      await expect(tip).toBeVisible({ timeout: 2_000 })
+    }).toPass({ timeout: 15_000 })
     await expect(tip).toContainText('FRAME_CLASS')
     const link = tip.getByTestId('param-wiki-FRAME_CLASS')
     await expect(link).toHaveAttribute(
@@ -5367,8 +5389,17 @@ test.describe('Status & Info dashboard layout', () => {
     // drop by inserting a real element into the target column, so every card
     // below it moved — measured at 56px — and the page reflowed on every
     // pointer move. The indicator is now fixed-position and out of flow, and
-    // the dragged card moves on a transform, so NOTHING that is not being
-    // dragged may change position mid-gesture.
+    // the dragged card moves on a transform, so THE DRAG may not move any card
+    // but the lifted one.
+    //
+    // "The drag may not move a card" is not the same claim as "no card moved",
+    // and only the first is a promise the product can keep: these are live
+    // telemetry cards, and a card that gains a row of its own accord pushes the
+    // cards below it down whether or not anyone is dragging anything. So the
+    // gesture is measured, and any card that did move is then ATTRIBUTED —
+    // a reflow the drag caused unwinds when the drag is cancelled, while the
+    // feed's own growth stays put. Asserting the raw "nothing moved" is what
+    // made this test fail on CI, where the feed is likelier to tick mid-drag.
     await page.setViewportSize({ width: 1440, height: 900 })
     await connectDemo(page)
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
@@ -5382,6 +5413,21 @@ test.describe('Status & Info dashboard layout', () => {
           })
         )
       )
+    const samePlace = (a: number[] | undefined, b: number[] | undefined): boolean =>
+      a !== undefined && b !== undefined && a[0] === b[0] && a[1] === b[1]
+
+    // Let the first burst of telemetry land before measuring anything: the
+    // cards fill in over the second or so after connect, and there is no point
+    // attributing movement we can simply wait out.
+    let settling = await positions()
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await page.waitForTimeout(250)
+      const next = await positions()
+      if (Object.entries(next).every(([id, place]) => samePlace(place, settling[id]))) {
+        break
+      }
+      settling = next
+    }
 
     const before = await positions()
     const handle = page.getByTestId('status-dash-handle-gps')
@@ -5391,21 +5437,30 @@ test.describe('Status & Info dashboard layout', () => {
     const midcol = (await page.getByTestId('status-dash-col-midcol').boundingBox())!
     await page.mouse.move(midcol.x + midcol.width / 2, midcol.y + 30, { steps: 20 })
 
-    // Mid-drag: the indicator is up, and every card except the lifted one is
-    // exactly where it was.
+    // Mid-drag: the indicator is up, and the page has not been laid out again
+    // under the pointer.
     await expect(page.getByTestId('status-dash-drop-indicator')).toBeVisible()
     const during = await positions()
-    for (const [id, position] of Object.entries(before)) {
-      if (id === 'gps') {
-        continue
-      }
-      expect(during[id], `${id} moved during the drag`).toEqual(position)
-    }
 
     await page.keyboard.press('Escape')
     await page.mouse.up()
-    // Escape cancels: nothing moved at all.
+    // Escape cancels: the arrangement is untouched…
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
+    const after = await positions()
+
+    // …and so every card that shifted mid-gesture must have shifted for its own
+    // reasons — it stayed shifted once the gesture was thrown away. A card that
+    // snapped back to exactly where it started is one the drag itself displaced,
+    // which is the regression this test exists to catch.
+    for (const [id, position] of Object.entries(before)) {
+      if (id === 'gps' || samePlace(during[id], position)) {
+        continue
+      }
+      expect(
+        samePlace(after[id], position),
+        `${id} moved during the drag and returned to ${JSON.stringify(position)} when the drag was cancelled — the drag relaid out the page`
+      ).toBe(false)
+    }
   })
 
   test('an unreadable saved layout falls back to the default silently', async ({ page }) => {
