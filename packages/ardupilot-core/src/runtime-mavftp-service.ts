@@ -151,6 +151,13 @@ export class MavftpService {
   private readonly requestTimeoutMs: number
   private readonly waiters = new Set<MavftpWaiter>()
   private activeBurst: BurstOperation | undefined
+  // The seq_number to put on the NEXT request. Not a private counter: MAVFTP's
+  // seq_number is a SHARED, monotonically rising conversation counter that the
+  // server advances too. A burst reply stream bumps the server's copy once per
+  // streamed packet (ArduPilot GCS_FTP.cpp `reply.seq_number++` inside the
+  // BurstReadFile loop) while the client only ever sent one request — so a
+  // client that just counts its own sends falls BEHIND the server. See
+  // adoptServerSequence for what that costs.
   private sequence = 0
   // Per the MAVLink FTP spec the client sends ResetSessions so a stale
   // server-side session doesn't block session-allocating ops. Sent lazily
@@ -286,16 +293,7 @@ export class MavftpService {
     const normalizedPath = normalizeMavftpPath(path)
     const pathBytes = new TextEncoder().encode(normalizedPath)
     await this.clearStaleSessionsOnce()
-    const openResponse = await this.send(
-      {
-        session: 0,
-        opcode: MAV_FTP_OPCODE.OPEN_FILE_RO,
-        size: pathBytes.length,
-        offset: 0,
-        data: pathBytes
-      },
-      timeoutMs
-    )
+    const openResponse = await this.openFileForRead(pathBytes, timeoutMs)
 
     const session = openResponse.session
     // Size the FC declared on OPEN; 0 for `@SYS` virtual files, which are
@@ -415,16 +413,7 @@ export class MavftpService {
     const maxBytes = options.maxBytes ?? MAX_MAVFTP_FILE_BYTES
     await this.clearStaleSessionsOnce()
 
-    const openResponse = await this.send(
-      {
-        session: 0,
-        opcode: MAV_FTP_OPCODE.OPEN_FILE_RO,
-        size: pathBytes.length,
-        offset: 0,
-        data: pathBytes
-      },
-      timeoutMs
-    )
+    const openResponse = await this.openFileForRead(pathBytes, timeoutMs)
     const session = openResponse.session
     const declaredSize =
       openResponse.data.byteLength >= 4
@@ -457,6 +446,9 @@ export class MavftpService {
 
   handleFileTransferProtocol(message: FileTransferProtocolMessage): void {
     const payload = decodeMavftpPayload(message.payload)
+    // Every reply — burst packet or not — carries the server's current
+    // seq_number, so track it before doing anything else with the payload.
+    this.adoptServerSequence(payload.seqNumber)
     // A burst download receives a stream of packets (each with its own
     // seq_number) for a single request, so it can't use the one-waiter-per-
     // seq correlation; route burst responses to the active burst op instead.
@@ -521,8 +513,7 @@ export class MavftpService {
       this.failBurst(new Error('MAVFTP requires an identified vehicle.'))
       return
     }
-    const requestSeq = this.sequence
-    this.sequence = (this.sequence + 1) & 0xffff
+    const requestSeq = this.nextSequence()
     void this.session
       .send({
         type: 'FILE_TRANSFER_PROTOCOL',
@@ -685,8 +676,98 @@ export class MavftpService {
     }).catch(() => {})
   }
 
+  /**
+   * Take the seq_number for the next request and advance the counter.
+   *
+   * Nothing here is new bookkeeping — it is the same `sequence++` the send
+   * paths used to do inline — but routing BOTH senders through one place is
+   * what lets adoptServerSequence's catch-up apply to burst re-requests as
+   * well as ordinary requests.
+   */
+  private nextSequence(): number {
+    const requestSeq = this.sequence
+    this.sequence = (this.sequence + 1) & 0xffff
+    return requestSeq
+  }
+
+  /**
+   * Keep our seq_number at or ahead of the server's.
+   *
+   * ArduPilot treats a request as a DUPLICATE — replaying its last reply
+   * instead of executing the request — when `request.seq_number + 1 ==
+   * reply.seq_number` for the same session (GCS_FTP.cpp:823-829). A burst read
+   * costs us one seq but costs the server one PER STREAMED PACKET, so after a
+   * burst our counter sits below the server's and the next request we send can
+   * land exactly on that equality by accident.
+   *
+   * It is not a rare accident. A file that fits in a single burst packet leaves
+   * the server exactly two ahead, which is precisely the offset that makes our
+   * follow-up TerminateSession look like a re-request of the burst's EOF NAK.
+   * The close is swallowed, the descriptor stays open, and because ArduPilot
+   * allows only one open file per session (GCS_FTP.cpp:341-352) the NEXT open
+   * is refused with Fail until the server's 3s idle sweep reclaims it. Large
+   * logs never showed this — they take far longer than 3s — but two small
+   * files back to back fail every time.
+   *
+   * Adopting the server's seq also stops a late burst packet from satisfying
+   * the waiter for a subsequent request that happened to reuse its seq.
+   *
+   * Wrap-safe: seq_number is 16-bit, so "ahead" is a signed comparison on the
+   * 16-bit difference rather than a plain `>`.
+   */
+  private adoptServerSequence(serverSeq: number): void {
+    const normalized = serverSeq & 0xffff
+    if (((normalized - this.sequence) & 0xffff) < 0x8000) {
+      // The server's own reply seq is a value it has already USED, so sending
+      // our next request with that same number keeps `request + 1` clear of it
+      // while still being the smallest step that does.
+      this.sequence = normalized
+    }
+  }
+
   private asError(error: unknown): Error {
     return error instanceof Error ? error : new Error('Unknown MAVFTP burst error.')
+  }
+
+  /**
+   * OPEN_FILE_RO, retried once through RESET_SESSIONS on a bare `Fail` NAK.
+   *
+   * ArduPilot answers OpenFileRO with plain `Fail` in exactly one case: a
+   * descriptor is still open on this session and it has not yet gone idle long
+   * enough for the server to reclaim it (GCS_FTP.cpp:341-352 — a malformed
+   * request gets InvalidDataSize and a missing file gets FailErrno/FileNotFound
+   * instead). That is a TRANSIENT condition, so failing the caller's download
+   * outright is the wrong answer even though the sequence-number fix above
+   * should stop us from ever creating it.
+   *
+   * RESET_SESSIONS is the recovery to reach for rather than another
+   * TerminateSession: the server handles it at the top of its worker loop and
+   * force-closes every session on our channel BEFORE reaching the duplicate-
+   * request check (GCS_FTP.cpp:760-777), so unlike a close it cannot itself be
+   * swallowed as a replay — which is the failure we are recovering from.
+   *
+   * Exactly one retry. If a fresh open still fails with a descriptor we just
+   * ordered closed, something other than a leaked handle is wrong and the
+   * caller deserves the error rather than a retry loop against a live vehicle.
+   */
+  private async openFileForRead(pathBytes: Uint8Array, timeoutMs?: number): Promise<MavftpPayload> {
+    const request = {
+      session: 0,
+      opcode: MAV_FTP_OPCODE.OPEN_FILE_RO,
+      size: pathBytes.length,
+      offset: 0,
+      data: pathBytes
+    }
+
+    try {
+      return await this.send(request, timeoutMs)
+    } catch (error) {
+      if (!(error instanceof MavftpRequestError) || error.errorCode !== MAV_FTP_ERR.FAIL) {
+        throw error
+      }
+      await this.resetSessions().catch(() => {})
+      return this.send(request, timeoutMs)
+    }
   }
 
   /**
@@ -698,18 +779,23 @@ export class MavftpService {
     }
     this.staleSessionsCleared = true
     try {
-      await this.send({
-        session: 0,
-        opcode: MAV_FTP_OPCODE.RESET_SESSIONS,
-        size: 0,
-        offset: 0,
-        data: new Uint8Array(0)
-      })
+      await this.resetSessions()
     } catch {
       // Best-effort: a NAK / timeout here must not block the actual
       // operation — worst case a stale session NAKs the open and
       // ArduPilot's idle sweep eventually reclaims it.
     }
+  }
+
+  /** RESET_SESSIONS — closes every server-side session on our link. */
+  private async resetSessions(): Promise<void> {
+    await this.send({
+      session: 0,
+      opcode: MAV_FTP_OPCODE.RESET_SESSIONS,
+      size: 0,
+      offset: 0,
+      data: new Uint8Array(0)
+    })
   }
 
   private async send(
@@ -721,8 +807,7 @@ export class MavftpService {
       throw new Error('MAVFTP requires an identified vehicle.')
     }
 
-    const requestSeq = this.sequence
-    this.sequence = (this.sequence + 1) & 0xffff
+    const requestSeq = this.nextSequence()
     // The MAVLink FTP server replies with `seq_number = request seq + 1`,
     // so correlate the waiter to the expected response seq.
     const expectedResponseSeq = (requestSeq + 1) & 0xffff
