@@ -7855,6 +7855,47 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+/* Minimal props-off / area-clear gate rendered immediately above the button it
+   unlocks (battery-current load spin, ESC calibration). No card, no heading —
+   the adjacency to the button is the explanation, so this is just two small
+   checkboxes that wrap onto two lines on a phone. */
+.motor-spin-acks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: center;
+  min-width: 0;
+}
+
+.motor-spin-acks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted, var(--text));
+  font-size: 12px;
+  line-height: 1.25;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.motor-spin-acks label:has(input:checked) {
+  color: var(--text);
+}
+
+.motor-spin-acks input {
+  /* Same reset as `.scoped-checkbox-option input` — the surrounding cards size
+     bare inputs as text fields. */
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  min-height: 0;
+  padding: 0;
+  flex: none;
+  color-scheme: light;
+}
+
 .metadata-settings-section {
   display: grid;
   gap: 12px;
