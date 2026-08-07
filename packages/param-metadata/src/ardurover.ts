@@ -1,6 +1,7 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS, LOG_DISARMED_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
+import { buildOpticalFlowParameterDefinitions } from './shared-optical-flow.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
 import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
 import {
@@ -277,6 +278,9 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     motors: { id: 'motors', label: 'Motors & Outputs', description: 'Throttle limits and motor output behavior.', order: 8, viewId: 'motors' },
     gimbal: { id: 'gimbal', label: 'Gimbal / Mount', description: 'Camera gimbal/mount driver, control mode, and per-axis angle limits (MNT1/MNT2).', order: 8.5, viewId: 'motors' },
     rangefinder: { id: 'rangefinder', label: 'Rangefinder / Lidar', description: 'Rangefinder driver, orientation, range limits, and mounting offsets (RNGFND1).', order: 8.6, viewId: 'motors' },
+    // Paired with Rangefinder above. Rover is the one vehicle that can skip the
+    // rangefinder entirely (FLOW_HGT_OVR fixes the sensor height instead).
+    'optical-flow': { id: 'optical-flow', label: 'Optical Flow', description: 'Optical flow sensor driver, yaw alignment, scale correction, height override, and mounting offsets (FLOW_).', order: 8.65, viewId: 'motors' },
     relays: { id: 'relays', label: 'Relays', description: 'GPIO relay function mapping, pin assignment, default state, and signal inversion (RELAY1..RELAY6).', order: 8.7, viewId: 'servos' },
     steering: { id: 'steering', label: 'Steering Tuning', description: 'Steering-rate and steering-angle controller gains.', order: 9, viewId: 'tuning' },
     speed: { id: 'speed', label: 'Speed Tuning', description: 'Throttle/speed controller gains.', order: 10, viewId: 'tuning' },
@@ -333,6 +337,7 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     ...buildMountParameterDefinitions(1),
     ...buildMountParameterDefinitions(2),
     ...buildRangefinderParameterDefinitions(1),
+    ...buildOpticalFlowParameterDefinitions(),
     ...Array.from({ length: RELAY_INSTANCE_COUNT }, (_, index) =>
       buildRelayParameterDefinitions(index + 1)
     ).reduce((merged, family) => ({ ...merged, ...family }), {}),

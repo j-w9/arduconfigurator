@@ -16,6 +16,9 @@ export { AHRS_ORIENTATION_OPTIONS } from './shared-enums.js'
 export * from './catalog.js'
 export * from './format-number.js'
 export * from './fuzzy.js'
+// FLOW_* builder + the 4.6/4.7 FLOW_TYPE option maps — public so the 4.7
+// override table can extend the base list without duplicating it.
+export * from './shared-optical-flow.js'
 // AP_RC_Logic schema constants (RCL_* term count, OPT bit layout, source-type
 // enum, AUX_FUNC option list) — public because the RC Mixer UI binds to them.
 export * from './shared-rc-logic.js'

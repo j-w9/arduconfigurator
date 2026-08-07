@@ -13,6 +13,7 @@ import { buildDronecanEscRows, summarizeDronecanNodes } from '../view-models/dro
 import type { DronecanParamCatalogLookup } from '../view-models/dronecan-param-display'
 import { useCanNodeNames } from '../hooks/use-can-node-names'
 import { CanDeviceInspectorView, type CanDeviceExpertActions } from './CanDeviceInspector'
+import { CanEnablePrompt } from './CanEnablePrompt'
 
 // The single CAN surface. Mission Planner-equivalent DroneCAN workflow: connect
 // via MAV_CMD_CAN_FORWARD (so MAVLink stays alive on the same channel), discover
@@ -183,25 +184,15 @@ export function CanBusView(props: CanBusViewProps) {
   return (
     <div id="setup-panel-can">
       <Panel title={title} subtitle={subtitle}>
+        {/* Extracted to CanEnablePrompt so the Servos ▸ Peripherals optical-flow
+            section can raise the identical offer; the default test ids keep this
+            instance byte-identical in the DOM. */}
         {enablement && onEnableCanBus ? (
-          <div className="can-bus-enable-prompt" role="status" data-testid="can-enable-prompt">
-            <div className="can-bus-enable-prompt__body">
-              <strong>Enable the CAN bus for DroneCAN?</strong>
-              <p>
-                {enablement.triggerLabels.join(', ')}, but CAN bus 1 isn’t enabled — nodes won’t be found until it is.
-                This sets <code>CAN_P1_DRIVER=1</code> and <code>CAN_D1_PROTOCOL=1</code> (DroneCAN) and needs a reboot.
-              </p>
-            </div>
-            <button
-              type="button"
-              style={buttonStyle('primary')}
-              data-testid="can-enable-button"
-              onClick={onEnableCanBus}
-              disabled={enableBusy}
-            >
-              {enableBusy ? 'Enabling…' : 'Enable CAN bus & reboot'}
-            </button>
-          </div>
+          <CanEnablePrompt
+            triggerLabels={enablement.triggerLabels}
+            onEnable={onEnableCanBus}
+            busy={enableBusy}
+          />
         ) : null}
         <header className="can-bus-header">
           <div className="can-bus-header__status">

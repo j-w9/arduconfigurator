@@ -7,6 +7,7 @@ import {
   ARDUCOPTER_RSSI_TYPE_LABELS,
   ARDUCOPTER_THROTTLE_FAILSAFE_LABELS
 } from './arducopter-enums.js'
+import { OPTICAL_FLOW_TYPE_OPTIONS_4_7 } from './shared-optical-flow.js'
 
 // Local copy of arducopter.ts's (unexported) enumOptions.
 function enumOptions(labelMap: Record<number, string>): ParameterValueOption[] {
@@ -92,5 +93,16 @@ export const ARDUCOPTER_4_7_PARAMETER_OVERRIDES: Record<string, Partial<Paramete
   FS_GCS_ENABLE: { options: enumOptions(FS_GCS_LABELS_4_7) },
   BATT_FS_LOW_ACT: { options: enumOptions(BATTERY_FAILSAFE_ACTION_LABELS_4_7) },
   BATT_FS_CRT_ACT: { options: enumOptions(BATTERY_FAILSAFE_ACTION_LABELS_4_7) },
-  BATT_MONITOR: { maximum: 32, options: enumOptions(BATTERY_MONITOR_LABELS_4_7) }
+  BATT_MONITOR: { maximum: 32, options: enumOptions(BATTERY_MONITOR_LABELS_4_7) },
+  // FLOW_TYPE gains 10:SITL after 4.6. Verified by reading
+  // libraries/AP_OpticalFlow/AP_OpticalFlow.cpp at BOTH refs: the @Values line
+  // ends at `8:UPFLOW` on tag Copter-4.6.3 and at `8:UPFLOW, 10:SITL` on branch
+  // origin/ArduPilot-4.7 (AP_OpticalFlow.h `Type::SITL = 10`; 9 is unassigned).
+  // Base catalog stays 0..8 so a 4.6 FC — and pre-connect / Unknown — is
+  // byte-identical and never offers a value its firmware cannot decode.
+  //
+  // FLOW_OPTIONS is likewise 4.7-only, but needs no entry here: it is a new
+  // PARAMETER, not a changed one, so a 4.6 board simply never reports it and
+  // the curated definition never renders.
+  FLOW_TYPE: { maximum: 10, options: OPTICAL_FLOW_TYPE_OPTIONS_4_7 }
 }

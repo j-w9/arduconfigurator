@@ -3830,6 +3830,81 @@ test.describe('ArduPlane demo', () => {
     await typeSelect.selectOption({ label: 'MAVLink' })
     await expect(page.getByText('Analog Function', { exact: true })).toBeHidden()
   })
+
+  // The ask: "in the servo > peripheral tab we have the section about
+  // rangefinders, can we add in a section and all the relevant parameters for
+  // optical flow?" — same shape as the Rangefinder section above, one sensor
+  // over. The demo Copter seeds FLOW_TYPE=6 (DroneCAN) with CAN_P1_DRIVER=0,
+  // reproducing the operator's own miswired-CAN-flow situation.
+  test('Servos view exposes an Optical Flow config section, gated the same way as Rangefinder', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
+      timeout: VEHICLE_CONNECT_TIMEOUT
+    })
+    await openView(page, 'servos')
+    await page.getByTestId('outputs-summary-peripherals').click()
+
+    const flowSection = page.getByTestId('metadata-settings-section-optical-flow')
+    await expect(flowSection).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('Optical Flow', { exact: true })).toBeVisible()
+    // The seeded FLOW_ family renders as editable fields.
+    await expect(page.getByText('Optical Flow Type', { exact: true })).toBeVisible()
+    await expect(page.getByText('X Scale Correction', { exact: true })).toBeVisible()
+    await expect(page.getByText('Bus Address', { exact: true })).toBeVisible()
+    // Unit-carrying labels render as "<label> (<unit>)" — ScopedField appends the
+    // unit in a nested <small> — so these are substring matches, not exact ones.
+    await expect(flowSection.getByText('Yaw Alignment (cdeg)', { exact: true })).toBeVisible()
+    await expect(flowSection.getByText('Position X (m)', { exact: true })).toBeVisible()
+    // FLOW_OPTIONS (4.7-only) and FLOW_HGT_OVR (Rover-only) are curated but NOT
+    // reported by this 4.6 Copter — proving the section renders only what the
+    // FC actually streams rather than a fixed field list.
+    await expect(page.getByText('Flow Options')).toHaveCount(0)
+    await expect(page.getByText('Height Override')).toHaveCount(0)
+
+    // Every field carries the shared "i" affordance naming the raw param.
+    await expect(page.getByTestId('metadata-field-info-FLOW_TYPE')).toBeVisible()
+
+    // The type is source-correct: 6 is DroneCAN (AP_OpticalFlow.h Type::UAVCAN),
+    // NOT the SITL value the app once mislabelled as HereFlow.
+    const flowType = page.locator('label', { hasText: 'Optical Flow Type' }).getByRole('combobox')
+    await expect(flowType).toHaveValue('6')
+    // 4.6 firmware: SITL (10) must not be offered at all.
+    await expect(flowType.locator('option', { hasText: 'SITL' })).toHaveCount(0)
+
+    // DroneCAN flow + CAN bus off surfaces the same one-click enable the CAN tab
+    // offers — the fix for a flow sensor that reports nothing because the bus
+    // was never turned on.
+    const prompt = page.getByTestId('peripherals-can-enable-prompt')
+    await expect(prompt).toBeVisible()
+    await expect(prompt).toContainText('Optical flow is set to DroneCAN')
+    await expect(page.getByTestId('peripherals-can-enable-button')).toBeEnabled()
+
+    // Editing a flow field stages a draft in the peripherals scope.
+    await flowType.selectOption({ label: 'CXOF' })
+    await expect(page.getByRole('button', { name: /Apply Additional Output Changes \(1\)/ })).toBeEnabled()
+
+    // Section is collapsible like its Rangefinder sibling.
+    await flowSection.locator('summary').click()
+    await expect(flowSection.getByText('Yaw Alignment (cdeg)', { exact: true })).toBeHidden()
+  })
+
+  test('the Optical Flow section fits a 390px phone viewport without horizontal overflow', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await openView(page, 'servos')
+    await page.getByTestId('outputs-summary-peripherals').click()
+    await expect(page.getByTestId('metadata-settings-section-optical-flow')).toBeVisible({ timeout: 15_000 })
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )
+    expect(overflow).toBeLessThanOrEqual(0)
+  })
 })
 
 test.describe('ArduRover / ArduSub demo', () => {

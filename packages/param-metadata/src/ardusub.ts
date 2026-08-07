@@ -1,6 +1,7 @@
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS, LOG_DISARMED_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
+import { buildOpticalFlowParameterDefinitions } from './shared-optical-flow.js'
 import { buildRangefinderParameterDefinitions } from './shared-rangefinder.js'
 import { RELAY_INSTANCE_COUNT, buildRelayParameterDefinitions } from './shared-relay.js'
 import {
@@ -251,6 +252,8 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     frame: { id: 'frame', label: 'Frame Config', description: 'Thruster frame configuration.', order: 1, viewId: 'motors' },
     gimbal: { id: 'gimbal', label: 'Gimbal / Mount', description: 'Camera gimbal/mount driver, control mode, and per-axis angle limits (MNT1/MNT2).', order: 1.5, viewId: 'motors' },
     rangefinder: { id: 'rangefinder', label: 'Rangefinder / Lidar', description: 'Rangefinder/echosounder driver, orientation, range limits, and mounting offsets (RNGFND1).', order: 1.6, viewId: 'motors' },
+    // Paired with Rangefinder above — flow needs a height reference.
+    'optical-flow': { id: 'optical-flow', label: 'Optical Flow', description: 'Optical flow sensor driver, yaw alignment, scale correction, and mounting offsets (FLOW_).', order: 1.65, viewId: 'motors' },
     relays: { id: 'relays', label: 'Relays', description: 'GPIO relay function mapping, pin assignment, default state, and signal inversion (RELAY1..RELAY6).', order: 1.7, viewId: 'servos' },
     joystick: { id: 'joystick', label: 'Joystick', description: 'Pilot joystick gain and control behavior.', order: 2, viewId: 'receiver' },
     pilot: { id: 'pilot', label: 'Pilot & Depth', description: 'Vertical speed, acceleration, and surface depth.', order: 3, viewId: 'tuning' },
@@ -322,6 +325,7 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     ...buildMountParameterDefinitions(1),
     ...buildMountParameterDefinitions(2),
     ...buildRangefinderParameterDefinitions(1),
+    ...buildOpticalFlowParameterDefinitions(),
     ...Array.from({ length: RELAY_INSTANCE_COUNT }, (_, index) =>
       buildRelayParameterDefinitions(index + 1)
     ).reduce((merged, family) => ({ ...merged, ...family }), {}),

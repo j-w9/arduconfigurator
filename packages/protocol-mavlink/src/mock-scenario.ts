@@ -159,6 +159,21 @@ const mockParameters: ParameterState = {
   // that report, and specifically exercising the CAN-attached variant rather
   // than a directly-wired one.
   FLOW_TYPE: 6,
+  // The rest of the FLOW_ family, seeded at ArduPilot defaults so the Servos ▸
+  // Peripherals "Optical Flow" config section renders populated rather than as a
+  // lone Type dropdown. Defaults read from AP_OpticalFlow.cpp var_info[]
+  // (all zero). FLOW_OPTIONS and FLOW_HGT_OVR are DELIBERATELY absent: OPTIONS
+  // is 4.7-only and this mock reports 4.6.0 (flightSwVersion 0x040600ff), and
+  // HGT_OVR is AP_PARAM_FRAME_ROVER so a Copter never reports it. Both are
+  // curated in the catalog and must stay invisible here — that is the proof the
+  // "render only what the FC reports" gating works.
+  FLOW_FXSCALER: 0,
+  FLOW_FYSCALER: 0,
+  FLOW_ORIENT_YAW: 0,
+  FLOW_POS_X: 0,
+  FLOW_POS_Y: 0,
+  FLOW_POS_Z: 0,
+  FLOW_ADDR: 0,
   // Relays (RELAY1/RELAY2) — seeded so the demo surfaces the Relays tab
   // populated: relay 1 is a plain operator relay on an AUX pin (default off),
   // relay 2 is mapped to the camera shutter. Metadata ships RELAY1..RELAY6.
