@@ -15241,6 +15241,35 @@ details.bf-gui-box:not([open]) > summary::after {
   font-size: 11px;
   color: var(--warning, #e8a803);
 }
+/* Pole-count reference under the ESC & output settings grid. Same low-key
+ * disclosure treatment as the calibration how-tos — hint copy, not a callout. */
+.motor-pole-reference {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.motor-pole-reference > summary {
+  cursor: pointer;
+  list-style: none;
+  opacity: 0.75;
+}
+.motor-pole-reference > summary:hover {
+  opacity: 1;
+}
+.motor-pole-reference > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 9px;
+  transition: transform 0.1s ease-out;
+}
+.motor-pole-reference[open] > summary::before {
+  transform: rotate(90deg);
+}
+.motor-pole-reference p {
+  margin: 6px 0 0 0;
+  line-height: 1.45;
+}
 /* Post-calibration reboot prompt. Two weights on purpose: accelerometer and
  * compass leave ArduPilot refusing to arm until the board reboots, so those get
  * the warning tint and a primary button; level only offers one, so it sits flat

@@ -3409,7 +3409,11 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       // rejected valid high-pole-count motors.
       minimum: 1,
       maximum: 127,
-      step: 1
+      step: 1,
+      // @RebootRequired: True in AP_BLHeli.cpp — the value is pushed into the
+      // RCOutput backend at init (hal.rcout->set_motor_poles, AP_BLHeli.cpp:1494),
+      // so a live change does not reach the eRPM->RPM conversion until reboot.
+      rebootRequired: true
     },
     MOT_PWM_MIN: {
       id: 'MOT_PWM_MIN',

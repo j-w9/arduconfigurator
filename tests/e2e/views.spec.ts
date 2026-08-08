@@ -2079,6 +2079,29 @@ test.describe('Config view', () => {
     await expect(bits.nth(3)).toHaveClass(/is-set/)
   })
 
+  test('ESC & Protocol exposes the motor pole count with a reference for choosing it', async ({ page }) => {
+    // SERVO_BLH_POLES is the divisor for ESC eRPM -> RPM, so it belongs next to
+    // the ESC protocol choice rather than only in the raw parameter list. A
+    // wrong value is silent — every RPM reading is off by the same factor.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await page.getByTestId('view-button-motors').click()
+    await page.getByTestId('outputs-summary-esc-protocol').click()
+
+    // ScopedNumberField labels its input from the metadata label rather than a
+    // test id; the demo reports the firmware default of 14.
+    const poles = page.getByLabel('Motor magnet poles')
+    await poles.scrollIntoViewIfNeeded()
+    await expect(poles).toHaveValue('14')
+
+    const reference = page.getByTestId('motor-pole-reference')
+    await expect(reference).toBeVisible()
+    await reference.locator('summary').click()
+    await expect(reference).toContainText('12N14P')
+  })
+
   test('ESC & Protocol exposes Frame class/type for a Copter', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')

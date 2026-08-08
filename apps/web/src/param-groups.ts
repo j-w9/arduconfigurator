@@ -3,7 +3,13 @@
 // reviews, and stages drafts against — no React, no app state. (Tuning and OSD
 // have their own larger modules: tuning-params.ts and osd-params.ts.)
 
-export const OUTPUT_REVIEW_PARAM_IDS = ['MOT_PWM_TYPE', 'MOT_PWM_MIN', 'MOT_PWM_MAX', 'MOT_SPIN_ARM', 'MOT_SPIN_MIN', 'MOT_SPIN_MAX'] as const
+// SERVO_BLH_POLES rides along with the MOT_* set because it belongs to the same
+// decision as the ESC protocol: it is the divisor ArduPilot uses to turn ESC
+// eRPM telemetry into real RPM (RPM = eRPM * 200 / poles, AP_BLHeli.cpp:1544),
+// so anyone turning on bidirectional DShot here needs it right. Absent from the
+// list when the firmware was built without AP_BLHeli — the selector drops
+// parameter ids the vehicle never reported.
+export const OUTPUT_REVIEW_PARAM_IDS = ['MOT_PWM_TYPE', 'MOT_PWM_MIN', 'MOT_PWM_MAX', 'MOT_SPIN_ARM', 'MOT_SPIN_MIN', 'MOT_SPIN_MAX', 'SERVO_BLH_POLES'] as const
 // QuadPlane lift-motor ESC range — the Q_M_* mirror of the Copter MOT_* set above.
 export const QUADPLANE_ESC_PARAM_IDS = ['Q_M_PWM_TYPE', 'Q_M_PWM_MIN', 'Q_M_PWM_MAX', 'Q_M_SPIN_ARM', 'Q_M_SPIN_MIN', 'Q_M_SPIN_MAX'] as const
 export const OUTPUT_NOTIFICATION_PARAM_IDS = [
