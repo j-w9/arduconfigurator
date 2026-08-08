@@ -22,6 +22,7 @@ import {
   encodeDronecanFileReadResponse
 } from '../packages/protocol-mavlink/dist/index.js'
 import { createDronecanBusSimulator } from '../packages/protocol-mavlink/dist/mock-dronecan.js'
+import { dronecanBuildServiceFrames } from '../packages/protocol-mavlink/dist/index.js'
 
 const GCS_NODE_ID = 127
 
@@ -227,4 +228,80 @@ test('startFirmwareUpdate refuses a second concurrent update', async () => {
   assert.equal(after.nodeId, 50, 'the in-flight update must not be replaced by a concurrent request')
 
   service.destroy()
+})
+
+// ── False success ─────────────────────────────────────────────────────────
+//
+// "A chunk shorter than 256 bytes is the EOF handshake" is necessary but not
+// sufficient. A FIRST file.Read arriving at an offset past the end of the image
+// yields a ZERO-byte chunk, which satisfied that test: the transfer was marked
+// completed, bytesServed jumped to the full image size, and the operator was
+// told the node "will reboot into the new firmware" — while the node sat in its
+// bootloader having received nothing. A node left un-flashed but reported as
+// updated is how someone flies a board they believe carries new firmware.
+
+test('a first file.Read past the end of the image is reported as a failure, not a completed update', async () => {
+  const sim = createDronecanBusSimulator()
+  // The simulator drives node discovery, then is muted: the node must never
+  // perform a normal read, so the crafted request below is genuinely its first.
+  let deliverSimulatorFrames = true
+  const service = new CanBusService({
+    session: {
+      send: async (msg) => {
+        if (!deliverSimulatorFrames) return
+        for (const inbound of sim.handleOutbound(msg)) {
+          queueMicrotask(() => service.processCanFrame(inbound))
+        }
+      }
+    },
+    emit: () => {},
+    appendStatusEntry: () => {},
+    getTargetSystem: () => 1,
+    getTargetComponent: () => 1
+  })
+
+  try {
+    await service.start(1)
+    for (const frame of sim.broadcasts()) {
+      service.processCanFrame(frame)
+    }
+    const targetNode = 50
+    assert.ok(
+      service.getSnapshot().nodes.some((node) => node.nodeId === targetNode),
+      'expected the mock node to be discovered before updating it'
+    )
+    deliverSimulatorFrames = false
+    const image = Uint8Array.from({ length: 700 }, (_, i) => i & 0xff)
+    await service.startFirmwareUpdate(targetNode, 'periph-fw.bin', image)
+
+    // The node's very first read asks past the end without having read a byte.
+    for (const frame of dronecanBuildServiceFrames(
+      {
+        serviceTypeId: DRONECAN_FILE_READ_SERVICE_ID,
+        signature: DRONECAN_FILE_READ_SIGNATURE,
+        destinationNodeId: GCS_NODE_ID,
+        sourceNodeId: targetNode,
+        transferId: 1,
+        isRequest: true
+      },
+      encodeDronecanFileReadRequest({ offset: image.length + 1, path: 'periph-fw.bin' })
+    )) {
+      service.processCanFrame({
+        type: 'CAN_FRAME',
+        bus: 1,
+        id: frame.canId,
+        len: frame.data.length,
+        data: frame.data
+      })
+    }
+
+    const update = service.getSnapshot().firmwareUpdate
+    assert.ok(update, 'expected a firmware-update entry')
+    assert.notEqual(update.status, 'completed', 'nothing was flashed, so this must not read as success')
+    assert.equal(update.status, 'error')
+    assert.match(update.error ?? '', /without reading any of it/i)
+    assert.notEqual(update.bytesServed, image.length, 'progress must not jump to 100%')
+  } finally {
+    service.destroy()
+  }
 })

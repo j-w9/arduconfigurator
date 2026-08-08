@@ -3204,9 +3204,16 @@ export class ArduPilotConfiguratorRuntime {
     const current = this.liveVerification.escTelemetry
     const byNumber = new Map(current.escs.map((esc) => [esc.escNumber, esc]))
 
+    // ESC_TLM_MAV_OFS shifts which ESC each slot describes:
+    // AP_ESC_Telem.cpp computes `esc_id = (group*4 + slot) + esc_offset`, so a
+    // GCS that ignores it reports every channel under the wrong number. The
+    // parameter exists precisely so high-numbered motors can be displayed low,
+    // which means anyone who sets it is guaranteed to be mis-read without this.
+    const escOffset = Math.max(0, Math.round(this.parameters.get('ESC_TLM_MAV_OFS')?.value ?? 0))
+
     message.rpm.forEach((rpm, slot) => {
       const count = message.count[slot] ?? 0
-      const escNumber = message.groupStartIndex + slot + 1
+      const escNumber = message.groupStartIndex + slot + escOffset + 1
       // An ESC that has never delivered a telemetry packet is padding, not a
       // reading — unless we already know it, in which case leave what we have.
       if (count === 0 && !byNumber.has(escNumber)) {
@@ -3642,6 +3649,16 @@ export class ArduPilotConfiguratorRuntime {
     this.liveVerification = createIdleLiveVerification()
     this.liveTelemetryRequestsIssued = false
     this.lastHeartbeatAtMs = undefined
+    // Small cross-session leftovers, all of which quoted the PREVIOUS board in
+    // the NEXT board's session: commandAckLog is printed in command-timeout
+    // diagnostics, statusTextWaiters could be resolved by another board's
+    // STATUSTEXT inside their 5s window (reachable via the serial-passthrough
+    // flow, which disconnects by design), and a latched
+    // parameterTableGrewDuringSync forces every later stalled sync into a full
+    // re-stream instead of a targeted gap-fill.
+    this.commandAckLog.length = 0
+    this.statusTextWaiters.length = 0
+    this.parameterTableGrewDuringSync = false
     this.pendingSetMessageIntervalLabels.length = 0
     this.autopilotVersionRequested = false
     this.uartsFileRequested = false

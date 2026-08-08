@@ -16,7 +16,10 @@ export function SetupView(props: SetupViewProps) {
   return (
     <section className="grid one-up">
       <Panel
-        title={mode === 'wizard' ? 'Guided Setup' : 'Setup'}
+        // Matches the tab label and the workspace header, which both read
+        // "Status & Info". The panel underneath them saying "Setup" was a
+        // leftover from the view's old name.
+        title={mode === 'wizard' ? 'Guided Setup' : 'Status & Info'}
         subtitle={
           mode === 'wizard'
             ? 'Work one setup step at a time with a single active task, clear evidence, and explicit next actions.'

@@ -309,7 +309,17 @@ export class CanBusService {
       framesReceived: this.framesReceived,
       lastFrameAtMs: this.lastFrameAtMs,
       nodes: Array.from(this.nodes.values())
-        .map((node) => ({ ...node, parameters: node.parameters.map((entry) => ({ ...entry })) }))
+        .map(({ paramFetchRetries, ...node }) => ({
+          ...node,
+          parameters: node.parameters.map((entry) => ({ ...entry })),
+          // paramFetch is MUTATED IN PLACE as the parameter walk advances
+          // (nextIndex, status, error), so sharing the object by reference
+          // retroactively rewrote snapshots already handed to React — and any
+          // consumer memoizing on its identity saw an unchanged reference and
+          // never re-rendered, freezing the "Fetching parameters 12/48" readout
+          // at its first value.
+          paramFetch: node.paramFetch ? { ...node.paramFetch } : node.paramFetch
+        }))
         .sort((left, right) => left.nodeId - right.nodeId),
       escTelemetry: Array.from(this.escTelemetry.values())
         .map((esc) => ({ ...esc }))
@@ -803,13 +813,37 @@ export class CanBusService {
       update.readingStarted = true
       update.status = 'in_progress'
     }
-    update.bytesServed = Math.max(update.bytesServed, offset + chunk.length)
+    // Captured BEFORE the update below. `offset` is clamped to `size` further
+    // up, so a read past the end arrives here looking like a legitimate
+    // end-of-file seek — the only trustworthy evidence the node actually
+    // received bytes is how many we had served before this request.
+    const bytesServedBeforeThisRead = update.bytesServed
+    const nodeMadeProgress = bytesServedBeforeThisRead > 0 || size <= FIRMWARE_READ_CHUNK
+    // Only credit progress for a read that actually carried data, or for a
+    // legitimate end-of-file seek by a node that had already read some. A
+    // zero-byte read from a node that has read nothing must not advance the
+    // counter to 100% — the progress bar filling is what made the false success
+    // convincing.
+    if (chunk.length > 0 || nodeMadeProgress) {
+      update.bytesServed = Math.max(update.bytesServed, offset + chunk.length)
+    }
     update.updatedAtMs = Date.now()
 
     // A chunk shorter than the 256-byte capacity is the EOF handshake: the node
     // flashes it and boots the new app (AP_Bootloader/can.cpp). The whole image
     // has been served, so the transfer is done from the server's side.
-    if (chunk.length < FIRMWARE_READ_CHUNK) {
+    //
+    // "Shorter than a full chunk" is necessary but NOT sufficient, and treating
+    // it as sufficient reported success for a node that received nothing at
+    // all: a first Read arriving at an offset past the end yields a ZERO-byte
+    // chunk, which satisfied the test, set bytesServed to the full size, and
+    // told the operator "it will reboot into the new firmware" while the node
+    // sat in its bootloader with no image. Require that the read actually
+    // reaches the end of the image AND that the node made progress to get
+    // there — unless the whole image fits in one chunk, where a single read
+    // legitimately starts and ends the transfer.
+    const reachedEndOfImage = offset + chunk.length >= size
+    if (chunk.length < FIRMWARE_READ_CHUNK && reachedEndOfImage && nodeMadeProgress) {
       update.status = 'completed'
       update.bytesServed = size
       update.error = undefined
@@ -817,6 +851,13 @@ export class CanBusService {
         'info',
         `CAN: node ${sourceNodeId} finished reading the firmware image (${size} bytes); it will reboot into the new firmware.`
       )
+    } else if (chunk.length === 0 && !nodeMadeProgress) {
+      // The anomalous case above. Say so instead of claiming success — a node
+      // left un-flashed but reported as updated is how someone flies a board
+      // they believe carries new firmware.
+      update.status = 'error'
+      update.error = `Node ${sourceNodeId} asked for data past the end of the image without reading any of it. Nothing was flashed.`
+      this.deps.appendStatusEntry('error', `CAN: ${update.error}`)
     }
     this.deps.emit()
   }
