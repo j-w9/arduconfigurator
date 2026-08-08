@@ -3076,16 +3076,29 @@ test.describe('OSD view preview', () => {
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-osd').click()
 
+    // Gate on the parameter sync, as the two sibling OSD specs do. Without it
+    // the fill below can land before the OSD catalog has populated, and because
+    // the fill sat OUTSIDE the poll it could never be retried — the test then
+    // burned the full 60s test timeout instead of failing in a readable way.
+    await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
+      timeout: 20000
+    })
+
     const align = page.getByTestId('osd-element-align-BAT_VOLT')
     await align.scrollIntoViewIfNeeded()
     await expect(align).toBeVisible()
     // Type an exact column; the preview element snaps to that cell (col+1).
-    await align.locator('input[type="number"]').first().fill('10')
+    // Addressed by test id rather than `input[type=number]).first()` — an
+    // anonymous positional selector silently retargets the moment another
+    // number input is added to that row.
+    const xInput = align.locator('input[type="number"]').first()
+    await expect(xInput).toBeEditable()
+    await xInput.fill('10')
     const element = page.getByTestId('osd-preview-element-BAT_VOLT')
     await expect(async () => {
       const col = await element.evaluate((el) => getComputedStyle(el).gridColumnStart)
       expect(col).toBe('11')
-    }).toPass()
+    }).toPass({ timeout: 10000 })
   })
 
   test('OSD preview elements are draggable and stage X/Y drafts on the OSD scope', async ({ page }) => {

@@ -96,7 +96,11 @@ async function applySingleTuningChange(page: Page, value: string): Promise<void>
   await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Review/i }).click()
   await page.getByTestId('apply-tuning-changes-button').click()
   await expect(page.getByText('Verified 1 tuning change(s) from this view.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Pull Parameters' })).toBeVisible()
+  // Deliberately NOT asserting the Pull Parameters button is visible here. The
+  // app sets that follow-up state and then immediately auto-refreshes out of
+  // it, so the button is a transient — the pullParameters() helper above was
+  // already patched to tolerate its absence for exactly this reason, and this
+  // line was the one that got missed. The write is confirmed by the line above.
 }
 
 async function completeAccelerometerCalibrationFromSetup(page: Page): Promise<void> {
@@ -463,6 +467,14 @@ test.describe('browser configurator regression flows', () => {
     // dispatches the pointer events the slider now listens to (the same code path
     // a finger drag takes), so the value should climb off 0%. The old mouse-only
     // handler is what the field report couldn't move by finger.
+    //
+    // Scrolled into view and the box re-read immediately before the gesture:
+    // this test was intermittently flaky because it took the bounding box once
+    // and then issued four mouse calls against it, so any reflow in between
+    // (a notice appearing, a late telemetry-driven layout change) aimed the
+    // drag at stale coordinates and the slider never moved.
+    await track.scrollIntoViewIfNeeded()
+    await expect(readout).toHaveText('0%')
     const box = (await track.boundingBox())!
     await page.mouse.move(box.x + box.width / 2, box.y + box.height - 5)
     await page.mouse.down()

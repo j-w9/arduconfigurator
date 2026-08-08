@@ -67,7 +67,14 @@ export function isOutputAssignmentParamId(paramId: string): boolean {
   // All five live in the same edit scope so the Servos tab Apply
   // button commits a coherent batch when the user edits multiple
   // channels at once.
-  return /^SERVO([1-9]|1[0-6])_(FUNCTION|MIN|MAX|TRIM|REVERSED)$/.test(paramId)
+  //
+  // 1..32, matching DEFAULT_MAX_SERVO_OUTPUTS in
+  // packages/ardupilot-core/src/airframe-outputs.ts and the 32 channels
+  // buildServoChannelParameterDefinitions curates. The old ceiling of 16 meant
+  // SERVO17-32 never entered effectiveMotorOutputs — so motor test, the reorder
+  // dialog and guided identify could not see them — and edits to them were
+  // silently dropped from the Outputs Apply batch.
+  return /^SERVO([1-9]|[12][0-9]|3[0-2])_(FUNCTION|MIN|MAX|TRIM|REVERSED)$/.test(paramId)
 }
 
 export const isTuningReviewParamId = makeParamIdPredicate(TUNING_PARAM_IDS)
