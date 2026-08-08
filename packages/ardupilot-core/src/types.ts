@@ -112,10 +112,49 @@ export interface PreArmIssueState {
   lastSeenAtMs: number
 }
 
+/**
+ * The live pre-arm verdict carried by SYS_STATUS's MAV_SYS_STATUS_PREARM_CHECK
+ * bit (0x10000000), which is the ONLY signal that tells us pre-arm checks have
+ * started passing again. STATUSTEXT can't: ArduPilot re-emits a *failing*
+ * pre-arm reason at most every PREARM_DISPLAY_PERIOD (30 s,
+ * libraries/AP_Arming/AP_Arming.cpp) and emits nothing at all on the
+ * fail→pass transition, so a text-only view stays wrong for up to a minute.
+ *
+ * The bit is refreshed every time AP_Arming::update() re-runs the checks (1 Hz)
+ * via AP_Notify::flags.pre_arm_check, and GCS.cpp folds it into every
+ * SYS_STATUS (libraries/GCS_MAVLink/GCS.cpp, "give GCS status of prearm
+ * checks"). We already request SYS_STATUS at 2 Hz, so this resolves in ~0.5 s.
+ */
+export interface PreArmLiveCheckState {
+  /** MAV_SYS_STATUS_PREARM_CHECK set in `sensorsPresent` — firmware reports it at all. */
+  present: boolean
+  /**
+   * Set in `sensorsEnabled`, which ArduPilot only does when
+   * `AP::arming().get_enabled_checks()` is non-zero. With ARMING_CHECK=0 the
+   * health bit is meaningless, so the verdict is not usable.
+   */
+  enabled: boolean
+  /**
+   * Health bit — checks currently pass (or the vehicle is armed, which implies
+   * they did). Only meaningful when `present && enabled`.
+   */
+  passing: boolean
+  /** When the SYS_STATUS carrying this verdict arrived (ms since epoch). */
+  lastSeenAtMs: number
+}
+
 export interface PreArmStatusState {
   healthy: boolean
   issues: PreArmIssueState[]
   lastUpdatedAtMs?: number
+  /**
+   * Present only while a fresh SYS_STATUS verdict is in hand. When it is
+   * usable it — not the latched issue list — decides `healthy`, because the
+   * issue texts are a log of what was last *reported*, not of what is still
+   * true. Absent on firmware that doesn't report the bit, with checks
+   * disabled, or when SYS_STATUS has gone quiet.
+   */
+  liveCheck?: PreArmLiveCheckState
 }
 
 export interface ParameterState {

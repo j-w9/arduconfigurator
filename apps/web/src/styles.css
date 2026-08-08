@@ -3510,6 +3510,15 @@ body.is-status-dash-dragging {
   gap: 3px;
   font-size: 12px;
   color: var(--warning);
+  /* Reasons are FC-authored strings of unbounded length; wrapping (rather than
+     widening) is what keeps the 390px phone layout from overflowing. */
+  overflow-wrap: anywhere;
+}
+/* The age qualifier reads as secondary to the reason itself — same line, so it
+   is impossible to read the reason without it. */
+.setup-statistics__prearm-age {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .setup-gui-box__kv-row {

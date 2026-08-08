@@ -340,6 +340,7 @@ import { SetupWizardDetail } from './sections/SetupWizardDetail'
 import { SetupBenchActions } from './sections/SetupBenchActions'
 import { AdvancedSensorCard } from './views/AdvancedSensorCard'
 import { buildAdvancedSensorCards } from './view-models/advanced-sensor-cards'
+import { buildPreArmStatusViewModel } from './view-models/prearm-status'
 import { useStatusClock } from './hooks/use-status-clock'
 import {
   StatusDashboardProvider,
@@ -6791,6 +6792,17 @@ export function App() {
     nowMs: statusClockMs
   })
 
+  // Pre-arm box. Shares `statusClockMs` for the same reason the sensor cards do:
+  // the "reported Ns ago" labels have to keep ageing while no snapshot arrives,
+  // which is precisely the situation a latched pre-arm reason sits in — the
+  // vehicle re-sends a failing reason at most every 30s and never announces a
+  // pass at all, so the live SYS_STATUS bit (preArmStatus.liveCheck) is what
+  // actually decides the verdict here.
+  const preArmStatusViewModel = buildPreArmStatusViewModel({
+    preArmStatus: snapshot.preArmStatus,
+    nowMs: statusClockMs
+  })
+
   // ── Status & Info dashboard ─────────────────────────────────────────────
   //
   // Every status card is built here, exactly as it was built inline before,
@@ -6877,20 +6889,28 @@ export function App() {
       id: 'prearm',
       label: 'Pre-arm',
       node: (
-        <article className="setup-gui-box" data-testid="setup-prearm">
+        <article className="setup-gui-box" data-testid="setup-prearm" data-prearm-source={preArmStatusViewModel.source}>
           <div className="setup-gui-box__titlebar">
             <strong>Pre-arm</strong>
-            <StatusBadge tone={snapshot.preArmStatus.healthy ? 'success' : 'warning'}>
-              {snapshot.preArmStatus.healthy ? 'Clear' : `${snapshot.preArmStatus.issues.length} issues`}
+            <StatusBadge tone={preArmStatusViewModel.tone}>
+              <span data-testid="setup-prearm-badge">{preArmStatusViewModel.badgeLabel}</span>
             </StatusBadge>
           </div>
           <div className="setup-gui-box__body">
-            {snapshot.preArmStatus.healthy ? (
-              <p className="telemetry-note">No active pre-arm issues.</p>
-            ) : (
-              <ul className="setup-statistics__prearm-list">
-                {snapshot.preArmStatus.issues.map((issue, index) => (
-                  <li key={`prearm:${index}:${issue.text}`}>{issue.text}</li>
+            <p className="telemetry-note" data-testid="setup-prearm-summary">
+              {preArmStatusViewModel.summary}
+            </p>
+            {preArmStatusViewModel.issues.length > 0 && (
+              <ul className="setup-statistics__prearm-list" data-testid="setup-prearm-issues">
+                {preArmStatusViewModel.issues.map((issue, index) => (
+                  <li key={`prearm:${index}:${issue.text}`}>
+                    {issue.text}
+                    {/* The age is always rendered next to the reason: without it
+                        a minute-old latched line is indistinguishable from a
+                        reading taken just now, which is the misread that started
+                        this. */}
+                    <span className="setup-statistics__prearm-age"> ({issue.ageLabel})</span>
+                  </li>
                 ))}
               </ul>
             )}
@@ -7014,7 +7034,7 @@ export function App() {
               </div>
               <div className="setup-gui-box__kv-row"><span>Battery</span><strong>{formatBatteryTelemetry(snapshot)}</strong></div>
               <div className="setup-gui-box__kv-row"><span>RC link</span><strong>{formatRcLink(snapshot)}</strong></div>
-              <div className="setup-gui-box__kv-row"><span>Pre-arm</span><strong>{snapshot.preArmStatus.healthy ? 'Clear' : `${snapshot.preArmStatus.issues.length} issues`}</strong></div>
+              <div className="setup-gui-box__kv-row"><span>Pre-arm</span><strong>{preArmStatusViewModel.badgeLabel}</strong></div>
             </div>
           </div>
         </article>
@@ -9319,9 +9339,12 @@ export function App() {
             ? `${snapshot.parameterStats.downloaded} params synced`
             : formatParameterSync(snapshot)}
         </span>
-        {snapshot.preArmStatus.healthy
+        {/* Same view model as the Pre-arm box, so the footer can never disagree
+            with the card — and so a live failure we have no text for yet reads
+            as "Pre-arm blocked" rather than the old "0 pre-arm issues". */}
+        {preArmStatusViewModel.healthy
           ? <span className="app-status-bar__item is-ok"><span className="dot" />Pre-arm clear</span>
-          : <span className="app-status-bar__item is-warn"><span className="dot" />{snapshot.preArmStatus.issues.length} pre-arm issues</span>}
+          : <span className="app-status-bar__item is-warn"><span className="dot" />{preArmStatusViewModel.issues.length === 0 ? 'Pre-arm blocked' : `${preArmStatusViewModel.issues.length} pre-arm issues`}</span>}
         <span className="app-status-bar__spacer" />
         <span className="app-status-bar__item">
           {missionTitleForView(activeViewId)}

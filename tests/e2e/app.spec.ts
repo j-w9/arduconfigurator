@@ -557,6 +557,14 @@ test.describe('browser configurator regression flows', () => {
     // Pre-arm has its own box (above the lifetime stats) with the blocker list.
     await expect(page.getByTestId('setup-prearm')).toBeVisible()
     await expect(page.getByTestId('setup-prearm')).toContainText('Pre-arm')
+    // The verdict must come from the live SYS_STATUS pre-arm bit, not from
+    // "no PreArm: STATUSTEXT has been latched". A latch can only ever say what
+    // was last reported — ArduPilot never announces that checks started
+    // passing — so `source=live` is the assertion that keeps the box from
+    // regressing to a minute-stale reading.
+    await expect(page.getByTestId('setup-prearm')).toHaveAttribute('data-prearm-source', 'live')
+    await expect(page.getByTestId('setup-prearm-badge')).toHaveText('Clear')
+    await expect(page.getByTestId('setup-prearm-summary')).toContainText('checks passing')
     await expect(page.getByTestId('flight-deck-zero-heading-button')).toBeVisible()
     await page.getByTestId('flight-deck-zero-heading-button').click()
     await expect(page.getByText('Bench-forward zeroed')).toBeVisible()

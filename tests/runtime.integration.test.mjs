@@ -1082,9 +1082,155 @@ function createStatusTextSession() {
           timestampMs: Date.now()
         })
       )
+    },
+    /**
+     * Test hook: drive a SYS_STATUS carrying a pre-arm verdict. The bitmask
+     * fields are all-or-nothing per flag, so the three PREARM_CHECK bits are
+     * the only ones this helper varies.
+     */
+    pushSysStatusPreArm({ present = true, enabled = true, passing = true } = {}) {
+      const PREARM = 0x10000000
+      messageListeners.forEach((listener) =>
+        listener({
+          header: { systemId: 1, componentId: 1, sequence: 0 },
+          message: {
+            type: 'SYS_STATUS',
+            sensorsPresent: present ? PREARM : 0,
+            sensorsEnabled: enabled ? PREARM : 0,
+            sensorsHealth: passing ? PREARM : 0,
+            load: 0,
+            voltageBatteryMv: 0xffff,
+            currentBatteryCa: -1,
+            batteryRemaining: -1,
+            dropRateComm: 0,
+            errorsComm: 0,
+            errorsCount1: 0,
+            errorsCount2: 0,
+            errorsCount3: 0,
+            errorsCount4: 0,
+            sensorsPresentExtended: 0,
+            sensorsEnabledExtended: 0,
+            sensorsHealthExtended: 0
+          },
+          timestampMs: Date.now()
+        })
+      )
     }
   }
 }
+
+// ── Pre-arm staleness ─────────────────────────────────────────────────────
+//
+// Reported by an operator: the Pre-arm box kept showing a failure for over a
+// minute after the condition had cleared. Root cause was that the box was built
+// purely from latched `PreArm:` STATUSTEXTs, and ArduPilot re-emits a *failing*
+// reason at most every PREARM_DISPLAY_PERIOD (30s,
+// libraries/AP_Arming/AP_Arming.cpp) while emitting nothing at all when checks
+// start passing — so the only way a latch could clear was its own 60s TTL.
+//
+// SYS_STATUS's MAV_SYS_STATUS_PREARM_CHECK bit is the live verdict
+// (libraries/GCS_MAVLink/GCS.cpp, fed by the 1 Hz AP_Arming::update()), and we
+// already request SYS_STATUS at 2 Hz. These tests drive a synthetic timeline of
+// the two message types to pin the interaction.
+
+test('prearm: a passing SYS_STATUS verdict clears a latched PreArm STATUSTEXT immediately', async () => {
+  const session = createStatusTextSession()
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata)
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+
+    session.pushStatusText(4, 'PreArm: Compass not calibrated')
+    assert.equal(runtime.getSnapshot().preArmStatus.healthy, false)
+    assert.equal(runtime.getSnapshot().preArmStatus.issues.length, 1)
+
+    // One SYS_STATUS later — ~0.5s on a real link, not the 60s TTL.
+    session.pushSysStatusPreArm({ passing: true })
+    const snap = runtime.getSnapshot()
+    assert.equal(snap.preArmStatus.healthy, true)
+    assert.deepEqual(snap.preArmStatus.issues, [])
+    assert.equal(snap.preArmStatus.liveCheck?.passing, true)
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('prearm: a failing SYS_STATUS verdict blocks even before any reason text arrives', async () => {
+  const session = createStatusTextSession()
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata)
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+
+    session.pushSysStatusPreArm({ passing: false })
+    const snap = runtime.getSnapshot()
+    // Pre-fix this read as "healthy, no issues" for up to 30s while the vehicle
+    // was in fact refusing to arm.
+    assert.equal(snap.preArmStatus.healthy, false)
+    assert.deepEqual(snap.preArmStatus.issues, [])
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('prearm: with ARMING_CHECK disabled the health bit is ignored and the latch still rules', async () => {
+  const session = createStatusTextSession()
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata)
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+
+    session.pushStatusText(4, 'PreArm: Throttle below failsafe')
+    // enabled=false is what ArduPilot sends when get_enabled_checks() is 0; the
+    // health bit is then meaningless and must not clear anything.
+    session.pushSysStatusPreArm({ present: true, enabled: false, passing: false })
+    const snap = runtime.getSnapshot()
+    assert.equal(snap.preArmStatus.healthy, false)
+    assert.equal(snap.preArmStatus.issues.length, 1)
+    assert.equal(snap.preArmStatus.liveCheck?.enabled, false)
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('prearm: firmware that never reports the bit keeps the pre-fix latched behaviour', async () => {
+  const session = createStatusTextSession()
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata)
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+
+    session.pushStatusText(4, 'PreArm: GPS 1 failing')
+    session.pushSysStatusPreArm({ present: false, enabled: false, passing: false })
+    const snap = runtime.getSnapshot()
+    assert.equal(snap.preArmStatus.healthy, false)
+    assert.equal(snap.preArmStatus.issues.length, 1)
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('prearm: a disconnect drops the live verdict so it cannot leak into the next session', async () => {
+  const session = createStatusTextSession()
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata)
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+    session.pushSysStatusPreArm({ passing: false })
+    assert.equal(runtime.getSnapshot().preArmStatus.healthy, false)
+
+    await runtime.disconnect()
+    const snap = runtime.getSnapshot()
+    assert.equal(snap.preArmStatus.liveCheck, undefined)
+    assert.equal(snap.preArmStatus.healthy, true)
+  } finally {
+    runtime.destroy()
+  }
+})
 
 test('audit-32: legacy single-frame STATUSTEXT (statusId=0) emits unchanged', async () => {
   const session = createStatusTextSession()

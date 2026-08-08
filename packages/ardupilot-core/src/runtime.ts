@@ -45,6 +45,7 @@ import type {
   GuidedActionState,
   MotorTestRequest,
   PreArmIssueState,
+  PreArmLiveCheckState,
   PreArmStatusState,
   ParameterBatchWriteResult,
   ParameterBatchWriteProgress,
@@ -251,6 +252,17 @@ const MAX_MAVFTP_LOG_BYTES = 512 * 1024 * 1024
 // FC still refused to arm. Hold each reason long enough to survive the gap (a
 // still-failing check is re-sent and refreshed; a resolved one ages out).
 const PRE_ARM_ISSUE_TTL_MS = 60000
+// MAV_SYS_STATUS_PREARM_CHECK (common.xml, value 268435456). ArduPilot sets it
+// present whenever arming is compiled in, enabled when ARMING_CHECK != 0, and
+// healthy when the last 1 Hz pre-arm run passed or the vehicle is armed
+// (libraries/GCS_MAVLink/GCS.cpp). This is the live fail→pass signal that
+// STATUSTEXT does not provide.
+const MAV_SYS_STATUS_PREARM_CHECK = 0x10000000
+// SYS_STATUS is requested at 2 Hz, so four missed frames means the stream is
+// genuinely gone (link loss, a GCS that re-rated the stream) rather than jitter.
+// Past that we stop claiming a live verdict and fall back to the latched
+// reasons — an aged truth beats a confidently wrong "Clear".
+const PRE_ARM_LIVE_CHECK_TTL_MS = 5000
 const STATUS_TEXT_HISTORY_LIMIT = 500
 // STATUSTEXT v2 chunking parameters. ArduPilot splits messages
 // of >50 chars into chunks of EXACTLY 50 chars (the legacy v1 payload
@@ -467,6 +479,9 @@ export class ArduPilotConfiguratorRuntime {
   // and re-dropping the same frames under a lossy transport.
   private readonly receivedParameterIndices = new Set<number>()
   private readonly preArmIssues = new Map<string, PreArmIssueState>()
+  // Last SYS_STATUS pre-arm verdict. Undefined until the first SYS_STATUS of
+  // the session arrives; freshness is judged at read time, not here.
+  private preArmLiveCheck?: PreArmLiveCheckState
   private readonly statusTexts: StatusTextEntry[] = []
   // One-shot waiters for a specific STATUSTEXT substring (e.g. "Passthru
   // enabled"), resolved by emitStatusText when a matching message arrives.
@@ -2844,6 +2859,31 @@ export class ArduPilotConfiguratorRuntime {
       lastSeenAtMs: Date.now()
     }
     this.liveVerification.satisfiedSignals = recomputeSatisfiedSignals(this.liveVerification)
+    this.processSysStatusPreArmCheck(message, now)
+  }
+
+  /**
+   * Fold the live pre-arm verdict out of SYS_STATUS.
+   *
+   * The bitwise-AND uses >>> 0 comparisons because 0x10000000 is safely inside
+   * int32 but the neighbouring bits are not — reading the raw field as a signed
+   * number is fine here, the mask is positive either way.
+   */
+  private processSysStatusPreArmCheck(message: SysStatusMessage, nowMs: number): void {
+    const present = (message.sensorsPresent & MAV_SYS_STATUS_PREARM_CHECK) !== 0
+    const enabled = (message.sensorsEnabled & MAV_SYS_STATUS_PREARM_CHECK) !== 0
+    const passing = (message.sensorsHealth & MAV_SYS_STATUS_PREARM_CHECK) !== 0
+    this.preArmLiveCheck = { present, enabled, passing, lastSeenAtMs: nowMs }
+
+    // A usable "passing" verdict is positive proof that every latched reason is
+    // stale: the FC re-ran the whole check set within the last second and it
+    // came back clean. Drop them rather than leaving contradictory text under a
+    // green badge — this is also what makes the arm-failure hint below stop
+    // naming blockers that no longer exist.
+    if (present && enabled && passing && this.preArmIssues.size > 0) {
+      this.preArmIssues.clear()
+      this.clearPreArmExpiryTimer()
+    }
   }
 
   private processCommandAck(message: CommandAckMessage, systemId: number, componentId: number): void {
@@ -3139,6 +3179,9 @@ export class ArduPilotConfiguratorRuntime {
     this.autopilotVersionRequested = false
     this.uartsFileRequested = false
     this.preArmIssues.clear()
+    // A reconnect/reboot is a definite event: the previous vehicle's verdict
+    // must not survive into a session that has not reported one yet.
+    this.preArmLiveCheck = undefined
     this.statusTexts.splice(0)
     // Drop any in-flight chunk buffers so a partial STATUSTEXT from this
     // session can't fuse with one from the next under a shared statusId.
@@ -3647,11 +3690,32 @@ export class ArduPilotConfiguratorRuntime {
   private buildPreArmStatus(): PreArmStatusState {
     this.prunePreArmIssues()
     const issues = [...this.preArmIssues.values()].sort((left, right) => right.lastSeenAtMs - left.lastSeenAtMs)
+    const liveCheck = this.resolveFreshPreArmLiveCheck()
+    // Order matters: the live bit wins whenever it is usable, in BOTH
+    // directions. It clears a stale latch within one SYS_STATUS period, and it
+    // also reports a failure we have no text for yet (the reason follows up to
+    // 30 s later) instead of showing a reassuring empty box.
+    const liveVerdictUsable = liveCheck !== undefined && liveCheck.present && liveCheck.enabled
     return {
-      healthy: issues.length === 0,
+      healthy: liveVerdictUsable ? liveCheck.passing : issues.length === 0,
       issues,
-      lastUpdatedAtMs: issues[0]?.lastSeenAtMs
+      lastUpdatedAtMs: issues[0]?.lastSeenAtMs,
+      liveCheck
     }
+  }
+
+  /**
+   * The stored verdict, or undefined once SYS_STATUS has gone quiet long enough
+   * that we would be quoting a reading we can no longer stand behind.
+   */
+  private resolveFreshPreArmLiveCheck(referenceTimeMs = Date.now()): PreArmLiveCheckState | undefined {
+    if (!this.preArmLiveCheck) {
+      return undefined
+    }
+    if (referenceTimeMs - this.preArmLiveCheck.lastSeenAtMs > PRE_ARM_LIVE_CHECK_TTL_MS) {
+      return undefined
+    }
+    return { ...this.preArmLiveCheck }
   }
 
   private prunePreArmIssues(referenceTimeMs = Date.now()): boolean {
