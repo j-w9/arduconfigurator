@@ -22,6 +22,11 @@ export {
 } from './dfu.js'
 export { BOARD_NAMES_BY_ID, formatBoardId } from './board-names.js'
 export {
+  describeBootloaderImage,
+  shortImageHash,
+  type BootloaderImageIdentity
+} from './bootloader-image.js'
+export {
   BootloaderClient,
   chipEraseTimeoutMs,
   type BootloaderSerial,

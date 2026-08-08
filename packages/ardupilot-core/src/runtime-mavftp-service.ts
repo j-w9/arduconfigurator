@@ -281,8 +281,40 @@ export class MavftpService {
     return new TextDecoder().decode(bytes).replace(/\0+$/, '')
   }
 
-  async readRemoteFile(path: string, options: { timeoutMs?: number } = {}): Promise<Uint8Array> {
-    const { timeoutMs } = options
+  /**
+   * Read only the first `byteLimit` bytes of a remote file.
+   *
+   * Exists for ArduPilot's `@SYS` region files, whose OPEN size cannot be
+   * trusted: AP_Filesystem_Sys.cpp stat() hands back a flat placeholder for
+   * every `@SYS` entry except storage.bin/crash_dump.bin, while the file
+   * itself may be megabytes long (`@SYS/flash.bin` spans the whole program
+   * flash). Reading such a file "to EOF" would pull far more off the link than
+   * the caller wants, so a caller that only needs a known-length prefix says
+   * so and pays for exactly that.
+   *
+   * Deliberately the sequential READ_FILE loop rather than BURST_READ_FILE:
+   * ArduPilot's burst server streams up to 2000 packets per request and cannot
+   * be stopped early, so bursting a prefix of a large region would put
+   * hundreds of KB on the wire to fetch tens. It also keeps this read off the
+   * single-slot burst path, so it can never make an operator's own log
+   * download fail with "a burst download is already in progress".
+   */
+  async readRemoteFilePrefix(
+    path: string,
+    byteLimit: number,
+    options: { timeoutMs?: number } = {}
+  ): Promise<Uint8Array> {
+    if (!Number.isFinite(byteLimit) || byteLimit <= 0) {
+      return new Uint8Array(0)
+    }
+    return this.readRemoteFile(path, { ...options, byteLimit })
+  }
+
+  async readRemoteFile(
+    path: string,
+    options: { timeoutMs?: number; byteLimit?: number } = {}
+  ): Promise<Uint8Array> {
+    const { timeoutMs, byteLimit } = options
     const normalizedPath = normalizeMavftpPath(path)
     const pathBytes = new TextEncoder().encode(normalizedPath)
     await this.clearStaleSessionsOnce()
@@ -308,10 +340,17 @@ export class MavftpService {
 
     try {
       for (;;) {
+        // A caller-supplied limit outranks the declared size in BOTH
+        // directions: it stops a read early on a file the FC over-reports (a
+        // `@SYS` region), and it is the only stopping rule at all when the FC
+        // reports no size.
+        if (byteLimit !== undefined && offset >= byteLimit) {
+          break
+        }
         // A known nonzero size lets a normal file stop without a
         // trailing EOF round-trip; @SYS files (size 0) never take this
         // branch and are bounded only by the EOF NAK + the safety cap.
-        if (declaredSize > 0 && offset >= declaredSize) {
+        if (byteLimit === undefined && declaredSize > 0 && offset >= declaredSize) {
           break
         }
         if (offset >= MAX_MAVFTP_FILE_BYTES) {
@@ -319,9 +358,17 @@ export class MavftpService {
             `MAVFTP read exceeded the ${MAX_MAVFTP_FILE_BYTES}-byte cap (no EOF from the vehicle).`
           )
         }
+        // Remaining bytes we are still willing to accept, so the last chunk of
+        // a bounded read never overshoots the limit the caller asked for.
+        const remaining =
+          byteLimit !== undefined
+            ? byteLimit - offset
+            : declaredSize > 0
+              ? declaredSize - offset
+              : undefined
         const chunkSize =
-          declaredSize > 0
-            ? Math.min(MAVFTP_TRANSFER_CHUNK_SIZE, declaredSize - offset)
+          remaining !== undefined
+            ? Math.min(MAVFTP_TRANSFER_CHUNK_SIZE, remaining)
             : MAVFTP_TRANSFER_CHUNK_SIZE
         let response: MavftpPayload
         try {

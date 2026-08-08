@@ -83,6 +83,105 @@ test('true SITL supports verified parameter write/readback', { timeout: 240000 }
   }
 })
 
+// Exercises the bootloader-image read against REAL ArduPilot rather than the
+// mock, which is the only way to prove what the vehicle actually serves.
+//
+// The expected outcome here is ABSENCE, and that is the point. SITL is not
+// ChibiOS, so it has neither file:
+//   - `@ROMFS/bootloader.bin` is added to ROMFS only by chibios_hwdef.py,
+//     alongside the AP_BOOTLOADER_FLASHING_ENABLED define.
+//   - `@SYS/flash.bin` is gated on AP_FILESYSTEM_SYS_FLASH_ENABLED, which is
+//     `CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS` (AP_Filesystem_config.h).
+// So this rung proves the degradation path, not the happy path: a real
+// autopilot that does not serve these files must produce a clean per-side
+// reason and must NOT throw, because the Update Bootloader action has to keep
+// behaving exactly as it did before this read existed.
+test('true SITL: reading the bootloader images degrades cleanly when the board serves neither', { timeout: 240000 }, async (t) => {
+  const repoPath = process.env.ARDUPILOT_REPO_PATH
+  const launchMode = process.env.ARDUPILOT_SITL_LAUNCH_MODE ?? 'direct-binary'
+  const attachHost = process.env.ARDUPILOT_SITL_HOST
+  const attachTransport =
+    process.env.ARDUPILOT_SITL_TRANSPORT ?? (repoPath && launchMode === 'sim-vehicle' ? 'udp' : 'tcp')
+  const attachPort = Number(process.env.ARDUPILOT_SITL_PORT ?? (attachTransport === 'udp' ? '14550' : '5760'))
+  const launchWaitPort = Number(process.env.ARDUPILOT_SITL_LAUNCH_WAIT_PORT ?? '5760')
+
+  if (!repoPath && !attachHost) {
+    t.skip('Set ARDUPILOT_REPO_PATH to launch SITL, or ARDUPILOT_SITL_HOST/PORT to attach.')
+    return
+  }
+
+  let sitl
+  if (repoPath) {
+    sitl =
+      launchMode === 'sim-vehicle'
+        ? await launchArduPilotSITL({
+            repoPath,
+            pythonExecutable: process.env.ARDUPILOT_SITL_PYTHON,
+            vehicle: process.env.ARDUPILOT_SITL_VEHICLE ?? 'ArduCopter',
+            frame: process.env.ARDUPILOT_SITL_FRAME ?? 'quad',
+            port: launchWaitPort,
+            launchTimeoutMs: Number(process.env.ARDUPILOT_SITL_LAUNCH_TIMEOUT_MS ?? '120000')
+          })
+        : await launchArduPilotDirectBinary({
+            repoPath,
+            vehicle: process.env.ARDUPILOT_SITL_VEHICLE ?? 'ArduCopter',
+            frame: process.env.ARDUPILOT_SITL_FRAME ?? 'quad',
+            port: launchWaitPort,
+            launchTimeoutMs: Number(process.env.ARDUPILOT_SITL_LAUNCH_TIMEOUT_MS ?? '120000')
+          })
+  }
+
+  const transport =
+    attachTransport === 'udp'
+      ? new UdpTransport('sitl-bootloader-udp', {
+          bindHost: attachHost ?? '127.0.0.1',
+          bindPort: attachPort
+        })
+      : new TcpTransport('sitl-bootloader-tcp', {
+          host: attachHost ?? '127.0.0.1',
+          port: attachPort,
+          connectTimeoutMs: 10000
+        })
+  const session = new MavlinkSession(transport, new MavlinkV2Codec())
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {})
+
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 10000 })
+
+    // Must resolve, never reject, whatever the board does or does not serve.
+    const pair = await runtime.readBootloaderImages()
+
+    if (pair.embedded) {
+      // A ChibiOS-like build that DOES carry the image: then the installed
+      // side must be the same length, or an explicit reason.
+      t.diagnostic(`This target served an embedded bootloader of ${pair.embedded.byteLength} bytes.`)
+      assert.ok(
+        pair.installed ? pair.installed.byteLength === pair.embedded.byteLength : Boolean(pair.installedError),
+        'The installed side must either match the incoming length or explain why it is missing.'
+      )
+    } else {
+      assert.ok(
+        typeof pair.embeddedError === 'string' && pair.embeddedError.length > 0,
+        'A board without an embedded bootloader must say why, not fail silently.'
+      )
+      // Without an incoming length there is no defensible prefix of the flash
+      // region, so the installed side must be neither read nor claimed.
+      assert.equal(pair.installed, undefined)
+      assert.equal(pair.installedError, undefined)
+      t.diagnostic(`SITL reported: ${pair.embeddedError}`)
+    }
+
+    // The link must still be healthy afterwards — a failed MAVFTP read must
+    // not leave a session wedged or the runtime disconnected.
+    assert.equal(runtime.getSnapshot().connection.kind, 'connected')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+    await sitl?.stop().catch(() => {})
+  }
+})
+
 // Opt-in (ARDUPILOT_SITL_PLANE=1) because it forces an ArduPlane binary
 // build, which is heavy and irrelevant to the default Copter SITL run.
 // Validates the firmware-aware path against real ArduPlane firmware:

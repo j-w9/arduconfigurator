@@ -84,10 +84,17 @@ export interface BoardIdentity {
    * reports one. Undefined on boards built without PROTO_GET_VERSION — that is
    * a normal outcome for smaller-flash targets, not an error.
    *
-   * This is the ONLY way to learn which bootloader is installed: running
-   * firmware never knows. AP_HAL_ChibiOS/Util.cpp flash_bootloader() only
-   * memcmps the whole image against the copy in its own ROMFS, so it can tell
-   * "same as mine" from "different" but can never name what is there.
+   * This is the only way to learn the installed bootloader's NAME while the
+   * board is in bootloader mode: running firmware never knows it.
+   * AP_HAL_ChibiOS/Util.cpp flash_bootloader() only memcmps the whole image
+   * against the copy in its own ROMFS, so it can tell "same as mine" from
+   * "different" but can never name what is there.
+   *
+   * The installed bootloader's BYTES are separately readable in normal
+   * operation over MAVFTP — `@SYS/flash.bin` maps flash from 0x08000000, which
+   * is exactly the region flash_bootloader() compares against. See
+   * ArduPilotConfiguratorRuntime.readBootloaderImages(); that path yields a
+   * digest, not a version string.
    */
   bootloaderVersion?: string
 }
