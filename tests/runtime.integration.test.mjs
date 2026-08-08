@@ -1809,7 +1809,10 @@ test('stopMotorTest aborts an in-flight test with a zero-throttle command and cl
     await runtime.runMotorTest({ outputChannel: 1, throttlePercent: 5, durationSeconds: 2 })
     assert.equal(runtime.getSnapshot().motorTest.status, 'running')
 
-    await runtime.stopMotorTest()
+    const stopResult = await runtime.stopMotorTest()
+    // The guided-identify advance chains the NEXT motor's start behind this
+    // result, so the ACK evidence must survive the call, not just the summary.
+    assert.deepEqual(stopResult, { sent: true, acknowledged: true })
 
     const motorTestCommands = sentMessages.filter(
       (message) => message.type === 'COMMAND_LONG' && message.command === MAV_CMD.DO_MOTOR_TEST
@@ -1825,6 +1828,37 @@ test('stopMotorTest aborts an in-flight test with a zero-throttle command and cl
     // 2s window the state must NOT flip to 'succeeded'.
     await sleep(2400)
     assert.equal(runtime.getSnapshot().motorTest.status, 'failed', 'no late completion-timer flip after a stop')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('stopMotorTest with nothing running sends no command and still reports a settled state', async () => {
+  // The guided-identify advance calls stop unconditionally on every pick; when
+  // the FC's own per-motor timeout already ended the spin there is nothing to
+  // abort, and that must NOT read as an unproven stop (which would refuse to
+  // start the next motor) nor put a stray DO_MOTOR_TEST on the wire.
+  const sentMessages = []
+  const runtime = new ArduPilotConfiguratorRuntime(
+    createMotorTestAckSession(
+      { FLTMODE1: 0, FRAME_CLASS: 1, FRAME_TYPE: 12, SERVO1_FUNCTION: 33, SERVO2_FUNCTION: 34, SERVO3_FUNCTION: 35, SERVO4_FUNCTION: 36 },
+      sentMessages
+    ),
+    arducopterMetadata
+  )
+
+  try {
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 200 })
+    await runtime.waitForParameterSync({ timeoutMs: 200 })
+
+    const stopResult = await runtime.stopMotorTest()
+    assert.deepEqual(stopResult, { sent: false, acknowledged: true })
+    const motorTestCommands = sentMessages.filter(
+      (message) => message.type === 'COMMAND_LONG' && message.command === MAV_CMD.DO_MOTOR_TEST
+    )
+    assert.equal(motorTestCommands.length, 0, 'no DO_MOTOR_TEST is sent when no test is active')
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()

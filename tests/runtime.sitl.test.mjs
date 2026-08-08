@@ -401,3 +401,176 @@ test('true SITL: the rangefinder + optical-flow streams are accepted and arrive'
     await sitl?.stop().catch(() => {})
   }
 })
+
+/**
+ * SERVO_OUTPUT_RAW (msgid 36) is not in the configurator's codec, so this
+ * test scans the raw transport frames for it. Enough of the MAVLink v2 frame
+ * to find one message: STX 0xFD, len@1, incompat@2, msgid (3 bytes LE) @7,
+ * payload @10. A wrongly-synced start byte is harmless here — it can only
+ * fail to produce a msgid-36 reading, never fabricate one, because the
+ * payload we read is the one the length field delimited.
+ */
+function observeServoOutputRaw(transport, onSample) {
+  let buffer = new Uint8Array(0)
+  return transport.onFrame((chunk) => {
+    const merged = new Uint8Array(buffer.length + chunk.length)
+    merged.set(buffer)
+    merged.set(chunk, buffer.length)
+    buffer = merged
+
+    let index = 0
+    while (index < buffer.length) {
+      if (buffer[index] !== 0xfd) {
+        index += 1
+        continue
+      }
+      if (buffer.length - index < 12) {
+        break // partial header — wait for more bytes
+      }
+      const payloadLength = buffer[index + 1]
+      const signed = (buffer[index + 2] & 0x01) === 0x01
+      const frameLength = 12 + payloadLength + (signed ? 13 : 0)
+      if (buffer.length - index < frameLength) {
+        break
+      }
+      const messageId = buffer[index + 7] | (buffer[index + 8] << 8) | (buffer[index + 9] << 16)
+      // MAVLink v2 truncates trailing zero bytes, and a quad leaves servo5+
+      // at zero — SITL's SERVO_OUTPUT_RAW arrives as just 12 bytes
+      // (time_usec + servo1..4), which is exactly what this reads.
+      if (messageId === 36 && payloadLength >= 12) {
+        const payload = buffer.subarray(index + 10, index + 10 + payloadLength)
+        const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+        onSample({
+          atMs: Date.now(),
+          // servo1_raw..servo8_raw are uint16 LE starting at offset 4.
+          servos: [0, 1, 2, 3].map((slot) => view.getUint16(4 + slot * 2, true))
+        })
+      }
+      index += frameLength
+    }
+    buffer = buffer.subarray(index)
+  })
+}
+
+// Rung 4 for the guided-identify "advance on selection" change. The mock
+// runtime can prove the commands are SENT in order; only a real autopilot can
+// prove the STOP takes effect on the outputs before the next motor starts.
+// So: spin OUT1, abort it mid-window with the zero-throttle DO_MOTOR_TEST,
+// watch OUT1 fall back to idle, then start OUT2 and assert OUT1 was already
+// idle before OUT2 ever rose.
+test('true SITL: a zero-throttle abort drops the spinning output before the next motor starts', { timeout: 240000 }, async (t) => {
+  const repoPath = process.env.ARDUPILOT_REPO_PATH
+  const attachHost = process.env.ARDUPILOT_SITL_HOST
+  const attachPort = Number(process.env.ARDUPILOT_SITL_PORT ?? '5760')
+  const launchWaitPort = Number(process.env.ARDUPILOT_SITL_LAUNCH_WAIT_PORT ?? '5760')
+
+  if (!repoPath && !attachHost) {
+    t.skip('Set ARDUPILOT_REPO_PATH to launch SITL, or ARDUPILOT_SITL_HOST/PORT to attach to an existing endpoint.')
+    return
+  }
+
+  let sitl
+  if (repoPath) {
+    sitl = await launchArduPilotDirectBinary({
+      repoPath,
+      vehicle: process.env.ARDUPILOT_SITL_VEHICLE ?? 'ArduCopter',
+      frame: process.env.ARDUPILOT_SITL_FRAME ?? 'quad',
+      port: launchWaitPort,
+      launchTimeoutMs: Number(process.env.ARDUPILOT_SITL_LAUNCH_TIMEOUT_MS ?? '120000')
+    })
+  }
+
+  const transport = new TcpTransport('sitl-motor-advance-tcp', {
+    host: attachHost ?? '127.0.0.1',
+    port: attachPort,
+    connectTimeoutMs: 10000
+  })
+  const session = new MavlinkSession(transport, new MavlinkV2Codec())
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {})
+
+  const samples = []
+  let unsubscribe
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 20000 })
+    await runtime.requestParameterList({ timeoutMs: 20000 })
+    await runtime.waitForParameterSync({ timeoutMs: 60000 })
+
+    unsubscribe = observeServoOutputRaw(transport, (sample) => samples.push(sample))
+    // 20 Hz, so the gap between "OUT1 still high" and "OUT2 high" is measured
+    // finely enough to be meaningful.
+    await runtime.requestMessageInterval(36, 50000)
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+
+    const baseline = samples.at(-1)
+    assert.ok(baseline, 'No SERVO_OUTPUT_RAW arrived from SITL.')
+    const idleOut1 = baseline.servos[0]
+    const idleOut2 = baseline.servos[1]
+    // Comfortably above PWM jitter, far below the ~1060 µs a 6% test drives.
+    const spinThreshold = 25
+    const isHigh = (sample, slot, idle) => sample.servos[slot] > idle + spinThreshold
+
+    // A deliberately LONG window: if the abort did not take effect, OUT1 would
+    // still be spinning when OUT2 starts, and the ordering assertion below
+    // would fail rather than being masked by a short natural timeout.
+    const durationSeconds = 5
+    await runtime.runMotorTest({ outputChannel: 1, throttlePercent: 6, durationSeconds })
+
+    const waitFor = async (predicate, timeoutMs, description) => {
+      const deadline = Date.now() + timeoutMs
+      while (Date.now() < deadline) {
+        const sample = samples.at(-1)
+        if (sample && predicate(sample)) {
+          return sample
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
+      throw new Error(`Timed out waiting for ${description}.`)
+    }
+
+    const spinning = await waitFor((sample) => isHigh(sample, 0, idleOut1), 5000, 'OUT1 to spin up')
+    t.diagnostic(`OUT1 spun up to ${spinning.servos[0]} µs (idle ${idleOut1} µs).`)
+
+    const stopRequestedAtMs = Date.now()
+    const stopResult = await runtime.stopMotorTest()
+    assert.deepEqual(stopResult, { sent: true, acknowledged: true }, 'SITL did not ACK the zero-throttle abort.')
+    const stoppedAtMs = Date.now()
+
+    const idled = await waitFor((sample) => !isHigh(sample, 0, idleOut1), 3000, 'OUT1 to fall back to idle')
+    const stopLatencyMs = idled.atMs - stopRequestedAtMs
+    t.diagnostic(
+      `OUT1 back to ${idled.servos[0]} µs ${stopLatencyMs} ms after the abort was requested (ACK in ${stoppedAtMs - stopRequestedAtMs} ms).`
+    )
+    // The whole point of the change: the operator does not wait out the window.
+    assert.ok(
+      stopLatencyMs < durationSeconds * 1000 * 0.5,
+      `The abort must drop the output well inside the ${durationSeconds}s window; took ${stopLatencyMs} ms.`
+    )
+
+    // Now the next motor, exactly as the identify advance does it.
+    const nextStartedAtMs = Date.now()
+    await runtime.runMotorTest({ outputChannel: 2, throttlePercent: 6, durationSeconds: 2 })
+    const nextSpinning = await waitFor((sample) => isHigh(sample, 1, idleOut2), 5000, 'OUT2 to spin up')
+    t.diagnostic(`OUT2 spun up to ${nextSpinning.servos[1]} µs ${nextSpinning.atMs - nextStartedAtMs} ms after the start.`)
+
+    // The ordering proof: the last moment OUT1 was above idle is strictly
+    // before the first moment OUT2 was, and the two never overlapped.
+    const lastOut1HighMs = samples.filter((sample) => isHigh(sample, 0, idleOut1)).at(-1)?.atMs
+    const firstOut2HighMs = samples.find((sample) => isHigh(sample, 1, idleOut2))?.atMs
+    assert.ok(lastOut1HighMs !== undefined && firstOut2HighMs !== undefined)
+    assert.ok(
+      lastOut1HighMs < firstOut2HighMs,
+      `OUT1 was still above idle after OUT2 started (last OUT1 high ${lastOut1HighMs}, first OUT2 high ${firstOut2HighMs}).`
+    )
+    const overlapping = samples.filter((sample) => isHigh(sample, 0, idleOut1) && isHigh(sample, 1, idleOut2))
+    assert.deepEqual(overlapping, [], 'OUT1 and OUT2 were driven above idle at the same time.')
+    t.diagnostic(`OUT1 idle for ${firstOut2HighMs - lastOut1HighMs} ms before OUT2 rose.`)
+
+    await runtime.stopMotorTest()
+  } finally {
+    unsubscribe?.()
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+    await sitl?.stop().catch(() => {})
+  }
+})

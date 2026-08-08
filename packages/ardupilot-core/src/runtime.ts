@@ -44,6 +44,7 @@ import type {
   ConfiguratorSnapshot,
   GuidedActionState,
   MotorTestRequest,
+  MotorTestStopResult,
   PreArmIssueState,
   PreArmStatusState,
   ParameterBatchWriteResult,
@@ -1427,8 +1428,10 @@ export class ArduPilotConfiguratorRuntime {
     return this.motorTestService.run(request, options)
   }
 
-  /** Operator-initiated early abort of an in-flight motor test. */
-  async stopMotorTest(): Promise<void> {
+  /** Operator-initiated early abort of an in-flight motor test. Resolves
+   *  with whether the zero-throttle abort was sent and ACKed, so callers
+   *  chaining a follow-up spin can refuse to start one on an unproven stop. */
+  async stopMotorTest(): Promise<MotorTestStopResult> {
     return this.motorTestService.stop()
   }
 
