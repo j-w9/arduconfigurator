@@ -25,10 +25,15 @@ import type { EscTelemetryState } from '@arduconfig/ardupilot-core'
 export type EscRpmReadoutStatus = 'unavailable' | 'stale' | 'live'
 
 export interface EscRpmRowViewModel {
-  /** 1-based motor number as the Motor Test tab labels it. */
-  motorNumber: number
-  /** "OUT5" etc. when the mapping is known, else undefined. */
-  outputLabel?: string
+  /**
+   * 1-based OUTPUT CHANNEL. ESC telemetry is indexed by servo output, not by
+   * motor number — AP_BLHeli passes `motor_map[esc]` and bdshot passes
+   * `normalized_chan` to update_rpm() — so the row identity has to be the
+   * channel or the two lists cannot be joined.
+   */
+  channelNumber: number
+  /** "M3" when this output drives a motor; absent for a non-motor output. */
+  motorLabel?: string
   /** Undefined when this motor's ESC has never reported. */
   rpm?: number
   /** True when this row's reading is inside the freshness window. */
@@ -48,11 +53,12 @@ export interface EscRpmReadoutViewModel {
 export interface EscRpmReadoutInputs {
   escTelemetry: EscTelemetryState
   /**
-   * Motors the frame is expected to have, with their output labels. Empty when
-   * the frame is not known yet — the readout then falls back to whatever ESCs
-   * reported, which is still better than nothing.
+   * Motor outputs the frame is expected to have, keyed by OUTPUT CHANNEL —
+   * `motorNumber` is only a label. Empty when the frame is not known yet; the
+   * readout then falls back to whatever ESCs reported, which still beats
+   * nothing.
    */
-  motors: ReadonlyArray<{ motorNumber: number; outputLabel?: string }>
+  motors: ReadonlyArray<{ channelNumber: number; motorNumber?: number }>
   nowMs: number
 }
 
@@ -77,21 +83,23 @@ export function buildEscRpmReadoutViewModel({
     }
   }
 
-  const byMotor = new Map(escTelemetry.escs.map((esc) => [esc.escNumber, esc]))
-  // Motors the frame expects, plus any ESC that reported outside that list —
+  // `escNumber` is an output channel (see EscRpmRowViewModel.channelNumber).
+  const byChannel = new Map(escTelemetry.escs.map((esc) => [esc.escNumber, esc]))
+  // Expected motor outputs, plus any channel that reported outside that list —
   // an ESC on an output we did not expect is exactly the kind of surprise
   // worth showing rather than filtering away.
-  const motorNumbers = [
-    ...new Set([...motors.map((motor) => motor.motorNumber), ...byMotor.keys()])
+  const channelNumbers = [
+    ...new Set([...motors.map((motor) => motor.channelNumber), ...byChannel.keys()])
   ].sort((left, right) => left - right)
-  const outputLabelByMotor = new Map(motors.map((motor) => [motor.motorNumber, motor.outputLabel]))
+  const motorNumberByChannel = new Map(motors.map((motor) => [motor.channelNumber, motor.motorNumber]))
 
-  const rows = motorNumbers.map((motorNumber) => {
-    const esc = byMotor.get(motorNumber)
+  const rows = channelNumbers.map((channelNumber) => {
+    const esc = byChannel.get(channelNumber)
     const fresh = esc !== undefined && nowMs - esc.lastSeenAtMs <= ESC_TELEMETRY_FRESHNESS_MS
+    const motorNumber = motorNumberByChannel.get(channelNumber)
     return {
-      motorNumber,
-      outputLabel: outputLabelByMotor.get(motorNumber),
+      channelNumber,
+      motorLabel: motorNumber !== undefined ? `M${motorNumber}` : undefined,
       rpm: esc?.rpm,
       fresh,
       voltageV: esc?.voltageV,
@@ -114,7 +122,7 @@ export function buildEscRpmReadoutViewModel({
     status: 'live',
     summary:
       missing > 0
-        ? `Live RPM from ${freshCount} ESC${freshCount === 1 ? '' : 's'}. ${missing} expected motor${missing === 1 ? ' is' : 's are'} not reporting — check that ESC's telemetry.`
+        ? `Live RPM from ${freshCount} ESC${freshCount === 1 ? '' : 's'}. ${missing} expected output${missing === 1 ? ' is' : 's are'} not reporting — check that ESC's telemetry.`
         : `Live RPM from all ${freshCount} ESC${freshCount === 1 ? '' : 's'}.`,
     rows
   }

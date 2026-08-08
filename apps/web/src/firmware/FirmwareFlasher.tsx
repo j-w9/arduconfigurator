@@ -1095,7 +1095,12 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                   type="button"
                   className="firmware-wizard__dfu-button firmware-wizard__dfu-button--danger"
                   data-testid="firmware-enter-dfu-confirm"
-                  disabled={dfuBusy}
+                  // Re-checked here, not only on the arming button: the
+                  // confirm row is already rendered when the vehicle arms, and
+                  // a stale-but-live confirm is exactly how a reboot reaches a
+                  // flying aircraft.
+                  disabled={dfuBusy || Boolean(enterDfuDisabledReason)}
+                  title={enterDfuDisabledReason}
                   onClick={() => void handleEnterDfu()}
                 >
                   {dfuBusy ? 'Rebooting…' : 'Confirm: enter DFU'}
@@ -1130,7 +1135,10 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                   type="button"
                   className="firmware-wizard__dfu-button firmware-wizard__dfu-button--danger"
                   data-testid="firmware-enter-rom-dfu-confirm"
-                  disabled={dfuBusy}
+                  // See above — and this one matters most: ArduPilot itself
+                  // does not refuse a DFU request while armed.
+                  disabled={dfuBusy || Boolean(enterDfuDisabledReason)}
+                  title={enterDfuDisabledReason}
                   onClick={() => void handleEnterRomDfu()}
                 >
                   {dfuBusy ? 'Requesting…' : 'Confirm: enter DFU'}
@@ -1165,7 +1173,8 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                   type="button"
                   className="firmware-wizard__dfu-button firmware-wizard__dfu-button--danger"
                   data-testid="firmware-reset-params-confirm"
-                  disabled={resetParamsBusy}
+                  disabled={resetParamsBusy || Boolean(resetParametersDisabledReason)}
+                  title={resetParametersDisabledReason}
                   onClick={() => void handleResetParameters()}
                 >
                   {resetParamsBusy ? 'Resetting…' : 'Confirm: reset all parameters'}
@@ -1203,7 +1212,8 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                   type="button"
                   className="firmware-wizard__dfu-button firmware-wizard__dfu-button--danger"
                   data-testid="firmware-flash-bootloader-confirm"
-                  disabled={bootloaderBusy}
+                  disabled={bootloaderBusy || Boolean(flashBootloaderDisabledReason)}
+                  title={flashBootloaderDisabledReason}
                   onClick={() => void handleFlashBootloader()}
                 >
                   {bootloaderBusy ? 'Updating…' : 'Confirm: update bootloader'}

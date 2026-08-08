@@ -5,11 +5,24 @@ import { buildEscRpmReadoutViewModel } from './esc-rpm-readout'
 
 const T0 = 1_700_000_000_000
 
+/** A quad wired the ordinary way: motors 1-4 on OUT1-4. */
 const QUAD = [
-  { motorNumber: 1, outputLabel: 'OUT1' },
-  { motorNumber: 2, outputLabel: 'OUT2' },
-  { motorNumber: 3, outputLabel: 'OUT3' },
-  { motorNumber: 4, outputLabel: 'OUT4' }
+  { channelNumber: 1, motorNumber: 1 },
+  { channelNumber: 2, motorNumber: 2 },
+  { channelNumber: 3, motorNumber: 3 },
+  { channelNumber: 4, motorNumber: 4 }
+]
+
+/**
+ * The same quad with its motors on OUT5-8 — routine on boards with an IOMCU,
+ * or when OUT1-4 drive servos. Motor number and output channel diverge here,
+ * which is the case that exposes a readout keyed on the wrong one.
+ */
+const QUAD_ON_OUT5_8 = [
+  { channelNumber: 5, motorNumber: 1 },
+  { channelNumber: 6, motorNumber: 2 },
+  { channelNumber: 7, motorNumber: 3 },
+  { channelNumber: 8, motorNumber: 4 }
 ]
 
 function esc(escNumber: number, rpm: number, lastSeenAtMs = T0) {
@@ -53,7 +66,8 @@ describe('buildEscRpmReadoutViewModel', () => {
     expect(model.status).toBe('live')
     expect(model.rows.map((row) => row.rpm)).toEqual([8000, 8100, 8200, 8300])
     expect(model.rows.every((row) => row.fresh)).toBe(true)
-    expect(model.rows[0].outputLabel).toBe('OUT1')
+    expect(model.rows[0].channelNumber).toBe(1)
+    expect(model.rows[0].motorLabel).toBe('M1')
   })
 
   it('keeps a row for an expected motor whose ESC never reported', () => {
@@ -64,10 +78,10 @@ describe('buildEscRpmReadoutViewModel', () => {
       nowMs: T0
     })
     expect(model.rows).toHaveLength(4)
-    const motor3 = model.rows.find((row) => row.motorNumber === 3)
-    expect(motor3?.rpm).toBeUndefined()
-    expect(motor3?.fresh).toBe(false)
-    expect(model.summary).toMatch(/1 expected motor is not reporting/)
+    const out3 = model.rows.find((row) => row.channelNumber === 3)
+    expect(out3?.rpm).toBeUndefined()
+    expect(out3?.fresh).toBe(false)
+    expect(model.summary).toMatch(/1 expected output is not reporting/)
   })
 
   it('marks readings stale rather than freezing at the last RPM', () => {
@@ -89,8 +103,28 @@ describe('buildEscRpmReadoutViewModel', () => {
       motors: QUAD.slice(0, 1),
       nowMs: T0
     })
-    expect(model.rows.map((row) => row.motorNumber)).toEqual([1, 9])
-    expect(model.rows[1].outputLabel).toBeUndefined()
+    expect(model.rows.map((row) => row.channelNumber)).toEqual([1, 9])
+    expect(model.rows[1].motorLabel).toBeUndefined()
+  })
+
+  it('matches telemetry to outputs, not motor numbers, when the two differ', () => {
+    // ESC telemetry is indexed by servo output channel: AP_BLHeli calls
+    // update_rpm(motor_map[esc], ...) and bdshot calls
+    // update_rpm(normalized_chan, ...). A readout keyed on motor number
+    // instead showed four empty rows M1-M4 alongside four phantom rows
+    // carrying the real RPM, on any board whose motors do not start at OUT1.
+    const model = buildEscRpmReadoutViewModel({
+      escTelemetry: telemetry({ escs: [esc(5, 8000), esc(6, 8100), esc(7, 8200), esc(8, 8300)] }),
+      motors: QUAD_ON_OUT5_8,
+      nowMs: T0
+    })
+    expect(model.status).toBe('live')
+    expect(model.rows).toHaveLength(4)
+    expect(model.rows.map((row) => row.channelNumber)).toEqual([5, 6, 7, 8])
+    expect(model.rows.map((row) => row.motorLabel)).toEqual(['M1', 'M2', 'M3', 'M4'])
+    expect(model.rows.map((row) => row.rpm)).toEqual([8000, 8100, 8200, 8300])
+    expect(model.rows.every((row) => row.fresh)).toBe(true)
+    expect(model.summary).not.toMatch(/not reporting/)
   })
 
   it('falls back to the reporting ESCs when the frame is not known yet', () => {

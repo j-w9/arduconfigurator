@@ -662,12 +662,10 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                          <EscRpmReadout
                            model={buildEscRpmReadoutViewModel({
                              escTelemetry: snapshot.liveVerification.escTelemetry,
-                             motors: outputMapping.motorOutputs
-                               .filter((output) => output.motorNumber !== undefined)
-                               .map((output) => ({
-                                 motorNumber: output.motorNumber as number,
-                                 outputLabel: `OUT${output.channelNumber}`
-                               })),
+                             motors: outputMapping.motorOutputs.map((output) => ({
+                               channelNumber: output.channelNumber,
+                               motorNumber: output.motorNumber
+                             })),
                              nowMs: Date.now()
                            })}
                          />

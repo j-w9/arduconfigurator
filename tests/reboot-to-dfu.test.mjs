@@ -23,8 +23,10 @@ import { MAV_CMD, MAV_RESULT } from '../packages/protocol-mavlink/dist/index.js'
 
 /** common.xml MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN. */
 const PREFLIGHT_REBOOT_SHUTDOWN = 246
+/** common.xml MAV_CMD_PREFLIGHT_STORAGE. */
+const PREFLIGHT_STORAGE = 245
 
-function createSession(sent, { result = MAV_RESULT.ACCEPTED, answer = true } = {}) {
+function createSession(sent, { result = MAV_RESULT.ACCEPTED, answer = true, armed = false } = {}) {
   const statusListeners = []
   const messageListeners = []
   const emit = (message) =>
@@ -48,7 +50,8 @@ function createSession(sent, { result = MAV_RESULT.ACCEPTED, answer = true } = {
         type: 'HEARTBEAT',
         autopilot: 3,
         vehicleType: 2,
-        baseMode: 0,
+        // MAV_MODE_FLAG_SAFETY_ARMED = 128.
+        baseMode: armed ? 128 : 0,
         customMode: 0,
         systemStatus: 4,
         mavlinkVersion: 3
@@ -61,10 +64,14 @@ function createSession(sent, { result = MAV_RESULT.ACCEPTED, answer = true } = {
     async send(message) {
       if (message.type !== 'COMMAND_LONG') return
       sent.push(message)
-      if (message.command === PREFLIGHT_REBOOT_SHUTDOWN && answer) {
+      // Both commands under test are acked; everything else the runtime emits
+      // on connect (SET_MESSAGE_INTERVAL, the pre-arm poll) is recorded and
+      // ignored, which is why assertions filter `sent` by command rather than
+      // counting it.
+      if ((message.command === PREFLIGHT_REBOOT_SHUTDOWN || message.command === PREFLIGHT_STORAGE) && answer) {
         emit({
           type: 'COMMAND_ACK',
-          command: PREFLIGHT_REBOOT_SHUTDOWN,
+          command: message.command,
           result,
           progress: 0,
           resultParam2: 0,
@@ -89,6 +96,7 @@ async function withRuntime(run, options) {
 }
 
 const rebootCommands = (sent) => sent.filter((message) => message.command === PREFLIGHT_REBOOT_SHUTDOWN)
+const storageCommands = (sent) => sent.filter((message) => message.command === PREFLIGHT_STORAGE)
 
 test('rebootToDfu sends the 42/24/71/99 magic ArduPilot gates the DFU branch behind', async () => {
   await withRuntime(async (runtime, sent) => {
@@ -145,4 +153,63 @@ test('an unanswered request fails rather than silently claiming success', async 
     },
     { answer: false }
   )
+})
+
+// ── Armed guards ──────────────────────────────────────────────────────────
+//
+// ArduPilot guards every OTHER branch of handle_preflight_reboot against an
+// armed vehicle, but the DFU branch returns before that check is ever reached
+// (GCS_Common.cpp: the param4==99 case is inside the magic block at :3520-3644,
+// the armed refusal is at :3646). So for this one command the firmware is not a
+// backstop and the guard has to be ours.
+
+test('rebootToDfu refuses while armed — the firmware will not refuse it for us', async () => {
+  await withRuntime(
+    async (runtime, sent) => {
+      await assert.rejects(() => runtime.rebootToDfu(), /Disarm the vehicle/i)
+      assert.equal(rebootCommands(sent).length, 0, 'nothing reached the wire')
+    },
+    { armed: true }
+  )
+})
+
+test('rebootToBootloader refuses while armed', async () => {
+  // ArduPilot does refuse param1=3 when armed; this turns a bare FAILED ack
+  // into a sentence and keeps the two entry points behaving alike.
+  await withRuntime(
+    async (runtime, sent) => {
+      await assert.rejects(() => runtime.rebootToBootloader(), /Disarm the vehicle/i)
+      assert.equal(rebootCommands(sent).length, 0)
+    },
+    { armed: true }
+  )
+})
+
+test('resetParametersToDefaults refuses while armed, but not merely because sync is incomplete', async () => {
+  // AP_Param::erase_all() on an armed vehicle wipes the tuning it is flying on,
+  // and ArduPilot's PREFLIGHT_STORAGE handler has no armed check of its own.
+  //
+  // The second half of the name matters: this deliberately does NOT use the
+  // full parameter-write gate, which also demands a completed sync. Resetting
+  // to defaults is the recovery for a board too broken to finish syncing — the
+  // disarmed case below proves it still goes out under exactly that condition.
+  await withRuntime(
+    async (runtime, sent) => {
+      await assert.rejects(() => runtime.resetParametersToDefaults(), /Disarm the vehicle/i)
+      assert.equal(storageCommands(sent).length, 0, 'nothing reached the wire')
+    },
+    { armed: true }
+  )
+})
+
+test('resetParametersToDefaults still works on a board that never completed a parameter sync', async () => {
+  // The Neros case that prompted the Flash-tab button: a board misbehaving
+  // badly enough that the operator wants defaults back. Neither harness here
+  // runs a parameter sync, so this is that condition.
+  await withRuntime(async (runtime, sent) => {
+    await runtime.resetParametersToDefaults()
+    const [command] = storageCommands(sent)
+    assert.ok(command, 'PREFLIGHT_STORAGE was sent')
+    assert.equal(command.params[0], 2, 'PARAM_RESET_FACTORY_DEFAULT')
+  })
 })

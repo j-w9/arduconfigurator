@@ -151,6 +151,20 @@ export class MavftpService {
   private readonly requestTimeoutMs: number
   private readonly waiters = new Set<MavftpWaiter>()
   private activeBurst: BurstOperation | undefined
+  /**
+   * When MAVFTP last put a request on the wire.
+   *
+   * Read by the runtime (`isTransferInFlight`) because a transfer saturates the
+   * downlink, and ArduPilot PURGES any STATUSTEXT it could not send within 5s
+   * (GCS_Common.cpp's statustext queue drain). Anything that infers meaning
+   * from the ABSENCE of a STATUSTEXT — the pre-arm reason list does exactly
+   * that — has to know when that inference is unsafe.
+   *
+   * Stamped at the single send() choke point rather than wrapped around each
+   * public operation: that covers bursts, plain reads, uploads and directory
+   * listings alike, with nothing to keep in sync as operations are added.
+   */
+  private lastTransferActivityAtMs = 0
   // The seq_number to put on the NEXT request. Not a private counter: MAVFTP's
   // seq_number is a SHARED, monotonically rising conversation counter that the
   // server advances too. A burst reply stream bumps the server's copy once per
@@ -169,6 +183,16 @@ export class MavftpService {
     this.getVehicle = options.getVehicle
     this.ensureSupport = options.ensureSupport
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_MAVFTP_TIMEOUT_MS
+  }
+
+  /**
+   * True while MAVFTP is actively moving data. `windowMs` is how long after the
+   * last request the link should still be considered busy — generous by
+   * default, because the cost of a false positive is only that a pre-arm reason
+   * lingers a little longer, while a false negative drops a live reason.
+   */
+  isTransferInFlight(windowMs = 3000): boolean {
+    return this.lastTransferActivityAtMs > 0 && Date.now() - this.lastTransferActivityAtMs < windowMs
   }
 
   async listRemoteDirectory(path: string): Promise<MavftpDirectoryEntry[]> {
@@ -853,6 +877,8 @@ export class MavftpService {
     if (!vehicle) {
       throw new Error('MAVFTP requires an identified vehicle.')
     }
+
+    this.lastTransferActivityAtMs = Date.now()
 
     const requestSeq = this.nextSequence()
     // The MAVLink FTP server replies with `seq_number = request seq + 1`,

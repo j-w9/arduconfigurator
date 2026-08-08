@@ -1680,6 +1680,10 @@ export class ArduPilotConfiguratorRuntime {
    *  ArduPilot boards then enumerate as a DFU device on USB. Throws on
    *  REJECTED / TIMEOUT — the caller surfaces that to the operator. */
   async rebootToBootloader(): Promise<void> {
+    // ArduPilot refuses param1=3 while armed, so this is belt-and-braces —
+    // but it turns a confusing FAILED ack into a sentence, and it keeps the
+    // two bootloader entry points behaving alike.
+    this.assertNotArmed('Disarm the vehicle before rebooting to the bootloader.')
     // Whatever is flashed next may have a different parameter table, so no
     // table from this session may survive to be resumed against it.
     this.discardStaleLink()
@@ -1719,6 +1723,14 @@ export class ArduPilotConfiguratorRuntime {
    * reboot, and come back normally.
    */
   async rebootToDfu(): Promise<void> {
+    // ArduPilot does NOT protect this one. handle_preflight_reboot's
+    // "refuse reboot when armed" check (GCS_Common.cpp:3646) sits AFTER the
+    // magic block, so the param4==99 branch returns ACCEPTED and calls
+    // boot_to_dfu() without ever consulting get_soft_armed(). Every other
+    // reboot path in that handler is guarded; this is the exception, so the
+    // guard has to be ours. Dropping a flying aircraft into ROM DFU stops the
+    // motors.
+    this.assertNotArmed('Disarm the vehicle before requesting DFU mode.')
     this.discardStaleLink()
     const ack = await this.sendCommand(MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN, [42, 24, 71, 99, 0, 0, 0], {
       waitForAck: true,
@@ -1901,6 +1913,16 @@ export class ArduPilotConfiguratorRuntime {
    *  Destructive — wipes the operator's configuration. A reboot is required
    *  afterwards for the defaults to take effect. */
   async resetParametersToDefaults(): Promise<void> {
+    // AP_Param::erase_all() on an armed vehicle wipes the tuning it is flying
+    // on. ArduPilot's PREFLIGHT_STORAGE handler has no armed check of its own
+    // (GCS_Common.cpp:5813), and this is reachable from two UI surfaces, so the
+    // guard belongs here rather than in either of them.
+    //
+    // Deliberately assertNotArmed and NOT the full parameter-write gate: that
+    // one also requires a completed parameter sync, and "reset this board to
+    // defaults" is precisely what you reach for when a board is too broken to
+    // finish syncing. Refusing it there would block the recovery it exists for.
+    this.assertNotArmed('Disarm the vehicle before resetting parameters to defaults.')
     await this.sendCommand(MAV_CMD.PREFLIGHT_STORAGE, [2, 0, 0, 0, 0, 0, 0], {
       waitForAck: true,
       ackTimeoutMs: 3000
@@ -2671,7 +2693,13 @@ export class ArduPilotConfiguratorRuntime {
       ? this.statusTexts.findIndex((entry) => entry.text === text)
       : -1
     if (existingPreArmIndex >= 0) {
-      this.statusTexts[existingPreArmIndex] = { severity, text, receivedAtMs: now }
+      // Removed and re-unshifted rather than replaced in place. Replacing in
+      // place kept the list stable but broke its ordering invariant: the array
+      // is consumed as newest-first (waitForCommandAck slices the head for its
+      // "recent messages" diagnostic), and a refreshed entry left at index 40
+      // with a just-now stamp makes that slice arbitrary.
+      this.statusTexts.splice(existingPreArmIndex, 1)
+      this.statusTexts.unshift({ severity, text, receivedAtMs: now })
     } else {
       this.statusTexts.unshift({
         severity,
@@ -2959,7 +2987,20 @@ export class ArduPilotConfiguratorRuntime {
    * PRE_ARM_ISSUE_TTL_MS.
    */
   private preArmIssueTtlMs(): number {
-    return this.preArmRefreshActive ? this.preArmIssueTtlPolledMs : PRE_ARM_ISSUE_TTL_MS
+    if (!this.preArmRefreshActive) {
+      return PRE_ARM_ISSUE_TTL_MS
+    }
+    // The short TTL rests on "a still-failing check is re-reported every round,
+    // so absent means cleared". That holds only while the reports can actually
+    // get through: ArduPilot's STATUSTEXT queue is bounded and purges anything
+    // it could not send within 5s, so a MAVFTP transfer saturating the downlink
+    // (a log download — our own feature) silently starves the very messages
+    // this TTL reads as evidence. Fall back to the slow TTL rather than delete
+    // a reason the vehicle is still reporting.
+    if (this.mavftp.isTransferInFlight()) {
+      return PRE_ARM_ISSUE_TTL_MS
+    }
+    return this.preArmIssueTtlPolledMs
   }
 
   private ensureCanNodeStaleSweep(): void {
@@ -3262,15 +3303,22 @@ export class ArduPilotConfiguratorRuntime {
     const foreign =
       this.vehicle !== undefined &&
       (systemId !== this.vehicle.systemId || componentId !== this.vehicle.componentId)
-    this.commandAckLog.unshift({
-      command: message.command,
-      result: message.result,
-      receivedAtMs: Date.now(),
-      sourceSystemId: systemId,
-      sourceComponentId: componentId,
-      foreign
-    })
-    this.commandAckLog.splice(ArduPilotConfiguratorRuntime.COMMAND_ACK_LOG_LIMIT)
+    // The pre-arm refresh poll is excluded. It acks every 3s, and this log is
+    // a 20-entry ring quoted 5-at-a-time in command-timeout errors — letting it
+    // in would flush the log every minute and leave every timeout diagnostic
+    // reading "RUN_PREARM_CHECKS ACCEPTED" five times, which is exactly the
+    // evidence the diagnostic exists to preserve.
+    if (message.command !== MAV_CMD.RUN_PREARM_CHECKS) {
+      this.commandAckLog.unshift({
+        command: message.command,
+        result: message.result,
+        receivedAtMs: Date.now(),
+        sourceSystemId: systemId,
+        sourceComponentId: componentId,
+        foreign
+      })
+      this.commandAckLog.splice(ArduPilotConfiguratorRuntime.COMMAND_ACK_LOG_LIMIT)
+    }
     if (foreign) {
       return
     }
@@ -4011,6 +4059,18 @@ export class ArduPilotConfiguratorRuntime {
       return 'Parameter writes are blocked while another guided action or motor test is active.'
     }
     return undefined
+  }
+
+  /**
+   * Refuse an action that must never reach an armed vehicle. Separate from
+   * assertParameterWriteAllowed because these are reboot-class commands, not
+   * parameter writes — they have no business being blocked by a running
+   * calibration, only by flight.
+   */
+  private assertNotArmed(reason: string): void {
+    if (this.vehicle?.armed) {
+      throw new Error(reason)
+    }
   }
 
   private assertParameterWriteAllowed(): void {

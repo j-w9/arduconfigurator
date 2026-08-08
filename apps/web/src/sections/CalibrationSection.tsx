@@ -62,19 +62,33 @@ export interface CalibrationSectionProps {
  * immediately, and no reboot latch is set. Saying "reboot required" there would
  * be teaching a superstition.
  */
-const CALIBRATION_REBOOT_ADVICE: Partial<Record<GuidedActionId, { required: boolean; reason: string }>> = {
+const CALIBRATION_REBOOT_ADVICE: Partial<
+  Record<GuidedActionId, { required: boolean; reason: string; promptOn: ReadonlyArray<'succeeded' | 'failed'> }>
+> = {
   'calibrate-accelerometer': {
     required: true,
+    // _accel_cal_requires_reboot is set in _acal_event_success, so only a
+    // completed calibration latches it.
+    promptOn: ['succeeded'],
     reason:
       'ArduPilot will not arm until the board reboots — its pre-arm check reports "Accels calibrated requires reboot" until then.'
   },
   'calibrate-compass': {
     required: true,
+    // Compass is different, and getting this wrong left the worst version of
+    // the original bug in place. Compass::_start_calibration sets
+    // _cal_requires_reboot when the calibrator thread is CREATED
+    // (AP_Compass_Calibration.cpp:125) — before any outcome — and nothing ever
+    // clears it. So merely starting a compass calibration and then cancelling
+    // it leaves the vehicle refusing to arm. Prompt on failure and cancellation
+    // too; cancelAction routes through failAction, so 'failed' covers both.
+    promptOn: ['succeeded', 'failed'],
     reason:
-      'ArduPilot will not arm until the board reboots — its pre-arm check reports "Compass calibrated requires reboot" until then.'
+      'ArduPilot will not arm until the board reboots — its pre-arm check reports "Compass calibrated requires reboot" until then. Starting a compass calibration sets this even if it did not finish.'
   },
   'calibrate-level': {
     required: false,
+    promptOn: ['succeeded'],
     reason:
       'Not required: the level trim is saved to AHRS_TRIM_X / AHRS_TRIM_Y and takes effect immediately. Reboot only if you want to confirm it from a cold start.'
   }
@@ -300,8 +314,12 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 // Undefined unless this calibration has a completed run whose
                 // prompt is still unanswered. `completedAtMs` is cleared when a
                 // calibration restarts, so a re-run cannot show a stale prompt.
+                const rebootAdvice = CALIBRATION_REBOOT_ADVICE[action.actionId]
                 const rebootPromptKey =
-                  actionState.status === 'succeeded' && actionState.completedAtMs !== undefined
+                  rebootAdvice !== undefined &&
+                  (actionState.status === 'succeeded' || actionState.status === 'failed') &&
+                  rebootAdvice.promptOn.includes(actionState.status) &&
+                  actionState.completedAtMs !== undefined
                     ? `${action.actionId}:${actionState.completedAtMs}`
                     : undefined
                 const pendingRebootPromptKey =

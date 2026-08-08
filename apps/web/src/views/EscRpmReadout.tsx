@@ -30,7 +30,7 @@ export function EscRpmReadout({ model, testId = 'esc-rpm-readout' }: EscRpmReado
         <table className={`esc-rpm-readout__table${model.status === 'stale' ? ' is-stale' : ''}`}>
           <thead>
             <tr>
-              <th scope="col">Motor</th>
+              <th scope="col">Output</th>
               <th scope="col">RPM</th>
               <th scope="col">A</th>
               <th scope="col">°C</th>
@@ -39,18 +39,21 @@ export function EscRpmReadout({ model, testId = 'esc-rpm-readout' }: EscRpmReado
           <tbody>
             {model.rows.map((row) => (
               <tr
-                key={row.motorNumber}
-                data-testid={`esc-rpm-row-${row.motorNumber}`}
+                key={row.channelNumber}
+                data-testid={`esc-rpm-row-${row.channelNumber}`}
                 className={row.rpm === undefined ? 'is-missing' : undefined}
               >
+                {/* Output first, motor second: the telemetry is indexed by
+                    output, and on a board where motors do not start at OUT1
+                    those two numbers differ. */}
                 <th scope="row">
-                  M{row.motorNumber}
-                  {row.outputLabel ? <small> {row.outputLabel}</small> : null}
+                  OUT{row.channelNumber}
+                  {row.motorLabel ? <small> {row.motorLabel}</small> : null}
                 </th>
                 {/* An em dash, not a zero: 0 RPM is a real reading that means
                     "reported, and stopped", and an ESC that has never reported
                     must not be able to impersonate one. */}
-                <td data-testid={`esc-rpm-value-${row.motorNumber}`}>
+                <td data-testid={`esc-rpm-value-${row.channelNumber}`}>
                   {row.rpm === undefined ? '—' : row.rpm.toLocaleString()}
                 </td>
                 <td>{row.currentA === undefined ? '—' : row.currentA.toFixed(1)}</td>
