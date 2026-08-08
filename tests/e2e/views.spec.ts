@@ -1271,6 +1271,26 @@ test.describe('Calibration tab', () => {
     await page.getByTestId('calibration-run-calibrate-level').click()
     await expect(card.getByText('succeeded', { exact: true })).toBeVisible({ timeout: COMMAND_ACK_TIMEOUT })
   })
+
+  test('a finished calibration offers a reboot, and only claims one is required when ArduPilot needs it', async ({ page }) => {
+    // Accelerometer and compass calibration both leave ArduPilot refusing to arm
+    // until the board reboots (AP_Arming "Accels/Compass calibrated requires
+    // reboot"), and nothing on screen used to say so. Level does not — its trim
+    // is saved and live immediately — so the prompt must not claim otherwise.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'calibration')
+
+    await page.getByTestId('calibration-run-calibrate-level').click()
+    const prompt = page.getByTestId('calibration-reboot-calibrate-level')
+    await expect(prompt).toBeVisible({ timeout: COMMAND_ACK_TIMEOUT })
+    await expect(prompt).toHaveAttribute('data-required', 'false')
+    await expect(prompt).toContainText('Not required')
+
+    // Dismissing answers this run only.
+    await page.getByTestId('calibration-reboot-dismiss-calibrate-level').click()
+    await expect(prompt).toHaveCount(0)
+  })
 })
 
 test.describe('Tuning tab', () => {

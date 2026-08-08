@@ -15241,6 +15241,38 @@ details.bf-gui-box:not([open]) > summary::after {
   font-size: 11px;
   color: var(--warning, #e8a803);
 }
+/* Post-calibration reboot prompt. Two weights on purpose: accelerometer and
+ * compass leave ArduPilot refusing to arm until the board reboots, so those get
+ * the warning tint and a primary button; level only offers one, so it sits flat
+ * against the card and reads as the aside it is. */
+.calibration-card__reboot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-100, var(--surface-200));
+  font-size: 12px;
+  line-height: 1.45;
+}
+.calibration-card__reboot.is-required {
+  border-color: color-mix(in srgb, var(--warning, #e8a803) 55%, transparent);
+  background: color-mix(in srgb, var(--warning, #e8a803) 9%, transparent);
+}
+.calibration-card__reboot p {
+  margin: 0;
+}
+.calibration-card__reboot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.calibration-card__reboot-note {
+  font-size: 11px;
+  color: var(--text-dim);
+}
 /* Inline, low-key collapsible how-to inside each calibration card. Single
  * line when collapsed; expands into the existing card padding. No border,
  * no all-caps shouting summary — it's hint copy, not a callout. */

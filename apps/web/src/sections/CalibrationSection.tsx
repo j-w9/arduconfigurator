@@ -46,6 +46,107 @@ export interface CalibrationSectionProps {
   handleCancelGuidedAction: (actionId: GuidedActionId) => void
 }
 
+/**
+ * What each guided calibration actually needs after it succeeds, taken from
+ * ArduPilot rather than from habit.
+ *
+ * Accelerometer and compass both set a latch the firmware itself refuses to arm
+ * past: AP_InertialSensor::_acal_event_success sets `_accel_cal_requires_reboot`
+ * and Compass::_start_calibration sets `_cal_requires_reboot`, which AP_Arming
+ * turns into "Accels calibrated requires reboot" / "Compass calibrated requires
+ * reboot" (AP_Arming.cpp:529, :616). An operator who finishes a calibration and
+ * walks away has a vehicle that will not arm and no obvious reason why.
+ *
+ * Level is different and is NOT presented as required: calibrate_trim() ends at
+ * AP_AHRS::set_trim -> _trim.set_and_save, so the trim is persisted and live
+ * immediately, and no reboot latch is set. Saying "reboot required" there would
+ * be teaching a superstition.
+ */
+const CALIBRATION_REBOOT_ADVICE: Partial<Record<GuidedActionId, { required: boolean; reason: string }>> = {
+  'calibrate-accelerometer': {
+    required: true,
+    reason:
+      'ArduPilot will not arm until the board reboots — its pre-arm check reports "Accels calibrated requires reboot" until then.'
+  },
+  'calibrate-compass': {
+    required: true,
+    reason:
+      'ArduPilot will not arm until the board reboots — its pre-arm check reports "Compass calibrated requires reboot" until then.'
+  },
+  'calibrate-level': {
+    required: false,
+    reason:
+      'Not required: the level trim is saved to AHRS_TRIM_X / AHRS_TRIM_Y and takes effect immediately. Reboot only if you want to confirm it from a cold start.'
+  }
+}
+
+/**
+ * Post-calibration reboot prompt. Dismissable, and keyed on the completion
+ * timestamp by the caller so a later run of the same calibration re-raises it
+ * rather than inheriting the previous dismissal.
+ */
+function CalibrationRebootPrompt(props: {
+  actionId: GuidedActionId
+  runtime: ArduPilotConfiguratorRuntime
+  connected: boolean
+  onDismiss: () => void
+}): ReactElement | null {
+  const advice = CALIBRATION_REBOOT_ADVICE[props.actionId]
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string>()
+  if (!advice) {
+    return null
+  }
+  return (
+    <div
+      className={`calibration-card__reboot${advice.required ? ' is-required' : ''}`}
+      data-testid={`calibration-reboot-${props.actionId}`}
+      data-required={advice.required ? 'true' : 'false'}
+    >
+      <p>
+        <strong>{advice.required ? 'Reboot the autopilot' : 'Reboot the autopilot?'}</strong> {advice.reason}
+      </p>
+      {error ? <p className="calibration-card__blocked">{error}</p> : null}
+      <div className="calibration-card__reboot-actions">
+        <button
+          type="button"
+          style={buttonStyle(advice.required ? 'primary' : undefined)}
+          data-testid={`calibration-reboot-run-${props.actionId}`}
+          disabled={sending || !props.connected}
+          onClick={() => {
+            setSending(true)
+            setError(undefined)
+            void runtimeReboot(props.runtime)
+              .then(() => props.onDismiss())
+              .catch((cause: unknown) => {
+                setError(cause instanceof Error ? cause.message : 'Reboot request failed.')
+                setSending(false)
+              })
+          }}
+        >
+          {sending ? 'Rebooting…' : 'Reboot now'}
+        </button>
+        <button
+          type="button"
+          style={buttonStyle()}
+          data-testid={`calibration-reboot-dismiss-${props.actionId}`}
+          onClick={props.onDismiss}
+        >
+          {advice.required ? 'Later' : 'No thanks'}
+        </button>
+      </div>
+      {advice.required ? (
+        <p className="calibration-card__reboot-note">The link will drop; reconnect once the board comes back up.</p>
+      ) : null}
+    </div>
+  )
+}
+
+/** Kept separate so the prompt stays a pure render of one runtime call. */
+async function runtimeReboot(runtime: ArduPilotConfiguratorRuntime): Promise<void> {
+  await runtime.reboot()
+}
+
 /** Load-spin duration for battery-current calibration. Pinned to the shared
  *  motor-test cap: the card used to hardcode 8 s, which every non-Expert
  *  session rejected outright with "Duration must stay between ...", so the
@@ -163,6 +264,14 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
    */
   const motorSpinReady = propsRemovedAcknowledged && testAreaAcknowledged
 
+  /**
+   * Dismissed reboot prompts, keyed `${actionId}:${completedAtMs}`. Keying on
+   * the completion stamp rather than the action id is what makes a second run
+   * of the same calibration prompt again — a dismissal answers one calibration,
+   * not the calibration type forever.
+   */
+  const [dismissedRebootPrompts, setDismissedRebootPrompts] = useState<ReadonlySet<string>>(() => new Set())
+
   return (
 
         <section className="grid one-up">
@@ -188,6 +297,17 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 const showPoseGuide =
                   action.actionId === 'calibrate-accelerometer' &&
                   (actionState.status === 'requested' || actionState.status === 'running')
+                // Undefined unless this calibration has a completed run whose
+                // prompt is still unanswered. `completedAtMs` is cleared when a
+                // calibration restarts, so a re-run cannot show a stale prompt.
+                const rebootPromptKey =
+                  actionState.status === 'succeeded' && actionState.completedAtMs !== undefined
+                    ? `${action.actionId}:${actionState.completedAtMs}`
+                    : undefined
+                const pendingRebootPromptKey =
+                  rebootPromptKey !== undefined && !dismissedRebootPrompts.has(rebootPromptKey)
+                    ? rebootPromptKey
+                    : undefined
                 return (
                   <article key={action.actionId} className="calibration-card" data-testid={`calibration-card-${action.actionId}`}>
                     <div className="calibration-card__header">
@@ -220,6 +340,16 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       </button>
                     ) : null}
                     {disabledReason ? <p className="calibration-card__blocked">{disabledReason}</p> : null}
+                    {pendingRebootPromptKey !== undefined ? (
+                      <CalibrationRebootPrompt
+                        actionId={action.actionId}
+                        runtime={runtime}
+                        connected={snapshot.connection.kind === 'connected'}
+                        onDismiss={() =>
+                          setDismissedRebootPrompts((current) => new Set(current).add(pendingRebootPromptKey))
+                        }
+                      />
+                    ) : null}
                     {showPoseGuide ? (
                       <AccelerometerPoseGuide
                         compact
