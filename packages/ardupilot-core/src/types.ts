@@ -383,6 +383,18 @@ export interface LiveVerificationState {
    */
   gpsSensor: SensorBitState
   /**
+   * True while the configurator is STREAMING A SYNTHETIC GPS (GPS_INPUT) at a
+   * fixed operator-chosen location, for compass calibration without a physical
+   * GPS.
+   *
+   * In the snapshot, not just behind runtime.isFakeGpsActive(), because while it
+   * runs the Status card and flight deck show a 3D fix with satellites at a
+   * place the vehicle is not — and nothing snapshot-driven could render a
+   * warning reactively, so the fabrication was indistinguishable from a real
+   * fix if the component that started it unmounted or the page reloaded.
+   */
+  fakeGpsActive: boolean
+  /**
    * Optical flow sensor liveness AND its last reading, derived from
    * OPTICAL_FLOW (msgid 100). The "pulse on the sensor" check drives the
    * header Flow chip; the flow rates / ground distance are what the

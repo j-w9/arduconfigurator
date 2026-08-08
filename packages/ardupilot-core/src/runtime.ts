@@ -1666,6 +1666,7 @@ export class ArduPilotConfiguratorRuntime {
     }
     send()
     this.fakeGpsTimer = setInterval(send, 200)
+    this.setFakeGpsActive(true)
   }
 
   /** Stop the synthetic GPS stream and restore the original GPS backend type. */
@@ -1674,6 +1675,7 @@ export class ArduPilotConfiguratorRuntime {
       clearInterval(this.fakeGpsTimer)
       this.fakeGpsTimer = undefined
     }
+    this.setFakeGpsActive(false)
     if (this.fakeGpsOriginalType !== undefined) {
       try {
         await this.setParameter('GPS1_TYPE', this.fakeGpsOriginalType)
@@ -4166,6 +4168,16 @@ export class ArduPilotConfiguratorRuntime {
       this.fakeGpsTimer = undefined
     }
     this.fakeGpsOriginalType = undefined
+    this.setFakeGpsActive(false)
+  }
+
+  /** Keep the snapshot flag and the timer in step, and emit on a real change. */
+  private setFakeGpsActive(active: boolean): void {
+    if (this.liveVerification.fakeGpsActive === active) {
+      return
+    }
+    this.liveVerification.fakeGpsActive = active
+    this.emit()
   }
 
   private assertNotArmed(reason: string): void {

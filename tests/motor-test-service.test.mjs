@@ -255,3 +255,51 @@ test('MotorTestService.reset() clears state + any pending completion timer', () 
   service.reset()
   assert.equal(service.getState().status, 'idle')
 })
+
+// ── Stopping a simultaneous run ───────────────────────────────────────────
+//
+// A simultaneous run starts every motor with its own DO_MOTOR_TEST, because
+// ArduPilot's _output_test_seq writes only the motor named in the command and
+// never zeroes the others. Stopping it therefore has to stop each one: a single
+// abort zeroed motor 1 and left the rest turning until the FC's per-motor
+// timeout, while the UI reported the test stopped. The battery-current
+// calibration runs in exactly this mode.
+
+test('stopping a simultaneous run commands EVERY motor to zero, not just the first', async () => {
+  const harness = createHostHarness({
+    snapshotOverrides: {
+      parameters: [1, 2, 3, 4].map((motor) => ({
+        id: `SERVO${motor}_FUNCTION`,
+        value: 32 + motor,
+        definition: { id: `SERVO${motor}_FUNCTION`, label: `Motor ${motor}`, description: '', category: 'outputs' }
+      })).concat([
+        { id: 'FRAME_CLASS', value: 1, definition: { id: 'FRAME_CLASS', label: 'Frame class', description: '', category: 'outputs' } },
+        { id: 'FRAME_TYPE', value: 1, definition: { id: 'FRAME_TYPE', label: 'Frame type', description: '', category: 'outputs' } }
+      ])
+    }
+  })
+  const service = new MotorTestService(harness.host)
+
+  // "Every mapped motor at the SAME time" — the mode the battery-current
+  // calibration uses.
+  await service.run({ runAllOutputsSimultaneous: true, throttlePercent: 5, durationSeconds: 1 })
+  const started = harness.sentCommands.filter(
+    (entry) => entry.command === MAV_CMD.DO_MOTOR_TEST && entry.params[2] > 0
+  )
+  assert.equal(started.length, 4, `expected one start per motor, saw ${started.length}`)
+
+  harness.sentCommands.length = 0
+  const result = await service.stop()
+  assert.equal(result.sent, true)
+
+  const aborts = harness.sentCommands.filter(
+    (entry) => entry.command === MAV_CMD.DO_MOTOR_TEST && entry.params[2] === 0
+  )
+  assert.equal(aborts.length, started.length, 'every motor that was started must be commanded back to zero')
+  // Each abort must name the same sequence its start used, or it zeroes the
+  // wrong motor and leaves the intended one spinning.
+  assert.deepEqual(
+    aborts.map((entry) => entry.params[0]).sort(),
+    started.map((entry) => entry.params[0]).sort()
+  )
+})

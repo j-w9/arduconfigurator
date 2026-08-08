@@ -7300,14 +7300,26 @@ export function App() {
         : 'No barometer reported by SYS_STATUS and BARO1_DEVID is 0 — check the FC firmware/board target.'
     },
     {
+      // While the synthetic GPS runs, the "fix" is one THIS APP is fabricating
+      // at an operator-typed location, so the chip must say so rather than
+      // reporting a verified fix the vehicle does not have. Label included:
+      // hover text alone is not a warning on a touch device.
       id: 'gps',
-      label: 'GPS',
-      stateClass: snapshot.liveVerification.globalPosition.verified ? 'is-fix' : setupGpsConfigured ? 'is-active' : '',
-      title: snapshot.liveVerification.globalPosition.verified
-        ? 'GPS fix is verified.'
-        : setupGpsConfigured
-          ? 'GPS is configured but no live fix is verified.'
-          : 'GPS is not configured or no live GPS is present.'
+      label: snapshot.liveVerification.fakeGpsActive ? 'GPS (sim)' : 'GPS',
+      stateClass: snapshot.liveVerification.fakeGpsActive
+        ? 'is-active'
+        : snapshot.liveVerification.globalPosition.verified
+          ? 'is-fix'
+          : setupGpsConfigured
+            ? 'is-active'
+            : '',
+      title: snapshot.liveVerification.fakeGpsActive
+        ? 'SYNTHETIC GPS: this configurator is streaming a fabricated fix at the location you entered, for compass calibration without a GPS. The position shown is not measured. Stop it before flying.'
+        : snapshot.liveVerification.globalPosition.verified
+          ? 'GPS fix is verified.'
+          : setupGpsConfigured
+            ? 'GPS is configured but no live fix is verified.'
+            : 'GPS is not configured or no live GPS is present.'
     },
     {
       id: 'rc',

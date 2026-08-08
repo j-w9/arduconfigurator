@@ -1,6 +1,19 @@
 import { expect, test, type Page } from '@playwright/test'
 
-// Visual regression scaffold.
+// Visual regression scaffold — CURRENTLY PROVIDES NO PROTECTION.
+//
+// Read this before counting it as coverage: there is no
+// `tests/e2e/__screenshots__/` directory in the repo, so these six specs have
+// never run anywhere and have been skipped since they landed. In the meantime a
+// real visual regression (#167) had to be caught by hand-written layout
+// assertions in `table-layout.spec.ts` — written from scratch, because this
+// suite was not there to catch it.
+//
+// It is kept rather than deleted only because the regeneration procedure below
+// is the documented one (CONTRIBUTING.md / CLAUDE.md). Landing Linux baselines
+// on `main` and gating this on `process.env.CI` would make it real; until then,
+// prefer adding layout assertions like table-layout.spec.ts, which run on every
+// platform and fail readably.
 //
 // These specs capture full-page screenshots of high-traffic views and compare
 // them against committed baselines under `tests/e2e/__screenshots__/visual.spec.ts/`.
@@ -18,7 +31,10 @@ import { expect, test, type Page } from '@playwright/test'
 
 const isRegenerating = process.env.ARDUCONFIG_VISUAL_REGEN === '1'
 
-test.skip(!isRegenerating, 'Visual regression baselines have not been generated for this platform yet. Run with ARDUCONFIG_VISUAL_REGEN=1 to regenerate.')
+test.skip(
+  !isRegenerating,
+  'SKIPPED — no visual baselines exist in this repo, so this suite has never run and protects nothing. See the header.'
+)
 
 async function connectViaHeader(page: Page): Promise<void> {
   await page.getByTestId('transport-mode-select').selectOption('demo')

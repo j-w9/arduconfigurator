@@ -26,6 +26,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts']
+    // .tsx included too: a component test written as `.test.tsx` would
+    // otherwise be silently never run, which looks identical to passing.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx']
   }
 })

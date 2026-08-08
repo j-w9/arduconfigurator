@@ -38,6 +38,16 @@ export interface MotorTestHost {
 export class MotorTestService {
   private state: MotorTestState = createIdleMotorTestState()
   private completionTimer?: ReturnType<typeof setTimeout>
+  /**
+   * The per-motor DO_MOTOR_TEST sequence numbers a SIMULTANEOUS run started.
+   *
+   * Needed because stop() has to command each of them back to zero. ArduPilot's
+   * _output_test_seq writes only the motor named in the command and never
+   * touches the others, so a single abort left motors 2..N spinning until the
+   * FC's own per-motor timeout — with the UI already reporting the test
+   * stopped. The battery-current calibration uses exactly this mode.
+   */
+  private activeSimultaneousSequences: number[] = []
 
   constructor(private readonly host: MotorTestHost) {}
 
@@ -48,6 +58,9 @@ export class MotorTestService {
   reset(): void {
     this.state = createIdleMotorTestState()
     this.clearCompletionTimer()
+    // Otherwise a stop after a reconnect would fire aborts for the PREVIOUS
+    // session's motors.
+    this.activeSimultaneousSequences = []
   }
 
   clearCompletionTimer(): void {
@@ -121,6 +134,7 @@ export class MotorTestService {
         // per-motor timeout. Each command uses the motor's test-order
         // sequence (param1) with motor_count=1 so the FC doesn't itself sweep.
         const unmappedMotors: number[] = []
+        this.activeSimultaneousSequences = []
         for (const output of selectedOutputs) {
           const perMotor = output.motorNumber !== undefined
             ? motorTestSequenceForMotor(frameClass, frameType, output.motorNumber)
@@ -128,9 +142,13 @@ export class MotorTestService {
           if (perMotor?.mapped === false && output.motorNumber !== undefined) {
             unmappedMotors.push(output.motorNumber)
           }
+          const sequence = perMotor?.sequence ?? output.motorNumber ?? 1
+          // Recorded BEFORE the send: a command that throws mid-sweep may still
+          // have started that motor, so stop() must know to zero it.
+          this.activeSimultaneousSequences.push(sequence)
           await this.host.sendCommand(
             MAV_CMD.DO_MOTOR_TEST,
-            [perMotor?.sequence ?? output.motorNumber ?? 1, MOTOR_TEST_THROTTLE_TYPE.PERCENT, request.throttlePercent, request.durationSeconds, 1, MOTOR_TEST_ORDER.DEFAULT, 0],
+            [sequence, MOTOR_TEST_THROTTLE_TYPE.PERCENT, request.throttlePercent, request.durationSeconds, 1, MOTOR_TEST_ORDER.DEFAULT, 0],
             { waitForAck: true }
           )
         }
@@ -141,6 +159,7 @@ export class MotorTestService {
           )
         }
       } else {
+        this.activeSimultaneousSequences = []
         // param6 is SEQUENCE on the all-outputs sweep (Copter iterates count
         // motors from param1 in test order) and DEFAULT(0) on single-motor.
         const commandParams: number[] = runningSequential
@@ -219,15 +238,24 @@ export class MotorTestService {
     }
     this.clearCompletionTimer()
     let acknowledged = true
-    try {
-      await this.host.sendCommand(
-        MAV_CMD.DO_MOTOR_TEST,
-        [1, MOTOR_TEST_THROTTLE_TYPE.PERCENT, 0, 0, 1, MOTOR_TEST_ORDER.DEFAULT, 0],
-        { waitForAck: true }
-      )
-    } catch {
-      acknowledged = false
+    // A simultaneous run started every motor individually, so stopping it has
+    // to stop every motor individually. One abort zeroed motor 1 and left the
+    // rest turning while the UI said the test had stopped.
+    const abortSequences = this.activeSimultaneousSequences.length > 0 ? [...this.activeSimultaneousSequences] : [1]
+    for (const sequence of abortSequences) {
+      try {
+        await this.host.sendCommand(
+          MAV_CMD.DO_MOTOR_TEST,
+          [sequence, MOTOR_TEST_THROTTLE_TYPE.PERCENT, 0, 0, 1, MOTOR_TEST_ORDER.DEFAULT, 0],
+          { waitForAck: true }
+        )
+      } catch {
+        // Keep going: an unacknowledged abort for one motor must not leave the
+        // remaining motors uncommanded. The result reports the shortfall.
+        acknowledged = false
+      }
     }
+    this.activeSimultaneousSequences = []
     const now = Date.now()
     this.state = {
       ...this.state,

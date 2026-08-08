@@ -228,6 +228,7 @@ export function createIdleLiveVerification(): LiveVerificationState {
       present: false,
       healthy: false
     },
+    fakeGpsActive: false,
     opticalFlow: {
       verified: false
     },
@@ -348,6 +349,7 @@ export function cloneLiveVerification(liveVerification: LiveVerificationState): 
     gpsSensor: {
       ...liveVerification.gpsSensor
     },
+    fakeGpsActive: liveVerification.fakeGpsActive,
     opticalFlow: {
       ...liveVerification.opticalFlow
     },
