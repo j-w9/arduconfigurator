@@ -192,6 +192,15 @@ export interface ArduPilotConfiguratorRuntimeOptions {
    */
   parameterSyncStallRetryMs?: number
   /**
+   * Test-injectable overrides for the MAV_CMD_RUN_PREARM_CHECKS poll
+   * (defaults PRE_ARM_REFRESH_INTERVAL_MS = 3000ms and
+   * PRE_ARM_ISSUE_TTL_POLLED_MS = 8000ms). Tests shrink both so the
+   * poll-and-expire cycle runs in milliseconds instead of seconds.
+   * Production callers leave these unset.
+   */
+  preArmRefreshIntervalMs?: number
+  preArmIssueTtlPolledMs?: number
+  /**
    * Firmware-specific metadata bundles. When an authoritative heartbeat
    * identifies the connected vehicle, the runtime swaps to the matching
    * bundle here (if present) and re-emits so derived setup/category state
@@ -261,6 +270,14 @@ const MAX_MAVFTP_LOG_BYTES = 512 * 1024 * 1024
 // FC still refused to arm. Hold each reason long enough to survive the gap (a
 // still-failing check is re-sent and refreshed; a resolved one ages out).
 const PRE_ARM_ISSUE_TTL_MS = 60000
+// ...unless we are driving the reports ourselves. MAV_CMD_RUN_PREARM_CHECKS
+// makes the vehicle re-run its checks and re-report every failure on demand, so
+// while that poll is answering, a reason that misses two consecutive rounds has
+// genuinely cleared rather than merely gone quiet. Without this an operator who
+// fixes one of three failures watches the fixed one linger for the best part of
+// a minute.
+const PRE_ARM_REFRESH_INTERVAL_MS = 3000
+const PRE_ARM_ISSUE_TTL_POLLED_MS = 8000
 // MAV_SYS_STATUS_PREARM_CHECK (common.xml, value 268435456). ArduPilot sets it
 // present whenever arming is compiled in, enabled when ARMING_CHECK != 0, and
 // healthy when the last 1 Hz pre-arm run passed or the vehicle is armed
@@ -491,6 +508,17 @@ export class ArduPilotConfiguratorRuntime {
   // Last SYS_STATUS pre-arm verdict. Undefined until the first SYS_STATUS of
   // the session arrives; freshness is judged at read time, not here.
   private preArmLiveCheck?: PreArmLiveCheckState
+  // MAV_CMD_RUN_PREARM_CHECKS poll. `supported` latches false the first time the
+  // vehicle answers UNSUPPORTED so we stop asking a board that cannot answer;
+  // `active` gates the short issue TTL, and is only true while the poll is
+  // actually being accepted — an aged reason must never expire early just
+  // because we asked for a refresh that never landed.
+  private preArmRefreshTimer?: ReturnType<typeof setInterval>
+  private readonly preArmRefreshIntervalMs: number
+  private readonly preArmIssueTtlPolledMs: number
+  private preArmRefreshSupported = true
+  private preArmRefreshActive = false
+  private preArmRefreshInFlight = false
   private readonly statusTexts: StatusTextEntry[] = []
   // One-shot waiters for a specific STATUSTEXT substring (e.g. "Passthru
   // enabled"), resolved by emitStatusText when a matching message arrives.
@@ -601,6 +629,8 @@ export class ArduPilotConfiguratorRuntime {
     this.metadata = metadata
     this.metadataByVehicle = options.metadataByVehicle ?? {}
     this.parameterSyncStallRetryMs = options.parameterSyncStallRetryMs ?? PARAMETER_SYNC_STALL_RETRY_MS
+    this.preArmRefreshIntervalMs = options.preArmRefreshIntervalMs ?? PRE_ARM_REFRESH_INTERVAL_MS
+    this.preArmIssueTtlPolledMs = options.preArmIssueTtlPolledMs ?? PRE_ARM_ISSUE_TTL_POLLED_MS
     this.mavftp = new MavftpService({
       session: this.session,
       getVehicle: () => this.vehicle,
@@ -1936,6 +1966,7 @@ export class ArduPilotConfiguratorRuntime {
     this.guidedActionService.destroy()
     this.canBusService.destroy()
     this.clearPreArmExpiryTimer()
+    this.clearPreArmRefresh()
     this.clearParameterSyncRetryTimer()
     this.clearCanNodeStaleSweep()
     this.rejectVehicleWaiters(new Error('Runtime destroyed before vehicle heartbeat was received.'))
@@ -2275,6 +2306,8 @@ export class ArduPilotConfiguratorRuntime {
       void this.requestAutopilotVersion(systemId, componentId)
     }
 
+    this.ensurePreArmRefresh()
+
     // A heartbeat from a board that just finished rebooting is the earliest
     // signal it can answer again. If a download is still open but no retry is
     // armed (nothing can re-arm it once the stream went quiet at exactly the
@@ -2547,12 +2580,29 @@ export class ArduPilotConfiguratorRuntime {
    */
   private emitStatusText(severityCode: number, text: string): void {
     const severity = severityName(severityCode)
-    this.statusTexts.unshift({
-      severity,
-      text,
-      receivedAtMs: Date.now()
-    })
-    this.statusTexts.splice(STATUS_TEXT_HISTORY_LIMIT)
+    const now = Date.now()
+    // A still-failing pre-arm check is re-reported on every refresh round, and
+    // once we drive those rounds ourselves that is every few seconds. Repeating
+    // an unchanged reason down the notice feed would bury everything else in
+    // it, so refresh the existing entry in place instead. Only pre-arm text is
+    // collapsed this way: a repeated STATUSTEXT of any other kind is usually the
+    // vehicle telling us something happened again, which is worth a new line.
+    // Replaced, not mutated in place: snapshots share these entry objects by
+    // reference (`statusTexts: [...this.statusTexts]`), so editing one would
+    // rewrite history in every snapshot already handed out.
+    const existingPreArmIndex = normalizePreArmIssueText(text)
+      ? this.statusTexts.findIndex((entry) => entry.text === text)
+      : -1
+    if (existingPreArmIndex >= 0) {
+      this.statusTexts[existingPreArmIndex] = { severity, text, receivedAtMs: now }
+    } else {
+      this.statusTexts.unshift({
+        severity,
+        text,
+        receivedAtMs: now
+      })
+      this.statusTexts.splice(STATUS_TEXT_HISTORY_LIMIT)
+    }
     // Resolve any one-shot substring waiters (e.g. the passthru-enabled gate).
     if (this.statusTextWaiters.length > 0) {
       const remaining: typeof this.statusTextWaiters = []
@@ -2741,6 +2791,98 @@ export class ArduPilotConfiguratorRuntime {
     } catch {
       // Best-effort refresh; swallow to avoid noisy STATUSTEXT spam.
     }
+  }
+
+  /**
+   * Start the pre-arm refresh poll once a vehicle is talking to us.
+   *
+   * Called from the 1 Hz heartbeat path rather than at connect so it survives a
+   * reboot: the timer is torn down on disconnect and re-armed by the first
+   * heartbeat of the next session.
+   */
+  private ensurePreArmRefresh(): void {
+    if (this.preArmRefreshTimer !== undefined || !this.preArmRefreshSupported) {
+      return
+    }
+    this.preArmRefreshTimer = setInterval(() => void this.refreshPreArmChecks(), this.preArmRefreshIntervalMs)
+    // Ask immediately too, so the first verdict does not wait out a full poll
+    // interval on top of the connect handshake.
+    void this.refreshPreArmChecks()
+  }
+
+  private clearPreArmRefresh(): void {
+    if (this.preArmRefreshTimer !== undefined) {
+      clearInterval(this.preArmRefreshTimer)
+      this.preArmRefreshTimer = undefined
+    }
+    this.setPreArmRefreshActive(false)
+  }
+
+  /**
+   * One MAV_CMD_RUN_PREARM_CHECKS round.
+   *
+   * Deliberately silent: this is background housekeeping the operator did not
+   * ask for, so no failure here reaches the status feed. The only lasting
+   * consequence of a bad answer is that we stop claiming the fast TTL, which
+   * makes the box fall back to its slower-but-honest latched behaviour.
+   */
+  private async refreshPreArmChecks(): Promise<void> {
+    if (this.preArmRefreshInFlight || !this.preArmRefreshSupported) {
+      return
+    }
+    // Rejected outright while armed (and the reasons are moot then anyway).
+    if (!this.vehicle || this.vehicle.armed) {
+      this.setPreArmRefreshActive(false)
+      return
+    }
+
+    this.preArmRefreshInFlight = true
+    try {
+      const ack = await this.sendCommand(MAV_CMD.RUN_PREARM_CHECKS, [0, 0, 0, 0, 0, 0, 0], {
+        waitForAck: true,
+        ackTimeoutMs: this.preArmRefreshIntervalMs,
+        // A non-ACCEPTED result is information here, not an error to throw on.
+        rejectAckOnFailure: false
+      })
+      const result = ack && 'result' in ack ? ack.result : undefined
+      if (result === MAV_RESULT.UNSUPPORTED) {
+        // No AP_ARMING_ENABLED (or a non-ArduPilot autopilot). Asking again every
+        // 3 s for the rest of the session would be pure noise.
+        this.preArmRefreshSupported = false
+        this.clearPreArmRefresh()
+        return
+      }
+      this.setPreArmRefreshActive(result === MAV_RESULT.ACCEPTED)
+    } catch {
+      // Timeout or send failure — keep polling (the link may just be busy) but
+      // stop trusting the short TTL until a round lands again.
+      this.setPreArmRefreshActive(false)
+    } finally {
+      this.preArmRefreshInFlight = false
+    }
+  }
+
+  /**
+   * Flipping this changes every already-recorded reason's expiry, so the pending
+   * timer — computed against the previous TTL — has to be recomputed with it.
+   */
+  private setPreArmRefreshActive(active: boolean): void {
+    if (this.preArmRefreshActive === active) {
+      return
+    }
+    this.preArmRefreshActive = active
+    if (this.preArmIssues.size > 0) {
+      this.schedulePreArmExpiry()
+    }
+  }
+
+  /**
+   * How long a reported reason stays on screen. Short while our own poll is
+   * refreshing the list every few seconds, long otherwise — see
+   * PRE_ARM_ISSUE_TTL_MS.
+   */
+  private preArmIssueTtlMs(): number {
+    return this.preArmRefreshActive ? this.preArmIssueTtlPolledMs : PRE_ARM_ISSUE_TTL_MS
   }
 
   private ensureCanNodeStaleSweep(): void {
@@ -3291,6 +3433,12 @@ export class ArduPilotConfiguratorRuntime {
     this.canBusService.reset()
     this.motorTestService.clearCompletionTimer()
     this.clearPreArmExpiryTimer()
+    // Torn down rather than left running: the next heartbeat re-arms it, and a
+    // poll aimed at a vehicle that is no longer there is only wasted uplink.
+    // Support is re-probed rather than remembered: the next heartbeat may be a
+    // different board, and one wasted command beats silently never asking.
+    this.clearPreArmRefresh()
+    this.preArmRefreshSupported = true
     this.clearParameterSyncRetryTimer()
   }
 
@@ -3819,8 +3967,9 @@ export class ArduPilotConfiguratorRuntime {
 
   private prunePreArmIssues(referenceTimeMs = Date.now()): boolean {
     let removed = false
+    const ttlMs = this.preArmIssueTtlMs()
     this.preArmIssues.forEach((issue, key) => {
-      if (referenceTimeMs - issue.lastSeenAtMs > PRE_ARM_ISSUE_TTL_MS) {
+      if (referenceTimeMs - issue.lastSeenAtMs > ttlMs) {
         this.preArmIssues.delete(key)
         removed = true
       }
@@ -3837,8 +3986,9 @@ export class ArduPilotConfiguratorRuntime {
 
   private schedulePreArmExpiry(): void {
     this.clearPreArmExpiryTimer()
+    const ttlMs = this.preArmIssueTtlMs()
     const nextExpiryAtMs = [...this.preArmIssues.values()].reduce<number | undefined>((earliest, issue) => {
-      const candidate = issue.lastSeenAtMs + PRE_ARM_ISSUE_TTL_MS
+      const candidate = issue.lastSeenAtMs + ttlMs
       return earliest === undefined ? candidate : Math.min(earliest, candidate)
     }, undefined)
 

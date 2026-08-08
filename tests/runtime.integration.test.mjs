@@ -1126,7 +1126,46 @@ function createStatusTextSession() {
       statusListeners.forEach((listener) => listener({ kind: 'disconnected', reason: 'test' }))
     },
     destroy() {},
-    async send() {},
+    /**
+     * Commands the runtime sent, in order. The pre-arm refresh poll is the only
+     * thing these tests care about, but recording everything keeps the helper
+     * honest about what else the connect path emits.
+     */
+    sentCommands: [],
+    /**
+     * command -> MAV_RESULT to answer with. Unlisted commands go unanswered,
+     * which is exactly how a firmware that ignores one behaves.
+     */
+    autoAck: new Map(),
+    async send(message) {
+      if (message?.type !== 'COMMAND_LONG') {
+        return
+      }
+      this.sentCommands.push(message.command)
+      const result = this.autoAck.get(message.command)
+      if (result === undefined) {
+        return
+      }
+      // Deferred a tick so the ack lands the way a real one does — after the
+      // send round-trip — rather than re-entering the runtime mid-send.
+      queueMicrotask(() => {
+        messageListeners.forEach((listener) =>
+          listener({
+            header: { systemId: 1, componentId: 1, sequence: 0 },
+            message: {
+              type: 'COMMAND_ACK',
+              command: message.command,
+              result,
+              progress: 0,
+              resultParam2: 0,
+              targetSystem: 255,
+              targetComponent: 190
+            },
+            timestampMs: Date.now()
+          })
+        )
+      })
+    },
     /** Test hook: drive a STATUSTEXT through the runtime's message listener. */
     pushStatusText(severity, text, statusId = 0, chunkSequence = 0) {
       messageListeners.forEach((listener) =>
@@ -1282,6 +1321,147 @@ test('prearm: a disconnect drops the live verdict so it cannot leak into the nex
     assert.equal(snap.preArmStatus.liveCheck, undefined)
     assert.equal(snap.preArmStatus.healthy, true)
   } finally {
+    runtime.destroy()
+  }
+})
+
+// ── Pre-arm refresh poll ──────────────────────────────────────────────────
+//
+// Second operator report on the same box: a check that *starts* failing took
+// ~30s to appear, and a check that cleared stayed on screen for ~30s after.
+// Both have the same cause and it is not the live SYS_STATUS bit (that flips in
+// ~0.5s) — it is the reason *text*. ArduPilot only enumerates reasons from
+// AP_Arming::update(), at most every PREARM_DISPLAY_PERIOD (30s), so the list of
+// named reasons is up to 30s stale in both directions.
+//
+// MAV_CMD_RUN_PREARM_CHECKS (GCS_Common.cpp handle_command_run_prearm_checks)
+// calls pre_arm_checks(true) on demand, which re-reports every current failure
+// immediately. Polling it turns that 30s into the poll interval, and — because
+// we then know a still-failing reason is re-sent every round — lets a reason
+// that stops being reported expire in seconds instead of a minute.
+
+test('prearm: the runtime polls RUN_PREARM_CHECKS rather than waiting out ArduPilot 30s report period', async () => {
+  const session = createStatusTextSession()
+  session.autoAck.set(MAV_CMD.RUN_PREARM_CHECKS, MAV_RESULT.ACCEPTED)
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    preArmRefreshIntervalMs: 15
+  })
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+    await sleep(60)
+
+    const polls = session.sentCommands.filter((command) => command === MAV_CMD.RUN_PREARM_CHECKS)
+    // At least the immediate one plus a repeat, proving it is a poll and not a
+    // single connect-time probe.
+    assert.ok(polls.length >= 2, `expected repeated RUN_PREARM_CHECKS polls, saw ${polls.length}`)
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('prearm: a reason that stops being re-reported clears quickly while the poll is answering', async () => {
+  const session = createStatusTextSession()
+  session.autoAck.set(MAV_CMD.RUN_PREARM_CHECKS, MAV_RESULT.ACCEPTED)
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    preArmRefreshIntervalMs: 10,
+    preArmIssueTtlPolledMs: 40
+  })
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+    // Let a poll round land so the runtime knows its refresh is being answered.
+    await sleep(30)
+
+    // Two failures reported together, as one pre_arm_checks(true) run would.
+    session.pushStatusText(4, 'PreArm: Compass not calibrated')
+    session.pushStatusText(4, 'PreArm: RC not calibrated')
+    assert.equal(runtime.getSnapshot().preArmStatus.issues.length, 2)
+
+    // The operator fixes the RC one. Subsequent rounds re-report only the
+    // compass failure; nothing ever announces that RC now passes.
+    for (let round = 0; round < 6; round += 1) {
+      await sleep(15)
+      session.pushStatusText(4, 'PreArm: Compass not calibrated')
+    }
+
+    const issues = runtime.getSnapshot().preArmStatus.issues
+    assert.deepEqual(
+      issues.map((issue) => issue.text),
+      ['PreArm: Compass not calibrated']
+    )
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('prearm: an unanswered poll keeps the slow TTL so a reason cannot expire early', async () => {
+  // No autoAck entry: this firmware never answers the command. Expiring a
+  // reason in 8s would then be pure invention — nothing is refreshing the list.
+  const session = createStatusTextSession()
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    preArmRefreshIntervalMs: 10,
+    preArmIssueTtlPolledMs: 20
+  })
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+
+    session.pushStatusText(4, 'PreArm: Compass not calibrated')
+    await sleep(80)
+
+    assert.equal(runtime.getSnapshot().preArmStatus.issues.length, 1)
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('prearm: a firmware that answers UNSUPPORTED is asked once and then left alone', async () => {
+  const session = createStatusTextSession()
+  session.autoAck.set(MAV_CMD.RUN_PREARM_CHECKS, MAV_RESULT.UNSUPPORTED)
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    preArmRefreshIntervalMs: 10
+  })
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+    await sleep(80)
+
+    const polls = session.sentCommands.filter((command) => command === MAV_CMD.RUN_PREARM_CHECKS)
+    assert.equal(polls.length, 1, 'a board without AP_ARMING_ENABLED is not re-asked every interval')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('prearm: a re-reported reason refreshes its notice instead of stacking duplicates', async () => {
+  const session = createStatusTextSession()
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    preArmRefreshIntervalMs: 10_000
+  })
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+
+    session.pushStatusText(4, 'PreArm: Compass not calibrated')
+    session.pushStatusText(4, 'PreArm: Compass not calibrated')
+    session.pushStatusText(4, 'PreArm: Compass not calibrated')
+    // Once the poll drives reports every few seconds, one unfixed check would
+    // otherwise push every other notice off the feed within a minute.
+    const notices = runtime
+      .getSnapshot()
+      .statusTexts.filter((entry) => entry.text === 'PreArm: Compass not calibrated')
+    assert.equal(notices.length, 1)
+
+    // A different reason is still its own line — only exact repeats collapse.
+    session.pushStatusText(4, 'PreArm: RC not calibrated')
+    assert.equal(runtime.getSnapshot().statusTexts.filter((entry) => entry.text.startsWith('PreArm:')).length, 2)
+  } finally {
+    await runtime.disconnect().catch(() => {})
     runtime.destroy()
   }
 })

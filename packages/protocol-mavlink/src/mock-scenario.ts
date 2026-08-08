@@ -2025,6 +2025,23 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
                 })
               )
             )
+          } else if (outbound.message.command === MAV_CMD.RUN_PREARM_CHECKS) {
+            // The demo vehicle passes every pre-arm check, and ArduPilot says
+            // nothing at all when they pass — an accepted ack with no
+            // STATUSTEXT is the whole of a healthy answer here.
+            responses.push(
+              codec.encode(
+                envelope(108, {
+                  type: 'COMMAND_ACK',
+                  command: MAV_CMD.RUN_PREARM_CHECKS,
+                  result: MAV_RESULT.ACCEPTED,
+                  progress: 0,
+                  resultParam2: 0,
+                  targetSystem: outbound.header.systemId,
+                  targetComponent: outbound.header.componentId
+                })
+              )
+            )
           }
           break
         case 'COMMAND_ACK': {

@@ -289,6 +289,19 @@ export const MAV_CMD = {
   START_RX_PAIR: 500,
   SET_MESSAGE_INTERVAL: 511,
   REQUEST_MESSAGE: 512,
+  /**
+   * Ask the autopilot to run its pre-arm checks right now and report every
+   * failure. GCS_Common.cpp handle_command_run_prearm_checks calls
+   * AP_Arming::pre_arm_checks(true) directly, so each accepted command emits a
+   * complete, current set of `PreArm:` STATUSTEXTs.
+   *
+   * This is the only way to see a pre-arm result sooner than ArduPilot's own
+   * schedule: AP_Arming::update() reports failures at most every
+   * PREARM_DISPLAY_PERIOD (30 s) and never announces a fail->pass transition at
+   * all. Answers TEMPORARILY_REJECTED while armed, and UNSUPPORTED on a build
+   * without AP_ARMING_ENABLED.
+   */
+  RUN_PREARM_CHECKS: 401,
   REQUEST_AUTOPILOT_CAPABILITIES: 520,
   DO_START_MAG_CAL: 42424,
   DO_ACCEPT_MAG_CAL: 42425,
