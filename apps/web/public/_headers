@@ -12,8 +12,8 @@
 # connect-src also allows https: and http://localhost for the AI Assistant's
 # bring-your-own-key model calls (Anthropic/OpenAI/OpenAI-compatible gateways over
 # https, a local Ollama over http://localhost). Consistent with the already-open
-# ws:/wss:; the public build ships no telemetry/beacon, so these are only ever the
-# user's own configured endpoints.
+# ws:/wss:. This app sends no analytics or usage data anywhere, so the only
+# outbound connections are ever to the user's own configured endpoints.
 # The service worker must never be cached, so browsers pick up the
 # self-destructing sw.js on the next visit and un-stick users promptly.
 /sw.js

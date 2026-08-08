@@ -1,7 +1,7 @@
-// Analytics hooks. No analytics provider is wired in this build, so these
-// are no-ops — call sites can record intent without shipping any
-// third-party tracking script or beacon. Swap the bodies if a provider is
-// added later.
+// Analytics hooks, deliberately no-ops. Nothing is wired in and nothing is
+// sent: call sites can express intent without the app acquiring any
+// third-party tracking script or background reporting. If a provider is ever
+// added, these bodies are the single place it would go.
 
 type AnalyticsValue = string | number | boolean | null | undefined
 
