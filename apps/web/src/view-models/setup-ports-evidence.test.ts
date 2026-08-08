@@ -43,12 +43,23 @@ describe('parseUartTraffic', () => {
   })
 })
 
+/**
+ * A prior sample in which NO port had yet recorded a framing error.
+ *
+ * Every "is this port garbled" test needs one, because framing errors are
+ * cumulative since boot while byte counts are per-read deltas — only a pair of
+ * samples puts both on the same window. Differencing against a zero baseline
+ * attributes all the errors to the window, which is what these fixtures mean.
+ */
+const NO_PRIOR_ERRORS = (rawText: string): string => rawText.replace(/FE=\d+/g, 'FE=0')
+
 describe('buildSetupPortsEvidence', () => {
   it('flags a port receiving UNDECODABLE traffic while set to MAVLink2', () => {
     // The reported case: receiver wired to SERIAL2, port still MAVLink2, and
     // the stream unframeable as a result.
     const evidence = buildSetupPortsEvidence({
       rawText: REAL_UARTS_TXT,
+      previousRawText: NO_PRIOR_ERRORS(REAL_UARTS_TXT),
       protocolByPort: { 0: 2, 1: 23, 2: 2, 3: 5, 7: -1 },
       minimumRxBytes: 8
     })
@@ -99,6 +110,7 @@ SERIAL9 OTG2  TX =       0 RX =    1128 TXBD=     0 RXBD=   235 RXDRP=       0 F
     // MAVLink2, producing far more framing errors than bytes.
     const evidence = buildSetupPortsEvidence({
       rawText: REAL_UARTS_TXT,
+      previousRawText: NO_PRIOR_ERRORS(REAL_UARTS_TXT),
       protocolByPort: { 0: 2, 2: 2 },
       minimumRxBytes: 8
     })
@@ -117,6 +129,7 @@ SERIAL2 UART2 TX =       0 RX*=    4867 TXBD=     0 RXBD=  3163 RXDRP=       0 F
 `
     const evidence = buildSetupPortsEvidence({
       rawText: rcinWrongBaud,
+      previousRawText: NO_PRIOR_ERRORS(rcinWrongBaud),
       protocolByPort: { 2: 23 }
     })
     expect(evidence.unconfigured.map((finding) => finding.portNumber)).toEqual([2])
@@ -238,11 +251,94 @@ describe('describeUnconfiguredPort', () => {
     // deliberate ATAK link on TELEM2 came to be reported as misconfigured.
     const [finding] = buildSetupPortsEvidence({
       rawText: REAL_UARTS_TXT,
+      previousRawText: NO_PRIOR_ERRORS(REAL_UARTS_TXT),
       protocolByPort: { 2: 2 },
       minimumRxBytes: 8
     }).unconfigured
+    // "in the last sample" is deliberate: the number is now errors accrued in
+    // the same window as the byte count, not a since-boot total.
     expect(describeUnconfiguredPort(finding)).toBe(
-      'SERIAL2 (UART2) is receiving 39 bytes it cannot decode (80357 framing errors) — check the baud and protocol for whatever is wired there'
+      'SERIAL2 (UART2) is receiving 39 bytes it cannot decode (80357 framing errors in the last sample) — check the baud and protocol for whatever is wired there'
     )
+  })
+})
+
+// ── Framing errors are cumulative; byte counts are not ────────────────────
+//
+// Field report: a healthy 460800-baud RC input on UART7 was reported as
+// "receiving 123 bytes it cannot decode (95 framing errors)". The link worked.
+//
+// @SYS/uarts.txt mixes units. RX is `StatsTracker.update()` — "the change since
+// last call" (AP_HAL/UARTDriver.h) — while FE is `_rx_stats_framing_errors`
+// printed raw, cumulative since boot and never reset
+// (AP_HAL_ChibiOS/UARTDriver.cpp). Comparing the two asks "have there EVER been
+// errors" while appearing to ask "are there errors NOW".
+//
+// An RCIN port accrues framing errors at boot while AP_RCProtocol auto-detects
+// the protocol. That count never decays, so every later read measured it
+// against a fraction of a second of traffic — and the verdict flipped with how
+// much happened to arrive between two reads, appearing and disappearing with
+// nothing changed on the aircraft.
+
+describe('framing errors are judged over the same window as the bytes', () => {
+  const withCounters = (rx: number, fe: number) =>
+    `UARTV1\nSERIAL7 UART7 TX =       0 RX*=${String(rx).padStart(8)} TXBD=     0 RXBD=     0 RXDRP=       0 FE=${fe} OE=0 NE=0 FlowCtrl=0\n`
+
+  it('does not condemn a port whose framing errors are all historic', () => {
+    // The exact field case: 95 errors banked at boot, 123 bytes in this window,
+    // and NOT ONE new error since the previous sample. The port is healthy.
+    const evidence = buildSetupPortsEvidence({
+      rawText: withCounters(123, 95),
+      previousRawText: withCounters(4000, 95),
+      protocolByPort: { 7: 23 }
+    })
+    expect(evidence.unconfigured).toEqual([])
+    expect(evidence.decodeVerdictPending).toBe(false)
+  })
+
+  it('still condemns a port whose errors are accruing right now', () => {
+    // Same totals, but 60 of the 95 arrived during this window — that is a
+    // genuinely mis-clocked port and must still be caught.
+    const evidence = buildSetupPortsEvidence({
+      rawText: withCounters(123, 95),
+      previousRawText: withCounters(4000, 35),
+      protocolByPort: { 7: 23 }
+    })
+    expect(evidence.unconfigured).toHaveLength(1)
+    expect(evidence.unconfigured[0].kind).toBe('undecodable')
+    // The reported number is the window's errors, not the since-boot total.
+    expect(evidence.unconfigured[0].framingErrors).toBe(60)
+    expect(describeUnconfiguredPort(evidence.unconfigured[0])).toContain('60 framing errors in the last sample')
+  })
+
+  it('judges nothing at all from a single sample, and says so', () => {
+    // Silence here would read as "all ports check out". It is a missing
+    // measurement, not a clean bill of health.
+    const evidence = buildSetupPortsEvidence({
+      rawText: withCounters(123, 95),
+      protocolByPort: { 7: 23 }
+    })
+    expect(evidence.unconfigured).toEqual([])
+    expect(evidence.decodeVerdictPending).toBe(true)
+  })
+
+  it('treats a counter that went backwards as zero errors, not a huge negative', () => {
+    // The FC rebooted between samples, so the cumulative counter restarted.
+    const evidence = buildSetupPortsEvidence({
+      rawText: withCounters(123, 5),
+      previousRawText: withCounters(4000, 900),
+      protocolByPort: { 7: 23 }
+    })
+    expect(evidence.unconfigured).toEqual([])
+  })
+
+  it('does not report a decode verdict as pending once a second sample exists', () => {
+    const evidence = buildSetupPortsEvidence({
+      rawText: withCounters(4000, 0),
+      previousRawText: withCounters(4000, 0),
+      protocolByPort: { 7: 23 }
+    })
+    expect(evidence.decodeVerdictPending).toBe(false)
+    expect(evidence.unconfigured).toEqual([])
   })
 })

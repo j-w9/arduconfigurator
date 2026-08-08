@@ -210,6 +210,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           // the mismatch rather than leave it to be found with a scope.
           const portsEvidence = buildSetupPortsEvidence({
             rawText: snapshot.hardware.uartsFile?.rawText,
+            previousRawText: snapshot.hardware.uartsFile?.previousRawText,
             protocolByPort: Object.fromEntries(
               Array.from({ length: 10 }, (_, port) => [
                 port,
@@ -252,6 +253,14 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             portsEvidence.trafficUnknown
               ? 'Port traffic: counters unavailable'
               : `Ports carrying traffic: ${portsEvidence.ports.filter((port) => port.rxBytes > 0).length}`,
+            // Said out loud rather than left as silence. Framing errors are
+            // cumulative since boot while byte counts are per-read deltas, so
+            // until a second sample of uarts.txt arrives there is no honest
+            // decode verdict — and "no findings" would otherwise read as "all
+            // ports check out".
+            ...(portsEvidence.decodeVerdictPending
+              ? ['Decode check: waiting for a second port-counter sample']
+              : []),
             // No "Review: pending" pill — there is no confirm action on this
             // step, so promising a review would describe a control that does
             // not exist.

@@ -75,8 +75,21 @@ export interface BoardFileState {
   path: string
   mappings: BoardSerialPortMapping[]
   rawText?: string
+  /**
+   * The body of the PREVIOUS fetch, kept so per-port counters can be
+   * differenced over a known window.
+   *
+   * @SYS/uarts.txt mixes units: RX/TX are "the change since last call"
+   * (AP_HAL/UARTDriver.h StatsTracker) while FE/OE/NE are cumulative since
+   * boot. Anything comparing errors to bytes needs two samples to put both on
+   * the same footing; with one sample the error ratio is meaningless and
+   * swings with how much traffic happened to arrive between reads.
+   */
+  previousRawText?: string
   error?: string
   fetchedAtMs?: number
+  /** When the sample now in `previousRawText` was taken. */
+  previousFetchedAtMs?: number
 }
 
 export interface HardwareState {

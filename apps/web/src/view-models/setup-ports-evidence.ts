@@ -20,10 +20,25 @@ export interface UartPortTraffic {
   portNumber: number
   /** Hardware name (UART1, OTG1, EMPTY, ...). */
   hardwarePort: string
+  /**
+   * Bytes received SINCE THE LAST READ of uarts.txt, not since boot.
+   *
+   * ArduPilot prints this through `StatsTracker.update()`, documented in
+   * AP_HAL/UARTDriver.h as "Take cumulative bytes and return the change since
+   * last call". The tracker lives on the flight controller and persists across
+   * GCS connections, so on any read after the first of a given boot this is a
+   * short window — often a fraction of a second's traffic.
+   */
   rxBytes: number
   txBytes: number
-  /** Framing errors — high relative to rxBytes means the UART cannot frame
-   *  what is arriving, i.e. a baud or protocol mismatch rather than silence. */
+  /**
+   * Framing errors SINCE BOOT — a raw cumulative counter
+   * (`_rx_stats_framing_errors`, AP_HAL_ChibiOS/UARTDriver.cpp), never reset.
+   *
+   * DIFFERENT UNITS FROM rxBytes ABOVE, which is the whole trap: comparing
+   * this directly against a windowed byte count asks "have there ever been
+   * errors" while pretending to ask "are there errors now".
+   */
   framingErrors: number
 }
 
@@ -90,6 +105,12 @@ export interface UnconfiguredPortFinding {
 
 export interface SetupPortsEvidenceInputs {
   rawText: string | undefined
+  /**
+   * The PREVIOUS uarts.txt body, so framing errors can be differenced over the
+   * same window the byte counts already cover. Undefined until a second sample
+   * exists, and while it is undefined no port is judged undecodable.
+   */
+  previousRawText?: string
   /** SERIALn_PROTOCOL by port number, as synced. */
   protocolByPort: Record<number, number | undefined>
   /** Ignore ports below this many received bytes — avoids flagging a stray
@@ -114,6 +135,13 @@ export interface SetupPortsEvidence {
   /** True when uarts.txt was unavailable, so absence of findings proves
    *  nothing and the step must not claim the ports are correct. */
   trafficUnknown: boolean
+  /**
+   * True while only ONE uarts.txt sample exists, so framing errors cannot yet
+   * be differenced and no port has been judged decodable or not. Distinct from
+   * trafficUnknown (no counters at all) — here the byte counts are real and
+   * only the error verdict is pending.
+   */
+  decodeVerdictPending: boolean
 }
 
 /**
@@ -127,10 +155,17 @@ export interface SetupPortsEvidence {
  */
 export function buildSetupPortsEvidence({
   rawText,
+  previousRawText,
   protocolByPort,
   minimumRxBytes = 32
 }: SetupPortsEvidenceInputs): SetupPortsEvidence {
   const ports = parseUartTraffic(rawText)
+  // Framing errors are cumulative since boot while rxBytes is a per-read
+  // delta, so the two are only comparable across a PAIR of samples. Without a
+  // previous one there is no honest garbled verdict to give — see below.
+  const previousFramingErrors = new Map(
+    parseUartTraffic(previousRawText).map((port) => [port.portNumber, port.framingErrors])
+  )
   const unconfigured: UnconfiguredPortFinding[] = []
 
   for (const port of ports) {
@@ -143,9 +178,23 @@ export function buildSetupPortsEvidence({
     if (protocolValue === undefined) {
       continue
     }
-    // A tenth of the received bytes failing to frame is well beyond incidental
-    // noise and means the port is mis-clocked for what is on it.
-    const garbled = port.framingErrors > port.rxBytes / 10
+    // Errors ACCRUED IN THE SAME WINDOW as the bytes, so both sides of the
+    // ratio cover the same slice of time.
+    //
+    // Comparing the lifetime error count against a windowed byte count is what
+    // produced a false "cannot decode" on a healthy 460800-baud RC input: an
+    // RCIN port accumulates framing errors at boot while AP_RCProtocol
+    // auto-detects the protocol, that count never decays, and every later read
+    // measured it against a fraction of a second of traffic. The verdict then
+    // depended on how much happened to arrive between two reads, so it
+    // appeared and disappeared with nothing changed on the aircraft.
+    const previousErrors = previousFramingErrors.get(port.portNumber)
+    const framingErrorsInWindow =
+      previousErrors === undefined ? undefined : Math.max(0, port.framingErrors - previousErrors)
+    // No second sample yet: report the port, judge nothing. Silence here is a
+    // missing measurement, not a clean bill of health — trafficUnknown and the
+    // step's own copy carry that.
+    const garbled = framingErrorsInWindow !== undefined && framingErrorsInWindow > port.rxBytes / 10
 
     if (garbled) {
       // Checked BEFORE the protocol, deliberately. Undecodable traffic is a
@@ -156,7 +205,7 @@ export function buildSetupPortsEvidence({
         portNumber: port.portNumber,
         hardwarePort: port.hardwarePort,
         rxBytes: port.rxBytes,
-        framingErrors: port.framingErrors,
+        framingErrors: framingErrorsInWindow ?? port.framingErrors,
         protocolValue,
         garbled,
         kind: 'undecodable'
@@ -188,7 +237,13 @@ export function buildSetupPortsEvidence({
     .sort((a, b) => a - b)
   const duplicateRcinPorts = rcinPorts.slice(1)
 
-  return { ports, unconfigured, duplicateRcinPorts, trafficUnknown: ports.length === 0 }
+  return {
+    ports,
+    unconfigured,
+    duplicateRcinPorts,
+    trafficUnknown: ports.length === 0,
+    decodeVerdictPending: ports.length > 0 && previousFramingErrors.size === 0
+  }
 }
 
 /** One-line description of a finding, for the wizard's evidence pills. */
@@ -196,7 +251,9 @@ export function describeUnconfiguredPort(finding: UnconfiguredPortFinding): stri
   if (finding.kind === 'unclaimed') {
     return `SERIAL${finding.portNumber} (${finding.hardwarePort}) is receiving ${finding.rxBytes} bytes but the port is disabled`
   }
-  return `SERIAL${finding.portNumber} (${finding.hardwarePort}) is receiving ${finding.rxBytes} bytes it cannot decode (${finding.framingErrors} framing errors) — check the baud and protocol for whatever is wired there`
+  // "in the last sample" is load-bearing: it is what distinguishes errors
+  // happening NOW from a boot-time count that never decays.
+  return `SERIAL${finding.portNumber} (${finding.hardwarePort}) is receiving ${finding.rxBytes} bytes it cannot decode (${finding.framingErrors} framing errors in the last sample) — check the baud and protocol for whatever is wired there`
 }
 
 /** One-line description of the duplicate-RCIN condition. */

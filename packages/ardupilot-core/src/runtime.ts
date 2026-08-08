@@ -263,6 +263,12 @@ const DEFAULT_AUTOPILOT_VERSION_TIMEOUT_MS = 3000
 // read; give it a generous budget since the default is tight on a contended
 // USB link.
 const UARTS_FETCH_TIMEOUT_MS = 15000
+/**
+ * How often to re-read @SYS/uarts.txt. Slow on purpose — it exists to give the
+ * counters a second sample to be differenced against, not to animate anything,
+ * and it rides the same serialized MAVFTP session as operator transfers.
+ */
+const UARTS_REFRESH_INTERVAL_MS = 20000
 // Cap a MAVFTP log download the same way the LOG_* path caps its allocation
 // (MAX_LOG_DOWNLOAD_BYTES) — logs dwarf the @SYS files the default cap targets.
 const MAX_MAVFTP_LOG_BYTES = 512 * 1024 * 1024
@@ -651,6 +657,7 @@ export class ArduPilotConfiguratorRuntime {
     | undefined
   private autopilotVersionRequested = false
   private uartsFileRequested = false
+  private uartsRefreshTimer?: ReturnType<typeof setInterval>
 
   private metadata: FirmwareMetadataBundle
   /**
@@ -2088,6 +2095,7 @@ export class ArduPilotConfiguratorRuntime {
     this.canBusService.destroy()
     this.clearPreArmExpiryTimer()
     this.clearPreArmRefresh()
+    this.clearUartsRefresh()
     this.clearParameterSyncRetryTimer()
     this.clearCanNodeStaleSweep()
     this.rejectVehicleWaiters(new Error('Runtime destroyed before vehicle heartbeat was received.'))
@@ -2247,6 +2255,40 @@ export class ArduPilotConfiguratorRuntime {
     if (board.ftpSupported && !this.uartsFileRequested && this.uartsFile.status === 'idle') {
       this.uartsFileRequested = true
       void this.fetchUartsFile()
+      this.ensureUartsRefresh()
+    }
+  }
+
+  /**
+   * Re-read @SYS/uarts.txt on a slow cadence.
+   *
+   * One sample is not enough to say anything about framing errors: FE is
+   * cumulative since boot while RX is the delta since the previous read, so
+   * only a PAIR of samples puts both on the same window. A single read was why
+   * a healthy 460800-baud RC input could be reported as undecodable — the
+   * boot-time error count was measured against a fraction of a second of
+   * traffic.
+   *
+   * Deliberately slow, and skipped while MAVFTP is busy: this is background
+   * housekeeping and must never queue ahead of an operator's log download on
+   * the now-serialized FTP session.
+   */
+  private ensureUartsRefresh(): void {
+    if (this.uartsRefreshTimer !== undefined) {
+      return
+    }
+    this.uartsRefreshTimer = setInterval(() => {
+      if (!this.vehicle || this.uartsFile.status === 'loading' || this.mavftp.isTransferInFlight()) {
+        return
+      }
+      void this.fetchUartsFile()
+    }, UARTS_REFRESH_INTERVAL_MS)
+  }
+
+  private clearUartsRefresh(): void {
+    if (this.uartsRefreshTimer !== undefined) {
+      clearInterval(this.uartsRefreshTimer)
+      this.uartsRefreshTimer = undefined
     }
   }
 
@@ -2257,7 +2299,13 @@ export class ArduPilotConfiguratorRuntime {
 
     this.uartsFile = {
       ...createIdleUartsFileState(),
-      status: 'loading'
+      status: 'loading',
+      // Retained across the refetch — dropping it would reset the differencing
+      // window on every poll and the decode verdict would never resolve.
+      rawText: this.uartsFile.rawText,
+      fetchedAtMs: this.uartsFile.fetchedAtMs,
+      previousRawText: this.uartsFile.previousRawText,
+      previousFetchedAtMs: this.uartsFile.previousFetchedAtMs
     }
     this.emit()
 
@@ -2277,11 +2325,20 @@ export class ArduPilotConfiguratorRuntime {
           timeoutMs: UARTS_FETCH_TIMEOUT_MS
         })
       }
+      // Carry the prior body forward so consumers can difference the counters.
+      // Only a body that actually differs is worth keeping: re-reading fast
+      // enough that nothing moved would otherwise replace a useful earlier
+      // sample with a zero-length window.
+      const previous = this.uartsFile.rawText
+      const previousFetchedAtMs = this.uartsFile.fetchedAtMs
       this.uartsFile = {
         status: 'ready',
         path: UARTS_FILE_PATH,
         mappings: parseUartsFile(rawText),
         rawText,
+        previousRawText: previous !== undefined && previous !== rawText ? previous : this.uartsFile.previousRawText,
+        previousFetchedAtMs:
+          previous !== undefined && previous !== rawText ? previousFetchedAtMs : this.uartsFile.previousFetchedAtMs,
         fetchedAtMs: Date.now()
       }
       this.appendStatusEntry('info', `Fetched ${UARTS_FILE_PATH} via MAVFTP.`)
@@ -3650,6 +3707,7 @@ export class ArduPilotConfiguratorRuntime {
     this.parameterTableGrewDuringSync = false
     this.autopilotVersionRequested = false
     this.uartsFileRequested = false
+    this.clearUartsRefresh()
     this.preArmIssues.clear()
     // A reconnect/reboot is a definite event: the previous vehicle's verdict
     // must not survive into a session that has not reported one yet.
