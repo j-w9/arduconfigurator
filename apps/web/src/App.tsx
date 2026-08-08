@@ -9226,6 +9226,7 @@ export function App() {
           loading={filesBrowser.loading}
           error={filesBrowser.error}
           busyAction={busyAction}
+          downloadProgress={filesBrowser.downloadProgress}
           vehicleConnected={snapshot.connection.kind === 'connected'}
           onNavigate={filesBrowser.navigate}
           onRefresh={filesBrowser.refresh}

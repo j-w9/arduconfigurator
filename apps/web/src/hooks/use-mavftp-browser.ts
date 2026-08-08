@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MavftpDirectoryEntry } from '@arduconfig/ardupilot-core'
 
 import { downloadBinaryFile } from '../download-file'
+import { buildDownloadProgress, type DownloadProgressState } from '../view-models/download-progress'
 
 // Minimal structural slice of the runtime the file browser needs, so the
 // hook stays decoupled from the full ArduPilotConfiguratorRuntime surface.
@@ -11,7 +12,10 @@ export interface MavftpCapableRuntime {
   // Burst download for arbitrary files — handles the 16 MB+ regular files
   // (logs, terrain tiles, crash dumps) the single-read downloadRemoteFile caps
   // out on, and falls back to a single read for size-0 @SYS virtual files.
-  downloadRemoteFileBurst(path: string): Promise<Uint8Array>
+  downloadRemoteFileBurst(
+    path: string,
+    onProgress?: (progress: { bytesReceived: number; totalBytes: number }) => void
+  ): Promise<Uint8Array>
   uploadRemoteFile(path: string, bytes: Uint8Array, options?: { overwrite?: boolean }): Promise<void>
   deleteRemotePath(path: string, kind: 'file' | 'directory'): Promise<void>
 }
@@ -28,11 +32,17 @@ export interface UseMavftpBrowserOptions {
   setBusyAction: (action: string | undefined) => void
 }
 
+/** The transfer currently streaming off the FC, for the progress bar. Only the
+ *  row whose path matches renders one. */
+export type MavftpDownloadProgress = DownloadProgressState
+
 export interface MavftpBrowser {
   path: string
   entries: readonly MavftpDirectoryEntry[]
   loading: boolean
   error: string | undefined
+  /** Undefined unless a download is in flight. */
+  downloadProgress: MavftpDownloadProgress | undefined
   navigate: (path: string) => void
   refresh: () => void
   download: (entry: MavftpDirectoryEntry) => void
@@ -55,6 +65,7 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
   const [entries, setEntries] = useState<readonly MavftpDirectoryEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
+  const [downloadProgress, setDownloadProgress] = useState<MavftpDownloadProgress | undefined>(undefined)
 
   // Monotonic request id so a slow listing can't clobber a newer one. If
   // the operator navigates into a subdirectory while the lazy-load of the
@@ -130,12 +141,27 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
       if (!runtime) return
       setBusyAction('files:download')
       setError(undefined)
+      // Start at zero so the bar appears the moment the button is pressed,
+      // rather than after the first burst chunk lands.
+      setDownloadProgress(
+        buildDownloadProgress({ path: entry.path, bytesReceived: 0, listedSizeBytes: entry.sizeBytes })
+      )
       try {
-        const bytes = await runtime.downloadRemoteFileBurst(entry.path)
+        const bytes = await runtime.downloadRemoteFileBurst(entry.path, (progress) => {
+          setDownloadProgress(
+            buildDownloadProgress({
+              path: entry.path,
+              bytesReceived: progress.bytesReceived,
+              reportedTotalBytes: progress.totalBytes,
+              listedSizeBytes: entry.sizeBytes
+            })
+          )
+        })
         downloadBinaryFile(entry.name, bytes)
       } catch (err) {
         setError(err instanceof Error ? `Download failed: ${err.message}` : 'Download failed.')
       } finally {
+        setDownloadProgress(undefined)
         setBusyAction(undefined)
       }
     },
@@ -256,6 +282,7 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
     entries,
     loading,
     error,
+    downloadProgress,
     navigate,
     refresh,
     download: (entry) => void download(entry),

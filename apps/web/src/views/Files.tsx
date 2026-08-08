@@ -1,6 +1,8 @@
-import { useRef } from 'react'
+import { Fragment, useRef } from 'react'
 import type { MavftpDirectoryEntry } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+
+import { DownloadProgressBar } from './DownloadProgressBar'
 
 // MAVFTP file browser. Lists/downloads/uploads/deletes files on the FC
 // filesystem over the MAVLink FTP service. The runtime exposes the
@@ -14,12 +16,23 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 // builds. Operators can also type an arbitrary path.
 export const MAVFTP_QUICK_PATHS = ['@SYS', '/APM', '/APM/scripts', '/APM/LOGS'] as const
 
+/** The transfer currently streaming off the FC, if any. */
+export interface FilesDownloadProgress {
+  /** Full remote path of the file being downloaded. */
+  path: string
+  percent: number
+  bytesReceived: number
+  totalBytes: number
+}
+
 export interface FilesViewProps {
   path: string
   entries: readonly MavftpDirectoryEntry[]
   loading: boolean
   error: string | undefined
   busyAction: string | undefined
+  /** Undefined unless a download is in flight. */
+  downloadProgress?: FilesDownloadProgress
   vehicleConnected: boolean
   onNavigate: (path: string) => void
   onRefresh: () => void
@@ -58,6 +71,7 @@ export function FilesView(props: FilesViewProps) {
     loading,
     error,
     busyAction,
+    downloadProgress,
     vehicleConnected,
     onNavigate,
     onRefresh,
@@ -188,8 +202,11 @@ export function FilesView(props: FilesViewProps) {
                     </td>
                   </tr>
                 ) : (
-                  entries.map((entry) => (
-                    <tr key={entry.path} className={`files-row files-row--${entry.kind}`} data-testid={`files-row-${entry.name}`}>
+                  entries.map((entry) => {
+                    const downloading = downloadProgress?.path === entry.path
+                    return (
+                    <Fragment key={entry.path}>
+                    <tr className={`files-row files-row--${entry.kind}`} data-testid={`files-row-${entry.name}`}>
                       <th scope="row">
                         {entry.kind === 'directory' ? (
                           <button
@@ -219,7 +236,7 @@ export function FilesView(props: FilesViewProps) {
                             disabled={isBusy}
                             data-testid={`files-download-${entry.name}`}
                           >
-                            Download
+                            {downloading ? `Downloading ${downloadProgress.percent}%` : 'Download'}
                           </button>
                         ) : null}
                         <button
@@ -233,7 +250,25 @@ export function FilesView(props: FilesViewProps) {
                         </button>
                       </td>
                     </tr>
-                  ))
+                    {/* The bar gets its own row spanning every column: a MAVFTP
+                        burst read of a real log runs for minutes, and a button
+                        reading "Downloading" with nothing moving is
+                        indistinguishable from one that has hung. */}
+                    {downloading ? (
+                      <tr className="files-row files-row--progress">
+                        <td colSpan={4}>
+                          <DownloadProgressBar
+                            testId={`files-progress-${entry.name}`}
+                            percent={downloadProgress.percent}
+                            bytesReceived={downloadProgress.bytesReceived}
+                            totalBytes={downloadProgress.totalBytes}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                    </Fragment>
+                    )
+                  })
                 )}
               </tbody>
             </table>

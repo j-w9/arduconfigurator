@@ -3,17 +3,12 @@ import type { ReactNode } from 'react'
 import { Panel, buttonStyle } from '@arduconfig/ui-kit'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
+import { DownloadProgressBar } from './DownloadProgressBar'
 import {
   ScopedField,
   ScopedSelectField,
   type ScopedFieldDraftMap
 } from './ScopedField'
-
-// Compact MB label for the download progress bar (one decimal, MiB base to
-// match the sizeLabel column). The unit suffix is rendered once by the caller.
-function formatMegabytes(bytes: number): string {
-  return (bytes / (1024 * 1024)).toFixed(1)
-}
 
 export interface LogsField {
   parameter: ParameterState
@@ -328,24 +323,13 @@ export function LogsView(props: LogsViewProps) {
                             </button>
                           ) : null}
                           {downloading ? (
-                            <div
-                              className="logs-download-bar"
-                              data-testid={`logs-onboard-progress-${log.id}`}
-                              role="progressbar"
-                              aria-valuemin={0}
-                              aria-valuemax={100}
-                              aria-valuenow={percent}
-                            >
-                              <div className="logs-download-bar__track">
-                                <div className="logs-download-bar__fill" style={{ width: `${percent}%` }} />
-                              </div>
-                              <span className="logs-download-bar__label">
-                                {percent}%
-                                {onboardLogs.activeDownloadTotalBytes
-                                  ? ` · ${formatMegabytes(onboardLogs.activeDownloadReceivedBytes ?? 0)} / ${formatMegabytes(onboardLogs.activeDownloadTotalBytes)} MB`
-                                  : ''}
-                              </span>
-                            </div>
+                            <DownloadProgressBar
+                              testId={`logs-onboard-progress-${log.id}`}
+                              percent={percent}
+                              bytesReceived={onboardLogs.activeDownloadReceivedBytes}
+                              totalBytes={onboardLogs.activeDownloadTotalBytes}
+                              spanRow
+                            />
                           ) : null}
                         </li>
                       )

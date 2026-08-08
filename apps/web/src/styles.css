@@ -13644,18 +13644,22 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-bottom: none;
 }
 
-/* Download progress bar spans the full row width under the columns while a log
-   is streaming, so the operator sees continuous movement instead of a button
-   that looks frozen. */
-.logs-download-bar {
-  grid-column: 1 / -1;
+/* Download progress bar, shown while a file streams off the FC over MAVFTP.
+   Shared by the Logs tab and the Files browser so the two read identically.
+   The --span-row modifier stretches it under the columns of a grid row; the
+   Files browser is a table and spans with colspan instead. */
+.download-bar {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-top: 2px;
 }
 
-.logs-download-bar__track {
+.download-bar--span-row {
+  grid-column: 1 / -1;
+}
+
+.download-bar__track {
   flex: 1 1 auto;
   height: 6px;
   border-radius: 999px;
@@ -13663,14 +13667,14 @@ details.metadata-settings-section:not([open]) > summary::after {
   overflow: hidden;
 }
 
-.logs-download-bar__fill {
+.download-bar__fill {
   height: 100%;
   border-radius: inherit;
   background: var(--primary-500);
   transition: width 0.15s linear;
 }
 
-.logs-download-bar__label {
+.download-bar__label {
   flex: 0 0 auto;
   font-family: var(--font-data);
   font-size: 11px;
