@@ -1667,12 +1667,66 @@ test.describe('Flash view', () => {
     await expect(page.getByTestId('firmware-flash-bootloader')).toBeVisible()
     await expect(page.getByTestId('firmware-flash-bootloader-confirm')).toHaveCount(0)
 
+    // The bootloader hash comparison is a developer affordance, so in basic
+    // mode arming the update must not show it (and must not read anything).
+    await page.getByTestId('firmware-flash-bootloader').click()
+    await expect(page.getByTestId('firmware-bootloader-identity')).toHaveCount(0)
+    await page.getByTestId('firmware-flash-bootloader-cancel').click()
+
     // Custom server toggle expands a URL + token panel.
     await expect(page.getByTestId('firmware-custom-server')).toHaveCount(0)
     await page.getByTestId('firmware-toggle-custom-server').click()
     await expect(page.getByTestId('firmware-custom-server')).toBeVisible()
     await expect(page.getByTestId('firmware-custom-server-url')).toBeVisible()
     await expect(page.getByTestId('firmware-custom-server-token')).toBeVisible()
+  })
+
+  test('Flash tab: expert mode shows both bootloader hashes before the update commits', async ({ page }) => {
+    // 390px on purpose — the comparison block sits in the flash wizard, and a
+    // 64-hex digest is exactly the kind of content that forces a phone layout
+    // to scroll sideways if it is not allowed to wrap.
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('product-mode-expert').click()
+    await openView(page, 'flash')
+
+    // Not shown until the operator arms the update: reading the images costs
+    // tens of KB on the link, so it must not happen on every Flash-tab visit.
+    await expect(page.getByTestId('firmware-bootloader-identity')).toHaveCount(0)
+    await page.getByTestId('firmware-flash-bootloader').click()
+
+    const identity = page.getByTestId('firmware-bootloader-identity')
+    await expect(identity).toBeVisible()
+
+    // Both sides resolve to a digest against the demo vehicle, and the demo's
+    // two images differ by design, so the verdict must be the interesting one.
+    const hashes = page.getByTestId('firmware-bootloader-identity-hash')
+    await expect(hashes).toHaveCount(2)
+    await expect(page.getByTestId('firmware-bootloader-identity-headline')).toHaveAttribute(
+      'data-verdict',
+      'different'
+    )
+    // Scope to the <code> — the cell also carries the image size next to it.
+    const [installed, incoming] = await hashes.locator('code').allTextContents()
+    expect(installed).not.toEqual(incoming)
+    // Short form on screen, full digest available on the element.
+    expect(installed).toMatch(/^[0-9a-f]{12}$/)
+    const full = await hashes.first().getAttribute('title')
+    expect(full).toMatch(/^[0-9a-f]{64}$/)
+
+    // The comparison is informational: the existing arm/confirm gate is
+    // untouched and still the only thing that sends the command.
+    await expect(page.getByTestId('firmware-flash-bootloader-confirm')).toBeVisible()
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )
+    expect(overflow).toBeLessThanOrEqual(2)
+
+    // Cancelling puts the block away again.
+    await page.getByTestId('firmware-flash-bootloader-cancel').click()
+    await expect(page.getByTestId('firmware-bootloader-identity')).toHaveCount(0)
   })
 
   test('Flash tab from the landing (disconnected) still flashes without DFU button', async ({ page }) => {

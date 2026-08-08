@@ -368,6 +368,7 @@ import { useRuntimeSnapshot } from './hooks/use-runtime-snapshot'
 import { useMavftpBrowser } from './hooks/use-mavftp-browser'
 import { useOnboardLogs } from './hooks/use-onboard-logs'
 import { useProductMode } from './hooks/use-product-mode'
+import { useBootloaderIdentity } from './hooks/use-bootloader-identity'
 import { useRecentNoticesExpanded } from './hooks/use-recent-notices-expanded'
 import { useGpsCoordFormat } from './hooks/use-gps-coord-format'
 import {
@@ -5312,6 +5313,9 @@ export function App() {
     motorVerificationStatus: motorVerification.status
   })
   const isExpertMode = productMode === 'expert'
+  // Expert-only bootloader hash preview for the Flash tab's Update Bootloader
+  // action. Reads nothing until the flasher arms the update and calls load().
+  const bootloaderIdentity = useBootloaderIdentity(runtime, snapshot.connection.kind === 'connected')
   const appViews = useMemo<AppViewDescriptor[]>(
     () =>
       buildAppViews({
@@ -9074,6 +9078,12 @@ export function App() {
                 ? 'Disarm the vehicle before updating the bootloader.'
                 : undefined
           }
+          // Expert-gated the same way the CAN tab gates its node actions: pass
+          // undefined in basic mode and the block does not exist at all. A
+          // developer affordance — it identifies the two images but changes
+          // nothing about the flash, including its existing arm/confirm gate.
+          bootloaderIdentity={isExpertMode ? bootloaderIdentity.preview : undefined}
+          onLoadBootloaderIdentity={isExpertMode ? bootloaderIdentity.load : undefined}
           onReboot={
             runtime && snapshot.connection.kind === 'connected'
               ? async () => { await runtime.reboot() }

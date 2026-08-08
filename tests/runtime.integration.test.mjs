@@ -96,7 +96,10 @@ test('mock SITL supports MAVFTP directory browse, upload, download, and delete o
     const initialEntries = await sitl.runtime.listRemoteDirectory('@SYS')
     assert.deepEqual(
       initialEntries.map((entry) => `${entry.kind}:${entry.name}`),
-      ['directory:scripts', 'file:timers.txt', 'file:uarts.txt']
+      // flash.bin is the program-flash region ArduPilot exposes on ChibiOS
+      // (AP_Filesystem_Sys.cpp, AP_FILESYSTEM_SYS_FLASH_ENABLED); the mock now
+      // serves it so the bootloader hash preview has something to read.
+      ['directory:scripts', 'file:flash.bin', 'file:timers.txt', 'file:uarts.txt']
     )
 
     const scriptBytes = await sitl.runtime.downloadRemoteFile('@SYS/scripts/hello.lua')
@@ -115,6 +118,57 @@ test('mock SITL supports MAVFTP directory browse, upload, download, and delete o
 
     const afterDeleteEntries = await sitl.runtime.listRemoteDirectory('@SYS/scripts')
     assert.ok(!afterDeleteEntries.some((entry) => entry.path === uploadPath))
+  } finally {
+    await sitl.disconnect().catch(() => {})
+    sitl.destroy()
+  }
+})
+
+test('bootloader image read returns both sides, with the installed side bounded to the incoming length', async () => {
+  const sitl = createMockSITL()
+
+  try {
+    await sitl.connectAndSync({ heartbeatTimeoutMs: 2000, parameterTimeoutMs: 5000 })
+
+    const pair = await sitl.runtime.readBootloaderImages()
+
+    assert.ok(pair.embedded, 'the embedded bootloader image should be readable')
+    assert.ok(pair.installed, 'the installed bootloader region should be readable')
+    assert.equal(pair.embeddedError, undefined)
+    assert.equal(pair.installedError, undefined)
+    // The whole point of the bounded prefix read: @SYS/flash.bin is longer than
+    // the bootloader, and reading past the incoming image's length would make
+    // the two sides incomparable.
+    assert.equal(pair.installed.byteLength, pair.embedded.byteLength)
+    // The mock's two images differ in their first byte, so a comparison must
+    // land on "different" rather than trivially matching.
+    assert.notEqual(pair.installed[0], pair.embedded[0])
+    assert.equal(pair.installed[1], pair.embedded[1])
+  } finally {
+    await sitl.disconnect().catch(() => {})
+    sitl.destroy()
+  }
+})
+
+test('bootloader image read reports a missing embedded image instead of throwing', async () => {
+  const sitl = createMockSITL()
+
+  try {
+    await sitl.connectAndSync({ heartbeatTimeoutMs: 2000, parameterTimeoutMs: 5000 })
+
+    // Firmware built without AP_BOOTLOADER_FLASHING_ENABLED carries no
+    // @ROMFS/bootloader.bin at all. That must degrade to "unavailable" — the
+    // Update Bootloader path has to behave exactly as it does today.
+    await sitl.runtime.deleteRemotePath('@ROMFS/bootloader.bin')
+
+    const pair = await sitl.runtime.readBootloaderImages()
+
+    assert.equal(pair.embedded, undefined)
+    assert.ok(pair.embeddedError)
+    // No incoming length means no defensible prefix of the flash region to
+    // read, so the installed side is not attempted or claimed either.
+    assert.equal(pair.installed, undefined)
+    assert.equal(pair.installedError, undefined)
   } finally {
     await sitl.disconnect().catch(() => {})
     sitl.destroy()

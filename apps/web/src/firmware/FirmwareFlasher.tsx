@@ -14,6 +14,7 @@ import type { WebSerialPortLike } from '@arduconfig/transport'
 
 import { WebSerialBootloaderSerial, inflateZlib } from './web-serial-bootloader'
 import { DfuHexFlasher } from './DfuHexFlasher'
+import type { BootloaderHashPreview } from '../view-models/bootloader-hash-preview'
 
 export interface FirmwareBrowseEntry {
   boardId: number
@@ -61,6 +62,24 @@ export interface FirmwareFlasherProps {
   onFlashBootloader?: () => Promise<void>
   /** Why the bootloader update cannot run right now (disconnected/armed). */
   flashBootloaderDisabledReason?: string
+  /**
+   * Side-by-side identity of the installed bootloader and the incoming one,
+   * shown while the update is armed but before it commits.
+   *
+   * EXPERT-ONLY, following the CanDeviceInspector `expertActions` pattern:
+   * App.tsx passes `undefined` in basic mode and the block simply does not
+   * exist. Presence of this prop is the gate; there is no boolean threaded
+   * down.
+   *
+   * Purely informational. It never enables, disables or alters the flash — the
+   * two-click arm/confirm gate above is unchanged whether this is present,
+   * absent, still loading, or reporting that nothing could be read.
+   */
+  bootloaderIdentity?: BootloaderHashPreview
+  /** Ask the host to read both bootloader images. Called when the update is
+   *  armed, so nothing is read off the vehicle until an operator has actually
+   *  reached for the button. */
+  onLoadBootloaderIdentity?: () => void
   onReboot?: () => Promise<void>
   /** Disabled reason for the reboot button, same contract as the DFU one. */
   rebootDisabledReason?: string
@@ -216,7 +235,9 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     onReboot,
     rebootDisabledReason,
     onFlashBootloader,
-    flashBootloaderDisabledReason
+    flashBootloaderDisabledReason,
+    bootloaderIdentity,
+    onLoadBootloaderIdentity
   } = props
   const requestPort = props.requestPort ?? defaultRequestPort
   const listPorts = props.listPorts ?? defaultListPorts
@@ -365,6 +386,16 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       setBootloaderBusy(false)
     }
   }, [onFlashBootloader])
+
+  // Read the bootloader images only once the operator has armed the update.
+  // Arming is the first unambiguous signal of intent, and this puts tens of KB
+  // on the MAVLink link — doing it on mount would tax every Flash-tab visit for
+  // information almost nobody asked for.
+  useEffect(() => {
+    if (bootloaderConfirmArmed) {
+      onLoadBootloaderIdentity?.()
+    }
+  }, [bootloaderConfirmArmed, onLoadBootloaderIdentity])
 
   useEffect(
     () => () => {
@@ -1083,6 +1114,47 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           <p className="bf-note bf-note--warning" data-testid="firmware-enter-dfu-warning">
             DFU drops the MAVLink link and requires unplugging/replugging USB. Only proceed if you intend to reflash. Click "Confirm: enter DFU" to continue.
           </p>
+        ) : null}
+
+        {/* Expert-only bootloader identity, shown while armed and BEFORE the
+            confirm click. Rendered after the button row so it sits directly
+            above the notice line the flash itself writes into. */}
+        {bootloaderIdentity && bootloaderConfirmArmed ? (
+          <div className="bootloader-identity" data-testid="firmware-bootloader-identity">
+            <p
+              className="bootloader-identity__headline"
+              data-testid="firmware-bootloader-identity-headline"
+              data-verdict={bootloaderIdentity.verdict}
+            >
+              {bootloaderIdentity.headline}
+            </p>
+            <dl className="bootloader-identity__rows">
+              {bootloaderIdentity.rows.map((row) => (
+                <div className="bootloader-identity__row" key={row.label}>
+                  <dt>{row.label}</dt>
+                  <dd
+                    // The full digest lives in the title so a dev can copy or
+                    // hover it without the short form ever being mistaken for
+                    // the whole value.
+                    title={row.full}
+                    data-testid={`firmware-bootloader-identity-${
+                      row.unavailable ? 'missing' : 'hash'
+                    }`}
+                  >
+                    <code>{row.value}</code>
+                    {row.size ? (
+                      <span className="bootloader-identity__size">{row.size}</span>
+                    ) : null}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <p className="bootloader-identity__detail">{bootloaderIdentity.detail}</p>
+            <p className="bootloader-identity__method">
+              SHA-256 over MAVFTP: <code>@ROMFS/bootloader.bin</code> (incoming) and the
+              matching leading bytes of <code>@SYS/flash.bin</code> (installed).
+            </p>
+          </div>
         ) : null}
 
         {dfuNotice ? (
