@@ -20,7 +20,11 @@ const MOUNT_TYPE_OPTIONS: ParameterValueOption[] = [
   { value: 11, label: 'Viewpro' },
   { value: 12, label: 'Topotek' },
   { value: 13, label: 'CADDX' },
-  { value: 14, label: 'XFRobot' }
+  // 4.7+. These shared option lists feed Copter, Plane, Rover and Sub, while the
+  // version-override mechanism is Copter-only — so rather than hide the value
+  // from 4.7 operators or silently offer a no-op to 4.6 ones, the label says
+  // which firmware it needs. Same treatment for the two mount option bits below.
+  { value: 14, label: 'XFRobot (4.7+)' }
 ]
 
 const MOUNT_DEFLT_MODE_OPTIONS: ParameterValueOption[] = [
@@ -37,8 +41,8 @@ const MOUNT_DEFLT_MODE_OPTIONS: ParameterValueOption[] = [
 // ScopedBitmaskField ORs (1<<index) for the stored value.
 const MOUNT_OPTIONS_BITS: ParameterValueOption[] = [
   { value: 0, label: 'RC lock state from previous mode' },
-  { value: 1, label: 'Return to neutral angles on RC failsafe' },
-  { value: 2, label: 'Force FPV (bf) lock on roll and pitch' }
+  { value: 1, label: 'Return to neutral angles on RC failsafe (4.7+)' },
+  { value: 2, label: 'Force FPV (bf) lock on roll and pitch (4.7+)' }
 ]
 
 /**

@@ -2248,10 +2248,17 @@ test('stopMotorTest aborts an in-flight test with a zero-throttle command and cl
     assert.equal(stopped.status, 'failed')
     assert.match(stopped.summary, /stopped on request/i)
 
-    // The completion timer must have been cleared: well past the original
-    // 2s window the state must NOT flip to 'succeeded'.
-    await sleep(2400)
-    assert.equal(runtime.getSnapshot().motorTest.status, 'failed', 'no late completion-timer flip after a stop')
+    // This test used to sleep 2.4s here and assert the status had not flipped
+    // to 'succeeded', claiming to prove the completion timer was cleared. It
+    // proved nothing, and the 2.4s was pure cost: deleting clearCompletionTimer
+    // from stop() leaves it green. Two independent things already make a stale
+    // timer harmless — the callback returns early unless status is 'running'
+    // (runtime-motor-test-service.ts), and scheduleCompletion clears any
+    // existing timer before arming a new one, so even the guided-identify
+    // chain (stop, then immediately start the next motor) cannot be corrupted
+    // by one. The clear in stop() is therefore belt-and-braces with no
+    // observable behaviour of its own, and no honest test can assert it.
+    // Asserting the things that ARE observable, above, is the whole value here.
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()

@@ -1291,3 +1291,28 @@ test('flash(): one-shot retry triggers on rev-2 readback mismatch too (widened r
   ])
   await new BootloaderClient(io).flash(image, flashSize, undefined, undefined, 2)
 })
+
+// The board-id guard has good unit tests, but nothing proved it was ever
+// CALLED: its only caller was the UI flash handler, so deleting one `return`
+// there let a wrong image reach CHIP_ERASE with the whole suite green. flash()
+// now enforces it too, and this is the test that notices if that stops.
+test('flash() refuses a mismatched board id before erasing anything', async () => {
+  const io = new ScriptedSerial() // empty: any protocol I/O would throw differently
+  await assert.rejects(
+    () =>
+      new BootloaderClient(io).flash(padTo4(new Uint8Array(64)), 2 * 1024 * 1024, undefined, undefined, undefined, {
+        firmwareBoardId: 140,
+        connectedBoardId: 9
+      }),
+    (err) => /No erase was performed/.test(err.message)
+  )
+  assert.equal(io.writes.length, 0, 'nothing written → CHIP_ERASE never sent → board still bootable')
+})
+
+test('flash() still allows the documented AUAV-X2.1 <-> PX4FMUv2 compat pair', () => {
+  // The guard must not become a blanket refusal: uploader.py treats 33 and 9 as
+  // interchangeable, and flash() defers to the same checkBoardMatch that
+  // encodes it, so nothing here needs its own copy of the compat table.
+  assert.equal(checkBoardMatch(33, 9).ok, true)
+  assert.equal(checkBoardMatch(9, 33).ok, true)
+})

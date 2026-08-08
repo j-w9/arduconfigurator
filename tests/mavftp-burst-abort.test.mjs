@@ -23,8 +23,14 @@ import { MavftpService, MavftpAbortError } from '../packages/ardupilot-core/dist
 function createService({ declaredSize = 4096 } = {}) {
   const sent = []
   const service = new MavftpService({
-    send: async (message) => {
-      sent.push(message)
+    // `session`, not `send`. This was `send:` at the top level, which
+    // MavftpService ignores — so `sent` could never be appended to and the
+    // "no traffic was emitted" assertion below was unconditionally true. It
+    // would have passed with the abort check deleted and a full download run.
+    session: {
+      send: async (message) => {
+        sent.push(message)
+      }
     },
     getVehicle: () => ({ systemId: 1, componentId: 1 }),
     appendStatusEntry: () => {},
@@ -89,7 +95,10 @@ test('an already-aborted signal never opens a session at all', async () => {
     () => service.downloadRemoteFileBurst('/APM/LOGS/1.BIN', { signal: controller.signal }),
     (error) => error instanceof MavftpAbortError
   )
+  // Now load-bearing: `sent` records real session traffic, so moving the abort
+  // check below the open/clear-sessions preamble fails this.
   assert.equal(sent.length, before, 'no MAVFTP traffic should be emitted')
+  assert.equal(before, 0, 'the recorder is wired to the session, not a dead property')
 })
 
 test('a completed burst detaches its abort listener', async () => {

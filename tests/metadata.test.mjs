@@ -487,11 +487,14 @@ test('arduplaneMetadata normalizes without throwing and exposes the Plane catalo
 
 test('arducopter exposes the ESC & DShot params with sane bitmask/range metadata', () => {
   const p = normalizeFirmwareMetadata(arducopterMetadata).parameters
-  // bitmask masks: per-output (8 outputs => max 255), rendered as checkboxes.
-  for (const id of ['SERVO_BLH_BDMASK', 'SERVO_BLH_RVMASK']) {
+  // Per-output bitmasks, rendered as checkboxes. AP_BLHeli.cpp defines bits
+  // 0..31 for MASK / BDMASK / RVMASK at every release; the previous 8-bit cap
+  // meant an operator on an H743-class board (13 outputs is routine) could not
+  // enable passthrough, bidirectional DShot or motor REVERSAL past output 8.
+  for (const id of ['SERVO_BLH_MASK', 'SERVO_BLH_BDMASK', 'SERVO_BLH_RVMASK']) {
     assert.equal(p[id].bitmask, true, `${id} should be a bitmask`)
-    assert.ok(Array.isArray(p[id].options) && p[id].options.length === 8, `${id} should expose 8 output bits`)
-    assert.equal(p[id].maximum, 255)
+    assert.ok(Array.isArray(p[id].options) && p[id].options.length === 32, `${id} should expose 32 output bits`)
+    assert.equal(p[id].maximum, 4294967295)
   }
   // enums.
   assert.ok(p.SERVO_DSHOT_RATE.options.length > 0)

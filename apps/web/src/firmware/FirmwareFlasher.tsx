@@ -966,7 +966,12 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           board.flashSize,
           onProgress,
           loaded.extfImage,
-          board.bootloaderRevision
+          board.bootloaderRevision,
+          // Re-checked inside flash() as the package-level net. The UI check
+          // above stays because it produces a better message and catches the
+          // compat-table note; this one is what makes the guard impossible to
+          // remove by editing UI code alone.
+          { firmwareBoardId: loaded.boardId, connectedBoardId: board.boardId }
         )
         setProgress({ label: 'Done', ratio: 1 })
         setPhase('done')

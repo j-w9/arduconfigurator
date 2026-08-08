@@ -3378,7 +3378,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Per-output bitmask of channels with BLHeli pass-thru (ESC configuration) enabled. This is in addition to any outputs auto-enabled by BLHeli auto-enable.',
       category: 'outputs',
       minimum: 0,
-      maximum: 255,
+      maximum: 4294967295,
       rebootRequired: true,
       bitmask: true,
       options: enumOptions(ARDUCOPTER_OUTPUT_CHANNEL_BIT_LABELS)
@@ -3389,7 +3389,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Per-output bitmask of channels running bidirectional DShot (RPM telemetry). Most boards support bdshot on the first 4 outputs only; some support 8. Requires a DShot protocol + BLHeli auto-enable.',
       category: 'outputs',
       minimum: 0,
-      maximum: 255,
+      maximum: 4294967295,
       rebootRequired: true,
       bitmask: true,
       options: enumOptions(ARDUCOPTER_OUTPUT_CHANNEL_BIT_LABELS)
@@ -3405,7 +3405,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Per-output bitmask: check an output to reverse that motor’s spin direction via DShot (BLHeli/AM32) without swapping wires. Requires SERVO_DSHOT_ESC set to your ESC type (not "None"), and a reboot after changing, to take effect.',
       category: 'outputs',
       minimum: 0,
-      maximum: 255,
+      maximum: 4294967295,
       rebootRequired: true,
       bitmask: true,
       options: enumOptions(ARDUCOPTER_OUTPUT_CHANNEL_BIT_LABELS)

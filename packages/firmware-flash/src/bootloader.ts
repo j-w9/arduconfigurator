@@ -10,7 +10,7 @@
 // Tools/scripts/uploader.py.
 
 import { arduPilotCrc32, firmwareCrc } from './crc.js'
-import { checkImageFitsFlash } from './board-guard.js'
+import { checkBoardMatch, checkImageFitsFlash } from './board-guard.js'
 
 const INSYNC = 0x12
 const EOC = 0x20
@@ -473,11 +473,25 @@ export class BootloaderClient {
     flashSize: number,
     onProgress?: FlashProgress,
     extfImage?: Uint8Array,
-    bootloaderRevision?: number
+    bootloaderRevision?: number,
+    boardMatch?: { firmwareBoardId: number; connectedBoardId: number }
   ): Promise<void> {
-    // Refuse an image that cannot fit this board's flash before CHIP_ERASE,
-    // while the existing firmware is still intact. Package-level net so
-    // every caller, not only the UI guard, is covered.
+    // Both guards run BEFORE CHIP_ERASE, while the board still has working
+    // firmware to fall back on.
+    //
+    // The board-id check used to live only in the UI (FirmwareFlasher's flash
+    // handler), so deleting that one `return` would have let a wrong image
+    // reach CHIP_ERASE with the whole test suite still green — the guard was
+    // well unit-tested but nothing proved it was ever CALLED. It is optional
+    // only because callers that genuinely cannot know the ids (the .apj-less
+    // paths) must still be able to flash; when the ids ARE known it is enforced
+    // here, for every caller.
+    if (boardMatch) {
+      const match = checkBoardMatch(boardMatch.firmwareBoardId, boardMatch.connectedBoardId)
+      if (!match.ok) {
+        throw new Error(`${match.reason} No erase was performed; the board still has its firmware.`)
+      }
+    }
     const fits = checkImageFitsFlash(image.length, flashSize)
     if (!fits.ok) {
       throw new Error(`${fits.reason} No erase was performed; the board still has its firmware.`)

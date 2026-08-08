@@ -30,7 +30,8 @@ import {
   ARDUCOPTER_SERIAL_OPTION_BIT_LABELS,
   ARDUCOPTER_SERIAL_PROTOCOL_LABELS,
   ARDUCOPTER_SERIAL_RTSCTS_LABELS,
-  ARDUCOPTER_VTX_ENABLE_LABELS
+  ARDUCOPTER_VTX_ENABLE_LABELS,
+  ARDUPLANE_ARMING_CHECK_BIT_LABELS
 } from './arducopter-enums.js'
 import {
   ARDUPLANE_ADSB_EMIT_TYPE_LABELS,
@@ -891,6 +892,35 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
     }
   },
   parameters: {
+    // Arming checks were missing from this bundle entirely, so the Arming
+    // config section — which renders for EVERY vehicle — fell back to a bare
+    // number with no bit labels. Both spellings are curated because ArduPilot
+    // 4.7 replaced ARMING_CHECK with the INVERTED ARMING_SKIPCHK (a set bit
+    // SKIPS that check); use-config-sections.ts picks by detected version.
+    ARMING_CHECK: {
+      id: 'ARMING_CHECK',
+      label: 'Pre-arm checks',
+      description:
+        'Which pre-arm safety checks must pass before the vehicle will arm. "All checks" (bit 0) runs every check; clear it to pick individual checks. Disabling checks is a flight-safety risk — only do so deliberately on the bench.',
+      category: 'failsafe',
+      minimum: 0,
+      maximum: 1048575,
+      step: 1,
+      bitmask: true,
+      options: enumOptions(ARDUPLANE_ARMING_CHECK_BIT_LABELS)
+    },
+    ARMING_SKIPCHK: {
+      id: 'ARMING_SKIPCHK',
+      label: 'Pre-arm checks to skip',
+      description:
+        'Which pre-arm safety checks to SKIP before arming (ArduPilot 4.7+, replaces ARMING_CHECK). A set bit disables that check; leave at 0 to run every check. Skipping checks is a flight-safety risk — only do so deliberately on the bench.',
+      category: 'failsafe',
+      minimum: 0,
+      maximum: 1048575,
+      step: 1,
+      bitmask: true,
+      options: enumOptions(ARDUPLANE_ARMING_CHECK_BIT_LABELS)
+    },
     // GPS behavior — vehicle-agnostic in ArduPilot (DroneCAN driver
     // value 9 is identical across Copter / Plane / Rover / Sub), but
     // previously only defined in the ArduCopter catalog. Caught when

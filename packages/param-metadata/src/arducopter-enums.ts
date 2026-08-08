@@ -218,7 +218,10 @@ export const ARDUCOPTER_SERIAL_PROTOCOL_LABELS: Record<number, string> = {
   46: 'IMUDATA',
   48: 'PPP',
   49: 'i-BUS Telemetry',
-  50: 'IOMCU'
+  // 4.7+ — see the note in shared-mount.ts. Worth flagging most of all here: a
+  // port set to a protocol the running firmware does not understand simply goes
+  // dead, and on a telemetry port that costs the operator their link.
+  50: 'IOMCU (4.7+)'
 }
 
 export const ARDUCOPTER_SERIAL_BAUD_LABELS: Record<number, string> = {
@@ -347,7 +350,7 @@ export const ARDUCOPTER_GPS_AUTO_CONFIG_LABELS: Record<number, string> = {
   0: 'Disabled',
   1: 'Serial GPS Only',
   2: 'Serial + DroneCAN',
-  3: 'Clear Non-ArduPilot Config'
+  3: 'Clear Non-ArduPilot Config (4.7+)'
 }
 
 export const ARDUCOPTER_GPS_AUTO_SWITCH_LABELS: Record<number, string> = {
@@ -511,6 +514,21 @@ export const ARDUCOPTER_ARMING_SKIPCHK_BIT_LABELS: Record<number, string> = {
   19: 'FFT'
 }
 
+/**
+ * ARMING_CHECK / ARMING_SKIPCHK bits for ArduPlane.
+ *
+ * AP_Arming.cpp carries a separate `@Bitmask{Plane}` line: Plane ADDS bit 9
+ * (Airspeed) and DROPS bit 18 (VisualOdometry). Sharing the Copter map would
+ * offer a Plane operator a bit its firmware ignores while hiding the airspeed
+ * check they actually have.
+ */
+export const ARDUPLANE_ARMING_CHECK_BIT_LABELS: Record<number, string> = {
+  ...Object.fromEntries(
+    Object.entries(ARDUCOPTER_ARMING_SKIPCHK_BIT_LABELS).filter(([bit]) => bit !== '18')
+  ),
+  9: 'Airspeed'
+}
+
 export const ARDUCOPTER_SCHED_LOOP_RATE_LABELS: Record<number, string> = {
   50: '50 Hz',
   100: '100 Hz',
@@ -628,23 +646,25 @@ export const ARDUCOPTER_DSHOT_ESC_TYPE_LABELS: Record<number, string> = {
 // Per-output channel bit labels for the BLHeli bidirectional-DShot
 // (SERVO_BLH_BDMASK) and reverse (SERVO_BLH_RVMASK) masks. Bit 0 = output 1.
 // Most boards support bidirectional DShot on the first 4 outputs only.
-export const ARDUCOPTER_OUTPUT_CHANNEL_BIT_LABELS: Record<number, string> = {
-  0: 'Output 1',
-  1: 'Output 2',
-  2: 'Output 3',
-  3: 'Output 4',
-  4: 'Output 5',
-  5: 'Output 6',
-  6: 'Output 7',
-  7: 'Output 8'
-}
+// All 32 outputs, matching AP_BLHeli.cpp's @Bitmask for MASK / BDMASK / RVMASK
+// (and 3DMASK), which define bits 0..31 at every ArduPilot release. Capping the
+// map at 8 meant an operator on an H743-class board — 13 outputs is routine —
+// could not enable BLHeli passthrough, bidirectional DShot, or motor REVERSAL
+// on outputs 9 and up. Motor reversal is exercised during motor-direction
+// setup, so the ceiling bit precisely where it hurts.
+export const ARDUCOPTER_OUTPUT_CHANNEL_BIT_LABELS: Record<number, string> = Object.fromEntries(
+  Array.from({ length: 32 }, (_, bit) => [bit, `Output ${bit + 1}`])
+)
 
 // ArduPilot RC_OPTIONS bitmask (bit index -> label), per the RC_Channels
 // Options enum.
 export const ARDUCOPTER_RC_OPTIONS_BIT_LABELS: Record<number, string> = {
   0: 'Ignore RC Receiver',
   1: 'Ignore RC Overrides',
-  2: 'Ignore RC Failsafe',
+  // Firmware wording (RC_Channels_VarInfo.h): "Ignore Receiver Failsafe bit but
+  // allow other RC failsafes if setup". "Ignore RC Failsafe" read as disabling
+  // RC failsafe outright — on a safety control, on the Receiver surface.
+  2: 'Ignore receiver failsafe bit (other RC failsafes still apply)',
   3: 'FPort pad',
   4: 'Log raw RC data',
   5: 'Arming check throttle',
@@ -741,7 +761,10 @@ export const ARDUCOPTER_SERVO_FUNCTION_LABELS: Record<number, string> = {
   27: 'Parachute Release',
   28: 'Gripper',
   29: 'Landing Gear',
-  30: 'Motor Enable Switch',
+  // SRV_Channel.h: "k_engine_run_enable = 30, ///< engine kill switch, used
+  // for gas airplanes and helicopters". "Motor Enable Switch" invited an
+  // operator hunting for a motor-arming output to land on an ICE kill switch.
+  30: 'Engine Run Enable (ICE kill switch)',
   31: 'Rotor Head Speed',
   32: 'Tail Rotor Speed',
   33: 'Motor 1',

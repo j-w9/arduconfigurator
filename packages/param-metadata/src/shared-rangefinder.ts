@@ -27,12 +27,16 @@ const RANGEFINDER_TYPE_OPTIONS: ParameterValueOption[] = [
   { value: 17, label: 'NMEA' },
   { value: 18, label: 'WASP-LRF' },
   { value: 19, label: 'BenewakeTF02' },
-  { value: 20, label: 'BenewakeTFmini-Serial' },
+  // ArduPilot renamed these in 4.7 (4.6 reads "Benewake-Serial" /
+  // "BenewakeTFminiPlus-I2C"); same drivers either way. Kept as the hardware an
+  // operator is holding, with "Plus" restored on 25 — dropping it read as a
+  // different part.
+  { value: 20, label: 'Benewake TFmini (serial)' },
   { value: 21, label: 'LidarLightV3HP' },
   { value: 22, label: 'PWM' },
   { value: 23, label: 'BlueRoboticsPing' },
   { value: 24, label: 'DroneCAN' },
-  { value: 25, label: 'BenewakeTFmini-I2C' },
+  { value: 25, label: 'Benewake TFmini Plus (I2C)' },
   { value: 26, label: 'LanbaoPSK-CM8JL65-CC5' },
   { value: 27, label: 'BenewakeTF03' },
   { value: 28, label: 'VL53L1X-ShortRange' },
