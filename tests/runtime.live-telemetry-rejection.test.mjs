@@ -13,11 +13,19 @@ import { MAV_AUTOPILOT, MAV_CMD, MAV_RESULT, MAV_TYPE } from '../packages/protoc
 // "Autopilot rejected live telemetry stream request (DENIED)" warning, which
 // reads as a real failure to operators.
 //
-// These tests pin the new behaviour:
-//   1. A DENIED for the UAVCAN_NODE_STATUS slot in the request loop produces
-//      an INFO entry (not a warning) and names the workaround.
-//   2. A DENIED for a different stream (e.g. ATTITUDE) still produces a
-//      labelled WARNING — the regression we don't want.
+// The runtime used to NAME the refused stream, by keeping a queue of pending
+// labels and dequeuing one per ack — i.e. correlating by send order. That is
+// unsound: COMMAND_ACK does not carry the requested message id, so a single
+// lost ack offset the queue permanently and every later warning named the WRONG
+// stream. These very tests encoded the assumption, with comments listing the
+// exact send order and acks positioned against it, and had already gone stale
+// once when a request was added at the head of the list.
+//
+// So the behaviour these now pin is a truthful COUNT rather than a confident
+// wrong name:
+//   1. Refusals produce one warning that does not claim to know which stream.
+//   2. All-accepted produces no warning at all.
+//   3. A refusal never names a stream, so it can never name the wrong one.
 
 function createScriptedSession() {
   const statusListeners = []
@@ -113,72 +121,63 @@ async function bootRuntimeAndWaitForStreamRequests(session) {
   return runtime
 }
 
-test('UAVCAN_NODE_STATUS DENIED is downgraded to info with a workaround note', async () => {
+test('a refused stream request warns without guessing which stream it was', async () => {
   const session = createScriptedSession()
   const runtime = await bootRuntimeAndWaitForStreamRequests(session)
   try {
-    // The runtime sends them in order: GLOBAL_POSITION_INT, ATTITUDE,
-    // RC_CHANNELS, SYS_STATUS, UAVCAN_NODE_STATUS, MAG_CAL_PROGRESS,
-    // MAG_CAL_REPORT. ACK first four, DENY the fifth (UAVCAN_NODE_STATUS),
-    // then ACK the trailing mag-cal pair.
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
     session.inject(commandAck(MAV_RESULT.DENIED))
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
 
-    const seen = await waitFor(() =>
-      runtime.getSnapshot().statusTexts.some(
-        (entry) => entry.text.includes('UAVCAN_NODE_STATUS') && entry.severity === 'info'
-      )
+    await waitFor(() =>
+      runtime.getSnapshot().statusTexts.some((entry) => entry.severity === 'warning' && entry.text.includes('DENIED'))
     )
-    assert.ok(seen, 'expected an INFO entry naming UAVCAN_NODE_STATUS')
-
-    const noBogusWarning = !runtime
+    const warning = runtime
       .getSnapshot()
-      .statusTexts.some(
-        (entry) =>
-          entry.severity === 'warning' &&
-          entry.text.toLowerCase().includes('telemetry stream')
-      )
-    assert.ok(noBogusWarning, 'must not surface the old generic "telemetry stream" warning')
+      .statusTexts.find((entry) => entry.severity === 'warning' && entry.text.includes('DENIED'))
+    assert.ok(warning, 'expected a warning about the refusal')
+    // The point: it must not assert an identity it cannot know. Naming a stream
+    // here is only ever a guess from send order, and a wrong one actively
+    // misdirects someone already chasing an empty readout.
+    for (const label of ['ATTITUDE', 'RC_CHANNELS', 'SYS_STATUS', 'GPS_RAW_INT', 'OPTICAL_FLOW']) {
+      assert.ok(!warning.text.includes(label), `the warning must not name ${label}`)
+    }
+    // It should still point at the likely candidates as a class, which is true.
+    assert.match(warning.text, /compile-time|bridge/i)
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()
   }
 })
 
-test('a DENIED on a non-UAVCAN stream still surfaces a labelled warning', async () => {
+test('accepted stream requests produce no warning', async () => {
   const session = createScriptedSession()
   const runtime = await bootRuntimeAndWaitForStreamRequests(session)
   try {
-    // Order: GPS_RAW_INT, GLOBAL_POSITION_INT, ATTITUDE, ATTITUDE_QUATERNION,
-    // SCALED_IMU, RC_CHANNELS, SYS_STATUS, UAVCAN_NODE_STATUS,
-    // MAG_CAL_PROGRESS, MAG_CAL_REPORT.
-    // Deny the THIRD (ATTITUDE) so we exercise the still-warning path. These
-    // acks are positional, so they shift whenever LIVE_TELEMETRY_REQUESTS
-    // gains an entry — GPS_RAW_INT was added at the head of that list.
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
-    session.inject(commandAck(MAV_RESULT.DENIED))
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
-    session.inject(commandAck(MAV_RESULT.ACCEPTED))
+    for (let index = 0; index < 14; index += 1) {
+      session.inject(commandAck(MAV_RESULT.ACCEPTED))
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
 
-    const seen = await waitFor(() =>
-      runtime
-        .getSnapshot()
-        .statusTexts.some(
-          (entry) =>
-            entry.severity === 'warning' &&
-            entry.text.includes('ATTITUDE') &&
-            entry.text.includes('DENIED')
-        )
+    const warnings = runtime
+      .getSnapshot()
+      .statusTexts.filter((entry) => entry.severity === 'warning' && entry.text.toLowerCase().includes('telemetry stream'))
+    assert.deepEqual(warnings, [], 'a healthy run must be silent')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('two refusals are reported as two, not as two different guessed streams', async () => {
+  const session = createScriptedSession()
+  const runtime = await bootRuntimeAndWaitForStreamRequests(session)
+  try {
+    session.inject(commandAck(MAV_RESULT.DENIED))
+    session.inject(commandAck(MAV_RESULT.UNSUPPORTED))
+
+    const counted = await waitFor(() =>
+      runtime.getSnapshot().statusTexts.some((entry) => entry.severity === 'warning' && entry.text.includes('2 live telemetry stream requests'))
     )
-    assert.ok(seen, 'expected a labelled WARNING naming ATTITUDE')
+    assert.ok(counted, 'expected the count to reflect both refusals')
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()

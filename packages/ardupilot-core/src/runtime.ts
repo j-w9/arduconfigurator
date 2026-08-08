@@ -602,6 +602,8 @@ export class ArduPilotConfiguratorRuntime {
    *  was still registering parameters when it answered. */
   private parameterTableGrewDuringSync = false
   private liveTelemetryRequestsIssued = false
+  /** Count of non-ACCEPTED SET_MESSAGE_INTERVAL acks this session. */
+  private refusedMessageIntervalRequests = 0
   /**
    * When the last authoritative HEARTBEAT arrived. Used to notice that the
    * vehicle RESTARTED on a link that survived the restart — see
@@ -610,7 +612,6 @@ export class ArduPilotConfiguratorRuntime {
   private lastHeartbeatAtMs?: number
   // FIFO of un-ACKed SET_MESSAGE_INTERVAL requests, dequeued in arrival order
   // so processCommandAck can name which stream the autopilot rejected.
-  private readonly pendingSetMessageIntervalLabels: string[] = []
   private preArmExpiryTimer?: ReturnType<typeof setTimeout>
   private parameterSyncRetryTimer?: ReturnType<typeof setTimeout>
   private parameterSyncRetryCount = 0
@@ -2031,22 +2032,12 @@ export class ArduPilotConfiguratorRuntime {
    * unsolicited stream behaviour.
    */
   async requestMessageInterval(messageId: number, intervalUs: number): Promise<MessageRequestResult> {
-    const label = `message ${messageId}`
-    this.pendingSetMessageIntervalLabels.push(label)
-    try {
-      const ack = await this.sendCommand(
-        MAV_CMD.SET_MESSAGE_INTERVAL,
-        [messageId, intervalUs, 0, 0, 0, 0, 0],
-        { waitForAck: true, rejectAckOnFailure: false }
-      )
-      return this.toMessageRequestResult(ack)
-    } catch (error) {
-      const index = this.pendingSetMessageIntervalLabels.lastIndexOf(label)
-      if (index >= 0) {
-        this.pendingSetMessageIntervalLabels.splice(index, 1)
-      }
-      throw error
-    }
+    const ack = await this.sendCommand(
+      MAV_CMD.SET_MESSAGE_INTERVAL,
+      [messageId, intervalUs, 0, 0, 0, 0, 0],
+      { waitForAck: true, rejectAckOnFailure: false }
+    )
+    return this.toMessageRequestResult(ack)
   }
 
   /**
@@ -2134,22 +2125,30 @@ export class ArduPilotConfiguratorRuntime {
     }
   }
 
-  private async requestLiveTelemetryStreams(systemId: number, componentId: number): Promise<void> {
+  // systemId/componentId are no longer threaded through: sendCommand addresses
+  // the connected vehicle itself, and taking them as arguments invited a caller
+  // to aim the stream run at a different endpoint than the acks come back from.
+  private async requestLiveTelemetryStreams(): Promise<void> {
     this.liveTelemetryRequestsIssued = true
 
+    // Sent as an unacknowledged burst, deliberately: this runs at connect and
+    // every live readout waits on it, so awaiting an ack per request would put
+    // seconds of latency in front of the whole session for a modest diagnostic
+    // gain. COMMAND_ACK does not carry the requested message id either, so
+    // awaiting per request was the ONLY way to attribute a failure — and that
+    // is the trade being declined here.
+    //
+    // What was removed is the thing that actively misled: a shared queue of
+    // pending labels, dequeued one entry per ack on the assumption that acks
+    // arrive one-per-request in send order. A single lost ack offset it
+    // permanently and every later warning named the WRONG stream, which is the
+    // worst thing a diagnostic can do to someone already chasing a missing
+    // readout. Refusals are now counted, not named (see
+    // processSetMessageIntervalAck), which is less specific and true.
     try {
       for (const request of LIVE_TELEMETRY_REQUESTS) {
-        this.pendingSetMessageIntervalLabels.push(request.label)
-        await this.session.send({
-          type: 'COMMAND_LONG',
-          command: MAV_CMD.SET_MESSAGE_INTERVAL,
-          targetSystem: systemId,
-          targetComponent: componentId,
-          confirmation: 0,
-          params: [request.messageId, request.intervalUs, 0, 0, 0, 0, 0]
-        })
+        await this.sendCommand(MAV_CMD.SET_MESSAGE_INTERVAL, [request.messageId, request.intervalUs, 0, 0, 0, 0, 0])
       }
-
       this.appendStatusEntry(
         'info',
         `Requested live telemetry streams: ${LIVE_TELEMETRY_REQUESTS.map((request) => request.label).join(', ')}.`
@@ -2453,7 +2452,7 @@ export class ArduPilotConfiguratorRuntime {
     }
 
     if (!this.liveTelemetryRequestsIssued) {
-      void this.requestLiveTelemetryStreams(systemId, componentId)
+      void this.requestLiveTelemetryStreams()
     }
 
     if (!this.autopilotVersionRequested) {
@@ -3387,33 +3386,20 @@ export class ArduPilotConfiguratorRuntime {
     }
     this.resolveCommandAckWaiters(message)
 
-    if (message.command !== MAV_CMD.SET_MESSAGE_INTERVAL) {
-      return
-    }
-
-    // Dequeue regardless of outcome so the next ACK lines up with the
-    // next pending request label. (Acks arrive in send order.)
-    const label = this.pendingSetMessageIntervalLabels.shift()
-
     if (message.result === MAV_RESULT.ACCEPTED || message.result === MAV_RESULT.IN_PROGRESS) {
       return
     }
-
-    const resultLabel = mavResultLabel(message.result)
-    const streamLabel = label ?? 'live telemetry stream'
-
-    // The MAVLink-UAVCAN bridge often denies SET_MESSAGE_INTERVAL for
-    // UAVCAN_NODE_STATUS; the UAVCAN_GET_NODE_INFO broadcast already covers
-    // node identity, so a DENIED here is expected and benign, not a warning.
-    if (label === 'UAVCAN_NODE_STATUS') {
-      this.appendStatusEntry(
-        'info',
-        `Autopilot declined the UAVCAN_NODE_STATUS stream (${resultLabel}). Falling back to a one-shot UAVCAN_GET_NODE_INFO broadcast for DroneCAN node identity.`
-      )
-      return
-    }
-
-    this.appendStatusEntry('warning', `Autopilot rejected the ${streamLabel} stream request (${resultLabel}).`)
+    // Counted, not named. See requestLiveTelemetryStreams for why attribution
+    // is not available here: COMMAND_ACK does not carry the message id, and the
+    // old label queue that guessed it from send order named the wrong stream
+    // the moment a single ack went missing. A truthful count beats a confident
+    // wrong name — the operator can see WHICH readout is empty; what they could
+    // not tell before is whether the autopilot had refused anything at all.
+    this.refusedMessageIntervalRequests += 1
+    this.appendStatusEntry(
+      'warning',
+      `The autopilot refused ${this.refusedMessageIntervalRequests === 1 ? 'a' : `${this.refusedMessageIntervalRequests}`} live telemetry stream request${this.refusedMessageIntervalRequests === 1 ? '' : 's'} (${mavResultLabel(message.result)}). Any readout that stays empty is one of them — optical flow, ESC telemetry and DroneCAN node status are compile-time or bridge features a given firmware may simply not have.`
+    )
   }
 
   private processCommandLong(message: CommandLongMessage, systemId: number, componentId: number): void {
@@ -3650,6 +3636,7 @@ export class ArduPilotConfiguratorRuntime {
     this.motorTestService.reset()
     this.liveVerification = createIdleLiveVerification()
     this.liveTelemetryRequestsIssued = false
+    this.refusedMessageIntervalRequests = 0
     this.lastHeartbeatAtMs = undefined
     // Small cross-session leftovers, all of which quoted the PREVIOUS board in
     // the NEXT board's session: commandAckLog is printed in command-timeout
@@ -3661,7 +3648,6 @@ export class ArduPilotConfiguratorRuntime {
     this.commandAckLog.length = 0
     this.statusTextWaiters.length = 0
     this.parameterTableGrewDuringSync = false
-    this.pendingSetMessageIntervalLabels.length = 0
     this.autopilotVersionRequested = false
     this.uartsFileRequested = false
     this.preArmIssues.clear()
