@@ -264,7 +264,8 @@ import { buildRecentNotices } from './view-models/recent-notices'
 import { deriveExternalChannelClaims, deriveRcLogicChannelClaims } from './view-models/channel-usage'
 import { orderDraftsByEnableGate } from './view-models/enable-gate-write-order'
 import { deriveVtxPowerLevels } from './view-models/vtx-power-levels'
-import { invertGuidedReorderMapping, pickedReorderPositions } from './view-models/motor-reorder-mapping'
+import { invertGuidedReorderMapping } from './view-models/motor-reorder-mapping'
+import { planGuidedIdentifyAdvance } from './view-models/guided-identify-advance'
 import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
@@ -368,6 +369,7 @@ import { useRuntimeSnapshot } from './hooks/use-runtime-snapshot'
 import { useMavftpBrowser } from './hooks/use-mavftp-browser'
 import { useOnboardLogs } from './hooks/use-onboard-logs'
 import { useProductMode } from './hooks/use-product-mode'
+import { useBootloaderIdentity } from './hooks/use-bootloader-identity'
 import { useRecentNoticesExpanded } from './hooks/use-recent-notices-expanded'
 import { useGpsCoordFormat } from './hooks/use-gps-coord-format'
 import {
@@ -886,13 +888,22 @@ export function App() {
   // writes the reorder once the staged drafts have actually landed in state.
   const [pendingMotorReorderSave, setPendingMotorReorderSave] = useState(false)
   // Guided motor-identify auto-spin: after the operator spins the FIRST motor,
-  // automatically spin each subsequent motor once the previous test window has
-  // fully closed, so they only ever click the position that moved. The wait is
-  // gated on the live motor-test status (not a fixed delay) — the old timed
-  // auto-advance fired while the FC was still armed from the prior test and got
-  // rejected with "the vehicle reports armed=true".
+  // automatically spin each subsequent motor. Once the operator has clicked the
+  // position that moved, the spin has served its purpose, so the answer itself
+  // ends it — an explicit zero-throttle DO_MOTOR_TEST abort — and the next motor
+  // starts behind that stop's ACK rather than after the full test window. (The
+  // status-gated fallback below still covers the case where a spin ends without
+  // an answer, e.g. the operator re-spun and let the window lapse; a fixed timed
+  // advance used to fire while the FC was still armed from the prior test and
+  // got rejected with "the vehicle reports armed=true".)
   const [guidedReorderAutoSpin, setGuidedReorderAutoSpin] = useState(true)
   const autoSpunGuidedReorderStepRef = useRef<number | null>(null)
+  // True from the moment a position is picked until the stop+start pair for
+  // that pick has settled. A ref (not state) because the guard must be read and
+  // set synchronously inside the click handler — a re-render round trip is
+  // exactly the window a double-click slips through, and two overlapping starts
+  // would spin a motor the operator is not looking at.
+  const guidedReorderAdvanceInFlightRef = useRef(false)
   // Spin-error banner — when spinGuidedReorderStep or a manual dialog spin
   // fails (FC rejected DO_MOTOR_TEST, eligibility check failed, etc.) we
   // used to swallow the error; surface it inside the dialog so the
@@ -4391,6 +4402,7 @@ export function App() {
   function handleCloseMotorReorderDialog(): void {
     setMotorReorderDialogOpen(false)
     // Cancel any in-flight guided identify state.
+    guidedReorderAdvanceInFlightRef.current = false
     setGuidedReorderActive(false)
     setGuidedReorderStep(0)
     setGuidedReorderMapping({})
@@ -4398,38 +4410,51 @@ export function App() {
     setGuidedReorderCompleted(false)
   }
 
-  // Spin the guided-identify sequence's CURRENT output. Operator-paced
-  // (field feedback): the old flow auto-spun the next motor 400 ms after
-  // each pick, which raced the FC's previous motor-test window (ArduPilot
-  // stays armed through the test, so the rushed follow-up was rejected
-  // with "the vehicle reports armed=true") and forced the operator's
-  // tempo. Now every spin is an explicit click — including the first —
-  // and can be repeated ("Spin again") before picking a position.
-  function spinGuidedReorderStep(index: number): void {
+  // Spin one output of the guided-identify sequence. The FIRST motor is
+  // always an explicit click, and any motor can be re-spun ("Spin again")
+  // before picking a position. History worth keeping: an older flow auto-spun
+  // the next motor on a 400 ms timer after each pick, which raced the FC's
+  // still-running previous test (ArduPilot stays armed through it, so the
+  // rushed follow-up was rejected with "the vehicle reports armed=true").
+  // The advance-on-selection path avoids that by ENDING the previous test
+  // first and waiting for the abort's ACK, not by waiting on a timer.
+  //
+  // Awaitable core of a guided spin, so the advance-on-selection path can
+  // chain it behind a stop inside ONE busy window (the fire-and-forget
+  // wrapper below would clear busyAction out from under the follow-up).
+  // Resolves once the FC has ACKed the DO_MOTOR_TEST, not when the motor
+  // finishes spinning.
+  async function runGuidedReorderSpin(index: number): Promise<void> {
     const output = effectiveMotorOutputs[index]
     if (!output) {
       return
     }
     // Conservative cap — 2.5s window with low throttle so the operator
     // has time to see which motor moved without spinning long enough to
-    // overheat anything bench-mounted with props off.
+    // overheat anything bench-mounted with props off. In practice the
+    // window is now cut short by the operator's answer.
     const request = buildMotorTestRequest(output.channelNumber, 6, 2.5)
+    try {
+      await runtime.runMotorTest(request as MotorTestRequest)
+      setGuidedReorderAwaitingSpin(false)
+    } catch (error) {
+      // Surface the failure in the dialog so the operator sees WHY no
+      // motor moved. MotorTestService also records failure in the
+      // snapshot, but that's invisible from the dialog context.
+      const message = error instanceof Error ? error.message : 'Motor test failed.'
+      setMotorDialogSpinError(`OUT${output.channelNumber}: ${message}`)
+    }
+  }
+
+  function spinGuidedReorderStep(index: number): void {
+    if (!effectiveMotorOutputs[index]) {
+      return
+    }
     setMotorDialogSpinError(undefined)
     setBusyAction('motor-test')
-    void (async () => {
-      try {
-        await runtime.runMotorTest(request as MotorTestRequest)
-        setGuidedReorderAwaitingSpin(false)
-      } catch (error) {
-        // Surface the failure in the dialog so the operator sees WHY no
-        // motor moved. MotorTestService also records failure in the
-        // snapshot, but that's invisible from the dialog context.
-        const message = error instanceof Error ? error.message : 'Motor test failed.'
-        setMotorDialogSpinError(`OUT${output.channelNumber}: ${message}`)
-      } finally {
-        setBusyAction(undefined)
-      }
-    })()
+    void runGuidedReorderSpin(index).finally(() => {
+      setBusyAction(undefined)
+    })
   }
 
   function handleSpinGuidedReorderCurrent(): void {
@@ -4439,11 +4464,16 @@ export function App() {
     spinGuidedReorderStep(guidedReorderStep)
   }
 
-  // Auto-spin the NEXT motor in the guided identify sequence. Only steps after
-  // the first fire automatically (the operator kicks the sequence off with an
-  // explicit Spin), and only once the previous motor test has left the
-  // requested/running window — i.e. the FC has stopped the last motor and will
-  // accept a fresh DO_MOTOR_TEST. Safety acknowledgements are re-checked here,
+  // FALLBACK auto-spin for the NEXT motor in the guided identify sequence.
+  // The normal path is now handlePickGuidedReorderPosition, which stops the
+  // answered motor and starts the next one directly; this effect only covers
+  // an advance that reached 'awaiting spin' WITHOUT going through that path
+  // (e.g. a re-spun window that lapsed unanswered). It fires only for steps
+  // after the first (the operator kicks the sequence off with an explicit
+  // Spin), only once the previous motor test has left the requested/running
+  // window — i.e. the FC has stopped the last motor and will accept a fresh
+  // DO_MOTOR_TEST — and never for a step the direct path already claimed via
+  // autoSpunGuidedReorderStepRef. Safety acknowledgements are re-checked here,
   // so un-ticking props-off / area-clear mid-sequence pauses the auto-spin
   // instead of spinning a motor unattended.
   useEffect(() => {
@@ -4490,6 +4520,8 @@ export function App() {
     if (!propsRemovedAcknowledged || !testAreaAcknowledged) {
       return
     }
+    guidedReorderAdvanceInFlightRef.current = false
+    autoSpunGuidedReorderStepRef.current = null
     setGuidedReorderActive(true)
     setGuidedReorderStep(0)
     setGuidedReorderMapping({})
@@ -4499,6 +4531,7 @@ export function App() {
   }
 
   function handleCancelGuidedReorder(): void {
+    guidedReorderAdvanceInFlightRef.current = false
     setGuidedReorderActive(false)
     setGuidedReorderStep(0)
     setGuidedReorderMapping({})
@@ -4506,36 +4539,52 @@ export function App() {
     void runtime.stopMotorTest().catch(() => {})
   }
 
+  /**
+   * The operator answered "that position moved" — so the motor spinning right
+   * now has done its job and every remaining millisecond of its window is dead
+   * time. Stop it immediately and move on.
+   *
+   * Exact sequence on a selection, in this order and no other:
+   *   1. Record the pick + advance the step (synchronous, so the picked
+   *      position locks before any await and a repeat click can't re-answer).
+   *   2. DO_MOTOR_TEST param1=1, throttle_type=PERCENT, throttle=0, duration=0
+   *      — the same hardware-verified zero-throttle abort the Cancel/Stop path
+   *      sends — and AWAIT its COMMAND_ACK.
+   *   3. Only then start the next output's DO_MOTOR_TEST.
+   *
+   * The stop is awaited rather than fired-and-forgotten because the ACK is the
+   * only evidence the FC took the abort, and the round trip is one link RTT
+   * (bench-measured stop-to-idle: 1150 -> 1000 µs in 19 ms). ArduCopter's motor
+   * test is single-state, so a new start would in fact replace the old one —
+   * but that is a property of one firmware, not a stop, so it is not leaned on.
+   * If the abort goes unacknowledged we start NOTHING and say so: the FC's own
+   * per-motor timeout is still the hard safety net.
+   */
   function handlePickGuidedReorderPosition(clickedMotorNumber: number): void {
-    if (!guidedReorderActive) {
+    const plan = planGuidedIdentifyAdvance({
+      active: guidedReorderActive,
+      advanceInFlight: guidedReorderAdvanceInFlightRef.current,
+      step: guidedReorderStep,
+      outputChannels: effectiveMotorOutputs.map((output) => output.channelNumber),
+      mapping: guidedReorderMapping,
+      clickedMotorPosition: clickedMotorNumber,
+      autoSpin: guidedReorderAutoSpin,
+      // Re-read the acks at answer time: a run whose acknowledgement was
+      // withdrawn mid-sequence stops the current motor but starts nothing.
+      safetyAcknowledged: propsRemovedAcknowledged && testAreaAcknowledged
+    })
+    if (plan.kind === 'ignore') {
       return
     }
-    const currentOutput = effectiveMotorOutputs[guidedReorderStep]
-    if (!currentOutput) {
-      return
-    }
-    // Backstop the UI's already-picked lock: a position claimed by an
-    // earlier output must never be reassigned (it would drop a motor and
-    // silently mis-map the reorder). Ignore the stray click rather than
-    // corrupt the mapping.
-    if (pickedReorderPositions(guidedReorderMapping).has(clickedMotorNumber)) {
-      return
-    }
-    // Record: this output should drive the motor at the physical position
-    // the operator just clicked. mapping[OUTn] = clickedMotorNumber.
-    const nextMapping = {
-      ...guidedReorderMapping,
-      [String(currentOutput.channelNumber)]: clickedMotorNumber
-    }
-    setGuidedReorderMapping(nextMapping)
-    const nextStep = guidedReorderStep + 1
-    if (nextStep >= effectiveMotorOutputs.length) {
+
+    setGuidedReorderMapping(plan.nextMapping)
+    if (plan.kind === 'complete') {
       // All outputs identified. Invert the output→position identify map
       // into the reorder table's motor→output selections (pure + tested
       // in motor-reorder-mapping.ts), so Stage Reorder writes the
       // SERVOn_FUNCTION drafts that make every physical position drive
       // its expected motor number.
-      setMotorReorderSelections(invertGuidedReorderMapping(nextMapping))
+      setMotorReorderSelections(invertGuidedReorderMapping(plan.nextMapping))
       setGuidedReorderActive(false)
       setGuidedReorderStep(0)
       setGuidedReorderAwaitingSpin(false)
@@ -4543,11 +4592,47 @@ export function App() {
       // "no changes needed" note when the order already matches.
       setGuidedReorderCompleted(true)
     } else {
-      // No auto-spin: advance and wait for the operator's explicit Spin
-      // click at their own pace.
-      setGuidedReorderStep(nextStep)
+      setGuidedReorderStep(plan.nextStep)
       setGuidedReorderAwaitingSpin(true)
+      if (plan.startStep !== undefined) {
+        // Claim the step for the direct start so the status-gated auto-spin
+        // effect can never fire a second DO_MOTOR_TEST for it.
+        autoSpunGuidedReorderStepRef.current = plan.startStep
+      }
     }
+
+    const startStep = plan.kind === 'advance' ? plan.startStep : undefined
+    guidedReorderAdvanceInFlightRef.current = true
+    setMotorDialogSpinError(undefined)
+    // One busy window covers stop + start, so nothing else (including the
+    // Spin button) can inject a motor command between the two.
+    setBusyAction('motor-test')
+    void (async () => {
+      try {
+        const stopped = await runtime.stopMotorTest()
+        if (stopped.sent && !stopped.acknowledged) {
+          // Unproven stop — refuse to add a second motor command on top of an
+          // FC state we cannot vouch for. Same surfacing as any other guided
+          // spin failure so the operator sees why the sequence paused.
+          setMotorDialogSpinError(
+            'Stopping the spinning motor was not acknowledged, so the next motor was not started. The autopilot still stops it on its own timeout — check the motor is idle, then click Spin.'
+          )
+          return
+        }
+        if (startStep !== undefined) {
+          await runGuidedReorderSpin(startStep)
+        }
+      } catch (error) {
+        // stopMotorTest swallows a rejected abort into `acknowledged: false`,
+        // so anything thrown here is unexpected — still never chain a start
+        // onto it; report and stop the sequence.
+        const message = error instanceof Error ? error.message : 'Stopping the motor test failed.'
+        setMotorDialogSpinError(`${message} The next motor was not started.`)
+      } finally {
+        setBusyAction(undefined)
+        guidedReorderAdvanceInFlightRef.current = false
+      }
+    })()
   }
 
   /**
@@ -5229,6 +5314,9 @@ export function App() {
     motorVerificationStatus: motorVerification.status
   })
   const isExpertMode = productMode === 'expert'
+  // Expert-only bootloader hash preview for the Flash tab's Update Bootloader
+  // action. Reads nothing until the flasher arms the update and calls load().
+  const bootloaderIdentity = useBootloaderIdentity(runtime, snapshot.connection.kind === 'connected')
   const appViews = useMemo<AppViewDescriptor[]>(
     () =>
       buildAppViews({
@@ -9010,6 +9098,12 @@ export function App() {
                 ? 'Disarm the vehicle before updating the bootloader.'
                 : undefined
           }
+          // Expert-gated the same way the CAN tab gates its node actions: pass
+          // undefined in basic mode and the block does not exist at all. A
+          // developer affordance — it identifies the two images but changes
+          // nothing about the flash, including its existing arm/confirm gate.
+          bootloaderIdentity={isExpertMode ? bootloaderIdentity.preview : undefined}
+          onLoadBootloaderIdentity={isExpertMode ? bootloaderIdentity.load : undefined}
           onReboot={
             runtime && snapshot.connection.kind === 'connected'
               ? async () => { await runtime.reboot() }

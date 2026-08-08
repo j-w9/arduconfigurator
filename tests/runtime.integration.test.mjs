@@ -96,7 +96,10 @@ test('mock SITL supports MAVFTP directory browse, upload, download, and delete o
     const initialEntries = await sitl.runtime.listRemoteDirectory('@SYS')
     assert.deepEqual(
       initialEntries.map((entry) => `${entry.kind}:${entry.name}`),
-      ['directory:scripts', 'file:timers.txt', 'file:uarts.txt']
+      // flash.bin is the program-flash region ArduPilot exposes on ChibiOS
+      // (AP_Filesystem_Sys.cpp, AP_FILESYSTEM_SYS_FLASH_ENABLED); the mock now
+      // serves it so the bootloader hash preview has something to read.
+      ['directory:scripts', 'file:flash.bin', 'file:timers.txt', 'file:uarts.txt']
     )
 
     const scriptBytes = await sitl.runtime.downloadRemoteFile('@SYS/scripts/hello.lua')
@@ -115,6 +118,57 @@ test('mock SITL supports MAVFTP directory browse, upload, download, and delete o
 
     const afterDeleteEntries = await sitl.runtime.listRemoteDirectory('@SYS/scripts')
     assert.ok(!afterDeleteEntries.some((entry) => entry.path === uploadPath))
+  } finally {
+    await sitl.disconnect().catch(() => {})
+    sitl.destroy()
+  }
+})
+
+test('bootloader image read returns both sides, with the installed side bounded to the incoming length', async () => {
+  const sitl = createMockSITL()
+
+  try {
+    await sitl.connectAndSync({ heartbeatTimeoutMs: 2000, parameterTimeoutMs: 5000 })
+
+    const pair = await sitl.runtime.readBootloaderImages()
+
+    assert.ok(pair.embedded, 'the embedded bootloader image should be readable')
+    assert.ok(pair.installed, 'the installed bootloader region should be readable')
+    assert.equal(pair.embeddedError, undefined)
+    assert.equal(pair.installedError, undefined)
+    // The whole point of the bounded prefix read: @SYS/flash.bin is longer than
+    // the bootloader, and reading past the incoming image's length would make
+    // the two sides incomparable.
+    assert.equal(pair.installed.byteLength, pair.embedded.byteLength)
+    // The mock's two images differ in their first byte, so a comparison must
+    // land on "different" rather than trivially matching.
+    assert.notEqual(pair.installed[0], pair.embedded[0])
+    assert.equal(pair.installed[1], pair.embedded[1])
+  } finally {
+    await sitl.disconnect().catch(() => {})
+    sitl.destroy()
+  }
+})
+
+test('bootloader image read reports a missing embedded image instead of throwing', async () => {
+  const sitl = createMockSITL()
+
+  try {
+    await sitl.connectAndSync({ heartbeatTimeoutMs: 2000, parameterTimeoutMs: 5000 })
+
+    // Firmware built without AP_BOOTLOADER_FLASHING_ENABLED carries no
+    // @ROMFS/bootloader.bin at all. That must degrade to "unavailable" — the
+    // Update Bootloader path has to behave exactly as it does today.
+    await sitl.runtime.deleteRemotePath('@ROMFS/bootloader.bin')
+
+    const pair = await sitl.runtime.readBootloaderImages()
+
+    assert.equal(pair.embedded, undefined)
+    assert.ok(pair.embeddedError)
+    // No incoming length means no defensible prefix of the flash region to
+    // read, so the installed side is not attempted or claimed either.
+    assert.equal(pair.installed, undefined)
+    assert.equal(pair.installedError, undefined)
   } finally {
     await sitl.disconnect().catch(() => {})
     sitl.destroy()
@@ -1955,7 +2009,10 @@ test('stopMotorTest aborts an in-flight test with a zero-throttle command and cl
     await runtime.runMotorTest({ outputChannel: 1, throttlePercent: 5, durationSeconds: 2 })
     assert.equal(runtime.getSnapshot().motorTest.status, 'running')
 
-    await runtime.stopMotorTest()
+    const stopResult = await runtime.stopMotorTest()
+    // The guided-identify advance chains the NEXT motor's start behind this
+    // result, so the ACK evidence must survive the call, not just the summary.
+    assert.deepEqual(stopResult, { sent: true, acknowledged: true })
 
     const motorTestCommands = sentMessages.filter(
       (message) => message.type === 'COMMAND_LONG' && message.command === MAV_CMD.DO_MOTOR_TEST
@@ -1971,6 +2028,37 @@ test('stopMotorTest aborts an in-flight test with a zero-throttle command and cl
     // 2s window the state must NOT flip to 'succeeded'.
     await sleep(2400)
     assert.equal(runtime.getSnapshot().motorTest.status, 'failed', 'no late completion-timer flip after a stop')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('stopMotorTest with nothing running sends no command and still reports a settled state', async () => {
+  // The guided-identify advance calls stop unconditionally on every pick; when
+  // the FC's own per-motor timeout already ended the spin there is nothing to
+  // abort, and that must NOT read as an unproven stop (which would refuse to
+  // start the next motor) nor put a stray DO_MOTOR_TEST on the wire.
+  const sentMessages = []
+  const runtime = new ArduPilotConfiguratorRuntime(
+    createMotorTestAckSession(
+      { FLTMODE1: 0, FRAME_CLASS: 1, FRAME_TYPE: 12, SERVO1_FUNCTION: 33, SERVO2_FUNCTION: 34, SERVO3_FUNCTION: 35, SERVO4_FUNCTION: 36 },
+      sentMessages
+    ),
+    arducopterMetadata
+  )
+
+  try {
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 200 })
+    await runtime.waitForParameterSync({ timeoutMs: 200 })
+
+    const stopResult = await runtime.stopMotorTest()
+    assert.deepEqual(stopResult, { sent: false, acknowledged: true })
+    const motorTestCommands = sentMessages.filter(
+      (message) => message.type === 'COMMAND_LONG' && message.command === MAV_CMD.DO_MOTOR_TEST
+    )
+    assert.equal(motorTestCommands.length, 0, 'no DO_MOTOR_TEST is sent when no test is active')
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()

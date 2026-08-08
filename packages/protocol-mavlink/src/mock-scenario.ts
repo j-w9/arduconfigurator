@@ -2808,6 +2808,35 @@ function makeMockLogBytes(seed: number, length: number): Uint8Array {
   return bytes
 }
 
+/**
+ * Stand-ins for the two files the expert bootloader hash preview reads.
+ *
+ * `@ROMFS/bootloader.bin` is the image a real firmware would flash;
+ * `@SYS/flash.bin` is the program flash mapped from 0x08000000, whose leading
+ * bytes are the installed bootloader. The mock deliberately makes the two
+ * DIFFER in one byte at the very start, so the demo exercises the interesting
+ * verdict ("the bootloader will change") rather than the trivially-equal one,
+ * and so a comparison that only looked at the length would be caught.
+ *
+ * Size is a realistic ~48 KB bootloader. flash.bin is longer than that on
+ * purpose: a reader that fails to bound its prefix read would pull the whole
+ * thing and produce a spurious mismatch.
+ */
+const MOCK_BOOTLOADER_BYTES = 48 * 1024
+
+function createMockEmbeddedBootloaderBytes(): Uint8Array {
+  const bytes = makeMockLogBytes(0x5a, MOCK_BOOTLOADER_BYTES)
+  bytes[0] = 0xe1
+  return bytes
+}
+
+function createMockFlashRegionBytes(): Uint8Array {
+  // Same content, one differing leading byte — an "older" installed bootloader.
+  const bytes = makeMockLogBytes(0x5a, MOCK_BOOTLOADER_BYTES * 2)
+  bytes[0] = 0xd0
+  return bytes
+}
+
 // Build a valid @VTX/vtxtable.dat blob for the demo so the VTX view shows the
 // real band/frequency table editor (feature-detected) instead of the "Table
 // not available" preview. Self-contained (protocol-mavlink can't import the
@@ -2913,6 +2942,9 @@ function createMockFtpFiles(): MockFtpFileMap {
     // "Table not available" preview fallback.
     ['@VTX/vtxtable.dat', createMockVtxTableBytes()],
     ['@SYS/timers.txt', mockTimersBytes.slice()],
+    // Bootloader identity pair — see createMockEmbeddedBootloaderBytes.
+    ['@ROMFS/bootloader.bin', createMockEmbeddedBootloaderBytes()],
+    ['@SYS/flash.bin', createMockFlashRegionBytes()],
     ['@SYS/scripts/autorun.lua', mockAutorunScriptBytes.slice()],
     ['@SYS/scripts/hello.lua', mockHelloScriptBytes.slice()],
     // SD-card Lua scripts directory (/APM/scripts) — what the Lua Scripts tab

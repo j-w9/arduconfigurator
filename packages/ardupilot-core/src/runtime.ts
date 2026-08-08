@@ -44,6 +44,7 @@ import type {
   ConfiguratorSnapshot,
   GuidedActionState,
   MotorTestRequest,
+  MotorTestStopResult,
   PreArmIssueState,
   PreArmLiveCheckState,
   PreArmStatusState,
@@ -78,6 +79,14 @@ import {
   serializeOsdShorthand,
   type OsdShorthand
 } from './osd-shorthand.js'
+import {
+  BOOTLOADER_IMAGE_FETCH_TIMEOUT_MS,
+  EMBEDDED_BOOTLOADER_FTP_PATH,
+  FLASH_REGION_FTP_PATH,
+  MAX_BOOTLOADER_IMAGE_BYTES,
+  describeBootloaderReadFailure,
+  type BootloaderImagePair
+} from './bootloader-images.js'
 import { CanBusService } from './runtime-can-bus-service.js'
 import { GuidedActionService } from './runtime-guided-action-service.js'
 import { LogDownloadService, type LogDownloadProgress, type OnboardLogInfo } from './runtime-log-download-service.js'
@@ -1280,6 +1289,94 @@ export class ArduPilotConfiguratorRuntime {
   }
 
   /**
+   * Fetch the two bootloader images an Update Bootloader would compare, so an
+   * operator can see what is about to be written next to what is already
+   * there. Read-only; nothing here writes to the vehicle.
+   *
+   * BOTH sides are genuinely retrievable in normal operation, and both come
+   * from exactly the addresses AP_HAL_ChibiOS/Util.cpp flash_bootloader() uses:
+   *
+   *  - INCOMING is `@ROMFS/bootloader.bin`. flash_bootloader() writes
+   *    `AP_ROMFS::find_decompress("bootloader.bin")`, and
+   *    AP_Filesystem_ROMFS.cpp open() serves `@ROMFS/<name>` through that same
+   *    find_decompress call, so MAVFTP hands back the identical decompressed
+   *    bytes that would be flashed. Never a guess.
+   *
+   *  - INSTALLED is the head of `@SYS/flash.bin`. AP_Filesystem_Sys.cpp maps
+   *    that file at `(void*)0x08000000`, which is STM32_FLASH_BASE
+   *    (AP_HAL_ChibiOS/hwdef/common/flash.c) and therefore exactly
+   *    `hal.flash->getpageaddr(0)` — the address flash_bootloader() memcmps the
+   *    ROMFS image against. So the first N bytes of that file ARE the installed
+   *    bootloader, for the same N.
+   *
+   * Both reads are best-effort and independent. Either can legitimately be
+   * absent and that is not an error worth failing the caller over:
+   * `@ROMFS/bootloader.bin` only exists on builds with
+   * AP_BOOTLOADER_FLASHING_ENABLED (chibios_hwdef.py adds it alongside that
+   * define), and `@SYS/flash.bin` only on ChibiOS
+   * (AP_FILESYSTEM_SYS_FLASH_ENABLED is `CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS`),
+   * so SITL has neither. This method therefore NEVER throws: it reports per-side
+   * failures and lets the UI say "unavailable" rather than invent a value.
+   *
+   * The installed read is deliberately sized from the incoming image, because
+   * without an incoming length there is no defensible number of bytes to call
+   * "the bootloader" — the flash region is megabytes and its trailing content
+   * is unrelated. No incoming image means no installed comparison either.
+   */
+  async readBootloaderImages(): Promise<BootloaderImagePair> {
+    const result: BootloaderImagePair = {}
+
+    try {
+      // Bounded at the READ, not after it, so a firmware that reports an absurd
+      // size cannot make us pull megabytes before we reject it. Asking for one
+      // byte past the cap is what makes "hit the cap" distinguishable from
+      // "the file simply ends there" — a full cap+1 response means the image is
+      // larger than we are willing to believe, anything shorter is the whole file.
+      const embedded = await this.mavftp.readRemoteFilePrefix(
+        EMBEDDED_BOOTLOADER_FTP_PATH,
+        MAX_BOOTLOADER_IMAGE_BYTES + 1,
+        { timeoutMs: BOOTLOADER_IMAGE_FETCH_TIMEOUT_MS }
+      )
+      if (embedded.byteLength === 0) {
+        result.embeddedError = 'The firmware served an empty bootloader image.'
+      } else if (embedded.byteLength > MAX_BOOTLOADER_IMAGE_BYTES) {
+        // Refuse rather than trust: a length past every board's reserved
+        // bootloader region means we are not looking at what we think we are.
+        result.embeddedError = 'The embedded bootloader image is implausibly large.'
+      } else {
+        result.embedded = embedded
+      }
+    } catch (error) {
+      result.embeddedError = describeBootloaderReadFailure(error, EMBEDDED_BOOTLOADER_FTP_PATH)
+    }
+
+    if (!result.embedded) {
+      return result
+    }
+
+    try {
+      // Bounded prefix read: @SYS/flash.bin spans the whole program flash and
+      // its OPEN size is a placeholder, so the length must come from us.
+      const installed = await this.mavftp.readRemoteFilePrefix(
+        FLASH_REGION_FTP_PATH,
+        result.embedded.byteLength,
+        { timeoutMs: BOOTLOADER_IMAGE_FETCH_TIMEOUT_MS }
+      )
+      if (installed.byteLength < result.embedded.byteLength) {
+        // A short read is not a different bootloader, it is an unfinished
+        // read. Comparing it would report a spurious mismatch.
+        result.installedError = `Only ${installed.byteLength} of ${result.embedded.byteLength} bytes of the installed bootloader could be read.`
+      } else {
+        result.installed = installed
+      }
+    } catch (error) {
+      result.installedError = describeBootloaderReadFailure(error, FLASH_REGION_FTP_PATH)
+    }
+
+    return result
+  }
+
+  /**
    * Read the VTX band/power table over MAVLink FTP (@VTX/vtxtable.dat) and
    * parse it. Returns `undefined` when the firmware doesn't expose the table
    * (FTP mount/file absent) OR the blob doesn't parse (bad magic/version/CRC) —
@@ -1442,8 +1539,10 @@ export class ArduPilotConfiguratorRuntime {
     return this.motorTestService.run(request, options)
   }
 
-  /** Operator-initiated early abort of an in-flight motor test. */
-  async stopMotorTest(): Promise<void> {
+  /** Operator-initiated early abort of an in-flight motor test. Resolves
+   *  with whether the zero-throttle abort was sent and ACKed, so callers
+   *  chaining a follow-up spin can refuse to start one on an unproven stop. */
+  async stopMotorTest(): Promise<MotorTestStopResult> {
     return this.motorTestService.stop()
   }
 

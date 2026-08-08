@@ -83,6 +83,105 @@ test('true SITL supports verified parameter write/readback', { timeout: 240000 }
   }
 })
 
+// Exercises the bootloader-image read against REAL ArduPilot rather than the
+// mock, which is the only way to prove what the vehicle actually serves.
+//
+// The expected outcome here is ABSENCE, and that is the point. SITL is not
+// ChibiOS, so it has neither file:
+//   - `@ROMFS/bootloader.bin` is added to ROMFS only by chibios_hwdef.py,
+//     alongside the AP_BOOTLOADER_FLASHING_ENABLED define.
+//   - `@SYS/flash.bin` is gated on AP_FILESYSTEM_SYS_FLASH_ENABLED, which is
+//     `CONFIG_HAL_BOARD == HAL_BOARD_CHIBIOS` (AP_Filesystem_config.h).
+// So this rung proves the degradation path, not the happy path: a real
+// autopilot that does not serve these files must produce a clean per-side
+// reason and must NOT throw, because the Update Bootloader action has to keep
+// behaving exactly as it did before this read existed.
+test('true SITL: reading the bootloader images degrades cleanly when the board serves neither', { timeout: 240000 }, async (t) => {
+  const repoPath = process.env.ARDUPILOT_REPO_PATH
+  const launchMode = process.env.ARDUPILOT_SITL_LAUNCH_MODE ?? 'direct-binary'
+  const attachHost = process.env.ARDUPILOT_SITL_HOST
+  const attachTransport =
+    process.env.ARDUPILOT_SITL_TRANSPORT ?? (repoPath && launchMode === 'sim-vehicle' ? 'udp' : 'tcp')
+  const attachPort = Number(process.env.ARDUPILOT_SITL_PORT ?? (attachTransport === 'udp' ? '14550' : '5760'))
+  const launchWaitPort = Number(process.env.ARDUPILOT_SITL_LAUNCH_WAIT_PORT ?? '5760')
+
+  if (!repoPath && !attachHost) {
+    t.skip('Set ARDUPILOT_REPO_PATH to launch SITL, or ARDUPILOT_SITL_HOST/PORT to attach.')
+    return
+  }
+
+  let sitl
+  if (repoPath) {
+    sitl =
+      launchMode === 'sim-vehicle'
+        ? await launchArduPilotSITL({
+            repoPath,
+            pythonExecutable: process.env.ARDUPILOT_SITL_PYTHON,
+            vehicle: process.env.ARDUPILOT_SITL_VEHICLE ?? 'ArduCopter',
+            frame: process.env.ARDUPILOT_SITL_FRAME ?? 'quad',
+            port: launchWaitPort,
+            launchTimeoutMs: Number(process.env.ARDUPILOT_SITL_LAUNCH_TIMEOUT_MS ?? '120000')
+          })
+        : await launchArduPilotDirectBinary({
+            repoPath,
+            vehicle: process.env.ARDUPILOT_SITL_VEHICLE ?? 'ArduCopter',
+            frame: process.env.ARDUPILOT_SITL_FRAME ?? 'quad',
+            port: launchWaitPort,
+            launchTimeoutMs: Number(process.env.ARDUPILOT_SITL_LAUNCH_TIMEOUT_MS ?? '120000')
+          })
+  }
+
+  const transport =
+    attachTransport === 'udp'
+      ? new UdpTransport('sitl-bootloader-udp', {
+          bindHost: attachHost ?? '127.0.0.1',
+          bindPort: attachPort
+        })
+      : new TcpTransport('sitl-bootloader-tcp', {
+          host: attachHost ?? '127.0.0.1',
+          port: attachPort,
+          connectTimeoutMs: 10000
+        })
+  const session = new MavlinkSession(transport, new MavlinkV2Codec())
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {})
+
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 10000 })
+
+    // Must resolve, never reject, whatever the board does or does not serve.
+    const pair = await runtime.readBootloaderImages()
+
+    if (pair.embedded) {
+      // A ChibiOS-like build that DOES carry the image: then the installed
+      // side must be the same length, or an explicit reason.
+      t.diagnostic(`This target served an embedded bootloader of ${pair.embedded.byteLength} bytes.`)
+      assert.ok(
+        pair.installed ? pair.installed.byteLength === pair.embedded.byteLength : Boolean(pair.installedError),
+        'The installed side must either match the incoming length or explain why it is missing.'
+      )
+    } else {
+      assert.ok(
+        typeof pair.embeddedError === 'string' && pair.embeddedError.length > 0,
+        'A board without an embedded bootloader must say why, not fail silently.'
+      )
+      // Without an incoming length there is no defensible prefix of the flash
+      // region, so the installed side must be neither read nor claimed.
+      assert.equal(pair.installed, undefined)
+      assert.equal(pair.installedError, undefined)
+      t.diagnostic(`SITL reported: ${pair.embeddedError}`)
+    }
+
+    // The link must still be healthy afterwards — a failed MAVFTP read must
+    // not leave a session wedged or the runtime disconnected.
+    assert.equal(runtime.getSnapshot().connection.kind, 'connected')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+    await sitl?.stop().catch(() => {})
+  }
+})
+
 // Opt-in (ARDUPILOT_SITL_PLANE=1) because it forces an ArduPlane binary
 // build, which is heavy and irrelevant to the default Copter SITL run.
 // Validates the firmware-aware path against real ArduPlane firmware:
@@ -160,6 +259,138 @@ test('true SITL: an ArduPlane vehicle is detected and swaps to the Plane catalog
     const rollbackResult = await runtime.setParameter(parameter.id, parameter.value, { verifyTimeoutMs: 3000 })
     assert.equal(rollbackResult.confirmedValue, parameter.value)
   } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+    await sitl?.stop().catch(() => {})
+  }
+})
+
+/**
+ * Back-to-back MAVFTP downloads of SMALL files.
+ *
+ * Nothing below rung 4 can prove this. The failure lives in the real
+ * ArduPilot FTP server's duplicate-request suppression: it replays its last
+ * reply instead of executing a request whose `seq_number + 1` equals the
+ * seq_number of that reply (GCS_FTP.cpp:823-829). A burst read advances the
+ * server's seq_number once per STREAMED PACKET while the client only sent one
+ * request, so a client that counts only its own sends falls behind — and for a
+ * file small enough to fit in a single burst packet it falls behind by exactly
+ * the amount that makes the follow-up TerminateSession look like a re-request.
+ * The close is swallowed, the descriptor stays open, and since ArduPilot allows
+ * only one open file per session (GCS_FTP.cpp:341-352) the next open is NAKed
+ * with Fail until the server's 3s idle sweep runs (FTP_SESSION_TIMEOUT). Big
+ * logs always outlast that timeout, which is why the log reader never saw it.
+ *
+ * The mock server replies with request+1 and nothing else, so it cannot
+ * exhibit any of this; only a real autopilot can answer.
+ *
+ * The test uploads its own small files rather than trusting whatever happens to
+ * be on the vehicle, so "small enough to fit one burst packet" — the exact
+ * failing case — is guaranteed rather than hoped for. It also downloads a real
+ * multi-burst log in the same run so a fix for the small-file case cannot quietly
+ * cost us the large-file path it was built for.
+ */
+test('true SITL: consecutive small MAVFTP downloads all succeed', { timeout: 240000 }, async (t) => {
+  const repoPath = process.env.ARDUPILOT_REPO_PATH
+  const attachHost = process.env.ARDUPILOT_SITL_HOST
+  const attachPort = Number(process.env.ARDUPILOT_SITL_PORT ?? '5760')
+  const launchWaitPort = Number(process.env.ARDUPILOT_SITL_LAUNCH_WAIT_PORT ?? '5760')
+
+  if (!repoPath && !attachHost) {
+    t.skip('Set ARDUPILOT_REPO_PATH to launch SITL, or ARDUPILOT_SITL_HOST/PORT to attach to an existing endpoint.')
+    return
+  }
+
+  let sitl
+  if (repoPath) {
+    sitl = await launchArduPilotDirectBinary({
+      repoPath,
+      vehicle: process.env.ARDUPILOT_SITL_VEHICLE ?? 'ArduCopter',
+      frame: process.env.ARDUPILOT_SITL_FRAME ?? 'quad',
+      port: launchWaitPort,
+      launchTimeoutMs: Number(process.env.ARDUPILOT_SITL_LAUNCH_TIMEOUT_MS ?? '120000')
+    })
+  }
+
+  const transport = new TcpTransport('sitl-mavftp-small-files-tcp', {
+    host: attachHost ?? '127.0.0.1',
+    port: attachPort,
+    connectTimeoutMs: 10000
+  })
+  const session = new MavlinkSession(transport, new MavlinkV2Codec())
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {})
+
+  // `/logs` is the SITL scratch directory (the hardware equivalent is
+  // `/APM/LOGS`); it is the one writable place every SITL has. Cleaned up in
+  // the finally so a re-run starts from the same state.
+  const smallFiles = [1, 2, 3].map((index) => ({
+    path: `/logs/arduconfig-ftp-small-${index}.txt`,
+    // Well under the 239-byte burst packet payload, so each download is a
+    // single-packet burst — the case that used to wedge the session.
+    text: `arduconfig mavftp consecutive-read probe #${index}\n`
+  }))
+  const uploaded = []
+
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 20000 })
+
+    // The runtime issues its own `@SYS/uarts.txt` read on connect. This
+    // service drives every transfer through FTP session 0, so an overlapping
+    // read would contend for the same server-side descriptor and muddy what
+    // this test is actually measuring. Let the connect-time read finish first.
+    await new Promise((resolve) => setTimeout(resolve, 4000))
+
+    for (const file of smallFiles) {
+      await runtime.uploadRemoteFile(file.path, new TextEncoder().encode(file.text), { overwrite: true })
+      uploaded.push(file.path)
+    }
+
+    // The assertion: back to back, with NO spacing between them. Spacing is
+    // what the private monitoring collector had to add to work around this,
+    // and adding it here would hide exactly the bug under test.
+    for (const file of smallFiles) {
+      const bytes = await runtime.downloadMavftpLog(file.path, undefined, { silent: true })
+      assert.equal(
+        new TextDecoder().decode(bytes),
+        file.text,
+        `Consecutive MAVFTP download of ${file.path} did not return the uploaded bytes.`
+      )
+    }
+
+    // Same run, same session: the multi-burst path the log reader depends on
+    // must still work after (and before) the small reads.
+    const logs = await runtime.listMavftpLogs()
+    const bySize = logs
+      .filter((entry) => (entry.sizeBytes ?? 0) > 4096)
+      .sort((left, right) => (left.sizeBytes ?? 0) - (right.sizeBytes ?? 0))
+    // ArduPilot streams at most 2000 packets (~478 KiB at 239 bytes each) per
+    // burst request, so prefer a log past that: it forces the burstComplete
+    // re-request the log reader lives on. Fall back to the largest available
+    // when the SITL has nothing that big, and take the SMALLEST qualifying log
+    // so the test stays quick.
+    const largeLog = bySize.find((entry) => (entry.sizeBytes ?? 0) > 512 * 1024) ?? bySize[bySize.length - 1]
+
+    if (largeLog) {
+      let lastProgress = 0
+      const bytes = await runtime.downloadMavftpLog(largeLog.path, (progress) => {
+        lastProgress = progress.bytesReceived
+      }, { silent: true })
+      assert.equal(bytes.length, largeLog.sizeBytes, `Multi-burst download of ${largeLog.path} came back short.`)
+      assert.ok(lastProgress > 0, 'Multi-burst download reported no progress.')
+      t.diagnostic(`Multi-burst path exercised on ${largeLog.path} (${bytes.length} bytes).`)
+
+      // And a small read still works AFTER a large one, which is the ordering
+      // an operator hits when they grab a log and then a config file.
+      const trailing = await runtime.downloadMavftpLog(smallFiles[0].path, undefined, { silent: true })
+      assert.equal(new TextDecoder().decode(trailing), smallFiles[0].text)
+    } else {
+      t.diagnostic('No onboard log over 4 KiB on this SITL — the multi-burst path was not exercised.')
+    }
+  } finally {
+    for (const path of uploaded) {
+      await runtime.deleteRemotePath(path, 'file').catch(() => {})
+    }
     await runtime.disconnect().catch(() => {})
     runtime.destroy()
     await sitl?.stop().catch(() => {})
@@ -277,6 +508,63 @@ test('true SITL: the rangefinder + optical-flow streams are accepted and arrive'
 // assert our handling of a bit we synthesise ourselves; only real firmware can
 // prove the bit is actually set on the wire.
 test('true SITL: SYS_STATUS carries a live pre-arm verdict', { timeout: 240000 }, async (t) => {
+/**
+ * SERVO_OUTPUT_RAW (msgid 36) is not in the configurator's codec, so this
+ * test scans the raw transport frames for it. Enough of the MAVLink v2 frame
+ * to find one message: STX 0xFD, len@1, incompat@2, msgid (3 bytes LE) @7,
+ * payload @10. A wrongly-synced start byte is harmless here — it can only
+ * fail to produce a msgid-36 reading, never fabricate one, because the
+ * payload we read is the one the length field delimited.
+ */
+function observeServoOutputRaw(transport, onSample) {
+  let buffer = new Uint8Array(0)
+  return transport.onFrame((chunk) => {
+    const merged = new Uint8Array(buffer.length + chunk.length)
+    merged.set(buffer)
+    merged.set(chunk, buffer.length)
+    buffer = merged
+
+    let index = 0
+    while (index < buffer.length) {
+      if (buffer[index] !== 0xfd) {
+        index += 1
+        continue
+      }
+      if (buffer.length - index < 12) {
+        break // partial header — wait for more bytes
+      }
+      const payloadLength = buffer[index + 1]
+      const signed = (buffer[index + 2] & 0x01) === 0x01
+      const frameLength = 12 + payloadLength + (signed ? 13 : 0)
+      if (buffer.length - index < frameLength) {
+        break
+      }
+      const messageId = buffer[index + 7] | (buffer[index + 8] << 8) | (buffer[index + 9] << 16)
+      // MAVLink v2 truncates trailing zero bytes, and a quad leaves servo5+
+      // at zero — SITL's SERVO_OUTPUT_RAW arrives as just 12 bytes
+      // (time_usec + servo1..4), which is exactly what this reads.
+      if (messageId === 36 && payloadLength >= 12) {
+        const payload = buffer.subarray(index + 10, index + 10 + payloadLength)
+        const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+        onSample({
+          atMs: Date.now(),
+          // servo1_raw..servo8_raw are uint16 LE starting at offset 4.
+          servos: [0, 1, 2, 3].map((slot) => view.getUint16(4 + slot * 2, true))
+        })
+      }
+      index += frameLength
+    }
+    buffer = buffer.subarray(index)
+  })
+}
+
+// Rung 4 for the guided-identify "advance on selection" change. The mock
+// runtime can prove the commands are SENT in order; only a real autopilot can
+// prove the STOP takes effect on the outputs before the next motor starts.
+// So: spin OUT1, abort it mid-window with the zero-throttle DO_MOTOR_TEST,
+// watch OUT1 fall back to idle, then start OUT2 and assert OUT1 was already
+// idle before OUT2 ever rose.
+test('true SITL: a zero-throttle abort drops the spinning output before the next motor starts', { timeout: 240000 }, async (t) => {
   const repoPath = process.env.ARDUPILOT_REPO_PATH
   const attachHost = process.env.ARDUPILOT_SITL_HOST
   const attachPort = Number(process.env.ARDUPILOT_SITL_PORT ?? '5760')
@@ -299,6 +587,7 @@ test('true SITL: SYS_STATUS carries a live pre-arm verdict', { timeout: 240000 }
   }
 
   const transport = new TcpTransport('sitl-prearm-tcp', {
+  const transport = new TcpTransport('sitl-motor-advance-tcp', {
     host: attachHost ?? '127.0.0.1',
     port: attachPort,
     connectTimeoutMs: 10000
@@ -306,6 +595,9 @@ test('true SITL: SYS_STATUS carries a live pre-arm verdict', { timeout: 240000 }
   const session = new MavlinkSession(transport, new MavlinkV2Codec())
   const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {})
 
+
+  const samples = []
+  let unsubscribe
   try {
     await runtime.connect()
     await runtime.waitForVehicle({ timeoutMs: 20000 })
@@ -344,6 +636,79 @@ test('true SITL: SYS_STATUS carries a live pre-arm verdict', { timeout: 240000 }
       t.diagnostic('Arming checks are all skipped on this SITL — verdict correctly ignored.')
     }
   } finally {
+    unsubscribe = observeServoOutputRaw(transport, (sample) => samples.push(sample))
+    // 20 Hz, so the gap between "OUT1 still high" and "OUT2 high" is measured
+    // finely enough to be meaningful.
+    await runtime.requestMessageInterval(36, 50000)
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+
+    const baseline = samples.at(-1)
+    assert.ok(baseline, 'No SERVO_OUTPUT_RAW arrived from SITL.')
+    const idleOut1 = baseline.servos[0]
+    const idleOut2 = baseline.servos[1]
+    // Comfortably above PWM jitter, far below the ~1060 µs a 6% test drives.
+    const spinThreshold = 25
+    const isHigh = (sample, slot, idle) => sample.servos[slot] > idle + spinThreshold
+
+    // A deliberately LONG window: if the abort did not take effect, OUT1 would
+    // still be spinning when OUT2 starts, and the ordering assertion below
+    // would fail rather than being masked by a short natural timeout.
+    const durationSeconds = 5
+    await runtime.runMotorTest({ outputChannel: 1, throttlePercent: 6, durationSeconds })
+
+    const waitFor = async (predicate, timeoutMs, description) => {
+      const deadline = Date.now() + timeoutMs
+      while (Date.now() < deadline) {
+        const sample = samples.at(-1)
+        if (sample && predicate(sample)) {
+          return sample
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
+      throw new Error(`Timed out waiting for ${description}.`)
+    }
+
+    const spinning = await waitFor((sample) => isHigh(sample, 0, idleOut1), 5000, 'OUT1 to spin up')
+    t.diagnostic(`OUT1 spun up to ${spinning.servos[0]} µs (idle ${idleOut1} µs).`)
+
+    const stopRequestedAtMs = Date.now()
+    const stopResult = await runtime.stopMotorTest()
+    assert.deepEqual(stopResult, { sent: true, acknowledged: true }, 'SITL did not ACK the zero-throttle abort.')
+    const stoppedAtMs = Date.now()
+
+    const idled = await waitFor((sample) => !isHigh(sample, 0, idleOut1), 3000, 'OUT1 to fall back to idle')
+    const stopLatencyMs = idled.atMs - stopRequestedAtMs
+    t.diagnostic(
+      `OUT1 back to ${idled.servos[0]} µs ${stopLatencyMs} ms after the abort was requested (ACK in ${stoppedAtMs - stopRequestedAtMs} ms).`
+    )
+    // The whole point of the change: the operator does not wait out the window.
+    assert.ok(
+      stopLatencyMs < durationSeconds * 1000 * 0.5,
+      `The abort must drop the output well inside the ${durationSeconds}s window; took ${stopLatencyMs} ms.`
+    )
+
+    // Now the next motor, exactly as the identify advance does it.
+    const nextStartedAtMs = Date.now()
+    await runtime.runMotorTest({ outputChannel: 2, throttlePercent: 6, durationSeconds: 2 })
+    const nextSpinning = await waitFor((sample) => isHigh(sample, 1, idleOut2), 5000, 'OUT2 to spin up')
+    t.diagnostic(`OUT2 spun up to ${nextSpinning.servos[1]} µs ${nextSpinning.atMs - nextStartedAtMs} ms after the start.`)
+
+    // The ordering proof: the last moment OUT1 was above idle is strictly
+    // before the first moment OUT2 was, and the two never overlapped.
+    const lastOut1HighMs = samples.filter((sample) => isHigh(sample, 0, idleOut1)).at(-1)?.atMs
+    const firstOut2HighMs = samples.find((sample) => isHigh(sample, 1, idleOut2))?.atMs
+    assert.ok(lastOut1HighMs !== undefined && firstOut2HighMs !== undefined)
+    assert.ok(
+      lastOut1HighMs < firstOut2HighMs,
+      `OUT1 was still above idle after OUT2 started (last OUT1 high ${lastOut1HighMs}, first OUT2 high ${firstOut2HighMs}).`
+    )
+    const overlapping = samples.filter((sample) => isHigh(sample, 0, idleOut1) && isHigh(sample, 1, idleOut2))
+    assert.deepEqual(overlapping, [], 'OUT1 and OUT2 were driven above idle at the same time.')
+    t.diagnostic(`OUT1 idle for ${firstOut2HighMs - lastOut1HighMs} ms before OUT2 rose.`)
+
+    await runtime.stopMotorTest()
+  } finally {
+    unsubscribe?.()
     await runtime.disconnect().catch(() => {})
     runtime.destroy()
     await sitl?.stop().catch(() => {})

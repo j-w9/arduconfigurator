@@ -12,6 +12,7 @@ import type {
   ConfiguratorSnapshot,
   MotorTestRequest,
   MotorTestState,
+  MotorTestStopResult,
   StatusTextEntry
 } from './types.js'
 
@@ -203,10 +204,18 @@ export class MotorTestService {
    * Operator-initiated early abort via a zero-throttle DO_MOTOR_TEST (the
    * FC's per-motor timeout remains the hard safety net). Best-effort: a
    * failed abort is surfaced rather than thrown.
+   *
+   * Returns whether the abort reached the wire and whether it was ACKed, so
+   * a caller that wants to start ANOTHER motor immediately behind the stop
+   * (guided identify's advance-on-selection) can refuse to do so while the
+   * previous motor's state is unproven. The wire behaviour is unchanged —
+   * this only stops throwing the evidence away.
    */
-  async stop(): Promise<void> {
+  async stop(): Promise<MotorTestStopResult> {
     if (!this.hasActiveTest()) {
-      return
+      // Nothing running: either it never started or the FC's own per-motor
+      // timeout already ended it. No command to send, nothing unproven.
+      return { sent: false, acknowledged: true }
     }
     this.clearCompletionTimer()
     let acknowledged = true
@@ -236,6 +245,7 @@ export class MotorTestService {
         : 'Motor test stop sent but not acknowledged; the autopilot per-motor timeout still applies.'
     )
     this.host.emit()
+    return { sent: true, acknowledged }
   }
 
   private scheduleCompletion(): void {

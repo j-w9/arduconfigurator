@@ -14851,6 +14851,76 @@ details.bf-gui-box:not([open]) > summary::after {
   align-items: center;
 }
 
+/* Expert-only bootloader hash comparison, shown while an Update Bootloader is
+   armed. Sized to stay inside a 390px phone viewport: the label column is
+   fixed and the digest column is free to shrink, and the digests themselves
+   wrap rather than forcing the page to scroll sideways. */
+.bootloader-identity {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #2a2f36);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel, #14171c) 60%, transparent);
+  font-size: 12px;
+}
+
+.bootloader-identity__headline {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+/* The verdict is the one thing worth colouring — "will change" is the case an
+   operator most needs to notice before committing. */
+.bootloader-identity__headline[data-verdict='different'] { color: var(--warning, #f0a500); }
+.bootloader-identity__headline[data-verdict='same'] { color: var(--success, #34c759); }
+
+.bootloader-identity__rows {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.bootloader-identity__row {
+  display: grid;
+  grid-template-columns: minmax(0, 110px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.bootloader-identity__row dt {
+  color: var(--muted, #8b939c);
+}
+
+.bootloader-identity__row dd {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+
+.bootloader-identity__row dd code {
+  overflow-wrap: anywhere;
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.bootloader-identity__size,
+.bootloader-identity__method {
+  color: var(--muted, #8b939c);
+}
+
+.bootloader-identity__detail {
+  margin: 8px 0 0;
+}
+
+.bootloader-identity__method {
+  margin: 6px 0 0;
+  font-size: 11px;
+}
+
+.bootloader-identity__method code { overflow-wrap: anywhere; }
+
 .presets-erase {
   display: flex;
   flex-wrap: wrap;
