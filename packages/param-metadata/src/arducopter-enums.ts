@@ -157,7 +157,11 @@ export const ARDUCOPTER_MOT_PWM_TYPE_LABELS: Record<number, string> = {
   5: 'DShot300',
   6: 'DShot600',
   7: 'DShot1200',
-  8: 'PWMRange'
+  8: 'PWMRange',
+  // Present since well before 4.6 — AP_MotorsMulticopter.cpp @Values on
+  // Copter-4.6.3 already ends "8:PWMRange,9:PWMAngle". It had been gated behind
+  // the 4.7 override, which left 4.6 operators unable to pick it.
+  9: 'PWMAngle'
 }
 
 // Verbatim from ArduPilot libraries/AP_SerialManager/AP_SerialManager.cpp
@@ -561,7 +565,12 @@ export const ARDUCOPTER_RSSI_TYPE_LABELS: Record<number, string> = {
   1: 'Analog Pin',
   2: 'RC Channel PWM',
   3: 'Receiver Protocol',
-  4: 'PWM Input Pin'
+  4: 'PWM Input Pin',
+  // Also long-standing, not a 4.7 addition: AP_RSSI.cpp @Values on Copter-4.6.3
+  // already lists "5:TelemetryRadioRSSI", and AP_RSSI.h has had
+  // TELEMETRY_RADIO_RSSI = 5 since ~2020. Gating it to 4.7 meant an mLRS
+  // operator on 4.6 could not select the only RSSI source that works for them.
+  5: 'Telemetry Radio RSSI'
 }
 
 // VTX control transports allowed (AP_VideoTX VTX_TYPES @Bitmask). MSP is the
@@ -585,15 +594,18 @@ export const ARDUCOPTER_VTX_OPTIONS_BIT_LABELS: Record<number, string> = {
   7: 'Ignore status updates in CRSF (blindly set VTX options)'
 }
 
+// Verbatim from SRV_Channels.cpp @Values, which reads
+// "0:1Khz,1:loop-rate,2:double loop-rate,3:triple loop-rate,4:quadruple loop rate"
+// and is IDENTICAL on Copter-4.6.3 and 4.7. The previous 1x..8x map was off by
+// one in meaning (0 is a fixed 1 kHz, not 1x loop rate) and invented values
+// 5-7, which the firmware clamps. That was wrong on 4.6 too, so it was fixed
+// here in the base rather than in the 4.7 override table where it had been.
 export const ARDUCOPTER_DSHOT_RATE_LABELS: Record<number, string> = {
-  0: '1x loop rate',
-  1: '2x loop rate',
-  2: '3x loop rate',
-  3: '4x loop rate',
-  4: '5x loop rate',
-  5: '6x loop rate',
-  6: '7x loop rate',
-  7: '8x loop rate'
+  0: 'Fixed 1 kHz',
+  1: 'Loop rate',
+  2: '2x loop rate',
+  3: '3x loop rate',
+  4: '4x loop rate'
 }
 
 export const ARDUCOPTER_BLH_AUTO_LABELS: Record<number, string> = {
@@ -1276,8 +1288,12 @@ export const ARDUCOPTER_COMPASS_DISBLMSK_BIT_LABELS: Record<number, string> = {
   19: 'MMC5XX3',
   20: 'QMC5883P',
   21: 'BMM350',
-  22: 'IIS2MDC',
-  23: 'LIS2MDL'
+  // Bit 22 covers both parts. AP_Compass.h is explicit that 23 must never be
+  // used — "DRIVER_LIS2MDL = 23, // DO NOT re-use this ID; same sensor as
+  // IIS2MDC" — and no ArduPilot release defines it in the @Bitmask. Offering it
+  // meant an operator ticking "LIS2MDL" wrote a bit the firmware ignores, so
+  // the compass they were trying to disable stayed enabled with no error.
+  22: 'IIS2MDC / LIS2MDL'
 }
 
 // ---------------------------------------------------------------------------

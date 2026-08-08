@@ -4785,3 +4785,59 @@ test('runtime captures the physical PWM count from the boot banner STATUSTEXT', 
     runtime.destroy()
   }
 })
+
+// ── Cross-session state leaks ─────────────────────────────────────────────
+//
+// Both of these carry ONE board's state into the NEXT board's session, which is
+// the worst failure mode this runtime has: not a blank screen, but confident
+// wrong data attributed to the aircraft in front of you.
+
+test('a disconnect stops the synthetic GPS stream instead of injecting it into the next board', async () => {
+  // startFakeGps writes GPS1_TYPE, so this needs a session with a real
+  // parameter sync rather than the minimal statustext one.
+  const runtime = new ArduPilotConfiguratorRuntime(
+    createEchoSession({ GPS1_TYPE: 1 }, () => false, () => false),
+    arducopterMetadata,
+    { preArmRefreshIntervalMs: 10_000 }
+  )
+  try {
+    await runtime.connect()
+    await runtime.requestParameterList({ timeoutMs: 200 })
+    await runtime.waitForParameterSync({ timeoutMs: 2000 })
+
+    await runtime.startFakeGps(51.5, -0.12, 30)
+    assert.equal(runtime.isFakeGpsActive(), true)
+
+    await runtime.disconnect()
+    // Left running, the 5 Hz GPS_INPUT stream would keep fabricating a 3D fix
+    // at THIS board's coordinates straight into whatever connects next.
+    assert.equal(runtime.isFakeGpsActive(), false)
+  } finally {
+    runtime.destroy()
+  }
+})
+
+test('a disconnect restores the constructor metadata bundle', async () => {
+  // applyFirmwareMetadata returns early for 'Unknown', so a Plane session
+  // followed by an unclassifiable board left every parameter on that board
+  // labelled, ranged and enum-decoded as ArduPlane.
+  const session = createHeartbeatSession([
+    { atMs: 0, systemId: 1, componentId: 1, autopilot: MAV_AUTOPILOT.ARDUPILOTMEGA, vehicleType: MAV_TYPE.FIXED_WING }
+  ])
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    metadataByVehicle: { ArduPlane: arduplaneMetadata },
+    preArmRefreshIntervalMs: 10_000
+  })
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+    // The swap is driven by the heartbeat, not by a test-only hook — asserting
+    // it happened is what makes the restore below meaningful.
+    assert.equal(runtime.getActiveMetadata(), arduplaneMetadata)
+
+    await runtime.disconnect()
+    assert.equal(runtime.getActiveMetadata(), arducopterMetadata)
+  } finally {
+    runtime.destroy()
+  }
+})

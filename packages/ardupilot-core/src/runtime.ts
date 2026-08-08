@@ -636,6 +636,14 @@ export class ArduPilotConfiguratorRuntime {
   private uartsFileRequested = false
 
   private metadata: FirmwareMetadataBundle
+  /**
+   * The bundle this runtime was constructed with. Kept so resetLiveState can
+   * put it back: applyFirmwareMetadata swaps `metadata` per detected vehicle
+   * but returns early for 'Unknown', so without this a Plane session followed
+   * by a board whose MAV_TYPE we cannot classify would label, unit, range-check
+   * and enum-decode that board's parameters as ArduPlane.
+   */
+  private readonly defaultMetadata: FirmwareMetadataBundle
   private readonly metadataByVehicle: Partial<Record<'ArduCopter' | 'ArduPlane' | 'ArduRover' | 'ArduSub', FirmwareMetadataBundle>>
 
   constructor(
@@ -644,6 +652,7 @@ export class ArduPilotConfiguratorRuntime {
     options: ArduPilotConfiguratorRuntimeOptions = {}
   ) {
     this.metadata = metadata
+    this.defaultMetadata = metadata
     this.metadataByVehicle = options.metadataByVehicle ?? {}
     this.parameterSyncStallRetryMs = options.parameterSyncStallRetryMs ?? PARAMETER_SYNC_STALL_RETRY_MS
     this.preArmRefreshIntervalMs = options.preArmRefreshIntervalMs ?? PRE_ARM_REFRESH_INTERVAL_MS
@@ -3594,6 +3603,19 @@ export class ArduPilotConfiguratorRuntime {
     // A reconnect/reboot is a definite event: the previous vehicle's verdict
     // must not survive into a session that has not reported one yet.
     this.preArmLiveCheck = undefined
+    // Same reasoning, applied to the two pieces of cross-session state that
+    // were leaking into the NEXT board's session:
+    //
+    //  - The synthetic-GPS stream. Left running, it kept injecting a fabricated
+    //    3D fix at the previous board's chosen coordinates into whatever
+    //    connected next, and `fakeGpsOriginalType` would then restore board A's
+    //    GPS1_TYPE onto board B on the next stop.
+    //  - The active metadata bundle, restored to the one this runtime was built
+    //    with rather than left on the previous vehicle's.
+    this.stopFakeGpsStream()
+    if (this.metadata !== this.defaultMetadata) {
+      this.metadata = this.defaultMetadata
+    }
     this.statusTexts.splice(0)
     // Drop any in-flight chunk buffers so a partial STATUSTEXT from this
     // session can't fuse with one from the next under a shared statusId.
@@ -4067,6 +4089,22 @@ export class ArduPilotConfiguratorRuntime {
    * parameter writes — they have no business being blocked by a running
    * calibration, only by flight.
    */
+  /**
+   * Tear the synthetic-GPS stream down without touching the vehicle.
+   *
+   * Distinct from stopFakeGps(), which also restores GPS1_TYPE via a verified
+   * write. On a disconnect there is nothing to write to, and the remembered
+   * value belongs to a board that is no longer there — so it is dropped rather
+   * than replayed onto whatever connects next.
+   */
+  private stopFakeGpsStream(): void {
+    if (this.fakeGpsTimer !== undefined) {
+      clearInterval(this.fakeGpsTimer)
+      this.fakeGpsTimer = undefined
+    }
+    this.fakeGpsOriginalType = undefined
+  }
+
   private assertNotArmed(reason: string): void {
     if (this.vehicle?.armed) {
       throw new Error(reason)

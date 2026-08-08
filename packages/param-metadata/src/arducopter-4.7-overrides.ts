@@ -3,8 +3,6 @@ import {
   ARDUCOPTER_BATTERY_FAILSAFE_ACTION_LABELS,
   ARDUCOPTER_BATTERY_MONITOR_LABELS,
   ARDUCOPTER_FS_GCS_LABELS,
-  ARDUCOPTER_MOT_PWM_TYPE_LABELS,
-  ARDUCOPTER_RSSI_TYPE_LABELS,
   ARDUCOPTER_THROTTLE_FAILSAFE_LABELS
 } from './arducopter-enums.js'
 import { OPTICAL_FLOW_TYPE_OPTIONS_4_7 } from './shared-optical-flow.js'
@@ -22,26 +20,15 @@ function enumOptions(labelMap: Record<number, string>): ParameterValueOption[] {
 // Unknown default are byte-identical. Everything here is applied ONLY when a
 // >= 4.7 build is detected (applyArducopter47Override in @arduconfig/ardupilot-core).
 
-// SERVO_DSHOT_RATE (SRV_Channels.cpp): 0 is a FIXED 1 kHz rate; 1..4 are
-// multiples of the main loop rate. (The 4.6 catalog carries an off-by-one
-// 1x..8x map with 3 phantom values — kept as-is for 4.6.)
-const DSHOT_RATE_LABELS_4_7: Record<number, string> = {
-  0: '1 kHz (fixed)',
-  1: 'Loop rate',
-  2: '2× loop rate',
-  3: '3× loop rate',
-  4: '4× loop rate'
-}
-
-// MOT_PWM_TYPE gains 9:PWMAngle; RSSI_TYPE gains 5:TelemetryRadioRSSI.
-const MOT_PWM_TYPE_LABELS_4_7: Record<number, string> = {
-  ...ARDUCOPTER_MOT_PWM_TYPE_LABELS,
-  9: 'PWMAngle'
-}
-const RSSI_TYPE_LABELS_4_7: Record<number, string> = {
-  ...ARDUCOPTER_RSSI_TYPE_LABELS,
-  5: 'Telemetry Radio RSSI'
-}
+// Four entries were REMOVED from this table: SERVO_DSHOT_RATE, MOT_PWM_TYPE,
+// RSSI_TYPE and RSSI_CHAN_LOW/HIGH. They were authored as 4.7 deltas, but
+// diffing regenerated apm.pdef.json from tag Copter-4.6.3 against branch
+// ArduPilot-4.7 showed all four are IDENTICAL across the two — they were base
+// catalog errors, not version differences. Patching them here meant the wrong
+// metadata was served to 4.6, the firmware line this repo treats as its
+// validated trust anchor, while 4.7 got the right one: exactly backwards from
+// what this mechanism is for. They now live in the base and this table is
+// correct by subsumption.
 
 // Failsafe-action value 6 gains DO_RETURN_PATH_START; battery value 0 becomes
 // "Warn only" (4.6: "None"). Source: ArduCopter/Parameters.cpp,
@@ -77,16 +64,6 @@ const BATTERY_MONITOR_LABELS_4_7: Record<number, string> = {
  * detected — so 4.6 / pre-connect / Unknown keep the old values (byte-identical).
  */
 export const ARDUCOPTER_4_7_PARAMETER_OVERRIDES: Record<string, Partial<ParameterDefinition>> = {
-  SERVO_DSHOT_RATE: {
-    maximum: 4,
-    description:
-      'How often DShot ESC frames are sent. 0 fixes the rate at 1 kHz (for low loop rates); 1–4 are multiples of the main loop rate. Higher rates need a capable FC + ESC.',
-    options: enumOptions(DSHOT_RATE_LABELS_4_7)
-  },
-  MOT_PWM_TYPE: { maximum: 9, options: enumOptions(MOT_PWM_TYPE_LABELS_4_7) },
-  RSSI_TYPE: { maximum: 5, options: enumOptions(RSSI_TYPE_LABELS_4_7) },
-  RSSI_CHAN_LOW: { minimum: 0, maximum: 2000 },
-  RSSI_CHAN_HIGH: { minimum: 0, maximum: 2000 },
   VTX_POWER: { minimum: 1, maximum: 1000 },
   VTX_MAX_POWER: { minimum: 25, maximum: 1000 },
   FS_THR_ENABLE: { options: enumOptions(THROTTLE_FAILSAFE_LABELS_4_7) },

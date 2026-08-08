@@ -3962,10 +3962,25 @@ export function App() {
     }
 
     const effectiveRequest = buildMotorTestRequest(targetOutput, motorTestThrottlePercent, motorTestDurationSeconds)
-    const effectiveGuardReasons = computeMotorTestGuardReasons(snapshot, effectiveRequest, {
+    // This re-check MUST agree with the one that decided whether to enable the
+    // button (`motorTestGuardReasons` above), in both directions:
+    //
+    //  - Without motorTestExpertOptions it is STRICTER, so an Expert-mode
+    //    duration over 5 s lit the button and then returned silently here —
+    //    no spin, no message, nothing to diagnose. The comment below about
+    //    passing "the SAME expert options" was only ever true of the
+    //    runMotorTest call, not of this guard.
+    //  - Without the USB acknowledgement it is WEAKER, which is worse: the
+    //    last gate before a motor spins would stop enforcing the bench
+    //    confirmation that the display gate demands.
+    const effectiveCoreGuardReasons = computeMotorTestGuardReasons(snapshot, effectiveRequest, {
       propsRemoved: propsRemovedAcknowledged,
       testAreaClear: testAreaAcknowledged
-    })
+    }, motorTestExpertOptions)
+    const effectiveGuardReasons =
+      motorTestOverUsb && !usbBenchAcknowledged
+        ? [...effectiveCoreGuardReasons, 'Confirm the craft is on the bench with props off (USB connection detected).']
+        : effectiveCoreGuardReasons
 
     if (effectiveGuardReasons.length > 0) {
       setMotorTestOutput(targetOutput)
@@ -4979,10 +4994,12 @@ export function App() {
     motorTestThrottlePercent,
     motorTestDurationSeconds
   )
+  // Same expert options as every other gate — omitting them made the guided
+  // identify button refuse Expert-mode durations the main Motor Test tab allows.
   const guidedMotorTestCoreGuardReasons = computeMotorTestGuardReasons(snapshot, guidedMotorTestRequest, {
     propsRemoved: propsRemovedAcknowledged,
     testAreaClear: testAreaAcknowledged
-  })
+  }, motorTestExpertOptions)
   const guidedMotorTestGuardReasons =
     motorTestOverUsb && !usbBenchAcknowledged
       ? [...guidedMotorTestCoreGuardReasons, 'Confirm the craft is on the bench with props off (USB connection detected).']

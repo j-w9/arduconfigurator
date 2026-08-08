@@ -2643,7 +2643,10 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Signal-strength source used for RSSI reporting.',
       category: 'radio',
       minimum: 0,
-      maximum: 4,
+      // 5 = Telemetry Radio RSSI, present since long before 4.6 — see the
+      // label map. maximum: 4 also made the raw Parameters editor reject a
+      // typed 5 as out of range.
+      maximum: 5,
       notes: rssiNotes,
       options: enumOptions(ARDUCOPTER_RSSI_TYPE_LABELS)
     },
@@ -2663,8 +2666,10 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'PWM value treated as minimum RSSI when using a dedicated RSSI channel.',
       category: 'radio',
       unit: 'µs',
-      minimum: 800,
-      maximum: 2200,
+      // Firmware @Range is 0 2000 on 4.6.3 as well as 4.7 — the 800 floor
+      // rejected values a receiver can legitimately report.
+      minimum: 0,
+      maximum: 2000,
       step: 1,
       notes: rssiChannelNotes
     },
@@ -2674,8 +2679,10 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'PWM value treated as maximum RSSI when using a dedicated RSSI channel.',
       category: 'radio',
       unit: 'µs',
-      minimum: 800,
-      maximum: 2200,
+      // Firmware @Range is 0 2000 on 4.6.3 as well as 4.7 — the 800 floor
+      // rejected values a receiver can legitimately report.
+      minimum: 0,
+      maximum: 2000,
       step: 1,
       notes: rssiChannelNotes
     },
@@ -3320,7 +3327,8 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       description: 'Motor output protocol for ESC communication.',
       category: 'outputs',
       minimum: 0,
-      maximum: 8,
+      // 9 = PWMAngle, already in Copter-4.6.3.
+      maximum: 9,
       rebootRequired: true,
       notes: [
         'DShot-based protocols do not use the normal all-at-once PWM ESC calibration flow.',
@@ -3331,10 +3339,12 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     SERVO_DSHOT_RATE: {
       id: 'SERVO_DSHOT_RATE',
       label: 'DShot Rate',
-      description: 'How often DShot ESC frames are sent, as a multiple of the main loop rate. Higher rates need a capable FC + ESC.',
+      description: 'How often DShot ESC frames are sent. 0 pins the rate to a fixed 1 kHz (for low loop rates); the rest are multiples of the main loop rate. Higher rates need a capable FC + ESC.',
       category: 'outputs',
       minimum: 0,
-      maximum: 7,
+      // Firmware accepts 0..4 and clamps above that; the old ceiling of 7
+      // offered three values that do nothing.
+      maximum: 4,
       rebootRequired: true,
       options: enumOptions(ARDUCOPTER_DSHOT_RATE_LABELS)
     },

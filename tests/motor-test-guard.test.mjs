@@ -100,3 +100,44 @@ test('armed=true is tolerated when caused by OUR OWN motor test (running or with
     'a genuinely armed vehicle (no recent test) must still be rejected'
   )
 })
+
+// ── Expert-mode duration, the 4th argument ────────────────────────────────
+//
+// Every call site in this file used to stop at three arguments, so deleting
+// `options` from the signature failed nothing — and App.tsx really had gone out
+// of sync: the gate that ENABLED the spin button passed the expert options
+// while the gate that ran immediately before sending did not. In Expert mode a
+// 6 s duration lit the button and the handler then returned silently. These pin
+// the parameter so a future divergence has something to fail against.
+
+test('a duration past the default cap is refused without expert options', () => {
+  const reasons = motorTestGuardReasons(
+    eligibleSnapshot(),
+    { outputChannel: 1, throttlePercent: 20, durationSeconds: 6 },
+    bothAcked
+  )
+  assert.ok(reasons.length > 0, 'the default cap still applies')
+})
+
+test('the same duration is allowed with expertMode', () => {
+  const reasons = motorTestGuardReasons(
+    eligibleSnapshot(),
+    { outputChannel: 1, throttlePercent: 20, durationSeconds: 6 },
+    bothAcked,
+    { expertMode: true }
+  )
+  assert.deepEqual(reasons, [], 'expert mode raises the duration cap')
+})
+
+test('expert mode raises the duration cap but does not lift the safety acknowledgements', () => {
+  // The expert option must widen exactly one dimension. If it ever short-circuits
+  // the props-off / area-clear gates, this fails.
+  const reasons = motorTestGuardReasons(
+    eligibleSnapshot(),
+    { outputChannel: 1, throttlePercent: 20, durationSeconds: 6 },
+    { propsRemoved: false, testAreaClear: false },
+    { expertMode: true }
+  )
+  assert.ok(reasons.includes(MOTOR_TEST_PROPS_REMOVED_REASON))
+  assert.ok(reasons.includes(MOTOR_TEST_AREA_CLEAR_REASON))
+})
