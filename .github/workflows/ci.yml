@@ -14,7 +14,25 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 35, not 20. The private mirror's validate job reached 17.9 min on
+    # 2026-08-08 and then began exceeding 20 outright — GitHub reports that as
+    # "Error: The operation was canceled." partway through the e2e run, which
+    # reads like a flake or an infra failure rather than the budget being spent.
+    # It had been cancelling intermittently for days for the same reason.
+    #
+    # The private repo carries its own feedback/beacon tests on top of this one
+    # (953 node / 921 vitest there vs 907 / 815 here), so it runs ~5 min longer
+    # and hits the cap first. Both files are kept IDENTICAL so cherry-picks
+    # between the repos never conflict on this.
+    #
+    # The real cost is the Playwright suite: ~280 tests at `workers: 1`
+    # (playwright.config.ts), which is deliberate — the preview server and the
+    # demo MAVLink bridge are on fixed --strictPort ports and share one vehicle
+    # session, so parallel workers would collide and interfere with each other's
+    # parameter writes. Sharding across JOBS (each with its own port pair) is the
+    # durable fix if this creeps up again; raising the ceiling is the honest
+    # short-term answer while the number is still a real signal.
+    timeout-minutes: 35
 
     steps:
       - name: Check out repository
