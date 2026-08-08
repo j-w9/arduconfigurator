@@ -13624,7 +13624,12 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .logs-onboard-list li {
   display: grid;
-  grid-template-columns: 96px 130px 1fr auto;
+  /* Name, size, date, then BOTH actions — download and upload sit together at
+     the right end of the row. With only four columns the upload button wrapped
+     to a second grid row underneath the log name, nowhere near the action it
+     belongs with. The trailing column is auto-width and empty when the log
+     server is not configured, so that row is unchanged. */
+  grid-template-columns: 96px 130px 1fr auto auto;
   gap: 14px;
   align-items: center;
   padding: 9px 0;
@@ -17284,4 +17289,112 @@ button.mavlink-inspector__sent-row {
 .can-bus-params-scroll {
   overflow-x: auto;
   max-width: 100%;
+}
+
+
+/* ── Log server: sign-in panel + upload dialog ───────────────────────────────
+ * Uploading a flight log to the operator's OWN ArduLogs server. Self-contained
+ * styling; nothing here is shared with any other network surface in the app. */
+.log-server-panel {
+  display: grid;
+  gap: 10px;
+}
+.log-server-panel__copy strong { display: block; }
+.log-server-panel__copy p {
+  margin: 4px 0 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.log-server-panel__fields {
+  display: grid;
+  /* Wraps to one column on a phone rather than forcing a horizontal scroll —
+   * the whole point of uploading from here is doing it at a field site. */
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+.log-server-panel__fields label { display: grid; gap: 4px; min-width: 0; }
+.log-server-panel__fields label > span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.log-server-panel__fields input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface-100, var(--surface-200));
+  color: var(--text);
+  font-size: 13px;
+}
+.log-server-panel__error {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--danger, #e2123f);
+}
+
+.log-upload-dialog {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-accent, var(--border));
+  border-radius: 10px;
+  background: var(--surface-200);
+}
+.log-upload-dialog__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.log-upload-dialog__file {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.log-upload-dialog label { display: grid; gap: 4px; min-width: 0; }
+.log-upload-dialog label > span {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.log-upload-dialog input,
+.log-upload-dialog textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface-100, var(--surface-200));
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+.log-upload-dialog__autofill > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.log-upload-dialog__progress {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.logs-upload-message {
+  margin: 10px 0 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
 }

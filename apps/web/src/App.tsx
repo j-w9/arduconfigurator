@@ -288,6 +288,7 @@ import { ScopedField, ScopedSelectField } from './views/ScopedField'
 import { ModesView } from './views/Modes'
 import { FailsafeSection } from './sections/FailsafeSection'
 import { LogsSection } from './sections/LogsSection'
+import { useLogUpload } from './hooks/use-log-upload'
 import { CalibrationSection } from './sections/CalibrationSection'
 import { OsdSection } from './sections/OsdSection'
 import { OutputsSection } from './sections/OutputsSection'
@@ -756,6 +757,10 @@ export function App() {
     updateDrafts
   } = useParameterDrafts()
   const onboardLogs = useOnboardLogs(runtime)
+  // Upload-to-your-own-server for onboard logs. Entirely self-contained: its
+  // own client, its own stored session, and no relationship to any other
+  // network surface in this app.
+  const logUpload = useLogUpload(runtime)
   // Library-tab notices (snapshot / provisioning / tuning-profile / preset /
   // session ParameterNotice banners + the post-copy sticky flag) live in
   // their own hook — see use-library-notices.ts.
@@ -8451,6 +8456,7 @@ export function App() {
           onApplyScopedDrafts={handleApplyScopedParameterDrafts}
           onDiscardScopedDrafts={handleDiscardScopedParameterDrafts}
           onboardLogs={onboardLogs}
+          logUpload={logUpload}
         />
       ) : null}
 

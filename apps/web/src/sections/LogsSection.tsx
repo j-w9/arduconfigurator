@@ -10,6 +10,8 @@ import { useMemo } from 'react'
 
 import { formatByteCount } from '../library-helpers'
 import type { OnboardLogs } from '../hooks/use-onboard-logs'
+import type { UseLogUploadResult } from '../hooks/use-log-upload'
+import { LogServerPanel, LogUploadDialog } from '../views/LogServerPanel'
 import { LOGS_PARAM_IDS } from '../param-groups'
 import { isLogsReviewParamId } from '../param-review'
 import { normalizeBitmaskValue } from '../parameter-format'
@@ -36,6 +38,9 @@ export interface LogsSectionProps {
   ) => void | Promise<void>
   onDiscardScopedDrafts: (paramIds: readonly string[], scopeLabel: string) => void
   onboardLogs: OnboardLogs
+  /** Upload-to-your-own-server surface. Optional so the Logs tab still renders
+   *  in contexts that do not wire it (tests, the disconnected landing). */
+  logUpload?: UseLogUploadResult
 }
 
 export function LogsSection(props: LogsSectionProps) {
@@ -50,7 +55,8 @@ export function LogsSection(props: LogsSectionProps) {
     busyAction,
     onApplyScopedDrafts,
     onDiscardScopedDrafts,
-    onboardLogs
+    onboardLogs,
+    logUpload
   } = props
 
   // Param scalars + parameter objects for the Logs surface, recomputed on
@@ -141,8 +147,59 @@ export function LogsSection(props: LogsSectionProps) {
           activeDownloadReceivedBytes: onboardLogs.activeDownloadReceivedBytes,
           activeDownloadTotalBytes: onboardLogs.activeDownloadTotalBytes,
           onList: onboardLogs.list,
-          onDownload: onboardLogs.download
+          onDownload: onboardLogs.download,
+          // Only offered while signed in — a button that always exists but
+          // sometimes does nothing is worse than one that appears when it works.
+          onUpload: logUpload?.session
+            ? (id) => {
+                const log = onboardLogs.logs.find((candidate) => candidate.id === id)
+                if (!log) {
+                  return
+                }
+                logUpload.openUpload({
+                  id,
+                  nameLabel: onboardLogs.logNamesById.get(id),
+                  dateLabel:
+                    log.timeUtc > 0
+                      ? new Date(log.timeUtc * 1000).toISOString().replace('T', ' ').slice(0, 19)
+                      : 'Unknown date',
+                  sizeBytes: log.sizeBytes,
+                  mavftpPath: onboardLogs.mavftpPathsById?.get(id)
+                })
+              }
+            : undefined,
+          uploadBusy: logUpload?.phase === 'reading' || logUpload?.phase === 'sending'
         }}
+        logServerSlot={
+          logUpload ? (
+            <LogServerPanel
+              signedInAs={
+                logUpload.session
+                  ? { serverUrl: logUpload.session.serverUrl, username: logUpload.session.username }
+                  : undefined
+              }
+              rememberedServerUrl={logUpload.rememberedServerUrl}
+              rememberedUsername={logUpload.rememberedUsername}
+              signingIn={logUpload.signingIn}
+              signInError={logUpload.signInError}
+              onSignIn={(serverUrl, username, password) => void logUpload.signIn(serverUrl, username, password)}
+              onSignOut={logUpload.signOut}
+            />
+          ) : undefined
+        }
+        logUploadDialogSlot={
+          logUpload?.pending ? (
+            <LogUploadDialog
+              form={logUpload.pending.form}
+              busy={logUpload.phase === 'reading' || logUpload.phase === 'sending'}
+              phase={logUpload.phase}
+              progressRatio={logUpload.progressRatio}
+              onCancel={logUpload.cancelUpload}
+              onSubmit={(answers) => void logUpload.submit(answers)}
+            />
+          ) : undefined
+        }
+        logUploadMessage={logUpload?.message}
       />
     </section>
   )

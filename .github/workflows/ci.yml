@@ -20,10 +20,9 @@ jobs:
     # reads like a flake or an infra failure rather than the budget being spent.
     # It had been cancelling intermittently for days for the same reason.
     #
-    # The private repo carries its own feedback/beacon tests on top of this one
-    # (953 node / 921 vitest there vs 907 / 815 here), so it runs ~5 min longer
-    # and hits the cap first. Both files are kept IDENTICAL so cherry-picks
-    # between the repos never conflict on this.
+    # The downstream mirror runs a larger suite than this one, so it takes
+    # longer and hits the cap first. Both files are kept IDENTICAL so
+    # cherry-picks between the two never conflict on this.
     #
     # The real cost is the Playwright suite: ~280 tests at `workers: 1`
     # (playwright.config.ts), which is deliberate — the preview server and the

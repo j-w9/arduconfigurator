@@ -2764,6 +2764,71 @@ test.describe('Sticky side navigation', () => {
   })
 })
 
+test.describe('Log server upload', () => {
+  // This surface talks to a server the OPERATOR runs. It shares no code with any
+  // other network surface in this app, and these tests keep it honest about the
+  // two things that matter most: it never offers an upload it cannot perform,
+  // and it never stores the password.
+
+  test('the sign-in panel appears and refuses an unreachable server with advice', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'logs')
+
+    const panel = page.getByTestId('log-server-panel')
+    await panel.scrollIntoViewIfNeeded()
+    await expect(panel).toBeVisible()
+    await expect(panel).toContainText('never stored')
+
+    await page.getByTestId('log-server-url').fill('127.0.0.1:9')
+    await page.getByTestId('log-server-username').fill('nobody')
+    await page.getByTestId('log-server-password').fill('whatever-password')
+    await page.getByTestId('log-server-sign-in').click()
+
+    // "Failed to fetch" is what the browser gives; that is not an error an
+    // operator can act on, so the client turns it into one.
+    await expect(page.getByTestId('log-server-error')).toContainText(/Check the address/i, { timeout: 15000 })
+  })
+
+  test('no upload button is offered while signed out', async ({ page }) => {
+    // A control that exists but cannot work is worse than one that appears when
+    // it can — especially next to a Download button that always works.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'logs')
+    await page.getByTestId('logs-onboard-list').click().catch(() => {})
+    await expect(page.getByTestId('logs-onboard-upload-1')).toHaveCount(0)
+  })
+
+  test('the password is never written to browser storage', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'logs')
+
+    const secret = 'super-secret-password-123'
+    await page.getByTestId('log-server-url').fill('127.0.0.1:9')
+    await page.getByTestId('log-server-username').fill('jordan')
+    await page.getByTestId('log-server-password').fill(secret)
+    await page.getByTestId('log-server-sign-in').click()
+    await expect(page.getByTestId('log-server-error')).toBeVisible({ timeout: 15000 })
+
+    // Every value in both stores, checked for the password. The sign-in failed
+    // here, but the assertion holds either way: the password is passed to the
+    // login call and dropped, never persisted.
+    const leaked = await page.evaluate((needle) => {
+      const values: string[] = []
+      for (const storage of [window.localStorage, window.sessionStorage]) {
+        for (let index = 0; index < storage.length; index += 1) {
+          const key = storage.key(index)
+          if (key) values.push(`${key}=${storage.getItem(key) ?? ''}`)
+        }
+      }
+      return values.filter((entry) => entry.includes(needle))
+    }, secret)
+    expect(leaked).toEqual([])
+  })
+})
+
 test.describe('Preset sharing', () => {
   // The point of the feature is that one operator can send a preset to another,
   // so the test that matters is the round trip: import a file, then export it

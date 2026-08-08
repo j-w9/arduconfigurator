@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import { Panel, buttonStyle } from '@arduconfig/ui-kit'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
@@ -53,6 +55,13 @@ export interface OnboardLogsPanel {
   activeDownloadTotalBytes?: number
   onList: () => void
   onDownload: (id: number) => void
+  /** Present only when the operator is signed in to a log server; the row's
+   *  Upload button is hidden entirely otherwise, so it can never be a control
+   *  that does nothing. */
+  onUpload?: (id: number) => void
+  /** True while any upload is in flight — one at a time, so a second click
+   *  cannot start a competing read off the same flight controller. */
+  uploadBusy?: boolean
 }
 
 export interface LogsViewProps {
@@ -74,6 +83,13 @@ export interface LogsViewProps {
   onApply: () => void
   onRevert: () => void
   onboardLogs?: OnboardLogsPanel
+  /** Sign-in panel for the operator's own log server, plus the upload dialog
+   *  when one is open. Slots rather than props so this view stays
+   *  presentational and knows nothing about sessions or fetch. */
+  logServerSlot?: ReactNode
+  logUploadDialogSlot?: ReactNode
+  /** Result of the last upload attempt, success or failure. */
+  logUploadMessage?: string
 }
 
 function fieldStatusClass(draftStatusById: ScopedFieldDraftMap, paramId: string): string {
@@ -99,7 +115,10 @@ export function LogsView(props: LogsViewProps) {
     isBusy,
     onApply,
     onRevert,
-    onboardLogs
+    onboardLogs,
+    logServerSlot,
+    logUploadDialogSlot,
+    logUploadMessage
   } = props
 
   return (
@@ -229,6 +248,23 @@ export function LogsView(props: LogsViewProps) {
             </button>
           </div>
 
+          {logServerSlot ? (
+            <article className="bf-gui-box" data-testid="logs-server-box">
+              <div className="bf-gui-box__titlebar">
+                <span>Log server</span>
+              </div>
+              <div className="bf-gui-box__body">
+                {logServerSlot}
+                {logUploadDialogSlot}
+                {logUploadMessage ? (
+                  <p className="logs-upload-message" data-testid="logs-upload-message">
+                    {logUploadMessage}
+                  </p>
+                ) : null}
+              </div>
+            </article>
+          ) : null}
+
           {onboardLogs ? (
             <article className="bf-gui-box" data-testid="logs-onboard">
               <div className="bf-gui-box__titlebar">
@@ -280,6 +316,17 @@ export function LogsView(props: LogsViewProps) {
                           >
                             {downloading ? `Downloading ${percent}%` : 'Download .bin'}
                           </button>
+                          {onboardLogs.onUpload ? (
+                            <button
+                              type="button"
+                              style={buttonStyle()}
+                              data-testid={`logs-onboard-upload-${log.id}`}
+                              onClick={() => onboardLogs.onUpload?.(log.id)}
+                              disabled={onboardLogs.activeDownloadId !== undefined || onboardLogs.uploadBusy}
+                            >
+                              Upload to server
+                            </button>
+                          ) : null}
                           {downloading ? (
                             <div
                               className="logs-download-bar"

@@ -43,6 +43,14 @@ export interface OnboardLogsState {
   logs: OnboardLogInfo[]
   /** id → real on-FC filename for the MAVFTP source; empty for LOG_*. */
   logNamesById: ReadonlyMap<number, string>
+  /**
+   * On-FC path per log id, when the MAVFTP listing supplied one.
+   *
+   * Exposed so an upload can take the same fast burst-read path the download
+   * button uses. Empty for the LOG_* source, where there are no paths — the
+   * caller falls back to downloadOnboardLog(id).
+   */
+  mavftpPathsById: ReadonlyMap<number, string>
   activeDownloadId?: number
   activeDownloadPercent?: number
   activeDownloadReceivedBytes?: number
@@ -65,7 +73,8 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
     status: 'idle',
     source: 'mavlink',
     logs: [],
-    logNamesById: new Map()
+    logNamesById: new Map(),
+    mavftpPathsById: new Map()
   })
   // Mirror the latest logs so download() can resolve a log by id without
   // depending on (and being recreated by) state.logs.
@@ -81,6 +90,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
     try {
       let logs: OnboardLogInfo[]
       let logNamesById: ReadonlyMap<number, string>
+      let mavftpPathsById: ReadonlyMap<number, string> = new Map()
       if (source === 'mavftp') {
         const items = mavftpEntriesToLogItems(await runtime.listMavftpLogs())
         mavftpItemsRef.current = new Map(items.map((item) => [item.log.id, item]))
@@ -97,6 +107,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         }
         logs = items.map((item) => ({ ...item.log, timeUtc: timeUtcById.get(item.log.id) ?? item.log.timeUtc }))
         logNamesById = new Map(items.map((item) => [item.log.id, item.name]))
+        mavftpPathsById = new Map(items.map((item) => [item.log.id, item.path]))
       } else {
         mavftpItemsRef.current = new Map()
         logs = await runtime.listOnboardLogs()
@@ -108,6 +119,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         source,
         logs,
         logNamesById,
+        mavftpPathsById,
         message: logs.length === 0 ? 'No logs on the card.' : undefined
       })
     } catch (error) {
