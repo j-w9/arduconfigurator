@@ -195,6 +195,192 @@ export function persistUserPresets(presets: readonly UserPresetRecord[]): UserPr
   }
 }
 
+// ---- Sharing: export to a file, import someone else's ---------------------
+//
+// The exported file IS the storage envelope (`UserPresetLibraryFile`), not a
+// second format. That is the whole reason this is cheap: a file written here
+// would load as a library, and `loadStoredUserPresets` already validates the
+// same shape. Anything that diverges the two is a bug waiting to happen.
+
+export interface UserPresetImportResult {
+  presets: UserPresetRecord[]
+  /** Records that parsed but were skipped, with a reason each. */
+  skipped: Array<{ label: string; reason: string }>
+}
+
+export interface UserPresetMergeResult {
+  presets: UserPresetRecord[]
+  added: number
+  /** Already present byte-for-byte; re-importing the same file is a no-op. */
+  unchanged: number
+  /** Same id, different content — kept under a fresh id rather than clobbering. */
+  renamed: number
+}
+
+export function buildUserPresetExportFile(
+  presets: readonly UserPresetRecord[],
+  name: string
+): UserPresetLibraryFile {
+  return {
+    schemaVersion: 1,
+    application: 'ArduConfigurator',
+    kind: 'parameter-user-preset-library',
+    name,
+    updatedAt: new Date().toISOString(),
+    presets: sortUserPresets(presets)
+  }
+}
+
+export function serializeUserPresetExport(presets: readonly UserPresetRecord[], name: string): string {
+  return JSON.stringify(buildUserPresetExportFile(presets, name), null, 2)
+}
+
+/** Filesystem-safe filename. A single preset is named after itself so a
+ *  recipient can tell what they were sent without opening it. */
+export function buildUserPresetExportFilename(preset?: UserPresetRecord): string {
+  const stamp = new Date().toISOString().slice(0, 10)
+  if (!preset) {
+    return `arduconfigurator-presets-${stamp}.json`
+  }
+  const slug =
+    preset.label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'preset'
+  return `arduconfigurator-preset-${slug}-${stamp}.json`
+}
+
+/**
+ * Parse a file someone was sent.
+ *
+ * Throws with a message naming what they actually handed over, because the
+ * three ArduConfigurator library files look alike at a glance and "invalid
+ * file" would leave the operator guessing which of them they picked.
+ */
+export function parseUserPresetImport(text: string): UserPresetImportResult {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error('That file is not valid JSON. Preset files are the .json exported by ArduConfigurator.')
+  }
+
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error('That file does not contain an ArduConfigurator preset library.')
+  }
+
+  const candidate = parsed as Partial<UserPresetLibraryFile> & { kind?: string }
+
+  if (candidate.kind !== 'parameter-user-preset-library') {
+    const known: Record<string, string> = {
+      'parameter-snapshot-library': 'a snapshot library',
+      'parameter-diff-grid': 'a parameter diff grid'
+    }
+    const what = candidate.kind ? known[candidate.kind] : undefined
+    throw new Error(
+      what
+        ? `That is ${what}, not a preset file. Import it from the Snapshots tab instead.`
+        : 'That file is not an ArduConfigurator preset export.'
+    )
+  }
+
+  if (candidate.schemaVersion !== 1) {
+    throw new Error(
+      `That preset file was written by a different version of ArduConfigurator (schema ${String(candidate.schemaVersion)}). This build reads schema 1.`
+    )
+  }
+
+  if (!Array.isArray(candidate.presets)) {
+    throw new Error('That preset file is missing its preset list.')
+  }
+
+  const presets: UserPresetRecord[] = []
+  const skipped: Array<{ label: string; reason: string }> = []
+  candidate.presets.forEach((entry, index) => {
+    if (isUserPresetRecord(entry)) {
+      // Trust the sender's content, never their id namespace: a record whose id
+      // is missing the prefix would merge into the curated preset list and could
+      // shadow a shipped preset (see USER_PRESET_ID_PREFIX).
+      presets.push(isUserPresetId(entry.id) ? entry : { ...entry, id: createUserPresetId(entry.label) })
+      return
+    }
+    const label =
+      typeof (entry as Partial<UserPresetRecord> | null)?.label === 'string'
+        ? (entry as UserPresetRecord).label
+        : `Preset ${index + 1}`
+    skipped.push({ label, reason: 'missing required fields or a non-numeric parameter value' })
+  })
+
+  if (presets.length === 0) {
+    throw new Error(
+      skipped.length > 0
+        ? 'Every preset in that file was malformed, so nothing was imported.'
+        : 'That preset file contains no presets.'
+    )
+  }
+
+  return { presets, skipped }
+}
+
+/**
+ * Merge imported presets into the existing library.
+ *
+ * Never overwrites: an id clash with DIFFERENT content is re-filed under a
+ * fresh id. Duplicating is recoverable with one delete; silently replacing
+ * someone's own preset with a stranger's is not. An id clash with identical
+ * content is dropped, so re-importing the same file twice does nothing.
+ */
+export function mergeImportedUserPresets(
+  existing: readonly UserPresetRecord[],
+  imported: readonly UserPresetRecord[]
+): UserPresetMergeResult {
+  const byId = new Map(existing.map((preset) => [preset.id, preset]))
+  let added = 0
+  let unchanged = 0
+  let renamed = 0
+
+  for (const preset of imported) {
+    const clash = byId.get(preset.id)
+    if (!clash) {
+      byId.set(preset.id, preset)
+      added += 1
+      continue
+    }
+    if (isSameUserPresetContent(clash, preset)) {
+      unchanged += 1
+      continue
+    }
+    const reIded = { ...preset, id: createUserPresetId(preset.label) }
+    byId.set(reIded.id, reIded)
+    renamed += 1
+  }
+
+  return { presets: sortUserPresets([...byId.values()]), added, unchanged, renamed }
+}
+
+/**
+ * Content equality for the re-import case. Compares what an operator would call
+ * the preset — its label, description, note, tags, values and dependency
+ * answers — and deliberately ignores `createdAt` and `sourceFirmware`, which
+ * differ between two exports of the same preset and would make every
+ * re-import look like a change.
+ */
+function isSameUserPresetContent(left: UserPresetRecord, right: UserPresetRecord): boolean {
+  const shape = (preset: UserPresetRecord) =>
+    JSON.stringify({
+      label: preset.label,
+      description: preset.description,
+      note: preset.note ?? '',
+      tags: [...preset.tags].sort(),
+      values: [...preset.values]
+        .map((value) => [value.paramId, value.value] as const)
+        .sort((a, b) => a[0].localeCompare(b[0])),
+      dependencies: [...preset.dependencies].map((entry) => JSON.stringify(entry)).sort()
+    })
+  return shape(left) === shape(right)
+}
+
 function isUserPresetRecord(value: unknown): value is UserPresetRecord {
   if (typeof value !== 'object' || value === null) {
     return false

@@ -2764,6 +2764,102 @@ test.describe('Sticky side navigation', () => {
   })
 })
 
+test.describe('Preset sharing', () => {
+  // The point of the feature is that one operator can send a preset to another,
+  // so the test that matters is the round trip: import a file, then export it
+  // back out and confirm what comes out is loadable.
+  const sharedPreset = {
+    id: 'user:shared-6s-osd-abc123',
+    label: 'Shared 6S OSD',
+    description: 'OSD layout for a 6S build',
+    createdAt: '2026-08-01T10:00:00.000Z',
+    sourceFirmware: 'ArduCopter',
+    tags: ['osd'],
+    values: [{ paramId: 'OSD1_BATVOLT_EN', value: 1 }],
+    dependencies: []
+  }
+  const sharedFile = JSON.stringify({
+    schemaVersion: 1,
+    application: 'ArduConfigurator',
+    kind: 'parameter-user-preset-library',
+    name: 'Shared presets',
+    updatedAt: '2026-08-01T10:00:00.000Z',
+    presets: [sharedPreset]
+  })
+
+  test('a preset file can be imported, then exported back out', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'presets')
+
+    const share = page.getByTestId('presets-share')
+    await expect(share).toBeVisible()
+    // Nothing saved yet, so there is nothing to share — and the button says so
+    // rather than exporting an empty file.
+    await expect(page.getByTestId('presets-export-all')).toBeDisabled()
+
+    await page.getByLabel('Import preset file').setInputFiles({
+      name: 'shared-presets.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(sharedFile)
+    })
+
+    await expect(page.getByText('Imported 1 preset', { exact: false })).toBeVisible()
+    await expect(page.getByText('Shared 6S OSD', { exact: false }).first()).toBeVisible()
+    await expect(page.getByTestId('presets-export-all')).toBeEnabled()
+    await expect(page.getByTestId('presets-export-all')).toContainText('Export all (1)')
+
+    const download = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByTestId('presets-export-all').click()
+    ]).then(([event]) => event)
+    expect(download.suggestedFilename()).toMatch(/^arduconfigurator-presets-\d{4}-\d{2}-\d{2}\.json$/)
+
+    const stream = await download.createReadStream()
+    const chunks: Buffer[] = []
+    for await (const chunk of stream) {
+      chunks.push(Buffer.from(chunk))
+    }
+    const exported = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    expect(exported.kind).toBe('parameter-user-preset-library')
+    expect(exported.presets).toHaveLength(1)
+    expect(exported.presets[0]).toMatchObject({ label: 'Shared 6S OSD', values: [{ paramId: 'OSD1_BATVOLT_EN', value: 1 }] })
+  })
+
+  test('importing the same file twice does not duplicate the preset', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'presets')
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await page.getByLabel('Import preset file').setInputFiles({
+        name: 'shared-presets.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(sharedFile)
+      })
+      await expect(page.getByText('Imported 1 preset', { exact: false })).toBeVisible()
+    }
+
+    await expect(page.getByTestId('presets-export-all')).toContainText('Export all (1)')
+  })
+
+  test('the wrong ArduConfigurator file is named, not just rejected', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'presets')
+
+    await page.getByLabel('Import preset file').setInputFiles({
+      name: 'snapshots.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(
+        JSON.stringify({ schemaVersion: 1, application: 'ArduConfigurator', kind: 'parameter-snapshot-library', snapshots: [] })
+      )
+    })
+
+    await expect(page.getByText('snapshot library', { exact: false })).toBeVisible()
+  })
+})
+
 test.describe('Presets erase settings', () => {
   test('erase is confirm-gated and resets parameters to defaults', async ({ page }) => {
     await page.goto('/')

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
@@ -131,6 +131,21 @@ export interface PresetsViewProps {
    *  explaining why no curated presets are available for this vehicle. The
    *  Erase-all-settings control still renders. */
   libraryRestrictedNote?: string
+  /** Share controls for the operator's OWN presets. Hidden entirely when
+   *  omitted. Curated presets ship with the app and are not exportable — there
+   *  is nothing to share that the recipient does not already have. */
+  sharing?: {
+    /** How many user presets exist; 0 disables export with an explanation. */
+    userPresetCount: number
+    /** Label of the single selected user preset, when exactly one is selected. */
+    selectedUserPresetLabel?: string
+    onExportAll: () => void
+    onExportSelected?: () => void
+    onImport: () => void
+  }
+  /** Hidden <input type="file"> for the import picker, owned by the section
+   *  (the view stays presentational and holds no refs). */
+  hiddenInputsSlot?: ReactNode
 }
 
 export function PresetsView(props: PresetsViewProps) {
@@ -162,7 +177,9 @@ export function PresetsView(props: PresetsViewProps) {
     onEraseSettings,
     isErasing = false,
     eraseDisabledReason,
-    libraryRestrictedNote
+    libraryRestrictedNote,
+    sharing,
+    hiddenInputsSlot
   } = props
 
   // Two-step confirm for the destructive reset-to-defaults action.
@@ -170,6 +187,7 @@ export function PresetsView(props: PresetsViewProps) {
 
   return (
     <section className="grid one-up">
+      {hiddenInputsSlot}
       <Panel
         title="Presets"
         subtitle="Curated tuning bundles for common setups."
@@ -190,6 +208,56 @@ export function PresetsView(props: PresetsViewProps) {
             <div className="parameter-review__notice">
               <StatusBadge tone={notice.tone}>{notice.toneLabel}</StatusBadge>
               <p>{notice.text}</p>
+            </div>
+          ) : null}
+
+          {sharing ? (
+            <div className="presets-share" data-testid="presets-share">
+              <div className="presets-share__copy">
+                <strong>Share your presets</strong>
+                <p>
+                  Export the presets you have saved as a file, and import ones you have been sent. Only your own
+                  presets are exported — the curated ones ship with ArduConfigurator, so a recipient already has them.
+                </p>
+              </div>
+              <div className="button-row">
+                <button
+                  type="button"
+                  style={buttonStyle()}
+                  data-testid="presets-export-all"
+                  disabled={isBusy || sharing.userPresetCount === 0}
+                  title={
+                    sharing.userPresetCount === 0
+                      ? 'You have not saved any presets yet. Create one from the Parameter Editor first.'
+                      : undefined
+                  }
+                  onClick={sharing.onExportAll}
+                >
+                  {sharing.userPresetCount === 0
+                    ? 'Export presets'
+                    : `Export all (${sharing.userPresetCount})`}
+                </button>
+                {sharing.onExportSelected && sharing.selectedUserPresetLabel ? (
+                  <button
+                    type="button"
+                    style={buttonStyle()}
+                    data-testid="presets-export-selected"
+                    disabled={isBusy}
+                    onClick={sharing.onExportSelected}
+                  >
+                    Export &ldquo;{sharing.selectedUserPresetLabel}&rdquo;
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  style={buttonStyle()}
+                  data-testid="presets-import"
+                  disabled={isBusy}
+                  onClick={sharing.onImport}
+                >
+                  Import presets…
+                </button>
+              </div>
             </div>
           ) : null}
 

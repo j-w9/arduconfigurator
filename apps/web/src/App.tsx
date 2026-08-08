@@ -395,6 +395,7 @@ import { useLibraries } from './hooks/use-libraries'
 import {
   createUserPresetId,
   isUserPresetId,
+  mergeImportedUserPresets,
   sortUserPresets,
   type UserPresetDraft,
   type UserPresetRecord
@@ -2316,6 +2317,16 @@ export function App() {
       })
     },
     [libraries, setParameterNotice, sourceFirmwareForPresets]
+  )
+
+  const handleImportUserPresets = useCallback(
+    (records: readonly UserPresetRecord[]) => {
+      // Merge, never replace: mergeImportedUserPresets re-files an id clash
+      // under a fresh id rather than overwriting the operator's own preset of
+      // the same name, and drops a byte-identical re-import.
+      libraries.setSavedUserPresets((current) => mergeImportedUserPresets(current, records).presets)
+    },
+    [libraries]
   )
 
   const handleDeleteUserPreset = useCallback(
@@ -8917,6 +8928,9 @@ export function App() {
           onApplySelectedPreset={handleApplySelectedPreset}
           onStageSelectedPresetDiff={handleStageSelectedPresetDiff}
           onEraseSettings={handleEraseSettings}
+          userPresets={libraries.savedUserPresets}
+          onImportUserPresets={handleImportUserPresets}
+          setPresetNotice={setPresetNotice}
         />
       ) : null}
 

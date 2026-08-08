@@ -14921,6 +14921,27 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .bootloader-identity__method code { overflow-wrap: anywhere; }
 
+/* Preset sharing. Same two-column shape as .presets-erase below, but neutral —
+ * exporting and importing are ordinary actions, not destructive ones. */
+.presets-share {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-200);
+}
+.presets-share__copy { min-width: 0; flex: 1 1 280px; }
+.presets-share__copy p {
+  margin: 4px 0 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
 .presets-erase {
   display: flex;
   flex-wrap: wrap;

@@ -3,7 +3,7 @@
 // invalid entries) require a fair amount of mapping. Now lifted into a section
 // that takes the small set of derived state + the apply / erase handlers.
 
-import type { Dispatch, ReactElement, SetStateAction } from 'react'
+import { useRef, type ChangeEvent, type Dispatch, type ReactElement, type SetStateAction } from 'react'
 import type {
   ConfiguratorSnapshot,
   ParameterDraftEntry,
@@ -16,7 +16,14 @@ import type { NormalizedPresetDefinition, PresetGroupDefinition } from '@arducon
 
 import type { ParameterFollowUp, ParameterNotice } from '../hooks/use-parameter-feedback'
 import type { PresetSerialRemapState } from '../hooks/use-preset-catalog'
-import { isUserPresetId } from '../user-preset-library'
+import {
+  buildUserPresetExportFilename,
+  isUserPresetId,
+  parseUserPresetImport,
+  serializeUserPresetExport,
+  type UserPresetRecord
+} from '../user-preset-library'
+import { downloadTextFile } from '../download-file'
 import { formatParameterDelta, formatParameterValue } from '../parameter-format'
 import type { SavedParameterSnapshot } from '../snapshot-library'
 import { statusToneLabel } from '../status-tone'
@@ -64,6 +71,10 @@ export interface PresetsSectionProps {
   onApplySelectedPreset: () => void | Promise<void>
   onStageSelectedPresetDiff: () => void
   onEraseSettings: () => void | Promise<void>
+  /** The operator's own saved presets — the only ones worth sharing. */
+  userPresets: readonly UserPresetRecord[]
+  onImportUserPresets: (records: readonly UserPresetRecord[]) => void
+  setPresetNotice: (notice: ParameterNotice | undefined) => void
 }
 
 export function PresetsSection(props: PresetsSectionProps): ReactElement {
@@ -99,8 +110,55 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
     formatCategoryLabel,
     onApplySelectedPreset,
     onStageSelectedPresetDiff,
-    onEraseSettings
+    onEraseSettings,
+    userPresets,
+    onImportUserPresets,
+    setPresetNotice
   } = props
+
+  const importInputRef = useRef<HTMLInputElement>(null)
+
+  function exportUserPresets(records: readonly UserPresetRecord[], single?: UserPresetRecord): void {
+    if (records.length === 0) {
+      return
+    }
+    downloadTextFile(
+      buildUserPresetExportFilename(single),
+      serializeUserPresetExport(records, single ? single.label : 'Shared presets')
+    )
+    setPresetNotice({
+      tone: 'success',
+      text: single
+        ? `Exported "${single.label}". Send them the file; they import it from this tab.`
+        : `Exported ${records.length} preset${records.length === 1 ? '' : 's'}.`
+    })
+  }
+
+  async function handleImportPresetFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0]
+    // Reset the input immediately so picking the SAME file twice still fires a
+    // change event — otherwise a failed import cannot be retried without
+    // choosing a different file first.
+    event.target.value = ''
+    if (!file) {
+      return
+    }
+    try {
+      const { presets: imported, skipped } = parseUserPresetImport(await file.text())
+      onImportUserPresets(imported)
+      const skippedNote =
+        skipped.length > 0 ? ` ${skipped.length} entr${skipped.length === 1 ? 'y was' : 'ies were'} malformed and skipped.` : ''
+      setPresetNotice({
+        tone: skipped.length > 0 ? 'warning' : 'success',
+        text: `Imported ${imported.length} preset${imported.length === 1 ? '' : 's'} from ${file.name}.${skippedNote}`
+      })
+    } catch (error) {
+      setPresetNotice({
+        tone: 'danger',
+        text: error instanceof Error ? error.message : 'Failed to import that preset file.'
+      })
+    }
+  }
 
   const hasSelection = selectedPresets.length > 0
   const unchangedCount = Math.max(
@@ -238,6 +296,34 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
       applicabilityBlocked={selectedPresetApplicability.status === 'blocked'}
       hasChanges={selectedPresetChangedEntries.length > 0}
       hasInvalid={selectedPresetInvalidEntries.length > 0}
+      sharing={{
+        userPresetCount: userPresets.length,
+        // Offered only when exactly one of the operator's OWN presets is
+        // selected — "export this one" is meaningless for a curated preset the
+        // recipient already ships with.
+        selectedUserPresetLabel: single && isUserPresetId(single.id) ? single.label : undefined,
+        onExportAll: () => exportUserPresets(userPresets),
+        onExportSelected:
+          single && isUserPresetId(single.id)
+            ? () => {
+                const record = userPresets.find((preset) => preset.id === single.id)
+                if (record) {
+                  exportUserPresets([record], record)
+                }
+              }
+            : undefined,
+        onImport: () => importInputRef.current?.click()
+      }}
+      hiddenInputsSlot={
+        <input
+          ref={importInputRef}
+          className="parameter-backup-input"
+          type="file"
+          aria-label="Import preset file"
+          accept="application/json,.json"
+          onChange={(event) => void handleImportPresetFile(event)}
+        />
+      }
       onEraseSettings={
         runtime && snapshot.connection.kind === 'connected'
           ? () => void onEraseSettings()
