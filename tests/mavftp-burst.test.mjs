@@ -270,3 +270,174 @@ test('a second burst download while one is in flight is rejected', async () => {
   await assert.rejects(() => harness.service.downloadRemoteFileBurst('/APM/LOGS/2.BIN'), /already in progress/)
   await assert.rejects(() => first, /No MAVFTP burst data/)
 })
+
+/*
+  A model of ArduPilot's FTP server for the one rule the seq_number handling
+  turns on. The harness above is deliberately simple — it answers every burst
+  packet with `request seq + 1` — but the real server keeps a single rising
+  conversation counter and bumps it per STREAMED PACKET (GCS_FTP.cpp,
+  `reply.seq_number++` inside the BurstReadFile loop). Two further behaviours
+  follow from that counter and are modelled here:
+
+    - a request whose `seq_number + 1` equals the last reply's seq_number is
+      treated as a re-request and answered with a REPLAY of that last reply,
+      never executed (GCS_FTP.cpp:823-829);
+    - only one file may be open per session, and a second OpenFileRO while a
+      descriptor is still held is NAKed with Fail (GCS_FTP.cpp:341-352).
+
+  Together those turn a swallowed TerminateSession into a REFUSED NEXT
+  DOWNLOAD. Rung 4 (tests/runtime.sitl.test.mjs) is the proof against real
+  firmware; this is the cheap guard that catches a regression in the client's
+  seq handling without needing a SITL to notice.
+*/
+function createArduPilotLikeHarness(fileBytes) {
+  const sent = []
+  let service
+  let lastReply
+  let openSession = -1
+  let nextSessionId = 3
+
+  const push = (frame) => {
+    lastReply = decodeFrame(frame)
+    service.handleFileTransferProtocol({ payload: frame })
+  }
+
+  const respond = (req) => {
+    // The duplicate-request rule, applied before the opcode is even looked at.
+    if (lastReply && ((req.seqNumber + 1) & 0xffff) === lastReply.seqNumber && req.session === lastReply.session) {
+      service.handleFileTransferProtocol({ payload: encodeFrame(lastReply) })
+      return
+    }
+
+    switch (req.opcode) {
+      case MAV_FTP_OPCODE.RESET_SESSIONS:
+        openSession = -1
+        push(ackFrame(req))
+        break
+      case MAV_FTP_OPCODE.OPEN_FILE_RO: {
+        if (openSession !== -1) {
+          push(nakFrame(req, MAV_FTP_ERR.FAIL))
+          break
+        }
+        openSession = nextSessionId
+        nextSessionId += 1
+        const data = new Uint8Array(4)
+        new DataView(data.buffer).setUint32(0, fileBytes.length, true)
+        push(ackFrame(req, { session: openSession, data }))
+        break
+      }
+      case MAV_FTP_OPCODE.TERMINATE_SESSION:
+        openSession = -1
+        push(ackFrame(req, { session: req.session }))
+        break
+      case MAV_FTP_OPCODE.READ_FILE: {
+        const end = Math.min(req.offset + req.size, fileBytes.length)
+        if (req.offset >= fileBytes.length) {
+          push(nakFrame(req, MAV_FTP_ERR.EOF))
+          break
+        }
+        push(ackFrame(req, { session: req.session, offset: req.offset, data: fileBytes.slice(req.offset, end) }))
+        break
+      }
+      case MAV_FTP_OPCODE.BURST_READ_FILE: {
+        // One packet per 239 bytes, then the EOF NAK — each carrying the NEXT
+        // seq_number in the conversation, exactly as the firmware does.
+        let seq = (req.seqNumber + 1) & 0xffff
+        let offset = req.offset
+        while (offset < fileBytes.length) {
+          const end = Math.min(offset + BURST_DATA, fileBytes.length)
+          push(
+            encodeFrame({
+              seqNumber: seq,
+              session: req.session,
+              opcode: ACK,
+              size: end - offset,
+              reqOpcode: req.opcode,
+              burstComplete: end >= fileBytes.length ? 1 : 0,
+              offset,
+              data: fileBytes.slice(offset, end)
+            })
+          )
+          seq = (seq + 1) & 0xffff
+          offset = end
+        }
+        push(
+          encodeFrame({
+            seqNumber: seq,
+            session: req.session,
+            opcode: NAK,
+            size: 1,
+            reqOpcode: req.opcode,
+            burstComplete: 1,
+            offset,
+            data: new Uint8Array([MAV_FTP_ERR.EOF])
+          })
+        )
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  service = new MavftpService({
+    session: {
+      send: async (message) => {
+        sent.push(message)
+        if (message.type === 'FILE_TRANSFER_PROTOCOL') {
+          const req = decodeFrame(message.payload)
+          queueMicrotask(() => respond(req))
+        }
+      }
+    },
+    getVehicle: () => VEHICLE,
+    ensureSupport: async () => {},
+    requestTimeoutMs: 200
+  })
+
+  return {
+    service,
+    sent,
+    get sessionIsOpen() {
+      return openSession !== -1
+    },
+    // Strands a descriptor the way a close lost on the wire would.
+    leakDescriptor() {
+      openSession = nextSessionId
+      nextSessionId += 1
+    }
+  }
+}
+
+test('a single-packet burst still closes its session, so the next download opens', async () => {
+  // Small enough for ONE burst packet: the case that leaves the server exactly
+  // two seq ahead of a client counting only its own sends, which is the offset
+  // that makes the follow-up TerminateSession look like a re-request.
+  const fileBytes = makeBytes(120, 4)
+  const harness = createArduPilotLikeHarness(fileBytes)
+
+  const first = await harness.service.downloadRemoteFileBurst('/logs/small-1.txt')
+  assert.deepEqual(Array.from(first), Array.from(fileBytes))
+  assert.equal(harness.sessionIsOpen, false, 'the TerminateSession was swallowed as a duplicate re-request')
+
+  // Back to back, with no spacing between them — spacing is the workaround
+  // this fix exists to make unnecessary.
+  const second = await harness.service.downloadRemoteFileBurst('/logs/small-2.txt')
+  assert.deepEqual(Array.from(second), Array.from(fileBytes))
+  const third = await harness.service.downloadRemoteFileBurst('/logs/small-3.txt')
+  assert.deepEqual(Array.from(third), Array.from(fileBytes))
+})
+
+test('an open refused with Fail is retried through RESET_SESSIONS instead of failing the download', async () => {
+  const fileBytes = makeBytes(300, 6)
+  const harness = createArduPilotLikeHarness(fileBytes)
+  // A plain (non-burst) read first: it spends the one-shot startup
+  // RESET_SESSIONS, so the leak below cannot be cleared by that instead of by
+  // the safety net, and it keeps this test independent of the sequence fix.
+  await harness.service.downloadRemoteFile('/logs/plain.txt')
+  // Strand a descriptor the way a close lost on the wire would.
+  harness.leakDescriptor()
+
+  const bytes = await harness.service.downloadRemoteFileBurst('/logs/after-leak.BIN')
+  assert.deepEqual(Array.from(bytes), Array.from(fileBytes))
+})

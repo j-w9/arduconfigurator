@@ -167,6 +167,138 @@ test('true SITL: an ArduPlane vehicle is detected and swaps to the Plane catalog
 })
 
 /**
+ * Back-to-back MAVFTP downloads of SMALL files.
+ *
+ * Nothing below rung 4 can prove this. The failure lives in the real
+ * ArduPilot FTP server's duplicate-request suppression: it replays its last
+ * reply instead of executing a request whose `seq_number + 1` equals the
+ * seq_number of that reply (GCS_FTP.cpp:823-829). A burst read advances the
+ * server's seq_number once per STREAMED PACKET while the client only sent one
+ * request, so a client that counts only its own sends falls behind — and for a
+ * file small enough to fit in a single burst packet it falls behind by exactly
+ * the amount that makes the follow-up TerminateSession look like a re-request.
+ * The close is swallowed, the descriptor stays open, and since ArduPilot allows
+ * only one open file per session (GCS_FTP.cpp:341-352) the next open is NAKed
+ * with Fail until the server's 3s idle sweep runs (FTP_SESSION_TIMEOUT). Big
+ * logs always outlast that timeout, which is why the log reader never saw it.
+ *
+ * The mock server replies with request+1 and nothing else, so it cannot
+ * exhibit any of this; only a real autopilot can answer.
+ *
+ * The test uploads its own small files rather than trusting whatever happens to
+ * be on the vehicle, so "small enough to fit one burst packet" — the exact
+ * failing case — is guaranteed rather than hoped for. It also downloads a real
+ * multi-burst log in the same run so a fix for the small-file case cannot quietly
+ * cost us the large-file path it was built for.
+ */
+test('true SITL: consecutive small MAVFTP downloads all succeed', { timeout: 240000 }, async (t) => {
+  const repoPath = process.env.ARDUPILOT_REPO_PATH
+  const attachHost = process.env.ARDUPILOT_SITL_HOST
+  const attachPort = Number(process.env.ARDUPILOT_SITL_PORT ?? '5760')
+  const launchWaitPort = Number(process.env.ARDUPILOT_SITL_LAUNCH_WAIT_PORT ?? '5760')
+
+  if (!repoPath && !attachHost) {
+    t.skip('Set ARDUPILOT_REPO_PATH to launch SITL, or ARDUPILOT_SITL_HOST/PORT to attach to an existing endpoint.')
+    return
+  }
+
+  let sitl
+  if (repoPath) {
+    sitl = await launchArduPilotDirectBinary({
+      repoPath,
+      vehicle: process.env.ARDUPILOT_SITL_VEHICLE ?? 'ArduCopter',
+      frame: process.env.ARDUPILOT_SITL_FRAME ?? 'quad',
+      port: launchWaitPort,
+      launchTimeoutMs: Number(process.env.ARDUPILOT_SITL_LAUNCH_TIMEOUT_MS ?? '120000')
+    })
+  }
+
+  const transport = new TcpTransport('sitl-mavftp-small-files-tcp', {
+    host: attachHost ?? '127.0.0.1',
+    port: attachPort,
+    connectTimeoutMs: 10000
+  })
+  const session = new MavlinkSession(transport, new MavlinkV2Codec())
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {})
+
+  // `/logs` is the SITL scratch directory (the hardware equivalent is
+  // `/APM/LOGS`); it is the one writable place every SITL has. Cleaned up in
+  // the finally so a re-run starts from the same state.
+  const smallFiles = [1, 2, 3].map((index) => ({
+    path: `/logs/arduconfig-ftp-small-${index}.txt`,
+    // Well under the 239-byte burst packet payload, so each download is a
+    // single-packet burst — the case that used to wedge the session.
+    text: `arduconfig mavftp consecutive-read probe #${index}\n`
+  }))
+  const uploaded = []
+
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 20000 })
+
+    // The runtime issues its own `@SYS/uarts.txt` read on connect. This
+    // service drives every transfer through FTP session 0, so an overlapping
+    // read would contend for the same server-side descriptor and muddy what
+    // this test is actually measuring. Let the connect-time read finish first.
+    await new Promise((resolve) => setTimeout(resolve, 4000))
+
+    for (const file of smallFiles) {
+      await runtime.uploadRemoteFile(file.path, new TextEncoder().encode(file.text), { overwrite: true })
+      uploaded.push(file.path)
+    }
+
+    // The assertion: back to back, with NO spacing between them. Spacing is
+    // what the private monitoring collector had to add to work around this,
+    // and adding it here would hide exactly the bug under test.
+    for (const file of smallFiles) {
+      const bytes = await runtime.downloadMavftpLog(file.path, undefined, { silent: true })
+      assert.equal(
+        new TextDecoder().decode(bytes),
+        file.text,
+        `Consecutive MAVFTP download of ${file.path} did not return the uploaded bytes.`
+      )
+    }
+
+    // Same run, same session: the multi-burst path the log reader depends on
+    // must still work after (and before) the small reads.
+    const logs = await runtime.listMavftpLogs()
+    const bySize = logs
+      .filter((entry) => (entry.sizeBytes ?? 0) > 4096)
+      .sort((left, right) => (left.sizeBytes ?? 0) - (right.sizeBytes ?? 0))
+    // ArduPilot streams at most 2000 packets (~478 KiB at 239 bytes each) per
+    // burst request, so prefer a log past that: it forces the burstComplete
+    // re-request the log reader lives on. Fall back to the largest available
+    // when the SITL has nothing that big, and take the SMALLEST qualifying log
+    // so the test stays quick.
+    const largeLog = bySize.find((entry) => (entry.sizeBytes ?? 0) > 512 * 1024) ?? bySize[bySize.length - 1]
+
+    if (largeLog) {
+      let lastProgress = 0
+      const bytes = await runtime.downloadMavftpLog(largeLog.path, (progress) => {
+        lastProgress = progress.bytesReceived
+      }, { silent: true })
+      assert.equal(bytes.length, largeLog.sizeBytes, `Multi-burst download of ${largeLog.path} came back short.`)
+      assert.ok(lastProgress > 0, 'Multi-burst download reported no progress.')
+      t.diagnostic(`Multi-burst path exercised on ${largeLog.path} (${bytes.length} bytes).`)
+
+      // And a small read still works AFTER a large one, which is the ordering
+      // an operator hits when they grab a log and then a config file.
+      const trailing = await runtime.downloadMavftpLog(smallFiles[0].path, undefined, { silent: true })
+      assert.equal(new TextDecoder().decode(trailing), smallFiles[0].text)
+    } else {
+      t.diagnostic('No onboard log over 4 KiB on this SITL — the multi-burst path was not exercised.')
+    }
+  } finally {
+    for (const path of uploaded) {
+      await runtime.deleteRemotePath(path, 'file').catch(() => {})
+    }
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+    await sitl?.stop().catch(() => {})
+  }
+})
+
+/**
  * The rangefinder / optical-flow Status cards depend on two messages that live
  * in STREAM_EXTRA3 and therefore only ever arrive because the runtime issues a
  * SET_MESSAGE_INTERVAL for them. NOTHING below rung 4 can prove that: the mock
