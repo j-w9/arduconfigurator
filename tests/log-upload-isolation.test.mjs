@@ -69,6 +69,9 @@ test('only the Logs surface consumes the feature', () => {
         continue
       }
       if (!/\.(ts|tsx)$/.test(entry.name)) continue
+      // A test importing the feature is testing it, not coupling to it. The
+      // rule is about production code growing a dependency.
+      if (/\.test\.(ts|tsx)$/.test(entry.name)) continue
       const relative = path.relative(WEB_SRC, full)
       if (FEATURE_FILES.includes(relative)) continue
       const source = readFileSync(full, 'utf8')
