@@ -1166,6 +1166,43 @@ function createStatusTextSession() {
         )
       })
     },
+    /**
+     * Test hook: drive another authoritative HEARTBEAT through. `ageMs` back-dates
+     * the PREVIOUS one so a restart-sized gap can be simulated without sleeping
+     * through it.
+     */
+    pushHeartbeat({ ageMs = 0 } = {}) {
+      if (ageMs > 0) {
+        // Nothing in the runtime exposes its heartbeat clock, so shift real time
+        // instead: the gap is measured with Date.now().
+        const realNow = Date.now
+        Date.now = () => realNow() + ageMs
+        try {
+          this.pushHeartbeatNow()
+        } finally {
+          Date.now = realNow
+        }
+        return
+      }
+      this.pushHeartbeatNow()
+    },
+    pushHeartbeatNow() {
+      messageListeners.forEach((listener) =>
+        listener({
+          header: { systemId: 1, componentId: 1, sequence: 0 },
+          message: {
+            type: 'HEARTBEAT',
+            autopilot: MAV_AUTOPILOT.ARDUPILOTMEGA,
+            vehicleType: MAV_TYPE.QUADROTOR,
+            baseMode: 0,
+            customMode: 0,
+            systemStatus: 4,
+            mavlinkVersion: 3
+          },
+          timestampMs: Date.now()
+        })
+      )
+    },
     /** Test hook: drive a STATUSTEXT through the runtime's message listener. */
     pushStatusText(severity, text, statusId = 0, chunkSequence = 0) {
       messageListeners.forEach((listener) =>
@@ -4838,6 +4875,76 @@ test('a disconnect restores the constructor metadata bundle', async () => {
     await runtime.disconnect()
     assert.equal(runtime.getActiveMetadata(), arducopterMetadata)
   } finally {
+    runtime.destroy()
+  }
+})
+
+// ── Re-requesting streams after a vehicle restart ─────────────────────────
+//
+// ArduCopter's SRx_* defaults are all ZERO, so nothing streams unless a GCS
+// asks. The ask was issued once per TRANSPORT connection, but a reboot does not
+// have to drop the transport: SITL over UDP/TCP, a telemetry radio and an
+// Ethernet FC all survive one. The session then looked connected and fully
+// synced with every live surface permanently dead — and it lands immediately
+// after a change the operator just made, so it reads as the configurator having
+// broken the flight controller.
+
+test('a heartbeat after a long gap re-requests the telemetry streams', async () => {
+  const session = createStatusTextSession()
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    preArmRefreshIntervalMs: 10_000
+  })
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+    await sleep(20)
+
+    const intervalRequests = () =>
+      session.sentCommands.filter((command) => command === MAV_CMD.SET_MESSAGE_INTERVAL).length
+    const afterConnect = intervalRequests()
+    assert.ok(afterConnect > 0, 'streams were requested at connect')
+
+    // A heartbeat arriving right behind another one is business as usual and
+    // must NOT re-ask.
+    session.pushHeartbeat()
+    await sleep(20)
+    assert.equal(intervalRequests(), afterConnect, 'an ordinary heartbeat changes nothing')
+
+    // One arriving after a multi-second silence is a vehicle that went away and
+    // came back, whatever the transport thinks.
+    session.pushHeartbeat({ ageMs: 10_000 })
+    await sleep(30)
+    assert.ok(intervalRequests() > afterConnect, 'the streams were requested again')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+  }
+})
+
+test('runtime.reboot() re-arms the stream request without waiting for the gap', async () => {
+  // A board that comes back inside the gap threshold would otherwise slip
+  // through, and this is the path our own calibration/config reboot prompts use.
+  const session = createStatusTextSession()
+  session.autoAck.set(MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN, MAV_RESULT.ACCEPTED)
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    preArmRefreshIntervalMs: 10_000
+  })
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 200 })
+    await sleep(20)
+    const before = session.sentCommands.filter((command) => command === MAV_CMD.SET_MESSAGE_INTERVAL).length
+
+    await runtime.reboot()
+    session.pushHeartbeat()
+    await sleep(30)
+
+    assert.ok(
+      session.sentCommands.filter((command) => command === MAV_CMD.SET_MESSAGE_INTERVAL).length > before,
+      'the first heartbeat after our own reboot re-requests the streams'
+    )
+  } finally {
+    await runtime.disconnect().catch(() => {})
     runtime.destroy()
   }
 })

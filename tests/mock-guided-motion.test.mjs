@@ -10,9 +10,39 @@ import test from 'node:test'
 
 import {
   createArduCopterMockScenario,
+  MAV_CMD,
+  MAVLINK_MESSAGE_IDS,
+  MavlinkV2Codec,
   mockAttitudeForTick,
   mockRcChannelsForTick
 } from '@arduconfig/protocol-mavlink'
+
+/**
+ * Ask the scenario for a stream, the way the runtime does at connect.
+ *
+ * The mock now emits a live message ONLY once its id has been requested with
+ * SET_MESSAGE_INTERVAL, mirroring a real ArduCopter (whose SRx_* defaults are
+ * all zero). That is deliberate: emitting unconditionally is what let a
+ * missing stream request pass a green demo and e2e suite while being dead on
+ * hardware.
+ */
+function requestStream(scenario, messageId) {
+  const codec = new MavlinkV2Codec()
+  scenario.respondToOutbound(
+    codec.encode({
+      header: { systemId: 255, componentId: 190, sequence: 0 },
+      message: {
+        type: 'COMMAND_LONG',
+        command: MAV_CMD.SET_MESSAGE_INTERVAL,
+        targetSystem: 1,
+        targetComponent: 1,
+        confirmation: 0,
+        params: [messageId, 100000, 0, 0, 0, 0, 0]
+      },
+      timestampMs: 0
+    })
+  )
+}
 
 // Mirrors orientationStepSatisfied in apps/web/src/setup-exercise-helpers.ts.
 const LEVEL = (roll, pitch) => Math.abs(roll) <= 8 && Math.abs(pitch) <= 8
@@ -87,8 +117,10 @@ test('the motion stream stays off unless guidedMotionCadenceMs is passed', async
   assert.equal(frames.length, 0, 'No motion frames may be emitted without the opt-in.')
 })
 
-test('the motion stream emits once guidedMotionCadenceMs is passed', async () => {
+test('the motion stream emits once guidedMotionCadenceMs is passed AND the streams are requested', async () => {
   const scenario = createArduCopterMockScenario({ guidedMotionCadenceMs: 10 })
+  requestStream(scenario, MAVLINK_MESSAGE_IDS.ATTITUDE)
+  requestStream(scenario, MAVLINK_MESSAGE_IDS.RC_CHANNELS)
   const frames = []
   const stop = scenario.attachDynamicEmitter((frame) => frames.push(frame))
   await new Promise((resolve) => setTimeout(resolve, 120))
@@ -98,4 +130,18 @@ test('the motion stream emits once guidedMotionCadenceMs is passed', async () =>
   const countAfterStop = frames.length
   await new Promise((resolve) => setTimeout(resolve, 60))
   assert.equal(frames.length, countAfterStop, 'The returned detach must stop the motion stream.')
+})
+
+test('the motion stream stays silent until the runtime asks for those streams', async () => {
+  // The guard that makes this mock a witness rather than a rubber stamp.
+  // Attitude and RC drive the orientation exercise, the horizon, RC
+  // calibration and the endpoints check — if their LIVE_TELEMETRY_REQUESTS
+  // entries were ever dropped, demo mode and the whole e2e suite must go dark
+  // exactly as a flight controller would, instead of passing green.
+  const scenario = createArduCopterMockScenario({ guidedMotionCadenceMs: 10 })
+  const frames = []
+  const stop = scenario.attachDynamicEmitter((frame) => frames.push(frame))
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  stop()
+  assert.equal(frames.length, 0, 'nothing may stream before SET_MESSAGE_INTERVAL')
 })

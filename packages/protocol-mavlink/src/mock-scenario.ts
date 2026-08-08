@@ -1660,11 +1660,11 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
           chunkSequence: 0
         })
       ),
-      codec.encode(envelope(3, sysStatusMessage(16420, 72))),
-      codec.encode(envelope(4, rcChannelsMessage(1200))),
-      codec.encode(envelope(5, attitudeMessage(1200))),
-      codec.encode(envelope(6, globalPositionMessage(1200))),
-      codec.encode(envelope(7, gpsRawIntMessage()))
+      // Nothing else. HEARTBEAT and the boot banner are the only things a real
+      // ArduCopter puts on the wire before a GCS asks — every SRx_* default is
+      // zero. SYS_STATUS, RC_CHANNELS, ATTITUDE, GLOBAL_POSITION_INT and
+      // GPS_RAW_INT used to be here, which made the demo a poor witness for
+      // exactly the surfaces that matter most.
     ],
     respondToOutbound: (frame) => {
       // The mock only decodes the message types it knows how to answer.
@@ -1757,6 +1757,7 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
             )
 
             const requestedMessageId = Math.round(outbound.message.params[0] ?? 0)
+            dynamicState.requestedMessageIds.add(requestedMessageId)
             if (requestedMessageId === MAVLINK_MESSAGE_IDS.RC_CHANNELS) {
               responses.push(codec.encode(envelope(91, rcChannelsMessage(1600))))
             }
@@ -2230,14 +2231,20 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
       motionTick += 1
       const timeBootMs = Math.max(0, now() - (dynamicState.startedAtMs || now()))
       const { rollDeg, pitchDeg } = mockAttitudeForTick(motionTick)
-      emit(
-        codec.encode(
-          envelope(
-            nextDynamicSequence(),
-            attitudeMessage(timeBootMs, (rollDeg * Math.PI) / 180, (pitchDeg * Math.PI) / 180)
+      // Request-gated like everything else. Attitude and RC drive the
+      // orientation exercise, the horizon, RC calibration and the endpoints
+      // check — the surfaces where a silently-dead stream is most dangerous —
+      // so they must be the LEAST willing to paper over a missing request.
+      if (dynamicState.requestedMessageIds.has(MAVLINK_MESSAGE_IDS.ATTITUDE)) {
+        emit(
+          codec.encode(
+            envelope(
+              nextDynamicSequence(),
+              attitudeMessage(timeBootMs, (rollDeg * Math.PI) / 180, (pitchDeg * Math.PI) / 180)
+            )
           )
         )
-      )
+      }
 
       // Hold the sticks silent through the scripted RC link blip, otherwise
       // this stream would immediately paper over the zero-channel frame the
@@ -2246,17 +2253,19 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
         return
       }
 
-      emit(
-        codec.encode(
-          envelope(nextDynamicSequence(), {
-            type: 'RC_CHANNELS',
-            timeBootMs,
-            channelCount: 8,
-            channels: mockRcChannelsForTick(motionTick),
-            rssi: 100
-          })
+      if (dynamicState.requestedMessageIds.has(MAVLINK_MESSAGE_IDS.RC_CHANNELS)) {
+        emit(
+          codec.encode(
+            envelope(nextDynamicSequence(), {
+              type: 'RC_CHANNELS',
+              timeBootMs,
+              channelCount: 8,
+              channels: mockRcChannelsForTick(motionTick),
+              rssi: 100
+            })
+          )
         )
-      )
+      }
     }, guidedMotionCadenceMs)
 
     if (typeof (motionTimer as { unref?: () => void }).unref === 'function') {
@@ -2408,6 +2417,17 @@ interface DynamicMockState {
   // Set when the runtime asks for MSG_ESC_TELEMETRY. Latched rather than
   // always-on so the demo cannot pass while the real request is missing.
   escTelemetryRequested: boolean
+  /**
+   * Every message id the runtime has asked for with SET_MESSAGE_INTERVAL.
+   *
+   * The demo emits a live message ONLY if its id is in here, which is the whole
+   * point: ArduCopter's SRx_* defaults are all zero, so a real flight
+   * controller streams nothing unasked. Emitting unconditionally is what let
+   * the optical-flow and ESC-telemetry bugs pass a full green e2e suite while
+   * being stone dead on hardware — and it left the two highest-stakes surfaces,
+   * stick input and attitude, unguarded.
+   */
+  requestedMessageIds: Set<number>
 }
 
 function createDynamicState(): DynamicMockState {
@@ -2422,7 +2442,8 @@ function createDynamicState(): DynamicMockState {
     rcLinkStage: 'healthy',
     ekfStage: 'idle',
     tickCount: 0,
-    escTelemetryRequested: false
+    escTelemetryRequested: false,
+    requestedMessageIds: new Set<number>()
   }
 }
 
@@ -2482,17 +2503,21 @@ function tickDynamicState(
     }
   }
 
-  frames.push(
-    codec.encode(
-      envelope(
-        nextSequence(),
-        sysStatusMessage(
-          Math.round(state.batteryVoltageV * 1000),
-          state.batteryRemainingPercent
+  // SYS_STATUS carries battery voltage AND every sensor-presence chip, so an
+  // ungated one here would have masked a missing request for both.
+  if (state.requestedMessageIds.has(MAVLINK_MESSAGE_IDS.SYS_STATUS)) {
+    frames.push(
+      codec.encode(
+        envelope(
+          nextSequence(),
+          sysStatusMessage(
+            Math.round(state.batteryVoltageV * 1000),
+            state.batteryRemainingPercent
+          )
         )
       )
     )
-  )
+  }
 
   // --- RC link blip -------------------------------------------------------
   // On the third tick, drop the RC link for one tick, then recover. The
@@ -2557,7 +2582,14 @@ function tickDynamicState(
   // than a value frozen at connect. Gated on RNGFND1_TYPE so a test using
   // ?demoParamOverrides=RNGFND1_TYPE:0 gets a genuinely unconfigured
   // rangefinder — no card, and no stray frames contradicting that.
-  if ((parameters.RNGFND1_TYPE ?? 0) !== 0) {
+  // Gated on the REQUEST as well as the parameter. Parameter-only gating
+  // undercut the discipline the one-shot path documents: dropping the
+  // LIVE_TELEMETRY_REQUESTS entry would have stopped the one-shot while this
+  // tick kept the card alive, so the regression guard did not actually hold.
+  if (
+    (parameters.RNGFND1_TYPE ?? 0) !== 0 &&
+    state.requestedMessageIds.has(MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR)
+  ) {
     frames.push(
       codec.encode(
         envelope(

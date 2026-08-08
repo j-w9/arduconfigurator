@@ -165,6 +165,9 @@ export class MavftpService {
    * listings alike, with nothing to keep in sync as operations are added.
    */
   private lastTransferActivityAtMs = 0
+  /** Tail of the serialization chain — see withExclusiveSession. */
+  private transferQueue: Promise<void> = Promise.resolve()
+  private sessionHeld = false
   // The seq_number to put on the NEXT request. Not a private counter: MAVFTP's
   // seq_number is a SHARED, monotonically rising conversation counter that the
   // server advances too. A burst reply stream bumps the server's copy once per
@@ -195,7 +198,92 @@ export class MavftpService {
     return this.lastTransferActivityAtMs > 0 && Date.now() - this.lastTransferActivityAtMs < windowMs
   }
 
-  async listRemoteDirectory(path: string): Promise<MavftpDirectoryEntry[]> {
+  // ── Public API: one MAVFTP conversation at a time ────────────────────────
+  //
+  // Every session-allocating request this client sends hardcodes `session: 0`,
+  // and ArduPilot's FTP server does not allocate ids — it echoes back whatever
+  // the client chose (GCS_FTP.cpp `reply.session = request.session`). So all
+  // transfers share one server-side session no matter how many slots the
+  // firmware has.
+  //
+  // Unserialized, that corrupts data silently rather than failing. Transfer A
+  // holds an open fd on session 0; B's OPEN_FILE_RO is NAKed with "only one
+  // file open per session"; our own recovery reads that bare NAK as a leaked
+  // stale handle and sends RESET_SESSIONS, which FORCE-CLOSES A's fd; B then
+  // reopens on the same session and A's next READ_FILE returns B's file at A's
+  // offsets, ACKed, with valid-looking data. The overlaps are real and
+  // automatic-vs-operator: the @SYS/uarts.txt fetch at connect and the
+  // param.pck fetch on first row expansion both race operator log downloads,
+  // file-browser transfers and Lua script reads.
+  //
+  // Distinct session ids would NOT fix this on <= 4.6 (a single global fd; a
+  // foreign session id gets InvalidSession), so serialization is the portable
+  // answer. It is also honest about the hardware: one link, one conversation.
+
+  listRemoteDirectory(path: string): Promise<MavftpDirectoryEntry[]> {
+    return this.withExclusiveSession(() => this.listRemoteDirectoryUnlocked(path))
+  }
+
+  downloadRemoteFile(path: string): Promise<Uint8Array> {
+    return this.withExclusiveSession(() => this.downloadRemoteFileUnlocked(path))
+  }
+
+  uploadRemoteFile(path: string, bytes: Uint8Array, options: { overwrite?: boolean } = {}): Promise<void> {
+    return this.withExclusiveSession(() => this.uploadRemoteFileUnlocked(path, bytes, options))
+  }
+
+  deleteRemotePath(path: string, kind: 'file' | 'directory' = 'file'): Promise<void> {
+    return this.withExclusiveSession(() => this.deleteRemotePathUnlocked(path, kind))
+  }
+
+  readRemoteTextFile(path: string, options: { timeoutMs?: number } = {}): Promise<string> {
+    return this.withExclusiveSession(() => this.readRemoteTextFileUnlocked(path, options))
+  }
+
+  readRemoteFilePrefix(path: string, byteLimit: number, options: { timeoutMs?: number } = {}): Promise<Uint8Array> {
+    return this.withExclusiveSession(() => this.readRemoteFilePrefixUnlocked(path, byteLimit, options))
+  }
+
+  readRemoteFile(path: string, options: { timeoutMs?: number; byteLimit?: number } = {}): Promise<Uint8Array> {
+    return this.withExclusiveSession(() => this.readRemoteFileUnlocked(path, options))
+  }
+
+  downloadRemoteFileBurst(
+    path: string,
+    options: Parameters<MavftpService['downloadRemoteFileBurstUnlocked']>[1] = {}
+  ): Promise<Uint8Array> {
+    return this.withExclusiveSession(() => this.downloadRemoteFileBurstUnlocked(path, options))
+  }
+
+  /**
+   * Run `operation` with exclusive use of the FTP session.
+   *
+   * Re-entrant on purpose: downloadRemoteFile delegates to readRemoteFile and
+   * readRemoteTextFile to readRemoteFileUnlocked, so a nested call from inside
+   * a held lock runs straight through instead of deadlocking against itself.
+   */
+  private async withExclusiveSession<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.sessionHeld) {
+      return operation()
+    }
+    const predecessor = this.transferQueue
+    let release = (): void => {}
+    // The queue link resolves only from the finally below, so it can never
+    // reject and never needs a rejection handler to stay unbroken.
+    this.transferQueue = predecessor.then(() => new Promise<void>((resolve) => {
+      release = resolve
+    }))
+    await predecessor
+    this.sessionHeld = true
+    try {
+      return await operation()
+    } finally {
+      this.sessionHeld = false
+      release()
+    }
+  }
+
+  private async listRemoteDirectoryUnlocked(path: string): Promise<MavftpDirectoryEntry[]> {
     await this.ensureSupport()
 
     const normalizedPath = normalizeMavftpPath(path)
@@ -230,12 +318,12 @@ export class MavftpService {
     return entries.sort(sortMavftpDirectoryEntries)
   }
 
-  async downloadRemoteFile(path: string): Promise<Uint8Array> {
+  private async downloadRemoteFileUnlocked(path: string): Promise<Uint8Array> {
     await this.ensureSupport()
-    return this.readRemoteFile(normalizeMavftpPath(path))
+    return this.readRemoteFileUnlocked(normalizeMavftpPath(path))
   }
 
-  async uploadRemoteFile(path: string, bytes: Uint8Array, options: { overwrite?: boolean } = {}): Promise<void> {
+  private async uploadRemoteFileUnlocked(path: string, bytes: Uint8Array, options: { overwrite?: boolean } = {}): Promise<void> {
     await this.ensureSupport()
 
     const normalizedPath = normalizeMavftpPath(path)
@@ -293,7 +381,7 @@ export class MavftpService {
     }
   }
 
-  async deleteRemotePath(path: string, kind: 'file' | 'directory' = 'file'): Promise<void> {
+  private async deleteRemotePathUnlocked(path: string, kind: 'file' | 'directory' = 'file'): Promise<void> {
     await this.ensureSupport()
 
     const normalizedPath = normalizeMavftpPath(path)
@@ -307,8 +395,8 @@ export class MavftpService {
     })
   }
 
-  async readRemoteTextFile(path: string, options: { timeoutMs?: number } = {}): Promise<string> {
-    const bytes = await this.readRemoteFile(path, options)
+  private async readRemoteTextFileUnlocked(path: string, options: { timeoutMs?: number } = {}): Promise<string> {
+    const bytes = await this.readRemoteFileUnlocked(path, options)
     return new TextDecoder().decode(bytes).replace(/\0+$/, '')
   }
 
@@ -330,7 +418,7 @@ export class MavftpService {
    * single-slot burst path, so it can never make an operator's own log
    * download fail with "a burst download is already in progress".
    */
-  async readRemoteFilePrefix(
+  private async readRemoteFilePrefixUnlocked(
     path: string,
     byteLimit: number,
     options: { timeoutMs?: number } = {}
@@ -338,17 +426,17 @@ export class MavftpService {
     if (!Number.isFinite(byteLimit) || byteLimit <= 0) {
       return new Uint8Array(0)
     }
-    return this.readRemoteFile(path, { ...options, byteLimit })
+    return this.readRemoteFileUnlocked(path, { ...options, byteLimit })
   }
 
-  async readRemoteFile(
+  private async readRemoteFileUnlocked(
     path: string,
     options: { timeoutMs?: number; byteLimit?: number } = {}
   ): Promise<Uint8Array> {
     const { timeoutMs, byteLimit } = options
     const normalizedPath = normalizeMavftpPath(path)
     const pathBytes = new TextEncoder().encode(normalizedPath)
-    await this.clearStaleSessionsOnce()
+    await this.clearStaleSessionsOnce(timeoutMs)
     const openResponse = await this.openFileForRead(pathBytes, timeoutMs)
 
     const session = openResponse.session
@@ -446,7 +534,7 @@ export class MavftpService {
    * the single-read path for size-0 `@SYS` virtual files. Reports progress by
    * contiguous bytes received, like LogDownloadService.
    */
-  async downloadRemoteFileBurst(
+  private async downloadRemoteFileBurstUnlocked(
     path: string,
     options: {
       timeoutMs?: number
@@ -844,13 +932,13 @@ export class MavftpService {
   /**
    * Best-effort one-shot RESET_SESSIONS — see staleSessionsCleared field doc.
    */
-  private async clearStaleSessionsOnce(): Promise<void> {
+  private async clearStaleSessionsOnce(timeoutMs?: number): Promise<void> {
     if (this.staleSessionsCleared) {
       return
     }
     this.staleSessionsCleared = true
     try {
-      await this.resetSessions()
+      await this.resetSessions(timeoutMs)
     } catch {
       // Best-effort: a NAK / timeout here must not block the actual
       // operation — worst case a stale session NAKs the open and
@@ -858,15 +946,22 @@ export class MavftpService {
     }
   }
 
-  /** RESET_SESSIONS — closes every server-side session on our link. */
-  private async resetSessions(): Promise<void> {
+  /**
+   * RESET_SESSIONS — closes every server-side session on our link.
+   *
+   * Takes the caller's timeout. Without it this preamble always used the 5s
+   * constructor default, so a caller asking for a 60ms budget silently waited
+   * 5s before its own request even went out — invisible in production and
+   * responsible for a 10s unit test that thought it was measuring 60ms.
+   */
+  private async resetSessions(timeoutMs?: number): Promise<void> {
     await this.send({
       session: 0,
       opcode: MAV_FTP_OPCODE.RESET_SESSIONS,
       size: 0,
       offset: 0,
       data: new Uint8Array(0)
-    })
+    }, timeoutMs)
   }
 
   private async send(

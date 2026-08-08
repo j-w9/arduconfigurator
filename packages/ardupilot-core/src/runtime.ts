@@ -277,6 +277,16 @@ const PRE_ARM_ISSUE_TTL_MS = 60000
 // genuinely cleared rather than merely gone quiet. Without this an operator who
 // fixes one of three failures watches the fixed one linger for the best part of
 // a minute.
+/**
+ * A heartbeat gap this long means the vehicle went away and came back.
+ *
+ * ArduPilot heartbeats at 1 Hz and a reboot takes several seconds, so 4s
+ * separates a restart from ordinary jitter. Being wrong in the "it was only a
+ * link glitch" direction costs 14 small SET_MESSAGE_INTERVAL commands, which is
+ * both harmless and arguably useful — a glitch can swallow the original
+ * requests just as easily.
+ */
+const VEHICLE_RESTART_HEARTBEAT_GAP_MS = 4000
 const PRE_ARM_REFRESH_INTERVAL_MS = 3000
 const PRE_ARM_ISSUE_TTL_POLLED_MS = 8000
 // MAV_SYS_STATUS_PREARM_CHECK (common.xml, value 268435456). ArduPilot sets it
@@ -592,6 +602,12 @@ export class ArduPilotConfiguratorRuntime {
    *  was still registering parameters when it answered. */
   private parameterTableGrewDuringSync = false
   private liveTelemetryRequestsIssued = false
+  /**
+   * When the last authoritative HEARTBEAT arrived. Used to notice that the
+   * vehicle RESTARTED on a link that survived the restart — see
+   * VEHICLE_RESTART_HEARTBEAT_GAP_MS.
+   */
+  private lastHeartbeatAtMs?: number
   // FIFO of un-ACKed SET_MESSAGE_INTERVAL requests, dequeued in arrival order
   // so processCommandAck can name which stream the autopilot rejected.
   private readonly pendingSetMessageIntervalLabels: string[] = []
@@ -1823,8 +1839,15 @@ export class ArduPilotConfiguratorRuntime {
     })
   }
 
-  /** Normal autopilot reboot (PREFLIGHT_REBOOT_SHUTDOWN param1=1). */
+  /**
+   * Normal autopilot reboot (PREFLIGHT_REBOOT_SHUTDOWN param1=1).
+   *
+   * Re-arms the telemetry-stream request directly rather than relying on the
+   * heartbeat-gap detector: we know for certain a restart is coming, and this
+   * covers a board that comes back fast enough to keep the gap under threshold.
+   */
   async reboot(): Promise<void> {
+    this.liveTelemetryRequestsIssued = false
     await this.sendCommand(MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN, [1, 0, 0, 0, 0, 0, 0], {
       waitForAck: true,
       ackTimeoutMs: 3000
@@ -2404,6 +2427,28 @@ export class ArduPilotConfiguratorRuntime {
     }
 
     this.resolveVehicleWaiters(this.vehicle)
+
+    // A vehicle that restarted comes back with every SRx_* rate at its default,
+    // which on ArduCopter is ZERO — so nothing at all streams until we ask
+    // again. The transport never noticed on a link that survives a reboot
+    // (SITL over UDP/TCP, a telemetry radio, an Ethernet FC), so
+    // liveTelemetryRequestsIssued stayed latched and the session carried on
+    // looking connected and fully synced with every live surface dead: RC
+    // input, attitude, GPS, battery, sensor chips, ESC telemetry. Worse than a
+    // blank card on connect, because it lands right after a change the operator
+    // just made and reads as "the configurator bricked my FC".
+    //
+    // We reboot the vehicle ourselves from several places (the calibration
+    // reboot prompt, reboot-required parameter applies), so this is reachable
+    // by design, not just by accident.
+    const previousHeartbeatAtMs = this.lastHeartbeatAtMs
+    this.lastHeartbeatAtMs = Date.now()
+    if (
+      previousHeartbeatAtMs !== undefined &&
+      this.lastHeartbeatAtMs - previousHeartbeatAtMs > VEHICLE_RESTART_HEARTBEAT_GAP_MS
+    ) {
+      this.liveTelemetryRequestsIssued = false
+    }
 
     if (!this.liveTelemetryRequestsIssued) {
       void this.requestLiveTelemetryStreams(systemId, componentId)
@@ -3596,6 +3641,7 @@ export class ArduPilotConfiguratorRuntime {
     this.motorTestService.reset()
     this.liveVerification = createIdleLiveVerification()
     this.liveTelemetryRequestsIssued = false
+    this.lastHeartbeatAtMs = undefined
     this.pendingSetMessageIntervalLabels.length = 0
     this.autopilotVersionRequested = false
     this.uartsFileRequested = false
