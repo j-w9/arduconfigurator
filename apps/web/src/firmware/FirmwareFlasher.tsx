@@ -61,6 +61,13 @@ export interface FirmwareFlasherProps {
    *  "Activate Bootloader (DFU)" button could never actually serve. Rejects
    *  with an explanatory message on firmware built without ENABLE_DFU_BOOT. */
   onEnterRomDfu?: () => Promise<void>
+  /** Optional: reset every parameter to firmware defaults and reboot
+   *  (PREFLIGHT_STORAGE param1=2 -> AP_Param::erase_all). Offered here because
+   *  flashing firmware does NOT clear parameters, and an operator chasing a
+   *  misbehaving board reaches for the Flash tab, not for Presets. */
+  onResetParameters?: () => Promise<void>
+  /** Why the parameter reset cannot run right now (disconnected/armed). */
+  resetParametersDisabledReason?: string
   /** Optional: send a normal reboot (MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN
    *  param1=1). Surfaces a "Request Reboot" button above the DFU control;
    *  hidden when omitted (e.g. the disconnected modal landing path). */
@@ -242,6 +249,8 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     onEnterDfu,
     enterDfuDisabledReason,
     onEnterRomDfu,
+    onResetParameters,
+    resetParametersDisabledReason,
     onReboot,
     rebootDisabledReason,
     onFlashBootloader,
@@ -298,6 +307,8 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   // Separate arming state from the bootloader button's: these do genuinely
   // different things and confirming one must never commit the other.
   const [romDfuConfirmArmed, setRomDfuConfirmArmed] = useState(false)
+  const [resetParamsConfirmArmed, setResetParamsConfirmArmed] = useState(false)
+  const [resetParamsBusy, setResetParamsBusy] = useState(false)
   const [rebootBusy, setRebootBusy] = useState(false)
   // Rewriting the bootloader sector can brick the board if it is interrupted,
   // so it gets the same two-click arm/confirm gate as the DFU reboot.
@@ -384,6 +395,23 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       setDfuBusy(false)
     }
   }, [onEnterRomDfu])
+
+  const handleResetParameters = useCallback(async () => {
+    if (!onResetParameters) return
+    setResetParamsConfirmArmed(false)
+    setResetParamsBusy(true)
+    setDfuNotice('Resetting all parameters to firmware defaults…')
+    try {
+      await onResetParameters()
+      setDfuNotice(
+        'All parameters reset to defaults and a reboot requested. Reconnect and pull parameters once the board is back.'
+      )
+    } catch (err) {
+      setDfuNotice(err instanceof Error ? err.message : 'Failed to reset parameters.')
+    } finally {
+      setResetParamsBusy(false)
+    }
+  }, [onResetParameters])
 
   const handleReboot = useCallback(async () => {
     if (!onReboot) return
@@ -1130,6 +1158,41 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
               </button>
             )
           ) : null}
+          {onResetParameters ? (
+            resetParamsConfirmArmed ? (
+              <span className="firmware-wizard__dfu-confirm" data-testid="firmware-reset-params-confirm-row">
+                <button
+                  type="button"
+                  className="firmware-wizard__dfu-button firmware-wizard__dfu-button--danger"
+                  data-testid="firmware-reset-params-confirm"
+                  disabled={resetParamsBusy}
+                  onClick={() => void handleResetParameters()}
+                >
+                  {resetParamsBusy ? 'Resetting…' : 'Confirm: reset all parameters'}
+                </button>
+                <button
+                  type="button"
+                  className="firmware-wizard__dfu-cancel"
+                  data-testid="firmware-reset-params-cancel"
+                  disabled={resetParamsBusy}
+                  onClick={() => setResetParamsConfirmArmed(false)}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="firmware-wizard__dfu-button"
+                data-testid="firmware-reset-params"
+                disabled={resetParamsBusy || Boolean(resetParametersDisabledReason)}
+                title={resetParametersDisabledReason}
+                onClick={() => setResetParamsConfirmArmed(true)}
+              >
+                Reset Parameters to Defaults
+              </button>
+            )
+          ) : null}
           {onFlashBootloader ? (
             bootloaderConfirmArmed ? (
               <span
@@ -1190,6 +1253,25 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             whose ArduPilot bootloader is broken or missing. The link drops and the board re-enumerates as an
             STM32 DFU device, which this app&apos;s serial flasher cannot talk to; flash it from the DFU tool below or
             an external one. Many boards are not built with DFU support and will simply refuse.
+          </p>
+        ) : null}
+        {onResetParameters && resetParamsConfirmArmed ? (
+          <p className="bf-note bf-note--warning" data-testid="firmware-reset-params-warning">
+            This wipes every parameter on the board — tuning, calibration, radio, ports, the lot — and reboots.
+            Save a backup first if you have not. There is no undo.
+          </p>
+        ) : null}
+        {/* The question this answers came from an operator who reflashed a
+            board twice, updated its bootloader, and only fixed it by resetting
+            parameters — reasonably unsure whether flashing had erased anything
+            at all. It had not, and could not have. */}
+        {onResetParameters && !resetParamsConfirmArmed ? (
+          <p className="bf-note" data-testid="firmware-flash-vs-params-note">
+            <strong>Flashing firmware does not reset your parameters.</strong> The bootloader only erases the
+            firmware region: on boards that keep parameters in flash the storage pages sit outside it, and on boards
+            with FRAM (Cube and friends) the parameters are not on the chip being erased at all. That is deliberate —
+            it is what lets you update firmware without reconfiguring. If a board misbehaves after a flash and you
+            want a genuinely clean slate, this is the button that gives you one.
           </p>
         ) : null}
         {/* Stated where the two buttons are, because the labels alone are how

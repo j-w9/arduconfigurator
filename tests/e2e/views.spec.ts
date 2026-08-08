@@ -1691,6 +1691,21 @@ test.describe('Flash view', () => {
     await page.getByTestId('firmware-enter-rom-dfu-cancel').click()
     await expect(page.getByTestId('firmware-enter-rom-dfu-confirm')).toHaveCount(0)
 
+    // Flashing does not clear parameters — say so where operators go looking,
+    // and put the action that does clear them within reach. Two-step, because
+    // it wipes the board's whole configuration.
+    await expect(page.getByTestId('firmware-flash-vs-params-note')).toContainText(
+      'Flashing firmware does not reset your parameters'
+    )
+    await page.getByTestId('firmware-reset-params').click()
+    await expect(page.getByTestId('firmware-reset-params-confirm')).toBeVisible()
+    await expect(page.getByTestId('firmware-reset-params-warning')).toBeVisible()
+    // The explanatory note gives way to the warning while armed, so it cannot
+    // read as reassurance next to a destructive confirm.
+    await expect(page.getByTestId('firmware-flash-vs-params-note')).toHaveCount(0)
+    await page.getByTestId('firmware-reset-params-cancel').click()
+    await expect(page.getByTestId('firmware-reset-params-confirm')).toHaveCount(0)
+
     // Update Bootloader (MAV_CMD_FLASH_BOOTLOADER) gets the same two-step gate:
     // rewriting the bootloader sector can brick the board if interrupted, so
     // the first click must only arm, never send.

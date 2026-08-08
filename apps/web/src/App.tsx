@@ -9084,6 +9084,35 @@ export function App() {
               ? async () => { await runtime.rebootToDfu() }
               : undefined
           }
+          onResetParameters={
+            // Same action the Presets tab's "Erase settings" runs — reset then
+            // reboot. Surfaced here too because an operator debugging a board
+            // is on the Flash tab, and flashing is exactly what does NOT do it.
+            runtime && snapshot.connection.kind === 'connected'
+              ? async () => {
+                  // Deliberately NOT handleEraseSettings: that one reports
+                  // through setPresetNotice, which is on another tab, and
+                  // swallows the error — so the Flash tab would have announced
+                  // success over a failed reset. The flasher shows the outcome
+                  // itself, so it needs the throw.
+                  await runtime.resetParametersToDefaults()
+                  try {
+                    await runtime.reboot()
+                  } catch {
+                    // The reset landed; a missing reboot ack is not a failure
+                    // (the operator can power-cycle). Same call as the Presets
+                    // path makes.
+                  }
+                }
+              : undefined
+          }
+          resetParametersDisabledReason={
+            snapshot.connection.kind !== 'connected'
+              ? 'Connect to a vehicle first to reset parameters.'
+              : snapshot.vehicle?.armed
+                ? 'Disarm the vehicle before resetting parameters.'
+                : undefined
+          }
           enterDfuDisabledReason={
             snapshot.connection.kind !== 'connected'
               ? 'Connect to a vehicle first to send a DFU reboot command.'
