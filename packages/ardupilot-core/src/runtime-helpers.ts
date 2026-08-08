@@ -368,7 +368,11 @@ export function clonePreArmStatus(preArmStatus: PreArmStatusState): PreArmStatus
     lastUpdatedAtMs: preArmStatus.lastUpdatedAtMs,
     issues: preArmStatus.issues.map((issue) => ({
       ...issue
-    }))
+    })),
+    // Same lesson as cloneLiveVerification's dropped imuTemperatureC: a new
+    // field that the clone forgets is silently undefined in every snapshot the
+    // UI ever sees, and nothing fails loudly.
+    liveCheck: preArmStatus.liveCheck ? { ...preArmStatus.liveCheck } : undefined
   }
 }
 

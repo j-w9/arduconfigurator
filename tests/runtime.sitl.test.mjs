@@ -501,6 +501,13 @@ test('true SITL: the rangefinder + optical-flow streams are accepted and arrive'
   }
 })
 
+// The Pre-arm box now believes SYS_STATUS's MAV_SYS_STATUS_PREARM_CHECK bit over
+// the latched `PreArm:` STATUSTEXT history, because only the bit can report a
+// fail→pass transition (ArduPilot emits no message for one, and re-reports a
+// failure at most every 30s — libraries/AP_Arming/AP_Arming.cpp). The mock can
+// assert our handling of a bit we synthesise ourselves; only real firmware can
+// prove the bit is actually set on the wire.
+test('true SITL: SYS_STATUS carries a live pre-arm verdict', { timeout: 240000 }, async (t) => {
 /**
  * SERVO_OUTPUT_RAW (msgid 36) is not in the configurator's codec, so this
  * test scans the raw transport frames for it. Enough of the MAVLink v2 frame
@@ -579,6 +586,7 @@ test('true SITL: a zero-throttle abort drops the spinning output before the next
     })
   }
 
+  const transport = new TcpTransport('sitl-prearm-tcp', {
   const transport = new TcpTransport('sitl-motor-advance-tcp', {
     host: attachHost ?? '127.0.0.1',
     port: attachPort,
@@ -586,6 +594,7 @@ test('true SITL: a zero-throttle abort drops the spinning output before the next
   })
   const session = new MavlinkSession(transport, new MavlinkV2Codec())
   const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {})
+
 
   const samples = []
   let unsubscribe
@@ -595,6 +604,38 @@ test('true SITL: a zero-throttle abort drops the spinning output before the next
     await runtime.requestParameterList({ timeoutMs: 20000 })
     await runtime.waitForParameterSync({ timeoutMs: 60000 })
 
+    // SYS_STATUS is requested at 2 Hz; give the ACK and a handful of frames room.
+    await new Promise((resolve) => setTimeout(resolve, 8000))
+
+    const snapshot = runtime.getSnapshot()
+    const liveCheck = snapshot.preArmStatus.liveCheck
+
+    // The whole fix rests on this: if the bit never arrives, the box silently
+    // degrades to the old latched behaviour and nobody finds out.
+    assert.ok(liveCheck, 'No SYS_STATUS pre-arm verdict arrived from SITL.')
+    assert.equal(liveCheck.present, true, 'SITL did not advertise MAV_SYS_STATUS_PREARM_CHECK as present.')
+
+    // Deliberately NOT keyed on an arming-checks parameter. The name is not
+    // stable across firmware: 4.5/4.6 expose ARMING_CHECK (a mask of enabled
+    // checks) while master has migrated to ARMING_SKIPCHK (the inverse mask,
+    // libraries/AP_Arming/AP_Arming.cpp AP_GROUPINFO("SKIPCHK", 13)), and an
+    // earlier draft of this test timed out writing an ARMING_CHECK that simply
+    // does not exist on this build. The SYS_STATUS `enabled` bit is the
+    // firmware-version-independent statement of the same fact — which is
+    // exactly why the runtime keys off it rather than off a parameter.
+    if (liveCheck.enabled) {
+      // Whichever way the verdict falls, `healthy` must follow the live bit and
+      // not the (very possibly empty) latched issue list — that inversion is
+      // the entire fix.
+      assert.equal(snapshot.preArmStatus.healthy, liveCheck.passing)
+      t.diagnostic(`SITL pre-arm verdict: ${liveCheck.passing ? 'passing' : 'failing'}.`)
+    } else {
+      // Every arming check skipped — ArduPilot leaves the health bit meaningless
+      // here, and so must we.
+      assert.equal(snapshot.preArmStatus.healthy, snapshot.preArmStatus.issues.length === 0)
+      t.diagnostic('Arming checks are all skipped on this SITL — verdict correctly ignored.')
+    }
+  } finally {
     unsubscribe = observeServoOutputRaw(transport, (sample) => samples.push(sample))
     // 20 Hz, so the gap between "OUT1 still high" and "OUT2 high" is measured
     // finely enough to be meaningful.

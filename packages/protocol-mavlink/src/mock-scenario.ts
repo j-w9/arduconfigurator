@@ -796,12 +796,20 @@ function attitudeMessage(timeBootMs: number, rollRad = 0, pitchRad = 0, yawRad =
   }
 }
 
+// MAV_SYS_STATUS_PREARM_CHECK. A real ArduPilot always advertises this bit as
+// present, enables it whenever ARMING_CHECK != 0, and sets health from the 1 Hz
+// pre-arm run (libraries/GCS_MAVLink/GCS.cpp). The mock reported a flat zero
+// bitmask, which is indistinguishable from firmware that doesn't publish
+// pre-arm status at all — so the demo could never exercise the live path the UI
+// now depends on. The demo vehicle passes its checks, hence health set too.
+const MAV_SYS_STATUS_PREARM_CHECK = 0x10000000
+
 function sysStatusMessage(voltageBatteryMv: number, batteryRemaining: number): MavlinkMessage {
   return {
     type: 'SYS_STATUS',
-    sensorsPresent: 0,
-    sensorsEnabled: 0,
-    sensorsHealth: 0,
+    sensorsPresent: MAV_SYS_STATUS_PREARM_CHECK,
+    sensorsEnabled: MAV_SYS_STATUS_PREARM_CHECK,
+    sensorsHealth: MAV_SYS_STATUS_PREARM_CHECK,
     load: 180,
     voltageBatteryMv,
     currentBatteryCa: 120,

@@ -257,7 +257,12 @@ export function buildAppViews(inputs: AppViewsInputs): AppViewDescriptor[] {
                     ? `${powerStagedDrafts.length + powerAdditionalStagedDrafts.length} staged`
                     : snapshot.preArmStatus.healthy
                       ? 'clear'
-                      : `${snapshot.preArmStatus.issues.length} issues`,
+                      // An unhealthy verdict can precede any reason text now that
+                      // the live SYS_STATUS pre-arm bit drives `healthy`, so the
+                      // zero case needs a word rather than the count.
+                      : snapshot.preArmStatus.issues.length === 0
+                        ? 'blocked'
+                        : `${snapshot.preArmStatus.issues.length} issues`,
               tone:
                 powerInvalidDrafts.length + powerAdditionalInvalidDrafts.length > 0
                   ? 'danger'

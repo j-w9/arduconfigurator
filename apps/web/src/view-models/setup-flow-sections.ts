@@ -1154,7 +1154,16 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           evidence = [
             `Battery monitor: ${describeBatteryMonitor(batteryMonitor)}`,
             `Health: ${batteryHealthLabel(snapshot)}`,
-            snapshot.preArmStatus.healthy ? 'Pre-arm: clear' : `Pre-arm: ${snapshot.preArmStatus.issues.length} issue(s)`,
+            // `healthy` now follows the live SYS_STATUS pre-arm bit, which can
+            // report a failure before the vehicle has sent any reason text
+            // (it batches those every 30s) — so an unhealthy verdict with an
+            // empty issue list is a real state, and "0 issue(s)" would read as
+            // a pass.
+            snapshot.preArmStatus.healthy
+              ? 'Pre-arm: clear'
+              : snapshot.preArmStatus.issues.length === 0
+                ? 'Pre-arm: blocked (reason not yet reported)'
+                : `Pre-arm: ${snapshot.preArmStatus.issues.length} issue(s)`,
             `Review: ${powerConfirmation ? `confirmed at ${formatConfirmationTime(powerConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
           ]
           actions.unshift({
