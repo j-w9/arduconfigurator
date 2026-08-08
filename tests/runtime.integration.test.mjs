@@ -1913,7 +1913,14 @@ test('live telemetry requests use responsive attitude rates and slower support s
         // notices if someone deletes the requests, because the mock scenario
         // will happily emit whichever messages it likes regardless.
         [MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR, 200000],
-        [MAVLINK_MESSAGE_IDS.OPTICAL_FLOW, 200000]
+        [MAVLINK_MESSAGE_IDS.OPTICAL_FLOW, 200000],
+        // Same trap, EXTRA1 this time: MSG_ESC_TELEMETRY is in that group
+        // (GCS_MAVLink_Parameters.cpp) and never arrives unasked, so the Motor
+        // Test RPM readout would be permanently "no data" on hardware while
+        // looking fine against the mock. Only the 1_TO_4 id is requested —
+        // ArduPilot maps it to the single MSG_ESC_TELEMETRY ap_message
+        // (GCS_Common.cpp:1181), which then emits every populated group.
+        [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4, 500000]
       ]
     )
   } finally {

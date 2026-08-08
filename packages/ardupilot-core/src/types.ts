@@ -400,6 +400,53 @@ export interface LiveVerificationState {
    * message and not RANGEFINDER (msgid 173).
    */
   rangefinder: RangefinderSensorState
+  /**
+   * Per-ESC telemetry, keyed by ESC number as an operator counts them
+   * (1-based), derived from ESC_TELEMETRY_1_TO_4 / _5_TO_8 / _9_TO_12.
+   * Empty when the vehicle has never reported any — which, per
+   * EscTelemetryMessage, means it genuinely has none rather than that we are
+   * still waiting.
+   */
+  escTelemetry: EscTelemetryState
+}
+
+/**
+ * ESC telemetry as the Motor Test tab consumes it.
+ *
+ * `everReported` exists to separate the two states an operator has to act on
+ * differently: "this vehicle does not send ESC telemetry at all" (no
+ * bidirectional DShot, no telemetry wire — a setup problem) versus "it did,
+ * and has gone quiet" (a wiring or ESC fault). Both look like an empty table.
+ */
+export interface EscTelemetryState {
+  /** True once any ESC_TELEMETRY message has arrived this session. */
+  everReported: boolean
+  /** Most recent arrival of any ESC_TELEMETRY message. */
+  lastSeenAtMs?: number
+  /** One entry per ESC that has reported, ordered by ESC number. */
+  escs: EscTelemetryReading[]
+}
+
+export interface EscTelemetryReading {
+  /** 1-based ESC number, matching how the Motor Test tab labels motors. */
+  escNumber: number
+  /** When this specific ESC last appeared in a message. Per-ESC rather than
+   * per-message because ArduPilot skips an all-stale group of four, so one
+   * dead ESC in a group of live ones still ages out on its own. */
+  lastSeenAtMs: number
+  /** Mechanical RPM, already divided by SERVO_BLH_POLES on the vehicle. */
+  rpm: number
+  /** Volts, converted from the wire's centivolts. */
+  voltageV: number
+  /** Amps, converted from the wire's centiamps. */
+  currentA: number
+  /** Consumed capacity, mAh. */
+  consumedMah: number
+  temperatureC: number
+  /** Telemetry packets the FC has received from this ESC; wraps at 65535.
+   * A count that never moves means the ESC slot is being reported but the
+   * ESC itself is not answering. */
+  count: number
 }
 
 export interface OpticalFlowSensorState {

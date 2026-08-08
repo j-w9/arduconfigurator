@@ -15241,6 +15241,61 @@ details.bf-gui-box:not([open]) > summary::after {
   font-size: 11px;
   color: var(--warning, #e8a803);
 }
+/* Live ESC RPM beside the motor-test sliders. */
+.esc-rpm-readout {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-200);
+  font-size: 12px;
+}
+.esc-rpm-readout__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.esc-rpm-readout__summary {
+  margin: 4px 0 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.esc-rpm-readout__table {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.esc-rpm-readout__table th,
+.esc-rpm-readout__table td {
+  padding: 3px 6px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+.esc-rpm-readout__table thead th {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+.esc-rpm-readout__table tbody th {
+  text-align: left;
+  font-weight: 600;
+}
+.esc-rpm-readout__table tbody th small {
+  margin-left: 4px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+/* Stale readings stay legible but must not read as live values. */
+.esc-rpm-readout__table.is-stale tbody {
+  opacity: 0.55;
+}
+.esc-rpm-readout__table tbody tr.is-missing {
+  color: var(--text-dim);
+}
 /* Pole-count reference under the ESC & output settings grid. Same low-key
  * disclosure treatment as the calibration how-tos — hint copy, not a callout. */
 .motor-pole-reference {

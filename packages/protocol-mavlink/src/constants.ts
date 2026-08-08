@@ -36,7 +36,15 @@ export const MAVLINK_MESSAGE_IDS = {
   UAVCAN_NODE_STATUS: 310,
   UAVCAN_NODE_INFO: 311,
   SETUP_SIGNING: 256,
-  GPS_INPUT: 232
+  GPS_INPUT: 232,
+  // ESC telemetry, four ESCs per message (ardupilotmega.xml 11030-11032).
+  // ArduPilot sends nothing at all until it has had ESC data at least once
+  // (AP_ESC_Telem::send_esc_telemetry_mavlink returns early on !_have_data),
+  // and skips any group of four whose entries are all stale — so absence is a
+  // truthful "no ESC telemetry", not a dropped frame.
+  ESC_TELEMETRY_1_TO_4: 11030,
+  ESC_TELEMETRY_5_TO_8: 11031,
+  ESC_TELEMETRY_9_TO_12: 11032
 } as const
 
 export const MAVLINK_MESSAGE_CRCS: Record<number, number> = {
@@ -81,7 +89,14 @@ export const MAVLINK_MESSAGE_CRCS: Record<number, number> = {
   // mavlink_msg_setup_signing.h: MAVLINK_MSG_ID_SETUP_SIGNING_CRC 71).
   [MAVLINK_MESSAGE_IDS.SETUP_SIGNING]: 71,
   // crc_extra 151 (c_library_v2 mavlink_msg_gps_input.h).
-  [MAVLINK_MESSAGE_IDS.GPS_INPUT]: 151
+  [MAVLINK_MESSAGE_IDS.GPS_INPUT]: 151,
+  // The three ESC_TELEMETRY messages share a payload layout but NOT a
+  // crc_extra — it is derived from the message name, which differs. Values
+  // read from the generated ardupilotmega headers
+  // (MAVLINK_MSG_ID_ESC_TELEMETRY_*_CRC), not computed here.
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4]: 144,
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_5_TO_8]: 133,
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12]: 85
 }
 
 export const MAVLINK_PAYLOAD_LENGTHS: Record<number, number> = {
@@ -124,7 +139,12 @@ export const MAVLINK_PAYLOAD_LENGTHS: Record<number, number> = {
   // initial_timestamp(8) + target_system(1) + target_component(1) + secret_key(32)
   [MAVLINK_MESSAGE_IDS.SETUP_SIGNING]: 42,
   // GPS_INPUT without the yaw extension: 63 bytes (see encodeGpsInputPayload).
-  [MAVLINK_MESSAGE_IDS.GPS_INPUT]: 63
+  [MAVLINK_MESSAGE_IDS.GPS_INPUT]: 63,
+  // voltage/current/totalcurrent/rpm/count (5 x uint16[4] = 40) +
+  // temperature (uint8[4] = 4) = 44. No extension fields, so MIN_LEN == LEN.
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4]: 44,
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_5_TO_8]: 44,
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12]: 44
 }
 
 export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
@@ -167,7 +187,10 @@ export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.UAVCAN_NODE_STATUS]: 17,
   [MAVLINK_MESSAGE_IDS.UAVCAN_NODE_INFO]: 116,
   [MAVLINK_MESSAGE_IDS.SETUP_SIGNING]: 42,
-  [MAVLINK_MESSAGE_IDS.GPS_INPUT]: 63
+  [MAVLINK_MESSAGE_IDS.GPS_INPUT]: 63,
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4]: 44,
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_5_TO_8]: 44,
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12]: 44
 }
 
 export const MAVLINK_PROTOCOL_VERSION = 3

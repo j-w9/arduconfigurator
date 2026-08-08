@@ -40,6 +40,7 @@ import type {
   CanFrameMessage,
   OpticalFlowMessage,
   DistanceSensorMessage,
+  EscTelemetryMessage,
   RcChannelsMessage,
   SetupSigningMessage,
   StatusTextMessage,
@@ -677,6 +678,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeOpticalFlowPayload(message)
     case 'DISTANCE_SENSOR':
       return encodeDistanceSensorPayload(message)
+    case 'ESC_TELEMETRY':
+      return encodeEscTelemetryPayload(message)
     case 'CAN_FRAME':
       return encodeCanFramePayload(message)
     case 'SETUP_SIGNING':
@@ -744,6 +747,12 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
       return decodeOpticalFlowPayload(payload)
     case MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR:
       return decodeDistanceSensorPayload(payload)
+    case MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4:
+      return decodeEscTelemetryPayload(payload, 0)
+    case MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_5_TO_8:
+      return decodeEscTelemetryPayload(payload, 4)
+    case MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12:
+      return decodeEscTelemetryPayload(payload, 8)
     case MAVLINK_MESSAGE_IDS.CAN_FRAME:
       return decodeCanFramePayload(payload)
     default:
@@ -807,6 +816,15 @@ function messageIdFor(message: MavlinkMessage): number {
       return MAVLINK_MESSAGE_IDS.OPTICAL_FLOW
     case 'DISTANCE_SENSOR':
       return MAVLINK_MESSAGE_IDS.DISTANCE_SENSOR
+    case 'ESC_TELEMETRY':
+      // One TS message type covers three wire messages, so the id comes from
+      // the group index rather than the type name. Only used by the mock
+      // scenario and tests; the configurator never sends ESC telemetry.
+      return message.groupStartIndex >= 8
+        ? MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12
+        : message.groupStartIndex >= 4
+          ? MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_5_TO_8
+          : MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4
     case 'CAN_FRAME':
       return MAVLINK_MESSAGE_IDS.CAN_FRAME
     case 'SETUP_SIGNING':
@@ -1607,6 +1625,61 @@ function decodeDistanceSensorPayload(payload: Uint8Array): DistanceSensorMessage
     horizontalFov: payload.byteLength >= 18 ? view.getFloat32(14, true) : 0,
     verticalFov: payload.byteLength >= 22 ? view.getFloat32(18, true) : 0,
     signalQuality: payload.byteLength >= 39 ? view.getUint8(38) : 0
+  }
+}
+
+// ESC_TELEMETRY_1_TO_4 / _5_TO_8 / _9_TO_12 (11030-11032). All three share
+// one 44-byte layout. MAVLink v2 orders fields by descending type size, so the
+// uint16[4] arrays come first in XML declaration order — voltage(0..7),
+// current(8..15), totalcurrent(16..23), rpm(24..31), count(32..39) — and the
+// uint8[4] temperature trails at 40..43. No extension fields: MIN_LEN == LEN
+// == 44, so nothing here needs a length guard.
+const ESC_TELEMETRY_GROUP_SIZE = 4
+
+function readEscTelemetryUint16Group(view: DataView, offset: number): number[] {
+  const values: number[] = []
+  for (let index = 0; index < ESC_TELEMETRY_GROUP_SIZE; index += 1) {
+    values.push(view.getUint16(offset + index * 2, true))
+  }
+  return values
+}
+
+function encodeEscTelemetryPayload(message: EscTelemetryMessage): Uint8Array {
+  const payload = new Uint8Array(44)
+  const view = new DataView(payload.buffer)
+  const groups: Array<readonly number[]> = [
+    message.voltageCv,
+    message.currentCa,
+    message.totalCurrentMah,
+    message.rpm,
+    message.count
+  ]
+  groups.forEach((group, groupIndex) => {
+    for (let slot = 0; slot < ESC_TELEMETRY_GROUP_SIZE; slot += 1) {
+      view.setUint16(groupIndex * 8 + slot * 2, group[slot] ?? 0, true)
+    }
+  })
+  for (let slot = 0; slot < ESC_TELEMETRY_GROUP_SIZE; slot += 1) {
+    view.setUint8(40 + slot, message.temperatureC[slot] ?? 0)
+  }
+  return payload
+}
+
+function decodeEscTelemetryPayload(payload: Uint8Array, groupStartIndex: number): EscTelemetryMessage {
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  const temperatureC: number[] = []
+  for (let slot = 0; slot < ESC_TELEMETRY_GROUP_SIZE; slot += 1) {
+    temperatureC.push(view.getUint8(40 + slot))
+  }
+  return {
+    type: 'ESC_TELEMETRY',
+    groupStartIndex,
+    voltageCv: readEscTelemetryUint16Group(view, 0),
+    currentCa: readEscTelemetryUint16Group(view, 8),
+    totalCurrentMah: readEscTelemetryUint16Group(view, 16),
+    rpm: readEscTelemetryUint16Group(view, 24),
+    count: readEscTelemetryUint16Group(view, 32),
+    temperatureC
   }
 }
 

@@ -2079,6 +2079,31 @@ test.describe('Config view', () => {
     await expect(bits.nth(3)).toHaveClass(/is-set/)
   })
 
+  test('Motor Test shows live ESC RPM per motor', async ({ page }) => {
+    // The demo only emits ESC_TELEMETRY after the runtime asks for it via
+    // SET_MESSAGE_INTERVAL, exactly as hardware does — so this passing also
+    // proves the LIVE_TELEMETRY_REQUESTS entry is still there.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await page.getByTestId('view-button-motors').click()
+    await page.getByTestId('outputs-summary-direction-test').click()
+
+    const readout = page.getByTestId('esc-rpm-readout')
+    await readout.scrollIntoViewIfNeeded()
+    await expect(readout).toHaveAttribute('data-status', 'live', { timeout: 15000 })
+    // Four motors, four distinct RPMs — identical numbers would hide a decode
+    // that put every slot on the same offset.
+    const values = await Promise.all(
+      [1, 2, 3, 4].map((motor) => readout.getByTestId(`esc-rpm-value-${motor}`).innerText())
+    )
+    expect(new Set(values).size).toBe(4)
+    for (const value of values) {
+      expect(value).not.toBe('—')
+    }
+  })
+
   test('ESC & Protocol exposes the motor pole count with a reference for choosing it', async ({ page }) => {
     // SERVO_BLH_POLES is the divisor for ESC eRPM -> RPM, so it belongs next to
     // the ESC protocol choice rather than only in the raw parameter list. A

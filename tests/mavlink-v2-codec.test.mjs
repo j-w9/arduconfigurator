@@ -994,3 +994,69 @@ test('MavlinkV2Codec decodes a no-fix GPS_RAW_INT (the indoors / just-powered ca
   assert.equal(message.fixType, 1)
   assert.equal(message.satellitesVisible, 0)
 })
+
+// ESC_TELEMETRY_1_TO_4 / _5_TO_8 / _9_TO_12 (ardupilotmega 11030-11032).
+//
+// Decoded from REAL pymavlink-generated frames rather than round-tripped
+// through our own encoder: the whole risk in this message is field order.
+// MAVLink v2 reorders by descending type size, so the XML's leading
+// uint8_t[4] temperature actually lands LAST on the wire, after five
+// uint16_t[4] arrays. A round-trip against our own encoder would agree with
+// itself no matter which order we picked.
+test('MavlinkV2Codec decodes ESC_TELEMETRY_1_TO_4 with temperature trailing the uint16 arrays', () => {
+  const frame = Uint8Array.from(
+    Buffer.from(
+      'fd2c0000000101162b004a064b064c064d06fa00fb00fc00fd006400650066006700e02e442fa82f0c300700080009000a001f20212267ba',
+      'hex'
+    )
+  )
+  const decoded = new MavlinkV2Codec().push(frame)
+  const msg = decoded.map((entry) => entry.message).find((candidate) => candidate?.type === 'ESC_TELEMETRY')
+  assert.ok(msg, 'ESC_TELEMETRY decoded')
+  assert.equal(msg.groupStartIndex, 0)
+  assert.deepEqual([...msg.voltageCv], [1610, 1611, 1612, 1613])
+  assert.deepEqual([...msg.currentCa], [250, 251, 252, 253])
+  assert.deepEqual([...msg.totalCurrentMah], [100, 101, 102, 103])
+  assert.deepEqual([...msg.rpm], [12000, 12100, 12200, 12300])
+  assert.deepEqual([...msg.count], [7, 8, 9, 10])
+  // The field that proves the ordering: reading it at offset 0 would give 31
+  // only by coincidence, and here it cannot — voltage occupies 0..7.
+  assert.deepEqual([...msg.temperatureC], [31, 32, 33, 34])
+  assert.equal(MAVLINK_MESSAGE_CRCS[MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4], 144)
+})
+
+test('MavlinkV2Codec maps each ESC_TELEMETRY message id to the right group offset', () => {
+  const frame = Uint8Array.from(
+    Buffer.from(
+      'fd2c0000000101182b000a0014001e0028000100020003000400050006000700080084030000000000000100000000000000010203041c2c',
+      'hex'
+    )
+  )
+  const decoded = new MavlinkV2Codec().push(frame)
+  const msg = decoded.map((entry) => entry.message).find((candidate) => candidate?.type === 'ESC_TELEMETRY')
+  assert.ok(msg, 'ESC_TELEMETRY_9_TO_12 decoded')
+  // Slot 0 of this message is ESC 9, so the group offset must be 8 — not 0,
+  // which would silently report ESC 9's RPM as ESC 1's.
+  assert.equal(msg.groupStartIndex, 8)
+  assert.equal(msg.rpm[0], 900)
+  assert.equal(MAVLINK_MESSAGE_CRCS[MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12], 85)
+})
+
+test('MavlinkV2Codec round-trips ESC_TELEMETRY back onto the right message id', () => {
+  // The mock scenario needs the encoder; this pins that a group offset picks
+  // the matching wire message rather than always emitting 1_TO_4.
+  const { frame, message } = roundTrip({
+    type: 'ESC_TELEMETRY',
+    groupStartIndex: 4,
+    temperatureC: [40, 41, 42, 43],
+    voltageCv: [1600, 1601, 1602, 1603],
+    currentCa: [10, 11, 12, 13],
+    totalCurrentMah: [1, 2, 3, 4],
+    rpm: [8000, 8100, 8200, 8300],
+    count: [5, 6, 7, 8]
+  })
+  assert.equal(frame[1], MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_5_TO_8])
+  assert.equal(message.groupStartIndex, 4)
+  assert.deepEqual([...message.rpm], [8000, 8100, 8200, 8300])
+  assert.deepEqual([...message.temperatureC], [40, 41, 42, 43])
+})

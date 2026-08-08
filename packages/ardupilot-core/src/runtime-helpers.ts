@@ -233,6 +233,10 @@ export function createIdleLiveVerification(): LiveVerificationState {
     },
     rangefinder: {
       verified: false
+    },
+    escTelemetry: {
+      everReported: false,
+      escs: []
     }
   }
 }
@@ -353,6 +357,14 @@ export function cloneLiveVerification(liveVerification: LiveVerificationState): 
     // and any new field is carried by construction.
     rangefinder: {
       ...liveVerification.rangefinder
+    },
+    // Same whole-object discipline, plus a fresh array + per-ESC copies: the
+    // readings are mutated in place as new frames arrive, so handing the live
+    // array to a snapshot would let an already-emitted snapshot change under
+    // its consumer.
+    escTelemetry: {
+      ...liveVerification.escTelemetry,
+      escs: liveVerification.escTelemetry.escs.map((esc) => ({ ...esc }))
     },
     // Scalar carried straight through — omitting it here silently dropped the
     // live IMU temperature (from SCALED_IMU) out of every emitted snapshot, so

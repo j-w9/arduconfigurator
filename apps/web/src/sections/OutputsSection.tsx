@@ -63,7 +63,9 @@ import {
   toneForScopedDraftReview
 } from '../tone-helpers'
 import { OutputsView } from '../views/Outputs'
+import { EscRpmReadout } from '../views/EscRpmReadout'
 import { ParamInfoBubble } from '../views/ParamInfoBubble'
+import { buildEscRpmReadoutViewModel } from '../view-models/esc-rpm-readout'
 import type { OutputsTaskId, OutputsViewProps } from '../views/Outputs'
 import { ScopedField, ScopedSelectField } from '../views/ScopedField'
 import { RelaysView } from '../views/RelaysView'
@@ -654,6 +656,21 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             </div>
                           )}
                          </div>
+                         {/* Whether the motor actually turned, and how fast.
+                             Without this the tab could only report what it had
+                             commanded, leaving the operator to judge by eye. */}
+                         <EscRpmReadout
+                           model={buildEscRpmReadoutViewModel({
+                             escTelemetry: snapshot.liveVerification.escTelemetry,
+                             motors: outputMapping.motorOutputs
+                               .filter((output) => output.motorNumber !== undefined)
+                               .map((output) => ({
+                                 motorNumber: output.motorNumber as number,
+                                 outputLabel: `OUT${output.channelNumber}`
+                               })),
+                             nowMs: Date.now()
+                           })}
+                         />
                         </div>
 
                         <div className="motor-test-card motor-test-card--embedded">

@@ -407,6 +407,53 @@ export interface DistanceSensorMessage {
   signalQuality: number
 }
 
+/**
+ * ESC_TELEMETRY_1_TO_4 / _5_TO_8 / _9_TO_12 (ardupilotmega.xml 11030-11032).
+ *
+ * One message per group of four ESCs, all three sharing an identical 44-byte
+ * layout (the C library even static_asserts that). `groupStartIndex` carries
+ * which group arrived so a consumer can map slot -> ESC number without
+ * re-deriving it from the message id.
+ *
+ * Two ArduPilot behaviours make absence meaningful rather than ambiguous, and
+ * both are why the UI can honestly say "no data" instead of "waiting":
+ *
+ *  - AP_ESC_Telem::send_esc_telemetry_mavlink returns immediately when
+ *    `_have_data` is false, i.e. the vehicle has never received ESC telemetry
+ *    in this boot. No bidirectional DShot and no telemetry wire means no
+ *    messages at all, ever.
+ *  - Within a send, any group of four whose entries are all stale is skipped.
+ *
+ * `rpm` is real RPM, not eRPM, despite the XML's "RPM (eRPM)" wording: the
+ * value comes from AP_ESC_Telem::get_rpm(), which has already divided the
+ * ESC's electrical RPM by SERVO_BLH_POLES (AP_BLHeli.cpp:1544). A wrong pole
+ * count therefore shows up here as an RPM wrong by exactly that factor.
+ */
+export interface EscTelemetryMessage {
+  type: 'ESC_TELEMETRY'
+  /**
+   * Zero-based index of the first ESC in this group: 0 for _1_TO_4, 4 for
+   * _5_TO_8, 8 for _9_TO_12. Slot j in the arrays below is ESC number
+   * groupStartIndex + j + 1 as an operator counts them.
+   *
+   * Note this is before SERVO_ESC_TELEM_OFFSET (AP_ESC_Telem.cpp:39), which
+   * lets an operator re-number high outputs down for GCS display.
+   */
+  groupStartIndex: number
+  /** Per-ESC temperature in whole degrees C. */
+  temperatureC: readonly number[]
+  /** Per-ESC voltage in centivolts (cV) as sent — divide by 100 for volts. */
+  voltageCv: readonly number[]
+  /** Per-ESC current in centiamps (cA) as sent — divide by 100 for amps. */
+  currentCa: readonly number[]
+  /** Per-ESC consumed capacity, mAh. */
+  totalCurrentMah: readonly number[]
+  /** Per-ESC mechanical RPM (already pole-corrected by the firmware). */
+  rpm: readonly number[]
+  /** Per-ESC count of telemetry packets received; wraps at 65535. */
+  count: readonly number[]
+}
+
 export interface UavcanNodeStatusMessage {
   type: 'UAVCAN_NODE_STATUS'
   /** Timestamp (UNIX epoch microseconds or microseconds since system boot). */
@@ -491,6 +538,7 @@ export type MavlinkMessage =
   | SysStatusMessage
   | OpticalFlowMessage
   | DistanceSensorMessage
+  | EscTelemetryMessage
   | CanFrameMessage
   | GpsRawIntMessage
   | GlobalPositionIntMessage

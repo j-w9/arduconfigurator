@@ -18,6 +18,7 @@ import type {
   RcChannelsMessage,
   OpticalFlowMessage,
   DistanceSensorMessage,
+  EscTelemetryMessage,
   StatusTextMessage,
   SysStatusMessage,
   UavcanNodeInfoMessage,
@@ -428,6 +429,22 @@ const LIVE_TELEMETRY_REQUESTS = [
     messageId: MAVLINK_MESSAGE_IDS.OPTICAL_FLOW,
     label: 'OPTICAL_FLOW',
     intervalUs: 200000
+  },
+  {
+    // ESC telemetry rides STREAM_EXTRA1 (MSG_ESC_TELEMETRY,
+    // GCS_MAVLink_Parameters.cpp:313), so like the two above it never arrives
+    // unless we ask. Requesting only the 1_TO_4 id is deliberate and correct:
+    // SET_MESSAGE_INTERVAL is resolved to an ap_message
+    // (MAVLINK_MSG_ID_ESC_TELEMETRY_1_TO_4 -> MSG_ESC_TELEMETRY,
+    // GCS_Common.cpp:1181), and that one ap_message emits every populated group
+    // in turn. Asking for 11031/11032 as well would just re-rate the same slot.
+    //
+    // 2 Hz: RPM is a "is it spinning, and how fast" readout an operator watches
+    // during a motor test, not something to smooth-plot. At 44 bytes per group
+    // this stays cheap even for 12 ESCs on a telemetry link.
+    messageId: MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4,
+    label: 'ESC_TELEMETRY',
+    intervalUs: 500000
   }
 ] as const
 /**
@@ -2267,6 +2284,9 @@ export class ArduPilotConfiguratorRuntime {
       case 'DISTANCE_SENSOR':
         this.processDistanceSensor(envelope.message)
         break
+      case 'ESC_TELEMETRY':
+        this.processEscTelemetry(envelope.message)
+        break
       default:
         break
     }
@@ -3010,6 +3030,52 @@ export class ArduPilotConfiguratorRuntime {
       orientation: message.orientation,
       sensorType: message.sensorType,
       signalQuality: message.signalQuality
+    }
+  }
+
+  /**
+   * ESC_TELEMETRY_1_TO_4 / _5_TO_8 / _9_TO_12.
+   *
+   * Merged per ESC rather than replaced per message: ArduPilot skips any group
+   * of four whose entries are all stale (AP_ESC_Telem.cpp), so a quad reports
+   * only the 1_TO_4 group and a wiped table would lose ESCs 5-8 on a machine
+   * that has them. Each ESC carries its own lastSeenAtMs for the same reason —
+   * one silent ESC inside a live group has to be distinguishable from a live one.
+   *
+   * Slots reporting a zero packet count are dropped: ArduPilot zero-fills the
+   * unused tail of a partially-populated group (a hexacopter's ESCs 7-8 in the
+   * 5_TO_8 message), and listing those as ESCs sitting at 0 RPM would invent
+   * hardware that is not there.
+   */
+  private processEscTelemetry(message: EscTelemetryMessage): void {
+    const now = Date.now()
+    const current = this.liveVerification.escTelemetry
+    const byNumber = new Map(current.escs.map((esc) => [esc.escNumber, esc]))
+
+    message.rpm.forEach((rpm, slot) => {
+      const count = message.count[slot] ?? 0
+      const escNumber = message.groupStartIndex + slot + 1
+      // An ESC that has never delivered a telemetry packet is padding, not a
+      // reading — unless we already know it, in which case leave what we have.
+      if (count === 0 && !byNumber.has(escNumber)) {
+        return
+      }
+      byNumber.set(escNumber, {
+        escNumber,
+        lastSeenAtMs: now,
+        rpm,
+        voltageV: (message.voltageCv[slot] ?? 0) / 100,
+        currentA: (message.currentCa[slot] ?? 0) / 100,
+        consumedMah: message.totalCurrentMah[slot] ?? 0,
+        temperatureC: message.temperatureC[slot] ?? 0,
+        count
+      })
+    })
+
+    this.liveVerification.escTelemetry = {
+      everReported: true,
+      lastSeenAtMs: now,
+      escs: [...byNumber.values()].sort((left, right) => left.escNumber - right.escNumber)
     }
   }
 

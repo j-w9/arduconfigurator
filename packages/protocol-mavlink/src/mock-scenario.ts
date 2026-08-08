@@ -20,6 +20,7 @@ import type {
   FileTransferProtocolMessage,
   GpsRawIntMessage,
   DistanceSensorMessage,
+  EscTelemetryMessage,
   GlobalPositionIntMessage,
   LogRequestDataMessage,
   MavlinkEnvelope,
@@ -868,6 +869,35 @@ function distanceSensorMessage(timeBootMs: number, distanceCm: number): Distance
     horizontalFov: 0,
     verticalFov: 0,
     signalQuality: 87
+  }
+}
+
+/**
+ * ESC telemetry for the demo's four motors.
+ *
+ * The demo quad is given working ESC telemetry (SERVO_BLH_BDMASK is seeded, so
+ * bidirectional DShot is the plausible source) because the "no telemetry at
+ * all" state is the trivial one — it needs no vehicle behaviour to reproduce
+ * and is unit-tested directly on the view model. What the mock has to rehearse
+ * is the path that can silently break: the SET_MESSAGE_INTERVAL request.
+ *
+ * RPM idles low and is walked per tick so the readout reads as live rather than
+ * frozen. `count` is non-zero on every slot — a zero count marks an unpopulated
+ * padding slot, which the runtime deliberately drops.
+ */
+function escTelemetryMessage(tick: number): EscTelemetryMessage {
+  // Four distinct, deterministic RPMs so a mis-slotted decode is visible rather
+  // than hidden behind four identical numbers.
+  const rpm = [0, 1, 2, 3].map((slot) => 4200 + slot * 120 + (tick % 5) * 40)
+  return {
+    type: 'ESC_TELEMETRY',
+    groupStartIndex: 0,
+    temperatureC: [31, 32, 33, 34],
+    voltageCv: [1610, 1608, 1612, 1609],
+    currentCa: [180, 185, 190, 176],
+    totalCurrentMah: [120, 122, 118, 125],
+    rpm,
+    count: [900 + tick, 901 + tick, 902 + tick, 903 + tick]
   }
 }
 
@@ -1753,6 +1783,15 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
                 codec.encode(envelope(97, distanceSensorMessage(1600, mockRangefinderDistanceCmForTick(0))))
               )
             }
+            // Same discipline for ESC telemetry: only ever answered because the
+            // runtime asked. MSG_ESC_TELEMETRY rides STREAM_EXTRA1 on real
+            // hardware and never arrives unrequested, so if the
+            // LIVE_TELEMETRY_REQUESTS entry is dropped the demo readout goes
+            // dark exactly as a flight controller would.
+            if (requestedMessageId === MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4) {
+              dynamicState.escTelemetryRequested = true
+              responses.push(codec.encode(envelope(98, escTelemetryMessage(0))))
+            }
             // No OPTICAL_FLOW response, on purpose. FLOW_TYPE is seeded
             // non-zero so the flow card renders, but nothing ever answers —
             // the demo's standing rehearsal of "configured but no data".
@@ -2366,6 +2405,9 @@ interface DynamicMockState {
   // Number of ticks observed. Used to schedule one-shot transitions
   // deterministically without relying on wall-clock math inside the test.
   tickCount: number
+  // Set when the runtime asks for MSG_ESC_TELEMETRY. Latched rather than
+  // always-on so the demo cannot pass while the real request is missing.
+  escTelemetryRequested: boolean
 }
 
 function createDynamicState(): DynamicMockState {
@@ -2379,7 +2421,8 @@ function createDynamicState(): DynamicMockState {
     batterySagStage: 'nominal',
     rcLinkStage: 'healthy',
     ekfStage: 'idle',
-    tickCount: 0
+    tickCount: 0,
+    escTelemetryRequested: false
   }
 }
 
@@ -2526,6 +2569,12 @@ function tickDynamicState(
         )
       )
     )
+  }
+
+  // --- ESC telemetry -------------------------------------------------------
+  // Only once the runtime has asked for the stream, mirroring hardware.
+  if (state.escTelemetryRequested) {
+    frames.push(codec.encode(envelope(nextSequence(), escTelemetryMessage(state.tickCount))))
   }
 
   return frames
