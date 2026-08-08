@@ -727,17 +727,25 @@ const mockAutopilotVersion: AutopilotVersionMessage = {
   uid: 0x0123456789abcdefn
 }
 
+// Real ArduPilot format, including the RXDRP / FE / OE / NE columns that
+// UARTDriver::uart_info actually prints (AP_HAL_ChibiOS/UARTDriver.cpp). The
+// previous fixture stopped at RXBD, so nothing that reads framing errors — the
+// guided-setup ports evidence, most of all — could be exercised in demo mode
+// or e2e at all. Every port is CLEAN here — the demo vehicle is a healthy one,
+// and seeding a fault would make the guided flow's Ports step permanently
+// incomplete for every test that walks past it. A test that wants a fault uses
+// ?demoParamOverrides= to create one.
 const mockUartsText = [
   'UARTV1',
-  'SERIAL0 OTG1    TX =    120 RX =     18 TXBD=     0 RXBD=     0',
-  'SERIAL1 UART7   TX =    802 RX =    155 TXBD=     0 RXBD=     0',
-  'SERIAL2 UART5   TX*=     63 RX*=      0 TXBD=   128 RXBD=     0',
-  'SERIAL3 USART1  TX =      0 RX =      0 TXBD=     0 RXBD=     0',
-  'SERIAL4 UART8   TX =      0 RX =      0 TXBD=     0 RXBD=     0',
-  'SERIAL5 USART2  TX =      0 RX =      0 TXBD=     0 RXBD=     0',
-  'SERIAL6 UART4   TX =      0 RX =      0 TXBD=     0 RXBD=     0',
-  'SERIAL7 USART3  TX =      0 RX =      0 TXBD=     0 RXBD=     0',
-  'SERIAL8 USART6  TX =      4 RX =      0 TXBD=     0 RXBD=     0'
+  'SERIAL0 OTG1    TX =    120 RX =     18 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0',
+  'SERIAL1 UART7   TX =    802 RX =    155 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0',
+  'SERIAL2 UART5   TX*=     63 RX*=      0 TXBD=   128 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0',
+  'SERIAL3 USART1  TX =      0 RX =      0 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0',
+  'SERIAL4 UART8   TX =      0 RX =      0 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0',
+  'SERIAL5 USART2  TX =      0 RX =      0 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0',
+  'SERIAL6 UART4   TX =      0 RX =      0 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0',
+  'SERIAL7 USART3  TX =      0 RX =      0 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0',
+  'SERIAL8 USART6  TX =      4 RX =      0 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0'
 ].join('\n')
 
 const mockUartsBytes = new TextEncoder().encode(mockUartsText)

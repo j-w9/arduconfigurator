@@ -4941,6 +4941,14 @@ body.is-status-dash-dragging {
   display: grid;
   gap: 14px;
   align-content: start;
+  /* Grid items default to min-width: auto, i.e. "never shrink below your
+   * content's minimum". The aside carries LIVE EVIDENCE pills whose text is a
+   * whole sentence of hardware diagnostics ("SERIAL7 (UART7) is receiving 123
+   * bytes it cannot decode..."), and .config-pills span is white-space: nowrap
+   * — so that sentence's full width became the track's floor and the entire
+   * two-column body overflowed the viewport to the right, taking the action
+   * buttons and the criteria panel off-screen with it. */
+  min-width: 0;
 }
 
 .setup-wizard__detail,
@@ -6251,7 +6259,13 @@ body.is-status-dash-dragging {
   white-space: nowrap;
 }
 
-.telemetry-stack--receiver .config-pills span {
+/* Pills that carry a SENTENCE rather than a short chip must wrap. The receiver
+ * workspace discovered this first and fixed it only for itself; the guided
+ * setup's evidence pills have the same content shape and the same problem, so
+ * the exception is now shared rather than re-derived per surface. Short chips
+ * are unaffected: normal wrapping only breaks a line that does not fit. */
+.telemetry-stack--receiver .config-pills span,
+.setup-wizard__evidence .config-pills span {
   white-space: normal;
   overflow-wrap: anywhere;
 }

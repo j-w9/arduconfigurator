@@ -3503,6 +3503,53 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByRole('button', { name: 'Confirm Output Review' })).toBeEnabled()
   })
 
+  test('guided-setup evidence pills are allowed to wrap, so a long line cannot be clipped', async ({ page }) => {
+    // Field report: on the Ports step the right-hand column — primary action,
+    // Previous/Continue, and the completion-criteria panel — was sliced off at
+    // the right edge of the window.
+    //
+    // Cause: .config-pills span is `white-space: nowrap`, and the LIVE EVIDENCE
+    // pills carry a whole sentence of hardware diagnostics. Measured on the
+    // reported case at 1819px: the pill rendered 945px wide with its right edge
+    // at x=2140 inside a 623px column — 350px of it hidden. With wrapping it
+    // measures 595px and fits. An ancestor clips the overflow, so
+    // document.scrollWidth stays exactly equal to clientWidth and the existing
+    // page-level overflow gate passes happily while the operator cannot reach
+    // the buttons.
+    //
+    // This asserts the RULE rather than the geometry. Reproducing the geometry
+    // needs an evidence line ~110+ chars, which needs a port whose traffic
+    // cannot be framed — and the demo cannot currently be given one without
+    // making its Ports step permanently incomplete for every other test that
+    // walks the guided flow. The geometry check is owed; this at least fails if
+    // the wrap rule is removed.
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/?guidedSetupStep=ports')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await expect(page.getByTestId('setup-wizard')).toBeVisible()
+
+    const pill = page.locator('.setup-wizard__evidence .config-pills span').first()
+    await expect(pill).toBeVisible()
+
+    const style = await pill.evaluate((el) => {
+      const computed = getComputedStyle(el)
+      const aside = document.querySelector('.setup-wizard__aside') as HTMLElement
+      return {
+        whiteSpace: computed.whiteSpace,
+        overflowWrap: computed.overflowWrap,
+        asideMinWidth: getComputedStyle(aside).minWidth
+      }
+    })
+
+    expect(style.whiteSpace).toBe('normal')
+    expect(style.overflowWrap).toBe('anywhere')
+    // The aside is a grid item; min-width:auto would let unshrinkable content
+    // widen its track and push the column off-screen instead of clipping it.
+    expect(style.asideMinWidth).toBe('0px')
+  })
+
   test('guided setup condenses long steps into disclosures and flags completion', async ({ page }) => {
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo')
