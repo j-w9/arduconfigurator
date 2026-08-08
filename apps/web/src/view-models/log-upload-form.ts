@@ -29,14 +29,29 @@ export interface LogUploadFormInputs {
 }
 
 /**
- * ArduPilot's log listing gives a date like "2026-08-08 14:22" or a dash when
- * the source is MAVFTP (which carries no timestamp). Take the date part when
- * there is one; otherwise today, because an operator uploading a log they just
- * pulled is far more often uploading today's flight than an unknown one.
+ * The earliest year a real ArduPilot flight log can carry.
+ *
+ * A board whose RTC was never set — no GPS lock before the log was opened, no
+ * GCS time push — stamps its files with the FAT epoch, 1980-01-01. That is a
+ * well-formed date, so it passes a shape check and files the flight 46 years in
+ * the past. Anything this old is a missing clock, not a vintage flight.
+ */
+const EARLIEST_PLAUSIBLE_FLIGHT_YEAR = 2010
+
+/**
+ * ArduPilot's log listing gives a date like "2026-08-08 14:22", a dash when the
+ * source is MAVFTP (which carries no timestamp), or the FAT epoch when the board
+ * had no clock. Take the date part when it is plausible; otherwise today,
+ * because an operator uploading a log they just pulled is far more often
+ * uploading today's flight than one from before ArduPilot existed.
  */
 function deriveFlightDate(dateLabel: string, todayIso: string): string {
   const match = /(\d{4}-\d{2}-\d{2})/.exec(dateLabel)
-  return match?.[1] ?? todayIso
+  if (!match) {
+    return todayIso
+  }
+  const year = Number.parseInt(match[1].slice(0, 4), 10)
+  return year >= EARLIEST_PLAUSIBLE_FLIGHT_YEAR ? match[1] : todayIso
 }
 
 export function buildLogUploadFormModel({
