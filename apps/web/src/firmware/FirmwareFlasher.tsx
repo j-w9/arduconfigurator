@@ -44,14 +44,23 @@ export interface FirmwareFlasherProps {
   listPorts?: () => Promise<WebSerialPortLike[]>
   inflate?: (zlibBytes: Uint8Array) => Promise<Uint8Array>
   /** Optional: send MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN param1=3 (reboot to
-   *  bootloader) to a currently-connected vehicle. When omitted the DFU
-   *  button hides — the modal landing path can't issue MAVLink commands
-   *  but the connected-app Flash tab can. */
+   *  ArduPilot's own bootloader) to a currently-connected vehicle. When
+   *  omitted the button hides — the modal landing path can't issue MAVLink
+   *  commands but the connected-app Flash tab can.
+   *
+   *  Named `onEnterDfu` for history; this is the ArduPilot serial bootloader,
+   *  NOT DFU. See `onEnterRomDfu` for the real thing. */
   onEnterDfu?: () => Promise<void>
   /** When `onEnterDfu` is wired but the vehicle is disarmed/disconnected,
-   *  the host passes the disabled reason here so the DFU button can
+   *  the host passes the disabled reason here so the button can
    *  surface a useful tooltip. */
   enterDfuDisabledReason?: string
+  /** Optional: reboot into the STM32 ROM DFU bootloader
+   *  (PREFLIGHT_REBOOT_SHUTDOWN 42/24/71/99). The escape hatch for when the
+   *  ArduPilot bootloader itself is broken — the case the mislabelled
+   *  "Activate Bootloader (DFU)" button could never actually serve. Rejects
+   *  with an explanatory message on firmware built without ENABLE_DFU_BOOT. */
+  onEnterRomDfu?: () => Promise<void>
   /** Optional: send a normal reboot (MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN
    *  param1=1). Surfaces a "Request Reboot" button above the DFU control;
    *  hidden when omitted (e.g. the disconnected modal landing path). */
@@ -232,6 +241,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     onClose,
     onEnterDfu,
     enterDfuDisabledReason,
+    onEnterRomDfu,
     onReboot,
     rebootDisabledReason,
     onFlashBootloader,
@@ -285,6 +295,9 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   // requires a USB replug), so the button is two-step: the first click arms
   // a confirm/cancel pair, the confirm actually sends the command.
   const [dfuConfirmArmed, setDfuConfirmArmed] = useState(false)
+  // Separate arming state from the bootloader button's: these do genuinely
+  // different things and confirming one must never commit the other.
+  const [romDfuConfirmArmed, setRomDfuConfirmArmed] = useState(false)
   const [rebootBusy, setRebootBusy] = useState(false)
   // Rewriting the bootloader sector can brick the board if it is interrupted,
   // so it gets the same two-click arm/confirm gate as the DFU reboot.
@@ -351,6 +364,26 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       setDfuBusy(false)
     }
   }, [onEnterDfu])
+
+  const handleEnterRomDfu = useCallback(async () => {
+    if (!onEnterRomDfu) return
+    setRomDfuConfirmArmed(false)
+    setDfuBusy(true)
+    setDfuNotice('Requesting STM32 ROM DFU mode…')
+    try {
+      await onEnterRomDfu()
+      setDfuNotice(
+        'DFU requested. The MAVLink link will drop and the board should re-enumerate as an STM32 DFU device (VID 0483 / PID DF11). If it comes back up normally instead, its bootloader predates DFU support — use the board’s BOOT/DFU button.'
+      )
+    } catch (err) {
+      // The runtime distinguishes "not built with ENABLE_DFU_BOOT" from
+      // "signed firmware refuses" from "no answer"; pass that through verbatim
+      // rather than flattening it to "failed".
+      setDfuNotice(err instanceof Error ? err.message : 'Failed to enter DFU mode.')
+    } finally {
+      setDfuBusy(false)
+    }
+  }, [onEnterRomDfu])
 
   const handleReboot = useCallback(async () => {
     if (!onReboot) return
@@ -1058,7 +1091,42 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                 title={enterDfuDisabledReason}
                 onClick={() => setDfuConfirmArmed(true)}
               >
-                Activate Bootloader (DFU)
+                Activate Bootloader
+              </button>
+            )
+          ) : null}
+          {onEnterRomDfu ? (
+            romDfuConfirmArmed ? (
+              <span className="firmware-wizard__dfu-confirm" data-testid="firmware-enter-rom-dfu-confirm-row">
+                <button
+                  type="button"
+                  className="firmware-wizard__dfu-button firmware-wizard__dfu-button--danger"
+                  data-testid="firmware-enter-rom-dfu-confirm"
+                  disabled={dfuBusy}
+                  onClick={() => void handleEnterRomDfu()}
+                >
+                  {dfuBusy ? 'Requesting…' : 'Confirm: enter DFU'}
+                </button>
+                <button
+                  type="button"
+                  className="firmware-wizard__dfu-cancel"
+                  data-testid="firmware-enter-rom-dfu-cancel"
+                  disabled={dfuBusy}
+                  onClick={() => setRomDfuConfirmArmed(false)}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="firmware-wizard__dfu-button"
+                data-testid="firmware-enter-rom-dfu"
+                disabled={dfuBusy || Boolean(enterDfuDisabledReason)}
+                title={enterDfuDisabledReason ?? 'Reboot into the STM32 ROM DFU bootloader (not ArduPilot’s own bootloader).'}
+                onClick={() => setRomDfuConfirmArmed(true)}
+              >
+                Enter DFU (STM32 ROM)
               </button>
             )
           ) : null}
@@ -1112,7 +1180,27 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
         </div>
         {onEnterDfu && dfuConfirmArmed ? (
           <p className="bf-note bf-note--warning" data-testid="firmware-enter-dfu-warning">
-            DFU drops the MAVLink link and requires unplugging/replugging USB. Only proceed if you intend to reflash. Click "Confirm: enter DFU" to continue.
+            This drops the MAVLink link and holds the board in ArduPilot&apos;s bootloader, ready for
+            &quot;Flash firmware&quot;. Only proceed if you intend to reflash. Click &quot;Confirm: enter DFU&quot; to continue.
+          </p>
+        ) : null}
+        {onEnterRomDfu && romDfuConfirmArmed ? (
+          <p className="bf-note bf-note--warning" data-testid="firmware-enter-rom-dfu-warning">
+            This is the chip&apos;s own ROM bootloader, not ArduPilot&apos;s — the recovery path for a board
+            whose ArduPilot bootloader is broken or missing. The link drops and the board re-enumerates as an
+            STM32 DFU device, which this app&apos;s serial flasher cannot talk to; flash it from the DFU tool below or
+            an external one. Many boards are not built with DFU support and will simply refuse.
+          </p>
+        ) : null}
+        {/* Stated where the two buttons are, because the labels alone are how
+            an operator ends up in the ArduPilot bootloader while looking for
+            DFU — the exact confusion that made this second button necessary. */}
+        {onEnterDfu && onEnterRomDfu && !dfuConfirmArmed && !romDfuConfirmArmed ? (
+          <p className="bf-note" data-testid="firmware-bootloader-vs-dfu-note">
+            <strong>Activate Bootloader</strong> holds the board in ArduPilot&apos;s own bootloader — that is what
+            &quot;Flash firmware&quot; above talks to, and it is what you want almost every time.{' '}
+            <strong>Enter DFU (STM32 ROM)</strong> is the deeper recovery mode used when the ArduPilot bootloader
+            itself needs replacing. They are not the same thing.
           </p>
         ) : null}
 

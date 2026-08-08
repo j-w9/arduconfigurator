@@ -1690,6 +1690,63 @@ export class ArduPilotConfiguratorRuntime {
   }
 
   /**
+   * Reboot into the STM32 ROM DFU bootloader — a different thing entirely from
+   * rebootToBootloader() above, and the distinction cost an operator an
+   * evening.
+   *
+   * `rebootToBootloader()` (param1=3) holds the board in *ArduPilot's own*
+   * bootloader, which speaks the ArduPilot serial protocol and is what our
+   * Web Serial flasher talks to. It is NOT DFU. Real DFU is the chip's ROM
+   * bootloader, enumerating as an STM32 device (VID 0483 / PID DF11) — which
+   * is what you need when the ArduPilot bootloader itself is the problem.
+   *
+   * The magic is ArduPilot's, not ours: GCS_Common.cpp handle_preflight_reboot
+   * gates the DFU branch behind param1=42, param2=24, param3=71 and only then
+   * looks at param4=99. Nothing else in that handler accepts param1=42, which
+   * is why a firmware without DFU support answers UNSUPPORTED rather than
+   * doing something unintended.
+   *
+   * Three answers are possible and the caller must distinguish them:
+   *  - ACCEPTED: "Entering DFU mode", the link drops, board re-enumerates.
+   *  - UNSUPPORTED: built without ENABLE_DFU_BOOT (the default for most
+   *    boards). The magic block is compiled out, execution falls through to
+   *    the param1 must-be-1-or-3 check, and that is what rejects it.
+   *  - FAILED: AP_SIGNED_FIRMWARE — "Refusing DFU for secure firmware".
+   *
+   * One caveat this cannot detect: __entry_hook, which performs the actual
+   * jump to ROM, lives in the BOOTLOADER build. A board whose firmware has DFU
+   * support but whose flashed bootloader predates it will accept the command,
+   * reboot, and come back normally.
+   */
+  async rebootToDfu(): Promise<void> {
+    this.discardStaleLink()
+    const ack = await this.sendCommand(MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN, [42, 24, 71, 99, 0, 0, 0], {
+      waitForAck: true,
+      ackTimeoutMs: 3000,
+      // Handled here so each result gets its own actionable sentence rather
+      // than the generic "command rejected".
+      rejectAckOnFailure: false
+    })
+    const result = ack && 'result' in ack ? ack.result : undefined
+    if (result === MAV_RESULT.ACCEPTED) {
+      return
+    }
+    if (result === MAV_RESULT.UNSUPPORTED) {
+      throw new Error(
+        'This firmware was not built with DFU support (ENABLE_DFU_BOOT), so it cannot enter DFU on command. Use the board’s BOOT/DFU button or pads while plugging in USB.'
+      )
+    }
+    if (result === MAV_RESULT.FAILED) {
+      throw new Error(
+        'The autopilot refused to enter DFU. Secure (signed) firmware blocks it — check the messages for "Refusing DFU for secure firmware".'
+      )
+    }
+    throw new Error(
+      `The autopilot did not accept the DFU request${result === undefined ? ' (no acknowledgement)' : ` (result ${result})`}.`
+    )
+  }
+
+  /**
    * Re-flash the bootloader from the image embedded in the RUNNING firmware
    * (MAV_CMD_FLASH_BOOTLOADER, param5 = the 290876 magic).
    *

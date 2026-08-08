@@ -9077,6 +9077,13 @@ export function App() {
               ? async () => { await runtime.rebootToBootloader() }
               : undefined
           }
+          onEnterRomDfu={
+            // The genuine STM32 ROM DFU path, distinct from the ArduPilot
+            // bootloader above. Same connectivity requirement.
+            runtime && snapshot.connection.kind === 'connected'
+              ? async () => { await runtime.rebootToDfu() }
+              : undefined
+          }
           enterDfuDisabledReason={
             snapshot.connection.kind !== 'connected'
               ? 'Connect to a vehicle first to send a DFU reboot command.'

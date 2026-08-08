@@ -1677,6 +1677,20 @@ test.describe('Flash view', () => {
     await expect(page.getByTestId('firmware-enter-dfu')).toBeVisible()
     await expect(page.getByTestId('firmware-enter-dfu-confirm')).toHaveCount(0)
 
+    // The two bootloader modes are separate controls, separately armed, and the
+    // page says so. An operator looking for DFU used to find only the button
+    // that holds the board in ArduPilot's bootloader — labelled "(DFU)".
+    await expect(page.getByTestId('firmware-enter-dfu')).toHaveText('Activate Bootloader')
+    await expect(page.getByTestId('firmware-enter-rom-dfu')).toHaveText('Enter DFU (STM32 ROM)')
+    await expect(page.getByTestId('firmware-bootloader-vs-dfu-note')).toBeVisible()
+    await page.getByTestId('firmware-enter-rom-dfu').click()
+    await expect(page.getByTestId('firmware-enter-rom-dfu-confirm')).toBeVisible()
+    // Arming one must not arm the other.
+    await expect(page.getByTestId('firmware-enter-dfu')).toBeVisible()
+    await expect(page.getByTestId('firmware-enter-dfu-confirm')).toHaveCount(0)
+    await page.getByTestId('firmware-enter-rom-dfu-cancel').click()
+    await expect(page.getByTestId('firmware-enter-rom-dfu-confirm')).toHaveCount(0)
+
     // Update Bootloader (MAV_CMD_FLASH_BOOTLOADER) gets the same two-step gate:
     // rewriting the bootloader sector can brick the board if interrupted, so
     // the first click must only arm, never send.
