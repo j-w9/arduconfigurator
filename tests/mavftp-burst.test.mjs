@@ -258,17 +258,35 @@ test('burst download rejects a file larger than the byte cap before allocating',
   )
 })
 
-test('a second burst download while one is in flight is rejected', async () => {
+test('a second burst download waits for the one in flight instead of joining it', async () => {
+  // This used to assert the second call was REJECTED. It was — but only as a
+  // side effect of the bug: the session lock had a "already held, run straight
+  // through" hatch that could not tell a nested call from an unrelated one, so
+  // the second download barged in and tripped an internal guard. Every request
+  // hardcodes session 0, so a caller that barges in repoints session 0 at its
+  // own file and the download in flight dies on the FC's own FileNotFound.
+  //
+  // With the hatch gone the second download queues, which is what an operator
+  // wants: it runs when the first is done rather than erroring.
   const fileBytes = makeBytes(600, 2)
-  // A responder that always stalls keeps the first download's burst op active
-  // (through its retries) so a concurrent call overlaps it.
   const harness = createHarness(fileBytes, { burstResponder: () => [] })
   const first = harness.service.downloadRemoteFileBurst('/APM/LOGS/1.BIN', { timeoutMs: 30 })
   // Let the first call reach the burst stage (OPEN resolved, activeBurst set).
   await new Promise((resolve) => setTimeout(resolve, 10))
 
-  await assert.rejects(() => harness.service.downloadRemoteFileBurst('/APM/LOGS/2.BIN'), /already in progress/)
+  const second = harness.service.downloadRemoteFileBurst('/APM/LOGS/2.BIN', { timeoutMs: 30 })
+
+  // Nothing for the second file may go on the wire while the first is running.
+  const opensBeforeFirstFails = harness.sent.filter(
+    (message) =>
+      message.type === 'FILE_TRANSFER_PROTOCOL' &&
+      new TextDecoder().decode(message.payload.subarray(12)).includes('2.BIN')
+  )
+  assert.equal(opensBeforeFirstFails.length, 0, 'the queued download touched the session mid-transfer')
+
   await assert.rejects(() => first, /No MAVFTP burst data/)
+  // It waited its turn and then genuinely ran — serializing must not starve.
+  await assert.rejects(() => second, /No MAVFTP burst data/)
 })
 
 /*

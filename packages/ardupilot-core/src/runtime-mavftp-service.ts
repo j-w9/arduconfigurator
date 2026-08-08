@@ -167,7 +167,6 @@ export class MavftpService {
   private lastTransferActivityAtMs = 0
   /** Tail of the serialization chain — see withExclusiveSession. */
   private transferQueue: Promise<void> = Promise.resolve()
-  private sessionHeld = false
   // The seq_number to put on the NEXT request. Not a private counter: MAVFTP's
   // seq_number is a SHARED, monotonically rising conversation counter that the
   // server advances too. A burst reply stream bumps the server's copy once per
@@ -258,14 +257,23 @@ export class MavftpService {
   /**
    * Run `operation` with exclusive use of the FTP session.
    *
-   * Re-entrant on purpose: downloadRemoteFile delegates to readRemoteFile and
-   * readRemoteTextFile to readRemoteFileUnlocked, so a nested call from inside
-   * a held lock runs straight through instead of deadlocking against itself.
+   * Strictly one at a time. There is deliberately NO re-entrancy escape hatch:
+   * a "the lock is already held, run straight through" check cannot tell a
+   * nested call from an unrelated one, because JavaScript gives an async
+   * callback no caller identity. A background read arriving mid-download would
+   * satisfy such a check and barge into the middle of the transfer — and since
+   * every request here hardcodes session 0, its OPEN would repoint session 0 at
+   * another file and the download's next read would NAK "File not found".
+   * That was a real failure: a log download dying partway with the FC's own
+   * error, at a different percentage every time, on any file big enough to
+   * still be running when background housekeeping next fired.
+   *
+   * The two internal call sites that need to run inside a held lock call the
+   * `*Unlocked` variants directly, which is what makes the hatch unnecessary.
+   * Anything reached from inside an operation must do the same or it will
+   * deadlock against this queue.
    */
   private async withExclusiveSession<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.sessionHeld) {
-      return operation()
-    }
     const predecessor = this.transferQueue
     let release = (): void => {}
     // The queue link resolves only from the finally below, so it can never
@@ -274,11 +282,9 @@ export class MavftpService {
       release = resolve
     }))
     await predecessor
-    this.sessionHeld = true
     try {
       return await operation()
     } finally {
-      this.sessionHeld = false
       release()
     }
   }
@@ -345,7 +351,8 @@ export class MavftpService {
         throw error
       }
 
-      await this.deleteRemotePath(normalizedPath, 'file')
+      // Already inside the lock — call the unlocked variant directly.
+      await this.deleteRemotePathUnlocked(normalizedPath, 'file')
       createResponse = await this.send({
         session: 0,
         opcode: MAV_FTP_OPCODE.CREATE_FILE,
@@ -587,7 +594,8 @@ export class MavftpService {
     // single-read path already handles size-0 `@SYS` files (read-to-EOF).
     if (declaredSize <= 0) {
       await this.terminateSession(session)
-      return this.readRemoteFile(normalizedPath, { timeoutMs })
+      // Already inside the lock — call the unlocked variant directly.
+      return this.readRemoteFileUnlocked(normalizedPath, { timeoutMs })
     }
     if (declaredSize > maxBytes) {
       await this.terminateSession(session)
