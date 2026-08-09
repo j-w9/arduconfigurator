@@ -362,6 +362,7 @@ import { buildSetupFlowSections } from './view-models/setup-flow-sections'
 import { buildGuidedSetupOverview } from './view-models/guided-setup-overview'
 import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
 import { ConfigView } from './views/Config'
+import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
 import { FilesView } from './views/Files'
 import { SetupView } from './views/Setup'
 import { LogTuningView } from './views/LogTuning'
@@ -3321,6 +3322,32 @@ export function App() {
    * click. The explicit filter toggle still retries on demand.
    */
   const autoFetchedDefaultsRef = useRef(false)
+
+  /**
+   * Drop the cached defaults when the thing they describe changes.
+   *
+   * Defaults are a property of the BUILD, not of the session, and they were
+   * fetched at most once and then kept forever — the auto-fetch ref latched
+   * true and the map stayed non-null. Reconnect to a different aircraft, or
+   * flash a build whose compiled-in default differs, and the Parameters table
+   * kept showing the old build's default and marking rows "changed" against it.
+   *
+   * Keyed on firmware + board rather than on connection state alone, so a flash
+   * within one session invalidates too. Clearing on disconnect also means a
+   * reconnect re-reads rather than trusting a map from another vehicle.
+   */
+  const defaultsIdentity = paramDefaultsIdentity(snapshot)
+  const lastDefaultsIdentityRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (lastDefaultsIdentityRef.current === defaultsIdentity) {
+      return
+    }
+    lastDefaultsIdentityRef.current = defaultsIdentity
+    autoFetchedDefaultsRef.current = false
+    setParameterDefaults(null)
+    setNonDefaultParamIds(null)
+  }, [defaultsIdentity])
+
   useEffect(() => {
     if (
       selectedParameterId === undefined ||
