@@ -263,6 +263,7 @@ import { BoardOrientationDiagram } from './views/BoardOrientationDiagram'
 import { buildRecentNotices } from './view-models/recent-notices'
 import { deriveExternalChannelClaims, deriveRcLogicChannelClaims } from './view-models/channel-usage'
 import { orderDraftsByEnableGate } from './view-models/enable-gate-write-order'
+import { decidePostWriteResync } from './view-models/post-write-resync'
 import { deriveVtxPowerLevels } from './view-models/vtx-power-levels'
 import { invertGuidedReorderMapping } from './view-models/motor-reorder-mapping'
 import { planGuidedIdentifyAdvance } from './view-models/guided-identify-advance'
@@ -3646,6 +3647,9 @@ export function App() {
         paramValue: draft.nextValue as number
       }))
     setApplyAllProgress({ completed: 0, total: writeRequests.length })
+    // The FC's own parameter total, before the batch. Compared afterwards to
+    // tell "this write opened a sub-tree" from "this write only changed values".
+    const totalParametersBefore = runtime.getSnapshot().parameterStats.total
     try {
       const applyingRebootRequiredCount = stagedParameterDrafts.filter((draft) => draft.definition?.rebootRequired).length
       const result = await runtime.setParameters(
@@ -3663,20 +3667,30 @@ export function App() {
             : `Verified ${result.applied.length} staged parameter change(s).`) +
           describeUnconfirmedWrites(result.unconfirmed)
       })
+      // Re-pull the table only when the write actually changed its shape. The
+      // written values themselves need no re-read — every one was verified by
+      // its PARAM_VALUE echo — so a batch of plain value edits (EK3_SRC*, PIDs)
+      // skips a ~1300-param download it can learn nothing from. Enabling a
+      // sub-tree (TCAL, a CAN driver, a battery monitor) changes the FC's
+      // reported total, and that is what triggers the pull.
+      const resync = decidePostWriteResync({
+        totalBefore: totalParametersBefore,
+        totalAfter: runtime.getSnapshot().parameterStats.total,
+        rebootRequiredCount: applyingRebootRequiredCount,
+        appliedCount: result.applied.length
+      })
       setParameterFollowUp({
         requiresReboot: applyingRebootRequiredCount > 0,
-        refreshRequired: true,
+        refreshRequired: resync.resync,
         changedCount: result.applied.length,
         text:
           applyingRebootRequiredCount > 0
             ? `${applyingRebootRequiredCount} applied change(s) are marked as reboot-required. Request a reboot, then refresh parameters before continuing setup.`
-            : 'Auto-refreshing the parameter snapshot after the batch write…'
+            : resync.resync
+              ? 'The board’s parameter list changed — refreshing the snapshot…'
+              : 'Parameter values written and verified.'
       })
-      // Auto-refresh after the batch write when no reboot is required.
-      // Mirrors the scoped-apply path; same caveat — reboot-required
-      // writes skip the auto-refresh because the pull would race the
-      // still-old running firmware.
-      if (applyingRebootRequiredCount === 0 && result.applied.length > 0) {
+      if (resync.resync) {
         try {
           await runtime.requestParameterList({ fresh: true })
           await runtime.waitForParameterSync()
@@ -3684,6 +3698,10 @@ export function App() {
         } catch {
           // Non-fatal — leave the bit for manual Refresh.
         }
+      } else if (applyingRebootRequiredCount === 0) {
+        // Nothing to wait for; don't leave a follow-up bar asking for a refresh
+        // that is not needed.
+        setParameterFollowUp(undefined)
       }
     } catch (error) {
       setParameterNotice({

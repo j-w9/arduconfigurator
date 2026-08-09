@@ -747,3 +747,101 @@ test('true SITL: SYS_STATUS carries a live pre-arm verdict', { timeout: 240000 }
     await sitl?.stop().catch(() => {})
   }
 })
+
+// The premise behind skipping the post-write parameter re-sync.
+//
+// Apply All used to re-download the whole ~1300-param table after every
+// successful batch, which is the slowest thing on that path. It can be skipped
+// when the write only changed VALUES — those are already verified individually
+// by their PARAM_VALUE echo. It cannot be skipped when the write changed the
+// TABLE, because an AP_PARAM_FLAG_ENABLE gate makes params appear or disappear
+// that the local snapshot has never seen.
+//
+// decidePostWriteResync distinguishes the two by the FC's own reported
+// parameter total. That is only sound if real firmware actually revises that
+// total on an enable write, and leaves it alone otherwise — a claim about
+// ArduPilot, not about our code, so it is pinned here against real firmware
+// rather than a mock that would simply agree with us.
+test('true SITL: the reported parameter total moves only when a write changes the table', { timeout: 240000 }, async (t) => {
+  const repoPath = process.env.ARDUPILOT_REPO_PATH
+  const attachHost = process.env.ARDUPILOT_SITL_HOST
+  const attachPort = Number(process.env.ARDUPILOT_SITL_PORT ?? '5760')
+
+  if (!repoPath && !attachHost) {
+    t.skip('Set ARDUPILOT_REPO_PATH to launch SITL, or ARDUPILOT_SITL_HOST/PORT to attach.')
+    return
+  }
+
+  let sitl
+  if (repoPath) {
+    sitl = await launchArduPilotDirectBinary({
+      repoPath,
+      vehicle: process.env.ARDUPILOT_SITL_VEHICLE ?? 'ArduCopter',
+      frame: process.env.ARDUPILOT_SITL_FRAME ?? 'quad',
+      port: attachPort,
+      launchTimeoutMs: Number(process.env.ARDUPILOT_SITL_LAUNCH_TIMEOUT_MS ?? '120000')
+    })
+  }
+
+  const transport = new TcpTransport('sitl-param-total', {
+    host: attachHost ?? '127.0.0.1',
+    port: attachPort,
+    connectTimeoutMs: 10000
+  })
+  const session = new MavlinkSession(transport, new MavlinkV2Codec())
+  const runtime = new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {})
+
+  const total = () => runtime.getSnapshot().parameterStats.total
+  // The new total rides in on the write's own echo, but give the link a beat so
+  // the assertion is about the firmware rather than about scheduling.
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 1500))
+
+  try {
+    await runtime.connect()
+    await runtime.waitForVehicle({ timeoutMs: 10000 })
+    await runtime.requestParameterList({ timeoutMs: 10000 })
+    await runtime.waitForParameterSync({ timeoutMs: 60000 })
+
+    const batteryMonitor = runtime.getSnapshot().parameters.find((entry) => entry.id === 'BATT_MONITOR')
+    assert.ok(batteryMonitor, 'Expected BATT_MONITOR in the synced table.')
+
+    // 1. Plain value writes. EK3_SRC1_* carries no enable flag, so the table
+    //    keeps its shape and there is nothing a re-sync could discover.
+    const sources = ['EK3_SRC1_POSXY', 'EK3_SRC1_VELXY'].map((id) => {
+      const entry = runtime.getSnapshot().parameters.find((candidate) => candidate.id === id)
+      assert.ok(entry, `Expected ${id} in the synced table.`)
+      return entry
+    })
+    const beforePlain = total()
+    assert.ok(beforePlain > 0, 'Expected the FC to report a parameter total.')
+    const plainResult = await runtime.setParameters(
+      // Values chosen to DIFFER from what is there: ArduPilot only re-counts on
+      // a save that actually changed something, so a no-op write proves nothing.
+      sources.map((entry) => ({ paramId: entry.id, paramValue: entry.value === 0 ? 3 : 0 }))
+    )
+    await settle()
+    assert.equal(plainResult.applied.length, sources.length, 'Expected every value write to be verified.')
+    assert.equal(total(), beforePlain, 'A plain value write must not change the reported parameter total.')
+
+    // 2. An enable gate. BATT_MONITOR carries AP_PARAM_FLAG_ENABLE, so turning
+    //    it off hides its sub-tree and the total must fall.
+    const beforeDisable = total()
+    const disableResult = await runtime.setParameters([{ paramId: 'BATT_MONITOR', paramValue: 0 }])
+    await settle()
+    assert.equal(disableResult.applied.length, 1)
+    assert.notEqual(total(), beforeDisable, 'Disabling an enable gate must change the reported total.')
+
+    // 3. And back, so this is not a one-way artefact of things being removed.
+    const beforeEnable = total()
+    const enableResult = await runtime.setParameters([
+      { paramId: 'BATT_MONITOR', paramValue: batteryMonitor.value === 0 ? 4 : batteryMonitor.value }
+    ])
+    await settle()
+    assert.equal(enableResult.applied.length, 1)
+    assert.notEqual(total(), beforeEnable, 'Re-enabling an enable gate must change the reported total.')
+  } finally {
+    await runtime.disconnect().catch(() => {})
+    runtime.destroy()
+    await sitl?.stop().catch(() => {})
+  }
+})
