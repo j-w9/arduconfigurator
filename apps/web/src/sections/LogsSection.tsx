@@ -147,6 +147,7 @@ export function LogsSection(props: LogsSectionProps) {
           activeDownloadReceivedBytes: onboardLogs.activeDownloadReceivedBytes,
           activeDownloadTotalBytes: onboardLogs.activeDownloadTotalBytes,
           onList: onboardLogs.list,
+          onErase: onboardLogs.erase,
           onDownload: onboardLogs.download,
           // Only offered while signed in — a button that always exists but
           // sometimes does nothing is worse than one that appears when it works.

@@ -1060,3 +1060,20 @@ test('MavlinkV2Codec round-trips ESC_TELEMETRY back onto the right message id', 
   assert.deepEqual([...message.rpm], [8000, 8100, 8200, 8300])
   assert.deepEqual([...message.temperatureC], [40, 41, 42, 43])
 })
+
+test('MavlinkV2Codec round-trips LOG_ERASE', () => {
+  // Wipes every log on the card, so the framing has to be right for the exact
+  // reason it is dangerous: a malformed frame is either ignored (the operator
+  // thinks it erased and it did not) or, worse, decoded as something else.
+  const { frame, message } = roundTrip({
+    type: 'LOG_ERASE',
+    targetSystem: 1,
+    targetComponent: 1
+  })
+  assert.equal(frame[1], MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.LOG_ERASE])
+  assert.deepEqual(message, {
+    type: 'LOG_ERASE',
+    targetSystem: 1,
+    targetComponent: 1
+  })
+})

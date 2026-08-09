@@ -41,7 +41,7 @@ export interface OnboardLogsPanel {
   available: boolean
   /** Which transport will be used — MAVFTP burst read (faster) or LOG_* stream. */
   source: 'mavftp' | 'mavlink'
-  status: 'idle' | 'listing' | 'ready' | 'error'
+  status: 'idle' | 'listing' | 'erasing' | 'ready' | 'error'
   message?: string
   logs: readonly OnboardLogListItem[]
   activeDownloadId?: number
@@ -50,6 +50,8 @@ export interface OnboardLogsPanel {
   activeDownloadTotalBytes?: number
   onList: () => void
   onDownload: (id: number) => void
+  /** Erase every log on the card. The view confirms before calling this. */
+  onErase: () => void
   /** Present only when the operator is signed in to a log server; the row's
    *  Upload button is hidden entirely otherwise, so it can never be a control
    *  that does nothing. */
@@ -282,6 +284,37 @@ export function LogsView(props: LogsViewProps) {
                     }
                   >
                     {onboardLogs.status === 'listing' ? 'Listing…' : 'List onboard logs'}
+                  </button>
+                  {/* Destructive and irreversible, so it confirms and names what
+                      is about to go. Disabled during a download because erasing
+                      mid-transfer would pull the card out from under it. */}
+                  <button
+                    type="button"
+                    style={buttonStyle()}
+                    className="logs-erase-button"
+                    data-testid="logs-onboard-erase"
+                    onClick={() => {
+                      const count = onboardLogs.logs.length
+                      const detail = count > 0 ? `all ${count} log(s)` : 'all logs'
+                      if (
+                        typeof window !== 'undefined' &&
+                        !window.confirm(
+                          `Erase ${detail} from the flight controller?\n\n` +
+                            'This cannot be undone. Download anything you still want first.'
+                        )
+                      ) {
+                        return
+                      }
+                      onboardLogs.onErase()
+                    }}
+                    disabled={
+                      !onboardLogs.available ||
+                      onboardLogs.status === 'listing' ||
+                      onboardLogs.status === 'erasing' ||
+                      onboardLogs.activeDownloadId !== undefined
+                    }
+                  >
+                    {onboardLogs.status === 'erasing' ? 'Erasing…' : 'Clear logs'}
                   </button>
                   <span data-testid="logs-onboard-status">
                     {!onboardLogs.available

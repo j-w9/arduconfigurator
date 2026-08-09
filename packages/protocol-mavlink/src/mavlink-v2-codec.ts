@@ -29,6 +29,7 @@ import type {
   LogDataMessage,
   LogEntryMessage,
   LogRequestDataMessage,
+  LogEraseMessage,
   LogRequestEndMessage,
   LogRequestListMessage,
   MagCalProgressMessage,
@@ -668,6 +669,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeLogDataPayload(message)
     case 'LOG_REQUEST_END':
       return encodeLogRequestEndPayload(message)
+    case 'LOG_ERASE':
+      return encodeLogErasePayload(message)
     case 'MAG_CAL_PROGRESS':
       return encodeMagCalProgressPayload(message)
     case 'MAG_CAL_REPORT':
@@ -737,6 +740,8 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
       return decodeLogDataPayload(payload)
     case MAVLINK_MESSAGE_IDS.LOG_REQUEST_END:
       return decodeLogRequestEndPayload(payload)
+    case MAVLINK_MESSAGE_IDS.LOG_ERASE:
+      return decodeLogErasePayload(payload)
     case MAVLINK_MESSAGE_IDS.MAG_CAL_PROGRESS:
       return decodeMagCalProgressPayload(payload)
     case MAVLINK_MESSAGE_IDS.MAG_CAL_REPORT:
@@ -800,6 +805,8 @@ function messageIdFor(message: MavlinkMessage): number {
       return MAVLINK_MESSAGE_IDS.AUTOPILOT_VERSION
     case 'STATUSTEXT':
       return MAVLINK_MESSAGE_IDS.STATUSTEXT
+    case 'LOG_ERASE':
+      return MAVLINK_MESSAGE_IDS.LOG_ERASE
     case 'LOG_REQUEST_LIST':
       return MAVLINK_MESSAGE_IDS.LOG_REQUEST_LIST
     case 'LOG_ENTRY':
@@ -1280,6 +1287,21 @@ function encodeLogRequestEndPayload(message: LogRequestEndMessage): Uint8Array {
   payload[0] = message.targetSystem & 0xff
   payload[1] = message.targetComponent & 0xff
   return payload
+}
+
+function encodeLogErasePayload(message: LogEraseMessage): Uint8Array {
+  const payload = new Uint8Array(MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.LOG_ERASE])
+  payload[0] = message.targetSystem & 0xff
+  payload[1] = message.targetComponent & 0xff
+  return payload
+}
+
+function decodeLogErasePayload(payload: Uint8Array): LogEraseMessage {
+  return {
+    type: 'LOG_ERASE',
+    targetSystem: payload[0] ?? 0,
+    targetComponent: payload[1] ?? 0
+  }
 }
 
 function decodeLogRequestEndPayload(payload: Uint8Array): LogRequestEndMessage {

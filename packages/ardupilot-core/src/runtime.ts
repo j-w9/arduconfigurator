@@ -1533,6 +1533,32 @@ export class ArduPilotConfiguratorRuntime {
     return this.logDownload.listLogs()
   }
 
+  /**
+   * Erase every dataflash log on the card (`LOG_ERASE`).
+   *
+   * Irreversible, and the vehicle acknowledges nothing — AP_Logger simply
+   * starts erasing — so there is no success to report and no failure to catch.
+   * The caller re-lists to see the result, which is the only honest confirmation
+   * available.
+   *
+   * Refused while armed for the same reason every other destructive action is:
+   * this wipes the record of the flight that is happening.
+   */
+  async eraseOnboardLogs(): Promise<void> {
+    this.assertNotArmed('Disarm the vehicle before erasing onboard logs.')
+    const vehicle = this.vehicle
+    if (!vehicle) {
+      throw new Error('Connect to a vehicle before erasing onboard logs.')
+    }
+    await this.session.send({
+      type: 'LOG_ERASE',
+      targetSystem: vehicle.systemId,
+      targetComponent: vehicle.componentId
+    })
+    this.appendStatusEntry('warning', 'Erasing all onboard dataflash logs (LOG_ERASE sent).')
+    this.emit()
+  }
+
   /** Download one onboard log's bytes (`LOG_REQUEST_DATA`), reporting progress. */
   async downloadOnboardLog(
     id: number,

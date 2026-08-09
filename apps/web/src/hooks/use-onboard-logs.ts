@@ -17,6 +17,7 @@ import {
 
 // Minimal structural slice of the runtime the onboard-log surface needs.
 export interface OnboardLogCapableRuntime {
+  eraseOnboardLogs(): Promise<void>
   listOnboardLogs(): Promise<OnboardLogInfo[]>
   downloadOnboardLog(
     id: number,
@@ -33,7 +34,7 @@ export interface OnboardLogCapableRuntime {
   getSnapshot(): ConfiguratorSnapshot
 }
 
-export type OnboardLogsStatus = 'idle' | 'listing' | 'ready' | 'error'
+export type OnboardLogsStatus = 'idle' | 'listing' | 'erasing' | 'ready' | 'error'
 
 export interface OnboardLogsState {
   status: OnboardLogsStatus
@@ -62,6 +63,8 @@ export interface OnboardLogs extends OnboardLogsState {
   list: () => void
   /** Download one log's bytes to a browser file, reporting progress. */
   download: (id: number) => void
+  /** Erase every log on the card. Irreversible; the caller confirms first. */
+  erase: () => void
 }
 
 /**
@@ -130,6 +133,29 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
       }))
     }
   }, [runtime])
+
+  /**
+   * Erase every log on the card.
+   *
+   * The vehicle acknowledges nothing, so the only honest confirmation is to
+   * re-list afterwards and show what is actually left. The erase itself can
+   * take a while on a large card, hence the delay before re-listing.
+   */
+  const erase = useCallback(async () => {
+    if (!runtime) return
+    setState((current) => ({ ...current, status: 'erasing', message: 'Erasing all onboard logs…' }))
+    try {
+      await runtime.eraseOnboardLogs()
+      await new Promise((resolve) => setTimeout(resolve, 2500))
+      await list()
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Erasing onboard logs failed.'
+      }))
+    }
+  }, [runtime, list])
 
   const download = useCallback(
     async (id: number) => {
@@ -211,6 +237,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
   return {
     ...state,
     list: () => void list(),
-    download: (id) => void download(id)
+    download: (id) => void download(id),
+    erase: () => void erase()
   }
 }

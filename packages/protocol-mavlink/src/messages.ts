@@ -283,6 +283,19 @@ export interface LogRequestEndMessage {
   targetComponent: number
 }
 
+/**
+ * GCS → vehicle: erase every dataflash log on the card.
+ *
+ * Irreversible, and the vehicle acknowledges nothing — AP_Logger just starts
+ * erasing. Callers have to treat "sent" as the whole story and re-list to see
+ * the result.
+ */
+export interface LogEraseMessage {
+  type: 'LOG_ERASE'
+  targetSystem: number
+  targetComponent: number
+}
+
 /** Vehicle → GCS: onboard magnetometer-calibration progress. */
 export interface MagCalProgressMessage {
   type: 'MAG_CAL_PROGRESS'
@@ -596,6 +609,7 @@ export type MavlinkMessage =
   | LogRequestDataMessage
   | LogDataMessage
   | LogRequestEndMessage
+  | LogEraseMessage
   | MagCalProgressMessage
   | MagCalReportMessage
   | UavcanNodeStatusMessage
