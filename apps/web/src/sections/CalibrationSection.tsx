@@ -7,6 +7,7 @@ import { useState, type ReactElement } from 'react'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
 import { MAX_MOTOR_TEST_DURATION_SECONDS } from '@arduconfig/ardupilot-core'
+import { canZeroCurrentOffset } from '../view-models/battery-zero-offset-guard'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { formatArducopterMotorPwmType } from '@arduconfig/param-metadata'
 
@@ -614,6 +615,13 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                         measuredA > 0
                           ? currentPerVolt * (measuredA / reportedA)
                           : undefined
+                      // The offset defines what zero amps looks like, so it is
+                      // only meaningful with the pack off and the board on USB.
+                      const zeroVerdict = canZeroCurrentOffset({
+                        voltageV: battery.verified ? battery.voltageV : undefined,
+                        currentA: battery.verified ? battery.currentA : undefined,
+                        telemetryVerified: battery.verified
+                      })
                       return (
                         <div className="guided-current-cal" data-testid="battery-current-guided">
                           <div className="switch-exercise-controls">
@@ -621,7 +629,8 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                               type="button"
                               style={buttonStyle()}
                               data-testid="battery-current-zero-offset"
-                              disabled={!canGuide || zeroedOffset === undefined}
+                              title={zeroVerdict.allowed ? undefined : zeroVerdict.reason}
+                              disabled={!canGuide || zeroedOffset === undefined || !zeroVerdict.allowed}
                               onClick={() => {
                                 if (zeroedOffset === undefined) return
                                 void (async () => {
@@ -643,6 +652,15 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                               Zero offset now ({reportedA !== undefined ? `${reportedA.toFixed(2)} A` : '—'} → 0 A)
                             </button>
                           </div>
+                          {/* Say why it is unavailable. A greyed button with no
+                              reason is indistinguishable from a broken one, and
+                              the fix here is a physical action the operator has
+                              to know to take. */}
+                          {!zeroVerdict.allowed ? (
+                            <p className="switch-exercise-warning" data-testid="battery-current-zero-blocked">
+                              {zeroVerdict.reason}
+                            </p>
+                          ) : null}
                           {/* Step 2: put a real load on the pack. Current
                            *  calibration needs a steady draw to scale against —
                            *  BATT_AMP_PERVLT is fitted from (measured / reported)
