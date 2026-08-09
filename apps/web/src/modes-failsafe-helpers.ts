@@ -30,7 +30,17 @@ import type { FailsafeViewRow } from './views/Failsafe'
 // worse than an unfamiliar number. (This reverses the earlier
 // "no confusing Mode 23 placeholder" call — the placeholder is only confusing
 // when the slot is empty, and that case is still a dash.)
-export function formatModeAssignment(value: number | undefined, vehicle: DetectedVehicle = 'ArduCopter'): string {
+export function formatModeAssignment(
+  value: number | undefined,
+  vehicle: DetectedVehicle = 'ArduCopter',
+  /**
+   * Vehicle-reported modes, when it has enumerated them. Consulted only for
+   * numbers the static tables do not cover, so a fork's custom mode reads as
+   * its name instead of "Mode 31" while every familiar mode keeps the wording
+   * used elsewhere in the app.
+   */
+  availableModes: readonly { customMode: number; name: string }[] = []
+): string {
   const label =
     vehicle === 'ArduPlane'
       ? arduplaneFlightModeLabel(value)
@@ -41,6 +51,10 @@ export function formatModeAssignment(value: number | undefined, vehicle: Detecte
           : arducopterFlightModeLabel(value)
   if (label) {
     return label
+  }
+  const reported = availableModes.find((mode) => mode.customMode === value)?.name
+  if (reported) {
+    return reported
   }
   return value === undefined || !Number.isFinite(value) ? '—' : `Mode ${value}`
 }

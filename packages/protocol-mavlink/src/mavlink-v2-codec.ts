@@ -14,6 +14,8 @@ import { sha256 } from './sha256.js'
 import type { StreamingCodec } from './json-lines-codec.js'
 import type {
   AttitudeMessage,
+  AvailableModeMessage,
+  AvailableModesMonitorMessage,
   ScaledImuMessage,
   AttitudeQuaternionMessage,
   AutopilotVersionMessage,
@@ -753,6 +755,10 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
       return decodeEscTelemetryPayload(payload, 4)
     case MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12:
       return decodeEscTelemetryPayload(payload, 8)
+    case MAVLINK_MESSAGE_IDS.AVAILABLE_MODES:
+      return decodeAvailableModePayload(payload)
+    case MAVLINK_MESSAGE_IDS.AVAILABLE_MODES_MONITOR:
+      return decodeAvailableModesMonitorPayload(payload)
     case MAVLINK_MESSAGE_IDS.CAN_FRAME:
       return decodeCanFramePayload(payload)
     default:
@@ -1526,6 +1532,35 @@ function encodeCanFramePayload(message: CanFrameMessage): Uint8Array {
   view.setUint8(7, message.len)
   payload.set(copyFixedBytes(message.data, 8), 8)
   return payload
+}
+
+/**
+ * AVAILABLE_MODES (435). Wire order is MAVLink's usual descending-size sort:
+ * custom_mode(u32), properties(u32), number_modes(u8), mode_index(u8),
+ * standard_mode(u8), mode_name(char[35]).
+ */
+function decodeAvailableModePayload(payload: Uint8Array): AvailableModeMessage | undefined {
+  // v2 truncates trailing zero bytes, and a mode name shorter than 35 chars
+  // guarantees that happens — so pad back out rather than rejecting the frame.
+  const bytes = new Uint8Array(46)
+  bytes.set(payload.subarray(0, Math.min(payload.length, 46)))
+  const view = new DataView(bytes.buffer)
+  const rawName = bytes.subarray(11, 46)
+  const nul = rawName.indexOf(0)
+  const name = new TextDecoder().decode(nul === -1 ? rawName : rawName.subarray(0, nul)).trim()
+  return {
+    type: 'AVAILABLE_MODE',
+    customMode: view.getUint32(0, true),
+    properties: view.getUint32(4, true),
+    numberModes: bytes[8],
+    modeIndex: bytes[9],
+    standardMode: bytes[10],
+    name
+  }
+}
+
+function decodeAvailableModesMonitorPayload(payload: Uint8Array): AvailableModesMonitorMessage {
+  return { type: 'AVAILABLE_MODES_MONITOR', sequence: payload[0] ?? 0 }
 }
 
 function decodeCanFramePayload(payload: Uint8Array): CanFrameMessage {

@@ -4,6 +4,8 @@ import type {
   LiveSignalId,
 } from '@arduconfig/param-metadata'
 import type {
+  AvailableModeMessage,
+  AvailableModesMonitorMessage,
   GpsRawIntMessage,
   AttitudeMessage,
   ScaledImuMessage,
@@ -39,6 +41,7 @@ import {
 import type { TransportStatus, Unsubscribe } from '@arduconfig/transport'
 
 import type {
+  AvailableFlightMode,
   BoardFileState,
   CanNodeState,
   HardwareBoardState,
@@ -347,6 +350,14 @@ const CAN_NODE_STALE_SWEEP_INTERVAL_MS = 1000
 // where the id IS the backend instance). Anything at or above this is an
 // avoidance sector, not the downward lidar the Status card reports.
 const PROXIMITY_SENSOR_ID_START = 10
+/**
+ * How often the vehicle may send one AVAILABLE_MODES entry.
+ *
+ * The list is sent one entry per tick, so this sets how fast a ~30-mode
+ * enumeration completes. 100 ms keeps it a couple of seconds without competing
+ * hard with the parameter download, which shares STREAM_PARAMS.
+ */
+const AVAILABLE_MODES_INTERVAL_US = 100000
 const LIVE_TELEMETRY_REQUESTS = [
   {
     // The RAW receiver report. Distinct from GLOBAL_POSITION_INT, which only
@@ -657,6 +668,10 @@ export class ArduPilotConfiguratorRuntime {
     | undefined
   private autopilotVersionRequested = false
   private uartsFileRequested = false
+  /** Vehicle-reported flight modes, keyed by the number written to FLTMODEn. */
+  private availableModes = new Map<number, AvailableFlightMode>()
+  private availableModesSequence: number | undefined
+  private availableModesRequested = false
   private uartsRefreshTimer?: ReturnType<typeof setInterval>
 
   private metadata: FirmwareMetadataBundle
@@ -819,6 +834,9 @@ export class ArduPilotConfiguratorRuntime {
         uartsFile: cloneBoardFileState(this.uartsFile),
         pwmOutputCount: this.pwmOutputCount
       }),
+      // Sorted by mode number so the order is stable across reads; the FC
+      // sends them in its own array order, which is not sorted.
+      availableModes: [...this.availableModes.values()].sort((a, b) => a.customMode - b.customMode),
       parameterStats: {
         // Use parameterSync.downloaded (real arrivals), NOT parameters.length,
         // which also counts alias mirrors and would inflate downloaded.
@@ -2456,6 +2474,12 @@ export class ArduPilotConfiguratorRuntime {
       case 'ESC_TELEMETRY':
         this.processEscTelemetry(envelope.message)
         break
+      case 'AVAILABLE_MODE':
+        this.processAvailableMode(envelope.message)
+        break
+      case 'AVAILABLE_MODES_MONITOR':
+        this.processAvailableModesMonitor(envelope.message)
+        break
       default:
         break
     }
@@ -2692,6 +2716,14 @@ export class ArduPilotConfiguratorRuntime {
       targetComponentId: this.parameterSync.targetComponentId ?? this.vehicle?.componentId,
       requestedAtMs: this.parameterSync.requestedAtMs,
       completedAtMs: nextStatus === 'complete' ? this.parameterSync.completedAtMs ?? Date.now() : undefined
+    }
+
+    if (isComplete && !this.availableModesRequested) {
+      // Deliberately after the parameter download: MSG_AVAILABLE_MODES and
+      // MSG_NEXT_PARAM share STREAM_PARAMS, so asking earlier just queues the
+      // modes behind a thousand PARAM_VALUEs.
+      this.availableModesRequested = true
+      void this.requestAvailableModes()
     }
 
     if (isComplete) {
@@ -3257,6 +3289,83 @@ export class ArduPilotConfiguratorRuntime {
    * 5_TO_8 message), and listing those as ESCs sitting at 0 RPM would invent
    * hardware that is not there.
    */
+  /**
+   * Collect the vehicle's own mode list.
+   *
+   * A static mode table only describes the firmware it was written against, so
+   * a fork's extra mode or a Lua-registered one shows up in a mode dropdown as
+   * a bare number, or not at all. AVAILABLE_MODES has the vehicle name its own
+   * modes, so whatever it can actually fly is what gets offered.
+   *
+   * Keyed by customMode rather than modeIndex: the index is just a position in
+   * the reply sequence, while the custom mode number is what goes into FLTMODEn
+   * and is what the rest of the app matches on.
+   */
+  private processAvailableMode(message: AvailableModeMessage): void {
+    const previous = this.availableModes.get(message.customMode)
+    if (
+      previous !== undefined &&
+      previous.name === message.name &&
+      previous.standardMode === message.standardMode &&
+      previous.properties === message.properties
+    ) {
+      return
+    }
+    this.availableModes.set(message.customMode, {
+      customMode: message.customMode,
+      name: message.name,
+      standardMode: message.standardMode,
+      properties: message.properties
+    })
+    this.emit()
+  }
+
+  /**
+   * The vehicle bumps this sequence when its mode list changes — a script
+   * registering a mode, or a reboot into a different build. Re-read rather than
+   * trusting what we cached.
+   */
+  private processAvailableModesMonitor(message: AvailableModesMonitorMessage): void {
+    if (this.availableModesSequence === message.sequence) {
+      return
+    }
+    this.availableModesSequence = message.sequence
+    this.availableModes.clear()
+    void this.requestAvailableModes()
+    this.emit()
+  }
+
+  /**
+   * Ask the vehicle to enumerate its modes.
+   *
+   * The interval matters and is not optional: MSG_AVAILABLE_MODES sits in
+   * ArduPilot's STREAM_PARAMS, whose rate is 0 by default, so a bare
+   * REQUEST_MESSAGE is answered with COMMAND_ACK ACCEPTED and then total
+   * silence. Giving the message its own interval is what makes the scheduler
+   * actually run the sender.
+   */
+  async requestAvailableModes(): Promise<void> {
+    const vehicle = this.vehicle
+    if (!vehicle) {
+      return
+    }
+    try {
+      await this.sendCommand(MAV_CMD.SET_MESSAGE_INTERVAL, [
+        MAVLINK_MESSAGE_IDS.AVAILABLE_MODES,
+        AVAILABLE_MODES_INTERVAL_US,
+        0, 0, 0, 0, 0
+      ])
+      // param2 = 0 asks for the whole list, one entry per scheduler tick.
+      await this.sendCommand(MAV_CMD.REQUEST_MESSAGE, [
+        MAVLINK_MESSAGE_IDS.AVAILABLE_MODES,
+        0, 0, 0, 0, 0, 0
+      ])
+    } catch {
+      // Firmware without the message answers UNSUPPORTED; the static mode
+      // table remains the fallback, so this is not worth surfacing.
+    }
+  }
+
   private processEscTelemetry(message: EscTelemetryMessage): void {
     const now = Date.now()
     const current = this.liveVerification.escTelemetry

@@ -429,6 +429,40 @@ export interface DistanceSensorMessage {
  * ESC's electrical RPM by SERVO_BLH_POLES (AP_BLHeli.cpp:1544). A wrong pole
  * count therefore shows up here as an RPM wrong by exactly that factor.
  */
+/**
+ * One entry of the vehicle's own flight-mode list (AVAILABLE_MODES).
+ *
+ * The point of consuming this is that a static table can only ever describe the
+ * firmware it was written against. A fork with an extra mode, or a Lua script
+ * that registers one, is invisible to a hardcoded map — the operator sees a
+ * bare number, or nothing at all, in a mode dropdown. Here the vehicle names
+ * its own modes, so whatever it can actually fly is what gets offered.
+ */
+export interface AvailableModeMessage {
+  type: 'AVAILABLE_MODE'
+  /** How many modes the vehicle will send in total, from the same message. */
+  numberModes: number
+  /** 1-based position in that list. */
+  modeIndex: number
+  /** MAV_STANDARD_MODE, or 0 when the mode is flight-stack specific. */
+  standardMode: number
+  /** The number written into FLTMODEn — 31 for a fork's Fiber, say. */
+  customMode: number
+  /** MAV_MODE_PROPERTY bits (e.g. advanced / not-user-selectable). */
+  properties: number
+  /** Human name as the firmware spells it, e.g. "Fiber", "VALT Hold". */
+  name: string
+}
+
+/**
+ * Sequence counter for the mode list. The vehicle bumps it whenever its modes
+ * change, so a cached enumeration can be invalidated without re-reading it.
+ */
+export interface AvailableModesMonitorMessage {
+  type: 'AVAILABLE_MODES_MONITOR'
+  sequence: number
+}
+
 export interface EscTelemetryMessage {
   type: 'ESC_TELEMETRY'
   /**
@@ -538,6 +572,8 @@ export type MavlinkMessage =
   | SysStatusMessage
   | OpticalFlowMessage
   | DistanceSensorMessage
+  | AvailableModeMessage
+  | AvailableModesMonitorMessage
   | EscTelemetryMessage
   | CanFrameMessage
   | GpsRawIntMessage

@@ -770,6 +770,18 @@ export interface StaleLinkState {
   total: number
 }
 
+/** One flight mode as the vehicle itself describes it. */
+export interface AvailableFlightMode {
+  /** The number written into FLTMODEn. */
+  customMode: number
+  /** Name as the firmware spells it, e.g. "Fiber". */
+  name: string
+  /** MAV_STANDARD_MODE, 0 when flight-stack specific. */
+  standardMode: number
+  /** MAV_MODE_PROPERTY bits. */
+  properties: number
+}
+
 export interface ConfiguratorSnapshot {
   connection: TransportStatus
   vehicle?: VehicleIdentity
@@ -779,6 +791,14 @@ export interface ConfiguratorSnapshot {
    * whenever the data on screen is live (or there is nothing to show).
    */
   staleLink?: StaleLinkState
+  /**
+   * Flight modes the connected vehicle reports it has (AVAILABLE_MODES).
+   *
+   * Empty when the firmware does not answer — callers fall back to the static
+   * per-vehicle mode table. Non-empty, this is authoritative: it is the only
+   * source that knows about a fork's custom modes or a Lua-registered one.
+   */
+  availableModes: AvailableFlightMode[]
   parameterStats: {
     downloaded: number
     total: number

@@ -44,7 +44,14 @@ export const MAVLINK_MESSAGE_IDS = {
   // truthful "no ESC telemetry", not a dropped frame.
   ESC_TELEMETRY_1_TO_4: 11030,
   ESC_TELEMETRY_5_TO_8: 11031,
-  ESC_TELEMETRY_9_TO_12: 11032
+  ESC_TELEMETRY_9_TO_12: 11032,
+  // Mode enumeration. Lets a GCS learn the modes a build actually has —
+  // including fork-custom and Lua-scripted ones — by name and number, instead
+  // of matching against a hardcoded table that can only ever know upstream's.
+  AVAILABLE_MODES: 435,
+  // Bumped by the vehicle when its mode list changes, so a cached enumeration
+  // can be invalidated without polling the list itself.
+  AVAILABLE_MODES_MONITOR: 437
 } as const
 
 export const MAVLINK_MESSAGE_CRCS: Record<number, number> = {
@@ -96,7 +103,11 @@ export const MAVLINK_MESSAGE_CRCS: Record<number, number> = {
   // (MAVLINK_MSG_ID_ESC_TELEMETRY_*_CRC), not computed here.
   [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4]: 144,
   [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_5_TO_8]: 133,
-  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12]: 85
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12]: 85,
+  // crc_extra from the generated development-dialect headers
+  // (MAVLINK_MSG_ID_AVAILABLE_MODES_CRC / _MONITOR_CRC), not computed here.
+  [MAVLINK_MESSAGE_IDS.AVAILABLE_MODES]: 134,
+  [MAVLINK_MESSAGE_IDS.AVAILABLE_MODES_MONITOR]: 30
 }
 
 export const MAVLINK_PAYLOAD_LENGTHS: Record<number, number> = {
@@ -144,7 +155,11 @@ export const MAVLINK_PAYLOAD_LENGTHS: Record<number, number> = {
   // temperature (uint8[4] = 4) = 44. No extension fields, so MIN_LEN == LEN.
   [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4]: 44,
   [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_5_TO_8]: 44,
-  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12]: 44
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12]: 44,
+  // custom_mode(4) + properties(4) + number_modes(1) + mode_index(1) +
+  // standard_mode(1) + mode_name(35) = 46. No extension fields.
+  [MAVLINK_MESSAGE_IDS.AVAILABLE_MODES]: 46,
+  [MAVLINK_MESSAGE_IDS.AVAILABLE_MODES_MONITOR]: 1
 }
 
 export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
@@ -190,7 +205,9 @@ export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.GPS_INPUT]: 63,
   [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4]: 44,
   [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_5_TO_8]: 44,
-  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12]: 44
+  [MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_9_TO_12]: 44,
+  [MAVLINK_MESSAGE_IDS.AVAILABLE_MODES]: 46,
+  [MAVLINK_MESSAGE_IDS.AVAILABLE_MODES_MONITOR]: 1
 }
 
 export const MAVLINK_PROTOCOL_VERSION = 3

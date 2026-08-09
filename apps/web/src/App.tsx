@@ -364,6 +364,7 @@ import { buildGuidedSetupOverview } from './view-models/guided-setup-overview'
 import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
 import { ConfigView } from './views/Config'
 import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
+import { withFlightModeOptions } from './view-models/flight-mode-options'
 import { FilesView } from './views/Files'
 import { SetupView } from './views/Setup'
 import { LogTuningView } from './views/LogTuning'
@@ -8415,11 +8416,17 @@ export function App() {
           slots={MODES_SLOT_DEFINITIONS.map((slot) => {
             const paramId = modeSlotParamId(snapshot.vehicle?.vehicle, slot.position)
             const paramValue = readRoundedParameter(snapshot, paramId)
-            const parameter = selectParameterById(snapshot, paramId)
+            // Offer what the vehicle says it can fly, not just what the
+            // catalogue knows — otherwise a fork's custom mode cannot be
+            // assigned from this dropdown at all.
+            const parameter = withFlightModeOptions(
+              selectParameterById(snapshot, paramId),
+              snapshot.availableModes
+            )
             return {
               position: slot.position,
               pwmLabel: slot.pwmLabel,
-              modeLabel: formatModeAssignment(paramValue, snapshot.vehicle?.vehicle),
+              modeLabel: formatModeAssignment(paramValue, snapshot.vehicle?.vehicle, snapshot.availableModes),
               paramSynced: paramValue !== undefined,
               isActive: modeSwitchEstimate.estimatedSlot === slot.position,
               parameter
