@@ -8560,6 +8560,12 @@ export function App() {
 
       {(activeViewId === 'motors' || activeViewId === 'servos') ? (
       <OutputsSection
+        // Motors and Servos are the same component with a different prop, so
+        // React reconciles them as one element: the DOM nodes, internal state
+        // and measured sizes all carry across a tab switch instead of the tabs
+        // swapping. Keying on the view makes it a real remount, so each tab
+        // starts from its own clean state rather than mutating the other's.
+        key={activeViewId}
         activeViewId={activeViewId}
         snapshot={snapshot}
         motorSetupSlot={renderMotorSetupReorderPanel()}
