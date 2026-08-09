@@ -7614,6 +7614,23 @@ export function App() {
         />
 
         <div className="workspace-main">
+          {/* A guided-setup step sends the operator to another tab to do the
+              work (Receiver for an RC exercise, Motors for a spin check). The
+              flow stays active, and it auto-returns when an exercise COMPLETES
+              — but an operator who just wants to go back, or who did not finish,
+              had no way other than finding the tab in the nav and hoping they
+              landed on the right step. This is that way back. */}
+          {setupMode === 'wizard' && activeViewId !== 'guided-setup' ? (
+            <button
+              type="button"
+              className="setup-return-bar"
+              data-testid="setup-return-to-wizard"
+              onClick={() => setActiveViewId('guided-setup')}
+            >
+              ← Back to guided setup
+              {selectedSetupSection ? <span>{selectedSetupSection.title}</span> : null}
+            </button>
+          ) : null}
           <WorkspaceNotes
             snapshot={snapshot}
             sessionNotice={sessionNotice}

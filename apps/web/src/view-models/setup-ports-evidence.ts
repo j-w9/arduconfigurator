@@ -253,7 +253,20 @@ export function describeUnconfiguredPort(finding: UnconfiguredPortFinding): stri
   }
   // "in the last sample" is load-bearing: it is what distinguishes errors
   // happening NOW from a boot-time count that never decays.
-  return `SERIAL${finding.portNumber} (${finding.hardwarePort}) is receiving ${finding.rxBytes} bytes it cannot decode (${finding.framingErrors} framing errors in the last sample) — check the baud and protocol for whatever is wired there`
+  const observed = `SERIAL${finding.portNumber} (${finding.hardwarePort}) is receiving ${finding.rxBytes} bytes it cannot decode (${finding.framingErrors} framing errors in the last sample)`
+
+  if (finding.protocolValue === PROTOCOL_RCIN) {
+    // The port is already set to RC input, so "check the protocol" is the one
+    // thing that is definitely not wrong. The common cause is upstream of the
+    // FC entirely: a receiver with no link to its transmitter still powers up
+    // and still drives the line, but emits nothing the FC can frame. Operators
+    // read the resulting verdict as a broken port or a wrong baud and go
+    // hunting in the wrong place — the fix is usually to turn the transmitter
+    // on and let it bind.
+    return `${observed} — this port is set to RC input, so check the transmitter is powered on and linked to the receiver first; an unlinked receiver produces no decodable frames. If it is linked, check the baud matches the receiver's protocol`
+  }
+
+  return `${observed} — check the baud and protocol for whatever is wired there`
 }
 
 /** One-line description of the duplicate-RCIN condition. */

@@ -342,3 +342,39 @@ describe('framing errors are judged over the same window as the bytes', () => {
     expect(evidence.unconfigured).toEqual([])
   })
 })
+
+describe('describeUnconfiguredPort — RC input advice', () => {
+  it('tells the operator to check the transmitter link before the baud', () => {
+    // The field case: an ELRS receiver at 460800 on a port already set to RCIN.
+    // The port is right, the baud is right, and it still cannot decode because
+    // the transmitter is off — an unlinked receiver drives the line but emits
+    // nothing frameable. "Check the baud and protocol" sends the operator
+    // hunting in the one place that is definitely not wrong.
+    const advice = describeUnconfiguredPort({
+      portNumber: 7,
+      hardwarePort: 'UART7',
+      rxBytes: 4096,
+      framingErrors: 900,
+      protocolValue: 23,
+      garbled: true,
+      kind: 'undecodable'
+    })
+    expect(advice).toMatch(/transmitter is powered on and linked/i)
+    // The link check has to come first, since it is the likelier cause.
+    expect(advice.indexOf('transmitter')).toBeLessThan(advice.indexOf('baud'))
+  })
+
+  it('still says check the baud and protocol for a port that is not RC input', () => {
+    const advice = describeUnconfiguredPort({
+      portNumber: 4,
+      hardwarePort: 'UART4',
+      rxBytes: 2048,
+      framingErrors: 700,
+      protocolValue: 2,
+      garbled: true,
+      kind: 'undecodable'
+    })
+    expect(advice).toMatch(/check the baud and protocol/i)
+    expect(advice).not.toMatch(/transmitter/i)
+  })
+})

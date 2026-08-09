@@ -4937,6 +4937,32 @@ body.is-status-dash-dragging {
 }
 
 .setup-wizard__main,
+.setup-return-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--primary-500);
+  background: color-mix(in srgb, var(--primary-500) 12%, transparent);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.setup-return-bar span {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.setup-return-bar:hover {
+  background: color-mix(in srgb, var(--primary-500) 20%, transparent);
+}
+
 .setup-wizard__reset {
   padding: 3px 10px;
   border-radius: 999px;
