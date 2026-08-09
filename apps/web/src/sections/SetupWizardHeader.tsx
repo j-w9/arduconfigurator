@@ -24,6 +24,8 @@ export interface SetupWizardHeaderProps {
   setupFlowFollowUp: SetupFlowFollowUpDescriptor | undefined
   guidedSetupTestingShortcutActive: boolean
   onSelectStep: (sectionId: string) => void
+  /** Forget every confirmation and exercise and start the flow again. */
+  onResetProgress: () => void
 }
 
 export function SetupWizardHeader({
@@ -33,7 +35,8 @@ export function SetupWizardHeader({
   setupFlowProgress,
   setupFlowFollowUp,
   guidedSetupTestingShortcutActive,
-  onSelectStep
+  onSelectStep,
+  onResetProgress
 }: SetupWizardHeaderProps): ReactElement {
   return (
     <>
@@ -52,6 +55,31 @@ export function SetupWizardHeader({
           {selectedSetupSection.confirmationOutcome && selectedSetupSection.confirmationOutcome !== 'complete' ? (
             <StatusBadge tone="warning">{formatSetupOutcome(selectedSetupSection.confirmationOutcome)}</StatusBadge>
           ) : null}
+          {/* Progress is durable and keyed to the board, so a half-finished
+              flow follows an operator across reloads and reconnects with no
+              way out. The confirm is explicit that this forgets confirmations
+              rather than un-writing anything already applied. */}
+          <button
+            type="button"
+            className="setup-wizard__reset"
+            data-testid="setup-wizard-reset"
+            title="Forget every confirmed step and start guided setup from the beginning"
+            onClick={() => {
+              if (
+                typeof window !== 'undefined' &&
+                !window.confirm(
+                  'Start guided setup over?\n\n' +
+                    'Every step becomes unconfirmed and the exercises are cleared. Parameters already written ' +
+                    'to the vehicle are NOT changed.'
+                )
+              ) {
+                return
+              }
+              onResetProgress()
+            }}
+          >
+            Reset progress
+          </button>
         </div>
       </div>
 

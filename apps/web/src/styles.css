@@ -4937,6 +4937,21 @@ body.is-status-dash-dragging {
 }
 
 .setup-wizard__main,
+.setup-wizard__reset {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.setup-wizard__reset:hover {
+  color: var(--text-primary);
+  border-color: var(--edge-strong, var(--border-subtle));
+}
+
 .setup-wizard__aside {
   display: grid;
   gap: 14px;

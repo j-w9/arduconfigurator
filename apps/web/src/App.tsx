@@ -234,6 +234,7 @@ import {
 import {
   collectTerminalSetupExercises,
   deriveSetupProgressKey,
+  clearStoredSetupProgress,
   loadStoredSetupProgress,
   saveStoredSetupProgress
 } from './setup-progress-storage'
@@ -1599,6 +1600,36 @@ export function App() {
   }, [runtime])
 
   const restoredSetupProgressKeyRef = useRef<string | undefined>(undefined)
+
+  /**
+   * Start guided setup over.
+   *
+   * Clears the durable copy as well as the in-memory state: the restore effect
+   * refills confirmations the moment the board identifies itself, so wiping
+   * only memory produces a reset that visibly undoes itself a second later.
+   * The restore latch is reset too, otherwise the next identify is skipped and
+   * the operator has to reconnect before the wizard behaves.
+   *
+   * Deliberately does NOT touch the vehicle: this forgets what the operator
+   * confirmed, it does not un-write parameters. Anything already applied stays
+   * applied, which is why the confirm below says so.
+   */
+  function handleResetGuidedSetup(): void {
+    setSetupConfirmations({})
+    setOrientationExercise(createIdleOrientationExerciseState())
+    setModeSwitchExercise(createIdleModeSwitchExerciseState())
+    setRcRangeExercise(createIdleRcRangeExerciseState())
+    setRcMappingSession(createIdleRcMappingSessionState())
+    if (setupProgressKey !== undefined) {
+      clearStoredSetupProgress(setupProgressKey)
+    }
+    restoredSetupProgressKeyRef.current = setupProgressKey
+    setSelectedSetupSectionId(undefined)
+    setSessionNotice({
+      tone: 'neutral',
+      text: 'Guided setup reset — every step is unconfirmed again. Parameters already written to the vehicle are unchanged.'
+    })
+  }
 
   useEffect(() => {
     setParameterNotice(undefined)
@@ -7793,6 +7824,7 @@ export function App() {
                     setupFlowProgress={setupFlowProgress}
                     setupFlowFollowUp={setupFlowFollowUp}
                     guidedSetupTestingShortcutActive={guidedSetupTestingShortcutActive}
+                    onResetProgress={handleResetGuidedSetup}
                     onSelectStep={(sectionId) => {
                       setSelectedSetupSectionId(sectionId)
                       setSetupMode('wizard')

@@ -159,6 +159,29 @@ export function loadStoredSetupProgress(
   }
 }
 
+/**
+ * Forget the stored progress for one board.
+ *
+ * Needed by the wizard's Reset: clearing only the in-memory confirmations
+ * leaves the durable copy behind, and the restore effect puts every step back
+ * the moment the board identifies itself again — a reset that visibly undoes
+ * itself is worse than none.
+ */
+export function clearStoredSetupProgress(
+  key: string,
+  storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+): void {
+  const store = resolveStorage(storage)
+  if (!store) {
+    return
+  }
+  try {
+    store.removeItem(key)
+  } catch {
+    // Best-effort, exactly like the save path.
+  }
+}
+
 export function saveStoredSetupProgress(
   key: string,
   progress: StoredSetupProgress,
