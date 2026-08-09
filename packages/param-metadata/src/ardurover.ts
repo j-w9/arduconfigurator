@@ -259,7 +259,6 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     { id: 'modes', label: 'Modes', description: 'Rover drive-mode switch assignments and live position.', order: 6 },
     { id: 'motors', label: 'Motors', description: 'Throttle / skid-motor output assignments and drive-config motor behavior.', order: 7 },
     { id: 'servos', label: 'Servos', description: 'Steering servo and aux peripheral servo outputs.', order: 7.5 },
-    { id: 'power', label: 'Power', description: 'Battery, failsafe, and pre-arm review.', order: 8 },
     { id: 'failsafe', label: 'Failsafe', description: 'Rover throttle/GCS failsafe and battery failsafe overview.', order: 9 },
     { id: 'logs', label: 'Logs', description: 'Onboard log backend, retention, and replay summary.', order: 10 },
     { id: 'snapshots', label: 'Snapshots', description: 'Capture, compare, and restore known-good parameter sets.', order: 11 },
@@ -288,7 +287,7 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     navigation: { id: 'navigation', label: 'Navigation', description: 'Waypoint and turn behavior.', order: 11, viewId: 'tuning' },
     sailing: { id: 'sailing', label: 'Sailing', description: 'Sailboat trim angles, heel limit, and the sail-heel controller.', order: 11.4, viewId: 'tuning' },
     windvane: { id: 'windvane', label: 'Wind Vane', description: 'Wind direction/speed sensor selection, scaling, and filtering.', order: 11.6, viewId: 'tuning' },
-    power: { id: 'power', label: 'Power', description: 'Battery monitoring and arming voltage.', order: 12, viewId: 'power' },
+    power: { id: 'power', label: 'Power', description: 'Battery monitoring and arming voltage.', order: 12, viewId: 'config' },
     failsafe: { id: 'failsafe', label: 'Failsafe', description: 'Throttle, GCS, and battery failsafe behavior.', order: 13, viewId: 'failsafe' },
     logging: { id: 'logging', label: 'Logging', description: 'Dataflash backend and retention.', order: 14, viewId: 'parameters' }
   },

@@ -6200,6 +6200,85 @@ export function App() {
     return <BoardOrientationDiagram visual={visual} testId="board-orientation-diagram" />
   }
 
+
+  // Power moved off its own nav tab into a Config category. It keeps its own
+  // panel wholesale — the battery-monitor selection, the live voltage/current
+  // readout, and its own staged-change review with its own Apply — so this is a
+  // fieldless section that exists purely to host it. Note that means two apply
+  // scopes are visible together on this tab: Config's, and Power's own for the
+  // battery params. That is the accepted trade of keeping the panel intact
+  // rather than dissolving it into Config's field grid.
+  function renderPowerSectionFooter(): ReactNode {
+    return (
+        <PowerView
+          isBatteryVerified={snapshot.liveVerification.batteryTelemetry.verified}
+          batteryHealthLabel={batteryHealthLabel(snapshot)}
+          batteryHealthTone={batteryHealthTone(snapshot)}
+          parameterNotice={parameterNotice ? { tone: parameterNotice.tone, toneLabel: statusToneLabel(parameterNotice.tone), text: parameterNotice.text } : null}
+          liveMetrics={{
+            voltageText: formatVoltage(snapshot.liveVerification.batteryTelemetry.voltageV),
+            currentText: formatCurrent(snapshot.liveVerification.batteryTelemetry.currentA),
+            remainingText: formatRemaining(snapshot.liveVerification.batteryTelemetry.remainingPercent),
+            capacityText: batteryCapacity !== undefined ? `${batteryCapacity} mAh` : 'Unknown'
+          }}
+          configPills={{
+            monitor: describeBatteryMonitor(batteryMonitor)
+          }}
+          fields={([
+            batteryMonitorParameter ? { parameter: batteryMonitorParameter, liveValue: batteryMonitor, kind: 'select' } : null,
+            batteryCapacityParameter ? { parameter: batteryCapacityParameter, liveValue: batteryCapacity, kind: 'number' } : null,
+            batteryArmVoltageParameter ? { parameter: batteryArmVoltageParameter, liveValue: batteryArmVoltage, kind: 'number', stepFallback: 0.1 } : null,
+            batteryArmMahParameter ? { parameter: batteryArmMahParameter, liveValue: batteryArmMah, kind: 'number' } : null
+            // Every failsafe-shaped knob (BATT_FS_*, FS_THR_*, BATT_LOW_*,
+            // BATT_CRT_*) now lives exclusively on the Failsafe tab so the
+            // operator has ONE place to think about loss-of-link behavior.
+            // Power is just the battery-monitor / capacity / arming setup.
+          ] as Array<PowerFieldSpec | null>).filter((field): field is PowerFieldSpec => field !== null)}
+          editedValues={editedValues}
+          onEditChange={(paramId, value) =>
+            setDraft(paramId, value)
+          }
+          draftStatusById={parameterDraftById}
+          scopedReviewStatusLabel={
+            powerInvalidDrafts.length > 0
+              ? `${powerInvalidDrafts.length} invalid`
+              : powerStagedDrafts.length > 0
+                ? `${powerStagedDrafts.length} staged`
+                : 'in sync'
+          }
+          scopedReviewTone={toneForScopedDraftReview(powerStagedDrafts.length, powerInvalidDrafts.length)}
+          draftItems={powerDraftEntries.map((draft): PowerDraftItem => ({
+            id: draft.id,
+            label: draft.label,
+            status: draft.status,
+            badgeTone: toneForParameterDraftStatus(draft.status),
+            summary: draft.status === 'staged'
+              ? `Current ${formatParameterDraftValue(draft.definition, draft.currentValue)} → New ${formatParameterDraftValue(draft.definition, draft.nextValue)}`
+              : draft.reason ?? 'Draft matches the live controller value.'
+          }))}
+          stagedCount={powerStagedDrafts.length}
+          draftCount={powerDraftEntries.length}
+          invalidCount={powerInvalidDrafts.length}
+          canApply={canApplyDraftParameters}
+          isApplying={busyAction === 'power:apply'}
+          isBusy={busyAction !== undefined}
+          onApply={() => void handleApplyScopedParameterDrafts(powerDraftEntries, 'power:apply', 'Power & failsafe')}
+          onDiscard={() => handleDiscardScopedParameterDrafts(powerDraftEntries.map((entry) => entry.id), 'power')}
+          additionalSettingsSlot={renderAdditionalSettingsCard(
+            'Additional battery settings',
+            'Metadata-backed battery-monitor knobs that extend this view. Failsafe-shaped knobs live exclusively on the Failsafe tab.',
+            powerAdditionalGroups,
+            powerAdditionalDraftEntries,
+            powerAdditionalStagedDrafts,
+            powerAdditionalInvalidDrafts,
+            'power:additional',
+            'Apply Additional Battery Changes',
+            'additional battery settings'
+          )}
+        />
+    )
+  }
+
   function renderEscDshotFooter(): ReactNode {
     const motPwmType = Math.round(
       Number(editedValues.MOT_PWM_TYPE ?? readRoundedParameter(snapshot, 'MOT_PWM_TYPE') ?? 0)
@@ -8394,8 +8473,8 @@ export function App() {
           />
         ) : null}
 
-	      {(activeViewId === 'receiver' || activeViewId === 'modes' || activeViewId === 'power') ? (
-      <section className={`grid ${activeViewId === 'receiver' || activeViewId === 'modes' || activeViewId === 'power' ? 'one-up' : 'two-up'}`}>
+	      {(activeViewId === 'receiver' || activeViewId === 'modes') ? (
+      <section className={`grid ${activeViewId === 'receiver' || activeViewId === 'modes' ? 'one-up' : 'two-up'}`}>
         {activeViewId === 'receiver' ? (
         <ReceiverSection
           snapshot={snapshot}
@@ -8516,74 +8595,6 @@ export function App() {
         />
         ) : null}
 
-        {activeViewId === 'power' ? (
-        <PowerView
-          isBatteryVerified={snapshot.liveVerification.batteryTelemetry.verified}
-          batteryHealthLabel={batteryHealthLabel(snapshot)}
-          batteryHealthTone={batteryHealthTone(snapshot)}
-          parameterNotice={parameterNotice ? { tone: parameterNotice.tone, toneLabel: statusToneLabel(parameterNotice.tone), text: parameterNotice.text } : null}
-          liveMetrics={{
-            voltageText: formatVoltage(snapshot.liveVerification.batteryTelemetry.voltageV),
-            currentText: formatCurrent(snapshot.liveVerification.batteryTelemetry.currentA),
-            remainingText: formatRemaining(snapshot.liveVerification.batteryTelemetry.remainingPercent),
-            capacityText: batteryCapacity !== undefined ? `${batteryCapacity} mAh` : 'Unknown'
-          }}
-          configPills={{
-            monitor: describeBatteryMonitor(batteryMonitor)
-          }}
-          fields={([
-            batteryMonitorParameter ? { parameter: batteryMonitorParameter, liveValue: batteryMonitor, kind: 'select' } : null,
-            batteryCapacityParameter ? { parameter: batteryCapacityParameter, liveValue: batteryCapacity, kind: 'number' } : null,
-            batteryArmVoltageParameter ? { parameter: batteryArmVoltageParameter, liveValue: batteryArmVoltage, kind: 'number', stepFallback: 0.1 } : null,
-            batteryArmMahParameter ? { parameter: batteryArmMahParameter, liveValue: batteryArmMah, kind: 'number' } : null
-            // Every failsafe-shaped knob (BATT_FS_*, FS_THR_*, BATT_LOW_*,
-            // BATT_CRT_*) now lives exclusively on the Failsafe tab so the
-            // operator has ONE place to think about loss-of-link behavior.
-            // Power is just the battery-monitor / capacity / arming setup.
-          ] as Array<PowerFieldSpec | null>).filter((field): field is PowerFieldSpec => field !== null)}
-          editedValues={editedValues}
-          onEditChange={(paramId, value) =>
-            setDraft(paramId, value)
-          }
-          draftStatusById={parameterDraftById}
-          scopedReviewStatusLabel={
-            powerInvalidDrafts.length > 0
-              ? `${powerInvalidDrafts.length} invalid`
-              : powerStagedDrafts.length > 0
-                ? `${powerStagedDrafts.length} staged`
-                : 'in sync'
-          }
-          scopedReviewTone={toneForScopedDraftReview(powerStagedDrafts.length, powerInvalidDrafts.length)}
-          draftItems={powerDraftEntries.map((draft): PowerDraftItem => ({
-            id: draft.id,
-            label: draft.label,
-            status: draft.status,
-            badgeTone: toneForParameterDraftStatus(draft.status),
-            summary: draft.status === 'staged'
-              ? `Current ${formatParameterDraftValue(draft.definition, draft.currentValue)} → New ${formatParameterDraftValue(draft.definition, draft.nextValue)}`
-              : draft.reason ?? 'Draft matches the live controller value.'
-          }))}
-          stagedCount={powerStagedDrafts.length}
-          draftCount={powerDraftEntries.length}
-          invalidCount={powerInvalidDrafts.length}
-          canApply={canApplyDraftParameters}
-          isApplying={busyAction === 'power:apply'}
-          isBusy={busyAction !== undefined}
-          onApply={() => void handleApplyScopedParameterDrafts(powerDraftEntries, 'power:apply', 'Power & failsafe')}
-          onDiscard={() => handleDiscardScopedParameterDrafts(powerDraftEntries.map((entry) => entry.id), 'power')}
-          additionalSettingsSlot={renderAdditionalSettingsCard(
-            'Additional battery settings',
-            'Metadata-backed battery-monitor knobs that extend this view. Failsafe-shaped knobs live exclusively on the Failsafe tab.',
-            powerAdditionalGroups,
-            powerAdditionalDraftEntries,
-            powerAdditionalStagedDrafts,
-            powerAdditionalInvalidDrafts,
-            'power:additional',
-            'Apply Additional Battery Changes',
-            'additional battery settings'
-          )}
-        />
-        ) : null}
       </section>
       ) : null}
 
@@ -8604,7 +8615,7 @@ export function App() {
           busyAction={busyAction}
           onApplyScopedDrafts={handleApplyScopedParameterDrafts}
           onDiscardScopedDrafts={handleDiscardScopedParameterDrafts}
-          onOpenPower={() => setActiveViewId('power')}
+          onOpenPower={() => setActiveViewId('config')}
           failsafeAdditionalGroups={failsafeAdditionalGroups}
           failsafeAdditionalDraftEntries={failsafeAdditionalDraftEntries}
           failsafeAdditionalStagedDrafts={failsafeAdditionalStagedDrafts}
@@ -9553,7 +9564,17 @@ export function App() {
               return { ...section, footer: renderBoardOrientationFooter() }
             }
             return section
-          })}
+          }).concat([
+            {
+              id: 'power',
+              title: 'Battery & power',
+              description:
+                'Battery monitor, capacity, and the arming thresholds that depend on them, with live voltage and current from the vehicle.',
+              category: 'power' as const,
+              fields: [],
+              footer: renderPowerSectionFooter()
+            }
+          ])}
           parametersById={configParametersById}
           editedValues={editedValues}
           onEditChange={(paramId, value) => setDraft(paramId, value)}

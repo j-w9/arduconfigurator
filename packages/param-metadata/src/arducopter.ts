@@ -701,12 +701,6 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       order: 7.5
     },
     {
-      id: 'power',
-      label: 'Power',
-      description: 'Battery, failsafe, and pre-arm review.',
-      order: 8
-    },
-    {
       id: 'failsafe',
       label: 'Failsafe',
       description: 'RC, battery, and advanced failsafe overview.',
@@ -881,7 +875,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       label: 'Power',
       description: 'Battery sensing and power monitoring.',
       order: 10,
-      viewId: 'power'
+      viewId: 'config'
     },
     failsafe: {
       id: 'failsafe',

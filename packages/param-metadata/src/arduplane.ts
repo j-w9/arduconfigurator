@@ -509,12 +509,6 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       order: 7.5
     },
     {
-      id: 'power',
-      label: 'Power',
-      description: 'Battery, failsafe, and pre-arm review.',
-      order: 8
-    },
-    {
       id: 'failsafe',
       label: 'Failsafe',
       description: 'Plane short/long failsafe, RC, and battery failsafe overview.',
@@ -659,7 +653,7 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       label: 'Power',
       description: 'Battery sensing and power monitoring.',
       order: 10,
-      viewId: 'power'
+      viewId: 'config'
     },
     failsafe: {
       id: 'failsafe',

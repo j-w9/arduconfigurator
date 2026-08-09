@@ -1,8 +1,10 @@
 Power & Battery
 ===============
 
-The **Power / Battery** tab selects the battery monitor, sets pack capacity and
-arming thresholds, and shows live pack telemetry. Getting the monitor right is
+Battery setup lives under **Config ▸ Power**. It selects the battery monitor,
+sets pack capacity and arming thresholds, and shows live pack telemetry. (This
+was its own **Power** tab until it moved into Config; the surface itself is
+unchanged, including its own Apply for the battery parameters.) Getting the monitor right is
 what makes everything downstream — the OSD readout, the remaining-capacity
 estimate, and the battery failsafe — meaningful.
 

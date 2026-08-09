@@ -240,7 +240,6 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     { id: 'modes', label: 'Modes', description: 'Sub mode behavior and live state.', order: 6 },
     { id: 'motors', label: 'Motors', description: 'Thruster output assignments and frame config.', order: 7 },
     { id: 'servos', label: 'Servos', description: 'Auxiliary servo outputs — gimbal, gripper, manipulator, etc.', order: 7.5 },
-    { id: 'power', label: 'Power', description: 'Battery, failsafe, and pre-arm review.', order: 8 },
     { id: 'failsafe', label: 'Failsafe', description: 'Leak, pressure, temperature, GCS, and battery failsafe overview.', order: 9 },
     { id: 'logs', label: 'Logs', description: 'Onboard log backend, retention, and replay summary.', order: 10 },
     { id: 'snapshots', label: 'Snapshots', description: 'Capture, compare, and restore known-good parameter sets.', order: 11 },
@@ -266,7 +265,7 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     attitude: { id: 'attitude', label: 'Attitude Tuning', description: 'Sub attitude rate and angle controller gains.', order: 9, viewId: 'tuning' },
     navigation: { id: 'navigation', label: 'Navigation', description: 'Waypoint speed/acceleration behavior.', order: 10, viewId: 'tuning' },
     depth: { id: 'depth', label: 'Depth & Position Control', description: 'Vertical (depth) position/velocity/acceleration controller used by Depth Hold and Auto.', order: 11, viewId: 'tuning' },
-    power: { id: 'power', label: 'Power', description: 'Battery monitoring and arming voltage.', order: 12, viewId: 'power' },
+    power: { id: 'power', label: 'Power', description: 'Battery monitoring and arming voltage.', order: 12, viewId: 'config' },
     failsafe: { id: 'failsafe', label: 'Failsafe', description: 'Leak, pressure, temperature, GCS, and battery failsafe behavior.', order: 13, viewId: 'failsafe' },
     logging: { id: 'logging', label: 'Logging', description: 'Dataflash backend and retention.', order: 14, viewId: 'parameters' }
   },

@@ -34,7 +34,7 @@ export interface ConfigSectionField {
 }
 
 /** Config category ids — the top tab groups. */
-export type ConfigCategoryId = 'airframe' | 'sensors' | 'gps' | 'rc' | 'arming' | 'system'
+export type ConfigCategoryId = 'airframe' | 'sensors' | 'gps' | 'rc' | 'arming' | 'power' | 'system'
 
 export interface ConfigCategory {
   id: ConfigCategoryId
@@ -56,6 +56,10 @@ export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
   { id: 'gps', label: 'GPS' },
   { id: 'rc', label: 'RC' },
   { id: 'arming', label: 'Arming' },
+  // Power was its own nav tab. It keeps its own panel — battery monitor
+  // selection, live telemetry and its own staged-change review — and now lives
+  // here as a category rather than a separate tab.
+  { id: 'power', label: 'Power' },
   { id: 'system', label: 'System' }
 ]
 

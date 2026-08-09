@@ -582,7 +582,9 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('view-button-osd')).toBeVisible()
     await expect(page.getByTestId('view-button-receiver')).toBeVisible()
     await expect(page.getByTestId('view-button-motors')).toBeVisible()
-    await expect(page.getByTestId('view-button-power')).toBeVisible()
+    // Power is a Config category now, not its own nav tab.
+    await expect(page.getByTestId('view-button-power')).toHaveCount(0)
+    await expect(page.getByTestId('view-button-config')).toBeVisible()
     await expect(page.getByTestId('view-button-snapshots')).toBeVisible()
     await expect(page.getByTestId('view-button-tuning')).toBeVisible()
     await expect(page.getByTestId('view-button-presets')).toBeVisible()
@@ -676,12 +678,12 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByRole('button', { name: 'Run Motor Test' })).toBeVisible()
     await expect(page.getByTestId('motor-test-sliders')).toBeVisible()
 
-    await openView(page, 'power')
-    // Power tab was renamed to "Battery" — the failsafe-shaped knobs that
-    // used to live on this surface (BATT_FS_*, FS_THR_*, BATT_LOW_*,
-    // BATT_CRT_*) now live exclusively on the Failsafe tab so the operator
-    // has one place to think about loss-of-link behavior.
-    await expect(page.getByRole('heading', { name: 'Battery', exact: true })).toBeVisible()
+    // Power now lives under Config's Power category. The failsafe-shaped knobs
+    // (BATT_FS_*, FS_THR_*, BATT_LOW_*, BATT_CRT_*) stay exclusively on the
+    // Failsafe tab so the operator has one place to think about loss-of-link
+    // behavior.
+    await openView(page, 'config')
+    await page.getByTestId('config-category-power').click()
     await expect(page.getByText('Battery configuration')).toBeVisible()
 
     await page.getByTestId('product-mode-expert').click()

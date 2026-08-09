@@ -171,7 +171,9 @@ test('metadata catalog exposes advanced setup, receiver, and failsafe parameters
   assert.equal(metadata.parameters.RC_OPTIONS.categoryDefinition.viewId, 'receiver')
   assert.equal(metadata.parameters.RC_SPEED.unit, 'Hz')
 
-  assert.equal(metadata.parameters.DISARM_DELAY.categoryDefinition.viewId, 'power')
+  // Power is a Config category now rather than its own tab, so its params
+  // route to the Config surface.
+  assert.equal(metadata.parameters.DISARM_DELAY.categoryDefinition.viewId, 'config')
   // BATT_LOW_TIMER / RC_FS_TIMEOUT / FS_OPTIONS used to flow through the
   // Power tab via category 'failsafe' (viewId: 'power'). They now route to
   // the Failsafe tab so the operator has one place to think about
@@ -1036,7 +1038,7 @@ test('arduplaneMetadata catalog exposes representative parameters on the expecte
 
   // Battery monitoring lands under the Power surface.
   assert.equal(metadata.parameters.BATT_MONITOR.categoryDefinition.id, 'power')
-  assert.equal(metadata.parameters.BATT_MONITOR.categoryDefinition.viewId, 'power')
+  assert.equal(metadata.parameters.BATT_MONITOR.categoryDefinition.viewId, 'config')
 
   // Plane long failsafe sits in the failsafe category, surfaced under the
   // dedicated Failsafe tab now (used to flow through the Power tab).

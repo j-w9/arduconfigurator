@@ -47,7 +47,7 @@ Battery failsafe
 The battery failsafe watches pack voltage and consumed capacity against two
 tiers of threshold — *low* and *critical* — each with its own action. It only
 appears once a battery monitor is configured; if ``BATT_MONITOR`` is 0 the tab
-shows a single notice pointing you to the :doc:`power-battery` tab to enable it.
+shows a single notice pointing you to :doc:`power-battery` (Config ▸ Power) to enable it.
 
 Low tier:
 
@@ -77,7 +77,7 @@ Both action parameters share the same options, shown in the app as: *None*,
 The app also exposes ``BATT_FS_VOLTSRC`` (whether the threshold compares against
 raw or sag-compensated voltage), and additional battery knobs such as
 ``BATT_LOW_TIMER`` surface in the **Additional failsafe settings** card. The same
-voltage and capacity thresholds can be edited from the :doc:`power-battery` tab —
+voltage and capacity thresholds can be edited from :doc:`power-battery` (Config ▸ Power) —
 both tabs share one staged-write model.
 
 GCS, EKF, and advanced failsafes

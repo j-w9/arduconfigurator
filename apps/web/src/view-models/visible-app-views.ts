@@ -193,7 +193,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   // end in their original order.
   const CANONICAL_VIEW_ORDER = [
     'setup', 'guided-setup', 'config', 'calibration', 'ports', 'receiver', 'modes', 'motors',
-    'servos', 'power', 'failsafe', 'vtx', 'osd', 'tuning', 'presets',
+    'servos', 'failsafe', 'vtx', 'osd', 'tuning', 'presets',
     'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'elrs-flash', 'rc-mixer',
     'mavlink-inspector', 'ai-assistant'
   ]

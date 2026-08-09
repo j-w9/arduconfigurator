@@ -129,7 +129,11 @@ export function appViewForPanel(panelId: string): AppViewId {
       // peripheral servo work and isn't part of the setup checklist.)
       return 'motors'
     case 'setup-panel-power':
-      return 'power'
+      // Power is a Config category now, not its own tab. This mapping is the
+      // one that breaks silently when a surface moves: the guided Power step
+      // routes through here, and pointing it at a view that no longer exists
+      // strands the step with no visible error.
+      return 'config'
     default:
       return 'parameters'
   }
