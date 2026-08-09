@@ -5936,3 +5936,27 @@ test.describe('Status & Info dashboard layout', () => {
     expect(overflow).toBeLessThanOrEqual(2)
   })
 })
+
+test.describe('Config ▸ Power layout', () => {
+  test('the battery panel spans the width instead of one narrow column', async ({ page }) => {
+    // Power moved into Config, whose grid is CSS multicolumn (columns: 360px 3)
+    // — right for cards that are a handful of fields, wrong for a section
+    // hosting a whole panel. Measured before the fix: a ~330px column with the
+    // rest of the row empty, and the panel scrolling for it.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'config')
+    await page.getByTestId('config-category-power').click()
+
+    const section = page.getByTestId('config-section-power')
+    await expect(section).toBeVisible()
+
+    const grid = page.getByTestId('config-section-grid')
+    const sectionBox = await section.boundingBox()
+    const gridBox = await grid.boundingBox()
+    expect(sectionBox).not.toBeNull()
+    expect(gridBox).not.toBeNull()
+    // Spanning the multicolumn flow, not sitting in one ~360px track.
+    expect(sectionBox!.width).toBeGreaterThan(gridBox!.width * 0.8)
+  })
+})

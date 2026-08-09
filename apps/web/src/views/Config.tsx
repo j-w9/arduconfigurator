@@ -75,6 +75,14 @@ export interface ConfigSection {
   /** True = the section is a placeholder; render a "planned" badge
    *  in place of the field grid. */
   planned?: boolean
+  /**
+   * Span the full width instead of sitting in one ~360px column.
+   *
+   * The grid is CSS multicolumn, which is right for cards that are a handful of
+   * fields. A section hosting a whole panel (Power) gets squeezed into one
+   * narrow column and turns into a tall scroll with the rest of the row empty.
+   */
+  wide?: boolean
   /** Optional node rendered below the field grid — used for one-click
    *  helpers (e.g. the ESC section's "enable bidirectional DShot" button)
    *  and contextual warnings the generic field editors can't express. */
@@ -268,7 +276,7 @@ export function ConfigView(props: ConfigViewProps) {
           {visibleSections.map((section) => (
             <article
               key={section.id}
-              className={`config-section${section.planned ? ' config-section--planned' : ''}${section.readOnly ? ' config-section--readonly' : ''}`}
+              className={`config-section${section.planned ? ' config-section--planned' : ''}${section.readOnly ? ' config-section--readonly' : ''}${section.wide ? ' config-section--wide' : ''}`}
               data-testid={`config-section-${section.id}`}
             >
               <header className="config-section__header">

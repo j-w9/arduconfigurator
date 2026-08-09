@@ -9596,6 +9596,7 @@ export function App() {
               description:
                 'Battery monitor, capacity, and the arming thresholds that depend on them, with live voltage and current from the vehicle.',
               category: 'power' as const,
+              wide: true,
               fields: [],
               footer: renderPowerSectionFooter()
             }

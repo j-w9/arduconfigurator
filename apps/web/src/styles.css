@@ -8053,6 +8053,12 @@ body.is-status-dash-dragging {
    fields fit across one row on any desktop width; letting them do that removes
    a screenful of empty vertical space without touching the shared grid every
    other tab uses. */
+/* A section hosting a whole panel spans the multicolumn flow instead of being
+   crammed into one ~360px column. */
+.config-section--wide {
+  column-span: all;
+}
+
 #setup-panel-power .scoped-editor-grid {
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
