@@ -7230,6 +7230,29 @@ export function App() {
                   </strong>
                 </div>
               ) : null}
+              {/* The board's own name, from the boot banner. Distinct from the
+               *  APJ board id, which we resolve through our own table — an
+               *  uncatalogued board has a real name here and only a number
+               *  there. Nothing in the USB ids helps: ArduPilot ships the
+               *  generic pid.codes VID with the stock STM32 CDC PID. */}
+              {snapshot.hardware.board?.reportedBoardName ? (
+                <div className="setup-gui-box__kv-row">
+                  <span>Board</span>
+                  <strong data-testid="setup-reported-board-name">{snapshot.hardware.board.reportedBoardName}</strong>
+                </div>
+              ) : null}
+              {/* Full firmware string, keeping the fork/vendor suffix the
+               *  decoded version drops — the part that distinguishes several
+               *  builds that all read "4.7.0 (beta)". Shown only when it says
+               *  more than the decoded version already does. */}
+              {snapshot.hardware.board?.reportedFirmwareString ? (
+                <div className="setup-gui-box__kv-row">
+                  <span>FW build</span>
+                  <strong data-testid="setup-reported-firmware-string">
+                    {snapshot.hardware.board.reportedFirmwareString}
+                  </strong>
+                </div>
+              ) : null}
               {snapshot.hardware.board?.firmwareGitHash ? (
                 <div className="setup-gui-box__kv-row">
                   <span>FW git hash</span>

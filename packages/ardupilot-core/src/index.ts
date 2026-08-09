@@ -31,4 +31,9 @@ export * from './bootloader-images.js'
 export * from './vtx-table.js'
 export * from './osd-shorthand.js'
 export * from './vtx-presets.js'
-export { describeMissingCompass, parsePwmOutputCountFromBanner } from './runtime-helpers.js'
+export {
+  describeMissingCompass,
+  parseBoardNameFromBanner,
+  parseFirmwareStringFromBanner,
+  parsePwmOutputCountFromBanner
+} from './runtime-helpers.js'

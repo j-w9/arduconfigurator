@@ -109,6 +109,8 @@ import {
   cloneBoardFileState,
   cloneGuidedActions,
   cloneHardwareState,
+  parseBoardNameFromBanner,
+  parseFirmwareStringFromBanner,
   parsePwmOutputCountFromBanner,
   cloneLiveVerification,
   cloneMotorTestState,
@@ -2898,6 +2900,21 @@ export class ArduPilotConfiguratorRuntime {
     const pwmCount = parsePwmOutputCountFromBanner(text)
     if (pwmCount !== undefined) {
       this.pwmOutputCount = pwmCount
+    }
+    // The board's own name and full firmware string, also banner-only. Both
+    // beat what we can infer: the APJ board id is looked up in OUR table (so an
+    // uncatalogued board reads as a bare number), and the decoded version drops
+    // any fork or vendor suffix — the part that says which of several 4.7.0
+    // builds this actually is.
+    const bannerBoardName = parseBoardNameFromBanner(text)
+    const bannerFirmware = parseFirmwareStringFromBanner(text)
+    if ((bannerBoardName !== undefined || bannerFirmware !== undefined) && this.hardwareBoard) {
+      this.hardwareBoard = {
+        ...this.hardwareBoard,
+        reportedBoardName: bannerBoardName ?? this.hardwareBoard.reportedBoardName,
+        reportedFirmwareString: bannerFirmware ?? this.hardwareBoard.reportedFirmwareString
+      }
+      this.emit()
     }
   }
 

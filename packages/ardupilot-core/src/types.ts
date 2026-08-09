@@ -54,6 +54,18 @@ export interface HardwareBoardState {
   firmwareVersionParts?: { major: number; minor: number; patch: number }
   /** Firmware build git hash (ASCII) from flight_custom_version, if any. */
   firmwareGitHash?: string
+  /**
+   * The board's own name from the boot banner, e.g. "BROTHERHOBBYH743".
+   *
+   * The firmware's answer, as opposed to boardType looked up in our own table —
+   * a board we have not catalogued has a name here and only a number there.
+   */
+  reportedBoardName?: string
+  /**
+   * Full firmware string from the banner, e.g. "ArduCopter V4.7.0-beta7-SFD".
+   * Keeps the fork/vendor suffix the decoded version discards.
+   */
+  reportedFirmwareString?: string
   lastUpdatedAtMs: number
 }
 

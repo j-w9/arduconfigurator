@@ -433,6 +433,40 @@ export function parsePwmOutputCountFromBanner(text: string): number | undefined 
   return best
 }
 
+/**
+ * The board's own name for itself, from the ArduPilot boot banner.
+ *
+ * ArduPilot prints a line like:
+ *   BROTHERHOBBYH743 00210044 3433510B 34303639
+ * which is the hwdef board name followed by the CPU's unique id. That name is
+ * the FIRMWARE's answer, and it beats the alternatives: the APJ board id is a
+ * number we look up in our own table (so a board we have not catalogued reads
+ * as a bare number), and the USB vendor id is no help at all — ArduPilot boards
+ * ship the generic pid.codes VID 0x1209 with the stock STM32 CDC PID, which
+ * identifies neither the vendor nor the model.
+ *
+ * Matched structurally rather than by keyword: an uppercase board token
+ * followed by two or more 8-hex-digit UID groups. Other banner lines
+ * ("ChibiOS: ...", "IMU0: ...", "Frame: QUAD/X") do not have that shape.
+ */
+export function parseBoardNameFromBanner(text: string): string | undefined {
+  const match = /^\s*([A-Z][A-Z0-9_\-]{2,})\s+((?:[0-9A-F]{8}\s*){2,})$/.exec(text.trim())
+  return match ? match[1] : undefined
+}
+
+/**
+ * The full firmware string, e.g. "ArduCopter V4.7.0-beta7-SFD".
+ *
+ * Worth keeping alongside the decoded version because the decode throws away
+ * everything after the numbers — a fork suffix like "-SFD" or a vendor build
+ * tag is exactly the part that tells an operator which firmware they are
+ * actually running when several builds look like "4.7.0 (beta)".
+ */
+export function parseFirmwareStringFromBanner(text: string): string | undefined {
+  const match = /^\s*((?:Ardu|APM)[A-Za-z]*\s+V\d+\.\d+\.\d+\S*)/.exec(text.trim())
+  return match ? match[1].trim() : undefined
+}
+
 export function sortMavftpDirectoryEntries(left: MavftpDirectoryEntry, right: MavftpDirectoryEntry): number {
   if (left.kind !== right.kind) {
     return left.kind === 'directory' ? -1 : 1
