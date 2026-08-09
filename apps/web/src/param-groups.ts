@@ -9,7 +9,23 @@
 // so anyone turning on bidirectional DShot here needs it right. Absent from the
 // list when the firmware was built without AP_BLHeli — the selector drops
 // parameter ids the vehicle never reported.
-export const OUTPUT_REVIEW_PARAM_IDS = ['MOT_PWM_TYPE', 'MOT_PWM_MIN', 'MOT_PWM_MAX', 'MOT_SPIN_ARM', 'MOT_SPIN_MIN', 'MOT_SPIN_MAX', 'SERVO_BLH_POLES'] as const
+// SERVO_DSHOT_ESC belongs here for the same reason: it selects the ESC's DShot
+// dialect, which decides whether Extended DShot Telemetry (temperature, voltage,
+// current per ESC) is available at all and which DShot commands the ESC will
+// accept. Setting a DShot protocol without it is half the decision, and it was
+// previously only reachable through the raw Parameters tree. Absent on firmware
+// built without the DShot support, and the selector drops ids the vehicle never
+// reported.
+export const OUTPUT_REVIEW_PARAM_IDS = [
+  'MOT_PWM_TYPE',
+  'MOT_PWM_MIN',
+  'MOT_PWM_MAX',
+  'MOT_SPIN_ARM',
+  'MOT_SPIN_MIN',
+  'MOT_SPIN_MAX',
+  'SERVO_DSHOT_ESC',
+  'SERVO_BLH_POLES'
+] as const
 // QuadPlane lift-motor ESC range — the Q_M_* mirror of the Copter MOT_* set above.
 export const QUADPLANE_ESC_PARAM_IDS = ['Q_M_PWM_TYPE', 'Q_M_PWM_MIN', 'Q_M_PWM_MAX', 'Q_M_SPIN_ARM', 'Q_M_SPIN_MIN', 'Q_M_SPIN_MAX'] as const
 export const OUTPUT_NOTIFICATION_PARAM_IDS = [

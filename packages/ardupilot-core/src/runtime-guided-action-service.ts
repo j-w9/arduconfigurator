@@ -20,6 +20,7 @@ import {
   GUIDED_ACTION_IDS,
   appendGuidedActionText,
   buildAccelerometerCalibrationGuidedAction,
+  createIdleGuidedAction,
   createIdleGuidedActions,
   defaultInstructionsForAction,
   describeMissingCompass,
@@ -252,8 +253,17 @@ export class GuidedActionService {
       )
     }
 
-    this.failAction(actionId, new Error('Cancelled by operator.'))
-    this.appendStatusEntry('info', `Guided action cancelled by operator (${actionId}).`)
+    // Reset to idle rather than marking it failed. Cancelling is a decision,
+    // not an error: leaving the card in a failure state means the operator has
+    // to get past an error they caused deliberately before they can start over,
+    // and for the accelerometer that matters most — its pose sequence is read
+    // from the action, so a cancelled run left the guide stranded partway
+    // through instead of back at the first pose.
+    //
+    // Idle unblocks parameter writes exactly as failed did; the reason the
+    // cancel exists at all is to escape a cal stuck in 'running'.
+    this.setAction(actionId, createIdleGuidedAction(actionId))
+    this.appendStatusEntry('info', `Guided action cancelled by operator (${actionId}) — reset to its first step.`)
     this.emit()
   }
 

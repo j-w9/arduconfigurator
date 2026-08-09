@@ -761,9 +761,11 @@ test('cancelAction aborts a running compass calibration and clears the write gat
 
     service.cancelAction('calibrate-compass')
 
+    // Cancelling is a decision, not an error: the card returns to its idle
+    // start state so the operator can simply run it again, rather than having
+    // to clear a failure they caused on purpose.
     const action = service.getAction('calibrate-compass')
-    assert.equal(action.status, 'failed')
-    assert.match(action.summary, /cancelled by operator/i)
+    assert.equal(action.status, 'idle')
     assert.equal(service.hasActiveAction(), false, 'write gate must clear without a reboot')
     assert.ok(
       sentCommands.some((c) => c.command === MAV_CMD.DO_CANCEL_MAG_CAL),
@@ -787,9 +789,13 @@ test('cancelAction aborts an abandoned accelerometer calibration without sending
 
     service.cancelAction('calibrate-accelerometer')
 
+    // Back to the first step, not stranded partway through the pose sequence:
+    // the pose guide reads which posture to show from this action, so a
+    // cancelled run that stayed 'failed' left the operator looking at the pose
+    // they abandoned instead of a cal they can start over.
     const action = service.getAction('calibrate-accelerometer')
-    assert.equal(action.status, 'failed')
-    assert.match(action.summary, /cancelled by operator/i)
+    assert.equal(action.status, 'idle')
+    assert.equal(action.statusTexts.length, 0, 'the abandoned run must not leave its prompts behind')
     assert.equal(service.hasActiveAction(), false)
     // MAVLink has no accel-cal abort; nothing extra goes on the wire, but
     // the operator is told the onboard routine may keep waiting.
