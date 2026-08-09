@@ -1,6 +1,7 @@
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { InfoDot } from './InfoDot'
 import { ParamInfoBubble } from './ParamInfoBubble'
 import { ScopedSelectField, type ScopedFieldDraftMap } from './ScopedField'
 
@@ -34,6 +35,8 @@ export interface ModesViewProps {
    * each slot's "Assigned mode" cell becomes an inline ScopedSelectField
    * that stages drafts the global staged-changes bar can apply.
    */
+  /** True only when the connected vehicle reports the fork-only Fiber mode. */
+  fiberModeAvailable?: boolean
   editedValues?: Record<string, string>
   draftStatusById?: ScopedFieldDraftMap
   onChangeSlot?: (paramId: string, value: string) => void
@@ -56,6 +59,7 @@ export function ModesView(props: ModesViewProps) {
     activeModeLabel,
     slots,
     onOpenFlightModeTask,
+    fiberModeAvailable = false,
     editedValues,
     draftStatusById,
     onChangeSlot,
@@ -128,7 +132,37 @@ export function ModesView(props: ModesViewProps) {
             <div className="modes-table__row modes-table__row--head" role="row">
               <span role="columnheader">Slot</span>
               <span role="columnheader">PWM range</span>
-              <span role="columnheader">Assigned mode</span>
+              <span role="columnheader">
+                Assigned mode
+                {/* Fork-only surface: rendered only when the connected vehicle
+                    actually reports Fiber, so a stock build never sees a
+                    pointer to a mode it cannot fly. */}
+                {fiberModeAvailable ? (
+                  <InfoDot
+                    label="About Fiber mode"
+                    testId="modes-fiber-info"
+                    wide
+                    wikiTopic="flightModesFiber"
+                  >
+                    <p>
+                      This firmware reports <strong>Fiber</strong>, a custom cruise mode that is not part of
+                      upstream ArduCopter.
+                    </p>
+                    <p>
+                      It holds barometric altitude like AltHold, but the roll/pitch sticks command the{' '}
+                      <em>rate</em> of lean-angle change and that angle is retained when the sticks are
+                      centred — so the vehicle keeps its tilt and accelerates until drag balances it, rather
+                      than levelling off and stopping. Entering the mode locks onto whatever attitude the
+                      vehicle has at that moment.
+                    </p>
+                    <p>
+                      <code>FIBER_TILT_T</code> sets how long a full stick deflection takes to reach{' '}
+                      <code>ANGLE_MAX</code>. Because Fiber does not self-level, give it altitude and open
+                      space the first time.
+                    </p>
+                  </InfoDot>
+                ) : null}
+              </span>
               <span role="columnheader">State</span>
             </div>
             {slots.map((slot) => (

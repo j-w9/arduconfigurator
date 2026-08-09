@@ -124,7 +124,13 @@ export const WIKI_TOPIC_PATHS = {
   /** Lua ▸ how scripts get onto the vehicle and what the catalog is. */
   luaInstallingScripts: 'lua.html#installing-scripts',
   /** Receiver ▸ binding an ELRS / CRSF receiver from the configurator. */
-  receiverBind: 'first-time-setup/receiver.html#bind-elrs-crsf'
+  receiverBind: 'first-time-setup/receiver.html#bind-elrs-crsf',
+  /**
+   * Modes ▸ Fiber, a fork-only mode. The bubble that points here is rendered
+   * only when the connected vehicle actually reports Fiber, so a stock build
+   * never links to it.
+   */
+  flightModesFiber: 'first-time-setup/flight-modes.html#fiber-mode'
 } as const
 
 export type WikiTopic = keyof typeof WIKI_TOPIC_PATHS

@@ -116,6 +116,61 @@ the slot table only tells you what the switch is asking for.
 :param:`INITIAL_MODE` selects the mode the vehicle boots into before it has seen
 any RC input. It is edited from the :doc:`../parameters` tab.
 
+Modes your firmware adds
+------------------------
+
+The dropdown is not a fixed list. The configurator asks the vehicle to enumerate
+its own modes (the MAVLink ``AVAILABLE_MODES`` message), so a mode that exists
+only in your build — a custom mode compiled into a fork, or one registered by a
+Lua script — appears by name alongside the standard ones. A build without those
+modes simply never offers them.
+
+This matters because a curated list can only ever describe the firmware it was
+written against. Before this, a custom mode showed up as a bare number, or could
+not be selected at all.
+
+Two caveats:
+
+- A mode has to be advertised by the firmware to appear here. In ArduCopter that
+  means being listed in ``send_available_mode()``; a mode that flies perfectly
+  well but is missing from that list is invisible to every ground station, not
+  just this one.
+- Modes the firmware marks as not user-selectable are left out of the dropdown
+  deliberately, since assigning them to a switch would not work.
+
+.. _fiber-mode:
+
+Fiber mode
+~~~~~~~~~~
+
+Fiber is a custom mode found on some forks — it is **not** part of upstream
+ArduCopter, so this section only applies if your firmware has it. The
+configurator shows it only when the connected vehicle reports it.
+
+It is a manual cruise mode, closest in spirit to PX4's Altitude Cruise. Like
+AltHold it holds barometric altitude on the throttle stick and takes manual yaw,
+needing no position estimate. The difference is in roll and pitch: the sticks
+command the **rate of change** of lean angle, and that angle is **retained** when
+the sticks are centred. The vehicle therefore keeps its tilt and accelerates
+until drag balances it, cruising at a constant velocity, instead of returning to
+level and stopping the way AltHold does.
+
+On entry it locks onto the attitude the vehicle has at that moment, so switching
+in from forward flight holds that lean rather than snapping level. Two
+consequences worth knowing before you fly it:
+
+- Entering while tilted past ``ANGLE_MAX`` does not hold that angle — the mode
+  commands a smooth return to the limit, not to level.
+- The lock reads the vehicle's actual attitude, disturbances included. Flicking
+  into Fiber mid-gust captures the gust. Enter it settled.
+
+:param:`FIBER_TILT_T` sets how long a full stick deflection takes to drive the
+lean angle to ``ANGLE_MAX``; the commanded tilt rate is ``ANGLE_MAX`` divided by
+it. Smaller is snappier, larger is smoother.
+
+Because Fiber deliberately does not self-level and will keep accelerating until
+drag catches up, give it altitude and open space the first time.
+
 Editing and applying
 --------------------
 

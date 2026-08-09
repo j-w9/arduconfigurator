@@ -2010,6 +2010,23 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       step: 1,
       notes: flightFeelNotes
     },
+    /**
+     * Fork-only. Upstream ArduCopter has no Fiber mode, so stock firmware never
+     * reports this parameter and the entry simply never renders — metadata is
+     * keyed by parameter id and only used for params the vehicle actually has,
+     * which is what gates this without any extra detection.
+     */
+    FIBER_TILT_T: {
+      id: 'FIBER_TILT_T',
+      label: 'Fiber Tilt Time',
+      description:
+        'Time for a full roll/pitch stick deflection to drive the lean angle from level to the maximum (ANGLE_MAX) in Fiber mode. Smaller is a snappier tilt response, larger is smoother — the commanded tilt rate is ANGLE_MAX divided by this.',
+      category: 'tuning',
+      unit: 's',
+      minimum: 0.1,
+      maximum: 2,
+      step: 0.05
+    },
     PILOT_Y_RATE: {
       id: 'PILOT_Y_RATE',
       label: 'Yaw Rate',

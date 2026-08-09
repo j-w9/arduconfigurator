@@ -365,6 +365,7 @@ import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
 import { ConfigView } from './views/Config'
 import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
 import { withFlightModeOptions } from './view-models/flight-mode-options'
+import { isFiberModeAvailable } from './view-models/fiber-mode-detection'
 import { FilesView } from './views/Files'
 import { SetupView } from './views/Setup'
 import { LogTuningView } from './views/LogTuning'
@@ -8432,6 +8433,7 @@ export function App() {
               parameter
             }
           })}
+          fiberModeAvailable={isFiberModeAvailable(snapshot)}
           editedValues={editedValues}
           draftStatusById={parameterDraftById}
           onChangeSlot={(paramId, value) => setDraft(paramId, value)}
