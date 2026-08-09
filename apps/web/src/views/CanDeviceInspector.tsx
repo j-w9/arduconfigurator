@@ -33,6 +33,18 @@ import {
 import { buildCanBusStagedChanges, healthLabel, modeLabel } from '../view-models/can-bus'
 import type { DronecanParamCatalogLookup } from '../view-models/dronecan-param-display'
 
+/**
+ * Which parts of a device's inspector to render.
+ *
+ * The CAN tab shows one at a time — each has its own button on the device row,
+ * so an operator opens the thing they came for instead of an everything-panel.
+ * A popped-out window renders the lot, because that is the point of tearing a
+ * device off into its own window.
+ */
+export type CanDeviceSection = 'params' | 'detail' | 'esc' | 'actions'
+
+export const ALL_CAN_DEVICE_SECTIONS: readonly CanDeviceSection[] = ['params', 'detail', 'esc', 'actions']
+
 /** One AP_Periph firmware build offered for a node (already matched to the
  *  node's board id by the host). Plain display shape — no firmware-flash types
  *  cross into the view. */
@@ -116,6 +128,8 @@ export interface CanDeviceInspectorViewProps {
   busy?: boolean
   /** Expert-only actions (restart, firmware update). Omit outside Expert mode. */
   expertActions?: CanDeviceExpertActions
+  /** Which blocks to render. Defaults to all of them (the popout window). */
+  sections?: readonly CanDeviceSection[]
   /** Node-scoped ESC telemetry. Passed in the popout (where this device is the
    *  whole window); omitted inline, where the CAN tab renders one bus-wide table. */
   escTelemetry?: readonly DronecanEscTelemetry[]
@@ -457,6 +471,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
     onFetchAllParameters,
     busy = false,
     expertActions,
+    sections = ALL_CAN_DEVICE_SECTIONS,
     escTelemetry,
     heading
   } = props
@@ -464,6 +479,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
   // Node id awaiting a restart confirmation (two-step button).
   const [confirmRestart, setConfirmRestart] = useState(false)
   const fwView = buildDronecanFirmwareUpdateView(expertActions?.firmwareUpdate)
+  const shows = (section: CanDeviceSection): boolean => sections.includes(section)
   // While an update is transferring, lock every node's other actions (one update
   // at a time, and a write/restart mid-flash could corrupt the node).
   const updateInProgress = !!(fwView && fwView.inProgress)
@@ -500,7 +516,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
         </header>
       ) : null}
 
-      {stagedChanges.length > 0 ? (
+      {shows('params') && stagedChanges.length > 0 ? (
         <div className="can-bus-staged" data-testid={`can-bus-staged-${nodeId}`}>
           <header className="can-bus-staged__header">
             <strong>
@@ -549,6 +565,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
         </div>
       ) : null}
 
+      {shows('params') ? (
       <div className="can-bus-node__toolbar">
         <small>
           Param fetch:{' '}
@@ -580,7 +597,10 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
         </div>
       </div>
 
-      {paramRows.length === 0 ? (
+      ) : null}
+
+      {shows('params') ? (
+      paramRows.length === 0 ? (
         <p className="can-bus-empty">
           {isSelf
             ? "This is the autopilot's own node — its parameters live on the Parameters tab (over MAVLink), not DroneCAN."
@@ -643,10 +663,12 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
           </tbody>
         </table>
         </div>
-      )}
+      )
+      ) : null}
 
-      {/* ---- Identity detail (was the standalone inspector's expanded row) ---- */}
-      <details className="can-device-inspector__detail-block">
+      {/* ---- Identity detail ---- */}
+      {shows('detail') ? (
+      <details className="can-device-inspector__detail-block" open={sections.length === 1}>
         <summary data-testid={`can-device-detail-toggle-${nodeId}`}>Device detail</summary>
         <dl className="mavlink-inspector__fields" data-testid={`dronecan-node-detail-${nodeId}`}>
           {buildDronecanNodeDetailRows(node).map((row) => (
@@ -657,10 +679,11 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
           ))}
         </dl>
       </details>
+      ) : null}
 
       {/* ---- ESC telemetry for THIS device (popout only; the CAN tab shows one
               bus-wide table under the device list) ---- */}
-      {escTelemetry && escRows.length > 0 ? (
+      {shows('esc') && escTelemetry && escRows.length > 0 ? (
         <div className="dronecan-inspector__esc" data-testid={`can-device-esc-${nodeId}`}>
           <h3>ESC telemetry</h3>
           <p className="telemetry-note">Live uavcan.equipment.esc.Status from this node. Observe-only.</p>
@@ -692,7 +715,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
       ) : null}
 
       {/* ---- Expert-only device actions: restart + firmware update ---- */}
-      {expertActions ? (
+      {shows('actions') && expertActions ? (
         <>
           <div className="dronecan-inspector__node-actions">
             {confirmRestart ? (

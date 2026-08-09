@@ -12,7 +12,7 @@ import { buildCanBusTrafficSummary } from '../view-models/can-device-inspector'
 import { buildDronecanEscRows, summarizeDronecanNodes } from '../view-models/dronecan-inspector'
 import type { DronecanParamCatalogLookup } from '../view-models/dronecan-param-display'
 import { useCanNodeNames } from '../hooks/use-can-node-names'
-import { CanDeviceInspectorView, type CanDeviceExpertActions } from './CanDeviceInspector'
+import { CanDeviceInspectorView, type CanDeviceSection, type CanDeviceExpertActions } from './CanDeviceInspector'
 import { CanEnablePrompt } from './CanEnablePrompt'
 
 // The single CAN surface. Mission Planner-equivalent DroneCAN workflow: connect
@@ -117,7 +117,14 @@ export function CanBusView(props: CanBusViewProps) {
   } = props
 
   const rows = useMemo(() => buildCanBusNodeRows(state), [state])
-  const [expandedNode, setExpandedNode] = useState<number | undefined>(undefined)
+  // Which device is open and WHICH of its surfaces. Previously one boolean per
+  // device that opened everything at once; each feature now has its own button
+  // so an operator opens the thing they came for — params, identity, live ESC
+  // telemetry, or the restart/firmware actions — instead of scrolling an
+  // everything-panel to find it.
+  const [expandedNode, setExpandedNode] = useState<{ nodeId: number; section: CanDeviceSection } | undefined>(
+    undefined
+  )
   const [draftValues, setDraftValues] = useState<Record<string, string>>({})
   const [busSelection, setBusSelection] = useState<number>(state.bus ?? 1)
   // Persistent operator-assigned node names, keyed by hardware UID.
@@ -294,7 +301,7 @@ export function CanBusView(props: CanBusViewProps) {
             {rows.map((row) => {
               const node = state.nodes.find((n) => n.nodeId === row.nodeId)
               const isPoppedOut = popout?.openNodeIds.includes(row.nodeId) ?? false
-              const isExpanded = expandedNode === row.nodeId
+              const isExpanded = expandedNode?.nodeId === row.nodeId
               // Prefer the stable hardware UID; fall back to the node id so a
               // node that hasn't returned GetNodeInfo yet (e.g. the autopilot's
               // own node) is still nameable.
@@ -379,16 +386,40 @@ export function CanBusView(props: CanBusViewProps) {
                       <StatusBadge tone={row.tone}>
                         {healthLabel(row.health)} · {modeLabel(row.mode)}
                       </StatusBadge>
-                      <button
-                        type="button"
-                        style={buttonStyle()}
-                        onClick={() => setExpandedNode(isExpanded ? undefined : row.nodeId)}
-                        disabled={isPoppedOut}
-                        title={isPoppedOut ? 'This device is open in its own window.' : undefined}
-                        data-testid={`can-bus-node-toggle-${row.nodeId}`}
-                      >
-                        {isExpanded ? 'Collapse' : `Params (${row.paramCount})`}
-                      </button>
+                      {/* One button per surface. Each toggles its own box below
+                          the row, so the device's features are discoverable
+                          without opening a wall of panels. */}
+                      {(
+                        [
+                          { section: 'params' as const, label: `Params (${row.paramCount})`, testId: 'toggle' },
+                          { section: 'detail' as const, label: 'Details', testId: 'detail' },
+                          { section: 'esc' as const, label: 'Messages', testId: 'messages' },
+                          { section: 'actions' as const, label: 'Actions', testId: 'actions' }
+                        ] as const
+                      )
+                        // Restart/firmware is Expert-only upstream; without
+                        // those handlers the button would open an empty box.
+                        .filter((entry) => entry.section !== 'actions' || expertActions !== undefined)
+                        .map((entry) => {
+                          const isOpen = isExpanded && expandedNode?.section === entry.section
+                          return (
+                            <button
+                              key={entry.section}
+                              type="button"
+                              style={buttonStyle(isOpen ? 'primary' : undefined)}
+                              onClick={() =>
+                                setExpandedNode(
+                                  isOpen ? undefined : { nodeId: row.nodeId, section: entry.section }
+                                )
+                              }
+                              disabled={isPoppedOut}
+                              title={isPoppedOut ? 'This device is open in its own window.' : undefined}
+                              data-testid={`can-bus-node-${entry.testId}-${row.nodeId}`}
+                            >
+                              {entry.label}
+                            </button>
+                          )
+                        })}
                       {popout ? (
                         // window.open is called straight out of this click: a
                         // popout opened from an effect (or any async hop) is
@@ -437,6 +468,7 @@ export function CanBusView(props: CanBusViewProps) {
                       onFetchAllParameters={onFetchAllParameters}
                       busy={busy}
                       expertActions={expertActions}
+                      sections={expandedNode ? [expandedNode.section] : undefined}
                     />
                   ) : null}
                 </li>

@@ -4932,14 +4932,14 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(fieldTable).toContainText('Field')
     await expect(fieldTable.locator('[data-testid^="mavlink-field-copy-"]').first()).toHaveCount(1)
 
-    // Start the CAN bus and expand the first discovered device's inspector; the
-    // identity detail the standalone inspector used to own now sits inside it.
+    // Start the CAN bus and open the first device's Details box. Identity
+    // detail has its own button on the device row now, alongside Params,
+    // Messages and Actions.
     await page.getByTestId('view-button-can').click()
     await page.getByTestId('can-bus-start').click()
     const firstNode = page.locator('[data-testid^="can-bus-node-toggle-"]').first()
     await expect(firstNode).toBeVisible({ timeout: 12000 })
-    await firstNode.click()
-    await page.locator('[data-testid^="can-device-detail-toggle-"]').first().click()
+    await page.locator('[data-testid^="can-bus-node-detail-"]').first().click()
     await expect(page.locator('[data-testid^="dronecan-node-detail-"]').first()).toContainText('Node ID')
   })
 
@@ -5014,6 +5014,11 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(apply).toBeVisible()
     await apply.click()
 
+    // Restart and firmware live in their own Actions box now — each device
+    // feature has its own button on the row rather than one panel holding all
+    // of them.
+    await page.getByTestId('can-bus-node-actions-50').click()
+
     // Restart is gated behind a confirm step.
     await page.getByTestId('dronecan-restart-50').click()
     await expect(page.getByTestId('dronecan-restart-confirm-50')).toBeVisible()
@@ -5034,10 +5039,10 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('view-button-can').click()
     await page.getByTestId('can-bus-start').click()
 
-    // Expand node 50 (ap_periph) and open its firmware-update affordance.
+    // Firmware update lives in the device's Actions box.
     const toggle = page.getByTestId('can-bus-node-toggle-50')
     await expect(toggle).toBeVisible({ timeout: 12000 })
-    await toggle.click()
+    await page.getByTestId('can-bus-node-actions-50').click()
     const fileInput = page.getByTestId('dronecan-fwupdate-file-50')
     await expect(fileInput).toBeVisible()
 
@@ -5098,7 +5103,8 @@ test.describe('Inspectors (expert-only)', () => {
 
     const toggle = page.getByTestId('can-bus-node-toggle-50')
     await expect(toggle).toBeVisible({ timeout: 12000 })
-    await toggle.click()
+    // Online firmware lookup sits with the other device actions.
+    await page.getByTestId('can-bus-node-actions-50').click()
 
     // A node row appears on its first NodeStatus broadcast, which is BEFORE its
     // GetNodeInfo answer — and the online lookup matches on the board id
@@ -5144,7 +5150,7 @@ test.describe('Inspectors (expert-only)', () => {
 
     const toggle = page.getByTestId('can-bus-node-toggle-50')
     await expect(toggle).toBeVisible({ timeout: 12000 })
-    await toggle.click()
+    await page.getByTestId('can-bus-node-actions-50').click()
     await expect(page.getByTestId('dronecan-fwupdate-online-unavailable-50')).toContainText('desktop app')
     await expect(page.getByTestId('dronecan-fwupdate-online-find-50')).toHaveCount(0)
     // Browser degrade still offers a link to the firmware server so the operator
