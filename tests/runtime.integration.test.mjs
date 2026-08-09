@@ -756,8 +756,10 @@ test('guided compass flow fails fast when no enabled compass is present after pa
 
     const action = runtime.getSnapshot().guidedActions['calibrate-compass']
     assert.equal(action.status, 'failed')
-    assert.equal(action.summary, 'No enabled compass detected on this vehicle. Skip this step or enable a compass first.')
-    assert.match(runtime.getSnapshot().statusTexts.map((entry) => entry.text).join('\n'), /No enabled compass detected/)
+    // COMPASS_USE is 0 here, so the advice is to turn one on — distinct from
+    // the enabled-but-undetected case, which needs wiring rather than a param.
+    assert.equal(action.summary, 'No compass is enabled on this vehicle. Skip this step, or set COMPASS_USE and re-check.')
+    assert.match(runtime.getSnapshot().statusTexts.map((entry) => entry.text).join('\n'), /No compass is enabled/)
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()

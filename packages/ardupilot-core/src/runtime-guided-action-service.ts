@@ -22,6 +22,7 @@ import {
   buildAccelerometerCalibrationGuidedAction,
   createIdleGuidedActions,
   defaultInstructionsForAction,
+  describeMissingCompass,
   enabledCompassCountFromParameters,
   hasActiveGuidedAction,
   matchGuidedActionText
@@ -462,7 +463,7 @@ export class GuidedActionService {
       return
     }
 
-    const message = 'No enabled compass detected on this vehicle. Skip this step or enable a compass first.'
+    const message = describeMissingCompass(this.getParameters())
     this.failAction('calibrate-compass', new Error(message))
     this.appendStatusEntry('warning', message)
   }
@@ -796,7 +797,7 @@ export class GuidedActionService {
     // fail fast with the same guidance as the post-sync precheck instead
     // of sending DO_START_MAG_CAL and waiting on an ack that won't help.
     if (enabledCompassCountFromParameters(this.getParameters()) === 0) {
-      const message = 'No enabled compass detected on this vehicle. Skip this step or enable a compass first.'
+      const message = describeMissingCompass(this.getParameters())
       this.failAction('calibrate-compass', new Error(message))
       this.appendStatusEntry('warning', message)
       this.emit()

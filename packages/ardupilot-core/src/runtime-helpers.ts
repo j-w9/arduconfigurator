@@ -486,6 +486,48 @@ const COMPASS_SLOTS: ReadonlyArray<{ use: string; prioId: string; devId: string 
   { use: 'COMPASS_USE3', prioId: 'COMPASS_PRIO3_ID', devId: 'COMPASS_DEV_ID3' }
 ]
 
+/**
+ * Why no compass is usable, phrased for the operator who has to fix it.
+ *
+ * "Enable a compass first" is the wrong advice — and actively confusing — for
+ * the common case: COMPASS_ENABLE and COMPASS_USE are both 1, and the compass
+ * still cannot be calibrated because the autopilot never found any hardware.
+ * ArduPilot writes COMPASS_DEV_ID when it detects a compass at boot, so all-zero
+ * device ids mean nothing was on the bus, not that a switch is off.
+ *
+ * That distinction points at completely different fixes: turn a parameter on,
+ * versus check wiring and reboot. On the usual GPS+compass module the mag is a
+ * separate I2C device (SDA/SCL) from the GPS UART, so a module wired for GPS
+ * only reports a healthy GPS and no compass at all.
+ */
+export function describeMissingCompass(
+  parameters: Map<string, ParameterState>,
+  options: { short?: boolean } = {}
+): string {
+  const anyUseEnabled = COMPASS_SLOTS.some(({ use }) => {
+    const value = parameters.get(use)?.value
+    return value !== undefined && Math.round(value) > 0
+  })
+
+  if (!anyUseEnabled) {
+    return 'No compass is enabled on this vehicle. Skip this step, or set COMPASS_USE and re-check.'
+  }
+
+  if (options.short) {
+    // Button tooltips get the diagnosis and the next action only; the full
+    // explanation goes to the status log where there is room for it.
+    return 'A compass is enabled but the autopilot detected none — check the compass I2C wiring (separate from the GPS UART), then power-cycle.'
+  }
+
+  return (
+    'A compass is enabled (COMPASS_USE is set) but the autopilot detected no compass hardware — ' +
+    'every COMPASS_DEV_ID is 0, which is what ArduPilot leaves when nothing answered on the bus at boot. ' +
+    'On a GPS+compass module the compass is a separate I2C device (SDA/SCL) from the GPS UART, so a ' +
+    'module wired for GPS only shows exactly this. Check the compass wiring, then power-cycle the board — ' +
+    'detection only happens at boot. Skip this step to continue without a compass.'
+  )
+}
+
 export function enabledCompassCountFromParameters(parameters: Map<string, ParameterState>): number {
   return COMPASS_SLOTS.filter(({ use, prioId, devId }) => {
     const useValue = parameters.get(use)?.value

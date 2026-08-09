@@ -346,10 +346,8 @@ test('GuidedActionService fails compass calibration when no enabled compass is d
 
   const action = service.getAction('calibrate-compass')
   assert.equal(action.status, 'failed')
-  assert.equal(action.summary, 'No enabled compass detected on this vehicle. Skip this step or enable a compass first.')
-  assert.ok(
-    harness.statusEntries.some((entry) => entry.text.includes('No enabled compass detected'))
-  )
+  assert.equal(action.summary, 'No compass is enabled on this vehicle. Skip this step, or set COMPASS_USE and re-check.')
+  assert.ok(harness.statusEntries.some((entry) => entry.text.includes('No compass is enabled')))
 })
 
 test('GuidedActionService treats COMPASS_USE=1 with COMPASS_DEV_ID=0 as no compass present', () => {
@@ -384,7 +382,13 @@ test('GuidedActionService treats COMPASS_USE=1 with COMPASS_DEV_ID=0 as no compa
 
   const action = service.getAction('calibrate-compass')
   assert.equal(action.status, 'failed')
-  assert.equal(action.summary, 'No enabled compass detected on this vehicle. Skip this step or enable a compass first.')
+  // The operator HAS enabled a compass, so "enable a compass first" would send
+  // them to re-set a parameter that is already set. The blocker is that nothing
+  // answered on the bus, which is a wiring/boot problem.
+  assert.match(action.summary, /enabled \(COMPASS_USE is set\) but the autopilot detected no compass hardware/)
+  assert.match(action.summary, /COMPASS_DEV_ID is 0/)
+  assert.match(action.summary, /separate I2C device \(SDA\/SCL\) from the GPS UART/)
+  assert.doesNotMatch(action.summary, /enable a compass first/)
 })
 
 test('GuidedActionService counts a compass slot backed by a non-zero COMPASS_DEV_ID', () => {

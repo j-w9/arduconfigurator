@@ -66,8 +66,26 @@ describe('guidedActionBlockingReason', () => {
 
   it('blocks compass calibration when no compass is enabled', () => {
     expect(guidedActionBlockingReason(snap({ 'calibrate-compass': { status: 'idle' } }), 'calibrate-compass')).toMatch(
-      /No enabled compass/
+      /No compass is enabled/
     )
+  })
+
+  it('tells an operator who HAS enabled a compass to check the wiring, not the parameter', () => {
+    // COMPASS_USE=1 with every COMPASS_DEV_ID at 0 is a GPS+compass module
+    // wired for GPS only: the mag sits on I2C, separate from the GPS UART.
+    // "Enable a compass first" would send them to re-set a parameter that is
+    // already set, which is the version of this that wastes an afternoon.
+    const withEnabledButUndetectedCompass = snap({ 'calibrate-compass': { status: 'idle' } }, {
+      parameters: [
+        { id: 'COMPASS_USE', value: 1 },
+        { id: 'COMPASS_DEV_ID', value: 0 },
+        { id: 'COMPASS_PRIO1_ID', value: 0 }
+      ]
+    })
+    const reason = guidedActionBlockingReason(withEnabledButUndetectedCompass, 'calibrate-compass')
+    expect(reason).toMatch(/enabled but the autopilot detected none/)
+    expect(reason).toMatch(/I2C wiring/)
+    expect(reason).not.toMatch(/No compass is enabled/)
   })
 
   it('returns undefined (and canRunGuidedAction true) for a fully-ready action', () => {

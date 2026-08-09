@@ -3,7 +3,7 @@
 // actions (running-state, busy-key narrowing, blocking reasons, compass-skip
 // detection, button labels, accel pose). No React, no app state.
 
-import { deriveCompassSetupAvailability, type ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
+import { describeMissingCompass, deriveCompassSetupAvailability, type ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
 import { actionLabels, type GuidedActionId } from './guided-action-labels'
 import type { AccelerometerPoseId } from './accelerometer-pose-guide'
@@ -92,7 +92,12 @@ export function guidedActionBlockingReason(snapshot: ConfiguratorSnapshot, actio
   }
 
   if (actionId === 'calibrate-compass' && deriveCompassSetupAvailability(snapshot).enabledCompassCount === 0) {
-    return 'No enabled compass detected on this vehicle. Skip this step or enable a compass first.'
+    // Same diagnosis the runtime logs, so the tooltip and the status entry
+    // cannot disagree about why the button is off.
+    return describeMissingCompass(
+      new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter])),
+      { short: true }
+    )
   }
 
   return undefined
