@@ -3325,8 +3325,8 @@ export function App() {
    * Pull the FC's defaults the first time a parameter row is expanded.
    *
    * Defaults previously loaded only as a side effect of switching on the
-   * "changed only" filter, so the per-row Default line would sit empty for
-   * anyone who never touched that toggle. A ref guard makes this fire at most
+   * "changed only" filter, and then only when a row was expanded, so the
+   * Default column sat empty for anyone who just opened the view. A ref guard makes this fire at most
    * once per session: the fetch is a MAVFTP transfer, and a firmware that
    * cannot serve it (pre-4.5, or no MAVFTP) must not be re-asked on every
    * click. The explicit filter toggle still retries on demand.
@@ -3369,7 +3369,11 @@ export function App() {
 
   useEffect(() => {
     if (
-      selectedParameterId === undefined ||
+      // Opening the Parameters view is enough. Waiting for a row to be expanded
+      // meant the Default column read "—" on every row until the operator
+      // happened to open one — a column that looks broken rather than one that
+      // is loading. It is a single 15 KB MAVFTP read, once per build.
+      (activeViewId !== 'parameters' && selectedParameterId === undefined) ||
       parameterDefaults !== null ||
       autoFetchedDefaultsRef.current ||
       fetchDefaultsBusy ||
@@ -3387,6 +3391,7 @@ export function App() {
     // handleFetchParamDefaults is a stable function declaration on the body.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    activeViewId,
     selectedParameterId,
     parameterDefaults,
     fetchDefaultsBusy,
