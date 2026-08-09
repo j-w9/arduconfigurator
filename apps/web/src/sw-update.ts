@@ -113,10 +113,31 @@ export function useServiceWorkerUpdate(): SwUpdateState {
       return
     }
 
+    /*
+     * A tab left open across a deploy is the case the poll below cannot always
+     * win. The app is code-split into ~34 chunks, so opening a view this tab
+     * has not visited yet triggers a dynamic import of a hashed chunk that the
+     * deploy replaced. The old file is gone, the SPA fallback answers with
+     * index.html, and the browser refuses it:
+     *
+     *   Failed to load module script: expected JavaScript but got "text/html"
+     *
+     * Vite fires vite:preloadError for exactly this. Treating it as "an update
+     * is available" turns a dead tab and a console message into the banner the
+     * operator already knows how to act on. Left unhandled, the view simply
+     * never opens and nothing on screen explains why.
+     */
+    const onPreloadError = (): void => setAvailable(true)
+    window.addEventListener('vite:preloadError', onPreloadError)
+
     // Baseline: the bundle this tab is running. If it can't be determined
     // (dev server, no hashed entry), skip the check entirely — never prompt.
     loadedBundleRef.current = readLoadedAppBundlePath()
-    if (!loadedBundleRef.current) return
+    if (!loadedBundleRef.current) {
+      // Dev server / no hashed entry: no version poll, but a failed chunk load
+      // still means this tab is stale, so keep that listener.
+      return () => window.removeEventListener('vite:preloadError', onPreloadError)
+    }
 
     let cancelled = false
     let lastRefocusCheck = 0
@@ -143,6 +164,7 @@ export function useServiceWorkerUpdate(): SwUpdateState {
       cancelled = true
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('vite:preloadError', onPreloadError)
     }
   }, [])
 

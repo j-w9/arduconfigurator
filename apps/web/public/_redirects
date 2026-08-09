@@ -1,3 +1,10 @@
+# Hashed build assets are immutable: if one is missing, it is missing. Falling
+# through to the SPA rule below would answer a .js request with index.html, and
+# the browser rejects that with a MIME-type error that names neither the file
+# nor the cause. This keeps that failure honest — and the app turns a failed
+# chunk load into the "new version, reload" banner (see sw-update.ts).
+/assets/*  /index.html  404
+
 # SPA fallback: client-side routing serves index.html for any path that
 # isn't a built asset, so deep links and reloads don't 404.
 /*  /index.html  200

@@ -5272,6 +5272,24 @@ test.describe('App update banner', () => {
     await page.goto('/')
     await expect(page.getByTestId('sw-update-banner')).toHaveCount(0)
   })
+
+  test('a chunk that vanished under a deploy raises the banner, not a dead tab', async ({ page }) => {
+    // The app is code-split, so a tab left open across a deploy fails on the
+    // next lazy import: the hashed chunk is gone, and the browser reports only
+    // "expected JavaScript but got text/html". Vite fires vite:preloadError for
+    // this; treating it as "an update is available" turns a view that silently
+    // never opens into the prompt the operator already knows.
+    await page.goto('/')
+    await expect(page.getByTestId('sw-update-banner')).toHaveCount(0)
+
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('vite:preloadError'))
+    })
+
+    const banner = page.getByTestId('sw-update-banner')
+    await expect(banner).toBeVisible()
+    await expect(page.getByTestId('sw-update-refresh')).toBeVisible()
+  })
 })
 
 test.describe('VTX band/frequency table', () => {
