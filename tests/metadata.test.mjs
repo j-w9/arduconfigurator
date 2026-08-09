@@ -36,7 +36,7 @@ import {
   normalizeFirmwareMetadata
 } from '../packages/param-metadata/dist/index.js'
 
-test('metadata catalog exposes VTX parameters on the dedicated VTX surface', () => {
+test('metadata catalog exposes VTX parameters on the combined OSD & VTX surface', () => {
   const metadata = normalizeFirmwareMetadata(arducopterMetadata)
 
   const vtxEnable = metadata.parameters.VTX_ENABLE
@@ -45,13 +45,14 @@ test('metadata catalog exposes VTX parameters on the dedicated VTX surface', () 
   const vtxMaxPower = metadata.parameters.VTX_MAX_POWER
   const vtxOptions = metadata.parameters.VTX_OPTIONS
 
+  // VTX keeps its own parameter category, but shares a tab with OSD now.
   assert.equal(vtxEnable.categoryDefinition.id, 'vtx')
-  assert.equal(vtxEnable.categoryDefinition.viewId, 'vtx')
+  assert.equal(vtxEnable.categoryDefinition.viewId, 'osd')
   assert.equal(vtxEnable.options.length, 2)
   assert.equal(vtxFrequency.unit, 'MHz')
   assert.equal(vtxPower.unit, 'mW')
   assert.equal(vtxMaxPower.unit, 'mW')
-  assert.equal(vtxOptions.categoryDefinition.viewId, 'vtx')
+  assert.equal(vtxOptions.categoryDefinition.viewId, 'osd')
 })
 
 test('metadata catalog exposes the OSD message style + category params (sfd-osd-msg fork)', () => {
@@ -141,7 +142,8 @@ test('metadata catalog exposes OSD and notification parameters on product surfac
 test('metadata catalog exposes serial options and dedicated FPV app views', () => {
   const metadata = normalizeFirmwareMetadata(arducopterMetadata)
 
-  assert.ok(metadata.appViews.some((view) => view.id === 'vtx'))
+  // One FPV tab, hosting both panels.
+  assert.ok(!metadata.appViews.some((view) => view.id === 'vtx'), 'VTX is no longer its own tab')
   assert.ok(metadata.appViews.some((view) => view.id === 'osd'))
   assert.equal(metadata.parameters.SERIAL1_OPTIONS.categoryDefinition.viewId, 'ports')
   assert.ok(metadata.parameters.SERIAL1_OPTIONS.options.length > 0)

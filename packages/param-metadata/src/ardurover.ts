@@ -253,7 +253,6 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
   appViews: [
     { id: 'setup', label: 'Setup', description: 'Connection, calibration, and guided Rover setup.', order: 1 },
     { id: 'ports', label: 'Ports', description: 'Serial roles, GPS links, and peripheral setup.', order: 2 },
-    { id: 'vtx', label: 'VTX', description: 'Video transmitter control, channel, and power setup.', order: 3 },
     { id: 'osd', label: 'OSD', description: 'FPV display backend, screen mode, and overlay switching.', order: 4 },
     { id: 'receiver', label: 'Receiver', description: 'RC mapping, ranges, and drive modes.', order: 5 },
     { id: 'modes', label: 'Modes', description: 'Rover drive-mode switch assignments and live position.', order: 6 },
@@ -271,7 +270,7 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     drive: { id: 'drive', label: 'Drive Config', description: 'Cruise speed/throttle and pilot steering behavior.', order: 1, viewId: 'motors' },
     sensors: { id: 'sensors', label: 'Sensors', description: 'Board orientation and sensor-related setup.', order: 2, viewId: 'setup' },
     ports: { id: 'ports', label: 'Ports', description: 'Serial roles, baud rates, and peripheral transport settings.', order: 3, viewId: 'ports' },
-    vtx: { id: 'vtx', label: 'VTX', description: 'Video transmitter control settings.', order: 4, viewId: 'vtx' },
+    vtx: { id: 'vtx', label: 'VTX', description: 'Video transmitter control settings.', order: 4, viewId: 'osd' },
     osd: { id: 'osd', label: 'OSD', description: 'On-screen display backend and switching.', order: 5, viewId: 'osd' },
     radio: { id: 'radio', label: 'Receiver', description: 'RC input mapping and ranges.', order: 6, viewId: 'receiver' },
     modes: { id: 'modes', label: 'Modes', description: 'Drive-mode switch assignments.', order: 7, viewId: 'receiver' },

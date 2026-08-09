@@ -5280,7 +5280,8 @@ test.describe('VTX band/frequency table', () => {
     // so the VTX view shows the real editable table instead of the preview.
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('view-button-vtx').click()
+    await page.getByTestId('view-button-osd').click()
+    await page.getByTestId('osd-vtx-tab-vtx').click()
 
     const editor = page.getByTestId('vtx-table-editor')
     await expect(editor).toBeVisible({ timeout: 15000 })
@@ -5310,7 +5311,8 @@ test.describe('VTX band/frequency table', () => {
   test('imports a Betaflight vtxtable snippet into the editor and exports the table', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('view-button-vtx').click()
+    await page.getByTestId('view-button-osd').click()
+    await page.getByTestId('osd-vtx-tab-vtx').click()
     await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
 
     // Import a Betaflight snippet with a distinctive band-1 channel-1 frequency.
@@ -5348,7 +5350,8 @@ test.describe('VTX band/frequency table', () => {
   test('loads a curated Betaflight preset into the editable table', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('view-button-vtx').click()
+    await page.getByTestId('view-button-osd').click()
+    await page.getByTestId('osd-vtx-tab-vtx').click()
     await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
 
     // Selecting a preset populates the draft through the same parse path as a
@@ -5363,7 +5366,8 @@ test.describe('VTX band/frequency table', () => {
   test('loads an analog power-table preset (power-only) with a 3-char-safe 1600 mW label', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('view-button-vtx').click()
+    await page.getByTestId('view-button-osd').click()
+    await page.getByTestId('osd-vtx-tab-vtx').click()
     await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
 
     // The power preset swaps only the ladder (bands untouched), and the 1600 mW
@@ -5378,7 +5382,8 @@ test.describe('VTX band/frequency table', () => {
   test('editing a power value auto-derives a fitting 3-char label (1600 → 1.6)', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('view-button-vtx').click()
+    await page.getByTestId('view-button-osd').click()
+    await page.getByTestId('osd-vtx-tab-vtx').click()
     await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
 
     // The label field can't hold "1600" (3-char firmware limit); typing the value

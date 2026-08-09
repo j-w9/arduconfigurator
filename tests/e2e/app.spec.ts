@@ -578,7 +578,9 @@ test.describe('browser configurator regression flows', () => {
 
     await expect(page.getByTestId('view-button-setup')).toBeVisible()
     await expect(page.getByTestId('view-button-ports')).toBeVisible()
-    await expect(page.getByTestId('view-button-vtx')).toBeVisible()
+    // VTX shares the OSD tab now.
+    await expect(page.getByTestId('view-button-vtx')).toHaveCount(0)
+    await expect(page.getByTestId('view-button-osd')).toBeVisible()
     await expect(page.getByTestId('view-button-osd')).toBeVisible()
     await expect(page.getByTestId('view-button-receiver')).toBeVisible()
     await expect(page.getByTestId('view-button-motors')).toBeVisible()
@@ -637,8 +639,9 @@ test.describe('browser configurator regression flows', () => {
     await openView(page, 'setup')
     await expect(page.getByTestId('workspace-view-title')).toHaveText('Status & Info')
 
-    await openView(page, 'vtx')
-    await expectWorkspaceViewTitle(page, 'VTX')
+    await openView(page, 'osd')
+    await page.getByTestId('osd-vtx-tab-vtx').click()
+    await expectWorkspaceViewTitle(page, 'OSD & VTX')
     await expect(page.getByText('Selected Mode', { exact: true })).toBeVisible()
     await expect(page.getByText('Actual State', { exact: true })).toBeVisible()
     // AP_VideoTX VTX_TYPES (allowed transports incl MSP) — demo enables all four.
@@ -646,7 +649,9 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText('CRSF, SmartAudio, Tramp, MSP')).toBeVisible()
 
     await openView(page, 'osd')
-    await expectWorkspaceViewTitle(page, 'OSD')
+    await expectWorkspaceViewTitle(page, 'OSD & VTX')
+    // The sub-tab persists across visits, and the VTX pane was selected above.
+    await page.getByTestId('osd-vtx-tab-osd').click()
     await expect(page.getByText('Preview', { exact: true })).toBeVisible()
     // Preview is now editable (drag-to-reposition) — the old neutral
     // "read-only preview" badge was replaced with a success-toned

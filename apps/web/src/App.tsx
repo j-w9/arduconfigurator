@@ -1599,6 +1599,9 @@ export function App() {
     }
   }, [runtime])
 
+  // OSD and VTX share one nav tab. Both keep their own panel (and their own
+  // apply scope) — this only chooses which is on screen.
+  const [osdVtxTab, setOsdVtxTab] = useState<'osd' | 'vtx'>('osd')
   const restoredSetupProgressKeyRef = useRef<string | undefined>(undefined)
 
   /**
@@ -5606,7 +5609,7 @@ export function App() {
     runtime,
     // Also load on the RC Mixer view so a VTX_POWER term's level selector can
     // list the real @VTX power levels by mW.
-    active: activeViewId === 'vtx' || activeViewId === 'rc-mixer',
+    active: (activeViewId === 'osd' && osdVtxTab === 'vtx') || activeViewId === 'rc-mixer',
     connected: snapshot.connection.kind === 'connected'
   })
   // NET_ENABLE is present on every networking-capable ArduPilot build (Ethernet
@@ -8438,7 +8441,29 @@ export function App() {
         />
 	      ) : null}
 
-        {activeViewId === 'vtx' ? (
+
+        {activeViewId === 'osd' ? (
+          <div className="tab-strip config-category-nav" data-testid="osd-vtx-nav" role="tablist">
+            {([
+              { id: 'osd' as const, label: 'OSD' },
+              { id: 'vtx' as const, label: 'VTX' }
+            ]).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={osdVtxTab === tab.id}
+                className={`tab-strip__tab${osdVtxTab === tab.id ? ' is-active' : ''}`}
+                data-testid={`osd-vtx-tab-${tab.id}`}
+                onClick={() => setOsdVtxTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {activeViewId === 'osd' && osdVtxTab === 'vtx' ? (
           <VtxSection
             snapshot={snapshot}
             serialPortViewModels={serialPortViewModels}
@@ -8454,7 +8479,7 @@ export function App() {
           />
         ) : null}
 
-        {activeViewId === 'osd' ? (
+        {activeViewId === 'osd' && osdVtxTab === 'osd' ? (
           <OsdSection
             snapshot={snapshot}
             osdParameterById={osdParameterById}

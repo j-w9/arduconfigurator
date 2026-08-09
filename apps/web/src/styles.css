@@ -8047,6 +8047,23 @@ body.is-status-dash-dragging {
   gap: 12px;
 }
 
+/* Power (Config ▸ Power) is a short surface — four battery fields — that was
+   laid out in the generic two-column editor grid and then stacked with a live
+   strip, pills, notes and a draft list, so it scrolled for no good reason. Its
+   fields fit across one row on any desktop width; letting them do that removes
+   a screenful of empty vertical space without touching the shared grid every
+   other tab uses. */
+#setup-panel-power .scoped-editor-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+@media (max-width: 720px) {
+  /* Back to a single column where 210px tracks would overflow. */
+  #setup-panel-power .scoped-editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Relays tab — bind an RC switch to a relay (writes RCn_OPTION behind the scenes). */
 .relay-rc-channel {
   margin-top: 10px;

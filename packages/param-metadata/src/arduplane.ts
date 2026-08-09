@@ -473,15 +473,9 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       order: 2
     },
     {
-      id: 'vtx',
-      label: 'VTX',
-      description: 'Video transmitter control, channel, and power setup.',
-      order: 3
-    },
-    {
       id: 'osd',
-      label: 'OSD',
-      description: 'FPV display backend, screen mode, and overlay switching.',
+      label: 'OSD & VTX',
+      description: 'FPV display backend, overlay switching, and video-transmitter control.',
       order: 4
     },
     {
@@ -614,7 +608,7 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       label: 'VTX',
       description: 'Video transmitter control, frequency, and power settings.',
       order: 5,
-      viewId: 'vtx'
+      viewId: 'osd'
     },
     osd: {
       id: 'osd',

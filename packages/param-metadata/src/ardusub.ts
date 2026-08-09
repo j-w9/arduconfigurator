@@ -234,7 +234,6 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
   appViews: [
     { id: 'setup', label: 'Setup', description: 'Connection, calibration, and guided Sub setup.', order: 1 },
     { id: 'ports', label: 'Ports', description: 'Serial roles, GPS links, and peripheral setup.', order: 2 },
-    { id: 'vtx', label: 'VTX', description: 'Video transmitter control, channel, and power setup.', order: 3 },
     { id: 'osd', label: 'OSD', description: 'Display backend, screen mode, and overlay switching.', order: 4 },
     { id: 'receiver', label: 'Receiver', description: 'Joystick/RC mapping and ranges.', order: 5 },
     { id: 'modes', label: 'Modes', description: 'Sub mode behavior and live state.', order: 6 },
@@ -259,7 +258,7 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     pilot: { id: 'pilot', label: 'Pilot & Depth', description: 'Vertical speed, acceleration, and surface depth.', order: 3, viewId: 'tuning' },
     sensors: { id: 'sensors', label: 'Sensors', description: 'Board orientation and sensor-related setup.', order: 4, viewId: 'setup' },
     ports: { id: 'ports', label: 'Ports', description: 'Serial roles, baud rates, and peripheral transport settings.', order: 5, viewId: 'ports' },
-    vtx: { id: 'vtx', label: 'VTX', description: 'Video transmitter control settings.', order: 6, viewId: 'vtx' },
+    vtx: { id: 'vtx', label: 'VTX', description: 'Video transmitter control settings.', order: 6, viewId: 'osd' },
     osd: { id: 'osd', label: 'OSD', description: 'On-screen display backend and switching.', order: 7, viewId: 'osd' },
     radio: { id: 'radio', label: 'Receiver', description: 'RC input mapping and ranges.', order: 8, viewId: 'receiver' },
     attitude: { id: 'attitude', label: 'Attitude Tuning', description: 'Sub attitude rate and angle controller gains.', order: 9, viewId: 'tuning' },
