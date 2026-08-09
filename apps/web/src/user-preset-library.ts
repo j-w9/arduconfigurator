@@ -114,6 +114,57 @@ export function sortUserPresets(presets: readonly UserPresetRecord[]): UserPrese
   })
 }
 
+/** The parts of a saved preset an operator may change after capture. */
+export interface UserPresetEdit {
+  label?: string
+  description?: string
+  note?: string
+  /** Replaces the captured set wholesale — edited values, dropped rows and all. */
+  values?: ParameterPresetValue[]
+}
+
+/**
+ * Apply an edit to one saved preset, returning a new list.
+ *
+ * A preset is captured from whatever the aircraft happened to hold at that
+ * moment, so it is routinely almost-right: one value stale, one parameter that
+ * should never have been swept in. Without editing, the only fix is to delete
+ * it and re-capture — which means getting the aircraft back into the state the
+ * preset described, and loses the label and dependency answers with it.
+ *
+ * The id and createdAt are deliberately preserved: this is the same preset
+ * revised, not a new one, so anything holding the id (a selection, an export
+ * already shared) still refers to the thing the operator means.
+ *
+ * Unknown ids return the list unchanged rather than throwing — a stale
+ * selection is a normal race, not an error.
+ */
+export function updateUserPreset(
+  presets: readonly UserPresetRecord[],
+  presetId: string,
+  edit: UserPresetEdit
+): UserPresetRecord[] {
+  if (!isUserPresetId(presetId)) {
+    // Built-in presets are code, not storage; there is nothing to write back to.
+    return [...presets]
+  }
+  return presets.map((record) => {
+    if (record.id !== presetId) {
+      return record
+    }
+    const label = edit.label?.trim()
+    return {
+      ...record,
+      // An empty label would render a nameless card that cannot be told apart
+      // from its neighbours, so a blank edit keeps the previous name.
+      label: label !== undefined && label.length > 0 ? label : record.label,
+      description: edit.description !== undefined ? edit.description.trim() : record.description,
+      note: edit.note !== undefined ? edit.note.trim() || undefined : record.note,
+      values: edit.values !== undefined ? [...edit.values] : record.values
+    }
+  })
+}
+
 /**
  * Present a saved record as a `PresetDefinition` so every existing preset
  * code path — diff, applicability, card rendering, apply — consumes it without

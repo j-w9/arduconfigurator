@@ -60,6 +60,12 @@ export interface PresetsInvalidEntry {
   reason: string
 }
 
+/** One captured parameter in a saved preset, as the editor works with it. */
+export interface PresetsEditableValue {
+  paramId: string
+  value: number
+}
+
 export interface PresetsSelected {
   label: string
   description: string
@@ -111,6 +117,13 @@ export interface PresetsViewProps {
   onSerialRemapChange?: (port: number) => void
   /** Delete the selected operator-authored preset. */
   onDeleteSelectedPreset?: () => void
+  /**
+   * Save an edit to the selected operator-authored preset. Absent for the
+   * curated bundle presets, which ship with the app.
+   */
+  onEditSelectedPreset?: (edit: { label: string; description: string; values: PresetsEditableValue[] }) => void
+  /** The preset's captured values, for the editor. */
+  editableValues?: readonly PresetsEditableValue[]
   applyAcknowledged: boolean
   onAcknowledgedChange: (acknowledged: boolean) => void
   onSelectPreset: (presetId: string) => void
@@ -163,6 +176,8 @@ export function PresetsView(props: PresetsViewProps) {
     onToggleDropParam,
     onSerialRemapChange,
     onDeleteSelectedPreset,
+    onEditSelectedPreset,
+    editableValues,
     applyAcknowledged,
     onAcknowledgedChange,
     onSelectPreset,
@@ -184,6 +199,11 @@ export function PresetsView(props: PresetsViewProps) {
 
   // Two-step confirm for the destructive reset-to-defaults action.
   const [eraseArmed, setEraseArmed] = useState(false)
+  // Open editor state. Null = not editing. Held here rather than in the host so
+  // an abandoned edit dies with the panel instead of lingering in app state.
+  const [editDraft, setEditDraft] = useState<
+    { label: string; description: string; values: PresetsEditableValue[] } | null
+  >(null)
 
   return (
     <section className="grid one-up">
@@ -608,6 +628,128 @@ export function PresetsView(props: PresetsViewProps) {
                 >
                   Load as Manual Tuning Draft
                 </button>
+                {editDraft && onEditSelectedPreset ? (
+                  <div className="preset-editor" data-testid="preset-editor">
+                    <label>
+                      <span>Name</span>
+                      <input
+                        type="text"
+                        data-testid="preset-edit-label"
+                        value={editDraft.label}
+                        onChange={(event) =>
+                          setEditDraft((current) => (current ? { ...current, label: event.target.value } : current))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Description</span>
+                      <input
+                        type="text"
+                        data-testid="preset-edit-description"
+                        value={editDraft.description}
+                        onChange={(event) =>
+                          setEditDraft((current) =>
+                            current ? { ...current, description: event.target.value } : current
+                          )
+                        }
+                      />
+                    </label>
+                    <div className="preset-editor__values">
+                      {editDraft.values.length === 0 ? (
+                        <p className="preset-editor__empty" data-testid="preset-edit-empty">
+                          This preset would save with no parameters. Add one back or cancel.
+                        </p>
+                      ) : (
+                        editDraft.values.map((entry, index) => (
+                          <div key={entry.paramId} className="preset-editor__row">
+                            <code>{entry.paramId}</code>
+                            <input
+                              type="number"
+                              data-testid={`preset-edit-value-${entry.paramId}`}
+                              value={Number.isFinite(entry.value) ? entry.value : ''}
+                              onChange={(event) =>
+                                setEditDraft((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        values: current.values.map((candidate, candidateIndex) =>
+                                          candidateIndex === index
+                                            ? { ...candidate, value: Number(event.target.value) }
+                                            : candidate
+                                        )
+                                      }
+                                    : current
+                                )
+                              }
+                            />
+                            {/* Dropping a row is the common repair: a capture
+                                swept in a parameter that should not travel with
+                                the preset. */}
+                            <button
+                              type="button"
+                              style={buttonStyle()}
+                              data-testid={`preset-edit-remove-${entry.paramId}`}
+                              onClick={() =>
+                                setEditDraft((current) =>
+                                  current
+                                    ? { ...current, values: current.values.filter((_, i) => i !== index) }
+                                    : current
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="preset-editor__actions">
+                      <button
+                        type="button"
+                        style={buttonStyle('primary')}
+                        data-testid="preset-edit-save"
+                        disabled={
+                          isBusy ||
+                          editDraft.label.trim().length === 0 ||
+                          editDraft.values.length === 0 ||
+                          editDraft.values.some((entry) => !Number.isFinite(entry.value))
+                        }
+                        onClick={() => {
+                          onEditSelectedPreset(editDraft)
+                          setEditDraft(null)
+                        }}
+                      >
+                        Save changes
+                      </button>
+                      <button
+                        type="button"
+                        style={buttonStyle()}
+                        data-testid="preset-edit-cancel"
+                        onClick={() => setEditDraft(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {selected.deletable && onEditSelectedPreset ? (
+                  <button
+                    type="button"
+                    style={buttonStyle()}
+                    data-testid="preset-edit-button"
+                    onClick={() => {
+                      setEditDraft({
+                        label: selected.label,
+                        description: selected.description,
+                        values: (editableValues ?? []).map((entry) => ({ ...entry }))
+                      })
+                    }}
+                    disabled={isBusy}
+                    title="Rename this preset, or change and remove the values it captured. Nothing is written to the aircraft."
+                  >
+                    Edit preset
+                  </button>
+                ) : null}
                 {selected.deletable && onDeleteSelectedPreset ? (
                   <button
                     type="button"

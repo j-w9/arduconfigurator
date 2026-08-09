@@ -5,6 +5,7 @@ import {
   mergeImportedUserPresets,
   parseUserPresetImport,
   serializeUserPresetExport,
+  updateUserPreset,
   USER_PRESET_ID_PREFIX,
   type UserPresetRecord
 } from './user-preset-library'
@@ -145,5 +146,63 @@ describe('mergeImportedUserPresets', () => {
     const kept = result.presets.find((entry) => entry.id === mine.id)
     expect(kept?.label).toBe('My 6S OSD')
     expect(kept?.values[0].value).toBe(10)
+  })
+})
+
+describe('updateUserPreset', () => {
+  const saved = [
+    preset(),
+    preset({ id: 'user:other-def456', label: 'Other', values: [{ paramId: 'ATC_RAT_RLL_P', value: 0.1 }] })
+  ]
+
+  it('renames a preset without disturbing the rest of the library', () => {
+    const next = updateUserPreset(saved, 'user:six-s-osd-abc123', { label: '6S OSD (v2)' })
+    expect(next.find((record) => record.id === 'user:six-s-osd-abc123')?.label).toBe('6S OSD (v2)')
+    expect(next.find((record) => record.id === 'user:other-def456')).toEqual(saved[1])
+  })
+
+  it('keeps the id and capture date, because this is a revision not a new preset', () => {
+    // Anything already holding the id — a selection, an export someone was
+    // sent — must still refer to the preset the operator means.
+    const next = updateUserPreset(saved, 'user:six-s-osd-abc123', { label: 'Renamed' })
+    const edited = next.find((record) => record.id === 'user:six-s-osd-abc123')
+    expect(edited?.id).toBe(saved[0].id)
+    expect(edited?.createdAt).toBe(saved[0].createdAt)
+    expect(edited?.dependencies).toEqual(saved[0].dependencies)
+  })
+
+  it('replaces the captured values wholesale, so a row can be dropped', () => {
+    // The common repair: a preset swept in a parameter that should not travel
+    // with it. Editing has to be able to remove entries, not only change them.
+    const next = updateUserPreset(saved, 'user:six-s-osd-abc123', {
+      values: [{ paramId: 'OSD1_TXT_RES', value: 1 }]
+    })
+    expect(next[0].values).toEqual([{ paramId: 'OSD1_TXT_RES', value: 1 }])
+  })
+
+  it('refuses to leave a preset with a blank name', () => {
+    // A nameless card cannot be told apart from its neighbours.
+    const next = updateUserPreset(saved, 'user:six-s-osd-abc123', { label: '   ' })
+    expect(next[0].label).toBe('6S OSD')
+  })
+
+  it('clears a note when it is edited to empty, rather than storing whitespace', () => {
+    const withNote = [preset({ note: 'measured on the bench' })]
+    expect(updateUserPreset(withNote, withNote[0].id, { note: '  ' })[0].note).toBeUndefined()
+  })
+
+  it('leaves built-in presets alone — they are code, not storage', () => {
+    expect(updateUserPreset(saved, 'builtin-fpv-osd', { label: 'nope' })).toEqual(saved)
+  })
+
+  it('is a no-op for an id that is not in the library', () => {
+    // A stale selection is a normal race, not an error worth throwing over.
+    expect(updateUserPreset(saved, 'user:gone-999', { label: 'x' })).toEqual(saved)
+  })
+
+  it('does not mutate the array it was given', () => {
+    const original = JSON.parse(JSON.stringify(saved))
+    updateUserPreset(saved, 'user:six-s-osd-abc123', { label: 'Changed', values: [] })
+    expect(saved).toEqual(original)
   })
 })

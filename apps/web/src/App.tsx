@@ -404,7 +404,9 @@ import {
   mergeImportedUserPresets,
   sortUserPresets,
   type UserPresetDraft,
-  type UserPresetRecord
+  type UserPresetRecord,
+  updateUserPreset,
+  type UserPresetEdit
 } from './user-preset-library'
 import { useParameterDrafts } from './hooks/use-parameter-drafts'
 import { useTuningProfiles } from './hooks/use-tuning-profiles'
@@ -2382,6 +2384,13 @@ export function App() {
     [libraries]
   )
 
+  const handleUpdateUserPreset = useCallback(
+    (presetId: string, edit: UserPresetEdit) => {
+      libraries.setSavedUserPresets((current) => updateUserPreset(current, presetId, edit))
+      setPresetNotice({ tone: 'success', text: 'Preset updated. Nothing was written to the aircraft.' })
+    },
+    [libraries, setPresetNotice]
+  )
   const handleDeleteUserPreset = useCallback(
     (presetId: string) => {
       if (!isUserPresetId(presetId)) {
@@ -9155,6 +9164,7 @@ export function App() {
             }
           }}
           onDeleteUserPreset={handleDeleteUserPreset}
+          onUpdateUserPreset={handleUpdateUserPreset}
           presetPreviewById={presetPreviewById}
           selectedPresets={selectedPresets}
           selectedPresetConflicts={selectedPresetConflicts}

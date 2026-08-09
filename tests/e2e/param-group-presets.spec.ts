@@ -66,6 +66,78 @@ test.describe('Parameter-group presets', () => {
     await expect(page.getByTestId('preset-delete-button')).toBeVisible()
   })
 
+  test('edits a saved preset: rename it and drop a captured parameter', async ({ page }) => {
+    // A preset is captured from whatever the aircraft happened to hold, so it is
+    // routinely almost-right — one stale value, one parameter that should never
+    // have been swept in. Without editing the only repair is delete and
+    // re-capture, which means getting the aircraft back into that state again.
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await connectAndOpenParameters(page)
+
+    await page.getByTestId('parameter-search-input').fill('BATT_*')
+    await page.getByTestId('parameter-preset-select-all').check()
+    await page.getByTestId('parameter-create-preset').click()
+    await page.getByTestId('create-preset-name').fill('Editable preset')
+    await page.getByTestId('create-preset-save').click()
+
+    await page.getByTestId('view-button-presets').click()
+    const card = page.locator('[data-testid^="preset-card-user:"]').first()
+    await card.click()
+
+    await page.getByTestId('preset-edit-button').click()
+    const editor = page.getByTestId('preset-editor')
+    await expect(editor).toBeVisible()
+
+    // Drop the first captured parameter, and rename.
+    const firstRemove = editor.locator('[data-testid^="preset-edit-remove-"]').first()
+    const removedId = await firstRemove.getAttribute('data-testid')
+    const rowCountBefore = await editor.locator('[data-testid^="preset-edit-remove-"]').count()
+    await firstRemove.click()
+    await expect(editor.locator('[data-testid^="preset-edit-remove-"]')).toHaveCount(rowCountBefore - 1)
+
+    await page.getByTestId('preset-edit-label').fill('Renamed preset')
+    await page.getByTestId('preset-edit-save').click()
+    await expect(editor).toBeHidden()
+
+    // The rename reaches the card grid, and the dropped parameter is gone for
+    // good — re-opening the editor must not resurrect it.
+    await expect(page.locator('[data-testid^="preset-card-user:"]').first()).toContainText('Renamed preset')
+    await page.getByTestId('preset-edit-button').click()
+    await expect(page.getByTestId(removedId!.replace('data-testid=', ''))).toHaveCount(0)
+  })
+
+  test('will not save a preset edit that leaves it nameless or empty', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await connectAndOpenParameters(page)
+
+    await page.getByTestId('parameter-search-input').fill('BATT_*')
+    await page.getByTestId('parameter-preset-select-all').check()
+    await page.getByTestId('parameter-create-preset').click()
+    await page.getByTestId('create-preset-name').fill('Guard rails')
+    await page.getByTestId('create-preset-save').click()
+
+    await page.getByTestId('view-button-presets').click()
+    await page.locator('[data-testid^="preset-card-user:"]').first().click()
+    await page.getByTestId('preset-edit-button').click()
+
+    // A nameless preset renders a card that cannot be told from its neighbours.
+    await page.getByTestId('preset-edit-label').fill('   ')
+    await expect(page.getByTestId('preset-edit-save')).toBeDisabled()
+    await page.getByTestId('preset-edit-label').fill('Fine')
+    await expect(page.getByTestId('preset-edit-save')).toBeEnabled()
+
+    // A preset with nothing in it would apply nothing.
+    const editor = page.getByTestId('preset-editor')
+    const removes = editor.locator('[data-testid^="preset-edit-remove-"]')
+    let remaining = await removes.count()
+    while (remaining > 0) {
+      await removes.first().click()
+      remaining = await removes.count()
+    }
+    await expect(page.getByTestId('preset-edit-empty')).toBeVisible()
+    await expect(page.getByTestId('preset-edit-save')).toBeDisabled()
+  })
+
   test('offers a serial-port remap for a preset captured on a specific UART', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await connectAndOpenParameters(page)

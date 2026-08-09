@@ -50,6 +50,7 @@ export interface PresetsSectionProps {
   onSerialRemapChange: (port: number) => void
   selectedPresetDependencyLabels: readonly string[]
   onDeleteUserPreset: (presetId: string) => void
+  onUpdateUserPreset: (presetId: string, edit: { label?: string; description?: string; values?: { paramId: string; value: number }[] }) => void
   presetPreviewById: ReadonlyMap<string, PresetPreview>
   selectedPresets: readonly NormalizedPresetDefinition[]
   selectedPresetConflicts: readonly string[]
@@ -91,6 +92,7 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
     onSerialRemapChange,
     selectedPresetDependencyLabels,
     onDeleteUserPreset,
+    onUpdateUserPreset,
     presetPreviewById,
     selectedPresets,
     selectedPresetConflicts,
@@ -285,6 +287,14 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
       onToggleDropParam={onTogglePresetParamDrop}
       onSerialRemapChange={onSerialRemapChange}
       onDeleteSelectedPreset={single ? () => onDeleteUserPreset(single.id) : undefined}
+      // Only operator-authored presets are editable — the curated bundle ones
+      // ship with the app and have no storage to write back to.
+      onEditSelectedPreset={
+        single && isUserPresetId(single.id)
+          ? (edit) => onUpdateUserPreset(single.id, edit)
+          : undefined
+      }
+      editableValues={single?.values?.map((entry) => ({ paramId: entry.paramId, value: entry.value }))}
       applyAcknowledged={presetApplyAcknowledged}
       onAcknowledgedChange={setPresetApplyAcknowledged}
       onSelectPreset={onTogglePreset}

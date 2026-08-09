@@ -8053,6 +8053,62 @@ body.is-status-dash-dragging {
    fields fit across one row on any desktop width; letting them do that removes
    a screenful of empty vertical space without touching the shared grid every
    other tab uses. */
+/* Preset editor — rename a saved preset and revise the values it captured. */
+.preset-editor {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 12px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--primary-500);
+  background: rgba(var(--edge-rgb), 0.02);
+}
+
+.preset-editor label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.preset-editor input {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--surface-400);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+}
+
+.preset-editor__values {
+  display: grid;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.preset-editor__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.preset-editor__row code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.preset-editor__empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--warning-500, var(--text-muted));
+}
+
+.preset-editor__actions {
+  display: flex;
+  gap: 8px;
+}
+
 /* A section hosting a whole panel spans the multicolumn flow instead of being
    crammed into one ~360px column. */
 .config-section--wide {
