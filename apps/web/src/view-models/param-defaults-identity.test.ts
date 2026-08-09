@@ -46,9 +46,16 @@ describe('paramDefaultsIdentity', () => {
     expect(paramDefaultsIdentity(snapshot({ connected: false, firmwareVersion: '4.7.0', boardType: 5810 }))).toBeUndefined()
   })
 
-  it('still yields a key when the board never reported its identity', () => {
-    // An unidentified board must not read as "same as every other unidentified
-    // board is fine" by returning undefined — that is the disconnected signal.
-    expect(paramDefaultsIdentity(snapshot({}))).toBeDefined()
+  it('is undefined until the board has identified itself', () => {
+    // Board identity lands on AUTOPILOT_VERSION, after the link is up. A
+    // placeholder key here would change once per connect for reasons unrelated
+    // to the build, and a caller invalidating on change would discard a fetch
+    // that had just succeeded.
+    expect(paramDefaultsIdentity(snapshot({}))).toBeUndefined()
+  })
+
+  it('is defined once either half of the identity is known', () => {
+    expect(paramDefaultsIdentity(snapshot({ firmwareVersion: '4.7.0' }))).toBeDefined()
+    expect(paramDefaultsIdentity(snapshot({ boardType: 5810 }))).toBeDefined()
   })
 })

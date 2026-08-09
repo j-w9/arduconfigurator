@@ -474,6 +474,16 @@ const PRESET_AUTO_BACKUP_TAGS = ['auto-backup', 'preset'] as const
 // lookup calls can never drift apart.
 const NOTICES_POPOUT_KEY = 'recent-notices'
 
+/**
+ * How many times a silent param-defaults pull may be retried per build.
+ *
+ * More than one because the first attempt lands in the busiest moments after a
+ * connect and a MAVFTP timeout there is not evidence of anything; bounded
+ * because a board that genuinely cannot serve defaults must not be re-asked
+ * every time a row is expanded.
+ */
+const MAX_DEFAULTS_FETCH_ATTEMPTS = 3
+
 // 900ms felt "too fast" — the channel locked before the operator had fully
 // exercised the stick — so require a longer, more deliberate sustained
 // movement, with a slightly roomier gap tolerance so a brief stick pause
@@ -3322,6 +3332,8 @@ export function App() {
    * click. The explicit filter toggle still retries on demand.
    */
   const autoFetchedDefaultsRef = useRef(false)
+  /** Silent auto-fetches attempted for the current build before giving up. */
+  const defaultsAttemptsRef = useRef(0)
 
   /**
    * Drop the cached defaults when the thing they describe changes.
@@ -3339,11 +3351,18 @@ export function App() {
   const defaultsIdentity = paramDefaultsIdentity(snapshot)
   const lastDefaultsIdentityRef = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (lastDefaultsIdentityRef.current === defaultsIdentity) {
+    const previous = lastDefaultsIdentityRef.current
+    lastDefaultsIdentityRef.current = defaultsIdentity
+    // Only a move BETWEEN known identities (or a disconnect) means the cached
+    // map describes something else. Going from "not identified yet" to
+    // identified is the same vehicle finishing its handshake — treating that as
+    // a change threw away a fetch that had just succeeded, which is how a fresh
+    // connect ended up with no defaults at all.
+    if (previous === undefined || previous === defaultsIdentity) {
       return
     }
-    lastDefaultsIdentityRef.current = defaultsIdentity
     autoFetchedDefaultsRef.current = false
+    defaultsAttemptsRef.current = 0
     setParameterDefaults(null)
     setNonDefaultParamIds(null)
   }, [defaultsIdentity])
@@ -3355,6 +3374,10 @@ export function App() {
       autoFetchedDefaultsRef.current ||
       fetchDefaultsBusy ||
       snapshot.connection.kind !== 'connected' ||
+      // Wait for the board to identify itself. Fetching first only to have the
+      // result invalidated the moment identity lands is wasted MAVFTP traffic
+      // at the busiest moment of a connection.
+      defaultsIdentity === undefined ||
       snapshot.parameterStats.status !== 'complete'
     ) {
       return
@@ -3363,7 +3386,14 @@ export function App() {
     void handleFetchParamDefaults({ silent: true })
     // handleFetchParamDefaults is a stable function declaration on the body.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedParameterId, parameterDefaults, fetchDefaultsBusy, snapshot.connection.kind, snapshot.parameterStats.status])
+  }, [
+    selectedParameterId,
+    parameterDefaults,
+    fetchDefaultsBusy,
+    defaultsIdentity,
+    snapshot.connection.kind,
+    snapshot.parameterStats.status
+  ])
 
   async function handleFetchParamDefaults(options: { silent?: boolean } = {}): Promise<void> {
     setFetchDefaultsBusy(true)
@@ -3403,6 +3433,15 @@ export function App() {
             error instanceof Error ? error.message : String(error)
           }`
         })
+      }
+      // Let a later attempt through. The auto-fetch latch was set before the
+      // transfer began, so without this ONE failed pull — a MAVFTP timeout
+      // during the crowded moments after connect is enough — meant no defaults
+      // for the rest of the session. The attempt budget still stops a board
+      // that genuinely cannot serve them from being asked on every click.
+      defaultsAttemptsRef.current += 1
+      if (defaultsAttemptsRef.current < MAX_DEFAULTS_FETCH_ATTEMPTS) {
+        autoFetchedDefaultsRef.current = false
       }
     } finally {
       setFetchDefaultsBusy(false)
