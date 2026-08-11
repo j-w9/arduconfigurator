@@ -7,7 +7,9 @@
 
 import {
   DfuSeDevice,
+  DfuProtectedSectorError,
   parseDfuSeMemoryLayout,
+  type DfuProtectedSector,
   type DfuFlashProgress,
   type DfuUsbInterface,
   type IntelHexSegment
@@ -209,14 +211,38 @@ async function readTransferSize(device: UsbDeviceLike): Promise<number> {
 export async function flashSegmentsOverDfu(
   segments: readonly IntelHexSegment[],
   onProgress?: (progress: DfuFlashProgress) => void,
-  options?: { fullErase?: boolean }
+  options?: {
+    fullErase?: boolean
+    /**
+     * Asked when the board reports that sectors this image needs are write
+     * protected. Return true to attempt the flash anyway.
+     *
+     * A callback rather than a plain boolean so the operator sees the actual
+     * sectors and decides in the moment — a pre-set "force" flag would be
+     * armed long before anyone knew there was anything to force.
+     */
+    confirmProtectedSectors?: (protectedSectors: readonly DfuProtectedSector[]) => Promise<boolean> | boolean
+  }
 ): Promise<{ deviceName: string }> {
   const device = await requestDfuDevice()
   const open = await openDfuInterface(device)
   try {
     const memory = parseDfuSeMemoryLayout(open.memoryLayoutName)
     const dfu = new DfuSeDevice(open.iface, memory, open.transferSize)
-    await dfu.flash(segments, onProgress, options)
+
+    // Check before erasing anything. A board with option-byte write protection
+    // (nWRP) accepts the erase command and then fails partway, which is the
+    // worst moment to find out — the old firmware is already gone.
+    const blocked = dfu.protectedSectorsFor(segments)
+    let allowProtectedSectors = false
+    if (blocked.length > 0) {
+      allowProtectedSectors = (await options?.confirmProtectedSectors?.(blocked)) ?? false
+      if (!allowProtectedSectors) {
+        throw new DfuProtectedSectorError(blocked)
+      }
+    }
+
+    await dfu.flash(segments, onProgress, { fullErase: options?.fullErase, allowProtectedSectors })
     return { deviceName: device.productName ?? 'DFU device' }
   } finally {
     await open.close()

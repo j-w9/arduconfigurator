@@ -44,10 +44,30 @@ export interface DfuStatus {
   state: number
 }
 
-/** One erasable flash sector parsed from the DfuSe memory-layout string. */
+/**
+ * One flash sector parsed from the DfuSe memory-layout string.
+ *
+ * The layout encodes per-sector permissions in the type letter that follows the
+ * size (ST DfuSe: the letter is 0x60 + a 3-bit mask, bit0 readable, bit1
+ * erasable, bit2 writeable — so `g` is all three and anything less is not).
+ * That letter used to be parsed and thrown away, which meant a board whose
+ * sectors are write-protected looked identical to one that is not, right up
+ * until the erase failed partway through.
+ */
 export interface DfuMemorySector {
   start: number
   size: number
+  readable: boolean
+  erasable: boolean
+  writable: boolean
+}
+
+/** A sector the image needs to write but the device reports as protected. */
+export interface DfuProtectedSector {
+  start: number
+  size: number
+  erasable: boolean
+  writable: boolean
 }
 
 export type DfuFlashPhase = 'erase' | 'program' | 'verify' | 'manifest'
@@ -90,20 +110,97 @@ export function parseDfuSeMemoryLayout(name: string): DfuMemorySector[] {
       continue
     }
     for (const def of tokens[i + 1].split(',')) {
-      const match = def.trim().match(/^(\d+)\*(\d+)([\sKMkm])/)
+      const match = def.trim().match(/^(\d+)\*(\d+)([\sKMkm])([a-gA-G])?/)
       if (!match) {
         continue
       }
       const count = Number.parseInt(match[1], 10)
       const unit = match[3].toUpperCase()
       const size = Number.parseInt(match[2], 10) * (unit === 'M' ? 0x100000 : unit === 'K' ? 0x400 : 1)
+      // Missing letter: assume fully permitted rather than inventing a
+      // protection the device never claimed — a false alarm on every flash
+      // would be worse than the gap it closes.
+      const mask = match[4] ? (match[4].toLowerCase().charCodeAt(0) - 0x60) & 0x07 : 0x07
       for (let s = 0; s < count; s += 1) {
-        sectors.push({ start: address, size })
+        sectors.push({
+          start: address,
+          size,
+          readable: (mask & 0x01) !== 0,
+          erasable: (mask & 0x02) !== 0,
+          writable: (mask & 0x04) !== 0
+        })
         address += size
       }
     }
   }
   return sectors
+}
+
+/**
+ * Sectors the image needs but the device will not let us write or erase.
+ *
+ * At least one major manufacturer ships boards with option-byte write
+ * protection set on nWRP1/nWRP2, which silently prevents writing the ArduPilot
+ * bootloader. Without this check the flash starts, fails partway through the
+ * erase, and leaves a board that no longer boots what it used to — the worst
+ * possible moment to discover the protection.
+ */
+export function findProtectedSectors(
+  sectors: readonly DfuMemorySector[],
+  segments: readonly IntelHexSegment[]
+): DfuProtectedSector[] {
+  const protectedSectors: DfuProtectedSector[] = []
+  for (const sector of sectors) {
+    if (sector.erasable && sector.writable) {
+      continue
+    }
+    const sectorEnd = sector.start + sector.size
+    const touched = segments.some(
+      (segment) => sector.start < segment.address + segment.data.length && sectorEnd > segment.address
+    )
+    if (touched) {
+      protectedSectors.push({
+        start: sector.start,
+        size: sector.size,
+        erasable: sector.erasable,
+        writable: sector.writable
+      })
+    }
+  }
+  return protectedSectors.sort((a, b) => a.start - b.start)
+}
+
+/**
+ * Thrown instead of starting a flash the board has said it will refuse.
+ *
+ * Carries the sectors so the caller can offer an informed override rather than
+ * re-deriving them from a message string.
+ */
+export class DfuProtectedSectorError extends Error {
+  readonly protectedSectors: readonly DfuProtectedSector[]
+
+  constructor(protectedSectors: readonly DfuProtectedSector[]) {
+    super(describeProtectedSectors(protectedSectors))
+    this.name = 'DfuProtectedSectorError'
+    this.protectedSectors = protectedSectors
+  }
+}
+
+/** Operator-facing explanation of a protected-sector finding. */
+export function describeProtectedSectors(protectedSectors: readonly DfuProtectedSector[]): string {
+  if (protectedSectors.length === 0) {
+    return ''
+  }
+  const list = protectedSectors
+    .map((sector) => `0x${sector.start.toString(16).toUpperCase()} (${Math.round(sector.size / 1024)} KiB)`)
+    .join(', ')
+  return (
+    `${protectedSectors.length} flash sector(s) this firmware needs are reported as protected by the board: ${list}. ` +
+    'This is normally STM32 option-byte write protection (nWRP) — some vendors ship boards with it set, which ' +
+    'prevents writing the ArduPilot bootloader. Flashing anyway is expected to fail partway through the erase and ' +
+    'can leave the board unable to boot what it had before. Clear the protection with the vendor tool (or ' +
+    'STM32CubeProgrammer) before flashing.'
+  )
 }
 
 /** Start addresses of every sector touched by the image segments (ascending, unique). */
@@ -244,14 +341,36 @@ export class DfuSeDevice {
    * then manifest + leave DFU so the board boots the new firmware. Progress is
    * reported per phase.
    */
+  /**
+   * Sectors this image needs that the device reports as protected.
+   *
+   * Exposed so a caller can ask BEFORE flashing and put the decision in front
+   * of the operator, rather than discovering it when the erase fails.
+   */
+  protectedSectorsFor(segments: readonly IntelHexSegment[]): DfuProtectedSector[] {
+    return findProtectedSectors(this.memory, segments)
+  }
+
   async flash(
     segments: readonly IntelHexSegment[],
     onProgress?: (progress: DfuFlashProgress) => void,
-    options?: { fullErase?: boolean }
+    options?: { fullErase?: boolean; allowProtectedSectors?: boolean }
   ): Promise<void> {
     if (segments.length === 0) {
       throw new Error('Nothing to flash: the firmware image is empty')
     }
+
+    // Refuse by default when the board says it will not accept the write. The
+    // operator can override — the device's own report is not always the whole
+    // truth, and someone who has just cleared protection may know better — but
+    // it must be a decision, not a surprise mid-erase.
+    if (!options?.allowProtectedSectors) {
+      const blocked = this.protectedSectorsFor(segments)
+      if (blocked.length > 0) {
+        throw new DfuProtectedSectorError(blocked)
+      }
+    }
+
     await this.clearErrorState()
 
     // 1. Erase. Full-erase wipes the whole chip (every sector in the layout, or

@@ -10,6 +10,7 @@ import { useCallback, useState } from 'react'
 import { buttonStyle } from '@arduconfig/ui-kit'
 import { parseIntelHex, type DfuFlashProgress, type ParsedIntelHex } from '@arduconfig/firmware-flash'
 
+import { describeProtectedSectors } from '@arduconfig/firmware-flash'
 import { flashSegmentsOverDfu, isWebUsbSupported } from './web-usb-dfu'
 
 function formatBytes(bytes: number): string {
@@ -90,7 +91,27 @@ export function DfuHexFlasher({ onActivateDfu, activateDfuDisabledReason }: DfuH
     setNotice(null)
     setProgress(null)
     try {
-      const { deviceName } = await flashSegmentsOverDfu(parsed.segments, setProgress, { fullErase })
+      const { deviceName } = await flashSegmentsOverDfu(parsed.segments, setProgress, {
+        fullErase,
+        // The board says it will refuse part of this write. Put that in front
+        // of the operator with the sectors named, rather than starting an erase
+        // that fails halfway and takes the working firmware with it. Overriding
+        // is allowed — someone who just cleared protection, or who knows the
+        // descriptor is lying, should not be stuck — but it has to be chosen.
+        confirmProtectedSectors: (protectedSectors) => {
+          const detail = describeProtectedSectors(protectedSectors)
+          setError(detail)
+          return (
+            typeof window !== 'undefined' &&
+            window.confirm(
+              `${detail}\n\nAttempt the flash anyway?\n\n` +
+                'If the protection is real this will fail partway through the erase and the board may not boot ' +
+                'until it is reflashed with the protection cleared.'
+            )
+          )
+        }
+      })
+      setError(null)
       setNotice(
         `Flashed and verified ${formatBytes(parsed.totalBytes)} to ${deviceName}. Now unplug the flight controller and plug it back in to boot the new firmware, then reconnect.`
       )

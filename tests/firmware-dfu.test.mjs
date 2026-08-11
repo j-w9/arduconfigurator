@@ -103,8 +103,22 @@ test('parseIntelHex: parses a large contiguous image in roughly linear time (no 
 test('parseDfuSeMemoryLayout: parses a mixed STM32F4 sector map', () => {
   const sectors = parseDfuSeMemoryLayout('@Internal Flash  /0x08000000/04*016Kg,01*016Kg,01*064Kg,07*128Kg')
   assert.equal(sectors.length, 4 + 1 + 1 + 7)
-  assert.deepEqual(sectors[0], { start: 0x08000000, size: 16 * 1024 })
-  assert.deepEqual(sectors[4], { start: 0x08010000, size: 16 * 1024 }) // after 4*16K
+  // Sectors now carry the DfuSe permission bits from the type letter; `g` is
+  // readable + erasable + writeable.
+  assert.deepEqual(sectors[0], {
+    start: 0x08000000,
+    size: 16 * 1024,
+    readable: true,
+    erasable: true,
+    writable: true
+  })
+  assert.deepEqual(sectors[4], {
+    start: 0x08010000,
+    size: 16 * 1024,
+    readable: true,
+    erasable: true,
+    writable: true
+  }) // after 4*16K
   assert.equal(sectors[6].size, 128 * 1024) // first 128K sector
 })
 

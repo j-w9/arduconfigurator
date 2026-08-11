@@ -12,8 +12,12 @@ export { checkBoardMatch, checkImageFitsFlash, type BoardMatchResult } from './b
 export { parseIntelHex, type IntelHexSegment, type ParsedIntelHex } from './intel-hex.js'
 export {
   DfuSeDevice,
+  DfuProtectedSectorError,
+  describeProtectedSectors,
+  findProtectedSectors,
   parseDfuSeMemoryLayout,
   sectorsToErase,
+  type DfuProtectedSector,
   type DfuUsbInterface,
   type DfuMemorySector,
   type DfuStatus,
