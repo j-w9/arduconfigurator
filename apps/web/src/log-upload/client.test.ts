@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { LogServerError, login, normalizeServerUrl, uploadLog } from './client'
+import { LogServerError, login, normalizeServerUrl, uploadArtifact, uploadLog } from './client'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -151,5 +151,64 @@ describe('uploadLog', () => {
       status: 401
     })
     expect(new LogServerError('x', 0).status).toBe(0)
+  })
+})
+
+describe('uploadArtifact', () => {
+  it('posts the export in one request and returns what the server classified it as', async () => {
+    // One request, no reservation: a config export is small, unlike a log.
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ id: 'a1', kind: 'parameters', sha256: 'abc', sizeBytes: 12 }),
+        { status: 201 }
+      )
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await uploadArtifact(
+      SESSION,
+      { fileName: 'hex_2026-08-12_params.json', folder: 'hex/2026-08' },
+      '{"parameterCount":3}'
+    )
+
+    expect(result.kind).toBe('parameters')
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://logs.example.com/api/artifacts')
+    expect(init.method).toBe('POST')
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer token-abc')
+  })
+
+  it('sends the export text VERBATIM, not re-serialised', async () => {
+    // The server's sha256 is over exactly these bytes. Parsing and
+    // re-stringifying would reformat the operator's file and break that, so the
+    // content must survive as the literal string it was given.
+    const original = '{\n  "parameterCount": 3,\n  "spacing": "preserved"\n}'
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ id: 'a1', kind: 'parameters', sha256: 'x', sizeBytes: 1 }), { status: 201 })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await uploadArtifact(SESSION, { fileName: 'p.json' }, original)
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(JSON.parse(init.body as string).content).toBe(original)
+  })
+
+  it('surfaces the server’s own error text rather than a generic failure', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: 'File exceeds the 8 MB limit.' }), { status: 400 }))
+    )
+    await expect(uploadArtifact(SESSION, { fileName: 'big.json' }, '{}')).rejects.toThrow(/8 MB limit/)
+  })
+
+  it('reports an expired session as 401 so the caller can drop it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 401 })))
+    await expect(uploadArtifact(SESSION, { fileName: 'p.json' }, '{}')).rejects.toMatchObject({ status: 401 })
+  })
+
+  it('turns an unreachable server into advice, not a bare TypeError', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
+    await expect(uploadArtifact(SESSION, { fileName: 'p.json' }, '{}')).rejects.toThrow(/Could not reach/)
   })
 })
