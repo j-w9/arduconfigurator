@@ -34,7 +34,31 @@ const FEATURE_FILES = [
 const ALLOWED_IMPORT = /^(react$|@arduconfig\/|\.\.?\/(log-upload|view-models\/log-upload-form|hooks\/use-log-upload)|\.\/)/
 
 /** Files that are expected to consume the feature. */
-const EXPECTED_CONSUMERS = new Set(['App.tsx', 'sections/LogsSection.tsx'])
+/*
+ * Who may talk to the operator's log server.
+ *
+ * This was the Logs surface alone. It widened deliberately when config uploads
+ * arrived: a parameter backup, preset library or snapshot library can be filed
+ * beside the flights it produced, which is the entire point — "the tune changed
+ * and the next flight oscillated" needs both halves in one place. Those surfaces
+ * reuse the session the Logs tab established rather than asking for credentials
+ * again.
+ *
+ * The rule still bites: everything here reaches the server through
+ * log-upload/client, and anything NOT on this list importing it is still a
+ * failure. Widening the boundary is a decision recorded here, not a drift.
+ */
+const EXPECTED_CONSUMERS = new Set([
+  'App.tsx',
+  'sections/LogsSection.tsx',
+  // Config-artifact uploads, all going through the one shared hook.
+  'hooks/use-artifact-upload.ts',
+  'hooks/use-parameter-backup-io.ts',
+  'hooks/use-snapshot-library.ts',
+  'sections/PresetsSection.tsx',
+  'views/UploadToLogServerButton.tsx',
+  'views/Presets.tsx'
+])
 
 test('the log-upload feature exists where the guard expects it', () => {
   // Otherwise a rename would silently turn this whole file into a no-op that

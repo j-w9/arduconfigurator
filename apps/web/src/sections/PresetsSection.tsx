@@ -3,6 +3,7 @@
 // invalid entries) require a fair amount of mapping. Now lifted into a section
 // that takes the small set of derived state + the apply / erase handlers.
 
+import { useArtifactUpload } from '../hooks/use-artifact-upload'
 import { useRef, type ChangeEvent, type Dispatch, type ReactElement, type SetStateAction } from 'react'
 import type {
   ConfiguratorSnapshot,
@@ -29,6 +30,7 @@ import type { SavedParameterSnapshot } from '../snapshot-library'
 import { statusToneLabel } from '../status-tone'
 import { toneForPresetApplicability } from '../tone-helpers'
 import { PresetsView, type PresetsCard, type PresetsGroup } from '../views/Presets'
+import { buildArtifactUploadTarget } from '../view-models/artifact-upload-target'
 
 interface PresetPreview {
   diff: ParameterPresetDiffResult
@@ -119,6 +121,18 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
   } = props
 
   const importInputRef = useRef<HTMLInputElement>(null)
+  const artifactUpload = useArtifactUpload()
+
+  // Upload the same bytes the export button downloads, to the server the Logs
+  // tab is already signed in to.
+  function uploadUserPresets(records: readonly UserPresetRecord[], single?: UserPresetRecord): void {
+    if (records.length === 0) return
+    const target = buildArtifactUploadTarget(snapshot, 'presets')
+    void artifactUpload.upload(
+      { fileName: target.fileName, folder: target.folder, note: single ? single.label : undefined },
+      serializeUserPresetExport(records, single ? single.label : 'Shared presets')
+    )
+  }
 
   function exportUserPresets(records: readonly UserPresetRecord[], single?: UserPresetRecord): void {
     if (records.length === 0) {
@@ -322,7 +336,20 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
                 }
               }
             : undefined,
-        onImport: () => importInputRef.current?.click()
+        onImport: () => importInputRef.current?.click(),
+        upload: {
+          available: artifactUpload.available,
+          serverUrl: artifactUpload.serverUrl,
+          status: artifactUpload.status,
+          onUploadAll: () => uploadUserPresets(userPresets),
+          onUploadSelected:
+            single && isUserPresetId(single.id)
+              ? () => {
+                  const record = userPresets.find((preset) => preset.id === single.id)
+                  if (record) uploadUserPresets([record], record)
+                }
+              : undefined
+        }
       }}
       hiddenInputsSlot={
         <input

@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react'
+import type { ArtifactUploadStatus } from '../hooks/use-artifact-upload'
+import { UploadToLogServerButton } from './UploadToLogServerButton'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
@@ -148,6 +150,14 @@ export interface PresetsViewProps {
    *  omitted. Curated presets ship with the app and are not exportable — there
    *  is nothing to share that the recipient does not already have. */
   sharing?: {
+    /** Present only when a log-server session exists; absent hides the button. */
+    upload?: {
+      available: boolean
+      serverUrl?: string
+      status: ArtifactUploadStatus
+      onUploadAll: () => void
+      onUploadSelected?: () => void
+    }
     /** How many user presets exist; 0 disables export with an explanation. */
     userPresetCount: number
     /** Label of the single selected user preset, when exactly one is selected. */
@@ -267,6 +277,20 @@ export function PresetsView(props: PresetsViewProps) {
                   >
                     Export &ldquo;{sharing.selectedUserPresetLabel}&rdquo;
                   </button>
+                ) : null}
+                {/* Same bytes as the export, sent to the operator's own log
+                    server so a tune is filed beside the flights it produced.
+                    Hidden entirely without a session — see the button. */}
+                {sharing.upload ? (
+                  <UploadToLogServerButton
+                    available={sharing.upload.available}
+                    serverUrl={sharing.upload.serverUrl}
+                    status={sharing.upload.status}
+                    onUpload={sharing.upload.onUploadSelected ?? sharing.upload.onUploadAll}
+                    label={sharing.upload.onUploadSelected ? 'this preset' : 'your presets'}
+                    testId="presets-upload-artifact"
+                    disabled={isBusy || sharing.userPresetCount === 0}
+                  />
                 ) : null}
                 <button
                   type="button"

@@ -40,6 +40,8 @@ import {
 } from '../library-helpers'
 import { createSavedSnapshot, type SavedParameterSnapshot } from '../snapshot-library'
 import type { ParameterNotice } from './use-parameter-feedback'
+import { useArtifactUpload, type ArtifactUpload } from './use-artifact-upload'
+import { buildArtifactUploadTarget } from '../view-models/artifact-upload-target'
 
 export interface UseSnapshotLibraryParams {
   snapshot: ConfiguratorSnapshot
@@ -64,6 +66,8 @@ export interface UseSnapshotLibraryParams {
 }
 
 export interface UseSnapshotLibraryResult {
+  artifactUpload: ArtifactUpload
+  handleUploadSnapshotLibrary: () => void
   handleCaptureLiveSnapshot: () => void
   handleOverwriteSelectedSnapshot: () => void
   handleImportSnapshotFile: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
@@ -97,6 +101,8 @@ export function useSnapshotLibrary({
   setDesktopSnapshotLibraryName,
   setSnapshotNotice
 }: UseSnapshotLibraryParams): UseSnapshotLibraryResult {
+  const artifactUpload = useArtifactUpload()
+
   function clearDesktopSnapshotLibraryLink(): void {
     setDesktopSnapshotLibraryPath(undefined)
     setDesktopSnapshotLibraryName(undefined)
@@ -231,6 +237,15 @@ export function useSnapshotLibrary({
     } finally {
       event.target.value = ''
     }
+  }
+
+  function handleUploadSnapshotLibrary(): void {
+    const library = createParameterSnapshotLibrary('Browser Local Snapshot Library', savedSnapshots)
+    const target = buildArtifactUploadTarget(snapshot, 'snapshots')
+    void artifactUpload.upload(
+      { fileName: target.fileName, folder: target.folder, vehicle: snapshot.vehicle?.vehicle },
+      serializeParameterSnapshotLibrary(library)
+    )
   }
 
   function handleExportSnapshotLibrary(): void {
@@ -384,6 +399,8 @@ export function useSnapshotLibrary({
     handleCaptureLiveSnapshot,
     handleOverwriteSelectedSnapshot,
     handleImportSnapshotFile,
+    artifactUpload,
+    handleUploadSnapshotLibrary,
     handleExportSnapshotLibrary,
     handleOpenDesktopSnapshotFile,
     handleSaveDesktopSnapshotLibrary,

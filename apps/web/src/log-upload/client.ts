@@ -27,6 +27,25 @@ export interface LogUploadMetadata {
   onboardLogId?: number
 }
 
+/**
+ * A configuration file uploaded beside the flights it belongs to.
+ *
+ * Deliberately thin: the server reads the kind, parameter count, vehicle and
+ * firmware out of the file itself, because every ArduConfigurator export
+ * already carries them. Stating them here would be a second source of truth
+ * that can disagree with the bytes actually stored.
+ */
+export interface ArtifactUploadMetadata {
+  fileName: string
+  /** Same folder vocabulary as a log, so config and flights land together. */
+  folder?: string
+  note?: string
+  /** Gap-fill only — anything the file states wins. */
+  vehicle?: string
+  firmwareVersion?: string
+  boardName?: string
+}
+
 export class LogServerError extends Error {
   constructor(
     message: string,
@@ -136,6 +155,37 @@ export interface UploadProgress {
  * against an id the server already authorised, and it keeps multipart encoding
  * out of both halves.
  */
+/**
+ * Upload a parameter backup, preset library or snapshot library.
+ *
+ * One request, no reservation: these are small, unlike a flight log.
+ *
+ * `content` is the export's own text, sent verbatim as a string. It is NOT
+ * re-serialised from an object on the way out — a round trip through
+ * JSON.parse/stringify would reformat the operator's file, and the sha256 the
+ * server returns is over exactly these bytes, so it stays verifiable.
+ */
+export async function uploadArtifact(
+  session: LogServerSession,
+  metadata: ArtifactUploadMetadata,
+  content: string
+): Promise<{ id: string; kind: string; sha256: string; sizeBytes: number; url?: string }> {
+  let response: Response
+  try {
+    response = await fetch(`${session.serverUrl}/api/artifacts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${session.token}` },
+      body: JSON.stringify({ ...metadata, content })
+    })
+  } catch (error) {
+    asNetworkError(error, session.serverUrl)
+  }
+  if (!response.ok) {
+    await readError(response, 'Upload failed.')
+  }
+  return (await response.json()) as { id: string; kind: string; sha256: string; sizeBytes: number; url?: string }
+}
+
 export async function uploadLog(
   session: LogServerSession,
   metadata: LogUploadMetadata,

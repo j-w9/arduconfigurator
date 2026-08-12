@@ -10,6 +10,7 @@
 // know about, and none of the logic-bearing handlers touch it.
 
 import { useState } from 'react'
+import { useArtifactUpload, type ArtifactUpload } from './use-artifact-upload'
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react'
 
 import {
@@ -33,6 +34,7 @@ import {
 } from '../view-models/snapshot-identity'
 import type { ParameterDraftValues } from './use-parameter-drafts'
 import type { ParameterFollowUp, ParameterNotice } from './use-parameter-feedback'
+import { buildArtifactUploadTarget } from '../view-models/artifact-upload-target'
 
 export interface UseParameterBackupIoParams {
   snapshot: ConfiguratorSnapshot
@@ -60,6 +62,9 @@ export interface PendingParameterImport {
 }
 
 export interface UseParameterBackupIoResult {
+  /** Log-server upload state, so the surface can show the button conditionally. */
+  artifactUpload: ArtifactUpload
+  handleUploadParameterBackup: () => void
   handleExportParameterBackup: () => void
   handleExportParameterBackupAsParm: () => void
   handleExportParameterBackupAsParams: () => void
@@ -103,6 +108,7 @@ export function useParameterBackupIo({
   // An import used to stage every differing value the instant the file was
   // read, which turns "let me look at this backup" into a pending write of
   // hundreds of parameters. Hold it here instead and let the operator decide.
+  const artifactUpload = useArtifactUpload()
   const [pendingParameterImport, setPendingParameterImport] = useState<PendingParameterImport>()
   const [importedDraftOrigins, setImportedDraftOrigins] = useState<Record<string, string>>({})
   function buildBackupAppInfo(): { appVersion: string; appGitHash: string; appGitBranch: string } {
@@ -125,6 +131,27 @@ export function useParameterBackupIo({
     if (exportIncludeParamIds !== undefined) parts.push('changed only')
     if (skipped.length > 0) parts.push(`skipped ${skipped.join(', ')}`)
     return parts.length > 0 ? ` (${parts.join('; ')})` : ''
+  }
+
+  /**
+   * Upload the JSON backup rather than downloading it.
+   *
+   * JSON only: .parm/.params are Mission Planner interchange formats that carry
+   * no vehicle, firmware or timestamp, so the server can classify them but a
+   * backup filed beside a flight is far more useful with that context intact.
+   */
+  function handleUploadParameterBackup(): void {
+    const backup = createParameterBackup(snapshot, buildBackupAppInfo(), exportOptions())
+    const target = buildArtifactUploadTarget(snapshot, 'parameters')
+    void artifactUpload.upload(
+      {
+        fileName: target.fileName,
+        folder: target.folder,
+        vehicle: snapshot.vehicle?.vehicle,
+        firmwareVersion: snapshot.hardware?.board?.firmwareVersion
+      },
+      serializeParameterBackup(backup)
+    )
   }
 
   function handleExportParameterBackup(): void {
@@ -245,6 +272,8 @@ export function useParameterBackupIo({
   }
 
   return {
+    artifactUpload,
+    handleUploadParameterBackup,
     handleExportParameterBackup,
     handleExportParameterBackupAsParm,
     handleExportParameterBackupAsParams,
