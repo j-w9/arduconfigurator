@@ -17471,6 +17471,18 @@ button.mavlink-inspector__sent-row {
   border-radius: 10px;
   background: var(--surface-200);
 }
+/* The artifact upload form sits inside an existing row of export buttons.
+   Taking the whole line keeps it off the end of that row, and the width cap
+   stops a long derived filename widening the row at phone width. */
+.log-upload-dialog--inline {
+  flex: 1 0 100%;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.log-upload-dialog--inline .log-upload-dialog__file {
+  overflow-wrap: anywhere;
+}
 .log-upload-dialog__header {
   display: flex;
   align-items: baseline;

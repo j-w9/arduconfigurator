@@ -47,6 +47,7 @@ import { useDraftSelection } from '../hooks/use-draft-selection'
 import { ParameterDiffGroupActions } from '../views/ParameterDiffGroupActions'
 import { ParameterDiffIdentity, ParameterDiffInvalidRow } from '../views/ParameterDiffRow'
 import { UploadToLogServerButton } from '../views/UploadToLogServerButton'
+import type { ArtifactUploadAnswers, ArtifactUploadTarget } from '../view-models/artifact-upload-target'
 import type { ArtifactUpload } from '../hooks/use-artifact-upload'
 
 /**
@@ -156,8 +157,11 @@ export interface SnapshotsSectionHandlers {
   handleExportSelectedSnapshot: () => void | Promise<void>
   handleExportSelectedSnapshotToDesktop: () => void | Promise<void>
   handleExportSnapshotLibrary: () => void | Promise<void>
-  handleUploadSnapshotLibrary: () => void
-  handleUploadSelectedSnapshot: () => void
+  handleUploadSnapshotLibrary: (answers: ArtifactUploadAnswers) => void
+  handleUploadSelectedSnapshot: (answers: ArtifactUploadAnswers) => void
+  /** Derived name/folder each upload form prefills. */
+  snapshotLibraryUploadTarget: ArtifactUploadTarget
+  selectedSnapshotUploadTarget: ArtifactUploadTarget
   artifactUpload: ArtifactUpload
   handleImportProvisioningLibrary: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>
   handleImportSnapshotFile: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>
@@ -322,6 +326,8 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     handleExportSnapshotLibrary,
     handleUploadSnapshotLibrary,
     handleUploadSelectedSnapshot,
+    snapshotLibraryUploadTarget,
+    selectedSnapshotUploadTarget,
     artifactUpload,
     handleImportProvisioningLibrary,
     handleImportSnapshotFile,
@@ -509,6 +515,8 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     serverUrl={artifactUpload.serverUrl}
                     status={artifactUpload.status}
                     onUpload={handleUploadSnapshotLibrary}
+                    defaultFileName={snapshotLibraryUploadTarget.fileName}
+                    folder={snapshotLibraryUploadTarget.folder}
                     label="this snapshot library"
                     testId="upload-snapshot-library-button"
                     disabled={busyAction !== undefined || savedSnapshots.length === 0}
@@ -1200,6 +1208,8 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     serverUrl={artifactUpload.serverUrl}
                     status={artifactUpload.status}
                     onUpload={handleUploadSelectedSnapshot}
+                    defaultFileName={selectedSnapshotUploadTarget.fileName}
+                    folder={selectedSnapshotUploadTarget.folder}
                     label="this snapshot"
                     testId="upload-selected-snapshot-button"
                     disabled={busyAction !== undefined}

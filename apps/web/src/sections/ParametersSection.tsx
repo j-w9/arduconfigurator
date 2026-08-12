@@ -43,6 +43,7 @@ import { parameterSearchPredicate } from '../view-models/filtered-parameters'
 import { toneForParameterDraftStatus } from '../tone-helpers'
 import type { ParameterFollowUp, ParameterNotice } from '../hooks/use-parameter-feedback'
 import { UploadToLogServerButton } from '../views/UploadToLogServerButton'
+import type { ArtifactUploadAnswers, ArtifactUploadTarget } from '../view-models/artifact-upload-target'
 import type { ArtifactUpload } from '../hooks/use-artifact-upload'
 
 export interface ParametersSectionProps {
@@ -91,7 +92,9 @@ export interface ParametersSectionProps {
   onToggleParameterExportExclusion: (category: ParameterImportCategory) => void
   onExportParameterBackup: () => void
   /** Upload the JSON backup to the operator's log server, filed by aircraft. */
-  handleUploadParameterBackup: () => void
+  handleUploadParameterBackup: (answers: ArtifactUploadAnswers) => void
+  /** The derived name/folder the upload form prefills. */
+  parameterBackupUploadTarget: ArtifactUploadTarget
   artifactUpload: ArtifactUpload
   onExportParameterBackupAsParm: () => void
   onExportParameterBackupAsParams: () => void
@@ -177,6 +180,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     onToggleParameterExportExclusion: handleToggleParameterExportExclusion,
     onExportParameterBackup: handleExportParameterBackup,
     handleUploadParameterBackup,
+    parameterBackupUploadTarget,
     artifactUpload,
     onExportParameterBackupAsParm: handleExportParameterBackupAsParm,
     onExportParameterBackupAsParams: handleExportParameterBackupAsParams,
@@ -761,6 +765,8 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                 serverUrl={artifactUpload.serverUrl}
                 status={artifactUpload.status}
                 onUpload={handleUploadParameterBackup}
+                defaultFileName={parameterBackupUploadTarget.fileName}
+                folder={parameterBackupUploadTarget.folder}
                 label="this parameter backup"
                 testId="upload-parameter-backup-button"
                 disabled={busyAction !== undefined || snapshot.parameters.length === 0}

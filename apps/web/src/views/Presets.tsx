@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import type { ArtifactUploadStatus } from '../hooks/use-artifact-upload'
 import { UploadToLogServerButton } from './UploadToLogServerButton'
+import type { ArtifactUploadAnswers } from '../view-models/artifact-upload-target'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
@@ -155,8 +156,11 @@ export interface PresetsViewProps {
       available: boolean
       serverUrl?: string
       status: ArtifactUploadStatus
-      onUploadAll: () => void
-      onUploadSelected?: () => void
+      /** The derived name the upload form prefills, and where it lands. */
+      defaultFileName: string
+      folder?: string
+      onUploadAll: (answers: ArtifactUploadAnswers) => void
+      onUploadSelected?: (answers: ArtifactUploadAnswers) => void
     }
     /** How many user presets exist; 0 disables export with an explanation. */
     userPresetCount: number
@@ -291,6 +295,8 @@ export function PresetsView(props: PresetsViewProps) {
                     // accumulates across builds, and the one worth filing beside
                     // a flight is the one that flew it.
                     onUpload={sharing.upload.onUploadSelected ?? sharing.upload.onUploadAll}
+                    defaultFileName={sharing.upload.defaultFileName}
+                    folder={sharing.upload.folder}
                     label={
                       sharing.upload.onUploadSelected
                         ? `“${sharing.selectedUserPresetLabel}”`

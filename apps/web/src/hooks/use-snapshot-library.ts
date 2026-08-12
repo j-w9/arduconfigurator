@@ -41,7 +41,11 @@ import {
 import { createSavedSnapshot, type SavedParameterSnapshot } from '../snapshot-library'
 import type { ParameterNotice } from './use-parameter-feedback'
 import { useArtifactUpload, type ArtifactUpload } from './use-artifact-upload'
-import { buildArtifactUploadTarget } from '../view-models/artifact-upload-target'
+import {
+  buildArtifactUploadTarget,
+  type ArtifactUploadAnswers,
+  type ArtifactUploadTarget
+} from '../view-models/artifact-upload-target'
 
 export interface UseSnapshotLibraryParams {
   snapshot: ConfiguratorSnapshot
@@ -67,8 +71,12 @@ export interface UseSnapshotLibraryParams {
 
 export interface UseSnapshotLibraryResult {
   artifactUpload: ArtifactUpload
-  handleUploadSnapshotLibrary: () => void
-  handleUploadSelectedSnapshot: () => void
+  /** Derived name/folder the library upload form prefills. */
+  snapshotLibraryUploadTarget: ArtifactUploadTarget
+  /** Same, for the one selected snapshot — its label rides along in the name. */
+  selectedSnapshotUploadTarget: ArtifactUploadTarget
+  handleUploadSnapshotLibrary: (answers: ArtifactUploadAnswers) => void
+  handleUploadSelectedSnapshot: (answers: ArtifactUploadAnswers) => void
   handleCaptureLiveSnapshot: () => void
   handleOverwriteSelectedSnapshot: () => void
   handleImportSnapshotFile: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
@@ -103,6 +111,16 @@ export function useSnapshotLibrary({
   setSnapshotNotice
 }: UseSnapshotLibraryParams): UseSnapshotLibraryResult {
   const artifactUpload = useArtifactUpload()
+  // Derived here rather than in the surface so the name the form prefills and
+  // the folder the upload uses cannot drift apart.
+  const snapshotLibraryUploadTarget = buildArtifactUploadTarget(snapshot, 'snapshots')
+  const selectedSnapshotUploadTarget = buildArtifactUploadTarget(
+    snapshot,
+    'snapshots',
+    'json',
+    undefined,
+    selectedSnapshot?.label ?? ''
+  )
 
   function clearDesktopSnapshotLibraryLink(): void {
     setDesktopSnapshotLibraryPath(undefined)
@@ -240,11 +258,15 @@ export function useSnapshotLibrary({
     }
   }
 
-  function handleUploadSnapshotLibrary(): void {
+  function handleUploadSnapshotLibrary(answers: ArtifactUploadAnswers): void {
     const library = createParameterSnapshotLibrary('Browser Local Snapshot Library', savedSnapshots)
-    const target = buildArtifactUploadTarget(snapshot, 'snapshots')
     void artifactUpload.upload(
-      { fileName: target.fileName, folder: target.folder, vehicle: snapshot.vehicle?.vehicle },
+      {
+        fileName: answers.fileName,
+        folder: snapshotLibraryUploadTarget.folder,
+        note: answers.note.trim() || undefined,
+        vehicle: snapshot.vehicle?.vehicle
+      },
       serializeParameterSnapshotLibrary(library)
     )
   }
@@ -352,15 +374,13 @@ export function useSnapshotLibrary({
    * beside a flight is the one that flew it. The label rides along in the name
    * so the file is identifiable without opening it.
    */
-  function handleUploadSelectedSnapshot(): void {
+  function handleUploadSelectedSnapshot(answers: ArtifactUploadAnswers): void {
     if (!selectedSnapshot) return
-    const target = buildArtifactUploadTarget(snapshot, 'snapshots')
-    const label = selectedSnapshot.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
     void artifactUpload.upload(
       {
-        fileName: target.fileName.replace(/_snapshots\.json$/, `_snapshot-${label || 'unnamed'}.json`),
-        folder: target.folder,
-        note: selectedSnapshot.label,
+        fileName: answers.fileName,
+        folder: selectedSnapshotUploadTarget.folder,
+        note: answers.note.trim() || selectedSnapshot.label,
         vehicle: snapshot.vehicle?.vehicle
       },
       serializeParameterBackup(selectedSnapshot.backup)
@@ -424,6 +444,8 @@ export function useSnapshotLibrary({
     handleOverwriteSelectedSnapshot,
     handleImportSnapshotFile,
     artifactUpload,
+    snapshotLibraryUploadTarget,
+    selectedSnapshotUploadTarget,
     handleUploadSnapshotLibrary,
     handleUploadSelectedSnapshot,
     handleExportSnapshotLibrary,

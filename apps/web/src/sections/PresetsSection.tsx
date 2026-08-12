@@ -30,7 +30,10 @@ import type { SavedParameterSnapshot } from '../snapshot-library'
 import { statusToneLabel } from '../status-tone'
 import { toneForPresetApplicability } from '../tone-helpers'
 import { PresetsView, type PresetsCard, type PresetsGroup } from '../views/Presets'
-import { buildArtifactUploadTarget } from '../view-models/artifact-upload-target'
+import {
+  buildArtifactUploadTarget,
+  type ArtifactUploadAnswers
+} from '../view-models/artifact-upload-target'
 
 interface PresetPreview {
   diff: ParameterPresetDiffResult
@@ -122,14 +125,24 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
 
   const importInputRef = useRef<HTMLInputElement>(null)
   const artifactUpload = useArtifactUpload()
+  // Derived once so the name the form prefills and the folder the upload uses
+  // cannot drift apart.
+  const presetUploadTarget = buildArtifactUploadTarget(snapshot, 'presets')
 
   // Upload the same bytes the export button downloads, to the server the Logs
   // tab is already signed in to.
-  function uploadUserPresets(records: readonly UserPresetRecord[], single?: UserPresetRecord): void {
+  function uploadUserPresets(
+    answers: ArtifactUploadAnswers,
+    records: readonly UserPresetRecord[],
+    single?: UserPresetRecord
+  ): void {
     if (records.length === 0) return
-    const target = buildArtifactUploadTarget(snapshot, 'presets')
     void artifactUpload.upload(
-      { fileName: target.fileName, folder: target.folder, note: single ? single.label : undefined },
+      {
+        fileName: answers.fileName,
+        folder: presetUploadTarget.folder,
+        note: answers.note.trim() || (single ? single.label : undefined)
+      },
       serializeUserPresetExport(records, single ? single.label : 'Shared presets')
     )
   }
@@ -341,12 +354,14 @@ export function PresetsSection(props: PresetsSectionProps): ReactElement {
           available: artifactUpload.available,
           serverUrl: artifactUpload.serverUrl,
           status: artifactUpload.status,
-          onUploadAll: () => uploadUserPresets(userPresets),
+          defaultFileName: presetUploadTarget.fileName,
+          folder: presetUploadTarget.folder,
+          onUploadAll: (answers) => uploadUserPresets(answers, userPresets),
           onUploadSelected:
             single && isUserPresetId(single.id)
-              ? () => {
+              ? (answers) => {
                   const record = userPresets.find((preset) => preset.id === single.id)
-                  if (record) uploadUserPresets([record], record)
+                  if (record) uploadUserPresets(answers, [record], record)
                 }
               : undefined
         }

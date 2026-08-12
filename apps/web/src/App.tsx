@@ -1060,6 +1060,7 @@ export function App() {
   const {
     handleExportParameterBackup,
     handleUploadParameterBackup,
+    parameterBackupUploadTarget,
     artifactUpload: backupArtifactUpload,
     handleExportParameterBackupAsParm,
     handleExportParameterBackupAsParams,
@@ -2181,6 +2182,8 @@ export function App() {
     handleExportSnapshotLibrary,
     handleUploadSnapshotLibrary,
     handleUploadSelectedSnapshot,
+    snapshotLibraryUploadTarget,
+    selectedSnapshotUploadTarget,
     artifactUpload: snapshotArtifactUpload,
     handleOpenDesktopSnapshotFile,
     handleSaveDesktopSnapshotLibrary,
@@ -8934,6 +8937,8 @@ export function App() {
             handleExportSnapshotLibrary,
             handleUploadSnapshotLibrary,
             handleUploadSelectedSnapshot,
+            snapshotLibraryUploadTarget,
+            selectedSnapshotUploadTarget,
             artifactUpload: snapshotArtifactUpload,
             handleImportProvisioningLibrary,
             handleImportSnapshotFile,
@@ -9703,6 +9708,7 @@ export function App() {
           }
           onExportParameterBackup={handleExportParameterBackup}
           handleUploadParameterBackup={handleUploadParameterBackup}
+          parameterBackupUploadTarget={parameterBackupUploadTarget}
           artifactUpload={backupArtifactUpload}
           onExportParameterBackupAsParm={handleExportParameterBackupAsParm}
           onExportParameterBackupAsParams={handleExportParameterBackupAsParams}

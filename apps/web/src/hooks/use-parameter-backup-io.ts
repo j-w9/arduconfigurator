@@ -34,7 +34,11 @@ import {
 } from '../view-models/snapshot-identity'
 import type { ParameterDraftValues } from './use-parameter-drafts'
 import type { ParameterFollowUp, ParameterNotice } from './use-parameter-feedback'
-import { buildArtifactUploadTarget } from '../view-models/artifact-upload-target'
+import {
+  buildArtifactUploadTarget,
+  type ArtifactUploadAnswers,
+  type ArtifactUploadTarget
+} from '../view-models/artifact-upload-target'
 
 export interface UseParameterBackupIoParams {
   snapshot: ConfiguratorSnapshot
@@ -64,7 +68,9 @@ export interface PendingParameterImport {
 export interface UseParameterBackupIoResult {
   /** Log-server upload state, so the surface can show the button conditionally. */
   artifactUpload: ArtifactUpload
-  handleUploadParameterBackup: () => void
+  /** The derived name the upload form prefills, before the operator edits it. */
+  parameterBackupUploadTarget: ArtifactUploadTarget
+  handleUploadParameterBackup: (answers: ArtifactUploadAnswers) => void
   handleExportParameterBackup: () => void
   handleExportParameterBackupAsParm: () => void
   handleExportParameterBackupAsParams: () => void
@@ -109,6 +115,9 @@ export function useParameterBackupIo({
   // read, which turns "let me look at this backup" into a pending write of
   // hundreds of parameters. Hold it here instead and let the operator decide.
   const artifactUpload = useArtifactUpload()
+  // Derived here rather than in the surface so the name the form prefills and
+  // the folder the upload uses cannot drift apart.
+  const parameterBackupUploadTarget = buildArtifactUploadTarget(snapshot, 'parameters')
   const [pendingParameterImport, setPendingParameterImport] = useState<PendingParameterImport>()
   const [importedDraftOrigins, setImportedDraftOrigins] = useState<Record<string, string>>({})
   function buildBackupAppInfo(): { appVersion: string; appGitHash: string; appGitBranch: string } {
@@ -140,13 +149,14 @@ export function useParameterBackupIo({
    * no vehicle, firmware or timestamp, so the server can classify them but a
    * backup filed beside a flight is far more useful with that context intact.
    */
-  function handleUploadParameterBackup(): void {
+  function handleUploadParameterBackup(answers: ArtifactUploadAnswers): void {
     const backup = createParameterBackup(snapshot, buildBackupAppInfo(), exportOptions())
-    const target = buildArtifactUploadTarget(snapshot, 'parameters')
+    const target = parameterBackupUploadTarget
     void artifactUpload.upload(
       {
-        fileName: target.fileName,
+        fileName: answers.fileName,
         folder: target.folder,
+        note: answers.note.trim() || undefined,
         vehicle: snapshot.vehicle?.vehicle,
         firmwareVersion: snapshot.hardware?.board?.firmwareVersion
       },
@@ -273,6 +283,7 @@ export function useParameterBackupIo({
 
   return {
     artifactUpload,
+    parameterBackupUploadTarget,
     handleUploadParameterBackup,
     handleExportParameterBackup,
     handleExportParameterBackupAsParm,

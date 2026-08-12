@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
-import { buildArtifactUploadTarget } from './artifact-upload-target'
+import {
+  artifactUploadNameFromFileName,
+  buildArtifactUploadTarget,
+  resolveArtifactUploadFileName
+} from './artifact-upload-target'
 
 const TODAY = '2026-08-10'
 
@@ -67,5 +71,81 @@ describe('buildArtifactUploadTarget', () => {
       'ark-fpv_2026-08-10_presets.json',
       'ark-fpv_2026-08-10_snapshots.json'
     ])
+  })
+
+  it('names one item out of a library after that item', () => {
+    const target = buildArtifactUploadTarget(
+      snapshot({ reportedBoardName: 'ARK_FPV' }),
+      'snapshots',
+      'json',
+      TODAY,
+      'Before Autotune'
+    )
+    expect(target.fileName).toBe('ark-fpv_2026-08-10_snapshot-before-autotune.json')
+    expect(target.folder).toBe('ark-fpv/2026-08')
+  })
+
+  it('still produces a usable item name when the label is all punctuation', () => {
+    expect(
+      buildArtifactUploadTarget(snapshot({ reportedBoardName: 'ARK_FPV' }), 'snapshots', 'json', TODAY, '???').fileName
+    ).toBe('ark-fpv_2026-08-10_snapshot-unnamed.json')
+  })
+})
+
+describe('artifactUploadNameFromFileName', () => {
+  it('offers the name without its extension for editing', () => {
+    expect(artifactUploadNameFromFileName('ark-fpv_2026-08-10_params.json')).toBe('ark-fpv_2026-08-10_params')
+  })
+
+  it('leaves an extensionless name alone', () => {
+    expect(artifactUploadNameFromFileName('backup')).toBe('backup')
+  })
+
+  it('does not treat a leading dot as an extension', () => {
+    expect(artifactUploadNameFromFileName('.hidden')).toBe('.hidden')
+  })
+})
+
+describe('resolveArtifactUploadFileName', () => {
+  const DEFAULT = 'ark-fpv_2026-08-10_params.json'
+
+  it('round-trips the untouched default, so the one-click path is unchanged', () => {
+    expect(resolveArtifactUploadFileName(DEFAULT, artifactUploadNameFromFileName(DEFAULT))).toBe(DEFAULT)
+  })
+
+  it('falls back to the derived default when the field is cleared', () => {
+    expect(resolveArtifactUploadFileName(DEFAULT, '')).toBe(DEFAULT)
+    expect(resolveArtifactUploadFileName(DEFAULT, '   ')).toBe(DEFAULT)
+    expect(resolveArtifactUploadFileName(DEFAULT, '///')).toBe(DEFAULT)
+  })
+
+  it('keeps the extension the server classifies on', () => {
+    expect(resolveArtifactUploadFileName(DEFAULT, 'After Autotune')).toBe('after-autotune.json')
+  })
+
+  it('does not double an extension the operator typed back', () => {
+    expect(resolveArtifactUploadFileName(DEFAULT, 'after-autotune.json')).toBe('after-autotune.json')
+    expect(resolveArtifactUploadFileName(DEFAULT, 'After Autotune.JSON')).toBe('after-autotune.json')
+  })
+
+  it('normalises the way the derived names are spelled', () => {
+    expect(resolveArtifactUploadFileName(DEFAULT, '  Hex A — tune #3  ')).toBe('hex-a-tune-3.json')
+    expect(resolveArtifactUploadFileName(DEFAULT, 'my_backup')).toBe('my_backup.json')
+  })
+
+  it('cannot escape its folder', () => {
+    // A typed name is a name, never a path — separators and traversal collapse.
+    expect(resolveArtifactUploadFileName(DEFAULT, '../../etc/passwd')).toBe('etc-passwd.json')
+    expect(resolveArtifactUploadFileName(DEFAULT, 'a/b')).toBe('a-b.json')
+    expect(resolveArtifactUploadFileName(DEFAULT, '..')).toBe(DEFAULT)
+  })
+
+  it('caps a pasted essay, without leaving a trailing separator', () => {
+    const resolved = resolveArtifactUploadFileName(DEFAULT, `${'a'.repeat(120)} tail`)
+    expect(resolved).toBe(`${'a'.repeat(100)}.json`)
+  })
+
+  it('handles a default that has no extension', () => {
+    expect(resolveArtifactUploadFileName('backup', 'Something Else')).toBe('something-else')
   })
 })
