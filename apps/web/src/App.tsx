@@ -1059,6 +1059,8 @@ export function App() {
   const [fetchDefaultsBusy, setFetchDefaultsBusy] = useState(false)
   const {
     handleExportParameterBackup,
+    handleUploadParameterBackup,
+    artifactUpload: backupArtifactUpload,
     handleExportParameterBackupAsParm,
     handleExportParameterBackupAsParams,
     handleImportParameterBackup,
@@ -2177,6 +2179,9 @@ export function App() {
     handleOverwriteSelectedSnapshot,
     handleImportSnapshotFile,
     handleExportSnapshotLibrary,
+    handleUploadSnapshotLibrary,
+    handleUploadSelectedSnapshot,
+    artifactUpload: snapshotArtifactUpload,
     handleOpenDesktopSnapshotFile,
     handleSaveDesktopSnapshotLibrary,
     handleExportSelectedSnapshotToDesktop,
@@ -8927,6 +8932,9 @@ export function App() {
             handleExportSelectedSnapshot,
             handleExportSelectedSnapshotToDesktop,
             handleExportSnapshotLibrary,
+            handleUploadSnapshotLibrary,
+            handleUploadSelectedSnapshot,
+            artifactUpload: snapshotArtifactUpload,
             handleImportProvisioningLibrary,
             handleImportSnapshotFile,
             handleOpenDesktopSnapshotFile,
@@ -9694,6 +9702,8 @@ export function App() {
             }))
           }
           onExportParameterBackup={handleExportParameterBackup}
+          handleUploadParameterBackup={handleUploadParameterBackup}
+          artifactUpload={backupArtifactUpload}
           onExportParameterBackupAsParm={handleExportParameterBackupAsParm}
           onExportParameterBackupAsParams={handleExportParameterBackupAsParams}
           onImportParameterBackup={handleImportParameterBackup}

@@ -286,8 +286,16 @@ export function PresetsView(props: PresetsViewProps) {
                     available={sharing.upload.available}
                     serverUrl={sharing.upload.serverUrl}
                     status={sharing.upload.status}
+                    // Upload the SELECTED preset when there is one. Sending the
+                    // whole library is rarely what an operator means — it
+                    // accumulates across builds, and the one worth filing beside
+                    // a flight is the one that flew it.
                     onUpload={sharing.upload.onUploadSelected ?? sharing.upload.onUploadAll}
-                    label={sharing.upload.onUploadSelected ? 'this preset' : 'your presets'}
+                    label={
+                      sharing.upload.onUploadSelected
+                        ? `“${sharing.selectedUserPresetLabel}”`
+                        : `all ${sharing.userPresetCount} presets`
+                    }
                     testId="presets-upload-artifact"
                     disabled={isBusy || sharing.userPresetCount === 0}
                   />

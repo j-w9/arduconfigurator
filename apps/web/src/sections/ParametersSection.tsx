@@ -42,6 +42,8 @@ import { parameterApplyBlockedReason } from '../apply-gate'
 import { parameterSearchPredicate } from '../view-models/filtered-parameters'
 import { toneForParameterDraftStatus } from '../tone-helpers'
 import type { ParameterFollowUp, ParameterNotice } from '../hooks/use-parameter-feedback'
+import { UploadToLogServerButton } from '../views/UploadToLogServerButton'
+import type { ArtifactUpload } from '../hooks/use-artifact-upload'
 
 export interface ParametersSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -88,6 +90,9 @@ export interface ParametersSectionProps {
   parameterExportExclusions: Record<ParameterImportCategory, boolean>
   onToggleParameterExportExclusion: (category: ParameterImportCategory) => void
   onExportParameterBackup: () => void
+  /** Upload the JSON backup to the operator's log server, filed by aircraft. */
+  handleUploadParameterBackup: () => void
+  artifactUpload: ArtifactUpload
   onExportParameterBackupAsParm: () => void
   onExportParameterBackupAsParams: () => void
   onImportParameterBackup: (event: React.ChangeEvent<HTMLInputElement>) => void | Promise<void>
@@ -171,6 +176,8 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     parameterExportExclusions,
     onToggleParameterExportExclusion: handleToggleParameterExportExclusion,
     onExportParameterBackup: handleExportParameterBackup,
+    handleUploadParameterBackup,
+    artifactUpload,
     onExportParameterBackupAsParm: handleExportParameterBackupAsParm,
     onExportParameterBackupAsParams: handleExportParameterBackupAsParams,
     onImportParameterBackup: handleImportParameterBackup,
@@ -746,6 +753,18 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                 <option value="parm">Mission Planner (.parm)</option>
                 <option value="params">QGroundControl (.params)</option>
               </select>
+              {/* JSON only: .parm/.params carry no vehicle, firmware or
+                  timestamp, and a backup filed beside a flight is worth far more
+                  with that context intact. */}
+              <UploadToLogServerButton
+                available={artifactUpload.available}
+                serverUrl={artifactUpload.serverUrl}
+                status={artifactUpload.status}
+                onUpload={handleUploadParameterBackup}
+                label="this parameter backup"
+                testId="upload-parameter-backup-button"
+                disabled={busyAction !== undefined || snapshot.parameters.length === 0}
+              />
               <fieldset className="parameter-import-exclusions" data-testid="parameter-export-exclusions">
                 <legend>Skip on export</legend>
                 {([

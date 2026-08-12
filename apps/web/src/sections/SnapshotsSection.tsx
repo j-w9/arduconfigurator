@@ -46,6 +46,8 @@ import {
 import { useDraftSelection } from '../hooks/use-draft-selection'
 import { ParameterDiffGroupActions } from '../views/ParameterDiffGroupActions'
 import { ParameterDiffIdentity, ParameterDiffInvalidRow } from '../views/ParameterDiffRow'
+import { UploadToLogServerButton } from '../views/UploadToLogServerButton'
+import type { ArtifactUpload } from '../hooks/use-artifact-upload'
 
 /**
  * The full STM32 UID is a 24-hex (96-bit) string — too wide for a
@@ -154,6 +156,9 @@ export interface SnapshotsSectionHandlers {
   handleExportSelectedSnapshot: () => void | Promise<void>
   handleExportSelectedSnapshotToDesktop: () => void | Promise<void>
   handleExportSnapshotLibrary: () => void | Promise<void>
+  handleUploadSnapshotLibrary: () => void
+  handleUploadSelectedSnapshot: () => void
+  artifactUpload: ArtifactUpload
   handleImportProvisioningLibrary: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>
   handleImportSnapshotFile: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>
   handleOpenDesktopSnapshotFile: () => void | Promise<void>
@@ -315,6 +320,9 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     handleExportSelectedSnapshot,
     handleExportSelectedSnapshotToDesktop,
     handleExportSnapshotLibrary,
+    handleUploadSnapshotLibrary,
+    handleUploadSelectedSnapshot,
+    artifactUpload,
     handleImportProvisioningLibrary,
     handleImportSnapshotFile,
     handleOpenDesktopSnapshotFile,
@@ -494,6 +502,17 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                   >
                     Export Library
                   </button>
+                  {/* Same bytes as Export Library, filed under this aircraft on
+                      the operator's own log server. */}
+                  <UploadToLogServerButton
+                    available={artifactUpload.available}
+                    serverUrl={artifactUpload.serverUrl}
+                    status={artifactUpload.status}
+                    onUpload={handleUploadSnapshotLibrary}
+                    label="this snapshot library"
+                    testId="upload-snapshot-library-button"
+                    disabled={busyAction !== undefined || savedSnapshots.length === 0}
+                  />
                 </div>
               </div>
             </div>
@@ -1176,6 +1195,15 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                       Send Diff to Parameters
                     </button>
                   ) : null}
+                  <UploadToLogServerButton
+                    available={artifactUpload.available}
+                    serverUrl={artifactUpload.serverUrl}
+                    status={artifactUpload.status}
+                    onUpload={handleUploadSelectedSnapshot}
+                    label="this snapshot"
+                    testId="upload-selected-snapshot-button"
+                    disabled={busyAction !== undefined}
+                  />
                   <button className="snapshots-button snapshots-button--secondary" onClick={handleExportSelectedSnapshot} disabled={busyAction !== undefined}>
                     Export Selected
                   </button>

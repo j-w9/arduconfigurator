@@ -68,6 +68,7 @@ export interface UseSnapshotLibraryParams {
 export interface UseSnapshotLibraryResult {
   artifactUpload: ArtifactUpload
   handleUploadSnapshotLibrary: () => void
+  handleUploadSelectedSnapshot: () => void
   handleCaptureLiveSnapshot: () => void
   handleOverwriteSelectedSnapshot: () => void
   handleImportSnapshotFile: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
@@ -343,6 +344,29 @@ export function useSnapshotLibrary({
     }
   }
 
+  /**
+   * Upload just the selected snapshot, not the whole library.
+   *
+   * Uploading everything is rarely what an operator means: a library
+   * accumulates months of captures across builds, and the one worth filing
+   * beside a flight is the one that flew it. The label rides along in the name
+   * so the file is identifiable without opening it.
+   */
+  function handleUploadSelectedSnapshot(): void {
+    if (!selectedSnapshot) return
+    const target = buildArtifactUploadTarget(snapshot, 'snapshots')
+    const label = selectedSnapshot.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    void artifactUpload.upload(
+      {
+        fileName: target.fileName.replace(/_snapshots\.json$/, `_snapshot-${label || 'unnamed'}.json`),
+        folder: target.folder,
+        note: selectedSnapshot.label,
+        vehicle: snapshot.vehicle?.vehicle
+      },
+      serializeParameterBackup(selectedSnapshot.backup)
+    )
+  }
+
   function handleExportSelectedSnapshot(): void {
     if (!selectedSnapshot) {
       return
@@ -401,6 +425,7 @@ export function useSnapshotLibrary({
     handleImportSnapshotFile,
     artifactUpload,
     handleUploadSnapshotLibrary,
+    handleUploadSelectedSnapshot,
     handleExportSnapshotLibrary,
     handleOpenDesktopSnapshotFile,
     handleSaveDesktopSnapshotLibrary,
