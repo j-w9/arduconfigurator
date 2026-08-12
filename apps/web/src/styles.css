@@ -15763,8 +15763,18 @@ details.bf-gui-box:not([open]) > summary::after {
 
   /* Exporting a backup file is a desktop task; on a phone keep Import Backup
    * (used for cross-vehicle migration) plus Apply/Discard, and drop the
-   * export controls so the review card stops dominating the screen. */
-  [data-testid="export-parameter-backup"] {
+   * export controls so the review card stops dominating the screen.
+   *
+   * "Upload to log server" goes with them. It was left behind when the export
+   * control was hidden, which left a phone able to UPLOAD a parameter backup
+   * it could not export — the same desktop task, offered by one control and
+   * refused by its neighbour. Its inline naming form is also the widest thing
+   * in the row, so it is the last thing a 390px review card wants.
+   *
+   * The prefix match covers the button, its form and its status line, which
+   * are siblings in a fragment rather than one wrapped element. */
+  [data-testid="export-parameter-backup"],
+  [data-testid^="upload-parameter-backup-button"] {
     display: none;
   }
 
