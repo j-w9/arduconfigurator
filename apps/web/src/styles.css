@@ -17547,98 +17547,57 @@ button.mavlink-inspector__sent-row {
 
 /* Initial Tune (Tuning ▸ Initial Tune).
  *
- * Deliberately plain: it is a form and a comparison table, and the thing that
- * matters is that the "Now" and "Suggested" columns line up so a wrong-looking
- * value is obvious before it is staged. */
+ * One row of inputs, one narrow table. The reasoning behind each value lives
+ * in a row tooltip rather than a column, so the table stays scannable. */
 .initial-tune__lede {
-  margin: 0 0 8px;
-  max-width: 70ch;
-  line-height: 1.5;
-}
-.initial-tune__lede--muted {
+  margin: 0 0 12px;
+  max-width: 64ch;
   color: var(--dim);
-  font-size: 13px;
+  line-height: 1.5;
 }
 .initial-tune__inputs {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px 20px;
-  align-items: flex-start;
-  margin: 14px 0;
+  gap: 10px 16px;
+  align-items: flex-end;
+  margin-bottom: 14px;
 }
 .initial-tune__inputs > label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   font-size: 13px;
 }
 .initial-tune__inputs input[type='number'],
 .initial-tune__inputs select {
-  min-width: 9ch;
-  max-width: 22ch;
+  width: 9ch;
 }
-.initial-tune__presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-}
-.initial-tune__presets button {
-  padding: 2px 7px;
-  font-size: 12px;
-  border-radius: 4px;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-.initial-tune__presets button.on {
-  border-color: var(--accent);
-  color: var(--accent);
+.initial-tune__inputs select {
+  width: auto;
 }
 .initial-tune__check {
   flex-direction: row !important;
-  align-items: flex-start;
-  gap: 8px !important;
-  max-width: 34ch;
-}
-.initial-tune__check em {
-  display: block;
-  color: var(--dim);
-  font-style: normal;
-  font-size: 12px;
-  margin-top: 2px;
+  align-items: center;
+  gap: 6px !important;
+  cursor: help;
 }
 .initial-tune__table {
-  width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  /* Only three narrow columns — full width would strand the numbers. */
+  min-width: 34ch;
 }
 .initial-tune__table th,
 .initial-tune__table td {
-  padding: 5px 8px;
+  padding: 4px 10px 4px 0;
   border-bottom: 1px solid var(--line);
   text-align: left;
-  vertical-align: top;
+  white-space: nowrap;
 }
 .initial-tune__table .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
-.initial-tune__why {
-  color: var(--dim);
-}
-/* The form must wrap rather than push the page sideways on a narrow screen —
- * the same rule the rest of the app's phone layout is held to. */
-@media (max-width: 600px) {
-  .initial-tune__inputs {
-    gap: 10px 12px;
-  }
-  .initial-tune__check {
-    max-width: 100%;
-  }
-  .initial-tune__why {
-    display: none;
-  }
+.initial-tune__table tbody tr {
+  cursor: help;
 }

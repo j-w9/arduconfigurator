@@ -10,11 +10,14 @@ import {
 /**
  * Starting-point tuning for a new airframe.
  *
- * Presentational only: it takes the facts about the aircraft, shows what would
- * change, and hands the list up. It never writes — staging goes through the
- * same draft/review/apply path as every other tuning change, so a batch of a
- * dozen parameters is reviewed before it reaches a flight controller like
- * anything else.
+ * Three inputs, one table, one button. An earlier version explained itself at
+ * length — two paragraphs of preamble, a prose reason on every row, a caption
+ * under each checkbox — and the explaining crowded out the thing being
+ * explained. The per-row reasoning is still there, on hover, where it costs
+ * nothing to ignore.
+ *
+ * Presentational only: it never writes. Staging goes through the same
+ * draft/review/apply path as every other tuning change.
  */
 export interface InitialTuneViewProps {
   /** Live values, so the table can show what each parameter is moving FROM. */
@@ -28,8 +31,6 @@ export interface InitialTuneViewProps {
   hasAccelPMax?: boolean
   disabled?: boolean
 }
-
-const PROP_PRESETS = [3, 5, 7, 9, 10, 12, 15, 18, 22] as const
 
 export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
   const {
@@ -73,18 +74,13 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
   return (
     <div className="initial-tune" data-testid="initial-tune-panel">
       <p className="initial-tune__lede">
-        A starting point, not a tune. These values come from the airframe — prop size sets the filter
-        frequencies and acceleration limits, the pack sets the voltage points. They get you to a first
-        hover that is safe to fly; Autotune and Log Tuning do the rest.
-      </p>
-      <p className="initial-tune__lede initial-tune__lede--muted">
-        Same formulas as Mission Planner’s Initial Parameters screen. <strong>No PID gains are
-        set</strong> — prop diameter says nothing about P, I or D.
+        Starting values for a new airframe — enough for a first safe hover. Sets no PID gains;
+        Autotune does those.
       </p>
 
       <div className="initial-tune__inputs">
         <label>
-          <span>Prop diameter (in)</span>
+          <span>Prop (in)</span>
           <input
             type="number"
             min={1}
@@ -94,24 +90,10 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
             onChange={(event) => setPropText(event.target.value)}
             disabled={disabled}
           />
-          <span className="initial-tune__presets">
-            {PROP_PRESETS.map((size) => (
-              <button
-                key={size}
-                type="button"
-                className={Number.parseFloat(propText) === size ? 'on' : undefined}
-                data-testid={`initial-tune-prop-${size}`}
-                onClick={() => setPropText(String(size))}
-                disabled={disabled}
-              >
-                {size}&quot;
-              </button>
-            ))}
-          </span>
         </label>
 
         <label>
-          <span>Battery cells (S)</span>
+          <span>Cells</span>
           <input
             type="number"
             min={1}
@@ -133,13 +115,13 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
           >
             {(Object.keys(BATTERY_CHEMISTRIES) as BatteryChemistry[]).map((key) => (
               <option key={key} value={key}>
-                {key} ({BATTERY_CHEMISTRIES[key].minCellV}–{BATTERY_CHEMISTRIES[key].maxCellV} V/cell)
+                {key}
               </option>
             ))}
           </select>
         </label>
 
-        <label className="initial-tune__check">
+        <label className="initial-tune__check" title="Flat thrust expo (0.20) and the 1100–1940 PWM range.">
           <input
             type="checkbox"
             checked={tmotorEscs}
@@ -147,13 +129,13 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
             onChange={(event) => setTmotorEscs(event.target.checked)}
             disabled={disabled}
           />
-          <span>
-            T-Motor ESCs
-            <em>Flat thrust expo (0.2) and their 1100–1940 PWM range.</em>
-          </span>
+          <span>T-Motor ESCs</span>
         </label>
 
-        <label className="initial-tune__check">
+        <label
+          className="initial-tune__check"
+          title="Battery failsafe actions plus a 120 m / 150 m fence."
+        >
           <input
             type="checkbox"
             checked={suggestedSafety}
@@ -161,16 +143,17 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
             onChange={(event) => setSuggestedSafety(event.target.checked)}
             disabled={disabled}
           />
-          <span>
-            Suggested failsafes and fence
-            <em>Battery failsafe actions, 120 m / 150 m fence.</em>
-          </span>
+          <span>Failsafes &amp; fence</span>
         </label>
       </div>
 
       {result.error ? (
         <p className="switch-exercise-warning" data-testid="initial-tune-error">
           {result.error}
+        </p>
+      ) : changes.length === 0 ? (
+        <p className="success-copy" data-testid="initial-tune-nothing">
+          Everything already matches. Nothing to stage.
         </p>
       ) : (
         <>
@@ -180,22 +163,26 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
                 <tr>
                   <th>Parameter</th>
                   <th className="num">Now</th>
-                  <th className="num">Suggested</th>
-                  <th>Why</th>
+                  <th className="num">New</th>
                 </tr>
               </thead>
               <tbody>
                 {changes.map((parameter) => {
                   const live = liveValues.get(parameter.id)
                   return (
-                    <tr key={parameter.id} data-testid={`initial-tune-row-${parameter.id}`}>
+                    <tr
+                      key={parameter.id}
+                      data-testid={`initial-tune-row-${parameter.id}`}
+                      /* The reasoning stays available without taking a column
+                         of its own on every row. */
+                      title={parameter.reason}
+                    >
                       <td>
-                        <strong>{parameter.id}</strong>
+                        {parameter.id}
                         {stagedIds.has(parameter.id) ? <span className="chip">staged</span> : null}
                       </td>
                       <td className="num">{live === undefined ? '—' : formatValue(live)}</td>
                       <td className="num">{formatValue(parameter.value)}</td>
-                      <td className="initial-tune__why">{parameter.reason}</td>
                     </tr>
                   )
                 })}
@@ -203,25 +190,16 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
             </table>
           </div>
 
-          {changes.length === 0 ? (
-            <p className="success-copy" data-testid="initial-tune-nothing">
-              Every suggested value already matches the vehicle. Nothing to stage.
-            </p>
-          ) : (
-            <button
-              type="button"
-              style={buttonStyle()}
-              data-testid="initial-tune-stage"
-              onClick={() => onStage(changes.map(({ id, value }) => ({ id, value })))}
-              disabled={disabled}
-            >
-              Stage {changes.length} change{changes.length === 1 ? '' : 's'} for review
-            </button>
-          )}
-          <p className="hint">
-            Staged, not written. They join the tuning review with everything else, and nothing reaches
-            the vehicle until you apply it there.
-          </p>
+          <button
+            type="button"
+            style={buttonStyle()}
+            data-testid="initial-tune-stage"
+            onClick={() => onStage(changes.map(({ id, value }) => ({ id, value })))}
+            disabled={disabled}
+            title="Adds these to the tuning review. Nothing is written until you apply it there."
+          >
+            Stage {changes.length} change{changes.length === 1 ? '' : 's'}
+          </button>
         </>
       )}
     </div>

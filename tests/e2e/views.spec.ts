@@ -6031,9 +6031,9 @@ test.describe('Tuning ▸ Initial Tune', () => {
   test('recomputes when the airframe changes', async ({ page }) => {
     // A 5in racer and a 15in cinelifter must not be filtered the same.
     await openInitialTune(page)
-    await page.getByTestId('initial-tune-prop-5').click()
+    await page.getByTestId('initial-tune-prop').fill('5')
     const small = await page.getByTestId('initial-tune-row-INS_GYRO_FILTER').textContent()
-    await page.getByTestId('initial-tune-prop-15').click()
+    await page.getByTestId('initial-tune-prop').fill('15')
     const large = await page.getByTestId('initial-tune-row-INS_GYRO_FILTER').textContent()
     expect(small).not.toBe(large)
   })
@@ -6042,9 +6042,19 @@ test.describe('Tuning ▸ Initial Tune', () => {
     await page.setViewportSize({ width: 390, height: 844 })
     await openInitialTune(page)
     await expect(page.getByTestId('initial-tune-panel')).toBeVisible()
+
+    // The house page-level gate.
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )
     expect(overflow).toBeLessThanOrEqual(2)
+
+    // And an element-level check, because the page-level one is BLIND here: an
+    // ancestor clips horizontally, so forcing this panel to 1400px leaves
+    // documentElement.scrollWidth unmoved at 0 while the panel's own right edge
+    // goes to 1416. Measured, not assumed. The box does react, so assert on it.
+    const box = await page.getByTestId('initial-tune-panel').boundingBox()
+    expect(box).not.toBeNull()
+    expect(Math.round(box!.x + box!.width), 'the panel must fit a 390px phone').toBeLessThanOrEqual(390)
   })
 })
