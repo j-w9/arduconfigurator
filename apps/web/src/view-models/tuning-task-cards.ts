@@ -26,6 +26,7 @@ export interface TuningTaskCardCounts {
   savedProfileCount: number
   reviewInvalidCount: number
   reviewStagedCount: number
+  initialTuneStagedCount: number
 }
 
 export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCard[] {
@@ -45,7 +46,8 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
     profileChangedCount,
     savedProfileCount,
     reviewInvalidCount,
-    reviewStagedCount
+    reviewStagedCount,
+    initialTuneStagedCount
   } = counts
 
   return [
@@ -141,6 +143,18 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
             ? 'Some tuning changes need attention before they can be applied safely.'
             : 'Tuning values are currently in sync with the live controller snapshot.',
       tone: reviewInvalidCount > 0 ? 'danger' : reviewStagedCount > 0 ? 'warning' : 'success'
+    },
+    {
+      // First in intent, last in the list on purpose: it is where a NEW
+      // airframe starts, but a vehicle only passes through it once, and
+      // putting a batch-write of a dozen parameters at the front of the
+      // Tuning tab invites pressing it on an aircraft that is already tuned.
+      id: 'initial-tune',
+      label: 'Initial Tune',
+      value: initialTuneStagedCount > 0 ? `${initialTuneStagedCount} staged` : 'starting point',
+      detail:
+        'Work out a sane starting point from the airframe — prop size, battery cells and chemistry — and stage the filter, acceleration, thrust-curve and battery-voltage parameters that follow from it. Uses the same formulas as Mission Planner’s Initial Parameters screen. Sets no PID gains.',
+      tone: initialTuneStagedCount > 0 ? 'warning' : 'neutral'
     },
     {
       id: 'log-tuning',

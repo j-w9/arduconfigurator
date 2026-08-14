@@ -103,6 +103,8 @@ export interface TuningCopterSectionProps {
    *  'autotune' tab is active (kept a slot so App owns its disjoint draft scope). */
   autotuneSlot?: ReactNode
   logTuningSlot?: ReactNode
+  /** Starting-point tuning, rendered in the task body on the 'initial-tune' tab. */
+  initialTuneSlot?: ReactNode
 }
 
 export function TuningCopterSection(props: TuningCopterSectionProps): ReactElement {
@@ -112,6 +114,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     parameterNotice,
     autotuneSlot,
     logTuningSlot,
+    initialTuneSlot,
     tuningWorkbench,
     forms,
     derived,
@@ -935,6 +938,12 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                 {activeTuningTaskId === 'log-tuning' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-log-tuning-panel">
                     {logTuningSlot}
+                  </div>
+                ) : null}
+
+                {activeTuningTaskId === 'initial-tune' ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-initial-tune-panel">
+                    {initialTuneSlot}
                   </div>
                 ) : null}
           </>

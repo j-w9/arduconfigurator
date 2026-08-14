@@ -5978,3 +5978,73 @@ test.describe('Config ▸ Power layout', () => {
     expect(sectionBox!.width).toBeGreaterThan(gridBox!.width * 0.8)
   })
 })
+
+test.describe('Tuning ▸ Initial Tune', () => {
+  // Starting-point tuning. The assertions worth having are that it agrees with
+  // Mission Planner on a known airframe, that it stages rather than writes, and
+  // that it never offers a PID gain.
+  async function openInitialTune(page: Page): Promise<void> {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-tuning').click()
+    await page.getByTestId('tuning-tab-initial-tune').click()
+  }
+
+  test('computes the Mission Planner values for a 9in 4S LiPo and stages them', async ({ page }) => {
+    await openInitialTune(page)
+    await expect(page.getByTestId('initial-tune-panel')).toBeVisible()
+
+    // Defaults are Mission Planner's own opening values, so this is the case
+    // most operators see first.
+    await expect(page.getByTestId('initial-tune-prop')).toHaveValue('9')
+    await expect(page.getByTestId('initial-tune-cells')).toHaveValue('4')
+
+    // 289.22 * 9^-0.838 -> 46 Hz.
+    const gyroRow = page.getByTestId('initial-tune-row-INS_GYRO_FILTER')
+    await expect(gyroRow).toContainText('46')
+
+    await page.getByTestId('initial-tune-stage').click()
+    // Staged into the shared draft set, which the global draft bar reflects.
+    await expect(page.getByTestId('initial-tune-panel')).toContainText('staged')
+  })
+
+  test('never offers a rate PID gain', async ({ page }) => {
+    // The line the feature must not cross: prop diameter says nothing about
+    // P, I or D.
+    await openInitialTune(page)
+    const table = page.getByTestId('initial-tune-table')
+    await expect(table).toBeVisible()
+    const text = (await table.textContent()) ?? ''
+    expect(text).not.toMatch(/_RAT_(RLL|PIT|YAW)_[PID]\b/)
+  })
+
+  test('refuses a nonsense prop size with a reason rather than a blank table', async ({ page }) => {
+    await openInitialTune(page)
+    await page.getByTestId('initial-tune-prop').fill('0')
+    await expect(page.getByTestId('initial-tune-error')).toContainText(/larger than zero/i)
+    await expect(page.getByTestId('initial-tune-table')).toHaveCount(0)
+  })
+
+  test('recomputes when the airframe changes', async ({ page }) => {
+    // A 5in racer and a 15in cinelifter must not be filtered the same.
+    await openInitialTune(page)
+    await page.getByTestId('initial-tune-prop-5').click()
+    const small = await page.getByTestId('initial-tune-row-INS_GYRO_FILTER').textContent()
+    await page.getByTestId('initial-tune-prop-15').click()
+    const large = await page.getByTestId('initial-tune-row-INS_GYRO_FILTER').textContent()
+    expect(small).not.toBe(large)
+  })
+
+  test('fits a phone without pushing the page sideways', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await openInitialTune(page)
+    await expect(page.getByTestId('initial-tune-panel')).toBeVisible()
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )
+    expect(overflow).toBeLessThanOrEqual(2)
+  })
+})

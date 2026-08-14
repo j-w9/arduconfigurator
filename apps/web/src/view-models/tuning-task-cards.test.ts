@@ -18,6 +18,7 @@ function counts(overrides: Partial<TuningTaskCardCounts> = {}): TuningTaskCardCo
     profileInvalidCount: 0,
     profileChangedCount: 0,
     savedProfileCount: 2,
+    initialTuneStagedCount: 0,
     reviewInvalidCount: 0,
     reviewStagedCount: 0,
     ...overrides
@@ -33,6 +34,7 @@ describe('buildTuningTaskCards', () => {
       'autotune',
       'profiles',
       'review',
+      'initial-tune',
       'log-tuning'
     ])
   })
@@ -53,5 +55,34 @@ describe('buildTuningTaskCards', () => {
     expect(review(counts())).toMatchObject({ value: 'In sync', tone: 'success' })
     expect(review(counts({ reviewStagedCount: 3 }))).toMatchObject({ value: '3 staged', tone: 'warning' })
     expect(review(counts({ reviewInvalidCount: 1, reviewStagedCount: 3 }))).toMatchObject({ value: '1 invalid', tone: 'danger' })
+  })
+})
+
+describe('the Initial Tune card', () => {
+  it('sits last, because a vehicle passes through it once', () => {
+    // Deliberate ordering: it is where a NEW airframe starts, but putting a
+    // batch write of a dozen parameters at the front of the Tuning tab invites
+    // pressing it on an aircraft that is already tuned.
+    const ids = buildTuningTaskCards(counts()).map((card) => card.id)
+    expect(ids).toContain('initial-tune')
+    // After Review, not before Rates: the ordering is the guard rail.
+    expect(ids.indexOf('initial-tune')).toBeGreaterThan(ids.indexOf('review'))
+  })
+
+  it('reads as a starting point until something is staged', () => {
+    expect(buildTuningTaskCards(counts()).find((card) => card.id === 'initial-tune')).toMatchObject({
+      value: 'starting point',
+      tone: 'neutral'
+    })
+    expect(
+      buildTuningTaskCards(counts({ initialTuneStagedCount: 7 })).find((card) => card.id === 'initial-tune')
+    ).toMatchObject({ value: '7 staged', tone: 'warning' })
+  })
+
+  it('says out loud that it sets no PID gains', () => {
+    // The single most important thing about this card: someone scanning the
+    // Tuning tab must not read "Initial Tune" as "tune it for me".
+    const card = buildTuningTaskCards(counts()).find((c) => c.id === 'initial-tune')!
+    expect(card.detail).toMatch(/no PID gains/i)
   })
 })

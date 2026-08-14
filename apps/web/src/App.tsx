@@ -300,6 +300,8 @@ import { PresetsSection } from './sections/PresetsSection'
 import { ReceiverSection } from './sections/ReceiverSection'
 import { SnapshotsSection } from './sections/SnapshotsSection'
 import { TuningCopterSection } from './sections/TuningCopterSection'
+import { InitialTuneView } from './views/InitialTune'
+import { isInitialTuneParamId } from './view-models/initial-tune-parameters'
 import { AutotuneCopterSection } from './sections/AutotuneCopterSection'
 import { AutotunePlaneSection } from './sections/AutotunePlaneSection'
 import { PlaneSoaringAdsbSection } from './sections/PlaneSoaringAdsbSection'
@@ -5018,6 +5020,23 @@ export function App() {
   // the operator moves to the Review task themselves when they are ready to write
   // (staging a change used to yank the view straight to 'review' mid-edit).
   const activeTuningTaskId = tuningTaskOverride ?? 'rates'
+  // Staged starting-point values, for the task-card badge. Counted by id
+  // membership rather than by re-running the calculation, so the badge does not
+  // depend on what is currently typed into the form.
+  // Firmware major from the reported version string; the filter parameters were
+  // renamed between 3.x and 4.x and staging the wrong generation writes ids the
+  // vehicle does not have. Unknown falls back to 4, which is what anything this
+  // app connects to in practice runs.
+  const initialTuneFirmwareMajor = useMemo(() => {
+    const match = /(\d+)\./.exec(snapshot.vehicle?.firmware ?? '')
+    const parsed = match ? Number.parseInt(match[1], 10) : Number.NaN
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 4
+  }, [snapshot.vehicle?.firmware])
+
+  const initialTuneStagedCount = useMemo(
+    () => Array.from(parameterDraftById.keys()).filter((id) => isInitialTuneParamId(id)).length,
+    [parameterDraftById]
+  )
   const tuningTaskCards = useMemo<TuningTaskCard[]>(
     () =>
       buildTuningTaskCards({
@@ -5037,9 +5056,11 @@ export function App() {
         profileChangedCount: selectedTuningProfileChangedEntries.length,
         savedProfileCount: savedTuningProfiles.length,
         reviewInvalidCount: tuningInvalidDrafts.length,
-        reviewStagedCount: tuningStagedDrafts.length
+        reviewStagedCount: tuningStagedDrafts.length,
+        initialTuneStagedCount: initialTuneStagedCount
       }),
     [
+      initialTuneStagedCount,
       tuningFilterInvalidDrafts.length,
       tuningFilterStagedDrafts.length,
       tuningInvalidDrafts.length,
@@ -6508,6 +6529,23 @@ export function App() {
   // reviewed and written through the normal verified path — never auto-applied.
   function handleStageLogTuningParam(param: string, value: number): void {
     updateDrafts((existing) => ({ ...existing, [param]: String(value) }))
+  }
+
+  // Stage the whole Initial Tune batch in one draft update. Same shared draft
+  // set as every other tuning change, so a dozen parameters land in the Review
+  // tab together and are written through the normal verified path — this
+  // deliberately does not get its own write route, because a batch of starting
+  // values is exactly the kind of change that should be looked at before it
+  // reaches an aircraft.
+  function handleStageInitialTuneParameters(parameters: Array<{ id: string; value: number }>): void {
+    if (parameters.length === 0) {
+      return
+    }
+    mergeDrafts(Object.fromEntries(parameters.map(({ id, value }) => [id, String(value)])))
+    setParameterNotice({
+      tone: 'success',
+      text: `Staged ${parameters.length} starting-point value${parameters.length === 1 ? '' : 's'} for review.`
+    })
   }
 
   function handleResetTuningMasterSliders(): void {
@@ -9126,6 +9164,25 @@ export function App() {
             renderTuningControl,
             formatCategoryLabel
           }}
+          initialTuneSlot={
+            /* Starting-point tuning. Reads live values to show what each
+               parameter moves FROM, and stages through the shared draft set —
+               it has no write path of its own. */
+            <InitialTuneView
+              liveValues={new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))}
+              stagedIds={new Set(parameterDraftById.keys())}
+              onStage={handleStageInitialTuneParameters}
+              /* Always Copter here — this section only renders for
+                 isCopterVehicle, so the ATC_/MOT_ prefixes are the right ones.
+                 The builder still supports the QuadPlane Q_A_/Q_M_ prefixes
+                 (and is tested for them) so a Plane surface can reuse it
+                 without the logic being rewritten. */
+              quadplane={false}
+              firmwareMajor={initialTuneFirmwareMajor}
+              hasAccelPMax={snapshot.parameters.some((parameter) => /_ACCEL_P_MAX$/.test(parameter.id))}
+              disabled={busyAction !== undefined}
+            />
+          }
           logTuningSlot={
             /* Rendered inside the Tuning task body when the 'log-tuning' sub-tab
                is active. Self-contained: it owns the uploaded log + analysis, and
