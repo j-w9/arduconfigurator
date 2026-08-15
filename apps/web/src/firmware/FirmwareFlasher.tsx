@@ -1235,14 +1235,13 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
         {/* The question this answers came from an operator who reflashed a
             board twice, updated its bootloader, and only fixed it by resetting
             parameters — reasonably unsure whether flashing had erased anything
-            at all. It had not, and could not have. */}
+            at all. It had not, and could not have. Kept SHORT deliberately: the
+            long version explained flash layout at someone who just wanted to
+            know it was safe. */}
         {onResetParameters && !resetParamsConfirmArmed ? (
           <p className="bf-note" data-testid="firmware-flash-vs-params-note">
-            <strong>Flashing firmware does not reset your parameters.</strong> The bootloader only erases the
-            firmware region: on boards that keep parameters in flash the storage pages sit outside it, and on boards
-            with FRAM (Cube and friends) the parameters are not on the chip being erased at all. That is deliberate —
-            it is what lets you update firmware without reconfiguring. If a board misbehaves after a flash and you
-            want a genuinely clean slate, this is the button that gives you one.
+            <strong>Flashing firmware does not reset your parameters.</strong> Use this button if you want a
+            clean slate.
           </p>
         ) : null}
         {/* Stated where the two buttons are, because the labels alone are how
@@ -1250,10 +1249,9 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             DFU — the exact confusion that made this second button necessary. */}
         {onEnterDfu && onEnterRomDfu && !dfuConfirmArmed && !romDfuConfirmArmed ? (
           <p className="bf-note" data-testid="firmware-bootloader-vs-dfu-note">
-            <strong>Activate Bootloader</strong> holds the board in ArduPilot&apos;s own bootloader — that is what
-            &quot;Flash firmware&quot; above talks to, and it is what you want almost every time.{' '}
-            <strong>Enter DFU (STM32 ROM)</strong> is the deeper recovery mode used when the ArduPilot bootloader
-            itself needs replacing. They are not the same thing.
+            <strong>Activate Bootloader</strong> is what &quot;Flash firmware&quot; talks to — use it almost
+            every time. <strong>Enter DFU (STM32 ROM)</strong> is deeper recovery, for replacing the ArduPilot
+            bootloader itself.
           </p>
         ) : null}
 
