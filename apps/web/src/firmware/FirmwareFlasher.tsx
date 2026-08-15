@@ -16,6 +16,10 @@ import { WebSerialBootloaderSerial, inflateZlib } from './web-serial-bootloader'
 import { DfuHexFlasher } from './DfuHexFlasher'
 import type { BootloaderHashPreview } from '../view-models/bootloader-hash-preview'
 
+/** Where ArduPilot publishes firmware. The only source now — the custom
+ *  build-server override was removed. */
+const DEFAULT_AP_SERVER = 'https://firmware.ardupilot.org'
+
 export interface FirmwareBrowseEntry {
   boardId: number
   vehicletype: string
@@ -217,31 +221,6 @@ function defaultListPorts(): Promise<WebSerialPortLike[]> {
 // in localStorage so the next session remembers it; the optional
 // password is NOT persisted (kept in memory only) so it doesn't leak
 // into browser-profile sync.
-const CUSTOM_SERVER_STORAGE_KEY = 'arduconfig:firmware-custom-server-url'
-const DEFAULT_AP_SERVER = 'https://firmware.ardupilot.org'
-
-function readPersistedCustomServer(): string {
-  try {
-    if (typeof window === 'undefined') return ''
-    return window.localStorage?.getItem(CUSTOM_SERVER_STORAGE_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
-
-function persistCustomServer(value: string): void {
-  try {
-    if (typeof window === 'undefined') return
-    if (value) {
-      window.localStorage?.setItem(CUSTOM_SERVER_STORAGE_KEY, value)
-    } else {
-      window.localStorage?.removeItem(CUSTOM_SERVER_STORAGE_KEY)
-    }
-  } catch {
-    // localStorage may be unavailable in some embedded contexts — silently
-    // fall through; the in-memory state still works for the current session.
-  }
-}
 
 export function FirmwareFlasher(props: FirmwareFlasherProps) {
   const {
@@ -291,13 +270,6 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     () => vehicleDirForVehicle(props.connectedVehicle)
   )
   const [releaseDir, setReleaseDir] = useState<(typeof RELEASE_DIRS)[number]['value']>('stable')
-  // Custom build server (e.g. a self-hosted ArduPilot CI mirror). When
-  // set, the "Open downloads" link points here instead of
-  // firmware.ardupilot.org. CORS still applies to any direct fetch
-  // attempts — the server admin has to allow this origin.
-  const [customServer, setCustomServer] = useState<string>(() => readPersistedCustomServer())
-  const [customServerToken, setCustomServerToken] = useState<string>('')
-  const [showCustomServer, setShowCustomServer] = useState<boolean>(() => readPersistedCustomServer().length > 0)
   const [dfuBusy, setDfuBusy] = useState(false)
   const [dfuNotice, setDfuNotice] = useState<string | null>(null)
   // DFU is more disruptive than a normal reboot (drops the MAVLink link and
@@ -346,17 +318,10 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   // to use the picker.
   const triedPortCountRef = useRef(0)
 
-  const downloadUrl = useMemo(() => {
-    const base = customServer.trim() || DEFAULT_AP_SERVER
-    // Strip a trailing slash so the joined path is consistent.
-    const normalized = base.endsWith('/') ? base.slice(0, -1) : base
-    return `${normalized}/${vehicleDir}/${releaseDir}/`
-  }, [customServer, vehicleDir, releaseDir])
-
-  const handleCustomServerChange = useCallback((value: string) => {
-    setCustomServer(value)
-    persistCustomServer(value.trim())
-  }, [])
+  const downloadUrl = useMemo(
+    () => `${DEFAULT_AP_SERVER}/${vehicleDir}/${releaseDir}/`,
+    [vehicleDir, releaseDir]
+  )
 
   const handleEnterDfu = useCallback(async () => {
     if (!onEnterDfu) return
@@ -1246,15 +1211,6 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
               </button>
             )
           ) : null}
-          <button
-            type="button"
-            className="firmware-wizard__server-toggle"
-            data-testid="firmware-toggle-custom-server"
-            onClick={() => setShowCustomServer((open) => !open)}
-            aria-expanded={showCustomServer}
-          >
-            {showCustomServer ? 'Hide custom server' : 'Use custom build server'}
-          </button>
         </div>
         {onEnterDfu && dfuConfirmArmed ? (
           <p className="bf-note bf-note--warning" data-testid="firmware-enter-dfu-warning">
@@ -1371,40 +1327,6 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
 
         {flashTab === 'firmware' ? (
           <>
-        {showCustomServer ? (
-          <div className="firmware-wizard__custom-server" data-testid="firmware-custom-server">
-            <label className="scoped-editor-field">
-              <span>Build server URL</span>
-              <input
-                type="url"
-                placeholder={DEFAULT_AP_SERVER}
-                value={customServer}
-                onChange={(event) => handleCustomServerChange(event.target.value)}
-                data-testid="firmware-custom-server-url"
-                inputMode="url"
-                spellCheck={false}
-              />
-            </label>
-            <label className="scoped-editor-field">
-              <span>Access token (optional)</span>
-              <input
-                type="password"
-                placeholder="Bearer / shared secret"
-                value={customServerToken}
-                onChange={(event) => setCustomServerToken(event.target.value)}
-                data-testid="firmware-custom-server-token"
-                spellCheck={false}
-                autoComplete="off"
-              />
-            </label>
-            <p className="firmware-wizard__hint">
-              Point this at an internal ArduPilot build mirror (e.g. a per-branch CI). The URL is saved
-              for next session; the token stays in memory only. The browser still has to honor the
-              server's CORS settings — the build server must allow this origin.
-            </p>
-          </div>
-        ) : null}
-
         <ol className="firmware-wizard__steps">
           <li>
             <span className="firmware-wizard__step-title">1. Pick the firmware</span>

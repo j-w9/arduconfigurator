@@ -90,14 +90,14 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     tone: canBusStatus === 'active' ? 'success' : canBusStatus === 'error' ? 'danger' : 'neutral'
   }
   // Dedicated Flash tab — promoted from the modal-only flow on the
-  // landing screen + header so DFU entry, custom-build-server config,
+  // landing screen + header so DFU entry,
   // and the flash wizard live in one persistent surface. Always visible
   // since flashing is bench / cold-start work that must work without
   // an authenticated session.
   const flashDescriptor: AppViewDescriptor = {
     id: 'flash',
     label: 'Flash',
-    description: 'Firmware flasher — pick an ArduPilot release or point at a custom build server, enter DFU bootloader, or drop a .apj for guided flashing.',
+    description: 'Firmware flasher — pick an ArduPilot release, enter DFU bootloader, or drop a .apj for guided flashing.',
     badge: 'tools',
     tone: 'neutral'
   }

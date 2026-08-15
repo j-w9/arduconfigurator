@@ -1657,7 +1657,7 @@ test.describe('Files view (MAVFTP browser)', () => {
 })
 
 test.describe('Flash view', () => {
-  test('Flash tab renders the wizard + DFU button + custom server toggle', async ({ page }) => {
+  test('Flash tab renders the wizard and the DFU / bootloader actions', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'flash')
@@ -1727,12 +1727,11 @@ test.describe('Flash view', () => {
     await expect(page.getByTestId('firmware-bootloader-identity')).toHaveCount(0)
     await page.getByTestId('firmware-flash-bootloader-cancel').click()
 
-    // Custom server toggle expands a URL + token panel.
+    // The custom build server is gone. Asserted rather than merely deleted:
+    // the control persisted a URL to localStorage, so a stale build could
+    // otherwise resurrect it and quietly repoint firmware downloads.
+    await expect(page.getByTestId('firmware-toggle-custom-server')).toHaveCount(0)
     await expect(page.getByTestId('firmware-custom-server')).toHaveCount(0)
-    await page.getByTestId('firmware-toggle-custom-server').click()
-    await expect(page.getByTestId('firmware-custom-server')).toBeVisible()
-    await expect(page.getByTestId('firmware-custom-server-url')).toBeVisible()
-    await expect(page.getByTestId('firmware-custom-server-token')).toBeVisible()
   })
 
   test('Flash tab: expert mode shows both bootloader hashes before the update commits', async ({ page }) => {

@@ -14694,18 +14694,6 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 
 .firmware-wizard__dfu-button,
-.firmware-wizard__server-toggle {
-  padding: 8px 14px;
-  border-radius: var(--radius-md, 8px);
-  border: 1px solid var(--surface-500);
-  background: var(--surface-200);
-  color: var(--text);
-  font-family: var(--font-data);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
 
 .firmware-wizard__dfu-button:hover:not(:disabled),
 .firmware-wizard__server-toggle:hover {
@@ -14717,15 +14705,6 @@ details.bf-gui-box:not([open]) > summary::after {
   cursor: not-allowed;
 }
 
-.firmware-wizard__custom-server {
-  display: grid;
-  gap: var(--space-2, 8px);
-  padding: var(--card-padding, 12px);
-  margin-bottom: var(--space-3, 12px);
-  border-radius: var(--radius-md, 8px);
-  border: 1px dashed var(--surface-500);
-  background: rgba(255, 187, 0, 0.04);
-}
 
 .files-browser {
   display: grid;
