@@ -18,6 +18,24 @@ import { sortMavftpDirectoryEntries } from './runtime-helpers.js'
 import type { VehicleIdentity } from './types.js'
 
 const DEFAULT_MAVFTP_TIMEOUT_MS = 3000
+/**
+ * Per-request budget for LIST_DIRECTORY, which needs its own.
+ *
+ * The listing is a LOOP: one request per chunk of entries, each with its own
+ * timeout, so a long directory does not get a longer total budget — it gets
+ * more chances to trip the same short one. ArduPilot stats every file as it
+ * fills a chunk, and on an F4 with a few hundred .bin files on a slow SD card
+ * a single chunk can legitimately take longer than 3s. The result was a
+ * timeout on exactly the boards with the most logs to list, which is where
+ * listing them matters most.
+ *
+ * 20s to match the log-download service's per-frame budget, and for the same
+ * reasoning: this is a "the link is dead" backstop, not a throughput promise.
+ * Deliberately NOT a bump to DEFAULT_MAVFTP_TIMEOUT_MS — every other MAVFTP
+ * operation is a single round trip where 3s is a fine failure signal, and
+ * slowing all of them down to fix directory listing would be the wrong trade.
+ */
+const MAVFTP_LIST_DIRECTORY_TIMEOUT_MS = 20000
 const MAVFTP_TRANSFER_CHUNK_SIZE = 200
 // ArduPilot `@SYS` virtual files report size 0 on OPEN_FILE_RO and are read
 // until the server's EOF NAK; this cap bounds that read so a FC that never
@@ -299,13 +317,16 @@ export class MavftpService {
 
     while (true) {
       try {
-        const response = await this.send({
-          session: 0,
-          opcode: MAV_FTP_OPCODE.LIST_DIRECTORY,
-          size: pathBytes.length,
-          offset,
-          data: pathBytes
-        })
+        const response = await this.send(
+          {
+            session: 0,
+            opcode: MAV_FTP_OPCODE.LIST_DIRECTORY,
+            size: pathBytes.length,
+            offset,
+            data: pathBytes
+          },
+          MAVFTP_LIST_DIRECTORY_TIMEOUT_MS
+        )
         const chunkEntries = parseMavftpDirectoryEntries(normalizedPath, response.data)
         if (chunkEntries.length === 0) {
           break
