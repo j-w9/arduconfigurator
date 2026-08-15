@@ -1077,3 +1077,72 @@ test('MavlinkV2Codec round-trips LOG_ERASE', () => {
     targetComponent: 1
   })
 })
+
+// SERVO_OUTPUT_RAW — what the FC is actually driving each output to.
+//
+// The assertions that matter are about WIRE LAYOUT, because the extension
+// fields make this message easy to get subtly wrong: servo9-16 sit after
+// `port`, not beside servo1-8, so grouping them with their siblings would
+// shift `port` and corrupt everything after it.
+
+function encodeServoOutputRaw(message) {
+  return new MavlinkV2Codec().encode({
+    header: { systemId: 1, componentId: 1, sequence: 0 },
+    message,
+    timestampMs: 0
+  })
+}
+
+test('SERVO_OUTPUT_RAW round-trips all sixteen outputs', () => {
+  const servos = [1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 1000, 1500, 1234, 1567, 1890, 1111]
+  const frame = encodeServoOutputRaw({ type: 'SERVO_OUTPUT_RAW', timeUsec: 123456, port: 0, servos })
+  const [decoded] = new MavlinkV2Codec().push(frame)
+  assert.equal(decoded.message.type, 'SERVO_OUTPUT_RAW')
+  assert.equal(decoded.message.timeUsec, 123456)
+  assert.equal(decoded.message.port, 0)
+  assert.deepEqual(decoded.message.servos, servos)
+})
+
+test('SERVO_OUTPUT_RAW keeps port readable past the first eight outputs', () => {
+  // The layout trap: `port` lives at offset 20, BETWEEN servo8 and servo9.
+  // Writing the extensions contiguously with servo1-8 would overwrite it.
+  const frame = encodeServoOutputRaw({
+    type: 'SERVO_OUTPUT_RAW',
+    timeUsec: 1,
+    port: 1,
+    servos: Array.from({ length: 16 }, (_, index) => 1000 + index)
+  })
+  const [decoded] = new MavlinkV2Codec().push(frame)
+  assert.equal(decoded.message.port, 1, 'port must survive the extension fields')
+  assert.equal(decoded.message.servos[8], 1008)
+  assert.equal(decoded.message.servos[15], 1015)
+})
+
+test('a truncated frame reports undriven outputs as zero, not as garbage', () => {
+  // Real vehicles truncate: MAVLink v2 drops trailing zero bytes, so a board
+  // with eight outputs sends a 21-byte payload. The receiver zero-pads it back
+  // (mavlink-v2-codec.ts:474-481), so the honest result is sixteen values with
+  // the last eight at zero — zero PWM meaning "not driven". What must NOT
+  // happen is the padding being read as live PWM or the first eight shifting.
+  const frame = truncateMavlinkV2Frame(
+    encodeServoOutputRaw({
+      type: 'SERVO_OUTPUT_RAW',
+      timeUsec: 42,
+      port: 0,
+      servos: [1500, 1501, 1502, 1503, 1504, 1505, 1506, 1507]
+    })
+  )
+  assert.ok(frame.length < 37 + 12, 'the frame should actually be truncated, or this proves nothing')
+
+  const [decoded] = new MavlinkV2Codec().push(frame)
+  assert.deepEqual(decoded.message.servos.slice(0, 8), [1500, 1501, 1502, 1503, 1504, 1505, 1506, 1507])
+  assert.deepEqual(decoded.message.servos.slice(8), [0, 0, 0, 0, 0, 0, 0, 0])
+  assert.equal(decoded.message.port, 0, 'port must survive truncation')
+})
+
+test('SERVO_OUTPUT_RAW carries the crc_extra the spec requires', () => {
+  // 222. Computed from the message definition, and cross-checked by the same
+  // routine reproducing HEARTBEAT=50 and GPS_RAW_INT=24 from this table.
+  assert.equal(MAVLINK_MESSAGE_CRCS[MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW], 222)
+  assert.equal(MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW], 37)
+})

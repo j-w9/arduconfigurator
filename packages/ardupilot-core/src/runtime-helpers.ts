@@ -200,6 +200,10 @@ export function createIdleLiveVerification(): LiveVerificationState {
     globalPosition: {
       verified: false
     },
+    servoOutputs: {
+      detected: false,
+      pwm: []
+    },
     gpsReceiver: {
       detected: false
     },
@@ -328,6 +332,14 @@ export function cloneLiveVerification(liveVerification: LiveVerificationState): 
     },
     globalPosition: {
       ...liveVerification.globalPosition
+    },
+    // Whole-object spread PLUS a fresh array, same discipline as escTelemetry:
+    // the pwm array is rewritten in place as frames arrive at 10 Hz, so
+    // handing the live array to a snapshot would let an already-emitted
+    // snapshot change under its consumer.
+    servoOutputs: {
+      ...liveVerification.servoOutputs,
+      pwm: [...liveVerification.servoOutputs.pwm]
     },
     // Must be cloned like every other field — a previous field (imuTemperatureC)
     // was silently dropped here and its live readout died for four releases.

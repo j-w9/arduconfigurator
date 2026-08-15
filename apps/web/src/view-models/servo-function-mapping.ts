@@ -6,6 +6,7 @@ import type {
 } from '@arduconfig/ardupilot-core'
 
 import type { ServoFunctionMappingRow } from '../views/ServoFunctionMapping'
+import { buildServoLiveOutput, livePwmForOutput } from './servo-live-output'
 
 const KIND_LABEL: Record<ServoOutputKind, string> = {
   motor: 'Motor',
@@ -75,18 +76,31 @@ export function buildServoFunctionMappingRows(
 ): ServoFunctionMappingRow[] {
   const parametersById = new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter]))
   return assignments
-    .map((assignment) => {
+    .map((assignment): ServoFunctionMappingRow | undefined => {
       const parameter = parametersById.get(assignment.paramId)
       if (!parameter) {
         return undefined
       }
       const channel = assignment.channelNumber
-      return buildServoFunctionMappingRow(assignment, parameter, {
-        min: parametersById.get(`SERVO${channel}_MIN`),
-        max: parametersById.get(`SERVO${channel}_MAX`),
+      const min = parametersById.get(`SERVO${channel}_MIN`)
+      const max = parametersById.get(`SERVO${channel}_MAX`)
+      const row = buildServoFunctionMappingRow(assignment, parameter, {
+        min,
+        max,
         trim: parametersById.get(`SERVO${channel}_TRIM`),
         reversed: parametersById.get(`SERVO${channel}_REVERSED`)
       })
+      // The live reading is placed against the CONFIGURED range, not a nominal
+      // 1000-2000, so the bar answers "is it moving as far as this output is
+      // allowed to" rather than "is it moving as far as a servo usually does".
+      return {
+        ...row,
+        live: buildServoLiveOutput({
+          pwm: livePwmForOutput(snapshot.liveVerification.servoOutputs.pwm, channel),
+          min: min?.value,
+          max: max?.value
+        })
+      }
     })
     .filter((row): row is ServoFunctionMappingRow => row !== undefined)
     .sort((left, right) => left.assignment.channelNumber - right.assignment.channelNumber)

@@ -339,6 +339,22 @@ export interface GpsReceiverState {
   lastSeenAtMs?: number
 }
 
+/**
+ * Live output PWM, from SERVO_OUTPUT_RAW.
+ *
+ * `pwm` is indexed 0-based for SERVO1..SERVOn. A value of 0 means the output
+ * is not being driven, which is a real answer and distinct from "no such
+ * output" — the vehicle zero-fills the extension fields it does not use.
+ */
+export interface ServoOutputsState {
+  /** True once any SERVO_OUTPUT_RAW has arrived this session. */
+  detected: boolean
+  /** PWM microseconds per output, index 0 = SERVO1. */
+  pwm: number[]
+  /** Most recent arrival, for a staleness indicator. */
+  lastSeenAtMs?: number
+}
+
 export interface GlobalPositionTelemetryState {
   verified: boolean
   latitudeDeg?: number
@@ -384,6 +400,15 @@ export interface LiveVerificationState {
   /** Primary IMU temperature (°C) from SCALED_IMU — for the thermal-calibration
    *  (TCAL) live readout. undefined until a reading arrives. */
   imuTemperatureC?: number
+  /**
+   * What each output is being driven to right now, from SERVO_OUTPUT_RAW.
+   *
+   * SERVOn_FUNCTION says what an output is FOR and the min/trim/max say what
+   * it may do; neither says what it IS doing. This is the only thing that
+   * does, which is what makes it the readout you want when a surface will not
+   * move and the configuration looks fine.
+   */
+  servoOutputs: ServoOutputsState
   globalPosition: GlobalPositionTelemetryState
   gpsReceiver: GpsReceiverState
   baroSensor: BaroSensorState

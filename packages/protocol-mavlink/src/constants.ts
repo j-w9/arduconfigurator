@@ -21,6 +21,7 @@ export const MAVLINK_MESSAGE_IDS = {
   ATTITUDE_QUATERNION: 31,
   SCALED_IMU: 26,
   RC_CHANNELS: 65,
+  SERVO_OUTPUT_RAW: 36,
   FILE_TRANSFER_PROTOCOL: 110,
   COMMAND_ACK: 77,
   COMMAND_LONG: 76,
@@ -80,6 +81,11 @@ export const MAVLINK_MESSAGE_CRCS: Record<number, number> = {
   // crc_extra 170 (pymavlink ardupilotmega SCALED_IMU) — decode-only, for IMU temp.
   [MAVLINK_MESSAGE_IDS.SCALED_IMU]: 170,
   [MAVLINK_MESSAGE_IDS.RC_CHANNELS]: 118,
+  // crc_extra 222, computed from the message definition rather than recalled:
+  // the same routine reproduces HEARTBEAT=50 and GPS_RAW_INT=24 against the
+  // values already in this table. Extension fields (servo9..16) are excluded
+  // from the crc, as the spec requires.
+  [MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW]: 222,
   [MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL]: 84,
   [MAVLINK_MESSAGE_IDS.COMMAND_ACK]: 143,
   [MAVLINK_MESSAGE_IDS.COMMAND_LONG]: 152,
@@ -137,6 +143,7 @@ export const MAVLINK_PAYLOAD_LENGTHS: Record<number, number> = {
   // time_boot_ms(4) + xacc..zmag(9×2=18) + temperature(2) = 24.
   [MAVLINK_MESSAGE_IDS.SCALED_IMU]: 24,
   [MAVLINK_MESSAGE_IDS.RC_CHANNELS]: 42,
+  [MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW]: 37,
   [MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL]: 254,
   [MAVLINK_MESSAGE_IDS.COMMAND_ACK]: 10,
   [MAVLINK_MESSAGE_IDS.COMMAND_LONG]: 33,
@@ -193,6 +200,7 @@ export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
   // sender may truncate it when zero, so the min must not require it.
   [MAVLINK_MESSAGE_IDS.SCALED_IMU]: 22,
   [MAVLINK_MESSAGE_IDS.RC_CHANNELS]: 42,
+  [MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW]: 21,
   [MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL]: 254,
   [MAVLINK_MESSAGE_IDS.COMMAND_ACK]: 3,
   [MAVLINK_MESSAGE_IDS.COMMAND_LONG]: 33,

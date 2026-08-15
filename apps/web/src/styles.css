@@ -17601,3 +17601,55 @@ button.mavlink-inspector__sent-row {
 .initial-tune__table tbody tr {
   cursor: help;
 }
+
+/* Live output PWM in the servo mapping table.
+ *
+ * The bar is the point: a number alone says the output is moving, the bar says
+ * how far through its configured range it is, which is what distinguishes an
+ * output that is not being driven from one pinned against its own end stop. */
+.servo-mapping__live {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.servo-mapping__live-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.servo-mapping__live-pwm {
+  min-width: 4ch;
+  text-align: right;
+}
+.servo-mapping__live-value.is-at-limit .servo-mapping__live-pwm {
+  color: var(--warn, #fab219);
+  font-weight: 600;
+}
+.servo-mapping__live-bar {
+  display: inline-block;
+  width: 46px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.servo-mapping__live-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  /* Short, because the value updates at 10 Hz — a long transition would lag
+   * behind the aircraft and make a responsive output look sluggish. */
+  transition: width 80ms linear;
+}
+.servo-mapping__live-value.is-at-limit .servo-mapping__live-bar > span {
+  background: var(--warn, #fab219);
+}
+.servo-mapping__live-idle {
+  color: var(--dim);
+  font-style: italic;
+}
+/* The bar is the first thing to go on a phone; the number carries the meaning. */
+@media (max-width: 600px) {
+  .servo-mapping__live-bar {
+    display: none;
+  }
+}

@@ -837,6 +837,27 @@ export const ARDUCOPTER_SERVO_FUNCTION_LABELS: Record<number, string> = {
   91: 'Camera Aperture',
   92: 'Camera Focus',
   93: 'Camera Shutter Speed',
+  // Scripting outputs. A Lua script drives these via SRV_Channels:set_output_pwm
+  // on the function number rather than a channel, so the same script works
+  // whichever output it is wired to. Labels are ArduPilot's own --
+  // SRV_Channel.cpp:140 reads `94:Script1,95:Script2,...` -- so what shows here
+  // matches both the firmware docs and Mission Planner.
+  94: 'Script 1',
+  95: 'Script 2',
+  96: 'Script 3',
+  97: 'Script 4',
+  98: 'Script 5',
+  99: 'Script 6',
+  100: 'Script 7',
+  101: 'Script 8',
+  102: 'Script 9',
+  103: 'Script 10',
+  104: 'Script 11',
+  105: 'Script 12',
+  106: 'Script 13',
+  107: 'Script 14',
+  108: 'Script 15',
+  109: 'Script 16',
   120: 'NeoPixel 1',
   121: 'NeoPixel 2',
   122: 'NeoPixel 3',

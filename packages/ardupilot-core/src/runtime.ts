@@ -9,6 +9,7 @@ import type {
   GpsRawIntMessage,
   AttitudeMessage,
   ScaledImuMessage,
+  ServoOutputRawMessage,
   AttitudeQuaternionMessage,
   AutopilotVersionMessage,
   CommandAckMessage,
@@ -370,6 +371,15 @@ const LIVE_TELEMETRY_REQUESTS = [
     messageId: MAVLINK_MESSAGE_IDS.GPS_RAW_INT,
     label: 'GPS_RAW_INT',
     intervalUs: 1000000
+  },
+  {
+    // What every output is actually being driven to. The whole point of
+    // showing it is troubleshooting a surface that will not move, so it has to
+    // be smooth enough to see a servo track a stick: 10 Hz. Cheap — one 37-byte
+    // message covers all sixteen outputs.
+    messageId: MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW,
+    label: 'SERVO_OUTPUT_RAW',
+    intervalUs: 100000
   },
   {
     messageId: MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT,
@@ -2443,6 +2453,9 @@ export class ArduPilotConfiguratorRuntime {
       case 'GPS_RAW_INT':
         this.processGpsRawInt(envelope.message)
         break
+      case 'SERVO_OUTPUT_RAW':
+        this.processServoOutputRaw(envelope.message)
+        break
       case 'ATTITUDE':
         this.processAttitude(envelope.message)
         break
@@ -2965,6 +2978,28 @@ export class ArduPilotConfiguratorRuntime {
       lastSeenAtMs: Date.now()
     }
     this.liveVerification.satisfiedSignals = recomputeSatisfiedSignals(this.liveVerification)
+  }
+
+  /**
+   * Live output PWM.
+   *
+   * `port` banks the outputs: 0 carries SERVO1-8 (and, via the extension
+   * fields, 9-16), 1 carries 9-16 on vehicles that split them. Writing at the
+   * bank offset rather than replacing the array means both shapes land in the
+   * same 0-based list, and a vehicle that only ever sends bank 0 is not
+   * clipped to eight.
+   */
+  private processServoOutputRaw(message: ServoOutputRawMessage): void {
+    const pwm = [...this.liveVerification.servoOutputs.pwm]
+    const offset = message.port * 8
+    for (let index = 0; index < message.servos.length; index += 1) {
+      pwm[offset + index] = message.servos[index]
+    }
+    this.liveVerification.servoOutputs = {
+      detected: true,
+      pwm,
+      lastSeenAtMs: Date.now()
+    }
   }
 
   private processGpsRawInt(message: GpsRawIntMessage): void {

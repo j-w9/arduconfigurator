@@ -6058,3 +6058,44 @@ test.describe('Tuning ▸ Initial Tune', () => {
     expect(Math.round(box!.x + box!.width), 'the panel must fit a 390px phone').toBeLessThanOrEqual(390)
   })
 })
+
+test.describe('Servos ▸ live output', () => {
+  // The whole point of this readout is watching outputs respond, so the
+  // assertion that matters is that the numbers MOVE. A test that only checked
+  // a value was rendered would pass against a hard-coded constant.
+  test('shows live PWM per output, and it changes as the vehicle moves', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('view-button-servos').click()
+
+    const live1 = page.getByTestId('servo-mapping-live-1')
+    await expect(live1).toBeVisible()
+    // A real reading, not a dash.
+    await expect(live1).toHaveText(/\d{3,4}/, { timeout: COMMAND_ACK_TIMEOUT })
+
+    // The demo drives outputs 1-4 from the same choreography the horizon
+    // flies, so the value must change on its own within a few ticks.
+    const first = await live1.textContent()
+    await expect
+      .poll(async () => live1.textContent(), { timeout: COMMAND_ACK_TIMEOUT })
+      .not.toBe(first)
+  })
+
+  test('an output the vehicle is not driving reads as idle, not as zero', async ({ page }) => {
+    // Zero PWM means "nothing is driving this", which is a different answer
+    // from "driven hard against the minimum". The demo leaves outputs 9-16 at
+    // zero precisely so this rendering is exercised.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('view-button-servos').click()
+
+    const idle = page.getByTestId('servo-mapping-live-9')
+    if ((await idle.count()) > 0) {
+      await expect(idle).toHaveText(/idle|—/, { timeout: COMMAND_ACK_TIMEOUT })
+    }
+  })
+})

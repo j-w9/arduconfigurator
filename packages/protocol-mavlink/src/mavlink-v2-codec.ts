@@ -17,6 +17,7 @@ import type {
   AvailableModeMessage,
   AvailableModesMonitorMessage,
   ScaledImuMessage,
+  ServoOutputRawMessage,
   AttitudeQuaternionMessage,
   AutopilotVersionMessage,
   CommandAckMessage,
@@ -647,6 +648,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeAttitudePayload(message)
     case 'RC_CHANNELS':
       return encodeRcChannelsPayload(message)
+    case 'SERVO_OUTPUT_RAW':
+      return encodeServoOutputRawPayload(message)
     case 'FILE_TRANSFER_PROTOCOL':
       return encodeFileTransferProtocolPayload(message)
     case 'COMMAND_ACK':
@@ -720,6 +723,8 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
       return decodeScaledImuPayload(payload)
     case MAVLINK_MESSAGE_IDS.RC_CHANNELS:
       return decodeRcChannelsPayload(payload)
+    case MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW:
+      return decodeServoOutputRawPayload(payload)
     case MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL:
       return decodeFileTransferProtocolPayload(payload)
     case MAVLINK_MESSAGE_IDS.COMMAND_ACK:
@@ -793,6 +798,8 @@ function messageIdFor(message: MavlinkMessage): number {
       return MAVLINK_MESSAGE_IDS.ATTITUDE
     case 'RC_CHANNELS':
       return MAVLINK_MESSAGE_IDS.RC_CHANNELS
+    case 'SERVO_OUTPUT_RAW':
+      return MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW
     case 'FILE_TRANSFER_PROTOCOL':
       return MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL
     case 'COMMAND_ACK':
@@ -1167,6 +1174,55 @@ function decodeRcChannelsPayload(payload: Uint8Array): RcChannelsMessage {
     channelCount: view.getUint8(40),
     channels,
     rssi: view.getUint8(41)
+  }
+}
+
+/**
+ * Wire order is by descending type size, so: time_usec, then the eight base
+ * servos, then port, then the eight extension servos. The extensions sit AFTER
+ * port rather than beside their siblings, which is the detail worth getting
+ * right — grouping them with servo1-8 would silently shift `port`.
+ */
+function encodeServoOutputRawPayload(message: ServoOutputRawMessage): Uint8Array {
+  const payload = new Uint8Array(MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW])
+  const view = new DataView(payload.buffer)
+  view.setUint32(0, message.timeUsec >>> 0, true)
+  for (let index = 0; index < 8; index += 1) {
+    view.setUint16(4 + index * 2, message.servos[index] ?? 0, true)
+  }
+  view.setUint8(20, message.port)
+  for (let index = 8; index < 16; index += 1) {
+    view.setUint16(21 + (index - 8) * 2, message.servos[index] ?? 0, true)
+  }
+  return payload
+}
+
+function decodeServoOutputRawPayload(payload: Uint8Array): ServoOutputRawMessage {
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  const servos: number[] = []
+  for (let index = 0; index < 8; index += 1) {
+    servos.push(view.getUint16(4 + index * 2, true))
+  }
+  // Extensions are optional on the wire, but by the time a payload reaches
+  // here the codec has already zero-padded it back to the declared length
+  // (see the receiver path above), so the normal result of a vehicle sending
+  // only eight outputs is sixteen values with the last eight at zero — not a
+  // short array. Zero PWM means "not driven", which is a real state worth
+  // showing rather than hiding.
+  //
+  // The bounds check below is therefore defensive, for a caller that decodes a
+  // raw payload without going through the codec. It is cheap and it prevents
+  // reading past the end, which would invent values.
+  for (let index = 0; index < 8; index += 1) {
+    const offset = 21 + index * 2
+    if (offset + 2 > payload.byteLength) break
+    servos.push(view.getUint16(offset, true))
+  }
+  return {
+    type: 'SERVO_OUTPUT_RAW',
+    timeUsec: view.getUint32(0, true),
+    port: payload.byteLength > 20 ? view.getUint8(20) : 0,
+    servos
   }
 }
 

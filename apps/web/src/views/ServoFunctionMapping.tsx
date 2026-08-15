@@ -1,7 +1,9 @@
+import type { ReactElement } from 'react'
 import type { ParameterState, ServoOutputAssignment } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import { ScopedField, ScopedSelectField, type ScopedFieldDraftMap } from './ScopedField'
+import type { ServoLiveOutput } from '../view-models/servo-live-output'
 
 // Per-channel servo function mapping. Each row owns one SERVOn_FUNCTION
 // parameter plus its SERVOn_MIN / MAX / TRIM / REVERSED siblings — the
@@ -30,6 +32,8 @@ export interface ServoFunctionMappingRow {
   maxParameter?: ParameterState
   trimParameter?: ParameterState
   reversedParameter?: ParameterState
+  /** Live output reading, when the vehicle is streaming SERVO_OUTPUT_RAW. */
+  live?: ServoLiveOutput
 }
 
 export interface ServoFunctionMappingViewProps {
@@ -96,6 +100,7 @@ export function ServoFunctionMappingView(props: ServoFunctionMappingViewProps) {
                 <th scope="col">Min</th>
                 <th scope="col">Trim</th>
                 <th scope="col">Max</th>
+                <th scope="col">Live</th>
                 <th scope="col">Rev</th>
                 <th scope="col">Kind</th>
               </tr>
@@ -158,6 +163,9 @@ export function ServoFunctionMappingView(props: ServoFunctionMappingViewProps) {
                         />
                       ) : <span className="servo-mapping__missing">—</span>}
                     </td>
+                    <td className="servo-mapping__live" data-testid={`servo-mapping-live-${channel}`}>
+                      {renderLive(row.live)}
+                    </td>
                     <td className="servo-mapping__rev">
                       {reversedParam ? (
                         <label className="servo-mapping__rev-toggle" data-testid={`servo-mapping-reversed-${channel}`}>
@@ -206,5 +214,33 @@ export function ServoFunctionMappingView(props: ServoFunctionMappingViewProps) {
         </div>
       </div>
     </Panel>
+  )
+}
+
+/**
+ * The live reading for one output.
+ *
+ * Three distinct states, kept distinct on purpose: no reading at all (the
+ * vehicle is not streaming, or does not report this output), a reading of zero
+ * (reported, but nothing is driving it), and a live value. Collapsing the
+ * first two into "0" is what would send someone hunting a range problem that
+ * does not exist.
+ */
+function renderLive(live: ServoLiveOutput | undefined): ReactElement {
+  if (!live || live.pwm === undefined) {
+    return <span className="servo-mapping__missing">—</span>
+  }
+  if (live.undriven) {
+    return <span className="servo-mapping__live-idle" title="Reported, but nothing is driving this output">idle</span>
+  }
+  return (
+    <span className={`servo-mapping__live-value${live.atLimit ? ' is-at-limit' : ''}`}>
+      <span className="servo-mapping__live-pwm">{live.pwm}</span>
+      {live.fraction === undefined ? null : (
+        <span className="servo-mapping__live-bar" aria-hidden="true">
+          <span style={{ width: `${Math.round(live.fraction * 100)}%` }} />
+        </span>
+      )}
+    </span>
   )
 }

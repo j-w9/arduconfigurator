@@ -33,6 +33,28 @@ export interface RcChannelsMessage {
   rssi: number
 }
 
+/**
+ * What the flight controller is actually driving each output to.
+ *
+ * The point of having it: SERVOn_FUNCTION says what an output is FOR, and the
+ * trim/min/max say what it is allowed to do, but neither says what it is doing
+ * right now. Only this does, which is what makes it the message you want when
+ * a surface is not moving and nothing in the configuration looks wrong.
+ *
+ * `servos` is 1-based by index (servos[0] is SERVO1). Outputs 9-16 are MAVLink
+ * extension fields, so a vehicle that sends only the first eight is decoded
+ * normally and simply reports eight — hence the length, rather than a fixed 16.
+ */
+export interface ServoOutputRawMessage {
+  type: 'SERVO_OUTPUT_RAW'
+  /** Microseconds since boot. uint32 here, NOT the uint64 most messages use. */
+  timeUsec: number
+  /** Output bank: 0 for servos 1-8, 1 for 9-16. */
+  port: number
+  /** PWM microseconds per output, in channel order. */
+  servos: number[]
+}
+
 export interface SysStatusMessage {
   type: 'SYS_STATUS'
   sensorsPresent: number
@@ -582,6 +604,7 @@ export interface SetupSigningMessage {
 export type MavlinkMessage =
   | HeartbeatMessage
   | RcChannelsMessage
+  | ServoOutputRawMessage
   | SysStatusMessage
   | OpticalFlowMessage
   | DistanceSensorMessage

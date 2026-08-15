@@ -1921,6 +1921,12 @@ test('live telemetry requests use responsive attitude rates and slower support s
         // never wired up looks identical to a healthy one waiting on a fix,
         // and the UI called both "configured".
         [MAVLINK_MESSAGE_IDS.GPS_RAW_INT, 1000000],
+        // 10 Hz SERVO_OUTPUT_RAW — what each output is actually being driven
+        // to. The reason to show it at all is troubleshooting a surface that
+        // will not move, so it has to be smooth enough to watch an output
+        // track a stick. One 37-byte message covers all sixteen outputs, so
+        // the rate is cheap.
+        [MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW, 100000],
         // 5 Hz GLOBAL_POSITION_INT — bumped from 2 Hz so the Setup-page
         // Live GPS map looks like it's actually moving when a Here3 is.
         [MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT, 200000],

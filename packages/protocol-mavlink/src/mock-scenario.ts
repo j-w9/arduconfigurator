@@ -922,6 +922,45 @@ function mockRangefinderDistanceCmForTick(tick: number): number {
   return 62 + rising * 20
 }
 
+/**
+ * Live output PWM for the demo, as a pure function of the motion tick.
+ *
+ * Deliberately MOVING rather than a static table: the whole reason to show
+ * live outputs is watching them respond, so a demo that renders eight frozen
+ * numbers would witness nothing — the readout could be wired to a constant and
+ * still look right. Outputs 1-4 lean with the same roll/pitch choreography the
+ * attitude stream flies, so the picture is coherent with the horizon.
+ *
+ * 9-16 stay at 0, which is the honest depiction of a board that does not drive
+ * them and exercises the "not driven" rendering.
+ */
+export function mockServoOutputsForTick(tick: number): number[] {
+  const { rollDeg, pitchDeg } = mockAttitudeForTick(tick)
+  const roll = Math.round((rollDeg / 30) * 200)
+  const pitch = Math.round((pitchDeg / 30) * 200)
+  return [
+    1500 + roll + pitch,
+    1500 - roll - pitch,
+    1500 + roll - pitch,
+    1500 - roll + pitch,
+    // A pair of plain servos: one tracking roll, one parked at trim.
+    1500 + roll,
+    1500,
+    1000,
+    2000,
+    0, 0, 0, 0, 0, 0, 0, 0
+  ]
+}
+
+function servoOutputRawMessage(timeUsec: number, tick: number): MavlinkMessage {
+  return {
+    type: 'SERVO_OUTPUT_RAW',
+    timeUsec,
+    port: 0,
+    servos: mockServoOutputsForTick(tick)
+  }
+}
+
 /** A healthy GPS with a 3D fix — the demo's happy path. */
 function gpsRawIntMessage(): GpsRawIntMessage {
   return {
@@ -1781,6 +1820,9 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
             if (requestedMessageId === MAVLINK_MESSAGE_IDS.GPS_RAW_INT) {
               responses.push(codec.encode(envelope(96, gpsRawIntMessage())))
             }
+            if (requestedMessageId === MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW) {
+              responses.push(codec.encode(envelope(98, servoOutputRawMessage(1_600_000, 0))))
+            }
             // Answered ONLY on request, and absent from initialFrames. That is
             // deliberate: it makes the demo prove the same thing hardware does
             // — DISTANCE_SENSOR rides STREAM_EXTRA3 and arrives only because
@@ -2259,6 +2301,18 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
       // state machine emits and the link loss would never register.
       if (dynamicState.rcLinkStage === 'dropping') {
         return
+      }
+
+      // Request-gated for the same reason as the rest: if the
+      // LIVE_TELEMETRY_REQUESTS entry for SERVO_OUTPUT_RAW is ever dropped,
+      // the demo readout goes dark exactly as a real flight controller would,
+      // instead of passing while hardware fails.
+      if (dynamicState.requestedMessageIds.has(MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW)) {
+        emit(
+          codec.encode(
+            envelope(nextDynamicSequence(), servoOutputRawMessage(timeBootMs * 1000, motionTick))
+          )
+        )
       }
 
       if (dynamicState.requestedMessageIds.has(MAVLINK_MESSAGE_IDS.RC_CHANNELS)) {
