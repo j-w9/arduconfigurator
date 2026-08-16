@@ -40,6 +40,39 @@ timestamped the log, a UTC date stamp. For example::
    the stuck transfer — but if it keeps failing, disconnect other ground
    stations or reboot the flight controller and try again.
 
+Uploading to a log server
+-------------------------
+
+Logs can be pushed straight to your own **ArduLogs** server instead of being
+saved locally and moved by hand. Sign in from the Logs tab (server address,
+username, password) and each log gains an **Upload to server** button beside its
+download button. The password is used once to get a token and is never stored;
+the token lives only until the tab closes.
+
+Uploads carry the log's descriptive name, the flight date, and an optional note,
+so the archive stays readable without opening anything.
+
+Configuration files go to the same place
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Once signed in, an **Upload to log server** button also appears next to the
+export actions for **parameter backups**, **presets**, and **snapshots**. This
+is the point of it: a tune filed beside the flights it produced answers "the
+tune changed and the next flight oscillated", and neither half is much use on
+its own.
+
+Each upload opens a small form with the filename prefilled from the aircraft and
+the date — editable, so an upload can be named for what it actually is — plus an
+optional note. The folder is derived from the aircraft, the same way a log's is,
+so both halves land together. The file is sent **exactly as exported**, byte for
+byte.
+
+.. note::
+
+   No log-server session, no buttons. They are hidden rather than shown
+   disabled, because a control that only ever says "sign in first" advertises a
+   capability most operators have not set up.
+
 MAVLink Inspector
 -----------------
 

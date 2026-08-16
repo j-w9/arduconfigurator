@@ -12,18 +12,43 @@ Servo output functions
 
 The **Servos** task (the *servo mapping* tab) shows a table of every output
 channel the flight controller reports, with columns **Channel · Function · Min ·
-Trim · Max · Rev · Kind**. The *Function* cell assigns ``SERVOn_FUNCTION`` —
+Trim · Max · Live · Rev · Kind**. The *Function* cell assigns ``SERVOn_FUNCTION`` —
 what that physical output drives. ArduPilot offers a long list; common choices
 include *Disabled*, *RCPassThru*, motor outputs (*Motor 1*…*Motor 12*+), control
 surfaces (*Aileron*, *Elevator*, *Rudder*, *Elevon Left/Right*, *VTail
 Left/Right*), gimbal axes (*Mount Pitch/Roll/Yaw*), *Camera Trigger*, *Gripper*,
-and the *NeoPixel 1*–*NeoPixel 4* LED-strip functions.
+the *Script 1*–*Script 16* outputs a Lua script drives, and the *NeoPixel
+1*–*NeoPixel 4* LED-strip functions.
 
 Each channel also exposes its PWM endpoints and direction:
 
 - ``SERVOn_MIN`` / ``SERVOn_TRIM`` / ``SERVOn_MAX`` — the output range and centre
   in microseconds (800–2200 µs).
 - ``SERVOn_REVERSED`` — a *Rev* checkbox that flips the output direction.
+
+Live output values
+------------------
+
+The *Live* column shows what the flight controller is actually driving each
+output to, in microseconds, updated about ten times a second. A bar beside the
+number shows where that value sits between the channel's own ``SERVOn_MIN`` and
+``SERVOn_MAX``, and turns amber when the output is at or past one of them.
+
+This answers a question the rest of the table cannot. ``SERVOn_FUNCTION`` says
+what an output is *for*, and the range fields say what it is *allowed* to do;
+neither says what it is doing right now. When a surface will not move and the
+configuration looks correct, this is where the answer usually is — either the
+output is not being driven at all, or it is being driven hard into an endpoint.
+
+An output reading **idle** is not a low PWM value: it means the firmware is not
+driving that channel at all. Outputs a board does not use report this rather
+than a number.
+
+.. note::
+
+   The readout needs the vehicle to be streaming ``SERVO_OUTPUT_RAW``. The app
+   requests it on connect, so it appears on its own; a dash means nothing has
+   arrived for that channel yet.
 
 The *Kind* badge classifies each output (Motor, Control Surface, RC Pass-through,
 Peripheral, Disabled) so you can see at a glance what the frame is using. Edits

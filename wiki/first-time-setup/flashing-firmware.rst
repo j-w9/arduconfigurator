@@ -59,9 +59,7 @@ bootloader.
    firmware.ardupilot.org sends no CORS headers, so the browser app cannot fetch
    it directly — you download the ``.apj`` yourself (a normal browser download)
    and drop it in. The **desktop app** adds an in-app *fetch releases* path that
-   detects the board id and pulls the matching build for you. You can also point
-   the **custom build server** field at an internal CI mirror, but that server
-   must allow this origin (CORS).
+   detects the board id and pulls the matching build for you.
 
 Before it erases, the flasher guards the write: it refuses a ``.apj`` whose board
 id doesn't match the connected board, and refuses an image too large for the

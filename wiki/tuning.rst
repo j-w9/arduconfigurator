@@ -8,8 +8,8 @@ tune can be roughed in without diving into the raw parameter tree. Every change
 is staged as a local draft and reviewed before it is written to the controller,
 and known-good tunes can be saved as reusable profiles.
 
-The tab is split into seven tasks: **Pilot**, **PID Gains**, **Filters**,
-**Autotune**, **Profiles**, **Review**, and **Log Tuning**. The workspace is
+The tab is split into eight tasks: **Pilot**, **PID Gains**, **Filters**,
+**Autotune**, **Profiles**, **Review**, **Initial Tune**, and **Log Tuning**. The workspace is
 full-width — each task fills it — and every control carries an **"i" info bubble** with the
 parameter's plain-text description, its label, and its unit, so guidance is one
 hover away rather than a wall of text on the page.
@@ -157,6 +157,42 @@ in the app — each value is sent and confirmed against the controller's read-ba
    responsiveness higher, and validate every change with a short hover or
    line-of-sight test before stacking more. Treat a connected aircraft as a real
    aircraft.
+
+Initial Tune
+------------
+
+**Initial Tune** works out a starting point for a *new* airframe from three
+facts about it — prop diameter, battery cell count, and cell chemistry — and
+stages the parameters that follow from them. It is where a fresh build begins,
+before there is anything worth autotuning.
+
+It uses the same formulas as Mission Planner's *Initial Parameters* screen, so
+the numbers agree with what that tool would have given you.
+
+What it sets, all of it driven by prop size or the pack:
+
+- ``INS_GYRO_FILTER`` and ``INS_ACCEL_FILTER``, plus the matching
+  ``ATC_RAT_*_FLT*`` rate-loop filters — bigger props, lower cutoffs.
+- ``ATC_ACCEL_{R,P,Y}_MAX`` acceleration limits and ``ACRO_YAW_P``.
+- ``MOT_THST_EXPO`` and a ``MOT_THST_HOVER`` starting guess.
+- ``BATT_ARM_VOLT`` / ``BATT_CRT_VOLT`` / ``BATT_LOW_VOLT`` and
+  ``MOT_BAT_VOLT_MIN`` / ``MAX`` from the cell count and chemistry.
+
+Two options change the result: **T-Motor ESCs** flattens the thrust curve to a
+fixed expo and pins the PWM range, and **Failsafes & fence** adds the suggested
+battery-failsafe actions plus a 120 m / 150 m fence.
+
+.. important::
+
+   **It sets no PID gains.** Prop diameter says nothing about P, I or D, so
+   ``ATC_RAT_*_P/I/D`` are left exactly as they are. This gets an airframe to a
+   first hover that is safe to fly; **Autotune** and **Log Tuning** do the
+   actual tuning from there.
+
+The table lists only the values that would change, each showing what the
+vehicle has now next to what it would become, with the reasoning on hover.
+Nothing is written — **Stage** puts the batch into the same review queue as
+every other tuning change, and you apply it there.
 
 Log Tuning
 ----------
