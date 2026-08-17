@@ -133,10 +133,19 @@ export function buildAdditionalSettingsGroups(
   snapshot: ConfiguratorSnapshot,
   metadataCatalog: NormalizedFirmwareMetadataBundle,
   viewId: AppViewId,
-  excludedParameterIds: Set<string>
+  excludedParameterIds: Set<string>,
+  /**
+   * Whole categories to leave out, by id.
+   *
+   * Excluding by PARAMETER id would work but says the wrong thing: the reason a
+   * category is absent here is that another tab owns it, which is a statement
+   * about the category, not about a list of parameters that would silently
+   * drift as the category gained members.
+   */
+  excludedCategoryIds: ReadonlySet<string> = new Set()
 ): AdditionalSettingsGroup[] {
   return metadataCatalog.categories
-    .filter((category) => category.viewId === viewId)
+    .filter((category) => category.viewId === viewId && !excludedCategoryIds.has(category.id))
     .map((category) => {
       const parameters = (metadataCatalog.parametersByCategory[category.id] ?? [])
         .map((definition) => selectParameterById(snapshot, definition.id))

@@ -53,9 +53,11 @@ export function useAdditionalScope(input: {
   metadataCatalog: NormalizedFirmwareMetadataBundle
   viewId: AppViewId
   excludedParameterIds?: (parameterId: string) => boolean
+  /** Whole categories another tab owns. Must be a stable reference. */
+  excludedCategoryIds?: ReadonlySet<string>
   parameterDraftEntries: readonly ParameterDraftEntry[]
 }): UseAdditionalScopeResult {
-  const { snapshot, metadataCatalog, viewId, excludedParameterIds, parameterDraftEntries } = input
+  const { snapshot, metadataCatalog, viewId, excludedParameterIds, excludedCategoryIds, parameterDraftEntries } = input
 
   const groups = useMemo(
     () =>
@@ -69,9 +71,10 @@ export function useAdditionalScope(input: {
               snapshot.parameters
                 .filter((parameter) => excludedParameterIds(parameter.id))
                 .map((parameter) => parameter.id)
-            )
+            ),
+        excludedCategoryIds
       ),
-    [excludedParameterIds, metadataCatalog, snapshot, viewId]
+    [excludedCategoryIds, excludedParameterIds, metadataCatalog, snapshot, viewId]
   )
   const { entries, staged, invalid } = useMemo(
     () =>

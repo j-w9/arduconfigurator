@@ -1,3 +1,4 @@
+import { PAVO_FEMTO_O3_VALUES } from './pavo-femto-o3-preset.js'
 import type { FirmwareMetadataBundle, ParameterValueOption } from './types.js'
 import { AHRS_ORIENTATION_OPTIONS, LOG_DISARMED_OPTIONS } from './shared-enums.js'
 import { buildMountParameterDefinitions } from './shared-mount.js'
@@ -932,9 +933,46 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       label: 'Acro Rates',
       description: 'Preset bundles for acro roll, pitch, and yaw stick sensitivity.',
       order: 2
+    },
+    // Whole-vehicle configurations for a specific, known build -- the same idea
+    // as Betaflight Configurator's preset library. Distinct from
+    // 'starter-config', which only picks a frame class and layout: these carry
+    // the entire tune, filter set, OSD layout, serial map and failsafes from an
+    // aircraft that actually flew.
+    //
+    // Last, and described as replacing the configuration, because applying one
+    // is a much bigger action than any other preset here.
+    airframes: {
+      id: 'airframes',
+      label: 'Complete Airframes',
+      description:
+        'Full configurations captured from specific builds that flew. Applying one replaces most of the vehicle configuration, so review the diff before writing.',
+      order: 3
     }
   },
   presets: {
+    'airframe-pavo-femto-o3': {
+      id: 'airframe-pavo-femto-o3',
+      label: 'Pavo Femto AIO — DJI O3',
+      description:
+        'Complete configuration for a Pavo Femto AIO on a 2S pack with a DJI O3 air unit: BetaFlight-X quad on DShot300, MSP DisplayPort OSD on SERIAL4, RC on SERIAL5.',
+      groupId: 'airframes',
+      order: 0,
+      values: [...PAVO_FEMTO_O3_VALUES],
+      note:
+        'Captured from a flying aircraft. Board-specific calibration (accel/gyro offsets, compass, AHRS trims, RC endpoints, battery voltage and current calibration) is deliberately NOT included -- those are true of one unit only, and this vehicle still needs its own calibration afterwards.',
+      tags: ['airframe', 'cinewhoop', 'dji', 'o3', '2s'],
+      prerequisites: presetPrerequisites,
+      cautions: [
+        'Replaces most of the vehicle configuration. Review the staged diff before applying.',
+        'Assumes a Pavo Femto AIO with a DJI O3 on SERIAL4 and the receiver on SERIAL5 — check the serial map matches your wiring.',
+        'Tuned for 2S and the stock prop. On a different pack or prop the tune and battery voltage points will not fit.',
+        'Run accelerometer, level and compass calibration on YOUR board afterwards — no calibration is carried over.'
+      ],
+      compatibility: {
+        frameClasses: [1]
+      }
+    },
     'starter-quad-x': {
       id: 'starter-quad-x',
       label: 'Quad X',

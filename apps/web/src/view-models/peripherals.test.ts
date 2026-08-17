@@ -81,3 +81,49 @@ describe('buildAdditionalSettingsGroups', () => {
     expect(groups).toEqual([])
   })
 })
+
+describe('category exclusion', () => {
+  // The Servos tab surfaces metadata categories routed to the Motors view. Two
+  // of those are owned by other tabs, and showing them twice gave an operator
+  // two places to change the same thing with no sign which was authoritative.
+  const catalog = {
+    categories: [
+      { id: 'airframe', label: 'Airframe', description: '', viewId: 'motors', order: 1 },
+      { id: 'outputs', label: 'Outputs', description: '', viewId: 'motors', order: 2 },
+      { id: 'aux', label: 'Aux servos', description: '', viewId: 'motors', order: 3 }
+    ],
+    parametersByCategory: {
+      airframe: [{ id: 'FRAME_CLASS' }, { id: 'FRAME_TYPE' }],
+      outputs: [{ id: 'SERVO_DSHOT_RATE' }, { id: 'SERVO_BLH_BDMASK' }],
+      aux: [{ id: 'SERVO9_FUNCTION' }]
+    }
+  } as unknown as Parameters<typeof buildAdditionalSettingsGroups>[1]
+
+  const snapshot = {
+    parameters: [
+      { id: 'FRAME_CLASS', value: 1 },
+      { id: 'FRAME_TYPE', value: 12 },
+      { id: 'SERVO_DSHOT_RATE', value: 0 },
+      { id: 'SERVO_BLH_BDMASK', value: 0 },
+      { id: 'SERVO9_FUNCTION', value: 0 }
+    ]
+  } as unknown as Parameters<typeof buildAdditionalSettingsGroups>[0]
+
+  it('drops whole categories another tab owns', () => {
+    const groups = buildAdditionalSettingsGroups(
+      snapshot,
+      catalog,
+      'motors',
+      new Set(),
+      new Set(['airframe', 'outputs'])
+    )
+    expect(groups.map((group) => group.categoryId)).toEqual(['aux'])
+  })
+
+  it('keeps everything when nothing is excluded — the exclusion must be opt-in', () => {
+    // Guards the default: an accidental always-on exclusion would silently
+    // empty this surface everywhere else it is used.
+    const groups = buildAdditionalSettingsGroups(snapshot, catalog, 'motors', new Set())
+    expect(groups.map((group) => group.categoryId)).toEqual(['airframe', 'outputs', 'aux'])
+  })
+})

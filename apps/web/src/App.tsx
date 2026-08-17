@@ -514,6 +514,20 @@ function resolveTuningProfileBackup(profile: SavedTuningProfile): ParameterBacku
 // Module-level predicate so useAdditionalScope's groups memo can use it
 // as a stable function reference (recomputes only on snapshot changes,
 // matching the original inline-arrow behavior in App.tsx).
+/**
+ * Categories the Servos tab does NOT own, even though they route to the Motors
+ * view and would otherwise appear under "Additional output settings".
+ *
+ * `airframe` (frame class and type) is the Config tab's job, and `outputs`
+ * (ESC protocol, BDShot mask, per-output reverse, DShot rate) belongs to the
+ * Motors tab, which presents them with the motor context that makes them
+ * meaningful. Surfacing them a second time here gave an operator two places to
+ * change the same thing with no indication which was authoritative.
+ *
+ * Module-level constant so the scope hook's memo sees a stable reference.
+ */
+const SERVO_ADDITIONAL_EXCLUDED_CATEGORY_IDS: ReadonlySet<string> = new Set(['airframe', 'outputs'])
+
 function isOutputAdditionalExcludedParamId(parameterId: string): boolean {
   return (
     isOutputAssignmentParamId(parameterId) ||
@@ -2907,6 +2921,7 @@ export function App() {
     // Servos tab below.
     viewId: 'motors',
     excludedParameterIds: isOutputAdditionalExcludedParamId,
+    excludedCategoryIds: SERVO_ADDITIONAL_EXCLUDED_CATEGORY_IDS,
     parameterDraftEntries
   })
   const totalOutputInvalidDrafts =
