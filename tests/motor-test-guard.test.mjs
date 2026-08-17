@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  evaluateMotorTestEligibility,
   motorTestGuardReasons,
   MOTOR_TEST_PROPS_REMOVED_REASON,
   MOTOR_TEST_AREA_CLEAR_REASON,
@@ -140,4 +141,71 @@ test('expert mode raises the duration cap but does not lift the safety acknowled
   )
   assert.ok(reasons.includes(MOTOR_TEST_PROPS_REMOVED_REASON))
   assert.ok(reasons.includes(MOTOR_TEST_AREA_CLEAR_REASON))
+})
+
+// ── The uncapped-duration opt-out ─────────────────────────────────────────
+//
+// Requested by the operator for battery-current calibration, which has to hold
+// the motors under load long enough to read a clamp meter. The tests that
+// matter are that it lifts ONLY the ceiling, and that it does not leak into
+// any other motor test.
+
+test('uncappedDuration allows a run longer than the expert ceiling', () => {
+  const snapshot = eligibleSnapshot()
+  const request = { outputIndex: 1, throttlePercent: 20, durationSeconds: 120, runAllOutputsSimultaneous: true }
+  const capped = evaluateMotorTestEligibility(snapshot, request, { expertMode: true })
+  assert.ok(
+    capped.reasons.some((reason) => /Duration must stay/.test(reason)),
+    'the expert ceiling should still reject 120 s'
+  )
+  const uncapped = evaluateMotorTestEligibility(snapshot, request, { uncappedDuration: true })
+  assert.ok(
+    !uncapped.reasons.some((reason) => /Duration/.test(reason)),
+    `no duration complaint expected, got: ${uncapped.reasons.join(' | ')}`
+  )
+})
+
+test('uncappedDuration lifts the ceiling and nothing else', () => {
+  // The safety property, checked through motorTestGuardReasons because that is
+  // where the acknowledgements live — evaluateMotorTestEligibility alone never
+  // sees them. If a 600 s all-motor run ever stops requiring props-off, the
+  // opt-out has become a way around guards it was never meant to touch.
+  const reasons = motorTestGuardReasons(
+    eligibleSnapshot(),
+    { outputChannel: 1, throttlePercent: 20, durationSeconds: 600 },
+    { propsRemoved: false, testAreaClear: false },
+    { uncappedDuration: true }
+  )
+  assert.ok(reasons.includes(MOTOR_TEST_PROPS_REMOVED_REASON))
+  assert.ok(reasons.includes(MOTOR_TEST_AREA_CLEAR_REASON))
+  // ...and the duration itself is not among the complaints.
+  assert.ok(!reasons.some((reason) => /Duration/.test(reason)), `unexpected duration reason: ${reasons.join(' | ')}`)
+})
+
+test('uncappedDuration still refuses a missing or sub-minimum duration', () => {
+  // "Uncapped" must not mean "accepts anything" — a NaN or zero duration is a
+  // broken request, not a long one.
+  const snapshot = eligibleSnapshot()
+  for (const durationSeconds of [undefined, Number.NaN, 0, -5]) {
+    const result = evaluateMotorTestEligibility(
+      snapshot,
+      { outputIndex: 1, throttlePercent: 20, durationSeconds, runAllOutputsSimultaneous: true },
+      { uncappedDuration: true }
+    )
+    assert.ok(
+      result.reasons.some((reason) => /Duration/.test(reason)),
+      `duration ${String(durationSeconds)} should be refused`
+    )
+  }
+})
+
+test('the default path is unchanged — no opt-in, no lifted ceiling', () => {
+  const snapshot = eligibleSnapshot()
+  const result = evaluateMotorTestEligibility(snapshot, {
+    outputIndex: 1,
+    throttlePercent: 20,
+    durationSeconds: 60,
+    runAllOutputsSimultaneous: true
+  })
+  assert.ok(result.reasons.some((reason) => /Duration must stay/.test(reason)))
 })

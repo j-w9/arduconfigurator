@@ -649,9 +649,11 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       // The cap the runtime will actually enforce. Surfaced so
                       // the input cannot promise a duration that gets thrown
                       // out before it reaches the flight controller.
-                      const maxLoadSeconds = isExpertMode
-                        ? EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS
-                        : MAX_MOTOR_TEST_DURATION_SECONDS
+                      // No ceiling on this path by operator request, so
+                      // there is no cap to surface -- but a long all-motor
+                      // spin is worth naming out loud, because it is the one
+                      // action here that runs every motor at once.
+                      const loadSecondsValue = Number.parseFloat(currentCalLoadSeconds)
                       const measuredA = Number.parseFloat(batteryMeasuredCurrent)
                       // Against the CAPTURED load current, so typing the meter
                       // value after the motors stop still works.
@@ -728,21 +730,20 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   min="1"
                                   step="1"
                                   inputMode="numeric"
-                                  max={maxLoadSeconds}
                                   value={currentCalLoadSeconds}
                                   onChange={(event) => setCurrentCalLoadSeconds(event.target.value)}
                                   data-testid="battery-current-load-seconds"
-                                  title={`How long the motors run, up to ${maxLoadSeconds}s. Long enough to read your meter.`}
+                                  title="How long the motors run. Not capped here — long enough to read your meter."
                                 />
                               </label>
-                              {/* State the ceiling rather than letting the
-                                  runtime reject a value the input accepted.
-                                  The cap is a deliberate safety limit, not an
-                                  oversight -- Expert raises it, nothing
-                                  removes it. */}
-                              {Number.parseFloat(currentCalLoadSeconds) > maxLoadSeconds ? (
-                                <p className="switch-exercise-warning" data-testid="battery-current-load-too-long">
-                                  {`Motor tests are capped at ${maxLoadSeconds}s${isExpertMode ? '' : ' — Expert mode raises this to 30s'}.`}
+                              {/* The cap is lifted on this path, so the length
+                                  is the operator's to choose. Say what a long
+                                  one means rather than silently accepting it:
+                                  this is the only action that spins every
+                                  motor simultaneously. */}
+                              {Number.isFinite(loadSecondsValue) && loadSecondsValue > EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS ? (
+                                <p className="switch-exercise-warning" data-testid="battery-current-load-long">
+                                  {`All motors will spin together for ${loadSecondsValue}s — longer than the ${EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS}s motor-test ceiling. Props off, and keep the stop control within reach.`}
                                 </p>
                               ) : null}
                               <label className="scoped-editor-field scoped-editor-field--compact">
@@ -814,7 +815,14 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                         // because the option defaults to false --
                                         // so a longer duration was accepted by the
                                         // input and then rejected by the runtime.
-                                        { expertMode: isExpertMode }
+                                        // Operator-requested: this path is not
+                                        // bound by the motor-test duration
+                                        // ceiling, because the load has to be
+                                        // held long enough to read a clamp
+                                        // meter. Every other guard -- props
+                                        // off, test area, disarmed, connected,
+                                        // outputs mapped -- still applies.
+                                        { expertMode: isExpertMode, uncappedDuration: true }
                                       )
                                       // Sample the reported current partway
                                       // through the run, once it has settled.

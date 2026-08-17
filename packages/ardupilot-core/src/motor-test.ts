@@ -41,6 +41,23 @@ export interface MotorTestEligibilityOptions {
    *  Mission Planner's expert ceiling); the props-off / test-area / arming
    *  checks all still apply. */
   expertMode?: boolean
+  /**
+   * Lift the duration ceiling entirely for one specific caller.
+   *
+   * Requested by the operator for battery-current calibration, which needs the
+   * motors held under load long enough to read a clamp meter. It is the ONLY
+   * path that sets this.
+   *
+   * What it lifts is the ceiling and nothing else. Every other guard still
+   * applies -- connected, disarmed, props-off acknowledged, test area
+   * acknowledged, outputs actually mapped -- and the minimum duration and the
+   * finite-number check stay, so "unbounded" never means "accepts garbage".
+   *
+   * Deliberately a separate flag rather than a larger expert ceiling: raising
+   * EXPERT_MAX would loosen every motor test in the app, including the
+   * sequential identify spins, to fix one calibration workflow.
+   */
+  uncappedDuration?: boolean
 }
 
 export function evaluateMotorTestEligibility(
@@ -49,9 +66,11 @@ export function evaluateMotorTestEligibility(
   options: MotorTestEligibilityOptions = {}
 ): MotorTestEligibility {
   const reasons: string[] = []
-  const maxDurationSeconds = options.expertMode
-    ? EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS
-    : MAX_MOTOR_TEST_DURATION_SECONDS
+  const maxDurationSeconds = options.uncappedDuration
+    ? Number.POSITIVE_INFINITY
+    : options.expertMode
+      ? EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS
+      : MAX_MOTOR_TEST_DURATION_SECONDS
 
   if (snapshot.connection.kind !== 'connected') {
     reasons.push('The transport is not connected.')
@@ -116,13 +135,16 @@ export function evaluateMotorTestEligibility(
     reasons.push(`Throttle must stay between 1 and ${MAX_MOTOR_TEST_THROTTLE_PERCENT} percent.`)
   }
 
+  const durationRangeText = Number.isFinite(maxDurationSeconds)
+    ? `between ${MIN_MOTOR_TEST_DURATION_SECONDS} and ${maxDurationSeconds} seconds`
+    : `at least ${MIN_MOTOR_TEST_DURATION_SECONDS} seconds`
   if (request.durationSeconds === undefined || Number.isNaN(request.durationSeconds)) {
-    reasons.push(`Duration must be set between ${MIN_MOTOR_TEST_DURATION_SECONDS} and ${maxDurationSeconds} seconds.`)
+    reasons.push(`Duration must be set ${durationRangeText}.`)
   } else if (
     request.durationSeconds < MIN_MOTOR_TEST_DURATION_SECONDS ||
     request.durationSeconds > maxDurationSeconds
   ) {
-    reasons.push(`Duration must stay between ${MIN_MOTOR_TEST_DURATION_SECONDS} and ${maxDurationSeconds} seconds.`)
+    reasons.push(`Duration must stay ${durationRangeText}.`)
   }
 
   return {
