@@ -3,11 +3,11 @@
 // actions + battery voltage / battery current / airspeed / ESC throttle
 // calibration cards. ~470 lines of inline JSX moved verbatim.
 
-import { useState, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type ReactElement } from 'react'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
 import { MAX_MOTOR_TEST_DURATION_SECONDS } from '@arduconfig/ardupilot-core'
-import { canZeroCurrentOffset } from '../view-models/battery-zero-offset-guard'
+import { computeCurrentOffset, computeCurrentPerVolt } from '../view-models/battery-current-offset'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { formatArducopterMotorPwmType } from '@arduconfig/param-metadata'
 
@@ -224,6 +224,34 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
   // Throttle used for the current-calibration load spin. Local to this card:
   // it is a transient bench choice, not something worth persisting.
   const [currentCalThrottlePercent, setCurrentCalThrottlePercent] = useState('20')
+  /**
+   * Load duration, operator-set.
+   *
+   * Was pinned to the motor-test cap, which is a SAFETY ceiling rather than a
+   * sensible default for this procedure: the operator has to read a clamp
+   * meter and type the value, and the motors stopped before they could.
+   */
+  const [currentCalLoadSeconds, setCurrentCalLoadSeconds] = useState(String(BATTERY_CURRENT_LOAD_SECONDS))
+  /**
+   * Reported current CAPTURED during the load, not read live at click time.
+   *
+   * The per-volt fit needs the reported value from the moment the meter was
+   * read. Reading it live meant that once the motors stopped it fell to idle,
+   * the ratio became noise, and Apply went dead unless the field was re-edited
+   * mid-spin -- which is exactly the reported bug.
+   */
+  const [capturedLoadCurrentA, setCapturedLoadCurrentA] = useState<number | undefined>(undefined)
+  /** What the operator's meter reads for the offset step. 0 = pack off. */
+  const [offsetActualCurrent, setOffsetActualCurrent] = useState('0')
+  /**
+   * Live reported current, mirrored into a ref.
+   *
+   * The capture runs from a timer started when the load began, so it must read
+   * the value as of when it FIRES. Closing over the render-time value would
+   * capture the idle current from before the motors spun -- the exact opposite
+   * of what the fit needs.
+   */
+  const reportedCurrentRef = useRef<number | undefined>(undefined)
   const {
     snapshot,
     runtime,
@@ -242,6 +270,12 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     handleGuidedAction,
     handleCancelGuidedAction
   } = props
+  // Mirror the live reported current so the capture timer reads it as of when
+  // it FIRES, not as of the render that scheduled it.
+  useEffect(() => {
+    const telemetry = snapshot.liveVerification.batteryTelemetry
+    reportedCurrentRef.current = telemetry.verified ? telemetry.currentA : undefined
+  }, [snapshot.liveVerification.batteryTelemetry])
 
   const {
     batteryMeasuredVoltage,
@@ -601,44 +635,55 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       // sensor reading reports 0 A. amps = (v - offset) * pervlt, so
                       // making amps read 0 at this sample means offset' = offset +
                       // reportedA / pervlt.
-                      const zeroedOffset =
-                        currentOffset !== undefined && currentPerVolt !== undefined && currentPerVolt > 0 && reportedA !== undefined
-                          ? currentOffset + reportedA / currentPerVolt
-                          : undefined
+                      // The offset is calibrated against what the operator's
+                      // METER reads, not against an assumption that the true
+                      // current is zero. Zero is simply the common case (pack
+                      // off, board on USB) rather than a precondition, which is
+                      // why there is no longer a pack-connected refusal.
+                      const offsetResult = computeCurrentOffset({
+                        offsetV: currentOffset,
+                        perVolt: currentPerVolt,
+                        reportedA,
+                        actualA: Number.parseFloat(offsetActualCurrent)
+                      })
                       const measuredA = Number.parseFloat(batteryMeasuredCurrent)
-                      const newPerVolt =
-                        currentPerVolt !== undefined &&
-                        currentPerVolt > 0 &&
-                        reportedA !== undefined &&
-                        reportedA > 0 &&
-                        Number.isFinite(measuredA) &&
-                        measuredA > 0
-                          ? currentPerVolt * (measuredA / reportedA)
-                          : undefined
-                      // The offset defines what zero amps looks like, so it is
-                      // only meaningful with the pack off and the board on USB.
-                      const zeroVerdict = canZeroCurrentOffset({
-                        voltageV: battery.verified ? battery.voltageV : undefined,
-                        currentA: battery.verified ? battery.currentA : undefined,
-                        telemetryVerified: battery.verified
+                      // Against the CAPTURED load current, so typing the meter
+                      // value after the motors stop still works.
+                      const perVoltResult = computeCurrentPerVolt({
+                        perVolt: currentPerVolt,
+                        reportedA: capturedLoadCurrentA,
+                        measuredA
                       })
                       return (
                         <div className="guided-current-cal" data-testid="battery-current-guided">
                           <div className="switch-exercise-controls">
+                            <label className="scoped-editor-field scoped-editor-field--compact">
+                              <span>Meter reads (A)</span>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                inputMode="decimal"
+                                value={offsetActualCurrent}
+                                onChange={(event) => setOffsetActualCurrent(event.target.value)}
+                                data-testid="battery-current-offset-actual"
+                                title="What your clamp meter reads right now. 0 with the pack disconnected; a real value (e.g. 0.4) is equally valid."
+                              />
+                            </label>
                             <button
                               type="button"
                               style={buttonStyle()}
                               data-testid="battery-current-zero-offset"
-                              title={zeroVerdict.allowed ? undefined : zeroVerdict.reason}
-                              disabled={!canGuide || zeroedOffset === undefined || !zeroVerdict.allowed}
+                              title={offsetResult.ok ? undefined : offsetResult.reason}
+                              disabled={!canGuide || !offsetResult.ok}
                               onClick={() => {
-                                if (zeroedOffset === undefined) return
+                                if (!offsetResult.ok) return
                                 void (async () => {
                                   try {
-                                    await runtime.setParameter('BATT_AMP_OFFSET', Number(zeroedOffset.toFixed(4)), UI_PARAMETER_WRITE_OPTIONS)
+                                    await runtime.setParameter('BATT_AMP_OFFSET', Number(offsetResult.offsetV.toFixed(4)), UI_PARAMETER_WRITE_OPTIONS)
                                     setBatteryCalNotice({
                                       tone: 'success',
-                                      text: `Zeroed current offset (BATT_AMP_OFFSET = ${zeroedOffset.toFixed(3)} V). Reported current should now read ~0 A at no load.`
+                                      text: `BATT_AMP_OFFSET set to ${offsetResult.offsetV.toFixed(3)} V — reported current shifts by ${offsetResult.shiftA.toFixed(2)} A to match your meter.`
                                     })
                                   } catch (error) {
                                     setBatteryCalNotice({
@@ -649,16 +694,12 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                 })()
                               }}
                             >
-                              Zero offset now ({reportedA !== undefined ? `${reportedA.toFixed(2)} A` : '—'} → 0 A)
+                              Set offset ({reportedA !== undefined ? `${reportedA.toFixed(2)} A` : '—'} → {offsetActualCurrent || '0'} A)
                             </button>
                           </div>
-                          {/* Say why it is unavailable. A greyed button with no
-                              reason is indistinguishable from a broken one, and
-                              the fix here is a physical action the operator has
-                              to know to take. */}
-                          {!zeroVerdict.allowed ? (
+                          {!offsetResult.ok ? (
                             <p className="switch-exercise-warning" data-testid="battery-current-zero-blocked">
-                              {zeroVerdict.reason}
+                              {offsetResult.reason}
                             </p>
                           ) : null}
                           {/* Step 2: put a real load on the pack. Current
@@ -674,6 +715,19 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                            *  motor-spinning action here. */}
                           {isCopterVehicle ? (
                             <div className="guided-current-cal__load" data-testid="battery-current-load">
+                              <label className="scoped-editor-field scoped-editor-field--compact">
+                                <span>Load seconds</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  inputMode="numeric"
+                                  value={currentCalLoadSeconds}
+                                  onChange={(event) => setCurrentCalLoadSeconds(event.target.value)}
+                                  data-testid="battery-current-load-seconds"
+                                  title="How long the motors run. Long enough to read your meter and type the value."
+                                />
+                              </label>
                               <label className="scoped-editor-field scoped-editor-field--compact">
                                 <span>Load throttle (%)</span>
                                 <input
@@ -722,19 +776,32 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                 }
                                 onClick={() => {
                                   const throttlePercent = Number.parseFloat(currentCalThrottlePercent)
+                                  const loadSeconds = Number.parseFloat(currentCalLoadSeconds)
                                   if (!Number.isFinite(throttlePercent) || throttlePercent <= 0) {
+                                    return
+                                  }
+                                  if (!Number.isFinite(loadSeconds) || loadSeconds <= 0) {
                                     return
                                   }
                                   void (async () => {
                                     try {
+                                      setCapturedLoadCurrentA(undefined)
                                       await runtime.runMotorTest({
                                         runAllOutputsSimultaneous: true,
                                         throttlePercent,
-                                        durationSeconds: BATTERY_CURRENT_LOAD_SECONDS
+                                        durationSeconds: loadSeconds
                                       })
+                                      // Sample the reported current partway
+                                      // through the run, once it has settled.
+                                      // Captured rather than read live at Apply
+                                      // time, so typing the meter value after
+                                      // the motors stop still calibrates.
+                                      window.setTimeout(() => {
+                                        setCapturedLoadCurrentA(reportedCurrentRef.current)
+                                      }, Math.min(loadSeconds * 1000 * 0.6, 8000))
                                       setBatteryCalNotice({
                                         tone: 'warning',
-                                        text: `Spinning all motors at ${throttlePercent}% for ${BATTERY_CURRENT_LOAD_SECONDS} s — read your meter NOW and type the value below.`
+                                        text: `Spinning all motors at ${throttlePercent}% for ${loadSeconds} s — read your meter and type the value below. It stays usable after the motors stop.`
                                       })
                                     } catch (error) {
                                       setBatteryCalNotice({
@@ -745,7 +812,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   })()
                                 }}
                               >
-                                {snapshot.motorTest.status === 'running' ? 'Motors spinning…' : `Spin motors for ${BATTERY_CURRENT_LOAD_SECONDS} s`}
+                                {snapshot.motorTest.status === 'running' ? 'Motors spinning…' : `Spin motors for ${currentCalLoadSeconds} s`}
                               </button>
                               {!motorSpinReady ? (
                                 <small>
@@ -767,19 +834,24 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                               data-testid="battery-current-measured-input"
                             />
                           </label>
-                          {newPerVolt !== undefined ? <small>New per-volt: {newPerVolt.toFixed(2)} A/V</small> : null}
+                          {perVoltResult.ok ? (
+                            <small>New per-volt: {perVoltResult.perVolt.toFixed(2)} A/V (from {capturedLoadCurrentA?.toFixed(2)} A under load)</small>
+                          ) : (
+                            <small className="switch-exercise-warning">{perVoltResult.reason}</small>
+                          )}
                           <button
                             type="button"
                             style={buttonStyle('primary')}
                             data-testid="battery-current-calibrate-pervlt"
-                            disabled={!canGuide || newPerVolt === undefined}
+                            disabled={!canGuide || !perVoltResult.ok}
                             onClick={() => {
-                              if (newPerVolt === undefined) return
+                              if (!perVoltResult.ok) return
                               void (async () => {
                                 try {
-                                  await runtime.setParameter('BATT_AMP_PERVLT', Number(newPerVolt.toFixed(4)), UI_PARAMETER_WRITE_OPTIONS)
-                                  setBatteryCalNotice({ tone: 'success', text: `BATT_AMP_PERVLT set to ${newPerVolt.toFixed(2)} A/V.` })
+                                  await runtime.setParameter('BATT_AMP_PERVLT', Number(perVoltResult.perVolt.toFixed(4)), UI_PARAMETER_WRITE_OPTIONS)
+                                  setBatteryCalNotice({ tone: 'success', text: `BATT_AMP_PERVLT set to ${perVoltResult.perVolt.toFixed(2)} A/V.` })
                                   setBatteryMeasuredCurrent('')
+                                  setCapturedLoadCurrentA(undefined)
                                 } catch (error) {
                                   setBatteryCalNotice({
                                     tone: 'danger',
