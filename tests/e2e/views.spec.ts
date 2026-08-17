@@ -6207,3 +6207,69 @@ test.describe('Flight modes moved from a tab into Config', () => {
     await expect(page.locator('.tab-strip__tab', { hasText: 'Flight Modes' }).first()).toBeVisible()
   })
 })
+
+test.describe('Tuning ▸ Filters', () => {
+  // The widget is deliberately manual: the gyro-ratio derivations came from
+  // Mission Planner rather than ArduPilot's own docs, and this surface writes
+  // to a flight controller. Only the two rules ArduPilot states are offered,
+  // and both are opt-in buttons that fill a field the operator can edit.
+  async function openFilterPlanner(page: Page): Promise<void> {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-tuning').click()
+    await page.getByTestId('tuning-tab-filters-from-gyro').click()
+    await expect(page.getByTestId('filter-planner-panel')).toBeVisible()
+  }
+
+  test('stages nothing until the operator changes something', async ({ page }) => {
+    // Seeded from the vehicle, so opening the tab must not propose writes.
+    await openFilterPlanner(page)
+    await expect(page.getByTestId('filter-planner-nothing')).toBeVisible()
+    await expect(page.getByTestId('filter-planner-stage')).toHaveCount(0)
+  })
+
+  test('an edited filter stages, and only that one', async ({ page }) => {
+    await openFilterPlanner(page)
+    await page.getByTestId('filter-planner-ATC_RAT_RLL_FLTD').fill('42')
+    await expect(page.getByTestId('filter-planner-stage')).toContainText('Stage 1 change')
+  })
+
+  test('the bandwidth suggestion is half the centre, and opt-in', async ({ page }) => {
+    // ArduPilot: "typically set to half the base frequency". Offered, not applied.
+    await openFilterPlanner(page)
+    await page.getByTestId('filter-planner-INS_HNTCH_FREQ').fill('100')
+    const fill = page.getByTestId('filter-planner-fill-bw')
+    await expect(fill).toContainText('50')
+    await fill.click()
+    await expect(page.getByTestId('filter-planner-INS_HNTCH_BW')).toHaveValue('50')
+  })
+
+  test('ESC telemetry suggests REF = 1', async ({ page }) => {
+    // ArduPilot: REF is 1 for RPM and ESC-telemetry tracking, and a REF of
+    // zero disables dynamic updates entirely.
+    await openFilterPlanner(page)
+    await page.getByTestId('filter-planner-INS_HNTCH_MODE-select').selectOption('3')
+    const fill = page.getByTestId('filter-planner-fill-ref')
+    await expect(fill).toContainText('1')
+    await fill.click()
+    await expect(page.getByTestId('filter-planner-INS_HNTCH_REF')).toHaveValue('1')
+  })
+
+  test('names the notch option bits', async ({ page }) => {
+    await openFilterPlanner(page)
+    await page.getByTestId('filter-planner-INS_HNTCH_OPTS').fill('22')
+    await expect(page.getByTestId('filter-planner-opts-described')).toContainText('Multi-Source')
+  })
+
+  test('fits a phone without overflowing', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await openFilterPlanner(page)
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )
+    expect(overflow).toBeLessThanOrEqual(2)
+  })
+})

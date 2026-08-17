@@ -27,6 +27,7 @@ export interface TuningTaskCardCounts {
   reviewInvalidCount: number
   reviewStagedCount: number
   initialTuneStagedCount: number
+  filtersFromGyroStagedCount: number
 }
 
 export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCard[] {
@@ -47,7 +48,8 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
     savedProfileCount,
     reviewInvalidCount,
     reviewStagedCount,
-    initialTuneStagedCount
+    initialTuneStagedCount,
+    filtersFromGyroStagedCount
   } = counts
 
   return [
@@ -143,6 +145,17 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
             ? 'Some tuning changes need attention before they can be applied safely.'
             : 'Tuning values are currently in sync with the live controller snapshot.',
       tone: reviewInvalidCount > 0 ? 'danger' : reviewStagedCount > 0 ? 'warning' : 'success'
+    },
+    {
+      // Sits beside Filters, which edits the same nine parameters by hand.
+      // This one derives them, so the two are the same surface at different
+      // altitudes rather than duplicates.
+      id: 'filters-from-gyro',
+      label: 'Filter Editor',
+      value: filtersFromGyroStagedCount > 0 ? `${filtersFromGyroStagedCount} staged` : 'derive',
+      detail:
+        'Every filter parameter in one place — gyro, rate loop and harmonic notch. Values are set by hand; the only suggestions offered are the two ArduPilot documents.',
+      tone: filtersFromGyroStagedCount > 0 ? 'warning' : 'neutral'
     },
     {
       // First in intent, last in the list on purpose: it is where a NEW

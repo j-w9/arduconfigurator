@@ -12,6 +12,7 @@ export type TuningTaskId =
   | 'review'
   | 'log-tuning'
   | 'initial-tune'
+  | 'filters-from-gyro'
 
 export interface TuningTaskCard {
   id: TuningTaskId

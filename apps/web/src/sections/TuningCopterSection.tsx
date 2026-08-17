@@ -105,6 +105,8 @@ export interface TuningCopterSectionProps {
   logTuningSlot?: ReactNode
   /** Starting-point tuning, rendered in the task body on the 'initial-tune' tab. */
   initialTuneSlot?: ReactNode
+  /** Filters derived from the gyro filter, on the 'filters-from-gyro' tab. */
+  filtersFromGyroSlot?: ReactNode
 }
 
 export function TuningCopterSection(props: TuningCopterSectionProps): ReactElement {
@@ -115,6 +117,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     autotuneSlot,
     logTuningSlot,
     initialTuneSlot,
+    filtersFromGyroSlot,
     tuningWorkbench,
     forms,
     derived,
@@ -938,6 +941,12 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                 {activeTuningTaskId === 'log-tuning' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-log-tuning-panel">
                     {logTuningSlot}
+                  </div>
+                ) : null}
+
+                {activeTuningTaskId === 'filters-from-gyro' ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-filters-from-gyro-panel">
+                    {filtersFromGyroSlot}
                   </div>
                 ) : null}
 

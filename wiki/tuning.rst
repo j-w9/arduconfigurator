@@ -8,8 +8,9 @@ tune can be roughed in without diving into the raw parameter tree. Every change
 is staged as a local draft and reviewed before it is written to the controller,
 and known-good tunes can be saved as reusable profiles.
 
-The tab is split into eight tasks: **Pilot**, **PID Gains**, **Filters**,
-**Autotune**, **Profiles**, **Review**, **Initial Tune**, and **Log Tuning**. The workspace is
+The tab is split into nine tasks: **Pilot**, **PID Gains**, **Filters**,
+**Filter Editor**, **Autotune**, **Profiles**, **Review**, **Initial Tune**,
+and **Log Tuning**. The workspace is
 full-width — each task fills it — and every control carries an **"i" info bubble** with the
 parameter's plain-text description, its label, and its unit, so guidance is one
 hover away rather than a wall of text on the page.
@@ -99,12 +100,76 @@ Higher frequencies preserve response but pass more noise; lower values smooth
 noise at the cost of latency. Zero is valid for some of these and intentionally
 disables that filter path.
 
-.. note::
+This task edits those nine values in a tuning-focused card. The **Filter
+Editor** below covers the same nine alongside the gyro and notch settings, for
+when a noise pass is the whole job — both write the same parameters.
 
-   The Tuning tab covers the rate-loop filters only. The gyro harmonic notch
-   that suppresses motor-frequency noise (``INS_HNTCH_*``) is configured in the
-   :doc:`parameters` (Expert) tab — see the ArduPilot tuning docs for setting it
-   up from in-flight FFT logging.
+Filter Editor
+-------------
+
+Every filter parameter in one place — the gyro and accelerometer filters, all
+nine rate-loop filters, and the harmonic notch — instead of reaching into the
+raw parameter tree for the notch and the Filters task for the rest.
+
+**Nothing is derived.** Fields are seeded from what the vehicle is running, and
+an untouched field stages nothing. An earlier version computed the whole
+rate-loop set from the gyro filter, but those ratios come from Mission
+Planner's *Initial Parameters* screen rather than from ArduPilot's own
+documentation, and this surface writes to a flight controller. They are yours
+to set.
+
+Two suggestions, both documented
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The only arithmetic on the page. Each is a button that fills a field you can
+then edit or ignore:
+
+- **Bandwidth** — ``INS_HNTCH_BW`` at half the centre frequency. ArduPilot's
+  parameter documentation: *"This is typically set to half the base
+  frequency"*, and the throttle-based notch setup gives ``BW = hover_freq /
+  2``.
+- **Reference** — ``INS_HNTCH_REF``. ArduPilot documents ``1`` for RPM and
+  ESC-telemetry tracking, and the hover thrust (``MOT_THST_HOVER``) for
+  throttle mode. Nothing is suggested for Fixed or in-flight FFT, because the
+  docs give no value for them.
+
+.. important::
+
+   A ``INS_HNTCH_REF`` of zero *"disables dynamic updates"*. An enabled notch
+   with the reference still at zero looks configured and tracks nothing — the
+   editor warns when it sees that combination.
+
+Half-the-centre is the **throttle-mode** rule, where the frequency is inferred
+from throttle position and the notch has to be wide enough to cover the error.
+With a measured source — ESC telemetry, an RPM sensor, in-flight FFT — the
+frequency is known and a narrower notch is usual; a 15-inch build might run
+``FREQ 40`` with ``BW 10``. There is no documented ratio for those modes, so
+none is offered.
+
+Where the centre frequency comes from
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It is a property of the motors, not of the gyro filter, so it cannot be
+derived. The usual routes:
+
+- **Post-flight FFT** — set ``INS_LOG_BAT_MASK = 1`` and ``INS_LOG_BAT_OPT =
+  4``, hover, then open the log in Mission Planner (SETUP → ADVANCED → FFT →
+  *IMU Batch Sample*) and read the peak at the motor rotational frequency.
+  Expect roughly 200 Hz on a small copter, nearer 100 Hz on a large one.
+- **ESC telemetry** (``INS_HNTCH_MODE`` 3) or an **RPM sensor** (2 or 5) — the
+  autopilot reads RPM directly, and ``INS_HNTCH_FREQ`` becomes the lower limit
+  the tracked notch will not go below.
+- **In-flight FFT** (mode 4) — the autopilot runs its own FFT; ArduPilot calls
+  it *"probably the best mode if the autopilot is capable"*, and it needs an
+  H7 or F7 board.
+- **Throttle** (mode 1) — hover frequency from a log, scaled by throttle.
+  ``MOT_HOVER_LEARN = 2`` learns the hover thrust for the reference.
+
+``INS_HNTCH_OPTS`` is editable and decoded as you type, so a bitmask reads back
+as names — ``22`` is *Multi-Source, Update at loop rate, Triple notch*.
+
+Like every other tuning surface, it stages drafts; nothing is written until you
+apply them in **Review**.
 
 Autotune
 --------
@@ -157,6 +222,8 @@ in the app — each value is sent and confirmed against the controller's read-ba
    responsiveness higher, and validate every change with a short hover or
    line-of-sight test before stacking more. Treat a connected aircraft as a real
    aircraft.
+
+.. _initial-tune:
 
 Initial Tune
 ------------

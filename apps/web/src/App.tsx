@@ -301,6 +301,7 @@ import { ReceiverSection } from './sections/ReceiverSection'
 import { SnapshotsSection } from './sections/SnapshotsSection'
 import { TuningCopterSection } from './sections/TuningCopterSection'
 import { InitialTuneView } from './views/InitialTune'
+import { FilterPlannerView } from './views/FilterPlanner'
 import { isInitialTuneParamId } from './view-models/initial-tune-parameters'
 import { AutotuneCopterSection } from './sections/AutotuneCopterSection'
 import { AutotunePlaneSection } from './sections/AutotunePlaneSection'
@@ -5088,6 +5089,15 @@ export function App() {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 4
   }, [snapshot.vehicle?.firmware])
 
+  // Staged filter values, for the task-card badge. Same id set the widget
+  // derives, so the badge reflects that widget rather than every filter edit.
+  const filtersFromGyroStagedCount = useMemo(
+    () =>
+      Array.from(parameterDraftById.keys()).filter(
+        (id) => id === 'INS_GYRO_FILTER' || id === 'INS_ACCEL_FILTER' || id.startsWith('INS_HNTCH_') || /^ATC_RAT_(RLL|PIT|YAW)_FLT[TDE]$/.test(id)
+      ).length,
+    [parameterDraftById]
+  )
   const initialTuneStagedCount = useMemo(
     () => Array.from(parameterDraftById.keys()).filter((id) => isInitialTuneParamId(id)).length,
     [parameterDraftById]
@@ -5112,10 +5122,12 @@ export function App() {
         savedProfileCount: savedTuningProfiles.length,
         reviewInvalidCount: tuningInvalidDrafts.length,
         reviewStagedCount: tuningStagedDrafts.length,
-        initialTuneStagedCount: initialTuneStagedCount
+        initialTuneStagedCount: initialTuneStagedCount,
+        filtersFromGyroStagedCount: filtersFromGyroStagedCount
       }),
     [
       initialTuneStagedCount,
+      filtersFromGyroStagedCount,
       tuningFilterInvalidDrafts.length,
       tuningFilterStagedDrafts.length,
       tuningInvalidDrafts.length,
@@ -9248,6 +9260,14 @@ export function App() {
             renderTuningControl,
             formatCategoryLabel
           }}
+          filtersFromGyroSlot={
+            <FilterPlannerView
+              liveValues={new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))}
+              stagedIds={new Set(parameterDraftById.keys())}
+              onStage={handleStageInitialTuneParameters}
+              disabled={busyAction !== undefined}
+            />
+          }
           initialTuneSlot={
             /* Starting-point tuning. Reads live values to show what each
                parameter moves FROM, and stages through the shared draft set —
