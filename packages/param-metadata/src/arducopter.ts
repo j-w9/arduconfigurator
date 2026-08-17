@@ -3386,7 +3386,9 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       category: 'tuning',
       unit: 'Hz',
       minimum: 0,
-      maximum: 256
+      maximum: 256,
+      // AP_Int16 in the firmware (AP_InertialSensor.h): whole Hz only.
+      step: 1
     },
     INS_ACCEL_FILTER: {
       id: 'INS_ACCEL_FILTER',
@@ -3395,7 +3397,9 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       category: 'tuning',
       unit: 'Hz',
       minimum: 0,
-      maximum: 256
+      maximum: 256,
+      // AP_Int16 in the firmware (AP_InertialSensor.h): whole Hz only.
+      step: 1
     },
     INS_HNTCH_ENABLE: {
       id: 'INS_HNTCH_ENABLE',
@@ -3431,7 +3435,9 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
         'Reference value for dynamic tracking. Zero DISABLES dynamic updates entirely. For throttle-based scaling this is the hover thrust; for RPM and ESC-telemetry tracking it is 1.',
       category: 'tuning',
       minimum: 0,
-      maximum: 1
+      maximum: 1,
+      // AP_Float 0.0-1.0 -- a ratio, not a frequency.
+      step: 0.01
     },
     INS_HNTCH_FREQ: {
       id: 'INS_HNTCH_FREQ',
@@ -3441,7 +3447,9 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       category: 'tuning',
       unit: 'Hz',
       minimum: 10,
-      maximum: 495
+      maximum: 495,
+      // AP_Float, but nobody tunes a notch centre in hundredths of a Hz.
+      step: 1
     },
     INS_HNTCH_BW: {
       id: 'INS_HNTCH_BW',
@@ -3451,7 +3459,9 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       category: 'tuning',
       unit: 'Hz',
       minimum: 5,
-      maximum: 250
+      maximum: 250,
+      // AP_Float; same reasoning as the centre frequency.
+      step: 1
     },
     INS_HNTCH_HMNCS: {
       id: 'INS_HNTCH_HMNCS',
@@ -3501,7 +3511,9 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
         'Lowest fraction of the configured frequency a throttle-based notch will track down to below the reference throttle. 1.0 means it never goes below the configured frequency; 0.7 allows 30% below. Lower notches carry more phase lag.',
       category: 'tuning',
       minimum: 0.1,
-      maximum: 1
+      maximum: 1,
+      // AP_Float 0.1-1.0 -- a ratio.
+      step: 0.01
     },
     SERVO_DSHOT_RATE: {
       id: 'SERVO_DSHOT_RATE',

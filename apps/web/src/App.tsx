@@ -5176,7 +5176,12 @@ export function App() {
   const renderFilterControl = (parameter: ParameterState): ReactNode => {
     const definition = parameter.definition
     const isChoice = definition?.bitmask === true || (definition?.options?.length ?? 0) > 0
-    return isChoice ? renderMetadataParameterField(parameter) : renderTuningControl(parameter)
+    // INS_HNTCH_REF and INS_HNTCH_FM_RAT are AP_Float ratios in 0..1, not
+    // frequencies: the values that matter are a measured hover thrust or
+    // exactly 1, and neither is something you find by dragging. They get the
+    // typed number field; the Hz filters keep the slider.
+    const isRatio = parameter.id === 'INS_HNTCH_REF' || parameter.id === 'INS_HNTCH_FM_RAT'
+    return isChoice || isRatio ? renderMetadataParameterField(parameter) : renderTuningControl(parameter)
   }
 
   const { motorVerificationSummary } = useMotorVerificationDerivations({ motorVerification })
