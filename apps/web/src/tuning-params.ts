@@ -75,6 +75,16 @@ export const TUNING_ADVANCED_PID_PARAM_IDS = [
 ] as const
 export const TUNING_ALL_PID_PARAM_IDS = [...TUNING_PID_GAIN_PARAM_IDS, ...TUNING_ADVANCED_PID_PARAM_IDS] as const
 export const TUNING_FILTER_PARAM_IDS = [
+  'INS_GYRO_FILTER',
+  'INS_ACCEL_FILTER',
+  'INS_HNTCH_ENABLE',
+  'INS_HNTCH_MODE',
+  'INS_HNTCH_REF',
+  'INS_HNTCH_FREQ',
+  'INS_HNTCH_BW',
+  'INS_HNTCH_HMNCS',
+  'INS_HNTCH_OPTS',
+  'INS_HNTCH_FM_RAT',
   'ATC_RAT_RLL_FLTT',
   'ATC_RAT_RLL_FLTE',
   'ATC_RAT_RLL_FLTD',
@@ -125,6 +135,28 @@ export const TUNING_FILTER_AXIS_GROUPS = [
     id: 'yaw',
     label: 'Yaw',
     paramIds: ['ATC_RAT_YAW_FLTT', 'ATC_RAT_YAW_FLTE', 'ATC_RAT_YAW_FLTD'] as const
+  },
+  // The sensor-side filters and the harmonic notch were briefly a second
+  // "Filter Editor" tab, which meant two Tuning tabs both called Filters and
+  // editing overlapping parameters. A noise pass is one job, so it is one tab.
+  {
+    id: 'sensor',
+    label: 'Gyro & accelerometer',
+    paramIds: ['INS_GYRO_FILTER', 'INS_ACCEL_FILTER'] as const
+  },
+  {
+    id: 'notch',
+    label: 'Harmonic notch',
+    paramIds: [
+      'INS_HNTCH_ENABLE',
+      'INS_HNTCH_MODE',
+      'INS_HNTCH_REF',
+      'INS_HNTCH_FREQ',
+      'INS_HNTCH_BW',
+      'INS_HNTCH_HMNCS',
+      'INS_HNTCH_OPTS',
+      'INS_HNTCH_FM_RAT'
+    ] as const
   }
 ] as const
 export const TUNING_ADVANCED_PID_AXIS_GROUPS = [

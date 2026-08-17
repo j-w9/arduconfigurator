@@ -301,7 +301,7 @@ import { ReceiverSection } from './sections/ReceiverSection'
 import { SnapshotsSection } from './sections/SnapshotsSection'
 import { TuningCopterSection } from './sections/TuningCopterSection'
 import { InitialTuneView } from './views/InitialTune'
-import { FilterPlannerView } from './views/FilterPlanner'
+import { FilterNotchHelp } from './views/FilterNotchHelp'
 import { isInitialTuneParamId } from './view-models/initial-tune-parameters'
 import { AutotuneCopterSection } from './sections/AutotuneCopterSection'
 import { AutotunePlaneSection } from './sections/AutotunePlaneSection'
@@ -5089,37 +5089,6 @@ export function App() {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 4
   }, [snapshot.vehicle?.firmware])
 
-  // Staged filter values, for the task-card badge. Same id set the widget
-  // derives, so the badge reflects that widget rather than every filter edit.
-  // Filter parameters grouped for the editor, in a deliberate order and only
-  // where the vehicle actually reports them -- a board that does not expose a
-  // parameter should show nothing rather than an empty box.
-  const filterEditorParameters = useMemo(() => {
-    const byId = new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter]))
-    const pick = (ids: readonly string[]) =>
-      ids.map((id) => byId.get(id)).filter((parameter): parameter is ParameterState => parameter !== undefined)
-    return {
-      gyro: pick(['INS_GYRO_FILTER', 'INS_ACCEL_FILTER']),
-      rate: pick([
-        'ATC_RAT_RLL_FLTT', 'ATC_RAT_RLL_FLTE', 'ATC_RAT_RLL_FLTD',
-        'ATC_RAT_PIT_FLTT', 'ATC_RAT_PIT_FLTE', 'ATC_RAT_PIT_FLTD',
-        'ATC_RAT_YAW_FLTT', 'ATC_RAT_YAW_FLTE', 'ATC_RAT_YAW_FLTD'
-      ]),
-      notch: pick([
-        'INS_HNTCH_ENABLE', 'INS_HNTCH_MODE', 'INS_HNTCH_REF',
-        'INS_HNTCH_FREQ', 'INS_HNTCH_BW', 'INS_HNTCH_HMNCS',
-        'INS_HNTCH_OPTS', 'INS_HNTCH_FM_RAT'
-      ])
-    }
-  }, [snapshot.parameters])
-
-  const filtersFromGyroStagedCount = useMemo(
-    () =>
-      Array.from(parameterDraftById.keys()).filter(
-        (id) => id === 'INS_GYRO_FILTER' || id === 'INS_ACCEL_FILTER' || id.startsWith('INS_HNTCH_') || /^ATC_RAT_(RLL|PIT|YAW)_FLT[TDE]$/.test(id)
-      ).length,
-    [parameterDraftById]
-  )
   const initialTuneStagedCount = useMemo(
     () => Array.from(parameterDraftById.keys()).filter((id) => isInitialTuneParamId(id)).length,
     [parameterDraftById]
@@ -5144,12 +5113,10 @@ export function App() {
         savedProfileCount: savedTuningProfiles.length,
         reviewInvalidCount: tuningInvalidDrafts.length,
         reviewStagedCount: tuningStagedDrafts.length,
-        initialTuneStagedCount: initialTuneStagedCount,
-        filtersFromGyroStagedCount: filtersFromGyroStagedCount
+        initialTuneStagedCount: initialTuneStagedCount
       }),
     [
       initialTuneStagedCount,
-      filtersFromGyroStagedCount,
       tuningFilterInvalidDrafts.length,
       tuningFilterStagedDrafts.length,
       tuningInvalidDrafts.length,
@@ -5193,6 +5160,23 @@ export function App() {
         onStage={handleStageTuningParameterValue}
       />
     )
+  }
+
+  /**
+   * Filter Editor control: the Tuning slider where a slider makes sense, the
+   * generic metadata editor where it does not.
+   *
+   * TuningControl is always a slider + number, which is right for a filter
+   * frequency and wrong for INS_HNTCH_MODE (an enum) or INS_HNTCH_OPTS (a
+   * bitmask) -- dragging a slider through mode values, or through a bitmask,
+   * produces states nobody meant to ask for. Those two fall through to the
+   * shared metadata renderer, which gives a named list and per-bit toggles.
+   * Both paths carry the same "i" bubble and wiki link.
+   */
+  const renderFilterControl = (parameter: ParameterState): ReactNode => {
+    const definition = parameter.definition
+    const isChoice = definition?.bitmask === true || (definition?.options?.length ?? 0) > 0
+    return isChoice ? renderMetadataParameterField(parameter) : renderTuningControl(parameter)
   }
 
   const { motorVerificationSummary } = useMotorVerificationDerivations({ motorVerification })
@@ -9280,16 +9264,11 @@ export function App() {
             handleToggleSelectedTuningProfileProtection,
             setSelectedTuningProfileId,
             renderTuningControl,
+          renderFilterControl,
             formatCategoryLabel
           }}
-          filtersFromGyroSlot={
-            <FilterPlannerView
-              gyroParameters={filterEditorParameters.gyro}
-              rateParameters={filterEditorParameters.rate}
-              notchParameters={filterEditorParameters.notch}
-              // The shared renderer: bitmask -> checkbox grid, enum -> select,
-              // otherwise a number, each with the "i" bubble and wiki link.
-              renderField={renderMetadataParameterField}
+          filterNotchSlot={
+            <FilterNotchHelp
               liveValues={new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))}
               editedValues={editedValues}
               onSetDraft={setDraft}

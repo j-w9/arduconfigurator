@@ -8,9 +8,8 @@ tune can be roughed in without diving into the raw parameter tree. Every change
 is staged as a local draft and reviewed before it is written to the controller,
 and known-good tunes can be saved as reusable profiles.
 
-The tab is split into nine tasks: **Pilot**, **PID Gains**, **Filters**,
-**Filter Editor**, **Autotune**, **Profiles**, **Review**, **Initial Tune**,
-and **Log Tuning**. The workspace is
+The tab is split into eight tasks: **Pilot**, **PID Gains**, **Filters**,
+**Autotune**, **Profiles**, **Review**, **Initial Tune**, and **Log Tuning**. The workspace is
 full-width — each task fills it — and every control carries an **"i" info bubble** with the
 parameter's plain-text description, its label, and its unit, so guidance is one
 hover away rather than a wall of text on the page.
@@ -88,9 +87,11 @@ stage the whole set at once. Deeper controller terms — D-term feedforward
 Filters
 -------
 
-The **Filters** task groups the rate-controller filters so a noise-handling pass
-can be reviewed as one deliberate change. Each axis exposes a target, error, and
-D-term filter frequency:
+The **Filters** task holds every filter parameter, so a noise-handling pass is
+one deliberate change in one place: the gyro and accelerometer filters, the nine
+rate-loop filters, and the harmonic notch.
+
+Each rate axis exposes a target, error, and D-term filter frequency:
 
 - ``ATC_RAT_RLL_FLTT`` / ``ATC_RAT_RLL_FLTE`` / ``ATC_RAT_RLL_FLTD``
 - ``ATC_RAT_PIT_FLTT`` / ``ATC_RAT_PIT_FLTE`` / ``ATC_RAT_PIT_FLTD``
@@ -100,16 +101,10 @@ Higher frequencies preserve response but pass more noise; lower values smooth
 noise at the cost of latency. Zero is valid for some of these and intentionally
 disables that filter path.
 
-This task edits those nine values in a tuning-focused card. The **Filter
-Editor** below covers the same nine alongside the gyro and notch settings, for
-when a noise pass is the whole job — both write the same parameters.
-
-Filter Editor
--------------
-
-Every filter parameter in one place — the gyro and accelerometer filters, all
-nine rate-loop filters, and the harmonic notch — instead of reaching into the
-raw parameter tree for the notch and the Filters task for the rest.
+The sensor-side filters (``INS_GYRO_FILTER``, ``INS_ACCEL_FILTER``) and the
+harmonic notch sit in the same grid. These were briefly a second *Filter
+Editor* tab, which meant two Tuning tabs both called filters, editing
+overlapping parameters in two different layouts.
 
 **Nothing is derived.** Fields show what the vehicle is running, and an
 untouched field stages nothing. An earlier version computed the whole rate-loop

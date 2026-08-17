@@ -19,7 +19,6 @@ function counts(overrides: Partial<TuningTaskCardCounts> = {}): TuningTaskCardCo
     profileChangedCount: 0,
     savedProfileCount: 2,
     initialTuneStagedCount: 0,
-    filtersFromGyroStagedCount: 0,
     reviewInvalidCount: 0,
     reviewStagedCount: 0,
     ...overrides
@@ -35,8 +34,7 @@ describe('buildTuningTaskCards', () => {
       'autotune',
       'profiles',
       'review',
-      'filters-from-gyro',
-      'initial-tune',
+            'initial-tune',
       'log-tuning'
     ])
   })

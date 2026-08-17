@@ -6208,24 +6208,35 @@ test.describe('Flight modes moved from a tab into Config', () => {
   })
 })
 
-test.describe('Tuning ▸ Filter Editor', () => {
-  // Fields go through the app's shared metadata renderer, so each parameter
-  // gets its real editor and its "i" bubble. An earlier version hand-rolled
-  // number inputs, which meant a bitmask was a bare integer box and the mode
-  // list had to be kept in step with the firmware by hand.
-  async function openFilterEditor(page: Page): Promise<void> {
+test.describe('Tuning ▸ Filters', () => {
+  // The sensor filters and the harmonic notch used to live in a second
+  // "Filter Editor" tab, which meant two Tuning tabs both about filters. They
+  // are one tab now, and every field still goes through the app's shared
+  // metadata renderer, so each parameter keeps its real editor and its "i".
+  async function openFilters(page: Page): Promise<void> {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
     await page.getByTestId('product-mode-expert').check()
     await page.getByTestId('view-button-tuning').click()
-    await page.getByTestId('tuning-tab-filters-from-gyro').click()
-    await expect(page.getByTestId('filter-planner-panel')).toBeVisible()
+    await page.getByTestId('tuning-tab-filters').click()
+    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
   }
 
+  test('the retired Filter Editor tab is gone', async ({ page }) => {
+    await openFilters(page)
+    await expect(page.getByTestId('tuning-tab-filters-from-gyro')).toHaveCount(0)
+  })
+
+  test('sensor and notch parameters joined the rate filters', async ({ page }) => {
+    await openFilters(page)
+    await expect(page.getByTestId('tuning-filter-group-sensor')).toBeVisible()
+    await expect(page.getByTestId('tuning-filter-group-roll')).toBeVisible()
+  })
+
   test('every parameter carries an info bubble and a wiki link', async ({ page }) => {
-    await openFilterEditor(page)
+    await openFilters(page)
     for (const id of ['INS_GYRO_FILTER', 'ATC_RAT_RLL_FLTD', 'INS_HNTCH_MODE', 'INS_HNTCH_FREQ', 'INS_HNTCH_OPTS']) {
       await expect(page.getByTestId(`metadata-field-info-${id}`), id).toBeVisible()
       await expect(page.getByTestId(`param-wiki-${id}`), id).toHaveCount(1)
@@ -6233,7 +6244,7 @@ test.describe('Tuning ▸ Filter Editor', () => {
   })
 
   test('the tracking mode is a named list, not a raw number', async ({ page }) => {
-    await openFilterEditor(page)
+    await openFilters(page)
     const select = page.locator('label', { hasText: 'Notch tracking mode' }).getByRole('combobox')
     await expect(select).toBeVisible()
     await expect(select.locator('option', { hasText: 'ESC Telemetry' })).toHaveCount(1)
@@ -6242,24 +6253,24 @@ test.describe('Tuning ▸ Filter Editor', () => {
   test('the option bitmasks render as per-bit toggles', async ({ page }) => {
     // INS_HNTCH_OPTS has 7 bits and INS_HNTCH_HMNCS 8. Without bitmask
     // metadata these were one integer field each.
-    await openFilterEditor(page)
-    await expect(page.getByTestId('filter-planner-panel').locator('.scoped-bitmask-bit')).toHaveCount(15)
+    await openFilters(page)
+    await expect(page.getByTestId('tuning-filter-group-notch').locator('.scoped-bitmask-bit')).toHaveCount(15)
     await expect(page.getByText('Multi-Source', { exact: true })).toBeVisible()
   })
 
   test('the documented suggestions fill a field rather than applying themselves', async ({ page }) => {
     // ArduPilot: bandwidth is typically half the base frequency. Offered as a
     // button; nothing is derived on the operator's behalf.
-    await openFilterEditor(page)
+    await openFilters(page)
     const fill = page.getByTestId('filter-planner-fill-bw')
     await expect(fill).toContainText('40')
     await fill.click()
-    await expect(page.getByTestId('filter-planner-panel')).toContainText('40')
+    await expect(page.getByTestId('tuning-filter-group-notch')).toContainText('40')
   })
 
   test('fits a phone without overflowing', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await openFilterEditor(page)
+    await openFilters(page)
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )

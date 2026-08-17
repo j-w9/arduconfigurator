@@ -85,6 +85,8 @@ export interface TuningCopterSectionHandlers {
   handleToggleSelectedTuningProfileProtection: () => void | Promise<void>
   setSelectedTuningProfileId: (id: string | undefined) => void
   renderTuningControl: (parameter: ParameterState) => ReactElement
+  /** Slider for numerics, metadata editor for enums and bitmasks. */
+  renderFilterControl: (parameter: ParameterState) => ReactNode
   formatCategoryLabel: (categoryId: string | undefined) => string
 }
 
@@ -105,8 +107,8 @@ export interface TuningCopterSectionProps {
   logTuningSlot?: ReactNode
   /** Starting-point tuning, rendered in the task body on the 'initial-tune' tab. */
   initialTuneSlot?: ReactNode
-  /** Filters derived from the gyro filter, on the 'filters-from-gyro' tab. */
-  filtersFromGyroSlot?: ReactNode
+  /** Notch suggestions and warnings, rendered under the Filters grid. */
+  filterNotchSlot?: ReactNode
 }
 
 export function TuningCopterSection(props: TuningCopterSectionProps): ReactElement {
@@ -117,7 +119,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     autotuneSlot,
     logTuningSlot,
     initialTuneSlot,
-    filtersFromGyroSlot,
+    filterNotchSlot,
     tuningWorkbench,
     forms,
     derived,
@@ -201,6 +203,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     handleToggleSelectedTuningProfileProtection,
     setSelectedTuningProfileId,
     renderTuningControl,
+    renderFilterControl,
     formatCategoryLabel
   } = handlers
 
@@ -567,14 +570,14 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                         <div className="switch-exercise-card__header">
                           <div>
                             <span className="tuning-card-title">
-                              <strong>Axis bandwidth and smoothing</strong>
+                              <strong>Bandwidth, smoothing, and the notch</strong>
                               <InfoDot label="About axis bandwidth and smoothing" testId="tuning-info-filters" wide wikiTopic="tuningFilters">
                                 <span className="info-dot-line">Higher filter frequencies preserve response but pass more noise. Lower values smooth noise at the cost of latency.</span>
                                 <span className="info-dot-line">Zero values are valid for some ArduPilot filter parameters and can intentionally disable a filter path.</span>
                                 <span className="info-dot-line">Change filters carefully and listen for noise or oscillation before moving on to more aggressive gain changes.</span>
                               </InfoDot>
                             </span>
-                            <p>Target, error, and D-term filter frequencies are exposed as one grouped filter pass instead of a raw parameter list.</p>
+                            <p>Gyro and accelerometer filters, the rate-loop target/error/D-term frequencies, and the harmonic notch, as one grouped filter pass instead of a raw parameter list.</p>
                           </div>
                           <StatusBadge tone={toneForScopedDraftReview(tuningFilterStagedDrafts.length, tuningFilterInvalidDrafts.length)}>
                             {tuningFilterParameters.length} filters
@@ -583,17 +586,27 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
 
                         <div className="tuning-axis-grid">
                           {tuningFilterAxisGroups.map((group) => (
-                            <article key={`tuning-filter-axis:${group.id}`} className="tuning-axis-card">
+                            <article
+                              key={`tuning-filter-axis:${group.id}`}
+                              className="tuning-axis-card"
+                              data-testid={`tuning-filter-group-${group.id}`}
+                            >
                               <div className="tuning-axis-card__header">
                                 <strong>{group.label}</strong>
                                 <span>{group.parameters.length} filters</span>
                               </div>
                               <div className="tuning-control-grid tuning-control-grid--compact">
-                                {group.parameters.map((parameter) => renderTuningControl(parameter))}
+                                {/* Slider for a frequency, named list for the
+                                    notch mode, per-bit toggles for its
+                                    bitmasks -- a slider dragged through an enum
+                                    produces states nobody asked for. */}
+                                {group.parameters.map((parameter) => renderFilterControl(parameter))}
                               </div>
                             </article>
                           ))}
                         </div>
+
+                        {filterNotchSlot}
                       </div>
                     </section>
                   </div>
@@ -941,12 +954,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                 {activeTuningTaskId === 'log-tuning' ? (
                   <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-log-tuning-panel">
                     {logTuningSlot}
-                  </div>
-                ) : null}
-
-                {activeTuningTaskId === 'filters-from-gyro' ? (
-                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-filters-from-gyro-panel">
-                    {filtersFromGyroSlot}
                   </div>
                 ) : null}
 

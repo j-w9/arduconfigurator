@@ -517,7 +517,7 @@ test.describe('browser configurator regression flows', () => {
     ).toBeVisible()
 
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Filters/i }).click()
-    await expect(page.getByText('Axis bandwidth and smoothing', { exact: true })).toBeVisible()
+    await expect(page.getByText('Bandwidth, smoothing, and the notch', { exact: true })).toBeVisible()
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Profiles/i }).click()
     await page.getByTestId('tuning-profile-label-input').fill('Bench Test Profile')
     await expect(page.getByTestId('create-tuning-profile-button')).toBeEnabled()
