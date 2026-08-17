@@ -584,11 +584,11 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           </StatusBadge>
                         </div>
 
-                        <div className="tuning-axis-grid">
+                        <div className="tuning-axis-grid tuning-axis-grid--filters">
                           {tuningFilterAxisGroups.map((group) => (
                             <article
                               key={`tuning-filter-axis:${group.id}`}
-                              className="tuning-axis-card"
+                              className={group.id === 'sensor' || group.id === 'notch' ? 'tuning-axis-card tuning-axis-card--wide' : 'tuning-axis-card'}
                               data-testid={`tuning-filter-group-${group.id}`}
                             >
                               <div className="tuning-axis-card__header">

@@ -51,7 +51,10 @@ export function describeNotchOpts(opts: number): string {
  * offered.
  */
 export function documentedNotchRef(mode: number, hoverThrust?: number): number | undefined {
-  if (mode === 1) return hoverThrust
+  // MOT_THST_HOVER arrives as a float32, so 0.35 reads back as
+  // 0.3499999940395355. Rounding keeps the button (and the value it stages)
+  // to the precision the parameter is actually set at.
+  if (mode === 1) return hoverThrust === undefined ? undefined : Math.round(hoverThrust * 1000) / 1000
   if (mode === 2 || mode === 3 || mode === 5) return 1
   return undefined
 }

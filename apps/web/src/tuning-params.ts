@@ -121,6 +121,16 @@ export const TUNING_PID_AXIS_GROUPS = [
   }
 ] as const
 export const TUNING_FILTER_AXIS_GROUPS = [
+  // Signal order, top to bottom: what the gyro hands the controller, what the
+  // rate loops do with it, then the notch. The sensor filters and the notch
+  // were briefly a second "Filter Editor" tab, which meant two Tuning tabs
+  // both called Filters editing overlapping parameters. A noise pass is one
+  // job, so it is one tab.
+  {
+    id: 'sensor',
+    label: 'Gyro & accelerometer',
+    paramIds: ['INS_GYRO_FILTER', 'INS_ACCEL_FILTER'] as const
+  },
   {
     id: 'roll',
     label: 'Roll',
@@ -135,14 +145,6 @@ export const TUNING_FILTER_AXIS_GROUPS = [
     id: 'yaw',
     label: 'Yaw',
     paramIds: ['ATC_RAT_YAW_FLTT', 'ATC_RAT_YAW_FLTE', 'ATC_RAT_YAW_FLTD'] as const
-  },
-  // The sensor-side filters and the harmonic notch were briefly a second
-  // "Filter Editor" tab, which meant two Tuning tabs both called Filters and
-  // editing overlapping parameters. A noise pass is one job, so it is one tab.
-  {
-    id: 'sensor',
-    label: 'Gyro & accelerometer',
-    paramIds: ['INS_GYRO_FILTER', 'INS_ACCEL_FILTER'] as const
   },
   {
     id: 'notch',

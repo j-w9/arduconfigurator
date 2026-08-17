@@ -7478,6 +7478,35 @@ body.is-status-dash-dragging {
   background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.96), rgba(var(--fill-rgb), 1));
 }
 
+/* The Filters grid mixes a 2-field sensor card with an 8-field notch card.
+   Equal-height rows stretched the short card to the tall one's height, which
+   read as a mostly-empty box. Cards size to their own content here, and the
+   notch spans the full row with its fields two-up so it is not a tall column. */
+.tuning-axis-grid--filters {
+  align-items: start;
+}
+
+/* The two documented suggestions are buttons, not a two-up layout: sized to
+   their own label and left-aligned under the grid. */
+.filter-notch-help .switch-exercise-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.filter-notch-help .switch-exercise-controls button {
+  flex: 0 0 auto;
+}
+
+.tuning-axis-grid--filters .tuning-axis-card--wide {
+  grid-column: 1 / -1;
+}
+
+.tuning-axis-grid--filters .tuning-axis-card--wide .tuning-control-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .tuning-axis-card__header strong {
   color: var(--text);
   font-size: 13px;
@@ -12734,6 +12763,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   .tuning-axis-grid,
   .tuning-axis-snapshot-grid,
   .tuning-curve-grid,
+  .tuning-axis-grid--filters .tuning-axis-card--wide .tuning-control-grid,
   .tuning-control-grid {
     grid-template-columns: 1fr;
     display: grid;

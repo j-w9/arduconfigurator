@@ -29,6 +29,9 @@ describe('documentedNotchRef', () => {
 
   it('is the hover thrust for throttle mode, and nothing without one', () => {
     expect(documentedNotchRef(1, 0.35)).toBe(0.35)
+    // MOT_THST_HOVER is a float32, so the value the vehicle reports for 0.35
+    // is not exactly 0.35 -- the button must not offer that noise.
+    expect(documentedNotchRef(1, 0.3499999940395355)).toBe(0.35)
     expect(documentedNotchRef(1)).toBeUndefined()
   })
 
