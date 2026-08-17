@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, type ReactElement } from 'react'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
-import { MAX_MOTOR_TEST_DURATION_SECONDS } from '@arduconfig/ardupilot-core'
+import { EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS, MAX_MOTOR_TEST_DURATION_SECONDS } from '@arduconfig/ardupilot-core'
 import { computeCurrentOffset, computeCurrentPerVolt } from '../view-models/battery-current-offset'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { formatArducopterMotorPwmType } from '@arduconfig/param-metadata'
@@ -646,6 +646,12 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                         reportedA,
                         actualA: Number.parseFloat(offsetActualCurrent)
                       })
+                      // The cap the runtime will actually enforce. Surfaced so
+                      // the input cannot promise a duration that gets thrown
+                      // out before it reaches the flight controller.
+                      const maxLoadSeconds = isExpertMode
+                        ? EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS
+                        : MAX_MOTOR_TEST_DURATION_SECONDS
                       const measuredA = Number.parseFloat(batteryMeasuredCurrent)
                       // Against the CAPTURED load current, so typing the meter
                       // value after the motors stop still works.
@@ -722,12 +728,23 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   min="1"
                                   step="1"
                                   inputMode="numeric"
+                                  max={maxLoadSeconds}
                                   value={currentCalLoadSeconds}
                                   onChange={(event) => setCurrentCalLoadSeconds(event.target.value)}
                                   data-testid="battery-current-load-seconds"
-                                  title="How long the motors run. Long enough to read your meter and type the value."
+                                  title={`How long the motors run, up to ${maxLoadSeconds}s. Long enough to read your meter.`}
                                 />
                               </label>
+                              {/* State the ceiling rather than letting the
+                                  runtime reject a value the input accepted.
+                                  The cap is a deliberate safety limit, not an
+                                  oversight -- Expert raises it, nothing
+                                  removes it. */}
+                              {Number.parseFloat(currentCalLoadSeconds) > maxLoadSeconds ? (
+                                <p className="switch-exercise-warning" data-testid="battery-current-load-too-long">
+                                  {`Motor tests are capped at ${maxLoadSeconds}s${isExpertMode ? '' : ' — Expert mode raises this to 30s'}.`}
+                                </p>
+                              ) : null}
                               <label className="scoped-editor-field scoped-editor-field--compact">
                                 <span>Load throttle (%)</span>
                                 <input
@@ -786,11 +803,19 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   void (async () => {
                                     try {
                                       setCapturedLoadCurrentA(undefined)
-                                      await runtime.runMotorTest({
-                                        runAllOutputsSimultaneous: true,
-                                        throttlePercent,
-                                        durationSeconds: loadSeconds
-                                      })
+                                      await runtime.runMotorTest(
+                                        {
+                                          runAllOutputsSimultaneous: true,
+                                          throttlePercent,
+                                          durationSeconds: loadSeconds
+                                        },
+                                        // Without this the card was capped at the
+                                        // basic 5 s even for an Expert operator,
+                                        // because the option defaults to false --
+                                        // so a longer duration was accepted by the
+                                        // input and then rejected by the runtime.
+                                        { expertMode: isExpertMode }
+                                      )
                                       // Sample the reported current partway
                                       // through the run, once it has settled.
                                       // Captured rather than read live at Apply
