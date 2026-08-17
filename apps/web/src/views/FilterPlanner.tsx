@@ -76,11 +76,6 @@ export function FilterPlannerView(props: FilterPlannerViewProps): ReactElement {
 
   return (
     <div className="filter-planner" data-testid="filter-planner-panel">
-      <p className="initial-tune__lede">
-        Every filter parameter in one place. Values are yours to set — the only arithmetic offered is
-        the two rules ArduPilot documents.
-      </p>
-
       <details className="metadata-settings-section" open data-testid="filter-planner-section-gyro">
         <summary className="metadata-settings-section__header">
           <strong>Gyro &amp; accelerometer</strong>
