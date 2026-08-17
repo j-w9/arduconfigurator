@@ -36,6 +36,12 @@ export interface OutputTaskCardInputs {
   escCalibrationPath: Parameters<typeof escCalibrationPathLabel>[0]
   escReviewSummary: string
   servoMappingRowCount: number
+  gimbalGroupCount: number
+  gimbalStagedDraftCount: number
+  gimbalInvalidDraftCount: number
+  flowLidarGroupCount: number
+  flowLidarStagedDraftCount: number
+  flowLidarInvalidDraftCount: number
   outputPeripheralInvalidDraftCount: number
   outputPeripheralStagedDraftCount: number
   hasNotificationLedTypes: boolean
@@ -135,6 +141,12 @@ export function buildOutputTaskCards(inputs: OutputTaskCardInputs): OutputTaskCa
     escReviewSummary,
     servoMappingRowCount,
     outputPeripheralInvalidDraftCount,
+    gimbalGroupCount,
+    gimbalStagedDraftCount,
+    gimbalInvalidDraftCount,
+    flowLidarGroupCount,
+    flowLidarStagedDraftCount,
+    flowLidarInvalidDraftCount,
     outputPeripheralStagedDraftCount,
     hasNotificationLedTypes,
     hasNotificationBuzzTypes,
@@ -250,6 +262,62 @@ export function buildOutputTaskCards(inputs: OutputTaskCardInputs): OutputTaskCa
           : outputPeripheralStagedDraftCount > 0
             ? 'warning'
             : configuredAuxOutputCount > 0
+              ? 'success'
+              : 'neutral'
+    },
+    {
+      // Promoted out of "Additional output settings", where a gimbal was a
+      // collapsed row among unrelated ones. It is a whole subsystem -- driver,
+      // control mode, per-axis limits -- and setting one up is a task, not a
+      // field.
+      id: 'gimbal' as const,
+      label: 'Gimbal',
+      value:
+        gimbalInvalidDraftCount > 0
+          ? `${gimbalInvalidDraftCount} invalid`
+          : gimbalStagedDraftCount > 0
+            ? `${gimbalStagedDraftCount} staged`
+            : gimbalGroupCount > 0
+              ? 'configured'
+              : 'none',
+      detail:
+        gimbalGroupCount > 0
+          ? 'Camera gimbal/mount driver, control mode, and per-axis angle limits.'
+          : 'No gimbal parameters are exposed on this vehicle.',
+      tone:
+        gimbalInvalidDraftCount > 0
+          ? 'danger'
+          : gimbalStagedDraftCount > 0
+            ? 'warning'
+            : gimbalGroupCount > 0
+              ? 'success'
+              : 'neutral'
+    },
+    {
+      // Rangefinder and optical flow share a tab because they are a pair in
+      // practice: flow needs a height reference, and that is almost always the
+      // downward rangefinder. Configuring one without the other is the usual
+      // reason flow does not hold position.
+      id: 'flow-lidar' as const,
+      label: 'Flow & Lidar',
+      value:
+        flowLidarInvalidDraftCount > 0
+          ? `${flowLidarInvalidDraftCount} invalid`
+          : flowLidarStagedDraftCount > 0
+            ? `${flowLidarStagedDraftCount} staged`
+            : flowLidarGroupCount > 0
+              ? 'configured'
+              : 'none',
+      detail:
+        flowLidarGroupCount > 0
+          ? 'Rangefinder/lidar driver and range limits, plus optical flow alignment and scaling.'
+          : 'No rangefinder or optical-flow parameters are exposed on this vehicle.',
+      tone:
+        flowLidarInvalidDraftCount > 0
+          ? 'danger'
+          : flowLidarStagedDraftCount > 0
+            ? 'warning'
+            : flowLidarGroupCount > 0
               ? 'success'
               : 'neutral'
     },

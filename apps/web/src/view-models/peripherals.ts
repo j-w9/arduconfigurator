@@ -142,10 +142,23 @@ export function buildAdditionalSettingsGroups(
    * about the category, not about a list of parameters that would silently
    * drift as the category gained members.
    */
-  excludedCategoryIds: ReadonlySet<string> = new Set()
+  excludedCategoryIds: ReadonlySet<string> = new Set(),
+  /**
+   * When given, ONLY these categories are returned.
+   *
+   * This is what lets a category graduate from a row inside "Additional
+   * settings" to a tab of its own without duplicating any of the group-building
+   * or draft-scoping below.
+   */
+  includedCategoryIds?: ReadonlySet<string>
 ): AdditionalSettingsGroup[] {
   return metadataCatalog.categories
-    .filter((category) => category.viewId === viewId && !excludedCategoryIds.has(category.id))
+    .filter(
+      (category) =>
+        category.viewId === viewId &&
+        !excludedCategoryIds.has(category.id) &&
+        (includedCategoryIds === undefined || includedCategoryIds.has(category.id))
+    )
     .map((category) => {
       const parameters = (metadataCatalog.parametersByCategory[category.id] ?? [])
         .map((definition) => selectParameterById(snapshot, definition.id))

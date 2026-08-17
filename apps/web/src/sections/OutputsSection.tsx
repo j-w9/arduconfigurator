@@ -176,6 +176,14 @@ export interface OutputsSectionHandlers {
   confirmSetupSection: (sectionId: string, outcome?: import('../app-types').SetupSectionOutcome) => void
   clearSetupSectionConfirmation: (sectionId: string) => void
   renderMetadataParameterField: (parameter: ParameterState) => ReactNode
+  gimbalGroups: import('../view-models/peripherals').AdditionalSettingsGroup[]
+  gimbalDraftEntries: ParameterDraftEntry[]
+  gimbalStagedDrafts: ParameterDraftEntry[]
+  gimbalInvalidDrafts: ParameterDraftEntry[]
+  flowLidarGroups: import('../view-models/peripherals').AdditionalSettingsGroup[]
+  flowLidarDraftEntries: ParameterDraftEntry[]
+  flowLidarStagedDrafts: ParameterDraftEntry[]
+  flowLidarInvalidDrafts: ParameterDraftEntry[]
   renderAdditionalSettingsCard: (
     title: string,
     description: string,
@@ -399,6 +407,14 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     handleDiscardScopedParameterDrafts,
     handleRunMotorTest,
     handleStopMotorTest,
+    gimbalGroups,
+    gimbalDraftEntries,
+    gimbalStagedDrafts,
+    gimbalInvalidDrafts,
+    flowLidarGroups,
+    flowLidarDraftEntries,
+    flowLidarStagedDrafts,
+    flowLidarInvalidDrafts,
     renderAdditionalSettingsCard,
     setDraft,
     updateDrafts,
@@ -449,7 +465,13 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
               (['esc-protocol', 'motor-setup', 'direction-test'] as const)
                 .map((id) => outputTaskCards.find((card) => card.id === id))
                 .filter((card): card is (typeof outputTaskCards)[number] => card !== undefined)
-            : outputTaskCards.filter((card) => card.id === 'servo-mapping' || card.id === 'peripherals' || card.id === 'relays')
+            : // Servos, in the order a build is worked through: outputs first,
+              // then the subsystems hanging off them. Gimbal and Flow & Lidar
+              // are whole subsystems rather than fields, so they are tabs
+              // instead of rows buried in Peripherals.
+              (['servo-mapping', 'peripherals', 'gimbal', 'flow-lidar', 'relays'] as const)
+                .map((id) => outputTaskCards.find((card) => card.id === id))
+                .filter((card): card is (typeof outputTaskCards)[number] => card !== undefined)
         }
         title={activeViewId === 'motors' ? 'Motors' : 'Servos'}
         subtitle={
@@ -1017,6 +1039,52 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     onApply={() => void handleApplyScopedParameterDrafts(outputAssignmentDraftEntries, 'outputs:assignments', 'Output assignments')}
                     onRevert={() => handleDiscardScopedParameterDrafts(outputAssignmentDraftEntries.map((entry) => entry.id), 'output assignments')}
                   />
+                </div>
+              ) : null}
+
+              {activeOutputTaskId === 'gimbal' ? (
+                <div className="outputs-task-panel outputs-task-panel--stack" data-testid="outputs-gimbal-panel">
+                  {gimbalGroups.length === 0 ? (
+                    <p className="bf-note">
+                      No gimbal parameters are exposed on this vehicle. A mount driver has to be
+                      enabled in firmware before MNT1_* appears.
+                    </p>
+                  ) : (
+                    renderAdditionalSettingsCard(
+                      'Gimbal / Mount',
+                      'Camera gimbal driver, control mode, and per-axis angle limits.',
+                      gimbalGroups,
+                      gimbalDraftEntries,
+                      gimbalStagedDrafts,
+                      gimbalInvalidDrafts,
+                      'outputs:gimbal',
+                      'Apply Gimbal Changes',
+                      'gimbal settings'
+                    )
+                  )}
+                </div>
+              ) : null}
+
+              {activeOutputTaskId === 'flow-lidar' ? (
+                <div className="outputs-task-panel outputs-task-panel--stack" data-testid="outputs-flow-lidar-panel">
+                  {flowLidarGroups.length === 0 ? (
+                    <p className="bf-note">
+                      No rangefinder or optical-flow parameters are exposed on this vehicle. Set
+                      RNGFND1_TYPE or FLOW_TYPE first, then reboot.
+                    </p>
+                  ) : (
+                    renderAdditionalSettingsCard(
+                      'Flow & Lidar',
+                      'Rangefinder/lidar driver and range limits, plus optical flow alignment and scaling. Flow needs a height reference, which is almost always the downward rangefinder configured here.',
+                      flowLidarGroups,
+                      flowLidarDraftEntries,
+                      flowLidarStagedDrafts,
+                      flowLidarInvalidDrafts,
+                      'outputs:flow-lidar',
+                      'Apply Flow & Lidar Changes',
+                      'flow and lidar settings'
+                    )
+                  )}
                 </div>
               ) : null}
 

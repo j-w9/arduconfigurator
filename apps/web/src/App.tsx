@@ -526,7 +526,23 @@ function resolveTuningProfileBackup(profile: SavedTuningProfile): ParameterBacku
  *
  * Module-level constant so the scope hook's memo sees a stable reference.
  */
-const SERVO_ADDITIONAL_EXCLUDED_CATEGORY_IDS: ReadonlySet<string> = new Set(['airframe', 'outputs'])
+const SERVO_ADDITIONAL_EXCLUDED_CATEGORY_IDS: ReadonlySet<string> = new Set([
+  'airframe',
+  'outputs',
+  // Tabs of their own now, so they must not ALSO appear as rows under
+  // "Additional output settings" -- that duplication is what this is fixing.
+  'gimbal',
+  'rangefinder',
+  'optical-flow'
+])
+/** The Gimbal tab owns exactly this category. */
+const GIMBAL_CATEGORY_IDS: ReadonlySet<string> = new Set(['gimbal'])
+/**
+ * Flow & Lidar owns both, because they are a pair in practice: optical flow
+ * needs a height reference and that is almost always the downward rangefinder.
+ * Configuring one without the other is the usual reason flow will not hold.
+ */
+const FLOW_LIDAR_CATEGORY_IDS: ReadonlySet<string> = new Set(['rangefinder', 'optical-flow'])
 
 function isOutputAdditionalExcludedParamId(parameterId: string): boolean {
   return (
@@ -2924,6 +2940,30 @@ export function App() {
     excludedCategoryIds: SERVO_ADDITIONAL_EXCLUDED_CATEGORY_IDS,
     parameterDraftEntries
   })
+  const {
+    groups: gimbalGroups,
+    entries: gimbalDraftEntries,
+    staged: gimbalStagedDrafts,
+    invalid: gimbalInvalidDrafts
+  } = useAdditionalScope({
+    snapshot,
+    metadataCatalog,
+    viewId: 'motors',
+    includedCategoryIds: GIMBAL_CATEGORY_IDS,
+    parameterDraftEntries
+  })
+  const {
+    groups: flowLidarGroups,
+    entries: flowLidarDraftEntries,
+    staged: flowLidarStagedDrafts,
+    invalid: flowLidarInvalidDrafts
+  } = useAdditionalScope({
+    snapshot,
+    metadataCatalog,
+    viewId: 'motors',
+    includedCategoryIds: FLOW_LIDAR_CATEGORY_IDS,
+    parameterDraftEntries
+  })
   const totalOutputInvalidDrafts =
     outputReviewInvalidDrafts.length +
     outputNotificationInvalidDrafts.length +
@@ -5302,7 +5342,11 @@ export function App() {
   // since that's the headline workflow for Servos. Stale overrides
   // from a Motors-tab task ('direction-test', etc.) are ignored.
   const activeOutputTaskId: OutputTaskId = activeViewId === 'servos'
-    ? (outputTaskOverride === 'servo-mapping' || outputTaskOverride === 'peripherals' || outputTaskOverride === 'relays'
+    ? (outputTaskOverride === 'servo-mapping' ||
+       outputTaskOverride === 'peripherals' ||
+       outputTaskOverride === 'gimbal' ||
+       outputTaskOverride === 'flow-lidar' ||
+       outputTaskOverride === 'relays'
         ? outputTaskOverride
         : 'servo-mapping')
     : outputTaskOverride ?? recommendedOutputTaskId
@@ -5326,6 +5370,12 @@ export function App() {
         escReviewSummary,
         servoMappingRowCount: servoMappingRows.length,
         outputPeripheralInvalidDraftCount,
+        gimbalGroupCount: gimbalGroups.length,
+        gimbalStagedDraftCount: gimbalStagedDrafts.length,
+        gimbalInvalidDraftCount: gimbalInvalidDrafts.length,
+        flowLidarGroupCount: flowLidarGroups.length,
+        flowLidarStagedDraftCount: flowLidarStagedDrafts.length,
+        flowLidarInvalidDraftCount: flowLidarInvalidDrafts.length,
         outputPeripheralStagedDraftCount,
         hasNotificationLedTypes: Boolean(notificationLedTypesParameter),
         hasNotificationBuzzTypes: Boolean(notificationBuzzTypesParameter),
@@ -8849,6 +8899,14 @@ export function App() {
           confirmSetupSection,
           clearSetupSectionConfirmation,
           renderMetadataParameterField,
+          gimbalGroups,
+          gimbalDraftEntries,
+          gimbalStagedDrafts,
+          gimbalInvalidDrafts,
+          flowLidarGroups,
+          flowLidarDraftEntries,
+          flowLidarStagedDrafts,
+          flowLidarInvalidDrafts,
           renderAdditionalSettingsCard,
           setDraft,
           updateDrafts,

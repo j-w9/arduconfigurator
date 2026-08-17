@@ -26,6 +26,8 @@ export type OutputTaskId =
   | 'esc-protocol'
   | 'servo-mapping'
   | 'peripherals'
+  | 'gimbal'
+  | 'flow-lidar'
   | 'relays'
   | 'review'
 

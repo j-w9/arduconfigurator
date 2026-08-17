@@ -6098,3 +6098,54 @@ test.describe('Servos ▸ live output', () => {
     }
   })
 })
+
+test.describe('Servos ▸ Gimbal and Flow & Lidar', () => {
+  // Promoted out of "Additional output settings", where each was a collapsed
+  // row among unrelated ones. They are whole subsystems, so they get tabs.
+  async function openServos(page: Page): Promise<void> {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('view-button-servos').click()
+  }
+
+  test('both appear as their own sub-tabs and open their panels', async ({ page }) => {
+    await openServos(page)
+    for (const [label, panel] of [
+      ['Gimbal', 'outputs-gimbal-panel'],
+      ['Flow & Lidar', 'outputs-flow-lidar-panel']
+    ] as const) {
+      const tab = page.locator('.tab-strip__tab', { hasText: label }).first()
+      await expect(tab).toBeVisible()
+      await tab.click()
+      await expect(page.getByTestId(panel)).toBeVisible()
+    }
+  })
+
+  test('their settings no longer also appear under Additional output settings', async ({ page }) => {
+    // The point of the move. Showing them in two places gave an operator two
+    // ways to change the same thing with no sign which was authoritative.
+    await openServos(page)
+    await page.locator('.tab-strip__tab', { hasText: 'Peripherals' }).first().click()
+    const additional = page.locator('.outputs-task-panel')
+    const text = ((await additional.textContent()) ?? '')
+    expect(text).not.toContain('Gimbal / Mount')
+    expect(text).not.toContain('Rangefinder / Lidar')
+    expect(text).not.toContain('Optical Flow')
+    // And the airframe/output duplicates are gone from here too.
+    expect(text).not.toContain('Frame type')
+    expect(text).not.toContain('DShot rate')
+  })
+
+  test('the Servos tabs stay within a phone width', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await openServos(page)
+    await page.locator('.tab-strip__tab', { hasText: 'Flow & Lidar' }).first().click()
+    await expect(page.getByTestId('outputs-flow-lidar-panel')).toBeVisible()
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )
+    expect(overflow, 'the Servos sub-tabs must not widen the page').toBeLessThanOrEqual(2)
+  })
+})

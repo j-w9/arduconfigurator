@@ -29,7 +29,13 @@ function baseInputs(overrides: Partial<OutputTaskCardInputs> = {}): OutputTaskCa
     escReviewSummary: 'esc',
     servoMappingRowCount: 8,
     outputPeripheralInvalidDraftCount: 0,
-    outputPeripheralStagedDraftCount: 0,
+    gimbalGroupCount: 0,
+  gimbalStagedDraftCount: 0,
+  gimbalInvalidDraftCount: 0,
+  flowLidarGroupCount: 0,
+  flowLidarStagedDraftCount: 0,
+  flowLidarInvalidDraftCount: 0,
+  outputPeripheralStagedDraftCount: 0,
     hasNotificationLedTypes: false,
     hasNotificationBuzzTypes: false,
     outputAdditionalGroupCount: 0,
@@ -58,6 +64,8 @@ describe('buildOutputTaskCards', () => {
       'esc-protocol',
       'servo-mapping',
       'peripherals',
+      'gimbal',
+      'flow-lidar',
       'relays',
       'review'
     ])

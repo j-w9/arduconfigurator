@@ -1,22 +1,26 @@
-// Golden configuration for a Pavo Femto AIO running a DJI O3 air unit.
+// Reference configuration for a Pavo Femto AIO running a DJI O3 air unit.
 //
-// Captured from a flying aircraft, not assembled by hand -- which is the point.
-// It is the whole vehicle: frame, motor protocol, filters, tune, OSD layout,
-// serial map, failsafes and modes, exactly as they were on a build that worked.
+// The whole vehicle: frame, motor protocol, filters, tune, OSD layout, serial
+// map, battery sensing, failsafes and modes.
 //
-// PROVENANCE: exported 2026-08-15 from ArduCopter 4.7.0 (beta)
-// (board id 1125). Values are carried verbatim.
+// PROVENANCE: exported 2026-08-15 from ArduCopter 4.7.0 (beta) (board id 1125).
+// Values are carried verbatim.
 //
-// WHAT WAS REMOVED, and why it has to be: 108 of the 1115 exported parameters are
-// board-INSTANCE data -- accelerometer and gyro offsets, compass offsets and
-// device ids, AHRS trims, RC channel endpoints, the battery voltage/current
-// calibration, barometer ground pressure, and flight statistics. Those are
-// physically true of one specific unit. A preset is by definition applied to a
-// DIFFERENT aircraft, so copying them would load another board's calibration
-// and produce a vehicle that believes it is level when it is not.
+// Battery sensing IS included -- BATT_VOLT_MULT, BATT_AMP_PERVLT, the offset
+// and the sense pins. On an AIO those describe the board's own voltage divider
+// and wiring, which is identical across units of the same board, so they carry
+// where a hand-wired build's would not.
 //
-// Tuning parameters that merely LOOK like calibration are kept: INS_GYRO_FILTER
-// and INS_ACCEL_FILTER are tune, not offsets, and the patterns are anchored so
+// WHAT IS REMOVED, and why it has to be: 103 of the 1115 exported parameters are
+// per-UNIT data -- accelerometer and gyro offsets, compass offsets and device
+// ids, AHRS trims, RC channel endpoints, barometer ground pressure and flight
+// statistics. Those are physically true of one specific airframe. A preset is
+// by definition applied to a DIFFERENT aircraft, so copying them would load
+// another board's calibration and produce a vehicle that believes it is level
+// when it is not.
+//
+// Tuning that merely LOOKS like calibration is kept: INS_GYRO_FILTER and
+// INS_ACCEL_FILTER are tune, not offsets, and the patterns are anchored so
 // they survive.
 //
 // Generated from the export; do not hand-edit individual values -- re-export
@@ -140,11 +144,14 @@ export const PAVO_FEMTO_O3_VALUES: readonly ParameterPresetValue[] = [
   { paramId: 'BATT7_MONITOR', value: 0 },
   { paramId: 'BATT8_MONITOR', value: 0 },
   { paramId: 'BATT9_MONITOR', value: 0 },
+  { paramId: 'BATT_AMP_OFFSET', value: 0 },
+  { paramId: 'BATT_AMP_PERVLT', value: 19.6 },
   { paramId: 'BATT_ARM_MAH', value: 0 },
   { paramId: 'BATT_ARM_VOLT', value: 7.3 },
   { paramId: 'BATT_CAPACITY', value: 3300 },
   { paramId: 'BATT_CRT_MAH', value: 0 },
   { paramId: 'BATT_CRT_VOLT', value: 7 },
+  { paramId: 'BATT_CURR_PIN', value: 11 },
   { paramId: 'BATT_FS_CRT_ACT', value: 0 },
   { paramId: 'BATT_FS_LOW_ACT', value: 0 },
   { paramId: 'BATT_FS_VOLTSRC', value: 0 },
@@ -155,6 +162,8 @@ export const PAVO_FEMTO_O3_VALUES: readonly ParameterPresetValue[] = [
   { paramId: 'BATT_OPTIONS', value: 0 },
   { paramId: 'BATT_SERIAL_NUM', value: -1 },
   { paramId: 'BATT_VLT_OFFSET', value: 0 },
+  { paramId: 'BATT_VOLT_MULT', value: 11 },
+  { paramId: 'BATT_VOLT_PIN', value: 12 },
   { paramId: 'BRD_ALT_CONFIG', value: 0 },
   { paramId: 'BRD_BOOT_DELAY', value: 0 },
   { paramId: 'BRD_FAST_BOOT', value: 0 },

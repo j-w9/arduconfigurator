@@ -937,8 +937,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     // Whole-vehicle configurations for a specific, known build -- the same idea
     // as Betaflight Configurator's preset library. Distinct from
     // 'starter-config', which only picks a frame class and layout: these carry
-    // the entire tune, filter set, OSD layout, serial map and failsafes from an
-    // aircraft that actually flew.
+    // the entire tune, filter set, OSD layout, serial map and failsafes.
     //
     // Last, and described as replacing the configuration, because applying one
     // is a much bigger action than any other preset here.
@@ -946,7 +945,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       id: 'airframes',
       label: 'Complete Airframes',
       description:
-        'Full configurations captured from specific builds that flew. Applying one replaces most of the vehicle configuration, so review the diff before writing.',
+        'Full reference configurations for specific builds. Applying one replaces most of the vehicle configuration, so review the diff before writing.',
       order: 3
     }
   },
@@ -960,7 +959,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       order: 0,
       values: [...PAVO_FEMTO_O3_VALUES],
       note:
-        'Captured from a flying aircraft. Board-specific calibration (accel/gyro offsets, compass, AHRS trims, RC endpoints, battery voltage and current calibration) is deliberately NOT included -- those are true of one unit only, and this vehicle still needs its own calibration afterwards.',
+        'Includes battery sensing, which on an AIO describes the board rather than the individual unit. Per-airframe calibration (accel/gyro offsets, compass, AHRS trims, RC endpoints) is NOT included, so this vehicle still needs its own calibration afterwards.',
       tags: ['airframe', 'cinewhoop', 'dji', 'o3', '2s'],
       prerequisites: presetPrerequisites,
       cautions: [

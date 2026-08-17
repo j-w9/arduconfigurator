@@ -55,9 +55,11 @@ export function useAdditionalScope(input: {
   excludedParameterIds?: (parameterId: string) => boolean
   /** Whole categories another tab owns. Must be a stable reference. */
   excludedCategoryIds?: ReadonlySet<string>
+  /** When given, ONLY these categories. Must be a stable reference. */
+  includedCategoryIds?: ReadonlySet<string>
   parameterDraftEntries: readonly ParameterDraftEntry[]
 }): UseAdditionalScopeResult {
-  const { snapshot, metadataCatalog, viewId, excludedParameterIds, excludedCategoryIds, parameterDraftEntries } = input
+  const { snapshot, metadataCatalog, viewId, excludedParameterIds, excludedCategoryIds, includedCategoryIds, parameterDraftEntries } = input
 
   const groups = useMemo(
     () =>
@@ -72,9 +74,10 @@ export function useAdditionalScope(input: {
                 .filter((parameter) => excludedParameterIds(parameter.id))
                 .map((parameter) => parameter.id)
             ),
-        excludedCategoryIds
+        excludedCategoryIds,
+        includedCategoryIds
       ),
-    [excludedCategoryIds, excludedParameterIds, metadataCatalog, snapshot, viewId]
+    [excludedCategoryIds, includedCategoryIds, excludedParameterIds, metadataCatalog, snapshot, viewId]
   )
   const { entries, staged, invalid } = useMemo(
     () =>

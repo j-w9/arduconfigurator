@@ -9,6 +9,8 @@ export type OutputsTaskId =
   | 'esc-protocol'
   | 'servo-mapping'
   | 'peripherals'
+  | 'gimbal'
+  | 'flow-lidar'
   | 'relays'
   | 'review'
 
