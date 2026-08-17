@@ -4195,7 +4195,13 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('motor-reorder-apply')).toBeVisible()
   })
 
-  test('Servos view exposes collapsible Gimbal and Rangefinder config sections for a Copter', async ({ page }) => {
+  /** Open one of the Servos sub-tabs by its visible label. */
+  async function openServoTab(page: Page, label: string): Promise<void> {
+    await openView(page, 'servos')
+    await page.locator('.tab-strip__tab', { hasText: label }).first().click()
+  }
+
+  async function connectCopter(page: Page): Promise<void> {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -4203,19 +4209,31 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
       timeout: VEHICLE_CONNECT_TIMEOUT
     })
-    await openView(page, 'servos')
-    // The MNT1 gimbal + RNGFND1 lidar params surface as collapsible groups in
-    // the Peripherals task's additional-settings card.
-    await page.getByTestId('outputs-summary-peripherals').click()
-    await expect(page.getByText('Gimbal / Mount', { exact: true })).toBeVisible({ timeout: 15_000 })
+  }
+
+  // Gimbal and Rangefinder used to sit together under Peripherals and were
+  // asserted in one test. They are now separate sub-tabs, so the old
+  // "collapsing one does not hide the other" cross-check no longer means
+  // anything — they cannot be on screen together. Split accordingly; the
+  // substantive assertions (fields render, sections collapse, conditional
+  // fields gate on TYPE) are unchanged.
+  test('the Gimbal sub-tab renders the MNT1 driver fields and collapses', async ({ page }) => {
+    await connectCopter(page)
+    await openServoTab(page, 'Gimbal')
+    await expect(page.getByTestId('outputs-gimbal-panel')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('metadata-settings-section-gimbal')).toBeVisible()
     await expect(page.getByText('Gimbal Driver', { exact: true })).toBeVisible()
-    await expect(page.getByText('Rangefinder / Lidar', { exact: true })).toBeVisible()
-    await expect(page.getByText('Rangefinder Type', { exact: true })).toBeVisible()
-    // Sub-sections are collapsible: collapsing Gimbal hides its fields.
+
     const gimbalSection = page.getByTestId('metadata-settings-section-gimbal')
     await gimbalSection.locator('summary').click()
     await expect(page.getByText('Gimbal Driver', { exact: true })).toBeHidden()
-    // Rangefinder stays independently expanded.
+  })
+
+  test('the Flow & Lidar sub-tab gates the analog rangefinder fields on TYPE', async ({ page }) => {
+    await connectCopter(page)
+    await openServoTab(page, 'Flow & Lidar')
+    await expect(page.getByTestId('outputs-flow-lidar-panel')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('Rangefinder / Lidar', { exact: true })).toBeVisible()
     await expect(page.getByText('Rangefinder Type', { exact: true })).toBeVisible()
 
     // Conditional fields: analog-only knobs are hidden until TYPE = Analog.
@@ -4231,29 +4249,21 @@ test.describe('ArduPlane demo', () => {
 
   // The ask: "in the servo > peripheral tab we have the section about
   // rangefinders, can we add in a section and all the relevant parameters for
-  // optical flow?" — same shape as the Rangefinder section above, one sensor
-  // over. The demo Copter seeds FLOW_TYPE=6 (DroneCAN) with CAN_P1_DRIVER=0,
+  // optical flow?" — same shape as the Rangefinder section, one sensor over.
+  // The demo Copter seeds FLOW_TYPE=6 (DroneCAN) with CAN_P1_DRIVER=0,
   // reproducing the operator's own miswired-CAN-flow situation.
-  test('Servos view exposes an Optical Flow config section, gated the same way as Rangefinder', async ({ page }) => {
-    await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo')
-    await page.getByTestId('connect-button').click()
-    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
-    await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
-      timeout: VEHICLE_CONNECT_TIMEOUT
-    })
-    await openView(page, 'servos')
-    await page.getByTestId('outputs-summary-peripherals').click()
+  test('the Flow & Lidar sub-tab exposes Optical Flow, gated the same way as Rangefinder', async ({ page }) => {
+    await connectCopter(page)
+    await openServoTab(page, 'Flow & Lidar')
 
     const flowSection = page.getByTestId('metadata-settings-section-optical-flow')
     await expect(flowSection).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText('Optical Flow', { exact: true })).toBeVisible()
-    // The seeded FLOW_ family renders as editable fields.
     await expect(page.getByText('Optical Flow Type', { exact: true })).toBeVisible()
     await expect(page.getByText('X Scale Correction', { exact: true })).toBeVisible()
     await expect(page.getByText('Bus Address', { exact: true })).toBeVisible()
-    // Unit-carrying labels render as "<label> (<unit>)" — ScopedField appends the
-    // unit in a nested <small> — so these are substring matches, not exact ones.
+    // Unit-carrying labels render as "<label> (<unit>)" — ScopedField appends
+    // the unit in a nested <small> — so these are substring matches.
     await expect(flowSection.getByText('Yaw Alignment (cdeg)', { exact: true })).toBeVisible()
     await expect(flowSection.getByText('Position X (m)', { exact: true })).toBeVisible()
     // FLOW_OPTIONS (4.7-only) and FLOW_HGT_OVR (Rover-only) are curated but NOT
@@ -4262,47 +4272,43 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByText('Flow Options')).toHaveCount(0)
     await expect(page.getByText('Height Override')).toHaveCount(0)
 
-    // Every field carries the shared "i" affordance naming the raw param.
     await expect(page.getByTestId('metadata-field-info-FLOW_TYPE')).toBeVisible()
 
     // The type is source-correct: 6 is DroneCAN (AP_OpticalFlow.h Type::UAVCAN),
     // NOT the SITL value the app once mislabelled as HereFlow.
     const flowType = page.locator('label', { hasText: 'Optical Flow Type' }).getByRole('combobox')
     await expect(flowType).toHaveValue('6')
-    // 4.6 firmware: SITL (10) must not be offered at all.
     await expect(flowType.locator('option', { hasText: 'SITL' })).toHaveCount(0)
 
-    // DroneCAN flow + CAN bus off surfaces the same one-click enable the CAN tab
-    // offers — the fix for a flow sensor that reports nothing because the bus
+    // DroneCAN flow + CAN bus off surfaces the same one-click enable the CAN
+    // tab offers — the fix for a flow sensor reporting nothing because the bus
     // was never turned on.
     const prompt = page.getByTestId('peripherals-can-enable-prompt')
     await expect(prompt).toBeVisible()
     await expect(prompt).toContainText('Optical flow is set to DroneCAN')
     await expect(page.getByTestId('peripherals-can-enable-button')).toBeEnabled()
 
-    // Editing a flow field stages a draft in the peripherals scope.
+    // Editing a flow field stages a draft in this tab's own scope — the apply
+    // button is the Flow & Lidar one now, not the generic additional-settings
+    // button it used to share with everything else.
     await flowType.selectOption({ label: 'CXOF' })
-    await expect(page.getByRole('button', { name: /Apply Additional Output Changes \(1\)/ })).toBeEnabled()
+    await expect(page.getByRole('button', { name: /Apply Flow & Lidar Changes \(1\)/ })).toBeEnabled()
 
-    // Section is collapsible like its Rangefinder sibling.
     await flowSection.locator('summary').click()
     await expect(flowSection.getByText('Yaw Alignment (cdeg)', { exact: true })).toBeHidden()
   })
 
-  test('the Optical Flow section fits a 390px phone viewport without horizontal overflow', async ({ page }) => {
+  test('the Flow & Lidar sub-tab fits a 390px phone viewport without horizontal overflow', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/')
-    await page.getByTestId('transport-mode-select').selectOption('demo')
-    await page.getByTestId('connect-button').click()
-    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
-    await openView(page, 'servos')
-    await page.getByTestId('outputs-summary-peripherals').click()
+    await connectCopter(page)
+    await openServoTab(page, 'Flow & Lidar')
     await expect(page.getByTestId('metadata-settings-section-optical-flow')).toBeVisible({ timeout: 15_000 })
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )
     expect(overflow).toBeLessThanOrEqual(0)
   })
+
 })
 
 test.describe('ArduRover / ArduSub demo', () => {

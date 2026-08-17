@@ -944,8 +944,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     airframes: {
       id: 'airframes',
       label: 'Complete Airframes',
-      description:
-        'Full reference configurations for specific builds. Applying one replaces most of the vehicle configuration, so review the diff before writing.',
+      description: 'Full configurations for specific builds. Applying one replaces most of the vehicle configuration.',
       order: 3
     }
   },
@@ -953,20 +952,18 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     'airframe-pavo-femto-o3': {
       id: 'airframe-pavo-femto-o3',
       label: 'Pavo Femto AIO — DJI O3',
-      description:
-        'Complete configuration for a Pavo Femto AIO on a 2S pack with a DJI O3 air unit: BetaFlight-X quad on DShot300, MSP DisplayPort OSD on SERIAL4, RC on SERIAL5.',
+      description: '2S quad, DShot300, DisplayPort OSD on SERIAL4, RC on SERIAL5.',
       groupId: 'airframes',
       order: 0,
       values: [...PAVO_FEMTO_O3_VALUES],
-      note:
-        'Includes battery sensing, which on an AIO describes the board rather than the individual unit. Per-airframe calibration (accel/gyro offsets, compass, AHRS trims, RC endpoints) is NOT included, so this vehicle still needs its own calibration afterwards.',
+      note: 'Includes battery sensing. No calibration is carried — calibrate this board afterwards.',
       tags: ['airframe', 'cinewhoop', 'dji', 'o3', '2s'],
       prerequisites: presetPrerequisites,
       cautions: [
-        'Replaces most of the vehicle configuration. Review the staged diff before applying.',
-        'Assumes a Pavo Femto AIO with a DJI O3 on SERIAL4 and the receiver on SERIAL5 — check the serial map matches your wiring.',
-        'Tuned for 2S and the stock prop. On a different pack or prop the tune and battery voltage points will not fit.',
-        'Run accelerometer, level and compass calibration on YOUR board afterwards — no calibration is carried over.'
+        'Replaces most of the vehicle configuration. Review the diff before applying.',
+        'Check the serial map matches your wiring: O3 on SERIAL4, receiver on SERIAL5.',
+        'Tuned for 2S and the stock prop.',
+        'Calibrate accelerometer, level and compass on this board afterwards.'
       ],
       compatibility: {
         frameClasses: [1]

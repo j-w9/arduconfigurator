@@ -1051,7 +1051,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     </p>
                   ) : (
                     renderAdditionalSettingsCard(
-                      'Gimbal / Mount',
+                      'Gimbal',
                       'Camera gimbal driver, control mode, and per-axis angle limits.',
                       gimbalGroups,
                       gimbalDraftEntries,
@@ -1067,6 +1067,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
 
               {activeOutputTaskId === 'flow-lidar' ? (
                 <div className="outputs-task-panel outputs-task-panel--stack" data-testid="outputs-flow-lidar-panel">
+                  {/* Travels with the flow control it is about: the prompt
+                      appears when optical flow is set to DroneCAN and the bus
+                      is off, so it belongs beside that setting rather than on
+                      whichever tab happened to own flow before. */}
+                  {peripheralsCanEnableSlot}
                   {flowLidarGroups.length === 0 ? (
                     <p className="bf-note">
                       No rangefinder or optical-flow parameters are exposed on this vehicle. Set
