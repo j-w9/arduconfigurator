@@ -111,12 +111,17 @@ Every filter parameter in one place — the gyro and accelerometer filters, all
 nine rate-loop filters, and the harmonic notch — instead of reaching into the
 raw parameter tree for the notch and the Filters task for the rest.
 
-**Nothing is derived.** Fields are seeded from what the vehicle is running, and
-an untouched field stages nothing. An earlier version computed the whole
-rate-loop set from the gyro filter, but those ratios come from Mission
-Planner's *Initial Parameters* screen rather than from ArduPilot's own
-documentation, and this surface writes to a flight controller. They are yours
-to set.
+**Nothing is derived.** Fields show what the vehicle is running, and an
+untouched field stages nothing. An earlier version computed the whole rate-loop
+set from the gyro filter, but those ratios come from Mission Planner's *Initial
+Parameters* screen rather than from ArduPilot's own documentation, and this
+surface writes to a flight controller. They are yours to set.
+
+Each parameter gets its real editor, not a number box: ``INS_HNTCH_MODE`` is a
+named list, ``INS_HNTCH_OPTS`` and ``INS_HNTCH_HMNCS`` are per-bit toggles, and
+everything else is a number with the units and range the firmware declares.
+Every field carries the usual **"i"** bubble naming the raw parameter, with a
+link to its page in the :doc:`parameter reference <parameters>`.
 
 Two suggestions, both documented
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

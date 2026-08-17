@@ -483,6 +483,22 @@ const mockParameters: ParameterState = {
   AUTOTUNE_AGGR: 0.075,
   AUTOTUNE_MIN_D: 0.0005,
   AUTOTUNE_GMBK: 0.25,
+  // Gyro/accel filters and the harmonic notch. Without these the Filter
+  // Editor rendered only its middle section in demo mode, so no test could
+  // reach the notch -- the part with the enum, the bitmask and the two
+  // documented suggestions. Values are a plausible 5" build: notch off, so
+  // the "REF of zero disables tracking" path is reachable by enabling it.
+  INS_GYRO_FILTER: 40,
+  INS_ACCEL_FILTER: 10,
+  INS_HNTCH_ENABLE: 0,
+  INS_HNTCH_MODE: 1,
+  INS_HNTCH_REF: 0,
+  INS_HNTCH_FREQ: 80,
+  INS_HNTCH_BW: 40,
+  INS_HNTCH_HMNCS: 3,
+  INS_HNTCH_OPTS: 0,
+  INS_HNTCH_FM_RAT: 1,
+  MOT_THST_HOVER: 0.35,
   ATC_RAT_RLL_FLTT: 35,
   ATC_RAT_RLL_FLTE: 0,
   ATC_RAT_RLL_FLTD: 35,

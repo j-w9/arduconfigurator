@@ -3369,6 +3369,140 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       ],
       options: enumOptions(ARDUCOPTER_MOT_PWM_TYPE_LABELS)
     },
+    // --- Filters: gyro/accel low-pass and the harmonic notch ---------------
+    //
+    // Absent from the catalog until the Filter Editor needed them, so every one
+    // rendered as a bare number box -- INS_HNTCH_MODE with no names for its
+    // modes, INS_HNTCH_OPTS as a raw integer instead of the per-bit grid the
+    // app renders for every other bitmask.
+    //
+    // Every enum value, bit and range below is read from ArduPilot source
+    // (Filter/HarmonicNotchFilter.cpp), not from memory.
+    INS_GYRO_FILTER: {
+      id: 'INS_GYRO_FILTER',
+      label: 'Gyro filter',
+      description:
+        'Low-pass cutoff applied to the gyros before the rate controllers see them. Lower passes less noise at the cost of latency; bigger props generally want a lower cutoff.',
+      category: 'tuning',
+      unit: 'Hz',
+      minimum: 0,
+      maximum: 256
+    },
+    INS_ACCEL_FILTER: {
+      id: 'INS_ACCEL_FILTER',
+      label: 'Accel filter',
+      description: 'Low-pass cutoff applied to the accelerometers.',
+      category: 'tuning',
+      unit: 'Hz',
+      minimum: 0,
+      maximum: 256
+    },
+    INS_HNTCH_ENABLE: {
+      id: 'INS_HNTCH_ENABLE',
+      label: 'Harmonic notch',
+      description: 'Enable the harmonic notch filter. Takes effect on the next reboot.',
+      category: 'tuning',
+      rebootRequired: true,
+      options: [
+        { value: 0, label: 'Disabled' },
+        { value: 1, label: 'Enabled' }
+      ]
+    },
+    INS_HNTCH_MODE: {
+      id: 'INS_HNTCH_MODE',
+      label: 'Notch tracking mode',
+      description:
+        'How the notch follows motor frequency. Throttle infers it from throttle position; RPM sensor and ESC telemetry measure it; in-flight FFT computes it onboard and needs a capable (H7/F7) board.',
+      category: 'tuning',
+      // HarmonicNotchFilter.cpp @Values for MODE.
+      options: [
+        { value: 0, label: 'Fixed' },
+        { value: 1, label: 'Throttle' },
+        { value: 2, label: 'RPM Sensor' },
+        { value: 3, label: 'ESC Telemetry' },
+        { value: 4, label: 'Dynamic FFT' },
+        { value: 5, label: 'Second RPM Sensor' }
+      ]
+    },
+    INS_HNTCH_REF: {
+      id: 'INS_HNTCH_REF',
+      label: 'Notch reference',
+      description:
+        'Reference value for dynamic tracking. Zero DISABLES dynamic updates entirely. For throttle-based scaling this is the hover thrust; for RPM and ESC-telemetry tracking it is 1.',
+      category: 'tuning',
+      minimum: 0,
+      maximum: 1
+    },
+    INS_HNTCH_FREQ: {
+      id: 'INS_HNTCH_FREQ',
+      label: 'Notch centre frequency',
+      description:
+        'Base centre frequency. For static notches this is the centre; for throttle-based it is the centre at the reference thrust; for every other mode it is the minimum the tracked centre will not go below. Keep it below half the gyro backend rate.',
+      category: 'tuning',
+      unit: 'Hz',
+      minimum: 10,
+      maximum: 495
+    },
+    INS_HNTCH_BW: {
+      id: 'INS_HNTCH_BW',
+      label: 'Notch bandwidth',
+      description:
+        'Notch width in Hz, typically set to half the base frequency. The ratio of frequency to bandwidth sets the notch quality factor and is fixed across harmonics.',
+      category: 'tuning',
+      unit: 'Hz',
+      minimum: 5,
+      maximum: 250
+    },
+    INS_HNTCH_HMNCS: {
+      id: 'INS_HNTCH_HMNCS',
+      label: 'Notch harmonics',
+      description:
+        'Which harmonics of the base frequency to notch. The first harmonic is the base frequency itself. Zero disables the filter. Takes effect on the next reboot.',
+      category: 'tuning',
+      bitmask: true,
+      rebootRequired: true,
+      // BIT INDICES, not mask values: ScopedBitmaskField computes `1 << value`.
+      // Supplying masks here silently shifts every label onto the wrong bit.
+      options: [
+        { value: 0, label: '1st harmonic' },
+        { value: 1, label: '2nd harmonic' },
+        { value: 2, label: '3rd harmonic' },
+        { value: 3, label: '4th harmonic' },
+        { value: 4, label: '5th harmonic' },
+        { value: 5, label: '6th harmonic' },
+        { value: 6, label: '7th harmonic' },
+        { value: 7, label: '8th harmonic' }
+      ]
+    },
+    INS_HNTCH_OPTS: {
+      id: 'INS_HNTCH_OPTS',
+      label: 'Notch options',
+      description:
+        'Double and triple notches attenuate more deeply across a wider band with less latency, suited to larger aircraft. Multi-Source attaches a notch to each detected noise source rather than to multiples of the base frequency. If both double and triple are set, only double takes effect.',
+      category: 'tuning',
+      bitmask: true,
+      // BIT INDICES, matching HarmonicNotchFilter.cpp:134 @Bitmask exactly --
+      // ScopedBitmaskField computes `1 << value`, so masks here would put every
+      // label on the wrong bit.
+      options: [
+        { value: 0, label: 'Double notch' },
+        { value: 1, label: 'Multi-Source' },
+        { value: 2, label: 'Update at loop rate' },
+        { value: 3, label: 'Enable on all IMUs' },
+        { value: 4, label: 'Triple notch' },
+        { value: 5, label: 'Min freq on RPM failure' },
+        { value: 6, label: 'Quintuple notch' }
+      ]
+    },
+    INS_HNTCH_FM_RAT: {
+      id: 'INS_HNTCH_FM_RAT',
+      label: 'Notch min freq ratio',
+      description:
+        'Lowest fraction of the configured frequency a throttle-based notch will track down to below the reference throttle. 1.0 means it never goes below the configured frequency; 0.7 allows 30% below. Lower notches carry more phase lag.',
+      category: 'tuning',
+      minimum: 0.1,
+      maximum: 1
+    },
     SERVO_DSHOT_RATE: {
       id: 'SERVO_DSHOT_RATE',
       label: 'DShot Rate',

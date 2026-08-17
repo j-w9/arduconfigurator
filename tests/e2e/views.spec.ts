@@ -6208,12 +6208,12 @@ test.describe('Flight modes moved from a tab into Config', () => {
   })
 })
 
-test.describe('Tuning ▸ Filters', () => {
-  // The widget is deliberately manual: the gyro-ratio derivations came from
-  // Mission Planner rather than ArduPilot's own docs, and this surface writes
-  // to a flight controller. Only the two rules ArduPilot states are offered,
-  // and both are opt-in buttons that fill a field the operator can edit.
-  async function openFilterPlanner(page: Page): Promise<void> {
+test.describe('Tuning ▸ Filter Editor', () => {
+  // Fields go through the app's shared metadata renderer, so each parameter
+  // gets its real editor and its "i" bubble. An earlier version hand-rolled
+  // number inputs, which meant a bitmask was a bare integer box and the mode
+  // list had to be kept in step with the firmware by hand.
+  async function openFilterEditor(page: Page): Promise<void> {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -6224,49 +6224,42 @@ test.describe('Tuning ▸ Filters', () => {
     await expect(page.getByTestId('filter-planner-panel')).toBeVisible()
   }
 
-  test('stages nothing until the operator changes something', async ({ page }) => {
-    // Seeded from the vehicle, so opening the tab must not propose writes.
-    await openFilterPlanner(page)
-    await expect(page.getByTestId('filter-planner-nothing')).toBeVisible()
-    await expect(page.getByTestId('filter-planner-stage')).toHaveCount(0)
+  test('every parameter carries an info bubble and a wiki link', async ({ page }) => {
+    await openFilterEditor(page)
+    for (const id of ['INS_GYRO_FILTER', 'ATC_RAT_RLL_FLTD', 'INS_HNTCH_MODE', 'INS_HNTCH_FREQ', 'INS_HNTCH_OPTS']) {
+      await expect(page.getByTestId(`metadata-field-info-${id}`), id).toBeVisible()
+      await expect(page.getByTestId(`param-wiki-${id}`), id).toHaveCount(1)
+    }
   })
 
-  test('an edited filter stages, and only that one', async ({ page }) => {
-    await openFilterPlanner(page)
-    await page.getByTestId('filter-planner-ATC_RAT_RLL_FLTD').fill('42')
-    await expect(page.getByTestId('filter-planner-stage')).toContainText('Stage 1 change')
+  test('the tracking mode is a named list, not a raw number', async ({ page }) => {
+    await openFilterEditor(page)
+    const select = page.locator('label', { hasText: 'Notch tracking mode' }).getByRole('combobox')
+    await expect(select).toBeVisible()
+    await expect(select.locator('option', { hasText: 'ESC Telemetry' })).toHaveCount(1)
   })
 
-  test('the bandwidth suggestion is half the centre, and opt-in', async ({ page }) => {
-    // ArduPilot: "typically set to half the base frequency". Offered, not applied.
-    await openFilterPlanner(page)
-    await page.getByTestId('filter-planner-INS_HNTCH_FREQ').fill('100')
+  test('the option bitmasks render as per-bit toggles', async ({ page }) => {
+    // INS_HNTCH_OPTS has 7 bits and INS_HNTCH_HMNCS 8. Without bitmask
+    // metadata these were one integer field each.
+    await openFilterEditor(page)
+    await expect(page.getByTestId('filter-planner-panel').locator('.scoped-bitmask-bit')).toHaveCount(15)
+    await expect(page.getByText('Multi-Source', { exact: true })).toBeVisible()
+  })
+
+  test('the documented suggestions fill a field rather than applying themselves', async ({ page }) => {
+    // ArduPilot: bandwidth is typically half the base frequency. Offered as a
+    // button; nothing is derived on the operator's behalf.
+    await openFilterEditor(page)
     const fill = page.getByTestId('filter-planner-fill-bw')
-    await expect(fill).toContainText('50')
+    await expect(fill).toContainText('40')
     await fill.click()
-    await expect(page.getByTestId('filter-planner-INS_HNTCH_BW')).toHaveValue('50')
-  })
-
-  test('ESC telemetry suggests REF = 1', async ({ page }) => {
-    // ArduPilot: REF is 1 for RPM and ESC-telemetry tracking, and a REF of
-    // zero disables dynamic updates entirely.
-    await openFilterPlanner(page)
-    await page.getByTestId('filter-planner-INS_HNTCH_MODE-select').selectOption('3')
-    const fill = page.getByTestId('filter-planner-fill-ref')
-    await expect(fill).toContainText('1')
-    await fill.click()
-    await expect(page.getByTestId('filter-planner-INS_HNTCH_REF')).toHaveValue('1')
-  })
-
-  test('names the notch option bits', async ({ page }) => {
-    await openFilterPlanner(page)
-    await page.getByTestId('filter-planner-INS_HNTCH_OPTS').fill('22')
-    await expect(page.getByTestId('filter-planner-opts-described')).toContainText('Multi-Source')
+    await expect(page.getByTestId('filter-planner-panel')).toContainText('40')
   })
 
   test('fits a phone without overflowing', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await openFilterPlanner(page)
+    await openFilterEditor(page)
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )

@@ -5091,6 +5091,28 @@ export function App() {
 
   // Staged filter values, for the task-card badge. Same id set the widget
   // derives, so the badge reflects that widget rather than every filter edit.
+  // Filter parameters grouped for the editor, in a deliberate order and only
+  // where the vehicle actually reports them -- a board that does not expose a
+  // parameter should show nothing rather than an empty box.
+  const filterEditorParameters = useMemo(() => {
+    const byId = new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter]))
+    const pick = (ids: readonly string[]) =>
+      ids.map((id) => byId.get(id)).filter((parameter): parameter is ParameterState => parameter !== undefined)
+    return {
+      gyro: pick(['INS_GYRO_FILTER', 'INS_ACCEL_FILTER']),
+      rate: pick([
+        'ATC_RAT_RLL_FLTT', 'ATC_RAT_RLL_FLTE', 'ATC_RAT_RLL_FLTD',
+        'ATC_RAT_PIT_FLTT', 'ATC_RAT_PIT_FLTE', 'ATC_RAT_PIT_FLTD',
+        'ATC_RAT_YAW_FLTT', 'ATC_RAT_YAW_FLTE', 'ATC_RAT_YAW_FLTD'
+      ]),
+      notch: pick([
+        'INS_HNTCH_ENABLE', 'INS_HNTCH_MODE', 'INS_HNTCH_REF',
+        'INS_HNTCH_FREQ', 'INS_HNTCH_BW', 'INS_HNTCH_HMNCS',
+        'INS_HNTCH_OPTS', 'INS_HNTCH_FM_RAT'
+      ])
+    }
+  }, [snapshot.parameters])
+
   const filtersFromGyroStagedCount = useMemo(
     () =>
       Array.from(parameterDraftById.keys()).filter(
@@ -9262,9 +9284,15 @@ export function App() {
           }}
           filtersFromGyroSlot={
             <FilterPlannerView
+              gyroParameters={filterEditorParameters.gyro}
+              rateParameters={filterEditorParameters.rate}
+              notchParameters={filterEditorParameters.notch}
+              // The shared renderer: bitmask -> checkbox grid, enum -> select,
+              // otherwise a number, each with the "i" bubble and wiki link.
+              renderField={renderMetadataParameterField}
               liveValues={new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))}
-              stagedIds={new Set(parameterDraftById.keys())}
-              onStage={handleStageInitialTuneParameters}
+              editedValues={editedValues}
+              onSetDraft={setDraft}
               disabled={busyAction !== undefined}
             />
           }
