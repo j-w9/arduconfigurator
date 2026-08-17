@@ -17,11 +17,24 @@ const metadataCatalog = normalizeFirmwareMetadata(arducopterMetadata)
 
 test('metadata catalog exposes grouped presets and a dedicated presets view', () => {
   assert.ok(metadataCatalog.appViews.some((view) => view.id === 'presets'))
-  assert.equal(metadataCatalog.presetGroups.length, 3)
+  // Asserted by IDENTITY, not by count. The exact-count version broke the
+  // moment a group was added, which says nothing about whether the catalog is
+  // healthy -- the thing worth protecting is that these groups exist and are
+  // reachable, not that there are exactly N of them.
+  for (const groupId of ['starter-config', 'flight-feel', 'acro-rates', 'airframes']) {
+    assert.ok(
+      metadataCatalog.presetGroups.some((group) => group.id === groupId),
+      `expected a "${groupId}" preset group`
+    )
+  }
   assert.ok(metadataCatalog.presets.length >= 6)
   assert.ok(metadataCatalog.presetsByGroup['starter-config'].length >= 4)
   assert.ok(metadataCatalog.presetsByGroup['flight-feel'].length >= 3)
   assert.ok(metadataCatalog.presetsByGroup['acro-rates'].length >= 3)
+  // Complete-airframe configs are whole-vehicle, so one is enough to be a
+  // group -- but it must not be EMPTY, which would leave a tab with nothing in
+  // it.
+  assert.ok((metadataCatalog.presetsByGroup['airframes'] ?? []).length >= 1)
 })
 
 test('every vehicle bundle ships a frame-selection starter-config preset group', () => {
