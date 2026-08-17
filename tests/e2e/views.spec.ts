@@ -177,6 +177,19 @@ async function openView(page: Page, viewId: string): Promise<void> {
   await page.getByTestId(`view-button-${viewId}`).click()
 }
 
+/**
+ * Open the flight-mode panel.
+ *
+ * It was its own top-level Modes tab until that overlapped Receiver's Flight
+ * Modes sub-tab; the panel now lives in Config under its own category. Same
+ * panel, same parameters, one level deeper — hence a helper rather than
+ * openView(page, 'modes') repeated at every call site.
+ */
+async function openFlightModes(page: Page): Promise<void> {
+  await openView(page, 'config')
+  await page.locator('.tab-strip__tab', { hasText: 'Flight Modes' }).first().click()
+}
+
 // The Config tab groups its sections into top-tab categories; click the tab that
 // holds a given section before asserting on it.
 const CONFIG_SECTION_CATEGORY: Record<string, string> = {
@@ -1056,9 +1069,7 @@ test.describe('Modes view', () => {
   test('renders six slot rows with the demo live slot highlighted', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await openView(page, 'modes')
-
-    await expect(page.getByTestId('workspace-view-title')).toHaveText('Modes')
+    await openFlightModes(page)
     await expect(page.getByTestId('modes-slot-table')).toBeVisible()
 
     for (const slot of [1, 2, 3, 4, 5, 6]) {
@@ -1075,7 +1086,7 @@ test.describe('Modes view', () => {
   test('deep-link button navigates to Receiver flight-mode task', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await openView(page, 'modes')
+    await openFlightModes(page)
 
     await page.getByTestId('modes-go-to-flight-mode-task').click()
 
@@ -2685,7 +2696,7 @@ test.describe('Receiver flight-mode labels', () => {
   test('flight-mode slots render known mode names (no "Mode N" placeholders)', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await openView(page, 'modes')
+    await openFlightModes(page)
     const table = page.getByTestId('modes-slot-table')
     await expect(table).toBeVisible()
     // Demo seeds all six copter slots: FLTMODE1=0 (Stabilize), 2=5 (Loiter),
@@ -2712,7 +2723,7 @@ test.describe('Receiver flight-mode labels', () => {
     // different raw number without leaving for the raw Parameters tab.
     await page.goto('/')
     await connectViaHeader(page)
-    await openView(page, 'modes')
+    await openFlightModes(page)
     const table = page.getByTestId('modes-slot-table')
     const slot5 = table.getByTestId('modes-slot-5')
     const select = slot5.locator('select')
@@ -3468,8 +3479,7 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
-    await openView(page, 'modes')
-    await expect(page.getByTestId('workspace-view-title')).toHaveText('Modes')
+    await openFlightModes(page)
     // FBWA is a Plane-only mode label (slot 2 = mode value 5 in the mock).
     // Its presence in the slot-2 dropdown proves the Plane catalog is
     // driving the Modes view (the mode cell is now an editable
@@ -4375,8 +4385,7 @@ test.describe('ArduRover / ArduSub demo', () => {
     // Mode cell is now an editable dropdown, so we assert the selected
     // option text on slot 6 rather than the table's overall text content
     // (which now also includes every option in every slot's <select>).
-    await openView(page, 'modes')
-    await expect(page.getByTestId('workspace-view-title')).toHaveText('Modes')
+    await openFlightModes(page)
     const modesTable = page.getByTestId('modes-slot-table')
     await expect(modesTable.getByTestId('modes-slot-6').locator('select option:checked')).toHaveText('Steering')
 
@@ -4505,8 +4514,7 @@ test.describe('ArduRover / ArduSub demo', () => {
     // Modes: ArduSub has no RC mode-switch channel (joystick-bound). The
     // view shows an honest note plus the live heartbeat mode only — not the
     // inapplicable Copter PWM slot table or the Receiver deep-link.
-    await openView(page, 'modes')
-    await expect(page.getByTestId('workspace-view-title')).toHaveText('Modes')
+    await openFlightModes(page)
     await expect(page.getByTestId('modes-joystick-note')).toBeVisible()
     await expect(page.getByTestId('modes-joystick-note')).toContainText(
       'joystick button assignments'
@@ -6153,5 +6161,49 @@ test.describe('Servos ▸ Gimbal and Flow & Lidar', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )
     expect(overflow, 'the Servos sub-tabs must not widen the page').toBeLessThanOrEqual(2)
+  })
+})
+
+test.describe('Flight modes moved from a tab into Config', () => {
+  // The top-level Modes tab overlapped Receiver's own Flight Modes sub-tab.
+  // The tab is gone and its panel lives in Config; Receiver is untouched. Both
+  // read and write the same parameters, so configuring modes from either place
+  // is the same edit.
+  test('there is no top-level Modes tab any more', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await expect(page.getByTestId('view-button-modes')).toHaveCount(0)
+  })
+
+  test('Config has a Flight Modes tab showing the mode panel', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('view-button-config').click()
+
+    const tab = page.locator('.tab-strip__tab', { hasText: 'Flight Modes' }).first()
+    await expect(tab).toBeVisible()
+    await tab.click()
+    // The panel itself, not just a heading: the mode channel and the slot
+    // assignments are what made the old tab worth keeping.
+    await expect(page.getByText(/Mode channel/i).first()).toBeVisible({ timeout: 15_000 })
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )
+    expect(overflow, 'the Flight Modes panel must not widen the page').toBeLessThanOrEqual(2)
+  })
+
+  test('Receiver keeps its own Flight Modes sub-tab', async ({ page }) => {
+    // The move must not have taken the receiver workflow's copy with it.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('view-button-receiver').click()
+    await expect(page.locator('.tab-strip__tab', { hasText: 'Flight Modes' }).first()).toBeVisible()
   })
 })

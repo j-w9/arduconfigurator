@@ -34,7 +34,15 @@ export interface ConfigSectionField {
 }
 
 /** Config category ids — the top tab groups. */
-export type ConfigCategoryId = 'airframe' | 'sensors' | 'gps' | 'rc' | 'arming' | 'power' | 'system'
+export type ConfigCategoryId =
+  | 'airframe'
+  | 'sensors'
+  | 'gps'
+  | 'rc'
+  | 'flight-modes'
+  | 'arming'
+  | 'power'
+  | 'system'
 
 export interface ConfigCategory {
   id: ConfigCategoryId
@@ -55,6 +63,11 @@ export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
   { id: 'sensors', label: 'Sensors' },
   { id: 'gps', label: 'GPS' },
   { id: 'rc', label: 'RC' },
+  // Flight modes sat in a top-level Modes tab whose content overlapped
+  // Receiver's own Flight Modes sub-tab. The tab is gone; the same panel lives
+  // here, next to RC, so mode setup is reachable from configuration as well as
+  // from the receiver workflow.
+  { id: 'flight-modes', label: 'Flight Modes' },
   { id: 'arming', label: 'Arming' },
   // Power was its own nav tab. It keeps its own panel — battery monitor
   // selection, live telemetry and its own staged-change review — and now lives

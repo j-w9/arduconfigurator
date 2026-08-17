@@ -63,7 +63,8 @@ test.describe('visual regression: high-traffic views', () => {
   test('Modes view matches baseline', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await openView(page, 'modes')
+    await openView(page, 'config')
+    await page.locator('.tab-strip__tab', { hasText: 'Flight Modes' }).first().click()
     await expect(page.getByTestId('workspace-view-title')).toHaveText('Modes')
     await expect(page).toHaveScreenshot('modes.png', { fullPage: true, maxDiffPixelRatio: 0.02 })
   })

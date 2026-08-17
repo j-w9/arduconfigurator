@@ -255,7 +255,6 @@ export const arduroverMetadata: FirmwareMetadataBundle = {
     { id: 'ports', label: 'Ports', description: 'Serial roles, GPS links, and peripheral setup.', order: 2 },
     { id: 'osd', label: 'OSD', description: 'FPV display backend, screen mode, and overlay switching.', order: 4 },
     { id: 'receiver', label: 'Receiver', description: 'RC mapping, ranges, and drive modes.', order: 5 },
-    { id: 'modes', label: 'Modes', description: 'Rover drive-mode switch assignments and live position.', order: 6 },
     { id: 'motors', label: 'Motors', description: 'Throttle / skid-motor output assignments and drive-config motor behavior.', order: 7 },
     { id: 'servos', label: 'Servos', description: 'Steering servo and aux peripheral servo outputs.', order: 7.5 },
     { id: 'failsafe', label: 'Failsafe', description: 'Rover throttle/GCS failsafe and battery failsafe overview.', order: 9 },

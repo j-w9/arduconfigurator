@@ -485,12 +485,6 @@ export const arduplaneMetadata: FirmwareMetadataBundle = {
       order: 5
     },
     {
-      id: 'modes',
-      label: 'Modes',
-      description: 'Plane flight-mode switch assignments and live position.',
-      order: 6
-    },
-    {
       id: 'motors',
       label: 'Motors',
       description: 'Propulsion motors (forward thrust + QuadPlane lift motors): output map, direction tests, ESC protocol.',

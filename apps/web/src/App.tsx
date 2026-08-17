@@ -6314,6 +6314,59 @@ export function App() {
   // scopes are visible together on this tab: Config's, and Power's own for the
   // battery params. That is the accepted trade of keeping the panel intact
   // rather than dissolving it into Config's field grid.
+  /**
+   * The flight-mode panel, formerly the top-level Modes tab.
+   *
+   * That tab overlapped Receiver's own Flight Modes sub-tab, so it is gone and
+   * this renders inside Config instead. Receiver keeps its version untouched --
+   * the two read and write the same parameters, so configuring modes from
+   * either place is the same edit.
+   */
+  function renderFlightModesFooter(): ReactNode {
+    return (
+        <ModesView
+          modeChannelLabel={configuredModeChannel !== undefined ? `CH${configuredModeChannel}` : 'Not configured'}
+          modeChannelParamName={snapshot.vehicle?.vehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH'}
+          modeChannelRcLogicClaim={configuredModeChannel !== undefined ? rcLogicChannelClaims.get(configuredModeChannel) : undefined}
+          joystickModeNote={
+            snapshot.vehicle?.vehicle === 'ArduSub'
+              ? 'ArduSub selects modes via joystick button assignments (BTNn_FUNCTION), not an RC mode-switch channel — configure them in the Parameters view.'
+              : undefined
+          }
+          currentSlotLabel={modeSwitchEstimate.estimatedSlot !== undefined ? `Slot ${modeSwitchEstimate.estimatedSlot}` : 'Waiting'}
+          currentSlotSubtext={modeSwitchEstimate.pwm !== undefined ? `${modeSwitchEstimate.pwm} µs live` : 'No live RC input.'}
+          activeModeLabel={snapshot.vehicle?.flightMode ?? 'Unknown'}
+          slots={MODES_SLOT_DEFINITIONS.map((slot) => {
+            const paramId = modeSlotParamId(snapshot.vehicle?.vehicle, slot.position)
+            const paramValue = readRoundedParameter(snapshot, paramId)
+            // Offer what the vehicle says it can fly, not just what the
+            // catalogue knows — otherwise a fork's custom mode cannot be
+            // assigned from this dropdown at all.
+            const parameter = withFlightModeOptions(
+              selectParameterById(snapshot, paramId),
+              snapshot.availableModes
+            )
+            return {
+              position: slot.position,
+              pwmLabel: slot.pwmLabel,
+              modeLabel: formatModeAssignment(paramValue, snapshot.vehicle?.vehicle, snapshot.availableModes),
+              paramSynced: paramValue !== undefined,
+              isActive: modeSwitchEstimate.estimatedSlot === slot.position,
+              parameter
+            }
+          })}
+          fiberModeAvailable={isFiberModeAvailable(snapshot)}
+          editedValues={editedValues}
+          draftStatusById={parameterDraftById}
+          onChangeSlot={(paramId, value) => setDraft(paramId, value)}
+          onOpenFlightModeTask={() => {
+            setActiveViewId('receiver')
+            setReceiverTaskOverride('flight-modes')
+          }}
+        />
+    )
+  }
+
   function renderPowerSectionFooter(): ReactNode {
     return (
         <PowerView
@@ -8697,48 +8750,6 @@ export function App() {
         />
         ) : null}
 
-        {activeViewId === 'modes' ? (
-        <ModesView
-          modeChannelLabel={configuredModeChannel !== undefined ? `CH${configuredModeChannel}` : 'Not configured'}
-          modeChannelParamName={snapshot.vehicle?.vehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH'}
-          modeChannelRcLogicClaim={configuredModeChannel !== undefined ? rcLogicChannelClaims.get(configuredModeChannel) : undefined}
-          joystickModeNote={
-            snapshot.vehicle?.vehicle === 'ArduSub'
-              ? 'ArduSub selects modes via joystick button assignments (BTNn_FUNCTION), not an RC mode-switch channel — configure them in the Parameters view.'
-              : undefined
-          }
-          currentSlotLabel={modeSwitchEstimate.estimatedSlot !== undefined ? `Slot ${modeSwitchEstimate.estimatedSlot}` : 'Waiting'}
-          currentSlotSubtext={modeSwitchEstimate.pwm !== undefined ? `${modeSwitchEstimate.pwm} µs live` : 'No live RC input.'}
-          activeModeLabel={snapshot.vehicle?.flightMode ?? 'Unknown'}
-          slots={MODES_SLOT_DEFINITIONS.map((slot) => {
-            const paramId = modeSlotParamId(snapshot.vehicle?.vehicle, slot.position)
-            const paramValue = readRoundedParameter(snapshot, paramId)
-            // Offer what the vehicle says it can fly, not just what the
-            // catalogue knows — otherwise a fork's custom mode cannot be
-            // assigned from this dropdown at all.
-            const parameter = withFlightModeOptions(
-              selectParameterById(snapshot, paramId),
-              snapshot.availableModes
-            )
-            return {
-              position: slot.position,
-              pwmLabel: slot.pwmLabel,
-              modeLabel: formatModeAssignment(paramValue, snapshot.vehicle?.vehicle, snapshot.availableModes),
-              paramSynced: paramValue !== undefined,
-              isActive: modeSwitchEstimate.estimatedSlot === slot.position,
-              parameter
-            }
-          })}
-          fiberModeAvailable={isFiberModeAvailable(snapshot)}
-          editedValues={editedValues}
-          draftStatusById={parameterDraftById}
-          onChangeSlot={(paramId, value) => setDraft(paramId, value)}
-          onOpenFlightModeTask={() => {
-            setActiveViewId('receiver')
-            setReceiverTaskOverride('flight-modes')
-          }}
-        />
-        ) : null}
 
       </section>
       ) : null}
@@ -9743,6 +9754,16 @@ export function App() {
             }
             return section
           }).concat([
+            {
+              id: 'flight-modes',
+              title: 'Flight modes',
+              description:
+                'Which mode each switch position selects, the mode channel, and the live position reported by the vehicle.',
+              category: 'flight-modes' as const,
+              wide: true,
+              fields: [],
+              footer: renderFlightModesFooter()
+            },
             {
               id: 'power',
               title: 'Battery & power',

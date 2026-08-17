@@ -678,12 +678,6 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       order: 5
     },
     {
-      id: 'modes',
-      label: 'Modes',
-      description: 'Flight-mode switch assignments and live position.',
-      order: 6
-    },
-    {
       id: 'motors',
       label: 'Motors',
       description: 'Frame class, motor map, direction tests, ESC protocol, and verification review.',

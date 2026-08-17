@@ -484,7 +484,11 @@ test('Log-backend formatting stays user-facing', () => {
 test('arduplaneMetadata normalizes without throwing and exposes the Plane catalog firmware tag', () => {
   const metadata = normalizeFirmwareMetadata(arduplaneMetadata)
   assert.equal(metadata.firmware, 'ArduPlane')
-  assert.ok(metadata.appViews.length >= 14)
+  // A floor, not a fixed count: it guards "the catalog produced a real nav"
+  // rather than any particular number of tabs. Dropped from 14 when the Modes
+  // tab was folded into Config, where its content already overlapped
+  // Receiver's own Flight Modes sub-tab.
+  assert.ok(metadata.appViews.length >= 12)
   assert.ok(metadata.categories.some((category) => category.id === 'airframe'))
   assert.ok(metadata.categories.some((category) => category.id === 'failsafe'))
 })
@@ -549,7 +553,11 @@ test('arduplane AUTOTUNE_AXES renders as a fixed-wing bitmask (Roll/Pitch/Yaw), 
 test('arduroverMetadata normalizes and exposes a real Rover catalog (not a Copter clone)', () => {
   const metadata = normalizeFirmwareMetadata(arduroverMetadata)
   assert.equal(metadata.firmware, 'ArduRover')
-  assert.ok(metadata.appViews.length >= 14)
+  // A floor, not a fixed count: it guards "the catalog produced a real nav"
+  // rather than any particular number of tabs. Dropped from 14 when the Modes
+  // tab was folded into Config, where its content already overlapped
+  // Receiver's own Flight Modes sub-tab.
+  assert.ok(metadata.appViews.length >= 12)
   assert.ok(metadata.categories.some((category) => category.id === 'steering'))
   assert.ok(metadata.categories.some((category) => category.id === 'drive'))
 
@@ -817,7 +825,11 @@ test('arduroverMetadata: the IDs TuningRoverSection surfaces are all wired (sail
 test('ardusubMetadata normalizes and exposes a real Sub catalog (not a Copter clone)', () => {
   const metadata = normalizeFirmwareMetadata(ardusubMetadata)
   assert.equal(metadata.firmware, 'ArduSub')
-  assert.ok(metadata.appViews.length >= 14)
+  // A floor, not a fixed count: it guards "the catalog produced a real nav"
+  // rather than any particular number of tabs. Dropped from 14 when the Modes
+  // tab was folded into Config, where its content already overlapped
+  // Receiver's own Flight Modes sub-tab.
+  assert.ok(metadata.appViews.length >= 12)
   assert.ok(metadata.categories.some((category) => category.id === 'frame'))
   assert.ok(metadata.categories.some((category) => category.id === 'joystick'))
 

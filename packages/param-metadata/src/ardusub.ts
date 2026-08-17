@@ -236,7 +236,6 @@ export const ardusubMetadata: FirmwareMetadataBundle = {
     { id: 'ports', label: 'Ports', description: 'Serial roles, GPS links, and peripheral setup.', order: 2 },
     { id: 'osd', label: 'OSD', description: 'Display backend, screen mode, and overlay switching.', order: 4 },
     { id: 'receiver', label: 'Receiver', description: 'Joystick/RC mapping and ranges.', order: 5 },
-    { id: 'modes', label: 'Modes', description: 'Sub mode behavior and live state.', order: 6 },
     { id: 'motors', label: 'Motors', description: 'Thruster output assignments and frame config.', order: 7 },
     { id: 'servos', label: 'Servos', description: 'Auxiliary servo outputs — gimbal, gripper, manipulator, etc.', order: 7.5 },
     { id: 'failsafe', label: 'Failsafe', description: 'Leak, pressure, temperature, GCS, and battery failsafe overview.', order: 9 },
