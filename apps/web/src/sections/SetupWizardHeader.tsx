@@ -102,6 +102,17 @@ export function SetupWizardHeader({
           <button
             key={section.id}
             type="button"
+            /* The wizard's primary navigation, so it gets a stable hook like
+               every other interactive surface here. Without it an e2e has to
+               target the CSS class, which couples the test to styling and
+               cannot name WHICH step it means. The state also travels as data
+               attributes: a test asserting the flow gates correctly needs to
+               read complete/current/locked, and scraping the class string for
+               that is exactly the brittleness the testid convention exists to
+               avoid. */
+            data-testid={`setup-step-${section.id}`}
+            data-step-state={section.sequenceState}
+            data-step-status={section.status}
             className={`setup-wizard-step${section.id === selectedSetupSection.id ? ' is-active' : ''}${section.status === 'complete' ? ' is-complete' : ''}${section.sequenceState === 'current' ? ' is-current' : ''}${section.sequenceState === 'locked' ? ' is-locked' : ''}`}
             onClick={() => onSelectStep(section.id)}
             disabled={!guidedSetupTestingShortcutActive && section.sequenceState === 'locked'}
