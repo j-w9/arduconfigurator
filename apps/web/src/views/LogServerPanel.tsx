@@ -43,8 +43,8 @@ export function LogServerPanel(props: LogServerPanelProps): ReactElement {
         <div className="log-server-panel__copy">
           <strong>Log server</strong>
           <p>
-            Signed in as <code>{signedInAs.username}</code> at <code>{signedInAs.serverUrl}</code>. Uploaded logs go to
-            your folder there and are visible only to you.
+            Signed in as <code>{signedInAs.username}</code> at <code>{signedInAs.serverUrl}</code>. Uploads land in
+            your folder there. Anyone signed in to that server can read them; only you can delete your own.
           </p>
         </div>
         <div className="button-row">

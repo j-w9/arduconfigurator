@@ -84,6 +84,14 @@ byte.
    disabled, because a control that only ever says "sign in first" advertises a
    capability most operators have not set up.
 
+.. important::
+
+   **Uploads are not private to you.** Each account uploads into its own folder,
+   but that folder decides where files land, not who may read them: any signed-in
+   user on the server can download any log or configuration file on it. Deletion
+   is the asymmetric half — only the owner of a file can remove it. Treat the
+   server as a shared archive for the people who hold accounts on it.
+
 MAVLink Inspector
 -----------------
 
