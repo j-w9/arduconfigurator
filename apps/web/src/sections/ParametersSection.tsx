@@ -68,6 +68,9 @@ export interface ParametersSectionProps {
   formatCategoryLabel: (categoryId: string | undefined) => string
   parameterSearch: string
   setParameterSearch: Dispatch<SetStateAction<string>>
+  /** Strict search: literal substring instead of fuzzy scoring. */
+  parameterExactSearch: boolean
+  setParameterExactSearch: Dispatch<SetStateAction<boolean>>
   selectedParameterId: string | undefined
   setSelectedParameterId: Dispatch<SetStateAction<string | undefined>>
   filteredParameters: readonly ParameterState[]
@@ -158,6 +161,8 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     formatCategoryLabel,
     parameterSearch,
     setParameterSearch,
+    parameterExactSearch,
+    setParameterExactSearch,
     selectedParameterId,
     setSelectedParameterId,
     filteredParameters,
@@ -301,7 +306,10 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   // makes wildcard search appear broken. Selection, Select all, and Drop
   // selected operate on visible rows only, so a filtered bulk drop can
   // never touch rows the search is hiding.
-  const searchPredicate = useMemo(() => parameterSearchPredicate(parameterSearch), [parameterSearch])
+  const searchPredicate = useMemo(
+    () => parameterSearchPredicate(parameterSearch, parameterExactSearch),
+    [parameterSearch, parameterExactSearch]
+  )
   // Category filter (in addition to the text search). 'all' = no category
   // restriction. Options are the distinct categories present in the synced
   // tree, label-sorted.
@@ -648,6 +656,24 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             onChange={(event) => setParameterSearch(event.target.value)}
             placeholder="Search parameters (e.g. ARMING_*, *VOLT*)"
           />
+          {/* Fuzzy search finds a name you half-remember; it also returns
+            * neighbours you did not ask for. This is the operator saying
+            * "only what I typed" -- and it is a checkbox rather than a mode
+            * switch because the useful move is toggling it against the same
+            * query. Wildcards are literal either way, so the box has no
+            * effect on a query containing * or ?. */}
+          <label
+            className="parameter-show-changed"
+            title="Match the typed text literally (substring of the name or label) instead of fuzzily. Wildcard searches are literal either way."
+          >
+            <input
+              type="checkbox"
+              data-testid="parameter-exact-search-toggle"
+              checked={parameterExactSearch}
+              onChange={(event) => setParameterExactSearch(event.target.checked)}
+            />
+            <span>Exact match</span>
+          </label>
           <select
             data-testid="parameter-category-filter"
             aria-label="Filter by category"

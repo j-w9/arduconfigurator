@@ -196,3 +196,43 @@ test.describe('Parameter-group presets', () => {
     expect(overflow).toBeLessThanOrEqual(2)
   })
 })
+
+test.describe('Parameter search strictness', () => {
+  // Fuzzy search is the default because it finds a name you half-remember. It
+  // also returns every row whose letters appear in order -- 'FS_THR' pulls in
+  // FS_EKF_THRESH -- which is the wrong answer when you know the name already.
+  test('the Exact match box drops the fuzzy neighbours', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await connectAndOpenParameters(page)
+
+    const rows = page.locator('.parameter-row:not(.parameter-row--header)')
+    await page.getByTestId('parameter-search-input').fill('FS_THR')
+    await expect(page.locator('.parameter-row[data-param-row="FS_EKF_THRESH"]')).toBeVisible()
+    const fuzzyCount = await rows.count()
+
+    await page.getByTestId('parameter-exact-search-toggle').check()
+    // The rows that actually contain the typed text survive; the letters-in-order
+    // neighbour does not.
+    await expect(page.locator('.parameter-row[data-param-row="FS_THR_ENABLE"]')).toBeVisible()
+    await expect(page.locator('.parameter-row[data-param-row="FS_EKF_THRESH"]')).toHaveCount(0)
+    expect(await rows.count()).toBeLessThan(fuzzyCount)
+
+    // Unticking restores the wider set: a filter, not a mode you get stuck in.
+    await page.getByTestId('parameter-exact-search-toggle').uncheck()
+    await expect(rows).toHaveCount(fuzzyCount)
+  })
+
+  test('wildcards behave the same either way', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await connectAndOpenParameters(page)
+
+    const rows = page.locator('.parameter-row:not(.parameter-row--header)')
+    await page.getByTestId('parameter-search-input').fill('BATT*MONITOR')
+    await expect(rows.first()).toBeVisible()
+    const globCount = await rows.count()
+    expect(globCount).toBeGreaterThan(0)
+
+    await page.getByTestId('parameter-exact-search-toggle').check()
+    await expect(rows).toHaveCount(globCount)
+  })
+})

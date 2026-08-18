@@ -789,6 +789,8 @@ export function App() {
   const {
     parameterSearch,
     setParameterSearch,
+    parameterExactSearch,
+    setParameterExactSearch,
     selectedParameterId,
     setSelectedParameterId,
     parameterNotice,
@@ -2103,8 +2105,8 @@ export function App() {
   // parameter set on every render and made the effect below re-fire each
   // tick (its [filteredParameters] dep was a new array every render).
   const filteredParameters = useMemo<ParameterState[]>(
-    () => buildFilteredParameters({ snapshot, parameterSearch, metadataCatalog }),
-    [snapshot.parameters, parameterSearch, metadataCatalog]
+    () => buildFilteredParameters({ snapshot, parameterSearch, exactSearch: parameterExactSearch, metadataCatalog }),
+    [snapshot.parameters, parameterSearch, parameterExactSearch, metadataCatalog]
   )
   const [parameterEnumOverrides, setParameterEnumOverrides] = useState<ReadonlySet<string>>(() => new Set<string>())
   const {
@@ -9858,6 +9860,8 @@ export function App() {
           scrollToChangesRequestId={showChangesRequestId}
           formatCategoryLabel={formatCategoryLabel}
           parameterSearch={parameterSearch}
+          parameterExactSearch={parameterExactSearch}
+          setParameterExactSearch={setParameterExactSearch}
           setParameterSearch={setParameterSearch}
           selectedParameterId={selectedParameterId}
           setSelectedParameterId={setSelectedParameterId}

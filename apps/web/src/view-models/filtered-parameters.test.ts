@@ -102,3 +102,43 @@ describe('parameterSearchPredicate', () => {
     expect(match('GPS_TYPE', undefined)).toBe(false)
   })
 })
+
+describe('exact search', () => {
+  // The complaint this answers: fuzzy scoring returns every id whose letters
+  // appear in order, so asking for one parameter hands back its neighbours.
+  const params = [param('BATT_MONITOR'), param('BATT2_MONITOR'), param('BRD_SAFETY_MASK'), param('ATC_RAT_RLL_P')]
+
+  it('returns only rows containing the typed text', () => {
+    const fuzzy = buildFilteredParameters(inputs(params, 'BATT_MONITOR'))
+    const exact = buildFilteredParameters({ ...inputs(params, 'BATT_MONITOR'), exactSearch: true })
+    expect(ids(exact)).toEqual(['BATT_MONITOR'])
+    // Guard the premise: without the box this really does bring friends.
+    expect(fuzzy.length).toBeGreaterThan(exact.length)
+  })
+
+  it('is case-insensitive and matches mid-name', () => {
+    const result = buildFilteredParameters({ ...inputs(params, 'rat_rll'), exactSearch: true })
+    expect(ids(result)).toEqual(['ATC_RAT_RLL_P'])
+  })
+
+  it('matches the label as well as the id', () => {
+    const result = buildFilteredParameters({
+      ...inputs(params, 'safety', { BRD_SAFETY_MASK: 'Safety button mask' }),
+      exactSearch: true
+    })
+    expect(ids(result)).toEqual(['BRD_SAFETY_MASK'])
+  })
+
+  it('leaves wildcard queries alone', () => {
+    const withBox = buildFilteredParameters({ ...inputs(params, 'BATT*MONITOR'), exactSearch: true })
+    const withoutBox = buildFilteredParameters(inputs(params, 'BATT*MONITOR'))
+    expect(ids(withBox)).toEqual(ids(withoutBox))
+    expect(ids(withBox)).toEqual(['BATT_MONITOR', 'BATT2_MONITOR'])
+  })
+
+  it('drives the shared predicate the staged-review list uses', () => {
+    const strict = parameterSearchPredicate('BATT_MONITOR', true)
+    expect(strict?.('BATT_MONITOR', undefined)).toBe(true)
+    expect(strict?.('BATT2_MONITOR', undefined)).toBe(false)
+  })
+})

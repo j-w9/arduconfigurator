@@ -20,7 +20,15 @@ pre-connect view keep the stable set, so each value's options and limits match
 the running firmware. A **search** box — pinned to the top of the editor so it stays in reach while you
 scroll the table — filters by name with wildcards (for example ``ARMING_*`` or
 ``*VOLT*``), and a **category** dropdown narrows to a single group such as
-rangefinder, gimbal, or serial. A **Refresh** button pulls the tree fresh from
+rangefinder, gimbal, or serial.
+
+Without wildcards the search is **fuzzy**: it matches names and labels whose
+letters appear in the order you typed them, best match first. That is what you
+want when you half-remember a name, and not what you want when you already know
+it — searching ``FS_THR`` also turns up ``FS_EKF_THRESH``. Tick **Exact match**
+to filter to rows that literally contain what you typed, in the controller's own
+order, with nothing scored or reordered around them. A wildcard search is
+literal either way, so the box makes no difference to ``ARMING_*``. A **Refresh** button pulls the tree fresh from
 the controller, bypassing the auto-refresh. Each row is compact — name, current
 value, and the draft editor — so more of the tree stays on screen.
 

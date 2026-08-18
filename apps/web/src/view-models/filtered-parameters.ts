@@ -1,7 +1,8 @@
 // Parameter-table search/filter for the raw Parameters view.
 //
-// Hides alias-mirror rows, then applies the search query (glob when it
-// contains *​/?, otherwise fuzzy-scored + relevance-sorted).
+// Hides alias-mirror rows, then applies the search query: glob when it
+// contains *​/?, plain substring when the operator asks for an exact match,
+// otherwise fuzzy-scored + relevance-sorted.
 
 import type { ConfiguratorSnapshot, ParameterState } from '@arduconfig/ardupilot-core'
 import { fuzzyScoreFields, normalizeFirmwareMetadata } from '@arduconfig/param-metadata'
@@ -9,6 +10,18 @@ import { fuzzyScoreFields, normalizeFirmwareMetadata } from '@arduconfig/param-m
 export interface FilteredParametersInputs {
   snapshot: ConfiguratorSnapshot
   parameterSearch: string
+  /**
+   * Strict search: match the typed text literally instead of fuzzily.
+   *
+   * Fuzzy matching is right when you half-remember a name, and wrong when you
+   * know exactly what you want -- 'BATT_MONITOR' scores a hit on any id whose
+   * letters appear in that order, so the row you asked for arrives buried in
+   * neighbours. This is the operator saying "only what I typed".
+   *
+   * Wildcards are unaffected: a query containing * or ? is already literal
+   * everywhere else, so the glob branch runs either way.
+   */
+  exactSearch?: boolean
   metadataCatalog: ReturnType<typeof normalizeFirmwareMetadata>
 }
 
@@ -21,7 +34,8 @@ export interface FilteredParametersInputs {
  * ignores it.
  */
 export function parameterSearchPredicate(
-  parameterSearch: string
+  parameterSearch: string,
+  exactSearch = false
 ): ((id: string, label: string | undefined) => boolean) | null {
   const query = parameterSearch.trim()
   if (!query) {
@@ -30,6 +44,10 @@ export function parameterSearchPredicate(
   if (query.includes('*') || query.includes('?')) {
     const pattern = globToRegExp(query)
     return (id, label) => pattern.test(id) || pattern.test(label ?? '')
+  }
+  if (exactSearch) {
+    const needle = query.toLowerCase()
+    return (id, label) => id.toLowerCase().includes(needle) || (label ?? '').toLowerCase().includes(needle)
   }
   return (id, label) => fuzzyScoreFields(query, [id, label]) !== null
 }
@@ -52,7 +70,7 @@ function globToRegExp(query: string): RegExp {
 }
 
 export function buildFilteredParameters(inputs: FilteredParametersInputs): ParameterState[] {
-  const { snapshot, parameterSearch, metadataCatalog } = inputs
+  const { snapshot, parameterSearch, exactSearch = false, metadataCatalog } = inputs
 
     // Hide alias-mirror entries from the raw Parameters table so an
     // aliased pair (SYSID_THISMAV / MAV_SYSID, GPS_TYPE / GPS1_TYPE,
@@ -75,6 +93,17 @@ export function buildFilteredParameters(inputs: FilteredParametersInputs): Param
       return realParameters.filter((parameter) => {
         const label = metadataCatalog.parameters[parameter.id]?.label ?? parameter.definition?.label ?? ''
         return pattern.test(parameter.id) || pattern.test(label)
+      })
+    }
+    // Exact mode: contiguous, case-insensitive substring of the id or the
+    // label, in the controller's own order. No scoring, so nothing arrives
+    // that does not contain what was typed, and nothing is reordered around
+    // it either -- the list is the answer to the question as asked.
+    if (exactSearch) {
+      const needle = query.toLowerCase()
+      return realParameters.filter((parameter) => {
+        const label = metadataCatalog.parameters[parameter.id]?.label ?? parameter.definition?.label ?? ''
+        return parameter.id.toLowerCase().includes(needle) || label.toLowerCase().includes(needle)
       })
     }
     // Fuzzy match on id + label, then sort by relevance (best first). An

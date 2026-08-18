@@ -22,6 +22,9 @@ export interface ParameterFollowUp {
 export interface ParameterFeedback {
   parameterSearch: string
   setParameterSearch: Dispatch<SetStateAction<string>>
+  /** "Exact match" search: literal substring instead of fuzzy scoring. */
+  parameterExactSearch: boolean
+  setParameterExactSearch: Dispatch<SetStateAction<boolean>>
   selectedParameterId: string | undefined
   setSelectedParameterId: Dispatch<SetStateAction<string | undefined>>
   parameterNotice: ParameterNotice | undefined
@@ -44,6 +47,7 @@ export interface ParameterFeedback {
  */
 export function useParameterFeedback(): ParameterFeedback {
   const [parameterSearch, setParameterSearch] = useState('')
+  const [parameterExactSearch, setParameterExactSearch] = useState(false)
   const [selectedParameterId, setSelectedParameterId] = useState<string>()
   const [parameterNotice, setParameterNotice] = useState<ParameterNotice>()
   const [parameterFollowUp, setParameterFollowUp] = useState<ParameterFollowUp>()
@@ -51,6 +55,8 @@ export function useParameterFeedback(): ParameterFeedback {
   return {
     parameterSearch,
     setParameterSearch,
+    parameterExactSearch,
+    setParameterExactSearch,
     selectedParameterId,
     setSelectedParameterId,
     parameterNotice,
