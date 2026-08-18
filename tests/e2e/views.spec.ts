@@ -3978,7 +3978,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('tcal-start')).toBeVisible()
   })
 
-  test('Calibration: the Baro Thrust (VALT) card is Expert-gated and needs a log-server sign-in', async ({ page }) => {
+  test('Calibration: the Baro Thrust (VALT) card is absent without a log-server sign-in', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -3988,19 +3988,16 @@ test.describe('ArduPlane demo', () => {
     // Default (non-Expert): hidden.
     await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
 
-    // Expert mode reveals the card, but signed out it is the locked state: the
-    // calibration is fit from a hover log, so the log server is a prerequisite.
+    // Expert mode is not enough on its own. Signed out there is no card at all
+    // -- not a locked one -- because the calibration is fit from a hover log.
     await page.getByTestId('product-mode-expert').check()
-    const valt = page.getByTestId('calibration-card-valt')
-    await valt.scrollIntoViewIfNeeded()
-    await expect(valt).toContainText('Baro thrust calibration')
-    await expect(valt).toContainText('sign in required')
-    // The upload control must be absent, not merely disabled.
-    await expect(page.getByTestId('valt-file')).toHaveCount(0)
-    await expect(page.getByTestId('valt-open-logs')).toBeVisible()
+    // Guard the guard: Expert really did take effect, so this cannot pass for
+    // the wrong reason.
+    await expect(page.getByTestId('calibration-card-tcal')).toBeVisible()
+    await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
   })
 
-  test('Calibration: a signed-in log server unlocks the VALT card', async ({ page }) => {
+  test('Calibration: a signed-in log server brings the VALT card back', async ({ page }) => {
     // The session is what useLogUpload restores on mount, so seeding it is the
     // same state a real sign-in leaves behind — no server needed to prove the
     // gate opens.
@@ -4025,7 +4022,8 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('product-mode-expert').check()
     const valt = page.getByTestId('calibration-card-valt')
     await valt.scrollIntoViewIfNeeded()
-    await expect(valt).not.toContainText('sign in required')
+    await expect(valt).toBeVisible()
+    await expect(valt).toContainText('Baro thrust calibration')
     await expect(page.getByTestId('valt-log-server')).toContainText('pilot at https://logs.example')
     await expect(page.getByTestId('valt-file')).toBeAttached()
   })

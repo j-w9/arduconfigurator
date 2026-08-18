@@ -25,12 +25,13 @@ export interface ValtCalibrationCardProps {
   canApplyDraftParameters: boolean
   busyAction: string | undefined
   setDraft: (paramId: string, value: string) => void
-  /** Signed in to a log server (`logUpload.session`) -- see the gate below. */
-  logServerSignedIn: boolean
-  /** Where they are signed in, so the card can say so rather than just unlock. */
+  /**
+   * Where they are signed in, so the card says so rather than just being here.
+   *
+   * The card is only rendered when a log server IS signed in -- that gate lives
+   * at the render site in CalibrationSection, so there is one of it.
+   */
   logServerLabel?: string
-  /** Take them to the Logs tab, which owns the sign-in form. */
-  onOpenLogs?: () => void
 }
 
 export function ValtCalibrationCard({
@@ -38,9 +39,7 @@ export function ValtCalibrationCard({
   canApplyDraftParameters,
   busyAction,
   setDraft,
-  logServerSignedIn,
-  logServerLabel,
-  onOpenLogs
+  logServerLabel
 }: ValtCalibrationCardProps): ReactElement {
   const [result, setResult] = useState<ValtResult | null>(null)
   // Keep the uploaded buffer so a manual-height entry can re-fit the same log
@@ -100,38 +99,6 @@ export function ValtCalibrationCard({
           This firmware doesn't expose the baro thrust-compensation parameter (<code>BARO1_THST_SCALE</code>). It's
           available on builds with barometer thrust compensation compiled in.
         </p>
-      </article>
-    )
-  }
-
-  // Gated on being signed in to a log server.
-  //
-  // This is the one calibration whose whole input is a flight log, and the
-  // fit is only as good as the hover behind it. Requiring the sign-in keeps
-  // the log that produced a scale somewhere it can be found again -- by the
-  // operator comparing two calibrations, and by anyone asked to explain a
-  // number that ended up on an aircraft.
-  //
-  // The gate is on the surface, not on the analysis: it decides who is offered
-  // the calibration, and claims nothing about the file itself.
-  if (!logServerSignedIn) {
-    return (
-      <article className="calibration-card" data-testid="calibration-card-valt">
-        <div className="calibration-card__header">
-          <strong>Baro thrust calibration (VALT)</strong>
-          <StatusBadge tone="neutral">sign in required</StatusBadge>
-        </div>
-        <p>
-          Corrects the barometer altitude error that prop wash induces under throttle
-          (<code>BARO1_THST_SCALE</code>). It is fit from a hover log, so it needs a log server signed in — the
-          flight behind the number stays retrievable that way.
-        </p>
-        <p className="hint">Sign in on the Logs tab, then come back here.</p>
-        {onOpenLogs ? (
-          <button type="button" style={buttonStyle()} data-testid="valt-open-logs" onClick={onOpenLogs}>
-            Go to Logs
-          </button>
-        ) : null}
       </article>
     )
   }

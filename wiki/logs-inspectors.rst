@@ -55,12 +55,13 @@ so the archive stays readable without opening anything.
 The baro thrust calibration needs it too
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The **Baro thrust (VALT)** calibration on the Calibration tab is gated on being
-signed in. It is the one calibration whose entire input is a flight log, and the
-scale it produces is only as good as the hover behind it — so the log that
-produced the number stays retrievable, both for comparing one calibration
-against the next and for anyone asked to explain a value that ended up on an
-aircraft. Signed out, the card says so and offers a link back here.
+The **Baro thrust (VALT)** calibration on the Calibration tab only appears with
+a log server signed in — signed out there is no card, not a locked one. It is
+the one calibration whose entire input is a flight log, and the scale it
+produces is only as good as the hover behind it, so the log that produced the
+number stays retrievable: both for comparing one calibration against the next,
+and for anyone asked to explain a value that ended up on an aircraft. It is
+Expert-gated as well, so both have to be true.
 
 Configuration files go to the same place
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

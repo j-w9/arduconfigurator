@@ -45,8 +45,6 @@ export interface CalibrationSectionProps {
   logServerSignedIn: boolean
   /** Where they are signed in, shown on the VALT card. */
   logServerLabel?: string
-  /** Send them to the Logs tab, which owns the log-server sign-in form. */
-  onOpenLogs?: () => void
   clearDraft: (paramId: string) => void
   setParameterNotice: (notice: ParameterNotice | undefined) => void
   handleGuidedAction: (actionId: GuidedActionId) => void | Promise<void>
@@ -273,7 +271,6 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     setDraft,
     logServerSignedIn,
     logServerLabel,
-    onOpenLogs,
     clearDraft,
     setParameterNotice,
     handleGuidedAction,
@@ -1196,20 +1193,22 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 />
               ) : null}
 
-              {/* Baro thrust calibration (VALT) — Expert-only, log-based. The
-                * card fits against a downward rangefinder in the log when present,
-                * and otherwise against a manually-entered hover height, so it no
-                * longer requires a rangefinder to be configured. Shows n/a on
-                * firmware without BARO1_THST_SCALE. */}
-              {isExpertMode ? (
+              {/* Baro thrust calibration (VALT) — Expert-only, log-based, and
+                * only offered with a log server signed in: the whole input is a
+                * flight log, and the scale is only as good as the hover behind
+                * it, so the log that produced a number stays retrievable. Signed
+                * out there is no card, not a locked one. The card fits against a
+                * downward rangefinder in the log when present, otherwise against
+                * a manually-entered hover height, so it does not require a
+                * rangefinder to be configured. Shows n/a on firmware without
+                * BARO1_THST_SCALE. */}
+              {isExpertMode && logServerSignedIn ? (
                 <ValtCalibrationCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
                   busyAction={busyAction}
                   setDraft={setDraft}
-                  logServerSignedIn={logServerSignedIn}
                   logServerLabel={logServerLabel}
-                  onOpenLogs={onOpenLogs}
                 />
               ) : null}
             </div>

@@ -9806,7 +9806,6 @@ export function App() {
           logServerLabel={
             logUpload.session ? `${logUpload.session.username} at ${logUpload.session.serverUrl}` : undefined
           }
-          onOpenLogs={() => setActiveViewId('logs')}
         />
       ) : null}
 
