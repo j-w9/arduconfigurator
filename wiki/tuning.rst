@@ -106,7 +106,41 @@ harmonic notch sit in the same grid. These were briefly a second *Filter
 Editor* tab, which meant two Tuning tabs both called filters, editing
 overlapping parameters in two different layouts.
 
-**Nothing is derived.** Fields show what the vehicle is running, and an
+Set filters from the gyro cutoff
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Enter the gyro cutoff you want and the tab fills in the filter set ArduPilot
+derives from it. Every proposal is editable before anything is staged, and
+staging goes through the normal draft path — the values land in the fields
+above, show as staged, and are written by the same reviewed **Apply** as any
+other edit. Nothing is written to the vehicle by this panel.
+
+The ratios are ArduPilot's own:
+
+- ``ATC_RAT_RLL_FLTD`` and ``ATC_RAT_PIT_FLTD`` — the gyro cutoff **halved**;
+  ``ATC_RAT_YAW_FLTD`` — a **quarter** of it. ArduPilot's *Aggressive Rate Loop
+  Tuning* page: *"each axis' ATC_RAT_xxx_FLTD should be INS_GYRO_FILTER/2 on
+  roll and pitch and INS_GYRO_FILTER/4 on yaw"*. Yaw is filtered harder because
+  D is the most active term, passes the most noise, and is the one that heats
+  motors.
+- ``ATC_RAT_RLL_FLTT`` / ``ATC_RAT_PIT_FLTT`` / ``ATC_RAT_YAW_FLTT`` — the
+  cutoff halved, and ``ATC_RAT_YAW_FLTE`` a fixed 2 Hz, from *Setting the
+  Aircraft Up for Tuning*.
+- The cutoff itself, for which that same page gives starting points by prop
+  size — 80 Hz for 5-inch, 40 Hz for 10-inch, 20 Hz for 20-inch and larger.
+  They are offered as buttons; the app cannot see what is bolted to the frame.
+
+Roll and pitch ``FLTE`` are deliberately **not** proposed. Mission Planner
+zeroes them, ArduPilot's pages do not say to, and a value this app invented has
+no business being staged to a flight controller.
+
+A D-term filter edited above **0.75 × the gyro cutoff** is called out inline —
+ArduPilot documents that as not recommended.
+
+Everything else is yours
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Nothing else is derived.** Fields show what the vehicle is running, and an
 untouched field stages nothing. An earlier version computed the whole rate-loop
 set from the gyro filter, but those ratios come from Mission Planner's *Initial
 Parameters* screen rather than from ArduPilot's own documentation, and this

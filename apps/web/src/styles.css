@@ -7486,6 +7486,74 @@ body.is-status-dash-dragging {
   align-items: start;
 }
 
+/* "Set filters from the gyro cutoff": an entry row, then one line per derived
+   value -- name, what it is now, and an editable proposal. Grid rather than a
+   table so the proposal column stays aligned while the names wrap. */
+.filters-from-gyro__entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.filters-from-gyro__entry label {
+  display: grid;
+  gap: 4px;
+}
+
+.filters-from-gyro__entry input {
+  width: 120px;
+}
+
+.filters-from-gyro__hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filters-from-gyro__rows {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.filters-from-gyro__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 110px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(var(--edge-rgb), 0.05);
+  background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.96), rgba(var(--fill-rgb), 1));
+}
+
+.filters-from-gyro__name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.filters-from-gyro__name small {
+  color: var(--text-muted);
+  font-family: var(--font-data);
+  font-size: 11px;
+}
+
+.filters-from-gyro__current {
+  color: var(--text-muted);
+  font-family: var(--font-data);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.filters-from-gyro__warning {
+  grid-column: 1 / -1;
+  color: var(--warning, #e0a33a);
+  font-size: 11px;
+}
+
 /* The two documented suggestions are buttons, not a two-up layout: sized to
    their own label and left-aligned under the grid. */
 .filter-notch-help .switch-exercise-controls {
@@ -12764,6 +12832,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   .tuning-axis-snapshot-grid,
   .tuning-curve-grid,
   .tuning-axis-grid--filters .tuning-axis-card--wide .tuning-control-grid,
+  .filters-from-gyro__row,
   .tuning-control-grid {
     grid-template-columns: 1fr;
     display: grid;

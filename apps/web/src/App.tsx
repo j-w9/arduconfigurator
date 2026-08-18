@@ -302,6 +302,7 @@ import { SnapshotsSection } from './sections/SnapshotsSection'
 import { TuningCopterSection } from './sections/TuningCopterSection'
 import { InitialTuneView } from './views/InitialTune'
 import { FilterNotchHelp } from './views/FilterNotchHelp'
+import { FiltersFromGyro } from './views/FiltersFromGyro'
 import { isInitialTuneParamId } from './view-models/initial-tune-parameters'
 import { AutotuneCopterSection } from './sections/AutotuneCopterSection'
 import { AutotunePlaneSection } from './sections/AutotunePlaneSection'
@@ -5175,6 +5176,13 @@ export function App() {
    * shared metadata renderer, which gives a named list and per-bit toggles.
    * Both paths carry the same "i" bubble and wiki link.
    */
+  // Live values for the filter helpers below the Filters grid. One map, built
+  // once per parameter change, rather than one per helper per render.
+  const filterLiveValues = useMemo(
+    () => new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value])),
+    [snapshot.parameters]
+  )
+
   const renderFilterControl = (parameter: ParameterState): ReactNode => {
     const definition = parameter.definition
     const isChoice = definition?.bitmask === true || (definition?.options?.length ?? 0) > 0
@@ -9275,12 +9283,32 @@ export function App() {
             formatCategoryLabel
           }}
           filterNotchSlot={
-            <FilterNotchHelp
-              liveValues={new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))}
-              editedValues={editedValues}
-              onSetDraft={setDraft}
-              disabled={busyAction !== undefined}
-            />
+            <>
+              <FilterNotchHelp
+                liveValues={filterLiveValues}
+                editedValues={editedValues}
+                onSetDraft={setDraft}
+                disabled={busyAction !== undefined}
+              />
+              {/* Enter a gyro cutoff, get ArduPilot's derived filter set as
+                  editable proposals, stage them as ordinary drafts. It stages
+                  rather than writes, so the values land in the fields above and
+                  go out through the same reviewed Apply as any other edit. */}
+              <FiltersFromGyro
+                liveValues={filterLiveValues}
+                labelFor={(paramId) =>
+                  metadataCatalog.parameters[paramId]?.label ??
+                  snapshot.parameters.find((parameter) => parameter.id === paramId)?.definition?.label ??
+                  paramId
+                }
+                onStage={(values) => {
+                  for (const entry of values) {
+                    setDraft(entry.id, String(entry.value))
+                  }
+                }}
+                disabled={busyAction !== undefined}
+              />
+            </>
           }
           initialTuneSlot={
             /* Starting-point tuning. Reads live values to show what each

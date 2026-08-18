@@ -6236,8 +6236,16 @@ test.describe('Tuning ▸ Filters', () => {
   })
 
   test('every parameter carries an info bubble and a wiki link', async ({ page }) => {
+    // Two renderers feed this grid -- the Tuning slider for the frequencies,
+    // the shared metadata editor for the enums, bitmasks, and ratios -- and
+    // each stamps its own bubble testid. Both must carry one, which is the
+    // point of asserting across the pair rather than one prefix.
     await openFilters(page)
-    for (const id of ['INS_GYRO_FILTER', 'ATC_RAT_RLL_FLTD', 'INS_HNTCH_MODE', 'INS_HNTCH_FREQ', 'INS_HNTCH_OPTS']) {
+    for (const id of ['INS_GYRO_FILTER', 'ATC_RAT_RLL_FLTD', 'INS_HNTCH_FREQ']) {
+      await expect(page.getByTestId(`tuning-info-${id}`), id).toBeVisible()
+      await expect(page.getByTestId(`param-wiki-${id}`), id).toHaveCount(1)
+    }
+    for (const id of ['INS_HNTCH_MODE', 'INS_HNTCH_OPTS', 'INS_HNTCH_REF']) {
       await expect(page.getByTestId(`metadata-field-info-${id}`), id).toBeVisible()
       await expect(page.getByTestId(`param-wiki-${id}`), id).toHaveCount(1)
     }
@@ -6266,6 +6274,36 @@ test.describe('Tuning ▸ Filters', () => {
     await expect(fill).toContainText('40')
     await fill.click()
     await expect(page.getByTestId('tuning-filter-group-notch')).toContainText('40')
+  })
+
+  test('derives the filter set from an entered gyro cutoff and stages it', async ({ page }) => {
+    // ArduPilot's ratios: FLTD is gyro/2 on roll and pitch, gyro/4 on yaw;
+    // every FLTT is gyro/2; yaw FLTE is a fixed 2 Hz.
+    await openFilters(page)
+    await page.getByTestId('filters-from-gyro-input').fill('40')
+
+    await expect(page.getByTestId('filters-from-gyro-value-ATC_RAT_RLL_FLTD')).toHaveValue('20')
+    await expect(page.getByTestId('filters-from-gyro-value-ATC_RAT_YAW_FLTD')).toHaveValue('10')
+    await expect(page.getByTestId('filters-from-gyro-value-ATC_RAT_YAW_FLTT')).toHaveValue('20')
+    await expect(page.getByTestId('filters-from-gyro-value-ATC_RAT_YAW_FLTE')).toHaveValue('2')
+
+    // A proposal is editable before anything is staged.
+    await page.getByTestId('filters-from-gyro-value-ATC_RAT_RLL_FLTD').fill('18')
+    await page.getByTestId('filters-from-gyro-stage').click()
+
+    // Staged as ordinary drafts: the value lands in the field above, and the
+    // edited one -- not the derived one -- is what got staged.
+    await expect(page.getByTestId('tuning-filter-group-roll')).toContainText('18')
+    await expect(page.getByTestId('tuning-filter-group-yaw')).toContainText('10')
+  })
+
+  test('warns when an edited D filter passes the documented ceiling', async ({ page }) => {
+    // "Setting it above 0.75 * INS_GYRO_FILTER is not recommended."
+    await openFilters(page)
+    await page.getByTestId('filters-from-gyro-input').fill('40')
+    await expect(page.getByTestId('filters-from-gyro-ceiling-ATC_RAT_RLL_FLTD')).toHaveCount(0)
+    await page.getByTestId('filters-from-gyro-value-ATC_RAT_RLL_FLTD').fill('35')
+    await expect(page.getByTestId('filters-from-gyro-ceiling-ATC_RAT_RLL_FLTD')).toBeVisible()
   })
 
   test('fits a phone without overflowing', async ({ page }) => {
