@@ -35,11 +35,19 @@ export const FILTERS_FROM_GYRO_PARAM_IDS = [
   'ATC_RAT_YAW_FLTE'
 ] as const
 
-/** ArduPilot's prop-size starting points for the gyro filter itself. */
+/**
+ * Prop-size starting points for the cutoff itself.
+ *
+ * These are the operator's numbers, not ArduPilot's. The docs' table (80 Hz /
+ * 40 Hz / 20 Hz for 5, 10, and 20+ inch props) and Mission Planner's curve
+ * both filter harder than this; these suit the low-noise FPV builds this app
+ * is aimed at, where a higher cutoff keeps the response the airframe can
+ * actually use. A starting point either way -- the log is what settles it.
+ */
 export const GYRO_FILTER_PROP_HINTS = [
-  { label: '5 in', hz: 80 },
-  { label: '10 in', hz: 40 },
-  { label: '20 in +', hz: 20 }
+  { label: '5 in', hz: 90 },
+  { label: '10 in', hz: 60 },
+  { label: '15 in', hz: 40 }
 ] as const
 
 /** One decimal: gyro/4 of an odd cutoff is not a whole number, and FLTD is an AP_Float. */

@@ -126,9 +126,14 @@ The ratios are ArduPilot's own:
 - ``ATC_RAT_RLL_FLTT`` / ``ATC_RAT_PIT_FLTT`` / ``ATC_RAT_YAW_FLTT`` — the
   cutoff halved, and ``ATC_RAT_YAW_FLTE`` a fixed 2 Hz, from *Setting the
   Aircraft Up for Tuning*.
-- The cutoff itself, for which that same page gives starting points by prop
-  size — 80 Hz for 5-inch, 40 Hz for 10-inch, 20 Hz for 20-inch and larger.
-  They are offered as buttons; the app cannot see what is bolted to the frame.
+- The cutoff itself is offered as three starting points by prop size — **90 Hz
+  for 5-inch, 60 Hz for 10-inch, 40 Hz for 15-inch**. These are this app's
+  numbers, not ArduPilot's: the docs' table (80 / 40 / 20 Hz for 5, 10, and
+  20-inch props) and Mission Planner's curve both filter harder, and these suit
+  the low-noise FPV builds the tab is aimed at, where a higher cutoff keeps
+  response the airframe can use. They are buttons, not a choice made for you —
+  the app cannot see what is bolted to the frame, and a hover log is what
+  settles the number.
 
 Roll and pitch ``FLTE`` are deliberately **not** proposed. Mission Planner
 zeroes them, ArduPilot's pages do not say to, and a value this app invented has

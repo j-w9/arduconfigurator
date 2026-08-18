@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildFiltersFromGyro, exceedsDTermCeiling } from './filters-from-gyro'
+import { buildFiltersFromGyro, exceedsDTermCeiling, GYRO_FILTER_PROP_HINTS } from './filters-from-gyro'
 
 const byId = (gyro: number): Record<string, number> =>
   Object.fromEntries(buildFiltersFromGyro(gyro).map((row) => [row.id, row.value]))
@@ -66,5 +66,28 @@ describe('exceedsDTermCeiling', () => {
   it('says nothing without a usable gyro cutoff', () => {
     expect(exceedsDTermCeiling('ATC_RAT_RLL_FLTD', 30, 0)).toBe(false)
     expect(exceedsDTermCeiling('ATC_RAT_RLL_FLTD', 30, Number.NaN)).toBe(false)
+  })
+})
+
+describe('GYRO_FILTER_PROP_HINTS', () => {
+  it('offers three prop-size starting points', () => {
+    // These are this app's numbers, higher than ArduPilot's 80/40/20 table and
+    // Mission Planner's curve, aimed at low-noise FPV builds. Pinned so a
+    // change to them is a deliberate one.
+    expect(GYRO_FILTER_PROP_HINTS.map((hint) => [hint.label, hint.hz])).toEqual([
+      ['5 in', 90],
+      ['10 in', 60],
+      ['15 in', 40]
+    ])
+  })
+
+  it('derives a sane filter set from each of them', () => {
+    for (const hint of GYRO_FILTER_PROP_HINTS) {
+      const values = Object.fromEntries(buildFiltersFromGyro(hint.hz).map((row) => [row.id, row.value]))
+      expect(values.ATC_RAT_RLL_FLTD).toBe(hint.hz / 2)
+      expect(values.ATC_RAT_YAW_FLTD).toBe(hint.hz / 4)
+      // Nothing the helper proposes may land on the wrong side of the ceiling.
+      expect(exceedsDTermCeiling('ATC_RAT_RLL_FLTD', values.ATC_RAT_RLL_FLTD, hint.hz)).toBe(false)
+    }
   })
 })
