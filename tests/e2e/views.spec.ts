@@ -3978,7 +3978,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('tcal-start')).toBeVisible()
   })
 
-  test('Calibration: the Baro Thrust (VALT) card is Expert-gated (no rangefinder required)', async ({ page }) => {
+  test('Calibration: the Baro Thrust (VALT) card is Expert-gated and needs a log-server sign-in', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -3988,14 +3988,45 @@ test.describe('ArduPlane demo', () => {
     // Default (non-Expert): hidden.
     await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
 
-    // Expert mode reveals the card — the gate no longer requires a rangefinder
-    // (the card fits against a rangefinder in the log if present, else a manual
-    // height). Full card shows because the demo firmware exposes BARO1_THST_SCALE.
+    // Expert mode reveals the card, but signed out it is the locked state: the
+    // calibration is fit from a hover log, so the log server is a prerequisite.
     await page.getByTestId('product-mode-expert').check()
     const valt = page.getByTestId('calibration-card-valt')
     await valt.scrollIntoViewIfNeeded()
-    await expect(valt).toBeVisible()
     await expect(valt).toContainText('Baro thrust calibration')
+    await expect(valt).toContainText('sign in required')
+    // The upload control must be absent, not merely disabled.
+    await expect(page.getByTestId('valt-file')).toHaveCount(0)
+    await expect(page.getByTestId('valt-open-logs')).toBeVisible()
+  })
+
+  test('Calibration: a signed-in log server unlocks the VALT card', async ({ page }) => {
+    // The session is what useLogUpload restores on mount, so seeding it is the
+    // same state a real sign-in leaves behind — no server needed to prove the
+    // gate opens.
+    await page.goto('/')
+    await page.evaluate(() => {
+      window.sessionStorage.setItem(
+        'arduconfig:log-server-session',
+        JSON.stringify({
+          serverUrl: 'https://logs.example',
+          username: 'pilot',
+          token: 'e2e-token',
+          expiresAtMs: Date.now() + 60 * 60 * 1000
+        })
+      )
+    })
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    await openView(page, 'calibration')
+    await page.getByTestId('product-mode-expert').check()
+    const valt = page.getByTestId('calibration-card-valt')
+    await valt.scrollIntoViewIfNeeded()
+    await expect(valt).not.toContainText('sign in required')
+    await expect(page.getByTestId('valt-log-server')).toContainText('pilot at https://logs.example')
     await expect(page.getByTestId('valt-file')).toBeAttached()
   })
 

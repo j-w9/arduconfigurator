@@ -52,6 +52,16 @@ the token lives only until the tab closes.
 Uploads carry the log's descriptive name, the flight date, and an optional note,
 so the archive stays readable without opening anything.
 
+The baro thrust calibration needs it too
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The **Baro thrust (VALT)** calibration on the Calibration tab is gated on being
+signed in. It is the one calibration whose entire input is a flight log, and the
+scale it produces is only as good as the hover behind it — so the log that
+produced the number stays retrievable, both for comparing one calibration
+against the next and for anyone asked to explain a value that ended up on an
+aircraft. Signed out, the card says so and offers a link back here.
+
 Configuration files go to the same place
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

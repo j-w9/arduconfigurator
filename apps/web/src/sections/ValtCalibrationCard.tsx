@@ -25,13 +25,22 @@ export interface ValtCalibrationCardProps {
   canApplyDraftParameters: boolean
   busyAction: string | undefined
   setDraft: (paramId: string, value: string) => void
+  /** Signed in to a log server (`logUpload.session`) -- see the gate below. */
+  logServerSignedIn: boolean
+  /** Where they are signed in, so the card can say so rather than just unlock. */
+  logServerLabel?: string
+  /** Take them to the Logs tab, which owns the sign-in form. */
+  onOpenLogs?: () => void
 }
 
 export function ValtCalibrationCard({
   snapshot,
   canApplyDraftParameters,
   busyAction,
-  setDraft
+  setDraft,
+  logServerSignedIn,
+  logServerLabel,
+  onOpenLogs
 }: ValtCalibrationCardProps): ReactElement {
   const [result, setResult] = useState<ValtResult | null>(null)
   // Keep the uploaded buffer so a manual-height entry can re-fit the same log
@@ -95,6 +104,38 @@ export function ValtCalibrationCard({
     )
   }
 
+  // Gated on being signed in to a log server.
+  //
+  // This is the one calibration whose whole input is a flight log, and the
+  // fit is only as good as the hover behind it. Requiring the sign-in keeps
+  // the log that produced a scale somewhere it can be found again -- by the
+  // operator comparing two calibrations, and by anyone asked to explain a
+  // number that ended up on an aircraft.
+  //
+  // The gate is on the surface, not on the analysis: it decides who is offered
+  // the calibration, and claims nothing about the file itself.
+  if (!logServerSignedIn) {
+    return (
+      <article className="calibration-card" data-testid="calibration-card-valt">
+        <div className="calibration-card__header">
+          <strong>Baro thrust calibration (VALT)</strong>
+          <StatusBadge tone="neutral">sign in required</StatusBadge>
+        </div>
+        <p>
+          Corrects the barometer altitude error that prop wash induces under throttle
+          (<code>BARO1_THST_SCALE</code>). It is fit from a hover log, so it needs a log server signed in — the
+          flight behind the number stays retrievable that way.
+        </p>
+        <p className="hint">Sign in on the Logs tab, then come back here.</p>
+        {onOpenLogs ? (
+          <button type="button" style={buttonStyle()} data-testid="valt-open-logs" onClick={onOpenLogs}>
+            Go to Logs
+          </button>
+        ) : null}
+      </article>
+    )
+  }
+
   const canStage = canApplyDraftParameters && busyAction === undefined
   const suggested = result?.suggestedScale
 
@@ -110,6 +151,12 @@ export function ValtCalibrationCard({
         downward rangefinder the scale is fit automatically against it; otherwise enter the height you hovered at
         and it's fit against that.
       </p>
+
+      {logServerLabel ? (
+        <p className="hint" data-testid="valt-log-server">
+          Signed in to {logServerLabel}.
+        </p>
+      ) : null}
 
       <div className="log-tuning__upload">
         <label className="log-tuning__file" style={buttonStyle('primary')}>

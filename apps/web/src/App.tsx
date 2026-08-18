@@ -9802,6 +9802,11 @@ export function App() {
           setParameterNotice={setParameterNotice}
           handleGuidedAction={handleGuidedAction}
           handleCancelGuidedAction={handleCancelGuidedAction}
+          logServerSignedIn={logUpload.session !== undefined}
+          logServerLabel={
+            logUpload.session ? `${logUpload.session.username} at ${logUpload.session.serverUrl}` : undefined
+          }
+          onOpenLogs={() => setActiveViewId('logs')}
         />
       ) : null}
 

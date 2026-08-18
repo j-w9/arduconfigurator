@@ -41,6 +41,12 @@ export interface CalibrationSectionProps {
   calibrationNotices: UseCalibrationNoticesResult
   safetyAcks: UseSafetyAcksResult
   setDraft: (paramId: string, value: string) => void
+  /** Signed in to a log server: the baro thrust (VALT) calibration is gated on it. */
+  logServerSignedIn: boolean
+  /** Where they are signed in, shown on the VALT card. */
+  logServerLabel?: string
+  /** Send them to the Logs tab, which owns the log-server sign-in form. */
+  onOpenLogs?: () => void
   clearDraft: (paramId: string) => void
   setParameterNotice: (notice: ParameterNotice | undefined) => void
   handleGuidedAction: (actionId: GuidedActionId) => void | Promise<void>
@@ -265,6 +271,9 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     calibrationNotices,
     safetyAcks,
     setDraft,
+    logServerSignedIn,
+    logServerLabel,
+    onOpenLogs,
     clearDraft,
     setParameterNotice,
     handleGuidedAction,
@@ -1198,6 +1207,9 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   canApplyDraftParameters={canApplyDraftParameters}
                   busyAction={busyAction}
                   setDraft={setDraft}
+                  logServerSignedIn={logServerSignedIn}
+                  logServerLabel={logServerLabel}
+                  onOpenLogs={onOpenLogs}
                 />
               ) : null}
             </div>
