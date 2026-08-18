@@ -1,4 +1,4 @@
-// Fetch-and-hash side of the expert bootloader hash preview.
+// Fetch-and-hash side of the bootloader hash preview.
 //
 // Stateful, so it lives in hooks/ rather than view-models/; the derivation of
 // what may honestly be SHOWN from what was read is a separate pure builder
@@ -25,7 +25,8 @@ interface BootloaderIdentityState {
 const IDLE: BootloaderIdentityState = { status: 'idle' }
 
 export interface BootloaderIdentityHandle {
-  preview: BootloaderHashPreview
+  /** Undefined until a read has been asked for -- see the return below. */
+  preview: BootloaderHashPreview | undefined
   /**
    * Read both images. Calls made while a read is in flight are dropped, so the
    * arming effect can call this freely without turning into a MAVFTP read per
@@ -112,5 +113,8 @@ export function useBootloaderIdentity(
     })()
   }, [runtime, connected])
 
-  return { preview: buildBootloaderHashPreview(state), load }
+  // Idle means "nobody has asked yet", which is not a state the block should
+  // occupy -- it would read as a stalled read. The caller renders nothing until
+  // there is something true to say.
+  return { preview: state.status === 'idle' ? undefined : buildBootloaderHashPreview(state), load }
 }

@@ -5610,6 +5610,10 @@ export function App() {
   const isExpertMode = productMode === 'expert'
   // Expert-only bootloader hash preview for the Flash tab's Update Bootloader
   // action. Reads nothing until the flasher arms the update and calls load().
+  // Installed-vs-incoming bootloader comparison. Not Expert-gated: whether an
+  // update changes anything is the question anyone pressing the button is
+  // asking, and ArduPilot's ACCEPTED cannot answer it (OK and NO_CHANGE are the
+  // same ACK). The read still only happens on demand.
   const bootloaderIdentity = useBootloaderIdentity(runtime, snapshot.connection.kind === 'connected')
   const appViews = useMemo<AppViewDescriptor[]>(
     () =>
@@ -9625,8 +9629,8 @@ export function App() {
           // undefined in basic mode and the block does not exist at all. A
           // developer affordance — it identifies the two images but changes
           // nothing about the flash, including its existing arm/confirm gate.
-          bootloaderIdentity={isExpertMode ? bootloaderIdentity.preview : undefined}
-          onLoadBootloaderIdentity={isExpertMode ? bootloaderIdentity.load : undefined}
+          bootloaderIdentity={bootloaderIdentity.preview}
+          onLoadBootloaderIdentity={bootloaderIdentity.load}
           onReboot={
             runtime && snapshot.connection.kind === 'connected'
               ? async () => { await runtime.reboot() }

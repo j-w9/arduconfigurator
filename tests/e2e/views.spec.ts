@@ -1732,10 +1732,11 @@ test.describe('Flash view', () => {
     await expect(page.getByTestId('firmware-flash-bootloader')).toBeVisible()
     await expect(page.getByTestId('firmware-flash-bootloader-confirm')).toHaveCount(0)
 
-    // The bootloader hash comparison is a developer affordance, so in basic
-    // mode arming the update must not show it (and must not read anything).
+    // The comparison is no longer Expert-only: whether the update changes
+    // anything is what the operator pressing the button is asking, and
+    // ArduPilot's ACK cannot answer it. Basic mode gets it too.
     await page.getByTestId('firmware-flash-bootloader').click()
-    await expect(page.getByTestId('firmware-bootloader-identity')).toHaveCount(0)
+    await expect(page.getByTestId('firmware-bootloader-identity')).toBeVisible()
     await page.getByTestId('firmware-flash-bootloader-cancel').click()
 
     // The custom build server is gone. Asserted rather than merely deleted:
@@ -1745,7 +1746,24 @@ test.describe('Flash view', () => {
     await expect(page.getByTestId('firmware-custom-server')).toHaveCount(0)
   })
 
-  test('Flash tab: expert mode shows both bootloader hashes before the update commits', async ({ page }) => {
+  test('Flash tab: Compare Bootloaders answers the question without arming anything', async ({ page }) => {
+    // Deciding whether to update, and then being told whether it would change
+    // anything, is the wrong order. Asking first must not arm the update.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'flash')
+
+    await expect(page.getByTestId('firmware-bootloader-identity')).toHaveCount(0)
+    await page.getByTestId('firmware-bootloader-compare').click()
+
+    await expect(page.getByTestId('firmware-bootloader-identity')).toBeVisible()
+    await expect(page.getByTestId('firmware-bootloader-identity-hash')).toHaveCount(2)
+    // Nothing armed: the confirm button must still be absent.
+    await expect(page.getByTestId('firmware-flash-bootloader-confirm')).toHaveCount(0)
+    await expect(page.getByTestId('firmware-flash-bootloader')).toBeVisible()
+  })
+
+  test('Flash tab: shows both bootloader hashes before the update commits', async ({ page }) => {
     // 390px on purpose — the comparison block sits in the flash wizard, and a
     // 64-hex digest is exactly the kind of content that forces a phone layout
     // to scroll sideways if it is not allowed to wrap.
@@ -1783,14 +1801,19 @@ test.describe('Flash view', () => {
     // untouched and still the only thing that sends the command.
     await expect(page.getByTestId('firmware-flash-bootloader-confirm')).toBeVisible()
 
+    // The demo's images differ, so there is nothing to say about forcing.
+    await expect(page.getByTestId('firmware-bootloader-no-force')).toHaveCount(0)
+
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )
     expect(overflow).toBeLessThanOrEqual(2)
 
-    // Cancelling puts the block away again.
+    // Cancelling disarms the update but keeps the answer on screen: the read
+    // has already happened, and hiding it would only force another one.
     await page.getByTestId('firmware-flash-bootloader-cancel').click()
-    await expect(page.getByTestId('firmware-bootloader-identity')).toHaveCount(0)
+    await expect(page.getByTestId('firmware-flash-bootloader-confirm')).toHaveCount(0)
+    await expect(page.getByTestId('firmware-bootloader-identity')).toBeVisible()
   })
 
   test('Flash tab from the landing (disconnected) still flashes without DFU button', async ({ page }) => {

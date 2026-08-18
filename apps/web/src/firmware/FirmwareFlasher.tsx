@@ -401,17 +401,20 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     try {
       await onFlashBootloader()
       // ArduPilot answers ACCEPTED for both OK and NO_CHANGE, so a board that
-      // was already current reports success rather than an error.
+      // was already current reports success rather than an error. Re-read both
+      // images instead of taking the ACK's word for it: the comparison below
+      // is the only thing that can say whether bytes actually moved.
       setDfuNotice(
-        'Bootloader updated (or already current). Reboot the board for the new bootloader to be used.'
+        'Bootloader command accepted. Re-reading both images — the comparison below says whether anything changed. Reboot the board for a new bootloader to be used.'
       )
+      onLoadBootloaderIdentity?.()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update the bootloader.'
       setDfuNotice(message)
     } finally {
       setBootloaderBusy(false)
     }
-  }, [onFlashBootloader])
+  }, [onFlashBootloader, onLoadBootloaderIdentity])
 
   // Read the bootloader images only once the operator has armed the update.
   // Arming is the first unambiguous signal of intent, and this puts tens of KB
@@ -1211,6 +1214,26 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
               </button>
             )
           ) : null}
+          {/* The comparison used to appear only after arming, which meant
+            * deciding whether to update and then being told whether it would
+            * change anything. Asking first is the more useful order, so the
+            * read is offered as its own control. Still on demand: it pulls tens
+            * of KB over the link, so no Flash-tab visit pays for it unasked. */}
+          {onFlashBootloader && onLoadBootloaderIdentity ? (
+            <button
+              type="button"
+              className="firmware-wizard__dfu-button"
+              data-testid="firmware-bootloader-compare"
+              disabled={bootloaderBusy || Boolean(flashBootloaderDisabledReason)}
+              title={
+                flashBootloaderDisabledReason ??
+                'Read both bootloader images over MAVFTP and compare them. Reads only; changes nothing.'
+              }
+              onClick={() => onLoadBootloaderIdentity()}
+            >
+              Compare Bootloaders
+            </button>
+          ) : null}
         </div>
         {onEnterDfu && dfuConfirmArmed ? (
           <p className="bf-note bf-note--warning" data-testid="firmware-enter-dfu-warning">
@@ -1255,10 +1278,12 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           </p>
         ) : null}
 
-        {/* Expert-only bootloader identity, shown while armed and BEFORE the
-            confirm click. Rendered after the button row so it sits directly
+        {/* Installed vs incoming, shown as soon as there is anything to show:
+            while armed (the read fires automatically), after Compare, and after
+            a flash (re-read, because ArduPilot's ACCEPTED covers both "written"
+            and "skipped"). Rendered after the button row so it sits directly
             above the notice line the flash itself writes into. */}
-        {bootloaderIdentity && bootloaderConfirmArmed ? (
+        {bootloaderIdentity ? (
           <div className="bootloader-identity" data-testid="firmware-bootloader-identity">
             <p
               className="bootloader-identity__headline"
@@ -1289,6 +1314,14 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
               ))}
             </dl>
             <p className="bootloader-identity__detail">{bootloaderIdentity.detail}</p>
+            {bootloaderIdentity.verdict === 'same' ? (
+              <p className="bootloader-identity__forced" data-testid="firmware-bootloader-no-force">
+                There is no way to force this from here: the firmware compares the two images itself
+                (<code>Util::flash_bootloader()</code>) and skips the write when they match, and
+                <code> MAV_CMD_FLASH_BOOTLOADER</code> carries no force flag — it answers ACCEPTED either way.
+                Rewriting an identical bootloader means writing the flash region directly over DFU.
+              </p>
+            ) : null}
             <p className="bootloader-identity__method">
               SHA-256 over MAVFTP: <code>@ROMFS/bootloader.bin</code> (incoming) and the
               matching leading bytes of <code>@SYS/flash.bin</code> (installed).

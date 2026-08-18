@@ -37,6 +37,37 @@ Both flows need the board in its bootloader. There are three ways in:
    board doesn't re-enumerate as a DFU device after "Activate DFU mode", fall back
    to the hardware BOOT0 method.
 
+Updating the bootloader
+-----------------------
+
+**Update Bootloader** asks the *running firmware* to re-flash the board's
+bootloader from the copy it carries in its own ROMFS. It is not a file upload:
+the firmware you are running decides which bootloader you get.
+
+**Compare Bootloaders** answers the question first. It reads both images over
+MAVFTP — ``@ROMFS/bootloader.bin`` (what would be written) and the matching
+leading bytes of ``@SYS/flash.bin`` (what is installed) — and shows their
+SHA-256 digests side by side with a verdict. It reads only; nothing is written,
+and the two-click arm/confirm gate on the update itself is unchanged. The read
+happens only when you ask for it, or when you arm the update, because it pulls
+tens of kilobytes over the link.
+
+This matters because of what the vehicle reports back: ArduPilot answers the
+update command with ``ACCEPTED`` whether it wrote a new bootloader or found the
+installed one identical and skipped the write
+(``GCS_Common.cpp`` treats ``OK`` and ``NO_CHANGE`` alike, "so as not to display
+error to user"). The comparison is therefore the only way to know what actually
+happened — so the app re-reads both images after the command and shows the
+result.
+
+.. note::
+
+   **There is no way to force an update from here.** The firmware compares the
+   images itself in ``Util::flash_bootloader()`` and returns ``NO_CHANGE``
+   without writing when they match, and ``MAV_CMD_FLASH_BOOTLOADER`` carries no
+   force flag — only the magic value that authorises it. Rewriting a
+   byte-identical bootloader means writing the flash region directly over DFU.
+
 Firmware (.apj)
 ---------------
 

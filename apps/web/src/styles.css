@@ -15142,6 +15142,17 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .bootloader-identity__method code { overflow-wrap: anywhere; }
 
+/* Why an identical bootloader cannot be forced from here. Sits between the
+   verdict and the method line, and reads as a caveat rather than an error --
+   nothing has gone wrong, the firmware simply will not rewrite what matches. */
+.bootloader-identity__forced {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--warning, #e0a33a);
+}
+
+.bootloader-identity__forced code { overflow-wrap: anywhere; }
+
 /* Preset sharing. Same two-column shape as .presets-erase below, but neutral —
  * exporting and importing are ordinary actions, not destructive ones. */
 .presets-share {
