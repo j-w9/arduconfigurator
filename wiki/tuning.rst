@@ -123,9 +123,13 @@ The ratios are ArduPilot's own:
   roll and pitch and INS_GYRO_FILTER/4 on yaw"*. Yaw is filtered harder because
   D is the most active term, passes the most noise, and is the one that heats
   motors.
-- ``ATC_RAT_RLL_FLTT`` / ``ATC_RAT_PIT_FLTT`` / ``ATC_RAT_YAW_FLTT`` — the
-  cutoff halved, and ``ATC_RAT_YAW_FLTE`` a fixed 2 Hz, from *Setting the
-  Aircraft Up for Tuning*.
+- ``ATC_RAT_RLL_FLTT`` / ``ATC_RAT_PIT_FLTT`` / ``ATC_RAT_YAW_FLTT`` — a fixed
+  **30 Hz**, whatever the cutoff. These filter the pilot's *demand* rather than
+  a measured signal, so they need not track the sensor: 30 Hz sits well above
+  stick bandwidth. ArduPilot's own pages say gyro ÷ 2 here — this is a
+  deliberate departure, and like every row it is editable before staging.
+- ``ATC_RAT_YAW_FLTE`` — a fixed 2 Hz, from *Setting the Aircraft Up for
+  Tuning*.
 - The cutoff itself is offered as three starting points by prop size — **90 Hz
   for 5-inch, 60 Hz for 10-inch, 40 Hz for 15-inch**. These are this app's
   numbers, not ArduPilot's: the docs' table (80 / 40 / 20 Hz for 5, 10, and

@@ -6416,7 +6416,7 @@ test.describe('Tuning ▸ Filters', () => {
 
     await expect(page.getByTestId('filters-from-gyro-value-ATC_RAT_RLL_FLTD')).toHaveValue('20')
     await expect(page.getByTestId('filters-from-gyro-value-ATC_RAT_YAW_FLTD')).toHaveValue('10')
-    await expect(page.getByTestId('filters-from-gyro-value-ATC_RAT_YAW_FLTT')).toHaveValue('20')
+    await expect(page.getByTestId('filters-from-gyro-value-ATC_RAT_YAW_FLTT')).toHaveValue('30')
     await expect(page.getByTestId('filters-from-gyro-value-ATC_RAT_YAW_FLTE')).toHaveValue('2')
 
     // A proposal is editable before anything is staged.

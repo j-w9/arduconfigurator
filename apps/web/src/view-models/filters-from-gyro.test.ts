@@ -16,13 +16,19 @@ describe('buildFiltersFromGyro', () => {
     expect(values.ATC_RAT_YAW_FLTD).toBe(10)
   })
 
-  it('halves it for every target filter and pins the yaw error filter at 2 Hz', () => {
-    // ArduPilot, Setting the Aircraft Up for Tuning.
-    const values = byId(80)
-    expect(values.ATC_RAT_RLL_FLTT).toBe(40)
-    expect(values.ATC_RAT_PIT_FLTT).toBe(40)
-    expect(values.ATC_RAT_YAW_FLTT).toBe(40)
-    expect(values.ATC_RAT_YAW_FLTE).toBe(2)
+  it('proposes a fixed 30 Hz target filter and pins the yaw error filter at 2 Hz', () => {
+    // The target filters smooth the pilot's demand rather than a measured
+    // signal, so they do not track the gyro cutoff: 30 Hz whatever it is.
+    // (ArduPilot's own pages say gyro/2 here; this is the operator's call, and
+    // every row stays editable before staging.) The yaw error filter is
+    // ArduPilot's fixed 2 Hz -- Setting the Aircraft Up for Tuning.
+    for (const gyro of [40, 80, 120]) {
+      const values = byId(gyro)
+      expect(values.ATC_RAT_RLL_FLTT).toBe(30)
+      expect(values.ATC_RAT_PIT_FLTT).toBe(30)
+      expect(values.ATC_RAT_YAW_FLTT).toBe(30)
+      expect(values.ATC_RAT_YAW_FLTE).toBe(2)
+    }
   })
 
   it('passes the entered cutoff through as INS_GYRO_FILTER', () => {
@@ -86,6 +92,8 @@ describe('GYRO_FILTER_PROP_HINTS', () => {
       const values = Object.fromEntries(buildFiltersFromGyro(hint.hz).map((row) => [row.id, row.value]))
       expect(values.ATC_RAT_RLL_FLTD).toBe(hint.hz / 2)
       expect(values.ATC_RAT_YAW_FLTD).toBe(hint.hz / 4)
+      // The target filters are fixed, so they do not move with the hint.
+      expect(values.ATC_RAT_RLL_FLTT).toBe(30)
       // Nothing the helper proposes may land on the wrong side of the ceiling.
       expect(exceedsDTermCeiling('ATC_RAT_RLL_FLTD', values.ATC_RAT_RLL_FLTD, hint.hz)).toBe(false)
     }

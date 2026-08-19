@@ -50,6 +50,9 @@ export const GYRO_FILTER_PROP_HINTS = [
   { label: '15 in', hz: 40 }
 ] as const
 
+/** The target-filter default. Fixed rather than derived -- see the rows below. */
+const TARGET_FILTER_HZ = 30
+
 /** One decimal: gyro/4 of an odd cutoff is not a whole number, and FLTD is an AP_Float. */
 function round(value: number): number {
   return Math.round(value * 10) / 10
@@ -73,9 +76,14 @@ export function buildFiltersFromGyro(gyroFilterHz: number): FilterFromGyroRow[] 
     { id: 'ATC_RAT_RLL_FLTD', rule: 'gyro / 2', value: half },
     { id: 'ATC_RAT_PIT_FLTD', rule: 'gyro / 2', value: half },
     { id: 'ATC_RAT_YAW_FLTD', rule: 'gyro / 4', value: quarter },
-    { id: 'ATC_RAT_RLL_FLTT', rule: 'gyro / 2', value: half },
-    { id: 'ATC_RAT_PIT_FLTT', rule: 'gyro / 2', value: half },
-    { id: 'ATC_RAT_YAW_FLTT', rule: 'gyro / 2', value: half },
+    // The target filters are the operator's fixed 30 Hz, not ArduPilot's
+    // gyro/2. They smooth the pilot's demand rather than a measured signal, so
+    // they do not have to follow the sensor cutoff, and 30 Hz is well above
+    // stick bandwidth on every airframe this app is aimed at. Proposed, not
+    // imposed: like every row here it is editable before anything is staged.
+    { id: 'ATC_RAT_RLL_FLTT', rule: 'fixed at 30 Hz', value: TARGET_FILTER_HZ },
+    { id: 'ATC_RAT_PIT_FLTT', rule: 'fixed at 30 Hz', value: TARGET_FILTER_HZ },
+    { id: 'ATC_RAT_YAW_FLTT', rule: 'fixed at 30 Hz', value: TARGET_FILTER_HZ },
     { id: 'ATC_RAT_YAW_FLTE', rule: 'fixed at 2 Hz', value: 2 }
   ]
 }
