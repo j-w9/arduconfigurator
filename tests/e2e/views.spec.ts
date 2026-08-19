@@ -1178,6 +1178,51 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     await expect(page.getByTestId('battery-current-spin-motors')).toBeVisible()
   })
 
+  test('Battery current calibration reads as three ordered steps', async ({ page }) => {
+    // The controls used to sit in one flat row, which said nothing about the
+    // order the procedure has to happen in, or how far through it you were --
+    // the thing that made it awkward to run single-handed.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'calibration')
+
+    const card = page.getByTestId('calibration-card-battery-current')
+    await expect(card).toBeVisible()
+    await expect(page.getByTestId('battery-current-step-offset')).toContainText('Zero it at no load')
+    await expect(page.getByTestId('battery-current-step-load')).toContainText('Put a real load on it')
+    await expect(page.getByTestId('battery-current-step-match')).toContainText('Match your meter')
+
+    // Step 3 says why it cannot be used yet rather than sitting there inert.
+    await expect(page.getByTestId('battery-current-step-match')).toContainText('Run the load above first')
+
+    // Nothing has been captured, so neither the live readout nor the capture
+    // summary is on screen.
+    await expect(page.getByTestId('battery-current-live')).toHaveCount(0)
+    await expect(page.getByTestId('battery-current-captured')).toHaveCount(0)
+
+    // The steps stay in order: offset, then load, then match.
+    const order = await card.locator('[data-testid^="battery-current-step-"]').evaluateAll((steps) =>
+      steps.map((step) => (step as HTMLElement).dataset.testid)
+    )
+    expect(order).toEqual([
+      'battery-current-step-offset',
+      'battery-current-step-load',
+      'battery-current-step-match'
+    ])
+  })
+
+  test('Battery current calibration fits a phone without pushing the page sideways', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'calibration')
+    await expect(page.getByTestId('calibration-card-battery-current')).toBeVisible()
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    )
+    expect(overflow).toBeLessThanOrEqual(2)
+  })
+
   test('Reset to Defaults is armed before it can erase, on Parameters and Snapshots', async ({ page }) => {
     // Erasing every parameter sits near the top of two high-traffic screens, so
     // the first click must only arm — a misclick here costs a full retune.

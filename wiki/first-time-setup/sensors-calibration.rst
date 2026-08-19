@@ -151,15 +151,24 @@ smart battery reports amps directly and needs none of this.
    behind explicit props-removed and area-clear acknowledgements, and refuses
    while the vehicle is armed — do not work around that.
 
+The card walks it as three numbered steps, in the order the procedure has to
+happen in.
+
 #. **Zero the offset.** With the pack connected and nothing drawing current,
    enter what your meter reads (0 A with the pack off) and press **Set offset**.
    It writes the :param:`BATT_AMP_OFFSET` that makes the present reading match.
 #. **Draw a known load.** Clamp an ammeter on the pack lead. On Copter the card
    can generate the load for you: set a **Load throttle** between 1 % and 35 %
    and press **Spin motors** (after the acknowledgements). Anything that pulls a
-   steady, measurable current works just as well.
-#. **Enter what the meter says.** With the load steady, type the clamp meter's
-   amps into **Calibrate from measured current**. The card scales
+   steady, measurable current works just as well. While the motors run the card
+   shows what the vehicle reports and **how many seconds are left** — this is
+   the one time-critical part, and you are holding a meter in the other hand.
+   When the spin ends it says what it captured, from how many readings, and
+   against what the aircraft draws at idle.
+#. **Enter what the meter says.** The field is focused for you the moment the
+   capture lands, so the number you just read can go straight in — the value
+   stays usable after the motors stop. Type the clamp meter's amps into
+   **Calibrate from measured current**. The card scales
    :param:`BATT_AMP_PERVLT` by measured ÷ reported and writes it. The reported
    half of that ratio is the **median of readings sampled across the settled
    part of the spin**, not one instantaneous sample — current telemetry is

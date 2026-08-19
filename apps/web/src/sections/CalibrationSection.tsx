@@ -252,6 +252,15 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
   const [capturedLoadCurrentA, setCapturedLoadCurrentA] = useState<number | undefined>(undefined)
   /** Idle draw recorded just before the load, for the weak-point warning. */
   const [capturedIdleCurrentA, setCapturedIdleCurrentA] = useState<number | undefined>(undefined)
+  /** How many samples the capture rests on, so the operator can judge it. */
+  const [capturedSampleCount, setCapturedSampleCount] = useState(0)
+  /** Wall-clock end of the load spin, for the countdown. */
+  const [loadEndsAtMs, setLoadEndsAtMs] = useState<number | undefined>(undefined)
+  const [loadSecondsLeft, setLoadSecondsLeft] = useState<number | undefined>(undefined)
+  /** Focused the moment the capture lands, so the meter value can just be typed. */
+  const measuredCurrentInputRef = useRef<HTMLInputElement | null>(null)
+  /** Step 1 done, so the flow can show its own progress. */
+  const [offsetWritten, setOffsetWritten] = useState(false)
   /** Every reported current seen during the load; summarised when it ends. */
   const loadSamplesRef = useRef<number[]>([])
   const loadSamplerRef = useRef<number | undefined>(undefined)
@@ -289,6 +298,35 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
   // A load sampler left running after the card unmounts would keep pushing
   // into a ref nobody reads, and would fire setState on a dead component.
   useEffect(() => () => window.clearInterval(loadSamplerRef.current), [])
+
+  // Count the spin down. Knowing when to look at the meter is most of what
+  // made this procedure awkward to do alone: the operator was watching a
+  // button that said "Motors spinning…" with no idea how long was left.
+  useEffect(() => {
+    if (loadEndsAtMs === undefined) {
+      setLoadSecondsLeft(undefined)
+      return
+    }
+    const tick = (): void => {
+      const remaining = Math.max(0, Math.ceil((loadEndsAtMs - Date.now()) / 1000))
+      setLoadSecondsLeft(remaining)
+      if (remaining === 0) {
+        setLoadEndsAtMs(undefined)
+      }
+    }
+    tick()
+    const timer = window.setInterval(tick, 250)
+    return () => window.clearInterval(timer)
+  }, [loadEndsAtMs])
+
+  // The moment the capture lands, put the cursor where the meter value goes.
+  // Otherwise the operator puts the meter down, comes back, and has to hunt
+  // for the field before the number they memorised goes stale.
+  useEffect(() => {
+    if (capturedLoadCurrentA !== undefined) {
+      measuredCurrentInputRef.current?.focus()
+    }
+  }, [capturedLoadCurrentA])
 
   // Mirror the live reported current so the capture timer reads it as of when
   // it FIRES, not as of the render that scheduled it.
@@ -684,6 +722,22 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       })
                       return (
                         <div className="guided-current-cal" data-testid="battery-current-guided">
+                          {/* Three numbered steps rather than a flat row of
+                            * controls. The procedure has a required order --
+                            * zero the offset, load the pack, match the meter --
+                            * and the flat layout neither said so nor showed how
+                            * far through it you were, which is what made it
+                            * awkward to do single-handed. */}
+                          <ol className="guided-current-cal__steps">
+                          <li className="guided-current-cal__step" data-testid="battery-current-step-offset">
+                          <div className="guided-current-cal__step-title">
+                            <strong>1 · Zero it at no load</strong>
+                            {offsetWritten ? <StatusBadge tone="success">done</StatusBadge> : null}
+                          </div>
+                          <p className="hint">
+                            Nothing drawing current — pack off, or the craft idle. Type what your meter reads (0 with
+                            the pack disconnected) and set the offset.
+                          </p>
                           <div className="switch-exercise-controls">
                             <label className="scoped-editor-field scoped-editor-field--compact">
                               <span>Meter reads (A)</span>
@@ -709,9 +763,10 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                 void (async () => {
                                   try {
                                     await runtime.setParameter('BATT_AMP_OFFSET', Number(offsetResult.offsetV.toFixed(4)), UI_PARAMETER_WRITE_OPTIONS)
+                                    setOffsetWritten(true)
                                     setBatteryCalNotice({
                                       tone: 'success',
-                                      text: `BATT_AMP_OFFSET set to ${offsetResult.offsetV.toFixed(3)} V — reported current shifts by ${offsetResult.shiftA.toFixed(2)} A to match your meter.`
+                                      text: `BATT_AMP_OFFSET set to ${offsetResult.offsetV.toFixed(3)} V — reported current shifts by ${offsetResult.shiftA.toFixed(2)} A to match your meter. Next: put a load on the pack.`
                                     })
                                   } catch (error) {
                                     setBatteryCalNotice({
@@ -730,6 +785,17 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                               {offsetResult.reason}
                             </p>
                           ) : null}
+                          </li>
+
+                          <li className="guided-current-cal__step" data-testid="battery-current-step-load">
+                          <div className="guided-current-cal__step-title">
+                            <strong>2 · Put a real load on it</strong>
+                            {capturedLoadCurrentA !== undefined ? <StatusBadge tone="success">captured</StatusBadge> : null}
+                          </div>
+                          <p className="hint">
+                            The gain is fitted from one loaded reading, so the load has to be big enough to matter.
+                            Props off. Have the meter in view before you start — the spin counts down.
+                          </p>
                           {/* Step 2: put a real load on the pack. Current
                            *  calibration needs a steady draw to scale against —
                            *  BATT_AMP_PERVLT is fitted from (measured / reported)
@@ -829,6 +895,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                       // loaded reading.
                                       setCapturedIdleCurrentA(reportedCurrentRef.current)
                                       loadSamplesRef.current = []
+                                      setCapturedSampleCount(0)
                                       window.clearInterval(loadSamplerRef.current)
                                       await runtime.runMotorTest(
                                         {
@@ -870,6 +937,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                         () => {
                                           window.clearInterval(loadSamplerRef.current)
                                           loadSamplerRef.current = undefined
+                                          setCapturedSampleCount(loadSamplesRef.current.length)
                                           setCapturedLoadCurrentA(
                                             summariseLoadCurrent(loadSamplesRef.current) ?? reportedCurrentRef.current
                                           )
@@ -878,9 +946,10 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                         // spin-down reading cannot enter the set.
                                         Math.max(loadSeconds * 1000 - 500, 500)
                                       )
+                                      setLoadEndsAtMs(Date.now() + loadSeconds * 1000)
                                       setBatteryCalNotice({
                                         tone: 'warning',
-                                        text: `Spinning all motors at ${throttlePercent}% for ${loadSeconds} s — read your meter and type the value below. It stays usable after the motors stop.`
+                                        text: `Spinning all motors at ${throttlePercent}% for ${loadSeconds} s — read your meter now. What you type stays usable after the motors stop.`
                                       })
                                     } catch (error) {
                                       setBatteryCalNotice({
@@ -899,8 +968,40 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   can run.
                                 </small>
                               ) : null}
+                              {/* While the motors run: what the vehicle reports,
+                                * and how long is left to read the meter. The
+                                * button alone said "Motors spinning…" with no
+                                * clock, so the one time-critical action in the
+                                * procedure had no timer against it. */}
+                              {loadSecondsLeft !== undefined && loadSecondsLeft > 0 ? (
+                                <p className="guided-current-cal__live" data-testid="battery-current-live">
+                                  <strong>Read your meter now.</strong> FC reads{' '}
+                                  {reportedA !== undefined ? `${reportedA.toFixed(2)} A` : '—'} · {loadSecondsLeft} s left
+                                </p>
+                              ) : null}
+                              {capturedLoadCurrentA !== undefined ? (
+                                <p className="guided-current-cal__captured" data-testid="battery-current-captured">
+                                  Captured {capturedLoadCurrentA.toFixed(2)} A
+                                  {capturedSampleCount > 0 ? ` — median of ${capturedSampleCount} readings` : ''}
+                                  {capturedIdleCurrentA !== undefined
+                                    ? `, against ${capturedIdleCurrentA.toFixed(2)} A at idle`
+                                    : ''}
+                                  .
+                                </p>
+                              ) : null}
                             </div>
                           ) : null}
+                          </li>
+
+                          <li className="guided-current-cal__step" data-testid="battery-current-step-match">
+                          <div className="guided-current-cal__step-title">
+                            <strong>3 · Match your meter</strong>
+                          </div>
+                          <p className="hint">
+                            {capturedLoadCurrentA === undefined
+                              ? 'Run the load above first — there is nothing to match against yet.'
+                              : 'Type what your meter read during that spin. The field is already focused.'}
+                          </p>
                           <label className="scoped-editor-field scoped-editor-field--compact">
                             <span>Measured current (A)</span>
                             <input
@@ -911,6 +1012,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                               value={batteryMeasuredCurrent}
                               onChange={(event) => setBatteryMeasuredCurrent(event.target.value)}
                               data-testid="battery-current-measured-input"
+                              ref={measuredCurrentInputRef}
                             />
                           </label>
                           {perVoltResult.ok ? (
@@ -949,6 +1051,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   setBatteryCalNotice({ tone: 'success', text: `BATT_AMP_PERVLT set to ${perVoltResult.perVolt.toFixed(2)} A/V.` })
                                   setBatteryMeasuredCurrent('')
                                   setCapturedLoadCurrentA(undefined)
+                                  setCapturedSampleCount(0)
                                 } catch (error) {
                                   setBatteryCalNotice({
                                     tone: 'danger',
@@ -960,6 +1063,8 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                           >
                             Calibrate from measured current
                           </button>
+                          </li>
+                          </ol>
                           {batteryCalNotice ? <p className="calibration-card__blocked">{batteryCalNotice.text}</p> : null}
                         </div>
                       )
