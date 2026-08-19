@@ -7,7 +7,12 @@ import { useEffect, useRef, useState, type ReactElement } from 'react'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
 import { EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS, MAX_MOTOR_TEST_DURATION_SECONDS } from '@arduconfig/ardupilot-core'
-import { computeCurrentOffset, computeCurrentPerVolt } from '../view-models/battery-current-offset'
+import {
+  computeCurrentOffset,
+  computeCurrentPerVolt,
+  loadPointIsWeak,
+  summariseLoadCurrent
+} from '../view-models/battery-current-offset'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { formatArducopterMotorPwmType } from '@arduconfig/param-metadata'
 
@@ -245,6 +250,11 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
    * mid-spin -- which is exactly the reported bug.
    */
   const [capturedLoadCurrentA, setCapturedLoadCurrentA] = useState<number | undefined>(undefined)
+  /** Idle draw recorded just before the load, for the weak-point warning. */
+  const [capturedIdleCurrentA, setCapturedIdleCurrentA] = useState<number | undefined>(undefined)
+  /** Every reported current seen during the load; summarised when it ends. */
+  const loadSamplesRef = useRef<number[]>([])
+  const loadSamplerRef = useRef<number | undefined>(undefined)
   /** What the operator's meter reads for the offset step. 0 = pack off. */
   const [offsetActualCurrent, setOffsetActualCurrent] = useState('0')
   /**
@@ -276,6 +286,10 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     handleGuidedAction,
     handleCancelGuidedAction
   } = props
+  // A load sampler left running after the card unmounts would keep pushing
+  // into a ref nobody reads, and would fire setState on a dead component.
+  useEffect(() => () => window.clearInterval(loadSamplerRef.current), [])
+
   // Mirror the live reported current so the capture timer reads it as of when
   // it FIRES, not as of the render that scheduled it.
   useEffect(() => {
@@ -810,6 +824,12 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   void (async () => {
                                     try {
                                       setCapturedLoadCurrentA(undefined)
+                                      // Idle first: the fit is only as good as
+                                      // the difference between this and the
+                                      // loaded reading.
+                                      setCapturedIdleCurrentA(reportedCurrentRef.current)
+                                      loadSamplesRef.current = []
+                                      window.clearInterval(loadSamplerRef.current)
                                       await runtime.runMotorTest(
                                         {
                                           runAllOutputsSimultaneous: true,
@@ -830,14 +850,34 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                         // outputs mapped -- still applies.
                                         { expertMode: isExpertMode, uncappedDuration: true }
                                       )
-                                      // Sample the reported current partway
-                                      // through the run, once it has settled.
+                                      // Sample throughout the run and take the
+                                      // median of the settled window, rather
+                                      // than one instantaneous reading partway
+                                      // through: current telemetry is noisy,
+                                      // and every bit of that noise lands in
+                                      // BATT_AMP_PERVLT, which then scales
+                                      // every current the vehicle reports.
                                       // Captured rather than read live at Apply
                                       // time, so typing the meter value after
                                       // the motors stop still calibrates.
-                                      window.setTimeout(() => {
-                                        setCapturedLoadCurrentA(reportedCurrentRef.current)
-                                      }, Math.min(loadSeconds * 1000 * 0.6, 8000))
+                                      loadSamplerRef.current = window.setInterval(() => {
+                                        const sample = reportedCurrentRef.current
+                                        if (sample !== undefined) {
+                                          loadSamplesRef.current.push(sample)
+                                        }
+                                      }, 200)
+                                      window.setTimeout(
+                                        () => {
+                                          window.clearInterval(loadSamplerRef.current)
+                                          loadSamplerRef.current = undefined
+                                          setCapturedLoadCurrentA(
+                                            summariseLoadCurrent(loadSamplesRef.current) ?? reportedCurrentRef.current
+                                          )
+                                        },
+                                        // Stop just before the motors do, so a
+                                        // spin-down reading cannot enter the set.
+                                        Math.max(loadSeconds * 1000 - 500, 500)
+                                      )
                                       setBatteryCalNotice({
                                         tone: 'warning',
                                         text: `Spinning all motors at ${throttlePercent}% for ${loadSeconds} s — read your meter and type the value below. It stays usable after the motors stop.`
@@ -874,7 +914,25 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                             />
                           </label>
                           {perVoltResult.ok ? (
-                            <small>New per-volt: {perVoltResult.perVolt.toFixed(2)} A/V (from {capturedLoadCurrentA?.toFixed(2)} A under load)</small>
+                            <>
+                              {/* The old wording named the number it was fed
+                                * ("from 2.22 A under load"), which reads as a
+                                * claim about the result. Say what applying it
+                                * does instead. */}
+                              <small data-testid="battery-current-pervolt-preview">
+                                New per-volt: {perVoltResult.perVolt.toFixed(2)} A/V — the FC would read{' '}
+                                {Number.parseFloat(batteryMeasuredCurrent).toFixed(2)} A where it read{' '}
+                                {capturedLoadCurrentA?.toFixed(2)} A under this load.
+                              </small>
+                              {loadPointIsWeak(capturedIdleCurrentA, capturedLoadCurrentA) ? (
+                                <small className="switch-exercise-warning" data-testid="battery-current-weak-point">
+                                  That load barely moved the current above the {capturedIdleCurrentA?.toFixed(2)} A the
+                                  aircraft draws standing still, so this ratio mostly reflects the offset rather than
+                                  the gain. Zero the offset first, then load it harder — more throttle, or a longer
+                                  spin — before trusting the per-volt.
+                                </small>
+                              ) : null}
+                            </>
                           ) : (
                             <small className="switch-exercise-warning">{perVoltResult.reason}</small>
                           )}

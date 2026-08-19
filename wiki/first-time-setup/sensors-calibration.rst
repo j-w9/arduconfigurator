@@ -152,19 +152,33 @@ smart battery reports amps directly and needs none of this.
    while the vehicle is armed — do not work around that.
 
 #. **Zero the offset.** With the pack connected and nothing drawing current,
-   press **Zero offset now**. It writes the :param:`BATT_AMP_OFFSET` that makes
-   the present reading exactly 0 A.
+   enter what your meter reads (0 A with the pack off) and press **Set offset**.
+   It writes the :param:`BATT_AMP_OFFSET` that makes the present reading match.
 #. **Draw a known load.** Clamp an ammeter on the pack lead. On Copter the card
    can generate the load for you: set a **Load throttle** between 1 % and 35 %
    and press **Spin motors** (after the acknowledgements). Anything that pulls a
    steady, measurable current works just as well.
 #. **Enter what the meter says.** With the load steady, type the clamp meter's
    amps into **Calibrate from measured current**. The card scales
-   :param:`BATT_AMP_PERVLT` by measured ÷ reported and writes it.
+   :param:`BATT_AMP_PERVLT` by measured ÷ reported and writes it. The reported
+   half of that ratio is the **median of readings sampled across the settled
+   part of the spin**, not one instantaneous sample — current telemetry is
+   noisy, and any noise in that number ends up permanently in the gain. The
+   preview line says what the result does: what the vehicle would read at the
+   load it just measured.
 
 A **manual override** block below lets you type :param:`BATT_AMP_OFFSET` and
 :param:`BATT_AMP_PERVLT` directly, for transferring known-good values from an
 identical build or from a power module's datasheet.
+
+.. important::
+
+   **A gain needs a real load.** With props off, a motor spin may pull barely
+   more than the aircraft draws standing still — and when the loaded and idle
+   readings are nearly the same, the ratio between meter and vehicle is mostly
+   describing the offset, not the gain. The card says so when it sees that, and
+   the fix is to zero the offset first and then load it harder: more throttle,
+   or a longer spin.
 
 .. note::
 

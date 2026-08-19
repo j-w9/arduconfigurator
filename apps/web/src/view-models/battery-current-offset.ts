@@ -93,3 +93,50 @@ export function computeCurrentPerVolt(input: {
   }
   return { ok: true, perVolt: perVolt * (measuredA / reportedA) }
 }
+
+/**
+ * Reduce a run of reported-current samples to the one number the fit should use.
+ *
+ * The earlier version took a SINGLE instantaneous sample 60% of the way through
+ * the load. A current reading is noisy -- ESC switching, telemetry quantisation,
+ * a motor still spinning up -- so one sample could sit several percent off the
+ * real load current, and every bit of that error lands directly in
+ * BATT_AMP_PERVLT, which then scales every current the vehicle ever reports.
+ *
+ * Median rather than mean: a single dropped or doubled frame moves a mean and
+ * does not move a median. The leading 30% is discarded because the motors are
+ * still spinning up, and the trailing 10% because they may already be winding
+ * down.
+ */
+export function summariseLoadCurrent(samples: readonly number[]): number | undefined {
+  const usable = samples.filter((sample) => Number.isFinite(sample) && sample >= 0)
+  if (usable.length === 0) {
+    return undefined
+  }
+  // Too few to trim meaningfully: use what there is rather than throwing away
+  // the only evidence of the load.
+  const window =
+    usable.length < 5
+      ? usable
+      : usable.slice(Math.floor(usable.length * 0.3), Math.max(Math.ceil(usable.length * 0.9), 1))
+  const sorted = [...(window.length > 0 ? window : usable)].sort((left, right) => left - right)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0 ? (sorted[middle - 1]! + sorted[middle]!) / 2 : sorted[middle]!
+}
+
+/**
+ * Whether a per-volt fit rests on too little load to be worth trusting.
+ *
+ * BATT_AMP_PERVLT is a GAIN: fitting it means dividing the meter reading by
+ * what the vehicle reported at the same instant. When the load barely moves the
+ * current above idle, both numbers are dominated by whatever the airframe draws
+ * standing still, and the ratio between them says more about the offset than
+ * about the gain. Props are off during this test, so a small delta is the
+ * normal case, not an unlikely one.
+ */
+export function loadPointIsWeak(idleA: number | undefined, loadA: number | undefined): boolean {
+  if (idleA === undefined || loadA === undefined || !Number.isFinite(idleA) || !Number.isFinite(loadA)) {
+    return false
+  }
+  return loadA - idleA < Math.max(1, idleA * 0.5)
+}
