@@ -729,15 +729,19 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                             * far through it you were, which is what made it
                             * awkward to do single-handed. */}
                           <ol className="guided-current-cal__steps">
-                          <li className="guided-current-cal__step" data-testid="battery-current-step-offset">
+                          <li
+                            className={`guided-current-cal__step${offsetWritten ? '' : ' guided-current-cal__step--active'}`}
+                            data-testid="battery-current-step-offset"
+                          >
                           <div className="guided-current-cal__step-title">
                             <strong>1 · Zero it at no load</strong>
                             {offsetWritten ? <StatusBadge tone="success">done</StatusBadge> : null}
                           </div>
-                          <p className="hint">
-                            Nothing drawing current — pack off, or the craft idle. Type what your meter reads (0 with
-                            the pack disconnected) and set the offset.
-                          </p>
+                          {/* The instruction is worth reading once. Once the
+                            * step is done it is just height. */}
+                          {offsetWritten ? null : (
+                            <p className="hint">Nothing drawing current. Type what your meter reads — 0 with the pack off.</p>
+                          )}
                           <div className="switch-exercise-controls">
                             <label className="scoped-editor-field scoped-editor-field--compact">
                               <span>Meter reads (A)</span>
@@ -787,15 +791,19 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                           ) : null}
                           </li>
 
-                          <li className="guided-current-cal__step" data-testid="battery-current-step-load">
+                          <li
+                            className={`guided-current-cal__step${
+                              offsetWritten && capturedLoadCurrentA === undefined ? ' guided-current-cal__step--active' : ''
+                            }`}
+                            data-testid="battery-current-step-load"
+                          >
                           <div className="guided-current-cal__step-title">
                             <strong>2 · Put a real load on it</strong>
                             {capturedLoadCurrentA !== undefined ? <StatusBadge tone="success">captured</StatusBadge> : null}
                           </div>
-                          <p className="hint">
-                            The gain is fitted from one loaded reading, so the load has to be big enough to matter.
-                            Props off. Have the meter in view before you start — the spin counts down.
-                          </p>
+                          {capturedLoadCurrentA !== undefined ? null : (
+                            <p className="hint">Props off, meter in view. The spin counts down while it runs.</p>
+                          )}
                           {/* Step 2: put a real load on the pack. Current
                            *  calibration needs a steady draw to scale against —
                            *  BATT_AMP_PERVLT is fitted from (measured / reported)
@@ -809,6 +817,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                            *  motor-spinning action here. */}
                           {isCopterVehicle ? (
                             <div className="guided-current-cal__load" data-testid="battery-current-load">
+                              <div className="guided-current-cal__load-row">
                               <label className="scoped-editor-field scoped-editor-field--compact">
                                 <span>Load seconds</span>
                                 <input
@@ -822,16 +831,6 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   title="How long the motors run. Not capped here — long enough to read your meter."
                                 />
                               </label>
-                              {/* The cap is lifted on this path, so the length
-                                  is the operator's to choose. Say what a long
-                                  one means rather than silently accepting it:
-                                  this is the only action that spins every
-                                  motor simultaneously. */}
-                              {Number.isFinite(loadSecondsValue) && loadSecondsValue > EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS ? (
-                                <p className="switch-exercise-warning" data-testid="battery-current-load-long">
-                                  {`All motors will spin together for ${loadSecondsValue}s — longer than the ${EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS}s motor-test ceiling. Props off, and keep the stop control within reach.`}
-                                </p>
-                              ) : null}
                               <label className="scoped-editor-field scoped-editor-field--compact">
                                 <span>Load throttle (%)</span>
                                 <input
@@ -845,6 +844,17 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                   data-testid="battery-current-load-throttle"
                                 />
                               </label>
+                              </div>
+                              {/* The cap is lifted on this path, so the length
+                                  is the operator's to choose. Say what a long
+                                  one means rather than silently accepting it:
+                                  this is the only action that spins every
+                                  motor simultaneously. */}
+                              {Number.isFinite(loadSecondsValue) && loadSecondsValue > EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS ? (
+                                <p className="switch-exercise-warning" data-testid="battery-current-load-long">
+                                  {`All motors will spin together for ${loadSecondsValue}s — longer than the ${EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS}s motor-test ceiling. Props off, and keep the stop control within reach.`}
+                                </p>
+                              ) : null}
                               {/* The gate, inline, immediately above the button
                                 *  it unlocks — same shared state as every other
                                 *  motor-spinning action, just rendered here so
@@ -993,14 +1003,19 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                           ) : null}
                           </li>
 
-                          <li className="guided-current-cal__step" data-testid="battery-current-step-match">
+                          <li
+                            className={`guided-current-cal__step${
+                              capturedLoadCurrentA !== undefined ? ' guided-current-cal__step--active' : ''
+                            }`}
+                            data-testid="battery-current-step-match"
+                          >
                           <div className="guided-current-cal__step-title">
                             <strong>3 · Match your meter</strong>
                           </div>
                           <p className="hint">
                             {capturedLoadCurrentA === undefined
                               ? 'Run the load above first — there is nothing to match against yet.'
-                              : 'Type what your meter read during that spin. The field is already focused.'}
+                              : 'Type what your meter read during that spin.'}
                           </p>
                           <label className="scoped-editor-field scoped-editor-field--compact">
                             <span>Measured current (A)</span>

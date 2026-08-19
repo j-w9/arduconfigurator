@@ -15142,26 +15142,29 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .bootloader-identity__method code { overflow-wrap: anywhere; }
 
-/* Battery-current calibration, as three numbered steps. The controls used to
-   sit in one flat row, which said nothing about the order they have to happen
-   in -- zero, load, match -- or how far through it you were. */
+/* Battery-current calibration, as three numbered steps.
+   Steps, not boxes: a bordered panel inside a card inside a grid was three
+   nested frames deep, and the frames took more room than the two fields they
+   held. A hairline rule and a tighter rhythm carry the sequence just as well. */
 .guided-current-cal__steps {
   list-style: none;
   display: grid;
-  gap: 10px;
+  gap: 4px;
   margin: 0;
   padding: 0;
-  counter-reset: current-cal-step;
 }
 
 .guided-current-cal__step {
   display: grid;
-  gap: 8px;
-  padding: 10px 12px;
-  border-radius: var(--radius-lg);
-  border: 1px solid rgba(var(--edge-rgb), 0.05);
-  background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.96), rgba(var(--fill-rgb), 1));
+  gap: 6px;
+  padding: 8px 0 8px 10px;
+  border-left: 2px solid rgba(var(--edge-rgb), 0.12);
   min-width: 0;
+}
+
+/* The step being worked on is the one with a live border. */
+.guided-current-cal__step--active {
+  border-left-color: var(--accent, #e0a33a);
 }
 
 .guided-current-cal__step-title {
@@ -15172,16 +15175,43 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 
 .guided-current-cal__step-title strong {
-  font-size: 13px;
+  font-size: 12px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
+/* Hints earn their space while a step is in play and lose it afterwards. */
+.guided-current-cal__step .hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* The fields inside a step are one number each. The standard padded panel
+   around them was most of the height the steps took. */
+.guided-current-cal__step .scoped-editor-field {
+  margin: 0;
+  padding: 6px 8px;
+  gap: 4px;
+}
+
+.guided-current-cal__step .scoped-editor-field span {
+  font-size: 10px;
+}
+
+/* Load length and throttle are two small numbers set together, so they sit on
+   one line rather than stacking into two full-width panels. */
+.guided-current-cal__load-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
 /* The one time-critical line in the procedure: the operator is holding a meter
-   in the other hand, so it gets the weight of a live readout, not a hint. */
+   in the other hand, so it stays legible where the hints shrink. */
 .guided-current-cal__live {
   margin: 0;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--warning-rgb, 224, 163, 58), 0.35);
   color: var(--warning, #e0a33a);
@@ -15193,7 +15223,7 @@ details.bf-gui-box:not([open]) > summary::after {
   margin: 0;
   color: var(--text-muted);
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 /* Why an identical bootloader cannot be forced from here. Sits between the
