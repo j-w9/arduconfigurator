@@ -273,16 +273,26 @@ stages the parameters that follow from them. It is where a fresh build begins,
 before there is anything worth autotuning.
 
 It uses the same formulas as Mission Planner's *Initial Parameters* screen, so
-the numbers agree with what that tool would have given you.
+the numbers agree with what that tool would have given you — with two
+deliberate corrections, both noted below.
 
 What it sets, all of it driven by prop size or the pack:
 
 - ``INS_GYRO_FILTER`` and ``INS_ACCEL_FILTER``, plus the matching
   ``ATC_RAT_*_FLT*`` rate-loop filters — bigger props, lower cutoffs.
-- ``ATC_ACCEL_{R,P,Y}_MAX`` acceleration limits and ``ACRO_YAW_P``.
+- ``ATC_ACCEL_{R,P,Y}_MAX`` acceleration limits and the acro yaw rate.
+  ArduCopter 4.2 replaced ``ACRO_YAW_P`` with ``ACRO_Y_RATE`` (converted with a
+  ×45 factor), so ``ACRO_Y_RATE`` is what gets staged; the old name is used
+  only on a vehicle that actually still reports it.
 - ``MOT_THST_EXPO`` and a ``MOT_THST_HOVER`` starting guess.
 - ``BATT_ARM_VOLT`` / ``BATT_CRT_VOLT`` / ``BATT_LOW_VOLT`` and
-  ``MOT_BAT_VOLT_MIN`` / ``MAX`` from the cell count and chemistry.
+  ``MOT_BAT_VOLT_MIN`` / ``MAX`` from the cell count and chemistry. Four
+  chemistries are offered — **LiPo** (4.2 V/cell full, 3.3 V empty), **LiPo
+  HV** (4.35 / 3.3), **Li-ion** (4.2 / 2.7) and **Li-ion HV** (4.35 / 2.7).
+  Mission Planner used 4.1 V / 2.8 V for Li-ion, which is neither the cell's
+  charge voltage nor its discharge floor; these values set the range the thrust
+  compensation scales across, so being a tenth of a volt per cell out matters
+  from the moment the pack comes off the charger.
 
 Two options change the result: **T-Motor ESCs** flattens the thrust curve to a
 fixed expo and pins the PWM range, and **Failsafes & fence** adds the suggested
@@ -296,7 +306,10 @@ battery-failsafe actions plus a 120 m / 150 m fence.
    actual tuning from there.
 
 The table lists only the values that would change, each showing what the
-vehicle has now next to what it would become, with the reasoning on hover.
+vehicle has now next to what it would become, with the reasoning on hover. A
+parameter the connected vehicle does not report is left out entirely rather
+than offered — it could only stage as invalid, and one invalid row blocks the
+whole batch.
 Nothing is written — **Stage** puts the batch into the same review queue as
 every other tuning change, and you apply it there.
 

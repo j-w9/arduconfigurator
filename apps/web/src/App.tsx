@@ -9330,6 +9330,7 @@ export function App() {
               quadplane={false}
               firmwareMajor={initialTuneFirmwareMajor}
               hasAccelPMax={snapshot.parameters.some((parameter) => /_ACCEL_P_MAX$/.test(parameter.id))}
+              hasAcroYawP={snapshot.parameters.some((parameter) => parameter.id === 'ACRO_YAW_P')}
               disabled={busyAction !== undefined}
             />
           }

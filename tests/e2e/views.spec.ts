@@ -6076,6 +6076,41 @@ test.describe('Tuning ▸ Initial Tune', () => {
     await expect(page.getByTestId('initial-tune-panel')).toContainText('staged')
   })
 
+  test('offers only parameters the connected vehicle actually has', async ({ page }) => {
+    // ACRO_YAW_P was replaced by ACRO_Y_RATE in Copter 4.2, so a modern
+    // vehicle does not report it. Offering it staged a row the FC rejects, and
+    // one invalid row blocks the whole batch.
+    await openInitialTune(page)
+    const table = page.getByTestId('initial-tune-table')
+    await expect(table).toBeVisible()
+    await expect(page.getByTestId('initial-tune-row-ACRO_YAW_P')).toHaveCount(0)
+
+    // Guard the guard: every row on offer must be a parameter the vehicle has,
+    // which is the general rule the ACRO case is one instance of.
+    const ids = await table.locator('[data-testid^="initial-tune-row-"]').evaluateAll((rows) =>
+      rows.map((row) => (row as HTMLElement).dataset.testid?.replace('initial-tune-row-', '') ?? '')
+    )
+    expect(ids.length).toBeGreaterThan(0)
+    await page.getByTestId('view-button-parameters').click()
+    for (const id of ids) {
+      await page.getByTestId('parameter-search-input').fill(id)
+      await page.getByTestId('parameter-exact-search-toggle').check()
+      await expect(page.locator(`.parameter-row[data-param-row="${id}"]`), id).toHaveCount(1)
+    }
+  })
+
+  test('offers the four cell chemistries', async ({ page }) => {
+    // Mission Planner had Li-ion at 4.1 V/cell and no HV variants at all. The
+    // voltages themselves are asserted in the unit tests -- the demo vehicle
+    // does not report MOT_BAT_VOLT_*, so those rows are (correctly) absent
+    // here, which is the missing-parameter rule above doing its job.
+    await openInitialTune(page)
+    const chemistry = page.getByTestId('initial-tune-chemistry')
+    await expect(chemistry.locator('option')).toHaveText(['LiPo', 'LiPo HV', 'Li-ion', 'Li-ion HV'])
+    await chemistry.selectOption('Li-ion HV')
+    await expect(chemistry).toHaveValue('Li-ion HV')
+  })
+
   test('never offers a rate PID gain', async ({ page }) => {
     // The line the feature must not cross: prop diameter says nothing about
     // P, I or D.

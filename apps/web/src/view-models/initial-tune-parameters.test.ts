@@ -31,7 +31,7 @@ describe('buildInitialTuneParameters', () => {
     // -900*9 + 36000 = 27900, already a round hundred.
     expect(value(result, 'ATC_ACCEL_Y_MAX')).toBe(27900)
     // 0.5 * 27900 / 4500
-    expect(value(result, 'ACRO_YAW_P')).toBeCloseTo(3.1, 10)
+    expect(value(result, 'ACRO_Y_RATE')).toBeCloseTo(3.1 * 45, 6)
     // 289.22 * 9^-0.838 = 46.03... -> 46
     expect(value(result, 'INS_GYRO_FILTER')).toBe(46)
     // max(10, 46/2)
@@ -122,13 +122,13 @@ describe('buildInitialTuneParameters', () => {
     expect(value(old, 'ATC_RAT_PIT_FLTD')).toBeUndefined()
   })
 
-  it('prefixes a QuadPlane Q_A/Q_M and leaves ACRO_YAW_P alone', () => {
+  it('prefixes a QuadPlane Q_A/Q_M and leaves the acro yaw rate alone', () => {
     const qp = buildInitialTuneParameters({ ...base, quadplane: true })
     expect(value(qp, 'Q_A_RAT_PIT_FLTD')).toBe(23)
     expect(value(qp, 'Q_M_THST_EXPO')).toBe(0.58)
     expect(value(qp, 'ATC_RAT_PIT_FLTD')).toBeUndefined()
-    // ACRO_YAW_P is unprefixed in Mission Planner for every vehicle.
-    expect(value(qp, 'ACRO_YAW_P')).toBeCloseTo(3.1, 10)
+    // The acro yaw setting is unprefixed in Mission Planner for every vehicle.
+    expect(value(qp, 'ACRO_Y_RATE')).toBeCloseTo(3.1 * 45, 6)
   })
 
   it('never stages a rate PID gain', () => {
@@ -154,11 +154,45 @@ describe('buildInitialTuneParameters', () => {
   })
 
   it('carries the chemistry through to the voltage points', () => {
-    const ion = buildInitialTuneParameters({ ...base, chemistry: 'LiIon', batteryCells: 6 })
-    expect(value(ion, 'MOT_BAT_VOLT_MAX')).toBeCloseTo(BATTERY_CHEMISTRIES.LiIon.maxCellV * 6, 6)
-    expect(value(ion, 'MOT_BAT_VOLT_MIN')).toBeCloseTo(BATTERY_CHEMISTRIES.LiIon.minCellV * 6, 6)
-    const hv = buildInitialTuneParameters({ ...base, chemistry: 'LiPoHV' })
+    const ion = buildInitialTuneParameters({ ...base, chemistry: 'Li-ion', batteryCells: 6 })
+    expect(value(ion, 'MOT_BAT_VOLT_MAX')).toBeCloseTo(BATTERY_CHEMISTRIES['Li-ion'].maxCellV * 6, 6)
+    expect(value(ion, 'MOT_BAT_VOLT_MIN')).toBeCloseTo(BATTERY_CHEMISTRIES['Li-ion'].minCellV * 6, 6)
+    const hv = buildInitialTuneParameters({ ...base, chemistry: 'LiPo HV' })
     expect(value(hv, 'MOT_BAT_VOLT_MAX')).toBeCloseTo(4.35 * 4, 6)
+  })
+
+  it('uses real cell voltages for the two Li-ion chemistries', () => {
+    // Mission Planner had Li-ion at 4.1 V / 2.8 V per cell. A Li-ion cell
+    // charges to 4.2 V (4.35 V for the HV variant) and runs down to 2.7 V;
+    // these feed MOT_BAT_VOLT_MAX/MIN, which scale thrust compensation across
+    // the pack, so being 0.1 V/cell low is not cosmetic.
+    const ion = buildInitialTuneParameters({ ...base, chemistry: 'Li-ion', batteryCells: 6 })
+    expect(value(ion, 'MOT_BAT_VOLT_MAX')).toBeCloseTo(25.2, 6)
+    expect(value(ion, 'MOT_BAT_VOLT_MIN')).toBeCloseTo(16.2, 6)
+
+    const ionHv = buildInitialTuneParameters({ ...base, chemistry: 'Li-ion HV', batteryCells: 6 })
+    expect(value(ionHv, 'MOT_BAT_VOLT_MAX')).toBeCloseTo(4.35 * 6, 6)
+    expect(value(ionHv, 'MOT_BAT_VOLT_MIN')).toBeCloseTo(16.2, 6)
+
+    // Both HV variants charge higher than their standard counterparts, which
+    // is the entire reason for offering them separately.
+    expect(BATTERY_CHEMISTRIES['LiPo HV'].maxCellV).toBeGreaterThan(BATTERY_CHEMISTRIES.LiPo.maxCellV)
+    expect(BATTERY_CHEMISTRIES['Li-ion HV'].maxCellV).toBeGreaterThan(BATTERY_CHEMISTRIES['Li-ion'].maxCellV)
+  })
+
+  it('stages ACRO_Y_RATE rather than the parameter 4.2 removed', () => {
+    // ArduCopter converts ACRO_YAW_P to ACRO_Y_RATE with a x45 factor
+    // (Parameters.cpp acro_rpy_conversion_info). Staging the old name against
+    // modern firmware produced a row the vehicle rejected, and one invalid row
+    // blocks the whole batch.
+    const modern = buildInitialTuneParameters(base)
+    expect(value(modern, 'ACRO_YAW_P')).toBeUndefined()
+    expect(value(modern, 'ACRO_Y_RATE')).toBeCloseTo(3.1 * 45, 6)
+
+    // A vehicle that really does have the old parameter still gets it.
+    const old = buildInitialTuneParameters({ ...base, hasAcroYawP: true })
+    expect(value(old, 'ACRO_YAW_P')).toBeCloseTo(3.1, 10)
+    expect(value(old, 'ACRO_Y_RATE')).toBeUndefined()
   })
 
   it('refuses nonsense inputs with a reason rather than emitting zeros', () => {

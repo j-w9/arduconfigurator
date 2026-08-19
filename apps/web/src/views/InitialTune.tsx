@@ -29,6 +29,8 @@ export interface InitialTuneViewProps {
   quadplane?: boolean
   firmwareMajor?: number
   hasAccelPMax?: boolean
+  /** Pre-4.2 firmware that still has ACRO_YAW_P rather than ACRO_Y_RATE. */
+  hasAcroYawP?: boolean
   disabled?: boolean
 }
 
@@ -40,6 +42,7 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
     quadplane = false,
     firmwareMajor = 4,
     hasAccelPMax = true,
+    hasAcroYawP = false,
     disabled = false
   } = props
 
@@ -59,16 +62,26 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
         suggestedSafety,
         firmwareMajor,
         hasAccelPMax,
+        hasAcroYawP,
         quadplane
       }),
-    [propText, cellsText, chemistry, tmotorEscs, suggestedSafety, firmwareMajor, hasAccelPMax, quadplane]
+    [propText, cellsText, chemistry, tmotorEscs, suggestedSafety, firmwareMajor, hasAccelPMax, hasAcroYawP, quadplane]
   )
 
   // Only the rows that would actually move. A table where most rows say
   // "unchanged" hides the handful that matter.
+  //
+  // Connected, a row the vehicle does not report is dropped rather than
+  // offered: it can only ever stage as invalid, and one such row blocks the
+  // whole batch. Disconnected there is nothing to check against, so the full
+  // list is shown.
+  const connected = liveValues.size > 0
   const changes = result.parameters.filter((parameter) => {
     const live = liveValues.get(parameter.id)
-    return live === undefined || Math.abs(live - parameter.value) > 1e-6
+    if (live === undefined) {
+      return !connected
+    }
+    return Math.abs(live - parameter.value) > 1e-6
   })
 
   return (
@@ -115,7 +128,7 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
           >
             {(Object.keys(BATTERY_CHEMISTRIES) as BatteryChemistry[]).map((key) => (
               <option key={key} value={key}>
-                {key}
+                {BATTERY_CHEMISTRIES[key].label}
               </option>
             ))}
           </select>

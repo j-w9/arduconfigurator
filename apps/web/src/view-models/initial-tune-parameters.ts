@@ -16,11 +16,27 @@
 //
 // Pure: airframe facts in, parameter list out. No runtime, no MAVLink, no DOM.
 
-/** Cell voltages by chemistry — ConfigInitialParams.cs:245-268. */
+/**
+ * Cell voltages by chemistry.
+ *
+ * Mission Planner's table (ConfigInitialParams.cs:245-268) had Li-ion at
+ * 4.1 V / 2.8 V per cell, which is neither the cell's charge voltage nor its
+ * discharge floor: a Li-ion cell charges to 4.2 V and is specified down to
+ * 2.5-2.7 V. Those numbers set MOT_BAT_VOLT_MAX/MIN, which scale the thrust
+ * compensation across the pack's range, so a max that is 0.1 V/cell low tells
+ * the mixer the pack is flatter than it is from the moment it is unplugged
+ * from the charger.
+ *
+ * High-voltage variants of both chemistries charge to 4.35 V/cell and are
+ * offered separately rather than folded in -- the difference is the whole
+ * point of buying them, and guessing it wrong in either direction is a real
+ * error at the top of the pack.
+ */
 export const BATTERY_CHEMISTRIES = {
-  LiPo: { maxCellV: 4.2, minCellV: 3.3 },
-  LiPoHV: { maxCellV: 4.35, minCellV: 3.3 },
-  LiIon: { maxCellV: 4.1, minCellV: 2.8 }
+  LiPo: { label: 'LiPo', maxCellV: 4.2, minCellV: 3.3 },
+  'LiPo HV': { label: 'LiPo HV', maxCellV: 4.35, minCellV: 3.3 },
+  'Li-ion': { label: 'Li-ion', maxCellV: 4.2, minCellV: 2.7 },
+  'Li-ion HV': { label: 'Li-ion HV', maxCellV: 4.35, minCellV: 2.7 }
 } as const
 
 export type BatteryChemistry = keyof typeof BATTERY_CHEMISTRIES
@@ -51,6 +67,11 @@ export interface InitialTuneInputs {
    * this wrong is not cosmetic — it is a 100x error on an acceleration limit.
    */
   hasAccelPMax?: boolean
+  /**
+   * Whether the vehicle still has the pre-4.2 `ACRO_YAW_P`. Defaults false:
+   * anything this app connects to in practice has `ACRO_Y_RATE` instead.
+   */
+  hasAcroYawP?: boolean
   /** 'ATC'/'MOT' for Copter, 'Q_A'/'Q_M' for QuadPlane — :151-157. */
   quadplane?: boolean
 }
@@ -100,6 +121,7 @@ export function buildInitialTuneParameters(inputs: InitialTuneInputs): InitialTu
     suggestedSafety = false,
     firmwareMajor = 4,
     hasAccelPMax = true,
+    hasAcroYawP = false,
     quadplane = false
   } = inputs
 
@@ -152,7 +174,16 @@ export function buildInitialTuneParameters(inputs: InitialTuneInputs): InitialTu
     parameters.push({ id, value, reason })
   }
 
-  add('ACRO_YAW_P', acroYawP, 'Half the yaw acceleration limit, in stick terms')
+  // ACRO_YAW_P does not exist on Copter 4.2 or later. ArduCopter converts it
+  // to ACRO_Y_RATE (a rate in deg/s) with a x45 factor -- Parameters.cpp's
+  // acro_rpy_conversion_info, convert_old_parameter(&info, 45.0) -- so the
+  // equivalent of Mission Planner's value is that value times 45. Staging the
+  // old name against modern firmware produced a row the vehicle rejected.
+  if (hasAcroYawP) {
+    add('ACRO_YAW_P', acroYawP, 'Half the yaw acceleration limit, in stick terms')
+  } else {
+    add('ACRO_Y_RATE', round2(acroYawP * 45), 'Acro yaw rate — the 4.2+ name for the same setting (x45)')
+  }
 
   if (hasAccelPMax) {
     add(`${atc}_ACCEL_P_MAX`, atcAccelPMax, `Pitch acceleration limit for a ${prep(prop)} prop`)
@@ -237,7 +268,7 @@ function round2(value: number): number {
  * whatever prop size happens to be typed into the form at the time.
  */
 export function isInitialTuneParamId(id: string): boolean {
-  if (id === 'ACRO_YAW_P' || id === 'INS_ACCEL_FILTER' || id === 'INS_GYRO_FILTER') return true
+  if (id === 'ACRO_YAW_P' || id === 'ACRO_Y_RATE' || id === 'INS_ACCEL_FILTER' || id === 'INS_GYRO_FILTER') return true
   if (/^BATT_(ARM|CRT|LOW)_VOLT$/.test(id)) return true
   if (/^(BATT_FS_(CRT|LOW)_ACT|FENCE_(ACTION|ALT_MAX|ENABLE|RADIUS|TYPE))$/.test(id)) return true
   if (/^(ATC|Q_A)_(ACCEL|ACC)_[PRY]_MAX$/.test(id)) return true
