@@ -946,11 +946,27 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                         if (sample !== undefined) {
                                           loadSamplesRef.current.push(sample)
                                         }
+                                        // Publish the running median WHILE the
+                                        // motors turn, not only when they stop.
+                                        // Apply is gated on having a captured
+                                        // reading, so waiting until the end
+                                        // meant a meter value typed in advance
+                                        // could not be applied during the spin
+                                        // -- the field looked like it had to be
+                                        // edited live to work. A few samples in
+                                        // is enough to be past the spin-up.
+                                        if (loadSamplesRef.current.length >= 3) {
+                                          setCapturedSampleCount(loadSamplesRef.current.length)
+                                          setCapturedLoadCurrentA(summariseLoadCurrent(loadSamplesRef.current))
+                                        }
                                       }, 200)
                                       window.setTimeout(
                                         () => {
                                           window.clearInterval(loadSamplerRef.current)
                                           loadSamplerRef.current = undefined
+                                          // Final word: the median of the whole
+                                          // settled run, replacing whatever the
+                                          // running value had reached.
                                           setCapturedSampleCount(loadSamplesRef.current.length)
                                           setCapturedLoadCurrentA(
                                             summariseLoadCurrent(loadSamplesRef.current) ?? reportedCurrentRef.current
@@ -1018,7 +1034,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                           </div>
                           <p className="hint">
                             {capturedLoadCurrentA === undefined
-                              ? 'Run the load above first — there is nothing to match against yet.'
+                              ? 'Type what your meter reads — you can fill this in before or during the spin, and it stays usable after the motors stop.'
                               : 'Type what your meter read during that spin.'}
                           </p>
                           <label className="scoped-editor-field scoped-editor-field--compact">

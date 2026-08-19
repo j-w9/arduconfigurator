@@ -15142,6 +15142,23 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .bootloader-identity__method code { overflow-wrap: anywhere; }
 
+/* The FILTn filter bank on the Filters tab. Slots reuse the axis-card shape so
+   they read as siblings of the rate groups above them; an empty slot is dimmed
+   rather than hidden, because filling one in is how a bank gets built. */
+.filter-bank .tuning-axis-card[data-configured='no'] {
+  opacity: 0.72;
+}
+
+.filter-bank__routing {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(var(--edge-rgb), 0.05);
+  background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.96), rgba(var(--fill-rgb), 1));
+}
+
 /* Offline parameter reference: what the Parameter Editor shows when there is no
    vehicle to read. Read-only prose rows rather than the editor's grid -- there
    are no values, drafts or actions to align, and a table of empty columns would

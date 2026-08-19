@@ -303,6 +303,8 @@ import { TuningCopterSection } from './sections/TuningCopterSection'
 import { InitialTuneView } from './views/InitialTune'
 import { FilterNotchHelp } from './views/FilterNotchHelp'
 import { FiltersFromGyro } from './views/FiltersFromGyro'
+import { buildFilterBank, buildFilterIndexOptions, filterSlotParamIds } from './view-models/filter-bank'
+import { FilterBankPanel } from './views/FilterBankPanel'
 import { isInitialTuneParamId } from './view-models/initial-tune-parameters'
 import { AutotuneCopterSection } from './sections/AutotuneCopterSection'
 import { AutotunePlaneSection } from './sections/AutotunePlaneSection'
@@ -5176,6 +5178,47 @@ export function App() {
    * shared metadata renderer, which gives a named list and per-bit toggles.
    * Both paths carry the same "i" bubble and wiki link.
    */
+  // The FILTn filter bank the rate loops point into. Derived from live values,
+  // so a slot configured on the vehicle shows up here without anything being
+  // hard-coded about how many exist.
+  const filterBank = useMemo(
+    () => buildFilterBank(new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))),
+    [snapshot.parameters]
+  )
+  /**
+   * ATC_RAT_*_NTF / _NEF as named lists rather than bare indices.
+   *
+   * The options depend on what the vehicle's bank currently holds, so they are
+   * attached to the catalog here rather than curated in the metadata package --
+   * "FILT2 — Notch 80 Hz" is a fact about this aircraft, not about ArduCopter.
+   */
+  const filterIndexParameters = useMemo(() => {
+    if (!filterBank.supported) {
+      return undefined
+    }
+    const options = buildFilterIndexOptions(filterBank)
+    return snapshot.parameters
+      .filter((parameter) => /^ATC_RAT_(RLL|PIT|YAW)_(NTF|NEF)$/.test(parameter.id))
+      .map((parameter) => ({
+        ...parameter,
+        definition: {
+          ...(parameter.definition ?? metadataCatalog.parameters[parameter.id] ?? { id: parameter.id }),
+          options
+        }
+      }))
+  }, [filterBank, snapshot.parameters, metadataCatalog])
+
+  /** Every FILTn slot the vehicle reports, as parameter rows to render. */
+  const filterBankGroups = useMemo(() => {
+    const byId = new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter]))
+    return filterBank.slots.map((slot) => ({
+      slot,
+      parameters: filterSlotParamIds(slot.index)
+        .map((id) => byId.get(id))
+        .filter((parameter): parameter is ParameterState => parameter !== undefined)
+    }))
+  }, [filterBank, snapshot.parameters])
+
   // Live values for the filter helpers below the Filters grid. One map, built
   // once per parameter change, rather than one per helper per render.
   const filterLiveValues = useMemo(
@@ -9286,6 +9329,16 @@ export function App() {
           renderFilterControl,
             formatCategoryLabel
           }}
+          filterBankSlot={
+            filterBank.supported ? (
+              <FilterBankPanel
+                bank={filterBank}
+                groups={filterBankGroups}
+                indexParameters={filterIndexParameters ?? []}
+                renderField={renderMetadataParameterField}
+              />
+            ) : undefined
+          }
           filterNotchSlot={
             <>
               <FilterNotchHelp

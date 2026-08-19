@@ -59,7 +59,7 @@ describe('computeCurrentPerVolt', () => {
     // the button went dead unless the field was re-edited mid-spin.
     const result = computeCurrentPerVolt({ perVolt: 20, reportedA: 0, measuredA: 12 })
     expect(result).toMatchObject({ ok: false })
-    expect(result.ok === false && result.reason).toMatch(/load step/i)
+    expect(result.ok === false && result.reason).toMatch(/loaded reading/i)
   })
 
   it('refuses a missing or non-positive meter reading', () => {

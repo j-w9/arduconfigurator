@@ -490,6 +490,24 @@ const mockParameters: ParameterState = {
   // the "REF of zero disables tracking" path is reachable by enabling it.
   INS_GYRO_FILTER: 40,
   INS_ACCEL_FILTER: 10,
+  // AP_Filter's standalone filter bank (Filter/AP_Filter.cpp). Two slots
+  // configured and one free, so the Filters page has a bank to show and the
+  // axis index lists have something to name.
+  FILT1_TYPE: 1,
+  FILT1_NOTCH_FREQ: 80,
+  FILT1_NOTCH_Q: 2,
+  FILT1_NOTCH_ATT: 40,
+  FILT2_TYPE: 1,
+  FILT2_NOTCH_FREQ: 160,
+  FILT2_NOTCH_Q: 2,
+  FILT2_NOTCH_ATT: 40,
+  FILT3_TYPE: 0,
+  ATC_RAT_RLL_NTF: 0,
+  ATC_RAT_RLL_NEF: 0,
+  ATC_RAT_PIT_NTF: 0,
+  ATC_RAT_PIT_NEF: 0,
+  ATC_RAT_YAW_NTF: 1,
+  ATC_RAT_YAW_NEF: 0,
   INS_HNTCH_ENABLE: 0,
   INS_HNTCH_MODE: 1,
   INS_HNTCH_REF: 0,

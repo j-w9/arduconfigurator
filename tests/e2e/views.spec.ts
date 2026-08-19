@@ -6438,6 +6438,30 @@ test.describe('Tuning ▸ Filters', () => {
     await expect(page.getByTestId('filters-from-gyro-ceiling-ATC_RAT_RLL_FLTD')).toBeVisible()
   })
 
+  test('shows the FILTn bank and names each slot in the axis lists', async ({ page }) => {
+    // A filter configured on the vehicle used to appear nowhere on this page,
+    // and ATC_RAT_*_NTF/_NEF were bare number boxes -- picking one meant
+    // remembering which slot held what.
+    await openFilters(page)
+
+    const bank = page.getByTestId('filter-bank')
+    await bank.scrollIntoViewIfNeeded()
+    await expect(bank).toBeVisible()
+    await expect(bank).toContainText('2 of 3 in use')
+
+    // Configured slots say what they are; an empty one is shown, not hidden,
+    // because filling it in is how a bank gets built.
+    await expect(page.getByTestId('filter-bank-slot-1')).toContainText('Notch 80 Hz')
+    await expect(page.getByTestId('filter-bank-slot-2')).toContainText('Notch 160 Hz')
+    await expect(page.getByTestId('filter-bank-slot-3')).toContainText('not configured')
+
+    // The axis index fields are named lists over the bank, not raw numbers.
+    const routing = page.getByTestId('filter-bank-routing')
+    const select = routing.locator('label', { hasText: 'Yaw Target notch filter index' }).getByRole('combobox')
+    await expect(select).toBeVisible()
+    await expect(select.locator('option')).toContainText(['None', 'FILT1 — Notch 80 Hz', 'FILT2 — Notch 160 Hz'])
+  })
+
   test('fits a phone without overflowing', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await openFilters(page)

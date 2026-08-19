@@ -75,6 +75,10 @@ export function computeCurrentOffset(input: CurrentOffsetInputs): CurrentOffsetR
  * value afterwards — by which time the live current has fallen back to idle
  * and the ratio would be nonsense. Reading it live is what made the Apply
  * button go dead unless the field was re-edited during the spin.
+ *
+ * The capture is published from a few samples into the run rather than at the
+ * end of it, so a meter value typed BEFORE the spin can be applied during it.
+ * Waiting for the end made the field look like it had to be edited live.
  */
 export function computeCurrentPerVolt(input: {
   perVolt?: number
@@ -86,7 +90,10 @@ export function computeCurrentPerVolt(input: {
     return { ok: false, reason: 'BATT_AMP_PERVLT must be greater than zero before it can be scaled.' }
   }
   if (reportedA === undefined || !Number.isFinite(reportedA) || reportedA <= 0) {
-    return { ok: false, reason: 'Run the load step first — there is no reported current to scale against.' }
+    return {
+      ok: false,
+      reason: 'Waiting for a loaded reading — spin the motors, and this fills in a second or two into the run.'
+    }
   }
   if (!Number.isFinite(measuredA) || measuredA <= 0) {
     return { ok: false, reason: 'Enter the current your meter read during the load.' }

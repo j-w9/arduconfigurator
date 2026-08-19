@@ -109,6 +109,8 @@ export interface TuningCopterSectionProps {
   initialTuneSlot?: ReactNode
   /** Notch suggestions and warnings, rendered under the Filters grid. */
   filterNotchSlot?: ReactNode
+  /** The FILTn bank, when the firmware has one. Rendered above the notch help. */
+  filterBankSlot?: ReactNode
 }
 
 export function TuningCopterSection(props: TuningCopterSectionProps): ReactElement {
@@ -120,6 +122,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     logTuningSlot,
     initialTuneSlot,
     filterNotchSlot,
+    filterBankSlot,
     tuningWorkbench,
     forms,
     derived,
@@ -606,6 +609,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           ))}
                         </div>
 
+                        {filterBankSlot}
                         {filterNotchSlot}
                       </div>
                     </section>
