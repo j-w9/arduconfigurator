@@ -2364,6 +2364,20 @@ test('battery current stays sticky across a SYS_STATUS that omits it (-1), inste
     // A genuine loss of battery telemetry (voltage unavailable) still clears it.
     emit(sysStatus(-1, 0xffff))
     assert.equal(runtime.getSnapshot().liveVerification.batteryTelemetry.currentA, undefined, 'cleared when battery telemetry is gone')
+
+    // Current is its own sensor: with no pack attached the analog sensor still
+    // reports its offset, and that is exactly the reading the calibration's
+    // zero step needs. Gating it on pack voltage made "unplug the pack" and
+    // "read the current" mutually exclusive.
+    emit(sysStatus(1200, 0xffff))
+    const noPack = runtime.getSnapshot().liveVerification.batteryTelemetry
+    assert.equal(noPack.verified, false, 'no pack voltage, so the voltage flag stays false')
+    assert.equal(noPack.currentVerified, true, 'but the current sensor is reporting')
+    assert.equal(noPack.currentA, 12, 'and its reading is available to the calibration')
+
+    // -1 is the "not supplied" sentinel and must not read as 0 A.
+    emit(sysStatus(-1, 0xffff))
+    assert.equal(runtime.getSnapshot().liveVerification.batteryTelemetry.currentVerified, false)
   } finally {
     await runtime.disconnect().catch(() => {})
     runtime.destroy()

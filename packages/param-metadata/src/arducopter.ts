@@ -3274,7 +3274,11 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       unit: 'Hz',
       minimum: 0,
       maximum: 200,
-      step: 1,
+      // AP_Float in the firmware, and error filters are genuinely tuned in
+      // tenths -- ArduPilot's own QuadPlane page says 2.5 Hz for yaw, and a
+      // step of 1 rounded that to 2. Whole Hz is right for the target and
+      // D-term filters; it is not right here.
+      step: 0.1,
       notes: filterTuningNotes
     },
     ATC_RAT_RLL_FLTD: {
@@ -3307,7 +3311,11 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       unit: 'Hz',
       minimum: 0,
       maximum: 200,
-      step: 1,
+      // AP_Float in the firmware, and error filters are genuinely tuned in
+      // tenths -- ArduPilot's own QuadPlane page says 2.5 Hz for yaw, and a
+      // step of 1 rounded that to 2. Whole Hz is right for the target and
+      // D-term filters; it is not right here.
+      step: 0.1,
       notes: filterTuningNotes
     },
     ATC_RAT_PIT_FLTD: {
@@ -3332,6 +3340,75 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       step: 1,
       notes: filterTuningNotes
     },
+    // Notch-filter INDEX parameters, not frequencies.
+    //
+    // ArduPilot declares these with no units and @Range 0 8 (AC_PID.cpp NTF /
+    // NEF), and 0 -- the firmware default -- means "no notch attached". The
+    // generated upstream metadata carries a stray "Hz" on ATC_RAT_YAW_NTF and a
+    // minimum of 1 on all six, so the app both mislabelled a filter index as a
+    // frequency and refused to accept the value the firmware ships with.
+    // Curated definitions win over upstream field by field, so these six fix it
+    // without touching the generated file.
+    ATC_RAT_RLL_NTF: {
+      id: 'ATC_RAT_RLL_NTF',
+      label: 'Roll Target notch filter index',
+      description: 'Which configured notch filter the roll target filter uses. 0 attaches none.',
+      category: 'filters',
+      unit: 'index',
+      minimum: 0,
+      maximum: 8,
+      step: 1
+    },
+    ATC_RAT_RLL_NEF: {
+      id: 'ATC_RAT_RLL_NEF',
+      label: 'Roll Error notch filter index',
+      description: 'Which configured notch filter the roll error filter uses. 0 attaches none.',
+      category: 'filters',
+      unit: 'index',
+      minimum: 0,
+      maximum: 8,
+      step: 1
+    },
+    ATC_RAT_PIT_NTF: {
+      id: 'ATC_RAT_PIT_NTF',
+      label: 'Pitch Target notch filter index',
+      description: 'Which configured notch filter the pitch target filter uses. 0 attaches none.',
+      category: 'filters',
+      unit: 'index',
+      minimum: 0,
+      maximum: 8,
+      step: 1
+    },
+    ATC_RAT_PIT_NEF: {
+      id: 'ATC_RAT_PIT_NEF',
+      label: 'Pitch Error notch filter index',
+      description: 'Which configured notch filter the pitch error filter uses. 0 attaches none.',
+      category: 'filters',
+      unit: 'index',
+      minimum: 0,
+      maximum: 8,
+      step: 1
+    },
+    ATC_RAT_YAW_NTF: {
+      id: 'ATC_RAT_YAW_NTF',
+      label: 'Yaw Target notch filter index',
+      description: 'Which configured notch filter the yaw target filter uses. 0 attaches none.',
+      category: 'filters',
+      unit: 'index',
+      minimum: 0,
+      maximum: 8,
+      step: 1
+    },
+    ATC_RAT_YAW_NEF: {
+      id: 'ATC_RAT_YAW_NEF',
+      label: 'Yaw Error notch filter index',
+      description: 'Which configured notch filter the yaw error filter uses. 0 attaches none.',
+      category: 'filters',
+      unit: 'index',
+      minimum: 0,
+      maximum: 8,
+      step: 1
+    },
     ATC_RAT_YAW_FLTE: {
       id: 'ATC_RAT_YAW_FLTE',
       label: 'Yaw Error Filter',
@@ -3340,7 +3417,11 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       unit: 'Hz',
       minimum: 0,
       maximum: 200,
-      step: 1,
+      // AP_Float in the firmware, and error filters are genuinely tuned in
+      // tenths -- ArduPilot's own QuadPlane page says 2.5 Hz for yaw, and a
+      // step of 1 rounded that to 2. Whole Hz is right for the target and
+      // D-term filters; it is not right here.
+      step: 0.1,
       notes: filterTuningNotes
     },
     ATC_RAT_YAW_FLTD: {

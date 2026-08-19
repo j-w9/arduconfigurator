@@ -136,3 +136,30 @@ test('no alias map leaves the merge exactly as it was', () => {
   assert.equal(withoutAliases.CAM_SERVO_ON, undefined)
   assert.ok(withoutAliases.CAM1_SERVO_ON)
 })
+
+test('notch-filter index parameters are indices, not frequencies', () => {
+  // ArduPilot declares NTF/NEF with no units and @Range 0 8 (AC_PID.cpp), and 0
+  // -- the firmware default -- means "no notch attached". The generated
+  // upstream metadata carries a stray "Hz" on ATC_RAT_YAW_NTF and a minimum of
+  // 1 on all six, so the app mislabelled a filter index as a frequency and
+  // refused the value the firmware ships with.
+  const upstream = JSON.parse(
+    readFileSync(join(here, '../apps/web/src/generated/param-upstream/arducopter.json'), 'utf8')
+  )
+  // Guard the premise: if the generated data is ever fixed upstream, this test
+  // should stop claiming to defend against something that is no longer there.
+  assert.equal(upstream.ATC_RAT_YAW_NTF.unit, 'Hz', 'the upstream defect this override exists for')
+  assert.equal(upstream.ATC_RAT_YAW_NTF.minimum, 1)
+
+  const merged = mergeUpstreamParameters(arducopterMetadata.parameters, upstream)
+  for (const axis of ['RLL', 'PIT', 'YAW']) {
+    for (const suffix of ['NTF', 'NEF']) {
+      const id = `ATC_RAT_${axis}_${suffix}`
+      const definition = merged[id]
+      assert.ok(definition, `${id} should be in the catalog`)
+      assert.equal(definition.unit, 'index', `${id} is an index, not a frequency`)
+      assert.equal(definition.minimum, 0, `${id} must accept 0 — the firmware default, meaning no notch`)
+      assert.equal(definition.maximum, 8, `${id} range from AC_PID.cpp`)
+    }
+  }
+})

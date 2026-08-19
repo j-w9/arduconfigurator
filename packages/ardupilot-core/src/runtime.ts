@@ -3554,16 +3554,23 @@ export class ArduPilotConfiguratorRuntime {
     const previousBattery = this.liveVerification.batteryTelemetry
     const voltageMv = message.voltageBatteryMv
     const batteryVerified = voltageMv !== 0xffff && voltageMv > 1000
-    const freshCurrentA =
-      batteryVerified && message.currentBatteryCa !== -1 ? Number((message.currentBatteryCa / 100).toFixed(2)) : undefined
+    // Current is its own sensor and its own field. -1 is SYS_STATUS's "not
+    // supplied" sentinel; anything else is a reading, whether or not a pack is
+    // attached -- an analog sensor reports its offset on USB alone, and that is
+    // precisely the reading the current calibration's zero step is there to
+    // remove. Tying it to pack voltage made "unplug the pack" and "read the
+    // current" mutually exclusive.
+    const currentVerified = message.currentBatteryCa !== -1
+    const freshCurrentA = currentVerified ? Number((message.currentBatteryCa / 100).toFixed(2)) : undefined
     this.liveVerification.batteryTelemetry = {
       verified: batteryVerified,
+      currentVerified,
       voltageMv: batteryVerified ? voltageMv : undefined,
       voltageV: batteryVerified ? Number((voltageMv / 1000).toFixed(2)) : undefined,
       // Carry the last known current across a SYS_STATUS that omits it
-      // (currentBatteryCa === -1) while the battery is still verified — otherwise
-      // the reading flickers to "no telemetry" on a transient gap. A genuine
-      // loss of battery telemetry (unverified) still clears it.
+      // (currentBatteryCa === -1) while the pack is still reporting voltage --
+      // otherwise the reading flickers to "no telemetry" on a transient gap. A
+      // frame that reports neither still clears it.
       currentA: freshCurrentA ?? (batteryVerified ? previousBattery.currentA : undefined),
       remainingPercent:
         batteryVerified && message.batteryRemaining >= 0 && message.batteryRemaining <= 100 ? message.batteryRemaining : undefined,

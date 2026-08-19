@@ -332,7 +332,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
   // it FIRES, not as of the render that scheduled it.
   useEffect(() => {
     const telemetry = snapshot.liveVerification.batteryTelemetry
-    reportedCurrentRef.current = telemetry.verified ? telemetry.currentA : undefined
+    reportedCurrentRef.current = telemetry.currentVerified ? telemetry.currentA : undefined
   }, [snapshot.liveVerification.batteryTelemetry])
 
   const {
@@ -603,7 +603,11 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 // calibrated against a known current load (motors at fixed
                 // throttle, with a clamp meter as ground truth).
                 const battery = snapshot.liveVerification.batteryTelemetry
-                const reportedA = battery.verified ? battery.currentA : undefined
+                // Current, not pack voltage: zeroing the offset is done with
+                // the pack OFF, and the analog sensor still reports its offset
+                // on USB alone. Requiring verified (a voltage flag) made the
+                // step demand the very thing it tells you to unplug.
+                const reportedA = battery.currentVerified ? battery.currentA : undefined
                 const currentOffset = readParameterValue(snapshot, 'BATT_AMP_OFFSET')
                 const currentPerVolt = readParameterValue(snapshot, 'BATT_AMP_PERVLT')
                 const monitorMode = readRoundedParameter(snapshot, 'BATT_MONITOR')

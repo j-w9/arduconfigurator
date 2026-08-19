@@ -192,7 +192,8 @@ export function createIdleLiveVerification(): LiveVerificationState {
       channels: []
     },
     batteryTelemetry: {
-      verified: false
+      verified: false,
+      currentVerified: false
     },
     attitudeTelemetry: {
       verified: false

@@ -299,7 +299,18 @@ export interface RcInputState {
 }
 
 export interface BatteryTelemetryState {
+  /** Pack VOLTAGE is being reported (SYS_STATUS voltage above 1 V). */
   verified: boolean
+  /**
+   * Pack CURRENT is being reported, independently of the voltage.
+   *
+   * The two are separate sensors and separate SYS_STATUS fields. An analog
+   * current sensor reads its own offset with no pack attached at all, which is
+   * exactly the reading the current calibration's zero step needs -- gating it
+   * on pack voltage made "unplug the pack" and "read the current" mutually
+   * exclusive.
+   */
+  currentVerified: boolean
   voltageMv?: number
   voltageV?: number
   currentA?: number
