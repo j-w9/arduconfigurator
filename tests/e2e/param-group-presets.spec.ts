@@ -236,3 +236,46 @@ test.describe('Parameter search strictness', () => {
     await expect(rows).toHaveCount(globCount)
   })
 })
+
+test.describe('Parameter reference with no vehicle', () => {
+  // Looking a parameter up is a reading task. With nothing connected the
+  // editor used to report "No parameters match the current filter", which is
+  // true of the vehicle and false of the question being asked.
+  async function openParametersDisconnected(page: Page): Promise<void> {
+    await page.goto('/')
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-parameters').click()
+  }
+
+  test('searches the built-in reference instead of reporting an empty filter', async ({ page }) => {
+    await openParametersDisconnected(page)
+
+    const reference = page.getByTestId('parameter-reference')
+    await expect(reference).toBeVisible()
+    await expect(reference).toContainText('Not connected')
+
+    await page.getByTestId('parameter-search-input').fill('BATT_MONITOR')
+    await page.getByTestId('parameter-exact-search-toggle').check()
+    const row = page.getByTestId('parameter-reference-row-BATT_MONITOR')
+    await expect(row).toBeVisible()
+    // The reference material, not an empty editor row: what it means and what
+    // its values are.
+    await expect(row).toContainText('Battery Monitor')
+    await expect(row).toContainText('Analog Voltage and Current')
+
+    // Nothing is editable, because there is nothing to write to.
+    await expect(row.locator('input')).toHaveCount(0)
+  })
+
+  test('says when it is showing only the first page of matches', async ({ page }) => {
+    await openParametersDisconnected(page)
+    // An empty query matches the whole bundle, which is far past the cap.
+    await expect(page.getByTestId('parameter-reference-more')).toContainText('narrow the search')
+  })
+
+  test('reports a search that matches nothing in the reference', async ({ page }) => {
+    await openParametersDisconnected(page)
+    await page.getByTestId('parameter-search-input').fill('ZZZ_NOT_A_REAL_PARAM')
+    await expect(page.getByTestId('parameter-reference')).toContainText('No parameter in the reference matches')
+  })
+})

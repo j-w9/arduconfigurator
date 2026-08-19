@@ -15142,6 +15142,74 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .bootloader-identity__method code { overflow-wrap: anywhere; }
 
+/* Offline parameter reference: what the Parameter Editor shows when there is no
+   vehicle to read. Read-only prose rows rather than the editor's grid -- there
+   are no values, drafts or actions to align, and a table of empty columns would
+   imply otherwise. */
+.parameter-reference {
+  display: grid;
+  gap: 6px;
+}
+
+.parameter-reference__lede {
+  margin: 0 0 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.parameter-reference__row {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(var(--edge-rgb), 0.05);
+  background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.96), rgba(var(--fill-rgb), 1));
+  min-width: 0;
+}
+
+.parameter-reference__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.parameter-reference__head code {
+  font-family: var(--font-data);
+  overflow-wrap: anywhere;
+}
+
+.parameter-reference__unit {
+  color: var(--text-muted);
+  font-family: var(--font-data);
+  font-size: 11px;
+}
+
+.parameter-reference__row p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.parameter-reference__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.parameter-reference__more {
+  margin: 0;
+  color: var(--warning, #e0a33a);
+  font-size: 12px;
+}
+
 /* Battery-current calibration, as three numbered steps.
    Steps, not boxes: a bordered panel inside a card inside a grid was three
    nested frames deep, and the frames took more room than the two fields they

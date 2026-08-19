@@ -32,6 +32,20 @@ literal either way, so the box makes no difference to ``ARMING_*``. A **Refresh*
 the controller, bypassing the auto-refresh. Each row is compact — name, current
 value, and the draft editor — so more of the tree stays on screen.
 
+Looking parameters up with nothing connected
+--------------------------------------------
+
+The table needs a flight controller, but *reading about* a parameter does not.
+With no vehicle attached the same search box searches the **built-in
+reference** instead: every parameter the metadata bundle knows about, with its
+label, description, unit, documented range, and — for an enum — what each value
+means. Wildcards, fuzzy matching and **Exact match** behave exactly as they do
+connected, so a search that works at the bench works at the desk.
+
+It is read-only, because there is nothing to write to: no current values, no
+drafts, no editors. Long result sets show the first hundred and say how many
+they left out rather than quietly truncating.
+
 Expanding a row for detail
 --------------------------
 

@@ -40,6 +40,7 @@ import { ScopedBitmaskPopover } from '../views/ScopedField'
 import { ParameterDetail } from '../views/ParameterDetail'
 import { parameterApplyBlockedReason } from '../apply-gate'
 import { parameterSearchPredicate } from '../view-models/filtered-parameters'
+import { buildParameterReference, PARAMETER_REFERENCE_LIMIT } from '../view-models/parameter-reference'
 import { toneForParameterDraftStatus } from '../tone-helpers'
 import type { ParameterFollowUp, ParameterNotice } from '../hooks/use-parameter-feedback'
 import { UploadToLogServerButton } from '../views/UploadToLogServerButton'
@@ -1619,7 +1620,64 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
             )
           })}
         </div>
-        {displayedParameters.length === 0 ? <p className="parameter-empty-state">No parameters match the current filter.</p> : null}
+        {displayedParameters.length === 0 ? (
+          snapshot.parameters.length === 0 ? (
+            /* No vehicle attached, so there is no tree to search -- but looking
+             * a parameter up is a reading task, and the metadata is already
+             * here. The same search box answers from the bundle instead of
+             * reporting an empty filter, which was true of the vehicle and
+             * false of the question. Reference only: no values, no drafts. */
+            (() => {
+              const reference = buildParameterReference({
+                catalog: metadataCatalog,
+                search: parameterSearch,
+                exactSearch: parameterExactSearch
+              })
+              return (
+                <div className="parameter-reference" data-testid="parameter-reference">
+                  <p className="parameter-reference__lede">
+                    Not connected — searching the built-in {metadataCatalog.firmware} reference instead of a
+                    vehicle. {reference.matchCount} of {reference.totalCount} parameters
+                    {parameterSearch.trim() ? ' match' : ''}. Values and editing need a flight controller.
+                  </p>
+                  {reference.rows.map((row) => (
+                    <article
+                      className="parameter-reference__row"
+                      key={row.id}
+                      data-testid={`parameter-reference-row-${row.id}`}
+                    >
+                      <div className="parameter-reference__head">
+                        <code>{row.id}</code>
+                        {row.label ? <strong>{row.label}</strong> : null}
+                        {row.unit ? <span className="parameter-reference__unit">{row.unit}</span> : null}
+                        {row.range ? <span className="parameter-reference__unit">{row.range}</span> : null}
+                      </div>
+                      {row.description ? <p>{row.description}</p> : null}
+                      {row.options ? (
+                        <ul className="parameter-reference__options">
+                          {row.options.map((option) => (
+                            <li key={option}>{row.bitmask ? `bit ${option}` : option}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </article>
+                  ))}
+                  {reference.matchCount > reference.rows.length ? (
+                    <p className="parameter-reference__more" data-testid="parameter-reference-more">
+                      Showing the first {PARAMETER_REFERENCE_LIMIT} — narrow the search to see the other{' '}
+                      {reference.matchCount - reference.rows.length}.
+                    </p>
+                  ) : null}
+                  {reference.matchCount === 0 ? (
+                    <p className="parameter-empty-state">No parameter in the reference matches that search.</p>
+                  ) : null}
+                </div>
+              )
+            })()
+          ) : (
+            <p className="parameter-empty-state">No parameters match the current filter.</p>
+          )
+        ) : null}
 
         {createPresetOpen && onCreateUserPreset ? (
           <CreatePresetDialog
