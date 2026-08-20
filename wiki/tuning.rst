@@ -58,19 +58,22 @@ controllers:
 The view drops any parameter the connected firmware does not stream, so only the
 form your firmware version uses is shown.
 
-Rate controllers (PID gains)
-----------------------------
+Attitude controllers (PID gains)
+--------------------------------
 
-The **PID Gains** task exposes the per-axis rate controllers — the innermost
-loop that turns a demanded rotation rate into motor output. Roll, pitch, and yaw
-each get P, I, D, and feedforward controls, grouped by axis:
+The **PID Gains** task exposes both attitude loops, grouped by axis. The
+**angle** controller (Mission Planner calls this column *Stabilize*) turns the
+error between the demanded and actual angle into a demanded *rate*; the **rate**
+controller — the innermost loop — turns that demanded rate into motor output.
+Each axis card lists its angle P first, in the order the signal travels:
 
-- ``ATC_RAT_RLL_P`` / ``ATC_RAT_RLL_I`` / ``ATC_RAT_RLL_D`` / ``ATC_RAT_RLL_FF``
-- ``ATC_RAT_PIT_P`` / ``ATC_RAT_PIT_I`` / ``ATC_RAT_PIT_D`` / ``ATC_RAT_PIT_FF``
-- ``ATC_RAT_YAW_P`` / ``ATC_RAT_YAW_I`` / ``ATC_RAT_YAW_D`` / ``ATC_RAT_YAW_FF``
+- ``ATC_ANG_RLL_P`` / ``ATC_RAT_RLL_P`` / ``ATC_RAT_RLL_I`` / ``ATC_RAT_RLL_D`` / ``ATC_RAT_RLL_FF``
+- ``ATC_ANG_PIT_P`` / ``ATC_RAT_PIT_P`` / ``ATC_RAT_PIT_I`` / ``ATC_RAT_PIT_D`` / ``ATC_RAT_PIT_FF``
+- ``ATC_ANG_YAW_P`` / ``ATC_RAT_YAW_P`` / ``ATC_RAT_YAW_I`` / ``ATC_RAT_YAW_D`` / ``ATC_RAT_YAW_FF``
 
-A **roll/pitch link** keeps the two axes coupled while you rough in a baseline,
-to be unlinked only if the airframe needs a deliberate asymmetry. **Grouped
+A **roll/pitch link** keeps the two axes coupled while you rough in a baseline —
+angle P included — to be unlinked only if the airframe needs a deliberate
+asymmetry. **Grouped
 master sliders** scale P+I, D, feedforward, the pitch ratio, and filter
 frequency together, previewing exactly which parameters will move before you
 stage the whole set at once. Deeper controller terms — D-term feedforward

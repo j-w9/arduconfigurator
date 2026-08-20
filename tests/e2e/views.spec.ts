@@ -4657,6 +4657,43 @@ test.describe('Receiver scoped apply', () => {
   })
 })
 
+test.describe('Tuning ▸ PID Gains', () => {
+  test('each axis card carries its angle P above the rate gains', async ({ page }) => {
+    // Mission Planner's "Stabilize" column. The angle controller is the outer
+    // loop -- it turns an angle error into the rate demand the ATC_RAT_* gains
+    // then chase -- so it belongs in the same card as the axis it acts on.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'tuning')
+    await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
+
+    for (const axis of ['RLL', 'PIT', 'YAW']) {
+      await expect(page.getByTestId(`tuning-input-ATC_ANG_${axis}_P`)).toBeVisible()
+    }
+
+    // Angle P before rate P in the roll card, which is the order the signal
+    // travels in.
+    const order = await page
+      .locator('[data-testid^="tuning-input-ATC_"][data-testid$="RLL_P"]')
+      .evaluateAll((inputs) => inputs.map((input) => (input as HTMLElement).dataset.testid))
+    expect(order).toEqual(['tuning-input-ATC_ANG_RLL_P', 'tuning-input-ATC_RAT_RLL_P'])
+  })
+
+  test('the roll/pitch link couples the angle gains too', async ({ page }) => {
+    // The link exists so a symmetric airframe stays symmetric. Coupling the
+    // rate gains but not the angle gain would quietly break that.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'tuning')
+    await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
+
+    // Linked is the default state, so the button is already disabled here.
+    await expect(page.getByTestId('tuning-roll-pitch-link-button')).toBeDisabled()
+    await page.getByTestId('tuning-input-ATC_ANG_RLL_P').fill('7.5')
+    await expect(page.getByTestId('tuning-input-ATC_ANG_PIT_P')).toHaveValue('7.5')
+  })
+})
+
 test.describe('Tuning profile round-trip', () => {
   test('a staged-source tuning profile captures the staged edit and surfaces it as a restorable change', async ({ page }) => {
     await page.goto('/')

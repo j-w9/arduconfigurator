@@ -45,7 +45,19 @@ export const TUNING_PILOT_LOITER_PARAM_IDS = [
   'LOIT_BRK_JERK',
   'LOIT_BRK_JRK_M'
 ] as const
+/**
+ * Angle-controller P, one per axis — Mission Planner's "Stabilize" column.
+ *
+ * The outer loop: it converts the error between demanded and actual ANGLE into
+ * a demanded rate, which is what the ATC_RAT_* gains below then chase. Listed
+ * first in each axis card for that reason, and kept in the same card rather
+ * than a column of its own so everything acting on roll reads together.
+ */
+export const TUNING_ANGLE_P_PARAM_IDS = ['ATC_ANG_RLL_P', 'ATC_ANG_PIT_P', 'ATC_ANG_YAW_P'] as const
 export const TUNING_PID_GAIN_PARAM_IDS = [
+  'ATC_ANG_RLL_P',
+  'ATC_ANG_PIT_P',
+  'ATC_ANG_YAW_P',
   'ATC_RAT_RLL_P',
   'ATC_RAT_RLL_I',
   'ATC_RAT_RLL_D',
@@ -107,17 +119,17 @@ export const TUNING_PID_AXIS_GROUPS = [
   {
     id: 'roll',
     label: 'Roll',
-    paramIds: ['ATC_RAT_RLL_P', 'ATC_RAT_RLL_I', 'ATC_RAT_RLL_D', 'ATC_RAT_RLL_FF'] as const
+    paramIds: ['ATC_ANG_RLL_P', 'ATC_RAT_RLL_P', 'ATC_RAT_RLL_I', 'ATC_RAT_RLL_D', 'ATC_RAT_RLL_FF'] as const
   },
   {
     id: 'pitch',
     label: 'Pitch',
-    paramIds: ['ATC_RAT_PIT_P', 'ATC_RAT_PIT_I', 'ATC_RAT_PIT_D', 'ATC_RAT_PIT_FF'] as const
+    paramIds: ['ATC_ANG_PIT_P', 'ATC_RAT_PIT_P', 'ATC_RAT_PIT_I', 'ATC_RAT_PIT_D', 'ATC_RAT_PIT_FF'] as const
   },
   {
     id: 'yaw',
     label: 'Yaw',
-    paramIds: ['ATC_RAT_YAW_P', 'ATC_RAT_YAW_I', 'ATC_RAT_YAW_D', 'ATC_RAT_YAW_FF'] as const
+    paramIds: ['ATC_ANG_YAW_P', 'ATC_RAT_YAW_P', 'ATC_RAT_YAW_I', 'ATC_RAT_YAW_D', 'ATC_RAT_YAW_FF'] as const
   }
 ] as const
 export const TUNING_FILTER_AXIS_GROUPS = [
@@ -506,6 +518,7 @@ export const TUNING_SUB_PARAM_IDS = [
   ...TUNING_SUB_JOYSTICK_PARAM_IDS
 ] as const
 export const TUNING_ROLL_PITCH_LINK_MAP = {
+  ATC_ANG_RLL_P: 'ATC_ANG_PIT_P',
   ATC_RAT_RLL_P: 'ATC_RAT_PIT_P',
   ATC_RAT_RLL_I: 'ATC_RAT_PIT_I',
   ATC_RAT_RLL_D: 'ATC_RAT_PIT_D',

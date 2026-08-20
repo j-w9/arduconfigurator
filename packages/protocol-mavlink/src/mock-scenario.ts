@@ -452,6 +452,12 @@ const mockParameters: ParameterState = {
   ACRO_Y_RATE: 240,
   ACRO_RP_EXPO: 0.35,
   ACRO_Y_EXPO: 0.2,
+  // Angle-controller P, one per axis (AC_AttitudeControl defaults). The
+  // Stabilize column of the PID tab: without these the demo showed the rate
+  // gains with an empty outer loop above them.
+  ATC_ANG_RLL_P: 4.5,
+  ATC_ANG_PIT_P: 4.5,
+  ATC_ANG_YAW_P: 4.5,
   ATC_RAT_RLL_P: 0.1,
   ATC_RAT_RLL_I: 0.135,
   ATC_RAT_RLL_D: 0.0027,

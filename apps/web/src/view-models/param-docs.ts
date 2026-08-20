@@ -116,7 +116,7 @@ export const WIKI_TOPIC_PATHS = {
   /** Tuning ▸ Pilot: stick feel, acro rates/expo, accel limits, Loiter/AltHold. */
   tuningPilot: 'tuning.html#pilot',
   /** Tuning ▸ PID Gains: the per-axis rate controllers. */
-  tuningPidGains: 'tuning.html#rate-controllers-pid-gains',
+  tuningPidGains: 'tuning.html#attitude-controllers-pid-gains',
   /** Tuning ▸ Filters: rate-controller filtering and the notch set. */
   tuningFilters: 'tuning.html#filters',
   /** Tuning ▸ Autotune: running the on-vehicle tune and its configuration. */
