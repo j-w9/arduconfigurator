@@ -1192,8 +1192,16 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     await expect(page.getByTestId('battery-current-step-load')).toContainText('Put a real load on it')
     await expect(page.getByTestId('battery-current-step-match')).toContainText('Match your meter')
 
-    // Step 3 says why it cannot be used yet rather than sitting there inert.
-    await expect(page.getByTestId('battery-current-step-match')).toContainText('Run the load above first')
+    // Step 3 explains its state rather than sitting there inert. The meter value
+    // can be typed at any point -- before, during or after the spin -- so what
+    // it says here is that it is still waiting for the loaded reading, and the
+    // Apply stays disabled until one exists. Asserted as state rather than copy:
+    // before the parameter sync finishes the same block reports the missing
+    // BATT_AMP_PERVLT instead, and both are correct at their moment.
+    await expect(page.getByTestId('battery-current-calibrate-pervlt')).toBeDisabled()
+    await expect(page.getByTestId('battery-current-step-match')).toContainText(
+      /Waiting for a loaded reading|BATT_AMP_PERVLT must be greater than zero/
+    )
 
     // Nothing has been captured, so neither the live readout nor the capture
     // summary is on screen.
