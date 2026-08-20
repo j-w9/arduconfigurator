@@ -61,3 +61,38 @@ test('filters out directories, keeping only files', async () => {
   assert.equal(result.length, 1)
   assert.equal(result[0].name, 'a.BIN')
 })
+
+test('an empty log directory reports empty, not the next candidate\'s error', async () => {
+  // The bug this fixes: after a LOG_ERASE, /APM/LOGS lists fine and holds
+  // nothing. The old code only accepted a directory that yielded FILES, so it
+  // fell through to /logs — which does not exist on hardware — and threw that
+  // error instead of reporting the empty card the operator had just created.
+  const calls = []
+  const entries = await listMavftpLogFiles(async (path) => {
+    calls.push(path)
+    if (path === '/APM/LOGS') {
+      return []
+    }
+    throw new Error('No such directory')
+  })
+  assert.deepEqual(entries, [], 'an empty card is an answer')
+  assert.deepEqual(calls, ['/APM/LOGS', '/logs'], 'both candidates are still probed')
+})
+
+test('a directory that holds logs still wins over an earlier empty one', async () => {
+  // SITL: /APM/LOGS is absent or empty, the logs live in /logs.
+  const entries = await listMavftpLogFiles(async (path) =>
+    path === '/logs' ? [{ name: '00000001.BIN', path: '/logs/00000001.BIN', kind: 'file', sizeBytes: 10 }] : []
+  )
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0].path, '/logs/00000001.BIN')
+})
+
+test('every candidate failing still surfaces the transport error', async () => {
+  await assert.rejects(
+    listMavftpLogFiles(async () => {
+      throw new Error('link is down')
+    }),
+    /link is down/
+  )
+})

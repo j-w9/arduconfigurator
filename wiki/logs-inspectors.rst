@@ -15,13 +15,24 @@ and the per-log download button to save one, with a progress bar as it streams.
 
 Two transports are used, transparently:
 
-- **MAVFTP** — the preferred path when the board reports FTP support. It is a
-  faster burst read and gives the real on-FC filenames. Logs are listed by
-  directory; ArduPilot **hardware** serves them from ``/APM/LOGS``, while
-  **SITL** serves them from ``/logs``. The app probes hardware first and falls
-  through to the SITL path, so it finds the logs in either environment.
+- **MAVFTP** — the preferred path, tried first whatever the board advertises,
+  because it reads the actual directory. It is a faster burst read and gives the
+  real on-FC filenames. ArduPilot **hardware** serves logs from ``/APM/LOGS``,
+  **SITL** from ``/logs``; the app probes hardware first and falls through.
 - **LOG_\*** — the classic dataflash stream (``LOG_REQUEST_LIST`` /
-  ``LOG_REQUEST_DATA``), used as a fallback when MAVFTP is unavailable.
+  ``LOG_REQUEST_DATA``), used only when MAVFTP cannot answer.
+
+.. note::
+
+   The order matters after an **erase**. The ``LOG_*`` list is not built from
+   the files: the vehicle derives it from ``LASTLOG.TXT``, which ArduPilot
+   removes only at the *end* of the erase sequence
+   (``AP_Logger_File::erase_next``). Until then — and permanently if the
+   sequence is interrupted — an FC can keep listing logs that are no longer on
+   the card, and the stale number survives a reconnect because it lives on the
+   SD card. Reading the directory instead means the Logs tab and the **Files**
+   tab always describe the same card. If another GCS still shows the old logs
+   after an erase, that is what it is looking at.
 
 Downloaded files are given a **self-describing name** so a folder of logs from
 several craft stays readable rather than a pile of ``onboard-log-1.bin``

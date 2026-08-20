@@ -71,6 +71,10 @@ export interface OnboardLogs extends OnboardLogsState {
  * Onboard dataflash log listing + download state machine. Behaviour-
  * preserving extraction of what previously lived inline in App.tsx.
  */
+/** Re-list this many times after an erase before reporting what is left. */
+const ERASE_RELIST_ATTEMPTS = 3
+const ERASE_RELIST_DELAY_MS = 2500
+
 export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): OnboardLogs {
   const [state, setState] = useState<OnboardLogsState>({
     status: 'idle',
@@ -88,14 +92,31 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
 
   const list = useCallback(async () => {
     if (!runtime) return
-    const source = selectOnboardLogSource(runtime.getSnapshot())
-    setState((prev) => ({ ...prev, status: 'listing', source, message: undefined }))
+    // The capability bit is a hint, not the answer.
+    //
+    // The LOG_* list is derived on the vehicle from LASTLOG.TXT, not from the
+    // files: after a LOG_ERASE an FC can keep reporting logs that are no longer
+    // on the card, which is what made this tab disagree with the Files tab
+    // about the same directory -- and it survived a reconnect, because the
+    // stale number is on the SD card. The files are the ground truth, so try
+    // MAVFTP whatever AUTOPILOT_VERSION advertised, and fall back to LOG_* only
+    // when MAVFTP genuinely cannot answer.
+    const advertised = selectOnboardLogSource(runtime.getSnapshot())
+    setState((prev) => ({ ...prev, status: 'listing', source: advertised, message: undefined }))
     try {
       let logs: OnboardLogInfo[]
       let logNamesById: ReadonlyMap<number, string>
       let mavftpPathsById: ReadonlyMap<number, string> = new Map()
-      if (source === 'mavftp') {
-        const items = mavftpEntriesToLogItems(await runtime.listMavftpLogs())
+      let mavftpEntries: MavftpDirectoryEntry[] | undefined
+      try {
+        mavftpEntries = await runtime.listMavftpLogs()
+      } catch {
+        // No MAVFTP (or it failed): the LOG_* list is all there is.
+        mavftpEntries = undefined
+      }
+      const source: OnboardLogSource = mavftpEntries === undefined ? 'mavlink' : 'mavftp'
+      if (mavftpEntries !== undefined) {
+        const items = mavftpEntriesToLogItems(mavftpEntries)
         mavftpItemsRef.current = new Map(items.map((item) => [item.log.id, item]))
         // MAVFTP directory listings carry no timestamp, so the rows showed
         // "Unknown date". The LOG_ENTRY list does carry time_utc — fetch it and
@@ -146,8 +167,17 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
     setState((current) => ({ ...current, status: 'erasing', message: 'Erasing all onboard logs…' }))
     try {
       await runtime.eraseOnboardLogs()
-      await new Promise((resolve) => setTimeout(resolve, 2500))
-      await list()
+      // The vehicle acknowledges nothing and erases one log slot at a time, so
+      // a single re-list 2.5 s later can land mid-erase and show a card that
+      // looks half-cleared. Re-list a few times until it settles, then stop and
+      // report whatever is actually there.
+      for (let attempt = 0; attempt < ERASE_RELIST_ATTEMPTS; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, ERASE_RELIST_DELAY_MS))
+        await list()
+        if (logsRef.current.length === 0) {
+          break
+        }
+      }
     } catch (error) {
       setState((current) => ({
         ...current,
