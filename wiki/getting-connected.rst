@@ -32,12 +32,19 @@ The default for a flight controller plugged into your computer over USB.
 USB (WebUSB) — Android
 ----------------------
 
-Chrome for Android has no Web Serial API, so the Serial option is greyed out
-there. It does have **WebUSB**, and — importantly — Android ships no CDC-ACM
-driver, so nothing claims the board's serial interface before the browser can.
-That is what makes a page-driven USB link possible on a tablet at all, and it is
-why this transport is offered **only** where Web Serial is missing: on a desktop
-the operating system owns that interface and claiming it fails.
+Chrome on Android **does** have a Web Serial API now (M148/149), but that does
+not mean it can reach a board on a cable: USB serial there rides the new Android
+Serial API, which Chromium's own announcement says arrives *"in 2026Q2 on a
+limited set of devices"*. Everywhere else the picker opens with nothing in it —
+the *"Failed to execute 'requestPort' on 'Serial': No port selected by user"* a
+Galaxy reports with a flight controller plugged in.
+
+**WebUSB** is the route that works today. Android ships no CDC-ACM driver, so
+nothing claims the board's serial interface before the browser can, and the page
+drives the port itself. Both options stay available on Android — a device with
+the new Android Serial API can use plain Serial — but **USB (WebUSB)** is the
+default there. On the desktop it is not offered at all: the operating system
+owns that interface and claiming it fails.
 
 Pick **USB (WebUSB)**, tap **Connect**, and choose the flight controller from
 the browser's device list. The picker is filtered to ArduPilot's USB identifiers

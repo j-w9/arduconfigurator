@@ -141,20 +141,23 @@ export function DisconnectedLanding(props: DisconnectedLandingProps) {
               * 89+ on ChromeOS, Linux, macOS and Windows), and Chrome for
               * Android does not implement it at all. Name the alternative that
               * does work rather than leaving the reader to guess. */}
-            {!webSerialSupported ? (
-              webUsbSerialAvailable ? (
-                <small className="landing__hint" data-testid="landing-serial-unavailable-hint">
-                  This browser has no Web Serial (it is desktop-only), so USB goes over <strong>WebUSB</strong>{' '}
-                  instead — pick <em>USB (WebUSB)</em> and choose the board when prompted. It works because Android
-                  ships no driver that claims the port first.
-                </small>
-              ) : (
-                <small className="landing__hint" data-testid="landing-serial-unavailable-hint">
-                  No serial in this browser — the Web Serial API is desktop-only (Chrome or Edge on Windows, macOS,
-                  Linux, ChromeOS). Run the WebSocket bridge on a machine with the board plugged in and connect to it
-                  over the network, or use the desktop app.
-                </small>
-              )
+            {/* Android is the awkward case: Chrome now HAS navigator.serial
+              * there (M148/149), but USB serial ports only work on devices with
+              * the new Android Serial API — everywhere else the picker opens
+              * empty and reports "No port selected by user". Say which one to
+              * pick rather than leaving that to be discovered. */}
+            {webUsbSerialAvailable ? (
+              <small className="landing__hint" data-testid="landing-serial-unavailable-hint">
+                On Android, pick <strong>USB (WebUSB)</strong> for a board on a cable. <em>Serial</em> exists in this
+                browser but its port list is empty on most phones — Chrome's USB serial support there is still rolling
+                out — so it opens a picker with nothing in it.
+              </small>
+            ) : !webSerialSupported ? (
+              <small className="landing__hint" data-testid="landing-serial-unavailable-hint">
+                No serial in this browser — the Web Serial API is desktop-only (Chrome or Edge on Windows, macOS,
+                Linux, ChromeOS). Run the WebSocket bridge on a machine with the board plugged in and connect to it
+                over the network, or use the desktop app.
+              </small>
             ) : null}
           </label>
 

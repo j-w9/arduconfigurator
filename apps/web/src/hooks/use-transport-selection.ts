@@ -29,18 +29,44 @@ export const DEFAULT_UDP_TARGET = ':14550'
 export const DEFAULT_TCP_TARGET = '127.0.0.1:5760'
 
 /**
- * Serial over WebUSB, offered only where Web Serial is missing.
+ * Android, where a present navigator.serial does not mean a usable serial port.
  *
- * That is Android in practice: it has WebUSB but no Web Serial, and no
- * CDC-ACM driver to claim the interface first. On desktop the OS owns that
- * interface, so claiming it fails with "busy" -- offering the option there
- * would be offering a button that cannot work next to one that does.
+ * Chrome shipped Web Serial on Android in M148/149, but only Bluetooth RFCOMM
+ * works broadly: USB serial rides the new Android Serial API, which the
+ * Chromium PSA says arrives "in 2026Q2 on a limited set of devices". So the
+ * API answers, the picker opens, and there is nothing in it -- which is exactly
+ * the "No port selected by user" a Galaxy reports with a board plugged in.
+ *
+ * Feature detection cannot see that difference, so the platform is the signal.
+ * userAgentData first, since the UA string is the thing browsers keep freezing.
  */
-export function webUsbSerialSupported(webSerialSupported: boolean): boolean {
-  if (webSerialSupported || typeof navigator === 'undefined') {
+export function isAndroidPlatform(): boolean {
+  if (typeof navigator === 'undefined') {
     return false
   }
-  return typeof (navigator as { usb?: unknown }).usb === 'object'
+  const platform = (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform
+  if (typeof platform === 'string' && platform.length > 0) {
+    return platform.toLowerCase() === 'android'
+  }
+  return /android/i.test(navigator.userAgent ?? '')
+}
+
+/**
+ * Serial over WebUSB: offered where Web Serial cannot reach a USB board.
+ *
+ * That is Android -- whether or not navigator.serial exists there, per above --
+ * and any browser missing Web Serial entirely. NOT desktop: there the OS owns
+ * the CDC interface, claiming it fails with "busy", and offering the option
+ * would put a button that cannot work beside one that does.
+ */
+export function webUsbSerialSupported(webSerialSupported: boolean): boolean {
+  if (typeof navigator === 'undefined') {
+    return false
+  }
+  if (typeof (navigator as { usb?: unknown }).usb !== 'object') {
+    return false
+  }
+  return !webSerialSupported || isAndroidPlatform()
 }
 
 // Raw UDP/TCP need either the desktop app (native sockets over IPC) or an
@@ -56,12 +82,13 @@ const TCP_TARGET_STORAGE_KEY = 'arduconfig:tcp-target'
 const SERIAL_PORT_INFO_STORAGE_KEY = 'arduconfig:web-serial-port'
 
 function defaultTransportMode(webSerialSupported: boolean): TransportMode {
-  if (webSerialSupported) {
-    return 'web-serial'
+  // WebUSB wins where it is offered at all, which is only where Web Serial
+  // cannot reach a USB board: opening on the transport that works beats
+  // opening on one whose picker is empty.
+  if (webUsbSerialSupported(webSerialSupported)) {
+    return 'web-usb-serial'
   }
-  // A tablet with WebUSB opens on the transport that can actually reach a
-  // board, rather than on the demo vehicle.
-  return webUsbSerialSupported(webSerialSupported) ? 'web-usb-serial' : 'demo'
+  return webSerialSupported ? 'web-serial' : 'demo'
 }
 
 function readStoredTransportMode(webSerialSupported: boolean): TransportMode {

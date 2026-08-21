@@ -4917,11 +4917,22 @@ test.describe('Serial over WebUSB (Android)', () => {
   // Chrome ships Web Serial on the desktop only. Android has WebUSB and no
   // CDC-ACM driver to claim the interface first, which is what makes a
   // page-driven serial port possible there at all.
-  const fakeAndroid = () => {
-    // navigator.usb present, navigator.serial absent: the shape of Chrome on
-    // Android as the app's capability checks see it. Redefined rather than
-    // deleted -- `serial` lives on Navigator.prototype as an accessor, so
-    // `delete navigator.serial` removes nothing.
+  const fakeUsb = () => {
+    Object.defineProperty(navigator, 'usb', {
+      configurable: true,
+      value: {
+        getDevices: async () => [],
+        requestDevice: async () => {
+          throw new Error('No device selected.')
+        }
+      }
+    })
+  }
+
+  /** A browser with WebUSB and no Web Serial at all. */
+  const fakeNoWebSerial = () => {
+    // Redefined rather than deleted -- `serial` lives on Navigator.prototype as
+    // an accessor, so `delete navigator.serial` removes nothing.
     Object.defineProperty(navigator, 'serial', { configurable: true, get: () => undefined })
     Object.defineProperty(navigator, 'usb', {
       configurable: true,
@@ -4934,8 +4945,55 @@ test.describe('Serial over WebUSB (Android)', () => {
     })
   }
 
-  test('offers the WebUSB option where Web Serial is missing', async ({ page }) => {
+  /**
+   * Chrome on Android as it actually is since M148/149: navigator.serial IS
+   * present, but its USB port list is empty on most devices. Detecting the API
+   * cannot tell that apart, which is why the platform is the signal.
+   */
+  const fakeAndroid = () => {
+    Object.defineProperty(navigator, 'userAgentData', {
+      configurable: true,
+      value: { platform: 'Android', brands: [], mobile: true }
+    })
+    Object.defineProperty(navigator, 'serial', {
+      configurable: true,
+      value: {
+        getPorts: async () => [],
+        requestPort: async () => {
+          throw new Error("Failed to execute 'requestPort' on 'Serial': No port selected by the user.")
+        }
+      }
+    })
+    Object.defineProperty(navigator, 'usb', {
+      configurable: true,
+      value: {
+        getDevices: async () => [],
+        requestDevice: async () => {
+          throw new Error('No device selected.')
+        }
+      }
+    })
+  }
+
+  test('offers WebUSB on Android even though navigator.serial exists there', async ({ page }) => {
+    // The bug this pins: Chrome on Android has had Web Serial since M148/149,
+    // so gating the WebUSB option on "no navigator.serial" hid it from the one
+    // platform it was built for. A Galaxy with a board attached got an empty
+    // serial picker and no other option.
     await page.addInitScript(fakeAndroid)
+    await page.goto('/')
+
+    const select = page.getByTestId('landing-transport-select')
+    await expect(select.locator('option[value="web-usb-serial"]')).toHaveCount(1)
+    // Serial stays offered and ENABLED -- a device with the new Android Serial
+    // API can use it -- but WebUSB is the default, because it is the one that
+    // reaches a USB board today.
+    await expect(select).toHaveValue('web-usb-serial')
+    await expect(page.getByTestId('landing-serial-unavailable-hint')).toContainText('USB (WebUSB)')
+  })
+
+  test('offers the WebUSB option where Web Serial is missing', async ({ page }) => {
+    await page.addInitScript(fakeNoWebSerial)
     await page.goto('/')
 
     const select = page.getByTestId('landing-transport-select')
@@ -4964,7 +5022,7 @@ test.describe('Serial over WebUSB (Android)', () => {
   })
 
   test('names the USB device picker in the header when that transport is active', async ({ page }) => {
-    await page.addInitScript(fakeAndroid)
+    await page.addInitScript(fakeNoWebSerial)
     await page.goto('/')
     await page.getByTestId('landing-transport-select').selectOption('web-usb-serial')
     // The header picker mirrors "Choose a different port" for the WebUSB path.

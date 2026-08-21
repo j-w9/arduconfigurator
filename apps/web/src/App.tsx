@@ -3196,7 +3196,15 @@ export function App() {
       rememberSelectedSerialPort(port)
       setSessionNotice(undefined)
     } catch {
-      // Picker dismissed — keep the current selection.
+      // Picker dismissed, or -- on Android -- opened with nothing in it, which
+      // is what Chrome does there for a USB board today. Name the transport
+      // that can reach it instead of leaving an empty list unexplained.
+      if (webUsbSerialAvailable) {
+        setSessionNotice({
+          tone: 'warning',
+          text: 'No serial port to pick. On Android, USB boards are reached over WebUSB — switch the transport to USB (WebUSB) and connect.'
+        })
+      }
     }
   }
 
