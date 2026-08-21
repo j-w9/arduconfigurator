@@ -168,7 +168,15 @@ export function AppHeader({
               disconnected-landing.tsx); shown only while already active. */}
           {transportMode === 'demo-rover' ? <option value="demo-rover">Demo (Rover)</option> : null}
           {transportMode === 'demo-sub' ? <option value="demo-sub">Demo (Sub)</option> : null}
-          <option value="web-serial" disabled={!webSerialSupported}>
+          <option
+            value="web-serial"
+            disabled={!webSerialSupported}
+            title={
+              webSerialSupported
+                ? undefined
+                : 'This browser has no Web Serial API. It is desktop-only — Chrome or Edge on Windows, macOS, Linux or ChromeOS; Android has none. Use the WebSocket bridge or the desktop app.'
+            }
+          >
             Serial / USB{webSerialSupported ? '' : ' (n/a)'}
           </option>
           <option value="websocket">WebSocket</option>

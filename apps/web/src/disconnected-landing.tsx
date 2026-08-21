@@ -113,13 +113,33 @@ export function DisconnectedLanding(props: DisconnectedLandingProps) {
                   already active (keeps the select from displaying blank). */}
               {transportMode === 'demo-rover' ? <option value="demo-rover">Demo (Rover)</option> : null}
               {transportMode === 'demo-sub' ? <option value="demo-sub">Demo (Sub)</option> : null}
-              <option value="web-serial" disabled={!webSerialSupported}>
+              <option
+                value="web-serial"
+                disabled={!webSerialSupported}
+                title={
+                  webSerialSupported
+                    ? undefined
+                    : 'This browser has no Web Serial API. It is desktop-only — Chrome or Edge on Windows, macOS, Linux or ChromeOS.'
+                }
+              >
                 Serial{webSerialSupported ? '' : ' (n/a)'}
               </option>
               <option value="websocket">WebSocket</option>
               {udpSupported ? <option value="udp">UDP (direct)</option> : null}
               {tcpSupported ? <option value="tcp">TCP (direct)</option> : null}
             </select>
+            {/* "(n/a)" on its own reads as a bug on a phone or tablet, which is
+              * where it is most often seen: Web Serial is desktop-only (Chrome
+              * 89+ on ChromeOS, Linux, macOS and Windows), and Chrome for
+              * Android does not implement it at all. Name the alternative that
+              * does work rather than leaving the reader to guess. */}
+            {!webSerialSupported ? (
+              <small className="landing__hint" data-testid="landing-serial-unavailable-hint">
+                No serial in this browser — the Web Serial API is desktop-only (Chrome or Edge on Windows, macOS,
+                Linux, ChromeOS), and Android has none. To use a tablet or phone, run the WebSocket bridge on a
+                machine with the board plugged in and connect to it over the network, or use the desktop app.
+              </small>
+            ) : null}
           </label>
 
           {transportMode === 'websocket' ? (

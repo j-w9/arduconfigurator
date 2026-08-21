@@ -25,9 +25,19 @@ The default for a flight controller plugged into your computer over USB.
 .. warning::
 
    Web Serial is only available in **Chromium-based browsers** (Chrome, Edge,
-   Brave, Opera) over a secure (HTTPS) origin. If you don't see the Serial / USB
-   option, you're likely in a browser that doesn't implement Web Serial — use the
-   desktop app or demo mode.
+   Brave, Opera) over a secure (HTTPS) origin, and only on the **desktop**:
+   Chrome 89+ on ChromeOS, Linux, macOS and Windows. If the Serial / USB option
+   is greyed out as *(n/a)*, this browser does not implement it.
+
+.. note::
+
+   **Phones and tablets cannot do serial.** Chrome for Android has no Web Serial
+   API — it is not a permissions prompt you are missing, and no USB cable or OTG
+   adapter changes it. On Android, either run the **WebSocket bridge** on a
+   machine with the board plugged in and connect the tablet to it over the
+   network, or use the desktop app on a laptop. (Android *does* have WebUSB, so
+   a serial-over-WebUSB path is technically possible; this app does not
+   implement one today.)
 
 WebSocket bridge
 ----------------
