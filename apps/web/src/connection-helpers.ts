@@ -40,13 +40,24 @@ export function describeConnectFailure(
         : 'Unknown connection error.'
 
   if (message.includes('Timed out waiting for vehicle heartbeat')) {
-    return transportMode === 'web-serial'
-      ? 'The serial port opened, but no ArduPilot heartbeat arrived — this is usually the SLCAN/secondary USB port (boards with CAN expose two). Use "Choose a different port" to grant the other one, then reconnect; also close any other serial app using it.'
-      : 'The link opened, but no ArduPilot heartbeat arrived in time. Confirm the selected transport is pointed at a live flight controller and try again.'
+    if (transportMode === 'web-serial') {
+      return 'The serial port opened, but no ArduPilot heartbeat arrived — this is usually the SLCAN/secondary USB port (boards with CAN expose two). Use "Choose a different port" to grant the other one, then reconnect; also close any other serial app using it.'
+    }
+    // The WebUSB path claims the FIRST CDC interface, which is MAVLink on an
+    // ArduPilot board. Silence there means the board is still booting, or it
+    // is a board whose interfaces are ordered the other way round.
+    if (transportMode === 'web-usb-serial') {
+      return 'The USB interface opened, but no ArduPilot heartbeat arrived. Give the board a few seconds to boot and reconnect; if it stays silent, it may be exposing SLCAN first.'
+    }
+    return 'The link opened, but no ArduPilot heartbeat arrived in time. Confirm the selected transport is pointed at a live flight controller and try again.'
   }
 
   if (transportMode === 'web-serial') {
     return `${message} If the flight controller is already plugged in, close any other app using the serial port and reconnect.`
+  }
+
+  if (transportMode === 'web-usb-serial') {
+    return `${message} If the board is plugged in, unplug and replug it, then tap Connect and pick it from the list.`
   }
 
   return message

@@ -26,6 +26,8 @@ import {
   MockTransport,
   WebSerialTransport,
   WebSocketTransport,
+  WebUsbSerialTransport,
+  type UsbSerialDeviceLike,
   type WebSerialPortLike
 } from '@arduconfig/transport'
 
@@ -82,6 +84,8 @@ export function createRuntime(
   tcpTarget: string,
   serialPort: WebSerialPortLike | (() => WebSerialPortLike | undefined) | undefined,
   onSerialPortSelected?: (port: WebSerialPortLike) => void,
+  /** Resolver for the WebUSB device, read at connect() time like the port. */
+  usbSerialDevice?: UsbSerialDeviceLike | (() => UsbSerialDeviceLike | undefined),
   // Optional live-recording hooks. The App owns a SessionRecorder and passes
   // hooks that delegate to it; the recorder decides per-frame whether to
   // capture (only while recording is active). Keeping the hooks here — rather
@@ -96,6 +100,17 @@ export function createRuntime(
         bufferSize: WEB_SERIAL_READ_BUFFER_BYTES,
         port: serialPort,
         onPortSelected: onSerialPortSelected
+      })
+    }
+
+    // Serial over WebUSB: the same MAVLink stream, reached through the only
+    // USB API a tablet has. Nothing downstream of the transport can tell the
+    // difference.
+    if (mode === 'web-usb-serial') {
+      return new WebUsbSerialTransport('browser-usb-serial', {
+        device: usbSerialDevice,
+        portIndex: 0,
+        readSize: 4096
       })
     }
 

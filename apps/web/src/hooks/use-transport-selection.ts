@@ -16,6 +16,8 @@ export type TransportMode =
   | 'demo-rover'
   | 'demo-sub'
   | 'web-serial'
+  // Serial over WebUSB. Android only in practice -- see webUsbSerialSupported.
+  | 'web-usb-serial'
   | 'websocket'
   | 'udp'
   | 'tcp'
@@ -25,6 +27,21 @@ export const DEFAULT_WEBSOCKET_URL = 'ws://127.0.0.1:14550'
 export const DEFAULT_UDP_TARGET = ':14550'
 // TCP is always a fixed remote; SITL's default is 127.0.0.1:5760.
 export const DEFAULT_TCP_TARGET = '127.0.0.1:5760'
+
+/**
+ * Serial over WebUSB, offered only where Web Serial is missing.
+ *
+ * That is Android in practice: it has WebUSB but no Web Serial, and no
+ * CDC-ACM driver to claim the interface first. On desktop the OS owns that
+ * interface, so claiming it fails with "busy" -- offering the option there
+ * would be offering a button that cannot work next to one that does.
+ */
+export function webUsbSerialSupported(webSerialSupported: boolean): boolean {
+  if (webSerialSupported || typeof navigator === 'undefined') {
+    return false
+  }
+  return typeof (navigator as { usb?: unknown }).usb === 'object'
+}
 
 // Raw UDP/TCP need either the desktop app (native sockets over IPC) or an
 // Isolated Web App on Chromium (Direct Sockets). A normal tab has neither.
@@ -39,7 +56,12 @@ const TCP_TARGET_STORAGE_KEY = 'arduconfig:tcp-target'
 const SERIAL_PORT_INFO_STORAGE_KEY = 'arduconfig:web-serial-port'
 
 function defaultTransportMode(webSerialSupported: boolean): TransportMode {
-  return webSerialSupported ? 'web-serial' : 'demo'
+  if (webSerialSupported) {
+    return 'web-serial'
+  }
+  // A tablet with WebUSB opens on the transport that can actually reach a
+  // board, rather than on the demo vehicle.
+  return webUsbSerialSupported(webSerialSupported) ? 'web-usb-serial' : 'demo'
 }
 
 function readStoredTransportMode(webSerialSupported: boolean): TransportMode {
@@ -59,6 +81,9 @@ function readStoredTransportMode(webSerialSupported: boolean): TransportMode {
       return stored
     }
     if (stored === 'web-serial' && webSerialSupported) {
+      return stored
+    }
+    if (stored === 'web-usb-serial' && webUsbSerialSupported(webSerialSupported)) {
       return stored
     }
     if (stored === 'udp' && udpSupported) {

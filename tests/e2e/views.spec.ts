@@ -4913,6 +4913,65 @@ test.describe('Direct Sockets (IWA) transport options', () => {
   })
 })
 
+test.describe('Serial over WebUSB (Android)', () => {
+  // Chrome ships Web Serial on the desktop only. Android has WebUSB and no
+  // CDC-ACM driver to claim the interface first, which is what makes a
+  // page-driven serial port possible there at all.
+  const fakeAndroid = () => {
+    // navigator.usb present, navigator.serial absent: the shape of Chrome on
+    // Android as the app's capability checks see it. Redefined rather than
+    // deleted -- `serial` lives on Navigator.prototype as an accessor, so
+    // `delete navigator.serial` removes nothing.
+    Object.defineProperty(navigator, 'serial', { configurable: true, get: () => undefined })
+    Object.defineProperty(navigator, 'usb', {
+      configurable: true,
+      value: {
+        getDevices: async () => [],
+        requestDevice: async () => {
+          throw new Error('No device selected.')
+        }
+      }
+    })
+  }
+
+  test('offers the WebUSB option where Web Serial is missing', async ({ page }) => {
+    await page.addInitScript(fakeAndroid)
+    await page.goto('/')
+
+    const select = page.getByTestId('landing-transport-select')
+    await expect(select.locator('option[value="web-usb-serial"]')).toHaveCount(1)
+    // The plain serial option is still listed, disabled, so the absence is
+    // explained rather than mysterious. Asserted on the attribute: Playwright's
+    // toBeDisabled() does not read an <option> inside a <select> that way.
+    await expect(select.locator('option[value="web-serial"]')).toHaveAttribute('disabled', '')
+    await expect(page.getByTestId('landing-serial-unavailable-hint')).toContainText('WebUSB')
+
+    // And it is the default, because it is the only transport that can reach a
+    // board from that device.
+    await expect(select).toHaveValue('web-usb-serial')
+  })
+
+  test('a desktop browser with Web Serial is left exactly as it was', async ({ page }) => {
+    // The regression that matters: WebUSB exists on desktop Chrome too, and
+    // offering it there would put a button that cannot work (the OS owns the
+    // CDC interface) beside one that does.
+    await page.goto('/')
+    const select = page.getByTestId('landing-transport-select')
+    const webSerialDisabled = await select.locator('option[value="web-serial"]').isDisabled()
+    test.skip(webSerialDisabled, 'Web Serial unsupported in this browser')
+    await expect(select.locator('option[value="web-usb-serial"]')).toHaveCount(0)
+    await expect(select).toHaveValue('web-serial')
+  })
+
+  test('names the USB device picker in the header when that transport is active', async ({ page }) => {
+    await page.addInitScript(fakeAndroid)
+    await page.goto('/')
+    await page.getByTestId('landing-transport-select').selectOption('web-usb-serial')
+    // The header picker mirrors "Choose a different port" for the WebUSB path.
+    await expect(page.getByTestId('choose-usb-device-button')).toBeVisible()
+  })
+})
+
 test.describe('Inspectors (expert-only)', () => {
   test('Expert mode reveals the MAVLink inspector; CAN is the single DroneCAN surface', async ({ page }) => {
     await page.goto('/')

@@ -8,6 +8,7 @@ export type LandingTransportMode =
   | 'demo-rover'
   | 'demo-sub'
   | 'web-serial'
+  | 'web-usb-serial'
   | 'websocket'
   | 'udp'
   | 'tcp'
@@ -16,6 +17,8 @@ export interface DisconnectedLandingProps {
   transportMode: LandingTransportMode
   onTransportModeChange: (mode: LandingTransportMode) => void
   webSerialSupported: boolean
+  /** WebUSB serial is reachable (Android). Adds the USB (WebUSB) option. */
+  webUsbSerialAvailable?: boolean
   websocketUrl: string
   onWebsocketUrlChange: (url: string) => void
   websocketUrlPlaceholder: string
@@ -62,6 +65,7 @@ export function DisconnectedLanding(props: DisconnectedLandingProps) {
     transportMode,
     onTransportModeChange,
     webSerialSupported,
+    webUsbSerialAvailable = false,
     websocketUrl,
     onWebsocketUrlChange,
     websocketUrlPlaceholder,
@@ -124,6 +128,10 @@ export function DisconnectedLanding(props: DisconnectedLandingProps) {
               >
                 Serial{webSerialSupported ? '' : ' (n/a)'}
               </option>
+              {/* Only where Web Serial is missing: on the desktop the OS owns
+                * the CDC interface and claiming it fails, so this would be a
+                * button that cannot work beside one that does. */}
+              {webUsbSerialAvailable ? <option value="web-usb-serial">USB (WebUSB)</option> : null}
               <option value="websocket">WebSocket</option>
               {udpSupported ? <option value="udp">UDP (direct)</option> : null}
               {tcpSupported ? <option value="tcp">TCP (direct)</option> : null}
@@ -134,11 +142,19 @@ export function DisconnectedLanding(props: DisconnectedLandingProps) {
               * Android does not implement it at all. Name the alternative that
               * does work rather than leaving the reader to guess. */}
             {!webSerialSupported ? (
-              <small className="landing__hint" data-testid="landing-serial-unavailable-hint">
-                No serial in this browser — the Web Serial API is desktop-only (Chrome or Edge on Windows, macOS,
-                Linux, ChromeOS), and Android has none. To use a tablet or phone, run the WebSocket bridge on a
-                machine with the board plugged in and connect to it over the network, or use the desktop app.
-              </small>
+              webUsbSerialAvailable ? (
+                <small className="landing__hint" data-testid="landing-serial-unavailable-hint">
+                  This browser has no Web Serial (it is desktop-only), so USB goes over <strong>WebUSB</strong>{' '}
+                  instead — pick <em>USB (WebUSB)</em> and choose the board when prompted. It works because Android
+                  ships no driver that claims the port first.
+                </small>
+              ) : (
+                <small className="landing__hint" data-testid="landing-serial-unavailable-hint">
+                  No serial in this browser — the Web Serial API is desktop-only (Chrome or Edge on Windows, macOS,
+                  Linux, ChromeOS). Run the WebSocket bridge on a machine with the board plugged in and connect to it
+                  over the network, or use the desktop app.
+                </small>
+              )
             ) : null}
           </label>
 

@@ -29,15 +29,33 @@ The default for a flight controller plugged into your computer over USB.
    Chrome 89+ on ChromeOS, Linux, macOS and Windows. If the Serial / USB option
    is greyed out as *(n/a)*, this browser does not implement it.
 
+USB (WebUSB) — Android
+----------------------
+
+Chrome for Android has no Web Serial API, so the Serial option is greyed out
+there. It does have **WebUSB**, and — importantly — Android ships no CDC-ACM
+driver, so nothing claims the board's serial interface before the browser can.
+That is what makes a page-driven USB link possible on a tablet at all, and it is
+why this transport is offered **only** where Web Serial is missing: on a desktop
+the operating system owns that interface and claiming it fails.
+
+Pick **USB (WebUSB)**, tap **Connect**, and choose the flight controller from
+the browser's device list. The picker is filtered to ArduPilot's USB identifiers
+(``1209:5740`` for boards with two USB serial ports, ``1209:5741`` for one), so
+it lists the board rather than everything plugged in. Chrome remembers the grant
+per site, so later sessions reconnect without asking again.
+
+The link claims the **first** CDC interface, which on an ArduPilot board is
+MAVLink (the second is SLCAN). If the board answers but no heartbeat arrives,
+give it a few seconds to finish booting and reconnect.
+
 .. note::
 
-   **Phones and tablets cannot do serial.** Chrome for Android has no Web Serial
-   API — it is not a permissions prompt you are missing, and no USB cable or OTG
-   adapter changes it. On Android, either run the **WebSocket bridge** on a
-   machine with the board plugged in and connect the tablet to it over the
-   network, or use the desktop app on a laptop. (Android *does* have WebUSB, so
-   a serial-over-WebUSB path is technically possible; this app does not
-   implement one today.)
+   Some Android builds *do* ship a driver that claims CDC-ACM. Where that
+   happens the browser cannot take the interface and the connect fails with a
+   "busy" message naming the cause. There is no workaround from a web page:
+   fall back to the **WebSocket bridge** from a machine with the board attached,
+   or the desktop app.
 
 WebSocket bridge
 ----------------

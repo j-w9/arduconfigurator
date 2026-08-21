@@ -40,6 +40,8 @@ export interface AppHeaderProps {
   busyAction: string | undefined
   websocketUrl: string
   webSerialSupported: boolean
+  /** WebUSB serial is reachable (Android). Adds the USB (WebUSB) option. */
+  webUsbSerialAvailable?: boolean
   udpSupported: boolean
   tcpSupported: boolean
   udpTarget: string
@@ -61,6 +63,8 @@ export interface AppHeaderProps {
   onConnect: () => void
   onDisconnect: () => void
   onChooseSerialPort: () => void
+  /** Open the WebUSB picker to grant or switch the device (Android). */
+  onChooseUsbSerialDevice?: () => void
   theme: Theme
   onToggleTheme: () => void
 }
@@ -71,6 +75,7 @@ export function AppHeader({
   busyAction,
   websocketUrl,
   webSerialSupported,
+  webUsbSerialAvailable = false,
   udpSupported,
   tcpSupported,
   udpTarget,
@@ -92,6 +97,7 @@ export function AppHeader({
   onConnect,
   onDisconnect,
   onChooseSerialPort,
+  onChooseUsbSerialDevice,
   theme,
   onToggleTheme
 }: AppHeaderProps) {
@@ -168,6 +174,7 @@ export function AppHeader({
               disconnected-landing.tsx); shown only while already active. */}
           {transportMode === 'demo-rover' ? <option value="demo-rover">Demo (Rover)</option> : null}
           {transportMode === 'demo-sub' ? <option value="demo-sub">Demo (Sub)</option> : null}
+          {webUsbSerialAvailable ? <option value="web-usb-serial">USB (WebUSB)</option> : null}
           <option
             value="web-serial"
             disabled={!webSerialSupported}
@@ -330,6 +337,22 @@ export function AppHeader({
               title="Open the browser's serial-port picker to grant or switch to a different port (e.g. the MAVLink interface vs SLCAN)."
             >
               Choose a different port
+            </button>
+          ) : null}
+          {/* Same affordance as the serial port picker, for the WebUSB path:
+              grant a board, or switch to a different one. */}
+          {transportMode === 'web-usb-serial' &&
+          onChooseUsbSerialDevice &&
+          snapshot.connection.kind !== 'connected' &&
+          snapshot.connection.kind !== 'connecting' ? (
+            <button
+              data-testid="choose-usb-device-button"
+              className="session-strip__button"
+              onClick={onChooseUsbSerialDevice}
+              disabled={busyAction !== undefined}
+              title="Open the browser's USB device picker to grant or switch the flight controller."
+            >
+              Choose USB device
             </button>
           ) : null}
           {/* Disconnect button: only render when there's something to

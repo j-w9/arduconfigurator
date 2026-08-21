@@ -60,7 +60,10 @@ import {
 } from '@arduconfig/param-metadata'
 import { loadUpstreamParameters } from './generated/param-upstream'
 import {
+  ARDUPILOT_USB_PRODUCT_IDS,
+  ARDUPILOT_USB_VENDOR_ID,
   WebSerialTransport,
+  type UsbSerialDeviceLike,
   getAvailableWebSerialPorts,
   getWebSerialNavigator,
   getWebSerialPortInfo,
@@ -397,6 +400,7 @@ import {
 } from './gps-coord-format'
 import {
   useTransportSelection,
+  webUsbSerialSupported,
   DEFAULT_WEBSOCKET_URL,
   DEFAULT_UDP_TARGET,
   DEFAULT_TCP_TARGET,
@@ -560,6 +564,15 @@ export function App() {
   const swUpdate = useServiceWorkerUpdate()
   const desktopBridge = getDesktopBridge()
   const webSerialSupported = WebSerialTransport.isSupported()
+  const webUsbSerialAvailable = webUsbSerialSupported(webSerialSupported)
+  /**
+   * The USB device chosen through the WebUSB picker.
+   *
+   * A ref for the same reason the serial port is one: the transport resolves it
+   * at connect() time, so a device chosen after the runtime was built is still
+   * the one used, without rebuilding (and tearing down) the runtime.
+   */
+  const selectedUsbSerialDeviceRef = useRef<UsbSerialDeviceLike | undefined>(undefined)
   const {
     transportMode,
     setTransportMode,
@@ -613,7 +626,8 @@ export function App() {
         () => selectedSerialPortRef.current,
         (port) => {
           rememberSelectedSerialPort(port)
-        }
+        },
+        () => selectedUsbSerialDeviceRef.current
       ),
     [transportMode, websocketUrl, udpTarget, tcpTarget, rememberSelectedSerialPort]
   )
@@ -1352,9 +1366,13 @@ export function App() {
     propsRemoved: propsRemovedAcknowledged,
     testAreaClear: testAreaAcknowledged
   }, motorTestExpertOptions)
-  // A physical USB (web-serial) link means someone is at the bench with the
-  // craft; require the extra USB-bench acknowledgement before any spin.
-  const motorTestOverUsb = transportMode === 'web-serial' && snapshot.connection.kind === 'connected'
+  // A physical USB link means someone is at the bench with the craft; require
+  // the extra USB-bench acknowledgement before any spin. Both USB transports
+  // count -- a tablet on a cable is as much "in the room with the props" as a
+  // laptop is, and the gate only ever adds a confirmation.
+  const motorTestOverUsb =
+    (transportMode === 'web-serial' || transportMode === 'web-usb-serial') &&
+    snapshot.connection.kind === 'connected'
   const motorTestGuardReasons =
     motorTestOverUsb && !usbBenchAcknowledged
       ? [...coreMotorTestGuardReasons, 'Confirm the craft is on the bench with props off (USB connection detected).']
@@ -3042,6 +3060,21 @@ export function App() {
       // connect can't land on the silent SLCAN interface. Best-effort: any
       // failure falls through to the normal connect (and the no-heartbeat
       // message guides the operator to the other port).
+      // WebUSB serial: reuse a device this origin already holds, and only open
+      // the picker when there is none. requestDevice needs a user gesture, and
+      // Connect is one, so asking here rather than earlier keeps the tablet
+      // flow to a single tap in the common case.
+      if (transportMode === 'web-usb-serial') {
+        const device = (await resolveRememberedUsbSerialDevice()) ?? (await handleChooseUsbSerialDevice())
+        if (!device) {
+          setSessionNotice({
+            tone: 'warning',
+            text: 'No USB device chosen. Tap Connect again and pick the flight controller from the list.'
+          })
+          setBusyAction(undefined)
+          return
+        }
+      }
       if (transportMode === 'web-serial') {
         try {
           const grantedPorts = await getAvailableWebSerialPorts()
@@ -3164,6 +3197,60 @@ export function App() {
       setSessionNotice(undefined)
     } catch {
       // Picker dismissed — keep the current selection.
+    }
+  }
+
+  /**
+   * Pick the flight controller through the WebUSB device picker.
+   *
+   * Filtered to ArduPilot's allocated pid.codes identifiers so the list holds
+   * the board rather than every USB device on the tablet. The chosen device is
+   * remembered by the browser per origin, so a later session can reconnect
+   * through getDevices() without asking again -- the WebUSB analogue of the
+   * remembered serial port.
+   */
+  async function handleChooseUsbSerialDevice(): Promise<UsbSerialDeviceLike | undefined> {
+    const usb = (navigator as { usb?: { requestDevice(options: unknown): Promise<UsbSerialDeviceLike> } }).usb
+    if (!usb) {
+      return undefined
+    }
+    try {
+      const device = await usb.requestDevice({
+        filters: ARDUPILOT_USB_PRODUCT_IDS.map((productId) => ({
+          vendorId: ARDUPILOT_USB_VENDOR_ID,
+          productId
+        }))
+      })
+      selectedUsbSerialDeviceRef.current = device
+      setSessionNotice(undefined)
+      return device
+    } catch {
+      // Picker dismissed, or no device matched the filter.
+      return undefined
+    }
+  }
+
+  /**
+   * Reuse a device this origin was already granted, so a reconnect does not
+   * always require the picker.
+   */
+  async function resolveRememberedUsbSerialDevice(): Promise<UsbSerialDeviceLike | undefined> {
+    if (selectedUsbSerialDeviceRef.current) {
+      return selectedUsbSerialDeviceRef.current
+    }
+    const usb = (navigator as { usb?: { getDevices(): Promise<UsbSerialDeviceLike[]> } }).usb
+    if (!usb) {
+      return undefined
+    }
+    try {
+      const granted = await usb.getDevices()
+      const device = granted[0]
+      if (device) {
+        selectedUsbSerialDeviceRef.current = device
+      }
+      return device
+    } catch {
+      return undefined
     }
   }
 
@@ -7255,7 +7342,9 @@ export function App() {
         ? rememberedSerialPortLabel
           ? `Serial · ${rememberedSerialPortLabel}`
           : 'Serial transport'
-        : `WebSocket · ${websocketUrl}`
+        : transportMode === 'web-usb-serial'
+          ? 'USB (WebUSB) transport'
+          : `WebSocket · ${websocketUrl}`
   const portVisibilitySummary = showAllSerialPorts
     ? `Showing all ${serialPortViewModels.length} detected serial ports.`
     : `Showing ${visibleSerialPortViewModels.length} active or edited port${visibleSerialPortViewModels.length === 1 ? '' : 's'} first${
@@ -7903,6 +7992,8 @@ export function App() {
         onConnect={() => void handleConnect()}
         onDisconnect={() => void handleDisconnect()}
         onChooseSerialPort={() => void handleChooseSerialPort()}
+        webUsbSerialAvailable={webUsbSerialAvailable}
+        onChooseUsbSerialDevice={() => void handleChooseUsbSerialDevice()}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
@@ -7994,6 +8085,7 @@ export function App() {
               transportMode={transportMode}
               onTransportModeChange={setTransportMode}
               webSerialSupported={webSerialSupported}
+              webUsbSerialAvailable={webUsbSerialAvailable}
               websocketUrl={websocketUrl}
               onWebsocketUrlChange={setWebsocketUrl}
               websocketUrlPlaceholder={DEFAULT_WEBSOCKET_URL}

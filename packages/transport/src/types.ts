@@ -1,6 +1,15 @@
 export type Unsubscribe = () => void
 
-export type TransportKind = 'mock' | 'web-serial' | 'native-serial' | 'websocket' | 'tcp' | 'udp' | 'replay'
+export type TransportKind =
+  | 'mock'
+  | 'web-serial'
+  // Serial over WebUSB, for platforms with no Web Serial API (Android).
+  | 'web-usb-serial'
+  | 'native-serial'
+  | 'websocket'
+  | 'tcp'
+  | 'udp'
+  | 'replay'
 
 export type TransportStatus =
   | { kind: 'idle' }
