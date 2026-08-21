@@ -97,6 +97,8 @@ export class WebUsbSerialTransport implements Transport {
   private intentionalDisconnect = false
   private connectPromise?: Promise<void>
   private readLoopPromise?: Promise<void>
+  /** The comm interface, when claiming it was possible and necessary. */
+  private claimedControlInterface?: number
 
   constructor(id = 'web-usb-serial', options: WebUsbSerialTransportOptions = {}) {
     this.id = id
@@ -170,18 +172,63 @@ export class WebUsbSerialTransport implements Transport {
       }
 
       const ports = findCdcSerialPorts(device.configuration ?? configuration)
-      const port = selectCdcSerialPort(ports, this.options.portIndex ?? 0)
-      if (!port) {
+      const preferred = selectCdcSerialPort(ports, this.options.portIndex ?? 0)
+      if (!preferred) {
         throw new Error(
           'No CDC serial interface on this USB device. Pick the flight controller, not a hub or adapter.'
         )
       }
+
+      // Try the preferred port first, then every other CDC port on the device.
+      //
+      // A driver claiming one interface does not always hold the others: a
+      // dual-CDC board offers a second, and a host that binds the first may
+      // leave it free. Trying rather than assuming costs one failed call and
+      // turns a dead end into a working link on exactly the devices where the
+      // first interface is spoken for.
+      const candidates = [preferred, ...ports.filter((candidate) => candidate !== preferred)]
+      const attempts: string[] = []
+      let port: CdcSerialPort | undefined
+      for (const candidate of candidates) {
+        // Claim the paired COMM interface first where there is one. Some hosts
+        // bind a CDC function as a unit, and owning only half of it is refused;
+        // where that is not so, this is a harmless extra claim. Failure here is
+        // ignored on purpose -- the data interface is the one that matters, and
+        // it may well be free even when this is not.
+        let claimedComm: number | undefined
+        if (candidate.controlInterfaceNumber !== undefined) {
+          try {
+            await device.claimInterface(candidate.controlInterfaceNumber)
+            claimedComm = candidate.controlInterfaceNumber
+          } catch {
+            claimedComm = undefined
+          }
+        }
+        try {
+          await device.claimInterface(candidate.interfaceNumber)
+          port = candidate
+          claimedInterface = candidate.interfaceNumber
+          this.claimedControlInterface = claimedComm
+          break
+        } catch (claimError) {
+          if (claimedComm !== undefined) {
+            await device.releaseInterface(claimedComm).catch(() => {})
+          }
+          attempts.push(
+            `interface ${candidate.interfaceNumber}: ${claimError instanceof Error ? claimError.message : String(claimError)}`
+          )
+        }
+      }
+      if (!port) {
+        throw new Error(
+          `Could not claim a serial interface on this device (${attempts.join('; ')}). ` +
+            'Something else already owns it: close other apps or browser tabs using the board, unplug and replug it, ' +
+            'and try again. Some Android builds ship a driver that claims the port permanently — there is no way ' +
+            'around that from a web page, so use the WebSocket bridge or the desktop app on those.'
+        )
+      }
       this.port = port
 
-      // Android has no driver holding this interface, which is the whole
-      // premise. A desktop OS does, and this is where that shows up.
-      await device.claimInterface(port.interfaceNumber)
-      claimedInterface = port.interfaceNumber
       if (port.alternateSetting !== 0 && device.selectAlternateInterface) {
         await device.selectAlternateInterface(port.interfaceNumber, port.alternateSetting)
       }
@@ -302,6 +349,10 @@ export class WebUsbSerialTransport implements Transport {
     }
 
     let reason = 'USB serial link closed.'
+    if (device && this.claimedControlInterface !== undefined) {
+      await device.releaseInterface(this.claimedControlInterface).catch(() => {})
+      this.claimedControlInterface = undefined
+    }
     if (device && port) {
       try {
         await device.releaseInterface(port.interfaceNumber)

@@ -202,15 +202,44 @@ test('refuses to send before connecting rather than throwing from the device', a
   await assert.rejects(transport.send(new Uint8Array([1])), /not connected/i)
 })
 
-test('a busy interface is reported as what it is, and nothing is left claimed', async () => {
-  // The failure mode on any desktop OS, and the one Android is expected to
-  // avoid: a kernel driver already owns the CDC interface.
-  const device = fakeDevice({ claimError: new Error("Unable to claim interface: the device is busy") })
+test('every CDC interface is unclaimable: says what was tried, leaves nothing claimed', async () => {
+  // The failure a Samsung Galaxy reported: the device enumerates and appears in
+  // the picker, and then claimInterface is refused because something already
+  // owns it.
+  const device = fakeDevice({ claimError: new Error('Unable to claim interface.') })
   const transport = new WebUsbSerialTransport('t', { device })
-  await assert.rejects(transport.connect(), /busy/i)
-  assert.equal(transport.getStatus().kind, 'error')
-  assert.match(transport.getStatus().message, /another driver or tab already owns/i)
+  await assert.rejects(transport.connect(), /Could not claim a serial interface/i)
+  const status = transport.getStatus()
+  assert.equal(status.kind, 'error')
+  // Both CDC interfaces named, so a report says which failed rather than "it
+  // did not work".
+  assert.match(status.message, /interface 1:/)
+  assert.match(status.message, /interface 3:/)
+  assert.match(status.message, /Android builds ship a driver/i)
   assert.ok(!device.calls.some((call) => call.startsWith('release:')), 'nothing claimed, nothing to release')
+})
+
+test('falls back to the second CDC interface when the first is taken', async () => {
+  // A host that binds the first interface does not necessarily hold the
+  // second. Trying costs one failed call and turns a dead end into a link.
+  const device = fakeDevice()
+  const originalClaim = device.claimInterface
+  device.claimInterface = async (interfaceNumber) => {
+    if (interfaceNumber === 1) {
+      device.calls.push('claim:1')
+      throw new Error('Unable to claim interface.')
+    }
+    return originalClaim.call(device, interfaceNumber)
+  }
+  const transport = new WebUsbSerialTransport('t', { device })
+  await transport.connect()
+  assert.equal(transport.getStatus().kind, 'connected')
+  assert.ok(device.calls.includes('claim:3'), 'claimed the other CDC port')
+  // And it then talks on THAT port's endpoints, not the one it could not claim.
+  await transport.send(new Uint8Array([1]))
+  assert.ok(device.calls.includes('out:4'))
+  await transport.disconnect()
+  assert.ok(device.calls.includes('release:3'))
 })
 
 test('a device with no CDC interface is refused with a usable reason', async () => {
@@ -261,4 +290,35 @@ test('describeUsbError explains the two failures that actually happen', () => {
   assert.match(describeUsbError(new Error('Access denied')), /permission was refused/i)
   // Anything else is passed through rather than dressed up.
   assert.equal(describeUsbError(new Error('boom')), 'boom')
+})
+
+test('claims the paired comm interface too, and releases both', async () => {
+  // Some hosts bind a CDC function as a unit and refuse an app that owns only
+  // half of it. Claiming the comm interface first is free where that is not so.
+  const device = fakeDevice()
+  const transport = new WebUsbSerialTransport('t', { device })
+  await transport.connect()
+  assert.ok(device.calls.includes('claim:0'), 'comm interface of the MAVLink port')
+  assert.ok(device.calls.includes('claim:1'), 'and its data interface')
+  await transport.disconnect()
+  assert.ok(device.calls.includes('release:0'))
+  assert.ok(device.calls.includes('release:1'))
+})
+
+test('a comm interface that cannot be claimed does not block the data interface', async () => {
+  // The claim that matters is the data one. If the host holds only the comm
+  // half, the link should still come up.
+  const device = fakeDevice()
+  const originalClaim = device.claimInterface
+  device.claimInterface = async (interfaceNumber) => {
+    if (interfaceNumber === 0) {
+      device.calls.push('claim:0')
+      throw new Error('Unable to claim interface.')
+    }
+    return originalClaim.call(device, interfaceNumber)
+  }
+  const transport = new WebUsbSerialTransport('t', { device })
+  await transport.connect()
+  assert.equal(transport.getStatus().kind, 'connected')
+  await transport.disconnect()
 })
