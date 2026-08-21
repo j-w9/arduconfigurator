@@ -4102,6 +4102,14 @@ test.describe('ArduPlane demo', () => {
     await expect(valt).toContainText('Baro thrust calibration')
     await expect(page.getByTestId('valt-log-server')).toContainText('pilot at https://logs.example')
     await expect(page.getByTestId('valt-file')).toBeAttached()
+
+    // Two fitting methods, with the bench ramp leading: it needs no height
+    // measurement, only a restrained airframe.
+    await expect(page.getByTestId('valt-method-ramp')).toBeVisible()
+    await expect(page.getByTestId('valt-method-hover')).toBeVisible()
+    await expect(page.getByTestId('valt-method-hint')).toContainText('Restrain the airframe')
+    await page.getByTestId('valt-method-hover').click()
+    await expect(page.getByTestId('valt-method-hint')).toContainText('steady hover')
   })
 
   test('Plane AutoTune surface renders fixed-wing + VTOL groups with seeded values and stages a draft', async ({ page }) => {

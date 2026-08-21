@@ -14,7 +14,12 @@
 
 import { useCallback, useState, type ReactElement } from 'react'
 
-import { analyzeValtBuffer, type ValtResult } from '@arduconfig/log-analysis'
+import {
+  analyzeBaroThrustRamp,
+  analyzeValtBuffer,
+  type BaroThrustRampResult,
+  type ValtResult
+} from '@arduconfig/log-analysis'
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
@@ -50,6 +55,17 @@ export function ValtCalibrationCard({
   const [busy, setBusy] = useState(false)
   const [staged, setStaged] = useState(false)
   const [manualHeight, setManualHeight] = useState('')
+  /**
+   * Which method the log is fitted with.
+   *
+   * The bench ramp is the default because it needs no altitude truth at all:
+   * with the airframe physically restrained, every Pascal the baro moves after
+   * throttle-up is the thrust effect, so the scale is just a slope. The hover
+   * method needs a rangefinder or a measured height, and both of those are
+   * things that can be wrong.
+   */
+  const [method, setMethod] = useState<'ramp' | 'hover'>('ramp')
+  const [rampResult, setRampResult] = useState<BaroThrustRampResult | null>(null)
 
   const currentScale = readParameterValue(snapshot, 'BARO1_THST_SCALE')
 
@@ -57,6 +73,19 @@ export function ValtCalibrationCard({
     try {
       const analysis = analyzeValtBuffer(buf, manualTrueAltM !== undefined ? { manualTrueAltM } : {})
       setResult(analysis)
+      setRampResult(null)
+      setStaged(false)
+      setError(undefined)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not read or parse that log.')
+    }
+  }, [])
+
+  const runRampAnalysis = useCallback((buf: ArrayBuffer) => {
+    try {
+      const analysis = analyzeBaroThrustRamp(buf)
+      setRampResult(analysis)
+      setResult(null)
       setStaged(false)
       setError(undefined)
     } catch (caught) {
@@ -76,14 +105,18 @@ export function ValtCalibrationCard({
         await new Promise((resolve) => setTimeout(resolve, 0))
         setBuffer(buf)
         setFilename(file.name)
-        runAnalysis(buf) // auto: uses the rangefinder if the log has one
+        if (method === 'ramp') {
+          runRampAnalysis(buf)
+        } else {
+          runAnalysis(buf) // auto: uses the rangefinder if the log has one
+        }
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : 'Could not read or parse that log.')
       } finally {
         setBusy(false)
       }
     },
-    [runAnalysis]
+    [method, runAnalysis, runRampAnalysis]
   )
 
   // BARO1_THST_SCALE is compiled out on some builds (AP_BARO_THST_COMP_ENABLED).
@@ -114,9 +147,45 @@ export function ValtCalibrationCard({
       </div>
       <p>
         Corrects the barometer altitude error that prop wash induces under throttle
-        (<code>BARO1_THST_SCALE</code>). Measured from a flight log — upload a steady hover. If the log has a
-        downward rangefinder the scale is fit automatically against it; otherwise enter the height you hovered at
-        and it's fit against that.
+        (<code>BARO1_THST_SCALE</code>), measured from a log.
+      </p>
+
+      {/* Two methods, and the difference is what they need to be true. The
+        * bench ramp needs the airframe restrained; the hover method needs a
+        * height that is right. The first is easier to guarantee, so it leads. */}
+      <div className="switch-exercise-controls" data-testid="valt-method">
+        {(
+          [
+            ['ramp', 'Bench ramp'],
+            ['hover', 'Hover vs height']
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            style={buttonStyle(method === id ? 'primary' : 'secondary')}
+            data-testid={`valt-method-${id}`}
+            disabled={busy}
+            onClick={() => {
+              setMethod(id)
+              setStaged(false)
+              if (buffer) {
+                if (id === 'ramp') {
+                  runRampAnalysis(buffer)
+                } else {
+                  runAnalysis(buffer)
+                }
+              }
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="hint" data-testid="valt-method-hint">
+        {method === 'ramp'
+          ? 'Restrain the airframe — clamped, or held nose-down so the wash goes sideways and nothing lifts — then ramp the throttle in steps. Every Pascal the baro moves is thrust, so no height measurement is needed.'
+          : 'Fly a steady hover. Fit against a downward rangefinder if the log has one, otherwise against the height you measured.'}
       </p>
 
       {logServerLabel ? (
@@ -127,7 +196,7 @@ export function ValtCalibrationCard({
 
       <div className="log-tuning__upload">
         <label className="log-tuning__file" style={buttonStyle('primary')}>
-          {busy ? 'Analyzing…' : 'Choose hover log (.bin)'}
+          {busy ? 'Analyzing…' : method === 'ramp' ? 'Choose ramp log (.bin)' : 'Choose hover log (.bin)'}
           <input
             type="file"
             accept=".bin,application/octet-stream"
@@ -148,6 +217,88 @@ export function ValtCalibrationCard({
         <div className="parameter-follow-up parameter-follow-up--danger" role="alert" data-testid="valt-error">
           <StatusBadge tone="danger">error</StatusBadge>
           <p>{error}</p>
+        </div>
+      ) : null}
+
+      {rampResult ? (
+        <div data-testid="valt-ramp-results">
+          {rampResult.warnings.length > 0 ? (
+            <ul className="log-tuning__warnings" data-testid="valt-ramp-warnings">
+              {rampResult.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          ) : null}
+
+          <p className="log-tuning__summary" data-testid="valt-ramp-summary">
+            {rampResult.runs.length} run{rampResult.runs.length === 1 ? '' : 's'}, fitted at{' '}
+            {rampResult.filterHz.toFixed(1)} Hz. Slope {rampResult.globalSlopePaPerThrottle.toFixed(0)} Pa per unit
+            throttle
+            {rampResult.hoverSlopePaPerThrottle !== undefined
+              ? `, ${rampResult.hoverSlopePaPerThrottle.toFixed(0)} Pa in the hover band (${rampResult.hoverSamples} samples) — the recommendation comes from that, since one linear parameter cannot follow a bent response.`
+              : '.'}
+          </p>
+
+          <div className="config-pills" data-testid="valt-ramp-pills">
+            <span>Current: {Number(currentScale.toFixed(1))} Pa</span>
+            <span data-tone="success">Suggested: {rampResult.recommendedScale} Pa</span>
+            {rampResult.hoverErrorM !== undefined ? (
+              <span>
+                uncompensated at hover ≈ {rampResult.hoverErrorM >= 0 ? '+' : ''}
+                {rampResult.hoverErrorM.toFixed(2)} m
+              </span>
+            ) : null}
+            <span>
+              best filter {rampResult.bestFilterHz.toFixed(1)} Hz
+              {rampResult.currentFilterHz !== undefined ? ` (BARO_THST_FILT ${rampResult.currentFilterHz})` : ''}
+            </span>
+          </div>
+
+          {/* The bucket column is the honest part: the response is usually
+            * mildly convex, and this is where the operator sees whether the
+            * single number they are about to set is right where they fly. */}
+          {rampResult.runs[0]?.buckets.length ? (
+            <details className="calibration-card__advanced" data-testid="valt-ramp-buckets">
+              <summary>Per-throttle detail (run 1)</summary>
+              <div className="parameter-reference">
+                {rampResult.runs[0].buckets.map((bucket) => (
+                  <div className="parameter-reference__row" key={bucket.throttleFrom}>
+                    <div className="parameter-reference__head">
+                      <code>
+                        {bucket.throttleFrom.toFixed(2)}–{bucket.throttleTo.toFixed(2)}
+                      </code>
+                      <span className="parameter-reference__unit">{bucket.samples} samples</span>
+                      <span className="parameter-reference__unit">
+                        {bucket.meanDeltaPa >= 0 ? '+' : ''}
+                        {bucket.meanDeltaPa.toFixed(1)} Pa
+                      </span>
+                      <span className="parameter-reference__unit">
+                        {bucket.slopePaPerThrottle.toFixed(0)} Pa/thr
+                      </span>
+                      {bucket.isHoverBand ? <StatusBadge tone="success">hover</StatusBadge> : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : null}
+
+          <button
+            type="button"
+            style={buttonStyle(staged ? 'secondary' : 'primary')}
+            data-testid="valt-ramp-stage"
+            disabled={!canStage || staged}
+            onClick={() => {
+              setDraft('BARO1_THST_SCALE', String(rampResult.recommendedScale))
+              setStaged(true)
+            }}
+          >
+            {staged ? 'Staged' : `Stage BARO1_THST_SCALE = ${rampResult.recommendedScale} Pa`}
+          </button>
+          {!canApplyDraftParameters ? <small>Finish parameter sync and disarm to stage.</small> : null}
+          <small className="log-tuning__recs-note">
+            Staged changes appear in the draft bar — nothing is written to the aircraft until you apply them.
+          </small>
         </div>
       ) : null}
 
@@ -238,6 +389,19 @@ export function ValtCalibrationCard({
 
       <details className="calibration-card__howto">
         <summary>How to calibrate baro thrust scale (VALT, from a log)</summary>
+        <p className="calibration-card__tip">
+          <strong>Bench ramp (preferred).</strong> Restrain the airframe so the props cannot lift it — clamped down,
+          or held nose-down so the wash goes sideways. Arm, sit at idle for a few seconds (that quiet pressure is the
+          baseline), then step the throttle up through the range you fly, holding each step a second or two. Disarm,
+          download the <code>.bin</code>, and upload it here. Nothing about height is measured or needed: with the
+          airframe fixed, every Pascal the baro moves after throttle-up is thrust, so the scale is just the slope of
+          pressure against filtered throttle. <em>The one thing the log cannot prove is that the aircraft was
+          restrained</em> — a real hover reads identically to the accelerometer, so the analysis flags a run that
+          looks like one and leaves the judgement to you.
+        </p>
+        <p className="calibration-card__tip">
+          <strong>Hover vs height</strong>, when a bench ramp is not practical:
+        </p>
         <ol>
           <li>Hover as steadily as you can at a fixed height in a stable mode, holding throttle constant for several seconds.</li>
           <li><strong>With a downward rangefinder</strong> (RFND, orientation Down): repeat at 2–3 heights for a better fit — it's fit automatically against the rangefinder.</li>

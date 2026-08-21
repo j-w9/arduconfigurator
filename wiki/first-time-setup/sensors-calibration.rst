@@ -243,13 +243,50 @@ work. ArduPilot compensates for this linearly with ``BARO1_THST_SCALE`` (in
 Pascals, subtracted per unit of normalized throttle). **Baro thrust calibration
 (VALT)** fits that scale from a flight log.
 
-It is an **Expert-only** card that appears only when a **downward rangefinder is
-configured** on the connected vehicle (``RNGFND1_TYPE`` set), because the
-calibration needs a rangefinder as the ground-truth height. It is **log-based**:
-the app connects on the bench, not in flight, so you fly the hover first and then
-upload that log.
+It is an **Expert-only**, log-based card: the app connects on the bench, not in
+flight, so the flying happens first and the log is uploaded afterwards. It also
+requires a **log server signed in** — see :doc:`../logs-inspectors`.
 
-Steps:
+Two methods are offered, and the difference is what each needs to be true.
+
+Bench ramp (preferred)
+~~~~~~~~~~~~~~~~~~~~~~
+
+No height is measured at all. **Restrain the airframe** so the props cannot lift
+it — clamped down, or held nose-down so the wash goes sideways — then:
+
+#. Arm and sit at idle for a few seconds. That quiet pressure is the baseline.
+#. Step the throttle up through the range you actually fly, holding each step a
+   second or two.
+#. Disarm, download the ``.bin``, and upload it.
+
+With the airframe fixed, every Pascal the barometer moves after throttle-up is
+the thrust effect and nothing else, so the scale is simply the slope of
+``BARO.Press − P0`` against the filtered ``MOTB.ThrOut``. The raw pressure is
+used (``BARO.Press``, not ``CPress``), so the fitted number is the **total**
+scale to set whatever the log already had, and ``MOTB.ThrOut`` is the exact
+input the firmware filters — ``CTUN.ThO`` is the controller's request and differs
+under mixer limiting.
+
+The card reports a per-throttle bucket column, because the response is usually
+mildly convex and one linear parameter cannot follow that. When the log carries
+``MOT_THST_HOVER``, the recommendation is the slope **in the hover band** rather
+than the global least-squares line: the point is to zero the error where the
+aircraft flies. A cutoff scan also reports which ``BARO_THST_FILT`` the pressure
+actually follows.
+
+.. warning::
+
+   **The log cannot prove the airframe was restrained.** A real hover reads
+   identically to a clamped vehicle from the accelerometer (|acc| = g in both).
+   The analysis flags a run whose shape looks like a hover, but only you know how
+   it was flown — and fitting a hover this way produces a confidently wrong
+   number.
+
+Hover vs height
+~~~~~~~~~~~~~~~
+
+When a bench ramp is not practical, fit against a ground-truth height instead:
 
 #. Fit a **downward-facing rangefinder** and confirm it logs (an ``RFND`` message
    with orientation *Down*).
@@ -268,7 +305,8 @@ Steps:
    (across several points, a least-squares fit through the origin of the pressure
    error against throttle; ~12 Pa per metre near sea level).
 #. Review the fitted points, then **Stage** and **Apply** ``BARO1_THST_SCALE`` in
-   the draft bar.
+   the draft bar. Either method stages the same parameter through the same
+   reviewed write path.
 #. Re-fly and confirm the baro altitude holds steadier through throttle changes.
 
 The card is hidden on firmware that doesn't expose ``BARO1_THST_SCALE`` (it is a

@@ -2,6 +2,7 @@
 // flight logs. The dataflash parser is the shared foundation; individual
 // analyses (MAGFit compass calibration, filter tuning, …) build on it.
 
+export * from './baro-thrust-ramp.js'
 export {
   parseDataflashLog,
   type ParsedDataflashLog,
