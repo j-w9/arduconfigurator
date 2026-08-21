@@ -195,6 +195,17 @@ describe('buildInitialTuneParameters', () => {
     expect(value(old, 'ACRO_Y_RATE')).toBeUndefined()
   })
 
+  it('filters yaw D at a quarter of the gyro cutoff rather than switching it off', () => {
+    // Mission Planner writes 0 here. ArduPilot's Aggressive Rate Loop Tuning
+    // page says gyro/4 on yaw -- filtered harder than roll and pitch, not
+    // disabled -- and a 0 also disagreed with what the Filters tab derives from
+    // the same cutoff.
+    const result = buildInitialTuneParameters({ ...base, propSizeInches: 9 })
+    const gyro = value(result, 'INS_GYRO_FILTER')!
+    expect(value(result, 'ATC_RAT_YAW_FLTD')).toBeCloseTo(gyro / 4, 6)
+    expect(value(result, 'ATC_RAT_RLL_FLTD')).toBeCloseTo(gyro / 2, 6)
+  })
+
   it('refuses nonsense inputs with a reason rather than emitting zeros', () => {
     // A zero cell count would otherwise collapse every voltage to 0, which
     // reads as "no protection" rather than "bad input".

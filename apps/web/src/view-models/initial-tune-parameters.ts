@@ -153,6 +153,7 @@ export function buildInitialTuneParameters(inputs: InitialTuneInputs): InitialTu
   const insGyroFilter = Math.max(20, Math.round(289.22 * Math.pow(prop, -0.838)))
 
   const halfGyro = Math.max(10, insGyroFilter / 2)
+  const quarterGyro = Math.round((insGyroFilter / 4) * 10) / 10
   const insAccelFilter = 10
   const atcThrMixMan = 0.1
   // T-Motor ESCs override the fit entirely (:149) — applied after the
@@ -204,7 +205,12 @@ export function buildInitialTuneParameters(inputs: InitialTuneInputs): InitialTu
     add(`${atc}_RAT_RLL_FLTD`, halfGyro, filterReason)
     add(`${atc}_RAT_RLL_FLTE`, 0, 'No error filtering on roll')
     add(`${atc}_RAT_RLL_FLTT`, halfGyro, filterReason)
-    add(`${atc}_RAT_YAW_FLTD`, 0, 'No D filtering on yaw')
+    // Mission Planner writes 0 here. ArduPilot's own Aggressive Rate Loop
+    // Tuning page does not: "each axis' ATC_RAT_xxx_FLTD should be
+    // INS_GYRO_FILTER/2 on roll and pitch and INS_GYRO_FILTER/4 on yaw" -- yaw
+    // filtered harder than the others, not switched off. A zero here also
+    // disagreed with what the Filters tab derives from the same cutoff.
+    add(`${atc}_RAT_YAW_FLTD`, quarterGyro, 'A quarter of the gyro filter — yaw D is filtered harder than roll and pitch')
     add(`${atc}_RAT_YAW_FLTE`, 2, 'Yaw error filter, fixed at 2 Hz')
     add(`${atc}_RAT_YAW_FLTT`, halfGyro, filterReason)
   } else {

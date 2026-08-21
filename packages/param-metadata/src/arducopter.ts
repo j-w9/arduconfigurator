@@ -3522,9 +3522,15 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     },
     INS_HNTCH_FREQ: {
       id: 'INS_HNTCH_FREQ',
-      label: 'Notch centre frequency',
+      // Named for what it does in every mode rather than only in Fixed mode.
+      // On a tracking source (ESC telemetry, RPM, in-flight FFT) this is a
+      // FLOOR, not a centre: HarmonicNotchFilter.cpp clamps the tracked
+      // frequency to it, so nothing below it is ever notched. Calling that a
+      // "centre frequency" reads as a promise to notch AT 40 Hz when the real
+      // behaviour is to notch nothing under 40 Hz.
+      label: 'Notch frequency floor',
       description:
-        'Base centre frequency. For static notches this is the centre; for throttle-based it is the centre at the reference thrust; for every other mode it is the minimum the tracked centre will not go below. Keep it below half the gyro backend rate.',
+        'Nothing below this frequency is notched: the tracked centre is clamped to it (HarmonicNotchFilter.cpp, "don\'t let the notch go below the min frequency"), and below it the attenuation fades out to nothing. In Fixed mode it is also the centre of the notch; in Throttle mode it is the centre at the reference thrust; with a measured source (RPM, ESC telemetry, in-flight FFT) the tracked centre rides above it. The floor is this value times INS_HNTCH_FM_RAT, so it is exactly this frequency at the default ratio of 1. Keep it below half the gyro backend rate.',
       category: 'tuning',
       unit: 'Hz',
       minimum: 10,

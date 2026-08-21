@@ -16,7 +16,7 @@ describe('buildFiltersFromGyro', () => {
     expect(values.ATC_RAT_YAW_FLTD).toBe(10)
   })
 
-  it('proposes a fixed 30 Hz target filter and pins the yaw error filter at 2 Hz', () => {
+  it('proposes fixed target filters and pins the yaw error filter at 2 Hz', () => {
     // The target filters smooth the pilot's demand rather than a measured
     // signal, so they do not track the gyro cutoff: 30 Hz whatever it is.
     // (ArduPilot's own pages say gyro/2 here; this is the operator's call, and
@@ -24,8 +24,9 @@ describe('buildFiltersFromGyro', () => {
     // ArduPilot's fixed 2 Hz -- Setting the Aircraft Up for Tuning.
     for (const gyro of [40, 80, 120]) {
       const values = byId(gyro)
-      expect(values.ATC_RAT_RLL_FLTT).toBe(30)
-      expect(values.ATC_RAT_PIT_FLTT).toBe(30)
+      // Roll and pitch carry the stick demand, so they sit higher than yaw.
+      expect(values.ATC_RAT_RLL_FLTT).toBe(50)
+      expect(values.ATC_RAT_PIT_FLTT).toBe(50)
       expect(values.ATC_RAT_YAW_FLTT).toBe(30)
       expect(values.ATC_RAT_YAW_FLTE).toBe(2)
     }
@@ -93,7 +94,7 @@ describe('GYRO_FILTER_PROP_HINTS', () => {
       expect(values.ATC_RAT_RLL_FLTD).toBe(hint.hz / 2)
       expect(values.ATC_RAT_YAW_FLTD).toBe(hint.hz / 4)
       // The target filters are fixed, so they do not move with the hint.
-      expect(values.ATC_RAT_RLL_FLTT).toBe(30)
+      expect(values.ATC_RAT_RLL_FLTT).toBe(50)
       // Nothing the helper proposes may land on the wrong side of the ceiling.
       expect(exceedsDTermCeiling('ATC_RAT_RLL_FLTD', values.ATC_RAT_RLL_FLTD, hint.hz)).toBe(false)
     }

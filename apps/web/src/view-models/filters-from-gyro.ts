@@ -50,8 +50,15 @@ export const GYRO_FILTER_PROP_HINTS = [
   { label: '15 in', hz: 40 }
 ] as const
 
-/** The target-filter default. Fixed rather than derived -- see the rows below. */
-const TARGET_FILTER_HZ = 30
+/**
+ * Target-filter defaults. Fixed rather than derived -- see the rows below.
+ *
+ * Roll and pitch sit higher than yaw: they carry the stick demand that the
+ * pilot actually flies, and SFD runs them at 50 Hz. Yaw stays at 30 Hz, where
+ * the extra smoothing costs nothing anyone can feel.
+ */
+const TARGET_FILTER_ROLL_PITCH_HZ = 50
+const TARGET_FILTER_YAW_HZ = 30
 
 /** One decimal: gyro/4 of an odd cutoff is not a whole number, and FLTD is an AP_Float. */
 function round(value: number): number {
@@ -76,14 +83,14 @@ export function buildFiltersFromGyro(gyroFilterHz: number): FilterFromGyroRow[] 
     { id: 'ATC_RAT_RLL_FLTD', rule: 'gyro / 2', value: half },
     { id: 'ATC_RAT_PIT_FLTD', rule: 'gyro / 2', value: half },
     { id: 'ATC_RAT_YAW_FLTD', rule: 'gyro / 4', value: quarter },
-    // The target filters are the operator's fixed 30 Hz, not ArduPilot's
-    // gyro/2. They smooth the pilot's demand rather than a measured signal, so
-    // they do not have to follow the sensor cutoff, and 30 Hz is well above
-    // stick bandwidth on every airframe this app is aimed at. Proposed, not
-    // imposed: like every row here it is editable before anything is staged.
-    { id: 'ATC_RAT_RLL_FLTT', rule: 'fixed at 30 Hz', value: TARGET_FILTER_HZ },
-    { id: 'ATC_RAT_PIT_FLTT', rule: 'fixed at 30 Hz', value: TARGET_FILTER_HZ },
-    { id: 'ATC_RAT_YAW_FLTT', rule: 'fixed at 30 Hz', value: TARGET_FILTER_HZ },
+    // The target filters are fixed, not ArduPilot's gyro/2. They smooth the
+    // pilot's demand rather than a measured signal, so they need not follow the
+    // sensor cutoff -- both values sit well above stick bandwidth on every
+    // airframe this app is aimed at. Proposed, not imposed: like every row here
+    // they are editable before anything is staged.
+    { id: 'ATC_RAT_RLL_FLTT', rule: 'fixed at 50 Hz', value: TARGET_FILTER_ROLL_PITCH_HZ },
+    { id: 'ATC_RAT_PIT_FLTT', rule: 'fixed at 50 Hz', value: TARGET_FILTER_ROLL_PITCH_HZ },
+    { id: 'ATC_RAT_YAW_FLTT', rule: 'fixed at 30 Hz', value: TARGET_FILTER_YAW_HZ },
     { id: 'ATC_RAT_YAW_FLTE', rule: 'fixed at 2 Hz', value: 2 }
   ]
 }

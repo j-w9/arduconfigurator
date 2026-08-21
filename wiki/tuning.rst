@@ -192,8 +192,17 @@ frequency is known and a narrower notch is usual; a 15-inch build might run
 ``FREQ 40`` with ``BW 10``. There is no documented ratio for those modes, so
 none is offered.
 
-Where the centre frequency comes from
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Where the notch frequency comes from
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``INS_HNTCH_FREQ`` is labelled **Notch frequency floor**, because that is what
+it does in every mode: nothing below it is notched. The firmware clamps the
+tracked centre to it — *"don't let the notch go below the min frequency"*
+(``HarmonicNotchFilter.cpp``) — and fades the attenuation out below it. In
+**Fixed** mode it is also the centre; in **Throttle** mode the centre at the
+reference thrust; with a measured source the centre rides above it. The floor
+itself is this value × ``INS_HNTCH_FM_RAT``, so it is exactly the frequency you
+set at the default ratio of 1.
 
 It is a property of the motors, not of the gyro filter, so it cannot be
 derived. The usual routes:
