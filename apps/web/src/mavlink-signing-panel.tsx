@@ -148,7 +148,7 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
   }
 
   return (
-    <div data-testid="mavlink-signing-panel" style={{ marginTop: 24 }}>
+    <div data-testid="mavlink-signing-panel" className="mavlink-signing-panel">
       <Panel
         title="MAVLink signing"
         subtitle="Authenticate the link with a shared MAVLink v2 signing key. The key is derived from a passphrase (SHA-256) or pasted as a 32-byte hex key, kept in memory only, and never logged."
@@ -158,9 +158,9 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
           </StatusBadge>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 640 }}>
-          <div role="radiogroup" aria-label="Key source" style={{ display: 'flex', gap: 16 }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <div className="mavlink-signing">
+          <div role="radiogroup" aria-label="Key source" className="mavlink-signing__modes">
+            <label className="mavlink-signing__mode">
               <input
                 type="radio"
                 name="signing-key-mode"
@@ -170,7 +170,7 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
               />
               <span>Passphrase</span>
             </label>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <label className="mavlink-signing__mode">
               <input
                 type="radio"
                 name="signing-key-mode"
@@ -183,7 +183,7 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
           </div>
 
           {keyMode === 'passphrase' ? (
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label className="mavlink-signing__field">
               <span>Passphrase</span>
               <input
                 type="password"
@@ -196,7 +196,7 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
               />
             </label>
           ) : (
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label className="mavlink-signing__field">
               <span>Hex key</span>
               <input
                 type="text"
@@ -210,7 +210,7 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
             </label>
           )}
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 160 }}>
+          <label className="mavlink-signing__field mavlink-signing__field--narrow">
             <span>Link ID</span>
             <input
               type="number"
@@ -225,7 +225,7 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
             />
           </label>
 
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div className="mavlink-signing__actions">
             <button type="button" style={buttonStyle('primary')} data-testid="signing-apply-button" onClick={handleApply}>
               {enabled ? 'Update key' : 'Enable signing'}
             </button>
@@ -250,8 +250,8 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
             </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 13, color: 'var(--text-muted, #b3b3b3)' }}>Rejected signed frames</span>
+          <div className="mavlink-signing__counter">
+            <span className="mavlink-signing__field-label">Rejected signed frames</span>
             <StatusBadge tone={rejectionCount > 0 ? 'warning' : 'neutral'}>
               <span data-testid="signing-rejection-count">{rejectionCount}</span>
             </StatusBadge>
@@ -260,22 +260,13 @@ export function MavlinkSigningPanel(props: MavlinkSigningPanelProps) {
           {feedback ? (
             <p
               data-testid="signing-feedback"
-              style={{
-                margin: 0,
-                fontSize: 13,
-                color:
-                  feedback.tone === 'success'
-                    ? 'var(--success, #7fb966)'
-                    : feedback.tone === 'danger'
-                      ? 'var(--danger, #e2123f)'
-                      : 'var(--warning, #ff6600)'
-              }}
+              className={`mavlink-signing__feedback mavlink-signing__feedback--${feedback.tone}`}
             >
               {feedback.text}
             </p>
           ) : null}
 
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-dim, #999999)' }}>
+          <p className="mavlink-signing__note">
             The flight controller must hold the same key. Use "Send key to vehicle" over a trusted link (USB / wired) to
             provision it via SETUP_SIGNING, or set a matching passphrase on the FC from another GCS.
           </p>

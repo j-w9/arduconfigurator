@@ -5,7 +5,11 @@
 export function AppHeaderLogo() {
   return (
     <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-      <g fill="none" stroke="rgba(236, 241, 247, 0.18)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8">
+      {/* currentColor, not a baked near-white: .app-header__mark sets color from
+          --text, so the arms and the monogram invert with the theme. Spelled as a
+          literal they survived only on the dark ground, and the light theme showed
+          four rotor dots on an empty tile. */}
+      <g fill="none" stroke="currentColor" strokeOpacity="0.28" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8">
         <path d="M16 16 22.5 22.5" />
         <path d="M32 16 25.5 22.5" />
         <path d="M16 32 22.5 25.5" />
@@ -17,7 +21,8 @@ export function AppHeaderLogo() {
       <circle cx="32" cy="32" r="3.4" fill="var(--accent)" />
       <path
         d="M24 12.5 31.4 29h-4.2l-1.55-3.75h-3.25L20.85 29h-4.25Zm0 7.2-1.35 3.35h2.7Z"
-        fill="rgba(244, 247, 250, 0.96)"
+        fill="currentColor"
+        fillOpacity="0.96"
       />
     </svg>
   )

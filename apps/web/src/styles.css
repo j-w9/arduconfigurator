@@ -54,6 +54,11 @@
   /* RGB components for the hairline edges/overlays used throughout the app.
      White on the dark theme; flipped to dark ink under [data-theme='light'] so
      every rgba(var(--edge-rgb), a) edge inverts while keeping its opacity. */
+  /* Components of the two colours the app draws washes and glows from. The
+     literal was spelled out 49 times for amber and 26 for the danger red, at a
+     dozen different alphas — none of which a theme could reach. */
+  --primary-rgb: 255, 187, 0;
+  --danger-rgb: 226, 18, 63;
   --edge-rgb: 255, 255, 255;
   /* Neutral dark FILL colour (panels/fields/chips) and near-white INK colour
      (text on those fills). Tokenised so [data-theme='light'] flips both at once.
@@ -117,6 +122,19 @@
    * coded 32px on the Panel <h2> at ui-kit/src/index.tsx so the page
    * title block stops drifting between views. */
   --card-padding: 10px;
+  /* Type scale. These are the sizes the app already used — 520 declarations
+     across nine px values, none of them named. Naming them is what stops the
+     tenth from being 12.5px. */
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-md: 12px;
+  --text-lg: 13px;
+  --text-xl: 14px;
+  --text-2xl: 15px;
+  --text-3xl: 16px;
+  /* The one tracking value for an uppercase micro-label. Was six values. */
+  --tracking-label: 0.08em;
   --font-title: 18px;
   /* Global density lever (2026-06-10 audit). Ships at 1.0 — the px
    * densification already delivers the target density; calibrate to
@@ -267,7 +285,7 @@
   background:
     linear-gradient(rgba(var(--edge-rgb), 0.06) 1px, transparent 1px),
     linear-gradient(90deg, rgba(var(--edge-rgb), 0.06) 1px, transparent 1px),
-    radial-gradient(circle at top, rgba(255, 187, 0, 0.06), transparent 55%),
+    radial-gradient(circle at top, rgba(var(--primary-rgb), 0.06), transparent 55%),
     #e8ebf1;
 }
 :root[data-theme='light'] .osd-preview-screen__hud,
@@ -282,7 +300,7 @@
   background:
     linear-gradient(rgba(var(--edge-rgb), 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(var(--edge-rgb), 0.05) 1px, transparent 1px),
-    radial-gradient(circle at 50% 42%, rgba(255, 187, 0, 0.06), transparent 42%),
+    radial-gradient(circle at 50% 42%, rgba(var(--primary-rgb), 0.06), transparent 42%),
     #e8ebf1;
 }
 :root[data-theme='light'] .motor-mixer-preview__backdrop {
@@ -315,7 +333,7 @@
   border: 1px solid var(--border);
   background: var(--bg-panel-raised);
   color: var(--text-muted);
-  font-size: 15px;
+  font-size: var(--text-2xl);
   line-height: 1;
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
@@ -339,6 +357,18 @@ html {
   overflow-x: clip;
 }
 
+/* Native checkboxes, radios and ranges render in the platform's own blue
+   unless told otherwise. Only four rules set accent-color, so every other
+   native control in the app — the MAVLink signing key-source radios most
+   visibly — sat in system blue inside an amber UI. One global declaration
+   covers the lot; per-component accent-color rules still win where a surface
+   wants its own. */
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'] {
+  accent-color: var(--accent);
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -351,7 +381,7 @@ body {
   text-rendering: optimizeLegibility;
   font-feature-settings: "tnum" 1, "ss01" 1;
   background: var(--bg-app);
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.42;
   zoom: var(--app-zoom);
 }
@@ -394,7 +424,7 @@ textarea {
   color: var(--text);
   padding: 5px 8px;
   outline: none;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 option {
@@ -411,7 +441,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(255, 187, 0, 0.15);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.15);
   outline: none;
 }
 
@@ -451,10 +481,10 @@ textarea:focus {
   padding: 10px 14px;
   background: var(--surface-300);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   color: var(--surface-950);
-  font-size: 13px;
+  font-size: var(--text-lg);
   max-width: 360px;
 }
 .sw-update-banner__message {
@@ -465,7 +495,7 @@ textarea:focus {
   flex: 0 0 auto;
   padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface-500);
   color: var(--surface-950);
   font: inherit;
@@ -493,10 +523,10 @@ textarea:focus {
   max-width: 360px;
   background: var(--surface-300);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   color: var(--surface-950);
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 .write-progress-banner__label {
   font-variant-numeric: tabular-nums;
@@ -515,11 +545,11 @@ textarea:focus {
   border-radius: 3px;
 }
 .write-progress-banner__bar::-webkit-progress-value {
-  background: var(--accent, #ffbb00);
+  background: var(--accent, var(--primary-500));
   border-radius: 3px;
 }
 .write-progress-banner__bar::-moz-progress-bar {
-  background: var(--accent, #ffbb00);
+  background: var(--accent, var(--primary-500));
   border-radius: 3px;
 }
 
@@ -564,7 +594,7 @@ textarea:focus {
   max-width: 280px;
   padding: 4px 8px;
   border: 1px solid rgba(var(--edge-rgb), 0.04);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: rgba(var(--edge-rgb), 0.02);
   cursor: pointer;
   flex-shrink: 0;
@@ -599,11 +629,11 @@ textarea:focus {
   flex-shrink: 0;
   padding: 6px 12px;
   border: 1px solid rgba(var(--edge-rgb), 0.08);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: rgba(var(--edge-rgb), 0.03);
   color: inherit;
   text-decoration: none;
-  font-size: 0.82rem;
+  font-size: var(--text-lg);
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
@@ -614,11 +644,11 @@ textarea:focus {
 
 .app-header__wiki:hover {
   background: rgba(var(--edge-rgb), 0.06);
-  border-color: color-mix(in srgb, var(--accent, #ffbb00) 60%, transparent);
+  border-color: color-mix(in srgb, var(--accent, var(--primary-500)) 60%, transparent);
 }
 
 .app-header__wiki-icon {
-  font-size: 1rem;
+  font-size: var(--text-3xl);
 }
 
 .app-header__brand:hover {
@@ -638,10 +668,10 @@ textarea:focus {
   width: 40px;
   height: 40px;
   padding: 0;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   border: 1px solid rgba(var(--edge-rgb), 0.08);
   background:
-    radial-gradient(circle at top right, rgba(255, 187, 0, 0.18), transparent 46%),
+    radial-gradient(circle at top right, rgba(var(--primary-rgb), 0.18), transparent 46%),
     linear-gradient(180deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 1));
   color: var(--text);
   box-shadow:
@@ -664,7 +694,7 @@ textarea:focus {
 
 .app-header__brand-copy strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
   letter-spacing: -0.025em;
 }
@@ -698,7 +728,7 @@ textarea:focus {
 .app-header__connection-input {
   min-width: 0;
   height: 28px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .app-header__connection select {
@@ -725,7 +755,7 @@ textarea:focus {
   border: 1px solid var(--surface-400);
   background: var(--surface-300);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   white-space: nowrap;
 }
 
@@ -763,7 +793,7 @@ textarea:focus {
   gap: 5px;
   min-width: 172px;
   padding: 8px 12px;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
   background: var(--surface-300);
 }
@@ -779,7 +809,7 @@ textarea:focus {
   width: 42px;
   height: 27px;
   border: 3px solid var(--surface-800);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 
@@ -832,7 +862,7 @@ textarea:focus {
   /* Field feedback: the widget bar can afford to be larger — bumped the
      header height + widget sizes to match (there is free space before
      the params chip reaches the Expert toggle). */
-  font-size: 14px;
+  font-size: var(--text-xl);
   line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
@@ -842,7 +872,7 @@ textarea:focus {
 .header-quad-status__legend small {
   display: block;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-lg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -888,7 +918,7 @@ textarea:focus {
 
 .header-sensor-status {
   display: flex;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
   background: var(--surface-300);
   /* User feedback: on 1080p the chip strip's overflow-x:auto scrollbar
@@ -1024,7 +1054,7 @@ textarea:focus {
   display: grid;
   gap: 4px;
   padding: 5px 9px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
   background: var(--surface-300);
 }
@@ -1065,7 +1095,7 @@ textarea:focus {
   align-items: center;
   gap: 8px;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .expert-mode-toggle input {
@@ -1156,10 +1186,10 @@ textarea:focus {
   height: 28px;
   padding: 0 12px;
   border: 1px solid var(--btn-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--btn-bg);
   color: var(--text, #f2f2f2);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
@@ -1211,8 +1241,8 @@ textarea:focus {
   margin: 0;
   color: var(--text-dim);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  font-size: var(--text-xs);
   font-weight: 700;
 }
 
@@ -1253,7 +1283,7 @@ textarea:focus {
   border-top: 1px solid var(--border);
   box-shadow: none;
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-dim);
   position: sticky;
   bottom: 0;
@@ -1310,8 +1340,8 @@ textarea:focus {
   gap: 12px;
   padding: 6px 12px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--accent, #ffbb00) 22%, var(--surface-200));
-  border: 1px solid color-mix(in srgb, var(--accent, #ffbb00) 50%, transparent);
+  background: color-mix(in srgb, var(--accent, var(--primary-500)) 22%, var(--surface-200));
+  border: 1px solid color-mix(in srgb, var(--accent, var(--primary-500)) 50%, transparent);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
   max-width: calc(100vw - 32px);
 }
@@ -1320,8 +1350,8 @@ textarea:focus {
    so the pill reads as "action needed", since the reboot is now the only
    control and a new operator must not miss it. */
 .parameter-draft-bar--reboot {
-  background: color-mix(in srgb, var(--accent, #ffbb00) 36%, var(--surface-200));
-  border-color: color-mix(in srgb, var(--accent, #ffbb00) 72%, transparent);
+  background: color-mix(in srgb, var(--accent, var(--primary-500)) 36%, var(--surface-200));
+  border-color: color-mix(in srgb, var(--accent, var(--primary-500)) 72%, transparent);
   padding: 8px 14px;
 }
 
@@ -1339,7 +1369,7 @@ textarea:focus {
 }
 
 .parameter-draft-bar__invalid {
-  color: var(--danger, #e2123f);
+  color: var(--danger, var(--danger));
   font-weight: 600;
 }
 
@@ -1407,20 +1437,20 @@ textarea:focus {
 .workspace-tabrail__eyebrow {
   color: var(--text-dim);
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .workspace-tabrail__header strong {
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1.2;
 }
 
 .workspace-tabrail__header small {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -1444,15 +1474,15 @@ textarea:focus {
 
 .baseline-summary__header strong {
   display: block;
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-dim);
 }
 
 .baseline-summary__header small {
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 /* The Active Baseline box collapses by default — the summary is the title row,
@@ -1494,21 +1524,21 @@ textarea:focus {
 
 .baseline-summary__metrics span {
   color: var(--text-dim);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   font-family: var(--font-data);
 }
 
 .baseline-summary__metrics strong {
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .baseline-strip strong {
   display: block;
   margin-bottom: 4px;
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -1529,7 +1559,7 @@ textarea:focus {
 /* Description moved into the collapsible body (the name now lives in the summary). */
 .baseline-summary__desc {
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .baseline-summary__note {
@@ -1564,14 +1594,14 @@ textarea:focus {
 }
 
 .mode-toggle__option.is-active {
-  border-color: rgba(255, 187, 0, 0.5);
+  border-color: rgba(var(--primary-rgb), 0.5);
   color: var(--text);
-  background: rgba(255, 187, 0, 0.10);
-  box-shadow: inset 0 0 0 1px rgba(255, 187, 0, 0.08);
+  background: rgba(var(--primary-rgb), 0.10);
+  box-shadow: inset 0 0 0 1px rgba(var(--primary-rgb), 0.08);
 }
 
 .mode-toggle__option strong {
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
@@ -1593,7 +1623,7 @@ textarea:focus {
   margin: 0;
   color: var(--text-muted);
   line-height: 1.4;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .workspace-mode-summary--muted {
@@ -1606,7 +1636,7 @@ textarea:focus {
 }
 
 .workspace-mode-summary--compact p {
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.35;
 }
 
@@ -1636,8 +1666,8 @@ textarea:focus {
 }
 
 .session-follow-up__header strong {
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--warning);
 }
@@ -1646,7 +1676,7 @@ textarea:focus {
   margin: 0;
   color: var(--text-muted);
   line-height: 1.4;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .workspace-nav {
@@ -1718,7 +1748,7 @@ textarea:focus {
   background: transparent;
   color: var(--text-dim);
   font-family: var(--font-data);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 800;
   letter-spacing: 0.06em;
 }
@@ -1731,7 +1761,7 @@ textarea:focus {
 .workspace-nav__item strong {
   display: block;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
   /* Never ellipsize a nav label — if a label ever outgrows the sidebar
    * (or the stacked mobile layout squeezes it), wrap to a second line
@@ -1773,16 +1803,16 @@ textarea:focus {
 .workspace-sidebar__summary-row span {
   color: var(--text-dim);
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .workspace-sidebar__summary-card strong,
 .workspace-sidebar__next-card strong,
 .workspace-sidebar__alert strong {
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.35;
 }
 
@@ -1790,7 +1820,7 @@ textarea:focus {
 .workspace-sidebar__next-card small,
 .workspace-sidebar__alert small {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -1804,8 +1834,8 @@ textarea:focus {
 }
 
 .workspace-sidebar__alert--danger {
-  border-color: rgba(226, 18, 63, 0.26);
-  background: rgba(226, 18, 63, 0.08);
+  border-color: rgba(var(--danger-rgb), 0.26);
+  background: rgba(var(--danger-rgb), 0.08);
 }
 
 .workspace-focus-card,
@@ -1827,8 +1857,8 @@ textarea:focus {
 
 .workspace-focus-card__header strong,
 .change-control-dock__item span {
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-dim);
 }
@@ -1851,7 +1881,7 @@ textarea:focus {
 }
 
 .change-control-dock__item strong {
-  font-size: 15px;
+  font-size: var(--text-2xl);
   line-height: 1.3;
 }
 
@@ -1877,14 +1907,14 @@ textarea:focus {
   display: grid;
   gap: 4px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--primary-500);
   background: var(--primary-transparent-1);
 }
 
 .workspace-note strong {
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -1896,7 +1926,7 @@ textarea:focus {
 
 .workspace-note small {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -1910,8 +1940,8 @@ textarea:focus {
 }
 
 .workspace-note--danger {
-  border-color: rgba(226, 18, 63, 0.34);
-  background: rgba(226, 18, 63, 0.08);
+  border-color: rgba(var(--danger-rgb), 0.34);
+  background: rgba(var(--danger-rgb), 0.08);
 }
 
 .workspace-main__header--betaflight {
@@ -1945,9 +1975,9 @@ textarea:focus {
   background: var(--bg-panel);
   color: var(--text-muted);
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -1966,20 +1996,20 @@ textarea:focus {
 .workspace-main__summary-card span {
   color: var(--text-dim);
   font-family: var(--font-data);
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .workspace-main__summary-card strong {
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1.2;
 }
 
 .workspace-main__summary-card small {
   color: var(--text-muted);
   line-height: 1.35;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .button-row {
@@ -2026,8 +2056,8 @@ textarea:focus {
 .setup-flow__banner strong {
   display: block;
   margin-bottom: 6px;
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -2137,13 +2167,13 @@ textarea:focus {
 .setup-flow-step span {
   font-weight: 700;
   letter-spacing: -0.01em;
-  font-size: 14px;
+  font-size: var(--text-xl);
 }
 
 .setup-flow-step small {
   color: var(--text-muted);
   line-height: 1.35;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .setup-command-center .setup-flow-step {
@@ -2154,7 +2184,7 @@ textarea:focus {
 .setup-flow-step__eyebrow {
   color: var(--accent-strong);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
 }
 
 .setup-flow-step__meta {
@@ -2163,7 +2193,7 @@ textarea:focus {
   align-items: center;
   gap: 10px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .setup-flow-step.is-active {
@@ -2227,7 +2257,7 @@ textarea:focus {
 .setup-wizard__advanced-disclosure > summary::before {
   content: '▸';
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   transition: transform 0.15s ease;
 }
 .setup-flow__criteria[open] > summary::before,
@@ -2240,7 +2270,7 @@ textarea:focus {
 .setup-flow__criteria-count {
   margin-left: auto;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   text-transform: none;
   letter-spacing: 0;
 }
@@ -2250,16 +2280,16 @@ textarea:focus {
   padding: 2px 12px;
 }
 .setup-wizard__advanced-disclosure > summary strong {
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 .setup-wizard__advanced-disclosure > summary span {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .setup-flow__criteria strong {
-  font-size: 13px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -2284,7 +2314,7 @@ textarea:focus {
   padding: 4px 2px;
   border-radius: var(--radius-md);
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--text-lg);
   line-height: 1.45;
 }
 
@@ -2294,7 +2324,7 @@ textarea:focus {
 
 .setup-flow__criteria-mark {
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.45;
   text-align: center;
 }
@@ -2313,7 +2343,7 @@ textarea:focus {
   margin: 0;
   padding: 8px 12px;
   border-left: 3px solid var(--warning);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--warning) 10%, transparent);
   color: var(--text);
 }
@@ -2390,7 +2420,7 @@ textarea:focus {
   align-items: center;
   gap: 10px;
   margin-top: 10px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -2419,7 +2449,7 @@ textarea:focus {
 
 .ports-surface__header h3 {
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: var(--text-2xl);
   line-height: 1.06;
   font-weight: 600;
   letter-spacing: -0.03em;
@@ -2517,7 +2547,7 @@ textarea:focus {
   gap: 8px;
   padding: 8px 14px;
   border: 2px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--text) 4%, transparent);
   color: var(--text-muted);
   font: inherit;
@@ -2552,7 +2582,7 @@ textarea:focus {
 .outputs-tabs__detail {
   margin: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .outputs-tab-body {
@@ -2575,7 +2605,7 @@ textarea:focus {
 }
 .outputs-accordion-card {
   border: 1px solid var(--surface-400);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   background: var(--surface-200);
   overflow: hidden;
 }
@@ -2600,15 +2630,15 @@ textarea:focus {
   background: var(--surface-300);
 }
 .outputs-accordion-card.is-active .outputs-accordion-card__header {
-  background: rgba(255, 187, 0, 0.08);
+  background: rgba(var(--primary-rgb), 0.08);
 }
 .outputs-accordion-card__chevron {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   width: 12px;
 }
 .outputs-accordion-card__title {
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -2616,7 +2646,7 @@ textarea:focus {
   grid-column: 2 / -1;
   margin: 2px 0 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 .outputs-accordion-card__body {
@@ -2686,7 +2716,7 @@ textarea:focus {
 
 .telemetry-header h3 {
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: var(--text-2xl);
   line-height: 1.08;
   letter-spacing: -0.025em;
 }
@@ -2736,7 +2766,7 @@ textarea:focus {
 }
 
 .setup-bench-action.is-active {
-  background: rgba(255, 187, 0, 0.06);
+  background: rgba(var(--primary-rgb), 0.06);
 }
 
 .setup-bench-action.is-success {
@@ -2744,7 +2774,7 @@ textarea:focus {
 }
 
 .setup-bench-action.is-danger {
-  background: rgba(226, 18, 63, 0.05);
+  background: rgba(var(--danger-rgb), 0.05);
 }
 
 .setup-bench-action__button {
@@ -2757,8 +2787,8 @@ textarea:focus {
 }
 
 .setup-bench-action__copy strong {
-  font-size: 12px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text);
 }
@@ -2772,7 +2802,7 @@ textarea:focus {
 .setup-bench-action__blocked-reason {
   color: var(--warning);
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   letter-spacing: 0.04em;
 }
 
@@ -2793,7 +2823,7 @@ textarea:focus {
 .setup-bench-action__progress-label {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -2832,7 +2862,7 @@ textarea:focus {
   display: grid;
   gap: 10px;
   border: 2px solid var(--surface-400);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface-200);
   padding: 10px 12px;
   padding-top: 18px;
@@ -2861,8 +2891,8 @@ textarea:focus {
 }
 
 .setup-bench__viewer-titlebar strong {
-  font-size: 11px;
-  letter-spacing: 0.1em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: #000;
 }
@@ -2895,7 +2925,7 @@ textarea:focus {
   display: grid;
   gap: 10px;
   border: 2px solid var(--surface-400);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface-200);
   padding: 10px 12px;
   padding-top: 18px;
@@ -2933,8 +2963,8 @@ textarea:focus {
  * stopped"), because a fourth colour would be noise, not information. */
 .setup-gui-box--sensor-silent,
 .setup-gui-box--sensor-stalled {
-  border-color: color-mix(in srgb, var(--danger, #e2123f) 55%, transparent);
-  box-shadow: inset 3px 0 0 0 var(--danger, #e2123f);
+  border-color: color-mix(in srgb, var(--danger, var(--danger)) 55%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--danger, var(--danger));
 }
 
 /* The fault/OK headline, on the face of the card. This is deliberately NOT a
@@ -2942,7 +2972,7 @@ textarea:focus {
  * for the one line that diagnosed their problem. */
 .setup-gui-box__sensor-headline {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: var(--text-lg);
   font-weight: 600;
   line-height: 1.35;
 }
@@ -2956,14 +2986,14 @@ textarea:focus {
 }
 
 .setup-gui-box__sensor-headline--danger {
-  color: var(--danger, #e2123f);
+  color: var(--danger, var(--danger));
 }
 
 /* The headline measurement row — the number the operator actually came for.
  * Slightly larger and tabular so a changing distance doesn't jitter the
  * layout as digits change width. */
 .setup-gui-box__kv-row--measurement strong {
-  font-size: 1.02rem;
+  font-size: var(--text-3xl);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2980,8 +3010,8 @@ textarea:focus {
 }
 
 .setup-gui-box__titlebar strong {
-  font-size: 11px;
-  letter-spacing: 0.1em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: #000;
 }
@@ -3010,7 +3040,7 @@ textarea:focus {
 .setup-gui-box__notice-filter-input {
   width: 100%;
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border, rgba(var(--edge-rgb), 0.16));
   background: var(--surface-2, rgba(var(--edge-rgb), 0.04));
   color: inherit;
@@ -3249,7 +3279,7 @@ textarea:focus {
 /* An emptied column still has to be a target you can hit. */
 .status-dash-col--empty {
   min-height: 64px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 1px dashed color-mix(in srgb, var(--surface-400) 70%, transparent);
 }
 
@@ -3295,7 +3325,7 @@ textarea:focus {
   border: 1px solid var(--surface-400);
   background: var(--surface-300);
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1;
   cursor: pointer;
 }
@@ -3325,7 +3355,7 @@ textarea:focus {
 .status-dash-col__flow:focus-visible {
   outline: 2px solid var(--primary-500);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .status-dash-col__width:disabled {
@@ -3347,7 +3377,7 @@ textarea:focus {
 
 .status-dash-toolbar__hint {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .status-dash-card {
@@ -3391,7 +3421,7 @@ textarea:focus {
   border-radius: 999px;
   background: var(--surface-300);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1;
   cursor: grab;
   opacity: 0.5;
@@ -3447,7 +3477,7 @@ textarea:focus {
 .status-dash-card__resize:focus-visible {
   outline: 2px solid var(--primary-500);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 /* Where the card will land.
@@ -3497,7 +3527,7 @@ body.is-status-dash-dragging {
 }
 /* Lifetime stats are secondary to pre-arm — render them smaller/denser. */
 .setup-gui-box--compact .setup-gui-box__body {
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .setup-gui-box--compact .setup-gui-box__kv-row {
   padding: 3px 0;
@@ -3508,7 +3538,7 @@ body.is-status-dash-dragging {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--warning);
   /* Reasons are FC-authored strings of unbounded length; wrapping (rather than
      widening) is what keeps the 390px phone layout from overflowing. */
@@ -3525,7 +3555,7 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 12px;
+  font-size: var(--text-md);
   padding: 7px 0;
   border-bottom: 1px solid var(--surface-400);
 }
@@ -3555,12 +3585,12 @@ body.is-status-dash-dragging {
 
 .setup-gui-box__inline-select {
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-data);
   color: var(--text);
   background: var(--surface-300);
   border: 1px solid var(--surface-400);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 2px 6px;
   cursor: pointer;
 }
@@ -3628,7 +3658,7 @@ body.is-status-dash-dragging {
 .setup-gui-box__popped-out,
 .setup-gui-box__popout-blocked {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -3638,13 +3668,13 @@ body.is-status-dash-dragging {
 
 .setup-gui-box__icon-button {
   font: inherit;
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text);
   background: var(--surface-300);
   border: 1px solid var(--surface-400);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 2px 8px;
   cursor: pointer;
 }
@@ -3665,21 +3695,21 @@ body.is-status-dash-dragging {
 
 .setup-gui-box__empty {
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .setup-gui-box__status-entry {
   display: grid;
   gap: 4px;
   padding: 8px 9px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
   background: var(--surface-300);
 }
 
 .setup-gui-box__status-entry strong {
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -3693,7 +3723,7 @@ body.is-status-dash-dragging {
 }
 
 .setup-gui-box__status-entry.is-error {
-  border-color: rgba(226, 18, 63, 0.24);
+  border-color: rgba(var(--danger-rgb), 0.24);
 }
 
 /* Severity-grouped Recent Notices — small header strip above each group
@@ -3711,15 +3741,15 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-dim);
   padding: 0 2px;
 }
 
 .setup-gui-box__status-group--error .setup-gui-box__status-group-header strong {
-  color: rgba(226, 18, 63, 0.95);
+  color: rgba(var(--danger-rgb), 0.95);
 }
 
 .setup-gui-box__status-group--warning .setup-gui-box__status-group-header strong {
@@ -3746,7 +3776,7 @@ body.is-status-dash-dragging {
    * which mangled any note with inline emphasis. */
   display: block;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--primary-600);
   background: var(--primary-transparent-2);
 }
@@ -3758,7 +3788,7 @@ body.is-status-dash-dragging {
 
 .bf-note--danger {
   border-color: var(--danger);
-  background: rgba(226, 18, 63, 0.14);
+  background: rgba(var(--danger-rgb), 0.14);
 }
 
 /* Accent variant used by the motor-reorder guided identify banner —
@@ -3781,7 +3811,7 @@ body.is-status-dash-dragging {
   display: grid;
   gap: 10px;
   border: 2px solid var(--surface-400);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface-200);
   padding: 10px 12px;
   padding-top: 18px;
@@ -3806,8 +3836,8 @@ body.is-status-dash-dragging {
 
 .bf-gui-box__titlebar strong {
   color: #000;
-  font-size: 11px;
-  letter-spacing: 0.1em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -3827,7 +3857,7 @@ body.is-status-dash-dragging {
   gap: 12px;
   padding: 7px 0;
   border-bottom: 1px solid var(--surface-400);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .bf-gui-box__kv-row:last-child {
@@ -3878,8 +3908,8 @@ body.is-status-dash-dragging {
   gap: 8px;
   margin-right: 6px;
   color: var(--text-muted);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -3912,7 +3942,7 @@ body.is-status-dash-dragging {
   gap: 8px;
   align-content: start;
   padding: 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   border: 1px solid rgba(255, 102, 0, 0.35);
   background: rgba(255, 102, 0, 0.08);
 }
@@ -3935,7 +3965,7 @@ body.is-status-dash-dragging {
 }
 .bf-vtx-table__grid {
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-md);
   min-width: 100%;
 }
 .bf-vtx-table__grid th,
@@ -3961,11 +3991,11 @@ body.is-status-dash-dragging {
 .bf-vtx-table__grid input[type='number'] {
   width: 68px;
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   background: var(--surface-300);
   color: var(--text);
   border: 1px solid var(--surface-400);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 2px 4px;
   text-align: right;
 }
@@ -3982,7 +4012,7 @@ body.is-status-dash-dragging {
 }
 .bf-vtx-table__power-grid {
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .bf-vtx-table__power-grid th,
 .bf-vtx-table__power-grid td {
@@ -3997,11 +4027,11 @@ body.is-status-dash-dragging {
 .bf-vtx-table__power-grid input[type='number'],
 .bf-vtx-table__power-grid input[type='text'] {
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   background: var(--surface-300);
   color: var(--text);
   border: 1px solid var(--surface-400);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 2px 4px;
 }
 .bf-vtx-table__power-grid input[type='number'] {
@@ -4033,24 +4063,24 @@ body.is-status-dash-dragging {
   border: 1px solid var(--card-outline);
   background: var(--bg-panel-raised);
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 .bf-vtx-table__import {
   display: grid;
   gap: 8px;
   padding: 10px;
   border: 1px solid var(--surface-400);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-200);
 }
 .bf-vtx-table__import textarea {
   width: 100%;
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   background: var(--surface-300);
   color: var(--text);
   border: 1px solid var(--surface-400);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 6px 8px;
   resize: vertical;
 }
@@ -4071,8 +4101,8 @@ body.is-status-dash-dragging {
   flex-wrap: wrap;
   gap: 8px;
   color: var(--text-muted);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -4085,12 +4115,12 @@ body.is-status-dash-dragging {
   max-width: 100%;
   min-width: 0;
   min-height: 140px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 2px solid var(--surface-400);
   background:
     linear-gradient(rgba(var(--edge-rgb), 0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(var(--edge-rgb), 0.04) 1px, transparent 1px),
-    radial-gradient(circle at top, rgba(255, 187, 0, 0.08), transparent 55%),
+    radial-gradient(circle at top, rgba(var(--primary-rgb), 0.08), transparent 55%),
     #050708;
   background-size: 20px 20px, 20px 20px, auto, auto;
   overflow: hidden;
@@ -4117,7 +4147,7 @@ body.is-status-dash-dragging {
   position: absolute;
   inset: 0;
   font-family: var(--font-data);
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: #d7dcd1;
   text-shadow: 0 0 10px rgba(255, 243, 189, 0.18);
 }
@@ -4144,14 +4174,14 @@ body.is-status-dash-dragging {
   white-space: nowrap;
   /* Smaller, denser glyphs so elements read like real OSD characters and
      don't crowd the (now layout-aware) preview grid. */
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1;
   letter-spacing: -0.01em;
 }
 
 .osd-preview-screen__element--center {
   justify-self: center;
-  font-size: 14px;
+  font-size: var(--text-xl);
   opacity: 0.55;
 }
 
@@ -4168,7 +4198,7 @@ body.is-status-dash-dragging {
 .osd-preview-screen__center-marker-horizontal,
 .osd-preview-screen__center-marker-vertical {
   position: absolute;
-  background: rgba(255, 187, 0, 0.45);
+  background: rgba(var(--primary-rgb), 0.45);
 }
 
 .osd-preview-screen__center-marker-horizontal {
@@ -4255,12 +4285,12 @@ body.is-status-dash-dragging {
   display: grid;
   place-items: center;
   min-height: 320px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 2px solid var(--surface-400);
   background:
     linear-gradient(rgba(var(--edge-rgb), 0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(var(--edge-rgb), 0.04) 1px, transparent 1px),
-    radial-gradient(circle at 50% 42%, rgba(255, 187, 0, 0.08), transparent 42%),
+    radial-gradient(circle at 50% 42%, rgba(var(--primary-rgb), 0.08), transparent 42%),
     #06090c;
   background-size: 22px 22px, 22px 22px, auto, auto;
   overflow: hidden;
@@ -4311,7 +4341,7 @@ body.is-status-dash-dragging {
   margin: 0;
   max-width: 34ch;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1.5;
 }
 
@@ -4331,21 +4361,21 @@ body.is-status-dash-dragging {
 }
 
 .motor-mixer-preview__body {
-  fill: rgba(255, 187, 0, 0.08);
-  stroke: rgba(255, 187, 0, 0.3);
+  fill: rgba(var(--primary-rgb), 0.08);
+  stroke: rgba(var(--primary-rgb), 0.3);
   stroke-width: 1.5;
 }
 
 .motor-mixer-preview__center-label {
   fill: var(--text-muted);
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   letter-spacing: 0.1em;
 }
 
 .motor-mixer-preview__nose-arrow {
-  fill: rgba(255, 187, 0, 0.74);
-  stroke: rgba(255, 187, 0, 0.74);
+  fill: rgba(var(--primary-rgb), 0.74);
+  stroke: rgba(var(--primary-rgb), 0.74);
   stroke-width: 1.2;
 }
 
@@ -4357,7 +4387,7 @@ body.is-status-dash-dragging {
 
 .motor-mixer-preview__stack {
   fill: rgba(var(--edge-rgb), 0.04);
-  stroke: rgba(255, 187, 0, 0.28);
+  stroke: rgba(var(--primary-rgb), 0.28);
   stroke-width: 1.5;
 }
 
@@ -4375,28 +4405,28 @@ body.is-status-dash-dragging {
 .motor-mixer-preview__motor-number {
   fill: var(--text);
   font-family: var(--font-data);
-  font-size: 17px;
+  font-size: var(--text-3xl);
   font-weight: 700;
 }
 
 .motor-mixer-preview__channel-label {
   fill: var(--text-dim);
   font-family: var(--font-data);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   letter-spacing: 0.08em;
 }
 
 .motor-mixer-preview__stack-label {
   fill: var(--text-muted);
   font-family: var(--font-data);
-  font-size: 9px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .motor-mixer-preview__node.is-target .motor-mixer-preview__ring {
-  fill: rgba(255, 187, 0, 0.18);
-  stroke: rgba(255, 187, 0, 0.92);
+  fill: rgba(var(--primary-rgb), 0.18);
+  stroke: rgba(var(--primary-rgb), 0.92);
 }
 
 .motor-mixer-preview__node.is-complete .motor-mixer-preview__ring {
@@ -4441,7 +4471,7 @@ body.is-status-dash-dragging {
   gap: 4px;
   min-width: 0;
   padding: 11px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--surface-400);
   background: rgba(var(--fill-rgb), 0.9);
 }
@@ -4453,8 +4483,8 @@ body.is-status-dash-dragging {
 }
 
 .motor-mixer-summary-card strong {
-  font-size: 12px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -4488,7 +4518,7 @@ body.is-status-dash-dragging {
 .setup-overview__launch-row small {
   color: var(--text-dim);
   line-height: 1.4;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 /* Flight Deck command display — dense instrument layout */
@@ -4528,11 +4558,11 @@ body.is-status-dash-dragging {
 }
 
 .flight-deck-command__telemetry-strip .telemetry-metric-card span {
-  font-size: 9px;
+  font-size: var(--text-2xs);
 }
 
 .flight-deck-command__telemetry-strip .telemetry-metric-card strong {
-  font-size: 14px;
+  font-size: var(--text-xl);
 }
 
 .flight-deck-command__signal-strip {
@@ -4550,7 +4580,7 @@ body.is-status-dash-dragging {
   border: 1px solid var(--border-soft);
   background: var(--bg-panel-muted);
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-family: var(--font-data);
   letter-spacing: 0.04em;
 }
@@ -4594,10 +4624,10 @@ body.is-status-dash-dragging {
 }
 
 .flight-deck-command__sidebar-section-title {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-dim);
   font-family: var(--font-data);
   padding: 0 0 4px;
@@ -4611,7 +4641,7 @@ body.is-status-dash-dragging {
   align-items: center;
   gap: 8px;
   padding: 3px 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .flight-deck-command__kv-row span {
@@ -4621,7 +4651,7 @@ body.is-status-dash-dragging {
 .flight-deck-command__kv-row strong {
   color: var(--text);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .flight-deck-command__guided-summary {
@@ -4639,22 +4669,22 @@ body.is-status-dash-dragging {
 }
 
 .flight-deck-command__guided-summary strong {
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
 .flight-deck-command__guided-summary p {
   margin: 0;
   color: var(--text-dim);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
 .flight-deck-command__guided-summary-notes {
   color: var(--text) !important;
   font-family: var(--font-data);
-  font-size: 10px !important;
-  letter-spacing: 0.05em;
+  font-size: var(--text-xs) !important;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -4668,13 +4698,13 @@ body.is-status-dash-dragging {
 .flight-deck-command__status-log .status-entry {
   padding: 5px 8px;
   border-radius: var(--radius-sm);
-  font-size: 11px;
+  font-size: var(--text-sm);
   gap: 8px;
   grid-template-columns: 52px minmax(0, 1fr);
 }
 
 .flight-deck-command__status-log .status-entry strong {
-  font-size: 9px;
+  font-size: var(--text-2xs);
 }
 
 .setup-command-center__hero {
@@ -4745,8 +4775,8 @@ body.is-status-dash-dragging {
   min-height: 40px;
   min-width: 180px;
   padding: 8px 16px !important;
-  font-size: 13px !important;
-  border-radius: 8px !important;
+  font-size: var(--text-lg) !important;
+  border-radius: var(--radius-md) !important;
 }
 
 .setup-wizard__header {
@@ -4770,7 +4800,7 @@ body.is-status-dash-dragging {
   border: 1px solid var(--good, #3fbf6a);
   background: color-mix(in srgb, var(--good, #3fbf6a) 14%, transparent);
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 .setup-wizard__complete-banner strong {
   letter-spacing: -0.01em;
@@ -4778,7 +4808,7 @@ body.is-status-dash-dragging {
 .setup-wizard__complete-count {
   margin-left: auto;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .setup-wizard__complete-check {
   display: inline-flex;
@@ -4789,14 +4819,14 @@ body.is-status-dash-dragging {
   border-radius: 999px;
   background: var(--good, #3fbf6a);
   color: #04140a;
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 700;
   flex: none;
 }
 
 .setup-wizard__header h3 {
   margin: 0 0 8px;
-  font-size: 15px;
+  font-size: var(--text-2xl);
   letter-spacing: -0.02em;
 }
 
@@ -4856,15 +4886,15 @@ body.is-status-dash-dragging {
 
 .setup-wizard-step small {
   color: var(--text-dim);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   font-family: var(--font-data);
   white-space: nowrap;
 }
 
 .setup-wizard-step span {
-  font-size: 11.5px;
+  font-size: var(--text-md);
   font-weight: 700;
   line-height: 1.25;
   /* One line per chip keeps the rail a fixed height regardless of how long a
@@ -4885,11 +4915,11 @@ body.is-status-dash-dragging {
   clip-path: inset(50%);
   white-space: nowrap;
   color: rgba(230, 194, 108, 0.96);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-style: normal;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   font-family: var(--font-data);
 }
 
@@ -4914,7 +4944,7 @@ body.is-status-dash-dragging {
   top: 6px;
   right: 7px;
   color: rgba(230, 194, 108, 0.96);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 700;
   line-height: 1;
 }
@@ -4944,11 +4974,11 @@ body.is-status-dash-dragging {
   width: 100%;
   margin-bottom: 10px;
   padding: 7px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--primary-500);
   background: color-mix(in srgb, var(--primary-500) 12%, transparent);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
   cursor: pointer;
   text-align: left;
@@ -4969,7 +4999,7 @@ body.is-status-dash-dragging {
   border: 1px solid var(--border-subtle);
   background: transparent;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -5009,9 +5039,9 @@ body.is-status-dash-dragging {
 .setup-wizard__evidence strong,
 .setup-wizard__task-header strong {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-dim);
 }
 
@@ -5051,8 +5081,8 @@ body.is-status-dash-dragging {
 }
 
 .accelerometer-pose-guide__hero--mismatch {
-  border-color: rgba(226, 18, 63, 0.44);
-  box-shadow: inset 0 0 0 1px rgba(226, 18, 63, 0.08);
+  border-color: rgba(var(--danger-rgb), 0.44);
+  box-shadow: inset 0 0 0 1px rgba(var(--danger-rgb), 0.08);
 }
 
 .accelerometer-pose-guide__header {
@@ -5064,15 +5094,15 @@ body.is-status-dash-dragging {
 
 .accelerometer-pose-guide__header strong,
 .accelerometer-pose-guide__step strong {
-  font-size: 12px;
+  font-size: var(--text-md);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-dim);
 }
 
 .accelerometer-pose-guide__header span {
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
   letter-spacing: -0.02em;
 }
@@ -5081,15 +5111,15 @@ body.is-status-dash-dragging {
   display: grid;
   gap: 4px;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--surface-400);
   background: rgba(var(--fill-rgb), 0.88);
 }
 
 .accelerometer-pose-guide__validation strong {
   font-family: var(--font-data);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -5121,8 +5151,8 @@ body.is-status-dash-dragging {
 }
 
 .accelerometer-pose-guide__validation--mismatch {
-  border-color: rgba(226, 18, 63, 0.38);
-  background: rgba(226, 18, 63, 0.08);
+  border-color: rgba(var(--danger-rgb), 0.38);
+  background: rgba(var(--danger-rgb), 0.08);
 }
 
 .accelerometer-pose-guide__validation--mismatch strong {
@@ -5155,7 +5185,7 @@ body.is-status-dash-dragging {
 }
 
 .accelerometer-pose-guide--compact .accelerometer-pose-guide__header span {
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .accelerometer-pose-guide--compact .accelerometer-pose-guide__hero-visual {
@@ -5232,10 +5262,10 @@ body.is-status-dash-dragging {
 }
 
 .accelerometer-pose-guide__step.is-current.is-mismatch {
-  border-color: rgba(226, 18, 63, 0.68);
+  border-color: rgba(var(--danger-rgb), 0.68);
   box-shadow:
-    inset 0 0 0 1px rgba(226, 18, 63, 0.14),
-    0 0 0 4px rgba(226, 18, 63, 0.08);
+    inset 0 0 0 1px rgba(var(--danger-rgb), 0.14),
+    0 0 0 4px rgba(var(--danger-rgb), 0.08);
 }
 
 .accelerometer-pose-guide__step.is-complete {
@@ -5253,7 +5283,7 @@ body.is-status-dash-dragging {
   border: 1px solid rgba(88, 111, 140, 0.66);
   color: var(--text-dim);
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .accelerometer-pose-guide__step.is-current .accelerometer-pose-guide__step-index {
@@ -5267,7 +5297,7 @@ body.is-status-dash-dragging {
 }
 
 .accelerometer-pose-guide__step.is-current.is-mismatch .accelerometer-pose-guide__step-index {
-  border-color: rgba(226, 18, 63, 0.68);
+  border-color: rgba(var(--danger-rgb), 0.68);
   color: rgba(255, 127, 153, 0.96);
 }
 
@@ -5289,7 +5319,7 @@ body.is-status-dash-dragging {
 }
 
 .accelerometer-pose-guide--compact .accelerometer-pose-guide__step strong {
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .setup-wizard__task-card {
@@ -5374,14 +5404,14 @@ body.is-status-dash-dragging {
 }
 
 .setup-wizard__task-focus span {
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-dim);
 }
 
 .setup-wizard__task-focus strong {
-  font-size: 13px;
+  font-size: var(--text-lg);
   letter-spacing: -0.03em;
   color: var(--text);
 }
@@ -5411,8 +5441,8 @@ body.is-status-dash-dragging {
   min-height: 40px;
   width: 100%;
   padding: 8px 16px !important;
-  border-radius: 8px !important;
-  font-size: 13px !important;
+  border-radius: var(--radius-md) !important;
+  font-size: var(--text-lg) !important;
   line-height: 1.2;
 }
 
@@ -5431,7 +5461,7 @@ body.is-status-dash-dragging {
 
 .setup-wizard__primary-button > span:first-child {
   font-family: var(--font-data);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 700;
   line-height: 1;
 }
@@ -5466,7 +5496,7 @@ body.is-status-dash-dragging {
 .setup-wizard__context-hint {
   margin: -4px 0 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.5;
 }
 
@@ -5555,7 +5585,7 @@ body.is-status-dash-dragging {
   border: 1px solid rgba(var(--edge-rgb), 0.05);
   background: rgba(var(--edge-rgb), 0.03);
   color: var(--text);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-data);
   letter-spacing: 0.08em;
 }
@@ -5585,8 +5615,8 @@ body.is-status-dash-dragging {
 }
 
 .setup-overview__notice strong {
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -5688,7 +5718,7 @@ body.is-status-dash-dragging {
 
 .flight-deck__model-frame::before {
   background:
-    radial-gradient(circle at center, rgba(255, 187, 0, 0.08), transparent 52%);
+    radial-gradient(circle at center, rgba(var(--primary-rgb), 0.08), transparent 52%);
   opacity: 1;
 }
 
@@ -5750,16 +5780,16 @@ body.is-status-dash-dragging {
 
 .flight-deck__standby span {
   color: var(--text-dim);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-family: var(--font-data);
 }
 
 .flight-deck__standby strong {
   color: var(--text);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-family: var(--font-data);
 }
@@ -5784,9 +5814,9 @@ body.is-status-dash-dragging {
 .flight-deck__hud span,
 .flight-deck__caption span {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   font-family: var(--font-data);
 }
 
@@ -5812,7 +5842,7 @@ body.is-status-dash-dragging {
 }
 
 .flight-deck__caption strong {
-  font-size: 14px;
+  font-size: var(--text-xl);
   font-family: var(--font-data);
   letter-spacing: 0.04em;
 }
@@ -5826,9 +5856,9 @@ body.is-status-dash-dragging {
 .flight-deck__heading-reference {
   color: var(--text-dim);
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -5851,9 +5881,9 @@ body.is-status-dash-dragging {
   color: var(--text);
   cursor: pointer;
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -5937,9 +5967,9 @@ body.is-status-dash-dragging {
 .flight-deck__heading-mark-label {
   color: var(--text-dim);
   font-family: var(--font-data);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -5977,9 +6007,9 @@ body.is-status-dash-dragging {
   background: rgba(var(--fill-rgb), 0.96);
   color: var(--text);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -6059,14 +6089,14 @@ body.is-status-dash-dragging {
 .flight-deck__readout-card small {
   color: var(--text-dim);
   font-family: var(--font-data);
-  font-size: 10px;
-  letter-spacing: 0.1em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .flight-deck__readout-card strong {
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1.1;
 }
 
@@ -6099,8 +6129,8 @@ body.is-status-dash-dragging {
 
 .gps-map-card__header strong {
   display: block;
-  font-size: 13px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-family: var(--font-data);
 }
@@ -6109,7 +6139,7 @@ body.is-status-dash-dragging {
   margin: 6px 0 0;
   color: var(--text-muted);
   line-height: 1.5;
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .gps-map-card__frame {
@@ -6161,20 +6191,20 @@ body.is-status-dash-dragging {
   padding: 20px;
   text-align: center;
   background:
-    radial-gradient(circle at center, rgba(255, 187, 0, 0.06), transparent 40%),
+    radial-gradient(circle at center, rgba(var(--primary-rgb), 0.06), transparent 40%),
     rgba(18, 18, 18, 0.94);
 }
 
 .gps-map-card__placeholder span {
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   font-family: var(--font-data);
 }
 
 .gps-map-card__placeholder strong {
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1.35;
 }
 
@@ -6202,15 +6232,15 @@ body.is-status-dash-dragging {
 
 .gps-map-card__meta span {
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   font-family: var(--font-data);
 }
 
 .gps-map-card__meta strong {
   font-family: var(--font-data);
-  font-size: 13px;
+  font-size: var(--text-lg);
   word-break: break-word;
 }
 
@@ -6229,7 +6259,7 @@ body.is-status-dash-dragging {
 .gps-map-card__footer a {
   color: var(--accent-strong);
   text-decoration: none;
-  font-size: 12px;
+  font-size: var(--text-md);
   white-space: nowrap;
 }
 
@@ -6265,8 +6295,8 @@ body.is-status-dash-dragging {
 }
 
 .mode-estimate-card strong {
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--accent-strong);
   overflow-wrap: anywhere;
@@ -6293,7 +6323,7 @@ body.is-status-dash-dragging {
   border: 1px solid rgba(var(--edge-rgb), 0.05);
   background: rgba(var(--edge-rgb), 0.03);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-data);
   letter-spacing: 0.03em;
   line-height: 1.3;
@@ -6324,8 +6354,8 @@ body.is-status-dash-dragging {
 }
 
 .config-pills span.is-pending {
-  border-color: rgba(255, 187, 0, 0.28);
-  background: rgba(255, 187, 0, 0.06);
+  border-color: rgba(var(--primary-rgb), 0.28);
+  background: rgba(var(--primary-rgb), 0.06);
   color: var(--text);
 }
 
@@ -6389,15 +6419,15 @@ body.is-status-dash-dragging {
 }
 
 .orientation-card__focus-copy span {
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   color: rgba(230, 194, 108, 0.94);
   font-family: var(--font-data);
 }
 
 .orientation-card__focus-copy strong {
-  font-size: 13px;
+  font-size: var(--text-lg);
   letter-spacing: -0.03em;
   color: var(--text);
 }
@@ -6421,15 +6451,15 @@ body.is-status-dash-dragging {
 }
 
 .orientation-card__focus-instruction small {
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   color: rgba(230, 194, 108, 0.92);
   font-family: var(--font-data);
 }
 
 .orientation-card__focus-instruction strong {
-  font-size: 13px;
+  font-size: var(--text-lg);
   letter-spacing: -0.02em;
   color: var(--text);
 }
@@ -6495,14 +6525,14 @@ body.is-status-dash-dragging {
 .rc-mapping-focus__copy span {
   color: rgba(230, 194, 108, 0.94);
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .rc-mapping-focus__copy strong {
-  font-size: 13px;
+  font-size: var(--text-lg);
   letter-spacing: -0.03em;
   color: var(--text);
 }
@@ -6533,8 +6563,8 @@ body.is-status-dash-dragging {
 }
 
 .rc-mapping-candidate-panel__header strong {
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text);
 }
@@ -6631,8 +6661,8 @@ body.is-status-dash-dragging {
 .switch-exercise-card__header strong {
   display: block;
   margin-bottom: 6px;
-  font-size: 13px;
-  letter-spacing: 0.05em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--accent-strong);
 }
@@ -6728,7 +6758,7 @@ body.is-status-dash-dragging {
   border-radius: 50%;
   color: var(--text-muted);
   cursor: default;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-style: italic;
   font-weight: 700;
   line-height: 1;
@@ -6750,11 +6780,11 @@ body.is-status-dash-dragging {
   width: max-content;
   max-width: 240px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface-300, rgb(var(--fill-rgb)));
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-style: normal;
   font-weight: 400;
   letter-spacing: normal;
@@ -6801,7 +6831,7 @@ body.is-status-dash-dragging {
   display: inline-block;
   margin-top: 6px;
   color: var(--accent-strong, var(--accent));
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-decoration: underline;
 }
 /* Multi-point guidance inside a tip: each point on its own line so a card's
@@ -6839,7 +6869,7 @@ body.is-status-dash-dragging {
 .tuning-details > summary {
   cursor: pointer;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   list-style: none;
   padding: 2px 0;
@@ -6878,9 +6908,9 @@ body.is-status-dash-dragging {
 .tuning-summary-card__header span {
   color: var(--text);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -6941,7 +6971,7 @@ body.is-status-dash-dragging {
   align-items: center;
   gap: 6px 10px;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface-200) 60%, transparent);
 }
 
@@ -6970,11 +7000,11 @@ body.is-status-dash-dragging {
 }
 
 .rc-direction-row--reversed {
-  background: color-mix(in srgb, var(--accent, #ffbb00) 22%, var(--surface-200));
+  background: color-mix(in srgb, var(--accent, var(--primary-500)) 22%, var(--surface-200));
 }
 
 .rc-direction-row--reversed .rc-direction-row__verdict {
-  color: var(--accent, #ffbb00);
+  color: var(--accent, var(--primary-500));
   font-weight: 600;
 }
 
@@ -6997,7 +7027,7 @@ body.is-status-dash-dragging {
   min-width: 0;
   align-self: start;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--surface-200) 55%, transparent);
   padding: 6px;
 }
@@ -7034,7 +7064,7 @@ body.is-status-dash-dragging {
 /* The axis whose stick is deflected right now — ties the reacting craft to the
    row being tested. Rendered as an outline so it layers over any verdict tint. */
 .rc-direction-row--active {
-  outline: 1.5px solid color-mix(in srgb, var(--accent, #ffbb00) 55%, transparent);
+  outline: 1.5px solid color-mix(in srgb, var(--accent, var(--primary-500)) 55%, transparent);
   outline-offset: -1.5px;
 }
 
@@ -7110,16 +7140,16 @@ body.is-status-dash-dragging {
   flex-wrap: wrap;
   gap: 4px 10px;
   padding: 6px 10px;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: rgba(var(--fill-rgb, 20, 28, 40), 0.5);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 .receiver-flight-mode-line strong {
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   color: var(--text);
 }
 .receiver-flight-mode-line__ch {
@@ -7208,8 +7238,8 @@ body.is-status-dash-dragging {
 .tuning-task-deck__header h3 {
   margin: 0;
   color: var(--text);
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -7217,9 +7247,9 @@ body.is-status-dash-dragging {
 .receiver-live-card__footer span,
 .receiver-task-stage span {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-data);
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 /* The first footer span is the live PWM value ("1500 µs") — keep it as-is so the
@@ -7278,8 +7308,8 @@ body.is-status-dash-dragging {
   display: block;
   margin-bottom: 4px;
   color: var(--text);
-  font-size: 12px;
-  letter-spacing: 0.05em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -7306,7 +7336,7 @@ body.is-status-dash-dragging {
 .receiver-task-deck__header h3,
 .outputs-task-deck__header h3,
 .tuning-task-deck__header h3 {
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 /* Receiver / Tuning sub-tab nav now uses the shared `.tab-strip` underline
@@ -7373,16 +7403,16 @@ body.is-status-dash-dragging {
   display: block;
   margin-bottom: 4px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-data);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .tuning-control__header strong {
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 /* Config-style "i" info bubble inside the tuning header. The generic bubble
@@ -7399,7 +7429,7 @@ body.is-status-dash-dragging {
   display: none;
   margin: 0;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 400;
   letter-spacing: normal;
   text-transform: none;
@@ -7411,14 +7441,14 @@ body.is-status-dash-dragging {
   display: block;
   margin-bottom: 0;
   color: var(--text);
-  font-size: 11px;
+  font-size: var(--text-sm);
   letter-spacing: 0.06em;
 }
 .tuning-control__header .config-section__info-text {
   display: block;
   margin: 6px 0 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: inherit;
   font-weight: 400;
   letter-spacing: normal;
@@ -7538,20 +7568,20 @@ body.is-status-dash-dragging {
 .filters-from-gyro__name small {
   color: var(--text-muted);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .filters-from-gyro__current {
   color: var(--text-muted);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
 .filters-from-gyro__warning {
   grid-column: 1 / -1;
   color: var(--warning, #e0a33a);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 /* The two documented suggestions are buttons, not a two-up layout: sized to
@@ -7577,16 +7607,16 @@ body.is-status-dash-dragging {
 
 .tuning-axis-card__header strong {
   color: var(--text);
-  font-size: 13px;
-  letter-spacing: 0.05em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .tuning-axis-card__header span {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-family: var(--font-data);
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -7648,8 +7678,8 @@ body.is-status-dash-dragging {
   display: block;
   margin-bottom: 4px;
   color: var(--text);
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -7694,8 +7724,8 @@ body.is-status-dash-dragging {
   display: block;
   margin-bottom: 4px;
   color: var(--text);
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -7715,7 +7745,7 @@ body.is-status-dash-dragging {
   display: grid;
   gap: 8px;
   padding: 12px;
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   background: rgba(var(--edge-rgb), 0.025);
   box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), 0.028);
 }
@@ -7735,7 +7765,7 @@ body.is-status-dash-dragging {
 
 .tuning-master-slider__header strong {
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .tuning-master-slider__header small {
@@ -7746,7 +7776,7 @@ body.is-status-dash-dragging {
 .tuning-master-slider__header code {
   color: rgba(var(--ink-rgb), 0.9);
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .tuning-master-slider input[type='range'] {
@@ -7869,7 +7899,7 @@ body.is-status-dash-dragging {
 .modes-mode-channel__rcl-claim {
   display: block;
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--warning, #b8860b);
 }
@@ -7877,7 +7907,7 @@ body.is-status-dash-dragging {
 .rc-channel-card__header span,
 .rc-channel-card__footer span {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .rc-bar {
@@ -7927,11 +7957,11 @@ body.is-status-dash-dragging {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 .power-live-strip label {
-  font-size: 10px;
-  letter-spacing: 0.05em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -7957,14 +7987,14 @@ body.is-status-dash-dragging {
 
 .telemetry-metric-card span {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   font-family: var(--font-data);
 }
 
 .telemetry-metric-card strong {
-  font-size: 14px;
+  font-size: var(--text-xl);
   line-height: 1.02;
   font-weight: 600;
   letter-spacing: -0.03em;
@@ -8010,8 +8040,8 @@ body.is-status-dash-dragging {
 
 .output-card__header strong {
   display: block;
-  font-size: 13px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   overflow-wrap: anywhere;
 }
@@ -8024,7 +8054,7 @@ body.is-status-dash-dragging {
 .output-card p {
   margin: 0;
   color: var(--text);
-  font-size: 15px;
+  font-size: var(--text-2xl);
 }
 
 .output-note-list {
@@ -8053,7 +8083,7 @@ body.is-status-dash-dragging {
 .receiver-arm-switch__field {
   display: grid;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -8063,7 +8093,7 @@ body.is-status-dash-dragging {
   background: var(--surface-300);
   color: var(--text);
   border: 1px solid var(--surface-400);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   padding: 4px 6px;
 }
 
@@ -8071,7 +8101,7 @@ body.is-status-dash-dragging {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   cursor: pointer;
 }
@@ -8156,7 +8186,7 @@ body.is-status-dash-dragging {
   gap: 10px;
   margin: 10px 0;
   padding: 12px;
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   border: 1px solid var(--primary-500);
   background: rgba(var(--edge-rgb), 0.02);
 }
@@ -8164,13 +8194,13 @@ body.is-status-dash-dragging {
 .preset-editor label {
   display: grid;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
 .preset-editor input {
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--surface-400);
   background: var(--bg-panel);
   color: var(--text-primary);
@@ -8191,13 +8221,13 @@ body.is-status-dash-dragging {
 }
 
 .preset-editor__row code {
-  font-size: 12px;
+  font-size: var(--text-md);
   overflow-wrap: anywhere;
 }
 
 .preset-editor__empty {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--warning-500, var(--text-muted));
 }
 
@@ -8231,12 +8261,12 @@ body.is-status-dash-dragging {
 }
 
 .relay-rc-channel--staged .scoped-editor-field {
-  border-color: color-mix(in srgb, var(--accent, #ffbb00) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--accent, var(--primary-500)) 55%, var(--border));
 }
 
 .relay-rc-channel__hint {
   margin: 6px 2px 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--text-muted);
 }
@@ -8357,7 +8387,7 @@ body.is-status-dash-dragging {
   display: block;
   margin-top: 4px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -8366,15 +8396,15 @@ body.is-status-dash-dragging {
   margin-top: 4px;
   color: rgba(255, 217, 215, 0.78);
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   letter-spacing: 0.04em;
 }
 
 .scoped-editor-field span {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   font-family: var(--font-data);
   overflow-wrap: anywhere;
 }
@@ -8394,7 +8424,7 @@ body.is-status-dash-dragging {
   display: block;
   margin-top: 3px;
   color: var(--accent, var(--text-muted));
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.35;
 }
 
@@ -8403,7 +8433,7 @@ body.is-status-dash-dragging {
   margin-top: 1px;
   color: var(--text-dim, var(--text-muted));
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 400;
   letter-spacing: 0.02em;
   text-transform: none;
@@ -8498,7 +8528,7 @@ body.is-status-dash-dragging {
   align-items: baseline;
   gap: 4px 12px;
   margin-right: auto;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -8526,9 +8556,9 @@ body.is-status-dash-dragging {
   gap: 8px;
   padding: 6px 8px;
   border: 1px solid var(--surface-400);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: rgba(var(--edge-rgb), 0.03);
-  font-size: 12px;
+  font-size: var(--text-md);
   list-style: none;
 }
 
@@ -8538,7 +8568,7 @@ body.is-status-dash-dragging {
 
 .scoped-bitmask-popover__summary code {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .scoped-bitmask-popover[open] > .scoped-bitmask-popover__summary {
@@ -8551,7 +8581,7 @@ body.is-status-dash-dragging {
   overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--surface-400);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-panel-muted);
 }
 
@@ -8580,7 +8610,7 @@ body.is-status-dash-dragging {
 }
 
 .scoped-bitmask-raw span {
-  font-size: 0.72rem;
+  font-size: var(--text-sm);
   opacity: 0.7;
 }
 
@@ -8592,7 +8622,7 @@ body.is-status-dash-dragging {
 .scoped-bitmask-bit,
 .scoped-option-chip {
   padding: 3px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--surface-400);
   background: transparent;
   color: var(--text-muted, rgba(var(--edge-rgb), 0.55));
@@ -8633,7 +8663,7 @@ body.is-status-dash-dragging {
   min-width: 0;
   /* Compact row, not a chunky bordered card. */
   padding: 7px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
   background: rgba(var(--edge-rgb), 0.025);
   color: var(--text);
@@ -8667,7 +8697,7 @@ body.is-status-dash-dragging {
 .scoped-checkbox-option span {
   min-width: 0;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.25;
   letter-spacing: normal;
   text-transform: none;
@@ -8692,7 +8722,7 @@ body.is-status-dash-dragging {
   gap: 6px;
   min-width: 0;
   color: var(--muted, var(--text));
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.25;
   letter-spacing: normal;
   text-transform: none;
@@ -8776,7 +8806,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .ports-matrix {
   display: grid;
   gap: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--surface-400);
   /* The matrix rows are wide multi-column grids (~1070px of minimums). Scroll
      horizontally instead of clipping when the content well is narrower (the
@@ -8804,9 +8834,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .ports-matrix__head span {
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   font-family: var(--font-data);
 }
 
@@ -8821,11 +8851,11 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .ports-matrix-row.is-staged {
-  border-color: rgba(255, 187, 0, 0.42);
+  border-color: rgba(var(--primary-rgb), 0.42);
 }
 
 .ports-matrix-row.is-invalid {
-  border-color: rgba(226, 18, 63, 0.42);
+  border-color: rgba(var(--danger-rgb), 0.42);
 }
 
 .ports-matrix-row.is-readonly {
@@ -8872,8 +8902,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .ports-matrix-row__title strong {
   display: block;
-  font-size: 13px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   overflow-wrap: anywhere;
 }
@@ -8901,8 +8931,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .ports-matrix-row__options-header strong {
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -8952,8 +8982,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .port-row__title strong {
   display: block;
-  font-size: 13px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   overflow-wrap: anywhere;
 }
@@ -8989,8 +9019,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .port-row__options-header strong {
   color: var(--text);
-  font-size: 12px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -9026,8 +9056,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .port-card__header strong {
   display: block;
-  font-size: 13px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   overflow-wrap: anywhere;
 }
@@ -9059,8 +9089,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .dronecan-peripherals__header strong {
-  font-size: 12px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -9075,7 +9105,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   align-items: baseline;
   gap: 12px;
   margin: 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .dronecan-peripherals__uid span {
@@ -9137,7 +9167,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .rc-mixer-logic__header small {
   display: block;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .rc-mixer-logic__list {
   list-style: none;
@@ -9148,7 +9178,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .rc-mixer-logic__empty {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .rc-mixer-logic-term {
   display: flex;
@@ -9157,12 +9187,12 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 8px;
   padding: 8px;
   border: 1px solid var(--border, #2a2f37);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 .rc-mixer-logic-term label {
   display: grid;
   gap: 2px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 .rc-mixer-logic-term__negate {
@@ -9178,7 +9208,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .rc-mixer-logic-term__meta small {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   max-width: 220px;
 }
 
@@ -9186,7 +9216,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--warning, #b8860b);
 }
 
@@ -9201,7 +9231,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 .rc-mixer-engine__toggle code {
   font-size: 0.9em;
@@ -9253,7 +9283,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   left: 0;
   transform: translateX(-50%);
   color: var(--text-dim);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-family: var(--font-data);
   font-style: normal;
 }
@@ -9302,10 +9332,10 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .rc-mixer-track__band em {
   font-style: normal;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-family: var(--font-data);
   color: var(--text);
-  letter-spacing: 0.03em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   white-space: nowrap;
@@ -9357,15 +9387,15 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .rc-mixer-channel__header strong {
-  font-size: 11px;
-  letter-spacing: 0.05em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .rc-mixer-channel__header small {
   display: block;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .rc-mixer-channel__external-claim {
@@ -9409,17 +9439,17 @@ details.metadata-settings-section:not([open]) > summary::after {
 .rc-mixer-assignment__function select {
   font: inherit;
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   background: var(--surface-300);
   color: var(--text);
   border: 1px solid var(--surface-400);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   padding: 2px 5px;
 }
 
 .rc-mixer-assignment__function small {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 
@@ -9431,18 +9461,18 @@ details.metadata-settings-section:not([open]) > summary::after {
 .rc-mixer-assignment__range label {
   display: grid;
   gap: 2px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
 .rc-mixer-assignment__range input[type='number'] {
   font: inherit;
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   background: var(--surface-300);
   color: var(--text);
   border: 1px solid var(--surface-400);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   padding: 2px 5px;
   width: 100%;
 }
@@ -9452,7 +9482,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 /* Reset the padding/border/full-width sizing the global `input` rule
@@ -9474,10 +9504,10 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .rc-mixer-assignment__position select {
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .rc-mixer-assignment__status {
@@ -9488,7 +9518,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .rc-mixer-assignment__status small {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 
@@ -9497,7 +9527,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .rc-mixer-callout p {
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 
@@ -9531,12 +9561,12 @@ details.metadata-settings-section:not([open]) > summary::after {
 .can-bus-enable-prompt__body p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--text-lg);
   line-height: 1.45;
 }
 .can-bus-enable-prompt__body code {
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 /* 3D board-mounting picture under the Board orientation dropdown. A thin slab
@@ -9569,7 +9599,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   left: 50%;
   transform: translateX(-50%);
   font-family: var(--font-data);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   letter-spacing: 0.16em;
   color: var(--text-dim, var(--text-muted));
   z-index: 1;
@@ -9591,7 +9621,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .board-orientation-diagram__face {
   position: absolute;
   inset: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   backface-visibility: hidden;
   border: 1.5px solid rgba(var(--edge-rgb), 0.5);
 }
@@ -9614,7 +9644,7 @@ details.metadata-settings-section:not([open]) > summary::after {
    reads as a shading artifact in a screenshot. */
 .board-orientation-diagram__bottom-label {
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   letter-spacing: 0.18em;
   font-weight: 700;
   color: color-mix(in srgb, var(--warning) 35%, #1b1205);
@@ -9649,7 +9679,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .board-orientation-diagram__axis {
   position: absolute;
   font-family: var(--font-data);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   font-weight: 700;
   color: color-mix(in srgb, var(--success, #4ade80) 80%, var(--ink, #fff));
   opacity: 0.75;
@@ -9695,16 +9725,16 @@ details.metadata-settings-section:not([open]) > summary::after {
 .board-orientation-diagram__note strong {
   display: block;
   margin-bottom: 4px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .board-orientation-diagram__note p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 .board-orientation-diagram__caption {
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 @media (prefers-reduced-motion: reduce) {
   .board-orientation-diagram__board3d {
@@ -9732,7 +9762,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .can-bus-header__status small {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .can-bus-header__error {
@@ -9749,7 +9779,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -9759,7 +9789,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   background: var(--surface-300);
   color: var(--text);
   border: 1px solid var(--surface-400);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 4px 8px;
 }
 
@@ -9832,8 +9862,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .can-bus-node__label strong {
   display: block;
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -9854,8 +9884,8 @@ details.metadata-settings-section:not([open]) > summary::after {
   border: 1px solid var(--border);
   background: var(--surface-200);
   color: var(--text-muted);
-  font-size: 10px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -9879,7 +9909,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .can-bus-node__label small {
   display: block;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .can-bus-node__status {
@@ -9908,8 +9938,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 .can-bus-staged {
   padding: 10px 12px;
   border: 1px solid var(--warning);
-  border-radius: 8px;
-  background: rgba(255, 187, 0, 0.06);
+  border-radius: var(--radius-md);
+  background: rgba(var(--primary-rgb), 0.06);
 }
 
 .can-bus-staged__header {
@@ -9944,7 +9974,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .can-bus-node__toolbar small {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .can-bus-node__toolbar-buttons {
@@ -9956,7 +9986,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .can-bus-params {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .can-bus-params th,
@@ -9969,9 +9999,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .can-bus-params th {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -9981,7 +10011,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .can-bus-params td small {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   margin-left: 6px;
 }
 /* Catalog-derived friendly label + enum value hint (params metadata enrichment).
@@ -9995,11 +10025,11 @@ details.metadata-settings-section:not([open]) > summary::after {
 .can-bus-params input[type='text'] {
   font: inherit;
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   background: var(--surface-300);
   color: var(--text);
   border: 1px solid var(--surface-400);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 3px 6px;
   width: 100%;
   min-width: 110px;
@@ -10007,7 +10037,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .can-bus-params__input--invalid {
   border-color: var(--danger) !important;
-  background: rgba(226, 18, 63, 0.10) !important;
+  background: rgba(var(--danger-rgb), 0.10) !important;
 }
 
 .port-board-links {
@@ -10040,8 +10070,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 .port-board-debug summary {
   cursor: pointer;
   color: var(--text);
-  font-size: 12px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -10049,7 +10079,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin: 0;
   padding: 10px 12px;
   overflow: auto;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 1px solid rgba(39, 49, 59, 0.74);
   background: rgba(var(--fill-rgb), 0.9);
   color: var(--text-muted);
@@ -10088,8 +10118,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .board-media-lightbox__header strong {
   display: block;
-  font-size: 13px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -10121,7 +10151,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   padding: 28px 12px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-xl);
   font-weight: 600;
 }
 
@@ -10195,8 +10225,8 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
   font: inherit;
-  font-size: 12px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -10221,7 +10251,7 @@ details.metadata-settings-section:not([open]) > summary::after {
    is the recommended path; manual is an opt-in disclosure. */
 .motor-reorder-manual > summary {
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-muted);
   padding: 4px 0;
   user-select: none;
@@ -10231,7 +10261,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .motor-reorder-manual__hint {
   margin: 6px 0 10px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -10240,7 +10270,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   align-items: center;
   gap: 8px;
   margin-top: 8px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   cursor: pointer;
 }
@@ -10251,7 +10281,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .motor-reorder-table {
   display: grid;
   gap: 1px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--surface-400);
   overflow: hidden;
 }
@@ -10268,8 +10298,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 .motor-reorder-table__row--header {
   background: rgba(var(--fill-rgb), 0.98);
   color: var(--text-dim);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -10353,7 +10383,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .telemetry-stack--receiver .scoped-review-card,
 .telemetry-stack--outputs .scoped-review-card,
 .telemetry-stack--ports .scoped-review-card {
-  border-radius: 15px;
+  border-radius: var(--radius-xl);
 }
 
 .telemetry-stack--ports .port-card {
@@ -10496,8 +10526,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshot-card__header strong {
   display: block;
   margin-bottom: 6px;
-  font-size: 13px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -10543,8 +10573,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .provisioning-checklist strong {
-  font-size: 13px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -10616,7 +10646,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin: 0 !important;
   max-width: 60ch;
   color: rgba(var(--ink-rgb), 0.66) !important;
-  font-size: 14px !important;
+  font-size: var(--text-xl) !important;
   line-height: 1.6 !important;
 }
 
@@ -10647,15 +10677,15 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-page__eyebrow {
   color: rgba(var(--ink-rgb), 0.54);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .snapshots-page__hero-copy h3 {
   margin: 0;
-  font-size: 19px;
+  font-size: var(--font-title);
   line-height: 1.08;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -10665,7 +10695,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin: 0;
   max-width: 60ch;
   color: rgba(var(--ink-rgb), 0.66);
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1.68;
 }
 
@@ -10690,14 +10720,14 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-page__hero-metric span {
   color: rgba(var(--ink-rgb), 0.52);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .snapshots-page__hero-metric strong {
-  font-size: 16px;
+  font-size: var(--text-3xl);
   line-height: 1;
   font-weight: 600;
   letter-spacing: -0.03em;
@@ -10736,7 +10766,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-section-header h3,
 .snapshots-subsection-header h3 {
   margin: 6px 0 6px;
-  font-size: 15px;
+  font-size: var(--text-2xl);
   line-height: 1.08;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -10747,7 +10777,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin: 0;
   max-width: 58ch;
   color: rgba(var(--ink-rgb), 0.62);
-  font-size: 14px;
+  font-size: var(--text-xl);
   line-height: 1.58;
 }
 
@@ -10766,9 +10796,9 @@ details.metadata-settings-section:not([open]) > summary::after {
   background: rgba(var(--edge-rgb), 0.055);
   color: rgba(var(--ink-rgb), 0.88);
   font-family: var(--snapshots-font-mono);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -10801,9 +10831,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-form-group-heading span {
   color: rgba(var(--ink-rgb), 0.66);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -10811,7 +10841,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin: 0;
   max-width: 58ch;
   color: rgba(var(--ink-rgb), 0.56);
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1.55;
 }
 
@@ -10841,9 +10871,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-page .snapshots-field span,
 .tuning-page .snapshots-field span {
   color: rgba(var(--ink-rgb), 0.66);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-family: var(--snapshots-font-ui);
 }
@@ -10861,7 +10891,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   color: rgba(var(--ink-rgb), 0.94);
   -webkit-text-fill-color: rgba(var(--ink-rgb), 0.94);
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.4;
   transition:
     border-color 140ms ease,
@@ -10907,7 +10937,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-page .snapshots-field small,
 .tuning-page .snapshots-field small {
   color: rgba(var(--ink-rgb), 0.48);
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.45;
 }
 
@@ -10924,7 +10954,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 14px;
   align-items: start;
   padding: 14px 16px;
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   background: rgba(var(--edge-rgb), 0.026);
   box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), 0.028);
   transition:
@@ -10949,7 +10979,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .snapshots-setting-row strong {
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: rgba(var(--ink-rgb), 0.94);
 }
@@ -10972,11 +11002,11 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-button {
   appearance: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   min-height: 28px;
   padding: 0 12px;
   font-family: var(--snapshots-font-ui);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
@@ -11043,7 +11073,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-inline-note {
   max-width: 66ch;
   color: rgba(var(--ink-rgb), 0.54);
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .snapshots-feedback-stack {
@@ -11054,7 +11084,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-notice,
 .snapshots-follow-up {
   border: none;
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
   background:
     linear-gradient(180deg, rgba(var(--fill-rgb), 0.92), rgba(var(--fill-rgb), 0.98));
   box-shadow:
@@ -11084,13 +11114,13 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-metric-card span {
   color: rgba(var(--ink-rgb), 0.48);
   font-family: var(--snapshots-font-ui);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: 0.1em;
 }
 
 .snapshots-metric-card strong {
-  font-size: 16px;
+  font-size: var(--text-3xl);
   font-weight: 600;
   letter-spacing: -0.035em;
 }
@@ -11123,7 +11153,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-browser-rail__header h4 {
   margin: 6px 0 0;
-  font-size: 15px;
+  font-size: var(--text-2xl);
   font-weight: 600;
   letter-spacing: -0.02em;
 }
@@ -11137,7 +11167,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 10px;
   padding: 16px 14px;
   border: 1px solid transparent;
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
   background: transparent;
   box-shadow: none;
   transition:
@@ -11165,7 +11195,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-page .snapshot-card__header strong {
   margin-bottom: 4px;
   font-family: var(--snapshots-font-ui);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
   letter-spacing: -0.01em;
   text-transform: none;
@@ -11173,7 +11203,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-page .snapshot-card__header small {
   font-family: var(--snapshots-font-mono);
-  font-size: 11px;
+  font-size: var(--text-sm);
   letter-spacing: 0.02em;
 }
 
@@ -11181,7 +11211,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-page .snapshot-card__note,
 .snapshots-page .snapshot-selected__note {
   color: rgba(var(--ink-rgb), 0.58);
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1.55;
 }
 
@@ -11199,7 +11229,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-radius: 999px;
   background: rgba(var(--edge-rgb), 0.045);
   color: rgba(var(--ink-rgb), 0.7);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 500;
   letter-spacing: 0.03em;
 }
@@ -11228,7 +11258,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-empty-state h4 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
   letter-spacing: -0.02em;
 }
@@ -11252,7 +11282,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .snapshots-page .snapshot-selected .telemetry-header h3 {
-  font-size: 15px;
+  font-size: var(--text-2xl);
   line-height: 1.08;
   letter-spacing: -0.02em;
 }
@@ -11266,7 +11296,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   min-height: 20px;
   padding: 2px 8px !important;
   border-radius: 999px !important;
-  font-size: 10px !important;
+  font-size: var(--text-xs) !important;
   letter-spacing: 0.06em !important;
 }
 
@@ -11302,7 +11332,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 4px;
   margin: 4px 0 8px;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg-panel-soft, rgba(var(--edge-rgb), 0.02));
 }
@@ -11315,7 +11345,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .snapshots-compare-picker label > span {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   font-weight: 600;
 }
@@ -11328,13 +11358,13 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-compare-picker__note {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
 .snapshots-detail-section-heading h4 {
   margin: 5px 0 0;
-  font-size: 15px;
+  font-size: var(--text-2xl);
   line-height: 1.12;
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -11362,14 +11392,14 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-page .parameter-diff-group--invalid {
   padding-left: 16px;
   padding-right: 16px;
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
   background: rgba(110, 42, 52, 0.14);
   box-shadow: inset 0 0 0 1px rgba(177, 99, 113, 0.14);
   border-top: none;
 }
 
 .snapshots-page .parameter-diff-group header {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: rgba(var(--ink-rgb), 0.52);
 }
 
@@ -11397,7 +11427,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-page .parameter-follow-up {
   border: none;
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
   background: rgba(var(--edge-rgb), 0.024);
   box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), 0.028);
 }
@@ -11411,7 +11441,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-page .snapshot-restore-ack {
   gap: 12px;
   padding: 15px 16px;
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
   background: rgba(var(--edge-rgb), 0.025);
   box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), 0.028);
   color: rgba(var(--ink-rgb), 0.9);
@@ -11426,7 +11456,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: grid;
   gap: 12px;
   padding: 18px 18px 16px;
-  border-radius: 18px;
+  border-radius: var(--radius-2xl);
   background: rgba(var(--edge-rgb), 0.024);
   box-shadow: inset 0 0 0 1px rgba(var(--edge-rgb), 0.028);
 }
@@ -11434,7 +11464,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-page .desktop-snapshot-workspace {
   padding: 12px 14px;
   border: none;
-  border-radius: 20px;
+  border-radius: var(--radius-2xl);
   background:
     radial-gradient(circle at top right, rgba(115, 141, 181, 0.1), transparent 40%),
     linear-gradient(180deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 1));
@@ -11508,8 +11538,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 .preset-group__header strong {
   display: block;
   margin-bottom: 6px;
-  font-size: 13px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -11560,8 +11590,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 .preset-card__header strong {
   display: block;
   margin-bottom: 6px;
-  font-size: 13px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -11600,8 +11630,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .preset-notes strong {
-  font-size: 13px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text);
 }
@@ -11624,15 +11654,15 @@ details.metadata-settings-section:not([open]) > summary::after {
   justify-content: space-between;
   gap: 10px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 /* The two directional "does not exist" notes list the affected param ids —
    monospace + word-break so a long cross-version list stays readable and never
    overflows the note width. */
 .snapshot-missing-list {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
   word-break: break-word;
   color: var(--text-muted);
 }
@@ -11649,10 +11679,10 @@ details.metadata-settings-section:not([open]) > summary::after {
 .motor-test-card--embedded {
   height: 100%;
   padding: 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border-color: var(--surface-400);
   background:
-    radial-gradient(circle at top right, rgba(255, 187, 0, 0.05), transparent 42%),
+    radial-gradient(circle at top right, rgba(var(--primary-rgb), 0.05), transparent 42%),
     linear-gradient(180deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 1));
 }
 
@@ -11670,9 +11700,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .motor-test-grid span {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   font-family: var(--font-data);
 }
 
@@ -11712,9 +11742,9 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 10px;
   align-items: start;
   padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(226, 18, 63, 0.55);
-  background: linear-gradient(180deg, rgba(226, 18, 63, 0.10), rgba(226, 18, 63, 0.04));
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(var(--danger-rgb), 0.55);
+  background: linear-gradient(180deg, rgba(var(--danger-rgb), 0.10), rgba(var(--danger-rgb), 0.04));
   color: var(--text);
 }
 
@@ -11827,7 +11857,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   border: 1px solid var(--border);
   background: rgba(var(--fill-rgb), 0.94);
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-family: var(--font-data);
 }
 
@@ -11839,7 +11869,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .setup-card h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-2xl);
 }
 
 .setup-card p {
@@ -11870,8 +11900,8 @@ details.metadata-settings-section:not([open]) > summary::after {
   border: 1px solid var(--border);
   background: rgba(var(--fill-rgb), 0.94);
   color: var(--text-muted);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-family: var(--font-data);
 }
@@ -11997,7 +12027,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
+  font-size: var(--text-lg);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -12016,14 +12046,14 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin: 0;
   padding: 4px 12px 6px;
   border: 1px solid var(--border-subtle, rgba(var(--edge-rgb), 0.12));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .parameter-import-exclusions legend {
   padding: 0 4px;
-  font-size: 0.72rem;
+  font-size: var(--text-sm);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   opacity: 0.7;
 }
 
@@ -12031,7 +12061,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.82rem;
+  font-size: var(--text-lg);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -12066,13 +12096,13 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 12px;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 12px;
+  letter-spacing: var(--tracking-label);
+  font-size: var(--text-md);
 }
 
 .parameter-diff-group header strong {
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 /* A group header carrying an action switches to centre alignment — a button
@@ -12087,7 +12117,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   letter-spacing: normal;
   min-width: 0;
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .parameter-diff-item {
@@ -12148,9 +12178,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .parameter-diff-drop {
   justify-self: end;
-  font-size: 11px;
+  font-size: var(--text-sm);
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--surface-400);
   background: transparent;
   color: var(--text-muted);
@@ -12191,14 +12221,14 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin: 12px 0;
   padding: 10px 12px;
   border: 1px solid var(--surface-400);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-200);
 }
 
 .parameter-preset-bulk > small {
   flex: 1 1 220px;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -12231,7 +12261,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 14px;
   padding: 18px;
   border: 1px solid var(--surface-400);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface-100);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
 }
@@ -12250,7 +12280,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .create-preset__header p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-muted);
 }
 
@@ -12258,7 +12288,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .create-preset__field > span {
@@ -12278,7 +12308,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .create-preset__hint {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -12288,7 +12318,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 4px;
   padding: 10px;
   border: 1px solid var(--surface-400);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-200);
 }
 
@@ -12307,12 +12337,12 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .create-preset__question-detail {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-dim);
 }
 
 .create-preset__question-rationale {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -12320,7 +12350,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: inline-flex;
   gap: 8px;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -12335,7 +12365,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   align-items: baseline;
   justify-content: space-between;
   margin-bottom: 6px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -12343,7 +12373,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   max-height: 260px;
   overflow-y: auto;
   border: 1px solid var(--surface-400);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .create-preset__param {
@@ -12352,7 +12382,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 8px;
   align-items: center;
   padding: 6px 10px;
-  font-size: 12px;
+  font-size: var(--text-md);
   border-bottom: 1px solid rgba(var(--edge-rgb), 0.08);
 }
 
@@ -12391,7 +12421,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   align-items: center;
   padding: 10px 12px;
   border: 1px solid var(--surface-400);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-200);
 }
 
@@ -12399,14 +12429,14 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: inline-flex;
   gap: 8px;
   align-items: center;
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-muted);
 }
 
 .preset-serial-remap > small {
   flex: 1 1 240px;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -12425,7 +12455,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: inline-flex;
   gap: 6px;
   align-items: center;
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-muted);
   cursor: pointer;
 }
@@ -12448,11 +12478,11 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin-left: 4px;
   padding: 2px 6px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-panel);
   color: var(--text);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .parameter-diff-edit:focus {
@@ -12502,7 +12532,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 1));
   color: var(--text);
   padding: 5px 10px;
-  font-size: 14px;
+  font-size: var(--text-xl);
 }
 
 /* Matches the 28px control scale so selects sitting inline with
@@ -12540,8 +12570,8 @@ details.metadata-settings-section:not([open]) > summary::after {
   border: 1px solid var(--border);
   background: rgba(var(--fill-rgb), 0.94);
   color: var(--text-muted);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   font-family: var(--font-data);
 }
@@ -12564,7 +12594,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   background: var(--bg-panel-muted);
   cursor: pointer;
   /* Bumped 12 -> 14px for readability (Parameters is text-dense). */
-  font-size: 14px;
+  font-size: var(--text-xl);
 }
 
 /* Click-to-expand affordance on the first cell. */
@@ -12599,7 +12629,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .parameter-row__caret {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .parameter-row--expanded {
   background: var(--bg-panel);
@@ -12626,10 +12656,10 @@ details.metadata-settings-section:not([open]) > summary::after {
   flex-wrap: wrap;
 }
 .parameter-detail__head strong {
-  font-size: 15px;
+  font-size: var(--text-2xl);
 }
 .parameter-detail__alias {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 .parameter-detail__alias code,
@@ -12638,7 +12668,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .parameter-detail__desc {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1.5;
   color: var(--text);
 }
@@ -12654,14 +12684,14 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 6px;
 }
 .parameter-detail__meta dt {
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
 }
 .parameter-detail__meta dd {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-family: var(--font-data);
 }
 .parameter-detail__value-row {
@@ -12676,8 +12706,8 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 3px;
 }
 .parameter-detail__field > span {
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -12690,10 +12720,10 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-row--header {
   background: var(--bg-panel);
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   font-family: var(--font-data);
 }
 
@@ -12769,7 +12799,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .parameter-actions__idle {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .parameter-empty-state {
@@ -13102,7 +13132,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   .bf-toolbar {
     position: static;
     width: 100%;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     border-right: 1px solid var(--surface-400);
     justify-self: stretch;
   }
@@ -13212,7 +13242,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: grid;
   gap: 12px;
   padding: 14px 16px;
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   border: 1px solid var(--border-accent);
   background: linear-gradient(180deg, var(--surface-warm-glow), transparent 60%), var(--bg-panel-raised);
 }
@@ -13224,13 +13254,13 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .landing__connect-copy h2 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text);
 }
 
 .landing__connect-copy p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-muted);
 }
 
@@ -13244,7 +13274,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .landing__field {
   display: grid;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -13254,7 +13284,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .landing__hint {
   margin: 2px 0 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--text-muted);
   overflow-wrap: anywhere;
@@ -13262,21 +13292,21 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .landing__hint code {
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg-panel);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .landing__field select,
 .landing__field input {
   height: 32px;
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-panel);
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .landing__field select:focus,
@@ -13288,11 +13318,11 @@ details.metadata-settings-section:not([open]) > summary::after {
 .landing__connect-button {
   height: 32px;
   padding: 0 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--primary-500);
   background: var(--primary-500);
   color: var(--text-on-light);
-  font-size: 14px;
+  font-size: var(--text-xl);
   font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
@@ -13311,11 +13341,11 @@ details.metadata-settings-section:not([open]) > summary::after {
 .landing__secondary-button {
   height: 32px;
   padding: 0 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border-strong);
   background: var(--bg-panel-soft);
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   cursor: pointer;
 }
@@ -13349,7 +13379,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .dfu-hex-flasher__intro {
   margin: 0 0 12px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1.5;
 }
 .dfu-hex-flasher__activate {
@@ -13360,7 +13390,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .dfu-hex-flasher__help {
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 .dfu-hex-flasher__help summary {
@@ -13388,7 +13418,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   grid-template-columns: 1fr auto;
   gap: 4px 10px;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   opacity: 0.5;
 }
@@ -13413,7 +13443,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   align-items: flex-start;
   gap: 8px;
   margin: 12px 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   cursor: pointer;
 }
@@ -13433,15 +13463,15 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 2px;
 }
 .dfu-hex-flasher__summary dt {
-  font-size: 10px;
-  letter-spacing: 0.05em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
 }
 .dfu-hex-flasher__summary dd {
   margin: 0;
   font-family: var(--font-data);
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 /* Hard-stop refusal banner — promoted from a small <p> because the
@@ -13458,11 +13488,11 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 14px;
   margin: 18px 0 4px;
   padding: 16px 18px;
-  border-radius: 10px;
-  border: 2px solid rgba(226, 18, 63, 0.65);
-  background: rgba(226, 18, 63, 0.14);
+  border-radius: var(--radius-lg);
+  border: 2px solid rgba(var(--danger-rgb), 0.65);
+  background: rgba(var(--danger-rgb), 0.14);
   color: #ffd6e0;
-  box-shadow: 0 0 0 1px rgba(226, 18, 63, 0.25), 0 6px 18px rgba(226, 18, 63, 0.18);
+  box-shadow: 0 0 0 1px rgba(var(--danger-rgb), 0.25), 0 6px 18px rgba(var(--danger-rgb), 0.18);
 }
 
 .firmware-error-banner__badge {
@@ -13472,10 +13502,10 @@ details.metadata-settings-section:not([open]) > summary::after {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(226, 18, 63, 0.85);
+  background: rgba(var(--danger-rgb), 0.85);
   color: #fff;
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--font-title);
   line-height: 1;
 }
 
@@ -13488,14 +13518,14 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .firmware-error-banner__body strong {
-  font-size: 15px;
+  font-size: var(--text-2xl);
   color: #ff97a9;
   letter-spacing: 0.02em;
 }
 
 .firmware-error-banner__body p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-xl);
   line-height: 1.45;
   color: var(--surface-950);
   word-break: break-word;
@@ -13509,12 +13539,12 @@ details.metadata-settings-section:not([open]) > summary::after {
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-left: 3px solid var(--surface-700);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-200);
 }
 
 .firmware-replug-prompt strong {
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--surface-950);
 }
 .firmware-replug-prompt__steps {
@@ -13523,7 +13553,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: 12.5px;
+  font-size: var(--text-lg);
   line-height: 1.4;
 }
 .firmware-replug-prompt__steps code {
@@ -13541,7 +13571,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   appearance: none;
   padding: 5px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface-500);
   color: var(--surface-950);
   font: inherit;
@@ -13580,7 +13610,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 8px;
   padding: 12px 14px;
   border: 1px solid var(--border, #3d3d3d);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   background: var(--bg-panel-soft, rgb(var(--fill-rgb)));
 }
 
@@ -13612,7 +13642,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .firmware-wizard__hint {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted, #b3b3b3);
   line-height: 1.45;
 }
@@ -13625,7 +13655,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin: 8px 0;
   /* Plain inline confirm, not a heavy bordered field-card — it was reading as
      obnoxious for a single safety checkbox. */
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   cursor: pointer;
 }
@@ -13657,13 +13687,13 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .landing__section-header h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-2xl);
   color: var(--text);
 }
 
 .landing__section-header p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-muted);
 }
 
@@ -13680,21 +13710,21 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: grid;
   gap: 6px;
   padding: 16px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--card-outline);
   background: var(--bg-panel-raised);
 }
 
 .landing__capability strong {
   color: var(--text);
-  font-size: 14px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-xl);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .landing__capability span {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--text-lg);
   line-height: 1.55;
 }
 
@@ -13759,7 +13789,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .telemetry-stack--receiver .receiver-summary-card p {
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 /* Modes view: read-only flight-mode slot table with live indicator. */
@@ -13791,8 +13821,8 @@ details.metadata-settings-section:not([open]) > summary::after {
 .modes-status__card span {
   flex: 0 0 auto;
   font-family: var(--font-data);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -13800,14 +13830,14 @@ details.metadata-settings-section:not([open]) > summary::after {
 .modes-status__card strong {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text);
 }
 
 .modes-status__card small {
   flex: 1 0 100%;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.3;
 }
 
@@ -13838,7 +13868,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   list-style: none;
   margin: 0;
   padding: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .logs-onboard-list li {
@@ -13896,7 +13926,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .download-bar__label {
   flex: 0 0 auto;
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -13904,14 +13934,14 @@ details.metadata-settings-section:not([open]) > summary::after {
 .modes-table__row--head {
   background: var(--bg-panel);
   font-family: var(--font-data);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
 }
 
 .modes-table__row span {
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text);
 }
 
@@ -13959,7 +13989,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .modes-help p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
   color: var(--text-muted);
   line-height: 1.5;
 }
@@ -13991,7 +14021,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .telemetry-stack--outputs .outputs-summary-card p {
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 
@@ -14012,15 +14042,15 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .osd-preview-screen__element--draggable:hover {
-  background: rgba(255, 187, 0, 0.12);
-  outline-color: rgba(255, 187, 0, 0.4);
+  background: rgba(var(--primary-rgb), 0.12);
+  outline-color: rgba(var(--primary-rgb), 0.4);
 }
 
 .osd-preview-screen__element--draggable.is-dragging {
   cursor: grabbing;
-  background: rgba(255, 187, 0, 0.22);
+  background: rgba(var(--primary-rgb), 0.22);
   transform: scale(1.05);
-  outline-color: rgba(255, 187, 0, 0.85);
+  outline-color: rgba(var(--primary-rgb), 0.85);
   z-index: 2;
 }
 
@@ -14043,9 +14073,9 @@ details.metadata-settings-section:not([open]) > summary::after {
   left: 0;
   padding: 2px 4px;
   border-radius: 3px;
-  background: rgba(255, 187, 0, 0.92);
+  background: rgba(var(--primary-rgb), 0.92);
   color: #10130a;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   line-height: 1;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
@@ -14078,14 +14108,14 @@ details.metadata-settings-section:not([open]) > summary::after {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .servo-mapping__table thead th {
   text-align: left;
   padding: 8px 10px;
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
   border-bottom: 1px solid var(--surface-400);
@@ -14118,13 +14148,13 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .servo-mapping__channel strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .servo-mapping__channel small {
   display: block;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   margin-top: 2px;
 }
 
@@ -14155,7 +14185,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 14px;
   margin-right: auto;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .servo-mapping__pwm {
@@ -14199,7 +14229,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   align-items: center;
   gap: 6px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -14209,16 +14239,16 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .servo-mapping__missing {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .failsafe-placeholder {
   display: grid;
   gap: 8px;
   padding: var(--card-padding, 12px);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   border: 1px dashed var(--surface-500);
-  background: rgba(255, 187, 0, 0.04);
+  background: rgba(var(--primary-rgb), 0.04);
 }
 
 .failsafe-placeholder__header {
@@ -14230,7 +14260,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .failsafe-placeholder__header strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-lg);
   margin-bottom: 4px;
 }
 
@@ -14244,7 +14274,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .failsafe-placeholder__note {
   margin: 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.5;
 }
 
@@ -14287,8 +14317,8 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 6px;
   cursor: pointer;
   list-style: none;
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
   padding: 2px 0;
@@ -14298,7 +14328,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .config-section__advanced > summary::before {
   content: '▸';
-  font-size: 9px;
+  font-size: var(--text-2xs);
   transition: transform 0.15s ease;
 }
 .config-section__advanced[open] > summary::before {
@@ -14311,7 +14341,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-radius: 999px;
   background: rgba(var(--edge-rgb), 0.12);
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 15px;
   text-align: center;
   letter-spacing: 0;
@@ -14324,7 +14354,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: grid;
   gap: var(--space-2, 8px);
   padding: var(--card-padding, 12px);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
   background: var(--surface-200);
   /* Multicolumn item: keep a card whole and space it from the next one. */
@@ -14354,14 +14384,14 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .config-section__header strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-lg);
   margin-bottom: 4px;
 }
 
 .config-section__header p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 
@@ -14377,7 +14407,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 8px;
   padding: 4px 0;
   border-bottom: 1px solid var(--surface-300);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .config-section__value-row:last-child {
@@ -14394,7 +14424,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .config-section__value-row dt small {
   color: var(--text-muted);
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .config-section__value-row dd {
@@ -14406,13 +14436,13 @@ details.metadata-settings-section:not([open]) > summary::after {
 .config-section__empty {
   margin: 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .config-grid__footnote {
   margin: var(--space-3, 12px) 0 0;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.5;
 }
 
@@ -14439,9 +14469,9 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-muted);
 }
 .osd-shorthand__row {
@@ -14452,7 +14482,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .osd-shorthand__row input {
   min-width: 0;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-data);
 }
 
 /* Searchable message combobox for the "from" field. */
@@ -14475,7 +14505,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   max-height: 260px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   background: var(--surface, #141c28);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
@@ -14485,9 +14515,9 @@ details.metadata-settings-section:not([open]) > summary::after {
   justify-content: space-between;
   gap: 10px;
   padding: 5px 8px;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .osd-combobox__option:hover,
 .osd-combobox__option[aria-selected='true'] {
@@ -14501,9 +14531,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .osd-combobox__from {
   flex: 0 0 auto;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  font-family: var(--font-data);
   color: var(--accent, #dab254);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .osd-shorthand__actions {
   display: flex;
@@ -14519,9 +14549,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 .osd-backend-strip .bf-gui-box__titlebar small {
   /* Dark, slightly subordinate to the strong title but legible on the yellow pill. */
   color: rgba(11, 17, 24, 0.7);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-family: var(--font-data);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -14547,7 +14577,7 @@ details.bf-gui-box:not([open]) {
 details.bf-gui-box[open] > summary::after,
 details.bf-gui-box:not([open]) > summary::after {
   margin-left: 6px;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   color: #000;
 }
 
@@ -14592,9 +14622,9 @@ details.bf-gui-box:not([open]) > summary::after {
 .osd-bf-preview .bf-gui-box__titlebar small {
   /* Dark, slightly subordinate to the strong title but legible on the yellow pill. */
   color: rgba(11, 17, 24, 0.7);
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-family: var(--font-data);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -14645,7 +14675,7 @@ details.bf-gui-box:not([open]) > summary::after {
   border: 1px solid var(--surface-400);
   background: transparent;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-style: italic;
   line-height: 1;
   cursor: help;
@@ -14668,11 +14698,11 @@ details.bf-gui-box:not([open]) > summary::after {
      run past the left edge of the screen and clip its own text. */
   max-width: min(260px, calc(100vw - 32px));
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--surface-400);
   background: var(--bg-panel, rgb(var(--fill-rgb)));
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-style: normal;
   line-height: 1.4;
   white-space: normal;
@@ -14712,7 +14742,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .config-section__info-param {
   display: block;
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 700;
   letter-spacing: 0.06em;
   color: var(--text);
@@ -14729,7 +14759,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: inline-block;
   margin-top: 6px;
   color: var(--accent-strong, var(--accent));
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-decoration: underline;
 }
 
@@ -14738,15 +14768,15 @@ details.bf-gui-box:not([open]) > summary::after {
   grid-template-columns: 1fr auto;
   gap: 4px;
   padding: 6px 8px;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--radius-sm);
   border: 1px dashed var(--surface-400);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .config-section__missing-row small {
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   grid-column: 1 / -1;
   margin-top: 2px;
 }
@@ -14782,7 +14812,7 @@ details.bf-gui-box:not([open]) > summary::after {
   gap: 14px;
   margin-right: auto;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .firmware-wizard__quick-actions {
@@ -14833,18 +14863,18 @@ details.bf-gui-box:not([open]) > summary::after {
    as dangerous; theme-safe via the danger token. */
 .files-sanitize-button {
   padding: 5px 12px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--danger, #e2123f) 55%, transparent);
-  background: color-mix(in srgb, var(--danger, #e2123f) 16%, transparent);
-  color: var(--danger, #e2123f);
-  font-size: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--danger, var(--danger)) 55%, transparent);
+  background: color-mix(in srgb, var(--danger, var(--danger)) 16%, transparent);
+  color: var(--danger, var(--danger));
+  font-size: var(--text-md);
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
 }
 
 .files-sanitize-button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--danger, #e2123f) 28%, transparent);
+  background: color-mix(in srgb, var(--danger, var(--danger)) 28%, transparent);
 }
 
 .files-sanitize-button:disabled {
@@ -14857,28 +14887,28 @@ details.bf-gui-box:not([open]) > summary::after {
 .files-error {
   margin: 0 0 10px;
   padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--danger, #e2123f) 45%, transparent);
-  background: color-mix(in srgb, var(--danger, #e2123f) 12%, transparent);
-  color: var(--danger, #e2123f);
-  font-size: 13px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--danger, var(--danger)) 45%, transparent);
+  background: color-mix(in srgb, var(--danger, var(--danger)) 12%, transparent);
+  color: var(--danger, var(--danger));
+  font-size: var(--text-lg);
 }
 
 .files-quick-path {
   padding: 6px 12px;
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
   background: var(--surface-200);
   color: var(--text-muted);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
 .files-quick-path.is-active {
   border-color: var(--primary-400);
   color: var(--text);
-  background: rgba(255, 187, 0, 0.12);
+  background: rgba(var(--primary-rgb), 0.12);
 }
 
 .files-quick-path:disabled {
@@ -14895,14 +14925,14 @@ details.bf-gui-box:not([open]) > summary::after {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .files-path__label {
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: 10px;
+  letter-spacing: var(--tracking-label);
+  font-size: var(--text-xs);
 }
 
 .files-path code {
@@ -14921,7 +14951,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .files-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .files-table th,
@@ -14946,7 +14976,7 @@ details.bf-gui-box:not([open]) > summary::after {
   border: none;
   color: var(--primary-400);
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   cursor: pointer;
   padding: 0;
 }
@@ -14984,14 +15014,14 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .vehicle-output-summary__header strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-lg);
   margin-bottom: 4px;
 }
 
 .vehicle-output-summary__header p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.45;
 }
 
@@ -15001,9 +15031,9 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 
 .vehicle-output-group__header {
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-muted);
   padding-bottom: 2px;
   border-bottom: 1px solid var(--surface-300);
@@ -15020,10 +15050,10 @@ details.bf-gui-box:not([open]) > summary::after {
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
   background: var(--surface-200);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .vehicle-output-row strong {
@@ -15042,7 +15072,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .app-header__build {
   display: block;
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1.3;
   color: var(--text-muted);
   font-family: var(--font-data);
@@ -15058,12 +15088,12 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .app-header__build--muted {
   color: var(--text-dim);
-  font-size: 9px;
+  font-size: var(--text-2xs);
 }
 
 .firmware-wizard__dfu-button--danger {
-  border-color: var(--danger, #e2123f);
-  color: var(--danger, #e2123f);
+  border-color: var(--danger, var(--danger));
+  color: var(--danger, var(--danger));
 }
 
 .firmware-wizard__dfu-confirm {
@@ -15080,9 +15110,9 @@ details.bf-gui-box:not([open]) > summary::after {
   margin: 10px 0 0;
   padding: 10px 12px;
   border: 1px solid var(--border, #2a2f36);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--panel, #14171c) 60%, transparent);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .bootloader-identity__headline {
@@ -15123,7 +15153,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .bootloader-identity__row dd code {
   overflow-wrap: anywhere;
-  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--font-data);
 }
 
 .bootloader-identity__size,
@@ -15137,7 +15167,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .bootloader-identity__method {
   margin: 6px 0 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .bootloader-identity__method code { overflow-wrap: anywhere; }
@@ -15171,7 +15201,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .parameter-reference__lede {
   margin: 0 0 4px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .parameter-reference__row {
@@ -15200,12 +15230,12 @@ details.bf-gui-box:not([open]) > summary::after {
 .parameter-reference__unit {
   color: var(--text-muted);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .parameter-reference__row p {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -15217,14 +15247,14 @@ details.bf-gui-box:not([open]) > summary::after {
   padding: 0;
   list-style: none;
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .parameter-reference__more {
   margin: 0;
   color: var(--warning, #e0a33a);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 /* Battery-current calibration, as three numbered steps.
@@ -15260,15 +15290,15 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 
 .guided-current-cal__step-title strong {
-  font-size: 12px;
-  letter-spacing: 0.05em;
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 /* Hints earn their space while a step is in play and lose it afterwards. */
 .guided-current-cal__step .hint {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -15281,7 +15311,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 
 .guided-current-cal__step .scoped-editor-field span {
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 /* Load length and throttle are two small numbers set together, so they sit on
@@ -15301,14 +15331,14 @@ details.bf-gui-box:not([open]) > summary::after {
   border: 1px solid rgba(var(--warning-rgb, 224, 163, 58), 0.35);
   color: var(--warning, #e0a33a);
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .guided-current-cal__captured {
   margin: 0;
   color: var(--text-muted);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 /* Why an identical bootloader cannot be forced from here. Sits between the
@@ -15316,7 +15346,7 @@ details.bf-gui-box:not([open]) > summary::after {
    nothing has gone wrong, the firmware simply will not rewrite what matches. */
 .bootloader-identity__forced {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--warning, #e0a33a);
 }
 
@@ -15332,13 +15362,13 @@ details.bf-gui-box:not([open]) > summary::after {
   justify-content: space-between;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-200);
 }
 .presets-share__copy { min-width: 0; flex: 1 1 280px; }
 .presets-share__copy p {
   margin: 4px 0 0 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--text-dim);
 }
@@ -15350,25 +15380,25 @@ details.bf-gui-box:not([open]) > summary::after {
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border: 1px solid var(--danger, #e2123f);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--danger, #e2123f) 8%, transparent);
+  border: 1px solid var(--danger, var(--danger));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--danger, var(--danger)) 8%, transparent);
 }
 
 .presets-erase__copy { min-width: 0; flex: 1 1 280px; }
-.presets-erase__copy strong { color: var(--danger, #e2123f); }
+.presets-erase__copy strong { color: var(--danger, var(--danger)); }
 
 .presets-erase__danger-btn {
-  border-color: var(--danger, #e2123f);
-  color: var(--danger, #e2123f);
+  border-color: var(--danger, var(--danger));
+  color: var(--danger, var(--danger));
   font-weight: 600;
 }
 
 .motor-test-acknowledgments__usb {
-  border-top: 1px dashed var(--danger, #e2123f);
+  border-top: 1px dashed var(--danger, var(--danger));
   padding-top: 6px;
   margin-top: 2px;
-  color: var(--danger, #e2123f);
+  color: var(--danger, var(--danger));
 }
 
 .rc-range-axis-card__bar {
@@ -15384,7 +15414,7 @@ details.bf-gui-box:not([open]) > summary::after {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: var(--primary-transparent-3, rgba(255, 187, 0, 0.3));
+  background: var(--primary-transparent-3, rgba(var(--primary-rgb), 0.3));
 }
 
 .rc-range-axis-card__marker {
@@ -15394,18 +15424,18 @@ details.bf-gui-box:not([open]) > summary::after {
   height: 12px;
   margin-left: -1.5px;
   border-radius: 2px;
-  background: var(--primary-500, #ffbb00);
+  background: var(--primary-500, var(--primary-500));
 }
 
 .osd-preview-footer__layout {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 .osd-preview-footer__layout select {
-  font-size: 11px;
+  font-size: var(--text-sm);
   padding: 2px 6px;
 }
 
@@ -15422,7 +15452,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .esc-dshot-footer__warning {
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--warning, #ef9b4b);
   background: var(--warning-weak, rgba(255, 102, 0, 0.12));
   color: var(--warning, #ef9b4b);
@@ -15436,19 +15466,19 @@ details.bf-gui-box:not([open]) > summary::after {
   margin-bottom: 8px;
 }
 .osd-preview-screen-select > span {
-  font-size: 11px;
+  font-size: var(--text-sm);
   letter-spacing: 0.03em;
   /* Sits inside the yellow preview titlebar pill — keep it dark, not muted-light. */
   color: rgba(11, 17, 24, 0.7);
 }
 .osd-preview-screen-select select {
   padding: 5px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
   background: var(--surface-200);
   color: var(--text);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -15471,7 +15501,7 @@ details.bf-gui-box:not([open]) > summary::after {
   align-items: center;
   column-gap: 4px;
   padding: 2px 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 .osd-matrix__row--head {
   background: var(--surface-100);
@@ -15489,7 +15519,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .osd-matrix__label--clickable {
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 .osd-matrix__label--clickable:hover {
   background: var(--surface-200);
@@ -15500,7 +15530,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .osd-matrix__col {
   text-align: center;
-  font-size: 10px;
+  font-size: var(--text-xs);
   letter-spacing: 0.03em;
   color: var(--text-muted);
   font-family: var(--font-data);
@@ -15514,8 +15544,8 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .osd-matrix__col-toggle {
   font: inherit;
-  font-size: 9px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-2xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   padding: 1px 6px;
   border-radius: 3px;
@@ -15533,24 +15563,24 @@ details.bf-gui-box:not([open]) > summary::after {
   background: rgba(111, 207, 111, 0.12);
 }
 .osd-matrix__col-toggle--off {
-  color: var(--accent, #ffbb00);
-  background: rgba(255, 187, 0, 0.14);
+  color: var(--accent, var(--primary-500));
+  background: rgba(var(--primary-rgb), 0.14);
 }
 .osd-matrix__col-status--na {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   color: var(--text-dim);
   font-style: italic;
 }
 .osd-matrix__row--head .osd-matrix__label {
-  font-size: 10px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
 }
 .osd-matrix__col.is-preview {
   color: var(--text);
-  background: rgba(255, 187, 0, 0.14);
-  border-radius: 4px;
+  background: rgba(var(--primary-rgb), 0.14);
+  border-radius: var(--radius-sm);
   padding: 2px 0;
 }
 .osd-matrix__label {
@@ -15559,7 +15589,7 @@ details.bf-gui-box:not([open]) > summary::after {
   min-width: 0;
 }
 .osd-matrix__label strong {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -15567,7 +15597,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .osd-matrix__label small {
   font-family: var(--font-data);
-  font-size: 9px;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 .osd-matrix__cell {
@@ -15581,28 +15611,28 @@ details.bf-gui-box:not([open]) > summary::after {
   margin: 0;
 }
 .osd-matrix__cell.is-preview {
-  background: rgba(255, 187, 0, 0.08);
-  border-radius: 4px;
+  background: rgba(var(--primary-rgb), 0.08);
+  border-radius: var(--radius-sm);
 }
 .osd-matrix__cell--na {
   color: var(--surface-500);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .osd-matrix__cell--staged {
   box-shadow: inset 0 0 0 1px var(--primary-400);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 .osd-matrix__cell--invalid {
   box-shadow: inset 0 0 0 1px var(--danger);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 .osd-matrix__group {
   display: grid;
   gap: 1px;
 }
 .osd-matrix__group-header {
-  font-size: 10px;
-  letter-spacing: 0.05em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
   padding: 8px 6px 2px;
@@ -15613,7 +15643,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: inline-flex;
   gap: 6px;
   padding-left: 8px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   white-space: nowrap;
 }
@@ -15624,7 +15654,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .osd-matrix__align input {
   width: 40px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   padding: 1px 4px;
 }
 
@@ -15636,7 +15666,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .receiver-stick-craft small {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .calibration-grid {
@@ -15650,7 +15680,7 @@ details.bf-gui-box:not([open]) > summary::after {
   gap: 8px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface-200);
 }
 .calibration-card__header {
@@ -15660,7 +15690,7 @@ details.bf-gui-box:not([open]) > summary::after {
   gap: 8px;
 }
 .calibration-card__blocked {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--warning, #e8a803);
 }
 /* Live ESC RPM beside the motor-test sliders. */
@@ -15668,9 +15698,9 @@ details.bf-gui-box:not([open]) > summary::after {
   margin-top: 10px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface-200);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .esc-rpm-readout__header {
   display: flex;
@@ -15680,7 +15710,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .esc-rpm-readout__summary {
   margin: 4px 0 0 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--text-dim);
 }
@@ -15697,9 +15727,9 @@ details.bf-gui-box:not([open]) > summary::after {
   border-bottom: 1px solid var(--border);
 }
 .esc-rpm-readout__table thead th {
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-dim);
 }
 .esc-rpm-readout__table tbody th {
@@ -15722,7 +15752,7 @@ details.bf-gui-box:not([open]) > summary::after {
  * disclosure treatment as the calibration how-tos — hint copy, not a callout. */
 .motor-pole-reference {
   margin-top: 2px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-dim);
 }
 .motor-pole-reference > summary {
@@ -15737,7 +15767,7 @@ details.bf-gui-box:not([open]) > summary::after {
   content: '▸';
   display: inline-block;
   margin-right: 4px;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   transition: transform 0.1s ease-out;
 }
 .motor-pole-reference[open] > summary::before {
@@ -15758,9 +15788,9 @@ details.bf-gui-box:not([open]) > summary::after {
   margin-top: 2px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-100, var(--surface-200));
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.45;
 }
 .calibration-card__reboot.is-required {
@@ -15776,7 +15806,7 @@ details.bf-gui-box:not([open]) > summary::after {
   gap: 8px;
 }
 .calibration-card__reboot-note {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-dim);
 }
 /* Inline, low-key collapsible how-to inside each calibration card. Single
@@ -15784,12 +15814,12 @@ details.bf-gui-box:not([open]) > summary::after {
  * no all-caps shouting summary — it's hint copy, not a callout. */
 .calibration-card__howto {
   margin-top: 2px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-dim);
 }
 .calibration-card__howto > summary {
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-dim);
   list-style: none;
   opacity: 0.75;
@@ -15801,7 +15831,7 @@ details.bf-gui-box:not([open]) > summary::after {
   content: '▸';
   display: inline-block;
   margin-right: 4px;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   transition: transform 0.1s ease-out;
 }
 .calibration-card__howto[open] > summary::before {
@@ -15811,7 +15841,7 @@ details.bf-gui-box:not([open]) > summary::after {
   margin: 6px 0 0 0;
   padding-left: 18px;
   line-height: 1.4;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-dim);
 }
 .calibration-card__howto ol li + li {
@@ -15819,7 +15849,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .calibration-card__howto code {
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   /* Theme-safe tint + readable text. --surface-800 is a light mid-tone in dark
      mode (#7f8aa0), so with the inherited light step text the code read as a
      washed-out solid block ("redacted"). Match the config-pills treatment. */
@@ -15854,7 +15884,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .calibration-card__advanced > summary {
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-dim);
   list-style: none;
   opacity: 0.75;
@@ -15866,7 +15896,7 @@ details.bf-gui-box:not([open]) > summary::after {
   content: '▸';
   display: inline-block;
   margin-right: 4px;
-  font-size: 9px;
+  font-size: var(--text-2xs);
   transition: transform 0.1s ease-out;
 }
 .calibration-card__advanced[open] > summary::before {
@@ -15875,7 +15905,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .app-header__connection-hint {
   display: block;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   max-width: 280px;
   line-height: 1.3;
@@ -15885,7 +15915,7 @@ details.bf-gui-box:not([open]) > summary::after {
   margin-top: 12px;
   padding: 12px 14px;
   border: 1px solid var(--surface-400);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface-200);
 }
 .motor-reverse-grid {
@@ -15899,10 +15929,10 @@ details.bf-gui-box:not([open]) > summary::after {
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
   background: rgba(var(--edge-rgb), 0.025);
-  font-size: 12px;
+  font-size: var(--text-md);
   cursor: pointer;
 }
 .motor-reverse-toggle:has(input:checked) {
@@ -15915,9 +15945,9 @@ details.bf-gui-box:not([open]) > summary::after {
   gap: 10px;
   margin-top: 10px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .motor-reverse-esctype span {
   color: var(--text-muted);
@@ -15933,14 +15963,14 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 
 .calibration-card--danger {
-  border-color: var(--danger, #e2123f);
+  border-color: var(--danger, var(--danger));
 }
 
 .firmware-wizard__browse {
   margin-top: 10px;
   padding: 10px 12px;
   border: 1px solid var(--surface-400);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: rgba(var(--edge-rgb), 0.025);
   display: grid;
   gap: 8px;
@@ -15950,7 +15980,7 @@ details.bf-gui-box:not([open]) > summary::after {
   gap: 2px;
 }
 .firmware-wizard__browse-header span {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 .firmware-wizard__browse-controls {
@@ -15974,13 +16004,13 @@ details.bf-gui-box:not([open]) > summary::after {
   justify-content: space-between;
   gap: 10px;
   padding: 6px 8px;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: rgba(var(--edge-rgb), 0.03);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .firmware-wizard__browse-error {
-  color: var(--danger, #e2123f);
-  font-size: 12px;
+  color: var(--danger, var(--danger));
+  font-size: var(--text-md);
   margin: 0;
 }
 
@@ -16073,10 +16103,10 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .cal-location__info {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 10px 12px;
   background: var(--surface-100);
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .cal-location__info p {
@@ -16089,7 +16119,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .cal-location__hint {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -16102,7 +16132,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .cal-location__notice {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 
 .cal-location__notice--success {
@@ -16146,7 +16176,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .cal-location__modal-header p {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -16171,9 +16201,9 @@ details.bf-gui-box:not([open]) > summary::after {
   background: var(--surface-100, rgba(var(--edge-rgb), 0.02));
 }
 .mavlink-inspector__request-title {
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-muted);
   align-self: center;
 }
@@ -16188,15 +16218,15 @@ details.bf-gui-box:not([open]) > summary::after {
   background: var(--surface-100, rgba(var(--edge-rgb), 0.02));
 }
 .mavlink-inspector__export-title {
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-muted);
 }
 .mavlink-inspector__record-meta {
   margin-left: auto;
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 .mavlink-inspector__plot-actions {
@@ -16213,7 +16243,7 @@ details.bf-gui-box:not([open]) > summary::after {
   flex-basis: 100%;
   margin: 2px 0 0;
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 .mavlink-inspector__table {
@@ -16255,7 +16285,7 @@ details.bf-gui-box:not([open]) > summary::after {
   opacity: 0.55;
   font-size: 0.78em;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
 }
 /* Outbound data rows are expandable buttons — reset button chrome so they read
    as rows (matching the inbound .mavlink-inspector__row treatment). */
@@ -16266,7 +16296,7 @@ button.mavlink-inspector__sent-row {
   border: none;
   color: var(--text);
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   cursor: pointer;
 }
 .mavlink-inspector__row {
@@ -16278,7 +16308,7 @@ button.mavlink-inspector__sent-row {
   text-align: left;
   padding: 6px 12px;
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   background: transparent;
   border: none;
   color: var(--text);
@@ -16298,27 +16328,27 @@ button.mavlink-inspector__sent-row {
 }
 .mavlink-inspector__source-label {
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
-  color: var(--accent, #ffbb00);
+  color: var(--accent, var(--primary-500));
   letter-spacing: 0.02em;
 }
 .mavlink-inspector__source-meta {
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 .mavlink-inspector__source-health {
   margin-left: auto;
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   letter-spacing: 0.02em;
 }
 .mavlink-inspector__source-health--ok {
   color: var(--success, #3ddc84);
 }
 .mavlink-inspector__source-health--warn {
-  color: var(--warning, #ffbb00);
+  color: var(--warning, var(--primary-500));
 }
 .mavlink-inspector__last {
   display: inline-flex;
@@ -16326,16 +16356,16 @@ button.mavlink-inspector__sent-row {
   gap: 6px;
 }
 .mavlink-inspector__tone {
-  font-size: 9px;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   padding: 1px 5px;
   border-radius: 999px;
   line-height: 1.4;
 }
 .mavlink-inspector__tone--slow {
-  color: var(--warning, #ffbb00);
-  background: rgba(255, 187, 0, 0.15);
+  color: var(--warning, var(--primary-500));
+  background: rgba(var(--primary-rgb), 0.15);
 }
 .mavlink-inspector__tone--stale {
   color: var(--danger, #ff5a5a);
@@ -16346,9 +16376,9 @@ button.mavlink-inspector__sent-row {
 }
 .mavlink-inspector__row--head {
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   cursor: default;
   background: var(--surface-200);
 }
@@ -16356,12 +16386,12 @@ button.mavlink-inspector__sent-row {
   border-top: 1px solid var(--surface-300);
 }
 .mavlink-inspector__type {
-  color: var(--accent, #ffbb00);
+  color: var(--accent, var(--primary-500));
 }
 .mavlink-inspector__spark {
   width: 64px;
   height: 16px;
-  color: var(--accent, #ffbb00);
+  color: var(--accent, var(--primary-500));
   opacity: 0.85;
 }
 .mavlink-inspector__spark--empty {
@@ -16376,9 +16406,9 @@ button.mavlink-inspector__sent-row {
   justify-content: space-between;
   gap: 10px;
   padding: 6px 12px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-muted);
 }
 .mavlink-inspector__fields {
@@ -16386,7 +16416,7 @@ button.mavlink-inspector__sent-row {
   padding: 8px 12px;
   background: rgba(0, 0, 0, 0.35);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   word-break: break-word;
   max-height: 280px;
@@ -16401,13 +16431,13 @@ button.mavlink-inspector__sent-row {
   gap: 10px;
   align-items: center;
   padding: 2px 0;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
 }
 .mavlink-inspector__field-row--head {
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
 }
 .mavlink-inspector__field-name {
   color: var(--text-muted);
@@ -16429,10 +16459,10 @@ button.mavlink-inspector__sent-row {
 .mavlink-inspector__field-graph {
   background: transparent;
   border: 1px solid var(--surface-300);
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   padding: 1px 6px;
   cursor: pointer;
   opacity: 0;
@@ -16446,8 +16476,8 @@ button.mavlink-inspector__sent-row {
 }
 .mavlink-inspector__field-graph[aria-pressed='true'] {
   opacity: 1;
-  border-color: var(--accent, #ffbb00);
-  color: var(--accent, #ffbb00);
+  border-color: var(--accent, var(--primary-500));
+  color: var(--accent, var(--primary-500));
 }
 .mavlink-inspector__plots {
   display: grid;
@@ -16469,14 +16499,14 @@ button.mavlink-inspector__sent-row {
 }
 .mavlink-inspector__plot-title {
   font-family: var(--font-data);
-  font-size: 11px;
-  color: var(--accent, #ffbb00);
+  font-size: var(--text-sm);
+  color: var(--accent, var(--primary-500));
   word-break: break-word;
 }
 .mavlink-inspector__plot-svg {
   width: 100%;
   height: 60px;
-  color: var(--accent, #ffbb00);
+  color: var(--accent, var(--primary-500));
   display: block;
 }
 .mavlink-inspector__plot-meta {
@@ -16485,12 +16515,12 @@ button.mavlink-inspector__sent-row {
   gap: 10px;
   margin-top: 4px;
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 @keyframes mavlink-field-flash {
   from {
-    background: var(--accent, #ffbb00);
+    background: var(--accent, var(--primary-500));
     color: #000;
   }
   to {
@@ -16504,7 +16534,7 @@ button.mavlink-inspector__sent-row {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 .dronecan-inspector__row {
@@ -16514,14 +16544,14 @@ button.mavlink-inspector__sent-row {
   align-items: center;
   padding: 6px 12px;
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   border-top: 1px solid var(--surface-300);
 }
 .dronecan-inspector__row--head {
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   background: var(--surface-200);
   border-top: none;
 }
@@ -16546,7 +16576,7 @@ button.mavlink-inspector__sent-row {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   margin-bottom: 6px;
 }
@@ -16569,7 +16599,7 @@ button.mavlink-inspector__sent-row {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--surface-300);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 .dronecan-inspector__param-row {
@@ -16579,7 +16609,7 @@ button.mavlink-inspector__sent-row {
   align-items: center;
   padding: 5px 10px;
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   border-top: 1px solid var(--surface-300);
   margin: 0;
 }
@@ -16588,9 +16618,9 @@ button.mavlink-inspector__sent-row {
 }
 .dronecan-inspector__param-row--head {
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   background: var(--surface-200);
 }
 .dronecan-inspector__param-row.is-dirty {
@@ -16599,7 +16629,7 @@ button.mavlink-inspector__sent-row {
 .dronecan-inspector__param-row input {
   width: 100%;
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .dronecan-inspector__param-range {
   color: var(--text-muted);
@@ -16618,13 +16648,13 @@ button.mavlink-inspector__sent-row {
   margin-top: 8px;
   padding: 8px 10px;
   border: 1px solid var(--surface-300);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface-100);
 }
 .dronecan-inspector__staged-list {
   margin: 0 0 8px;
   padding-left: 18px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .dronecan-inspector__staged-actions,
 .dronecan-inspector__node-actions {
@@ -16637,7 +16667,7 @@ button.mavlink-inspector__sent-row {
   margin-top: 12px;
 }
 .dronecan-inspector__confirm-text {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 .dronecan-inspector__fwupdate {
@@ -16647,7 +16677,7 @@ button.mavlink-inspector__sent-row {
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--surface-300);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-100);
 }
 .dronecan-inspector__fwupdate-head {
@@ -16655,25 +16685,25 @@ button.mavlink-inspector__sent-row {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-weight: 600;
 }
 .dronecan-inspector__fwupdate-file {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 .dronecan-inspector__fwupdate-selected {
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .dronecan-inspector__fwupdate-online {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .dronecan-inspector__fwupdate-online-id {
   font-family: var(--font-data);
@@ -16697,10 +16727,10 @@ button.mavlink-inspector__sent-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.4;
   padding: 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
 }
@@ -16709,7 +16739,7 @@ button.mavlink-inspector__sent-row {
 }
 .dronecan-inspector__fwupdate-bar {
   height: 10px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--surface-300);
   overflow: hidden;
 }
@@ -16726,12 +16756,12 @@ button.mavlink-inspector__sent-row {
 }
 .dronecan-inspector__fwupdate-bytes {
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   margin: 0;
 }
 .dronecan-inspector__fwupdate-note {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--text-muted);
   margin: 0;
 }
@@ -16746,7 +16776,7 @@ button.mavlink-inspector__sent-row {
   color: var(--warning);
 }
 .dronecan-inspector__fwupdate-error {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--danger);
   margin: 0;
 }
@@ -16765,14 +16795,14 @@ button.mavlink-inspector__sent-row {
   align-items: center;
   padding: 6px 12px;
   font-family: var(--font-data);
-  font-size: 12px;
+  font-size: var(--text-md);
   border-top: 1px solid var(--surface-300);
 }
 .dronecan-inspector__esc-row--head {
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   background: var(--surface-200);
   border-top: none;
 }
@@ -16846,7 +16876,7 @@ button.mavlink-inspector__sent-row {
 
 .lua-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   padding: 10px 12px;
   background: var(--surface-100, transparent);
 }
@@ -16880,7 +16910,7 @@ button.mavlink-inspector__sent-row {
   color: var(--text-muted);
   font-size: 0.72em;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -17044,7 +17074,7 @@ button.mavlink-inspector__sent-row {
   margin: auto 0;
 }
 .ai-assistant__turn {
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   padding: 10px 12px;
   max-width: 90%;
   line-height: 1.55;
@@ -17071,7 +17101,7 @@ button.mavlink-inspector__sent-row {
   margin-top: 8px;
 }
 .ai-assistant__tool-chip {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-data);
   font-size: 0.75em;
   padding: 2px 7px;
   border-radius: 999px;
@@ -17109,7 +17139,7 @@ button.mavlink-inspector__sent-row {
    for invalid rows and the applied/error result. */
 .ai-assistant__proposal {
   border: 1px solid var(--border-strong, var(--border));
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   padding: 12px;
   background: var(--bg-panel-raised);
   display: flex;
@@ -17133,7 +17163,7 @@ button.mavlink-inspector__sent-row {
 }
 .ai-assistant__proposal-row {
   border: 1px solid var(--border-subtle, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 8px 10px;
   background: var(--bg-panel-soft);
 }
@@ -17148,7 +17178,7 @@ button.mavlink-inspector__sent-row {
   gap: 8px;
 }
 .ai-assistant__proposal-row-head code {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-data);
   font-size: 0.85em;
 }
 .ai-assistant__proposal-change {
@@ -17261,9 +17291,9 @@ button.mavlink-inspector__sent-row {
   border: 1px solid rgba(var(--edge-rgb), 0.05);
 }
 .log-tuning__metrics span {
-  font-size: 0.72rem;
+  font-size: var(--text-sm);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-dim);
 }
 .log-tuning__peaks ul {
@@ -17351,7 +17381,7 @@ button.mavlink-inspector__sent-row {
   width: 100%;
   height: 40px;
   display: block;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--radius-sm);
   background: var(--bg-panel-muted);
   border: 1px solid rgba(var(--edge-rgb), 0.05);
 }
@@ -17403,7 +17433,7 @@ button.mavlink-inspector__sent-row {
 }
 
 .workspace-note--stale__headline strong {
-  font-size: 15px;
+  font-size: var(--text-2xl);
   letter-spacing: 0.01em;
 }
 
@@ -17435,7 +17465,7 @@ button.mavlink-inspector__sent-row {
 /* Tool/technique hint inside a calibration card — reads as guidance rather than
    as the procedure itself, so it doesn't compete with the actual steps. */
 .calibration-card__tip {
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.5;
   color: rgba(var(--ink-rgb), 0.72);
   border-left: 2px solid rgba(var(--edge-rgb), 0.18);
@@ -17473,7 +17503,7 @@ button.mavlink-inspector__sent-row {
   gap: 12px;
   align-items: center;
   padding: 6px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: rgba(var(--edge-rgb), 0.02);
 }
 
@@ -17489,7 +17519,7 @@ button.mavlink-inspector__sent-row {
 
 .receiver-functions-row__channel small {
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -17510,7 +17540,7 @@ button.mavlink-inspector__sent-row {
   justify-content: space-between;
   padding: 12px 14px;
   margin-bottom: 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid color-mix(in srgb, var(--warning) 55%, transparent);
   background: color-mix(in srgb, var(--warning) 10%, transparent);
 }
@@ -17544,8 +17574,8 @@ button.mavlink-inspector__sent-row {
 }
 
 .reset-defaults-button--danger {
-  border-color: var(--danger, #e2123f);
-  color: var(--danger, #e2123f);
+  border-color: var(--danger, var(--danger));
+  color: var(--danger, var(--danger));
 }
 
 .reset-defaults-confirm {
@@ -17556,8 +17586,8 @@ button.mavlink-inspector__sent-row {
 }
 
 .reset-defaults-confirm__warning {
-  color: var(--danger, #e2123f);
-  font-size: 0.85rem;
+  color: var(--danger, var(--danger));
+  font-size: var(--text-lg);
   /* Keep the warning from pushing the buttons off a phone-width viewport —
    * the 390px e2e fails on horizontal overflow. */
   flex: 1 1 16rem;
@@ -17581,8 +17611,8 @@ button.mavlink-inspector__sent-row {
  * staged/written row colours, which mean something else entirely. */
 .parameter-row__default-differs {
   color: var(--text-muted);
-  font-size: 11px;
-  letter-spacing: 0.04em;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
@@ -17668,7 +17698,7 @@ button.mavlink-inspector__sent-row {
 .can-bus-node__popped-out,
 .can-bus-node__popout-blocked {
   margin: 8px 0 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -17694,7 +17724,7 @@ button.mavlink-inspector__sent-row {
 .log-server-panel__copy strong { display: block; }
 .log-server-panel__copy p {
   margin: 4px 0 0 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--text-dim);
 }
@@ -17708,26 +17738,26 @@ button.mavlink-inspector__sent-row {
 }
 .log-server-panel__fields label { display: grid; gap: 4px; min-width: 0; }
 .log-server-panel__fields label > span {
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-dim);
 }
 .log-server-panel__fields input {
   width: 100%;
   min-width: 0;
   padding: 7px 9px;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface-100, var(--surface-200));
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 .log-server-panel__error {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.45;
-  color: var(--danger, #e2123f);
+  color: var(--danger, var(--danger));
 }
 
 .log-upload-dialog {
@@ -17736,7 +17766,7 @@ button.mavlink-inspector__sent-row {
   margin-top: 12px;
   padding: 12px;
   border: 1px solid var(--border-accent, var(--border));
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface-200);
 }
 /* The artifact upload form sits inside an existing row of export buttons.
@@ -17760,14 +17790,14 @@ button.mavlink-inspector__sent-row {
 }
 .log-upload-dialog__file {
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-dim);
 }
 .log-upload-dialog label { display: grid; gap: 4px; min-width: 0; }
 .log-upload-dialog label > span {
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-dim);
 }
 .log-upload-dialog input,
@@ -17775,30 +17805,30 @@ button.mavlink-inspector__sent-row {
   width: 100%;
   min-width: 0;
   padding: 7px 9px;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface-100, var(--surface-200));
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-lg);
   font-family: inherit;
   resize: vertical;
 }
 .log-upload-dialog__autofill > span {
   display: block;
   margin-bottom: 4px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   color: var(--text-dim);
 }
 .log-upload-dialog__progress {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text-dim);
 }
 .logs-upload-message {
   margin: 10px 0 0 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--text-dim);
 }
@@ -17824,7 +17854,7 @@ button.mavlink-inspector__sent-row {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  font-size: 13px;
+  font-size: var(--text-lg);
 }
 .initial-tune__inputs input[type='number'],
 .initial-tune__inputs select {
@@ -17841,7 +17871,7 @@ button.mavlink-inspector__sent-row {
 }
 .initial-tune__table {
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--text-lg);
   /* Only three narrow columns — full width would strand the numbers. */
   min-width: 34ch;
 }
@@ -17910,4 +17940,82 @@ button.mavlink-inspector__sent-row {
   .servo-mapping__live-bar {
     display: none;
   }
+}
+
+/* MAVLink signing. Was styled entirely inline, which put it outside the
+   stylesheet's reach: its own gap scale (14/16/6/10/12), bare font sizes, and
+   var() fallbacks that had drifted away from the tokens they shadowed
+   (--text-muted resolved to #a8b0bf, the fallback still said #b3b3b3). Nothing
+   here is new design — it is the same layout, expressed where the rest of the
+   app is. */
+.mavlink-signing-panel {
+  margin-top: var(--space-5);
+}
+
+.mavlink-signing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 640px;
+}
+
+.mavlink-signing__modes {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.mavlink-signing__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.mavlink-signing__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.mavlink-signing__field--narrow {
+  max-width: 160px;
+}
+
+.mavlink-signing__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.mavlink-signing__counter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.mavlink-signing__field-label {
+  font-size: var(--text-lg);
+  color: var(--text-muted);
+}
+
+.mavlink-signing__feedback {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.mavlink-signing__feedback--success {
+  color: var(--success);
+}
+
+.mavlink-signing__feedback--danger {
+  color: var(--danger);
+}
+
+.mavlink-signing__feedback--warning {
+  color: var(--warning);
+}
+
+.mavlink-signing__note {
+  margin: 0;
+  font-size: var(--text-md);
+  color: var(--text-dim);
 }
