@@ -6,6 +6,7 @@
 import { ARDUCOPTER_MSP_OPTION_BIT_LABELS, formatArducopterMspOsdCellCount, formatArducopterOsdSwitchMethod, formatArducopterOsdType } from '@arduconfig/param-metadata'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
 import { useMemo } from 'react'
+import type { ReactNode } from 'react'
 
 import type { UseOsdEditorResult } from '../hooks/use-osd-editor'
 import type { UseOsdShorthandResult } from '../hooks/use-osd-shorthand'
@@ -19,6 +20,9 @@ import { isOsdSerialProtocol, type SerialPortViewModel } from '../serial-port-he
 import { OsdView } from '../views/Osd'
 
 export interface OsdSectionProps {
+  /** The OSD/VTX switcher, rendered under the panel title like every other
+   *  view's tab strip. */
+  headerNav?: ReactNode
   snapshot: ConfiguratorSnapshot
   osdParameterById: ReadonlyMap<string, ParameterState>
   serialPortViewModels: readonly SerialPortViewModel[]
@@ -41,6 +45,7 @@ export interface OsdSectionProps {
 
 export function OsdSection(props: OsdSectionProps) {
   const {
+    headerNav,
     snapshot,
     osdParameterById,
     serialPortViewModels,
@@ -98,6 +103,7 @@ export function OsdSection(props: OsdSectionProps) {
 
   return (
     <OsdView
+      headerNav={headerNav}
       linkPorts={osdLinkPorts}
       typeField={osdTypeParameter ? { parameter: osdTypeParameter, liveValue: osdType } : undefined}
       channelField={osdChannelParameter ? { parameter: osdChannelParameter, liveValue: osdChannel } : undefined}

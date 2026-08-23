@@ -3384,7 +3384,16 @@ test.describe('OSD view preview', () => {
     // Nothing copied yet -> paste disabled.
     await expect(paste).toBeDisabled()
 
-    // Wait for OSD params to sync before copying (copy reads the live snapshot).
+    // Wait for the parameter table to finish, not just for one cell to tick.
+    //
+    // Copy reads every OSD1_*_EN/X/Y out of the live snapshot, and Paste stages
+    // a draft only where the pasted value differs from OSD2's live one -- so
+    // both screens have to be present. A single checked cell proves one
+    // parameter arrived; the rest can still be in flight, and then Paste stages
+    // nothing and Save OSD stays disabled. That was this test failing 2 runs in
+    // 3. The header summary reads "Params <n>" only once the sync completes.
+    await expect(page.getByTestId('session-parameter-summary'))
+      .toHaveText(/^(\d+ params|Params \d+)$/, { timeout: COMMAND_ACK_TIMEOUT })
     await expect(page.getByTestId('osd-cell-BAT_VOLT-1')).toBeChecked({ timeout: COMMAND_ACK_TIMEOUT })
 
     // Copy OSD1's layout, switch to OSD2, paste. The demo seeds different

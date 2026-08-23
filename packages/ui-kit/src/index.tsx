@@ -72,14 +72,26 @@ export function StatusBadge({ tone, children }: PropsWithChildren<{ tone: 'neutr
         minHeight: 20,
         padding: '2px 8px',
         borderRadius: 999,
-        border: `1px solid ${color}48`,
+        // `${color}48` appended an alpha byte to a hex literal -- but every
+        // palette entry is a var() string, so the result was the invalid
+        // "var(--success, #7fb966)48" and both the border and the fill were
+        // dropped. Only the neutral tone survived, because it used a literal
+        // rgba(), which is why a toned badge read as bare coloured text beside
+        // a filled neutral one in the same tab strip. color-mix() composes with
+        // var() the way the app's stylesheet already does.
+        border: `1px solid color-mix(in srgb, ${color} 28%, transparent)`,
         color: tone === 'neutral' ? palette.text : color,
-        background: tone === 'neutral' ? 'rgba(255, 187, 0, 0.12)' : `${color}14`,
+        background:
+          tone === 'neutral'
+            ? 'rgba(var(--primary-rgb, 255, 187, 0), 0.12)'
+            : `color-mix(in srgb, ${color} 8%, transparent)`,
         fontSize: 10,
         fontWeight: 600,
         textTransform: 'uppercase',
-        letterSpacing: 0.06,
-        fontFamily: '"JetBrains Mono", "SFMono-Regular", "SF Mono", Consolas, monospace',
+        // A bare number is px in React, so this was 0.06px -- no tracking at
+        // all on an uppercase label.
+        letterSpacing: '0.08em',
+        fontFamily: 'var(--font-data, "JetBrains Mono", "SFMono-Regular", monospace)',
         lineHeight: 1.4
       }}
     >
@@ -98,7 +110,7 @@ export function buttonStyle(kind: 'primary' | 'secondary' | 'hero' = 'secondary'
       borderRadius: 8,
       fontWeight: 600,
       fontSize: 13,
-      letterSpacing: 0.01,
+      letterSpacing: 'normal',
       cursor: 'pointer'
     }
   }
@@ -116,7 +128,7 @@ export function buttonStyle(kind: 'primary' | 'secondary' | 'hero' = 'secondary'
     borderRadius: 8,
     fontWeight: 600,
     fontSize: 12,
-    letterSpacing: 0.01,
+    letterSpacing: 'normal',
     cursor: 'pointer'
   }
 }

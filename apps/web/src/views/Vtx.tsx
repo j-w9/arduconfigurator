@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 import {
@@ -24,6 +25,9 @@ export interface VtxField {
 }
 
 export interface VtxViewProps {
+  /** The OSD/VTX switcher, rendered under the panel title like every other
+   *  view's tab strip. */
+  headerNav?: ReactNode
   linkPorts: readonly VtxLinkPort[]
   enabledLabel: string
   enableField: VtxField | undefined
@@ -52,6 +56,7 @@ export interface VtxViewProps {
 
 export function VtxView(props: VtxViewProps) {
   const {
+    headerNav,
     vtxTable,
     linkPorts,
     enabledLabel,
@@ -101,6 +106,7 @@ export function VtxView(props: VtxViewProps) {
         subtitle="Use a dedicated VTX workflow while keeping the actual ArduPilot-backed controls visible and honest."
       >
         <div className="bf-tab-stack">
+          {headerNav}
           <div className="bf-note">
             <p>Assign the control UART in Ports first. This tab is for transmitter-facing behavior, not the serial-role assignment itself.</p>
             <p>

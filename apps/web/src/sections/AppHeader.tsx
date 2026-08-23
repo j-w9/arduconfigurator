@@ -156,7 +156,10 @@ export function AppHeader({
         rel="noopener noreferrer"
         title="Open the ArduConfigurator wiki (opens in a new tab)"
       >
-        <span className="app-header__wiki-icon" aria-hidden="true">📖</span>
+        {/* A letter mark, like every entry in the side nav. The emoji that was
+            here rendered in the system emoji font at a size nothing else in the
+            chrome used. */}
+        <span className="app-header__wiki-icon" aria-hidden="true">WIK</span>
         <span className="app-header__wiki-label">Wiki</span>
       </a>
 
