@@ -7937,6 +7937,30 @@ export function App() {
 
   const showLanding = (activeViewId === 'setup' || activeViewId === 'guided-setup') && snapshot.connection.kind !== 'connected'
 
+  // The OSD/VTX switcher, handed to whichever section is showing instead of
+  // being rendered above it. Every other view puts its tab strip under the page
+  // title; this one sat above, which read as a different kind of control.
+  const osdVtxNav = (
+    <div className="tab-strip config-category-nav" data-testid="osd-vtx-nav" role="tablist">
+      {([
+        { id: 'osd' as const, label: 'OSD' },
+        { id: 'vtx' as const, label: 'VTX' }
+      ]).map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={osdVtxTab === tab.id}
+          className={`tab-strip__tab${osdVtxTab === tab.id ? ' is-active' : ''}`}
+          data-testid={`osd-vtx-tab-${tab.id}`}
+          onClick={() => setOsdVtxTab(tab.id)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  )
+
   return (
     <>
       {swUpdate.kind === 'available' ? (
@@ -8795,29 +8819,9 @@ export function App() {
 	      ) : null}
 
 
-        {activeViewId === 'osd' ? (
-          <div className="tab-strip config-category-nav" data-testid="osd-vtx-nav" role="tablist">
-            {([
-              { id: 'osd' as const, label: 'OSD' },
-              { id: 'vtx' as const, label: 'VTX' }
-            ]).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={osdVtxTab === tab.id}
-                className={`tab-strip__tab${osdVtxTab === tab.id ? ' is-active' : ''}`}
-                data-testid={`osd-vtx-tab-${tab.id}`}
-                onClick={() => setOsdVtxTab(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
         {activeViewId === 'osd' && osdVtxTab === 'vtx' ? (
           <VtxSection
+            headerNav={osdVtxNav}
             snapshot={snapshot}
             serialPortViewModels={serialPortViewModels}
             editedValues={editedValues}
@@ -8834,6 +8838,7 @@ export function App() {
 
         {activeViewId === 'osd' && osdVtxTab === 'osd' ? (
           <OsdSection
+            headerNav={osdVtxNav}
             snapshot={snapshot}
             osdParameterById={osdParameterById}
             serialPortViewModels={serialPortViewModels}

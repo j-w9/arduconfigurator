@@ -1,12 +1,13 @@
 :root {
   color-scheme: dark;
-  font-family:
+  --font-ui:
     "Inter",
     "SF Pro Display",
     "SF Pro Text",
     "Segoe UI",
     system-ui,
     sans-serif;
+  font-family: var(--font-ui);
   --font-data:
     "JetBrains Mono",
     "SFMono-Regular",
@@ -325,15 +326,18 @@
   align-items: center;
   justify-content: center;
   /* Breathing room so it doesn't crowd the Expert-mode toggle. */
-  margin-left: 16px;
-  width: 30px;
-  height: 30px;
+  margin-left: var(--space-4);
+  /* Square, but the same height and the same edge treatment as the Wiki button
+     it sits beside -- it was a different radius, a different border colour and
+     a different size from everything else in the header. */
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg-panel-raised);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(var(--edge-rgb), 0.08);
+  background: rgba(var(--edge-rgb), 0.03);
   color: var(--text-muted);
-  font-size: var(--text-2xl);
+  font-size: var(--text-xl);
   line-height: 1;
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
@@ -477,7 +481,7 @@ textarea:focus {
   z-index: 200;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 10px 14px;
   background: var(--surface-300);
   border: 1px solid var(--border);
@@ -584,7 +588,7 @@ textarea:focus {
   appearance: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
   /* max-width (not a rigid width) so the brand can shrink on narrow headers
      and the telemetry/connection blocks wrap instead of overflowing. Wide
@@ -647,8 +651,14 @@ textarea:focus {
   border-color: color-mix(in srgb, var(--accent, var(--primary-500)) 60%, transparent);
 }
 
+/* Matches .workspace-nav__mark, so the header's one mark is drawn the same way
+   as the fourteen in the side nav. */
 .app-header__wiki-icon {
-  font-size: var(--text-3xl);
+  color: var(--text-dim);
+  font-family: var(--font-data);
+  font-size: var(--text-2xs);
+  font-weight: 800;
+  letter-spacing: var(--tracking-label);
 }
 
 .app-header__brand:hover {
@@ -705,7 +715,7 @@ textarea:focus {
      doesn't widen the header row and crowd the telemetry block. */
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
   flex: 0 1 auto;
 }
@@ -745,18 +755,46 @@ textarea:focus {
    that contributes nothing but takes ~520px of header width. Replace it
    with a thin pill so the header collapses to brand + transport-select
    + connect-button on one row. */
-.app-header__disconnected-pill {
+/* One chip.
+ *
+ * There were five, within a click or two of each other and several inside the
+ * same tab strip: three corner radii, three units of measurement (px, em and
+ * an inherited em), and two casings. The geometry lives here; each component
+ * below keeps only what is genuinely different about it -- an option chip is a
+ * button and stays sentence case, the header pill carries a status dot.
+ *
+ * Declared before the component rules so those still win where they differ. */
+.app-header__disconnected-pill,
+.workspace-main__tab-meta-item,
+.scoped-option-chip,
+.snapshots-counter-chip,
+.ai-assistant__tool-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-  padding: 6px 12px;
+  min-height: 24px;
+  padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid var(--surface-400);
-  background: var(--surface-300);
+  border: 1px solid var(--border-soft);
+  background: var(--bg-panel);
   color: var(--text-muted);
-  font-size: var(--text-md);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
   white-space: nowrap;
+}
+
+.app-header__disconnected-pill {
+  /* Sentence case: it reads "Disconnected", not a label. */
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  background: var(--surface-300);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .app-header__disconnected-dot {
@@ -781,7 +819,7 @@ textarea:focus {
 .app-header__telemetry {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex: 1 1 420px;
   min-width: 0;
   /* Battery + sensor strip stay on one line (the strip scrolls if tight)
@@ -801,7 +839,7 @@ textarea:focus {
 .header-quad-status__battery {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .header-battery-icon {
@@ -1052,7 +1090,7 @@ textarea:focus {
      of the post-shrink header cards. */
   min-width: 110px;
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 5px 9px;
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
@@ -1093,7 +1131,7 @@ textarea:focus {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--text);
   font-size: var(--text-md);
 }
@@ -1154,7 +1192,7 @@ textarea:focus {
      of the primary action row). */
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
   /* When the header wraps onto a second row at narrower widths, keep the
      session actions aligned to the right edge instead of stranded at the
@@ -1337,7 +1375,7 @@ textarea:focus {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 6px 12px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent, var(--primary-500)) 22%, var(--surface-200));
@@ -1375,7 +1413,7 @@ textarea:focus {
 
 .parameter-draft-bar__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
@@ -1400,7 +1438,7 @@ textarea:focus {
 
 .workspace-sidebar__shell {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 12px;
   height: 100%;
   max-height: 100%;
@@ -1457,7 +1495,7 @@ textarea:focus {
 .baseline-summary,
 .baseline-strip {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 8px 10px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-soft);
@@ -1469,7 +1507,7 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .baseline-summary__header strong {
@@ -1503,7 +1541,7 @@ textarea:focus {
 }
 .baseline-summary__body {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: 8px;
 }
 
@@ -1569,7 +1607,7 @@ textarea:focus {
 .mode-toggle {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .mode-toggle__option {
@@ -1612,7 +1650,7 @@ textarea:focus {
 
 .workspace-mode-summary {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 6px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-soft);
@@ -1662,7 +1700,7 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .session-follow-up__header strong {
@@ -1690,7 +1728,7 @@ textarea:focus {
 .workspace-nav__item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid transparent;
@@ -1750,7 +1788,7 @@ textarea:focus {
   font-family: var(--font-data);
   font-size: var(--text-2xs);
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
 }
 
 .workspace-nav__item.is-active .workspace-nav__mark {
@@ -1776,7 +1814,7 @@ textarea:focus {
 
 .workspace-sidebar__footer {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid var(--border-soft);
@@ -1797,7 +1835,7 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .workspace-sidebar__summary-row span {
@@ -1852,7 +1890,7 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .workspace-focus-card__header strong,
@@ -1893,19 +1931,19 @@ textarea:focus {
   /* 2026-05-20 UI density audit: 20px 20px 36px → 14px 16px 24px.
    * Tabs already manage their own internal gap stack so the previous
    * outer gutter was double-padding the content boundary. */
-  padding: var(--space-3, 14px) var(--space-4, 16px) var(--space-5, 24px);
+  padding: var(--space-3) var(--space-4) var(--space-5);
   background: var(--surface-100);
 }
 
 .workspace-main__notes {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin-bottom: 14px;
 }
 
 .workspace-note {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 8px 10px;
   border-radius: var(--radius-md);
   border: 1px solid var(--primary-500);
@@ -1966,19 +2004,8 @@ textarea:focus {
 }
 
 .workspace-main__tab-meta-item {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 0 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border-soft);
-  background: var(--bg-panel);
-  color: var(--text-muted);
-  font-family: var(--font-data);
   font-size: var(--text-xs);
   font-weight: 700;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
 }
 
 .workspace-main__tab-meta-item.is-ok {
@@ -2021,7 +2048,7 @@ textarea:focus {
 .tuning-card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .tuning-card {
@@ -2093,7 +2120,7 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
+  gap: var(--space-4);
   padding: 14px 16px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-soft);
@@ -2123,7 +2150,7 @@ textarea:focus {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(160px, 1fr);
-  gap: 8px;
+  gap: var(--space-2);
   overflow-x: auto;
   padding-bottom: 4px;
 }
@@ -2296,7 +2323,7 @@ textarea:focus {
 
 .setup-flow__criteria ul {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2309,7 +2336,7 @@ textarea:focus {
 .setup-flow__criteria li {
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr);
-  gap: 8px;
+  gap: var(--space-2);
   align-items: baseline;
   padding: 4px 2px;
   border-radius: var(--radius-md);
@@ -2370,20 +2397,20 @@ textarea:focus {
 
 .telemetry-stack {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .ports-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   align-items: start;
 }
 
 .outputs-workspace {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
-  gap: 12px;
+  gap: var(--space-3);
   align-items: start;
 }
 
@@ -2426,7 +2453,7 @@ textarea:focus {
 
 .ports-surface {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 12px 14px;
   border-radius: var(--radius-2xl);
   border: 1px solid rgba(var(--edge-rgb), 0.04);
@@ -2442,7 +2469,7 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
+  gap: var(--space-4);
   padding-bottom: 16px;
   border-bottom: 1px solid rgba(var(--edge-rgb), 0.05);
 }
@@ -2470,14 +2497,14 @@ textarea:focus {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
 .ports-surface__disclosure {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .receiver-workspace__live,
@@ -2500,7 +2527,7 @@ textarea:focus {
   position: sticky;
   top: 16px;
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .outputs-overview__badges {
   display: flex;
@@ -2522,7 +2549,7 @@ textarea:focus {
 /* Top tab selector for the Motors/Servos sub-tabs. */
 .outputs-tabs-layout {
   display: grid;
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
   align-items: start;
 }
 
@@ -2544,8 +2571,10 @@ textarea:focus {
 .tab-strip__tab {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 8px 14px;
+  /* 2px, where the rest of the app uses 1px: the active tab is signalled by
+     its border colour alone, and at 1px that read as a hover state. */
   border: 2px solid var(--border);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--text) 4%, transparent);
@@ -2592,7 +2621,7 @@ textarea:focus {
 .outputs-accordion-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.9fr);
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
   align-items: start;
 }
 .outputs-accordion-layout--full {
@@ -2600,7 +2629,7 @@ textarea:focus {
 }
 .outputs-accordion {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 .outputs-accordion-card {
@@ -2672,7 +2701,7 @@ textarea:focus {
 .receiver-support-grid,
 .outputs-lab-grid {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .receiver-exercise-grid > *,
@@ -2702,7 +2731,7 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
   padding-bottom: 10px;
   border-bottom: 1px solid rgba(var(--edge-rgb), 0.05);
   /* Title block + trailing badge wrap instead of overflowing on narrow widths. */
@@ -2737,7 +2766,7 @@ textarea:focus {
 
 .setup-command-center {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .setup-bench {
@@ -2873,7 +2902,7 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 0;
   border: none;
   background: transparent;
@@ -3003,7 +3032,7 @@ textarea:focus {
   left: 10px;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 2px 10px;
   border-radius: 999px;
   background: var(--primary-500);
@@ -3025,7 +3054,7 @@ textarea:focus {
 .setup-gui-box__notice-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   /* Four controls (filter, Expand, Pop out, Copy/Clear) do not fit on one line
    * at phone width — wrapping is what keeps the 390px layout from scrolling
    * sideways. */
@@ -3554,7 +3583,7 @@ body.is-status-dash-dragging {
 .setup-gui-box__kv-row {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   font-size: var(--text-md);
   padding: 7px 0;
   border-bottom: 1px solid var(--surface-400);
@@ -3610,12 +3639,12 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: flex-start;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .setup-gui-box__status-list {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .setup-gui-box__status-list--scroll {
@@ -3700,7 +3729,7 @@ body.is-status-dash-dragging {
 
 .setup-gui-box__status-entry {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 8px 9px;
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
@@ -3761,7 +3790,7 @@ body.is-status-dash-dragging {
 }
 
 .setup-gui-box__map .gps-map-card {
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .bf-tab-stack {
@@ -3824,7 +3853,7 @@ body.is-status-dash-dragging {
   left: 10px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 2px 10px;
   border-radius: 999px;
   background: var(--primary-500);
@@ -3843,7 +3872,7 @@ body.is-status-dash-dragging {
 
 .bf-gui-box__body {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .bf-gui-box__kv-list {
@@ -3854,7 +3883,7 @@ body.is-status-dash-dragging {
 .bf-gui-box__kv-row {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 7px 0;
   border-bottom: 1px solid var(--surface-400);
   font-size: var(--text-md);
@@ -3885,38 +3914,39 @@ body.is-status-dash-dragging {
   gap: 10px;
 }
 
+/* The staged-changes bar. There were two: this one floated as a rounded card
+ * at the right, detached from the content and overlapping it, while Config
+ * pinned a full-width bar above the status bar. Same job, two shapes and two
+ * positions -- and this one's counter was uppercase where Config's was not, so
+ * the same two words read differently depending on the view. It now behaves
+ * like .config-toolbar. */
 .bf-toolbar {
-  position: sticky;
-  bottom: 16px;
-  justify-self: end;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  width: fit-content;
-  padding: 10px 12px;
-  border-radius: 18px 0 0 18px;
-  border: 1px solid var(--surface-400);
-  border-right: none;
-  background: var(--surface-300);
-  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.32);
-  z-index: 5;
+  gap: 10px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-top: 1px solid var(--surface-300);
+  position: sticky;
+  bottom: var(--statusbar-height, 24px);
+  background: var(--bg-panel, var(--surface-100));
+  z-index: 3;
 }
 
 .bf-toolbar__status {
   display: flex;
-  gap: 8px;
-  margin-right: 6px;
+  gap: 14px;
+  margin-right: auto;
   color: var(--text-muted);
   font-size: var(--text-sm);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
 }
 
 .bf-vtx-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .bf-vtx-grid__config {
@@ -3934,12 +3964,12 @@ body.is-status-dash-dragging {
 .bf-vtx-advanced-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.1fr);
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .bf-vtx-callout {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   align-content: start;
   padding: 12px;
   border-radius: var(--radius-lg);
@@ -3958,7 +3988,7 @@ body.is-status-dash-dragging {
 .bf-vtx-table {
   grid-column: 1 / -1;
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .bf-vtx-table__scroll {
   overflow-x: auto;
@@ -4007,7 +4037,7 @@ body.is-status-dash-dragging {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 .bf-vtx-table__power-grid {
@@ -4047,13 +4077,13 @@ body.is-status-dash-dragging {
 }
 .bf-vtx-table__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .bf-vtx-table__io {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .bf-vtx-table__preset-select {
@@ -4067,7 +4097,7 @@ body.is-status-dash-dragging {
 }
 .bf-vtx-table__import {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px;
   border: 1px solid var(--surface-400);
   border-radius: var(--radius-md);
@@ -4086,20 +4116,20 @@ body.is-status-dash-dragging {
 }
 .bf-vtx-table__import-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .osd-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 1.6fr);
-  gap: 12px;
+  gap: var(--space-3);
   align-items: start;
 }
 
 .osd-preview-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   color: var(--text-muted);
   font-size: var(--text-sm);
   letter-spacing: var(--tracking-label);
@@ -4222,7 +4252,7 @@ body.is-status-dash-dragging {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 20px;
   color: var(--text-muted);
   text-align: center;
@@ -4253,7 +4283,7 @@ body.is-status-dash-dragging {
 .bf-motor-setup-grid {
   display: grid;
   grid-template-columns: minmax(340px, 1.15fr) minmax(300px, 0.85fr);
-  gap: 16px;
+  gap: var(--space-4);
   align-items: start;
 }
 
@@ -4303,7 +4333,7 @@ body.is-status-dash-dragging {
 /* Test tab: throttle sliders + a small read-only motor map, side by side. */
 .motor-test-sliders-row {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: stretch;
   justify-content: center;
   flex-wrap: wrap;
@@ -4468,7 +4498,7 @@ body.is-status-dash-dragging {
 
 .motor-mixer-summary-card {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
   padding: 11px 12px;
   border-radius: var(--radius-lg);
@@ -4500,7 +4530,7 @@ body.is-status-dash-dragging {
 
 .osd-preview-footer {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: 10px;
 }
 
@@ -4525,7 +4555,7 @@ body.is-status-dash-dragging {
 .flight-deck-command {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: start;
 }
 
@@ -4536,14 +4566,14 @@ body.is-status-dash-dragging {
 
 .flight-deck-command__sidebar {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   align-content: start;
 }
 
 .flight-deck-command__instruments {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .flight-deck-command__telemetry-strip {
@@ -4568,13 +4598,13 @@ body.is-status-dash-dragging {
 .flight-deck-command__signal-strip {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .flight-deck-command__signal-strip span {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 3px 7px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-soft);
@@ -4616,7 +4646,7 @@ body.is-status-dash-dragging {
 
 .flight-deck-command__sidebar-section {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 8px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -4639,7 +4669,7 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 3px 0;
   font-size: var(--text-sm);
 }
@@ -4699,7 +4729,7 @@ body.is-status-dash-dragging {
   padding: 5px 8px;
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
-  gap: 8px;
+  gap: var(--space-2);
   grid-template-columns: 52px minmax(0, 1fr);
 }
 
@@ -4756,7 +4786,7 @@ body.is-status-dash-dragging {
 
 .setup-command-center__flow {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .setup-command-center__flow-grid {
@@ -4768,7 +4798,7 @@ body.is-status-dash-dragging {
 
 .setup-wizard {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .setup-launch-button {
@@ -4783,7 +4813,7 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
+  gap: var(--space-4);
   padding: 16px 18px;
   border-radius: var(--radius-xl);
   border: 1px solid var(--border);
@@ -5058,12 +5088,12 @@ body.is-status-dash-dragging {
 }
 
 .accelerometer-pose-guide--compact {
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .accelerometer-pose-guide__hero {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 16px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(104, 144, 202, 0.22);
@@ -5089,7 +5119,7 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .accelerometer-pose-guide__header strong,
@@ -5109,7 +5139,7 @@ body.is-status-dash-dragging {
 
 .accelerometer-pose-guide__validation {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 10px 12px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--surface-400);
@@ -5205,13 +5235,13 @@ body.is-status-dash-dragging {
 
 .accelerometer-pose-guide--compact .accelerometer-pose-guide__steps {
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .accelerometer-pose-guide__step {
   display: grid;
   justify-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 8px 12px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(54, 72, 97, 0.8);
@@ -5323,7 +5353,7 @@ body.is-status-dash-dragging {
 }
 
 .setup-wizard__task-card {
-  gap: 12px;
+  gap: var(--space-3);
   padding: 14px 12px;
 }
 
@@ -5385,7 +5415,7 @@ body.is-status-dash-dragging {
 
 .setup-wizard__task-copy {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .setup-wizard__task-note {
@@ -5424,7 +5454,7 @@ body.is-status-dash-dragging {
 .setup-wizard__task-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .setup-wizard__task-acknowledgments {
@@ -5433,7 +5463,7 @@ body.is-status-dash-dragging {
 
 .setup-wizard__task-actions {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .setup-wizard__primary-button,
@@ -5450,7 +5480,7 @@ body.is-status-dash-dragging {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .setup-wizard__primary-button--target {
@@ -5484,7 +5514,7 @@ body.is-status-dash-dragging {
 .setup-wizard__support-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 @media (max-width: 1100px) {
@@ -5504,7 +5534,7 @@ body.is-status-dash-dragging {
    card in the right column so the left column carries only the task — the
    single layout rule every guided step follows. */
 .setup-wizard__status-card {
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .guided-action-pulse {
@@ -5546,7 +5576,7 @@ body.is-status-dash-dragging {
 .setup-overview__visual,
 .setup-overview__summary {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .setup-overview__facts {
@@ -5568,13 +5598,13 @@ body.is-status-dash-dragging {
 .setup-overview__fact-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .setup-overview__signal-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .setup-overview__signal-row span {
@@ -5629,7 +5659,7 @@ body.is-status-dash-dragging {
 .flight-deck {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  gap: var(--space-4);
   align-items: start;
 }
 
@@ -5650,7 +5680,7 @@ body.is-status-dash-dragging {
 .flight-deck__model-shell,
 .flight-deck__instruments {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   align-content: start;
   align-self: start;
 }
@@ -5807,7 +5837,7 @@ body.is-status-dash-dragging {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   z-index: 2;
 }
 
@@ -5832,13 +5862,13 @@ body.is-status-dash-dragging {
   justify-content: space-between;
   align-items: flex-end;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 0 2px;
 }
 
 .flight-deck__caption-copy {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .flight-deck__caption strong {
@@ -6019,7 +6049,7 @@ body.is-status-dash-dragging {
   top: 50%;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   transform: translate(-50%, -50%);
   z-index: 2;
   pointer-events: none;
@@ -6108,7 +6138,7 @@ body.is-status-dash-dragging {
 
 .gps-map-card {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 12px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
@@ -6117,14 +6147,14 @@ body.is-status-dash-dragging {
 }
 
 .gps-map-card--compact {
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .gps-map-card__header {
   display: flex;
   justify-content: space-between;
   align-items: start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .gps-map-card__header strong {
@@ -6187,7 +6217,7 @@ body.is-status-dash-dragging {
   inset: 0;
   display: grid;
   align-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 20px;
   text-align: center;
   background:
@@ -6248,7 +6278,7 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: space-between;
   align-items: start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .gps-map-card__footer small {
@@ -6280,7 +6310,7 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .mode-estimate-card__header > div,
@@ -6367,7 +6397,7 @@ body.is-status-dash-dragging {
 
 .switch-exercise-card {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 16px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--edge-rgb), 0.04);
@@ -6381,7 +6411,7 @@ body.is-status-dash-dragging {
 .esc-review-card,
 .prearm-card {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 16px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--edge-rgb), 0.04);
@@ -6440,7 +6470,7 @@ body.is-status-dash-dragging {
 
 .orientation-card__focus-instruction {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   margin-top: 4px;
   padding: 12px 14px;
   border-radius: var(--radius-md);
@@ -6519,7 +6549,7 @@ body.is-status-dash-dragging {
 .rc-mapping-focus__copy,
 .rc-mapping-focus__status {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .rc-mapping-focus__copy span {
@@ -6559,7 +6589,7 @@ body.is-status-dash-dragging {
 
 .rc-mapping-candidate-panel__header {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .rc-mapping-candidate-panel__header strong {
@@ -6598,7 +6628,7 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -6613,7 +6643,7 @@ body.is-status-dash-dragging {
 
 .rc-mapping-auto-capture {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 12px;
   border-radius: var(--radius-md);
   border: 1px solid rgba(218, 178, 84, 0.34);
@@ -6655,7 +6685,7 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .switch-exercise-card__header strong {
@@ -6711,7 +6741,7 @@ body.is-status-dash-dragging {
 .tuning-summary-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .receiver-summary-card,
@@ -6947,7 +6977,7 @@ body.is-status-dash-dragging {
 .receiver-bind-action {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: 12px;
 }
 
@@ -7103,7 +7133,7 @@ body.is-status-dash-dragging {
   position: sticky;
   top: 16px;
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* Betaflight-style live monitor: the reactive craft model on the left, RC
@@ -7115,12 +7145,12 @@ body.is-status-dash-dragging {
 .receiver-live-columns {
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: 12px;
+  gap: var(--space-3);
   align-items: start;
 }
 .receiver-live-columns__channels {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   min-width: 0;
 }
 .receiver-live-columns__craft {
@@ -7173,7 +7203,7 @@ body.is-status-dash-dragging {
   position: sticky;
   top: 16px;
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .receiver-live-primary-grid,
@@ -7182,7 +7212,7 @@ body.is-status-dash-dragging {
 .receiver-task-stage-strip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 /* The endpoints task now holds a single combined calibration card. */
 .receiver-task-two-up--single {
@@ -7196,7 +7226,7 @@ body.is-status-dash-dragging {
 .outputs-inline-toggle,
 .outputs-review-dock {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -7223,7 +7253,7 @@ body.is-status-dash-dragging {
 .outputs-inline-toggle__actions {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: flex-start;
 }
 
@@ -7317,7 +7347,7 @@ body.is-status-dash-dragging {
 .outputs-task-deck,
 .tuning-task-deck {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .receiver-task-deck__header,
@@ -7325,7 +7355,7 @@ body.is-status-dash-dragging {
 .tuning-task-deck__header {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: flex-start;
   padding: 14px;
   border-radius: var(--radius-lg);
@@ -7345,7 +7375,7 @@ body.is-status-dash-dragging {
 .outputs-task-panel,
 .tuning-task-panel {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .receiver-task-panel--stack,
@@ -7357,7 +7387,7 @@ body.is-status-dash-dragging {
 .tuning-control-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .tuning-control-grid--compact {
@@ -7491,7 +7521,7 @@ body.is-status-dash-dragging {
 .tuning-axis-snapshot-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .tuning-axis-card,
@@ -7523,13 +7553,13 @@ body.is-status-dash-dragging {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 12px;
+  gap: var(--space-3);
   margin-bottom: 12px;
 }
 
 .filters-from-gyro__entry label {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .filters-from-gyro__entry input {
@@ -7539,7 +7569,7 @@ body.is-status-dash-dragging {
 .filters-from-gyro__hints {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .filters-from-gyro__rows {
@@ -7589,7 +7619,7 @@ body.is-status-dash-dragging {
 .filter-notch-help .switch-exercise-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-start;
 }
 
@@ -7643,7 +7673,7 @@ body.is-status-dash-dragging {
 .tuning-curve-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .receiver-inline-toggle {
@@ -7738,12 +7768,12 @@ body.is-status-dash-dragging {
 
 .tuning-master-slider-grid {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .tuning-master-slider {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 12px;
   border-radius: var(--radius-xl);
   background: rgba(var(--edge-rgb), 0.025);
@@ -7753,7 +7783,7 @@ body.is-status-dash-dragging {
 .tuning-master-slider__header {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: flex-start;
 }
 
@@ -7787,7 +7817,7 @@ body.is-status-dash-dragging {
 .tuning-profile-browser {
   display: grid;
   grid-template-columns: minmax(240px, 0.88fr) minmax(0, 1.12fr);
-  gap: 12px;
+  gap: var(--space-3);
   align-items: start;
 }
 
@@ -7810,7 +7840,7 @@ body.is-status-dash-dragging {
   bottom: 16px;
   z-index: 3;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   background: rgba(var(--fill-rgb), 0.98);
   box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.26);
@@ -7825,7 +7855,7 @@ body.is-status-dash-dragging {
 .rc-range-axis-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .rc-range-axis-card {
@@ -7850,7 +7880,7 @@ body.is-status-dash-dragging {
 .rc-range-axis-card__header {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
 }
 
@@ -7863,12 +7893,12 @@ body.is-status-dash-dragging {
 .rc-channel-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .rc-channel-card {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 8px 10px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -7891,7 +7921,7 @@ body.is-status-dash-dragging {
 .rc-channel-card__footer {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
 }
 
@@ -7940,7 +7970,7 @@ body.is-status-dash-dragging {
 .telemetry-metric-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* Condensed live battery readout — replaces the four big metric cards. */
@@ -7976,7 +8006,7 @@ body.is-status-dash-dragging {
 
 .telemetry-metric-card {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 8px 10px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--edge-rgb), 0.035);
@@ -8004,12 +8034,12 @@ body.is-status-dash-dragging {
 .output-card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .output-card {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 8px 10px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--edge-rgb), 0.035);
@@ -8035,7 +8065,7 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .output-card__header strong {
@@ -8069,7 +8099,7 @@ body.is-status-dash-dragging {
 
 .scoped-review-card {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 16px 16px 15px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--edge-rgb), 0.04);
@@ -8082,7 +8112,7 @@ body.is-status-dash-dragging {
 
 .receiver-arm-switch__field {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: var(--text-md);
   color: var(--text-muted);
 }
@@ -8100,7 +8130,7 @@ body.is-status-dash-dragging {
 .receiver-arm-switch__checkbox {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: var(--text-md);
   color: var(--text-muted);
   cursor: pointer;
@@ -8115,7 +8145,7 @@ body.is-status-dash-dragging {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .scoped-review-card__disclosure small {
@@ -8131,7 +8161,7 @@ body.is-status-dash-dragging {
 
 .scoped-draft-item {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 8px 10px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--edge-rgb), 0.04);
@@ -8151,7 +8181,7 @@ body.is-status-dash-dragging {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .scoped-draft-item p,
@@ -8171,7 +8201,7 @@ body.is-status-dash-dragging {
 .scoped-editor-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* Power (Config ▸ Power) is a short surface — four battery fields — that was
@@ -8193,7 +8223,7 @@ body.is-status-dash-dragging {
 
 .preset-editor label {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: var(--text-md);
   color: var(--text-muted);
 }
@@ -8217,7 +8247,7 @@ body.is-status-dash-dragging {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 120px auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .preset-editor__row code {
@@ -8233,7 +8263,7 @@ body.is-status-dash-dragging {
 
 .preset-editor__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* A section hosting a whole panel spans the multicolumn flow instead of being
@@ -8300,13 +8330,13 @@ body.is-status-dash-dragging {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
   font-family: var(--font-data);
 }
 .ip-address-field__group {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .ip-address-field__octet {
   width: 3.4em;
@@ -8320,7 +8350,7 @@ body.is-status-dash-dragging {
 .passthrough-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .passthrough-row {
   display: flex;
@@ -8341,7 +8371,7 @@ body.is-status-dash-dragging {
 .passthrough-row__endpoints {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 .passthrough-row__link {
@@ -8350,7 +8380,7 @@ body.is-status-dash-dragging {
 }
 .passthrough-row__baud {
   display: inline-flex;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 .passthrough-row__baud label {
@@ -8553,7 +8583,7 @@ body.is-status-dash-dragging {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 6px 8px;
   border: 1px solid var(--surface-400);
   border-radius: var(--radius-sm);
@@ -8592,7 +8622,7 @@ body.is-status-dash-dragging {
 .scoped-option-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .scoped-bitmask-bits--single {
@@ -8621,13 +8651,13 @@ body.is-status-dash-dragging {
 
 .scoped-bitmask-bit,
 .scoped-option-chip {
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--surface-400);
+  /* An option chip is a button the operator clicks, so it keeps sentence case
+     and the app's UI face rather than the label treatment. */
   background: transparent;
-  color: var(--text-muted, rgba(var(--edge-rgb), 0.55));
-  font: inherit;
-  font-size: 0.8em;
+  font-family: var(--font-ui);
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
   text-align: left;
   cursor: pointer;
 }
@@ -8658,7 +8688,7 @@ body.is-status-dash-dragging {
 .scoped-checkbox-option {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   min-width: 0;
   /* Compact row, not a chunky bordered card. */
@@ -8747,7 +8777,7 @@ body.is-status-dash-dragging {
 
 .metadata-settings-section {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .metadata-settings-section + .metadata-settings-section {
@@ -8757,7 +8787,7 @@ body.is-status-dash-dragging {
 
 .metadata-settings-section__header {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .metadata-settings-section__header p {
@@ -8800,7 +8830,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .port-card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .ports-matrix {
@@ -8869,7 +8899,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .ports-matrix-row__cell {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   align-content: start;
   /* Grid items default to min-width:auto, so a nowrap pill could force the
      track wider than its minmax() and bleed into the next column. */
@@ -8915,7 +8945,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .ports-matrix-row__baud {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .ports-matrix-row__options {
@@ -8926,7 +8956,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .ports-matrix-row__options-header {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
@@ -8949,7 +8979,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .ports-matrix-row__expanded {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding-top: 10px;
   border-top: 1px solid var(--surface-400);
 }
@@ -8972,7 +9002,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .port-row__title {
@@ -9007,14 +9037,14 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .port-row__options {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .port-row__options-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .port-row__options-header strong {
@@ -9040,7 +9070,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .port-card {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -9051,7 +9081,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .port-card__header strong {
@@ -9085,7 +9115,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .dronecan-peripherals__header {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .dronecan-peripherals__header strong {
@@ -9103,7 +9133,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  gap: var(--space-3);
   margin: 0;
   font-size: var(--text-sm);
 }
@@ -9126,7 +9156,7 @@ details.metadata-settings-section:not([open]) > summary::after {
    ArduPilot gap. */
 .rc-mixer-callout {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: flex-start;
   padding: 10px 12px;
   border-radius: var(--radius-md);
@@ -9156,13 +9186,13 @@ details.metadata-settings-section:not([open]) > summary::after {
   padding-top: 12px;
   border-top: 1px solid var(--border, #2a2f37);
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .rc-mixer-logic__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .rc-mixer-logic__header small {
   display: block;
@@ -9184,7 +9214,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 8px;
   border: 1px solid var(--border, #2a2f37);
   border-radius: var(--radius-md);
@@ -9215,7 +9245,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .rc-mixer-vtx-level-note {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: var(--text-sm);
   color: var(--warning, #b8860b);
 }
@@ -9223,13 +9253,13 @@ details.metadata-settings-section:not([open]) > summary::after {
 /* AP_RC_Logic engine controls (shown when the firmware supports RCL_*). */
 .rc-mixer-engine {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin-bottom: 12px;
 }
 .rc-mixer-engine__toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   cursor: pointer;
   font-size: var(--text-lg);
 }
@@ -9371,7 +9401,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .rc-mixer-channel {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 6px 10px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -9382,7 +9412,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -9432,7 +9462,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .rc-mixer-assignment__range,
 .rc-mixer-assignment__status {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -9541,7 +9571,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   flex-wrap: wrap;
   margin-bottom: 14px;
   padding: 12px 14px;
@@ -9576,7 +9606,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: 6px;
 }
 .board-orientation-diagram__stage {
@@ -9757,7 +9787,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .can-bus-header__status {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .can-bus-header__status small {
@@ -9856,7 +9886,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -9870,7 +9900,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .can-bus-node__name-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .can-bus-node__name-row strong {
@@ -9929,7 +9959,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -9946,12 +9976,12 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .can-bus-staged__buttons {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .can-bus-staged__list {
@@ -9963,7 +9993,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .can-bus-staged__list li {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 4px 0;
   border-top: 1px solid rgba(var(--edge-rgb), 0.06);
 }
@@ -10043,7 +10073,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .port-board-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .port-board-links a {
@@ -10064,7 +10094,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .port-board-debug {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .port-board-debug summary {
@@ -10099,7 +10129,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .board-media-lightbox__frame {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
   width: min(1040px, 100%);
   max-height: calc(100vh - 64px);
   padding: 20px;
@@ -10112,7 +10142,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .board-media-lightbox__header {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: flex-start;
 }
 
@@ -10141,7 +10171,7 @@ details.metadata-settings-section:not([open]) > summary::after {
    (no lightbox chrome). Stacks the acks / tabs / panels / apply-bar. */
 .motor-reorder-inline {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* Calm single-line status shown in place of the panel during an apply-and-reboot
@@ -10168,7 +10198,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .motor-reorder-lightbox__grid {
   display: grid;
   grid-template-columns: minmax(320px, 0.95fr) minmax(340px, 1.05fr);
-  gap: 16px;
+  gap: var(--space-4);
   align-items: start;
 }
 
@@ -10195,7 +10225,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .motor-reorder-lightbox__apply-bar {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px solid var(--surface-400);
@@ -10210,40 +10240,61 @@ details.metadata-settings-section:not([open]) > summary::after {
  * a primary-tinted underline so it reads at a glance against the dialog
  * surround. */
 /* Superseded by .tab-strip — kept only for any stale markup. */
+/* The app's second tab implementation. It shared no property with .tab-strip:
+ * underline instead of outline, borderless, uppercase with tracking, its own
+ * padding. Same widget, drawn two ways, so it now borrows the real one. The
+ * lightbox keeps its own strip container (it sits inside a modal, not under a
+ * page title). */
 .motor-reorder-lightbox__tabs {
   display: inline-flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--surface-400);
-  margin: 0 0 14px;
-  padding: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
 }
 
 .motor-reorder-lightbox__tab {
-  padding: 8px 16px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
   color: var(--text-muted);
   font: inherit;
-  font-size: var(--text-md);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font-weight: 600;
   cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease;
 }
 
 .motor-reorder-lightbox__tab:hover {
   color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+
+.motor-reorder-lightbox__tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .motor-reorder-lightbox__tab.is-active {
-  color: var(--text);
-  border-bottom-color: var(--primary-500);
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motor-reorder-lightbox__tab {
+    transition: none;
+  }
 }
 
 .motor-reorder-lightbox__direction {
   display: grid;
   grid-template-columns: minmax(320px, 0.95fr) minmax(340px, 1.05fr);
-  gap: 16px;
+  gap: var(--space-4);
   align-items: start;
 }
 
@@ -10268,7 +10319,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .motor-reorder-autospin {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: 8px;
   font-size: var(--text-md);
   color: var(--text-muted);
@@ -10289,7 +10340,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .motor-reorder-table__row {
   display: grid;
   grid-template-columns: 88px 96px minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   padding: 12px 14px;
   background: rgba(var(--fill-rgb), 0.96);
@@ -10387,7 +10438,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .telemetry-stack--ports .port-card {
-  gap: 12px;
+  gap: var(--space-3);
   border-radius: var(--radius-xl);
   border-width: 1px;
   border-color: rgba(var(--edge-rgb), 0.04);
@@ -10395,7 +10446,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .telemetry-stack--ports .port-row {
-  gap: 12px;
+  gap: var(--space-3);
   border-radius: var(--radius-xl);
 }
 
@@ -10421,7 +10472,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .telemetry-stack--outputs .orientation-card {
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .telemetry-stack--outputs .config-pills:first-of-type,
@@ -10432,7 +10483,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshot-capture-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
   align-items: start;
 }
 
@@ -10488,12 +10539,12 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshot-library-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .snapshot-card {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
   padding: 10px 12px;
   border-radius: var(--radius-md);
@@ -10520,7 +10571,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .snapshot-card__header strong {
@@ -10550,7 +10601,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshot-selected {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
   padding: 18px;
   border-radius: var(--radius-xl);
   border: 1px solid var(--card-outline);
@@ -10588,31 +10639,14 @@ details.metadata-settings-section:not([open]) > summary::after {
   color: var(--text-muted);
 }
 
-.snapshots-page,
-.tuning-page {
-  --snapshots-font-ui:
-    "Inter",
-    "SF Pro Display",
-    "SF Pro Text",
-    "Segoe UI",
-    system-ui,
-    sans-serif;
-  --snapshots-font-mono:
-    "JetBrains Mono",
-    "SFMono-Regular",
-    "SF Mono",
-    Consolas,
-    monospace;
-}
-
 .snapshots-page {
-  font-family: var(--snapshots-font-ui);
+  font-family: var(--font-ui);
   position: relative;
   isolation: isolate;
 }
 
 .snapshots-page .telemetry-stack {
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .snapshots-page::before {
@@ -10651,7 +10685,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .snapshots-page__stack {
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .snapshots-page__hero {
@@ -10702,7 +10736,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-page__hero-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
   align-self: end;
 }
 
@@ -10787,19 +10821,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .snapshots-counter-chip {
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
-  min-height: 28px;
-  padding: 6px 10px;
-  border-radius: 999px;
   background: rgba(var(--edge-rgb), 0.055);
   color: rgba(var(--ink-rgb), 0.88);
-  font-family: var(--snapshots-font-mono);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
 }
 
 .snapshots-counter-chip.is-success {
@@ -10857,7 +10881,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-field {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 0;
   border: none;
   background: transparent;
@@ -10875,7 +10899,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-weight: 600;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  font-family: var(--snapshots-font-ui);
+  font-family: var(--font-ui);
 }
 
 .snapshots-page .snapshots-field input,
@@ -10944,7 +10968,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-capture-actions,
 .provisioning-capture-actions {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: start;
 }
 
@@ -10975,7 +10999,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-setting-row span {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .snapshots-setting-row strong {
@@ -11005,7 +11029,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-radius: var(--radius-md);
   min-height: 28px;
   padding: 0 12px;
-  font-family: var(--snapshots-font-ui);
+  font-family: var(--font-ui);
   font-size: var(--text-md);
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -11099,7 +11123,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-metrics-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .snapshots-metric-card {
@@ -11113,7 +11137,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-metric-card span {
   color: rgba(var(--ink-rgb), 0.48);
-  font-family: var(--snapshots-font-ui);
+  font-family: var(--font-ui);
   font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -11194,7 +11218,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-page .snapshot-card__header strong {
   margin-bottom: 4px;
-  font-family: var(--snapshots-font-ui);
+  font-family: var(--font-ui);
   font-size: var(--text-lg);
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -11202,7 +11226,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .snapshots-page .snapshot-card__header small {
-  font-family: var(--snapshots-font-mono);
+  font-family: var(--font-data);
   font-size: var(--text-sm);
   letter-spacing: 0.02em;
 }
@@ -11218,7 +11242,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-page .config-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .snapshots-page .config-pills span {
@@ -11243,7 +11267,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-empty-state,
 .snapshots-detail-panel {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 14px 16px;
   border-radius: var(--radius-2xl);
   background: rgba(var(--edge-rgb), 0.024);
@@ -11313,7 +11337,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   padding-top: 4px;
 }
 
@@ -11329,7 +11353,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-compare-picker {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 4px 0 8px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
@@ -11375,7 +11399,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .snapshots-page .parameter-diff-group {
-  gap: 12px;
+  gap: var(--space-3);
   padding: 18px 0;
   border: none;
   border-radius: 0;
@@ -11439,7 +11463,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .snapshots-page .snapshot-restore-ack {
-  gap: 12px;
+  gap: var(--space-3);
   padding: 15px 16px;
   border-radius: var(--radius-2xl);
   background: rgba(var(--edge-rgb), 0.025);
@@ -11454,7 +11478,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .snapshots-page .provisioning-checklist {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 18px 18px 16px;
   border-radius: var(--radius-2xl);
   background: rgba(var(--edge-rgb), 0.024);
@@ -11510,7 +11534,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .preset-group-grid {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .preset-group {
@@ -11532,7 +11556,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .preset-group__header strong {
@@ -11552,12 +11576,12 @@ details.metadata-settings-section:not([open]) > summary::after {
 .preset-card-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .preset-card {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
   padding: 10px 12px;
   border-radius: var(--radius-md);
@@ -11584,7 +11608,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .preset-card__header strong {
@@ -11609,7 +11633,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .preset-selected {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
   padding: 18px;
   border-radius: var(--radius-xl);
   border: 1px solid var(--border);
@@ -11621,12 +11645,12 @@ details.metadata-settings-section:not([open]) > summary::after {
 .preset-selected__badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .preset-notes {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .preset-notes strong {
@@ -11689,13 +11713,13 @@ details.metadata-settings-section:not([open]) > summary::after {
 .motor-test-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .motor-test-grid label,
 .motor-test-acknowledgments label {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .motor-test-grid span {
@@ -11780,7 +11804,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .status-entry {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   padding: 12px 14px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
@@ -11802,7 +11826,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .setup-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .setup-card {
@@ -11814,12 +11838,12 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .guided-actions {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .guided-action-card {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 14px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
@@ -11830,7 +11854,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .guided-action-summary {
@@ -11847,7 +11871,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .guided-action-log {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .guided-action-log span {
@@ -11889,7 +11913,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   margin-bottom: 14px;
 }
 
@@ -11924,7 +11948,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .parameter-review {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   margin-bottom: 24px;
   padding: 12px 14px;
   border-radius: var(--radius-xl);
@@ -11936,7 +11960,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .parameter-review__stats {
@@ -11974,7 +11998,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-review__notice {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 14px 16px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--edge-rgb), 0.04);
@@ -11996,7 +12020,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-follow-up {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 14px 16px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--edge-rgb), 0.04);
@@ -12017,7 +12041,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin-left: auto;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .parameter-backup-input {
@@ -12042,7 +12066,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-import-exclusions {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   margin: 0;
   padding: 4px 12px 6px;
   border: 1px solid var(--border-subtle, rgba(var(--edge-rgb), 0.12));
@@ -12072,12 +12096,12 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .parameter-diff-grid {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .parameter-diff-group {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 16px;
   border-radius: var(--radius-xl);
   border: 1px solid var(--border);
@@ -12093,7 +12117,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
@@ -12123,7 +12147,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-diff-item {
   display: grid;
   grid-template-columns: minmax(140px, 1fr) minmax(180px, 1fr) minmax(140px, 0.8fr) auto;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   padding-top: 12px;
   border-top: 1px solid rgba(39, 49, 59, 0.72);
@@ -12137,7 +12161,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-diff-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   justify-content: flex-end;
   /* .parameter-diff-item is a grid, so the actions cell also has to place
@@ -12207,7 +12231,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .parameter-diff-bulk {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
 }
 
@@ -12287,7 +12311,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .create-preset__field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: var(--text-lg);
 }
 
@@ -12315,7 +12339,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .create-preset__question {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 10px;
   border: 1px solid var(--surface-400);
   border-radius: var(--radius-md);
@@ -12324,7 +12348,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .create-preset__question > label {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: flex-start;
   cursor: pointer;
 }
@@ -12348,7 +12372,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .create-preset__cells {
   display: inline-flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   font-size: var(--text-md);
   color: var(--text-muted);
@@ -12361,7 +12385,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .create-preset__params > header {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: baseline;
   justify-content: space-between;
   margin-bottom: 6px;
@@ -12379,7 +12403,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .create-preset__param {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 0.8fr) auto;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   padding: 6px 10px;
   font-size: var(--text-md);
@@ -12397,7 +12421,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .create-preset__param-id {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
   min-width: 0;
 }
@@ -12427,7 +12451,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .preset-serial-remap > label {
   display: inline-flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   font-size: var(--text-lg);
   color: var(--text-muted);
@@ -12560,7 +12584,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-option-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .parameter-option-list span {
@@ -12652,7 +12676,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-detail__head {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 .parameter-detail__head strong {
@@ -12697,7 +12721,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .parameter-detail__value-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: flex-end;
 }
 .parameter-detail__field {
@@ -12794,7 +12818,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .parameter-actions__idle {
@@ -12912,7 +12936,7 @@ details.metadata-settings-section:not([open]) > summary::after {
      chips overflowed the viewport. */
   .header-quad-status {
     padding: 5px 9px;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .header-battery-icon {
@@ -13226,7 +13250,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .landing__hero {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   max-width: 760px;
 }
 
@@ -13240,7 +13264,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .landing__connect {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 14px 16px;
   border-radius: var(--radius-xl);
   border: 1px solid var(--border-accent);
@@ -13249,7 +13273,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .landing__connect-copy {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .landing__connect-copy h2 {
@@ -13267,7 +13291,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .landing__connect-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
   align-items: end;
 }
 
@@ -13315,13 +13339,18 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-color: var(--primary-500);
 }
 
+/* The commit colour is --primary-action (green): the header's Connect, Apply
+ * Config, Save OSD and Apply Port Changes all use it. This button was amber,
+ * so the landing screen showed the same verb -- Connect -- in two different
+ * colours at once, one in the card and one in the header. Amber stays what it
+ * is everywhere else: selection and accent, not commit. */
 .landing__connect-button {
   height: 32px;
-  padding: 0 16px;
+  padding: 0 var(--space-4);
   border-radius: var(--radius-md);
-  border: 1px solid var(--primary-500);
-  background: var(--primary-500);
-  color: var(--text-on-light);
+  border: 1px solid var(--primary-action-border);
+  background: linear-gradient(180deg, var(--primary-action), var(--primary-action-border));
+  color: #0a1308;
   font-size: var(--text-xl);
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -13385,7 +13414,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .dfu-hex-flasher__activate {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0 0 12px;
 }
 .dfu-hex-flasher__help {
@@ -13402,7 +13431,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   padding-left: 18px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 /* Three-step DFU progress: erase -> write -> verify, each with its own bar. */
 .dfu-hex-flasher__steps {
@@ -13441,7 +13470,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .dfu-hex-flasher__full-erase {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 12px 0;
   font-size: var(--text-md);
   color: var(--text-muted);
@@ -13513,7 +13542,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -13534,7 +13563,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .firmware-replug-prompt {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 14px 0;
   padding: 12px 14px;
   border: 1px solid var(--border);
@@ -13607,7 +13636,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .firmware-wizard__steps > li {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 12px 14px;
   border: 1px solid var(--border, #3d3d3d);
   border-radius: var(--radius-md);
@@ -13620,7 +13649,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .firmware-wizard__row {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -13651,7 +13680,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 8px 0;
   /* Plain inline confirm, not a heavy bordered field-card — it was reading as
      obnoxious for a single safety checkbox. */
@@ -13677,12 +13706,12 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .landing__section {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .landing__section-header {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .landing__section-header h2 {
@@ -13703,7 +13732,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   padding: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .landing__capability {
@@ -13795,7 +13824,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 /* Modes view: read-only flight-mode slot table with live indicator. */
 .modes-stack {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .modes-status {
@@ -13810,7 +13839,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  column-gap: 8px;
+  column-gap: var(--space-2);
   row-gap: 1px;
   padding: 7px 12px;
   border-radius: var(--radius-md);
@@ -13980,7 +14009,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   padding: 12px 16px;
   border-radius: var(--radius-md);
   border: 1px solid var(--card-outline);
@@ -14244,7 +14273,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .failsafe-placeholder {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   padding: var(--card-padding, 12px);
   border-radius: var(--radius-md);
   border: 1px dashed var(--surface-500);
@@ -14284,7 +14313,7 @@ details.metadata-settings-section:not([open]) > summary::after {
      few cards, so cap the width so 2-3 cards read as a calm flow rather than
      spreading thin across a wide screen. */
   columns: 360px 3;
-  column-gap: var(--space-3, 12px);
+  column-gap: var(--space-3);
   padding-right: 6px;
   max-width: 1180px;
 }
@@ -14292,7 +14321,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 /* Category tab strip — reuses .tab-strip; a little breathing room + the
    unsaved-changes dot on a group you're not looking at. */
 .config-category-nav {
-  margin-bottom: var(--space-3, 12px);
+  margin-bottom: var(--space-3);
 }
 .config-category-nav__dot {
   display: inline-block;
@@ -14352,14 +14381,14 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .config-section {
   display: grid;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2);
   padding: var(--card-padding, 12px);
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
   background: var(--surface-200);
   /* Multicolumn item: keep a card whole and space it from the next one. */
   break-inside: avoid;
-  margin-bottom: var(--space-3, 12px);
+  margin-bottom: var(--space-3);
 }
 
 .config-section--planned {
@@ -14398,13 +14427,13 @@ details.metadata-settings-section:not([open]) > summary::after {
 .config-section__values {
   margin: 0;
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .config-section__value-row {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 4px 0;
   border-bottom: 1px solid var(--surface-300);
   font-size: var(--text-md);
@@ -14440,7 +14469,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .config-grid__footnote {
-  margin: var(--space-3, 12px) 0 0;
+  margin: var(--space-3) 0 0;
   color: var(--text-muted);
   font-size: var(--text-sm);
   line-height: 1.5;
@@ -14455,7 +14484,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* OSD custom-abbreviation (shorthand) editor — a small from→to table under the
@@ -14463,7 +14492,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 .osd-shorthand {
   margin-top: 12px;
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .osd-shorthand__header {
   display: flex;
@@ -14478,7 +14507,7 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .osd-shorthand__row input {
   min-width: 0;
@@ -14537,7 +14566,7 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .osd-shorthand__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 @media (max-width: 480px) {
@@ -14594,13 +14623,13 @@ details.bf-gui-box:not([open]) > summary::after {
   /* Preview column can shrink (its screen scales via aspect-ratio) so it
      never forces the layout wider than the content well. */
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
   align-items: start;
 }
 
 .osd-bf-menu {
   display: grid;
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
   align-content: start;
 }
 
@@ -14616,7 +14645,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .osd-bf-preview .bf-gui-box__titlebar small {
@@ -14641,7 +14670,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .config-section__editors {
   display: grid;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2);
 }
 
 .config-section__editors .scoped-editor-field {
@@ -14766,7 +14795,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .config-section__missing-row {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 6px 8px;
   border-radius: var(--radius-sm);
   border: 1px dashed var(--surface-400);
@@ -14794,8 +14823,8 @@ details.bf-gui-box:not([open]) > summary::after {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: var(--space-3, 12px);
-  padding-top: var(--space-3, 12px);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--surface-300);
   /* The grid is no longer internally scrolled, so pin the Apply/Revert bar to
      the bottom as the page scrolls — but ABOVE the fixed bottom status bar,
@@ -14803,7 +14832,7 @@ details.bf-gui-box:not([open]) > summary::after {
   position: sticky;
   bottom: var(--statusbar-height, 24px);
   background: var(--bg-panel, var(--surface-100));
-  padding-bottom: var(--space-2, 8px);
+  padding-bottom: var(--space-2);
   z-index: 3;
 }
 
@@ -14818,8 +14847,8 @@ details.bf-gui-box:not([open]) > summary::after {
 .firmware-wizard__quick-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: var(--space-3, 12px);
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .firmware-wizard__dfu-button,
@@ -14837,18 +14866,18 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .files-browser {
   display: grid;
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
 }
 
 .vehicle-output-summary {
   display: grid;
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
 }
 
 .files-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
   justify-content: space-between;
   align-items: center;
 }
@@ -14918,13 +14947,13 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .files-toolbar__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .files-path {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: var(--text-md);
 }
 
@@ -15009,7 +15038,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .vehicle-output-summary__header strong {
@@ -15128,13 +15157,13 @@ details.bf-gui-box:not([open]) > summary::after {
 .bootloader-identity__rows {
   margin: 0;
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .bootloader-identity__row {
   display: grid;
   grid-template-columns: minmax(0, 110px) minmax(0, 1fr);
-  gap: 8px;
+  gap: var(--space-2);
   align-items: baseline;
 }
 
@@ -15181,7 +15210,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .filter-bank__routing {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: 10px;
   padding: 10px 12px;
   border-radius: var(--radius-lg);
@@ -15206,7 +15235,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
 .parameter-reference__row {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 8px 10px;
   border-radius: var(--radius-lg);
   border: 1px solid rgba(var(--edge-rgb), 0.05);
@@ -15218,7 +15247,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -15264,7 +15293,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .guided-current-cal__steps {
   list-style: none;
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0;
   padding: 0;
 }
@@ -15285,7 +15314,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .guided-current-cal__step-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -15307,7 +15336,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .guided-current-cal__step .scoped-editor-field {
   margin: 0;
   padding: 6px 8px;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .guided-current-cal__step .scoped-editor-field span {
@@ -15357,7 +15386,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .presets-share {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
@@ -15376,7 +15405,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .presets-erase {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
@@ -15462,7 +15491,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .osd-preview-screen-select {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin-bottom: 8px;
 }
 .osd-preview-screen-select > span {
@@ -15499,7 +15528,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: grid;
   grid-template-columns: minmax(130px, 1.5fr) repeat(4, 46px);
   align-items: center;
-  column-gap: 4px;
+  column-gap: var(--space-1);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
 }
@@ -15661,7 +15690,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .receiver-stick-craft {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   margin-bottom: 10px;
 }
 .receiver-stick-craft small {
@@ -15677,7 +15706,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .calibration-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -15687,7 +15716,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .calibration-card__blocked {
   font-size: var(--text-sm);
@@ -15706,7 +15735,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .esc-rpm-readout__summary {
   margin: 4px 0 0 0;
@@ -15784,7 +15813,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .calibration-card__reboot {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: 2px;
   padding: 10px;
   border: 1px solid var(--border);
@@ -15803,7 +15832,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .calibration-card__reboot-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .calibration-card__reboot-note {
   font-size: var(--text-sm);
@@ -15866,7 +15895,7 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .valt-manual__row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: flex-end;
   flex-wrap: wrap;
 }
@@ -15927,7 +15956,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .motor-reverse-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 6px 10px;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
@@ -15973,7 +16002,7 @@ details.bf-gui-box:not([open]) > summary::after {
   border-radius: var(--radius-lg);
   background: rgba(var(--edge-rgb), 0.025);
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .firmware-wizard__browse-header {
   display: grid;
@@ -15987,7 +16016,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .firmware-wizard__browse-list {
   list-style: none;
@@ -16045,7 +16074,7 @@ details.bf-gui-box:not([open]) > summary::after {
 
   .parameter-review {
     padding: 10px;
-    gap: 8px;
+    gap: var(--space-2);
     margin-bottom: 12px;
   }
 
@@ -16072,7 +16101,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .cal-location {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .cal-location__heading {
@@ -16089,7 +16118,7 @@ details.bf-gui-box:not([open]) > summary::after {
   border: 1px solid var(--border);
   background: var(--surface-200);
   color: var(--text-muted);
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-data);
   font-style: italic;
   font-weight: 700;
   line-height: 1;
@@ -16150,14 +16179,14 @@ details.bf-gui-box:not([open]) > summary::after {
 .cal-location__actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .cal-location__frame {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   width: min(560px, 92vw);
   max-width: 92vw;
   padding: 16px;
@@ -16167,7 +16196,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .cal-location__modal-header strong {
@@ -16183,7 +16212,7 @@ details.bf-gui-box:not([open]) > summary::after {
 /* MAVLink / DroneCAN inspector tables. */
 .mavlink-inspector__controls {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 .mavlink-inspector__filter {
@@ -16194,7 +16223,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 8px 10px;
   border: 1px solid var(--surface-300);
   border-radius: var(--radius-md);
@@ -16211,7 +16240,7 @@ details.bf-gui-box:not([open]) > summary::after {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 8px 10px;
   border: 1px solid var(--surface-300);
   border-radius: var(--radius-md);
@@ -16277,7 +16306,7 @@ details.bf-gui-box:not([open]) > summary::after {
 .mavlink-inspector__sent-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto auto;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 4px 8px;
   align-items: center;
 }
@@ -16452,7 +16481,7 @@ button.mavlink-inspector__sent-row {
 }
 .mavlink-inspector__field-actions {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--space-1);
   justify-content: flex-end;
 }
 .mavlink-inspector__field-copy,
@@ -16494,7 +16523,7 @@ button.mavlink-inspector__sent-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   margin-bottom: 4px;
 }
 .mavlink-inspector__plot-title {
@@ -16661,7 +16690,7 @@ button.mavlink-inspector__sent-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .dronecan-inspector__node-actions {
   margin-top: 12px;
@@ -16674,7 +16703,7 @@ button.mavlink-inspector__sent-row {
   margin-top: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 12px;
   border: 1px solid var(--surface-300);
   border-radius: var(--radius-md);
@@ -16684,14 +16713,14 @@ button.mavlink-inspector__sent-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: var(--text-lg);
   font-weight: 600;
 }
 .dronecan-inspector__fwupdate-file {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: var(--text-md);
   color: var(--text-muted);
 }
@@ -16715,18 +16744,18 @@ button.mavlink-inspector__sent-row {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .dronecan-inspector__fwupdate-online-list li {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .dronecan-inspector__fwupdate-ack {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: var(--text-md);
   line-height: 1.4;
   padding: 8px;
@@ -16791,7 +16820,7 @@ button.mavlink-inspector__sent-row {
 .dronecan-inspector__esc-row {
   display: grid;
   grid-template-columns: 1.2fr 0.8fr 0.9fr 0.9fr 0.8fr 0.7fr 0.7fr 0.8fr;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
   padding: 6px 12px;
   font-family: var(--font-data);
@@ -16823,7 +16852,7 @@ button.mavlink-inspector__sent-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   color: var(--text-muted);
   line-height: 1.5;
@@ -16856,7 +16885,7 @@ button.mavlink-inspector__sent-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .lua-section-head h3 {
   margin: 0;
@@ -16886,7 +16915,7 @@ button.mavlink-inspector__sent-row {
 .lua-card-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 .lua-card-name {
@@ -16897,7 +16926,7 @@ button.mavlink-inspector__sent-row {
 .lua-card-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin-left: auto;
 }
 
@@ -16933,7 +16962,7 @@ button.mavlink-inspector__sent-row {
 /* Full description + prerequisite list, tucked inside the InfoDot tip. */
 .lua-info-body {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .lua-info-prereqs {
   display: grid;
@@ -16994,7 +17023,7 @@ button.mavlink-inspector__sent-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 6px 0;
   border-bottom: 1px solid var(--border-subtle, var(--border));
 }
@@ -17016,7 +17045,7 @@ button.mavlink-inspector__sent-row {
 .ai-assistant {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .ai-assistant__settings-disclosure > summary {
   cursor: pointer;
@@ -17027,13 +17056,13 @@ button.mavlink-inspector__sent-row {
 .ai-assistant__settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 .ai-assistant__settings-grid label,
 .ai-assistant__remember {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: 0.82em;
   color: var(--text-muted);
 }
@@ -17044,7 +17073,7 @@ button.mavlink-inspector__sent-row {
 .ai-assistant__remember {
   flex-direction: row;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: 12px;
   line-height: 1.45;
 }
@@ -17101,12 +17130,7 @@ button.mavlink-inspector__sent-row {
   margin-top: 8px;
 }
 .ai-assistant__tool-chip {
-  font-family: var(--font-data);
-  font-size: 0.75em;
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 1px solid var(--border-subtle, var(--border));
-  color: var(--text-muted);
+  border-color: var(--border-subtle, var(--border));
   background: var(--bg-panel-soft);
 }
 .ai-assistant__tool-chip--done {
@@ -17116,7 +17140,7 @@ button.mavlink-inspector__sent-row {
 .ai-assistant__composer {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .ai-assistant__composer textarea {
   width: 100%;
@@ -17126,7 +17150,7 @@ button.mavlink-inspector__sent-row {
 .ai-assistant__composer-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .ai-assistant__hint {
   margin: 0;
@@ -17150,7 +17174,7 @@ button.mavlink-inspector__sent-row {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .ai-assistant__proposal-summary {
   color: var(--text-muted);
@@ -17175,7 +17199,7 @@ button.mavlink-inspector__sent-row {
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .ai-assistant__proposal-row-head code {
   font-family: var(--font-data);
@@ -17204,7 +17228,7 @@ button.mavlink-inspector__sent-row {
 .ai-assistant__proposal-ack {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: 0.82em;
   color: var(--text-muted);
   line-height: 1.45;
@@ -17215,7 +17239,7 @@ button.mavlink-inspector__sent-row {
 }
 .ai-assistant__proposal-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* AI Assistant — model picker (dropdown fetched from the provider). */
@@ -17248,7 +17272,7 @@ button.mavlink-inspector__sent-row {
 .log-tuning__upload {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   margin: 12px 0;
 }
 .log-tuning__file {
@@ -17262,14 +17286,14 @@ button.mavlink-inspector__sent-row {
 }
 .log-tuning__results {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
   margin-top: 12px;
 }
 .log-tuning__warnings {
   margin: 0;
   padding-left: 18px;
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   color: var(--warning);
   font-size: 0.85em;
 }
@@ -17280,7 +17304,7 @@ button.mavlink-inspector__sent-row {
 .log-tuning__metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px;
+  gap: var(--space-2);
 }
 .log-tuning__metrics article {
   display: grid;
@@ -17316,17 +17340,17 @@ button.mavlink-inspector__sent-row {
 }
 .log-tuning__recs {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .log-tuning__recs-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .log-tuning__rec {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   padding: 10px 12px;
   border-radius: var(--radius-md);
   background: var(--bg-panel-muted);
@@ -17369,7 +17393,7 @@ button.mavlink-inspector__sent-row {
 /* Log Tuning per-axis gyro spectrum charts. */
 .log-tuning__spectra {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .log-tuning__spectrum {
   display: grid;
@@ -17413,7 +17437,7 @@ button.mavlink-inspector__sent-row {
 
 .log-tuning__advisories {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* Stale-link banner: the values on screen came from a link that has dropped
@@ -17429,7 +17453,7 @@ button.mavlink-inspector__sent-row {
 .workspace-note--stale__headline {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .workspace-note--stale__headline strong {
@@ -17500,7 +17524,7 @@ button.mavlink-inspector__sent-row {
 .receiver-functions-row {
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   padding: 6px 8px;
   border-radius: var(--radius-md);
@@ -17535,7 +17559,7 @@ button.mavlink-inspector__sent-row {
 .parameter-import-prompt {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
@@ -17558,7 +17582,7 @@ button.mavlink-inspector__sent-row {
 .parameter-import-prompt__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* "Reset to Defaults" on Parameters and Snapshots. Mirrors the Flash tab's
@@ -17623,7 +17647,7 @@ button.mavlink-inspector__sent-row {
 .parameter-detail__body {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr);
-  gap: var(--space-3, 12px) 24px;
+  gap: var(--space-3) 24px;
   align-items: start;
 }
 
@@ -17670,7 +17694,7 @@ button.mavlink-inspector__sent-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 

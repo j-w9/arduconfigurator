@@ -7,6 +7,7 @@
 import { formatArducopterVtxEnable } from '@arduconfig/param-metadata'
 import type { ConfiguratorSnapshot, ParameterDraftEntry } from '@arduconfig/ardupilot-core'
 import { useMemo } from 'react'
+import type { ReactNode } from 'react'
 
 import { VTX_PARAM_IDS } from '../param-groups'
 import { isVtxReviewParamId } from '../param-review'
@@ -23,6 +24,9 @@ import type { UseVtxTableResult } from '../hooks/use-vtx-table'
 import { VtxView } from '../views/Vtx'
 
 export interface VtxSectionProps {
+  /** The OSD/VTX switcher, rendered under the panel title like every other
+   *  view's tab strip. */
+  headerNav?: ReactNode
   snapshot: ConfiguratorSnapshot
   serialPortViewModels: readonly SerialPortViewModel[]
   editedValues: Record<string, string>
@@ -42,6 +46,7 @@ export interface VtxSectionProps {
 
 export function VtxSection(props: VtxSectionProps) {
   const {
+    headerNav,
     snapshot,
     serialPortViewModels,
     editedValues,
@@ -99,6 +104,7 @@ export function VtxSection(props: VtxSectionProps) {
 
   return (
     <VtxView
+      headerNav={headerNav}
       linkPorts={vtxLinkPorts}
       enabledLabel={formatArducopterVtxEnable(vtxEnabled)}
       enableField={vtxEnableParameter ? { parameter: vtxEnableParameter, liveValue: vtxEnabled } : undefined}

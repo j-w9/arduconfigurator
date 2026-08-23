@@ -61,6 +61,13 @@ export function viewMonogram(viewId: AppViewId): string {
   switch (viewId) {
     case 'setup':
       return 'ST'
+    // Both of these used to fall through to the 'APP' default, so two adjacent
+    // nav entries carried the same mark — which is the one thing a mark exists
+    // to prevent.
+    case 'guided-setup':
+      return 'GID'
+    case 'calibration':
+      return 'CAL'
     case 'ports':
       return 'PR'
     case 'vtx':

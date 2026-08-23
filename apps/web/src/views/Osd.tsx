@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
@@ -169,6 +170,9 @@ export interface OsdElementMatrixRow {
 }
 
 export interface OsdViewProps {
+  /** The OSD/VTX switcher, rendered under the panel title like every other
+   *  view's tab strip. */
+  headerNav?: ReactNode
   linkPorts: readonly OsdLinkPort[]
   typeField: OsdSelectField | undefined
   channelField: OsdSelectField | undefined
@@ -236,6 +240,7 @@ function fieldStatusClass(draftStatusById: ScopedFieldDraftMap, paramId: string)
 
 export function OsdView(props: OsdViewProps) {
   const {
+    headerNav,
     linkPorts,
     typeField,
     channelField,
@@ -462,6 +467,10 @@ export function OsdView(props: OsdViewProps) {
         }
       >
         <div className="bf-tab-stack">
+          {/* The OSD/VTX switcher. It used to render above the page title while
+           *  every other view puts its tab strip under the title — same widget,
+           *  two structural positions. */}
+          {headerNav}
           {/* The "Previewing OSDn" dropdown used to live here, far from the
            *  preview canvas it actually drives. It's now docked into the
            *  Preview pane's titlebar (search "osd-preview-screen-select"). */}
