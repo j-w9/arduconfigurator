@@ -18043,3 +18043,199 @@ button.mavlink-inspector__sent-row {
   font-size: var(--text-md);
   color: var(--text-dim);
 }
+
+/* ── Phone layer ──────────────────────────────────────────────────────────
+ *
+ * 560px, chosen once and used for every phone rule below rather than adding an
+ * eleventh arbitrary breakpoint. Above it nothing here applies and the desktop
+ * header is untouched.
+ *
+ * The problem this solves: the header laid out as six stacked rows on a phone
+ * -- brand, Wiki, transport, battery + params, Expert + theme, connect --
+ * costing ~320px of an 844px screen before the page title, on every view. The
+ * groups are reordered with flex `order` rather than moved in the DOM, so the
+ * desktop order and the markup stay exactly as they were.
+ *
+ * What does NOT fold away: the transport picker and the connect action.
+ * Choosing a transport and connecting is the first thing anyone does on a
+ * phone, and putting it behind a disclosure buys 40px at the cost of the one
+ * flow that has to work. Only the things you touch once a session -- the wiki
+ * link, Expert mode, the theme -- go in the sheet.
+ */
+@media (max-width: 560px) {
+  .app-header {
+    /* Explicit: the narrow-screen rule at <=1024px folds .app-header into a
+       one-column grid along with thirty other containers, which is what made
+       every group its own full-width row. The bar wants to be a flex line. */
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .app-header__brand {
+    order: 0;
+    /* Takes the slack on row one so the toggle and the action sit hard right.
+       An auto margin on the toggle would do it too, except an auto margin eats
+       the line's free space and pushes the action onto a row of its own. */
+    flex: 1 1 auto;
+    padding: 0;
+    border: none;
+    background: none;
+  }
+
+  /* The name and build string are the least useful pixels on a phone -- the
+     mark already says which app this is. */
+  .app-header__brand-copy {
+    display: none;
+  }
+
+  /* Row one is identity and the two controls you actually press. The live
+     state below is information, not action, so it gets its own row rather than
+     being squeezed in beside them -- trying to fit the battery card inline is
+     what left the mark stranded on a row of its own. */
+  .app-header__more-toggle {
+    order: 1;
+    flex: 0 0 auto;
+  }
+
+  .app-header__actions {
+    order: 2;
+    flex: 0 0 auto;
+  }
+
+  .app-header__telemetry,
+  .app-header__disconnected-pill {
+    order: 3;
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  /* Connect and Disconnect sat one above the other, which is what made the
+     header six rows instead of five. */
+  .app-header__primary-actions {
+    flex-direction: row;
+    gap: var(--space-2);
+  }
+
+  .app-header__telemetry {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  /* The bottom status bar already carries the sync state on every screen. */
+  .header-sync-panel__progress {
+    display: none;
+  }
+
+  /* Row three: the transport picker, always reachable. */
+  .app-header__nav-stack {
+    order: 4;
+    flex-basis: 100%;
+    gap: var(--space-2);
+  }
+
+  .app-header__connection {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .app-header__connection select,
+  .app-header__connection-input {
+    width: 100%;
+  }
+
+  /* The sheet: once-a-session controls, on their own rows when opened. */
+  .app-header__wiki {
+    order: 5;
+    flex-basis: 100%;
+    justify-content: center;
+  }
+
+  .app-header__mode-switch {
+    order: 6;
+    flex-basis: 100%;
+    justify-content: space-between;
+  }
+
+  .app-header:not(.is-more-open) .app-header__wiki,
+  .app-header:not(.is-more-open) .app-header__mode-switch {
+    display: none;
+  }
+}
+
+/* The toggle exists only on the phone layer; everywhere else the groups it
+   hides are laid out inline and it would be a control that does nothing. */
+.app-header__more-toggle {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .app-header__more-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid rgba(var(--edge-rgb), 0.08);
+    border-radius: var(--radius-lg);
+    background: rgba(var(--edge-rgb), 0.03);
+    color: var(--text-muted);
+    font-size: var(--text-2xl);
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .app-header.is-more-open .app-header__more-toggle {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+}
+
+/* ── Phone: live displays ─────────────────────────────────────────────────
+ *
+ * These are the surfaces people actually came to look at -- the craft attitude,
+ * the OSD layout, the stick bars -- and on a phone they were the worst-served
+ * things on the screen.
+ *
+ * The craft view was the clearest case. Its height is clamp(180px, 21vw,
+ * 260px): a height derived from viewport WIDTH, which collapses to the 180px
+ * floor on any phone while the width stays fluid. The result was a 3D model
+ * letterboxed into 302x176. An aspect-ratio says what was actually meant --
+ * "as tall as it is wide, near enough" -- at any width.
+ */
+@media (max-width: 560px) {
+  .flight-deck__model-frame {
+    height: auto;
+    aspect-ratio: 4 / 3;
+  }
+
+  /* The compact variant pins 286px, which is close to right at 390px but
+     letterboxes again on a narrow phone. */
+  .flight-deck--compact .flight-deck__model-frame {
+    height: auto;
+    aspect-ratio: 4 / 3;
+  }
+
+  /* Nested cards each took 10-12px a side, so a display three cards deep lost
+     ~60px of a 390px screen to padding it did not need. */
+  .bf-gui-box {
+    padding: var(--space-2);
+    gap: var(--space-2);
+  }
+
+  /* Bleed the displays themselves back out over what padding remains. width
+     stays auto so this widens the box without ever exceeding the viewport. */
+  .flight-deck__model-shell,
+  .osd-preview-screen,
+  .rc-bars-container {
+    /* Widen by exactly the bleed. `width: auto` also works where the box is
+       block-level, but the compact deck sits in a flex context where auto
+       shrinks it to content -- it lost 57px that way. */
+    width: calc(100% + var(--space-2) * 2);
+    margin-inline: calc(var(--space-2) * -1);
+  }
+}
