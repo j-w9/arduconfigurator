@@ -5,7 +5,7 @@
 // plain props + semantic callbacks. Behavior-neutral lift of the original
 // inline JSX: same markup, same data-testids, same class names, same copy.
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
@@ -121,8 +121,17 @@ export function AppHeader({
     return () => observer.disconnect()
   }, [])
 
+  // Phone-only disclosure. Above the phone breakpoint the toggle is display:none
+  // and every group it hides is laid out inline as before, so this state has no
+  // effect on the desktop header at all.
+  const [moreOpen, setMoreOpen] = useState(false)
+
   return (
-    <header ref={headerRef} className="app-header" data-testid="app-header">
+    <header
+      ref={headerRef}
+      className={`app-header${moreOpen ? ' is-more-open' : ''}`}
+      data-testid="app-header"
+    >
       <button
         type="button"
         className="app-header__brand"
@@ -143,6 +152,20 @@ export function AppHeader({
             <span data-testid="app-git-info" className="app-header__build--muted">{GIT_BRANCH}@{GIT_HASH}</span>
           </small>
         </span>
+      </button>
+
+      {/* On a phone the header was six stacked rows -- roughly a third of the
+          screen before any content. The rows that are not live state (Wiki, the
+          transport picker, Expert mode, the theme) fold in behind this. */}
+      <button
+        type="button"
+        className="app-header__more-toggle"
+        data-testid="header-more-toggle"
+        aria-expanded={moreOpen}
+        aria-label={moreOpen ? 'Hide connection and display settings' : 'Show connection and display settings'}
+        onClick={() => setMoreOpen((open) => !open)}
+      >
+        <span aria-hidden="true">···</span>
       </button>
 
       {/* Wiki + connection picker stack vertically to keep the header from

@@ -73,7 +73,7 @@ test.describe('Phone layout', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
     await expect(page.locator('.parameter-editor__expert-note')).toBeHidden()
     await expect(page.getByTestId('export-parameter-backup')).toBeHidden()
@@ -150,6 +150,20 @@ test.describe('Desktop firmware browse', () => {
     await expect(page.getByTestId('firmware-vehicle')).toHaveValue('Plane')
   })
 })
+
+/* Expert mode moved into the header's phone disclosure, so on a narrow viewport
+ * the sheet has to be opened before the toggle can be reached. Above the phone
+ * breakpoint the sheet button is display:none and this is a no-op, so the same
+ * call is correct at every width. */
+async function enableExpertMode(page: Page): Promise<void> {
+  const sheet = page.getByTestId('header-more-toggle')
+  // Idempotent: a test may call this more than once, and clicking an already
+  // open sheet closes it again.
+  if (await sheet.isVisible() && (await sheet.getAttribute('aria-expanded')) !== 'true') {
+    await sheet.click()
+  }
+  await page.getByTestId('product-mode-expert').check()
+}
 
 async function connectViaHeader(page: Page): Promise<void> {
   await page.getByTestId('transport-mode-select').selectOption('demo')
@@ -290,7 +304,7 @@ test.describe('Parameters tab (expert-only)', () => {
     // Wait for the full param sync before counting rows — the table populates as
     // params stream in, so an early count races the sync (and empties out).
     await expectParameterSyncComplete(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
 
     const dataRows = page.locator('.parameter-row:not(.parameter-row--header)')
@@ -314,7 +328,7 @@ test.describe('Parameters tab (expert-only)', () => {
     // leaving the diff grid to hunt for.
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
 
     const search = page.getByTestId('parameter-search-input')
@@ -351,7 +365,7 @@ test.describe('Parameters tab (expert-only)', () => {
     await page.addStyleTag({ content: '* { overflow-anchor: none !important; }' })
     await connectViaHeader(page)
     await expectParameterSyncComplete(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
     await page.addStyleTag({ content: '* { overflow-anchor: none !important; }' })
 
@@ -393,7 +407,7 @@ test.describe('Parameters tab (expert-only)', () => {
     // stays as a muted "won't write" row until Discard.
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
     await page.getByTestId('parameter-search-input').fill('ANGLE_MAX')
 
@@ -413,7 +427,7 @@ test.describe('Parameters tab (expert-only)', () => {
   test('expanding a param row reveals its metadata, old name, enum meaning, and a type-or-pick editor', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
     await page.getByTestId('parameter-search-input').fill('GPS_TYPE')
 
@@ -449,7 +463,7 @@ test.describe('Parameters tab (expert-only)', () => {
     // hundreds of parameters.
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
     await expectParameterSyncComplete(page)
 
@@ -484,7 +498,7 @@ test.describe('Parameters tab (expert-only)', () => {
   test('a staged bitmask is editable bit by bit, and a draft matching live clears on re-sync', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
     await expectParameterSyncComplete(page)
 
@@ -514,7 +528,7 @@ test.describe('Parameters tab (expert-only)', () => {
   test('an import can be staged one row at a time instead of all at once', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
     await expectParameterSyncComplete(page)
 
@@ -554,7 +568,7 @@ test.describe('Parameters tab (expert-only)', () => {
     // before "Drop selected".
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
 
     // Stage two failsafe params so the group has more than one row.
@@ -583,7 +597,7 @@ test.describe('Parameters tab (expert-only)', () => {
     // enum meanings in front of them.
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
     await page.getByTestId('parameter-search-input').fill('GPS_TYPE')
 
@@ -603,7 +617,7 @@ test.describe('Parameters tab (expert-only)', () => {
     // ArduConfigurator JSON or a ground-station format from one control.
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
 
     // No separate legacy control anymore.
@@ -742,7 +756,7 @@ test.describe('CAN bus enable prompt', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-can').click()
 
     const prompt = page.getByTestId('can-enable-prompt')
@@ -765,7 +779,7 @@ test.describe('Networking view (Expert + networking-capable FC)', () => {
     await expect(page.getByTestId('view-button-networking')).toHaveCount(0)
 
     // Expert mode: the tab appears because the demo Copter reports NET_ params.
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await expect(page.getByTestId('view-button-networking')).toBeVisible()
     await page.getByTestId('view-button-networking').click()
 
@@ -822,7 +836,7 @@ test.describe('Lua Scripts view (Expert + scripting-capable FC)', () => {
     await expect(page.getByTestId('view-button-lua')).toHaveCount(0)
 
     // Expert mode: the tab appears because the demo Copter reports SCR_ params.
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await expect(page.getByTestId('view-button-lua')).toBeVisible()
     await page.getByTestId('view-button-lua').click()
 
@@ -872,7 +886,7 @@ test.describe('AI Assistant view (Expert, offline mock provider)', () => {
     await expect(page.getByTestId('view-button-ai-assistant')).toHaveCount(0)
 
     // Expert mode: the tab appears (gated on Expert alone, no FC capability).
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await expect(page.getByTestId('view-button-ai-assistant')).toBeVisible()
     await page.getByTestId('view-button-ai-assistant').click()
     await expect(page.getByTestId('ai-assistant-view')).toBeVisible()
@@ -896,7 +910,7 @@ test.describe('AI Assistant view (Expert, offline mock provider)', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expectParameterSyncComplete(page)
 
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-ai-assistant').click()
     await expect(page.getByTestId('ai-assistant-view')).toBeVisible()
 
@@ -931,7 +945,7 @@ test.describe('AI Assistant view (Expert, offline mock provider)', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expectParameterSyncComplete(page)
 
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-ai-assistant').click()
     await expect(page.getByTestId('ai-assistant-view')).toBeVisible()
 
@@ -1237,7 +1251,7 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     await page.goto('/')
     await connectViaHeader(page)
     // Raw parameter editing is an Expert surface, so the tab only exists here.
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     for (const view of ['parameters', 'snapshots'] as const) {
       await openView(page, view)
@@ -1823,7 +1837,7 @@ test.describe('Flash view', () => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
     await openView(page, 'flash')
 
     // Not shown until the operator arms the update: reading the images costs
@@ -2158,7 +2172,7 @@ test.describe('Config view', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').click()
+    await enableExpertMode(page)
 
     // Stage + apply a reboot-required change (bdshot stages SERVO_BLH_* params).
     await page.getByTestId('view-button-config').click()
@@ -2478,7 +2492,7 @@ test.describe('RC Mixer view', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-rc-mixer').click()
 
     for (const channel of [1, 2, 3, 4]) {
@@ -2517,7 +2531,7 @@ test.describe('RC Mixer view', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-rc-mixer').click()
 
     const channel5 = page.getByTestId('rc-mixer-channel-5')
@@ -2539,7 +2553,7 @@ test.describe('RC Mixer view', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-rc-mixer').click()
 
     // Demo seeds a real, already-applied ArmDisarm assignment on channel 5.
@@ -4052,7 +4066,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('calibration-card-tcal')).toHaveCount(0)
 
     // Expert mode reveals the full card (demo seeds INS_TCALn_ENABLE = 0).
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     const tcal = page.getByTestId('calibration-card-tcal')
     await expect(tcal).toBeVisible()
     await expect(tcal).toContainText('Thermal calibration')
@@ -4075,7 +4089,7 @@ test.describe('ArduPlane demo', () => {
 
     // Expert mode is not enough on its own. Signed out there is no card at all
     // -- not a locked one -- because the calibration is fit from a hover log.
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     // Guard the guard: Expert really did take effect, so this cannot pass for
     // the wrong reason.
     await expect(page.getByTestId('calibration-card-tcal')).toBeVisible()
@@ -4104,7 +4118,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'calibration')
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     const valt = page.getByTestId('calibration-card-valt')
     await valt.scrollIntoViewIfNeeded()
     await expect(valt).toBeVisible()
@@ -4775,7 +4789,7 @@ test('Recent Notices: clear-all button and expert-mode search bar', async ({ pag
   await expect(page.getByTestId('setup-notices-clear-all')).toBeVisible({ timeout: 15_000 })
   // The notice search bar is expert-only.
   await expect(page.getByTestId('setup-notices-search')).toHaveCount(0)
-  await page.getByTestId('product-mode-expert').click()
+  await enableExpertMode(page)
   await expect(page.getByTestId('setup-notices-search')).toBeVisible()
 })
 
@@ -4867,7 +4881,7 @@ test('Recent Notices pops out into its own styled, live window', async ({ page, 
   await expect(popout.getByTestId('notices-popout-list')).toBeVisible()
   await expect(noticeRows.first()).toBeVisible({ timeout: 15_000 })
   await expect(popout.getByTestId('notices-popout-search')).toHaveCount(0)
-  await page.getByTestId('product-mode-expert').click()
+  await enableExpertMode(page)
   await expect(popout.getByTestId('notices-popout-search')).toBeVisible()
 
   // …and the filter typed in the window filters the window: a term nothing can
@@ -5060,7 +5074,7 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.getByTestId('view-button-dronecan-inspector')).toHaveCount(0)
     await expect(page.getByTestId('view-button-can')).toBeVisible()
 
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     // MAVLink inspector shows the live decoded message stream.
     await page.getByTestId('view-button-mavlink-inspector').click()
@@ -5105,7 +5119,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     await page.getByTestId('view-button-mavlink-inspector').click()
     await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
@@ -5128,7 +5142,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     await page.getByTestId('view-button-mavlink-inspector').click()
     await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
@@ -5160,7 +5174,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     await page.getByTestId('view-button-mavlink-inspector').click()
     await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
@@ -5183,7 +5197,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     await page.getByTestId('view-button-mavlink-inspector').click()
     const mavTable = page.getByTestId('mavlink-inspector-table')
@@ -5210,7 +5224,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     // Expand the first decoded MAVLink row and reveal its copy affordance.
     await page.getByTestId('view-button-mavlink-inspector').click()
@@ -5241,7 +5255,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     await page.getByTestId('view-button-mavlink-inspector').click()
     await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
@@ -5259,7 +5273,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     await page.getByTestId('view-button-mavlink-inspector').click()
     const mavTable = page.getByTestId('mavlink-inspector-table')
@@ -5286,7 +5300,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     await page.getByTestId('view-button-can').click()
     await page.getByTestId('can-bus-start').click()
@@ -5328,7 +5342,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     await page.getByTestId('view-button-can').click()
     await page.getByTestId('can-bus-start').click()
@@ -5390,7 +5404,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     await page.getByTestId('view-button-can').click()
     await page.getByTestId('can-bus-start').click()
@@ -5437,7 +5451,7 @@ test.describe('Inspectors (expert-only)', () => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     await page.getByTestId('view-button-can').click()
     await page.getByTestId('can-bus-start').click()
@@ -5475,7 +5489,7 @@ test.describe('Snapshot restore', () => {
 
     // Change a live value from a different tab so the snapshot now has
     // something real to restore.
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-parameters').click()
     const search = page.getByTestId('parameter-search-input')
     await search.fill('BATT_LOW_VOLT')
@@ -5733,7 +5747,7 @@ test.describe('ELRS Flash (temporarily disabled in prod)', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await expectParameterSyncComplete(page)
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
 
     // The demo FC advertises Expert + SERIAL_PASS2, which used to surface the ELRS
     // Flash tab. It is now gated OFF (ELRS_FLASH_ENABLED=false) because the
@@ -5747,7 +5761,7 @@ test.describe('OSD message shorthand editor (@OSD/shorthand.dat)', () => {
   test('reads the fork shorthand table, edits, adds a row, and saves', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-osd').click()
 
     // The demo mock serves @OSD/shorthand.dat with 3 seeded entries.
@@ -6277,7 +6291,7 @@ test.describe('Tuning ▸ Initial Tune', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-tuning').click()
     await page.getByTestId('tuning-tab-initial-tune').click()
   }
@@ -6529,7 +6543,7 @@ test.describe('Tuning ▸ Filters', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
-    await page.getByTestId('product-mode-expert').check()
+    await enableExpertMode(page)
     await page.getByTestId('view-button-tuning').click()
     await page.getByTestId('tuning-tab-filters').click()
     await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()

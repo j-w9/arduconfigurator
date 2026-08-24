@@ -85,8 +85,22 @@ async function openParameters(page: Page): Promise<void> {
   await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
     timeout: VEHICLE_CONNECT_TIMEOUT
   })
-  await page.getByTestId('product-mode-expert').check()
+  await enableExpertMode(page)
   await page.getByTestId('view-button-parameters').click()
+}
+
+/* Expert mode moved into the header's phone disclosure, so on a narrow viewport
+ * the sheet has to be opened before the toggle can be reached. Above the phone
+ * breakpoint the sheet button is display:none and this is a no-op, so the same
+ * call is correct at every width. */
+async function enableExpertMode(page: Page): Promise<void> {
+  const sheet = page.getByTestId('header-more-toggle')
+  // Idempotent: a test may call this more than once, and clicking an already
+  // open sheet closes it again.
+  if (await sheet.isVisible() && (await sheet.getAttribute('aria-expanded')) !== 'true') {
+    await sheet.click()
+  }
+  await page.getByTestId('product-mode-expert').check()
 }
 
 test.describe('Naming a configuration upload', () => {

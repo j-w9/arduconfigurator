@@ -74,6 +74,19 @@ const STYLE_BLOCK = `
   background: var(--danger-weak, rgba(212, 107, 98, 0.16));
 }
 
+/* On a phone the label and value columns were eating 146px of a ~330px row,
+   leaving the bar -- the only part that moves -- under 180px. The channel
+   label already truncates ("CH3 · THROT…"), so it gives up width more
+   gracefully than the bar does -- but only so far: at 64px "AUX 1" collapsed
+   to "AU…", so 78px is the floor that still names the channel. */
+@media (max-width: 560px) {
+  .rc-bar-row {
+    grid-template-columns: 78px 1fr 44px;
+    gap: 4px;
+    padding: 0;
+  }
+}
+
 /* Label column */
 .rc-bar-label {
   display: flex;
