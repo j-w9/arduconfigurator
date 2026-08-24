@@ -13482,14 +13482,19 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 .dfu-hex-flasher__summary {
   display: grid;
+  /* minmax(140px, 1fr) floors each track at 140px, but a grid ITEM defaults to
+     min-width: auto -- it refuses to shrink below its content and overflows the
+     track instead. A firmware filename is 30-40 characters of mono, so the File
+     cell painted straight over the Size cell next to it. */
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 8px 18px;
-  margin: 12px 0;
+  gap: var(--space-2) 18px;
+  margin: var(--space-3) 0;
 }
 .dfu-hex-flasher__summary div {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 .dfu-hex-flasher__summary dt {
   font-size: var(--text-xs);
@@ -13501,6 +13506,9 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin: 0;
   font-family: var(--font-data);
   font-size: var(--text-lg);
+  /* A filename has no spaces to break at, so it needs permission to break
+     anywhere -- otherwise min-width: 0 just clips it instead of overlapping. */
+  overflow-wrap: anywhere;
 }
 
 /* Hard-stop refusal banner — promoted from a small <p> because the
