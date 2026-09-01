@@ -61,7 +61,13 @@ export const PAVO_FEMTO_O3_VALUES: readonly ParameterPresetValue[] = [
   { paramId: 'ARMING_OPTIONS', value: 0 },
   { paramId: 'ARMING_PEND_TIM', value: 5 },
   { paramId: 'ARMING_RUDDER', value: 2 },
-  { paramId: 'ARMING_SKIPCHK', value: 1048062 },
+  // Was 1048062 -- every skip bit ArduPilot defines, i.e. no pre-arm checks at
+  // all. That also makes get_enabled_checks() return 0, so the firmware stops
+  // reporting the pre-arm bit as enabled and the guided setup's "no pre-arm
+  // issues" criterion passes vacuously: applying the preset made the wizard
+  // look GREENER while removing the checks behind it. 0 is ArduPilot's own
+  // recommended value.
+  { paramId: 'ARMING_SKIPCHK', value: 0 },
   { paramId: 'ATC_ACC_P_MAX', value: 1100 },
   { paramId: 'ATC_ACC_R_MAX', value: 1100 },
   { paramId: 'ATC_ACC_Y_MAX', value: 270 },
@@ -152,8 +158,11 @@ export const PAVO_FEMTO_O3_VALUES: readonly ParameterPresetValue[] = [
   { paramId: 'BATT_CRT_MAH', value: 0 },
   { paramId: 'BATT_CRT_VOLT', value: 7 },
   { paramId: 'BATT_CURR_PIN', value: 11 },
-  { paramId: 'BATT_FS_CRT_ACT', value: 0 },
-  { paramId: 'BATT_FS_LOW_ACT', value: 0 },
+  { paramId: 'BATT_FS_CRT_ACT', value: 1 },
+  // Was 0 ("Warn only") -- BATT_LOW_VOLT/BATT_CRT_VOLT below were set but no
+  // action was attached to either, so a 2S pack could run flat with nothing but
+  // a message. These are ArduPilot's own defaults for the two actions.
+  { paramId: 'BATT_FS_LOW_ACT', value: 2 },
   { paramId: 'BATT_FS_VOLTSRC', value: 0 },
   { paramId: 'BATT_LOW_MAH', value: 0 },
   { paramId: 'BATT_LOW_TIMER', value: 10 },

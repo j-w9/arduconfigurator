@@ -957,7 +957,12 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
         'Replaces most of the vehicle configuration. Review the diff before applying.',
         'Check the serial map matches your wiring: O3 on SERIAL4, receiver on SERIAL5.',
         'Tuned for 2S and the stock prop.',
-        'Calibrate accelerometer, level and compass on this board afterwards.'
+        'Calibrate accelerometer, level and compass on this board afterwards.',
+        // Any preset value that relaxes a safety check has to say so here. The
+        // shipped dump previously carried ARMING_SKIPCHK=1048062 (every check
+        // off) and both battery failsafe actions at "warn only" with no caution
+        // naming either.
+        'Sets battery failsafes for a 2S pack: RTL at 7.2 V, land at 7.0 V. Check these match your pack before flying.'
       ],
       compatibility: {
         frameClasses: [1]
