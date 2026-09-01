@@ -861,6 +861,10 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     },
     power: {
       id: 'power',
+      // Ordered before failsafe deliberately: failsafe review wants live battery
+      // telemetry, and BATT_MONITOR -- the thing that produces it -- is configured
+      // here. With power last, the step that fixed the problem sat behind the step
+      // that was blocked by it.
       label: 'Power',
       description: 'Battery sensing and power monitoring.',
       order: 10,
@@ -3984,23 +3988,6 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       requiredLiveSignals: ['rc-input'],
     },
     {
-      id: 'failsafe',
-      title: 'Failsafe',
-      description: 'Review throttle and battery failsafe behavior.',
-      requiredParameters: [
-        'FS_THR_ENABLE',
-        'FS_THR_VALUE',
-        'BATT_FS_VOLTSRC',
-        'BATT_LOW_VOLT',
-        'BATT_LOW_MAH',
-        'BATT_FS_LOW_ACT',
-        'BATT_CRT_VOLT',
-        'BATT_CRT_MAH',
-        'BATT_FS_CRT_ACT'
-      ],
-      requiredLiveSignals: ['rc-input', 'battery-telemetry'],
-    },
-    {
       id: 'modes',
       title: 'Flight Modes',
       description: 'Check the first three mapped flight modes.',
@@ -4019,6 +4006,23 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       requiredNonZeroParameters: ['BATT_MONITOR'],
       requiredLiveSignals: ['battery-telemetry'],
       actions: ['reboot-autopilot']
+    },
+    {
+      id: 'failsafe',
+      title: 'Failsafe',
+      description: 'Review throttle and battery failsafe behavior.',
+      requiredParameters: [
+        'FS_THR_ENABLE',
+        'FS_THR_VALUE',
+        'BATT_FS_VOLTSRC',
+        'BATT_LOW_VOLT',
+        'BATT_LOW_MAH',
+        'BATT_FS_LOW_ACT',
+        'BATT_CRT_VOLT',
+        'BATT_CRT_MAH',
+        'BATT_FS_CRT_ACT'
+      ],
+      requiredLiveSignals: ['rc-input', 'battery-telemetry'],
     }
   ]
 }

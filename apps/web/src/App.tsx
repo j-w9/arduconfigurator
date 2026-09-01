@@ -1347,7 +1347,15 @@ export function App() {
   const rssiChannel = readRoundedParameter(snapshot, 'RSSI_CHANNEL')
   const rssiChannelLow = readRoundedParameter(snapshot, 'RSSI_CHAN_LOW')
   const rssiChannelHigh = readRoundedParameter(snapshot, 'RSSI_CHAN_HIGH')
-  const throttleFailsafe = readRoundedParameter(snapshot, 'FS_THR_ENABLE')
+  // ArduPlane has no FS_THR_ENABLE -- its throttle failsafe is THR_FAILSAFE
+  // (ArduPlane/Parameters.cpp:411), which is what the Plane bundle already lists
+  // in its own requiredParameters. Reading only the Copter id left the value
+  // permanently undefined on Plane, so the failsafe step's criterion could never
+  // be met and its confirm button was hard-disabled: a second, independent
+  // deadlock for that vehicle. Fall back rather than branch, so a build that
+  // exposes either name works.
+  const throttleFailsafe =
+    readRoundedParameter(snapshot, 'FS_THR_ENABLE') ?? readRoundedParameter(snapshot, 'THR_FAILSAFE')
   const throttleFailsafeValue = readRoundedParameter(snapshot, 'FS_THR_VALUE')
   const notificationLedTypes = readRoundedParameter(snapshot, 'NTF_LED_TYPES')
   const notificationLedLength = readRoundedParameter(snapshot, 'NTF_LED_LEN')
