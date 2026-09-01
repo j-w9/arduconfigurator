@@ -3474,13 +3474,28 @@ export function App() {
 
     const focusId = pendingSetupWizardFocusId
     const timer = window.setTimeout(() => {
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      })
+      // link/ports/airframe have no primary action of their own, so the focus id
+      // resolves to nothing and the scroll never happened -- those three stayed
+      // below the fold. Continue is the next action on any step without one.
+      const target =
+        document.getElementById(focusId) ??
+        document.querySelector<HTMLElement>('[data-testid="setup-wizard-next-step"]')
+      // Scrolling to top is right on the two-column desktop layout, where the
+      // aside sits beside the content and its action is in view from the top.
+      // Below the breakpoint the stack is single-column with the aside LAST, so
+      // top leaves the action roughly 1.5 viewports down -- measured below the
+      // fold on all 11 steps at 390x844. Scroll to the action itself there.
+      const singleColumn = window.matchMedia('(max-width: 1024px)').matches
+      if (singleColumn && target instanceof HTMLElement) {
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      } else {
+        window.scrollTo({
+          top: 0,
+          behavior: 'smooth'
+        })
+      }
 
       window.setTimeout(() => {
-        const target = document.getElementById(focusId)
         if (target instanceof HTMLElement) {
           target.focus({ preventScroll: true })
         }
@@ -8329,6 +8344,10 @@ export function App() {
                     onSelectStep={(sectionId) => {
                       setSelectedSetupSectionId(sectionId)
                       setSetupMode('wizard')
+                      // Same treatment as Continue/Previous: jumping via the step
+                      // rail is a step change too, and left the operator looking at
+                      // a new step with its action off-screen.
+                      setPendingSetupWizardFocusId(SETUP_WIZARD_PRIMARY_ACTION_ID)
                     }}
                   />
 

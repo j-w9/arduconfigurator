@@ -19,7 +19,12 @@ const VEHICLE_CONNECT_TIMEOUT = 30_000
 /** Every section the ArduCopter metadata defines, in flow order. */
 const SECTIONS = [
   'link', 'ports', 'airframe', 'outputs', 'accelerometer',
-  'level', 'compass', 'radio', 'failsafe', 'modes', 'power'
+  // Power moved ahead of Failsafe deliberately: the failsafe review wants live
+  // battery telemetry, and BATT_MONITOR -- the thing that produces it -- is
+  // configured in Power. With Power last, the step that fixed the problem sat
+  // behind the step blocked by it, and the wizard could not be completed on a
+  // bench board with no pack attached.
+  'level', 'compass', 'radio', 'modes', 'power', 'failsafe'
 ] as const
 
 async function openGuidedSetup(page: Page, shortcutSection?: string): Promise<void> {
@@ -103,7 +108,9 @@ test.describe('Guided setup flow', () => {
     await openGuidedSetup(page, 'link')
     await expect(page.getByRole('button', { name: /Previous Step/i })).toBeDisabled()
 
-    await openGuidedSetup(page, 'power')
+    // The last step is whatever SECTIONS says it is, so this keeps testing "the
+    // end of the flow" rather than one hardcoded step id.
+    await openGuidedSetup(page, SECTIONS[SECTIONS.length - 1])
     // Setup Complete stays gated until the step's own confirmation is given.
     await expect(page.getByRole('button', { name: /Setup Complete/i })).toBeDisabled()
   })
