@@ -62,9 +62,16 @@ export function panelAnchorForSetupSection(sectionId: string): { panelId: string
     case 'compass':
       return { panelId: 'setup-panel-guided', panelLabel: 'Guided Setup' }
     case 'radio':
-    case 'modes':
       return { panelId: 'setup-panel-rc', panelLabel: 'Live RC Inputs' }
+    // Modes and Failsafe each own a tab with its own anchor, and both anchors
+    // already existed and were referenced by nothing. Modes sent the operator to
+    // the Receiver view and Failsafe to the Config tab's power section -- neither
+    // of which is where the step's parameters are edited. Same class of silent
+    // breakage the power mapping below documents.
+    case 'modes':
+      return { panelId: 'setup-panel-modes', panelLabel: 'Flight Modes' }
     case 'failsafe':
+      return { panelId: 'setup-panel-failsafe', panelLabel: 'Failsafe' }
     case 'power':
       return { panelId: 'setup-panel-power', panelLabel: 'Power & Failsafe' }
     default:
@@ -128,6 +135,10 @@ export function appViewForPanel(panelId: string): AppViewId {
       // on the Motors nav tab. (Servos is a separate nav tab for aux
       // peripheral servo work and isn't part of the setup checklist.)
       return 'motors'
+    case 'setup-panel-modes':
+      return 'modes'
+    case 'setup-panel-failsafe':
+      return 'failsafe'
     case 'setup-panel-power':
       // Power is a Config category now, not its own tab. This mapping is the
       // one that breaks silently when a surface moves: the guided Power step

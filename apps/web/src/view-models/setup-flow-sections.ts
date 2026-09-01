@@ -10,6 +10,7 @@
 // descriptors are kind/actionId data dispatched later by handleSetupFlowAction,
 // so no handler closures move with it.
 
+import { resolveSetupConfirmationRecord } from './setup-confirmation-resolve'
 import {
   deriveAirframe,
   deriveCompassSetupAvailability,
@@ -128,14 +129,23 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
     rcRangeExerciseSummary
   } = inputs
 
+  // Delegates to the shared resolver rather than re-implementing the check.
+  //
+  // The local copy had no parameterSyncComplete leniency, and every wizard
+  // section went through it -- so the resolver, which exists precisely to hold
+  // confirmations valid while the table is still streaming, never ran for the
+  // wizard at all. Mid-sync every signature is a blob of undefineds, nothing
+  // matched, and all nine confirmations vanished at once: after any reboot,
+  // link drop, or F5 the flow snapped back to Airframe and yanked the operator
+  // off whatever step they were on because it had just become locked. It
+  // recovered when the sync finished, but the window is exactly when someone is
+  // watching.
   function getSetupConfirmationRecord(sectionId: string): SetupConfirmationRecord | undefined {
-    const record = setupConfirmations[sectionId]
-    const signature = setupConfirmationSignatures[sectionId]
-    if (!record || signature === undefined || record.signature !== signature) {
-      return undefined
-    }
-
-    return record
+    return resolveSetupConfirmationRecord({
+      record: setupConfirmations[sectionId],
+      signature: setupConfirmationSignatures[sectionId],
+      parameterSyncComplete: snapshot.parameterStats.status === 'complete'
+    })
   }
 
     const airframeConfirmation = getSetupConfirmationRecord('airframe')
