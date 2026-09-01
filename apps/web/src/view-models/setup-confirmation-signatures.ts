@@ -52,10 +52,25 @@ export function buildSetupConfirmationSignatures(inputs: SetupConfirmationSignat
   } = inputs
 
   return {
+      // AHRS_ORIENTATION belongs in all three of these.
+      //
+      // The level cal is AP_InertialSensor::calibrate_trim(), which samples via
+      // get_accel(0) -- and that reading is rotated by _board_orientation
+      // (AP_InertialSensor.cpp: ret.rotate(_board_orientation)). So AHRS_TRIM_X/Y
+      // are only valid for the orientation in effect when the cal ran, and the
+      // same holds for the 6-pose cal's trim path. The airframe step's own
+      // criterion is the orientation exercise.
+      //
+      // Without it: run the orientation exercise, calibrate accel and level, get
+      // three green steps -- then re-mount the board and change AHRS_ORIENTATION,
+      // and all three STAY green against a rotation they were never run at. The
+      // aircraft's level reference is off by the orientation error and it leans on
+      // takeoff, with nothing telling the operator to re-run anything.
       airframe: JSON.stringify({
         frameClassValue: airframe.frameClassValue,
         frameTypeValue: airframe.frameTypeValue,
-        frameTypeIgnored: airframe.frameTypeIgnored
+        frameTypeIgnored: airframe.frameTypeIgnored,
+        boardOrientation: readRoundedParameter(snapshot, 'AHRS_ORIENTATION')
       }),
       outputs: JSON.stringify({
         expectedMotorCount: airframe.expectedMotorCount,
@@ -86,11 +101,13 @@ export function buildSetupConfirmationSignatures(inputs: SetupConfirmationSignat
       // re-run or the sensor hardware changes — which is when a stale
       // sign-off SHOULD stop counting.
       accelerometer: JSON.stringify({
+        boardOrientation: readRoundedParameter(snapshot, 'AHRS_ORIENTATION'),
         accId: readRoundedParameter(snapshot, 'INS_ACC_ID'),
         offsets: ['INS_ACCOFFS_X', 'INS_ACCOFFS_Y', 'INS_ACCOFFS_Z'].map((id) => readParameterValue(snapshot, id)),
         scales: ['INS_ACCSCAL_X', 'INS_ACCSCAL_Y', 'INS_ACCSCAL_Z'].map((id) => readParameterValue(snapshot, id))
       }),
       level: JSON.stringify({
+        boardOrientation: readRoundedParameter(snapshot, 'AHRS_ORIENTATION'),
         trims: ['AHRS_TRIM_X', 'AHRS_TRIM_Y'].map((id) => readParameterValue(snapshot, id))
       }),
       compass: JSON.stringify({
@@ -137,13 +154,26 @@ export function buildSetupConfirmationSignatures(inputs: SetupConfirmationSignat
       // still re-check live telemetry and pre-arm health on every render,
       // so safety gating is unchanged; only the sign-off's validity stops
       // depending on transient state.
+      // Widened to the values the step's own copy claims to have reviewed. Pinning
+      // just the two enables meant an operator could sign off "I reviewed the
+      // failsafe behaviour" and then move FS_THR_VALUE below the receiver's
+      // failsafe output, zero BATT_LOW_VOLT, or set the critical action to
+      // warn-only -- and the sign-off stayed valid and green. Every id here is
+      // already in the bundle's requiredParameters for this section.
       failsafe: JSON.stringify({
         throttleFailsafe,
-        batteryFailsafe
+        batteryFailsafe,
+        throttleFailsafeValue: readRoundedParameter(snapshot, 'FS_THR_VALUE'),
+        batteryCriticalAction: readRoundedParameter(snapshot, 'BATT_FS_CRT_ACT'),
+        batteryLowVoltage: readParameterValue(snapshot, 'BATT_LOW_VOLT'),
+        batteryCriticalVoltage: readParameterValue(snapshot, 'BATT_CRT_VOLT'),
+        batteryLowCapacity: readParameterValue(snapshot, 'BATT_LOW_MAH')
       }),
       power: JSON.stringify({
         batteryMonitor,
-        batteryCapacity
+        batteryCapacity,
+        armVoltage: readParameterValue(snapshot, 'BATT_ARM_VOLT'),
+        armCapacity: readParameterValue(snapshot, 'BATT_ARM_MAH')
       })
   }
 }

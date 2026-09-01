@@ -449,13 +449,20 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                   met: !outputMapping.notes.some((note) => note.startsWith('Missing motor assignments:'))
                 },
                 {
-                  label: 'Operator reviewed the output map before any props-on activity',
+                  // Motor order and spin direction are ArduPilot's own mandatory
+                  // item 3, ahead of RC calibration, and they are the two bench
+                  // errors that most reliably flip a multirotor on its first
+                  // takeoff. The guided direction gate was dropped with the
+                  // Motors-tab redesign and this confirmation was left to cover
+                  // it -- but it only claimed the output MAP was reviewed, so an
+                  // operator could complete the wizard having never spun a motor.
+                  // The check itself lives in Motors (props-off gated, with the
+                  // mixer diagram and per-motor spin); this says what signing off
+                  // actually asserts. The signature below already pins the
+                  // SERVOn_FUNCTION map, so a remap voids it.
+                  label: 'Operator verified motor order and spin direction in Motors',
                   met: outputsConfirmation !== undefined
                 }
-                // (Motor-order/direction verification and the separate ESC-range
-                // confirmation gates were removed with the Motors-tab redesign —
-                // direction is now checked manually in Motors -> Test / Motor
-                // Setup, so the operator-review confirmation is the gate here.)
               ]
             : [
                 {
@@ -478,7 +485,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           ].slice(0, 4)
           actions.unshift({
             kind: outputsConfirmation ? 'clear-confirmation' : 'confirm-step',
-            label: outputsConfirmation ? 'Clear Output Review' : 'Confirm Output Review',
+            label: outputsConfirmation ? 'Clear Motor Order & Direction Review' : 'Confirm Motor Order & Direction Verified',
             tone: 'secondary',
             sectionId: 'outputs',
             disabled: isCopterVehicle
@@ -1167,8 +1174,28 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               met: powerConfirmation !== undefined
             },
             {
-              label: 'No active pre-arm safety issues are present',
-              met: snapshot.preArmStatus.healthy
+              // snapshot.preArmStatus.healthy falls back to "no latched issue text"
+              // when the live verdict is unusable -- and the live verdict is marked
+              // unusable precisely when ARMING_CHECK/ARMING_SKIPCHK has turned the
+              // checks off (GCS.cpp only sets `enabled` if get_enabled_checks()).
+              // So an aircraft with every check disabled reported "pre-arm clear"
+              // and completed the step. ArduPilot also sets the health bit
+              // unconditionally while armed, and it arms for the duration of a
+              // DO_MOTOR_TEST, so a reading taken around a motor test was a
+              // hardcoded pass too. Require a verdict the firmware is actually
+              // computing, and ignore it while armed.
+              label: 'Flight controller reports pre-arm checks passing',
+              met:
+                (snapshot.preArmStatus.liveCheck?.present === true &&
+                  snapshot.preArmStatus.liveCheck.enabled === true &&
+                  snapshot.vehicle?.armed !== true &&
+                  snapshot.preArmStatus.healthy) ||
+                // Pre-arm is routinely unhealthy on a bench indoors -- no GPS fix,
+                // no position estimate -- and this is the LAST step, so without an
+                // escape the wizard could never report complete however correct the
+                // aircraft was. The waiver below acknowledges rather than suppresses:
+                // it changes nothing on the vehicle, and pre-arm still blocks arming.
+                powerConfirmation?.outcome === 'already-done'
             }
           ]
           summary = snapshot.liveVerification.batteryTelemetry.verified
@@ -1202,6 +1229,15 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             actionId: 'reboot-autopilot',
             disabled: busyAction !== undefined || !canRunGuidedAction(snapshot, 'reboot-autopilot')
           })
+          if (!powerConfirmation && !snapshot.preArmStatus.healthy) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Pre-arm Blocked On The Bench — Acknowledge',
+              tone: 'secondary',
+              sectionId: 'power',
+              confirmationOutcome: 'already-done'
+            })
+          }
           actions.unshift({
             kind: powerConfirmation ? 'clear-confirmation' : 'confirm-step',
             label: powerConfirmation ? 'Clear Power Review' : 'Confirm Power Review',

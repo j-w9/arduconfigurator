@@ -5027,7 +5027,9 @@ export function App() {
       setSelectedParameterId(changedParamIds[0] ?? selectedParameterId)
       setParameterNotice({
         tone: 'warning',
-        text: `Staged ${changedParamIds.length} motor output remap change(s). Apply them from Outputs, then rerun the guarded motor direction check before flight.`
+        // Named a guarded direction check that no longer exists -- it was removed
+        // with the Motors-tab redesign. Point at the surface that does.
+        text: `Staged ${changedParamIds.length} motor output remap change(s). Apply them from Outputs, then re-test each motor's order and direction in Motors before flight.`
       })
     }
     return changedParamIds.length
