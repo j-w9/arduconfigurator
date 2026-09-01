@@ -135,6 +135,8 @@ export function appViewForPanel(panelId: string): AppViewId {
       // on the Motors nav tab. (Servos is a separate nav tab for aux
       // peripheral servo work and isn't part of the setup checklist.)
       return 'motors'
+    case 'setup-panel-calibration':
+      return 'calibration'
     case 'setup-panel-modes':
       return 'modes'
     case 'setup-panel-failsafe':

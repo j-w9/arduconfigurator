@@ -4020,7 +4020,14 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
         'BATT_FS_LOW_ACT',
         'BATT_CRT_VOLT',
         'BATT_CRT_MAH',
-        'BATT_FS_CRT_ACT'
+        'BATT_FS_CRT_ACT',
+        // Where RTL goes. FS_THR_ENABLE defaults to ALWAYS_RTL, so this is the
+        // destination of the DEFAULT failsafe response, and it was declared
+        // nowhere in the app. Both names are listed because 4.7 renamed and
+        // re-united it: <=4.6 is RTL_ALT in centimetres, 4.7+ is RTL_ALT_M in
+        // metres. A board only ever reports one of them.
+        'RTL_ALT',
+        'RTL_ALT_M'
       ],
       requiredLiveSignals: ['rc-input', 'battery-telemetry'],
     }

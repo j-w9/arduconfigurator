@@ -80,6 +80,8 @@ export interface SetupFlowSectionsInputs {
   boardOrientation: number | undefined
   busyAction: string | undefined
   throttleFailsafe: number | undefined
+  /** RTL destination altitude, normalised to metres across the 4.7 rename. */
+  rtlAltitudeMetres: number | undefined
   canRunGuidedMotorTest: boolean
   canRunModeSwitchExercise: boolean
   canRunMotorVerification: boolean
@@ -126,7 +128,13 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
     modeSwitchExerciseSummary,
     rcCalibrationSummary,
     rcMappingSummary,
-    rcRangeExerciseSummary
+    rcRangeExerciseSummary,
+    rtlAltitudeMetres,
+    // Was declared on the inputs interface and never destructured -- one of the
+    // six dead inputs the audit found. It already computes the only distinction
+    // that matters here: analog ESCs have endpoints to learn, digital ones do
+    // not.
+    escSetup
   } = inputs
 
   // Delegates to the shared resolver rather than re-implementing the check.
@@ -472,7 +480,21 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                   // SERVOn_FUNCTION map, so a remap voids it.
                   label: 'Operator verified motor order and spin direction in Motors',
                   met: outputsConfirmation !== undefined
-                }
+                },
+                // ESC endpoint calibration applies ONLY to analog output --
+                // MOT_PWM_TYPE 0/1/2 (Normal PWM, OneShot, OneShot125). DShot,
+                // brushed and the PWMRange/Angle types have no throttle
+                // endpoints to learn, so on those builds this is not a step the
+                // operator can pass or fail and it must not gate anything.
+                // deriveEscSetupSummary already draws exactly that line.
+                ...(escSetup.calibrationPath === 'analog-calibration'
+                  ? [
+                      {
+                        label: 'ESC throttle endpoints calibrated, or reviewed as already done',
+                        met: outputsConfirmation !== undefined
+                      }
+                    ]
+                  : [])
               ]
             : [
                 {
@@ -504,6 +526,13 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                 (airframe.expectedMotorCount !== undefined && outputMapping.motorOutputs.length !== airframe.expectedMotorCount)
               : (snapshot.vehicle?.vehicle ?? 'Unknown') === 'Unknown'
           })
+          if (escSetup.calibrationPath === 'analog-calibration') {
+            actions.push({
+              kind: 'scroll',
+              label: 'Open ESC Calibration',
+              panelId: 'setup-panel-calibration'
+            })
+          }
           if (isCopterVehicle) {
             // The guided motor-direction verification, ESC-range confirm, and
             // bench-test actions were retired with the Motors-tab redesign —
@@ -1042,6 +1071,17 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               label: 'Battery failsafe has an action, not just a warning',
               met: batteryFailsafe !== undefined && batteryFailsafe !== 0
             },
+            // The step reviewed WHETHER the failsafe fires and never WHERE it
+            // goes. FS_THR_ENABLE defaults to ALWAYS_RTL, so RTL is the default
+            // response to a lost link, and RTL_ALT defaults to 15 m -- below the
+            // treeline at most FPV spots, which turns a signal loss behind a tree
+            // into a return INTO that tree. 20 m clears typical tree cover; the
+            // operator can go lower deliberately, this only refuses the default
+            // going unexamined.
+            {
+              label: 'RTL return altitude is set above typical tree height (20 m)',
+              met: rtlAltitudeMetres !== undefined && rtlAltitudeMetres >= 20
+            },
             {
               label: 'Live RC link is verified during review',
               met: snapshot.liveVerification.rcInput.verified
@@ -1080,6 +1120,9 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               ? 'Failsafe settings are visible with live RC and battery telemetry present.'
               : 'Keep both RC and battery telemetry live while reviewing the failsafe configuration.'
           evidence = [
+            rtlAltitudeMetres === undefined
+              ? 'RTL altitude not reported by this firmware'
+              : `RTL returns at ${rtlAltitudeMetres.toFixed(0)} m`,
             snapshot.liveVerification.rcInput.verified ? 'RC link live' : 'RC link not yet verified',
             snapshot.liveVerification.batteryTelemetry.verified ? 'Battery telemetry live' : 'Battery telemetry not yet verified',
             `Review: ${failsafeConfirmation ? `confirmed at ${formatConfirmationTime(failsafeConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
@@ -1250,6 +1293,18 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               confirmationOutcome: 'already-done'
             })
           }
+          // BATT_VOLT_MULT / BATT_AMP_PERVLT are per-board, per-sensor values --
+          // AP_BattMonitor_Analog derives its defaults from hwdef, falling back
+          // to 10.1/17.0 or -1 on boards that define none. Every failsafe
+          // threshold the next step reviews is denominated in that possibly-wrong
+          // volt, so "telemetry is live" proves a number arrives, not that it is
+          // right. The calibration cards for both live on the Calibration tab and
+          // the flow had no route to them.
+          actions.push({
+            kind: 'scroll',
+            label: 'Open Battery Calibration',
+            panelId: 'setup-panel-calibration'
+          })
           actions.unshift({
             kind: powerConfirmation ? 'clear-confirmation' : 'confirm-step',
             label: powerConfirmation ? 'Clear Power Review' : 'Confirm Power Review',

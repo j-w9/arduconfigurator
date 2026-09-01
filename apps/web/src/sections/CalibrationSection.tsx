@@ -381,7 +381,11 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
 
   return (
 
-        <section className="grid one-up">
+        // Anchored so the guided setup can route here. The wizard reaches
+        // Calibration for accel/level/compass via the guided panel, but the ESC
+        // and battery calibration cards on this tab had no route from the flow at
+        // all -- the Power step pointed at Config's power category instead.
+        <section className="grid one-up" id="setup-panel-calibration">
           <Panel
             title="Calibration"
             subtitle="Accelerometer, level, and compass calibration."

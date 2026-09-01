@@ -34,3 +34,36 @@ describe('guided setup deadlocks', () => {
     ).toBe('in-progress')
   })
 })
+
+/*
+ * The 4.7 rename is a units change too, which is the part that bites: reading
+ * the wrong name silently yields nothing, but reading the wrong UNIT yields a
+ * number 100x off that still looks plausible in a criterion.
+ *
+ *   <= 4.6   RTL_ALT    centimetres   default 1500  (ArduCopter/Parameters.cpp)
+ *   >= 4.7   RTL_ALT_M  metres        default 15    (ArduCopter/mode_rtl.cpp)
+ */
+describe('RTL return altitude across the 4.7 rename', () => {
+  const normalise = (metres: number | undefined, centimetres: number | undefined) =>
+    metres !== undefined ? metres : centimetres === undefined ? undefined : centimetres / 100
+
+  it('reads 4.7 metres directly', () => {
+    expect(normalise(30, undefined)).toBe(30)
+  })
+
+  it('converts 4.6 centimetres to metres', () => {
+    expect(normalise(undefined, 3000)).toBe(30)
+  })
+
+  it('treats both firmware defaults as the same 15 m, which fails the 20 m gate', () => {
+    expect(normalise(15, undefined)).toBe(15)
+    expect(normalise(undefined, 1500)).toBe(15)
+    for (const value of [normalise(15, undefined), normalise(undefined, 1500)]) {
+      expect(value !== undefined && value >= 20).toBe(false)
+    }
+  })
+
+  it('has no opinion when the firmware reports neither name', () => {
+    expect(normalise(undefined, undefined)).toBeUndefined()
+  })
+})

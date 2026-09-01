@@ -1357,6 +1357,25 @@ export function App() {
   const throttleFailsafe =
     readRoundedParameter(snapshot, 'FS_THR_ENABLE') ?? readRoundedParameter(snapshot, 'THR_FAILSAFE')
   const throttleFailsafeValue = readRoundedParameter(snapshot, 'FS_THR_VALUE')
+  // Where RTL actually goes.
+  //
+  // FS_THR_ENABLE defaults to ALWAYS_RTL, so RTL is the DEFAULT response to a
+  // lost link -- yet nothing in the app read its destination altitude, and the
+  // default is 15 m, below the treeline at most FPV spots. A signal loss behind
+  // a tree returns the aircraft into it.
+  //
+  // Renamed AND re-united in 4.7: 4.6 and earlier is RTL_ALT in centimetres
+  // (ArduCopter/Parameters.cpp, @Units: cm, default 1500), master is RTL_ALT_M
+  // in metres (mode_rtl.cpp, default 15). Same physical altitude either way, so
+  // normalise to metres here rather than making every consumer know.
+  const rtlAltitudeMetres = (() => {
+    const metres = readParameterValue(snapshot, 'RTL_ALT_M')
+    if (metres !== undefined) {
+      return metres
+    }
+    const centimetres = readParameterValue(snapshot, 'RTL_ALT')
+    return centimetres === undefined ? undefined : centimetres / 100
+  })()
   const notificationLedTypes = readRoundedParameter(snapshot, 'NTF_LED_TYPES')
   const notificationLedLength = readRoundedParameter(snapshot, 'NTF_LED_LEN')
   const notificationLedBrightness = readRoundedParameter(snapshot, 'NTF_LED_BRIGHT')
@@ -5689,6 +5708,7 @@ export function App() {
         boardOrientation,
         busyAction,
         throttleFailsafe,
+        rtlAltitudeMetres,
         canRunGuidedMotorTest,
         canRunModeSwitchExercise,
         canRunMotorVerification,
@@ -5748,7 +5768,8 @@ export function App() {
     snapshot.preArmStatus,
     snapshot.liveVerification.attitudeTelemetry.verified,
     snapshot.motorTest.status,
-    throttleFailsafe
+    throttleFailsafe,
+    rtlAltitudeMetres
   ])
   const guidedSetupTestingShortcutActive = guidedSetupShortcutSectionId !== undefined
   const {
