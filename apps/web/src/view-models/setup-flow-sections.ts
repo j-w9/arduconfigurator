@@ -1261,7 +1261,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           // operator a sign-off. That is a real gate rather than a stub: a section
           // is not complete until its required parameters are present and it has
           // been reviewed.
-          const declaredParams: string[] = section.definition.requiredParameters ?? []
+          const declaredParams: string[] = section.definition?.requiredParameters ?? []
           const missingParams = declaredParams.filter(
             (paramId: string) => readRoundedParameter(snapshot, paramId) === undefined
           )

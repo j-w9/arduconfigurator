@@ -5538,7 +5538,15 @@ body.is-status-dash-dragging {
 }
 
 .guided-action-pulse {
-  animation: guided-action-pulse 1.25s ease-in-out infinite;
+  /* Was `infinite`. This runs on the flow's PRIMARY navigation button, so the
+     wizard's main control never stopped moving -- a permanent jitter for anyone
+     motion-sensitive, and it never settles into a stable target. It also made
+     the button un-clickable to automation: Playwright's actionability check
+     waits for the element to be stable and simply never resolved.
+     The cue's job is to catch the eye on arrival, not to run for the life of
+     the step. (prefers-reduced-motion already collapses this to nothing via the
+     global block; this is about the default.) */
+  animation: guided-action-pulse 1.25s ease-in-out 3;
 }
 
 @keyframes guided-action-pulse {
@@ -13178,6 +13186,23 @@ details.metadata-settings-section:not([open]) > summary::after {
     grid-template-columns: 1fr;
     display: grid;
   }
+
+  /* Same trap the aside documents and fixes above: grid items default to
+   * min-width: auto, and .setup-wizard__header-status is a nowrap badge row.
+   * Its content width became the track's floor, blowing the wizard out to
+   * 539px inside a 390px viewport. Because an ancestor is overflow-x: clip the
+   * page never scrolled sideways -- so the document-level overflow assertion
+   * stayed green while button labels and criteria text were cut mid-word with
+   * no way to reach them. */
+  .setup-wizard,
+  .setup-wizard > *,
+  .setup-wizard__header > *,
+  .setup-wizard__nav > *,
+  .setup-wizard__body > *,
+  .setup-wizard__aside > * {
+    min-width: 0;
+  }
+
 
   .setup-wizard__task-fields,
   .setup-wizard__secondary-actions {

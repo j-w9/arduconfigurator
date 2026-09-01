@@ -3410,9 +3410,15 @@ export function App() {
     }
     if (panelId === 'setup-panel-guided') {
       setSetupMode('wizard')
-    } else if (panelId === 'setup-panel-link') {
-      setSetupMode('overview')
     }
+    // The 'setup-panel-link' branch used to set setupMode back to 'overview'
+    // here. setupMode is what gates the "Back to guided setup" bar
+    // (setupMode === 'wizard' && activeViewId !== 'guided-setup'), so step 1's
+    // own "Open Vehicle Link" excursion cleared the flag on its way out and
+    // landed the operator on Status & Info with no route back except spotting
+    // Guided Setup in the left nav. Every other excursion in the flow keeps the
+    // bar. It also dropped the flow context that the exercise auto-return
+    // depends on.
     if (targetViewId !== activeViewId) {
       setActiveViewId(targetViewId)
       requestAnimationFrame(() => {
@@ -7044,6 +7050,15 @@ export function App() {
     }
 
     setSelectedSetupSectionId(targetSection.id)
+    // Advancing left the scroll position exactly where it was. On a phone the
+    // new step's document is roughly twice the viewport, so the primary action
+    // and Continue landed ~1.5 viewports below the fold with nothing on screen
+    // saying there was anything to do -- measured on all 11 steps at 390x844.
+    // It also blurred focus to document.body when the new Continue arrived
+    // disabled, costing 31 tab presses to get back. The wizard already owns a
+    // scroll-and-focus routine keyed on this state; step navigation just never
+    // used it.
+    setPendingSetupWizardFocusId(SETUP_WIZARD_PRIMARY_ACTION_ID)
   }
 
 
