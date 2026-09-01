@@ -170,6 +170,11 @@ export interface OsdElementMatrixRow {
 }
 
 export interface OsdViewProps {
+  /** Preview grid selection, hoisted so it survives leaving the tab. */
+  videoSystem?: string
+  setVideoSystem: (next: string) => void
+  analogSubMode: 'pal' | 'ntsc'
+  setAnalogSubMode: (next: 'pal' | 'ntsc') => void
   /** The OSD/VTX switcher, rendered under the panel title like every other
    *  view's tab strip. */
   headerNav?: ReactNode
@@ -241,6 +246,10 @@ function fieldStatusClass(draftStatusById: ScopedFieldDraftMap, paramId: string)
 export function OsdView(props: OsdViewProps) {
   const {
     headerNav,
+    videoSystem: videoSystemProp,
+    setVideoSystem,
+    analogSubMode,
+    setAnalogSubMode,
     linkPorts,
     typeField,
     channelField,
@@ -288,8 +297,13 @@ export function OsdView(props: OsdViewProps) {
   // Default NTSC, not PAL — an arbitrary-but-deliberate choice away from the
   // old hardcoded PAL default (field feedback). Digital systems don't need a
   // sub-choice since each one only ever runs a single fixed grid.
-  const [videoSystem, setVideoSystem] = useState<OsdVideoSystem>('analog')
-  const [analogSubMode, setAnalogSubMode] = useState<'pal' | 'ntsc'>('ntsc')
+  // Owned by useOsdEditor (which lives in App and survives), not by this view
+  // -- this view unmounts on every tab switch, so state held here reset to
+  // Analog each time the operator came back.
+  const videoSystem: OsdVideoSystem =
+    videoSystemProp !== undefined && videoSystemProp in OSD_VIDEO_SYSTEMS
+      ? (videoSystemProp as OsdVideoSystem)
+      : 'analog'
   const analogLayout: OsdAnalogLayout = OSD_VIDEO_SYSTEMS[videoSystem].layout ?? analogSubMode
   const layout = OSD_ANALOG_LAYOUTS[analogLayout]
   const [draggingId, setDraggingId] = useState<string | undefined>(undefined)

@@ -104,6 +104,10 @@ export function OsdSection(props: OsdSectionProps) {
   return (
     <OsdView
       headerNav={headerNav}
+      videoSystem={osdEditor.videoSystem}
+      setVideoSystem={osdEditor.setVideoSystem}
+      analogSubMode={osdEditor.analogSubMode}
+      setAnalogSubMode={osdEditor.setAnalogSubMode}
       linkPorts={osdLinkPorts}
       typeField={osdTypeParameter ? { parameter: osdTypeParameter, liveValue: osdType } : undefined}
       channelField={osdChannelParameter ? { parameter: osdChannelParameter, liveValue: osdChannel } : undefined}
