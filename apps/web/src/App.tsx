@@ -4505,7 +4505,7 @@ export function App() {
         tone: 'warning',
         text:
           rcMappingRejectedReason ??
-          `${rcMappingTargetGuide.detail} Keep moving only that control until one receiver channel clearly dominates.`
+          `No channel has stood out yet. ${rcMappingTargetGuide.detail}`
       })
       return
     }

@@ -120,8 +120,10 @@ const RC_LOW_THRESHOLD = 0.15
 const RC_HIGH_THRESHOLD = 0.85
 const RC_CENTER_TOLERANCE_RATIO = 0.1
 const RC_CENTER_TOLERANCE_US = 45
-const RC_MAPPING_DELTA_THRESHOLD_US = 120
-const RC_MAPPING_DOMINANCE_MARGIN_US = 35
+// Exported so the rejection messaging can name the same numbers the detector
+// enforces. Duplicating them in the web layer is how they drift apart.
+export const RC_MAPPING_DELTA_THRESHOLD_US = 120
+export const RC_MAPPING_DOMINANCE_MARGIN_US = 35
 const RC_MAPPING_CENTER_BASELINE_MIN_US = 1300
 const RC_MAPPING_CENTER_BASELINE_MAX_US = 1700
 // Throttle has no centering spring, so its baseline can rest anywhere. The

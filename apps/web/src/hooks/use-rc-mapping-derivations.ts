@@ -117,14 +117,27 @@ export function useRcMappingDerivations(input: {
     if (
       rcMappingSession.status !== 'running' ||
       rcMappingSession.currentTargetAxis === undefined ||
-      rcMappingCandidate !== undefined ||
-      rcMappingRawCandidate === undefined
+      rcMappingCandidate !== undefined
     ) {
       return undefined
     }
 
-    return describeRcMappingRejectedCandidate(rcMappingSession.currentTargetAxis, rcMappingRawCandidate)
-  }, [rcMappingCandidate, rcMappingRawCandidate, rcMappingSession.currentTargetAxis, rcMappingSession.status])
+    // The rawCandidate === undefined guard used to live here too, which meant the
+    // two most common refusals -- nothing moved far enough, and two channels
+    // moving together -- could never produce a reason. The live candidate list
+    // carries what the raw candidate cannot.
+    return describeRcMappingRejectedCandidate(
+      rcMappingSession.currentTargetAxis,
+      rcMappingRawCandidate,
+      rcMappingLiveCandidates
+    )
+  }, [
+    rcMappingCandidate,
+    rcMappingLiveCandidates,
+    rcMappingRawCandidate,
+    rcMappingSession.currentTargetAxis,
+    rcMappingSession.status
+  ])
   const rcMappingDetectedChannelMap = useMemo(
     () =>
       Object.fromEntries(

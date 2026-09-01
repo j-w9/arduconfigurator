@@ -294,7 +294,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             ...(isCopterVehicle
               ? [
                   {
-                    label: 'Frame class set to a valid value (FRAME_CLASS != 0)',
+                    label: 'A frame class is selected',
                     // FRAME_CLASS=0 IS a defined value, but it means "unset" /
                     // "Frame: UNSUPPORTED". The criterion needs to reflect the
                     // real signal (a chosen frame class), not just presence.
@@ -1119,7 +1119,9 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               : modeSwitchExercise.status === 'running'
                 ? modeSwitchExerciseSummary
                 : modeSwitchEstimate.estimatedSlot !== undefined
-                  ? `Live mode switch detected on CH${modeSwitchEstimate.channelNumber ?? '?'}, but the full switch exercise still needs to pass.`
+                  ? modeSwitchEstimate.channelNumber === undefined
+                    ? 'A mode switch is moving, but the flight-mode channel is not set. Set it in Modes, then run the switch check.'
+                    : `Live mode switch detected on CH${modeSwitchEstimate.channelNumber}, but the full switch check still needs to pass.`
                   : 'Waiting for a configured live mode channel before starting the switch exercise.'
           detail =
             modeSwitchExercise.status === 'failed'

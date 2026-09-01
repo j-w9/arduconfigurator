@@ -7,6 +7,7 @@ import {
   RC_CALIBRATION_SWITCH_CHANNELS,
   createIdleRcCalibrationSessionState,
   createRcMappingSessionState,
+  describeRcMappingRejectedCandidate,
   rcSwitchCaptureComplete
 } from './setup-exercise-helpers'
 
@@ -154,6 +155,48 @@ describe('guided RC mapping, full four-axis session', () => {
     // held to a 250us sweep.
     expect(
       detectDominantRcChannelChange(deflect(3, 1150), session.baselineChannels, { targetAxis: 'throttle' })
+    ).toBeUndefined()
+  })
+})
+
+/*
+ * The RC-mapping capture has three refusal paths and, before the 2026-09 audit,
+ * only one of them could explain itself. The other two fell through to a
+ * generic "keep moving only that control" — which is wrong advice in the
+ * dominance case, where the operator IS moving only that control and their
+ * radio is driving a second channel from it.
+ */
+describe('RC mapping refusals explain themselves', () => {
+  const candidate = (channelNumber: number, deltaUs: number, baselinePwm = 1500) => ({
+    channelNumber,
+    deltaUs,
+    baselinePwm,
+    livePwm: baselinePwm + deltaUs
+  })
+
+  it('names both channels when two move together', () => {
+    const reason = describeRcMappingRejectedCandidate('roll', undefined, [
+      candidate(1, 300),
+      candidate(7, 290)
+    ])
+    expect(reason).toMatch(/CH1 and CH7 are moving together/)
+    expect(reason).toMatch(/mix or a shared lead/)
+  })
+
+  it('says move further when the stick barely moved', () => {
+    const reason = describeRcMappingRejectedCandidate('roll', undefined, [candidate(1, 100)])
+    expect(reason).toMatch(/too small to identify a channel/)
+    expect(reason).toMatch(/all the way to one end/)
+  })
+
+  it('still explains a baseline that is nowhere near centre', () => {
+    const reason = describeRcMappingRejectedCandidate('roll', candidate(3, 300, 1000), [candidate(3, 300, 1000)])
+    expect(reason).toMatch(/throttle or another switch channel/)
+  })
+
+  it('has nothing to say when one channel cleanly dominates', () => {
+    expect(
+      describeRcMappingRejectedCandidate('roll', undefined, [candidate(1, 300), candidate(7, 40)])
     ).toBeUndefined()
   })
 })

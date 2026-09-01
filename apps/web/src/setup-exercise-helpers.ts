@@ -5,6 +5,8 @@
 
 import {
   formatRcAxisLabel,
+  RC_MAPPING_DELTA_THRESHOLD_US,
+  RC_MAPPING_DOMINANCE_MARGIN_US,
   RC_MAPPING_THROTTLE_DELTA_THRESHOLD_US,
   type ConfiguratorSnapshot,
   type RcAxisId,
@@ -128,12 +130,18 @@ export function orientationStepLabel(step: OrientationExerciseStepId): string {
 
 export function orientationStepInstruction(step: OrientationExerciseStepId | undefined): string {
   switch (step) {
+    // These state the thresholds the code actually tests below (8 deg level,
+    // 12 deg tilt). They used to say "near zero" and quote the telemetry sign
+    // convention -- "pitch should move negative" -- which tells the operator
+    // nothing about what to DO, and left someone tilting 8 degrees watching
+    // nothing happen with no idea whether to tilt further or whether their
+    // board orientation was wrong.
     case 'level':
-      return 'Hold the vehicle level and motionless until both roll and pitch are near zero.'
+      return 'Set the aircraft down level and hold it still, within about 8 degrees of level.'
     case 'pitch-forward':
-      return 'Tilt the nose forward. Pitch should move negative if board orientation is correct.'
+      return 'Tilt the nose down at least 15 degrees and hold it. The horizon should pitch down with the aircraft — if it pitches up, the board orientation is wrong.'
     case 'roll-right':
-      return 'Roll the vehicle to the right. Roll should move positive if board orientation is correct.'
+      return 'Roll the aircraft right at least 15 degrees and hold it. The horizon should roll right with the aircraft — if it rolls left, the board orientation is wrong.'
     default:
       return 'Start the orientation exercise to verify live horizon behavior.'
   }
@@ -319,7 +327,51 @@ export function deriveRcMappingLiveCandidates(
     .sort((left, right) => right.deltaUs - left.deltaUs)
 }
 
-export function describeRcMappingRejectedCandidate(targetAxis: RcAxisId, candidate: RcMappingCandidate): string | undefined {
+/**
+ * Why the capture refused, in words the operator can act on.
+ *
+ * detectDominantRcChannelChange has three refusal paths -- delta under the
+ * threshold, the dominance margin (top two channels within 35us of each other),
+ * and the axis filter -- but this only ever saw the raw candidate, which is
+ * itself undefined for the first two. So the only refusal it could explain was
+ * the off-centre baseline, and everything else fell through to a generic "keep
+ * moving only that control".
+ *
+ * That generic line is actively wrong for the dominance case: the operator IS
+ * moving only that control, and their radio is driving a second channel from it
+ * -- a mix, a Y-lead, expo on a 4-in-1. Telling them to do harder what they are
+ * already doing correctly is worse than saying nothing.
+ *
+ * `liveCandidates` is the ranked list, so the two cases the raw candidate cannot
+ * express are recoverable here.
+ */
+export function describeRcMappingRejectedCandidate(
+  targetAxis: RcAxisId,
+  candidate: RcMappingCandidate | undefined,
+  liveCandidates: readonly RcMappingCandidate[] = []
+): string | undefined {
+  const axisLabel = formatRcAxisLabel(targetAxis).toLowerCase()
+
+  // Two channels moving together: neither can be called dominant.
+  const [strongest, next] = liveCandidates
+  if (
+    strongest &&
+    next &&
+    strongest.deltaUs >= RC_MAPPING_DELTA_THRESHOLD_US &&
+    strongest.deltaUs - next.deltaUs < RC_MAPPING_DOMINANCE_MARGIN_US
+  ) {
+    return `CH${strongest.channelNumber} and CH${next.channelNumber} are moving together, so neither one is clearly ${axisLabel}. Check for a mix or a shared lead on this stick, or move ${axisLabel} further than the other channel.`
+  }
+
+  // Moved, but not far enough to be deliberate.
+  if (strongest && strongest.deltaUs < RC_MAPPING_DELTA_THRESHOLD_US) {
+    return `That movement is too small to identify a channel. Move ${axisLabel} all the way to one end and hold it there.`
+  }
+
+  if (!candidate) {
+    return undefined
+  }
+
   if (targetAxis === 'throttle') {
     // Throttle accepts either direction from any baseline (no centering
     // spring — see RC_MAPPING_THROTTLE_DELTA_THRESHOLD_US in
@@ -332,7 +384,7 @@ export function describeRcMappingRejectedCandidate(targetAxis: RcAxisId, candida
   }
 
   if (candidate.baselinePwm < 1300 || candidate.baselinePwm > 1700) {
-    return `That movement looks more like throttle or another switch channel, not ${formatRcAxisLabel(targetAxis).toLowerCase()}. Re-center the sticks, leave throttle low, and move only ${formatRcAxisLabel(targetAxis).toLowerCase()}.`
+    return `That movement looks more like throttle or another switch channel, not ${axisLabel}. Re-centre the sticks, leave throttle low, and move only ${axisLabel}.`
   }
 
   return undefined
