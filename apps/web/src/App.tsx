@@ -4317,8 +4317,8 @@ export function App() {
    * here rather than through state.
    */
   async function handleRunMotorTest(
-    override?: { outputChannel?: number; throttlePercent?: number }
-  ): Promise<void> {
+    override?: { outputChannel?: number; throttlePercent?: number; durationSeconds?: number }
+  ): Promise<string[]> {
     let targetOutput = override?.outputChannel ?? motorTestOutput
 
     // The verification sweep picks its own motor, but never over an explicit
@@ -4332,12 +4332,13 @@ export function App() {
     }
 
     if (targetOutput === undefined) {
-      return
+      return ['Select a mapped motor output.']
     }
 
     const throttlePercent = override?.throttlePercent ?? motorTestThrottlePercent
+    const durationSeconds = override?.durationSeconds ?? motorTestDurationSeconds
 
-    const effectiveRequest = buildMotorTestRequest(targetOutput, throttlePercent, motorTestDurationSeconds)
+    const effectiveRequest = buildMotorTestRequest(targetOutput, throttlePercent, durationSeconds)
     // This re-check MUST agree with the one that decided whether to enable the
     // button (`motorTestGuardReasons` above), in both directions:
     //
@@ -4360,7 +4361,11 @@ export function App() {
 
     if (effectiveGuardReasons.length > 0) {
       setMotorTestOutput(targetOutput)
-      return
+      // Returned, not swallowed. A caller that drives tests from its own UI
+      // (the spin wizard) has no other way to tell "refused" from "ran": it
+      // sat there looking broken while every command was dropped by
+      // "A motor test is already in progress."
+      return effectiveGuardReasons
     }
 
     setBusyAction('motor-test')
@@ -4370,7 +4375,7 @@ export function App() {
       // re-checks eligibility, and a divergence here rejected Expert-mode
       // durations over 5 s that the UI had already allowed.
       await runtime.runMotorTest(
-        buildMotorTestRequest(targetOutput, throttlePercent, motorTestDurationSeconds) as MotorTestRequest,
+        buildMotorTestRequest(targetOutput, throttlePercent, durationSeconds) as MotorTestRequest,
         motorTestExpertOptions
       )
     } catch {
@@ -4381,6 +4386,7 @@ export function App() {
     } finally {
       setBusyAction(undefined)
     }
+    return []
   }
 
   async function handleStopMotorTest(): Promise<void> {

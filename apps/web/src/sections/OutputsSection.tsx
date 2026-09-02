@@ -57,7 +57,8 @@ import {
   setSpinWizardValue,
   spinCeilingReason,
   startSpinWizard,
-  SPIN_ARM_MAX
+  SPIN_ARM_MAX,
+  SPIN_WIZARD_TEST_SECONDS
 } from '../view-models/spin-threshold-wizard'
 import { MotorMixerDiagram } from '../views/MotorMixerDiagram'
 import { formatParameterValue, normalizeBitmaskValue } from '../parameter-format'
@@ -184,7 +185,12 @@ export interface OutputsSectionHandlers {
   /** Expert-only surfaces. The spin-threshold wizard spins every motor, so it
    *  stays behind the same opt-in as the rest of the expert tooling. */
   isExpertMode: boolean
-  handleRunMotorTest: (override?: { outputChannel?: number; throttlePercent?: number }) => void | Promise<void>
+  /** Resolves with the guard reasons that REFUSED the request, or an empty
+   *  array when it ran. Callers driving their own test UI must surface them;
+   *  a silent refusal is indistinguishable from a broken button. */
+  handleRunMotorTest: (
+    override?: { outputChannel?: number; throttlePercent?: number; durationSeconds?: number }
+  ) => Promise<string[]>
   handleStopMotorTest: () => void | Promise<void>
   handleStartMotorVerification: (preferredOutputChannel?: number) => void
   handleConfirmMotorVerification: () => void
@@ -445,6 +451,8 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   // point, again so MIN clears ARM, which is the ordering firmware requires.
   const [spinWizard, setSpinWizard] = useState<SpinWizardState>(createIdleSpinWizardState)
   const [spinWizardOpen, setSpinWizardOpen] = useState(false)
+  // The reason the last command was refused, if it was. Shown in the popout.
+  const [spinWizardRefusal, setSpinWizardRefusal] = useState<string | undefined>(undefined)
   const [spinArmDraft, setSpinArmDraft] = useState<string>('')
   const [spinMinDraft, setSpinMinDraft] = useState<string>('')
   const spinThresholdProblem =
@@ -471,13 +479,34 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         return
       }
       spinCommandInFlight.current = true
-      void Promise.resolve(
-        handleRunMotorTest({ outputChannel: ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS, throttlePercent })
-      ).finally(() => {
-        spinCommandInFlight.current = false
-      })
+      setSpinWizardRefusal(undefined)
+      void (async () => {
+        try {
+          // Raising the slider MEANS "put the motors at this instead", but a
+          // test started a moment ago is still running and the eligibility
+          // guard refuses a second one ("A motor test is already in
+          // progress."). Every drag after the first was therefore dropped in
+          // silence, which is the "nothing happens until I press TEST" report
+          // -- TEST only worked because the window had elapsed by then. Stop
+          // the running test first, then command the new value.
+          if (snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running') {
+            await handleStopMotorTest()
+          }
+          const refusedFor = await handleRunMotorTest({
+            outputChannel: ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS,
+            throttlePercent,
+            // A 1s default made the motors twitch and stop, which is no use for
+            // judging where they break away. Long enough to watch, still inside
+            // the non-expert ceiling.
+            durationSeconds: SPIN_WIZARD_TEST_SECONDS
+          })
+          setSpinWizardRefusal(refusedFor.length > 0 ? refusedFor[0] : undefined)
+        } finally {
+          spinCommandInFlight.current = false
+        }
+      })()
     },
-    [handleRunMotorTest, setMotorTestOutput, setMotorTestThrottlePercent]
+    [handleRunMotorTest, handleStopMotorTest, setMotorTestOutput, setMotorTestThrottlePercent, snapshot.motorTest.status]
   )
 
   // Closing the popout must not leave motors turning: the wizard commands real
@@ -1818,6 +1847,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                               </p>
                               {spinWizard.currentValue >= SPIN_ARM_MAX ? (
                                 <p className="switch-exercise-warning" data-testid="spin-wizard-ceiling">{spinCeilingReason()}</p>
+                              ) : null}
+                              {spinWizardRefusal ? (
+                                <p className="switch-exercise-warning" data-testid="spin-wizard-refused">
+                                  Motors not commanded: {spinWizardRefusal}
+                                </p>
                               ) : null}
                               <div className="button-row">
                                 <button

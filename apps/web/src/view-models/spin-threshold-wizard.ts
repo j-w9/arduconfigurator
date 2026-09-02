@@ -23,6 +23,17 @@ export const SPIN_WIZARD_START = 0.01
 /** One increment, matching the parameters' own @Increment of 0.01. */
 export const SPIN_WIZARD_STEP = 0.01
 
+/**
+ * How long each spin lasts, in seconds.
+ *
+ * The motor-test default is 1s, which reads as a twitch -- long enough to
+ * prove wiring, far too short to judge whether a motor "just broke away".
+ * 3s is enough to watch all of them settle and still inside the 5s ceiling
+ * the non-Expert motor-test guard allows, so this never needs the Expert
+ * duration override.
+ */
+export const SPIN_WIZARD_TEST_SECONDS = 3
+
 /** Margin above the observed break-away, and again above ARM for MIN. */
 export const SPIN_WIZARD_MARGIN = 0.03
 
