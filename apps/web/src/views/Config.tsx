@@ -59,7 +59,11 @@ export interface ConfigCategory {
 // lead with the two knobs that are prerequisites for the radio working at all
 // (protocol + options) instead of burying them under someone else's card.
 export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
-  { id: 'airframe', label: 'Airframe' },
+  // "Airframe" alone undersold it: this tab carries frame class/type and board
+  // orientation AND the whole power train -- ESC protocol, DShot rate, BLHeli,
+  // motor poles, reverse mask. Someone looking for ESC settings had no reason to
+  // open a tab called Airframe.
+  { id: 'airframe', label: 'Airframe & Powertrain' },
   { id: 'sensors', label: 'Sensors' },
   { id: 'gps', label: 'GPS' },
   { id: 'rc', label: 'RC' },
