@@ -2,6 +2,8 @@ import { useState, type ReactElement, type ReactNode } from 'react'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 import { formatParamNumber, formatParamNumberInput } from '@arduconfig/param-metadata'
 
+import { InfoDot } from './InfoDot'
+
 export interface ScopedFieldDraftStatus {
   status: string
 }
@@ -33,16 +35,52 @@ function fieldClassName(map: ScopedFieldDraftMap, paramId: string, compact: bool
  * already the label text, so showing it again would be a plain duplicate.
  */
 function ParamIdHint({ parameter }: { parameter: ParameterState }): ReactElement | null {
-  if (!parameter.definition?.label) return null
-  // aria-hidden: purely decorative metadata, and — since several of these
-  // components wrap their control in a <label> — without it the browser
-  // folds this text into the <label>'s accessible name (e.g. "Roll Angle P"
-  // becomes "Roll Angle PATC_ANG_RLL_P"), breaking any getByLabel(exact) query
-  // and any screen-reader announcement of the control.
+  const definition = parameter.definition
+  if (!definition) return null
+
+  // The raw name is skipped when there is no friendly label: in that case
+  // `parameter.id` IS the label text, so printing it again is a duplicate.
+  const showParamId = Boolean(definition.label)
+  const description = definition.description?.trim()
+  if (!showParamId && !description) return null
+
+  // Range and unit, when the metadata carries them. This is the other half of
+  // the question the dot is there to answer -- "what does it do" is only
+  // useful next to "what may I set it to".
+  const bounds =
+    definition.minimum !== undefined && definition.maximum !== undefined
+      ? `Range ${definition.minimum} to ${definition.maximum}${definition.unit ? ` ${definition.unit}` : ''}`
+      : definition.unit
+        ? `Unit: ${definition.unit}`
+        : undefined
+
+  // aria-hidden on the raw name: purely decorative metadata, and — since
+  // several of these components wrap their control in a <label> — without it
+  // the browser folds this text into the <label>'s accessible name (e.g.
+  // "Roll Angle P" becomes "Roll Angle PATC_ANG_RLL_P"), breaking any
+  // getByLabel(exact) query and any screen-reader announcement of the control.
+  // The dot sits outside that, since its tip IS content worth announcing.
   return (
-    <small className="scoped-editor-field__param-id" aria-hidden="true">
-      {parameter.id}
-    </small>
+    <span className="scoped-editor-field__meta">
+      {showParamId ? (
+        <small className="scoped-editor-field__param-id" aria-hidden="true">
+          {parameter.id}
+        </small>
+      ) : null}
+      {description ? (
+        <InfoDot
+          label={`About ${definition.label ?? parameter.id}`}
+          testId={`param-info-${parameter.id}`}
+          wide
+        >
+          <span className="info-dot-line">{description}</span>
+          {bounds ? <span className="info-dot-line">{bounds}</span> : null}
+          {definition.rebootRequired ? (
+            <span className="info-dot-line">Takes effect after a reboot.</span>
+          ) : null}
+        </InfoDot>
+      ) : null}
+    </span>
   )
 }
 

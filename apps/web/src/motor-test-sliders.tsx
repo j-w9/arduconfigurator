@@ -17,6 +17,10 @@ interface MotorTestSlidersProps {
   stopEnabled: boolean
   masterEnabled: boolean
   testId?: string
+  /** Ceiling for the typed percent field. Defaults to 100; the motor-test
+   *  surface passes its own guard limit so the box cannot ask for a throttle
+   *  the runtime will refuse. */
+  maxPercent?: number
 }
 
 /* ── palette constants (mirrors :root tokens for inline styles) ── */
@@ -47,9 +51,17 @@ const color = {
 
 /* ── geometry ── */
 
-const TRACK_HEIGHT = 200
-const TRACK_WIDTH = 36
-const MASTER_TRACK_WIDTH = 48
+// 80, and the buttons moved out to the side to pay for it. The sliders live in a narrow column beside the
+// settings now rather than on a page of their own, and a 200px track pushed
+// the rest of the test panel below the fold on a laptop. Grab area is still
+// well over the ~44px touch target at every step of the range.
+const TRACK_HEIGHT = 80
+// Narrow tracks: this is a column beside the settings now, not a full-width
+// row, and 36px columns pushed the ALL tile off a 300px column at laptop
+// widths. The pointer handlers are on the tile, not the visible bar, so the
+// grab area does not shrink with the paint.
+const TRACK_WIDTH = 18
+const MASTER_TRACK_WIDTH = 24
 const HANDLE_HEIGHT = 10
 const MASTER_OUTPUT_VALUE = 0
 // Mirrors ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS in motor-test-helpers.ts: the
@@ -238,15 +250,21 @@ export function MotorTestSliders({
   stopEnabled,
   masterEnabled,
   testId,
+  maxPercent = 100,
 }: MotorTestSlidersProps) {
   const active = throttlePercent > 0
 
+  // Sliders on the left, controls in a column beside them. Stacking the
+  // buttons UNDER the sliders cost the tracks ~37px of height, which is
+  // granularity: at 100 steps over 42px a single pixel of drag was three
+  // percent. Beside them, the same box holds a track twice as tall.
   const wrapperStyle: CSSProperties = {
-    display: 'inline-flex',
-    flexDirection: 'column',
+    display: 'flex',
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 16,
+    justifyContent: 'center',
+    gap: 10,
+    padding: 8,
     background: color.bgPanel,
     borderRadius: 9,
     border: `1.5px solid ${active ? color.danger : color.border}`,
@@ -270,11 +288,38 @@ export function MotorTestSliders({
     opacity: 0.5,
   }
 
+  const percentFieldStyle: CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    border: `1px solid ${color.border}`,
+    borderRadius: 5,
+    padding: '2px 6px',
+    background: color.bgPanelMuted,
+  }
+
+  const percentLabelStyle: CSSProperties = {
+    color: color.textDim,
+    fontFamily: color.fontData,
+    fontSize: 11,
+  }
+
+  const percentInputStyle: CSSProperties = {
+    width: 46,
+    border: 'none',
+    background: 'transparent',
+    color: color.text,
+    fontFamily: color.fontData,
+    fontSize: 12,
+    padding: '2px 0',
+    textAlign: 'right',
+  }
+
   const testBtnStyle: CSSProperties = {
     border: `1px solid ${testDisabled ? color.border : 'rgba(218, 178, 84, 0.5)'}`,
     background: testDisabled ? 'rgba(255,255,255,0.03)' : 'rgba(218, 178, 84, 0.12)',
     color: testDisabled ? color.textDim : '#e8c968',
-    padding: '6px 24px',
+    padding: '6px 14px',
     borderRadius: 5,
     fontWeight: 700,
     fontSize: 12,
@@ -290,7 +335,7 @@ export function MotorTestSliders({
     border: `1px solid ${stopEnabled ? 'rgba(212, 107, 98, 0.7)' : color.border}`,
     background: stopEnabled ? 'rgba(212, 107, 98, 0.16)' : 'rgba(255,255,255,0.03)',
     color: stopEnabled ? '#f08a80' : color.textDim,
-    padding: '6px 24px',
+    padding: '6px 14px',
     borderRadius: 5,
     fontWeight: 700,
     fontSize: 12,
@@ -342,7 +387,28 @@ export function MotorTestSliders({
         ) : null}
       </div>
 
-      <div style={{ display: 'flex', gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {/* Typed entry alongside the drag. A slider is the fast way to find
+            roughly the right throttle; it is a poor way to ask for exactly 7%,
+            which is what a repeatable bench test needs. Both drive the same
+            value. */}
+        <label style={percentFieldStyle}>
+          <span style={percentLabelStyle}>%</span>
+          <input
+            type="number"
+            min={0}
+            max={maxPercent}
+            step={1}
+            value={throttlePercent}
+            data-testid={testId ? `${testId}-percent` : undefined}
+            onChange={(event) => {
+              const next = Number(event.target.value)
+              if (!Number.isFinite(next)) return
+              onThrottleChange(Math.min(Math.max(Math.round(next), 0), maxPercent))
+            }}
+            style={percentInputStyle}
+          />
+        </label>
         <button
           type="button"
           style={testBtnStyle}

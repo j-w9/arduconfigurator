@@ -298,6 +298,7 @@
 /* Motor mixer / test quad diagram (SVG). The "screen" container + backdrop + ring
    fills are hard-coded dark and its arms a light stroke — flip them for light. */
 :root[data-theme='light'] .motor-mixer-preview {
+  --mixer-backdrop: #f4f6fa;
   background:
     linear-gradient(rgba(var(--edge-rgb), 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(var(--edge-rgb), 0.05) 1px, transparent 1px),
@@ -4312,6 +4313,9 @@ body.is-status-dash-dragging {
 }
 
 .motor-mixer-preview {
+  /* Backdrop colour as a token so the SVG labels can knock themselves out of
+     whatever is behind them (see __channel-label). */
+  --mixer-backdrop: #06090c;
   display: grid;
   place-items: center;
   min-height: 320px;
@@ -4439,15 +4443,28 @@ body.is-status-dash-dragging {
   font-weight: 700;
 }
 
+/* The channel label sits just outside its ring, which is exactly where the
+   spin arc sweeps -- "UNMAPPED" was being drawn across the arrows and neither
+   read cleanly. A halo in the diagram's own backdrop colour knocks the arc out
+   from behind the glyphs; paint-order puts the stroke UNDER the fill so the
+   letterforms stay their true weight. */
 .motor-mixer-preview__channel-label {
   fill: var(--text-dim);
   font-family: var(--font-data);
   font-size: var(--text-2xs);
   letter-spacing: 0.08em;
+  paint-order: stroke fill;
+  stroke: var(--mixer-backdrop, #06090c);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .motor-mixer-preview__stack-label {
   fill: var(--text-muted);
+  paint-order: stroke fill;
+  stroke: var(--mixer-backdrop, #06090c);
+  stroke-width: 3px;
+  stroke-linejoin: round;
   font-family: var(--font-data);
   font-size: var(--text-2xs);
   letter-spacing: var(--tracking-label);
@@ -8487,6 +8504,26 @@ body.is-status-dash-dragging {
   color: var(--accent, var(--text-muted));
   font-size: var(--text-sm);
   line-height: 1.35;
+}
+
+/* Raw parameter name and its info dot share one line under the label. The dot
+   is the only place the parameter's own description is reachable from a
+   product surface -- without it an operator has to leave for the Parameters
+   tab or the wiki to find out what a field does. */
+.scoped-editor-field__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.scoped-editor-field__meta .receiver-info-dot {
+  flex: none;
+}
+/* The field's own label is uppercase with tracking; a paragraph of parameter
+   documentation must not inherit that. */
+.scoped-editor-field__meta .receiver-info-tip {
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .scoped-editor-field__param-id {
@@ -18296,46 +18333,331 @@ button.mavlink-inspector__sent-row {
   }
 }
 
-/* ── Motors: two columns, Betaflight-style ────────────────────────────────
+/* Spin-threshold wizard launcher: one row in the Motor Setup panel -- what it
+   is, whether it has been measured, and the button that opens the popout. */
+.spin-wizard-launcher {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border: 1px solid var(--surface-400);
+  border-radius: var(--radius-md);
+  background: rgba(var(--fill-rgb), 0.96);
+}
+.spin-wizard-launcher > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.spin-wizard-launcher strong {
+  display: block;
+}
+.spin-wizard-launcher p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+}
+.spin-wizard-launcher button {
+  flex: none;
+}
+
+/* The wizard itself, in the shared lightbox chrome. Narrower than the motor
+   setup popout: it is one slider and two numbers. */
+.spin-wizard-lightbox__frame {
+  max-width: 640px;
+}
+.spin-wizard-lightbox__frame .bf-gui-box {
+  border: none;
+  background: none;
+}
+
+/* ── Motors: one page, two columns, condensed ─────────────────────────────
  *
- * Settings on the left, live motors on the right. The three panels are the
- * same ones, inline and unchanged -- the reorder/direction flow keeps its
- * Order/Direction steps and its guided identify exactly as they are. This
- * only decides where each panel sits, so nothing about the process moves.
+ * Laid out like Betaflight's Motors tab, which is the shape the operator
+ * asked for: the mixer picture and the order/direction work top-left, the
+ * ESC and range settings directly under it, the throttle sliders in a
+ * narrow live column on the right.
  *
- * Keyed on the panels themselves rather than a view flag: only the Motors
- * page renders all three at once, so :has() is the honest test. Servos, and
- * Motors below the breakpoint, keep the single-column stack.
+ * The task strip is gone (every task is on the page, so it navigated to
+ * things already on screen) and the rest is density. The panels here were
+ * each sized as if they had the window to themselves -- a 320px diagram, a
+ * two-column field grid, dialog-sized padding -- which is what made a
+ * one-page Motors tab scroll for screens.
+ *
+ * The earlier attempt at this failed because the reorder panel's own inner
+ * grid is minmax(320px,..) minmax(340px,..): a hard 676px floor that
+ * overflowed whatever track it was given and painted under the right column.
+ * That floor is removed below rather than designed around.
  */
+.outputs-tab-body--single-page {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/* Fields flow to as many columns as the width allows instead of a fixed two.
+   This is where most of the scrolling came from. */
+.outputs-tab-body--single-page .scoped-editor-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-2);
+}
+
+/* The frame diagram was sized for a dialog that had the screen to itself. */
+.outputs-tab-body--single-page .motor-mixer-preview,
+.outputs-tab-body--single-page .motor-mixer-preview--dialog {
+  min-height: 150px;
+}
+.outputs-tab-body--single-page .motor-mixer-preview svg {
+  width: min(100%, 170px);
+  max-height: 170px;
+}
+
+/* Supporting prose in the left column -- the assignment notes and the section
+   blurbs -- set one step down, same as the live column. */
+.outputs-tab-body--single-page .bf-note,
+.outputs-tab-body--single-page .motor-reorder-manual__hint,
+.outputs-tab-body--single-page .output-note-list {
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+/* Card headers, acks and apply bars: same words, tighter leading. These repeat
+   once per panel, so a few pixels each is most of a screen across the page. */
+.outputs-tab-body--single-page .switch-exercise-card__header p,
+.outputs-tab-body--single-page .scoped-editor-field span {
+  line-height: 1.3;
+}
+.outputs-tab-body--single-page .motor-reorder-lightbox__acks,
+.outputs-tab-body--single-page .motor-reorder-lightbox__apply-bar {
+  padding-block: 4px;
+}
+.outputs-tab-body--single-page .switch-exercise-controls button,
+.outputs-tab-body--single-page .motor-reorder-lightbox__apply-bar button {
+  padding-block: 6px;
+}
+
+/* Panel chrome: same panels, less air around them. The body gap is the one
+   that repeats -- every box on this page is a short stack of two to four
+   blocks, so a step down there is worth more than it looks. */
+.outputs-tab-body--single-page .bf-gui-box__body,
+.outputs-tab-body--single-page .scoped-review-card {
+  padding: var(--space-2);
+}
+.outputs-tab-body--single-page .bf-gui-box__body {
+  gap: var(--space-2);
+}
+.outputs-tab-body--single-page .bf-gui-box {
+  margin-block: 0;
+}
+.outputs-tab-body--single-page .scoped-editor-field {
+  gap: 4px;
+  padding: 6px 8px;
+}
+.outputs-tab-body--single-page .scoped-editor-field input,
+.outputs-tab-body--single-page .scoped-editor-field select {
+  padding-block: 5px;
+}
+
+/* The reorder panel's two inner columns keep their order but drop their
+   minimum widths, so the panel fits whatever track it is given. Both steps
+   (Order and Direction) use the same pair of tracks. */
+.outputs-tab-body--single-page .motor-reorder-lightbox__direction,
+.outputs-tab-body--single-page .motor-reorder-lightbox__grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+/* Nothing in the stack may set a floor wider than its own column. */
+.outputs-tab-body--single-page * {
+  min-width: 0;
+}
+
 @media (min-width: 1200px) {
-  .outputs-tab-body:has([data-outputs-task='esc-protocol']):has([data-outputs-task='direction-test']) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: auto 1fr;
-    gap: var(--space-4);
+  .outputs-tab-body--single-page {
+    grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.75fr);
+    grid-template-rows: auto auto;
     align-items: start;
   }
 
-  .outputs-tab-body [data-outputs-task='esc-protocol'] {
+  /* Mixer picture and the order/direction work first: that is the thing you
+     come to this tab to do. Settings under it, sliders alongside. */
+  .outputs-tab-body--single-page [data-outputs-task='motor-setup'] {
     grid-column: 1;
     grid-row: 1;
-    min-width: 0;
   }
 
-  .outputs-tab-body [data-outputs-task='motor-setup'] {
+  .outputs-tab-body--single-page [data-outputs-task='esc-protocol'] {
     grid-column: 1;
     grid-row: 2;
-    min-width: 0;
   }
 
-  /* The live column spans both rows and sticks, so the sliders and the motor
-     telemetry stay in view while the operator works down the settings on the
-     left -- which is the whole point of putting them side by side. */
-  .outputs-tab-body [data-outputs-task='direction-test'] {
+  /* The live column spans both rows and sticks, so the sliders stay in view
+     while the operator works down the settings -- the point of the split. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] {
     grid-column: 2;
     grid-row: 1 / span 2;
-    min-width: 0;
     position: sticky;
-    top: var(--space-4);
+    top: var(--space-3);
+  }
+
+  /* The test panel is a live readout, not a form: it does not need form-sized
+     rows. Tightening its table, guardrail fields and padding is what keeps the
+     whole column on screen without scrolling. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .scoped-review-card,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .bf-gui-box__body {
+    padding: var(--space-2);
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-grid {
+    gap: var(--space-2);
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] table td,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] table th {
+    padding-block: 1px;
+  }
+  /* Supporting prose only -- the guardrail reminders, the telemetry caveat and
+     the status line. Every word is kept; they just stop being set at body size
+     in a column whose job is the live numbers. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .output-note-list,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .switch-exercise-card__header p,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .esc-rpm-readout__summary,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .bf-note {
+    margin-block: 4px;
+    font-size: var(--text-sm);
+    line-height: 1.4;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-card,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-direction-layout,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-direction-layout__sliders {
+    display: grid;
+    gap: 4px;
+  }
+  /* The RPM table is a dense readout of four rows; at body size it was taller
+     than the controls above it. Data font, one step down, same columns. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .esc-rpm-readout__table {
+    font-size: var(--text-xs);
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .esc-rpm-readout__summary {
+    font-size: var(--text-xs);
+  }
+  /* Heading and status line share one row instead of stacking, so the table
+     itself -- the part with the numbers on it -- keeps its space. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .esc-rpm-readout {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 2px var(--space-2);
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .esc-rpm-readout__summary {
+    margin: 0;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .esc-rpm-readout__table {
+    grid-column: 1 / -1;
+  }
+
+  /* Last few rows out of the live column: the guardrail form's own label gaps
+     and the gap between its blocks. Nothing here is a word. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-grid {
+    gap: var(--space-2);
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-grid label {
+    gap: 2px;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-card {
+    gap: 4px;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] > .bf-gui-box > .bf-gui-box__body {
+    padding: 4px;
+  }
+  /* Blocked-reason list reads as a run-on line rather than a bulleted stack.
+     Every reason is still printed in full -- this is the block that has to
+     give way for the ESC telemetry table to stay on screen. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .output-note-list {
+    display: block;
+    margin: 0;
+    padding: 0;
+    line-height: 1.3;
+    list-style: none;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .output-note-list li {
+    display: inline;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .output-note-list li + li::before {
+    content: ' · ';
+    color: var(--text-dim);
+  }
+
+  /* Telemetry rows sit as tight as the type allows: this table is the reason
+     the rest of the column was trimmed, so it is the last thing to give. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .esc-rpm-readout__table td,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .esc-rpm-readout__table th {
+    padding-block: 0;
+    line-height: 1.35;
+  }
+
+  /* The sliders sit in their own bordered box; its padding was sized for a
+     full-width row. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-sliders-row > :first-child {
+    padding: 6px;
+  }
+
+  /* The column's own "TEST" chip: the panel below it is a bank of throttle
+     sliders and a Run Motor Test button, which says the same thing louder.
+     Dropping the chip is the last row that comes off the column's height. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] > .bf-gui-box > .bf-gui-box__titlebar {
+    display: none;
+  }
+
+  /* The status line under the guardrail heading repeats the badge beside it
+     ("No motor test has been requested." / IDLE). The badge wins: it is
+     shorter and it is the thing that changes colour. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-card > .switch-exercise-card__header p {
+    display: none;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .esc-rpm-readout {
+    padding: var(--space-2);
+  }
+
+  /* Order within the live column: sliders, then the test controls, then the
+     ESC telemetry. The controls are what the operator reaches for, and with
+     the RPM table between them the Run button sat ~180px lower than it needed
+     to -- far enough down to need a scroll on a laptop. `display: contents`
+     lifts the sliders wrapper's children into this grid so all three can be
+     ordered against each other; nothing is moved in the markup. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-direction-layout__sliders {
+    display: contents;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-sliders-row {
+    order: 1;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-card {
+    order: 2;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .esc-rpm-readout {
+    order: 3;
+  }
+
+  /* Assignments panel: same controls, scaled down. It is a short list of
+     buttons and two notes sitting beside the frame picture, and it was set at
+     full body size with form-sized buttons. */
+  .outputs-tab-body--single-page .motor-reorder-lightbox__grid button,
+  .outputs-tab-body--single-page .motor-reorder-manual > summary {
+    padding-block: 6px;
+    font-size: var(--text-md);
+  }
+  .outputs-tab-body--single-page .motor-reorder-lightbox__grid .output-note-list li {
+    margin-block: 2px;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-grid label span {
+    font-size: var(--text-sm);
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-grid input,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-grid select {
+    padding-block: 5px;
+  }
+
+  /* The test panel repeats the mixer diagram that is already top-left. One
+     copy is enough, and dropping it lets the sliders own the column. */
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-mixer-preview--test {
+    display: none;
   }
 }
+
