@@ -2289,6 +2289,52 @@ test.describe('Config view', () => {
     await expect(page.getByTestId('spin-wizard-stage')).toBeDisabled()
   })
 
+  test('spin-threshold wizard holds the motors live while the slider moves', async ({ page }) => {
+    // Finding a break-away point means scaling up until the motors move, so the
+    // motors have to FOLLOW the slider rather than be sampled after it stops.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await enableExpertMode(page)
+    await openView(page, 'motors')
+    await page.getByTestId('motor-reorder-props-off-ack').check()
+    await page.getByTestId('spin-wizard-open').click()
+    await page.getByTestId('spin-wizard-start').click()
+    await expect(page.getByTestId('spin-wizard-stepping')).toBeVisible({ timeout: COMMAND_ACK_TIMEOUT })
+
+    // Live control: the motors follow the slider. Drag the ALL track to the top
+    // and the commanded throttle must track it, not the position it started at.
+    const allTrack = page.getByTestId('spin-wizard-sliders').getByTestId('motor-slider-track-ALL')
+    const box = await allTrack.boundingBox()
+    if (!box) throw new Error('ALL throttle track has no box')
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 2)
+    await page.mouse.down()
+    for (let step = 1; step <= 10; step += 1) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height - (box.height * step) / 10)
+    }
+    await page.mouse.up()
+    // 20% is MOT_SPIN_ARM's own ceiling, which the wizard clamps to.
+    await expect(page.locator('.motor-test-card')).toContainText(
+      /all 4 mapped motors simultaneously at 20%/i,
+      { timeout: COMMAND_ACK_TIMEOUT }
+    )
+
+    // Keepalive: with the operator's hand off the slider, the motors must STILL
+    // be held past the watchdog window. Regression guard for a keepalive whose
+    // effect depended on a per-render callback -- it rebuilt its interval on
+    // every render and so never fired, and the motors quietly stopped while the
+    // wizard claimed to be holding them.
+    await page.waitForTimeout(3000)
+    await expect(page.locator('.motor-test-card')).toContainText(
+      /Motor test running on all 4 mapped motors simultaneously at 20%/i
+    )
+
+
+    // Nothing was refused along the way: re-commanding a running test is how
+    // ArduPilot changes its throttle, and the wizard opts out of the
+    // in-progress guard rather than being silently dropped by it.
+    await expect(page.getByTestId('spin-wizard-refused')).toHaveCount(0)
+  })
+
   test('ESC & Protocol exposes the motor pole count with a reference for choosing it', async ({ page }) => {
     // SERVO_BLH_POLES is the divisor for ESC eRPM -> RPM, so it belongs next to
     // the ESC protocol choice rather than only in the raw parameter list. A

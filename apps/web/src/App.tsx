@@ -4317,7 +4317,14 @@ export function App() {
    * here rather than through state.
    */
   async function handleRunMotorTest(
-    override?: { outputChannel?: number; throttlePercent?: number; durationSeconds?: number }
+    override?: {
+      outputChannel?: number
+      throttlePercent?: number
+      durationSeconds?: number
+      /** Live throttle control: replace the running test rather than be
+       *  refused by the in-progress guard. See MotorTestEligibilityOptions. */
+      replaceRunningTest?: boolean
+    }
   ): Promise<string[]> {
     let targetOutput = override?.outputChannel ?? motorTestOutput
 
@@ -4350,10 +4357,13 @@ export function App() {
     //  - Without the USB acknowledgement it is WEAKER, which is worse: the
     //    last gate before a motor spins would stop enforcing the bench
     //    confirmation that the display gate demands.
+    const effectiveExpertOptions = override?.replaceRunningTest
+      ? { ...motorTestExpertOptions, replaceRunningTest: true }
+      : motorTestExpertOptions
     const effectiveCoreGuardReasons = computeMotorTestGuardReasons(snapshot, effectiveRequest, {
       propsRemoved: propsRemovedAcknowledged,
       testAreaClear: testAreaAcknowledged
-    }, motorTestExpertOptions)
+    }, effectiveExpertOptions)
     const effectiveGuardReasons =
       motorTestOverUsb && !usbBenchAcknowledged
         ? [...effectiveCoreGuardReasons, 'Confirm the craft is on the bench with props off (USB connection detected).']
@@ -4376,7 +4386,7 @@ export function App() {
       // durations over 5 s that the UI had already allowed.
       await runtime.runMotorTest(
         buildMotorTestRequest(targetOutput, throttlePercent, durationSeconds) as MotorTestRequest,
-        motorTestExpertOptions
+        effectiveExpertOptions
       )
     } catch {
       // The motor-test service already records status='failed' + a summary

@@ -14,7 +14,7 @@
 // the parent; only their current values and the handlers that advance them
 // are passed in.
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import type {
   ConfiguratorSnapshot,
@@ -58,7 +58,9 @@ import {
   spinCeilingReason,
   startSpinWizard,
   SPIN_ARM_MAX,
-  SPIN_WIZARD_TEST_SECONDS
+  SPIN_WIZARD_KEEPALIVE_MS,
+  SPIN_WIZARD_START,
+  SPIN_WIZARD_WATCHDOG_SECONDS
 } from '../view-models/spin-threshold-wizard'
 import { MotorMixerDiagram } from '../views/MotorMixerDiagram'
 import { formatParameterValue, normalizeBitmaskValue } from '../parameter-format'
@@ -189,7 +191,12 @@ export interface OutputsSectionHandlers {
    *  array when it ran. Callers driving their own test UI must surface them;
    *  a silent refusal is indistinguishable from a broken button. */
   handleRunMotorTest: (
-    override?: { outputChannel?: number; throttlePercent?: number; durationSeconds?: number }
+    override?: {
+      outputChannel?: number
+      throttlePercent?: number
+      durationSeconds?: number
+      replaceRunningTest?: boolean
+    }
   ) => Promise<string[]>
   handleStopMotorTest: () => void | Promise<void>
   handleStartMotorVerification: (preferredOutputChannel?: number) => void
@@ -460,54 +467,87 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
       ? describeSpinThresholdProblem(Number(spinArmDraft), Number(spinMinDraft))
       : undefined
 
-  // One command in flight at a time. Each simultaneous run fires one
-  // ACK-waited DO_MOTOR_TEST per motor (3s timeout each), so a slider drag that
-  // commanded on every pointermove queued minutes of work behind busyAction and
-  // left the whole app disabled -- the "configurator stopped responding" report.
-  // Overlapping requests are dropped, not queued: the operator wants the value
-  // they landed on, not every value they passed through.
-  const spinCommandInFlight = useRef(false)
+  // Live throttle control.
+  //
+  // The operator scales up until the motors break away, so the motors have to
+  // FOLLOW the slider -- sampling it for a few seconds per release told them
+  // nothing about where the edge is. Holding them live means re-commanding
+  // continuously, which is what ArduPilot expects: a DO_MOTOR_TEST while a
+  // test runs updates the throttle in place rather than starting a second one.
+  //
+  // The link is the thing to protect. Each simultaneous update is one
+  // ACK-waited command per motor, so commanding on every pointermove queued
+  // minutes of work behind busyAction and left the app disabled -- the
+  // "configurator stopped responding" report. This sender keeps exactly one
+  // update in flight and collapses everything that arrives while it is busy
+  // down to the latest value: the rate self-limits to the round-trip time, and
+  // intermediate positions the slider merely passed through are never sent.
+  const spinLiveValue = useRef<number>(SPIN_WIZARD_START)
+  const spinSendBusy = useRef(false)
+  const spinSendDirty = useRef(false)
+
+  const sendSpinCommand = useCallback(async () => {
+    if (spinSendBusy.current) {
+      spinSendDirty.current = true
+      return
+    }
+    spinSendBusy.current = true
+    try {
+      do {
+        spinSendDirty.current = false
+        const refusedFor = await handleRunMotorTest({
+          outputChannel: ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS,
+          throttlePercent: spinValueToThrottlePercent(spinLiveValue.current),
+          // A deadman, not a run length: the keepalive below refreshes it, so
+          // motors stop on their own if this page stops sending.
+          durationSeconds: SPIN_WIZARD_WATCHDOG_SECONDS,
+          // Updating our own running test, not starting a second one.
+          replaceRunningTest: true
+        })
+        setSpinWizardRefusal(refusedFor.length > 0 ? refusedFor[0] : undefined)
+      } while (spinSendDirty.current)
+    } finally {
+      spinSendBusy.current = false
+    }
+  }, [handleRunMotorTest])
 
   const runSpinWizardAt = useCallback(
     (value: number) => {
-      const throttlePercent = spinValueToThrottlePercent(value)
+      spinLiveValue.current = value
       // Mirrored into state so the guardrail card and sliders agree, but the
       // command carries its own values -- state is not readable this tick.
       setMotorTestOutput(ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS)
-      setMotorTestThrottlePercent(throttlePercent)
-      if (spinCommandInFlight.current) {
-        return
-      }
-      spinCommandInFlight.current = true
-      setSpinWizardRefusal(undefined)
-      void (async () => {
-        try {
-          // Raising the slider MEANS "put the motors at this instead", but a
-          // test started a moment ago is still running and the eligibility
-          // guard refuses a second one ("A motor test is already in
-          // progress."). Every drag after the first was therefore dropped in
-          // silence, which is the "nothing happens until I press TEST" report
-          // -- TEST only worked because the window had elapsed by then. Stop
-          // the running test first, then command the new value.
-          if (snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running') {
-            await handleStopMotorTest()
-          }
-          const refusedFor = await handleRunMotorTest({
-            outputChannel: ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS,
-            throttlePercent,
-            // A 1s default made the motors twitch and stop, which is no use for
-            // judging where they break away. Long enough to watch, still inside
-            // the non-expert ceiling.
-            durationSeconds: SPIN_WIZARD_TEST_SECONDS
-          })
-          setSpinWizardRefusal(refusedFor.length > 0 ? refusedFor[0] : undefined)
-        } finally {
-          spinCommandInFlight.current = false
-        }
-      })()
+      setMotorTestThrottlePercent(spinValueToThrottlePercent(value))
+      void sendSpinCommand()
     },
-    [handleRunMotorTest, handleStopMotorTest, setMotorTestOutput, setMotorTestThrottlePercent, snapshot.motorTest.status]
+    [sendSpinCommand, setMotorTestOutput, setMotorTestThrottlePercent]
   )
+
+  // Keepalive. Without it the motors stop as soon as the operator stops moving
+  // the slider -- which is exactly when they are staring at them deciding
+  // whether that counts as movement.
+  //
+  // Reached through a ref on purpose. handleRunMotorTest is redefined on every
+  // App render, so sendSpinCommand is a new function every render too; an
+  // effect depending on it tears the interval down and builds a new one each
+  // time, and with live telemetry re-rendering faster than the interval, it
+  // never fires at all. Measured: motors ran out their 2s watchdog and stopped
+  // while the wizard sat there claiming to hold them. Depending only on the
+  // status keeps one stable interval that always calls the latest sender.
+  const sendSpinCommandRef = useRef(sendSpinCommand)
+  useEffect(() => {
+    sendSpinCommandRef.current = sendSpinCommand
+  }, [sendSpinCommand])
+
+  useEffect(() => {
+    if (spinWizard.status !== 'stepping') {
+      return
+    }
+    const timer = setInterval(() => {
+      void sendSpinCommandRef.current()
+    }, SPIN_WIZARD_KEEPALIVE_MS)
+    return () => clearInterval(timer)
+  }, [spinWizard.status])
 
   // Closing the popout must not leave motors turning: the wizard commands real
   // motor tests, and dismissing a dialog is not a reason for a quad on the
@@ -1819,14 +1859,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                               selectedOutput={ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS}
                               throttlePercent={spinValueToThrottlePercent(spinWizard.currentValue)}
                               onSelectOutput={() => undefined}
-                              // Dragging only moves the number. Commanding on
-                              // every pointermove sent one motor-test burst per
-                              // pixel of travel; the vehicle sees the value the
-                              // operator actually lands on, on release.
+                              // Live: the motors follow the slider. Safe to
+                              // fire on every pointermove because the sender
+                              // keeps one update in flight and collapses the
+                              // rest to the latest value.
                               onThrottleChange={(percent) => {
-                                setSpinWizard(setSpinWizardValue(spinWizard, percent / 100))
-                              }}
-                              onThrottleCommit={(percent) => {
                                 const next = setSpinWizardValue(spinWizard, percent / 100)
                                 setSpinWizard(next)
                                 runSpinWizardAt(next.currentValue)
@@ -1840,8 +1877,8 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             />
                             <div className="motor-test-acknowledgments">
                               <p>
-                                Raise the slider, or type a percent, then release or press TEST to
-                                spin every motor at it. Repeat until they all just break away. Set to{' '}
+                                The motors are live and following the slider — raise it slowly until
+                                they all just break away, then say so. Commanding{' '}
                                 <strong>{formatSpinValue(spinWizard.currentValue)}</strong>{' '}
                                 ({spinValueToThrottlePercent(spinWizard.currentValue)}%).
                               </p>

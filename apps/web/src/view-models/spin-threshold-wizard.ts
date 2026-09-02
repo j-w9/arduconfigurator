@@ -24,6 +24,25 @@ export const SPIN_WIZARD_START = 0.01
 export const SPIN_WIZARD_STEP = 0.01
 
 /**
+ * How long the vehicle keeps spinning after the last command, in seconds.
+ *
+ * This is a DEADMAN, not a run length. The wizard holds the motors live by
+ * re-commanding continuously; each DO_MOTOR_TEST resets the FC's own timeout
+ * (ArduCopter/motor_test.cpp), so if the browser stops sending -- tab closed,
+ * page crashed, link dropped -- the motors stop on their own this many seconds
+ * later without anyone pressing anything. Short enough to be safe, long enough
+ * to ride out a slow round-trip.
+ */
+export const SPIN_WIZARD_WATCHDOG_SECONDS = 2
+
+/**
+ * How often to re-send the current value while the operator is not moving the
+ * slider, in milliseconds. Comfortably inside the watchdog above so a steady
+ * hand never makes the motors stutter.
+ */
+export const SPIN_WIZARD_KEEPALIVE_MS = 700
+
+/**
  * How long each spin lasts, in seconds.
  *
  * The motor-test default is 1s, which reads as a twitch -- long enough to
