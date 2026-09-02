@@ -104,6 +104,9 @@ export interface ConfigSection {
 
 export interface ConfigViewProps {
   sections: readonly ConfigSection[]
+  /** Expert mode opts into the whole surface, so the per-card Advanced folds
+   *  start open rather than making the operator expand each one. */
+  isExpertMode: boolean
   parametersById: ReadonlyMap<string, ParameterState>
   // -------- editable-state plumbing (mirrors the OSD tab) ----------
   editedValues: Record<string, string>
@@ -140,6 +143,7 @@ function fieldHasUnsaved(draftStatusById: ScopedFieldDraftMap, paramId: string):
 export function ConfigView(props: ConfigViewProps) {
   const {
     sections,
+    isExpertMode,
     parametersById,
     editedValues,
     onEditChange,
@@ -346,9 +350,12 @@ export function ConfigView(props: ConfigViewProps) {
                           className="config-section__advanced"
                           data-testid={`config-advanced-${section.id}`}
                           // Auto-open when a folded field has an unsaved edit (so
-                          // it's never hidden); otherwise `undefined` leaves the
-                          // disclosure user-toggleable rather than force-closed.
-                          open={foldedUnsaved || undefined}
+                          // it's never hidden), and in Expert mode, where the
+                          // operator has already opted into the full surface and
+                          // was otherwise expanding every card by hand. Otherwise
+                          // `undefined` leaves the disclosure user-toggleable
+                          // rather than force-closed.
+                          open={foldedUnsaved || isExpertMode || undefined}
                         >
                           <summary>
                             Advanced

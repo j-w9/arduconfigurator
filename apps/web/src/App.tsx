@@ -10039,6 +10039,7 @@ export function App() {
 
       {activeViewId === 'config' ? (
         <ConfigView
+          isExpertMode={isExpertMode}
           sections={configSections.map((section) => {
             if (section.id === 'esc-dshot') {
               return { ...section, footer: renderEscDshotFooter() }
