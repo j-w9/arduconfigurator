@@ -14,6 +14,7 @@
 // the parent; only their current values and the handlers that advance them
 // are passed in.
 
+import { useCallback, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import type {
   ConfiguratorSnapshot,
@@ -45,6 +46,19 @@ import type { createMotorPreviewNodes } from '../view-models/motor-preview'
 import { outputKindLabel, toneForOutputKind } from '../device-display'
 import { ALL_MOTOR_TEST_OUTPUT, ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS } from '../motor-test-helpers'
 import { MotorTestSliders } from '../motor-test-sliders'
+import {
+  type SpinWizardState,
+  confirmSpinWizard,
+  createIdleSpinWizardState,
+  deriveSpinThresholds,
+  describeSpinThresholdProblem,
+  formatSpinValue,
+  spinValueToThrottlePercent,
+  setSpinWizardValue,
+  spinCeilingReason,
+  startSpinWizard,
+  SPIN_ARM_MAX
+} from '../view-models/spin-threshold-wizard'
 import { MotorMixerDiagram } from '../views/MotorMixerDiagram'
 import { formatParameterValue, normalizeBitmaskValue } from '../parameter-format'
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
@@ -167,6 +181,9 @@ export interface OutputsSectionHandlers {
   ) => void | Promise<void>
   handleDiscardScopedParameterDrafts: (paramIds: readonly string[], scopeLabel: string) => void
   handleOpenMotorReorderDialog: () => void
+  /** Expert-only surfaces. The spin-threshold wizard spins every motor, so it
+   *  stays behind the same opt-in as the rest of the expert tooling. */
+  isExpertMode: boolean
   handleRunMotorTest: () => void | Promise<void>
   handleStopMotorTest: () => void | Promise<void>
   handleStartMotorVerification: (preferredOutputChannel?: number) => void
@@ -405,6 +422,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   const {
     handleApplyScopedParameterDrafts,
     handleDiscardScopedParameterDrafts,
+    isExpertMode,
     handleRunMotorTest,
     handleStopMotorTest,
     gimbalGroups,
@@ -420,6 +438,27 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     updateDrafts,
     setOutputTaskOverride
   } = handlers
+
+  // MOT_SPIN_ARM / MOT_SPIN_MIN by measurement. Drives the existing motor test
+  // (all motors at once) up a 0.01 staircase until the operator says every motor
+  // is turning, then adds margin twice -- once so ARM clears the break-away
+  // point, again so MIN clears ARM, which is the ordering firmware requires.
+  const [spinWizard, setSpinWizard] = useState<SpinWizardState>(createIdleSpinWizardState)
+  const [spinArmDraft, setSpinArmDraft] = useState<string>('')
+  const [spinMinDraft, setSpinMinDraft] = useState<string>('')
+  const spinThresholdProblem =
+    spinWizard.status === 'ready'
+      ? describeSpinThresholdProblem(Number(spinArmDraft), Number(spinMinDraft))
+      : undefined
+
+  const runSpinWizardAt = useCallback(
+    (value: number) => {
+      setMotorTestOutput(ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS)
+      setMotorTestThrottlePercent(spinValueToThrottlePercent(value))
+      void handleRunMotorTest()
+    },
+    [handleRunMotorTest, setMotorTestOutput, setMotorTestThrottlePercent]
+  )
 
   // QuadPlane lift-motor ESC range (Q_M_*), the plane-side mirror of the Copter
   // MOT_* ESC surface. Only meaningful when VTOL is enabled (Q_ENABLE=1); built
@@ -761,6 +800,176 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                 isCopterVehicle ? (
                   <div className="outputs-task-panel outputs-task-panel--stack" data-outputs-task="motor-setup">
                     {motorSetupSlot}
+                    {isExpertMode ? (
+                      <section className="bf-gui-box" data-testid="spin-threshold-wizard">
+                        <div className="bf-gui-box__titlebar">
+                          <strong>Spin thresholds</strong>
+                          <StatusBadge tone={spinWizard.status === 'ready' ? 'success' : spinWizard.status === 'failed' ? 'danger' : 'neutral'}>
+                            {spinWizard.status === 'idle'
+                              ? 'not measured'
+                              : spinWizard.status === 'stepping'
+                                ? `testing ${formatSpinValue(spinWizard.currentValue)}`
+                                : spinWizard.status === 'ready'
+                                  ? 'measured'
+                                  : 'failed'}
+                          </StatusBadge>
+                        </div>
+                        <p className="bf-note">
+                          Finds where your motors actually break away instead of trusting the library defaults, which
+                          were never measured against this build. Every motor spins at a rising output until you say
+                          they are all turning; <code>MOT_SPIN_ARM</code> lands one margin above that and{' '}
+                          <code>MOT_SPIN_MIN</code> another above ARM, which is the order the firmware requires.
+                        </p>
+
+                        {spinWizard.status === 'idle' ? (
+                          <button
+                            style={buttonStyle('primary')}
+                            data-testid="spin-wizard-start"
+                            disabled={busyAction !== undefined || !motorTestEligibility.allowed || !propsRemovedAcknowledged || !testAreaAcknowledged}
+                            onClick={() => {
+                              const next = startSpinWizard()
+                              setSpinWizard(next)
+                              runSpinWizardAt(next.currentValue)
+                            }}
+                          >
+                            Measure Spin Thresholds
+                          </button>
+                        ) : null}
+
+                        {spinWizard.status === 'stepping' ? (
+                          <div className="motor-test-sliders-row" data-testid="spin-wizard-stepping">
+                            {/* The same slider component the test section uses, so
+                                this reads as the Motors page rather than a form.
+                                Driving ALL simultaneously: the point being found is
+                                where every motor breaks away, not the best one. */}
+                            <MotorTestSliders
+                              targets={motorTestSliderTargets}
+                              selectedOutput={ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS}
+                              throttlePercent={spinValueToThrottlePercent(spinWizard.currentValue)}
+                              onSelectOutput={() => undefined}
+                              onThrottleChange={(percent) => {
+                                const next = setSpinWizardValue(spinWizard, percent / 100)
+                                setSpinWizard(next)
+                                runSpinWizardAt(next.currentValue)
+                              }}
+                              onTest={() => runSpinWizardAt(spinWizard.currentValue)}
+                              testDisabled={busyAction !== undefined || !motorTestEligibility.allowed}
+                              onStop={() => void handleStopMotorTest()}
+                              stopEnabled={snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                              masterEnabled
+                              testId="spin-wizard-sliders"
+                            />
+                            <div className="motor-test-acknowledgments">
+                              <p>
+                                Ease the slider up until the motors just break away. Commanding{' '}
+                                <strong>{formatSpinValue(spinWizard.currentValue)}</strong>{' '}
+                                ({spinValueToThrottlePercent(spinWizard.currentValue)}%).
+                              </p>
+                              {spinWizard.currentValue >= SPIN_ARM_MAX ? (
+                                <p className="switch-exercise-warning" data-testid="spin-wizard-ceiling">{spinCeilingReason()}</p>
+                              ) : null}
+                              <div className="button-row">
+                                <button
+                                  style={buttonStyle('primary')}
+                                  data-testid="spin-wizard-mark"
+                                  onClick={() => {
+                                    const next = confirmSpinWizard(spinWizard)
+                                    setSpinWizard(next)
+                                    void handleStopMotorTest()
+                                    if (next.observedValue !== undefined) {
+                                      const derived = deriveSpinThresholds(next.observedValue)
+                                      setSpinArmDraft(formatSpinValue(derived.spinArm))
+                                      setSpinMinDraft(formatSpinValue(derived.spinMin))
+                                    }
+                                  }}
+                                >
+                                  They just started spinning
+                                </button>
+                                <button
+                                  style={buttonStyle()}
+                                  data-testid="spin-wizard-cancel"
+                                  onClick={() => {
+                                    setSpinWizard(createIdleSpinWizardState())
+                                    void handleStopMotorTest()
+                                  }}
+                                >
+                                  Stop
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {spinWizard.status === 'ready' ? (
+                          <div className="scoped-editor-grid" data-testid="spin-wizard-result">
+                            <label className="scoped-editor-field">
+                              <span>MOT_SPIN_ARM</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                max="0.2"
+                                value={spinArmDraft}
+                                data-testid="spin-wizard-arm"
+                                onChange={(event) => setSpinArmDraft(event.target.value)}
+                              />
+                            </label>
+                            <label className="scoped-editor-field">
+                              <span>MOT_SPIN_MIN</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                max="0.25"
+                                value={spinMinDraft}
+                                data-testid="spin-wizard-min"
+                                onChange={(event) => setSpinMinDraft(event.target.value)}
+                              />
+                            </label>
+                            <p className="bf-note">
+                              Motors first turned at {formatSpinValue(spinWizard.observedValue ?? 0)}. Adjust either
+                              value before staging if you want more margin.
+                            </p>
+                            {spinThresholdProblem ? (
+                              <p className="switch-exercise-warning" data-testid="spin-wizard-problem">{spinThresholdProblem}</p>
+                            ) : null}
+                            <div className="button-row">
+                              <button
+                                style={buttonStyle('primary')}
+                                data-testid="spin-wizard-stage"
+                                disabled={spinThresholdProblem !== undefined}
+                                onClick={() => {
+                                  setDraft('MOT_SPIN_ARM', spinArmDraft)
+                                  setDraft('MOT_SPIN_MIN', spinMinDraft)
+                                  setSpinWizard(createIdleSpinWizardState())
+                                }}
+                              >
+                                Stage Both Values
+                              </button>
+                              <button
+                                style={buttonStyle()}
+                                data-testid="spin-wizard-restart"
+                                onClick={() => setSpinWizard(createIdleSpinWizardState())}
+                              >
+                                Start Over
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {spinWizard.status === 'failed' ? (
+                          <div className="motor-test-acknowledgments">
+                            <p className="switch-exercise-warning" data-testid="spin-wizard-failed">{spinWizard.failureReason}</p>
+                            <button
+                              style={buttonStyle()}
+                              onClick={() => setSpinWizard(createIdleSpinWizardState())}
+                            >
+                              Start Over
+                            </button>
+                          </div>
+                        ) : null}
+                      </section>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="outputs-task-panel outputs-task-panel--stack">

@@ -18295,3 +18295,47 @@ button.mavlink-inspector__sent-row {
     margin-inline: calc(var(--space-2) * -1);
   }
 }
+
+/* ── Motors: two columns, Betaflight-style ────────────────────────────────
+ *
+ * Settings on the left, live motors on the right. The three panels are the
+ * same ones, inline and unchanged -- the reorder/direction flow keeps its
+ * Order/Direction steps and its guided identify exactly as they are. This
+ * only decides where each panel sits, so nothing about the process moves.
+ *
+ * Keyed on the panels themselves rather than a view flag: only the Motors
+ * page renders all three at once, so :has() is the honest test. Servos, and
+ * Motors below the breakpoint, keep the single-column stack.
+ */
+@media (min-width: 1200px) {
+  .outputs-tab-body:has([data-outputs-task='esc-protocol']):has([data-outputs-task='direction-test']) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    gap: var(--space-4);
+    align-items: start;
+  }
+
+  .outputs-tab-body [data-outputs-task='esc-protocol'] {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .outputs-tab-body [data-outputs-task='motor-setup'] {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  /* The live column spans both rows and sticks, so the sliders and the motor
+     telemetry stay in view while the operator works down the settings on the
+     left -- which is the whole point of putting them side by side. */
+  .outputs-tab-body [data-outputs-task='direction-test'] {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    min-width: 0;
+    position: sticky;
+    top: var(--space-4);
+  }
+}

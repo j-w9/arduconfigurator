@@ -50,28 +50,26 @@ export function startSpinWizard(): SpinWizardState {
 }
 
 /**
- * The operator says nothing is turning yet: climb one step.
+ * Move the slider. The operator drives the output directly, the way the motor
+ * test sliders on the same page already work, rather than answering a question
+ * per step -- they can feel where the break-away is and creep up on it.
  *
- * Stops at the ARM ceiling rather than walking into values firmware will not
- * take. A build that has not broken away by 0.20 has something else wrong --
- * an unpowered ESC, a wrong protocol, a motor not wired -- and telling the
- * operator that is more use than continuing to ramp.
+ * Clamped to the ARM ceiling: a build that has not broken away by 0.20 has
+ * something else wrong (unpowered ESC, wrong protocol, a lead off), and letting
+ * the slider run past what firmware accepts would only hide that.
  */
-export function stepSpinWizard(state: SpinWizardState): SpinWizardState {
+export function setSpinWizardValue(state: SpinWizardState, value: number): SpinWizardState {
   if (state.status !== 'stepping') {
     return state
   }
 
-  const next = roundToStep(state.currentValue + SPIN_WIZARD_STEP)
-  if (next > SPIN_ARM_MAX) {
-    return {
-      ...state,
-      status: 'failed',
-      failureReason: `No motor movement by ${formatSpinValue(SPIN_ARM_MAX)}, which is as high as MOT_SPIN_ARM goes. Check the ESCs are powered, the protocol matches, and every motor lead is connected.`
-    }
-  }
+  const clamped = Math.min(Math.max(roundToStep(value), 0), SPIN_ARM_MAX)
+  return { ...state, currentValue: clamped }
+}
 
-  return { ...state, currentValue: next }
+/** The message for a build that never breaks away within the usable range. */
+export function spinCeilingReason(): string {
+  return `No motor movement by ${formatSpinValue(SPIN_ARM_MAX)}, which is as high as MOT_SPIN_ARM goes. Check the ESCs are powered, the protocol matches, and every motor lead is connected.`
 }
 
 /** The operator confirms every motor is turning at the current value. */

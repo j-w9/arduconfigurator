@@ -8,18 +8,13 @@ import {
   deriveSpinThresholds,
   describeSpinThresholdProblem,
   spinValueToThrottlePercent,
-  startSpinWizard,
-  stepSpinWizard
+  setSpinWizardValue,
+  startSpinWizard
 } from './spin-threshold-wizard'
 
 /** Climb until the operator says every motor is turning at `breakAway`. */
-const climbTo = (breakAway: number) => {
-  let state = startSpinWizard()
-  while (state.status === 'stepping' && state.currentValue < breakAway) {
-    state = stepSpinWizard(state)
-  }
-  return confirmSpinWizard(state)
-}
+const climbTo = (breakAway: number) =>
+  confirmSpinWizard(setSpinWizardValue(startSpinWizard(), breakAway))
 
 describe('spin threshold wizard', () => {
   it('starts below any real break-away point', () => {
@@ -27,19 +22,12 @@ describe('spin threshold wizard', () => {
     expect(startSpinWizard()).toMatchObject({ status: 'stepping', currentValue: 0.01 })
   })
 
-  it('climbs in the increment the parameters themselves use', () => {
-    let s = startSpinWizard()
-    s = stepSpinWizard(s)
-    expect(s.currentValue).toBe(0.02)
-    s = stepSpinWizard(s)
-    expect(s.currentValue).toBe(0.03)
+  it('takes the value the operator drags to', () => {
+    expect(setSpinWizardValue(startSpinWizard(), 0.07).currentValue).toBe(0.07)
   })
 
-  it('does not accumulate floating-point drift over a long climb', () => {
-    // 0.01 added fifteen times is 0.15000000000000002 in IEEE754.
-    let s = startSpinWizard()
-    for (let i = 0; i < 14; i++) s = stepSpinWizard(s)
-    expect(s.currentValue).toBe(0.15)
+  it('rounds to the parameters own increment rather than carrying slider noise', () => {
+    expect(setSpinWizardValue(startSpinWizard(), 0.0734).currentValue).toBe(0.07)
   })
 
   it('adds margin twice: once for ARM, again for MIN', () => {
@@ -67,11 +55,9 @@ describe('spin threshold wizard', () => {
     expect(r.clamped).toBe(true)
   })
 
-  it('gives up at the ARM ceiling rather than ramping forever', () => {
-    let s = startSpinWizard()
-    for (let i = 0; i < 40 && s.status === 'stepping'; i++) s = stepSpinWizard(s)
-    expect(s.status).toBe('failed')
-    expect(s.failureReason).toMatch(/ESCs are powered/)
+  it('clamps the slider to what firmware will accept', () => {
+    expect(setSpinWizardValue(startSpinWizard(), 0.9).currentValue).toBe(SPIN_ARM_MAX)
+    expect(setSpinWizardValue(startSpinWizard(), -1).currentValue).toBe(0)
   })
 
   it('rejects an edited pair firmware would refuse to arm on', () => {

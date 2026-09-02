@@ -9151,6 +9151,7 @@ export function App() {
           handleApplyScopedParameterDrafts,
           handleDiscardScopedParameterDrafts,
           handleOpenMotorReorderDialog,
+          isExpertMode,
           handleRunMotorTest,
           handleStopMotorTest,
           handleStartMotorVerification,
