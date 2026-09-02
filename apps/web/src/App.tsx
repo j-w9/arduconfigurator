@@ -4303,10 +4303,31 @@ export function App() {
     }
   }
 
-  async function handleRunMotorTest(): Promise<void> {
-    let targetOutput = motorTestOutput
+  /**
+   * Run a motor test.
+   *
+   * `override` exists because React state setters are asynchronous: a caller
+   * that does setMotorTestOutput(x); setMotorTestThrottlePercent(y); run()
+   * runs against the PREVIOUS render's values, not x and y. The spin-threshold
+   * wizard did exactly that and so commanded either nothing (output still
+   * undefined -> the early return below) or the guardrail form's default
+   * single motor at the previous percent -- which is why testers saw one
+   * motor spin, or none, while the Test-button path beside it worked fine.
+   * Anything driving a test from values it has just computed must pass them
+   * here rather than through state.
+   */
+  async function handleRunMotorTest(
+    override?: { outputChannel?: number; throttlePercent?: number }
+  ): Promise<void> {
+    let targetOutput = override?.outputChannel ?? motorTestOutput
 
-    if (motorVerification.status === 'running' && motorVerification.currentOutputChannel !== undefined) {
+    // The verification sweep picks its own motor, but never over an explicit
+    // caller-supplied target.
+    if (
+      override?.outputChannel === undefined &&
+      motorVerification.status === 'running' &&
+      motorVerification.currentOutputChannel !== undefined
+    ) {
       targetOutput = motorVerification.currentOutputChannel
     }
 
@@ -4314,7 +4335,9 @@ export function App() {
       return
     }
 
-    const effectiveRequest = buildMotorTestRequest(targetOutput, motorTestThrottlePercent, motorTestDurationSeconds)
+    const throttlePercent = override?.throttlePercent ?? motorTestThrottlePercent
+
+    const effectiveRequest = buildMotorTestRequest(targetOutput, throttlePercent, motorTestDurationSeconds)
     // This re-check MUST agree with the one that decided whether to enable the
     // button (`motorTestGuardReasons` above), in both directions:
     //
@@ -4347,7 +4370,7 @@ export function App() {
       // re-checks eligibility, and a divergence here rejected Expert-mode
       // durations over 5 s that the UI had already allowed.
       await runtime.runMotorTest(
-        buildMotorTestRequest(targetOutput, motorTestThrottlePercent, motorTestDurationSeconds) as MotorTestRequest,
+        buildMotorTestRequest(targetOutput, throttlePercent, motorTestDurationSeconds) as MotorTestRequest,
         motorTestExpertOptions
       )
     } catch {

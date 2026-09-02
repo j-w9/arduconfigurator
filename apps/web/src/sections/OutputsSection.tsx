@@ -14,7 +14,7 @@
 // the parent; only their current values and the handlers that advance them
 // are passed in.
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import type {
   ConfiguratorSnapshot,
@@ -184,7 +184,7 @@ export interface OutputsSectionHandlers {
   /** Expert-only surfaces. The spin-threshold wizard spins every motor, so it
    *  stays behind the same opt-in as the rest of the expert tooling. */
   isExpertMode: boolean
-  handleRunMotorTest: () => void | Promise<void>
+  handleRunMotorTest: (override?: { outputChannel?: number; throttlePercent?: number }) => void | Promise<void>
   handleStopMotorTest: () => void | Promise<void>
   handleStartMotorVerification: (preferredOutputChannel?: number) => void
   handleConfirmMotorVerification: () => void
@@ -452,11 +452,30 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
       ? describeSpinThresholdProblem(Number(spinArmDraft), Number(spinMinDraft))
       : undefined
 
+  // One command in flight at a time. Each simultaneous run fires one
+  // ACK-waited DO_MOTOR_TEST per motor (3s timeout each), so a slider drag that
+  // commanded on every pointermove queued minutes of work behind busyAction and
+  // left the whole app disabled -- the "configurator stopped responding" report.
+  // Overlapping requests are dropped, not queued: the operator wants the value
+  // they landed on, not every value they passed through.
+  const spinCommandInFlight = useRef(false)
+
   const runSpinWizardAt = useCallback(
     (value: number) => {
+      const throttlePercent = spinValueToThrottlePercent(value)
+      // Mirrored into state so the guardrail card and sliders agree, but the
+      // command carries its own values -- state is not readable this tick.
       setMotorTestOutput(ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS)
-      setMotorTestThrottlePercent(spinValueToThrottlePercent(value))
-      void handleRunMotorTest()
+      setMotorTestThrottlePercent(throttlePercent)
+      if (spinCommandInFlight.current) {
+        return
+      }
+      spinCommandInFlight.current = true
+      void Promise.resolve(
+        handleRunMotorTest({ outputChannel: ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS, throttlePercent })
+      ).finally(() => {
+        spinCommandInFlight.current = false
+      })
     },
     [handleRunMotorTest, setMotorTestOutput, setMotorTestThrottlePercent]
   )
@@ -1771,7 +1790,14 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                               selectedOutput={ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS}
                               throttlePercent={spinValueToThrottlePercent(spinWizard.currentValue)}
                               onSelectOutput={() => undefined}
+                              // Dragging only moves the number. Commanding on
+                              // every pointermove sent one motor-test burst per
+                              // pixel of travel; the vehicle sees the value the
+                              // operator actually lands on, on release.
                               onThrottleChange={(percent) => {
+                                setSpinWizard(setSpinWizardValue(spinWizard, percent / 100))
+                              }}
+                              onThrottleCommit={(percent) => {
                                 const next = setSpinWizardValue(spinWizard, percent / 100)
                                 setSpinWizard(next)
                                 runSpinWizardAt(next.currentValue)
@@ -1785,7 +1811,8 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             />
                             <div className="motor-test-acknowledgments">
                               <p>
-                                Ease the slider up until the motors just break away. Commanding{' '}
+                                Raise the slider, or type a percent, then release or press TEST to
+                                spin every motor at it. Repeat until they all just break away. Set to{' '}
                                 <strong>{formatSpinValue(spinWizard.currentValue)}</strong>{' '}
                                 ({spinValueToThrottlePercent(spinWizard.currentValue)}%).
                               </p>

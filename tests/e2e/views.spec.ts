@@ -2265,6 +2265,18 @@ test.describe('Config view', () => {
     // Starts at 0.01 — below any real ESC's break-away — and commands it.
     await expect(page.getByTestId('spin-wizard-stepping')).toBeVisible({ timeout: COMMAND_ACK_TIMEOUT })
 
+    // The command must carry the wizard's OWN values, not whatever the
+    // guardrail form happened to hold. Those default to a single motor
+    // (OUT1/M1) at 7%, so a wizard that reads them instead — which is what
+    // React state gives you when you set it and run in the same tick — spins
+    // one motor at the wrong throttle, or none at all. Field reports: "only 1
+    // motor spun", "unclear if the motors ever spun". Assert what was actually
+    // commanded: every mapped motor, simultaneously, at 1%.
+    await expect(page.locator('.motor-test-card')).toContainText(
+      /all 4 mapped motors simultaneously at 1%/i,
+      { timeout: COMMAND_ACK_TIMEOUT }
+    )
+
     await page.getByTestId('spin-wizard-mark').click()
 
     // 0.01 observed -> ARM 0.04 (one 0.03 margin), MIN 0.07 (another above ARM).

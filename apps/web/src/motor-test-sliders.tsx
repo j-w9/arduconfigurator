@@ -17,6 +17,9 @@ interface MotorTestSlidersProps {
   stopEnabled: boolean
   masterEnabled: boolean
   testId?: string
+  /** Called once per drag, on pointer release, with the final value. Use this
+   *  rather than onThrottleChange for anything that talks to the vehicle. */
+  onThrottleCommit?: (percent: number) => void
   /** Ceiling for the typed percent field. Defaults to 100; the motor-test
    *  surface passes its own guard limit so the box cannot ask for a throttle
    *  the runtime will refuse. */
@@ -96,6 +99,7 @@ function SliderColumn({
   wide,
   onSelect,
   onDrag,
+  onCommit,
 }: {
   label: string
   percent: number
@@ -103,6 +107,7 @@ function SliderColumn({
   wide?: boolean
   onSelect: () => void
   onDrag: (pct: number) => void
+  onCommit?: (pct: number) => void
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
@@ -130,17 +135,23 @@ function SliderColumn({
         if (!dragging.current || !trackRef.current) return
         onDrag(percentFromY(trackRef.current, ev.clientY))
       }
-      const onUp = () => {
+      const onUp = (ev: globalThis.PointerEvent) => {
+        if (!dragging.current) return
         dragging.current = false
         window.removeEventListener('pointermove', onMove)
         window.removeEventListener('pointerup', onUp)
         window.removeEventListener('pointercancel', onUp)
+        // Commit on release. A consumer that sends a command per value would
+        // otherwise send one per pointermove -- dozens per drag.
+        if (onCommit && trackRef.current) {
+          onCommit(percentFromY(trackRef.current, ev.clientY))
+        }
       }
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
       window.addEventListener('pointercancel', onUp)
     },
-    [onSelect, onDrag],
+    [onSelect, onDrag, onCommit],
   )
 
   const trackW = wide ? MASTER_TRACK_WIDTH : TRACK_WIDTH
@@ -251,6 +262,7 @@ export function MotorTestSliders({
   masterEnabled,
   testId,
   maxPercent = 100,
+  onThrottleCommit,
 }: MotorTestSlidersProps) {
   const active = throttlePercent > 0
 
@@ -358,6 +370,7 @@ export function MotorTestSliders({
             selected={selectedOutput === target.value}
             onSelect={() => onSelectOutput(target.value)}
             onDrag={onThrottleChange}
+            onCommit={onThrottleCommit}
           />
         ))}
 
@@ -382,6 +395,7 @@ export function MotorTestSliders({
                 )
               }}
               onDrag={onThrottleChange}
+              onCommit={onThrottleCommit}
             />
           </>
         ) : null}
