@@ -69,10 +69,20 @@ function ParamIdHint({ parameter }: { parameter: ParameterState }): ReactElement
       ) : null}
       {description ? (
         <InfoDot
-          label={`About ${definition.label ?? parameter.id}`}
+          // Deliberately generic, and it must stay that way. This dot lives
+          // INSIDE the field's <label>, so any accessible name containing the
+          // field's own label text (or its parameter id) makes getByLabel
+          // resolve to two elements -- the input and the dot. That broke two
+          // e2e specs the moment the dot shipped, and it is the same ambiguity
+          // a screen-reader user would hit navigating by label. The parameter
+          // this documents is named on the tip's first line instead.
+          label="Parameter details"
           testId={`param-info-${parameter.id}`}
           wide
         >
+          <span className="info-dot-line">
+            <strong>{parameter.id}</strong>
+          </span>
           <span className="info-dot-line">{description}</span>
           {bounds ? <span className="info-dot-line">{bounds}</span> : null}
           {definition.rebootRequired ? (
