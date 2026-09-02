@@ -450,6 +450,9 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         (channelNumber) => readRoundedParameter(snapshot, `SERVO${channelNumber}_REVERSED`) === 1
       )
 
+  // Motors shows every task on one page; Servos keeps its sub-tabs.
+  const showAllMotorTasks = activeViewId === 'motors'
+
   return (
       <OutputsView
         // Motors tab: motor verification flow (everything except aux
@@ -457,6 +460,18 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         // only. The underlying task-body render blocks below are still
         // gated by activeOutputTaskId so unfiltered task IDs simply
         // won't render — no duplicate UI between tabs.
+        // Motors is one page, not three sub-tabs.
+        //
+        // ESC & Protocol, Motor Setup and Direction & Test were mutually
+        // exclusive, so setting a protocol meant leaving the page you needed to
+        // check the result on -- and the ESC page had room to spare, half its
+        // rows empty. They render together now in the order a build is actually
+        // worked through: pick the protocol, map the motors, then spin them. The
+        // task strip stays as in-page navigation rather than a filter, so every
+        // existing route into a specific task still lands somewhere real.
+        //
+        // Servos keeps its sub-tabs: those are genuinely separate subsystems
+        // (gimbal, flow & lidar, relays), not three views of one job.
         taskCards={
           activeViewId === 'motors'
             ? // Motors is three sub-tabs in a fixed order: ESC & protocol,
@@ -481,308 +496,28 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         }
         activeTaskId={activeOutputTaskId}
         activeTask={activeOutputTask}
-        onSelectTask={setOutputTaskOverride}
+        onSelectTask={(taskId) => {
+          setOutputTaskOverride(taskId)
+          // On Motors every task is on the page, so selecting one scrolls to it
+          // rather than swapping the body out. Keeping setOutputTaskOverride as
+          // well means the strip still marks where you are, and every existing
+          // route that jumps straight to a task (the guided setup's "Open
+          // Motors", the reorder notice) still lands on the right section.
+          if (showAllMotorTasks) {
+            requestAnimationFrame(() => {
+              document
+                .querySelector(`[data-outputs-task="${taskId}"]`)
+                ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+            })
+          }
+        }}
         // The output overview panel was removed as part of the Motors/Outputs
         // declutter — the task surfaces below carry the per-output detail.
         overviewSlot={undefined}
         taskBodySlot={
           <>
-              {activeOutputTaskId === 'motor-setup' ? (
-                isCopterVehicle ? (
-                  <div className="outputs-task-panel outputs-task-panel--stack">{motorSetupSlot}</div>
-                ) : (
-                  <div className="outputs-task-panel outputs-task-panel--stack">
-                        <div className="vehicle-output-summary" data-testid="vehicle-output-summary">
-                          <div className="vehicle-output-summary__header">
-                            <div>
-                              <strong>{vehicleOutputSummary.title}</strong>
-                              <p>{vehicleOutputSummary.description}</p>
-                            </div>
-                            <StatusBadge tone={vehicleOutputSummary.configuredCount > 0 ? 'success' : 'warning'}>
-                              {vehicleOutputSummary.configuredCount} configured
-                            </StatusBadge>
-                          </div>
-                          {vehicleOutputSummary.groups.length === 0 ? (
-                            <p className="bf-note">
-                              No outputs are assigned yet. Map functions to the SERVOn outputs in the Servos tab.
-                            </p>
-                          ) : (
-                            vehicleOutputSummary.groups.map((group) => (
-                              <section
-                                key={group.id}
-                                className="vehicle-output-group"
-                                data-testid={`vehicle-output-group-${group.id}`}
-                              >
-                                <header className="vehicle-output-group__header">{group.label}</header>
-                                <div className="vehicle-output-group__rows">
-                                  {group.outputs.map((output) => (
-                                    <div
-                                      key={output.channelNumber}
-                                      className={`vehicle-output-row vehicle-output-row--${output.kind}`}
-                                      data-testid={`vehicle-output-row-${output.channelNumber}`}
-                                    >
-                                      <strong>OUT{output.channelNumber}</strong>
-                                      <span>{output.functionLabel}</span>
-                                      <StatusBadge tone={toneForOutputKind(output.kind)}>{outputKindLabel(output.kind)}</StatusBadge>
-                                    </div>
-                                  ))}
-                                </div>
-                              </section>
-                            ))
-                          )}
-                          {planeControlSurfaces.surfaces.length > 0 ? (
-                            <section className="vehicle-output-group" data-testid="plane-control-surfaces">
-                              <header className="vehicle-output-group__header">
-                                {`Control surfaces · ${planeControlSurfaces.mappedCount} mapped${
-                                  planeControlSurfaces.incompleteCount > 0
-                                    ? ` · ${planeControlSurfaces.incompleteCount} incomplete`
-                                    : ''
-                                }`}
-                              </header>
-                              <div className="vehicle-output-group__rows">
-                                {planeControlSurfaces.surfaces.map((surface) => (
-                                  <div
-                                    key={surface.key}
-                                    className="vehicle-output-row vehicle-output-row--control-surface"
-                                    data-testid={`plane-surface-${surface.key}`}
-                                  >
-                                    <strong>{surface.label}</strong>
-                                    <span>
-                                      {surface.channels
-                                        .map(
-                                          (channel) =>
-                                            `OUT${channel.channelNumber}${channel.side ? ` ${channel.side}` : ''}${
-                                              channel.reversed ? ' (rev)' : ''
-                                            }`
-                                        )
-                                        .join(', ')}
-                                    </span>
-                                    <StatusBadge tone={surface.status === 'incomplete' ? 'warning' : 'success'}>
-                                      {surface.note ?? 'mapped'}
-                                    </StatusBadge>
-                                  </div>
-                                ))}
-                              </div>
-                            </section>
-                          ) : null}
-                          <ul className="output-note-list">
-                            <li>Edit any assignment, PWM range, trim, or reverse in the Servos tab.</li>
-                            <li>Powered output movement tests for {airframe.frameClassLabel} (control-surface sweeps, steering/throttle, thrusters) are a guarded follow-up — use the transmitter on the bench meanwhile.</li>
-                          </ul>
-                        </div>
-                  </div>
-                )
-              ) : null}
-
-              {activeOutputTaskId === 'direction-test' ? (
-                <div className="outputs-task-panel outputs-task-panel--stack">
-                  {!isCopterVehicle ? (
-                    <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
-                      <div className="bf-gui-box__titlebar">
-                        <strong>Test</strong>
-                      </div>
-                      <div className="bf-gui-box__body">
-                        <p className="bf-note">
-                          Motor-direction and prop-spin verification is a multirotor procedure.
-                          {' '}
-                          For {airframe.frameClassLabel}, review the configured outputs in the
-                          Motor Setup task above (grouped by role) and edit assignments in the
-                          Servos tab. Powered output movement tests (control-surface sweeps,
-                          steering/throttle, thrusters) are a guarded follow-up — exercise them
-                          with the transmitter on the bench meanwhile.
-                        </p>
-                      </div>
-                    </section>
-                  ) : (
-                  <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
-                    <div className="bf-gui-box__titlebar">
-                      <strong>Test</strong>
-                    </div>
-                    <div className="bf-gui-box__body">
-                      <div className="motor-test-acknowledgments">
-                        {/* Props-off is the load-bearing safety ack — promote it
-                         *  visually so an operator who's eye-skimmed past it
-                         *  can't miss its unchecked state. Other acks stay in
-                         *  the muted style; only the prop guarantee gets the
-                         *  danger-toned card treatment until it's checked. */}
-                        {/* One combined safety ack — props off AND the craft
-                         *  restrained/clear — instead of two redundant boxes.
-                         *  Drives both underlying acknowledgments together. */}
-                        <label
-                          className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged && testAreaAcknowledged ? ' is-acknowledged' : ''}`}
-                          data-testid="motor-test-props-off-ack"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={propsRemovedAcknowledged && testAreaAcknowledged}
-                            onChange={(event) => {
-                              setPropsRemovedAcknowledged(event.target.checked)
-                              setTestAreaAcknowledged(event.target.checked)
-                            }}
-                            disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                          />
-                          <span>Props are off and the vehicle is restrained with the test area clear.</span>
-                        </label>
-                        {motorTestOverUsb ? (
-                          <label className="motor-test-acknowledgments__usb" data-testid="motor-test-usb-ack">
-                            <input
-                              type="checkbox"
-                              checked={usbBenchAcknowledged}
-                              onChange={(event) => setUsbBenchAcknowledged(event.target.checked)}
-                              disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                            />
-                            <span>USB connection detected — I confirm the craft is on the bench and will not arm/spin a flight-ready aircraft.</span>
-                          </label>
-                        ) : null}
-                      </div>
-                      <div className="motor-direction-layout">
-                        <div className="motor-direction-layout__sliders">
-                         <div className="motor-test-sliders-row">
-                          <MotorTestSliders
-                            targets={motorTestSliderTargets}
-                            selectedOutput={motorTestOutput}
-                            throttlePercent={motorTestThrottlePercent}
-                            onSelectOutput={(output) => setMotorTestOutput(output)}
-                            onThrottleChange={(percent) => setMotorTestThrottlePercent(percent)}
-                            onTest={() => void handleRunMotorTest()}
-                            testDisabled={busyAction !== undefined || !motorTestEligibility.allowed || motorTestOutput === undefined}
-                            onStop={() => void handleStopMotorTest()}
-                            stopEnabled={snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                            masterEnabled
-                            testId="motor-test-sliders"
-                          />
-                          {/* Small read-only motor map beside the sliders so the
-                              operator can see which OUTx/spin each Mn is — drawn
-                              from the vehicle's real FRAME_CLASS/FRAME_TYPE. Until
-                              the frame is known (or for non-matrix frames with no
-                              layout), prompt rather than draw a guessed shape. */}
-                          {motorPreviewFrameKnown && motorPreviewNodes.length > 0 ? (
-                            <MotorMixerDiagram
-                              nodes={motorPreviewNodes}
-                              geometryMode={motorPreviewGeometryMode}
-                              outputLabelByMotor={Object.fromEntries(
-                                outputMapping.motorOutputs
-                                  .filter((output) => output.motorNumber !== undefined)
-                                  .map((output) => [output.motorNumber as number, `OUT${output.channelNumber}`])
-                              )}
-                              className="motor-mixer-preview--test"
-                              testId="motor-test-diagram"
-                            />
-                          ) : (
-                            <div className="motor-mixer-preview motor-mixer-preview--test motor-mixer-preview--empty" data-testid="motor-test-diagram-empty">
-                              <p>
-                                {motorPreviewFrameKnown
-                                  ? 'No motor map for this frame class — the layout diagram covers the multirotor matrix frames.'
-                                  : 'Connect to the flight controller to read FRAME_CLASS / FRAME_TYPE and draw your frame’s motor layout and spin directions.'}
-                              </p>
-                            </div>
-                          )}
-                         </div>
-                         {/* Whether the motor actually turned, and how fast.
-                             Without this the tab could only report what it had
-                             commanded, leaving the operator to judge by eye. */}
-                         <EscRpmReadout
-                           model={buildEscRpmReadoutViewModel({
-                             escTelemetry: snapshot.liveVerification.escTelemetry,
-                             motors: outputMapping.motorOutputs.map((output) => ({
-                               channelNumber: output.channelNumber,
-                               motorNumber: output.motorNumber
-                             })),
-                             nowMs: Date.now()
-                           })}
-                         />
-                        </div>
-
-                        <div className="motor-test-card motor-test-card--embedded">
-                          <div className="switch-exercise-card__header">
-                            <div>
-                              <strong>Motor Test Guardrails</strong>
-                              <p>{snapshot.motorTest.summary}</p>
-                            </div>
-                            <StatusBadge tone={toneForMotorTestStatus(snapshot.motorTest.status)}>{snapshot.motorTest.status}</StatusBadge>
-                          </div>
-
-                          <div className="motor-test-grid">
-                            <label>
-                              <span>Output</span>
-                              <select
-                                value={motorTestOutput ?? ''}
-                                onChange={(event) => setMotorTestOutput(event.target.value ? Number(event.target.value) : undefined)}
-                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                              >
-                                <option value="">Select output</option>
-                                <option value={ALL_MOTOR_TEST_OUTPUT}>All mapped motors (sequence)</option>
-                                <option value={ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS}>All mapped motors (at once)</option>
-                                {outputMapping.motorOutputs.map((output) => (
-                                  <option key={output.paramId} value={output.channelNumber}>
-                                    OUT{output.channelNumber}
-                                    {output.motorNumber !== undefined ? ` / M${output.motorNumber}` : ''} · {output.functionLabel}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-
-                            <label>
-                              <span>Throttle %</span>
-                              <input
-                                type="number"
-                                min={1}
-                                max={MAX_MOTOR_TEST_THROTTLE_PERCENT}
-                                step={1}
-                                value={motorTestThrottlePercent}
-                                onChange={(event) => setMotorTestThrottlePercent(Number(event.target.value))}
-                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                              />
-                            </label>
-
-                            <label>
-                              <span>Duration (s)</span>
-                              <input
-                                type="number"
-                                min={0.1}
-                                max={motorTestMaxDurationSeconds}
-                                step={0.1}
-                                value={motorTestDurationSeconds}
-                                onChange={(event) => setMotorTestDurationSeconds(Number(event.target.value))}
-                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                              />
-                            </label>
-                          </div>
-
-
-                          <ul className="output-note-list">
-                            {motorTestGuardReasons.length > 0
-                              ? motorTestGuardReasons.map((reason) => <li key={reason}>{reason}</li>)
-                              : snapshot.motorTest.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}
-                          </ul>
-
-                          <div className="switch-exercise-controls">
-                            <button
-                              id={OUTPUTS_MOTOR_TEST_BUTTON_ID}
-                              type="button"
-                              className={
-                                motorVerification.status === 'running' && !currentMotorTestSucceeded && canRunMotorTest
-                                  ? 'guided-action-pulse'
-                                  : undefined
-                              }
-                              style={buttonStyle('secondary')}
-                              onClick={() => void handleRunMotorTest()}
-                              disabled={!canRunMotorTest || busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                            >
-                              {busyAction === 'motor-test' ? 'Sending…' : 'Run Motor Test'}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                    </div>
-                  </section>
-                  )}
-                </div>
-              ) : null}
-
-              {activeOutputTaskId === 'esc-protocol' ? (
-                <div className="outputs-task-panel outputs-task-panel--stack">
+              {showAllMotorTasks || activeOutputTaskId === 'esc-protocol' ? (
+                <div className="outputs-task-panel outputs-task-panel--stack" data-outputs-task="esc-protocol">
                   {!isCopterVehicle ? (
                     <section className="bf-gui-box">
                       <div className="bf-gui-box__titlebar">
@@ -1019,6 +754,300 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     ) : null}
 
                   </div>
+                  )}
+                </div>
+              ) : null}
+              {showAllMotorTasks || activeOutputTaskId === 'motor-setup' ? (
+                isCopterVehicle ? (
+                  <div className="outputs-task-panel outputs-task-panel--stack" data-outputs-task="motor-setup">
+                    {motorSetupSlot}
+                  </div>
+                ) : (
+                  <div className="outputs-task-panel outputs-task-panel--stack">
+                        <div className="vehicle-output-summary" data-testid="vehicle-output-summary">
+                          <div className="vehicle-output-summary__header">
+                            <div>
+                              <strong>{vehicleOutputSummary.title}</strong>
+                              <p>{vehicleOutputSummary.description}</p>
+                            </div>
+                            <StatusBadge tone={vehicleOutputSummary.configuredCount > 0 ? 'success' : 'warning'}>
+                              {vehicleOutputSummary.configuredCount} configured
+                            </StatusBadge>
+                          </div>
+                          {vehicleOutputSummary.groups.length === 0 ? (
+                            <p className="bf-note">
+                              No outputs are assigned yet. Map functions to the SERVOn outputs in the Servos tab.
+                            </p>
+                          ) : (
+                            vehicleOutputSummary.groups.map((group) => (
+                              <section
+                                key={group.id}
+                                className="vehicle-output-group"
+                                data-testid={`vehicle-output-group-${group.id}`}
+                              >
+                                <header className="vehicle-output-group__header">{group.label}</header>
+                                <div className="vehicle-output-group__rows">
+                                  {group.outputs.map((output) => (
+                                    <div
+                                      key={output.channelNumber}
+                                      className={`vehicle-output-row vehicle-output-row--${output.kind}`}
+                                      data-testid={`vehicle-output-row-${output.channelNumber}`}
+                                    >
+                                      <strong>OUT{output.channelNumber}</strong>
+                                      <span>{output.functionLabel}</span>
+                                      <StatusBadge tone={toneForOutputKind(output.kind)}>{outputKindLabel(output.kind)}</StatusBadge>
+                                    </div>
+                                  ))}
+                                </div>
+                              </section>
+                            ))
+                          )}
+                          {planeControlSurfaces.surfaces.length > 0 ? (
+                            <section className="vehicle-output-group" data-testid="plane-control-surfaces">
+                              <header className="vehicle-output-group__header">
+                                {`Control surfaces · ${planeControlSurfaces.mappedCount} mapped${
+                                  planeControlSurfaces.incompleteCount > 0
+                                    ? ` · ${planeControlSurfaces.incompleteCount} incomplete`
+                                    : ''
+                                }`}
+                              </header>
+                              <div className="vehicle-output-group__rows">
+                                {planeControlSurfaces.surfaces.map((surface) => (
+                                  <div
+                                    key={surface.key}
+                                    className="vehicle-output-row vehicle-output-row--control-surface"
+                                    data-testid={`plane-surface-${surface.key}`}
+                                  >
+                                    <strong>{surface.label}</strong>
+                                    <span>
+                                      {surface.channels
+                                        .map(
+                                          (channel) =>
+                                            `OUT${channel.channelNumber}${channel.side ? ` ${channel.side}` : ''}${
+                                              channel.reversed ? ' (rev)' : ''
+                                            }`
+                                        )
+                                        .join(', ')}
+                                    </span>
+                                    <StatusBadge tone={surface.status === 'incomplete' ? 'warning' : 'success'}>
+                                      {surface.note ?? 'mapped'}
+                                    </StatusBadge>
+                                  </div>
+                                ))}
+                              </div>
+                            </section>
+                          ) : null}
+                          <ul className="output-note-list">
+                            <li>Edit any assignment, PWM range, trim, or reverse in the Servos tab.</li>
+                            <li>Powered output movement tests for {airframe.frameClassLabel} (control-surface sweeps, steering/throttle, thrusters) are a guarded follow-up — use the transmitter on the bench meanwhile.</li>
+                          </ul>
+                        </div>
+                  </div>
+                )
+              ) : null}
+              {showAllMotorTasks || activeOutputTaskId === 'direction-test' ? (
+                <div className="outputs-task-panel outputs-task-panel--stack" data-outputs-task="direction-test">
+                  {!isCopterVehicle ? (
+                    <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
+                      <div className="bf-gui-box__titlebar">
+                        <strong>Test</strong>
+                      </div>
+                      <div className="bf-gui-box__body">
+                        <p className="bf-note">
+                          Motor-direction and prop-spin verification is a multirotor procedure.
+                          {' '}
+                          For {airframe.frameClassLabel}, review the configured outputs in the
+                          Motor Setup task above (grouped by role) and edit assignments in the
+                          Servos tab. Powered output movement tests (control-surface sweeps,
+                          steering/throttle, thrusters) are a guarded follow-up — exercise them
+                          with the transmitter on the bench meanwhile.
+                        </p>
+                      </div>
+                    </section>
+                  ) : (
+                  <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
+                    <div className="bf-gui-box__titlebar">
+                      <strong>Test</strong>
+                    </div>
+                    <div className="bf-gui-box__body">
+                      <div className="motor-test-acknowledgments">
+                        {/* Props-off is the load-bearing safety ack — promote it
+                         *  visually so an operator who's eye-skimmed past it
+                         *  can't miss its unchecked state. Other acks stay in
+                         *  the muted style; only the prop guarantee gets the
+                         *  danger-toned card treatment until it's checked. */}
+                        {/* One combined safety ack — props off AND the craft
+                         *  restrained/clear — instead of two redundant boxes.
+                         *  Drives both underlying acknowledgments together. */}
+                        <label
+                          className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged && testAreaAcknowledged ? ' is-acknowledged' : ''}`}
+                          data-testid="motor-test-props-off-ack"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={propsRemovedAcknowledged && testAreaAcknowledged}
+                            onChange={(event) => {
+                              setPropsRemovedAcknowledged(event.target.checked)
+                              setTestAreaAcknowledged(event.target.checked)
+                            }}
+                            disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                          />
+                          <span>Props are off and the vehicle is restrained with the test area clear.</span>
+                        </label>
+                        {motorTestOverUsb ? (
+                          <label className="motor-test-acknowledgments__usb" data-testid="motor-test-usb-ack">
+                            <input
+                              type="checkbox"
+                              checked={usbBenchAcknowledged}
+                              onChange={(event) => setUsbBenchAcknowledged(event.target.checked)}
+                              disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                            />
+                            <span>USB connection detected — I confirm the craft is on the bench and will not arm/spin a flight-ready aircraft.</span>
+                          </label>
+                        ) : null}
+                      </div>
+                      <div className="motor-direction-layout">
+                        <div className="motor-direction-layout__sliders">
+                         <div className="motor-test-sliders-row">
+                          <MotorTestSliders
+                            targets={motorTestSliderTargets}
+                            selectedOutput={motorTestOutput}
+                            throttlePercent={motorTestThrottlePercent}
+                            onSelectOutput={(output) => setMotorTestOutput(output)}
+                            onThrottleChange={(percent) => setMotorTestThrottlePercent(percent)}
+                            onTest={() => void handleRunMotorTest()}
+                            testDisabled={busyAction !== undefined || !motorTestEligibility.allowed || motorTestOutput === undefined}
+                            onStop={() => void handleStopMotorTest()}
+                            stopEnabled={snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                            masterEnabled
+                            testId="motor-test-sliders"
+                          />
+                          {/* Small read-only motor map beside the sliders so the
+                              operator can see which OUTx/spin each Mn is — drawn
+                              from the vehicle's real FRAME_CLASS/FRAME_TYPE. Until
+                              the frame is known (or for non-matrix frames with no
+                              layout), prompt rather than draw a guessed shape. */}
+                          {motorPreviewFrameKnown && motorPreviewNodes.length > 0 ? (
+                            <MotorMixerDiagram
+                              nodes={motorPreviewNodes}
+                              geometryMode={motorPreviewGeometryMode}
+                              outputLabelByMotor={Object.fromEntries(
+                                outputMapping.motorOutputs
+                                  .filter((output) => output.motorNumber !== undefined)
+                                  .map((output) => [output.motorNumber as number, `OUT${output.channelNumber}`])
+                              )}
+                              className="motor-mixer-preview--test"
+                              testId="motor-test-diagram"
+                            />
+                          ) : (
+                            <div className="motor-mixer-preview motor-mixer-preview--test motor-mixer-preview--empty" data-testid="motor-test-diagram-empty">
+                              <p>
+                                {motorPreviewFrameKnown
+                                  ? 'No motor map for this frame class — the layout diagram covers the multirotor matrix frames.'
+                                  : 'Connect to the flight controller to read FRAME_CLASS / FRAME_TYPE and draw your frame’s motor layout and spin directions.'}
+                              </p>
+                            </div>
+                          )}
+                         </div>
+                         {/* Whether the motor actually turned, and how fast.
+                             Without this the tab could only report what it had
+                             commanded, leaving the operator to judge by eye. */}
+                         <EscRpmReadout
+                           model={buildEscRpmReadoutViewModel({
+                             escTelemetry: snapshot.liveVerification.escTelemetry,
+                             motors: outputMapping.motorOutputs.map((output) => ({
+                               channelNumber: output.channelNumber,
+                               motorNumber: output.motorNumber
+                             })),
+                             nowMs: Date.now()
+                           })}
+                         />
+                        </div>
+
+                        <div className="motor-test-card motor-test-card--embedded">
+                          <div className="switch-exercise-card__header">
+                            <div>
+                              <strong>Motor Test Guardrails</strong>
+                              <p>{snapshot.motorTest.summary}</p>
+                            </div>
+                            <StatusBadge tone={toneForMotorTestStatus(snapshot.motorTest.status)}>{snapshot.motorTest.status}</StatusBadge>
+                          </div>
+
+                          <div className="motor-test-grid">
+                            <label>
+                              <span>Output</span>
+                              <select
+                                value={motorTestOutput ?? ''}
+                                onChange={(event) => setMotorTestOutput(event.target.value ? Number(event.target.value) : undefined)}
+                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                              >
+                                <option value="">Select output</option>
+                                <option value={ALL_MOTOR_TEST_OUTPUT}>All mapped motors (sequence)</option>
+                                <option value={ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS}>All mapped motors (at once)</option>
+                                {outputMapping.motorOutputs.map((output) => (
+                                  <option key={output.paramId} value={output.channelNumber}>
+                                    OUT{output.channelNumber}
+                                    {output.motorNumber !== undefined ? ` / M${output.motorNumber}` : ''} · {output.functionLabel}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label>
+                              <span>Throttle %</span>
+                              <input
+                                type="number"
+                                min={1}
+                                max={MAX_MOTOR_TEST_THROTTLE_PERCENT}
+                                step={1}
+                                value={motorTestThrottlePercent}
+                                onChange={(event) => setMotorTestThrottlePercent(Number(event.target.value))}
+                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                              />
+                            </label>
+
+                            <label>
+                              <span>Duration (s)</span>
+                              <input
+                                type="number"
+                                min={0.1}
+                                max={motorTestMaxDurationSeconds}
+                                step={0.1}
+                                value={motorTestDurationSeconds}
+                                onChange={(event) => setMotorTestDurationSeconds(Number(event.target.value))}
+                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                              />
+                            </label>
+                          </div>
+
+
+                          <ul className="output-note-list">
+                            {motorTestGuardReasons.length > 0
+                              ? motorTestGuardReasons.map((reason) => <li key={reason}>{reason}</li>)
+                              : snapshot.motorTest.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}
+                          </ul>
+
+                          <div className="switch-exercise-controls">
+                            <button
+                              id={OUTPUTS_MOTOR_TEST_BUTTON_ID}
+                              type="button"
+                              className={
+                                motorVerification.status === 'running' && !currentMotorTestSucceeded && canRunMotorTest
+                                  ? 'guided-action-pulse'
+                                  : undefined
+                              }
+                              style={buttonStyle('secondary')}
+                              onClick={() => void handleRunMotorTest()}
+                              disabled={!canRunMotorTest || busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                            >
+                              {busyAction === 'motor-test' ? 'Sending…' : 'Run Motor Test'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </section>
                   )}
                 </div>
               ) : null}

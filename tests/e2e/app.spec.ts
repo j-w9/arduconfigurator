@@ -439,7 +439,7 @@ test.describe('browser configurator regression flows', () => {
     await page.getByTestId('outputs-summary-direction-test').click()
     // The Test tab shows the read-only motor map beside the throttle sliders.
     await expect(page.getByTestId('motor-test-diagram')).toBeVisible()
-    await page.getByLabel('Props are off and the vehicle is restrained with the test area clear.').check()
+    await page.getByTestId('motor-test-props-off-ack').check()
     // The extra USB-bench acknowledgement is gated to a physical web-serial
     // link, so it must NOT appear (or block the test) over the demo transport.
     await expect(page.getByTestId('motor-test-usb-ack')).toHaveCount(0)
@@ -452,7 +452,7 @@ test.describe('browser configurator regression flows', () => {
     await openView(page, 'motors')
     await page.getByTestId('outputs-summary-direction-test').click()
     await expect(page.getByTestId('motor-test-diagram')).toBeVisible()
-    await page.getByLabel('Props are off and the vehicle is restrained with the test area clear.').check()
+    await page.getByTestId('motor-test-props-off-ack').check()
 
     const track = page.getByTestId('motor-slider-track-M4')
     await expect(track).toBeVisible()
@@ -557,7 +557,7 @@ test.describe('browser configurator regression flows', () => {
 
     await openView(page, 'motors')
     await page.getByTestId('outputs-summary-direction-test').click()
-    await page.getByLabel('Props are off and the vehicle is restrained with the test area clear.').check()
+    await page.getByTestId('motor-test-props-off-ack').check()
 
     // The Stop (abort) control is always present but disabled until a test
     // is actually running — you can't abort what hasn't started.
@@ -678,7 +678,7 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText('LED & buzzer notifications', { exact: true })).toBeVisible()
     await openView(page, 'motors')
     await page.getByTestId('outputs-summary-direction-test').click()
-    await page.getByLabel('Props are off and the vehicle is restrained with the test area clear.').check()
+    await page.getByTestId('motor-test-props-off-ack').check()
     // Motor-test surface reachable (the Run control + sliders render).
     await expect(page.getByRole('button', { name: 'Run Motor Test' })).toBeVisible()
     await expect(page.getByTestId('motor-test-sliders')).toBeVisible()
