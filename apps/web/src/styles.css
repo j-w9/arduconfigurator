@@ -4996,7 +4996,30 @@ body.is-status-dash-dragging {
   align-items: start;
 }
 
-.setup-wizard__main,
+/* The wizard's main content column.
+ *
+ * It never had a layout rule of its own. It was grouped with
+ * .setup-wizard__reset -- a small pill BUTTON (padding 3px 10px, radius 999px,
+ * cursor: pointer) -- and later re-grouped onto .setup-return-bar, a horizontal
+ * flex bar with align-items: center. So the column that holds the step's task
+ * cards was being laid out as a row of centred items, twice over, by accident.
+ *
+ * The visible result on the Airframe step: the orientation-check card, the
+ * "What to do" card and the Advanced-settings card sat side by side in a 611px
+ * column, roughly 180px each. The live ROLL/PITCH/HEADING readouts collapsed to
+ * 27px wide and 154px tall -- one word per line -- while a third of the column
+ * sat empty to their right.
+ *
+ * They are stacked cards. Stack them. */
+.setup-wizard__main {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
+  min-width: 0;
+  width: 100%;
+}
+
 .setup-return-bar {
   display: flex;
   align-items: center;
