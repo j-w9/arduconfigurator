@@ -18333,6 +18333,29 @@ button.mavlink-inspector__sent-row {
   }
 }
 
+/* Board-orientation result, inside the accelerometer calibration card.
+ *
+ * Set a step down from body text: it is a verdict and a button sitting inside
+ * another card, and at full size it pushed the thing it is advising about off
+ * the screen. */
+.board-orientation-result {
+  font-size: var(--text-sm);
+}
+.board-orientation-result strong {
+  font-size: var(--text-md);
+}
+.board-orientation-result p {
+  margin: 2px 0;
+  line-height: 1.35;
+}
+.board-orientation-result .bf-note,
+.board-orientation-result summary {
+  font-size: var(--text-xs);
+}
+.board-orientation-result .button-row {
+  margin-top: 6px;
+}
+
 /* Spin-threshold wizard launcher: one row in the Motor Setup panel -- what it
    is, whether it has been measured, and the button that opens the popout. */
 .spin-wizard-launcher {

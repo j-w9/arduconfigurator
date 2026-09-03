@@ -65,54 +65,24 @@ export function BoardOrientationResult({
 
   const { best, closeCall } = recommendation
 
+  const detail = recommendation.detection
+
   return (
-    <div className="scoped-review-card scoped-review-card--compact" data-testid="board-orientation-result">
+    <div
+      className="scoped-review-card scoped-review-card--compact board-orientation-result"
+      data-testid="board-orientation-result"
+    >
       <div className="switch-exercise-card__header">
         <div>
           <strong>Board orientation looks wrong</strong>
           <p>
-            Those poses measure as{' '}
-            <strong>{best.rotation.name.replace('ROTATION_', '')}</strong> (
-            {best.residualDeg.toFixed(1)}° off), but AHRS_ORIENTATION is{' '}
-            {current ? current.name.replace('ROTATION_', '') : currentOrientation}.
+            Measures as <strong>{best.rotation.name.replace('ROTATION_', '')}</strong>, but
+            AHRS_ORIENTATION is {current ? current.name.replace('ROTATION_', '') : currentOrientation}.
           </p>
         </div>
         <StatusBadge tone="warning">differs</StatusBadge>
       </div>
 
-      {samples.map((sample) => (
-        <p className="bf-note" key={sample.pose} data-testid={`board-orientation-sample-${sample.pose}`}>
-          {sample.pose}: <code>{formatVector(sample.accel)}</code>
-          {recommendation.detection.ignoredPoses?.includes(sample.pose) ? ' — ignored' : null}
-        </p>
-      ))}
-
-      {/* Naming what was thrown out matters: the answer stands on the rest, but
-          an operator should know a posture they held did not count. */}
-      {recommendation.detection.ignoredPoses?.length ? (
-        <p className="bf-note" data-testid="board-orientation-ignored">
-          Ignored {recommendation.detection.ignoredPoses.join(', ')} — recorded while the vehicle was
-          somewhere other than that step asked for, usually a step confirmed before the frame was moved.
-          The rest agree with each other.
-        </p>
-      ) : null}
-
-      {/* A near-tie is worth saying out loud: the fixed rotations are 45° apart
-          in yaw, so a close runner-up means a pose was probably held crooked
-          rather than that the answer is finely balanced. */}
-      {closeCall ? (
-        <p className="bf-note" data-testid="board-orientation-close-call">
-          Next closest is {closeCall.rotation.name.replace('ROTATION_', '')} at{' '}
-          {closeCall.residualDeg.toFixed(1)}°. Re-run the calibration holding the poses squarer
-          if that looks more like your mounting.
-        </p>
-      ) : null}
-
-      <p className="bf-note">
-        Staging this replaces AHRS_ORIENTATION {currentOrientation}. It takes effect on the next boot,
-        the vehicle needs re-levelling afterwards, and it rotates the compass as well as the IMU — so
-        apply it only if the measurement matches how the board really sits.
-      </p>
       <div className="button-row">
         <button
           type="button"
@@ -124,6 +94,27 @@ export function BoardOrientationResult({
           Stage AHRS_ORIENTATION = {best.rotation.value}
         </button>
       </div>
+      <p className="bf-note">Applies on the next boot; re-level after. Rotates the compass too.</p>
+
+      {/* Everything needed to argue with the result, collapsed. The operator
+          needs a verdict and a button; whoever is diagnosing a surprising
+          answer needs the vectors, and neither should crowd out the other. */}
+      <details className="motor-pole-reference" data-testid="board-orientation-detail">
+        <summary>How this was measured</summary>
+        <p className="bf-note">
+          Agrees with the poses to {best.residualDeg.toFixed(1)}°
+          {closeCall
+            ? `; next closest ${closeCall.rotation.name.replace('ROTATION_', '')} at ${closeCall.residualDeg.toFixed(1)}°`
+            : ''}
+          .
+        </p>
+        {samples.map((sample) => (
+          <p className="bf-note" key={sample.pose} data-testid={`board-orientation-sample-${sample.pose}`}>
+            {sample.pose}: <code>{formatVector(sample.accel)}</code>
+            {detail.ignoredPoses?.includes(sample.pose) ? ' — ignored, recorded in the wrong position' : null}
+          </p>
+        ))}
+      </details>
     </div>
   )
 }
