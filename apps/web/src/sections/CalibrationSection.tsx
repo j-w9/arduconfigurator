@@ -3,7 +3,7 @@
 // actions + battery voltage / battery current / airspeed / ESC throttle
 // calibration cards. ~470 lines of inline JSX moved verbatim.
 
-import { useEffect, useRef, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
 import { EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS, MAX_MOTOR_TEST_DURATION_SECONDS } from '@arduconfig/ardupilot-core'
@@ -31,6 +31,11 @@ import {
   setupActionBusyReason
 } from '../guided-action-helpers'
 import type { GuidedActionId } from '../guided-action-labels'
+import {
+  capturedSamples,
+  createAccelCalCaptureState,
+  observeAccelCalSample
+} from '../view-models/accel-cal-orientation-capture'
 import type { ParameterNotice } from '../hooks/use-parameter-feedback'
 import type { UseCalibrationNoticesResult } from '../hooks/use-calibration-notices'
 import type { UseSafetyAcksResult } from '../hooks/use-safety-acks'
@@ -234,6 +239,13 @@ function MotorSpinAcknowledgements(props: {
 }
 
 export function CalibrationSection(props: CalibrationSectionProps): ReactElement {
+  // Board-orientation samples, collected while the accelerometer calibration
+  // runs. Held in a ref rather than state so arriving IMU frames (10 Hz) do not
+  // re-render the whole calibration surface; only the captured-pose count,
+  // which changes a handful of times per calibration, drives a render.
+  const accelCalCapture = useRef(createAccelCalCaptureState())
+  const [accelCalCaptureCount, setAccelCalCaptureCount] = useState(0)
+
   // Throttle used for the current-calibration load spin. Local to this card:
   // it is a transient bench choice, not something worth persisting.
   const [currentCalThrottlePercent, setCurrentCalThrottlePercent] = useState('20')
@@ -382,6 +394,33 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
    * not the calibration type forever.
    */
   const [dismissedRebootPrompts, setDismissedRebootPrompts] = useState<ReadonlySet<string>>(() => new Set())
+
+  // Fold each accelerometer reading into the capture while the calibration is
+  // running. The pose comes from the autopilot's own prompt rather than our
+  // attitude readout: attitude is derived through AHRS_ORIENTATION, so on the
+  // very boards worth detecting it disagrees with the operator about which pose
+  // they are in.
+  const accelCalAction = snapshot.guidedActions['calibrate-accelerometer']
+  const accelCalRunning = accelCalAction.status === 'running' || accelCalAction.status === 'requested'
+  const liveAccel = snapshot.liveVerification.accelMss
+  useEffect(() => {
+    const before = Object.keys(accelCalCapture.current.samples).length
+    accelCalCapture.current = observeAccelCalSample(accelCalCapture.current, {
+      running: accelCalRunning,
+      pose: accelCalRunning ? accelerometerPoseFromAction(snapshot) : undefined,
+      accel: liveAccel ? [liveAccel.x, liveAccel.y, liveAccel.z] : undefined
+    })
+    const after = Object.keys(accelCalCapture.current.samples).length
+    if (after !== before) {
+      setAccelCalCaptureCount(after)
+    }
+  }, [accelCalRunning, liveAccel, snapshot])
+
+  const accelCalOrientationSamples = useMemo(
+    () => capturedSamples(accelCalCapture.current),
+    // The ref mutates in place; the count is what says a new pose landed.
+    [accelCalCaptureCount]
+  )
 
   return (
 
@@ -1439,6 +1478,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   and because a level calibration is meaningless if
                   AHRS_ORIENTATION is wrong. */}
               <BoardOrientationCard
+                autoSamples={accelCalOrientationSamples}
                 accelMss={snapshot.liveVerification.accelMss}
                 currentOrientation={readRoundedParameter(snapshot, 'AHRS_ORIENTATION')}
                 disabled={busyAction !== undefined}

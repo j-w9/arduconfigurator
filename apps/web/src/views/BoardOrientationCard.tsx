@@ -37,6 +37,12 @@ const CAPTURE_INTERVAL_US = 100_000
 const BASELINE_INTERVAL_US = 1_000_000
 
 export interface BoardOrientationCardProps {
+  /**
+   * Poses captured automatically during the accelerometer calibration. When
+   * these are present the card recommends straight away -- the operator already
+   * held every pose once and should not be asked to do it again.
+   */
+  autoSamples?: readonly OrientationSample[]
   /** Live accelerometer in m/s², vehicle frame, or undefined before any arrives. */
   accelMss: { x: number; y: number; z: number } | undefined
   /** Live AHRS_ORIENTATION, or undefined while parameters are still syncing. */
@@ -66,6 +72,7 @@ function formatVector(v: Vector3): string {
  * same review-and-apply flow as every other parameter change.
  */
 export function BoardOrientationCard({
+  autoSamples,
   accelMss,
   currentOrientation,
   onStage,
@@ -103,8 +110,17 @@ export function BoardOrientationCard({
     setSteady(summariseSteadyWindow(window.current).steady)
   }, [accelMss])
 
-  const samples: OrientationSample[] = (Object.entries(captured) as [AccelCalPose, Vector3][])
-    .map(([pose, accel]) => ({ pose, accel }))
+  // Anything captured by hand here wins over the calibration's own samples, so
+  // a re-capture is how you correct a pose that was held badly.
+  const manual = (Object.entries(captured) as [AccelCalPose, Vector3][]).map(([pose, accel]) => ({
+    pose,
+    accel
+  }))
+  const fromCalibration = (autoSamples ?? []).filter(
+    (sample) => !manual.some((entry) => entry.pose === sample.pose)
+  )
+  const samples: OrientationSample[] = [...manual, ...fromCalibration]
+  const usingCalibrationSamples = manual.length === 0 && fromCalibration.length > 0
 
   const detection: OrientationDetection | undefined =
     samples.length >= 2 && currentOrientation !== undefined
@@ -135,8 +151,18 @@ export function BoardOrientationCard({
       <div className="bf-gui-box__body">
         <p className="bf-note">
           Measures how the autopilot is actually mounted, instead of reading the arrow on the board.
-          Hold each pose still and capture it — gravity says which way is down, and standing it on its
-          nose is what tells us which way is forward.
+          {usingCalibrationSamples ? (
+            <>
+              {' '}Taken from the accelerometer calibration you just ran — those poses are the same
+              measurement, so there is nothing to repeat.
+            </>
+          ) : (
+            <>
+              {' '}Run an accelerometer calibration and this fills itself in; otherwise hold each pose
+              still and capture it. Gravity says which way is down, and standing it on its nose is what
+              tells us which way is forward.
+            </>
+          )}
         </p>
 
         <p className="bf-note" data-testid="board-orientation-live">
@@ -180,9 +206,10 @@ export function BoardOrientationCard({
           ) : null}
         </div>
 
-        {CAPTURE_POSES.filter(({ pose }) => captured[pose]).map(({ pose, label }) => (
-          <p className="bf-note" key={pose} data-testid={`board-orientation-sample-${pose}`}>
-            {label}: <code>{formatVector(captured[pose]!)}</code>
+        {samples.map((sample) => (
+          <p className="bf-note" key={sample.pose} data-testid={`board-orientation-sample-${sample.pose}`}>
+            {sample.pose}: <code>{formatVector(sample.accel)}</code>
+            {captured[sample.pose] ? null : ' (from calibration)'}
           </p>
         ))}
 
