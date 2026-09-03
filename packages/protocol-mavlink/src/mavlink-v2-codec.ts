@@ -967,6 +967,12 @@ function decodeScaledImuPayload(payload: Uint8Array): ScaledImuMessage {
   return {
     type: 'SCALED_IMU',
     timeBootMs: view.getUint32(0, true),
+    // xacc/yacc/zacc are int16 milli-g at offsets 4/6/8.
+    accelMg: {
+      x: view.getInt16(4, true),
+      y: view.getInt16(6, true),
+      z: view.getInt16(8, true)
+    },
     // temperature (cdegC) is the last field at offset 22; the codec zero-pads
     // the payload to the declared length before decode, so this is in bounds.
     temperatureCdeg: view.getInt16(22, true)

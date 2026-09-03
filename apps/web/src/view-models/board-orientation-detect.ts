@@ -106,9 +106,76 @@ export interface OrientationDetection {
  */
 export const ORIENTATION_MATCH_LIMIT_DEG = 10
 
-/** A sample this far off 1g was taken while the vehicle was moving. */
 const GRAVITY_MSS = 9.80665
+
+/**
+ * How far a reading may sit from 1g and still be usable.
+ *
+ * Loose on purpose. Measured on a real board resting on a bench, an
+ * uncalibrated accelerometer read 9.48-9.60 m/s^2 -- about 3% low -- so a
+ * tolerance that looked precise would reject a vehicle that was not moving at
+ * all. This is a coarse sanity gate only; STEADY_SPREAD_LIMIT_MSS is the check
+ * that actually decides whether the vehicle was still.
+ */
 const GRAVITY_TOLERANCE = 0.15
+
+/**
+ * Maximum spread on any axis, across a window of readings, for the vehicle to
+ * count as still.
+ *
+ * Magnitude alone cannot do this job, which the bench proved: while the board
+ * was being picked up and turned, its readings sat 7.3% to 13.5% off 1g --
+ * inside the tolerance above, and overlapping the 3% a resting uncalibrated
+ * board shows. Spread separates them cleanly. Same session, same board:
+ * 2.26-4.11 m/s^2 of spread while handled, 0.01-0.06 at rest.
+ */
+export const STEADY_SPREAD_LIMIT_MSS = 0.5
+
+export interface SteadyWindow {
+  steady: boolean
+  /** Mean of the window, when it is steady enough to use as a pose sample. */
+  accel?: Vector3
+  /** Largest per-axis spread across the window, in m/s^2. */
+  spreadMss: number
+  reason?: string
+}
+
+/**
+ * Decide whether a run of consecutive readings represents a held pose, and
+ * average them if it does.
+ *
+ * Callers capturing a pose should feed roughly a second of samples rather than
+ * whatever arrived last: a single frame taken mid-handling looks perfectly
+ * plausible on its own.
+ */
+export function summariseSteadyWindow(window: readonly Vector3[]): SteadyWindow {
+  if (window.length < 3) {
+    return { steady: false, spreadMss: 0, reason: 'Not enough readings yet — hold the pose still.' }
+  }
+
+  const spreadMss = Math.max(
+    ...[0, 1, 2].map((axis) => {
+      const values = window.map((sample) => sample[axis])
+      return Math.max(...values) - Math.min(...values)
+    })
+  )
+  if (spreadMss > STEADY_SPREAD_LIMIT_MSS) {
+    return { steady: false, spreadMss, reason: 'The vehicle is still moving — hold the pose steady.' }
+  }
+
+  const mean = [0, 1, 2].map(
+    (axis) => window.reduce((sum, sample) => sum + sample[axis], 0) / window.length
+  ) as unknown as Vector3
+  if (Math.abs(magnitude(mean) - GRAVITY_MSS) > GRAVITY_TOLERANCE * GRAVITY_MSS) {
+    return {
+      steady: false,
+      spreadMss,
+      reason: `Reading is ${magnitude(mean).toFixed(1)} m/s² rather than about 9.8 — check the accelerometer calibration.`
+    }
+  }
+
+  return { steady: true, accel: mean, spreadMss }
+}
 
 function magnitude(v: Vector3): number {
   return Math.hypot(v[0], v[1], v[2])

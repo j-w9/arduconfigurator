@@ -412,6 +412,15 @@ export interface LiveVerificationState {
    *  (TCAL) live readout. undefined until a reading arrives. */
   imuTemperatureC?: number
   /**
+   * Primary accelerometer in m/s², vehicle frame, from SCALED_IMU.
+   *
+   * Already rotated by AHRS_ORIENTATION (it comes from ins.get_accel()), which
+   * is exactly what makes it useful for checking that setting: hold the vehicle
+   * in a known pose and gravity says whether the board is mounted the way the
+   * parameter claims. undefined until a reading arrives.
+   */
+  accelMss?: { x: number; y: number; z: number }
+  /**
    * What each output is being driven to right now, from SERVO_OUTPUT_RAW.
    *
    * SERVOn_FUNCTION says what an output is FOR and the min/trim/max say what

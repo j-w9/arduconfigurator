@@ -19,6 +19,7 @@
     "bridge:websocket": "npm run build && node dist/bridge-websocket.js",
     "probe:serial": "npm run build && node dist/probe-serial.js",
     "probe:ftplog": "npm run build && node dist/probe-ftplog.js",
+    "probe:orientation": "npm run build && node dist/probe-orientation.js",
     "runtime:serial": "npm run build && node dist/runtime-serial.js",
     "runtime:sitl": "npm run build && node dist/runtime-sitl.js"
   },

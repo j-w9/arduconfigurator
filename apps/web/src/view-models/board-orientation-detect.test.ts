@@ -6,6 +6,7 @@ import {
   POSE_EXPECTED_ACCEL,
   detectBoardOrientation,
   findRotation,
+  summariseSteadyWindow,
   type AccelCalPose,
   type OrientationSample,
   type Vector3
@@ -102,6 +103,53 @@ describe('detectBoardOrientation', () => {
       0
     )
     expect(result.status).toBe('insufficient-poses')
+  })
+
+  describe('summariseSteadyWindow', () => {
+    // Both sets are real readings from a bench probe of a connected flight
+    // controller, in m/s^2, as logged by apps/desktop probe:orientation.
+    const restingOnBench: Vector3[] = [
+      [0.30, -0.07, -9.51],
+      [0.31, -0.06, -9.49],
+      [0.32, -0.07, -9.53],
+      [0.31, -0.07, -9.47]
+    ]
+    const beingHandled: Vector3[] = [
+      [0.74, 1.10, -10.63],
+      [0.55, 1.29, -8.37],
+      [0.37, -1.01, -10.49],
+      [-0.88, -1.03, -8.47],
+      [1.84, -2.82, -9.97]
+    ]
+
+    it('accepts a real resting board despite its accelerometer reading 3% low', () => {
+      const result = summariseSteadyWindow(restingOnBench)
+      expect(result.steady).toBe(true)
+      expect(result.spreadMss).toBeLessThan(0.1)
+      // ~9.5, not 9.807: an uncalibrated accel. Rejecting this would reject a
+      // vehicle sitting perfectly still.
+      expect(Math.hypot(...result.accel!)).toBeGreaterThan(9.4)
+      expect(Math.hypot(...result.accel!)).toBeLessThan(9.6)
+    })
+
+    it('rejects a board being handled, which magnitude alone would accept', () => {
+      // Every one of these frames is within the 1g tolerance — 7.3% to 13.5%
+      // off — so a magnitude check passes them all while the board is being
+      // turned over in someone's hands. Spread is what catches it.
+      for (const frame of beingHandled) {
+        expect(Math.abs(Math.hypot(...frame) - 9.80665) / 9.80665).toBeLessThan(0.15)
+      }
+      const result = summariseSteadyWindow(beingHandled)
+      expect(result.steady).toBe(false)
+      expect(result.spreadMss).toBeGreaterThan(2)
+      expect(result.reason).toMatch(/still moving/i)
+    })
+
+    it('will not average a window too short to show movement', () => {
+      const result = summariseSteadyWindow(restingOnBench.slice(0, 2))
+      expect(result.steady).toBe(false)
+      expect(result.accel).toBeUndefined()
+    })
   })
 
   it('rejects samples taken while the vehicle was moving', () => {
