@@ -4,8 +4,7 @@ import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import {
   findRotation,
   orientationRecommendation,
-  type OrientationSample,
-  type Vector3
+  type OrientationSample
 } from '../view-models/board-orientation-detect'
 
 export interface BoardOrientationResultProps {
@@ -16,10 +15,6 @@ export interface BoardOrientationResultProps {
   /** Stage the proposed value as a draft. This never writes. */
   onStage: (value: number) => void
   disabled?: boolean
-}
-
-function formatVector(v: Vector3): string {
-  return `x ${v[0].toFixed(2)}  y ${v[1].toFixed(2)}  z ${v[2].toFixed(2)}`
 }
 
 /**
@@ -34,6 +29,12 @@ function formatVector(v: Vector3): string {
  * It renders nothing until the calibration has produced two usable poses, and
  * nothing when the answer matches what is already set. The only case worth an
  * operator's attention is a mounting that disagrees with AHRS_ORIENTATION.
+ *
+ * No measurement numbers. The gravity vectors, residual and runner-up are what
+ * the detection reasons over, not something an operator can act on -- printing
+ * them turned a verdict and a button into a page of telemetry. A pose that had
+ * to be discarded is likewise the detection's problem, not theirs; it either
+ * reached an answer or it did not.
  */
 export function BoardOrientationResult({
   samples,
@@ -50,22 +51,13 @@ export function BoardOrientationResult({
 
   if (recommendation.kind === 'unusable') {
     return (
-      <div data-testid="board-orientation-problem">
-        <p className="calibration-card__blocked">{recommendation.reason}</p>
-        {/* What it actually measured. Without this the message is a dead end:
-            nobody can tell a crooked pose from a mislabelled one. */}
-        {recommendation.samples.map((sample) => (
-          <p className="bf-note" key={sample.pose} data-testid={`board-orientation-sample-${sample.pose}`}>
-            {sample.pose}: <code>{formatVector(sample.accel)}</code>
-          </p>
-        ))}
-      </div>
+      <p className="calibration-card__blocked" data-testid="board-orientation-problem">
+        {recommendation.reason}
+      </p>
     )
   }
 
-  const { best, closeCall } = recommendation
-
-  const detail = recommendation.detection
+  const { best } = recommendation
 
   return (
     <div
@@ -95,26 +87,6 @@ export function BoardOrientationResult({
         </button>
       </div>
       <p className="bf-note">Applies on the next boot; re-level after. Rotates the compass too.</p>
-
-      {/* Everything needed to argue with the result, collapsed. The operator
-          needs a verdict and a button; whoever is diagnosing a surprising
-          answer needs the vectors, and neither should crowd out the other. */}
-      <details className="motor-pole-reference" data-testid="board-orientation-detail">
-        <summary>How this was measured</summary>
-        <p className="bf-note">
-          Agrees with the poses to {best.residualDeg.toFixed(1)}°
-          {closeCall
-            ? `; next closest ${closeCall.rotation.name.replace('ROTATION_', '')} at ${closeCall.residualDeg.toFixed(1)}°`
-            : ''}
-          .
-        </p>
-        {samples.map((sample) => (
-          <p className="bf-note" key={sample.pose} data-testid={`board-orientation-sample-${sample.pose}`}>
-            {sample.pose}: <code>{formatVector(sample.accel)}</code>
-            {detail.ignoredPoses?.includes(sample.pose) ? ' — ignored, recorded in the wrong position' : null}
-          </p>
-        ))}
-      </details>
     </div>
   )
 }

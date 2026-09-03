@@ -129,7 +129,7 @@ describe('detectBoardOrientation', () => {
     expect(result.best).toBeUndefined()
     // Angles between readings survive any rotation, so this is a statement
     // about the labels, not a guess about the mounting.
-    expect(result.reason).toMatch(/different position than the step asked for/i)
+    expect(result.reason).toMatch(/before the vehicle was moved into position/i)
   })
 
   it('accepts poses that are consistent even when both are far from upright', () => {

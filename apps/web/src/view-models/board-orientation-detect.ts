@@ -333,10 +333,8 @@ export function detectBoardOrientation(
     return {
       status: 'poses-inconsistent',
       reason:
-        'No two poses agree with each other, so at least one was recorded while the vehicle was in a ' +
-        'different position than the step asked for. That happens when a step is confirmed after the ' +
-        'frame has already been moved on. Re-run the calibration, confirming each step while the ' +
-        'vehicle is still in that position.'
+        'Calibration steps were confirmed before the vehicle was moved into position, so the poses do ' +
+        'not line up. Board orientation was not checked.'
     }
   }
 
@@ -352,8 +350,8 @@ export function detectBoardOrientation(
     return {
       status: 'insufficient-poses',
       reason:
-        'The poses that agree with each other are all along one axis, which leaves rotation about ' +
-        'gravity undetermined. Re-run the calibration so more of the postures are recorded in place.'
+        'Too few usable poses to check board orientation — the ones that lined up were all along one ' +
+        'axis, which cannot resolve yaw.'
     }
   }
 
@@ -375,9 +373,8 @@ export function detectBoardOrientation(
       best,
       runnerUp,
       reason:
-        `The readings are ${best.residualDeg.toFixed(0)}° from the closest standard rotation ` +
-        `(${best.rotation.name}). Either a pose was not held as described, or the board is mounted ` +
-        'at an angle that needs a custom rotation (CUST_ROT1/2) rather than one of the fixed values.'
+        'The board does not sit at any of the standard orientations — it may need a custom rotation ' +
+        '(CUST_ROT1/2), or a pose was not held squarely.'
     }
   }
 
