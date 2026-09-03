@@ -20,6 +20,7 @@
     "probe:serial": "npm run build && node dist/probe-serial.js",
     "probe:ftplog": "npm run build && node dist/probe-ftplog.js",
     "probe:orientation": "npm run build && node dist/probe-orientation.js",
+    "probe:accel": "npm run build && node dist/probe-accel-stream.js",
     "runtime:serial": "npm run build && node dist/runtime-serial.js",
     "runtime:sitl": "npm run build && node dist/runtime-sitl.js"
   },

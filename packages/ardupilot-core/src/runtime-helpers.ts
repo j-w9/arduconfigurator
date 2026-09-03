@@ -385,7 +385,14 @@ export function cloneLiveVerification(liveVerification: LiveVerificationState): 
     // live IMU temperature (from SCALED_IMU) out of every emitted snapshot, so
     // the thermal-calibration readout never populated even though the runtime
     // had decoded it. Kept last to mirror the LiveVerificationState field order.
-    imuTemperatureC: liveVerification.imuTemperatureC
+    imuTemperatureC: liveVerification.imuTemperatureC,
+    // The accelerometer from the same SCALED_IMU frame, and the same trap: the
+    // runtime decoded it, the field existed on the state, and it never reached
+    // a snapshot because this function did not copy it -- so the board
+    // orientation capture during an accelerometer calibration silently had no
+    // input at all. A fresh object, because the live one is rewritten in place
+    // as frames arrive.
+    accelMss: liveVerification.accelMss ? { ...liveVerification.accelMss } : undefined
   }
 }
 
