@@ -2237,6 +2237,52 @@ test.describe('Config view', () => {
     }
   })
 
+  test('every guided-setup scroll target into Motors actually exists', async ({ page }) => {
+    // The wizard navigates to Motors by element id (scrollToPanel), and a
+    // missing id fails silently: it retries a few frames, gives up, and leaves
+    // the operator at the top of the tab wondering what to click. Two of these
+    // -- the motor-verification start and the direction-confirm hop -- were
+    // rendered NOWHERE, so "Open Motor Verification" had never worked. Nothing
+    // asserted their existence, which is why a green suite hid it.
+    //
+    // Keep this list in step with setup-flow-helpers' OUTPUTS_* ids.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'motors')
+
+    for (const id of [
+      'outputs-motor-verification-start',
+      'outputs-motor-confirm',
+      'outputs-motor-test-run',
+      'outputs-bench-lab',
+      'motors-safety-ack'
+    ]) {
+      // Present AND laid out: a zero-size node scrolls to nowhere just as a
+      // missing one does.
+      const box = await page.locator(`#${id}`).boundingBox()
+      expect(box, `#${id} is not rendered on the Motors tab`).not.toBeNull()
+      expect(box!.height, `#${id} has no height to scroll to`).toBeGreaterThan(0)
+    }
+  })
+
+  test('the Test panel points at the safety ack it no longer contains', async ({ page }) => {
+    // One ack for the whole page now, pinned at the top, while the Test panel
+    // is a sticky column beside it -- so the control that unblocks Run Motor
+    // Test can sit off-screen above the operator reading why it is blocked.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'motors')
+
+    const goToAck = page.getByTestId('motor-test-goto-ack')
+    await expect(goToAck).toBeVisible()
+    await goToAck.click()
+    await expect(page.getByTestId('motor-reorder-props-off-ack')).toBeInViewport()
+
+    // Once acknowledged there is nothing to point at.
+    await page.getByTestId('motor-reorder-props-off-ack').check()
+    await expect(goToAck).toHaveCount(0)
+  })
+
   test('spin-threshold wizard measures a break-away point and derives both parameters', async ({ page }) => {
     // MOT_SPIN_ARM / MOT_SPIN_MIN are the two values nobody measures: the
     // library defaults were never fitted to any particular ESC. The wizard

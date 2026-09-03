@@ -69,7 +69,9 @@ import { readRoundedParameter, selectParameterById } from '../selectors/paramete
 import { QUADPLANE_ESC_PARAM_IDS } from '../param-groups'
 import { buildPlaneControlSurfaces } from '../view-models/plane-control-surfaces'
 import {
+  MOTORS_SAFETY_ACK_ID,
   OUTPUTS_BENCH_TARGET_ID,
+  OUTPUTS_MOTOR_START_BUTTON_ID,
   OUTPUTS_MOTOR_TEST_BUTTON_ID,
   escCalibrationInstructions,
   escCalibrationPathLabel
@@ -899,7 +901,16 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
               ) : null}
               {showAllMotorTasks || activeOutputTaskId === 'motor-setup' ? (
                 isCopterVehicle ? (
-                  <div className="outputs-task-panel outputs-task-panel--stack" data-outputs-task="motor-setup">
+                  <div
+                    className="outputs-task-panel outputs-task-panel--stack"
+                    data-outputs-task="motor-setup"
+                    // The guided wizard's "Open Motor Verification" has always
+                    // scrolled to this id -- which nothing rendered, so it
+                    // silently landed the operator at the top of Motors. The
+                    // order/direction work IS the motor verification, so the
+                    // panel that holds it carries the anchor.
+                    id={OUTPUTS_MOTOR_START_BUTTON_ID}
+                  >
                     {motorSetupSlot}
                     {isExpertMode ? (
                       <div className="spin-wizard-launcher" data-testid="spin-threshold-wizard-launcher">
@@ -1208,9 +1219,31 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                            *  layout they are dropped rather than printed twice.
                            *  Anywhere the ack is not on screen, they stay. */}
                           {motorTestGuardReasons.length > 0 ? (
+                            <>
                             <ul className="output-note-list">
                               {motorTestGuardReasons.map((reason) => <li key={reason}>{reason}</li>)}
                             </ul>
+                            {/* The single safety ack lives at the top of the
+                             *  page now, and on a wide screen this panel is a
+                             *  sticky column beside it -- so the control that
+                             *  unblocks the button can be off-screen above the
+                             *  operator while they read why it is blocked.
+                             *  Take them to it rather than describing it. */}
+                            {showAllMotorTasks && (!propsRemovedAcknowledged || !testAreaAcknowledged) ? (
+                              <button
+                                type="button"
+                                style={buttonStyle()}
+                                data-testid="motor-test-goto-ack"
+                                onClick={() =>
+                                  document
+                                    .getElementById(MOTORS_SAFETY_ACK_ID)
+                                    ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+                                }
+                              >
+                                Go to the safety acknowledgement
+                              </button>
+                            ) : null}
+                            </>
                           ) : showAllMotorTasks ? null : (
                             <ul className="output-note-list">
                               {snapshot.motorTest.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}

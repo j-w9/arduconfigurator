@@ -14,6 +14,7 @@ import { buttonStyle } from '@arduconfig/ui-kit'
 import type { ConfiguratorSnapshot, ServoOutputAssignment } from '@arduconfig/ardupilot-core'
 
 import { normalizeBitmaskValue } from '../parameter-format'
+import { MOTORS_SAFETY_ACK_ID, OUTPUTS_MOTOR_CONFIRM_BUTTON_ID } from '../setup-flow-helpers'
 import { hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
 import type { MotorPreviewNode } from '../view-models/motor-preview'
@@ -166,7 +167,11 @@ export function MotorReorderDialog({
          *  the operator can't miss the props-off ack and doesn't have
          *  to leave the popout to set it. Required for both the
          *  Reorder identify and the Direction spin to enable. */}
-        <div className="motor-reorder-lightbox__acks" data-testid="motor-reorder-lightbox-acks">
+        <div
+          className="motor-reorder-lightbox__acks"
+          data-testid="motor-reorder-lightbox-acks"
+          id={MOTORS_SAFETY_ACK_ID}
+        >
           {/* One combined safety ack — props off AND the craft restrained/clear
            *  — driving both underlying acknowledgments together. */}
           <label
@@ -209,6 +214,10 @@ export function MotorReorderDialog({
             className={`tab-strip__tab${motorDialogTab === 'direction' ? ' is-active' : ''}`}
             onClick={() => onTabChange('direction')}
             data-testid="motor-reorder-lightbox-tab-direction"
+            // The guided wizard's "Open Confirm Motor Direction" scrolls here.
+            // Confirming which way each motor spins is this step, and until now
+            // the id it targeted was rendered nowhere.
+            id={OUTPUTS_MOTOR_CONFIRM_BUTTON_ID}
           >
             2 · Direction
           </button>
