@@ -50,9 +50,16 @@ export function BoardOrientationResult({
 
   if (recommendation.kind === 'unusable') {
     return (
-      <p className="calibration-card__blocked" data-testid="board-orientation-problem">
-        {recommendation.reason}
-      </p>
+      <div data-testid="board-orientation-problem">
+        <p className="calibration-card__blocked">{recommendation.reason}</p>
+        {/* What it actually measured. Without this the message is a dead end:
+            nobody can tell a crooked pose from a mislabelled one. */}
+        {recommendation.samples.map((sample) => (
+          <p className="bf-note" key={sample.pose} data-testid={`board-orientation-sample-${sample.pose}`}>
+            {sample.pose}: <code>{formatVector(sample.accel)}</code>
+          </p>
+        ))}
+      </div>
     )
   }
 

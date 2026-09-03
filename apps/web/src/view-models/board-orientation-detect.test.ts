@@ -90,6 +90,59 @@ describe('detectBoardOrientation', () => {
     expect(result.alreadySet).toBe(false)
   })
 
+  it('finds a normally-mounted board while AHRS_ORIENTATION is set wrong', () => {
+    // The case every other test here misses. They use either current = 0, where
+    // the current rotation is the identity and cancels, or current === true,
+    // where it cancels against itself -- so a composition applied in the wrong
+    // direction would pass all of them. This is a real bench setup: the board
+    // is mounted normally and AHRS_ORIENTATION was set to 8 (ROLL_180) by hand.
+    const samples = [publishedSample('level', 0, 8), publishedSample('nose-down', 0, 8)]
+
+    // Sanity on the synthesised data itself: a level board under ROLL_180 reads
+    // +Z, which is what the bench probe showed (z = +9.82).
+    expect(samples[0].accel[2]).toBeGreaterThan(9)
+
+    const result = detectBoardOrientation(samples, 8)
+    expect(result.status).toBe('detected')
+    expect(result.best!.rotation.value).toBe(0)
+    expect(result.alreadySet).toBe(false)
+    expect(result.best!.residualDeg).toBeLessThan(1)
+  })
+
+  it('says the poses do not match their labels when the frame moved early', () => {
+    // The failure a wrong AHRS_ORIENTATION actually produces: the pose
+    // auto-advance stalls (it matches a rotated attitude), so the operator
+    // clicks through by hand and a step gets confirmed before the frame has
+    // been moved. Both samples then record the SAME attitude under different
+    // labels -- 0 degrees apart where the poses are 90.
+    //
+    // Note the limit of this check: a mislabel that PRESERVES angles (reading
+    // the left pose but calling it nose-down) is invisible to it with only two
+    // poses, and yields a confident wrong answer. More poses make that far less
+    // likely, which is why the capture takes every pose the calibration offers.
+    const samples: OrientationSample[] = [
+      publishedSample('level', 0, 8),
+      { ...publishedSample('level', 0, 8), pose: 'nose-down' }
+    ]
+    const result = detectBoardOrientation(samples, 8)
+    expect(result.status).toBe('poses-inconsistent')
+    expect(result.best).toBeUndefined()
+    // Angles between readings survive any rotation, so this is a statement
+    // about the labels, not a guess about the mounting.
+    expect(result.reason).toMatch(/different position than the step asked for/i)
+  })
+
+  it('accepts poses that are consistent even when both are far from upright', () => {
+    // Guard against the consistency check being too strict: nose-down and left
+    // are a legitimate 90-degree pair and must pass.
+    const result = detectBoardOrientation(
+      [publishedSample('nose-down', 0, 8), publishedSample('left', 0, 8)],
+      8
+    )
+    expect(result.status).toBe('detected')
+    expect(result.best!.rotation.value).toBe(0)
+  })
+
   it('refuses a level-only measurement, because gravity cannot give yaw', () => {
     const result = detectBoardOrientation([publishedSample('level', 0, 0)], 0)
     expect(result.status).toBe('insufficient-poses')

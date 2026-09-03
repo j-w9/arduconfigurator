@@ -76,6 +76,7 @@ export type OrientationDetectionStatus =
   | 'detected'
   | 'insufficient-poses'
   | 'unsteady-samples'
+  | 'poses-inconsistent'
   | 'no-standard-match'
   | 'custom-current-rotation'
 
@@ -105,6 +106,26 @@ export interface OrientationDetection {
  * while still refusing a board that genuinely sits between values.
  */
 export const ORIENTATION_MATCH_LIMIT_DEG = 10
+
+/**
+ * How far the angle BETWEEN two captured poses may sit from the angle between
+ * the poses they claim to be.
+ *
+ * Rotation preserves angles. Whatever the board's mounting and whatever
+ * AHRS_ORIENTATION is set to, level and nose-down are 90 degrees apart in the
+ * readings, because both are the same rigid rotation of the same pair of
+ * physical directions. So this check is independent of everything the detection
+ * is trying to work out, which makes it the one thing that can say "these
+ * samples are not the poses they are labelled as" with certainty.
+ *
+ * That happens for a real reason: the pose auto-advance matches an expected
+ * ATTITUDE, which is rotated by AHRS_ORIENTATION, so on a board whose
+ * orientation is wrong it stalls and the operator confirms each step by hand --
+ * often after already moving the frame to the next position, which labels the
+ * sample with the previous pose. Without this check that shows up as a
+ * nonsensical best fit and gets blamed on the mounting.
+ */
+export const POSE_PAIR_TOLERANCE_DEG = 25
 
 const GRAVITY_MSS = 9.80665
 
@@ -273,6 +294,28 @@ export function detectBoardOrientation(
     }
   }
 
+  // Angles between the captured readings must match the angles between the
+  // poses they claim to be. This holds under ANY rotation, so a failure here is
+  // proof the labels are wrong rather than evidence about the mounting.
+  for (const [poseA, measuredA] of byPose) {
+    for (const [poseB, measuredB] of byPose) {
+      if (poseA === poseB) continue
+      const expectedAngle = angleBetweenDeg(POSE_EXPECTED_ACCEL[poseA], POSE_EXPECTED_ACCEL[poseB])
+      const measuredAngle = angleBetweenDeg(measuredA, measuredB)
+      if (Math.abs(measuredAngle - expectedAngle) > POSE_PAIR_TOLERANCE_DEG) {
+        return {
+          status: 'poses-inconsistent',
+          reason:
+            `The ${poseA} and ${poseB} readings are ${measuredAngle.toFixed(0)}° apart, but those poses ` +
+            `are ${expectedAngle.toFixed(0)}° apart — so at least one was recorded while the vehicle was ` +
+            'in a different position than the step asked for. That happens when a step is confirmed after ' +
+            'the frame has already been moved on. Re-run the calibration, confirming each step while the ' +
+            'vehicle is still in that position.'
+        }
+      }
+    }
+  }
+
   const scored: OrientationCandidate[] = BOARD_ROTATIONS.map((rotation) => {
     let worst = 0
     for (const [pose, measured] of byPose) {
@@ -316,7 +359,7 @@ export function detectBoardOrientation(
  */
 export type OrientationRecommendation =
   | { kind: 'silent' }
-  | { kind: 'unusable'; reason: string }
+  | { kind: 'unusable'; reason: string; samples: readonly OrientationSample[] }
   | {
       kind: 'mismatch'
       detection: OrientationDetection
@@ -339,11 +382,17 @@ export function orientationRecommendation(
     return { kind: 'silent' }
   }
 
-  if (detection.status === 'no-standard-match') {
-    // Worth surfacing: the board may need a custom rotation, or a pose was not
-    // held as described. Either way the operator should know the measurement
-    // did not land on anything.
-    return { kind: 'unusable', reason: detection.reason ?? 'The poses did not match a standard rotation.' }
+  if (detection.status === 'no-standard-match' || detection.status === 'poses-inconsistent') {
+    // Worth surfacing: the board may need a custom rotation, or the poses were
+    // not recorded where they were meant to be. Either way the operator should
+    // know the measurement did not land on anything -- and should see what it
+    // actually measured, because "45 degrees from the nearest rotation" with
+    // nothing behind it is a dead end for whoever has to work out why.
+    return {
+      kind: 'unusable',
+      reason: detection.reason ?? 'The poses did not match a standard rotation.',
+      samples
+    }
   }
 
   if (detection.status !== 'detected' || !detection.best) {
