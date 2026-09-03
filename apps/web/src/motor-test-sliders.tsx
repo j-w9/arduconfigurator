@@ -20,10 +20,15 @@ interface MotorTestSlidersProps {
   /** Called once per drag, on pointer release, with the final value. Use this
    *  rather than onThrottleChange for anything that talks to the vehicle. */
   onThrottleCommit?: (percent: number) => void
-  /** Ceiling for the typed percent field. Defaults to 100; the motor-test
-   *  surface passes its own guard limit so the box cannot ask for a throttle
-   *  the runtime will refuse. */
+  /** Ceiling for the typed percent field AND the top of every track. Defaults
+   *  to 100. The spin wizard passes its own ceiling so the whole track covers
+   *  the range it can use -- at full scale its usable 0-20% lived in the
+   *  bottom fifth of the track, about 16px for twenty steps, which is what
+   *  made it feel blocky.  */
   maxPercent?: number
+  /** Track height in px. The compact Motors column and a dialog with room to
+   *  spare want different sizes. */
+  trackHeight?: number
 }
 
 /* ── palette constants (mirrors :root tokens for inline styles) ── */
@@ -54,10 +59,10 @@ const color = {
 
 /* ── geometry ── */
 
-// 80, and the buttons moved out to the side to pay for it. The sliders live in a narrow column beside the
-// settings now rather than on a page of their own, and a 200px track pushed
-// the rest of the test panel below the fold on a laptop. Grab area is still
-// well over the ~44px touch target at every step of the range.
+// Default track height: 80, with the buttons beside the sliders rather than
+// under them to pay for it. The Motors column is tight -- a 200px track pushed
+// the rest of the test panel below the fold on a laptop -- but callers with
+// room (the spin-threshold dialog) pass their own.
 const TRACK_HEIGHT = 80
 // Narrow tracks: this is a column beside the settings now, not a full-width
 // row, and 36px columns pushed the ALL tile off a 300px column at laptop
@@ -77,11 +82,11 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v))
 }
 
-function percentFromY(trackEl: HTMLElement, clientY: number): number {
+function percentFromY(trackEl: HTMLElement, clientY: number, fullScale: number): number {
   const rect = trackEl.getBoundingClientRect()
   const yInTrack = clamp(clientY - rect.top, 0, rect.height)
-  // top of track = 100%, bottom = 0%
-  return Math.round((1 - yInTrack / rect.height) * 100)
+  // top of track = fullScale, bottom = 0%
+  return Math.round((1 - yInTrack / rect.height) * fullScale)
 }
 
 /** Generates a vertical gradient string from warning (bottom) to danger (top). */
@@ -100,6 +105,8 @@ function SliderColumn({
   onSelect,
   onDrag,
   onCommit,
+  fullScale,
+  trackHeight,
 }: {
   label: string
   percent: number
@@ -108,6 +115,10 @@ function SliderColumn({
   onSelect: () => void
   onDrag: (pct: number) => void
   onCommit?: (pct: number) => void
+  /** Throttle at the top of the track. 100 for the motor test; the spin wizard
+   *  passes its own ceiling so the whole track covers the range it can use. */
+  fullScale: number
+  trackHeight: number
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
@@ -129,11 +140,11 @@ function SliderColumn({
       } catch {
         // Pointer already released/invalid — capture is best-effort.
       }
-      onDrag(percentFromY(track, e.clientY))
+      onDrag(percentFromY(track, e.clientY, fullScale))
 
       const onMove = (ev: globalThis.PointerEvent) => {
         if (!dragging.current || !trackRef.current) return
-        onDrag(percentFromY(trackRef.current, ev.clientY))
+        onDrag(percentFromY(trackRef.current, ev.clientY, fullScale))
       }
       const onUp = (ev: globalThis.PointerEvent) => {
         if (!dragging.current) return
@@ -144,14 +155,14 @@ function SliderColumn({
         // Commit on release. A consumer that sends a command per value would
         // otherwise send one per pointermove -- dozens per drag.
         if (onCommit && trackRef.current) {
-          onCommit(percentFromY(trackRef.current, ev.clientY))
+          onCommit(percentFromY(trackRef.current, ev.clientY, fullScale))
         }
       }
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
       window.addEventListener('pointercancel', onUp)
     },
-    [onSelect, onDrag, onCommit],
+    [onSelect, onDrag, onCommit, fullScale],
   )
 
   const trackW = wide ? MASTER_TRACK_WIDTH : TRACK_WIDTH
@@ -178,7 +189,7 @@ function SliderColumn({
   const trackOuterStyle: CSSProperties = {
     position: 'relative',
     width: trackW,
-    height: TRACK_HEIGHT,
+    height: trackHeight,
     background: color.bgPanelMuted,
     borderRadius: trackW / 2,
     border: `2px solid ${selected ? color.accent : color.border}`,
@@ -192,7 +203,7 @@ function SliderColumn({
     touchAction: 'none',
   }
 
-  const fillHeight = (percent / 100) * TRACK_HEIGHT
+  const fillHeight = (Math.min(percent, fullScale) / fullScale) * trackHeight
   const fillStyle: CSSProperties = {
     position: 'absolute',
     bottom: 0,
@@ -205,10 +216,10 @@ function SliderColumn({
   }
 
   // Handle sits at top edge of fill
-  const handleY = TRACK_HEIGHT - fillHeight - HANDLE_HEIGHT / 2
+  const handleY = trackHeight - fillHeight - HANDLE_HEIGHT / 2
   const handleStyle: CSSProperties = {
     position: 'absolute',
-    top: clamp(handleY, 0, TRACK_HEIGHT - HANDLE_HEIGHT),
+    top: clamp(handleY, 0, trackHeight - HANDLE_HEIGHT),
     left: 3,
     right: 3,
     height: HANDLE_HEIGHT,
@@ -263,6 +274,7 @@ export function MotorTestSliders({
   testId,
   maxPercent = 100,
   onThrottleCommit,
+  trackHeight = TRACK_HEIGHT,
 }: MotorTestSlidersProps) {
   const active = throttlePercent > 0
 
@@ -295,7 +307,7 @@ export function MotorTestSliders({
   const separatorStyle: CSSProperties = {
     width: 1,
     alignSelf: 'stretch',
-    margin: '18px 4px',
+    margin: `${Math.round(trackHeight * 0.22)}px 4px`,
     background: color.border,
     opacity: 0.5,
   }
@@ -371,12 +383,16 @@ export function MotorTestSliders({
             onSelect={() => onSelectOutput(target.value)}
             onDrag={onThrottleChange}
             onCommit={onThrottleCommit}
+            fullScale={maxPercent}
+            trackHeight={trackHeight}
           />
         ))}
 
         {masterEnabled ? (
           <>
-            <div style={separatorStyle} />
+            {/* No per-motor tiles to separate from when a caller drives ALL
+                only (the spin wizard), and a lone rule reads as a glitch. */}
+            {targets.length > 0 ? <div style={separatorStyle} /> : null}
             <SliderColumn
               label="ALL"
               percent={
@@ -396,6 +412,8 @@ export function MotorTestSliders({
               }}
               onDrag={onThrottleChange}
               onCommit={onThrottleCommit}
+              fullScale={maxPercent}
+              trackHeight={trackHeight}
             />
           </>
         ) : null}

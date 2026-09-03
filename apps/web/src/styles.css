@@ -18362,9 +18362,44 @@ button.mavlink-inspector__sent-row {
 }
 
 /* The wizard itself, in the shared lightbox chrome. Narrower than the motor
-   setup popout: it is one slider and two numbers. */
+   setup popout: it is one slider and two numbers.
+ *
+ * Top-anchored with a reserved height, because the shared lightbox centres its
+ * frame vertically and this dialog changes size as it runs. Measured: idle
+ * 209px, stepping 432, ceiling warning 478, ready 360 -- so starting the
+ * measurement threw the frame 112px up the screen, the ceiling warning shoved
+ * it another 23 mid-drag, and confirming dropped it 59 back down. The slider
+ * moved under the operator's cursor while they were using it. Anchoring the
+ * top and reserving the tallest state's height means the control stays where
+ * they grabbed it. */
+.spin-wizard-lightbox {
+  align-items: flex-start;
+}
 .spin-wizard-lightbox__frame {
   max-width: 640px;
+  margin-top: 6vh;
+  min-height: 470px;
+}
+
+/* The sliders box stretches to fill its row on the Motors page, where it holds
+   five tiles. Here it holds one, so let it hug its contents and centre instead
+   of drawing a wide bordered box around mostly nothing. */
+.spin-wizard-lightbox .motor-test-sliders-row {
+  justify-content: center;
+}
+.spin-wizard-lightbox .motor-test-sliders-row > :first-child {
+  flex: 0 0 auto;
+}
+
+/* Transient lines -- the ceiling warning, a refused command -- appear and
+   vanish directly above the confirm button while the operator is on the
+   slider. Reserve their space so they announce themselves without relaying
+   out the thing being operated. Two lines at the warning's own size. */
+.spin-wizard-messages {
+  min-height: 2.8em;
+}
+.spin-wizard-messages > p {
+  margin: 0;
 }
 .spin-wizard-lightbox__frame .bf-gui-box {
   border: none;

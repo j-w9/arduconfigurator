@@ -59,6 +59,7 @@ import {
   startSpinWizard,
   SPIN_ARM_MAX,
   SPIN_WIZARD_KEEPALIVE_MS,
+  SPIN_WIZARD_TRACK_HEIGHT,
   SPIN_WIZARD_START,
   SPIN_WIZARD_WATCHDOG_SECONDS
 } from '../view-models/spin-threshold-wizard'
@@ -1888,7 +1889,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                                 Driving ALL simultaneously: the point being found is
                                 where every motor breaks away, not the best one. */}
                             <MotorTestSliders
-                              targets={motorTestSliderTargets}
+                              // ALL only. The wizard drives every motor at once
+                              // by definition -- the point is where they ALL
+                              // break away -- so per-motor tiles here are four
+                              // controls that read 0% and do nothing.
+                              targets={[]}
                               selectedOutput={ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS}
                               throttlePercent={spinValueToThrottlePercent(spinWizard.currentValue)}
                               onSelectOutput={() => undefined}
@@ -1906,6 +1911,13 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                               onStop={() => void handleStopMotorTest()}
                               stopEnabled={snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
                               masterEnabled
+                              // The whole track covers the wizard's own range.
+                              // At full scale its usable 0-20% lived in the
+                              // bottom fifth of the track -- about 16px for
+                              // twenty steps -- so easing up on the break-away
+                              // point meant nudging a few pixels at a time.
+                              maxPercent={spinValueToThrottlePercent(SPIN_ARM_MAX)}
+                              trackHeight={SPIN_WIZARD_TRACK_HEIGHT}
                               testId="spin-wizard-sliders"
                             />
                             <div className="motor-test-acknowledgments">
@@ -1915,14 +1927,20 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                                 <strong>{formatSpinValue(spinWizard.currentValue)}</strong>{' '}
                                 ({spinValueToThrottlePercent(spinWizard.currentValue)}%).
                               </p>
-                              {spinWizard.currentValue >= SPIN_ARM_MAX ? (
-                                <p className="switch-exercise-warning" data-testid="spin-wizard-ceiling">{spinCeilingReason()}</p>
-                              ) : null}
-                              {spinWizardRefusal ? (
-                                <p className="switch-exercise-warning" data-testid="spin-wizard-refused">
-                                  Motors not commanded: {spinWizardRefusal}
-                                </p>
-                              ) : null}
+                              {/* Fixed-height slot. Both of these appear and
+                               *  vanish while the operator is on the slider,
+                               *  and letting them reflow moved the control
+                               *  under the cursor mid-drag. */}
+                              <div className="spin-wizard-messages">
+                                {spinWizard.currentValue >= SPIN_ARM_MAX ? (
+                                  <p className="switch-exercise-warning" data-testid="spin-wizard-ceiling">{spinCeilingReason()}</p>
+                                ) : null}
+                                {spinWizardRefusal ? (
+                                  <p className="switch-exercise-warning" data-testid="spin-wizard-refused">
+                                    Motors not commanded: {spinWizardRefusal}
+                                  </p>
+                                ) : null}
+                              </div>
                               <div className="button-row">
                                 <button
                                   style={buttonStyle('primary')}

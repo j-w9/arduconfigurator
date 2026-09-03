@@ -24,6 +24,17 @@ export const SPIN_WIZARD_START = 0.01
 export const SPIN_WIZARD_STEP = 0.01
 
 /**
+ * Track height for the wizard's slider, in px.
+ *
+ * The dialog has room the Motors column does not, and this slider is the
+ * instrument the whole exercise runs on: the operator is easing up on a
+ * break-away point a hundredth at a time. Combined with scaling the track to
+ * MOT_SPIN_ARM's own 0-0.20 range, a step is ~9px of travel instead of under
+ * one.
+ */
+export const SPIN_WIZARD_TRACK_HEIGHT = 180
+
+/**
  * How long the vehicle keeps spinning after the last command, in seconds.
  *
  * This is a DEADMAN, not a run length. The wizard holds the motors live by
