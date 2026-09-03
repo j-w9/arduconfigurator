@@ -152,6 +152,43 @@ describe('detectBoardOrientation', () => {
     })
   })
 
+  it('names the mounting of a real board measured on the bench', () => {
+    // Rung-5 evidence, not synthesised: both windows are consecutive readings
+    // logged by apps/desktop probe:orientation from a connected flight
+    // controller whose AHRS_ORIENTATION reads 0. The board was laid flat, then
+    // stood on its nose and held.
+    const level = summariseSteadyWindow([
+      [0.30, -0.07, -9.51],
+      [0.31, -0.06, -9.49],
+      [0.32, -0.07, -9.53],
+      [0.31, -0.07, -9.47]
+    ])
+    const noseDown = summariseSteadyWindow([
+      [-9.84, 0.19, 0.21],
+      [-9.89, 0.24, 0.11],
+      [-9.76, 0.19, 0.26],
+      [-9.83, 0.19, 0.17],
+      [-9.86, 0.22, 0.08]
+    ])
+    expect(level.steady).toBe(true)
+    expect(noseDown.steady).toBe(true)
+
+    const result = detectBoardOrientation(
+      [
+        { pose: 'level', accel: level.accel! },
+        { pose: 'nose-down', accel: noseDown.accel! }
+      ],
+      0
+    )
+
+    expect(result.status).toBe('detected')
+    expect(result.best!.rotation.value).toBe(0)
+    expect(result.alreadySet).toBe(true)
+    // A hand-placed pose on a bench, so a couple of degrees is expected; this
+    // is the number that says the whole chain agrees with reality.
+    expect(result.best!.residualDeg).toBeLessThan(5)
+  })
+
   it('rejects samples taken while the vehicle was moving', () => {
     const samples: OrientationSample[] = [
       { pose: 'level', accel: [0, 0, -GRAVITY * 1.6] },

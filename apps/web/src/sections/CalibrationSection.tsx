@@ -17,7 +17,11 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { formatArducopterMotorPwmType } from '@arduconfig/param-metadata'
 
 import { AccelerometerPoseGuide } from '../accelerometer-pose-guide'
+
+/** SCALED_IMU (msgid 26) — the stream the board-orientation card samples. */
+const MAVLINK_SCALED_IMU_ID = 26
 import { CalibrationLocationButton } from './CalibrationLocationCard'
+import { BoardOrientationCard } from '../views/BoardOrientationCard'
 import { TcalCalibrationCard } from './TcalCalibrationCard'
 import { ValtCalibrationCard } from './ValtCalibrationCard'
 import {
@@ -1428,6 +1432,21 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   </>
                 )
               })()}
+
+              {/* Board orientation — measure the mounting from gravity instead
+                  of asking the operator to read the arrow on the board. Sits
+                  with the accelerometer work because it uses the same poses,
+                  and because a level calibration is meaningless if
+                  AHRS_ORIENTATION is wrong. */}
+              <BoardOrientationCard
+                accelMss={snapshot.liveVerification.accelMss}
+                currentOrientation={readRoundedParameter(snapshot, 'AHRS_ORIENTATION')}
+                disabled={busyAction !== undefined}
+                onStage={(value) => setDraft('AHRS_ORIENTATION', String(value))}
+                onRequestImuRate={async (intervalUs) => {
+                  await runtime.requestMessageInterval(MAVLINK_SCALED_IMU_ID, intervalUs)
+                }}
+              />
 
               {/* Thermal calibration (TCAL) — Expert-only advanced surface. */}
               {isExpertMode ? (

@@ -692,6 +692,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeCanFramePayload(message)
     case 'SETUP_SIGNING':
       return encodeSetupSigningPayload(message)
+    case 'SCALED_IMU':
+      return encodeScaledImuPayload(message)
     default:
       throw new Error('Unsupported MAVLink message for encoding.')
   }
@@ -794,6 +796,8 @@ function messageIdFor(message: MavlinkMessage): number {
       return MAVLINK_MESSAGE_IDS.PARAM_VALUE
     case 'PARAM_SET':
       return MAVLINK_MESSAGE_IDS.PARAM_SET
+    case 'SCALED_IMU':
+      return MAVLINK_MESSAGE_IDS.SCALED_IMU
     case 'ATTITUDE':
       return MAVLINK_MESSAGE_IDS.ATTITUDE
     case 'RC_CHANNELS':
@@ -960,6 +964,22 @@ function decodeAttitudePayload(payload: Uint8Array): AttitudeMessage {
     pitchSpeedRadS: view.getFloat32(20, true),
     yawSpeedRadS: view.getFloat32(24, true)
   }
+}
+
+/**
+ * Encode SCALED_IMU. Only the fields we decode are populated -- gyro and mag
+ * stay zero -- which is enough for the mock transport to exercise the same
+ * decode path a vehicle drives. 24 bytes, the full declared length.
+ */
+function encodeScaledImuPayload(message: ScaledImuMessage): Uint8Array {
+  const payload = new Uint8Array(24)
+  const view = new DataView(payload.buffer)
+  view.setUint32(0, message.timeBootMs, true)
+  view.setInt16(4, message.accelMg.x, true)
+  view.setInt16(6, message.accelMg.y, true)
+  view.setInt16(8, message.accelMg.z, true)
+  view.setInt16(22, message.temperatureCdeg, true)
+  return payload
 }
 
 function decodeScaledImuPayload(payload: Uint8Array): ScaledImuMessage {
