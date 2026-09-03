@@ -6,6 +6,12 @@ and spin direction, and runs a props-off motor test. On ArduCopter it works from
 the frame's motor matrix; Plane, Rover, and Sub show a read-only summary of their
 output assignments instead.
 
+Everything is on **one page**. The motor map and the order/direction work sit
+top-left, the ESC and range settings below them, and the throttle sliders in a
+live column alongside — so setting a protocol no longer means leaving the page
+you were checking the result on. (The Servos tab keeps its sub-tabs; those are
+genuinely separate subsystems rather than three views of one job.)
+
 .. warning::
 
    **Props off for everything on this page.** Remove all propellers before any
@@ -17,7 +23,7 @@ output assignments instead.
 ESC & protocol
 --------------
 
-The **ESC & Protocol** sub-tab sets the frame (``FRAME_CLASS`` / ``FRAME_TYPE``)
+The **ESC & Protocol** panel sets the frame (``FRAME_CLASS`` / ``FRAME_TYPE``)
 and the output protocol, ``MOT_PWM_TYPE``:
 
 - ``0`` Normal, ``1`` OneShot, ``2`` OneShot125, ``3`` Brushed
@@ -38,8 +44,9 @@ configured with ``SERVO_BLH_BDMASK`` (the per-output telemetry mask) alongside
 Motor order & direction
 -----------------------
 
-The **Motor Setup** sub-tab opens the reorder dialog, with an Order tab and a
-Direction tab (both gated behind the props-off acknowledgement):
+The **Motor Setup** panel carries the reorder work inline, with an Order tab and
+a Direction tab (both gated behind the props-off acknowledgement — one
+acknowledgement at the top of the page covers everything on it):
 
 - **Order** — *Identify motors interactively* spins each output briefly (about
   2.5 s at 6%) and you click the position on the schematic that moved, which
@@ -64,12 +71,12 @@ Direction tab (both gated behind the props-off acknowledgement):
 Motor test (props off)
 ----------------------
 
-The **Test** sub-tab spins motors at a set throttle for a set time, with the
-frame diagram (the real per-frame layout and spin arrows described above)
-alongside the sliders so you can see which numbered motor maps to which output
-and expected direction. Pick a single output, all motors in sequence, or all at
-once; set **Throttle %** (1–100) and **Duration** (up to 5 s, 30 s in Expert
-mode). It sends
+The **Test** column spins motors at a set throttle for a set time. Pick a single
+output, all motors in sequence, or all at once; set **Throttle %** (1–100) and
+**Duration** (up to 5 s, 30 s in Expert mode). The throttle can be dragged on
+the slider or **typed** into the percent box beside it — a slider is the fast
+way to find roughly the right throttle and a poor way to ask for exactly 7%,
+which is what a repeatable bench test wants. It sends
 ``MAV_CMD_DO_MOTOR_TEST`` and is gated by eligibility checks — the vehicle must be
 connected, disarmed, parameter-synced, with no other guided action running — plus
 the physical-safety acknowledgements. There's no "test finished" message from the
@@ -80,6 +87,45 @@ firmware, so the per-motor timeout on the autopilot is the hard safety net.
    When testing over USB on the bench, the app asks for an extra acknowledgement.
    Never run a motor test with props on, and confirm each numbered motor is the
    one that actually spins before trusting the layout.
+
+Spin thresholds (Expert)
+------------------------
+
+``MOT_SPIN_ARM`` and ``MOT_SPIN_MIN`` decide where your motors start turning and
+where thrust begins. ArduPilot's defaults — 0.10 and 0.15 — were never measured
+against any particular build, and where a motor actually breaks away is a
+property of *that* ESC and *that* motor. Too low and a motor may not start on
+arming; too high and it lurches.
+
+In Expert mode the Motor Setup panel offers **Measure Spin Thresholds**, which
+opens a popout that measures it instead of guessing:
+
+1. Every motor is driven together at a rising output, starting at 0.01.
+2. The motors stay **live and follow the slider** — raise it slowly until they
+   all just break away. (This is why it is a measurement, not a sample: you are
+   looking for the edge.)
+3. Press **They just started spinning**. ``MOT_SPIN_ARM`` lands one 0.03 margin
+   above that point, and ``MOT_SPIN_MIN`` another 0.03 above ARM — the ordering
+   the firmware requires.
+4. Both values stay editable, and are **staged** for you to apply. Nothing is
+   written by the wizard.
+
+The slider covers ``MOT_SPIN_ARM``'s own 0–0.20 range rather than a full
+0–100% throttle, so a single 1% step is a real amount of travel.
+
+.. warning::
+
+   The wizard spins **every motor at once**, so the props-off acknowledgement
+   gates it exactly like the motor test. Closing the popout stops whatever it
+   was spinning, and each command carries a short timeout that acts as a
+   deadman: if the browser stops sending — tab closed, page crashed, link
+   dropped — the motors stop on their own without anyone pressing anything.
+
+.. note::
+
+   ArduPilot refuses to arm when ``MOT_SPIN_ARM`` is greater than or equal to
+   ``MOT_SPIN_MIN``. The wizard cannot produce such a pair, and if you edit the
+   values by hand it says so before you can stage them.
 
 See also :doc:`ports-serial` for ESC telemetry input and :doc:`power-battery` for
 the battery monitor. For motor-order diagrams, ESC wiring, and spin-direction
