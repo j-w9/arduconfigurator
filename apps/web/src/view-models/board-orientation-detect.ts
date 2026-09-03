@@ -90,6 +90,12 @@ export interface OrientationDetection {
   alreadySet?: boolean
   /** Operator-facing explanation of a non-'detected' status. */
   reason?: string
+  /**
+   * Poses left out because they disagreed with the rest — recorded while the
+   * vehicle was somewhere other than where the step asked for. Worth naming:
+   * the answer stands, but the operator should know a posture did not count.
+   */
+  ignoredPoses?: readonly AccelCalPose[]
 }
 
 /**
@@ -295,30 +301,65 @@ export function detectBoardOrientation(
   }
 
   // Angles between the captured readings must match the angles between the
-  // poses they claim to be. This holds under ANY rotation, so a failure here is
-  // proof the labels are wrong rather than evidence about the mounting.
-  for (const [poseA, measuredA] of byPose) {
-    for (const [poseB, measuredB] of byPose) {
-      if (poseA === poseB) continue
-      const expectedAngle = angleBetweenDeg(POSE_EXPECTED_ACCEL[poseA], POSE_EXPECTED_ACCEL[poseB])
-      const measuredAngle = angleBetweenDeg(measuredA, measuredB)
-      if (Math.abs(measuredAngle - expectedAngle) > POSE_PAIR_TOLERANCE_DEG) {
-        return {
-          status: 'poses-inconsistent',
-          reason:
-            `The ${poseA} and ${poseB} readings are ${measuredAngle.toFixed(0)}° apart, but those poses ` +
-            `are ${expectedAngle.toFixed(0)}° apart — so at least one was recorded while the vehicle was ` +
-            'in a different position than the step asked for. That happens when a step is confirmed after ' +
-            'the frame has already been moved on. Re-run the calibration, confirming each step while the ' +
-            'vehicle is still in that position.'
-        }
-      }
+  // poses they claim to be. This holds under ANY rotation, so a disagreement is
+  // proof a label is wrong rather than evidence about the mounting.
+  //
+  // One bad pose must not sink the measurement, though. A real bench run
+  // produced five perfect poses and one -- "back" -- recorded while the vehicle
+  // was still nose-up; refusing the whole thing threw away a clean answer. So
+  // find the largest set of poses that all agree with each other and use that,
+  // saying which were left out.
+  const poseList = [...byPose.keys()]
+  const agrees = (a: AccelCalPose, b: AccelCalPose): boolean => {
+    const expected = angleBetweenDeg(POSE_EXPECTED_ACCEL[a], POSE_EXPECTED_ACCEL[b])
+    const measured = angleBetweenDeg(byPose.get(a)!, byPose.get(b)!)
+    return Math.abs(measured - expected) <= POSE_PAIR_TOLERANCE_DEG
+  }
+
+  // At most six poses, so every subset is 64 checks — exact beats clever here.
+  let bestSubset: AccelCalPose[] = []
+  for (let mask = 1; mask < 1 << poseList.length; mask += 1) {
+    const subset = poseList.filter((_, index) => (mask & (1 << index)) !== 0)
+    if (subset.length <= bestSubset.length) continue
+    const mutuallyConsistent = subset.every((a) => subset.every((b) => a === b || agrees(a, b)))
+    if (mutuallyConsistent) {
+      bestSubset = subset
+    }
+  }
+
+  const ignoredPoses = poseList.filter((pose) => !bestSubset.includes(pose))
+
+  if (bestSubset.length < 2) {
+    return {
+      status: 'poses-inconsistent',
+      reason:
+        'No two poses agree with each other, so at least one was recorded while the vehicle was in a ' +
+        'different position than the step asked for. That happens when a step is confirmed after the ' +
+        'frame has already been moved on. Re-run the calibration, confirming each step while the ' +
+        'vehicle is still in that position.'
+    }
+  }
+
+  // Still needs two poses that are not along one axis: gravity cannot give yaw.
+  const usable = new Map(bestSubset.map((pose) => [pose, byPose.get(pose)!]))
+  const stillIndependent = bestSubset.some((a) =>
+    bestSubset.some((b) => {
+      const angle = angleBetweenDeg(POSE_EXPECTED_ACCEL[a], POSE_EXPECTED_ACCEL[b])
+      return angle > 30 && angle < 150
+    })
+  )
+  if (!stillIndependent) {
+    return {
+      status: 'insufficient-poses',
+      reason:
+        'The poses that agree with each other are all along one axis, which leaves rotation about ' +
+        'gravity undetermined. Re-run the calibration so more of the postures are recorded in place.'
     }
   }
 
   const scored: OrientationCandidate[] = BOARD_ROTATIONS.map((rotation) => {
     let worst = 0
-    for (const [pose, measured] of byPose) {
+    for (const [pose, measured] of usable) {
       const expected = POSE_EXPECTED_ACCEL[pose]
       const predicted = applyMatrix(current.matrix, applyMatrix(transpose(rotation.matrix), expected))
       const unit = normalise(predicted)
@@ -344,7 +385,8 @@ export function detectBoardOrientation(
     status: 'detected',
     best,
     runnerUp,
-    alreadySet: best.rotation.value === currentOrientation
+    alreadySet: best.rotation.value === currentOrientation,
+    ignoredPoses: ignoredPoses.length > 0 ? ignoredPoses : undefined
   }
 }
 

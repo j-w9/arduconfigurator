@@ -83,8 +83,19 @@ export function BoardOrientationResult({
       {samples.map((sample) => (
         <p className="bf-note" key={sample.pose} data-testid={`board-orientation-sample-${sample.pose}`}>
           {sample.pose}: <code>{formatVector(sample.accel)}</code>
+          {recommendation.detection.ignoredPoses?.includes(sample.pose) ? ' — ignored' : null}
         </p>
       ))}
+
+      {/* Naming what was thrown out matters: the answer stands on the rest, but
+          an operator should know a posture they held did not count. */}
+      {recommendation.detection.ignoredPoses?.length ? (
+        <p className="bf-note" data-testid="board-orientation-ignored">
+          Ignored {recommendation.detection.ignoredPoses.join(', ')} — recorded while the vehicle was
+          somewhere other than that step asked for, usually a step confirmed before the frame was moved.
+          The rest agree with each other.
+        </p>
+      ) : null}
 
       {/* A near-tie is worth saying out loud: the fixed rotations are 45° apart
           in yaw, so a close runner-up means a pose was probably held crooked

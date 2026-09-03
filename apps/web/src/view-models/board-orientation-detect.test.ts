@@ -143,6 +143,32 @@ describe('detectBoardOrientation', () => {
     expect(result.best!.rotation.value).toBe(0)
   })
 
+  it('answers from a real six-pose run where one posture was recorded early', () => {
+    // Verbatim from a bench calibration: board mounted normally, with
+    // AHRS_ORIENTATION set to 8 (ROLL_180) by hand to test the detection.
+    // Five poses are exactly right for that setup. "back" is a duplicate of
+    // nose-up -- it was confirmed before the vehicle was turned over -- and
+    // refusing the whole measurement over it threw away a clean answer.
+    const samples: OrientationSample[] = [
+      { pose: 'level', accel: [-0.05, 0.14, 9.07] },
+      { pose: 'left', accel: [0.0, -9.74, -1.21] },
+      { pose: 'right', accel: [0.3, 9.93, -0.64] },
+      { pose: 'nose-down', accel: [-9.65, -1.02, -1.0] },
+      { pose: 'nose-up', accel: [10.02, -0.0, -0.53] },
+      { pose: 'back', accel: [9.99, 0.01, -0.55] }
+    ]
+
+    const result = detectBoardOrientation(samples, 8)
+
+    expect(result.status).toBe('detected')
+    // The board really is mounted normally; AHRS_ORIENTATION 8 is the error.
+    expect(result.best!.rotation.value).toBe(0)
+    expect(result.alreadySet).toBe(false)
+    // And it must say which posture did not count, rather than quietly
+    // dropping it.
+    expect(result.ignoredPoses).toEqual(['back'])
+  })
+
   it('refuses a level-only measurement, because gravity cannot give yaw', () => {
     const result = detectBoardOrientation([publishedSample('level', 0, 0)], 0)
     expect(result.status).toBe('insufficient-poses')
