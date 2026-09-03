@@ -3,6 +3,7 @@ import { BOARD_ROTATIONS } from '@arduconfig/param-metadata'
 
 import {
   ORIENTATION_MATCH_LIMIT_DEG,
+  orientationRecommendation,
   POSE_EXPECTED_ACCEL,
   detectBoardOrientation,
   findRotation,
@@ -225,5 +226,48 @@ describe('detectBoardOrientation', () => {
     )
     expect(result.status).toBe('custom-current-rotation')
     expect(result.best).toBeUndefined()
+  })
+
+  describe('orientationRecommendation', () => {
+    const level = publishedSample('level', 0, 0)
+    const noseDown = publishedSample('nose-down', 0, 0)
+
+    it('says nothing when the poses agree with the setting', () => {
+      // Announcing "orientation correct" after every calibration teaches people
+      // to skip past it the one time it is not.
+      expect(orientationRecommendation([level, noseDown], 0)).toEqual({ kind: 'silent' })
+    })
+
+    it('says nothing when there is not enough to go on', () => {
+      expect(orientationRecommendation([level], 0).kind).toBe('silent')
+      expect(orientationRecommendation([], 0).kind).toBe('silent')
+      expect(orientationRecommendation([level, noseDown], undefined).kind).toBe('silent')
+    })
+
+    it('proposes the measured rotation when it differs from the setting', () => {
+      // Board really mounted Yaw90 while AHRS_ORIENTATION still says None.
+      const samples = [publishedSample('level', 2, 0), publishedSample('nose-down', 2, 0)]
+      const recommendation = orientationRecommendation(samples, 0)
+      expect(recommendation.kind).toBe('mismatch')
+      if (recommendation.kind !== 'mismatch') throw new Error('expected a mismatch')
+      expect(recommendation.best.rotation.value).toBe(2)
+    })
+
+    it('reports a measurement that matches no standard rotation', () => {
+      const angle = (30 * Math.PI) / 180
+      const skew: readonly (readonly number[])[] = [
+        [Math.cos(angle), -Math.sin(angle), 0],
+        [Math.sin(angle), Math.cos(angle), 0],
+        [0, 0, 1]
+      ]
+      const samples: OrientationSample[] = (['level', 'nose-down'] as const).map((pose) => ({
+        pose,
+        accel: apply(transpose(skew), POSE_EXPECTED_ACCEL[pose]).map((c) => c * GRAVITY) as unknown as Vector3
+      }))
+      const recommendation = orientationRecommendation(samples, 0)
+      expect(recommendation.kind).toBe('unusable')
+      if (recommendation.kind !== 'unusable') throw new Error('expected unusable')
+      expect(recommendation.reason).toMatch(/custom rotation/i)
+    })
   })
 })

@@ -304,3 +304,59 @@ export function detectBoardOrientation(
     alreadySet: best.rotation.value === currentOrientation
   }
 }
+
+/**
+ * What, if anything, to tell the operator after a calibration.
+ *
+ * Separated from the component because this is the judgement call, not the
+ * markup: when to stay quiet, when to propose a change, and when to say the
+ * measurement was not usable. Silence is the right output for "the poses agree
+ * with the setting" -- announcing that on every calibration would train people
+ * to skip past it the one time it matters.
+ */
+export type OrientationRecommendation =
+  | { kind: 'silent' }
+  | { kind: 'unusable'; reason: string }
+  | {
+      kind: 'mismatch'
+      detection: OrientationDetection
+      best: OrientationCandidate
+      /** Set when the next-closest rotation is near enough to be worth naming. */
+      closeCall?: OrientationCandidate
+    }
+
+export function orientationRecommendation(
+  samples: readonly OrientationSample[],
+  currentOrientation: number | undefined
+): OrientationRecommendation {
+  if (samples.length < 2 || currentOrientation === undefined) {
+    return { kind: 'silent' }
+  }
+
+  const detection = detectBoardOrientation(samples, currentOrientation)
+
+  if (detection.status === 'detected' && detection.alreadySet) {
+    return { kind: 'silent' }
+  }
+
+  if (detection.status === 'no-standard-match') {
+    // Worth surfacing: the board may need a custom rotation, or a pose was not
+    // held as described. Either way the operator should know the measurement
+    // did not land on anything.
+    return { kind: 'unusable', reason: detection.reason ?? 'The poses did not match a standard rotation.' }
+  }
+
+  if (detection.status !== 'detected' || !detection.best) {
+    // Not enough poses, or a moving vehicle. Nothing went wrong that the
+    // operator needs to act on -- they simply did not produce a measurement.
+    return { kind: 'silent' }
+  }
+
+  const closeCall =
+    detection.runnerUp &&
+    detection.runnerUp.residualDeg - detection.best.residualDeg < ORIENTATION_MATCH_LIMIT_DEG
+      ? detection.runnerUp
+      : undefined
+
+  return { kind: 'mismatch', detection, best: detection.best, closeCall }
+}

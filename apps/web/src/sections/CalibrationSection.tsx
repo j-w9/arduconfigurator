@@ -18,10 +18,14 @@ import { formatArducopterMotorPwmType } from '@arduconfig/param-metadata'
 
 import { AccelerometerPoseGuide } from '../accelerometer-pose-guide'
 
-/** SCALED_IMU (msgid 26) — the stream the board-orientation card samples. */
+/** SCALED_IMU (msgid 26) — the stream the pose capture samples. */
 const MAVLINK_SCALED_IMU_ID = 26
+/** 10 Hz while a calibration runs; enough to see whether a pose is held. */
+const ACCEL_CAPTURE_INTERVAL_US = 100_000
+/** What the session asks for otherwise, for the TCAL temperature readout. */
+const BASELINE_IMU_INTERVAL_US = 1_000_000
 import { CalibrationLocationButton } from './CalibrationLocationCard'
-import { BoardOrientationCard } from '../views/BoardOrientationCard'
+import { BoardOrientationResult } from '../views/BoardOrientationResult'
 import { TcalCalibrationCard } from './TcalCalibrationCard'
 import { ValtCalibrationCard } from './ValtCalibrationCard'
 import {
@@ -416,6 +420,23 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     }
   }, [accelCalRunning, liveAccel, snapshot])
 
+  // SCALED_IMU is requested at 1 Hz for the session, which is plenty for the
+  // TCAL temperature readout it was added for but cannot tell a held pose from
+  // a slow hand -- and a capture window would take ten seconds to fill. Ask for
+  // 10 Hz for exactly as long as a calibration is running, then give it back,
+  // rather than making every session carry the bandwidth.
+  const runtimeRef = useRef(runtime)
+  runtimeRef.current = runtime
+  useEffect(() => {
+    if (!accelCalRunning) {
+      return
+    }
+    void runtimeRef.current.requestMessageInterval(MAVLINK_SCALED_IMU_ID, ACCEL_CAPTURE_INTERVAL_US)
+    return () => {
+      void runtimeRef.current.requestMessageInterval(MAVLINK_SCALED_IMU_ID, BASELINE_IMU_INTERVAL_US)
+    }
+  }, [accelCalRunning])
+
   const accelCalOrientationSamples = useMemo(
     () => capturedSamples(accelCalCapture.current),
     // The ref mutates in place; the count is what says a new pose landed.
@@ -516,6 +537,18 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                         pitchDeg={snapshot.liveVerification.attitudeTelemetry.pitchDeg}
                         attitudeVerified={snapshot.liveVerification.attitudeTelemetry.verified}
                         testId="calibration-accelerometer-guide"
+                      />
+                    ) : null}
+                    {/* The calibration's own poses measure the mounting, so
+                        the result belongs here rather than in a separate
+                        orientation surface. Renders nothing unless it
+                        disagrees with AHRS_ORIENTATION. */}
+                    {action.actionId === 'calibrate-accelerometer' ? (
+                      <BoardOrientationResult
+                        samples={accelCalOrientationSamples}
+                        currentOrientation={readRoundedParameter(snapshot, 'AHRS_ORIENTATION')}
+                        disabled={busyAction !== undefined}
+                        onStage={(value) => setDraft('AHRS_ORIENTATION', String(value))}
                       />
                     ) : null}
                     {/* Inline how-to hint per guided cal action. Collapsed by
@@ -1471,22 +1504,6 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   </>
                 )
               })()}
-
-              {/* Board orientation — measure the mounting from gravity instead
-                  of asking the operator to read the arrow on the board. Sits
-                  with the accelerometer work because it uses the same poses,
-                  and because a level calibration is meaningless if
-                  AHRS_ORIENTATION is wrong. */}
-              <BoardOrientationCard
-                autoSamples={accelCalOrientationSamples}
-                accelMss={snapshot.liveVerification.accelMss}
-                currentOrientation={readRoundedParameter(snapshot, 'AHRS_ORIENTATION')}
-                disabled={busyAction !== undefined}
-                onStage={(value) => setDraft('AHRS_ORIENTATION', String(value))}
-                onRequestImuRate={async (intervalUs) => {
-                  await runtime.requestMessageInterval(MAVLINK_SCALED_IMU_ID, intervalUs)
-                }}
-              />
 
               {/* Thermal calibration (TCAL) — Expert-only advanced surface. */}
               {isExpertMode ? (
