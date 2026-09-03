@@ -24,3 +24,5 @@ export * from './shared-optical-flow.js'
 export * from './shared-rc-logic.js'
 export * from './types.js'
 export * from './upstream.js'
+
+export { BOARD_ROTATIONS, type BoardRotation } from './board-rotations.generated.js'

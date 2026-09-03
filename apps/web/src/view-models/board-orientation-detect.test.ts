@@ -1,0 +1,144 @@
+import { describe, expect, it } from 'vitest'
+import { BOARD_ROTATIONS } from '@arduconfig/param-metadata'
+
+import {
+  ORIENTATION_MATCH_LIMIT_DEG,
+  POSE_EXPECTED_ACCEL,
+  detectBoardOrientation,
+  findRotation,
+  type AccelCalPose,
+  type OrientationSample,
+  type Vector3
+} from './board-orientation-detect'
+
+const GRAVITY = 9.80665
+
+function apply(matrix: readonly (readonly number[])[], v: Vector3): Vector3 {
+  return [
+    matrix[0][0] * v[0] + matrix[0][1] * v[1] + matrix[0][2] * v[2],
+    matrix[1][0] * v[0] + matrix[1][1] * v[1] + matrix[1][2] * v[2],
+    matrix[2][0] * v[0] + matrix[2][1] * v[1] + matrix[2][2] * v[2]
+  ]
+}
+
+function transpose(matrix: readonly (readonly number[])[]): readonly (readonly number[])[] {
+  return [0, 1, 2].map((row) => [0, 1, 2].map((col) => matrix[col][row]))
+}
+
+/**
+ * What the vehicle would actually publish: the reading is produced in board
+ * axes by the true mounting, then rotated by whatever AHRS_ORIENTATION is set
+ * to. p = R_current * transpose(R_true) * expected.
+ */
+function publishedSample(
+  pose: AccelCalPose,
+  trueOrientation: number,
+  currentOrientation: number
+): OrientationSample {
+  const trueRotation = findRotation(trueOrientation)!
+  const current = findRotation(currentOrientation)!
+  const vehicle = POSE_EXPECTED_ACCEL[pose]
+  const board = apply(transpose(trueRotation.matrix), vehicle)
+  const published = apply(current.matrix, board)
+  return { pose, accel: published.map((component) => component * GRAVITY) as unknown as Vector3 }
+}
+
+describe('detectBoardOrientation', () => {
+  it('recovers every standard rotation from a level and a nose-down pose', () => {
+    // The round trip that matters: for each of ArduPilot's fixed rotations,
+    // synthesise what a board mounted that way would publish and check we name
+    // it again. Catches a transposed matrix or a flipped convention across the
+    // whole table rather than at one spot-checked value.
+    for (const rotation of BOARD_ROTATIONS) {
+      const samples = [
+        publishedSample('level', rotation.value, 0),
+        publishedSample('nose-down', rotation.value, 0)
+      ]
+      const result = detectBoardOrientation(samples, 0)
+      expect(result.status, `${rotation.name} should be detected`).toBe('detected')
+      // Several rotations are geometrically identical for a given pose pair;
+      // accept any that reproduces the same measurements exactly.
+      expect(result.best!.residualDeg).toBeLessThan(1)
+    }
+  })
+
+  it('composes with a non-zero AHRS_ORIENTATION already set', () => {
+    // The readings arrive already rotated, so a measurement only identifies the
+    // mounting together with the current setting. With the right answer already
+    // in place the board reads exactly like a correctly-oriented one.
+    const samples = [
+      publishedSample('level', 6, 6),
+      publishedSample('nose-down', 6, 6)
+    ]
+    const result = detectBoardOrientation(samples, 6)
+    expect(result.status).toBe('detected')
+    expect(result.best!.rotation.value).toBe(6)
+    expect(result.alreadySet).toBe(true)
+  })
+
+  it('finds the true mounting when the current setting is wrong', () => {
+    // Board is really Yaw90; AHRS_ORIENTATION currently says None.
+    const samples = [
+      publishedSample('level', 2, 0),
+      publishedSample('nose-down', 2, 0)
+    ]
+    const result = detectBoardOrientation(samples, 0)
+    expect(result.status).toBe('detected')
+    expect(result.best!.rotation.value).toBe(2)
+    expect(result.alreadySet).toBe(false)
+  })
+
+  it('refuses a level-only measurement, because gravity cannot give yaw', () => {
+    const result = detectBoardOrientation([publishedSample('level', 0, 0)], 0)
+    expect(result.status).toBe('insufficient-poses')
+    expect(result.best).toBeUndefined()
+    expect(result.reason).toMatch(/yaw/i)
+  })
+
+  it('refuses two poses along the same axis', () => {
+    // Level and back are opposite ends of one axis: still no yaw information.
+    const result = detectBoardOrientation(
+      [publishedSample('level', 0, 0), publishedSample('back', 0, 0)],
+      0
+    )
+    expect(result.status).toBe('insufficient-poses')
+  })
+
+  it('rejects samples taken while the vehicle was moving', () => {
+    const samples: OrientationSample[] = [
+      { pose: 'level', accel: [0, 0, -GRAVITY * 1.6] },
+      { pose: 'nose-down', accel: [-GRAVITY * 1.6, 0, 0] }
+    ]
+    const result = detectBoardOrientation(samples, 0)
+    expect(result.status).toBe('unsteady-samples')
+    expect(result.best).toBeUndefined()
+  })
+
+  it('reports no standard match for a board mounted at an odd angle', () => {
+    // 30 degrees about Z is not one of the fixed rotations; proposing the
+    // nearest 45-degree value would rotate the compass wrongly.
+    const angle = (30 * Math.PI) / 180
+    const skew: readonly (readonly number[])[] = [
+      [Math.cos(angle), -Math.sin(angle), 0],
+      [Math.sin(angle), Math.cos(angle), 0],
+      [0, 0, 1]
+    ]
+    const samples: OrientationSample[] = (['level', 'nose-down'] as const).map((pose) => ({
+      pose,
+      accel: apply(transpose(skew), POSE_EXPECTED_ACCEL[pose]).map((c) => c * GRAVITY) as unknown as Vector3
+    }))
+    const result = detectBoardOrientation(samples, 0)
+    expect(result.status).toBe('no-standard-match')
+    expect(result.best!.residualDeg).toBeGreaterThan(ORIENTATION_MATCH_LIMIT_DEG)
+    expect(result.reason).toMatch(/custom rotation/i)
+  })
+
+  it('will not guess when AHRS_ORIENTATION is a custom rotation', () => {
+    const result = detectBoardOrientation(
+      [publishedSample('level', 0, 0), publishedSample('nose-down', 0, 0)],
+      101
+    )
+    expect(result.status).toBe('custom-current-rotation')
+    expect(result.best).toBeUndefined()
+  })
+})
