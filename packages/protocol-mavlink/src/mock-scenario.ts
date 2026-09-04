@@ -832,6 +832,21 @@ function rcChannelsMessage(timeBootMs: number): MavlinkMessage {
   }
 }
 
+/**
+ * A level board, in milli-g, matching what a real bench probe read: ~9.5 m/s²
+ * down the -Z axis with a degree or two of resting tilt, and an uncalibrated
+ * magnitude a few percent under 1g. Deliberately not a clean (0,0,-1000): the
+ * orientation surfaces have to cope with a real accelerometer.
+ */
+function scaledImuMessage(timeBootMs: number): MavlinkMessage {
+  return {
+    type: 'SCALED_IMU',
+    timeBootMs,
+    accelMg: { x: 31, y: -7, z: -969 },
+    temperatureCdeg: 3562
+  }
+}
+
 function attitudeMessage(timeBootMs: number, rollRad = 0, pitchRad = 0, yawRad = 0): MavlinkMessage {
   return {
     type: 'ATTITUDE',
@@ -1854,6 +1869,9 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
             if (requestedMessageId === MAVLINK_MESSAGE_IDS.ATTITUDE) {
               responses.push(codec.encode(envelope(93, attitudeMessage(1600))))
             }
+            if (requestedMessageId === MAVLINK_MESSAGE_IDS.SCALED_IMU) {
+              responses.push(codec.encode(envelope(99, scaledImuMessage(1600))))
+            }
             if (requestedMessageId === MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT) {
               responses.push(codec.encode(envelope(94, globalPositionMessage(1600))))
             }
@@ -2282,6 +2300,23 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
         for (const frame of frames) {
           emit(frame)
         }
+        // SCALED_IMU at ~1 Hz, the cadence the runtime asks for. Request-gated
+        // like everything else: this is the stream behind the TCAL temperature
+        // readout and the board-orientation card, so a dropped
+        // LIVE_TELEMETRY_REQUESTS entry goes dark here exactly as it would on
+        // hardware instead of passing in the demo.
+        // The dynamic tick is slow (seconds), so emit a short burst rather than
+        // a single frame: consumers that need to see whether the vehicle is
+        // MOVING want consecutive readings, and one frame per tick can never
+        // show that. Request-gated like everything else, so a dropped
+        // LIVE_TELEMETRY_REQUESTS entry still goes dark exactly as on hardware.
+        if (dynamicState.requestedMessageIds.has(MAVLINK_MESSAGE_IDS.SCALED_IMU)) {
+          const bootMs = Math.max(0, now() - (dynamicState.startedAtMs || now()))
+          for (let frame = 0; frame < 12; frame += 1) {
+            emit(codec.encode(envelope(nextDynamicSequence(), scaledImuMessage(bootMs + frame * 100))))
+          }
+        }
+
         // Broadcast simulated DroneCAN NodeStatus at ~1 Hz (real-bus cadence)
         // once CAN forwarding is active, so the inspector discovers the nodes.
         dronecanBroadcastAccumMs += dynamicCadenceMs

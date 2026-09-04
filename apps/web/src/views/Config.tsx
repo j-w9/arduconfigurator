@@ -59,7 +59,11 @@ export interface ConfigCategory {
 // lead with the two knobs that are prerequisites for the radio working at all
 // (protocol + options) instead of burying them under someone else's card.
 export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
-  { id: 'airframe', label: 'Airframe' },
+  // "Airframe" alone undersold it: this tab carries frame class/type and board
+  // orientation AND the whole power train -- ESC protocol, DShot rate, BLHeli,
+  // motor poles, reverse mask. Someone looking for ESC settings had no reason to
+  // open a tab called Airframe.
+  { id: 'airframe', label: 'Airframe & Powertrain' },
   { id: 'sensors', label: 'Sensors' },
   { id: 'gps', label: 'GPS' },
   { id: 'rc', label: 'RC' },
@@ -104,6 +108,9 @@ export interface ConfigSection {
 
 export interface ConfigViewProps {
   sections: readonly ConfigSection[]
+  /** Expert mode opts into the whole surface, so the per-card Advanced folds
+   *  start open rather than making the operator expand each one. */
+  isExpertMode: boolean
   parametersById: ReadonlyMap<string, ParameterState>
   // -------- editable-state plumbing (mirrors the OSD tab) ----------
   editedValues: Record<string, string>
@@ -140,6 +147,7 @@ function fieldHasUnsaved(draftStatusById: ScopedFieldDraftMap, paramId: string):
 export function ConfigView(props: ConfigViewProps) {
   const {
     sections,
+    isExpertMode,
     parametersById,
     editedValues,
     onEditChange,
@@ -346,9 +354,12 @@ export function ConfigView(props: ConfigViewProps) {
                           className="config-section__advanced"
                           data-testid={`config-advanced-${section.id}`}
                           // Auto-open when a folded field has an unsaved edit (so
-                          // it's never hidden); otherwise `undefined` leaves the
-                          // disclosure user-toggleable rather than force-closed.
-                          open={foldedUnsaved || undefined}
+                          // it's never hidden), and in Expert mode, where the
+                          // operator has already opted into the full surface and
+                          // was otherwise expanding every card by hand. Otherwise
+                          // `undefined` leaves the disclosure user-toggleable
+                          // rather than force-closed.
+                          open={foldedUnsaved || isExpertMode || undefined}
                         >
                           <summary>
                             Advanced

@@ -1357,6 +1357,25 @@ export function App() {
   const throttleFailsafe =
     readRoundedParameter(snapshot, 'FS_THR_ENABLE') ?? readRoundedParameter(snapshot, 'THR_FAILSAFE')
   const throttleFailsafeValue = readRoundedParameter(snapshot, 'FS_THR_VALUE')
+  // Where RTL actually goes.
+  //
+  // FS_THR_ENABLE defaults to ALWAYS_RTL, so RTL is the DEFAULT response to a
+  // lost link -- yet nothing in the app read its destination altitude, and the
+  // default is 15 m, below the treeline at most FPV spots. A signal loss behind
+  // a tree returns the aircraft into it.
+  //
+  // Renamed AND re-united in 4.7: 4.6 and earlier is RTL_ALT in centimetres
+  // (ArduCopter/Parameters.cpp, @Units: cm, default 1500), master is RTL_ALT_M
+  // in metres (mode_rtl.cpp, default 15). Same physical altitude either way, so
+  // normalise to metres here rather than making every consumer know.
+  const rtlAltitudeMetres = (() => {
+    const metres = readParameterValue(snapshot, 'RTL_ALT_M')
+    if (metres !== undefined) {
+      return metres
+    }
+    const centimetres = readParameterValue(snapshot, 'RTL_ALT')
+    return centimetres === undefined ? undefined : centimetres / 100
+  })()
   const notificationLedTypes = readRoundedParameter(snapshot, 'NTF_LED_TYPES')
   const notificationLedLength = readRoundedParameter(snapshot, 'NTF_LED_LEN')
   const notificationLedBrightness = readRoundedParameter(snapshot, 'NTF_LED_BRIGHT')
@@ -4284,18 +4303,49 @@ export function App() {
     }
   }
 
-  async function handleRunMotorTest(): Promise<void> {
-    let targetOutput = motorTestOutput
+  /**
+   * Run a motor test.
+   *
+   * `override` exists because React state setters are asynchronous: a caller
+   * that does setMotorTestOutput(x); setMotorTestThrottlePercent(y); run()
+   * runs against the PREVIOUS render's values, not x and y. The spin-threshold
+   * wizard did exactly that and so commanded either nothing (output still
+   * undefined -> the early return below) or the guardrail form's default
+   * single motor at the previous percent -- which is why testers saw one
+   * motor spin, or none, while the Test-button path beside it worked fine.
+   * Anything driving a test from values it has just computed must pass them
+   * here rather than through state.
+   */
+  async function handleRunMotorTest(
+    override?: {
+      outputChannel?: number
+      throttlePercent?: number
+      durationSeconds?: number
+      /** Live throttle control: replace the running test rather than be
+       *  refused by the in-progress guard. See MotorTestEligibilityOptions. */
+      replaceRunningTest?: boolean
+    }
+  ): Promise<string[]> {
+    let targetOutput = override?.outputChannel ?? motorTestOutput
 
-    if (motorVerification.status === 'running' && motorVerification.currentOutputChannel !== undefined) {
+    // The verification sweep picks its own motor, but never over an explicit
+    // caller-supplied target.
+    if (
+      override?.outputChannel === undefined &&
+      motorVerification.status === 'running' &&
+      motorVerification.currentOutputChannel !== undefined
+    ) {
       targetOutput = motorVerification.currentOutputChannel
     }
 
     if (targetOutput === undefined) {
-      return
+      return ['Select a mapped motor output.']
     }
 
-    const effectiveRequest = buildMotorTestRequest(targetOutput, motorTestThrottlePercent, motorTestDurationSeconds)
+    const throttlePercent = override?.throttlePercent ?? motorTestThrottlePercent
+    const durationSeconds = override?.durationSeconds ?? motorTestDurationSeconds
+
+    const effectiveRequest = buildMotorTestRequest(targetOutput, throttlePercent, durationSeconds)
     // This re-check MUST agree with the one that decided whether to enable the
     // button (`motorTestGuardReasons` above), in both directions:
     //
@@ -4307,10 +4357,13 @@ export function App() {
     //  - Without the USB acknowledgement it is WEAKER, which is worse: the
     //    last gate before a motor spins would stop enforcing the bench
     //    confirmation that the display gate demands.
+    const effectiveExpertOptions = override?.replaceRunningTest
+      ? { ...motorTestExpertOptions, replaceRunningTest: true }
+      : motorTestExpertOptions
     const effectiveCoreGuardReasons = computeMotorTestGuardReasons(snapshot, effectiveRequest, {
       propsRemoved: propsRemovedAcknowledged,
       testAreaClear: testAreaAcknowledged
-    }, motorTestExpertOptions)
+    }, effectiveExpertOptions)
     const effectiveGuardReasons =
       motorTestOverUsb && !usbBenchAcknowledged
         ? [...effectiveCoreGuardReasons, 'Confirm the craft is on the bench with props off (USB connection detected).']
@@ -4318,7 +4371,11 @@ export function App() {
 
     if (effectiveGuardReasons.length > 0) {
       setMotorTestOutput(targetOutput)
-      return
+      // Returned, not swallowed. A caller that drives tests from its own UI
+      // (the spin wizard) has no other way to tell "refused" from "ran": it
+      // sat there looking broken while every command was dropped by
+      // "A motor test is already in progress."
+      return effectiveGuardReasons
     }
 
     setBusyAction('motor-test')
@@ -4328,8 +4385,8 @@ export function App() {
       // re-checks eligibility, and a divergence here rejected Expert-mode
       // durations over 5 s that the UI had already allowed.
       await runtime.runMotorTest(
-        buildMotorTestRequest(targetOutput, motorTestThrottlePercent, motorTestDurationSeconds) as MotorTestRequest,
-        motorTestExpertOptions
+        buildMotorTestRequest(targetOutput, throttlePercent, durationSeconds) as MotorTestRequest,
+        effectiveExpertOptions
       )
     } catch {
       // The motor-test service already records status='failed' + a summary
@@ -4339,6 +4396,7 @@ export function App() {
     } finally {
       setBusyAction(undefined)
     }
+    return []
   }
 
   async function handleStopMotorTest(): Promise<void> {
@@ -5689,6 +5747,7 @@ export function App() {
         boardOrientation,
         busyAction,
         throttleFailsafe,
+        rtlAltitudeMetres,
         canRunGuidedMotorTest,
         canRunModeSwitchExercise,
         canRunMotorVerification,
@@ -5748,7 +5807,8 @@ export function App() {
     snapshot.preArmStatus,
     snapshot.liveVerification.attitudeTelemetry.verified,
     snapshot.motorTest.status,
-    throttleFailsafe
+    throttleFailsafe,
+    rtlAltitudeMetres
   ])
   const guidedSetupTestingShortcutActive = guidedSetupShortcutSectionId !== undefined
   const {
@@ -9130,6 +9190,7 @@ export function App() {
           handleApplyScopedParameterDrafts,
           handleDiscardScopedParameterDrafts,
           handleOpenMotorReorderDialog,
+          isExpertMode,
           handleRunMotorTest,
           handleStopMotorTest,
           handleStartMotorVerification,
@@ -10018,6 +10079,7 @@ export function App() {
 
       {activeViewId === 'config' ? (
         <ConfigView
+          isExpertMode={isExpertMode}
           sections={configSections.map((section) => {
             if (section.id === 'esc-dshot') {
               return { ...section, footer: renderEscDshotFooter() }

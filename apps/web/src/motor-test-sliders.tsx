@@ -17,6 +17,18 @@ interface MotorTestSlidersProps {
   stopEnabled: boolean
   masterEnabled: boolean
   testId?: string
+  /** Called once per drag, on pointer release, with the final value. Use this
+   *  rather than onThrottleChange for anything that talks to the vehicle. */
+  onThrottleCommit?: (percent: number) => void
+  /** Ceiling for the typed percent field AND the top of every track. Defaults
+   *  to 100. The spin wizard passes its own ceiling so the whole track covers
+   *  the range it can use -- at full scale its usable 0-20% lived in the
+   *  bottom fifth of the track, about 16px for twenty steps, which is what
+   *  made it feel blocky.  */
+  maxPercent?: number
+  /** Track height in px. The compact Motors column and a dialog with room to
+   *  spare want different sizes. */
+  trackHeight?: number
 }
 
 /* ── palette constants (mirrors :root tokens for inline styles) ── */
@@ -47,9 +59,17 @@ const color = {
 
 /* ── geometry ── */
 
-const TRACK_HEIGHT = 200
-const TRACK_WIDTH = 36
-const MASTER_TRACK_WIDTH = 48
+// Default track height: 80, with the buttons beside the sliders rather than
+// under them to pay for it. The Motors column is tight -- a 200px track pushed
+// the rest of the test panel below the fold on a laptop -- but callers with
+// room (the spin-threshold dialog) pass their own.
+const TRACK_HEIGHT = 80
+// Narrow tracks: this is a column beside the settings now, not a full-width
+// row, and 36px columns pushed the ALL tile off a 300px column at laptop
+// widths. The pointer handlers are on the tile, not the visible bar, so the
+// grab area does not shrink with the paint.
+const TRACK_WIDTH = 18
+const MASTER_TRACK_WIDTH = 24
 const HANDLE_HEIGHT = 10
 const MASTER_OUTPUT_VALUE = 0
 // Mirrors ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS in motor-test-helpers.ts: the
@@ -62,11 +82,11 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v))
 }
 
-function percentFromY(trackEl: HTMLElement, clientY: number): number {
+function percentFromY(trackEl: HTMLElement, clientY: number, fullScale: number): number {
   const rect = trackEl.getBoundingClientRect()
   const yInTrack = clamp(clientY - rect.top, 0, rect.height)
-  // top of track = 100%, bottom = 0%
-  return Math.round((1 - yInTrack / rect.height) * 100)
+  // top of track = fullScale, bottom = 0%
+  return Math.round((1 - yInTrack / rect.height) * fullScale)
 }
 
 /** Generates a vertical gradient string from warning (bottom) to danger (top). */
@@ -84,6 +104,9 @@ function SliderColumn({
   wide,
   onSelect,
   onDrag,
+  onCommit,
+  fullScale,
+  trackHeight,
 }: {
   label: string
   percent: number
@@ -91,6 +114,11 @@ function SliderColumn({
   wide?: boolean
   onSelect: () => void
   onDrag: (pct: number) => void
+  onCommit?: (pct: number) => void
+  /** Throttle at the top of the track. 100 for the motor test; the spin wizard
+   *  passes its own ceiling so the whole track covers the range it can use. */
+  fullScale: number
+  trackHeight: number
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
@@ -112,23 +140,29 @@ function SliderColumn({
       } catch {
         // Pointer already released/invalid — capture is best-effort.
       }
-      onDrag(percentFromY(track, e.clientY))
+      onDrag(percentFromY(track, e.clientY, fullScale))
 
       const onMove = (ev: globalThis.PointerEvent) => {
         if (!dragging.current || !trackRef.current) return
-        onDrag(percentFromY(trackRef.current, ev.clientY))
+        onDrag(percentFromY(trackRef.current, ev.clientY, fullScale))
       }
-      const onUp = () => {
+      const onUp = (ev: globalThis.PointerEvent) => {
+        if (!dragging.current) return
         dragging.current = false
         window.removeEventListener('pointermove', onMove)
         window.removeEventListener('pointerup', onUp)
         window.removeEventListener('pointercancel', onUp)
+        // Commit on release. A consumer that sends a command per value would
+        // otherwise send one per pointermove -- dozens per drag.
+        if (onCommit && trackRef.current) {
+          onCommit(percentFromY(trackRef.current, ev.clientY, fullScale))
+        }
       }
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
       window.addEventListener('pointercancel', onUp)
     },
-    [onSelect, onDrag],
+    [onSelect, onDrag, onCommit, fullScale],
   )
 
   const trackW = wide ? MASTER_TRACK_WIDTH : TRACK_WIDTH
@@ -155,7 +189,7 @@ function SliderColumn({
   const trackOuterStyle: CSSProperties = {
     position: 'relative',
     width: trackW,
-    height: TRACK_HEIGHT,
+    height: trackHeight,
     background: color.bgPanelMuted,
     borderRadius: trackW / 2,
     border: `2px solid ${selected ? color.accent : color.border}`,
@@ -169,7 +203,7 @@ function SliderColumn({
     touchAction: 'none',
   }
 
-  const fillHeight = (percent / 100) * TRACK_HEIGHT
+  const fillHeight = (Math.min(percent, fullScale) / fullScale) * trackHeight
   const fillStyle: CSSProperties = {
     position: 'absolute',
     bottom: 0,
@@ -182,10 +216,10 @@ function SliderColumn({
   }
 
   // Handle sits at top edge of fill
-  const handleY = TRACK_HEIGHT - fillHeight - HANDLE_HEIGHT / 2
+  const handleY = trackHeight - fillHeight - HANDLE_HEIGHT / 2
   const handleStyle: CSSProperties = {
     position: 'absolute',
-    top: clamp(handleY, 0, TRACK_HEIGHT - HANDLE_HEIGHT),
+    top: clamp(handleY, 0, trackHeight - HANDLE_HEIGHT),
     left: 3,
     right: 3,
     height: HANDLE_HEIGHT,
@@ -238,15 +272,23 @@ export function MotorTestSliders({
   stopEnabled,
   masterEnabled,
   testId,
+  maxPercent = 100,
+  onThrottleCommit,
+  trackHeight = TRACK_HEIGHT,
 }: MotorTestSlidersProps) {
   const active = throttlePercent > 0
 
+  // Sliders on the left, controls in a column beside them. Stacking the
+  // buttons UNDER the sliders cost the tracks ~37px of height, which is
+  // granularity: at 100 steps over 42px a single pixel of drag was three
+  // percent. Beside them, the same box holds a track twice as tall.
   const wrapperStyle: CSSProperties = {
-    display: 'inline-flex',
-    flexDirection: 'column',
+    display: 'flex',
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 16,
+    justifyContent: 'center',
+    gap: 10,
+    padding: 8,
     background: color.bgPanel,
     borderRadius: 9,
     border: `1.5px solid ${active ? color.danger : color.border}`,
@@ -265,16 +307,43 @@ export function MotorTestSliders({
   const separatorStyle: CSSProperties = {
     width: 1,
     alignSelf: 'stretch',
-    margin: '18px 4px',
+    margin: `${Math.round(trackHeight * 0.22)}px 4px`,
     background: color.border,
     opacity: 0.5,
+  }
+
+  const percentFieldStyle: CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    border: `1px solid ${color.border}`,
+    borderRadius: 5,
+    padding: '2px 6px',
+    background: color.bgPanelMuted,
+  }
+
+  const percentLabelStyle: CSSProperties = {
+    color: color.textDim,
+    fontFamily: color.fontData,
+    fontSize: 11,
+  }
+
+  const percentInputStyle: CSSProperties = {
+    width: 46,
+    border: 'none',
+    background: 'transparent',
+    color: color.text,
+    fontFamily: color.fontData,
+    fontSize: 12,
+    padding: '2px 0',
+    textAlign: 'right',
   }
 
   const testBtnStyle: CSSProperties = {
     border: `1px solid ${testDisabled ? color.border : 'rgba(218, 178, 84, 0.5)'}`,
     background: testDisabled ? 'rgba(255,255,255,0.03)' : 'rgba(218, 178, 84, 0.12)',
     color: testDisabled ? color.textDim : '#e8c968',
-    padding: '6px 24px',
+    padding: '6px 14px',
     borderRadius: 5,
     fontWeight: 700,
     fontSize: 12,
@@ -290,7 +359,7 @@ export function MotorTestSliders({
     border: `1px solid ${stopEnabled ? 'rgba(212, 107, 98, 0.7)' : color.border}`,
     background: stopEnabled ? 'rgba(212, 107, 98, 0.16)' : 'rgba(255,255,255,0.03)',
     color: stopEnabled ? '#f08a80' : color.textDim,
-    padding: '6px 24px',
+    padding: '6px 14px',
     borderRadius: 5,
     fontWeight: 700,
     fontSize: 12,
@@ -313,12 +382,17 @@ export function MotorTestSliders({
             selected={selectedOutput === target.value}
             onSelect={() => onSelectOutput(target.value)}
             onDrag={onThrottleChange}
+            onCommit={onThrottleCommit}
+            fullScale={maxPercent}
+            trackHeight={trackHeight}
           />
         ))}
 
         {masterEnabled ? (
           <>
-            <div style={separatorStyle} />
+            {/* No per-motor tiles to separate from when a caller drives ALL
+                only (the spin wizard), and a lone rule reads as a glitch. */}
+            {targets.length > 0 ? <div style={separatorStyle} /> : null}
             <SliderColumn
               label="ALL"
               percent={
@@ -337,12 +411,36 @@ export function MotorTestSliders({
                 )
               }}
               onDrag={onThrottleChange}
+              onCommit={onThrottleCommit}
+              fullScale={maxPercent}
+              trackHeight={trackHeight}
             />
           </>
         ) : null}
       </div>
 
-      <div style={{ display: 'flex', gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {/* Typed entry alongside the drag. A slider is the fast way to find
+            roughly the right throttle; it is a poor way to ask for exactly 7%,
+            which is what a repeatable bench test needs. Both drive the same
+            value. */}
+        <label style={percentFieldStyle}>
+          <span style={percentLabelStyle}>%</span>
+          <input
+            type="number"
+            min={0}
+            max={maxPercent}
+            step={1}
+            value={throttlePercent}
+            data-testid={testId ? `${testId}-percent` : undefined}
+            onChange={(event) => {
+              const next = Number(event.target.value)
+              if (!Number.isFinite(next)) return
+              onThrottleChange(Math.min(Math.max(Math.round(next), 0), maxPercent))
+            }}
+            style={percentInputStyle}
+          />
+        </label>
         <button
           type="button"
           style={testBtnStyle}

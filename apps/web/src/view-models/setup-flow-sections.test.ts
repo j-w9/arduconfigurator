@@ -50,6 +50,8 @@ function inputs(sections: SectionMeta[], over: Partial<SetupFlowSectionsInputs> 
     boardOrientation: 0,
     busyAction: undefined,
     throttleFailsafe: 0,
+
+    rtlAltitudeMetres: undefined,
     canRunGuidedMotorTest: false,
     canRunModeSwitchExercise: false,
     canRunMotorVerification: false,

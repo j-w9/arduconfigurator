@@ -117,13 +117,21 @@ export interface GlobalPositionIntMessage {
 }
 
 /**
- * Scaled IMU (msgid 26) — we decode only the fields we use: the boot timestamp
- * and the IMU temperature (0.01 °C). Streamed for the thermal-calibration (TCAL)
- * live-temperature readout. Acc/gyro/mag are present on the wire but not decoded.
+ * Scaled IMU (msgid 26) — we decode the boot timestamp, the accelerometer
+ * triple and the IMU temperature (0.01 °C). Gyro and mag are present on the
+ * wire but not decoded.
+ *
+ * Temperature feeds the thermal-calibration (TCAL) readout. The accelerometer
+ * is gravity when the vehicle is still, which is what identifies how the board
+ * is mounted; ArduPilot sends it as `accel * 1000 / GRAVITY_MSS`
+ * (GCS_Common.cpp), so the wire unit is milli-g, and the value is already
+ * rotated by AHRS_ORIENTATION because it comes from ins.get_accel().
  */
 export interface ScaledImuMessage {
   type: 'SCALED_IMU'
   timeBootMs: number
+  /** Accelerometer in milli-g, vehicle frame (board rotation applied). */
+  accelMg: { x: number; y: number; z: number }
   /** IMU temperature in centidegrees Celsius; 0 = not reported. */
   temperatureCdeg: number
 }

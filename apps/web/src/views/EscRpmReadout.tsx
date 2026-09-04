@@ -20,13 +20,21 @@ export interface EscRpmReadoutProps {
  * behaviour. The dimming plus the summary line carry the "not live" part.
  */
 export function EscRpmReadout({ model, testId = 'esc-rpm-readout' }: EscRpmReadoutProps): ReactElement {
+  const table = model.rows.length > 0 ? renderTable(model) : null
+
   return (
     <div className="esc-rpm-readout" data-testid={testId} data-status={model.status}>
       <div className="esc-rpm-readout__header">
         <strong>ESC RPM</strong>
       </div>
       <p className="esc-rpm-readout__summary">{model.summary}</p>
-      {model.rows.length > 0 ? (
+      {table}
+    </div>
+  )
+}
+
+function renderTable(model: EscRpmReadoutViewModel): ReactElement {
+  return (
         <table className={`esc-rpm-readout__table${model.status === 'stale' ? ' is-stale' : ''}`}>
           <thead>
             <tr>
@@ -62,7 +70,5 @@ export function EscRpmReadout({ model, testId = 'esc-rpm-readout' }: EscRpmReado
             ))}
           </tbody>
         </table>
-      ) : null}
-    </div>
   )
 }

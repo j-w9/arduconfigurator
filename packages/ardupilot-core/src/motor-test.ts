@@ -58,6 +58,25 @@ export interface MotorTestEligibilityOptions {
    * sequential identify spins, to fix one calibration workflow.
    */
   uncappedDuration?: boolean
+  /**
+   * Allow this request to REPLACE a motor test that is already running,
+   * instead of being refused by the in-progress guard.
+   *
+   * For live throttle control: the spin-threshold wizard raises the output
+   * until the motors break away, which means re-commanding the same test at a
+   * new throttle many times. ArduPilot supports precisely this --
+   * mavlink_motor_test_start() runs its checks only `if (!ap.motor_test)` and
+   * otherwise just updates motor_test_seq / throttle_value / the timeout
+   * (ArduCopter/motor_test.cpp) -- so a repeat command is how you change the
+   * throttle of a running test, not a second test.
+   *
+   * It lifts the in-progress guard and NOTHING else. Connected, disarmed
+   * (outside our own test's window), params synced, props-off and test-area
+   * acknowledged, outputs mapped, duration bounds: all still enforced. It also
+   * cannot start a test -- an unacknowledged or ineligible request is refused
+   * exactly as before.
+   */
+  replaceRunningTest?: boolean
 }
 
 export function evaluateMotorTestEligibility(
@@ -102,7 +121,10 @@ export function evaluateMotorTestEligibility(
     reasons.push('Wait for the current guided action to finish before running a motor test.')
   }
 
-  if (snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running') {
+  if (
+    !options.replaceRunningTest &&
+    (snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running')
+  ) {
     reasons.push('A motor test is already in progress.')
   }
 

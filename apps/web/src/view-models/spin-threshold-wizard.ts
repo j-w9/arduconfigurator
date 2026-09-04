@@ -1,0 +1,192 @@
+// Finding MOT_SPIN_ARM and MOT_SPIN_MIN by measurement instead of guessing.
+//
+// Both are normalised points in the output range, not PWM:
+//
+//   MOT_SPIN_ARM  "Point at which the motors start to spin"   range 0.0-0.2
+//   MOT_SPIN_MIN  "Point at which the thrust starts"          range 0.0-0.25
+//
+// (AP_MotorsMulticopter.cpp). Firmware requires ARM < MIN and fails pre-arm with
+// "SPIN_ARM > SPIN_MIN" otherwise. The library defaults -- 0.10 and 0.15 -- were
+// never measured against any particular build, and where a motor actually breaks
+// away is a property of that ESC and that motor. Too low and a motor may not
+// start on arming; too high and it lurches.
+//
+// The measurement is a staircase: drive every motor at a rising output until the
+// operator says they are all turning, then add margin. The scale lines up with
+// the motor test, whose THROTTLE_PERCENT maps linearly across pwm_min..pwm_max
+// (ArduCopter/motor_test.cpp) -- the same normalised range these express -- so a
+// step of 0.01 here is 1% there.
+
+/** Where the staircase begins. Below any real ESC's break-away point. */
+export const SPIN_WIZARD_START = 0.01
+
+/** One increment, matching the parameters' own @Increment of 0.01. */
+export const SPIN_WIZARD_STEP = 0.01
+
+/**
+ * Track height for the wizard's slider, in px.
+ *
+ * The dialog has room the Motors column does not, and this slider is the
+ * instrument the whole exercise runs on: the operator is easing up on a
+ * break-away point a hundredth at a time. Combined with scaling the track to
+ * MOT_SPIN_ARM's own 0-0.20 range, a step is ~9px of travel instead of under
+ * one.
+ */
+export const SPIN_WIZARD_TRACK_HEIGHT = 180
+
+/**
+ * How long the vehicle keeps spinning after the last command, in seconds.
+ *
+ * This is a DEADMAN, not a run length. The wizard holds the motors live by
+ * re-commanding continuously; each DO_MOTOR_TEST resets the FC's own timeout
+ * (ArduCopter/motor_test.cpp), so if the browser stops sending -- tab closed,
+ * page crashed, link dropped -- the motors stop on their own this many seconds
+ * later without anyone pressing anything. Short enough to be safe, long enough
+ * to ride out a slow round-trip.
+ */
+export const SPIN_WIZARD_WATCHDOG_SECONDS = 2
+
+/**
+ * How often to re-send the current value while the operator is not moving the
+ * slider, in milliseconds. Comfortably inside the watchdog above so a steady
+ * hand never makes the motors stutter.
+ */
+export const SPIN_WIZARD_KEEPALIVE_MS = 700
+
+/**
+ * How long each spin lasts, in seconds.
+ *
+ * The motor-test default is 1s, which reads as a twitch -- long enough to
+ * prove wiring, far too short to judge whether a motor "just broke away".
+ * 3s is enough to watch all of them settle and still inside the 5s ceiling
+ * the non-Expert motor-test guard allows, so this never needs the Expert
+ * duration override.
+ */
+export const SPIN_WIZARD_TEST_SECONDS = 3
+
+/** Margin above the observed break-away, and again above ARM for MIN. */
+export const SPIN_WIZARD_MARGIN = 0.03
+
+/** Firmware's own ceilings (@Range). Refuse to climb past what it accepts. */
+export const SPIN_ARM_MAX = 0.2
+export const SPIN_MIN_MAX = 0.25
+
+export type SpinWizardStatus = 'idle' | 'stepping' | 'ready' | 'failed'
+
+export interface SpinWizardState {
+  status: SpinWizardStatus
+  /** Output currently being commanded, normalised 0..1. */
+  currentValue: number
+  /** Where the operator said every motor was turning. */
+  observedValue?: number
+  failureReason?: string
+}
+
+export function createIdleSpinWizardState(): SpinWizardState {
+  return { status: 'idle', currentValue: SPIN_WIZARD_START }
+}
+
+export function startSpinWizard(): SpinWizardState {
+  return { status: 'stepping', currentValue: SPIN_WIZARD_START }
+}
+
+/**
+ * Move the slider. The operator drives the output directly, the way the motor
+ * test sliders on the same page already work, rather than answering a question
+ * per step -- they can feel where the break-away is and creep up on it.
+ *
+ * Clamped to the ARM ceiling: a build that has not broken away by 0.20 has
+ * something else wrong (unpowered ESC, wrong protocol, a lead off), and letting
+ * the slider run past what firmware accepts would only hide that.
+ */
+export function setSpinWizardValue(state: SpinWizardState, value: number): SpinWizardState {
+  if (state.status !== 'stepping') {
+    return state
+  }
+
+  const clamped = Math.min(Math.max(roundToStep(value), 0), SPIN_ARM_MAX)
+  return { ...state, currentValue: clamped }
+}
+
+/** The message for a build that never breaks away within the usable range. */
+export function spinCeilingReason(): string {
+  return `No motor movement by ${formatSpinValue(SPIN_ARM_MAX)}, which is as high as MOT_SPIN_ARM goes. Check the ESCs are powered, the protocol matches, and every motor lead is connected.`
+}
+
+/** The operator confirms every motor is turning at the current value. */
+export function confirmSpinWizard(state: SpinWizardState): SpinWizardState {
+  if (state.status !== 'stepping') {
+    return state
+  }
+
+  return { ...state, status: 'ready', observedValue: state.currentValue }
+}
+
+export function failSpinWizard(state: SpinWizardState, reason: string): SpinWizardState {
+  return { ...state, status: 'failed', failureReason: reason }
+}
+
+export interface SpinWizardResult {
+  /** Observed break-away plus one margin. */
+  spinArm: number
+  /** ARM plus another margin, so thrust starts above where motors merely turn. */
+  spinMin: number
+  /** True when a ceiling clamped a value, so the UI can say so. */
+  clamped: boolean
+}
+
+/**
+ * Turn the observed break-away into the two parameters.
+ *
+ * Margin is added twice on purpose: once so ARM sits clear of the point where
+ * motors only just start, and again so MIN -- where thrust is expected -- sits
+ * clear of ARM. That ordering is what firmware requires.
+ */
+export function deriveSpinThresholds(observedValue: number): SpinWizardResult {
+  const rawArm = roundToStep(observedValue + SPIN_WIZARD_MARGIN)
+  const rawMin = roundToStep(rawArm + SPIN_WIZARD_MARGIN)
+  const spinArm = Math.min(rawArm, SPIN_ARM_MAX)
+  const spinMin = Math.min(rawMin, SPIN_MIN_MAX)
+
+  return {
+    spinArm,
+    spinMin,
+    clamped: rawArm > SPIN_ARM_MAX || rawMin > SPIN_MIN_MAX
+  }
+}
+
+/**
+ * Whether a pair the operator has edited is still one firmware will accept.
+ * Returns the reason it will not, or undefined when it is fine.
+ */
+export function describeSpinThresholdProblem(spinArm: number, spinMin: number): string | undefined {
+  if (!Number.isFinite(spinArm) || !Number.isFinite(spinMin)) {
+    return 'Both values must be numbers between 0 and 1.'
+  }
+  if (spinArm < 0 || spinArm > SPIN_ARM_MAX) {
+    return `MOT_SPIN_ARM must be between 0 and ${formatSpinValue(SPIN_ARM_MAX)}.`
+  }
+  if (spinMin < 0 || spinMin > SPIN_MIN_MAX) {
+    return `MOT_SPIN_MIN must be between 0 and ${formatSpinValue(SPIN_MIN_MAX)}.`
+  }
+  if (spinArm >= spinMin) {
+    // AP_MotorsMulticopter.cpp fails pre-arm with "SPIN_ARM > SPIN_MIN".
+    return 'MOT_SPIN_ARM must stay below MOT_SPIN_MIN, or the flight controller will refuse to arm.'
+  }
+  return undefined
+}
+
+/** Two decimals, matching the parameters' increment. */
+export function formatSpinValue(value: number): string {
+  return value.toFixed(2)
+}
+
+/** The commanded output as the motor test expresses it. */
+export function spinValueToThrottlePercent(value: number): number {
+  return Math.round(value * 100)
+}
+
+/** Kill floating-point drift from repeated 0.01 additions. */
+function roundToStep(value: number): number {
+  return Math.round(value * 100) / 100
+}

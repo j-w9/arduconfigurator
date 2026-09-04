@@ -14,6 +14,7 @@ import { buttonStyle } from '@arduconfig/ui-kit'
 import type { ConfiguratorSnapshot, ServoOutputAssignment } from '@arduconfig/ardupilot-core'
 
 import { normalizeBitmaskValue } from '../parameter-format'
+import { MOTORS_SAFETY_ACK_ID, OUTPUTS_MOTOR_CONFIRM_BUTTON_ID } from '../setup-flow-helpers'
 import { hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
 import type { MotorPreviewNode } from '../view-models/motor-preview'
@@ -166,7 +167,11 @@ export function MotorReorderDialog({
          *  the operator can't miss the props-off ack and doesn't have
          *  to leave the popout to set it. Required for both the
          *  Reorder identify and the Direction spin to enable. */}
-        <div className="motor-reorder-lightbox__acks" data-testid="motor-reorder-lightbox-acks">
+        <div
+          className="motor-reorder-lightbox__acks"
+          data-testid="motor-reorder-lightbox-acks"
+          id={MOTORS_SAFETY_ACK_ID}
+        >
           {/* One combined safety ack — props off AND the craft restrained/clear
            *  — driving both underlying acknowledgments together. */}
           <label
@@ -209,6 +214,10 @@ export function MotorReorderDialog({
             className={`tab-strip__tab${motorDialogTab === 'direction' ? ' is-active' : ''}`}
             onClick={() => onTabChange('direction')}
             data-testid="motor-reorder-lightbox-tab-direction"
+            // The guided wizard's "Open Confirm Motor Direction" scrolls here.
+            // Confirming which way each motor spins is this step, and until now
+            // the id it targeted was rendered nowhere.
+            id={OUTPUTS_MOTOR_CONFIRM_BUTTON_ID}
           >
             2 · Direction
           </button>
@@ -228,7 +237,7 @@ export function MotorReorderDialog({
             </div>
             <div className="bf-gui-box__body">
               {motorPreviewNodes.length > 0 ? (
-                <div className="motor-mixer-preview motor-mixer-preview--dialog">
+                <div className="motor-mixer-preview motor-mixer-preview--dialog" data-testid="motor-order-diagram">
                   <svg viewBox="0 0 260 260" role="img" aria-label="Schematic reordered motor map preview">
                     <defs>
                       <marker id="spinArrowReorder" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
@@ -274,7 +283,7 @@ export function MotorReorderDialog({
                           <text x={x} y={y + 4} textAnchor="middle" className="motor-mixer-preview__motor-number">
                             {node.motorNumber}
                           </text>
-                          <text x={x} y={y + (node.stack ? 38 : 34)} textAnchor="middle" className="motor-mixer-preview__channel-label">
+                          <text x={x} y={y + (node.stack ? 46 : 42)} textAnchor="middle" className="motor-mixer-preview__channel-label">
                             {selectedOutput ? `OUT${selectedOutput.channelNumber}` : 'UNMAPPED'}
                           </text>
                         </g>
@@ -506,8 +515,8 @@ export function MotorReorderDialog({
             </div>
             <div className="bf-gui-box__body">
               <p className="bf-note">
-                Click a motor on the schematic to spin it (~2.5 s at 6%). Arrows show the correct prop
-                direction (top view). Wrong way? Flip its Reverse toggle below (DShot only).
+                Click a motor to spin it, 2.5 s at 6%. Arrows show the correct
+                direction seen from above; flip a Reverse toggle to fix one (DShot only).
               </p>
               {motorPreviewNodes.length > 0 ? (
                 <div className="motor-mixer-preview motor-mixer-preview--dialog">
@@ -554,7 +563,7 @@ export function MotorReorderDialog({
                           <text x={x} y={y + 4} textAnchor="middle" className="motor-mixer-preview__motor-number">
                             {node.motorNumber}
                           </text>
-                          <text x={x} y={y + (node.stack ? 38 : 34)} textAnchor="middle" className="motor-mixer-preview__channel-label">
+                          <text x={x} y={y + (node.stack ? 46 : 42)} textAnchor="middle" className="motor-mixer-preview__channel-label">
                             {output ? `OUT${output.channelNumber}` : 'UNMAPPED'}
                           </text>
                         </g>
@@ -668,7 +677,7 @@ export function MotorReorderDialog({
           <small>
             {motorReorderStagedCount > 0
               ? `${motorReorderStagedCount} staged change${motorReorderStagedCount === 1 ? '' : 's'} ready to write to the flight controller.`
-              : 'Stage a reorder or flip a reverse toggle, then apply — no need to leave this dialog.'}
+              : 'Stage a reorder or flip a reverse toggle, then apply.'}
           </small>
           <div className="switch-exercise-controls">
             <button

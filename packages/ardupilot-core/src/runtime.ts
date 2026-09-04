@@ -263,6 +263,9 @@ const MIN_MISSING_FOR_FRACTION_RESTREAM = 64
 // in a backgrounded tab, so a setTimeout fallback at this bound guarantees a
 // coalesced terminal snapshot still reaches the UI.
 const EMIT_COALESCE_MAX_MS = 250
+/** Standard gravity, matching ArduPilot's GRAVITY_MSS. */
+const GRAVITY_MSS = 9.80665
+
 const DEFAULT_COMMAND_ACK_TIMEOUT_MS = 3000
 const DEFAULT_AUTOPILOT_VERSION_TIMEOUT_MS = 3000
 // The @SYS/uarts.txt enrichment read is a benign, non-control-path MAVFTP
@@ -3046,6 +3049,14 @@ export class ArduPilotConfiguratorRuntime {
     // reported by this IMU; keep the last good reading rather than flicker.
     if (message.temperatureCdeg !== 0) {
       this.liveVerification.imuTemperatureC = message.temperatureCdeg / 100
+    }
+    // Accel arrives in milli-g (accel * 1000 / GRAVITY_MSS on the sending
+    // side); convert back to m/s² so consumers work in the same units the
+    // firmware does.
+    this.liveVerification.accelMss = {
+      x: (message.accelMg.x / 1000) * GRAVITY_MSS,
+      y: (message.accelMg.y / 1000) * GRAVITY_MSS,
+      z: (message.accelMg.z / 1000) * GRAVITY_MSS
     }
   }
 

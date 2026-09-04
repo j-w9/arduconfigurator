@@ -39,6 +39,11 @@ export interface OutputsViewProps {
    *  clicked into. */
   title?: string
   subtitle?: string
+  /** Motors renders every task on one page, so its task strip would be a nav
+   *  bar for sections already on screen. Passing `true` drops the strip and
+   *  switches the body to the denser one-page rhythm; Servos, whose tasks are
+   *  genuinely separate subsystems, leaves it alone. */
+  singlePage?: boolean
 }
 
 export function OutputsView(props: OutputsViewProps) {
@@ -50,7 +55,8 @@ export function OutputsView(props: OutputsViewProps) {
     taskBodySlot,
     reviewDockSlot,
     title = 'Outputs',
-    subtitle = 'Review frame geometry, output assignments, and key motor/peripheral settings before any output testing.'
+    subtitle = 'Review frame geometry, output assignments, and key motor/peripheral settings before any output testing.',
+    singlePage = false
   } = props
 
   return (
@@ -58,8 +64,10 @@ export function OutputsView(props: OutputsViewProps) {
       <Panel title={title} subtitle={subtitle}>
         {/* Top tab selector: the tasks sit in a row of tabs; the active task's
             body renders once below them. (Replaced the old expand-in-place
-            accordion.) */}
+            accordion.) Suppressed on a single-page surface, where every task is
+            already rendered and the strip would only scroll you around. */}
         <div className={`outputs-tabs-layout${overviewSlot ? '' : ' outputs-tabs-layout--full'}`}>
+          {singlePage ? null : (
           <div className="tab-strip" data-testid="outputs-task-nav" role="tablist">
             {taskCards.map((task) => {
               const isActive = task.id === activeTaskId
@@ -79,8 +87,9 @@ export function OutputsView(props: OutputsViewProps) {
               )
             })}
           </div>
+          )}
 
-          <div className="outputs-tab-body" data-testid={`outputs-task-body-${activeTaskId}`}>
+          <div className={`outputs-tab-body${singlePage ? ' outputs-tab-body--single-page' : ''}`} data-testid={`outputs-task-body-${activeTaskId}`}>
             {taskBodySlot}
           </div>
 

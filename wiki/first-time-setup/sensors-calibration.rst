@@ -34,6 +34,59 @@ pose sets your flying-attitude reference and must be as flat as you can manage;
 the other five only need to be within about 20° of exact, as long as the vehicle
 is steady.
 
+Poses confirm themselves
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+After the level pose you do not need to keep clicking. Once the pose graphic
+reads **aligned** — the frame is within about 17° of the posture being asked
+for — hold it still for **1.2 seconds** and the app confirms that step for you.
+Any wobble over about 3° restarts the timer, so resting the frame on a surface
+confirms almost immediately while hand-holding usually takes a little longer.
+
+Level is deliberately excluded: a vehicle sitting on the bench is *already*
+level when the calibration starts, so auto-confirm would fire before you had
+placed anything. The manual **Confirm … Position** button stays available for
+every pose — this removes the need to click, never the ability to.
+
+.. note::
+
+   Auto-confirm needs the pose to actually read as aligned, and alignment is
+   measured from the vehicle's attitude — which ArduPilot computes *through*
+   ``AHRS_ORIENTATION``. If that parameter does not match how the board is
+   mounted, no pose will ever read as aligned and every step needs the manual
+   button. When that happens, press confirm **while the vehicle is still in
+   that position**, before you move on to the next one; confirming after you
+   have already moved records the wrong attitude for that step.
+
+Board orientation check
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The six poses are also enough to work out how the flight controller is
+physically mounted, so the app checks it as the calibration runs. There is
+nothing extra to press.
+
+If the mounting disagrees with ``AHRS_ORIENTATION``, the accelerometer card
+says so when the calibration finishes and offers to stage the correct value.
+Nothing is written: the value is staged as a draft you review and apply like
+any other parameter change. It takes effect on the **next boot**, the vehicle
+needs re-levelling afterwards, and it rotates the **compass** as well as the
+IMU — so apply it only if the measurement matches how the board really sits.
+
+When the setting already matches, the check says nothing at all. Silence is the
+pass.
+
+.. note::
+
+   Gravity alone cannot determine yaw. A level reading fixes which way is down
+   and says nothing about which way is forward, so the check needs at least two
+   poses that are not along the same axis — *nose down* is the one that supplies
+   the forward reference. If too few poses were recorded where the step asked
+   for them, the app says it could not check rather than guessing.
+
+   A board mounted at an angle that is not one of ArduPilot's fixed rotations
+   needs ``CUST_ROT1``/``CUST_ROT2`` instead; the check reports that case rather
+   than proposing the nearest standard value.
+
 .. note::
 
    There is no MAVLink abort for accelerometer calibration. Pressing **Cancel**
@@ -278,7 +331,7 @@ actually follows.
 .. warning::
 
    **The log cannot prove the airframe was restrained.** A real hover reads
-   identically to a clamped vehicle from the accelerometer (|acc| = g in both).
+   identically to a clamped vehicle from the accelerometer (``|a|`` = g in both).
    The analysis flags a run whose shape looks like a hover, but only you know how
    it was flown — and fitting a hover this way produces a confidently wrong
    number.

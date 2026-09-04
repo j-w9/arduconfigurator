@@ -685,9 +685,11 @@ test.describe('Motor Test diagram', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'motors')
-    await page.getByTestId('outputs-summary-direction-test').click()
 
-    const diagram = page.getByTestId('motor-test-diagram')
+    // The frame map lives in the Motor Setup panel's Preview box. (The Test
+    // panel used to repeat the same drawing; on the one-page Motors tab that
+    // duplicate is dropped so the live column stays above the fold.)
+    const diagram = page.getByTestId('motor-order-diagram')
     await expect(diagram).toBeVisible()
     await expect(page.getByTestId('motor-test-diagram-empty')).toHaveCount(0)
     // Four motor rings and four spin arcs (one per motor — quad has all four known).
@@ -1114,7 +1116,6 @@ test.describe('Motors direction test', () => {
     await connectViaHeader(page)
     await openView(page, 'motors')
     // Reverse toggles live in the Motor Setup tab's Direction sub-tab now.
-    await page.getByTestId('outputs-summary-motor-setup').click()
     await page.getByTestId('motor-reorder-lightbox-tab-direction').click()
     // M1 is on a DShot output in the demo, so its reverse toggle is enabled.
     const m1 = page.getByTestId('motor-reorder-direction-reverse-1').locator('input')
@@ -1134,7 +1135,6 @@ test.describe('Motors direction test', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'motors')
-    await page.getByTestId('outputs-summary-motor-setup').click()
     await page.getByTestId('motor-reorder-lightbox-tab-direction').click()
 
     const m1 = page.getByTestId('motor-reorder-direction-reverse-1').locator('input')
@@ -2222,7 +2222,6 @@ test.describe('Config view', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await page.getByTestId('view-button-motors').click()
-    await page.getByTestId('outputs-summary-direction-test').click()
 
     const readout = page.getByTestId('esc-rpm-readout')
     await readout.scrollIntoViewIfNeeded()
@@ -2238,6 +2237,150 @@ test.describe('Config view', () => {
     }
   })
 
+  test('every guided-setup scroll target into Motors actually exists', async ({ page }) => {
+    // The wizard navigates to Motors by element id (scrollToPanel), and a
+    // missing id fails silently: it retries a few frames, gives up, and leaves
+    // the operator at the top of the tab wondering what to click. Two of these
+    // -- the motor-verification start and the direction-confirm hop -- were
+    // rendered NOWHERE, so "Open Motor Verification" had never worked. Nothing
+    // asserted their existence, which is why a green suite hid it.
+    //
+    // Keep this list in step with setup-flow-helpers' OUTPUTS_* ids.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'motors')
+
+    for (const id of [
+      'outputs-motor-verification-start',
+      'outputs-motor-confirm',
+      'outputs-motor-test-run',
+      'outputs-bench-lab',
+      'motors-safety-ack'
+    ]) {
+      // Present AND laid out: a zero-size node scrolls to nowhere just as a
+      // missing one does.
+      const box = await page.locator(`#${id}`).boundingBox()
+      expect(box, `#${id} is not rendered on the Motors tab`).not.toBeNull()
+      expect(box!.height, `#${id} has no height to scroll to`).toBeGreaterThan(0)
+    }
+  })
+
+  test('the Test panel points at the safety ack it no longer contains', async ({ page }) => {
+    // One ack for the whole page now, pinned at the top, while the Test panel
+    // is a sticky column beside it -- so the control that unblocks Run Motor
+    // Test can sit off-screen above the operator reading why it is blocked.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'motors')
+
+    const goToAck = page.getByTestId('motor-test-goto-ack')
+    await expect(goToAck).toBeVisible()
+    await goToAck.click()
+    await expect(page.getByTestId('motor-reorder-props-off-ack')).toBeInViewport()
+
+    // Once acknowledged there is nothing to point at.
+    await page.getByTestId('motor-reorder-props-off-ack').check()
+    await expect(goToAck).toHaveCount(0)
+  })
+
+  test('spin-threshold wizard measures a break-away point and derives both parameters', async ({ page }) => {
+    // MOT_SPIN_ARM / MOT_SPIN_MIN are the two values nobody measures: the
+    // library defaults were never fitted to any particular ESC. The wizard
+    // drives every motor at a rising output, the operator says when they turn,
+    // and both parameters fall out of that one observation with the margin the
+    // firmware's own ARM < MIN ordering requires.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await enableExpertMode(page)
+    await openView(page, 'motors')
+
+    // Expert-gated launcher on the page; the wizard itself is a popout, so it
+    // costs the Motors tab one row rather than a panel.
+    await page.getByTestId('spin-wizard-open').click()
+
+    // Opened without the safety ack: Start is refused, and it says why rather
+    // than sitting there greyed out.
+    await expect(page.getByTestId('spin-wizard-start')).toBeDisabled()
+    await expect(page.getByTestId('spin-wizard-blocked')).toBeVisible()
+
+    await page.getByTestId('spin-wizard-close').click()
+    await page.getByTestId('motor-reorder-props-off-ack').check()
+    await page.getByTestId('spin-wizard-open').click()
+    await page.getByTestId('spin-wizard-start').click()
+
+    // Starts at 0.01 — below any real ESC's break-away — and commands it.
+    await expect(page.getByTestId('spin-wizard-stepping')).toBeVisible({ timeout: COMMAND_ACK_TIMEOUT })
+
+    // The command must carry the wizard's OWN values, not whatever the
+    // guardrail form happened to hold. Those default to a single motor
+    // (OUT1/M1) at 7%, so a wizard that reads them instead — which is what
+    // React state gives you when you set it and run in the same tick — spins
+    // one motor at the wrong throttle, or none at all. Field reports: "only 1
+    // motor spun", "unclear if the motors ever spun". Assert what was actually
+    // commanded: every mapped motor, simultaneously, at 1%.
+    await expect(page.locator('.motor-test-card')).toContainText(
+      /all 4 mapped motors simultaneously at 1%/i,
+      { timeout: COMMAND_ACK_TIMEOUT }
+    )
+
+    await page.getByTestId('spin-wizard-mark').click()
+
+    // 0.01 observed -> ARM 0.04 (one 0.03 margin), MIN 0.07 (another above ARM).
+    await expect(page.getByTestId('spin-wizard-arm')).toHaveValue('0.04')
+    await expect(page.getByTestId('spin-wizard-min')).toHaveValue('0.07')
+
+    // Both editable, and a pair the firmware would reject is named as such.
+    await page.getByTestId('spin-wizard-min').fill('0.02')
+    await expect(page.getByTestId('spin-wizard-problem')).toBeVisible()
+    await expect(page.getByTestId('spin-wizard-stage')).toBeDisabled()
+  })
+
+  test('spin-threshold wizard holds the motors live while the slider moves', async ({ page }) => {
+    // Finding a break-away point means scaling up until the motors move, so the
+    // motors have to FOLLOW the slider rather than be sampled after it stops.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await enableExpertMode(page)
+    await openView(page, 'motors')
+    await page.getByTestId('motor-reorder-props-off-ack').check()
+    await page.getByTestId('spin-wizard-open').click()
+    await page.getByTestId('spin-wizard-start').click()
+    await expect(page.getByTestId('spin-wizard-stepping')).toBeVisible({ timeout: COMMAND_ACK_TIMEOUT })
+
+    // Live control: the motors follow the slider. Drag the ALL track to the top
+    // and the commanded throttle must track it, not the position it started at.
+    const allTrack = page.getByTestId('spin-wizard-sliders').getByTestId('motor-slider-track-ALL')
+    const box = await allTrack.boundingBox()
+    if (!box) throw new Error('ALL throttle track has no box')
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 2)
+    await page.mouse.down()
+    for (let step = 1; step <= 10; step += 1) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height - (box.height * step) / 10)
+    }
+    await page.mouse.up()
+    // 20% is MOT_SPIN_ARM's own ceiling, which the wizard clamps to.
+    await expect(page.locator('.motor-test-card')).toContainText(
+      /all 4 mapped motors simultaneously at 20%/i,
+      { timeout: COMMAND_ACK_TIMEOUT }
+    )
+
+    // Keepalive: with the operator's hand off the slider, the motors must STILL
+    // be held past the watchdog window. Regression guard for a keepalive whose
+    // effect depended on a per-render callback -- it rebuilt its interval on
+    // every render and so never fired, and the motors quietly stopped while the
+    // wizard claimed to be holding them.
+    await page.waitForTimeout(3000)
+    await expect(page.locator('.motor-test-card')).toContainText(
+      /Motor test running on all 4 mapped motors simultaneously at 20%/i
+    )
+
+
+    // Nothing was refused along the way: re-commanding a running test is how
+    // ArduPilot changes its throttle, and the wizard opts out of the
+    // in-progress guard rather than being silently dropped by it.
+    await expect(page.getByTestId('spin-wizard-refused')).toHaveCount(0)
+  })
+
   test('ESC & Protocol exposes the motor pole count with a reference for choosing it', async ({ page }) => {
     // SERVO_BLH_POLES is the divisor for ESC eRPM -> RPM, so it belongs next to
     // the ESC protocol choice rather than only in the raw parameter list. A
@@ -2247,7 +2390,6 @@ test.describe('Config view', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await page.getByTestId('view-button-motors').click()
-    await page.getByTestId('outputs-summary-esc-protocol').click()
 
     // ScopedNumberField labels its input from the metadata label rather than a
     // test id; the demo reports the firmware default of 14.
@@ -2267,7 +2409,6 @@ test.describe('Config view', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await page.getByTestId('view-button-motors').click()
-    await page.getByTestId('outputs-summary-esc-protocol').click()
     const frame = page.getByTestId('esc-frame-card')
     await frame.scrollIntoViewIfNeeded()
     await expect(frame).toBeVisible()
@@ -3852,7 +3993,6 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'motors')
-    await page.getByTestId('outputs-summary-direction-test').click()
     await expect(page.getByText('multirotor procedure', { exact: false })).toBeVisible()
     // The quad motor-direction bench is not rendered for a Plane.
     await expect(page.getByText('Motor Direction Check', { exact: true })).toHaveCount(0)
@@ -4317,7 +4457,6 @@ test.describe('ArduPlane demo', () => {
     await openView(page, 'motors')
     // The VTOL lift motors get a real Q_M_* ESC surface (the plane mirror of the
     // Copter MOT_* card), not the roadmap note.
-    await page.getByTestId('outputs-summary-esc-protocol').click()
     const escCard = page.getByTestId('quadplane-esc-card')
     await expect(escCard).toBeVisible()
     await expect(page.getByTestId('esc-protocol-noncopter-note')).toHaveCount(0)
@@ -4340,7 +4479,6 @@ test.describe('ArduPlane demo', () => {
     })
     await openView(page, 'motors')
     // The copter Motor Setup tab IS the inline reorder/direction panel.
-    await page.getByTestId('outputs-summary-motor-setup').click()
     await expect(page.getByTestId('motor-reorder-lightbox-tabs')).toBeVisible({ timeout: 15_000 })
     await expect(page.getByTestId('motor-reorder-apply')).toBeVisible()
   })
@@ -4625,14 +4763,12 @@ test.describe('ArduRover / ArduSub demo', () => {
     // active task otherwise follows a reactive recommendation that can flip as
     // live telemetry settles. Select motor-setup explicitly (sets a sticky
     // override) so the summary is deterministically shown.
-    await page.getByTestId('outputs-summary-motor-setup').click()
     await expect(page.getByTestId('vehicle-output-summary')).toBeVisible()
     await expect(page.getByText('Sub outputs', { exact: false })).toBeVisible()
     await expect(page.getByRole('img', { name: 'Schematic motor map preview' })).toHaveCount(0)
 
     // The ESC & Protocol task is multirotor MOT_PWM_*/MOT_SPIN_* ESC setup;
     // a Sub gets an honest note instead of the Copter ESC review surface.
-    await page.getByTestId('outputs-summary-esc-protocol').click()
     await expect(page.getByTestId('esc-protocol-noncopter-note')).toBeVisible()
 
     // Safety-critical: a connected Sub now sees its leak failsafe (it was

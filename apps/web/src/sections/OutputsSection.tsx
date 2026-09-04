@@ -14,6 +14,7 @@
 // the parent; only their current values and the handlers that advance them
 // are passed in.
 
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import type {
   ConfiguratorSnapshot,
@@ -45,6 +46,23 @@ import type { createMotorPreviewNodes } from '../view-models/motor-preview'
 import { outputKindLabel, toneForOutputKind } from '../device-display'
 import { ALL_MOTOR_TEST_OUTPUT, ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS } from '../motor-test-helpers'
 import { MotorTestSliders } from '../motor-test-sliders'
+import {
+  type SpinWizardState,
+  confirmSpinWizard,
+  createIdleSpinWizardState,
+  deriveSpinThresholds,
+  describeSpinThresholdProblem,
+  formatSpinValue,
+  spinValueToThrottlePercent,
+  setSpinWizardValue,
+  spinCeilingReason,
+  startSpinWizard,
+  SPIN_ARM_MAX,
+  SPIN_WIZARD_KEEPALIVE_MS,
+  SPIN_WIZARD_TRACK_HEIGHT,
+  SPIN_WIZARD_START,
+  SPIN_WIZARD_WATCHDOG_SECONDS
+} from '../view-models/spin-threshold-wizard'
 import { MotorMixerDiagram } from '../views/MotorMixerDiagram'
 import { formatParameterValue, normalizeBitmaskValue } from '../parameter-format'
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
@@ -52,7 +70,9 @@ import { readRoundedParameter, selectParameterById } from '../selectors/paramete
 import { QUADPLANE_ESC_PARAM_IDS } from '../param-groups'
 import { buildPlaneControlSurfaces } from '../view-models/plane-control-surfaces'
 import {
+  MOTORS_SAFETY_ACK_ID,
   OUTPUTS_BENCH_TARGET_ID,
+  OUTPUTS_MOTOR_START_BUTTON_ID,
   OUTPUTS_MOTOR_TEST_BUTTON_ID,
   escCalibrationInstructions,
   escCalibrationPathLabel
@@ -167,7 +187,20 @@ export interface OutputsSectionHandlers {
   ) => void | Promise<void>
   handleDiscardScopedParameterDrafts: (paramIds: readonly string[], scopeLabel: string) => void
   handleOpenMotorReorderDialog: () => void
-  handleRunMotorTest: () => void | Promise<void>
+  /** Expert-only surfaces. The spin-threshold wizard spins every motor, so it
+   *  stays behind the same opt-in as the rest of the expert tooling. */
+  isExpertMode: boolean
+  /** Resolves with the guard reasons that REFUSED the request, or an empty
+   *  array when it ran. Callers driving their own test UI must surface them;
+   *  a silent refusal is indistinguishable from a broken button. */
+  handleRunMotorTest: (
+    override?: {
+      outputChannel?: number
+      throttlePercent?: number
+      durationSeconds?: number
+      replaceRunningTest?: boolean
+    }
+  ) => Promise<string[]>
   handleStopMotorTest: () => void | Promise<void>
   handleStartMotorVerification: (preferredOutputChannel?: number) => void
   handleConfirmMotorVerification: () => void
@@ -405,6 +438,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   const {
     handleApplyScopedParameterDrafts,
     handleDiscardScopedParameterDrafts,
+    isExpertMode,
     handleRunMotorTest,
     handleStopMotorTest,
     gimbalGroups,
@@ -420,6 +454,112 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     updateDrafts,
     setOutputTaskOverride
   } = handlers
+
+  // MOT_SPIN_ARM / MOT_SPIN_MIN by measurement. Drives the existing motor test
+  // (all motors at once) up a 0.01 staircase until the operator says every motor
+  // is turning, then adds margin twice -- once so ARM clears the break-away
+  // point, again so MIN clears ARM, which is the ordering firmware requires.
+  const [spinWizard, setSpinWizard] = useState<SpinWizardState>(createIdleSpinWizardState)
+  const [spinWizardOpen, setSpinWizardOpen] = useState(false)
+  // The reason the last command was refused, if it was. Shown in the popout.
+  const [spinWizardRefusal, setSpinWizardRefusal] = useState<string | undefined>(undefined)
+  const [spinArmDraft, setSpinArmDraft] = useState<string>('')
+  const [spinMinDraft, setSpinMinDraft] = useState<string>('')
+  const spinThresholdProblem =
+    spinWizard.status === 'ready'
+      ? describeSpinThresholdProblem(Number(spinArmDraft), Number(spinMinDraft))
+      : undefined
+
+  // Live throttle control.
+  //
+  // The operator scales up until the motors break away, so the motors have to
+  // FOLLOW the slider -- sampling it for a few seconds per release told them
+  // nothing about where the edge is. Holding them live means re-commanding
+  // continuously, which is what ArduPilot expects: a DO_MOTOR_TEST while a
+  // test runs updates the throttle in place rather than starting a second one.
+  //
+  // The link is the thing to protect. Each simultaneous update is one
+  // ACK-waited command per motor, so commanding on every pointermove queued
+  // minutes of work behind busyAction and left the app disabled -- the
+  // "configurator stopped responding" report. This sender keeps exactly one
+  // update in flight and collapses everything that arrives while it is busy
+  // down to the latest value: the rate self-limits to the round-trip time, and
+  // intermediate positions the slider merely passed through are never sent.
+  const spinLiveValue = useRef<number>(SPIN_WIZARD_START)
+  const spinSendBusy = useRef(false)
+  const spinSendDirty = useRef(false)
+
+  const sendSpinCommand = useCallback(async () => {
+    if (spinSendBusy.current) {
+      spinSendDirty.current = true
+      return
+    }
+    spinSendBusy.current = true
+    try {
+      do {
+        spinSendDirty.current = false
+        const refusedFor = await handleRunMotorTest({
+          outputChannel: ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS,
+          throttlePercent: spinValueToThrottlePercent(spinLiveValue.current),
+          // A deadman, not a run length: the keepalive below refreshes it, so
+          // motors stop on their own if this page stops sending.
+          durationSeconds: SPIN_WIZARD_WATCHDOG_SECONDS,
+          // Updating our own running test, not starting a second one.
+          replaceRunningTest: true
+        })
+        setSpinWizardRefusal(refusedFor.length > 0 ? refusedFor[0] : undefined)
+      } while (spinSendDirty.current)
+    } finally {
+      spinSendBusy.current = false
+    }
+  }, [handleRunMotorTest])
+
+  const runSpinWizardAt = useCallback(
+    (value: number) => {
+      spinLiveValue.current = value
+      // Mirrored into state so the guardrail card and sliders agree, but the
+      // command carries its own values -- state is not readable this tick.
+      setMotorTestOutput(ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS)
+      setMotorTestThrottlePercent(spinValueToThrottlePercent(value))
+      void sendSpinCommand()
+    },
+    [sendSpinCommand, setMotorTestOutput, setMotorTestThrottlePercent]
+  )
+
+  // Keepalive. Without it the motors stop as soon as the operator stops moving
+  // the slider -- which is exactly when they are staring at them deciding
+  // whether that counts as movement.
+  //
+  // Reached through a ref on purpose. handleRunMotorTest is redefined on every
+  // App render, so sendSpinCommand is a new function every render too; an
+  // effect depending on it tears the interval down and builds a new one each
+  // time, and with live telemetry re-rendering faster than the interval, it
+  // never fires at all. Measured: motors ran out their 2s watchdog and stopped
+  // while the wizard sat there claiming to hold them. Depending only on the
+  // status keeps one stable interval that always calls the latest sender.
+  const sendSpinCommandRef = useRef(sendSpinCommand)
+  useEffect(() => {
+    sendSpinCommandRef.current = sendSpinCommand
+  }, [sendSpinCommand])
+
+  useEffect(() => {
+    if (spinWizard.status !== 'stepping') {
+      return
+    }
+    const timer = setInterval(() => {
+      void sendSpinCommandRef.current()
+    }, SPIN_WIZARD_KEEPALIVE_MS)
+    return () => clearInterval(timer)
+  }, [spinWizard.status])
+
+  // Closing the popout must not leave motors turning: the wizard commands real
+  // motor tests, and dismissing a dialog is not a reason for a quad on the
+  // bench to keep spinning. Stop first, then reset, then close.
+  const closeSpinWizard = useCallback(() => {
+    void handleStopMotorTest()
+    setSpinWizard(createIdleSpinWizardState())
+    setSpinWizardOpen(false)
+  }, [handleStopMotorTest])
 
   // QuadPlane lift-motor ESC range (Q_M_*), the plane-side mirror of the Copter
   // MOT_* ESC surface. Only meaningful when VTOL is enabled (Q_ENABLE=1); built
@@ -450,13 +590,29 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         (channelNumber) => readRoundedParameter(snapshot, `SERVO${channelNumber}_REVERSED`) === 1
       )
 
+  // Motors shows every task on one page; Servos keeps its sub-tabs.
+  const showAllMotorTasks = activeViewId === 'motors'
+
   return (
+    <>
       <OutputsView
         // Motors tab: motor verification flow (everything except aux
         // servo peripherals). Servos tab: aux peripheral assignments
         // only. The underlying task-body render blocks below are still
         // gated by activeOutputTaskId so unfiltered task IDs simply
         // won't render — no duplicate UI between tabs.
+        // Motors is one page, not three sub-tabs.
+        //
+        // ESC & Protocol, Motor Setup and Direction & Test were mutually
+        // exclusive, so setting a protocol meant leaving the page you needed to
+        // check the result on -- and the ESC page had room to spare, half its
+        // rows empty. They render together now in the order a build is actually
+        // worked through: pick the protocol, map the motors, then spin them. The
+        // task strip stays as in-page navigation rather than a filter, so every
+        // existing route into a specific task still lands somewhere real.
+        //
+        // Servos keeps its sub-tabs: those are genuinely separate subsystems
+        // (gimbal, flow & lidar, relays), not three views of one job.
         taskCards={
           activeViewId === 'motors'
             ? // Motors is three sub-tabs in a fixed order: ESC & protocol,
@@ -481,308 +637,30 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         }
         activeTaskId={activeOutputTaskId}
         activeTask={activeOutputTask}
-        onSelectTask={setOutputTaskOverride}
+        onSelectTask={(taskId) => {
+          setOutputTaskOverride(taskId)
+          // On Motors every task is on the page, so selecting one scrolls to it
+          // rather than swapping the body out. Keeping setOutputTaskOverride as
+          // well means the strip still marks where you are, and every existing
+          // route that jumps straight to a task (the guided setup's "Open
+          // Motors", the reorder notice) still lands on the right section.
+          if (showAllMotorTasks) {
+            requestAnimationFrame(() => {
+              document
+                .querySelector(`[data-outputs-task="${taskId}"]`)
+                ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+            })
+          }
+        }}
+        // Motors is one page: no task strip, and the denser one-page rhythm.
+        singlePage={showAllMotorTasks}
         // The output overview panel was removed as part of the Motors/Outputs
         // declutter — the task surfaces below carry the per-output detail.
         overviewSlot={undefined}
         taskBodySlot={
           <>
-              {activeOutputTaskId === 'motor-setup' ? (
-                isCopterVehicle ? (
-                  <div className="outputs-task-panel outputs-task-panel--stack">{motorSetupSlot}</div>
-                ) : (
-                  <div className="outputs-task-panel outputs-task-panel--stack">
-                        <div className="vehicle-output-summary" data-testid="vehicle-output-summary">
-                          <div className="vehicle-output-summary__header">
-                            <div>
-                              <strong>{vehicleOutputSummary.title}</strong>
-                              <p>{vehicleOutputSummary.description}</p>
-                            </div>
-                            <StatusBadge tone={vehicleOutputSummary.configuredCount > 0 ? 'success' : 'warning'}>
-                              {vehicleOutputSummary.configuredCount} configured
-                            </StatusBadge>
-                          </div>
-                          {vehicleOutputSummary.groups.length === 0 ? (
-                            <p className="bf-note">
-                              No outputs are assigned yet. Map functions to the SERVOn outputs in the Servos tab.
-                            </p>
-                          ) : (
-                            vehicleOutputSummary.groups.map((group) => (
-                              <section
-                                key={group.id}
-                                className="vehicle-output-group"
-                                data-testid={`vehicle-output-group-${group.id}`}
-                              >
-                                <header className="vehicle-output-group__header">{group.label}</header>
-                                <div className="vehicle-output-group__rows">
-                                  {group.outputs.map((output) => (
-                                    <div
-                                      key={output.channelNumber}
-                                      className={`vehicle-output-row vehicle-output-row--${output.kind}`}
-                                      data-testid={`vehicle-output-row-${output.channelNumber}`}
-                                    >
-                                      <strong>OUT{output.channelNumber}</strong>
-                                      <span>{output.functionLabel}</span>
-                                      <StatusBadge tone={toneForOutputKind(output.kind)}>{outputKindLabel(output.kind)}</StatusBadge>
-                                    </div>
-                                  ))}
-                                </div>
-                              </section>
-                            ))
-                          )}
-                          {planeControlSurfaces.surfaces.length > 0 ? (
-                            <section className="vehicle-output-group" data-testid="plane-control-surfaces">
-                              <header className="vehicle-output-group__header">
-                                {`Control surfaces · ${planeControlSurfaces.mappedCount} mapped${
-                                  planeControlSurfaces.incompleteCount > 0
-                                    ? ` · ${planeControlSurfaces.incompleteCount} incomplete`
-                                    : ''
-                                }`}
-                              </header>
-                              <div className="vehicle-output-group__rows">
-                                {planeControlSurfaces.surfaces.map((surface) => (
-                                  <div
-                                    key={surface.key}
-                                    className="vehicle-output-row vehicle-output-row--control-surface"
-                                    data-testid={`plane-surface-${surface.key}`}
-                                  >
-                                    <strong>{surface.label}</strong>
-                                    <span>
-                                      {surface.channels
-                                        .map(
-                                          (channel) =>
-                                            `OUT${channel.channelNumber}${channel.side ? ` ${channel.side}` : ''}${
-                                              channel.reversed ? ' (rev)' : ''
-                                            }`
-                                        )
-                                        .join(', ')}
-                                    </span>
-                                    <StatusBadge tone={surface.status === 'incomplete' ? 'warning' : 'success'}>
-                                      {surface.note ?? 'mapped'}
-                                    </StatusBadge>
-                                  </div>
-                                ))}
-                              </div>
-                            </section>
-                          ) : null}
-                          <ul className="output-note-list">
-                            <li>Edit any assignment, PWM range, trim, or reverse in the Servos tab.</li>
-                            <li>Powered output movement tests for {airframe.frameClassLabel} (control-surface sweeps, steering/throttle, thrusters) are a guarded follow-up — use the transmitter on the bench meanwhile.</li>
-                          </ul>
-                        </div>
-                  </div>
-                )
-              ) : null}
-
-              {activeOutputTaskId === 'direction-test' ? (
-                <div className="outputs-task-panel outputs-task-panel--stack">
-                  {!isCopterVehicle ? (
-                    <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
-                      <div className="bf-gui-box__titlebar">
-                        <strong>Test</strong>
-                      </div>
-                      <div className="bf-gui-box__body">
-                        <p className="bf-note">
-                          Motor-direction and prop-spin verification is a multirotor procedure.
-                          {' '}
-                          For {airframe.frameClassLabel}, review the configured outputs in the
-                          Motor Setup task above (grouped by role) and edit assignments in the
-                          Servos tab. Powered output movement tests (control-surface sweeps,
-                          steering/throttle, thrusters) are a guarded follow-up — exercise them
-                          with the transmitter on the bench meanwhile.
-                        </p>
-                      </div>
-                    </section>
-                  ) : (
-                  <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
-                    <div className="bf-gui-box__titlebar">
-                      <strong>Test</strong>
-                    </div>
-                    <div className="bf-gui-box__body">
-                      <div className="motor-test-acknowledgments">
-                        {/* Props-off is the load-bearing safety ack — promote it
-                         *  visually so an operator who's eye-skimmed past it
-                         *  can't miss its unchecked state. Other acks stay in
-                         *  the muted style; only the prop guarantee gets the
-                         *  danger-toned card treatment until it's checked. */}
-                        {/* One combined safety ack — props off AND the craft
-                         *  restrained/clear — instead of two redundant boxes.
-                         *  Drives both underlying acknowledgments together. */}
-                        <label
-                          className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged && testAreaAcknowledged ? ' is-acknowledged' : ''}`}
-                          data-testid="motor-test-props-off-ack"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={propsRemovedAcknowledged && testAreaAcknowledged}
-                            onChange={(event) => {
-                              setPropsRemovedAcknowledged(event.target.checked)
-                              setTestAreaAcknowledged(event.target.checked)
-                            }}
-                            disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                          />
-                          <span>Props are off and the vehicle is restrained with the test area clear.</span>
-                        </label>
-                        {motorTestOverUsb ? (
-                          <label className="motor-test-acknowledgments__usb" data-testid="motor-test-usb-ack">
-                            <input
-                              type="checkbox"
-                              checked={usbBenchAcknowledged}
-                              onChange={(event) => setUsbBenchAcknowledged(event.target.checked)}
-                              disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                            />
-                            <span>USB connection detected — I confirm the craft is on the bench and will not arm/spin a flight-ready aircraft.</span>
-                          </label>
-                        ) : null}
-                      </div>
-                      <div className="motor-direction-layout">
-                        <div className="motor-direction-layout__sliders">
-                         <div className="motor-test-sliders-row">
-                          <MotorTestSliders
-                            targets={motorTestSliderTargets}
-                            selectedOutput={motorTestOutput}
-                            throttlePercent={motorTestThrottlePercent}
-                            onSelectOutput={(output) => setMotorTestOutput(output)}
-                            onThrottleChange={(percent) => setMotorTestThrottlePercent(percent)}
-                            onTest={() => void handleRunMotorTest()}
-                            testDisabled={busyAction !== undefined || !motorTestEligibility.allowed || motorTestOutput === undefined}
-                            onStop={() => void handleStopMotorTest()}
-                            stopEnabled={snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                            masterEnabled
-                            testId="motor-test-sliders"
-                          />
-                          {/* Small read-only motor map beside the sliders so the
-                              operator can see which OUTx/spin each Mn is — drawn
-                              from the vehicle's real FRAME_CLASS/FRAME_TYPE. Until
-                              the frame is known (or for non-matrix frames with no
-                              layout), prompt rather than draw a guessed shape. */}
-                          {motorPreviewFrameKnown && motorPreviewNodes.length > 0 ? (
-                            <MotorMixerDiagram
-                              nodes={motorPreviewNodes}
-                              geometryMode={motorPreviewGeometryMode}
-                              outputLabelByMotor={Object.fromEntries(
-                                outputMapping.motorOutputs
-                                  .filter((output) => output.motorNumber !== undefined)
-                                  .map((output) => [output.motorNumber as number, `OUT${output.channelNumber}`])
-                              )}
-                              className="motor-mixer-preview--test"
-                              testId="motor-test-diagram"
-                            />
-                          ) : (
-                            <div className="motor-mixer-preview motor-mixer-preview--test motor-mixer-preview--empty" data-testid="motor-test-diagram-empty">
-                              <p>
-                                {motorPreviewFrameKnown
-                                  ? 'No motor map for this frame class — the layout diagram covers the multirotor matrix frames.'
-                                  : 'Connect to the flight controller to read FRAME_CLASS / FRAME_TYPE and draw your frame’s motor layout and spin directions.'}
-                              </p>
-                            </div>
-                          )}
-                         </div>
-                         {/* Whether the motor actually turned, and how fast.
-                             Without this the tab could only report what it had
-                             commanded, leaving the operator to judge by eye. */}
-                         <EscRpmReadout
-                           model={buildEscRpmReadoutViewModel({
-                             escTelemetry: snapshot.liveVerification.escTelemetry,
-                             motors: outputMapping.motorOutputs.map((output) => ({
-                               channelNumber: output.channelNumber,
-                               motorNumber: output.motorNumber
-                             })),
-                             nowMs: Date.now()
-                           })}
-                         />
-                        </div>
-
-                        <div className="motor-test-card motor-test-card--embedded">
-                          <div className="switch-exercise-card__header">
-                            <div>
-                              <strong>Motor Test Guardrails</strong>
-                              <p>{snapshot.motorTest.summary}</p>
-                            </div>
-                            <StatusBadge tone={toneForMotorTestStatus(snapshot.motorTest.status)}>{snapshot.motorTest.status}</StatusBadge>
-                          </div>
-
-                          <div className="motor-test-grid">
-                            <label>
-                              <span>Output</span>
-                              <select
-                                value={motorTestOutput ?? ''}
-                                onChange={(event) => setMotorTestOutput(event.target.value ? Number(event.target.value) : undefined)}
-                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                              >
-                                <option value="">Select output</option>
-                                <option value={ALL_MOTOR_TEST_OUTPUT}>All mapped motors (sequence)</option>
-                                <option value={ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS}>All mapped motors (at once)</option>
-                                {outputMapping.motorOutputs.map((output) => (
-                                  <option key={output.paramId} value={output.channelNumber}>
-                                    OUT{output.channelNumber}
-                                    {output.motorNumber !== undefined ? ` / M${output.motorNumber}` : ''} · {output.functionLabel}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-
-                            <label>
-                              <span>Throttle %</span>
-                              <input
-                                type="number"
-                                min={1}
-                                max={MAX_MOTOR_TEST_THROTTLE_PERCENT}
-                                step={1}
-                                value={motorTestThrottlePercent}
-                                onChange={(event) => setMotorTestThrottlePercent(Number(event.target.value))}
-                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                              />
-                            </label>
-
-                            <label>
-                              <span>Duration (s)</span>
-                              <input
-                                type="number"
-                                min={0.1}
-                                max={motorTestMaxDurationSeconds}
-                                step={0.1}
-                                value={motorTestDurationSeconds}
-                                onChange={(event) => setMotorTestDurationSeconds(Number(event.target.value))}
-                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                              />
-                            </label>
-                          </div>
-
-
-                          <ul className="output-note-list">
-                            {motorTestGuardReasons.length > 0
-                              ? motorTestGuardReasons.map((reason) => <li key={reason}>{reason}</li>)
-                              : snapshot.motorTest.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}
-                          </ul>
-
-                          <div className="switch-exercise-controls">
-                            <button
-                              id={OUTPUTS_MOTOR_TEST_BUTTON_ID}
-                              type="button"
-                              className={
-                                motorVerification.status === 'running' && !currentMotorTestSucceeded && canRunMotorTest
-                                  ? 'guided-action-pulse'
-                                  : undefined
-                              }
-                              style={buttonStyle('secondary')}
-                              onClick={() => void handleRunMotorTest()}
-                              disabled={!canRunMotorTest || busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                            >
-                              {busyAction === 'motor-test' ? 'Sending…' : 'Run Motor Test'}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                    </div>
-                  </section>
-                  )}
-                </div>
-              ) : null}
-
-              {activeOutputTaskId === 'esc-protocol' ? (
-                <div className="outputs-task-panel outputs-task-panel--stack">
+              {showAllMotorTasks || activeOutputTaskId === 'esc-protocol' ? (
+                <div className="outputs-task-panel outputs-task-panel--stack" data-outputs-task="esc-protocol">
                   {!isCopterVehicle ? (
                     <section className="bf-gui-box">
                       <div className="bf-gui-box__titlebar">
@@ -1019,6 +897,381 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     ) : null}
 
                   </div>
+                  )}
+                </div>
+              ) : null}
+              {showAllMotorTasks || activeOutputTaskId === 'motor-setup' ? (
+                isCopterVehicle ? (
+                  <div
+                    className="outputs-task-panel outputs-task-panel--stack"
+                    data-outputs-task="motor-setup"
+                    // The guided wizard's "Open Motor Verification" has always
+                    // scrolled to this id -- which nothing rendered, so it
+                    // silently landed the operator at the top of Motors. The
+                    // order/direction work IS the motor verification, so the
+                    // panel that holds it carries the anchor.
+                    id={OUTPUTS_MOTOR_START_BUTTON_ID}
+                  >
+                    {motorSetupSlot}
+                    {isExpertMode ? (
+                      <div className="spin-wizard-launcher" data-testid="spin-threshold-wizard-launcher">
+                        <div>
+                          <strong>Spin thresholds</strong>
+                          <p>
+                            Measure where your motors actually break away instead of trusting the library
+                            defaults, then stage <code>MOT_SPIN_ARM</code> and <code>MOT_SPIN_MIN</code> from it.
+                          </p>
+                        </div>
+                        <StatusBadge tone={spinWizard.status === 'ready' ? 'success' : spinWizard.status === 'failed' ? 'danger' : 'neutral'}>
+                          {spinWizard.status === 'idle'
+                            ? 'not measured'
+                            : spinWizard.status === 'stepping'
+                              ? `testing ${formatSpinValue(spinWizard.currentValue)}`
+                              : spinWizard.status === 'ready'
+                                ? 'measured'
+                                : 'failed'}
+                        </StatusBadge>
+                        <button
+                          type="button"
+                          style={buttonStyle('primary')}
+                          data-testid="spin-wizard-open"
+                          onClick={() => setSpinWizardOpen(true)}
+                        >
+                          Measure Spin Thresholds
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="outputs-task-panel outputs-task-panel--stack">
+                        <div className="vehicle-output-summary" data-testid="vehicle-output-summary">
+                          <div className="vehicle-output-summary__header">
+                            <div>
+                              <strong>{vehicleOutputSummary.title}</strong>
+                              <p>{vehicleOutputSummary.description}</p>
+                            </div>
+                            <StatusBadge tone={vehicleOutputSummary.configuredCount > 0 ? 'success' : 'warning'}>
+                              {vehicleOutputSummary.configuredCount} configured
+                            </StatusBadge>
+                          </div>
+                          {vehicleOutputSummary.groups.length === 0 ? (
+                            <p className="bf-note">
+                              No outputs are assigned yet. Map functions to the SERVOn outputs in the Servos tab.
+                            </p>
+                          ) : (
+                            vehicleOutputSummary.groups.map((group) => (
+                              <section
+                                key={group.id}
+                                className="vehicle-output-group"
+                                data-testid={`vehicle-output-group-${group.id}`}
+                              >
+                                <header className="vehicle-output-group__header">{group.label}</header>
+                                <div className="vehicle-output-group__rows">
+                                  {group.outputs.map((output) => (
+                                    <div
+                                      key={output.channelNumber}
+                                      className={`vehicle-output-row vehicle-output-row--${output.kind}`}
+                                      data-testid={`vehicle-output-row-${output.channelNumber}`}
+                                    >
+                                      <strong>OUT{output.channelNumber}</strong>
+                                      <span>{output.functionLabel}</span>
+                                      <StatusBadge tone={toneForOutputKind(output.kind)}>{outputKindLabel(output.kind)}</StatusBadge>
+                                    </div>
+                                  ))}
+                                </div>
+                              </section>
+                            ))
+                          )}
+                          {planeControlSurfaces.surfaces.length > 0 ? (
+                            <section className="vehicle-output-group" data-testid="plane-control-surfaces">
+                              <header className="vehicle-output-group__header">
+                                {`Control surfaces · ${planeControlSurfaces.mappedCount} mapped${
+                                  planeControlSurfaces.incompleteCount > 0
+                                    ? ` · ${planeControlSurfaces.incompleteCount} incomplete`
+                                    : ''
+                                }`}
+                              </header>
+                              <div className="vehicle-output-group__rows">
+                                {planeControlSurfaces.surfaces.map((surface) => (
+                                  <div
+                                    key={surface.key}
+                                    className="vehicle-output-row vehicle-output-row--control-surface"
+                                    data-testid={`plane-surface-${surface.key}`}
+                                  >
+                                    <strong>{surface.label}</strong>
+                                    <span>
+                                      {surface.channels
+                                        .map(
+                                          (channel) =>
+                                            `OUT${channel.channelNumber}${channel.side ? ` ${channel.side}` : ''}${
+                                              channel.reversed ? ' (rev)' : ''
+                                            }`
+                                        )
+                                        .join(', ')}
+                                    </span>
+                                    <StatusBadge tone={surface.status === 'incomplete' ? 'warning' : 'success'}>
+                                      {surface.note ?? 'mapped'}
+                                    </StatusBadge>
+                                  </div>
+                                ))}
+                              </div>
+                            </section>
+                          ) : null}
+                          <ul className="output-note-list">
+                            <li>Edit any assignment, PWM range, trim, or reverse in the Servos tab.</li>
+                            <li>Powered output movement tests for {airframe.frameClassLabel} (control-surface sweeps, steering/throttle, thrusters) are a guarded follow-up — use the transmitter on the bench meanwhile.</li>
+                          </ul>
+                        </div>
+                  </div>
+                )
+              ) : null}
+              {showAllMotorTasks || activeOutputTaskId === 'direction-test' ? (
+                <div className="outputs-task-panel outputs-task-panel--stack" data-outputs-task="direction-test">
+                  {!isCopterVehicle ? (
+                    <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
+                      <div className="bf-gui-box__titlebar">
+                        <strong>Test</strong>
+                      </div>
+                      <div className="bf-gui-box__body">
+                        <p className="bf-note">
+                          Motor-direction and prop-spin verification is a multirotor procedure.
+                          {' '}
+                          For {airframe.frameClassLabel}, review the configured outputs in the
+                          Motor Setup task above (grouped by role) and edit assignments in the
+                          Servos tab. Powered output movement tests (control-surface sweeps,
+                          steering/throttle, thrusters) are a guarded follow-up — exercise them
+                          with the transmitter on the bench meanwhile.
+                        </p>
+                      </div>
+                    </section>
+                  ) : (
+                  <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
+                    <div className="bf-gui-box__titlebar">
+                      <strong>Test</strong>
+                    </div>
+                    <div className="bf-gui-box__body">
+                      <div className="motor-test-acknowledgments">
+                        {/* Props-off is the load-bearing safety ack — promote it
+                         *  visually so an operator who's eye-skimmed past it
+                         *  can't miss its unchecked state. Other acks stay in
+                         *  the muted style; only the prop guarantee gets the
+                         *  danger-toned card treatment until it's checked. */}
+                        {/* One combined safety ack — props off AND the craft
+                         *  restrained/clear — instead of two redundant boxes.
+                         *  Drives both underlying acknowledgments together.
+                         *
+                         *  Only rendered when the Motor Setup panel is NOT on
+                         *  the page. On Motors everything renders at once and
+                         *  that panel pins the same ack (same state, same
+                         *  wording) at the top, so a second copy here was pure
+                         *  duplication. Where this panel is the only one on
+                         *  screen it is also the only ack, and the motor test
+                         *  must not be reachable without one. */}
+                        {showAllMotorTasks ? null : (
+                        <label
+                          className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged && testAreaAcknowledged ? ' is-acknowledged' : ''}`}
+                          data-testid="motor-test-props-off-ack"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={propsRemovedAcknowledged && testAreaAcknowledged}
+                            onChange={(event) => {
+                              setPropsRemovedAcknowledged(event.target.checked)
+                              setTestAreaAcknowledged(event.target.checked)
+                            }}
+                            disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                          />
+                          <span>Props are off and the vehicle is restrained with the test area clear.</span>
+                        </label>
+                        )}
+                        {motorTestOverUsb ? (
+                          <label className="motor-test-acknowledgments__usb" data-testid="motor-test-usb-ack">
+                            <input
+                              type="checkbox"
+                              checked={usbBenchAcknowledged}
+                              onChange={(event) => setUsbBenchAcknowledged(event.target.checked)}
+                              disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                            />
+                            <span>USB connection detected — I confirm the craft is on the bench and will not arm/spin a flight-ready aircraft.</span>
+                          </label>
+                        ) : null}
+                      </div>
+                      <div className="motor-direction-layout">
+                        <div className="motor-direction-layout__sliders">
+                         <div className="motor-test-sliders-row">
+                          <MotorTestSliders
+                            targets={motorTestSliderTargets}
+                            selectedOutput={motorTestOutput}
+                            throttlePercent={motorTestThrottlePercent}
+                            onSelectOutput={(output) => setMotorTestOutput(output)}
+                            onThrottleChange={(percent) => setMotorTestThrottlePercent(percent)}
+                            onTest={() => void handleRunMotorTest()}
+                            testDisabled={busyAction !== undefined || !motorTestEligibility.allowed || motorTestOutput === undefined}
+                            onStop={() => void handleStopMotorTest()}
+                            stopEnabled={snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                            masterEnabled
+                            testId="motor-test-sliders"
+                          />
+                          {/* Small read-only motor map beside the sliders so the
+                              operator can see which OUTx/spin each Mn is — drawn
+                              from the vehicle's real FRAME_CLASS/FRAME_TYPE. Until
+                              the frame is known (or for non-matrix frames with no
+                              layout), prompt rather than draw a guessed shape. */}
+                          {motorPreviewFrameKnown && motorPreviewNodes.length > 0 ? (
+                            <MotorMixerDiagram
+                              nodes={motorPreviewNodes}
+                              geometryMode={motorPreviewGeometryMode}
+                              outputLabelByMotor={Object.fromEntries(
+                                outputMapping.motorOutputs
+                                  .filter((output) => output.motorNumber !== undefined)
+                                  .map((output) => [output.motorNumber as number, `OUT${output.channelNumber}`])
+                              )}
+                              className="motor-mixer-preview--test"
+                              testId="motor-test-diagram"
+                            />
+                          ) : (
+                            <div className="motor-mixer-preview motor-mixer-preview--test motor-mixer-preview--empty" data-testid="motor-test-diagram-empty">
+                              <p>
+                                {motorPreviewFrameKnown
+                                  ? 'No motor map for this frame class — the layout diagram covers the multirotor matrix frames.'
+                                  : 'Connect to the flight controller to read FRAME_CLASS / FRAME_TYPE and draw your frame’s motor layout and spin directions.'}
+                              </p>
+                            </div>
+                          )}
+                         </div>
+                         {/* Whether the motor actually turned, and how fast.
+                             Without this the tab could only report what it had
+                             commanded, leaving the operator to judge by eye. */}
+                         <EscRpmReadout
+                           model={buildEscRpmReadoutViewModel({
+                             escTelemetry: snapshot.liveVerification.escTelemetry,
+                             motors: outputMapping.motorOutputs.map((output) => ({
+                               channelNumber: output.channelNumber,
+                               motorNumber: output.motorNumber
+                             })),
+                             nowMs: Date.now()
+                           })}
+                         />
+                        </div>
+
+                        <div className="motor-test-card motor-test-card--embedded">
+                          <div className="switch-exercise-card__header">
+                            <div>
+                              <strong>Motor Test Guardrails</strong>
+                              <p>{snapshot.motorTest.summary}</p>
+                            </div>
+                            <StatusBadge tone={toneForMotorTestStatus(snapshot.motorTest.status)}>{snapshot.motorTest.status}</StatusBadge>
+                          </div>
+
+                          <div className="motor-test-grid">
+                            <label>
+                              <span>Output</span>
+                              <select
+                                value={motorTestOutput ?? ''}
+                                onChange={(event) => setMotorTestOutput(event.target.value ? Number(event.target.value) : undefined)}
+                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                              >
+                                <option value="">Select output</option>
+                                <option value={ALL_MOTOR_TEST_OUTPUT}>All mapped motors (sequence)</option>
+                                <option value={ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS}>All mapped motors (at once)</option>
+                                {outputMapping.motorOutputs.map((output) => (
+                                  <option key={output.paramId} value={output.channelNumber}>
+                                    OUT{output.channelNumber}
+                                    {output.motorNumber !== undefined ? ` / M${output.motorNumber}` : ''} · {output.functionLabel}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label>
+                              <span>Throttle %</span>
+                              <input
+                                type="number"
+                                min={1}
+                                max={MAX_MOTOR_TEST_THROTTLE_PERCENT}
+                                step={1}
+                                value={motorTestThrottlePercent}
+                                onChange={(event) => setMotorTestThrottlePercent(Number(event.target.value))}
+                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                              />
+                            </label>
+
+                            <label>
+                              <span>Duration (s)</span>
+                              <input
+                                type="number"
+                                min={0.1}
+                                max={motorTestMaxDurationSeconds}
+                                step={0.1}
+                                value={motorTestDurationSeconds}
+                                onChange={(event) => setMotorTestDurationSeconds(Number(event.target.value))}
+                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                              />
+                            </label>
+                          </div>
+
+
+                          {/* Reasons the test is currently blocked always show --
+                           *  they are the only place the operator learns WHY the
+                           *  Run button will not fire. The generic standing
+                           *  instructions ("props removed", "vehicle restrained")
+                           *  are the same two sentences as the safety ack pinned
+                           *  at the top of the Motors page, so on that one-page
+                           *  layout they are dropped rather than printed twice.
+                           *  Anywhere the ack is not on screen, they stay. */}
+                          {motorTestGuardReasons.length > 0 ? (
+                            <>
+                            <ul className="output-note-list">
+                              {motorTestGuardReasons.map((reason) => <li key={reason}>{reason}</li>)}
+                            </ul>
+                            {/* The single safety ack lives at the top of the
+                             *  page now, and on a wide screen this panel is a
+                             *  sticky column beside it -- so the control that
+                             *  unblocks the button can be off-screen above the
+                             *  operator while they read why it is blocked.
+                             *  Take them to it rather than describing it. */}
+                            {showAllMotorTasks && (!propsRemovedAcknowledged || !testAreaAcknowledged) ? (
+                              <button
+                                type="button"
+                                style={buttonStyle()}
+                                data-testid="motor-test-goto-ack"
+                                onClick={() =>
+                                  document
+                                    .getElementById(MOTORS_SAFETY_ACK_ID)
+                                    ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+                                }
+                              >
+                                Go to the safety acknowledgement
+                              </button>
+                            ) : null}
+                            </>
+                          ) : showAllMotorTasks ? null : (
+                            <ul className="output-note-list">
+                              {snapshot.motorTest.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}
+                            </ul>
+                          )}
+
+                          <div className="switch-exercise-controls">
+                            <button
+                              id={OUTPUTS_MOTOR_TEST_BUTTON_ID}
+                              type="button"
+                              className={
+                                motorVerification.status === 'running' && !currentMotorTestSucceeded && canRunMotorTest
+                                  ? 'guided-action-pulse'
+                                  : undefined
+                              }
+                              style={buttonStyle('secondary')}
+                              onClick={() => void handleRunMotorTest()}
+                              disabled={!canRunMotorTest || busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                            >
+                              {busyAction === 'motor-test' ? 'Sending…' : 'Run Motor Test'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </section>
                   )}
                 </div>
               ) : null}
@@ -1561,5 +1814,237 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
           </div>
         ) : null}
       />
+
+      {/* Spin-threshold wizard — a popout rather than a panel on the page.
+       *  It owns the motors while it runs (it drives real motor-test commands
+       *  at a rising throttle), so it wants the operator's whole attention,
+       *  and the Motors tab has no room to spare for a surface used once per
+       *  build. Closing it stops whatever it was spinning. */}
+      {isExpertMode && spinWizardOpen ? (
+        <div
+          className="board-media-lightbox spin-wizard-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Measure spin thresholds"
+          onClick={closeSpinWizard}
+        >
+          <div
+            className="board-media-lightbox__frame spin-wizard-lightbox__frame"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="board-media-lightbox__header">
+              <div>
+                <strong>Spin thresholds</strong>
+                <p>
+                  Every motor spins at a rising output until you say they are all turning.{' '}
+                  <code>MOT_SPIN_ARM</code> lands one margin above that and <code>MOT_SPIN_MIN</code>{' '}
+                  another above ARM, which is the order the firmware requires. Nothing is written
+                  until you stage the values.
+                </p>
+              </div>
+              <StatusBadge tone={spinWizard.status === 'ready' ? 'success' : spinWizard.status === 'failed' ? 'danger' : 'neutral'}>
+                {spinWizard.status === 'idle'
+                  ? 'not measured'
+                  : spinWizard.status === 'stepping'
+                    ? `testing ${formatSpinValue(spinWizard.currentValue)}`
+                    : spinWizard.status === 'ready'
+                      ? 'measured'
+                      : 'failed'}
+              </StatusBadge>
+              <button type="button" style={buttonStyle()} data-testid="spin-wizard-close" onClick={closeSpinWizard}>
+                Close
+              </button>
+            </div>
+            <section className="bf-gui-box" data-testid="spin-threshold-wizard">
+
+                        {spinWizard.status === 'idle' ? (
+                          <button
+                            style={buttonStyle('primary')}
+                            data-testid="spin-wizard-start"
+                            disabled={busyAction !== undefined || !motorTestEligibility.allowed || !propsRemovedAcknowledged || !testAreaAcknowledged}
+                            onClick={() => {
+                              const next = startSpinWizard()
+                              setSpinWizard(next)
+                              runSpinWizardAt(next.currentValue)
+                            }}
+                          >
+                            Start Measuring
+                          </button>
+                        ) : null}
+
+                        {/* The gate lives on the page behind this dialog, so a
+                         *  disabled Start with no explanation would be a dead
+                         *  end. Name the missing condition instead. */}
+                        {spinWizard.status === 'idle' && (!propsRemovedAcknowledged || !testAreaAcknowledged) ? (
+                          <p className="switch-exercise-warning" data-testid="spin-wizard-blocked">
+                            Confirm props are off and the vehicle is restrained — the checkbox at the top of
+                            the Motors tab — before measuring. This spins every motor.
+                          </p>
+                        ) : null}
+
+                        {spinWizard.status === 'stepping' ? (
+                          <div className="motor-test-sliders-row" data-testid="spin-wizard-stepping">
+                            {/* The same slider component the test section uses, so
+                                this reads as the Motors page rather than a form.
+                                Driving ALL simultaneously: the point being found is
+                                where every motor breaks away, not the best one. */}
+                            <MotorTestSliders
+                              // ALL only. The wizard drives every motor at once
+                              // by definition -- the point is where they ALL
+                              // break away -- so per-motor tiles here are four
+                              // controls that read 0% and do nothing.
+                              targets={[]}
+                              selectedOutput={ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS}
+                              throttlePercent={spinValueToThrottlePercent(spinWizard.currentValue)}
+                              onSelectOutput={() => undefined}
+                              // Live: the motors follow the slider. Safe to
+                              // fire on every pointermove because the sender
+                              // keeps one update in flight and collapses the
+                              // rest to the latest value.
+                              onThrottleChange={(percent) => {
+                                const next = setSpinWizardValue(spinWizard, percent / 100)
+                                setSpinWizard(next)
+                                runSpinWizardAt(next.currentValue)
+                              }}
+                              onTest={() => runSpinWizardAt(spinWizard.currentValue)}
+                              testDisabled={busyAction !== undefined || !motorTestEligibility.allowed}
+                              onStop={() => void handleStopMotorTest()}
+                              stopEnabled={snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+                              masterEnabled
+                              // The whole track covers the wizard's own range.
+                              // At full scale its usable 0-20% lived in the
+                              // bottom fifth of the track -- about 16px for
+                              // twenty steps -- so easing up on the break-away
+                              // point meant nudging a few pixels at a time.
+                              maxPercent={spinValueToThrottlePercent(SPIN_ARM_MAX)}
+                              trackHeight={SPIN_WIZARD_TRACK_HEIGHT}
+                              testId="spin-wizard-sliders"
+                            />
+                            <div className="motor-test-acknowledgments">
+                              <p>
+                                The motors are live and following the slider — raise it slowly until
+                                they all just break away, then say so. Commanding{' '}
+                                <strong>{formatSpinValue(spinWizard.currentValue)}</strong>{' '}
+                                ({spinValueToThrottlePercent(spinWizard.currentValue)}%).
+                              </p>
+                              {/* Fixed-height slot. Both of these appear and
+                               *  vanish while the operator is on the slider,
+                               *  and letting them reflow moved the control
+                               *  under the cursor mid-drag. */}
+                              <div className="spin-wizard-messages">
+                                {spinWizard.currentValue >= SPIN_ARM_MAX ? (
+                                  <p className="switch-exercise-warning" data-testid="spin-wizard-ceiling">{spinCeilingReason()}</p>
+                                ) : null}
+                                {spinWizardRefusal ? (
+                                  <p className="switch-exercise-warning" data-testid="spin-wizard-refused">
+                                    Motors not commanded: {spinWizardRefusal}
+                                  </p>
+                                ) : null}
+                              </div>
+                              <div className="button-row">
+                                <button
+                                  style={buttonStyle('primary')}
+                                  data-testid="spin-wizard-mark"
+                                  onClick={() => {
+                                    const next = confirmSpinWizard(spinWizard)
+                                    setSpinWizard(next)
+                                    void handleStopMotorTest()
+                                    if (next.observedValue !== undefined) {
+                                      const derived = deriveSpinThresholds(next.observedValue)
+                                      setSpinArmDraft(formatSpinValue(derived.spinArm))
+                                      setSpinMinDraft(formatSpinValue(derived.spinMin))
+                                    }
+                                  }}
+                                >
+                                  They just started spinning
+                                </button>
+                                <button
+                                  style={buttonStyle()}
+                                  data-testid="spin-wizard-cancel"
+                                  onClick={() => {
+                                    setSpinWizard(createIdleSpinWizardState())
+                                    void handleStopMotorTest()
+                                  }}
+                                >
+                                  Stop
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {spinWizard.status === 'ready' ? (
+                          <div className="scoped-editor-grid" data-testid="spin-wizard-result">
+                            <label className="scoped-editor-field">
+                              <span>MOT_SPIN_ARM</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                max="0.2"
+                                value={spinArmDraft}
+                                data-testid="spin-wizard-arm"
+                                onChange={(event) => setSpinArmDraft(event.target.value)}
+                              />
+                            </label>
+                            <label className="scoped-editor-field">
+                              <span>MOT_SPIN_MIN</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                max="0.25"
+                                value={spinMinDraft}
+                                data-testid="spin-wizard-min"
+                                onChange={(event) => setSpinMinDraft(event.target.value)}
+                              />
+                            </label>
+                            <p className="bf-note">
+                              Motors first turned at {formatSpinValue(spinWizard.observedValue ?? 0)}. Adjust either
+                              value before staging if you want more margin.
+                            </p>
+                            {spinThresholdProblem ? (
+                              <p className="switch-exercise-warning" data-testid="spin-wizard-problem">{spinThresholdProblem}</p>
+                            ) : null}
+                            <div className="button-row">
+                              <button
+                                style={buttonStyle('primary')}
+                                data-testid="spin-wizard-stage"
+                                disabled={spinThresholdProblem !== undefined}
+                                onClick={() => {
+                                  setDraft('MOT_SPIN_ARM', spinArmDraft)
+                                  setDraft('MOT_SPIN_MIN', spinMinDraft)
+                                  setSpinWizard(createIdleSpinWizardState())
+                                }}
+                              >
+                                Stage Both Values
+                              </button>
+                              <button
+                                style={buttonStyle()}
+                                data-testid="spin-wizard-restart"
+                                onClick={() => setSpinWizard(createIdleSpinWizardState())}
+                              >
+                                Start Over
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {spinWizard.status === 'failed' ? (
+                          <div className="motor-test-acknowledgments">
+                            <p className="switch-exercise-warning" data-testid="spin-wizard-failed">{spinWizard.failureReason}</p>
+                            <button
+                              style={buttonStyle()}
+                              onClick={() => setSpinWizard(createIdleSpinWizardState())}
+                            >
+                              Start Over
+                            </button>
+                          </div>
+                        ) : null}
+            </section>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }

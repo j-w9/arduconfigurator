@@ -27,6 +27,35 @@ test('cloneLiveVerification leaves imuTemperatureC undefined when unset', () => 
   assert.equal(cloned.imuTemperatureC, undefined)
 })
 
+// The same omission, a second time, in the same function: accelMss (the
+// accelerometer from the same SCALED_IMU frame) was added to the state and to
+// the decoder but not here, so the board-orientation capture that runs during
+// an accelerometer calibration silently had no input. Caught on hardware --
+// the live IMU temperature was updating while accelMss stayed unset, which is
+// only possible if the clone is dropping it.
+test('cloneLiveVerification carries accelMss through to the snapshot', () => {
+  const state = createIdleLiveVerification()
+  state.accelMss = { x: 0.17, y: 0.09, z: 9.82 }
+  const cloned = cloneLiveVerification(state)
+  assert.deepEqual(cloned.accelMss, { x: 0.17, y: 0.09, z: 9.82 })
+})
+
+test('cloneLiveVerification copies accelMss rather than sharing it', () => {
+  // The live object is rewritten in place as frames arrive at 10 Hz, so a
+  // shared reference would let an already-emitted snapshot change underneath
+  // whoever is reading it.
+  const state = createIdleLiveVerification()
+  state.accelMss = { x: 1, y: 2, z: 3 }
+  const cloned = cloneLiveVerification(state)
+  state.accelMss.x = 99
+  assert.equal(cloned.accelMss.x, 1)
+})
+
+test('cloneLiveVerification leaves accelMss undefined when unset', () => {
+  const cloned = cloneLiveVerification(createIdleLiveVerification())
+  assert.equal(cloned.accelMss, undefined)
+})
+
 test('cloneLiveVerification is a deep copy (mutating the clone does not touch the source)', () => {
   const state = createIdleLiveVerification()
   const cloned = cloneLiveVerification(state)

@@ -15,6 +15,15 @@ export const OUTPUTS_BENCH_TARGET_ID = 'outputs-bench-lab'
 export const OUTPUTS_MOTOR_START_BUTTON_ID = 'outputs-motor-verification-start'
 export const OUTPUTS_MOTOR_TEST_BUTTON_ID = 'outputs-motor-test-run'
 export const OUTPUTS_MOTOR_CONFIRM_BUTTON_ID = 'outputs-motor-confirm'
+/**
+ * The single props-off / area-clear acknowledgement on the Motors tab.
+ *
+ * It used to sit inside the Test panel; on the one-page Motors layout there is
+ * one ack for the whole page, pinned at the top, and the Test panel is a
+ * sticky column beside it. Anything that tells the operator to acknowledge
+ * before spinning needs to be able to put them in front of it.
+ */
+export const MOTORS_SAFETY_ACK_ID = 'motors-safety-ack'
 export const SETUP_WIZARD_PRIMARY_ACTION_ID = 'setup-wizard-primary-action'
 export const SETUP_WIZARD_NEXT_STEP_ID = 'setup-wizard-next-step'
 
@@ -135,6 +144,8 @@ export function appViewForPanel(panelId: string): AppViewId {
       // on the Motors nav tab. (Servos is a separate nav tab for aux
       // peripheral servo work and isn't part of the setup checklist.)
       return 'motors'
+    case 'setup-panel-calibration':
+      return 'calibration'
     case 'setup-panel-modes':
       return 'modes'
     case 'setup-panel-failsafe':

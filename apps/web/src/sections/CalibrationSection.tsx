@@ -3,7 +3,7 @@
 // actions + battery voltage / battery current / airspeed / ESC throttle
 // calibration cards. ~470 lines of inline JSX moved verbatim.
 
-import { useEffect, useRef, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
 import { EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS, MAX_MOTOR_TEST_DURATION_SECONDS } from '@arduconfig/ardupilot-core'
@@ -17,7 +17,15 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { formatArducopterMotorPwmType } from '@arduconfig/param-metadata'
 
 import { AccelerometerPoseGuide } from '../accelerometer-pose-guide'
+
+/** SCALED_IMU (msgid 26) — the stream the pose capture samples. */
+const MAVLINK_SCALED_IMU_ID = 26
+/** 10 Hz while a calibration runs; enough to see whether a pose is held. */
+const ACCEL_CAPTURE_INTERVAL_US = 100_000
+/** What the session asks for otherwise, for the TCAL temperature readout. */
+const BASELINE_IMU_INTERVAL_US = 1_000_000
 import { CalibrationLocationButton } from './CalibrationLocationCard'
+import { BoardOrientationResult } from '../views/BoardOrientationResult'
 import { TcalCalibrationCard } from './TcalCalibrationCard'
 import { ValtCalibrationCard } from './ValtCalibrationCard'
 import {
@@ -27,6 +35,11 @@ import {
   setupActionBusyReason
 } from '../guided-action-helpers'
 import type { GuidedActionId } from '../guided-action-labels'
+import {
+  capturedSamples,
+  createAccelCalCaptureState,
+  observeAccelCalSample
+} from '../view-models/accel-cal-orientation-capture'
 import type { ParameterNotice } from '../hooks/use-parameter-feedback'
 import type { UseCalibrationNoticesResult } from '../hooks/use-calibration-notices'
 import type { UseSafetyAcksResult } from '../hooks/use-safety-acks'
@@ -230,6 +243,13 @@ function MotorSpinAcknowledgements(props: {
 }
 
 export function CalibrationSection(props: CalibrationSectionProps): ReactElement {
+  // Board-orientation samples, collected while the accelerometer calibration
+  // runs. Held in a ref rather than state so arriving IMU frames (10 Hz) do not
+  // re-render the whole calibration surface; only the captured-pose count,
+  // which changes a handful of times per calibration, drives a render.
+  const accelCalCapture = useRef(createAccelCalCaptureState())
+  const [accelCalCaptureCount, setAccelCalCaptureCount] = useState(0)
+
   // Throttle used for the current-calibration load spin. Local to this card:
   // it is a transient bench choice, not something worth persisting.
   const [currentCalThrottlePercent, setCurrentCalThrottlePercent] = useState('20')
@@ -379,9 +399,57 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
    */
   const [dismissedRebootPrompts, setDismissedRebootPrompts] = useState<ReadonlySet<string>>(() => new Set())
 
+  // Fold each accelerometer reading into the capture while the calibration is
+  // running. The pose comes from the autopilot's own prompt rather than our
+  // attitude readout: attitude is derived through AHRS_ORIENTATION, so on the
+  // very boards worth detecting it disagrees with the operator about which pose
+  // they are in.
+  const accelCalAction = snapshot.guidedActions['calibrate-accelerometer']
+  const accelCalRunning = accelCalAction.status === 'running' || accelCalAction.status === 'requested'
+  const liveAccel = snapshot.liveVerification.accelMss
+  useEffect(() => {
+    const before = Object.keys(accelCalCapture.current.samples).length
+    accelCalCapture.current = observeAccelCalSample(accelCalCapture.current, {
+      running: accelCalRunning,
+      pose: accelCalRunning ? accelerometerPoseFromAction(snapshot) : undefined,
+      accel: liveAccel ? [liveAccel.x, liveAccel.y, liveAccel.z] : undefined
+    })
+    const after = Object.keys(accelCalCapture.current.samples).length
+    if (after !== before) {
+      setAccelCalCaptureCount(after)
+    }
+  }, [accelCalRunning, liveAccel, snapshot])
+
+  // SCALED_IMU is requested at 1 Hz for the session, which is plenty for the
+  // TCAL temperature readout it was added for but cannot tell a held pose from
+  // a slow hand -- and a capture window would take ten seconds to fill. Ask for
+  // 10 Hz for exactly as long as a calibration is running, then give it back,
+  // rather than making every session carry the bandwidth.
+  const runtimeRef = useRef(runtime)
+  runtimeRef.current = runtime
+  useEffect(() => {
+    if (!accelCalRunning) {
+      return
+    }
+    void runtimeRef.current.requestMessageInterval(MAVLINK_SCALED_IMU_ID, ACCEL_CAPTURE_INTERVAL_US)
+    return () => {
+      void runtimeRef.current.requestMessageInterval(MAVLINK_SCALED_IMU_ID, BASELINE_IMU_INTERVAL_US)
+    }
+  }, [accelCalRunning])
+
+  const accelCalOrientationSamples = useMemo(
+    () => capturedSamples(accelCalCapture.current),
+    // The ref mutates in place; the count is what says a new pose landed.
+    [accelCalCaptureCount]
+  )
+
   return (
 
-        <section className="grid one-up">
+        // Anchored so the guided setup can route here. The wizard reaches
+        // Calibration for accel/level/compass via the guided panel, but the ESC
+        // and battery calibration cards on this tab had no route from the flow at
+        // all -- the Power step pointed at Config's power category instead.
+        <section className="grid one-up" id="setup-panel-calibration">
           <Panel
             title="Calibration"
             subtitle="Accelerometer, level, and compass calibration."
@@ -469,6 +537,18 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                         pitchDeg={snapshot.liveVerification.attitudeTelemetry.pitchDeg}
                         attitudeVerified={snapshot.liveVerification.attitudeTelemetry.verified}
                         testId="calibration-accelerometer-guide"
+                      />
+                    ) : null}
+                    {/* The calibration's own poses measure the mounting, so
+                        the result belongs here rather than in a separate
+                        orientation surface. Renders nothing unless it
+                        disagrees with AHRS_ORIENTATION. */}
+                    {action.actionId === 'calibrate-accelerometer' ? (
+                      <BoardOrientationResult
+                        samples={accelCalOrientationSamples}
+                        currentOrientation={readRoundedParameter(snapshot, 'AHRS_ORIENTATION')}
+                        disabled={busyAction !== undefined}
+                        onStage={(value) => setDraft('AHRS_ORIENTATION', String(value))}
                       />
                     ) : null}
                     {/* Inline how-to hint per guided cal action. Collapsed by
