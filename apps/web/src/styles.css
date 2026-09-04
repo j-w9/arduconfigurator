@@ -12100,6 +12100,17 @@ details.metadata-settings-section:not([open]) > summary::after {
   background: rgba(55, 41, 24, 0.3);
 }
 
+/* Badge above the text rather than beside it.
+ *
+ * The row layout works in a wide panel; in a single calibration column it left
+ * the paragraph about 100px wide and turned three sentences into a column of
+ * text taller than the card explaining it. Stacking gives the copy the full
+ * width it has. */
+.parameter-follow-up--stacked {
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .parameter-follow-up p {
   margin: 0;
   color: var(--text);

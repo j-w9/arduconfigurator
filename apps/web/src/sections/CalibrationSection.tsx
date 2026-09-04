@@ -1400,15 +1400,15 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                         </div>
                       ) : null}
                       {escCalUnsupported ? (
-                        <div className="parameter-follow-up parameter-follow-up--warning" data-testid="esc-cal-unsupported">
+                        <div
+                          className="parameter-follow-up parameter-follow-up--warning parameter-follow-up--stacked"
+                          data-testid="esc-cal-unsupported"
+                        >
                           <StatusBadge tone="neutral">not applicable</StatusBadge>
                           <p>
-                            ESC endpoint calibration only applies to PWM / OneShot ESCs. This vehicle's motor output is
-                            {' '}<strong>{escProtocolLabel}</strong> (<code>MOT_PWM_TYPE</code>)
-                            {escIsDShot
-                              ? ' — a digital protocol with no throttle endpoints to calibrate.'
-                              : ' — which does not use throttle-endpoint calibration.'}
-                            {' '}Change <code>MOT_PWM_TYPE</code> to a PWM/OneShot type in Motors if you truly need to calibrate analog ESCs.
+                            This vehicle runs <strong>{escProtocolLabel}</strong> (<code>MOT_PWM_TYPE</code>)
+                            {escIsDShot ? ', a digital protocol with no throttle endpoints.' : ', which has no throttle endpoints.'}
+                            {' '}Only PWM and OneShot ESCs need this.
                           </p>
                         </div>
                       ) : (
