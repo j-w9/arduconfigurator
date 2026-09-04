@@ -1176,7 +1176,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                               })()
                             }}
                           >
-                            Calibrate from measured current
+                            Calibrate from meter
                           </button>
                           </li>
                           </ol>
