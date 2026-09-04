@@ -8,7 +8,7 @@
 // onSelectStep (which both sets the selected section and forces wizard mode).
 // Behavior-preserving.
 
-import type { ReactElement } from 'react'
+import { useEffect, useRef, type ReactElement } from 'react'
 
 import { StatusBadge } from '@arduconfig/ui-kit'
 
@@ -38,6 +38,12 @@ export function SetupWizardHeader({
   onSelectStep,
   onResetProgress
 }: SetupWizardHeaderProps): ReactElement {
+  const activeStepRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    activeStepRef.current?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
+  }, [selectedSetupSection.id])
+
   return (
     <>
       <div className="setup-wizard__header">
@@ -101,6 +107,10 @@ export function SetupWizardHeader({
         {setupFlowSections.map((section, index) => (
           <button
             key={section.id}
+            /* The rail is a single horizontal scroller ~3 viewports wide on a
+               phone, and it never scrolled itself: past step 4 the chip marking
+               where the operator IS sat off-screen with no cue it existed. */
+            ref={section.id === selectedSetupSection.id ? activeStepRef : undefined}
             type="button"
             /* The wizard's primary navigation, so it gets a stable hook like
                every other interactive surface here. Without it an e2e has to

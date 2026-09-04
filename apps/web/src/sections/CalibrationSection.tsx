@@ -1259,6 +1259,12 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 // is digital with no endpoints; Brushed (3) and PWMRange/PWMAngle
                 // (8/9) don't calibrate this way either — block all of them.
                 const motPwmType = readRoundedParameter(snapshot, 'MOT_PWM_TYPE')
+                // ESC_CALIBRATION persists in EEPROM. If the reboot never landed --
+                // link dropped, USB pulled, operator cancelled after the write -- the
+                // flag sits armed and the NEXT power-up runs all motors to full
+                // throttle, possibly in the field with props on. Nothing warned about
+                // that, so surface it wherever the operator reconnects.
+                const escCalPending = readRoundedParameter(snapshot, 'ESC_CALIBRATION')
                 const escCalUnsupported = motPwmType !== undefined && (motPwmType < 0 || motPwmType > 2)
                 const escProtocolLabel = formatArducopterMotorPwmType(motPwmType)
                 const escIsDShot = motPwmType !== undefined && motPwmType >= 4 && motPwmType <= 7
@@ -1302,6 +1308,17 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                           {escCalUnsupported ? 'n/a' : escCalNotice ? (escCalNotice.tone === 'danger' ? 'failed' : 'armed') : 'idle'}
                         </StatusBadge>
                       </div>
+                      {escCalPending !== undefined && escCalPending !== 0 && escCalPending !== 9 ? (
+                        <div className="parameter-follow-up parameter-follow-up--danger" data-testid="esc-cal-pending">
+                          <StatusBadge tone="danger">armed on next boot</StatusBadge>
+                          <p>
+                            <code>ESC_CALIBRATION</code> is set to <strong>{escCalPending}</strong> on this flight
+                            controller. The next time it powers up it will run the ESC calibration routine — at
+                            <code>3</code> that means every motor to full throttle for about five seconds, on its own.
+                            {' '}Keep props off until you have either completed the calibration or set it back to 0.
+                          </p>
+                        </div>
+                      ) : null}
                       {escCalUnsupported ? (
                         <div className="parameter-follow-up parameter-follow-up--warning" data-testid="esc-cal-unsupported">
                           <StatusBadge tone="neutral">not applicable</StatusBadge>
@@ -1316,7 +1333,27 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                         </div>
                       ) : (
                         <>
-                          <p>Calibrates the ESC throttle endpoints. Sets ESC_CALIBRATION=3 and reboots; on the next boot (safety off) the ESCs learn min/max from the throttle range. Reconnect after the reboot.</p>
+                          {/* This copy used to describe ESC_CALIBRATION=1/2 -- "the ESCs
+                            *  learn min/max from the throttle range", i.e. wait for the
+                            *  pilot's stick. The code writes 3, which is ESCCAL_AUTO:
+                            *  ArduCopter's esc_calibration_auto() calls
+                            *  set_throttle_passthrough_for_esc_calibration(1.0f) and holds
+                            *  EVERY motor at full throttle for five seconds on its own,
+                            *  immediately at boot, with no pilot input. The only interlock
+                            *  is a safety-switch wait, and a board without a safety switch
+                            *  reports SAFETY_NONE (not SAFETY_DISARMED), so that loop never
+                            *  runs -- which is most FPV AIO boards. Telling the operator to
+                            *  "reconnect, then raise throttle" invited them to have props on
+                            *  and hands near the craft at exactly the wrong moment. */}
+                          <p>
+                            Calibrates the ESC throttle endpoints. Sets <code>ESC_CALIBRATION=3</code> and reboots.
+                            {' '}<strong>
+                              On the next boot the flight controller drives every motor to full throttle for about five
+                              seconds, by itself, with no stick input and no further prompt.
+                            </strong>
+                            {' '}Props must be off and the craft restrained before you confirm. Most FPV boards have no
+                            safety switch to hold this back.
+                          </p>
                           {/* Second copy of the same shared acknowledgements —
                             *  this card spins motors too, so the gate belongs
                             *  next to its own button rather than in a card the
@@ -1345,13 +1382,20 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                                 style={buttonStyle('secondary')}
                                 className="setup-bench__dfu-danger"
                                 data-testid="esc-cal-confirm"
+                                // The acknowledgements gated only the arm button, so they
+                                // could be un-ticked while this stayed live. Re-check the
+                                // same gate the arm button used.
+                                disabled={!baseReady || !motorSafetyOk || !canApplyDraftParameters}
                                 onClick={() => {
                                   setEscCalArmed(false)
                                   void (async () => {
                                     try {
                                       await runtime.setParameter('ESC_CALIBRATION', 3, UI_PARAMETER_WRITE_OPTIONS)
                                       await runtime.reboot()
-                                      setEscCalNotice({ tone: 'success', text: 'ESC_CALIBRATION=3 set and reboot sent. Reconnect, then raise throttle to complete on the bench.' })
+                                      setEscCalNotice({
+                                        tone: 'warning',
+                                        text: 'ESC_CALIBRATION=3 set and reboot sent. The flight controller will run every motor at full throttle for about five seconds as it boots — stay clear until it finishes, then reconnect.'
+                                      })
                                     } catch (error) {
                                       setEscCalNotice({ tone: 'danger', text: error instanceof Error ? error.message : 'Failed to start ESC calibration.' })
                                     }
@@ -1369,7 +1413,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                             <summary>How to calibrate ESC throttle endpoints (PWM ESCs only)</summary>
                             <ol>
                               <li>Confirm props are off and the airframe is restrained.</li>
-                              <li>Click <em>Set ESC calibration mode</em> then <em>Confirm: set + reboot</em> — the FC reboots with ESC_CALIBRATION=3 set.</li>
+                              <li>Click <em>Set ESC calibration mode</em> then <em>Confirm: set + reboot</em> — the FC reboots and immediately runs all motors to full throttle for about five seconds on its own.</li>
                               <li>On the next boot, raise the throttle stick to full, power-cycle the ESCs (or wait for the FC to drive max PWM), then drop to zero. ESCs learn the new endpoints from the pulse range.</li>
                               <li>Reconnect once the ESCs finish their startup chime. Skip entirely for DShot ESCs — they don't need endpoint calibration.</li>
                             </ol>

@@ -5,10 +5,16 @@
 // nothing else does. Behavior-neutral lift of the original App() hooks (same
 // order, same dependency arrays).
 
-import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 
 import type { ConfiguratorSnapshot, ParameterState } from '@arduconfig/ardupilot-core'
 
+import {
+  deriveOsdPreviewKey,
+  osdVideoSystemFromTxtRes,
+  readStoredOsdPreview,
+  writeStoredOsdPreview
+} from '../osd-video-system-storage'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
 import { formatRxRssi } from '../status-formatters'
 import { OSD_ELEMENTS, OSD_SCREEN_NUMBERS, OSD_SCREEN_OPTION_SUFFIXES, type OsdScreenNumber } from '../osd-params'
@@ -32,6 +38,12 @@ type CopiedOsdLayout =
 export interface UseOsdEditorResult {
   activeOsdScreen: OsdScreenNumber
   setActiveOsdScreen: Dispatch<SetStateAction<OsdScreenNumber>>
+  /** Which goggles/VRX grid the preview draws. Lives here, not in the Osd
+   *  view, because that view unmounts on every tab switch. */
+  videoSystem: string
+  setVideoSystem: (next: string) => void
+  analogSubMode: 'pal' | 'ntsc'
+  setAnalogSubMode: (next: 'pal' | 'ntsc') => void
   copiedOsdLayout: CopiedOsdLayout
   osdScreenOptionFields: OsdScreenOptionField[]
   osdScreenEnableEntries: readonly OsdScreenEnableEntry[]
@@ -50,6 +62,59 @@ export function useOsdEditor({
   setParameterNotice
 }: UseOsdEditorParams): UseOsdEditorResult {
   const [activeOsdScreen, setActiveOsdScreen] = useState<OsdScreenNumber>(1)
+
+  /*
+   * Preview video system.
+   *
+   * This used to be useState inside views/Osd.tsx, which App unmounts whenever
+   * the operator leaves the tab -- so it reset to Analog every single time, and
+   * a Walksnail pilot re-picked their goggles on every visit.
+   *
+   * Resolution order is: what this operator last chose for THIS aircraft, then
+   * what the aircraft itself says via OSD1_TXT_RES, then Analog. The stored
+   * choice outranks the parameter because ArduPilot's TXT_RES only encodes
+   * 30x16 / 50x18 / 60x22 -- it cannot tell HDZero from Walksnail Avatar, which
+   * are both 50 columns wide.
+   */
+  const osdPreviewKey = deriveOsdPreviewKey(snapshot)
+  const txtRes = readRoundedParameter(snapshot, 'OSD1_TXT_RES')
+  const [videoSystem, setVideoSystemState] = useState<string>('analog')
+  const [analogSubMode, setAnalogSubModeState] = useState<'pal' | 'ntsc'>('ntsc')
+  // Seed once per aircraft. Keyed on the storage key so reconnecting to a
+  // different board re-seeds, while a re-render for any other reason does not
+  // overwrite a choice the operator just made.
+  const seededKeyRef = useRef<string | undefined>(undefined)
+
+  useEffect(() => {
+    if (osdPreviewKey === undefined || seededKeyRef.current === osdPreviewKey) {
+      return
+    }
+    seededKeyRef.current = osdPreviewKey
+    const stored = readStoredOsdPreview(osdPreviewKey)
+    const seeded = stored?.videoSystem ?? osdVideoSystemFromTxtRes(txtRes)
+    if (seeded !== undefined) {
+      setVideoSystemState(seeded)
+    }
+    if (stored?.analogSubMode !== undefined) {
+      setAnalogSubModeState(stored.analogSubMode)
+    }
+  }, [osdPreviewKey, txtRes])
+
+  const setVideoSystem = useCallback(
+    (next: string) => {
+      setVideoSystemState(next)
+      writeStoredOsdPreview(osdPreviewKey, { version: 1, videoSystem: next, analogSubMode })
+    },
+    [analogSubMode, osdPreviewKey]
+  )
+
+  const setAnalogSubMode = useCallback(
+    (next: 'pal' | 'ntsc') => {
+      setAnalogSubModeState(next)
+      writeStoredOsdPreview(osdPreviewKey, { version: 1, videoSystem, analogSubMode: next })
+    },
+    [osdPreviewKey, videoSystem]
+  )
 
   // Per-screen "Screen Options" for the currently-previewed screen. ENABLE
   // renders as a select (enabled/disabled); the rest as numbers.
@@ -292,6 +357,10 @@ export function useOsdEditor({
   return {
     activeOsdScreen,
     setActiveOsdScreen,
+    videoSystem,
+    setVideoSystem,
+    analogSubMode,
+    setAnalogSubMode,
     copiedOsdLayout,
     osdScreenOptionFields,
     osdScreenEnableEntries,

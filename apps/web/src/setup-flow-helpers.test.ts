@@ -5,7 +5,8 @@ import {
   deriveSetupStatusFromCriteria,
   escCalibrationInstructions,
   escCalibrationPathLabel,
-  panelAnchorForSetupSection
+  panelAnchorForSetupSection,
+  appViewForPanel
 } from './setup-flow-helpers'
 
 const criterion = (met: boolean): SetupFlowCriterion => ({ label: 'c', met })
@@ -45,9 +46,22 @@ describe('panelAnchorForSetupSection', () => {
     expect(panelAnchorForSetupSection('outputs').panelLabel).toBe('Airframe & Outputs')
     // guided cal trio share the guided panel
     expect(panelAnchorForSetupSection('compass').panelId).toBe('setup-panel-guided')
-    // failsafe + power share the power panel
-    expect(panelAnchorForSetupSection('failsafe')).toEqual(panelAnchorForSetupSection('power'))
+    // Failsafe and Modes each route to their OWN tab. They used to be folded
+    // onto the power panel and the RC panel respectively, which sent the
+    // operator to the Config tab's power section and the Receiver view --
+    // neither being where those steps' parameters are edited. Both tabs had
+    // carried a setup anchor all along that nothing referenced.
+    expect(panelAnchorForSetupSection('failsafe').panelId).toBe('setup-panel-failsafe')
+    expect(panelAnchorForSetupSection('modes').panelId).toBe('setup-panel-modes')
+    expect(panelAnchorForSetupSection('power').panelId).toBe('setup-panel-power')
     // unknown falls back to guided
     expect(panelAnchorForSetupSection('mystery').panelId).toBe('setup-panel-guided')
+  })
+
+  it('routes each setup panel to a view that exists', () => {
+    expect(appViewForPanel('setup-panel-failsafe')).toBe('failsafe')
+    expect(appViewForPanel('setup-panel-modes')).toBe('modes')
+    expect(appViewForPanel('setup-panel-rc')).toBe('receiver')
+    expect(appViewForPanel('setup-panel-outputs')).toBe('motors')
   })
 })
