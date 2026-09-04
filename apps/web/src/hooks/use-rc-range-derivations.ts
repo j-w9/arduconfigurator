@@ -7,6 +7,7 @@
 import {
   type ConfiguratorSnapshot,
   type RcAxisExerciseProgress,
+  type RcAxisId,
   type RcRangeExerciseState,
   formatRcAxisLabel
 } from '@arduconfig/ardupilot-core'
@@ -24,6 +25,22 @@ export interface UseRcRangeDerivationsResult {
  * from useRcExercises and the live snapshot (only the rcInput.verified
  * flag is read). Outputs are byte-identical to the App.tsx originals.
  */
+/** What the operator physically does, per axis. Roll and yaw go left/right,
+ *  pitch goes forward/back, and only throttle has a low and a high. */
+function rcRangeStickPrompt(axisId: RcAxisId): string {
+  switch (axisId) {
+    case 'throttle':
+      return 'Move the throttle stick all the way down, then all the way up.'
+    case 'pitch':
+      return 'Move the pitch stick fully forward, fully back, then let it spring back to centre.'
+    case 'yaw':
+      return 'Move the yaw stick fully left, fully right, then let it spring back to centre.'
+    case 'roll':
+    default:
+      return 'Move the roll stick fully left, fully right, then let it spring back to centre.'
+  }
+}
+
 export function useRcRangeDerivations(input: {
   snapshot: ConfiguratorSnapshot
   rcRangeExercise: RcRangeExerciseState
@@ -59,9 +76,11 @@ export function useRcRangeDerivations(input: {
   const rcRangeExerciseInstructions =
     rcRangeExercise.status === 'running'
       ? [
-          rcRangeExercise.currentTargetAxis === 'throttle'
-            ? 'Move throttle fully low, then fully high.'
-            : `Move ${formatRcAxisLabel(rcRangeExercise.currentTargetAxis ?? 'roll')} fully low, fully high, then back to center.`,
+          // Per-axis wording. "Move Roll fully low, fully high" was the rendered
+          // string for roll and yaw -- nobody moves roll "low", and a beginner
+          // told to move something "low" reaches for the throttle stick. This is
+          // the likeliest place in the flow to do the wrong physical thing.
+          rcRangeStickPrompt(rcRangeExercise.currentTargetAxis ?? 'roll'),
           `Completed ${rcRangeExerciseCompletedCount} of ${rcRangeExercise.targetAxes.length} axis checks.`
         ]
       : rcRangeExercise.status === 'passed'

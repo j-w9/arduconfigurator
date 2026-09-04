@@ -861,6 +861,10 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
     },
     power: {
       id: 'power',
+      // Ordered before failsafe deliberately: failsafe review wants live battery
+      // telemetry, and BATT_MONITOR -- the thing that produces it -- is configured
+      // here. With power last, the step that fixed the problem sat behind the step
+      // that was blocked by it.
       label: 'Power',
       description: 'Battery sensing and power monitoring.',
       order: 10,
@@ -957,7 +961,12 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
         'Replaces most of the vehicle configuration. Review the diff before applying.',
         'Check the serial map matches your wiring: O3 on SERIAL4, receiver on SERIAL5.',
         'Tuned for 2S and the stock prop.',
-        'Calibrate accelerometer, level and compass on this board afterwards.'
+        'Calibrate accelerometer, level and compass on this board afterwards.',
+        // Any preset value that relaxes a safety check has to say so here. The
+        // shipped dump previously carried ARMING_SKIPCHK=1048062 (every check
+        // off) and both battery failsafe actions at "warn only" with no caution
+        // naming either.
+        'Sets battery failsafes for a 2S pack: RTL at 7.2 V, land at 7.0 V. Check these match your pack before flying.'
       ],
       compatibility: {
         frameClasses: [1]
@@ -3979,23 +3988,6 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       requiredLiveSignals: ['rc-input'],
     },
     {
-      id: 'failsafe',
-      title: 'Failsafe',
-      description: 'Review throttle and battery failsafe behavior.',
-      requiredParameters: [
-        'FS_THR_ENABLE',
-        'FS_THR_VALUE',
-        'BATT_FS_VOLTSRC',
-        'BATT_LOW_VOLT',
-        'BATT_LOW_MAH',
-        'BATT_FS_LOW_ACT',
-        'BATT_CRT_VOLT',
-        'BATT_CRT_MAH',
-        'BATT_FS_CRT_ACT'
-      ],
-      requiredLiveSignals: ['rc-input', 'battery-telemetry'],
-    },
-    {
       id: 'modes',
       title: 'Flight Modes',
       description: 'Check the first three mapped flight modes.',
@@ -4014,6 +4006,23 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       requiredNonZeroParameters: ['BATT_MONITOR'],
       requiredLiveSignals: ['battery-telemetry'],
       actions: ['reboot-autopilot']
+    },
+    {
+      id: 'failsafe',
+      title: 'Failsafe',
+      description: 'Review throttle and battery failsafe behavior.',
+      requiredParameters: [
+        'FS_THR_ENABLE',
+        'FS_THR_VALUE',
+        'BATT_FS_VOLTSRC',
+        'BATT_LOW_VOLT',
+        'BATT_LOW_MAH',
+        'BATT_FS_LOW_ACT',
+        'BATT_CRT_VOLT',
+        'BATT_CRT_MAH',
+        'BATT_FS_CRT_ACT'
+      ],
+      requiredLiveSignals: ['rc-input', 'battery-telemetry'],
     }
   ]
 }

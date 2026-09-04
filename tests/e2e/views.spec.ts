@@ -3678,7 +3678,11 @@ test.describe('ArduPlane demo', () => {
     // was mapped/counted — a Plane could never complete the step.
     // (The Outputs *view* bench motor-verification controls are a
     // separate non-Copter gating concern, tracked as C5b.)
-    await expect(page.getByRole('button', { name: 'Confirm Output Review' })).toBeEnabled()
+    // Renamed: the criterion now asserts motor order and spin direction were
+    // verified, not merely that the output map was looked at. The guided
+    // direction gate was dropped with the Motors-tab redesign and this
+    // confirmation was left covering it while still only claiming a map review.
+    await expect(page.getByRole('button', { name: 'Confirm Motor Order & Direction Verified' })).toBeEnabled()
   })
 
   test('guided-setup evidence pills are allowed to wrap, so a long line cannot be clipped', async ({ page }) => {

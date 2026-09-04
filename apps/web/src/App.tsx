@@ -1347,7 +1347,15 @@ export function App() {
   const rssiChannel = readRoundedParameter(snapshot, 'RSSI_CHANNEL')
   const rssiChannelLow = readRoundedParameter(snapshot, 'RSSI_CHAN_LOW')
   const rssiChannelHigh = readRoundedParameter(snapshot, 'RSSI_CHAN_HIGH')
-  const throttleFailsafe = readRoundedParameter(snapshot, 'FS_THR_ENABLE')
+  // ArduPlane has no FS_THR_ENABLE -- its throttle failsafe is THR_FAILSAFE
+  // (ArduPlane/Parameters.cpp:411), which is what the Plane bundle already lists
+  // in its own requiredParameters. Reading only the Copter id left the value
+  // permanently undefined on Plane, so the failsafe step's criterion could never
+  // be met and its confirm button was hard-disabled: a second, independent
+  // deadlock for that vehicle. Fall back rather than branch, so a build that
+  // exposes either name works.
+  const throttleFailsafe =
+    readRoundedParameter(snapshot, 'FS_THR_ENABLE') ?? readRoundedParameter(snapshot, 'THR_FAILSAFE')
   const throttleFailsafeValue = readRoundedParameter(snapshot, 'FS_THR_VALUE')
   const notificationLedTypes = readRoundedParameter(snapshot, 'NTF_LED_TYPES')
   const notificationLedLength = readRoundedParameter(snapshot, 'NTF_LED_LEN')
@@ -3402,9 +3410,15 @@ export function App() {
     }
     if (panelId === 'setup-panel-guided') {
       setSetupMode('wizard')
-    } else if (panelId === 'setup-panel-link') {
-      setSetupMode('overview')
     }
+    // The 'setup-panel-link' branch used to set setupMode back to 'overview'
+    // here. setupMode is what gates the "Back to guided setup" bar
+    // (setupMode === 'wizard' && activeViewId !== 'guided-setup'), so step 1's
+    // own "Open Vehicle Link" excursion cleared the flag on its way out and
+    // landed the operator on Status & Info with no route back except spotting
+    // Guided Setup in the left nav. Every other excursion in the flow keeps the
+    // bar. It also dropped the flow context that the exercise auto-return
+    // depends on.
     if (targetViewId !== activeViewId) {
       setActiveViewId(targetViewId)
       requestAnimationFrame(() => {
@@ -3460,13 +3474,28 @@ export function App() {
 
     const focusId = pendingSetupWizardFocusId
     const timer = window.setTimeout(() => {
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      })
+      // link/ports/airframe have no primary action of their own, so the focus id
+      // resolves to nothing and the scroll never happened -- those three stayed
+      // below the fold. Continue is the next action on any step without one.
+      const target =
+        document.getElementById(focusId) ??
+        document.querySelector<HTMLElement>('[data-testid="setup-wizard-next-step"]')
+      // Scrolling to top is right on the two-column desktop layout, where the
+      // aside sits beside the content and its action is in view from the top.
+      // Below the breakpoint the stack is single-column with the aside LAST, so
+      // top leaves the action roughly 1.5 viewports down -- measured below the
+      // fold on all 11 steps at 390x844. Scroll to the action itself there.
+      const singleColumn = window.matchMedia('(max-width: 1024px)').matches
+      if (singleColumn && target instanceof HTMLElement) {
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      } else {
+        window.scrollTo({
+          top: 0,
+          behavior: 'smooth'
+        })
+      }
 
       window.setTimeout(() => {
-        const target = document.getElementById(focusId)
         if (target instanceof HTMLElement) {
           target.focus({ preventScroll: true })
         }
@@ -4497,7 +4526,7 @@ export function App() {
         tone: 'warning',
         text:
           rcMappingRejectedReason ??
-          `${rcMappingTargetGuide.detail} Keep moving only that control until one receiver channel clearly dominates.`
+          `No channel has stood out yet. ${rcMappingTargetGuide.detail}`
       })
       return
     }
@@ -5019,7 +5048,9 @@ export function App() {
       setSelectedParameterId(changedParamIds[0] ?? selectedParameterId)
       setParameterNotice({
         tone: 'warning',
-        text: `Staged ${changedParamIds.length} motor output remap change(s). Apply them from Outputs, then rerun the guarded motor direction check before flight.`
+        // Named a guarded direction check that no longer exists -- it was removed
+        // with the Motors-tab redesign. Point at the surface that does.
+        text: `Staged ${changedParamIds.length} motor output remap change(s). Apply them from Outputs, then re-test each motor's order and direction in Motors before flight.`
       })
     }
     return changedParamIds.length
@@ -7034,6 +7065,15 @@ export function App() {
     }
 
     setSelectedSetupSectionId(targetSection.id)
+    // Advancing left the scroll position exactly where it was. On a phone the
+    // new step's document is roughly twice the viewport, so the primary action
+    // and Continue landed ~1.5 viewports below the fold with nothing on screen
+    // saying there was anything to do -- measured on all 11 steps at 390x844.
+    // It also blurred focus to document.body when the new Continue arrived
+    // disabled, costing 31 tab presses to get back. The wizard already owns a
+    // scroll-and-focus routine keyed on this state; step navigation just never
+    // used it.
+    setPendingSetupWizardFocusId(SETUP_WIZARD_PRIMARY_ACTION_ID)
   }
 
 
@@ -8304,6 +8344,10 @@ export function App() {
                     onSelectStep={(sectionId) => {
                       setSelectedSetupSectionId(sectionId)
                       setSetupMode('wizard')
+                      // Same treatment as Continue/Previous: jumping via the step
+                      // rail is a step change too, and left the operator looking at
+                      // a new step with its action off-screen.
+                      setPendingSetupWizardFocusId(SETUP_WIZARD_PRIMARY_ACTION_ID)
                     }}
                   />
 

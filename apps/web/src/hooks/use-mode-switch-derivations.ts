@@ -41,7 +41,9 @@ export function useModeSwitchDerivations(input: {
 
   const modeSwitchExerciseSummary = (() => {
     if (modeSwitchExercise.status === 'passed') {
-      return `Observed all configured switch positions on CH${modeSwitchEstimate.channelNumber ?? '?'}.`
+      return modeSwitchEstimate.channelNumber === undefined
+        ? 'Observed all configured switch positions, but the mode channel is not set. Set the flight-mode channel in Modes.'
+        : `Observed all configured switch positions on CH${modeSwitchEstimate.channelNumber}.`
     }
     if (modeSwitchExercise.status === 'failed') {
       return modeSwitchExercise.failureReason ?? 'Mode switch exercise failed.'
@@ -69,7 +71,7 @@ export function useModeSwitchDerivations(input: {
       : modeSwitchExercise.status === 'passed'
         ? ['The mode channel moved through every distinct configured flight-mode position that the app expected to see.']
         : modeSwitchExercise.status === 'failed'
-          ? ['Check the radio mapping, `FLTMODE_CH`/`MODE_CH`, and switch endpoints, then run the exercise again.']
+          ? ['Check which channel the mode switch is on, its endpoints, and the modes assigned to each position, then run the check again.']
           : ['The app will watch the live mode channel and mark each distinct configured flight-mode position as it is observed.']
 
   return {

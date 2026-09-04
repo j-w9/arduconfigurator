@@ -10,6 +10,7 @@
 // descriptors are kind/actionId data dispatched later by handleSetupFlowAction,
 // so no handler closures move with it.
 
+import { resolveSetupConfirmationRecord } from './setup-confirmation-resolve'
 import {
   deriveAirframe,
   deriveCompassSetupAvailability,
@@ -128,14 +129,23 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
     rcRangeExerciseSummary
   } = inputs
 
+  // Delegates to the shared resolver rather than re-implementing the check.
+  //
+  // The local copy had no parameterSyncComplete leniency, and every wizard
+  // section went through it -- so the resolver, which exists precisely to hold
+  // confirmations valid while the table is still streaming, never ran for the
+  // wizard at all. Mid-sync every signature is a blob of undefineds, nothing
+  // matched, and all nine confirmations vanished at once: after any reboot,
+  // link drop, or F5 the flow snapped back to Airframe and yanked the operator
+  // off whatever step they were on because it had just become locked. It
+  // recovered when the sync finished, but the window is exactly when someone is
+  // watching.
   function getSetupConfirmationRecord(sectionId: string): SetupConfirmationRecord | undefined {
-    const record = setupConfirmations[sectionId]
-    const signature = setupConfirmationSignatures[sectionId]
-    if (!record || signature === undefined || record.signature !== signature) {
-      return undefined
-    }
-
-    return record
+    return resolveSetupConfirmationRecord({
+      record: setupConfirmations[sectionId],
+      signature: setupConfirmationSignatures[sectionId],
+      parameterSyncComplete: snapshot.parameterStats.status === 'complete'
+    })
   }
 
     const airframeConfirmation = getSetupConfirmationRecord('airframe')
@@ -294,7 +304,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             ...(isCopterVehicle
               ? [
                   {
-                    label: 'Frame class set to a valid value (FRAME_CLASS != 0)',
+                    label: 'A frame class is selected',
                     // FRAME_CLASS=0 IS a defined value, but it means "unset" /
                     // "Frame: UNSUPPORTED". The criterion needs to reflect the
                     // real signal (a chosen frame class), not just presence.
@@ -449,13 +459,20 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                   met: !outputMapping.notes.some((note) => note.startsWith('Missing motor assignments:'))
                 },
                 {
-                  label: 'Operator reviewed the output map before any props-on activity',
+                  // Motor order and spin direction are ArduPilot's own mandatory
+                  // item 3, ahead of RC calibration, and they are the two bench
+                  // errors that most reliably flip a multirotor on its first
+                  // takeoff. The guided direction gate was dropped with the
+                  // Motors-tab redesign and this confirmation was left to cover
+                  // it -- but it only claimed the output MAP was reviewed, so an
+                  // operator could complete the wizard having never spun a motor.
+                  // The check itself lives in Motors (props-off gated, with the
+                  // mixer diagram and per-motor spin); this says what signing off
+                  // actually asserts. The signature below already pins the
+                  // SERVOn_FUNCTION map, so a remap voids it.
+                  label: 'Operator verified motor order and spin direction in Motors',
                   met: outputsConfirmation !== undefined
                 }
-                // (Motor-order/direction verification and the separate ESC-range
-                // confirmation gates were removed with the Motors-tab redesign —
-                // direction is now checked manually in Motors -> Test / Motor
-                // Setup, so the operator-review confirmation is the gate here.)
               ]
             : [
                 {
@@ -478,7 +495,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           ].slice(0, 4)
           actions.unshift({
             kind: outputsConfirmation ? 'clear-confirmation' : 'confirm-step',
-            label: outputsConfirmation ? 'Clear Output Review' : 'Confirm Output Review',
+            label: outputsConfirmation ? 'Clear Motor Order & Direction Review' : 'Confirm Motor Order & Direction Verified',
             tone: 'secondary',
             sectionId: 'outputs',
             disabled: isCopterVehicle
@@ -1012,29 +1029,44 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
         case 'failsafe':
           criteria = [
             {
-              label: 'Throttle failsafe setting is present',
-              met: throttleFailsafe !== undefined
+              // Presence, not value, used to satisfy these -- so FS_THR_ENABLE=0
+              // (disabled) and BATT_FS_LOW_ACT=0 ("warn only") ticked the boxes and
+              // the step rendered complete on an aircraft with no RC failsafe and no
+              // battery failsafe at all. Firmware's own FS_THR_VALUE sanity check
+              // (AP_Arming_Copter.cpp:209) only runs when the throttle failsafe is
+              // enabled, so nothing else would have told the operator either.
+              label: 'Throttle failsafe is enabled',
+              met: throttleFailsafe !== undefined && throttleFailsafe !== 0
             },
             {
-              label: 'Battery failsafe action is present',
-              met: batteryFailsafe !== undefined
+              label: 'Battery failsafe has an action, not just a warning',
+              met: batteryFailsafe !== undefined && batteryFailsafe !== 0
             },
             {
               label: 'Live RC link is verified during review',
               met: snapshot.liveVerification.rcInput.verified
             },
             {
+              // Battery telemetry needs SYS_STATUS voltage > 1000 mV, i.e. a real
+              // pack. On a bench board on USB with props off -- the posture this
+              // wizard exists for -- it never arrives. This was a hard criterion AND
+              // the confirm gate, and failsafe was the only step in the flow with no
+              // waiver, so modes and power (both AFTER it) stayed locked forever.
+              // Kept as evidence with an operator escape below.
               label: 'Live battery telemetry is verified during review',
-              met: snapshot.liveVerification.batteryTelemetry.verified
+              met: snapshot.liveVerification.batteryTelemetry.verified || failsafeConfirmation !== undefined
             },
             {
               label: 'Operator reviewed the configured failsafe behavior',
               met: failsafeConfirmation !== undefined
             }
           ]
+          // failsafeActionLabel resolves the enum labels off the parameter
+          // definition, so it needs whichever id this vehicle actually exposes --
+          // Copter/Rover/Sub use FS_THR_ENABLE, Plane uses THR_FAILSAFE.
           summary = `Throttle failsafe ${failsafeActionLabel(
             snapshot,
-            'FS_THR_ENABLE',
+            readRoundedParameter(snapshot, 'FS_THR_ENABLE') !== undefined ? 'FS_THR_ENABLE' : 'THR_FAILSAFE',
             throttleFailsafe,
             formatArducopterThrottleFailsafe
           )}, battery action ${failsafeActionLabel(
@@ -1057,12 +1089,17 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             label: failsafeConfirmation ? 'Clear Failsafe Review' : 'Confirm Failsafe Review',
             tone: 'primary',
             sectionId: 'failsafe',
-            disabled:
-              throttleFailsafe === undefined ||
-              batteryFailsafe === undefined ||
-              !snapshot.liveVerification.rcInput.verified ||
-              !snapshot.liveVerification.batteryTelemetry.verified
+            disabled: throttleFailsafe === undefined || batteryFailsafe === undefined
           })
+          if (!failsafeConfirmation && !snapshot.liveVerification.batteryTelemetry.verified) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'No Pack Connected — Review On Battery Later',
+              tone: 'secondary',
+              sectionId: 'failsafe',
+              confirmationOutcome: 'already-done'
+            })
+          }
           break
         case 'modes': {
           // Modes previously had NO operator escape of any kind: the switch
@@ -1092,7 +1129,9 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               : modeSwitchExercise.status === 'running'
                 ? modeSwitchExerciseSummary
                 : modeSwitchEstimate.estimatedSlot !== undefined
-                  ? `Live mode switch detected on CH${modeSwitchEstimate.channelNumber ?? '?'}, but the full switch exercise still needs to pass.`
+                  ? modeSwitchEstimate.channelNumber === undefined
+                    ? 'A mode switch is moving, but the flight-mode channel is not set. Set it in Modes, then run the switch check.'
+                    : `Live mode switch detected on CH${modeSwitchEstimate.channelNumber}, but the full switch check still needs to pass.`
                   : 'Waiting for a configured live mode channel before starting the switch exercise.'
           detail =
             modeSwitchExercise.status === 'failed'
@@ -1147,8 +1186,28 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               met: powerConfirmation !== undefined
             },
             {
-              label: 'No active pre-arm safety issues are present',
-              met: snapshot.preArmStatus.healthy
+              // snapshot.preArmStatus.healthy falls back to "no latched issue text"
+              // when the live verdict is unusable -- and the live verdict is marked
+              // unusable precisely when ARMING_CHECK/ARMING_SKIPCHK has turned the
+              // checks off (GCS.cpp only sets `enabled` if get_enabled_checks()).
+              // So an aircraft with every check disabled reported "pre-arm clear"
+              // and completed the step. ArduPilot also sets the health bit
+              // unconditionally while armed, and it arms for the duration of a
+              // DO_MOTOR_TEST, so a reading taken around a motor test was a
+              // hardcoded pass too. Require a verdict the firmware is actually
+              // computing, and ignore it while armed.
+              label: 'Flight controller reports pre-arm checks passing',
+              met:
+                (snapshot.preArmStatus.liveCheck?.present === true &&
+                  snapshot.preArmStatus.liveCheck.enabled === true &&
+                  snapshot.vehicle?.armed !== true &&
+                  snapshot.preArmStatus.healthy) ||
+                // Pre-arm is routinely unhealthy on a bench indoors -- no GPS fix,
+                // no position estimate -- and this is the LAST step, so without an
+                // escape the wizard could never report complete however correct the
+                // aircraft was. The waiver below acknowledges rather than suppresses:
+                // it changes nothing on the vehicle, and pre-arm still blocks arming.
+                powerConfirmation?.outcome === 'already-done'
             }
           ]
           summary = snapshot.liveVerification.batteryTelemetry.verified
@@ -1182,6 +1241,15 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             actionId: 'reboot-autopilot',
             disabled: busyAction !== undefined || !canRunGuidedAction(snapshot, 'reboot-autopilot')
           })
+          if (!powerConfirmation && !snapshot.preArmStatus.healthy) {
+            actions.push({
+              kind: 'confirm-step',
+              label: 'Pre-arm Blocked On The Bench — Acknowledge',
+              tone: 'secondary',
+              sectionId: 'power',
+              confirmationOutcome: 'already-done'
+            })
+          }
           actions.unshift({
             kind: powerConfirmation ? 'clear-confirmation' : 'confirm-step',
             label: powerConfirmation ? 'Clear Power Review' : 'Confirm Power Review',
@@ -1190,8 +1258,59 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             disabled: batteryMonitor === undefined || batteryMonitor <= 0 || !snapshot.liveVerification.batteryTelemetry.verified
           })
           break
-        default:
+        default: {
+          // Every section id the switch does not name -- 'sensors', 'verify',
+          // 'drive', 'frame', 'controls' -- used to fall through with criteria = [],
+          // and deriveSetupStatusFromCriteria([]) returns 'attention'. The step
+          // could therefore never be complete, the sequential lock pass froze
+          // everything behind it, and it rendered with no criteria and nothing to
+          // click. Those ids are exactly the ones Plane, Rover and Sub declare, so
+          // every non-Copter vehicle deadlocked in its first three steps.
+          //
+          // Build criteria from what the bundle itself declares, then give the
+          // operator a sign-off. That is a real gate rather than a stub: a section
+          // is not complete until its required parameters are present and it has
+          // been reviewed.
+          const declaredParams: string[] = section.definition?.requiredParameters ?? []
+          const missingParams = declaredParams.filter(
+            (paramId: string) => readRoundedParameter(snapshot, paramId) === undefined
+          )
+          const genericConfirmation = getSetupConfirmationRecord(section.id)
+          criteria = [
+            ...(declaredParams.length > 0
+              ? [
+                  {
+                    label: 'Every parameter this step covers is present',
+                    met: missingParams.length === 0
+                  }
+                ]
+              : []),
+            {
+              label: `Operator reviewed ${section.title.toLowerCase()}`,
+              met: genericConfirmation !== undefined
+            }
+          ]
+          summary = section.description
+          detail =
+            missingParams.length > 0
+              ? `${missingParams.length} of this step's parameters have not been reported by the flight controller: ${missingParams
+                  .slice(0, 4)
+                  .join(', ')}${missingParams.length > 4 ? '…' : ''}. Re-sync parameters, or check the firmware exposes them.`
+              : 'Review this step against the vehicle, then confirm to continue.'
+          evidence = [
+            declaredParams.length > 0
+              ? `${declaredParams.length - missingParams.length}/${declaredParams.length} parameters present`
+              : 'No parameters declared for this step',
+            `Review: ${genericConfirmation ? `confirmed at ${formatConfirmationTime(genericConfirmation.confirmedAtMs)}` : 'pending operator confirmation'}`
+          ]
+          actions.unshift({
+            kind: genericConfirmation ? 'clear-confirmation' : 'confirm-step',
+            label: genericConfirmation ? `Clear ${section.title} Review` : `Confirm ${section.title} Review`,
+            tone: 'primary',
+            sectionId: section.id
+          })
           break
+        }
       }
 
       const status = deriveSetupStatusFromCriteria(criteria)
