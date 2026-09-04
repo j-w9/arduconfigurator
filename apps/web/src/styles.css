@@ -12100,6 +12100,17 @@ details.metadata-settings-section:not([open]) > summary::after {
   background: rgba(55, 41, 24, 0.3);
 }
 
+/* Badge above the text rather than beside it.
+ *
+ * The row layout works in a wide panel; in a single calibration column it left
+ * the paragraph about 100px wide and turned three sentences into a column of
+ * text taller than the card explaining it. Stacking gives the copy the full
+ * width it has. */
+.parameter-follow-up--stacked {
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .parameter-follow-up p {
   margin: 0;
   color: var(--text);
@@ -15796,6 +15807,18 @@ details.bf-gui-box:not([open]) > summary::after {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 14px;
 }
+
+/* The battery-current card is a three-step procedure with its own inputs, and
+ * in a single column it ran to 1099px -- forcing every card sharing its row to
+ * that height and adding ~380px to the tab. Given two columns its content
+ * reflows to roughly half the height, which shortens the row rather than
+ * padding its neighbours out. Only where there is room for it: below three
+ * columns the grid is already stacking and a span would fill the width. */
+@media (min-width: 1100px) {
+  .calibration-grid > [data-testid='calibration-card-battery-current'] {
+    grid-column: span 2;
+  }
+}
 .calibration-card {
   display: flex;
   flex-direction: column;
@@ -15860,6 +15883,10 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .esc-rpm-readout__table tbody th small {
   margin-left: 4px;
+  /* Explicit, not the browser's 0.8em: the compact Motors column drops this
+     table to --text-xs, and 0.8em of that is 8px -- below --text-2xs, the
+     smallest size anything in the app is allowed to use. */
+  font-size: var(--text-2xs);
   font-weight: 400;
   color: var(--text-dim);
 }

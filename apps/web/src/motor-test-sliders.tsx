@@ -59,11 +59,14 @@ const color = {
 
 /* ── geometry ── */
 
-// Default track height: 80, with the buttons beside the sliders rather than
-// under them to pay for it. The Motors column is tight -- a 200px track pushed
-// the rest of the test panel below the fold on a laptop -- but callers with
-// room (the spin-threshold dialog) pass their own.
-const TRACK_HEIGHT = 80
+// Default track height, for the compact Motors column: 62. The buttons sit
+// beside the sliders rather than under them to pay for it. This column is
+// tight -- a 200px track pushed the rest of the test panel below the fold on a
+// laptop -- and it is for quick per-motor checks, so fine granularity is not
+// its job. Callers with room and a reason pass their own: the spin-threshold
+// wizard uses 180, because easing up on a break-away point is exactly the case
+// that needs travel per step.
+const TRACK_HEIGHT = 58
 // Narrow tracks: this is a column beside the settings now, not a full-width
 // row, and 36px columns pushed the ALL tile off a 300px column at laptop
 // widths. The pointer handlers are on the tile, not the visible bar, so the
@@ -316,9 +319,14 @@ export function MotorTestSliders({
     display: 'flex',
     alignItems: 'center',
     gap: 4,
+    // Height matched to the Test/Stop buttons it stacks with. Left to its own
+    // intrinsic size it came out 21px against their 31 and read as a different
+    // class of control sitting in the same column.
+    height: 31,
+    boxSizing: 'border-box',
     border: `1px solid ${color.border}`,
     borderRadius: 5,
-    padding: '2px 6px',
+    padding: '0 6px',
     background: color.bgPanelMuted,
   }
 
@@ -419,7 +427,7 @@ export function MotorTestSliders({
         ) : null}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {/* Typed entry alongside the drag. A slider is the fast way to find
             roughly the right throttle; it is a poor way to ask for exactly 7%,
             which is what a repeatable bench test needs. Both drive the same
