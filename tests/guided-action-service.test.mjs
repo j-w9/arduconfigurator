@@ -896,6 +896,41 @@ test('auto-confirm does NOT fire for the level posture — that stays the operat
   }
 })
 
+test('auto-confirm tolerates a hand-held wobble', async () => {
+  // The stillness tolerance is 6 degrees. It was 3, which a hand-held frame
+  // almost never settled inside: every small correction restarted the hold, so
+  // the auto-progression that exists to save the operator a click frequently
+  // never fired and they clicked anyway. A few degrees of hand tremor has to be
+  // tolerated; a real move to another posture must not be, which is the test
+  // immediately below.
+  const harness = createHostHarness({
+    accelerometerAutoHoldMs: 40,
+    accelerometerStepAdvanceMs: 10000,
+    accelerometerInitialWarmupMs: 10000
+  })
+  const service = await startCalibration(harness)
+  try {
+    promptPose(service, 3) // right side: roll +90
+    const before = confirmCount(harness)
+
+    service.handleAttitudeSample(90, 0)
+    await sleep(30)
+    // 4 degrees of wobble: inside the tolerance, so the hold keeps running
+    // rather than starting over.
+    service.handleAttitudeSample(86, 0)
+    await sleep(30)
+    service.handleAttitudeSample(90, 0)
+
+    assert.equal(
+      confirmCount(harness),
+      before + 1,
+      'a frame held by hand, wobbling a few degrees, must still auto-confirm'
+    )
+  } finally {
+    service.destroy()
+  }
+})
+
 test('auto-confirm restarts the hold when the frame is still moving', async () => {
   const harness = createHostHarness({
     accelerometerAutoHoldMs: 40,

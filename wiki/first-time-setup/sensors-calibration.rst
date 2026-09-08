@@ -40,8 +40,9 @@ Poses confirm themselves
 After the level pose you do not need to keep clicking. Once the pose graphic
 reads **aligned** — the frame is within about 17° of the posture being asked
 for — hold it still for **1.2 seconds** and the app confirms that step for you.
-Any wobble over about 3° restarts the timer, so resting the frame on a surface
-confirms almost immediately while hand-holding usually takes a little longer.
+Drift beyond about 6° restarts the timer, so a hand-held frame confirms as long
+as you are reasonably steady, and one resting on a surface confirms almost
+immediately.
 
 Level is deliberately excluded: a vehicle sitting on the bench is *already*
 level when the calibration starts, so auto-confirm would fire before you had
