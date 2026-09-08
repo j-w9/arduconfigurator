@@ -52,7 +52,16 @@ const DEFAULT_COMPASS_REPORT_WATCHDOG_MS = 90000
 // beat, not a cosmetic delay.
 const DEFAULT_ACCELEROMETER_AUTO_HOLD_MS = 1200
 // How far the frame may drift during that hold and still count as still.
-const ACCELEROMETER_AUTO_STILL_DEG = 3
+//
+// 6 degrees, widened from 3. Three was tight enough that a hand-held frame
+// almost never settled inside it: every small correction restarted the hold, so
+// the auto-progression that exists to save the operator a click frequently
+// never fired and they clicked anyway. Six still means a settled frame — it is
+// well inside the 17-degree window that decides the pose is the right one at
+// all, so a drift this size cannot carry the frame into a different posture,
+// and ArduPilot's own calibration tolerates roughly 20 degrees of pose error on
+// the five non-level positions.
+const ACCELEROMETER_AUTO_STILL_DEG = 6
 
 const ACCELCAL_SUCCESS_VALUE = 16777215
 const ACCELCAL_FAILED_VALUE = 16777216
