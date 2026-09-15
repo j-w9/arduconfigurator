@@ -5623,6 +5623,38 @@ test.describe('Inspectors (expert-only)', () => {
 })
 
 test.describe('Snapshot restore', () => {
+  test('leaving Expert mode stops carrying snapshot calibrations', async ({ page }) => {
+    // The gate is enforced on the import options, not only on the checkbox.
+    // Hiding the control while its state stayed true would keep carrying another
+    // unit's calibrations with nothing on screen saying so — the exact outcome
+    // the gate exists to prevent, and worse than never gating it.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await enableExpertMode(page)
+    await openView(page, 'snapshots')
+    await page.getByTestId('snapshot-label-input').fill('Cal gate')
+    await page.getByTestId('capture-live-snapshot-button').click()
+
+    await page.getByTestId('snapshot-import-calibration').check()
+    await expect(page.getByTestId('snapshot-import-calibration')).toBeChecked()
+
+    // Back to basic: the control is gone AND the exclusion is back on, which
+    // the excluded-count note reports.
+    await page.getByTestId('product-mode-expert').uncheck()
+    await openView(page, 'snapshots')
+    await expect(page.getByTestId('snapshot-import-calibration')).toHaveCount(0)
+    // The control being gone is not the point — the EXCLUSION being back on is.
+    // This note only renders when calibration values are actually being
+    // excluded from the restore, so it fails if the ticked state survived the
+    // mode change.
+    await expect(page.getByTestId('snapshot-import-calibration-excluded')).toBeVisible()
+
+    // Re-entering Expert must not silently resume carrying them either.
+    await enableExpertMode(page)
+    await openView(page, 'snapshots')
+    await expect(page.getByTestId('snapshot-import-calibration')).toHaveCount(1)
+  })
+
   test('captures a snapshot, shows a real diff after a live edit, drops/undoes a row, and overwrites in place', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
@@ -5636,11 +5668,16 @@ test.describe('Snapshot restore', () => {
     await page.getByTestId('view-button-snapshots').click()
     await page.getByTestId('snapshot-label-input').fill('E2E baseline')
     await page.getByTestId('capture-live-snapshot-button').click()
-    await expect(page.getByTestId('snapshot-import-calibration')).not.toBeChecked()
+    // Expert-gated: carrying another unit's accel offsets or compass cal onto
+    // this board is a decision with a wrong answer, not a preference, so basic
+    // mode does not offer it at all.
+    await expect(page.getByTestId('snapshot-import-calibration')).toHaveCount(0)
 
     // Change a live value from a different tab so the snapshot now has
     // something real to restore.
     await enableExpertMode(page)
+    await page.getByTestId('view-button-snapshots').click()
+    await expect(page.getByTestId('snapshot-import-calibration')).not.toBeChecked()
     await page.getByTestId('view-button-parameters').click()
     const search = page.getByTestId('parameter-search-input')
     await search.fill('BATT_LOW_VOLT')

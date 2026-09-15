@@ -2179,9 +2179,14 @@ export function App() {
   const [snapshotRestoreDroppedParamIds, setSnapshotRestoreDroppedParamIds] = useState<ReadonlySet<string>>(
     () => new Set()
   )
+  // Expert-gated, and gated HERE rather than only on the checkbox. Leaving
+  // Expert mode with the box ticked would otherwise hide the control while the
+  // state stayed true, so calibrations would keep being carried with nothing on
+  // screen saying so — the one outcome this gate exists to prevent.
+  const snapshotImportCalibrationEffective = productMode === 'expert' && snapshotImportCalibration
   const snapshotRestoreImportOptions = useMemo<ParameterBackupImportOptions>(
-    () => ({ excludeCategories: snapshotImportCalibration ? [] : ['calibration'] }),
-    [snapshotImportCalibration]
+    () => ({ excludeCategories: snapshotImportCalibrationEffective ? [] : ['calibration'] }),
+    [snapshotImportCalibrationEffective]
   )
   const {
     selectedProfile: selectedSnapshot,
@@ -9264,7 +9269,7 @@ export function App() {
             selectedSnapshotChangedEntries,
             selectedSnapshotInvalidEntries,
             selectedSnapshotRebootSensitiveCount,
-            snapshotImportCalibration,
+            snapshotImportCalibration: snapshotImportCalibrationEffective,
             snapshotRestoreExcludedCalibrationCount,
             snapshotRestoreDroppedParamIds,
             parameterEnumOverrides,
