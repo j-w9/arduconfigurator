@@ -463,6 +463,19 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   const [spinWizardOpen, setSpinWizardOpen] = useState(false)
   // The reason the last command was refused, if it was. Shown in the popout.
   const [spinWizardRefusal, setSpinWizardRefusal] = useState<string | undefined>(undefined)
+
+  // The safety acknowledgements the wizard needs before it may spin anything.
+  //
+  // One expression, used by BOTH the launcher and Start, so the two cannot
+  // disagree about what is required. The USB acknowledgement was previously
+  // missing from Start: over a USB link handleRunMotorTest refuses the command
+  // anyway, so an operator could tick the props box, press an enabled-looking
+  // Start, and get a refusal instead of motors. The gate now matches the one
+  // the command itself applies.
+  const spinWizardAckMissing =
+    !propsRemovedAcknowledged ||
+    !testAreaAcknowledged ||
+    (motorTestOverUsb && !usbBenchAcknowledged)
   const [spinArmDraft, setSpinArmDraft] = useState<string>('')
   const [spinMinDraft, setSpinMinDraft] = useState<string>('')
   const spinThresholdProblem =
@@ -935,6 +948,18 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                           type="button"
                           style={buttonStyle('primary')}
                           data-testid="spin-wizard-open"
+                          // Greyed until the acknowledgements on this same page
+                          // are ticked. The wizard spins every motor at once,
+                          // so opening it to find a dead Start button inside
+                          // was the wrong place to learn the gate exists.
+                          disabled={spinWizardAckMissing}
+                          title={
+                            spinWizardAckMissing
+                              ? motorTestOverUsb && !usbBenchAcknowledged && propsRemovedAcknowledged && testAreaAcknowledged
+                                ? 'Confirm the craft is on the bench (USB connection detected) before measuring.'
+                                : 'Confirm props are off and the vehicle is restrained before measuring.'
+                              : undefined
+                          }
                           onClick={() => setSpinWizardOpen(true)}
                         >
                           Measure Spin Thresholds
@@ -1861,7 +1886,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                           <button
                             style={buttonStyle('primary')}
                             data-testid="spin-wizard-start"
-                            disabled={busyAction !== undefined || !motorTestEligibility.allowed || !propsRemovedAcknowledged || !testAreaAcknowledged}
+                            disabled={busyAction !== undefined || !motorTestEligibility.allowed || spinWizardAckMissing}
                             onClick={() => {
                               const next = startSpinWizard()
                               setSpinWizard(next)
@@ -1875,10 +1900,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                         {/* The gate lives on the page behind this dialog, so a
                          *  disabled Start with no explanation would be a dead
                          *  end. Name the missing condition instead. */}
-                        {spinWizard.status === 'idle' && (!propsRemovedAcknowledged || !testAreaAcknowledged) ? (
+                        {spinWizard.status === 'idle' && spinWizardAckMissing ? (
                           <p className="switch-exercise-warning" data-testid="spin-wizard-blocked">
-                            Confirm props are off and the vehicle is restrained — the checkbox at the top of
-                            the Motors tab — before measuring. This spins every motor.
+                            {!propsRemovedAcknowledged || !testAreaAcknowledged
+                              ? 'Confirm props are off and the vehicle is restrained — the checkbox at the top of the Motors tab — before measuring. This spins every motor.'
+                              : 'Confirm the craft is on the bench — the USB acknowledgement at the top of the Motors tab — before measuring. This spins every motor.'}
                           </p>
                         ) : null}
 

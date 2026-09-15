@@ -2307,15 +2307,20 @@ test.describe('Config view', () => {
 
     // Expert-gated launcher on the page; the wizard itself is a popout, so it
     // costs the Motors tab one row rather than a panel.
-    await page.getByTestId('spin-wizard-open').click()
+    //
+    // Greyed until the acknowledgement on this same page is ticked. It used to
+    // open so the dialog could explain the gate, but opening a wizard to find
+    // its only button dead is the wrong place to learn a checkbox exists — the
+    // reason is on the launcher's tooltip instead, next to the checkbox it
+    // names.
+    await expect(page.getByTestId('spin-wizard-open')).toBeDisabled()
+    await expect(page.getByTestId('spin-wizard-open')).toHaveAttribute(
+      'title',
+      /props are off and the vehicle is restrained/i
+    )
 
-    // Opened without the safety ack: Start is refused, and it says why rather
-    // than sitting there greyed out.
-    await expect(page.getByTestId('spin-wizard-start')).toBeDisabled()
-    await expect(page.getByTestId('spin-wizard-blocked')).toBeVisible()
-
-    await page.getByTestId('spin-wizard-close').click()
     await page.getByTestId('motor-reorder-props-off-ack').check()
+    await expect(page.getByTestId('spin-wizard-open')).toBeEnabled()
     await page.getByTestId('spin-wizard-open').click()
     await page.getByTestId('spin-wizard-start').click()
 
