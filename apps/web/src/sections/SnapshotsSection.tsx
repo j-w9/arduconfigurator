@@ -869,23 +869,39 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                   </div>
                 ) : null}
 
-                <label className="snapshot-restore-ack" data-testid="snapshot-import-calibration-toggle">
-                  <input
-                    data-testid="snapshot-import-calibration"
-                    type="checkbox"
-                    checked={snapshotImportCalibration}
-                    onChange={(event) => setSnapshotImportCalibration(event.target.checked)}
-                    disabled={busyAction !== undefined}
-                  />
-                  <span>
-                    Import calibrations (accelerometer/compass/RC-trim). Off by default — this data is
-                    specific to the unit it was captured from and is almost never meaningful on different
-                    hardware.
-                    {snapshotRestoreExcludedCalibrationCount > 0
-                      ? ` ${snapshotRestoreExcludedCalibrationCount} calibration value(s) are currently excluded.`
-                      : ''}
-                  </span>
-                </label>
+                {/* Expert-gated. Carrying another unit's accelerometer offsets
+                    or compass calibration onto this board produces an aircraft
+                    that flies on measurements taken from different hardware —
+                    it is not a preference, it is a decision with a wrong
+                    answer. Expert mode is this repo's gate for exactly that
+                    kind of control, so in basic mode the calibrations are
+                    simply excluded and the line below says so rather than
+                    offering a checkbox with a warning attached to it. */}
+                {isExpertMode ? (
+                  <label className="snapshot-restore-ack" data-testid="snapshot-import-calibration-toggle">
+                    <input
+                      data-testid="snapshot-import-calibration"
+                      type="checkbox"
+                      checked={snapshotImportCalibration}
+                      onChange={(event) => setSnapshotImportCalibration(event.target.checked)}
+                      disabled={busyAction !== undefined}
+                    />
+                    <span>
+                      Import calibrations (accelerometer/compass/RC-trim). Off by default — this data is
+                      specific to the unit it was captured from and is almost never meaningful on different
+                      hardware.
+                      {snapshotRestoreExcludedCalibrationCount > 0
+                        ? ` ${snapshotRestoreExcludedCalibrationCount} calibration value(s) are currently excluded.`
+                        : ''}
+                    </span>
+                  </label>
+                ) : snapshotRestoreExcludedCalibrationCount > 0 ? (
+                  <p className="bf-note" data-testid="snapshot-import-calibration-excluded">
+                    {snapshotRestoreExcludedCalibrationCount} calibration value(s) (accelerometer/compass/RC-trim)
+                    are excluded from this restore — they belong to the unit the snapshot came from. Enable Expert
+                    mode to carry them anyway.
+                  </p>
+                ) : null}
 
                 {selectedSnapshotChangedEntries.length > 0 ? (
                   <div className="parameter-diff-bulk" data-testid="snapshot-diff-bulk">

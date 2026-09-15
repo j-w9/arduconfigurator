@@ -30,6 +30,7 @@ import type {
 import type { MavlinkSignatureRejection } from '@arduconfig/protocol-mavlink'
 import {
   MAV_PROTOCOL_CAPABILITY,
+  MAV_AUTOPILOT,
   MAV_CMD,
   MAV_PARAM_TYPE,
   MAV_RESULT,
@@ -63,6 +64,7 @@ import type {
   SetupSectionState,
   SetupStatus,
   StatusTextEntry,
+  UnsupportedAutopilot,
   VehicleIdentity,
 } from './types.js'
 import {
@@ -121,6 +123,7 @@ import {
   createIdleUartsFileState,
   createVehicleIdentity,
   formatParameterValueForLog,
+  describeUnsupportedAutopilot,
   isAuthoritativeHeartbeat,
   isPwmChannelValue,
   isValidGlobalCoordinates,
@@ -616,6 +619,8 @@ export class ArduPilotConfiguratorRuntime {
 
   private connection: TransportStatus
   private vehicle?: VehicleIdentity
+  /** Last foreign autopilot seen while no supported vehicle has identified. */
+  private unsupportedAutopilot?: UnsupportedAutopilot
   private hardwareBoard?: HardwareBoardState
   private uartsFile: BoardFileState = createIdleUartsFileState()
   // Physical PWM output count, parsed from the "RCOut: PWM:1-N" boot banner —
@@ -833,6 +838,7 @@ export class ArduPilotConfiguratorRuntime {
     return {
       connection: this.connection,
       vehicle: this.vehicle,
+      unsupportedAutopilot: this.unsupportedAutopilot,
       // Retained-table marker. Present only while the values on screen came
       // from a link that has since dropped; cleared the moment a live download
       // resumes or restarts.
@@ -2531,7 +2537,30 @@ export class ArduPilotConfiguratorRuntime {
 
   private processHeartbeat(message: HeartbeatMessage, systemId: number, componentId: number): void {
     if (!isAuthoritativeHeartbeat(message)) {
+      // Not ArduPilot. Record WHAT was seen rather than dropping it silently:
+      // a PX4 board used to connect at the transport layer and then sit on
+      // "Waiting for heartbeat" forever while its heartbeats arrived and were
+      // discarded, which tells the operator the opposite of what is happening.
+      //
+      // MAV_AUTOPILOT_INVALID is excluded because it is what a non-autopilot
+      // component reports (a gimbal, a companion computer, our own GCS
+      // heartbeat echoed back on a shared bus) — announcing "unsupported
+      // autopilot" for those would be wrong on a perfectly healthy ArduPilot
+      // link.
+      if (message.autopilot !== MAV_AUTOPILOT.INVALID && !this.vehicle) {
+        const next = describeUnsupportedAutopilot(message.autopilot)
+        if (next.autopilot !== this.unsupportedAutopilot?.autopilot) {
+          this.unsupportedAutopilot = next
+          this.emit()
+        }
+      }
       return
+    }
+
+    // A supported vehicle has identified itself, so anything recorded from a
+    // foreign heartbeat is no longer what the operator is looking at.
+    if (this.unsupportedAutopilot) {
+      this.unsupportedAutopilot = undefined
     }
 
     if (this.vehicle && (this.vehicle.systemId !== systemId || this.vehicle.componentId !== componentId)) {

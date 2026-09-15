@@ -839,9 +839,32 @@ export interface AvailableFlightMode {
   properties: number
 }
 
+/**
+ * A heartbeat from an autopilot this app does not support.
+ *
+ * The runtime only accepts ArduPilot heartbeats as authoritative, and used to
+ * drop everything else on the floor — so a PX4 board connected fine at the
+ * transport layer and then sat on "Waiting for heartbeat" forever, while
+ * heartbeats were in fact arriving and being discarded. This records what was
+ * actually seen so the app can say so.
+ */
+export interface UnsupportedAutopilot {
+  /** HEARTBEAT.autopilot (MAV_AUTOPILOT). */
+  autopilot: number
+  /** Human name where we have one, e.g. 'PX4'. */
+  label: string
+}
+
 export interface ConfiguratorSnapshot {
   connection: TransportStatus
   vehicle?: VehicleIdentity
+  /**
+   * Set when the only heartbeats arriving are from an autopilot this app does
+   * not support. Cleared the moment a supported vehicle identifies itself, so
+   * a mixed bus (a PX4 companion alongside an ArduPilot FC) resolves in favour
+   * of the vehicle we can actually configure.
+   */
+  unsupportedAutopilot?: UnsupportedAutopilot
   hardware: HardwareState
   /**
    * Present only while showing retained values from a dropped link. Absent

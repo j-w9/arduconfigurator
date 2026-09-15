@@ -32,6 +32,7 @@ import type {
   ParameterSyncState,
   PreArmStatusState,
   StatusTextEntry,
+  UnsupportedAutopilot,
   VehicleIdentity,
   VehicleSystemStatus
 } from './types.js'
@@ -909,6 +910,23 @@ export function matchGuidedActionText(
 
 export function isAuthoritativeHeartbeat(message: HeartbeatMessage): boolean {
   return message.autopilot === MAV_AUTOPILOT.ARDUPILOTMEGA
+}
+
+/**
+ * Name a heartbeat's autopilot for an operator whose board this app cannot
+ * configure.
+ *
+ * Only PX4 is named. It is the one an ArduPilot user actually meets — a board
+ * flashed with the wrong firmware, or bought with PX4 on it — and naming it
+ * turns "nothing is happening" into a diagnosis. Every other MAV_AUTOPILOT
+ * value gets its number rather than a label: guessing at SMACCMPILOT or
+ * AIRRAILS would be a table nobody can verify and nobody will ever read.
+ */
+export function describeUnsupportedAutopilot(autopilot: number): UnsupportedAutopilot {
+  return {
+    autopilot,
+    label: autopilot === MAV_AUTOPILOT.PX4 ? 'PX4' : `MAV_AUTOPILOT ${autopilot}`
+  }
 }
 
 // UAVCAN_NODE_HEALTH enum, mirrored from uavcan.protocol.NodeStatus.Health

@@ -53,15 +53,20 @@ const DEFAULT_COMPASS_REPORT_WATCHDOG_MS = 90000
 const DEFAULT_ACCELEROMETER_AUTO_HOLD_MS = 1200
 // How far the frame may drift during that hold and still count as still.
 //
-// 6 degrees, widened from 3. Three was tight enough that a hand-held frame
-// almost never settled inside it: every small correction restarted the hold, so
-// the auto-progression that exists to save the operator a click frequently
-// never fired and they clicked anyway. Six still means a settled frame — it is
-// well inside the 17-degree window that decides the pose is the right one at
-// all, so a drift this size cannot carry the frame into a different posture,
-// and ArduPilot's own calibration tolerates roughly 20 degrees of pose error on
-// the five non-level positions.
-const ACCELEROMETER_AUTO_STILL_DEG = 6
+// 15 degrees, after 3 and then 6 both proved too tight on real hardware: a
+// hand-held frame kept restarting the hold, so the auto-progression that exists
+// to save the operator a click did not fire and they clicked anyway.
+//
+// This sits deliberately close to ACCELEROMETER_POSE_ALIGNED_DEG (17), which
+// makes the drift check nearly vestigial -- and that is the point. Correctness
+// is guaranteed by the ALIGNMENT check, not by this one: every sample is
+// re-tested against the pose target on arrival, and a frame that leaves the
+// 17-degree window clears the hold outright a few lines below. So whatever this
+// value is, the captured sample is always within 17 degrees of the posture that
+// was asked for, and ArduPilot's own calibration tolerates roughly 20. What
+// this now does is the narrower job it should always have had: stop a capture
+// landing mid-movement, without second-guessing a steady hand.
+const ACCELEROMETER_AUTO_STILL_DEG = 15
 
 const ACCELCAL_SUCCESS_VALUE = 16777215
 const ACCELCAL_FAILED_VALUE = 16777216
