@@ -1076,7 +1076,14 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                   title={enterDfuDisabledReason}
                   onClick={() => void handleEnterDfu()}
                 >
-                  {dfuBusy ? 'Rebooting…' : 'Confirm: enter DFU'}
+                  {/* NOT "enter DFU", which this button said for both paths.
+                      This one sends PREFLIGHT_REBOOT_SHUTDOWN param1=3, which
+                      holds the board in ArduPilot's OWN serial bootloader. DFU
+                      is the STM32 ROM device, a different thing reached by a
+                      different command (the button below). Naming them the
+                      same made the pair indistinguishable at the only moment
+                      the operator gets to check what they are about to do. */}
+                  {dfuBusy ? 'Rebooting…' : 'Confirm: activate bootloader'}
                 </button>
                 <button
                   type="button"
@@ -1237,8 +1244,9 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
         </div>
         {onEnterDfu && dfuConfirmArmed ? (
           <p className="bf-note bf-note--warning" data-testid="firmware-enter-dfu-warning">
-            This drops the MAVLink link and holds the board in ArduPilot&apos;s bootloader, ready for
-            &quot;Flash firmware&quot;. Only proceed if you intend to reflash. Click &quot;Confirm: enter DFU&quot; to continue.
+            This drops the MAVLink link and holds the board in ArduPilot&apos;s own bootloader, ready for
+            &quot;Flash firmware&quot;. It is not DFU — that is the STM32 ROM device, reached by the separate
+            button. Only proceed if you intend to reflash.
           </p>
         ) : null}
         {onEnterRomDfu && romDfuConfirmArmed ? (

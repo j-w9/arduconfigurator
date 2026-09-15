@@ -1765,6 +1765,17 @@ test.describe('Flash view', () => {
     // that holds the board in ArduPilot's bootloader — labelled "(DFU)".
     await expect(page.getByTestId('firmware-enter-dfu')).toHaveText('Activate Bootloader')
     await expect(page.getByTestId('firmware-enter-rom-dfu')).toHaveText('Enter DFU (STM32 ROM)')
+
+    // ...and so do their CONFIRM buttons. Both used to read "Confirm: enter
+    // DFU", so the two paths were indistinguishable at the exact moment the
+    // operator gets to check what they are about to commit — and one of them
+    // does not enter DFU at all, it holds the board in ArduPilot's own
+    // bootloader (PREFLIGHT_REBOOT_SHUTDOWN param1=3).
+    await page.getByTestId('firmware-enter-dfu').click()
+    await expect(page.getByTestId('firmware-enter-dfu-confirm')).toHaveText('Confirm: activate bootloader')
+    await expect(page.getByTestId('firmware-enter-dfu-warning')).not.toContainText('Confirm: enter DFU')
+    await page.getByTestId('firmware-enter-dfu-cancel').click()
+    await expect(page.getByTestId('firmware-enter-dfu-confirm')).toHaveCount(0)
     await expect(page.getByTestId('firmware-bootloader-vs-dfu-note')).toBeVisible()
     await page.getByTestId('firmware-enter-rom-dfu').click()
     await expect(page.getByTestId('firmware-enter-rom-dfu-confirm')).toBeVisible()

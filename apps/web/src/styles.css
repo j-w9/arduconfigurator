@@ -14955,11 +14955,44 @@ details.bf-gui-box:not([open]) > summary::after {
   margin-bottom: var(--space-3);
 }
 
+/* The Flash tab's quick-action row.
+ *
+ * These four had NO resting styles at all — only a :hover rule, with the base
+ * selector orphaned into it by a stray blank line, since the first commit. They
+ * rendered as browser-default OS buttons: grey #6b6b6b fill, 1px/6px padding,
+ * 23px tall, inside a dark themed app whose other controls are 29-31px. That is
+ * the "hard to read" — not the contrast of a colour we chose, but the absence
+ * of any colour at all.
+ *
+ * Matched to buttonStyle('secondary') in @arduconfig/ui-kit, which is what the
+ * rest of the app's buttons use. */
 .firmware-wizard__dfu-button,
+.firmware-wizard__dfu-cancel,
+.firmware-wizard__reboot-button,
+.firmware-wizard__server-toggle {
+  padding: 5px 12px;
+  border: 1px solid var(--btn-border, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md);
+  background: var(--btn-bg, linear-gradient(180deg, rgba(47, 55, 63, 0.96), rgba(35, 41, 48, 0.98)));
+  color: var(--btn-text, var(--text));
+  font: inherit;
+  font-size: var(--text-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
 
 .firmware-wizard__dfu-button:hover:not(:disabled),
+.firmware-wizard__dfu-cancel:hover:not(:disabled),
+.firmware-wizard__reboot-button:hover:not(:disabled),
 .firmware-wizard__server-toggle:hover {
   border-color: var(--primary-400);
+}
+
+.firmware-wizard__dfu-cancel:disabled,
+.firmware-wizard__reboot-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .firmware-wizard__dfu-button:disabled {
