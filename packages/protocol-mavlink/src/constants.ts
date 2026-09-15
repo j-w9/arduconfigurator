@@ -226,9 +226,14 @@ export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
 
 export const MAVLINK_PROTOCOL_VERSION = 3
 
+// MAV_AUTOPILOT, from modules/mavlink/message_definitions/v1.0/minimal.xml.
+// Only the values this app reasons about: ArduPilot is the one it supports,
+// PX4 is the one it is most likely to meet and must say so about, and INVALID
+// is what a component with no autopilot (a gimbal, a companion) reports.
 export const MAV_AUTOPILOT = {
   ARDUPILOTMEGA: 3,
-  INVALID: 8
+  INVALID: 8,
+  PX4: 12
 } as const
 
 export const MAV_TYPE = {

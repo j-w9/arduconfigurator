@@ -40,13 +40,40 @@ export function WorkspaceNotes({
   onPullParameters
 }: WorkspaceNotesProps) {
   const staleLink = snapshot.staleLink
+  const unsupportedAutopilot = snapshot.unsupportedAutopilot
 
-  if (!staleLink && !sessionNotice && !parameterFollowUp && !(!isExpertMode && stagedParameterDraftCount > 0)) {
+  if (
+    !staleLink &&
+    !unsupportedAutopilot &&
+    !sessionNotice &&
+    !parameterFollowUp &&
+    !(!isExpertMode && stagedParameterDraftCount > 0)
+  ) {
     return null
   }
 
   return (
     <div className="workspace-main__notes">
+      {/* The link is up and heartbeats ARE arriving — they are just from an
+          autopilot this app cannot configure. Without this the operator sees
+          "Waiting for heartbeat" indefinitely, which says the opposite of what
+          is happening and sends them to check cabling that is fine. */}
+      {unsupportedAutopilot ? (
+        <div className="workspace-note workspace-note--stale" data-testid="unsupported-autopilot-banner" role="status">
+          <div className="workspace-note--stale__headline">
+            <span className="workspace-note--stale__dot" aria-hidden="true" />
+            <strong>{unsupportedAutopilot.label} is not currently supported</strong>
+          </div>
+          <p>
+            The board is connected and sending heartbeats, but this configurator only speaks to
+            ArduPilot. Nothing here will configure it.
+          </p>
+          <small>
+            Pull requests are welcome to support it. If you meant to run ArduPilot, flash ArduPilot
+            firmware from the Flash tab and reconnect.
+          </small>
+        </div>
+      ) : null}
       {/* Everything below the banner is a snapshot of a link that has dropped.
           It has to be unmissable: values that look live but are minutes old are
           how someone flies a stale config. */}
