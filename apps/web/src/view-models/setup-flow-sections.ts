@@ -11,6 +11,7 @@
 // so no handler closures move with it.
 
 import { resolveSetupConfirmationRecord } from './setup-confirmation-resolve'
+import { accelerometerCalibrationVerdict } from './accel-calibration-state'
 import {
   deriveAirframe,
   deriveCompassSetupAvailability,
@@ -548,8 +549,17 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
         case 'accelerometer': {
           const actionState = snapshot.guidedActions['calibrate-accelerometer']
           confirmationOutcome = accelerometerConfirmation?.outcome
+          // The vehicle's own answer, read the way ArduPilot's pre-arm check
+          // reads it. Without this the step recorded whether THIS APP had run
+          // the calibration, so a vehicle calibrated in Mission Planner — or
+          // one that just had its offsets restored from a snapshot — was told
+          // to do the work again while the firmware was perfectly happy to arm.
+          const accelerometerVerdict = accelerometerCalibrationVerdict(snapshot)
+          const accelerometerCalibratedOnVehicle = accelerometerVerdict === 'calibrated'
           const accelerometerCalibrationRecorded =
-            actionState.status === 'succeeded' || accelerometerConfirmation !== undefined
+            actionState.status === 'succeeded' ||
+            accelerometerConfirmation !== undefined ||
+            accelerometerCalibratedOnVehicle
           if (accelerometerConfirmation?.outcome === 'already-done') {
             criteria = [
               {
@@ -581,10 +591,13 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             criteria = [
               {
                 label: 'Accelerometer calibration completed successfully',
-                met: actionState.status === 'succeeded' || section.status === 'complete'
+                met:
+                  actionState.status === 'succeeded' ||
+                  section.status === 'complete' ||
+                  accelerometerCalibratedOnVehicle
               },
               {
-                label: 'Calibration was recorded in-app or confirmed from prior review',
+                label: 'Calibration was recorded in-app, confirmed from prior review, or already stored on the vehicle',
                 met: accelerometerCalibrationRecorded
               }
             ]
@@ -600,7 +613,9 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
                 ? `Review: confirmed at ${formatConfirmationTime(accelerometerConfirmation.confirmedAtMs)}`
                 : actionState.status === 'succeeded'
                   ? `Recorded from in-app calibration at ${formatConfirmationTime(actionState.completedAtMs)}`
-                  : 'Review: pending calibration'
+                  : accelerometerCalibratedOnVehicle
+                    ? 'The vehicle reports stored accelerometer offsets and scales (INS_ACC*OFFS / INS_ACC*SCAL) — calibrated outside this app, or restored from a snapshot.'
+                    : 'Review: pending calibration'
             ].slice(0, 4)
             actions.unshift({
               kind: 'guided',
