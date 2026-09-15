@@ -931,7 +931,17 @@ test('auto-confirm tolerates a hand-held wobble', async () => {
   }
 })
 
-test('auto-confirm restarts the hold when the frame is still moving', async () => {
+test('auto-confirm will not capture a frame that has left the pose', async () => {
+  // What actually protects the sample is the ALIGNMENT check, not the drift
+  // tolerance — which is now 15 degrees against a 17-degree acceptance window
+  // and so has almost no room left to fire in. Every sample is re-tested
+  // against the pose target on arrival, and a frame that has moved out of that
+  // window clears the hold outright.
+  //
+  // The test this replaces moved the frame 8 degrees and asserted no capture,
+  // but it asserted that BETWEEN samples, with the hold not yet elapsed — it
+  // passed with the drift set to zero, so it proved nothing about drift at any
+  // tolerance.
   const harness = createHostHarness({
     accelerometerAutoHoldMs: 40,
     accelerometerStepAdvanceMs: 10000,
@@ -943,17 +953,17 @@ test('auto-confirm restarts the hold when the frame is still moving', async () =
     const before = confirmCount(harness)
 
     service.handleAttitudeSample(90, 0)
-    await sleep(30)
-    // Still inside the acceptance window, but visibly moving — the hold resets.
-    service.handleAttitudeSample(82, 0)
-    await sleep(30)
-    assert.equal(confirmCount(harness), before, 'a drifting frame must not be captured')
-
-    // Now settled: the fresh hold elapses and it captures.
-    service.handleAttitudeSample(82, 0)
     await sleep(60)
-    service.handleAttitudeSample(82, 0)
-    assert.equal(confirmCount(harness), before + 1, 'captures once it settles')
+    // Rolled well away from "right side" — outside the acceptance window, so
+    // the hold is discarded no matter how long it had been running.
+    service.handleAttitudeSample(40, 0)
+    assert.equal(confirmCount(harness), before, 'a frame outside the pose must not be captured')
+
+    // Back in the window, held: it captures.
+    service.handleAttitudeSample(90, 0)
+    await sleep(60)
+    service.handleAttitudeSample(90, 0)
+    assert.equal(confirmCount(harness), before + 1, 'captures once it is back in the pose and settled')
   } finally {
     service.destroy()
   }
