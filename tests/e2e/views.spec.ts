@@ -6731,6 +6731,36 @@ test.describe('Tuning ▸ Filters', () => {
   // "Filter Editor" tab, which meant two Tuning tabs both about filters. They
   // are one tab now, and every field still goes through the app's shared
   // metadata renderer, so each parameter keeps its real editor and its "i".
+  test('basic mode offers the derived filter set; Expert adds the raw grid', async ({ page }) => {
+    // Two surfaces edited overlapping parameters: a grid of individual filter
+    // fields, and a panel deriving those same frequencies from one gyro cutoff
+    // using ArduPilot's ratios. The derived one is the better answer and was at
+    // the BOTTOM of the page, so the first thing anyone met was the harder way
+    // to do the same job. It leads now, and the grid is the Expert override.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('view-button-tuning').click()
+    await page.getByTestId('tuning-tab-filters').click()
+
+    // Basic: the derived panel, and no raw grid to be confused with it.
+    await expect(page.getByTestId('filters-from-gyro')).toBeVisible()
+    await expect(page.getByTestId('tuning-filter-manual')).toHaveCount(0)
+    await expect(page.getByTestId('tuning-filter-group-notch')).toHaveCount(0)
+
+    // Expert: the grid returns, below the derived panel rather than above it.
+    await enableExpertMode(page)
+    await page.getByTestId('view-button-tuning').click()
+    await page.getByTestId('tuning-tab-filters').click()
+    await expect(page.getByTestId('tuning-filter-manual')).toBeVisible()
+    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
+
+    const derivedTop = await page.getByTestId('filters-from-gyro').evaluate((el) => el.getBoundingClientRect().top)
+    const gridTop = await page.getByTestId('tuning-filter-manual').evaluate((el) => el.getBoundingClientRect().top)
+    expect(derivedTop).toBeLessThan(gridTop)
+  })
+
   async function openFilters(page: Page): Promise<void> {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')

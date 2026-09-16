@@ -111,6 +111,9 @@ export interface TuningCopterSectionProps {
   filterNotchSlot?: ReactNode
   /** The FILTn bank, when the firmware has one. Rendered above the notch help. */
   filterBankSlot?: ReactNode
+  /** Expert mode breaks out the raw per-parameter filter grid. See the Filters
+   *  task body for why it is not the default surface. */
+  isExpertMode: boolean
 }
 
 export function TuningCopterSection(props: TuningCopterSectionProps): ReactElement {
@@ -123,6 +126,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     initialTuneSlot,
     filterNotchSlot,
     filterBankSlot,
+    isExpertMode,
     tuningWorkbench,
     forms,
     derived,
@@ -587,30 +591,68 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           </StatusBadge>
                         </div>
 
-                        <div className="tuning-axis-grid tuning-axis-grid--filters">
-                          {tuningFilterAxisGroups.map((group) => (
-                            <article
-                              key={`tuning-filter-axis:${group.id}`}
-                              className={group.id === 'sensor' || group.id === 'notch' ? 'tuning-axis-card tuning-axis-card--wide' : 'tuning-axis-card'}
-                              data-testid={`tuning-filter-group-${group.id}`}
-                            >
-                              <div className="tuning-axis-card__header">
-                                <strong>{group.label}</strong>
-                                <span>{group.parameters.length} filters</span>
-                              </div>
-                              <div className="tuning-control-grid tuning-control-grid--compact">
-                                {/* Slider for a frequency, named list for the
-                                    notch mode, per-bit toggles for its
-                                    bitmasks -- a slider dragged through an enum
-                                    produces states nobody asked for. */}
-                                {group.parameters.map((parameter) => renderFilterControl(parameter))}
-                              </div>
-                            </article>
-                          ))}
-                        </div>
-
-                        {filterBankSlot}
+                        {/* Derived first, raw second.
+                          *
+                          * These two surfaces edit overlapping parameters: the
+                          * grid below offers INS_GYRO_FILTER and the rate-loop
+                          * frequencies as individual fields, and the panel here
+                          * derives those same frequencies from one gyro cutoff
+                          * using ArduPilot's own ratios. The derived version is
+                          * the better answer -- it keeps FLTD at gyro/2 and
+                          * gyro/4 instead of leaving three fields to be kept
+                          * consistent by hand -- but it was at the BOTTOM of the
+                          * page, so the first thing anyone met was the harder
+                          * way to do the same job.
+                          *
+                          * So it leads, and in basic mode it is the only filter
+                          * surface. Expert mode adds the raw grid back as an
+                          * override, which is what Expert is for everywhere else
+                          * in this app.
+                          *
+                          * Note the grid is NOT fully redundant: INS_ACCEL_FILTER,
+                          * ATC_RAT_{RLL,PIT}_FLTE, INS_HNTCH_HMNCS and
+                          * INS_HNTCH_FM_RAT have no derived counterpart, so they
+                          * are Expert-only now. They are left out of the derived
+                          * panel deliberately rather than given invented ratios --
+                          * filters-from-gyro.ts carries only rules ArduPilot
+                          * documents, and a made-up one would be worse than a
+                          * gate. */}
                         {filterNotchSlot}
+                        {filterBankSlot}
+
+                        {isExpertMode ? (
+                          <div className="tuning-filter-manual" data-testid="tuning-filter-manual">
+                            <div className="tuning-filter-manual__header">
+                              <strong>Manual override</strong>
+                              <p>
+                                Every filter parameter as its own field. The panel above derives the
+                                gyro-linked ones from a single cutoff; edit here when you want a value it
+                                does not set, or one that deliberately departs from ArduPilot&apos;s ratios.
+                              </p>
+                            </div>
+                            <div className="tuning-axis-grid tuning-axis-grid--filters">
+                              {tuningFilterAxisGroups.map((group) => (
+                                <article
+                                  key={`tuning-filter-axis:${group.id}`}
+                                  className={group.id === 'sensor' || group.id === 'notch' ? 'tuning-axis-card tuning-axis-card--wide' : 'tuning-axis-card'}
+                                  data-testid={`tuning-filter-group-${group.id}`}
+                                >
+                                  <div className="tuning-axis-card__header">
+                                    <strong>{group.label}</strong>
+                                    <span>{group.parameters.length} filters</span>
+                                  </div>
+                                  <div className="tuning-control-grid tuning-control-grid--compact">
+                                    {/* Slider for a frequency, named list for the
+                                        notch mode, per-bit toggles for its
+                                        bitmasks -- a slider dragged through an enum
+                                        produces states nobody asked for. */}
+                                    {group.parameters.map((parameter) => renderFilterControl(parameter))}
+                                  </div>
+                                </article>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </section>
                   </div>

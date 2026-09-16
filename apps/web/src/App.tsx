@@ -9544,6 +9544,7 @@ export function App() {
           renderFilterControl,
             formatCategoryLabel
           }}
+          isExpertMode={isExpertMode}
           filterBankSlot={
             filterBank.supported ? (
               <FilterBankPanel
@@ -9556,16 +9557,14 @@ export function App() {
           }
           filterNotchSlot={
             <>
-              <FilterNotchHelp
-                liveValues={filterLiveValues}
-                editedValues={editedValues}
-                onSetDraft={setDraft}
-                disabled={busyAction !== undefined}
-              />
               {/* Enter a gyro cutoff, get ArduPilot's derived filter set as
                   editable proposals, stage them as ordinary drafts. It stages
-                  rather than writes, so the values land in the fields above and
-                  go out through the same reviewed Apply as any other edit. */}
+                  rather than writes, so the values go out through the same
+                  reviewed Apply as any other edit.
+
+                  First on the tab: it is the primary way to set filters, and
+                  in basic mode the only one. It used to sit below both the
+                  notch suggestions and the raw grid. */}
               <FiltersFromGyro
                 liveValues={filterLiveValues}
                 labelFor={(paramId) =>
@@ -9578,6 +9577,12 @@ export function App() {
                     setDraft(entry.id, String(entry.value))
                   }
                 }}
+                disabled={busyAction !== undefined}
+              />
+              <FilterNotchHelp
+                liveValues={filterLiveValues}
+                editedValues={editedValues}
+                onSetDraft={setDraft}
                 disabled={busyAction !== undefined}
               />
             </>
