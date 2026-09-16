@@ -63,6 +63,9 @@ import {
   ARDUCOPTER_COMPASS_EXTERNAL_LABELS,
   ARDUCOPTER_COMPASS_AUTO_ROT_LABELS,
   ARDUCOPTER_COMPASS_DISBLMSK_BIT_LABELS,
+  ARDUCOPTER_FENCE_ACTION_LABELS,
+  ARDUCOPTER_FENCE_AUTOENABLE_LABELS,
+  ARDUCOPTER_FENCE_TYPE_BIT_LABELS,
   arducopterRcOptionOptions,
 } from './arducopter-enums.js'
 
@@ -875,6 +878,17 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       label: 'Failsafe',
       description: 'Throttle, battery, and failsafe behavior.',
       order: 11,
+      viewId: 'failsafe'
+    },
+    // Its own category, not 'failsafe', so the fence renders as one card
+    // instead of eight fields interleaved with the battery timers — the group
+    // key is the category id. It still routes to the Failsafe view: a boundary
+    // that triggers an action belongs beside the other failsafes.
+    fence: {
+      id: 'fence',
+      label: 'Geofence',
+      description: 'Altitude ceiling, floor, and circular boundary, with what happens on a breach.',
+      order: 12,
       viewId: 'failsafe'
     },
     tuning: {
@@ -1956,6 +1970,90 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       maximum: 120,
       step: 1,
       notes: advancedFailsafeNotes
+    },
+    // Geofence.
+    //
+    // These had no curated metadata and appeared in no tab: the only way to set
+    // a fence was Initial Tune's "Failsafes & fence" checkbox (a yes/no on a
+    // TUNING task) or the raw Parameters tab. Both are Expert-only, so basic
+    // mode had no way to set a geofence at all.
+    //
+    // Categorised 'failsafe' so they route to the Failsafe view, which is where
+    // a boundary-that-triggers-an-action belongs — next to the battery and RC
+    // failsafes rather than on a tuning tab.
+    //
+    // Values are ArduPilot's own, from AC_Fence.cpp. Ranges and units match the
+    // @Range/@Units annotations; nothing here is invented.
+    FENCE_ENABLE: {
+      id: 'FENCE_ENABLE',
+      label: 'Fence',
+      description:
+        'Enable the geofence. Fences can also be enabled and disabled from an RC switch or over MAVLink, but those changes are not saved.',
+      category: 'fence',
+      options: enumOptions({ 0: 'Disabled', 1: 'Enabled' })
+    },
+    FENCE_TYPE: {
+      id: 'FENCE_TYPE',
+      label: 'Fence Type',
+      description:
+        'Which fences are active, as a set of independent limits. Max-altitude, circle and polygon fences take effect as soon as they are configured; the min-altitude fence only arms once that altitude has been reached.',
+      category: 'fence',
+      bitmask: true,
+      options: enumOptions(ARDUCOPTER_FENCE_TYPE_BIT_LABELS)
+    },
+    FENCE_ACTION: {
+      id: 'FENCE_ACTION',
+      label: 'Fence Action',
+      description: 'What the vehicle does when it breaches the fence.',
+      category: 'fence',
+      options: enumOptions(ARDUCOPTER_FENCE_ACTION_LABELS)
+    },
+    FENCE_RADIUS: {
+      id: 'FENCE_RADIUS',
+      label: 'Fence Radius',
+      description: 'Radius of the circular fence centred on home.',
+      category: 'fence',
+      unit: 'm',
+      minimum: 30,
+      maximum: 10000
+    },
+    FENCE_ALT_MAX: {
+      id: 'FENCE_ALT_MAX',
+      label: 'Fence Maximum Altitude',
+      description: 'Altitude ceiling before the fence triggers.',
+      category: 'fence',
+      unit: 'm',
+      minimum: 10,
+      maximum: 1000
+    },
+    FENCE_ALT_MIN: {
+      id: 'FENCE_ALT_MIN',
+      label: 'Fence Minimum Altitude',
+      description:
+        'Altitude floor before the fence triggers. Only active once the vehicle has climbed through it, so it cannot fire on the ground.',
+      category: 'fence',
+      unit: 'm',
+      minimum: -100,
+      maximum: 100
+    },
+    FENCE_MARGIN: {
+      id: 'FENCE_MARGIN',
+      label: 'Fence Margin',
+      description: 'Distance the autopilot keeps from the fence to avoid breaching it.',
+      category: 'fence',
+      unit: 'm',
+      minimum: 1,
+      maximum: 10
+    },
+    FENCE_AUTOENABLE: {
+      id: 'FENCE_AUTOENABLE',
+      label: 'Fence Auto-Enable',
+      description:
+        'Whether fences arm themselves automatically. The minimum-altitude fence is always held back until that altitude is reached.',
+      category: 'fence',
+      minimum: 0,
+      maximum: 3,
+      options: enumOptions(ARDUCOPTER_FENCE_AUTOENABLE_LABELS)
     },
     BATT_FS_LOW_ACT: {
       id: 'BATT_FS_LOW_ACT',

@@ -1465,3 +1465,39 @@ export function arducopterRcOptionOptions(): ParameterValueOption[] {
     .sort(compareRcOptionLabels)
   return [...doNothing, ...useful, ...rest]
 }
+
+/**
+ * FENCE_TYPE bits, from AC_Fence.cpp's @Bitmask.
+ *
+ * Bit values, not a bitmask total: the generic editor renders one checkbox per
+ * bit and stores their OR.
+ */
+export const ARDUCOPTER_FENCE_TYPE_BIT_LABELS: Record<number, string> = {
+  0: 'Max altitude',
+  1: 'Circle centered on home',
+  2: 'Inclusion/exclusion circles + polygons',
+  3: 'Min altitude'
+}
+
+/**
+ * FENCE_ACTION values, from AC_Fence.cpp's @Values.
+ *
+ * Copter's list — Plane and Rover expose different actions, which is why this
+ * lives in the ArduCopter enums rather than a shared table.
+ */
+export const ARDUCOPTER_FENCE_ACTION_LABELS: Record<number, string> = {
+  0: 'Report only',
+  1: 'RTL or Land',
+  2: 'Always Land',
+  3: 'SmartRTL or RTL or Land',
+  4: 'Brake or Land',
+  5: 'SmartRTL or Land'
+}
+
+/** FENCE_AUTOENABLE values, from AC_Fence.cpp's @Values. */
+export const ARDUCOPTER_FENCE_AUTOENABLE_LABELS: Record<number, string> = {
+  0: 'Off',
+  1: 'Enable on takeoff',
+  2: 'Enable on takeoff, disable floor on landing',
+  3: 'Enable only when armed'
+}

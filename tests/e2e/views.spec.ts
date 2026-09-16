@@ -1514,6 +1514,45 @@ test.describe('Tuning tab', () => {
 })
 
 test.describe('Failsafe view', () => {
+  test('the geofence is reachable in basic mode, as its own group', async ({ page }) => {
+    // The fence used to be settable only through Initial Tune's
+    // "Failsafes & fence" checkbox or the raw Parameters tab, both Expert-only
+    // — so basic mode could not set a geofence at all. It belongs with the
+    // other failsafes: a boundary that triggers an action.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'failsafe')
+
+    // Basic mode. Not an incidental default — it is the condition under test.
+    await expect(page.getByTestId('product-mode-expert')).not.toBeChecked()
+
+    // Its own card rather than eight fields interleaved with the battery
+    // timers. The section id comes from the parameter category, so this also
+    // pins the fence to a category of its own.
+    const fence = page.getByTestId('metadata-settings-section-fence')
+    await expect(fence).toContainText('Geofence')
+    // The group is a <details>; open it if this build ships it collapsed so the
+    // assertions below are about the fields, not about the disclosure.
+    if (!(await fence.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await fence.locator('summary').click()
+    }
+
+    // .first(): each field renders its id in the label, the info bubble, and
+    // the bubble's own header.
+    for (const id of ['FENCE_ENABLE', 'FENCE_TYPE', 'FENCE_ACTION', 'FENCE_RADIUS', 'FENCE_ALT_MAX']) {
+      await expect(fence.getByText(id, { exact: true }).first()).toBeVisible()
+    }
+
+    // Curated metadata, not a raw number: the breach action is a named list
+    // sitting on ArduPilot's default of 1 (RTL or Land), which is the
+    // difference between the fence being configurable and merely present.
+    const action = fence.locator('select').first()
+    await expect(action).toHaveValue('1')
+    expect(await action.evaluate((el) => (el as HTMLSelectElement).selectedOptions[0]?.textContent)).toBe(
+      'RTL or Land'
+    )
+  })
+
   test('renders editable failsafe params populated from the demo scenario', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
