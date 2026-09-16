@@ -9599,6 +9599,7 @@ export function App() {
                parameter moves FROM, and stages through the shared draft set —
                it has no write path of its own. */
             <InitialTuneView
+              isExpertMode={isExpertMode}
               liveValues={new Map(snapshot.parameters.map((parameter) => [parameter.id, parameter.value]))}
               stagedIds={new Set(parameterDraftById.keys())}
               onStage={handleStageInitialTuneParameters}

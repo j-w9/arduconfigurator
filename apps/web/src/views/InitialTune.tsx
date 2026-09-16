@@ -31,6 +31,12 @@ export interface InitialTuneViewProps {
   hasAccelPMax?: boolean
   /** Pre-4.2 firmware that still has ACRO_YAW_P rather than ACRO_Y_RATE. */
   hasAcroYawP?: boolean
+  /**
+   * Basic mode asks the three questions only — prop, cells, chemistry — and
+   * stages the result. Expert adds the option checkboxes and the table of what
+   * each parameter moves from and to.
+   */
+  isExpertMode?: boolean
   disabled?: boolean
 }
 
@@ -43,12 +49,16 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
     firmwareMajor = 4,
     hasAccelPMax = true,
     hasAcroYawP = false,
+    isExpertMode = false,
     disabled = false
   } = props
 
   const [propText, setPropText] = useState('9')
   const [cellsText, setCellsText] = useState('4')
   const [chemistry, setChemistry] = useState<BatteryChemistry>('LiPo')
+  // Both default off, and in basic mode they stay off because their checkboxes
+  // are Expert-only. That is the existing default, not a new one: basic mode
+  // makes them unreachable rather than changing what happens without them.
   const [tmotorEscs, setTmotorEscs] = useState(false)
   const [suggestedSafety, setSuggestedSafety] = useState(false)
 
@@ -134,6 +144,8 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
           </select>
         </label>
 
+        {isExpertMode ? (
+          <>
         <label className="initial-tune__check" title="Flat thrust expo (0.20) and the 1100–1940 PWM range.">
           <input
             type="checkbox"
@@ -158,6 +170,8 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
           />
           <span>Failsafes &amp; fence</span>
         </label>
+          </>
+        ) : null}
       </div>
 
       {result.error ? (
@@ -170,6 +184,7 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
         </p>
       ) : (
         <>
+          {isExpertMode ? (
           <div className="wrap">
             <table className="initial-tune__table" data-testid="initial-tune-table">
               <thead>
@@ -202,6 +217,17 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
               </tbody>
             </table>
           </div>
+          ) : (
+            /* Basic mode answers three questions and stages the result. The
+               parameter-by-parameter working is what Expert is for; showing it
+               here turned a three-field form into a spreadsheet, which is the
+               opposite of what this task is meant to be. The count stays on the
+               button, and nothing is written until it is applied in Review. */
+            <p className="initial-tune__summary" data-testid="initial-tune-summary">
+              Ready to stage {changes.length} parameter{changes.length === 1 ? '' : 's'} for this
+              airframe. They go to the tuning review — nothing is written until you apply them there.
+            </p>
+          )}
 
           <button
             type="button"

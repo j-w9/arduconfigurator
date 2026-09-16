@@ -109,7 +109,8 @@ export interface TuningCopterSectionProps {
   initialTuneSlot?: ReactNode
   /** Notch suggestions and warnings, rendered under the Filters grid. */
   filterNotchSlot?: ReactNode
-  /** The FILTn bank, when the firmware has one. Rendered above the notch help. */
+  /** The FILTn bank, when the firmware has one. Expert-only: raw per-slot
+   *  notch fields, rendered with the manual grid rather than before it. */
   filterBankSlot?: ReactNode
   /** Expert mode breaks out the raw per-parameter filter grid. See the Filters
    *  task body for why it is not the default surface. */
@@ -618,7 +619,11 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           * documents, and a made-up one would be worse than a
                           * gate. */}
                         {filterNotchSlot}
-                        {filterBankSlot}
+                        {/* The FILTn bank is raw per-slot fields —
+                          * FILT1_TYPE, _NOTCH_FREQ, _NOTCH_Q, _NOTCH_ATT — so
+                          * it belongs with the manual grid rather than in front
+                          * of an operator who just wants a filter set. */}
+                        {isExpertMode ? filterBankSlot : null}
 
                         {isExpertMode ? (
                           <div className="tuning-filter-manual" data-testid="tuning-filter-manual">
