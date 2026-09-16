@@ -5307,9 +5307,11 @@ export function App() {
         savedProfileCount: savedTuningProfiles.length,
         reviewInvalidCount: tuningInvalidDrafts.length,
         reviewStagedCount: tuningStagedDrafts.length,
-        initialTuneStagedCount: initialTuneStagedCount
+        initialTuneStagedCount: initialTuneStagedCount,
+        isExpertMode: productMode === 'expert'
       }),
     [
+      productMode,
       initialTuneStagedCount,
       tuningFilterInvalidDrafts.length,
       tuningFilterStagedDrafts.length,
@@ -5326,7 +5328,12 @@ export function App() {
       selectedTuningProfileInvalidEntries.length
     ]
   )
+  // Leaving Expert mode while a gated task is open would otherwise leave the
+  // strip showing one tab and the body rendering another's contents, because
+  // the body keys off the id and the header off the card list. Resolve the id
+  // against the tasks actually on offer and use it for both.
   const activeTuningTask = tuningTaskCards.find((task) => task.id === activeTuningTaskId) ?? tuningTaskCards[0]
+  const effectiveTuningTaskId = activeTuningTask?.id ?? activeTuningTaskId
 
   const renderTuningControl = (parameter: ParameterState): ReactElement => {
     const draft = parameterDraftById.get(parameter.id)
@@ -9493,7 +9500,7 @@ export function App() {
           forms={libraryForms}
           derived={{
             airframe,
-            activeTuningTaskId,
+            activeTuningTaskId: effectiveTuningTaskId,
             activeTuningTask,
             tuningTaskCards,
             flightFeelParameters,

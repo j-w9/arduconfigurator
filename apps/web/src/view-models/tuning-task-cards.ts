@@ -27,7 +27,33 @@ export interface TuningTaskCardCounts {
   reviewInvalidCount: number
   reviewStagedCount: number
   initialTuneStagedCount: number
+  /**
+   * Expert mode shows every task. Basic mode shows the ones that make up a
+   * working tune and hides the three that are tools for someone who already
+   * has one — see ADVANCED_TUNING_TASK_IDS.
+   */
+  isExpertMode: boolean
 }
+
+/**
+ * Tasks only Expert mode offers.
+ *
+ * The Tuning tab carried eight tasks in a strip that wrapped onto two rows,
+ * which is a lot of front door for one job. These three are not part of
+ * getting an airframe flying:
+ *
+ *  - pid-gains: 27 raw P/I/D/FF controls. Autotune is how a basic-mode
+ *    operator gets gains, and it is right there in the same strip.
+ *  - profiles: a local library of saved tunes — useful once you HAVE tunes
+ *    worth keeping, meaningless before that.
+ *  - log-tuning: post-flight log analysis, and still beta.
+ *
+ * What remains is a complete path: Pilot (stick feel), Filters (noise),
+ * Autotune (gains), Review (apply), Initial Tune (a starting point for a new
+ * airframe). The relative order of those five is unchanged — in particular
+ * Initial Tune stays last, for the reason given on its own card below.
+ */
+export const ADVANCED_TUNING_TASK_IDS = ['pid-gains', 'profiles', 'log-tuning'] as const
 
 export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCard[] {
   const {
@@ -48,9 +74,10 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
     reviewInvalidCount,
     reviewStagedCount,
     initialTuneStagedCount,
+    isExpertMode
   } = counts
 
-  return [
+  const cards: TuningTaskCard[] = [
     {
       id: 'rates',
       label: 'Pilot',
@@ -165,4 +192,8 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
       tone: 'warning'
     }
   ]
+
+  return isExpertMode
+    ? cards
+    : cards.filter((card) => !ADVANCED_TUNING_TASK_IDS.some((id) => id === card.id))
 }

@@ -19,6 +19,9 @@ function counts(overrides: Partial<TuningTaskCardCounts> = {}): TuningTaskCardCo
     profileChangedCount: 0,
     savedProfileCount: 2,
     initialTuneStagedCount: 0,
+    // Existing cases assert card CONTENT, which is the same in both modes;
+    // Expert keeps every card so those assertions stay about the text.
+    isExpertMode: true,
     reviewInvalidCount: 0,
     reviewStagedCount: 0,
     ...overrides
@@ -84,5 +87,51 @@ describe('the Initial Tune card', () => {
     // Tuning tab must not read "Initial Tune" as "tune it for me".
     const card = buildTuningTaskCards(counts()).find((c) => c.id === 'initial-tune')!
     expect(card.detail).toMatch(/no PID gains/i)
+  })
+})
+
+describe('the Expert gate on the Tuning task strip', () => {
+  const ids = (isExpertMode: boolean) => buildTuningTaskCards(counts({ isExpertMode })).map((card) => card.id)
+
+  it('offers every task in Expert mode', () => {
+    expect(ids(true)).toEqual([
+      'rates',
+      'pid-gains',
+      'filters',
+      'autotune',
+      'profiles',
+      'review',
+      'initial-tune',
+      'log-tuning'
+    ])
+  })
+
+  it('hides the three advanced tasks in basic mode', () => {
+    // Eight tasks wrapped the strip onto two rows. These three are tools for
+    // someone who already has a tune rather than steps toward getting one.
+    expect(ids(false)).not.toContain('pid-gains')
+    expect(ids(false)).not.toContain('profiles')
+    expect(ids(false)).not.toContain('log-tuning')
+  })
+
+  it('leaves a complete tuning path in basic mode', () => {
+    // Stick feel, noise, gains (via Autotune), apply, and a starting point for
+    // a new airframe. Hiding tabs must not remove the ability to finish a tune.
+    expect(ids(false)).toEqual(['rates', 'filters', 'autotune', 'review', 'initial-tune'])
+  })
+
+  it('keeps Initial Tune last in both modes', () => {
+    // Deliberate, and not the "good path buried at the bottom" pattern: it is a
+    // batch write of a dozen parameters, and putting it at the front of the tab
+    // invites pressing it on an aircraft that is already tuned. The card's own
+    // comment says so; this pins it against a well-meant reorder.
+    expect(ids(false)[ids(false).length - 1]).toBe('initial-tune')
+    expect(ids(true).indexOf('initial-tune')).toBeGreaterThan(ids(true).indexOf('review'))
+  })
+
+  it('preserves the relative order of the tasks basic mode keeps', () => {
+    const expert = ids(true)
+    const basic = ids(false)
+    expect(basic).toEqual(expert.filter((id) => basic.includes(id)))
   })
 })
