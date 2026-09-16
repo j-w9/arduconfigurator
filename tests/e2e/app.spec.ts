@@ -482,6 +482,10 @@ test.describe('browser configurator regression flows', () => {
   test('tuning exposes linked PID edits, master sliders, advanced terms, and local tuning profiles', async ({ page }) => {
     await connectToVehicle(page, 'demo')
 
+    // PID Gains and Profiles are Expert-only on the task strip: basic mode
+    // offers the five tasks that make up a working tune (Pilot, Filters,
+    // Autotune, Review, Initial Tune).
+    await page.getByTestId('product-mode-expert').click()
     await openView(page, 'tuning')
     await expect(page.getByTestId('tuning-task-nav')).toBeVisible()
     await expect(page.getByTestId('tuning-tab-rates')).toBeVisible()
