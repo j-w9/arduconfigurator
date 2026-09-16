@@ -16018,6 +16018,28 @@ details.bf-gui-box:not([open]) > summary::after {
 /* Inline, low-key collapsible how-to inside each calibration card. Single
  * line when collapsed; expands into the existing card padding. No border,
  * no all-caps shouting summary — it's hint copy, not a callout. */
+/* TCAL start/target temperature pair. Two short numeric fields side by side —
+   the target is the one that ends the learn, so they read as one range rather
+   than two unrelated settings. */
+.tcal-temp-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.tcal-temp-range label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.tcal-temp-range input {
+  width: 92px;
+}
+
 .calibration-card__howto {
   margin-top: 2px;
   font-size: var(--text-sm);
