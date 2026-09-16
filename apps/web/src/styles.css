@@ -7594,6 +7594,30 @@ body.is-status-dash-dragging {
   align-items: start;
 }
 
+/* The Expert-only raw filter grid, below the derived panel that is now the
+   default surface. Separated so it reads as the override it is rather than as
+   a second, equal way to do the same job. */
+.tuning-filter-manual {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.tuning-filter-manual__header {
+  margin-bottom: var(--space-2);
+}
+
+.tuning-filter-manual__header strong {
+  display: block;
+  font-size: var(--text-md);
+}
+
+.tuning-filter-manual__header p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
 /* "Set filters from the gyro cutoff": an entry row, then one line per derived
    value -- name, what it is now, and an editable proposal. Grid rather than a
    table so the proposal column stays aligned while the names wrap. */
