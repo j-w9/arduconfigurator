@@ -336,6 +336,19 @@ const mockParameters: ParameterState = {
   BATT_LOW_MAH: 300,
   BATT_LOW_TIMER: 10,
   BATT_FS_LOW_ACT: 2,
+  // Geofence, at ArduCopter's own defaults (AC_Fence.cpp): TYPE 7 is
+  // ALT_MAX|CIRCLE|POLYGON (bits 1|2|4), ACTION 1 is RTL-or-Land, and the
+  // boundaries are AC_FENCE_{ALT_MAX,ALT_MIN,CIRCLE_RADIUS,MARGIN}_DEFAULT.
+  // A real Copter reports these whether or not the fence is enabled, so the
+  // demo has to as well for the Failsafe tab's fence controls to appear.
+  FENCE_ENABLE: 0,
+  FENCE_TYPE: 7,
+  FENCE_ACTION: 1,
+  FENCE_ALT_MAX: 100,
+  FENCE_ALT_MIN: -10,
+  FENCE_RADIUS: 300,
+  FENCE_MARGIN: 2,
+  FENCE_AUTOENABLE: 0,
   BATT_CRT_VOLT: 13.8,
   BATT_CRT_MAH: 150,
   BATT_FS_CRT_ACT: 1,

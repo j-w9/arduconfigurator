@@ -1954,3 +1954,69 @@ test('Plane failsafe formatting stays user-facing', () => {
   assert.equal(formatArduplaneShortFailsafeAction(undefined), 'Unknown')
   assert.equal(formatArduplaneShortFailsafeAction(99), 'Action 99')
 })
+
+test('the geofence is curated, categorised to its own card, and matches AC_Fence.cpp', () => {
+  // These had NO curated metadata and appeared in no tab. The only routes to a
+  // fence were Initial Tune's "Failsafes & fence" checkbox (a yes/no on a
+  // TUNING task) and the raw Parameters tab — both Expert-only, so basic mode
+  // could not set a geofence at all.
+  const params = arducopterMetadata.parameters
+
+  for (const id of [
+    'FENCE_ENABLE',
+    'FENCE_TYPE',
+    'FENCE_ACTION',
+    'FENCE_RADIUS',
+    'FENCE_ALT_MAX',
+    'FENCE_ALT_MIN',
+    'FENCE_MARGIN',
+    'FENCE_AUTOENABLE'
+  ]) {
+    assert.ok(params[id], `${id} is curated`)
+    // Its own category, not 'failsafe': the additional-settings groups key off
+    // the category id, so sharing one would interleave the fence with the
+    // battery timers instead of rendering it as a card.
+    assert.equal(params[id].category, 'fence', `${id} is in the fence category`)
+  }
+
+  // ...and that category routes to the Failsafe view, which is the whole point
+  // of the change — a boundary that triggers an action lives beside the other
+  // failsafes, not on a tuning tab.
+  const fenceCategory = arducopterMetadata.categories.fence
+  assert.ok(fenceCategory, 'fence category exists')
+  assert.equal(fenceCategory.viewId, 'failsafe')
+
+  // Values from AC_Fence.cpp. FENCE_TYPE's options enumerate BIT INDICES (the
+  // firmware's 1/2/4/8 are bits 0/1/2/3), which is what `bitmask: true` means
+  // to the generic editor.
+  assert.equal(params.FENCE_TYPE.bitmask, true)
+  assert.deepEqual(
+    params.FENCE_TYPE.options.map((option) => option.value),
+    [0, 1, 2, 3]
+  )
+  assert.equal(params.FENCE_TYPE.options[0].label, 'Max altitude')
+  assert.equal(params.FENCE_TYPE.options[3].label, 'Min altitude')
+
+  // @Values: 0:Report Only,1:RTL or Land,2:Always Land,3:SmartRTL or RTL or
+  // Land,4:Brake or Land,5:SmartRTL or Land
+  assert.deepEqual(
+    params.FENCE_ACTION.options.map((option) => option.value),
+    [0, 1, 2, 3, 4, 5]
+  )
+
+  // @Range / @Units, verbatim.
+  assert.equal(params.FENCE_RADIUS.unit, 'm')
+  assert.equal(params.FENCE_RADIUS.minimum, 30)
+  assert.equal(params.FENCE_RADIUS.maximum, 10000)
+  assert.equal(params.FENCE_ALT_MAX.minimum, 10)
+  assert.equal(params.FENCE_ALT_MAX.maximum, 1000)
+  assert.equal(params.FENCE_ALT_MIN.minimum, -100)
+  assert.equal(params.FENCE_ALT_MIN.maximum, 100)
+  assert.equal(params.FENCE_MARGIN.minimum, 1)
+  assert.equal(params.FENCE_MARGIN.maximum, 10)
+
+  // FENCE_TOTAL is deliberately NOT curated: its own @Description says "do not
+  // update manually", so offering it as a field would invite corrupting the
+  // stored polygon.
+  assert.equal(params.FENCE_TOTAL, undefined)
+})
