@@ -4196,6 +4196,9 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
+    // Log Tuning is Expert-only on the task strip: basic mode offers the five
+    // tasks that make up a working tune.
+    await enableExpertMode(page)
     await openView(page, 'tuning')
     await page.getByTestId('tuning-tab-log-tuning').click()
     const panel = page.getByTestId('tuning-log-tuning-panel')
@@ -4851,6 +4854,7 @@ test.describe('Tuning ▸ PID Gains', () => {
     // then chase -- so it belongs in the same card as the axis it acts on.
     await page.goto('/')
     await connectViaHeader(page)
+    await enableExpertMode(page)
     await openView(page, 'tuning')
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
 
@@ -4871,6 +4875,7 @@ test.describe('Tuning ▸ PID Gains', () => {
     // rate gains but not the angle gain would quietly break that.
     await page.goto('/')
     await connectViaHeader(page)
+    await enableExpertMode(page)
     await openView(page, 'tuning')
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /PID Gains/i }).click()
 
@@ -4885,6 +4890,9 @@ test.describe('Tuning profile round-trip', () => {
   test('a staged-source tuning profile captures the staged edit and surfaces it as a restorable change', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
+    // PID Gains and Profiles are Expert-only on the task strip: basic mode
+    // offers the five tasks that make up a working tune.
+    await enableExpertMode(page)
     await openView(page, 'tuning')
 
     // Stage a distinct PID edit (demo default ATC_RAT_RLL_P is 0.1).
