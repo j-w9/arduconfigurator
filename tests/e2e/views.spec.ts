@@ -6487,6 +6487,38 @@ test.describe('Tuning ▸ Initial Tune', () => {
   // Starting-point tuning. The assertions worth having are that it agrees with
   // Mission Planner on a known airframe, that it stages rather than writes, and
   // that it never offers a PID gain.
+  test('basic mode asks three questions and hides the working', async ({ page }) => {
+    // The task is "tell me about the airframe and I will stage a starting
+    // point". Showing the parameter-by-parameter table turned a three-field
+    // form into a spreadsheet, which is the opposite of what it is for.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('view-button-tuning').click()
+    await page.getByTestId('tuning-tab-initial-tune').click()
+
+    // The three questions, and nothing else to answer.
+    await expect(page.getByTestId('initial-tune-prop')).toBeVisible()
+    await expect(page.getByTestId('initial-tune-cells')).toBeVisible()
+    await expect(page.getByTestId('initial-tune-chemistry')).toBeVisible()
+    await expect(page.getByTestId('initial-tune-tmotor')).toHaveCount(0)
+    await expect(page.getByTestId('initial-tune-safety')).toHaveCount(0)
+
+    // The working is gone, but the count is not: staging still says how many.
+    await expect(page.getByTestId('initial-tune-table')).toHaveCount(0)
+    await expect(page.getByTestId('initial-tune-summary')).toBeVisible()
+    await expect(page.getByTestId('initial-tune-stage')).toContainText(/Stage \d+ change/)
+
+    // Expert restores both the options and the table.
+    await enableExpertMode(page)
+    await page.getByTestId('view-button-tuning').click()
+    await page.getByTestId('tuning-tab-initial-tune').click()
+    await expect(page.getByTestId('initial-tune-table')).toBeVisible()
+    await expect(page.getByTestId('initial-tune-tmotor')).toBeVisible()
+    await expect(page.getByTestId('initial-tune-safety')).toBeVisible()
+  })
+
   async function openInitialTune(page: Page): Promise<void> {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
@@ -6752,8 +6784,10 @@ test.describe('Tuning ▸ Filters', () => {
     await page.getByTestId('view-button-tuning').click()
     await page.getByTestId('tuning-tab-filters').click()
 
-    // Basic: the derived panel, and no raw grid to be confused with it.
+    // Basic: the derived panel, and neither raw surface to confuse it with —
+    // not the axis grid, and not the FILTn bank's per-slot notch fields.
     await expect(page.getByTestId('filters-from-gyro')).toBeVisible()
+    await expect(page.locator('.filter-bank-panel')).toHaveCount(0)
     await expect(page.getByTestId('tuning-filter-manual')).toHaveCount(0)
     await expect(page.getByTestId('tuning-filter-group-notch')).toHaveCount(0)
 
