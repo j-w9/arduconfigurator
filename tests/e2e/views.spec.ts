@@ -4277,6 +4277,33 @@ test.describe('ArduPlane demo', () => {
     // The step-by-step is collapsed into a How-it-works disclosure (compact card).
     await expect(tcal.locator('.calibration-card__howto summary')).toHaveText(/How thermal calibration works/i)
     await expect(page.getByTestId('tcal-start')).toBeVisible()
+
+    // The temperature range the learn runs over, seeded from the vehicle.
+    // TMAX is what ENDS the learn (AP_InertialSensor_tempcal.cpp finishes when
+    // the IMU reaches it) and its firmware default is 70 degC, which most
+    // airframes never reach — so a board left on the default learns forever and
+    // saves nothing. Without these fields there was no way to change that.
+    await expect(page.getByTestId('tcal-tmin')).toHaveValue('0')
+    await expect(page.getByTestId('tcal-tmax')).toHaveValue('70')
+    await expect(page.getByTestId('tcal-temp-unreachable')).toBeVisible()
+
+    // A reachable target clears the warning.
+    await page.getByTestId('tcal-tmax').fill('45')
+    await expect(page.getByTestId('tcal-temp-unreachable')).toHaveCount(0)
+    await expect(page.getByTestId('tcal-start')).toBeEnabled()
+
+    // The firmware needs at least 10 degC of range (TEMP_RANGE_MIN) or it never
+    // completes the fit, so a narrower one cannot be staged at all.
+    await page.getByTestId('tcal-tmax').fill('5')
+    await expect(page.getByTestId('tcal-temp-problem')).toBeVisible()
+    await expect(page.getByTestId('tcal-start')).toBeDisabled()
+
+    // Staging carries the temperatures, not just the enable: TMAX 70 -> 45 and
+    // ENABLE 0 -> 2 on three IMUs. TMIN is unchanged at 0, so it is correctly
+    // not a draft.
+    await page.getByTestId('tcal-tmax').fill('45')
+    await page.getByTestId('tcal-start').click()
+    await expect(page.locator('body')).toContainText('6 staged changes')
   })
 
   test('Calibration: the Baro Thrust (VALT) card is absent without a log-server sign-in', async ({ page }) => {

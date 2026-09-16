@@ -133,6 +133,16 @@ const mockParameters: ParameterState = {
   INS_TCAL1_ENABLE: 0,
   INS_TCAL2_ENABLE: 0,
   INS_TCAL3_ENABLE: 0,
+  // ...and the range it learns over, at the firmware's own AP_GROUPINFO
+  // defaults (AP_InertialSensor_tempcal.cpp: TMIN 0, TMAX 70). A real vehicle
+  // reports these whether or not TCAL is enabled, and the card's target field
+  // reads them — without them it has nothing to seed from.
+  INS_TCAL1_TMIN: 0,
+  INS_TCAL1_TMAX: 70,
+  INS_TCAL2_TMIN: 0,
+  INS_TCAL2_TMAX: 70,
+  INS_TCAL3_TMIN: 0,
+  INS_TCAL3_TMAX: 70,
   RNGFND1_GNDCLR: 0.1,
   RNGFND1_ADDR: 0,
   RNGFND1_POS_X: 0,
