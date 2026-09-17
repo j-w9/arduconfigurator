@@ -303,6 +303,8 @@ import { PresetsSection } from './sections/PresetsSection'
 import { ReceiverSection } from './sections/ReceiverSection'
 import { SnapshotsSection } from './sections/SnapshotsSection'
 import { TuningCopterSection } from './sections/TuningCopterSection'
+import { BetaflightConnect } from './views/BetaflightConnect'
+import { useBetaflightMsp } from './hooks/use-betaflight-msp'
 import { InitialTuneView } from './views/InitialTune'
 import { FilterNotchHelp } from './views/FilterNotchHelp'
 import { FiltersFromGyro } from './views/FiltersFromGyro'
@@ -589,6 +591,9 @@ export function App() {
     reacquireSerialPort
   } = useTransportSelection(webSerialSupported)
   const [productMode, setProductMode] = useProductMode()
+  // Betaflight-over-MSP, on its own Web Serial link. Declared here so the Flash
+  // tab's slot keeps its state across tab switches.
+  const betaflightMsp = useBetaflightMsp()
   const [gpsCoordFormat, setGpsCoordFormat] = useGpsCoordFormat()
   const [activeViewId, setActiveViewId] = useState<AppViewId>('setup')
   // Expert-mode text filter for the Recent Notices panel.
@@ -9844,6 +9849,7 @@ export function App() {
 
       {activeViewId === 'flash' ? (
         <FirmwareFlasher
+          betaflightSlot={<BetaflightConnect msp={betaflightMsp} disabled={busyAction !== undefined} />}
           onEnterDfu={
             // Reboot to bootloader / DFU. Only wire when we have a live
             // MAVLink link — otherwise the flasher's wizard works fine
