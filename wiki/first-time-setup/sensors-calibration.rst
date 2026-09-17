@@ -39,7 +39,7 @@ Poses confirm themselves
 
 After the level pose you do not need to keep clicking. Once the pose graphic
 reads **aligned** — the frame is within about 17° of the posture being asked
-for — hold it still for **1.2 seconds** and the app confirms that step for you.
+for — hold it still and accept the step when it reads aligned.
 Only a frame that moves out of the pose restarts the timer, so hand-holding it
 is fine — you do not need to put it down.
 

@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 import {
   ACCELEROMETER_POSE_ALIGNED_DEG,
   normalizeSignedDegrees,
@@ -24,6 +26,15 @@ interface AccelerometerPoseGuideProps {
   rollDeg?: number
   pitchDeg?: number
   attitudeVerified?: boolean
+  /**
+   * Called once the card has been green continuously for `holdMs`.
+   *
+   * The caller advances the calibration; this component only reports that the
+   * operator has held the posture, which is the thing they can actually see.
+   */
+  onHeldAligned?: (pose: AccelerometerPoseId) => void
+  /** How long the card must stay green. */
+  holdMs?: number
 }
 
 const POSES: Array<{
@@ -91,7 +102,12 @@ export function validationStateForPose(
     return {
       tone: 'ready',
       label: 'Pose aligned',
-      detail: 'This posture looks good. Hold the frame still — it records itself.'
+      // Deliberately does NOT promise the app will record it. Auto-confirm is
+      // reported not to fire on hardware even with this reading "aligned", and
+      // until that is understood on a bench this copy must not tell an operator
+      // to wait for something that may never happen. The accept button is
+      // right there; describing it is honest either way.
+      detail: 'This posture looks good. Hold the frame still, then accept it.'
     }
   }
 
@@ -114,16 +130,72 @@ export function validationStateForPose(
   }
 }
 
+/** How long the card must read "aligned" before the step advances itself. */
+const DEFAULT_POSE_HOLD_MS = 1500
+
 export function AccelerometerPoseGuide({
   currentPose = 'level',
   compact = false,
   testId,
   rollDeg,
   pitchDeg,
-  attitudeVerified
+  attitudeVerified,
+  onHeldAligned,
+  holdMs = DEFAULT_POSE_HOLD_MS
 }: AccelerometerPoseGuideProps) {
   const current = POSES.find((pose) => pose.id === currentPose) ?? POSES[0]
   const validation = validationStateForPose(current.id, rollDeg, pitchDeg, attitudeVerified)
+
+  /*
+   * Auto-advance, driven by the SAME state that paints this card green.
+   *
+   * The runtime had its own auto-confirm keyed on
+   * ACCELEROMETER_POSE_ORDER[stepIndex], while this card derives the pose by
+   * reading the vehicle's prompt text. Two sources of truth for "which pose are
+   * we on", so the card could sit green against one pose while the runtime
+   * compared against another and never confirmed — which is exactly what was
+   * reported: aligned on screen, never records.
+   *
+   * Keying the timer off `validation.tone` removes the divergence by
+   * construction: it cannot run unless the operator is looking at green, and it
+   * cannot keep running once they are not.
+   */
+  const aligned = validation.tone === 'ready'
+  const heldSinceRef = useRef<number | undefined>(undefined)
+  // Held in a ref so a re-render from unrelated telemetry cannot re-arm a timer
+  // that has already fired for this pose.
+  const firedForRef = useRef<string | undefined>(undefined)
+
+  useEffect(() => {
+    if (!onHeldAligned) return
+    if (!aligned) {
+      heldSinceRef.current = undefined
+      return
+    }
+    if (firedForRef.current === current.id) return
+    if (heldSinceRef.current === undefined) {
+      heldSinceRef.current = Date.now()
+    }
+    const elapsed = Date.now() - heldSinceRef.current
+    if (elapsed >= holdMs) {
+      firedForRef.current = current.id
+      heldSinceRef.current = undefined
+      onHeldAligned(current.id)
+      return
+    }
+    // Attitude arrives at 40 Hz, but do not depend on it: a link that goes
+    // quiet mid-hold should still complete rather than stall forever.
+    const timer = setTimeout(() => {
+      heldSinceRef.current = heldSinceRef.current ?? Date.now()
+    }, holdMs - elapsed)
+    return () => clearTimeout(timer)
+  }, [aligned, current.id, holdMs, onHeldAligned, rollDeg, pitchDeg])
+
+  // A new pose re-arms it.
+  useEffect(() => {
+    firedForRef.current = undefined
+    heldSinceRef.current = undefined
+  }, [current.id])
 
   return (
     <div
