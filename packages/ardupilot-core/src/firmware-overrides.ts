@@ -65,6 +65,21 @@ export function applyArducopter47CatalogOverrides<
 /** The fork parameter whose presence proves MODE_VALT_ENABLED was compiled in. */
 export const SFD_VALT_DETECTION_PARAM_ID = 'VALT_POS_EXPO'
 
+/**
+ * The parameter whose presence proves AP_BARO_THST_COMP_ENABLED was compiled in.
+ *
+ * Baro thrust compensation is a compile-time feature (default off), so
+ * BARO1_THST_SCALE simply does not exist on a stock build. Same reasoning as
+ * the VALT mode gate above: presence on the wire is the only signal that
+ * survives a rebuild or a backport.
+ *
+ * The calibration card used to be gated on being signed in to the log server
+ * instead, which is a statement about the OPERATOR rather than the aircraft —
+ * it hid the card on a board that supports the feature and offered it on one
+ * that does not.
+ */
+export const SFD_BARO_THRUST_DETECTION_PARAM_ID = 'BARO1_THST_SCALE'
+
 /** ArduCopter mode number for VALT (mode.h: `VALT = 29`). */
 export const SFD_VALT_FLIGHT_MODE_VALUE = 29
 
@@ -78,6 +93,16 @@ const FLIGHT_MODE_PARAM_IDS = ['FLTMODE1', 'FLTMODE2', 'FLTMODE3', 'FLTMODE4', '
  * True when the synced parameter set proves this build has VALT compiled in.
  * Takes the ids rather than the snapshot so it stays free of runtime types.
  */
+/** True when the firmware carries baro thrust compensation. */
+export function detectSfdBaroThrustCompensation(parameterIds: Iterable<string>): boolean {
+  for (const id of parameterIds) {
+    if (id === SFD_BARO_THRUST_DETECTION_PARAM_ID) {
+      return true
+    }
+  }
+  return false
+}
+
 export function detectSfdValtMode(parameterIds: Iterable<string>): boolean {
   for (const id of parameterIds) {
     if (id === SFD_VALT_DETECTION_PARAM_ID) {

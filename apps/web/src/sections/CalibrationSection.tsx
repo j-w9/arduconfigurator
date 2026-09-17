@@ -4,6 +4,7 @@
 // calibration cards. ~470 lines of inline JSX moved verbatim.
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { detectSfdBaroThrustCompensation } from '@arduconfig/ardupilot-core'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
 import { EXPERT_MAX_MOTOR_TEST_DURATION_SECONDS, MAX_MOTOR_TEST_DURATION_SECONDS } from '@arduconfig/ardupilot-core'
@@ -309,12 +310,20 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     safetyAcks,
     setDraft,
     logServerSignedIn,
+
     logServerLabel,
     clearDraft,
     setParameterNotice,
     handleGuidedAction,
     handleCancelGuidedAction
   } = props
+
+  // Baro thrust compensation is compiled out of stock ArduPilot, so the
+  // parameter's presence is the only durable signal that this board supports
+  // the calibration at all.
+  const baroThrustSupported = detectSfdBaroThrustCompensation(
+    snapshot.parameters.map((parameter) => parameter.id)
+  )
   // A load sampler left running after the card unmounts would keep pushing
   // into a ref nobody reads, and would fire setState on a dead component.
   useEffect(() => () => window.clearInterval(loadSamplerRef.current), [])
@@ -537,6 +546,18 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                         pitchDeg={snapshot.liveVerification.attitudeTelemetry.pitchDeg}
                         attitudeVerified={snapshot.liveVerification.attitudeTelemetry.verified}
                         testId="calibration-accelerometer-guide"
+                        /* Advance when the card has been green for its hold.
+                           Driven by what the operator can SEE rather than by a
+                           second pose calculation in the runtime — the two
+                           disagreed, which is why "aligned" never recorded.
+                           Same handler the accept button calls, so an
+                           auto-advance and a click are indistinguishable
+                           downstream. */
+                        onHeldAligned={
+                          busyAction === undefined && guidedActionBlockingReason(snapshot, action.actionId) === undefined
+                            ? () => void handleGuidedAction(action.actionId)
+                            : undefined
+                        }
                       />
                     ) : null}
                     {/* The calibration's own poses measure the mounting, so
@@ -1518,19 +1539,28 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
               {/* Baro thrust calibration (VALT) — Expert-only, log-based, and
                 * only offered with a log server signed in: the whole input is a
                 * flight log, and the scale is only as good as the hover behind
-                * it, so the log that produced a number stays retrievable. Signed
-                * out there is no card, not a locked one. The card fits against a
+                * it, so the log that produced a number stays retrievable.
+                *
+                * Gated on the FIRMWARE carrying BARO1_THST_SCALE, not on being
+                * signed in to the log server. Baro thrust compensation is a
+                * compile-time feature (AP_BARO_THST_COMP_ENABLED, default off),
+                * so the sign-in gate was a statement about the operator rather
+                * than the aircraft: it hid the card on a board that supports
+                * this and offered it on one that does not. The card fits against a
                 * downward rangefinder in the log when present, otherwise against
                 * a manually-entered hover height, so it does not require a
                 * rangefinder to be configured. Shows n/a on firmware without
                 * BARO1_THST_SCALE. */}
-              {isExpertMode && logServerSignedIn ? (
+              {isExpertMode && baroThrustSupported ? (
                 <ValtCalibrationCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
                   busyAction={busyAction}
                   setDraft={setDraft}
-                  logServerLabel={logServerLabel}
+                  // Signing in is no longer required to SEE the card; when the
+                  // operator is signed in the card still names the server it
+                  // would pull logs from.
+                  logServerLabel={logServerSignedIn ? logServerLabel : undefined}
                 />
               ) : null}
             </div>

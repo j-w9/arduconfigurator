@@ -4306,29 +4306,34 @@ test.describe('ArduPlane demo', () => {
     await expect(page.locator('body')).toContainText('6 staged changes')
   })
 
-  test('Calibration: the Baro Thrust (VALT) card is absent without a log-server sign-in', async ({ page }) => {
+  test('Calibration: the Baro Thrust (VALT) card follows the FIRMWARE, not a sign-in', async ({ page }) => {
+    // It used to be gated on being signed in to the log server, which is a
+    // statement about the OPERATOR rather than the aircraft: it hid the card on
+    // a board that supports the feature and offered it on one that does not.
+    // Baro thrust compensation is compiled out of stock ArduPilot
+    // (AP_BARO_THST_COMP_ENABLED, default off), so BARO1_THST_SCALE's presence
+    // is the durable signal. The demo reports it.
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'calibration')
-    // Default (non-Expert): hidden.
+    // Still Expert-only.
     await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
 
-    // Expert mode is not enough on its own. Signed out there is no card at all
-    // -- not a locked one -- because the calibration is fit from a hover log.
     await enableExpertMode(page)
     // Guard the guard: Expert really did take effect, so this cannot pass for
     // the wrong reason.
     await expect(page.getByTestId('calibration-card-tcal')).toBeVisible()
-    await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
+    // Present with NO log-server session — the firmware supports it.
+    await expect(page.getByTestId('calibration-card-valt')).toBeVisible()
   })
 
-  test('Calibration: a signed-in log server brings the VALT card back', async ({ page }) => {
-    // The session is what useLogUpload restores on mount, so seeding it is the
-    // same state a real sign-in leaves behind — no server needed to prove the
-    // gate opens.
+  test('Calibration: a signed-in log server names the server on the VALT card', async ({ page }) => {
+    // Signing in no longer GATES the card — it only tells the card which server
+    // it would pull hover logs from. The session is what useLogUpload restores
+    // on mount, so seeding it is the same state a real sign-in leaves behind.
     await page.goto('/')
     await page.evaluate(() => {
       window.sessionStorage.setItem(
