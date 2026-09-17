@@ -1513,6 +1513,34 @@ test.describe('Tuning tab', () => {
   })
 })
 
+test.describe('Flash ▸ Betaflight', () => {
+  test('is its own tab beside Firmware and DFU', async ({ page }) => {
+    // Coming FROM Betaflight is its own route onto the Flash view: identify the
+    // board and put it in DFU, then the sibling tabs do the actual flash. It
+    // used to sit above the wizard, which put a surface most operators never
+    // need in front of the one they came for.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'flash')
+
+    const nav = page.getByTestId('flash-tab-nav')
+    await expect(nav).toContainText('Firmware (.apj)')
+    await expect(nav).toContainText('DFU (.hex)')
+    await expect(nav).toContainText('Betaflight')
+
+    // Not on the default tab — it is a detour, not the main path.
+    await expect(page.getByTestId('betaflight-connect')).toHaveCount(0)
+
+    await page.getByTestId('flash-tab-betaflight').click()
+    const card = page.getByTestId('betaflight-connect')
+    await expect(card).toBeVisible()
+    await expect(page.getByTestId('betaflight-connect-button')).toBeVisible()
+    // Points at the sibling tabs rather than "below", which is where the
+    // flasher actually is now.
+    await expect(card).toContainText('Firmware (.apj)')
+  })
+})
+
 test.describe('Failsafe view', () => {
   test('the geofence is reachable in basic mode, as its own group', async ({ page }) => {
     // The fence used to be settable only through Initial Tune's

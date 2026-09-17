@@ -259,7 +259,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   const [phase, setPhase] = useState<Phase>('idle')
   // Flash view sub-tabs: the firmware-server/.apj flow (default, common path) vs
   // the WebUSB DFU .hex flasher. Matches the app-wide .tab-strip pattern.
-  const [flashTab, setFlashTab] = useState<'firmware' | 'dfu-hex'>('firmware')
+  const [flashTab, setFlashTab] = useState<'firmware' | 'dfu-hex' | 'betaflight'>('firmware')
   const [browseEntries, setBrowseEntries] = useState<FirmwareBrowseEntry[] | null>(null)
   const [browseBusy, setBrowseBusy] = useState(false)
   const [browseError, setBrowseError] = useState<string | null>(null)
@@ -1050,7 +1050,6 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           * live MAVLink link) and custom build-server URL (always
           * available). Both fold open from a single row of buttons so
           * the default surface stays the 3-step flash wizard. */}
-        {betaflightSlot}
         <div className="firmware-wizard__quick-actions" data-testid="firmware-quick-actions">
           {onReboot ? (
             <button
@@ -1367,7 +1366,25 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           >
             <span className="tab-strip__tab-title">DFU (.hex)</span>
           </button>
+          {/* Coming FROM Betaflight is its own route onto this tab: identify
+              the board, keep its settings, put it in DFU — and then the two
+              tabs to the left are what you use. Rendered only when the host
+              supplies the surface. */}
+          {betaflightSlot ? (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={flashTab === 'betaflight'}
+              data-testid="flash-tab-betaflight"
+              className={`tab-strip__tab${flashTab === 'betaflight' ? ' is-active' : ''}`}
+              onClick={() => setFlashTab('betaflight')}
+            >
+              <span className="tab-strip__tab-title">Betaflight</span>
+            </button>
+          ) : null}
         </div>
+
+        {flashTab === 'betaflight' ? betaflightSlot : null}
 
         {flashTab === 'firmware' ? (
           <>

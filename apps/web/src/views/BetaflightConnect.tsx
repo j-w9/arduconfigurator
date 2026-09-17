@@ -1,8 +1,8 @@
 // "This board runs Betaflight — get ArduPilot onto it."
 //
-// Lives on the Flash tab because that is the job: identify the board, keep a
-// record of what was on it, then put it in DFU so the flasher below can take
-// over. The operator supplies the firmware file, so nothing here chooses an
+// Its own tab on the Flash view, beside Firmware (.apj) and DFU (.hex): coming
+// FROM Betaflight is its own route onto this screen. Identify the board, keep a
+// record of what was on it, put it in DFU — then the sibling tabs do the flash. The operator supplies the firmware file, so nothing here chooses an
 // image — there is no target lookup to get wrong.
 
 import type { ReactElement } from 'react'
@@ -33,9 +33,10 @@ export function BetaflightConnect({ msp, disabled = false }: BetaflightConnectPr
       </div>
       <div className="bf-gui-box__body">
         <p>
-          Read what a Betaflight board is, keep a record of its settings, then put it into DFU so the
-          firmware flasher below can write ArduPilot to it. Separate from the vehicle link — connecting
-          here does not disturb a connected ArduPilot vehicle.
+          Read what a Betaflight board is, keep a record of its settings, then put it into DFU. Once it
+          reboots, flash ArduPilot from the <strong>Firmware (.apj)</strong> or <strong>DFU (.hex)</strong>
+          tab. Separate from the vehicle link — connecting here does not disturb a connected ArduPilot
+          vehicle.
         </p>
 
         {status === 'connected' && identity ? (
@@ -69,8 +70,9 @@ export function BetaflightConnect({ msp, disabled = false }: BetaflightConnectPr
 
         {handedToDfu ? (
           <p className="bf-note bf-note--warning" data-testid="betaflight-dfu-handoff">
-            The board acknowledged the DFU request and is rebooting. It will disappear from this list and
-            come back as a DFU device — pick your ArduPilot firmware file in the flasher below and flash it.
+            The board acknowledged the DFU request and is rebooting. It will come back as a DFU device —
+            switch to the <strong>DFU (.hex)</strong> or <strong>Firmware (.apj)</strong> tab and pick your
+            ArduPilot firmware file.
           </p>
         ) : null}
 
