@@ -29,6 +29,7 @@ import { CalibrationLocationButton } from './CalibrationLocationCard'
 import { BoardOrientationResult } from '../views/BoardOrientationResult'
 import { TcalCalibrationCard } from './TcalCalibrationCard'
 import { ValtCalibrationCard } from './ValtCalibrationCard'
+import { HoverLearnCard } from './HoverLearnCard'
 import {
   accelerometerPoseFromAction,
   guidedActionBlockingReason,
@@ -1551,6 +1552,17 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 * a manually-entered hover height, so it does not require a
                 * rangefinder to be configured. Shows n/a on firmware without
                 * BARO1_THST_SCALE. */}
+              {/* Sits with the VALT card: both are about what a hover teaches
+                  the vehicle, and this one feeds the same fork builds. Gates
+                  itself on ACC_ZBIAS_LEARN being present. */}
+              {isExpertMode ? (
+                <HoverLearnCard
+                  snapshot={snapshot}
+                  canApplyDraftParameters={canApplyDraftParameters}
+                  busyAction={busyAction}
+                  setDraft={setDraft}
+                />
+              ) : null}
               {isExpertMode && baroThrustSupported ? (
                 <ValtCalibrationCard
                   snapshot={snapshot}
