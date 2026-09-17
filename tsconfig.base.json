@@ -17,6 +17,7 @@
     "paths": {
       "@arduconfig/transport": ["./packages/transport/src/index.ts"],
       "@arduconfig/protocol-mavlink": ["./packages/protocol-mavlink/src/index.ts"],
+      "@arduconfig/protocol-msp": ["./packages/protocol-msp/src/index.ts"],
       "@arduconfig/ardupilot-core": ["./packages/ardupilot-core/src/index.ts"],
       "@arduconfig/mock-sitl": ["./packages/mock-sitl/src/index.ts"],
       "@arduconfig/sitl-harness": ["./packages/sitl-harness/src/index.ts"],
