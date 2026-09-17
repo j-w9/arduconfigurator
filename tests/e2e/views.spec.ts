@@ -4359,6 +4359,18 @@ test.describe('ArduPlane demo', () => {
     await expect(card).toBeVisible()
     await expect(card).toContainText('Flight 1')
     await expect(card).toContainText('about 5 m')
+    // Flight 1 has a button. MOT_HOVER_LEARN defaults to 2, so on a stock
+    // copter it confirms rather than changes — but it must exist, because the
+    // vehicle that needs it most is the one where learning was turned OFF.
+    await expect(page.getByTestId('hover-learn-start')).toHaveText(/confirm hover learning/i)
+
+    // Learning disabled: a flight now would record nothing, and the card says
+    // so instead of sending the operator up for a wasted one.
+    await open('MOT_HOVER_LEARN:0')
+    await expect(page.getByTestId('hover-learn-start')).toHaveText(/turn on hover learning/i)
+    await expect(page.getByTestId('hover-learn-start-hint')).toContainText('would record nothing')
+    await page.getByTestId('hover-learn-start').click()
+    await expect(page.locator('body')).toContainText('1 staged change')
 
     // A learned hover throttle asks whether the flight was any good, and "no"
     // is a real answer — the vehicle re-learns every flight, so flying again

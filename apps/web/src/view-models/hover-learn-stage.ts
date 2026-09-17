@@ -41,6 +41,15 @@ export type HoverLearnStage =
 
 export interface HoverLearnState {
   stage: HoverLearnStage
+  /** MOT_HOVER_LEARN as reported. 2 is the firmware default. */
+  hoverLearn?: number
+  /**
+   * Flight one will learn nothing unless MOT_HOVER_LEARN is Learn-and-Save.
+   * It defaults to 2, but a vehicle someone has turned it off on looks exactly
+   * like a fresh one — nothing learned — so the card has to check rather than
+   * assume and send the operator up for a flight that records nothing.
+   */
+  hoverLearnArmed: boolean
   /** Whether the firmware carries the fork's Z-bias learning at all. */
   supported: boolean
   hoverThrottle?: number
@@ -83,8 +92,12 @@ export function deriveHoverLearnState(snapshot: ConfiguratorSnapshot): HoverLear
           ? 'flight-1-review'
           : 'flight-1'
 
+  const hoverLearn = readValue(snapshot, 'MOT_HOVER_LEARN')
+
   return {
     stage,
+    hoverLearn,
+    hoverLearnArmed: (hoverLearn ?? MOT_HOVER_LEARN_AND_SAVE) >= MOT_HOVER_LEARN_AND_SAVE,
     supported: zbias !== undefined,
     hoverThrottle,
     biasParamIds,

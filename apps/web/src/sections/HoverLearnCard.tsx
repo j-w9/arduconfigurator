@@ -76,6 +76,9 @@ export function HoverLearnCard({
         <span data-tone={stage === 'flight-1' ? 'neutral' : 'success'}>
           MOT_THST_HOVER: {state.hoverThrottle !== undefined ? state.hoverThrottle.toFixed(3) : '—'}
         </span>
+        <span data-tone={state.hoverLearnArmed ? 'success' : 'warning'}>
+          MOT_HOVER_LEARN: {state.hoverLearn ?? '—'}
+        </span>
         <span data-tone={state.biasLearned ? 'success' : 'neutral'}>
           Z-bias: {state.biasLearned ? 'learned' : 'not learned'}
         </span>
@@ -89,10 +92,31 @@ export function HoverLearnCard({
       ) : null}
 
       {stage === 'flight-1' ? (
-        <p data-testid="hover-learn-step">
-          <strong>Flight 1 — hover throttle.</strong> {FLIGHT_INSTRUCTIONS} Nothing to stage: ArduCopter
-          learns the hover throttle by default, so just go and fly it.
-        </p>
+        <>
+          <p data-testid="hover-learn-step">
+            <strong>Flight 1 — hover throttle.</strong> {FLIGHT_INSTRUCTIONS}
+          </p>
+          {/* A real step, not a formality. MOT_HOVER_LEARN defaults to 2, but a
+              vehicle someone turned it off on looks exactly like a fresh one —
+              nothing learned — so telling the operator to "just go fly" would
+              send them up for a flight that records nothing. Pressing this
+              guarantees learning is on; on a stock copter it stages nothing
+              because it is already correct, and the pill above shows that. */}
+          <button
+            type="button"
+            style={buttonStyle('primary')}
+            data-testid="hover-learn-start"
+            disabled={!canStage}
+            onClick={() => setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))}
+          >
+            {state.hoverLearnArmed ? 'Confirm hover learning is on' : 'Stage Flight 1 (turn on hover learning)'}
+          </button>
+          <small data-testid="hover-learn-start-hint">
+            {state.hoverLearnArmed
+              ? 'MOT_HOVER_LEARN is already Learn-and-Save, so this stages nothing — the vehicle will learn on the next hover.'
+              : 'Hover learning is OFF on this vehicle, so a flight now would record nothing. This stages MOT_HOVER_LEARN = 2.'}
+          </small>
+        </>
       ) : null}
 
       {stage === 'flight-1-review' ? (
@@ -132,9 +156,14 @@ export function HoverLearnCard({
       ) : null}
 
       {stage === 'flight-2' ? (
-        <p data-testid="hover-learn-step">
-          <strong>Flight 2 — accelerometer Z-bias.</strong> {FLIGHT_INSTRUCTIONS} Same flight as before.
-        </p>
+        <>
+          <p data-testid="hover-learn-step">
+            <strong>Flight 2 — accelerometer Z-bias.</strong> {FLIGHT_INSTRUCTIONS} Same flight as before.
+          </p>
+          <small data-testid="hover-learn-flight-2-hint">
+            Z-bias learning is staged and saves on disarm — go and fly it.
+          </small>
+        </>
       ) : null}
 
       {stage === 'flight-2-review' ? (
