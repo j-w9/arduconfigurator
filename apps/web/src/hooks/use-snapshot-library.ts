@@ -87,6 +87,8 @@ export interface UseSnapshotLibraryResult {
   handleExportSelectedSnapshot: () => void
   handleDeleteSelectedSnapshot: () => void
   handleToggleSelectedSnapshotProtection: () => void
+  /** Rewrite a saved snapshot's label/tags/note. The values it captured are untouched. */
+  handleEditSnapshotMetadata: (metadata: { label: string; tags: string; note: string }) => void
 }
 
 export function useSnapshotLibrary({
@@ -419,6 +421,46 @@ export function useSnapshotLibrary({
     })
   }
 
+  /**
+   * Edit a saved snapshot's metadata in place.
+   *
+   * Label, tags and note could only be set at CAPTURE time: afterwards the
+   * library offered overwrite, protect, export and delete, so a typo'd label or
+   * a note written before you knew what the tune turned into was permanent
+   * short of re-capturing. Nothing about the captured PARAMETERS changes here —
+   * only the description — so `capturedAt` and the values are left alone and
+   * the entry keeps its identity in the library.
+   */
+  function handleEditSnapshotMetadata(metadata: { label: string; tags: string; note: string }): void {
+    if (!selectedSnapshot) {
+      return
+    }
+
+    const label = metadata.label.trim()
+    const tags = metadata.tags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0)
+    const note = metadata.note.trim()
+
+    // An empty label would leave a nameless row in the library, so it falls
+    // back to what the entry already had rather than being accepted.
+    const nextLabel = label.length > 0 ? label : selectedSnapshot.label
+
+    setSavedSnapshots((current) =>
+      updateSavedSnapshot(current, selectedSnapshot.id, (savedSnapshot) => ({
+        ...savedSnapshot,
+        label: nextLabel,
+        tags,
+        note: note.length > 0 ? note : undefined
+      }))
+    )
+    setSnapshotNotice({
+      tone: 'success',
+      text: `Updated the details for "${nextLabel}". The captured values are unchanged.`
+    })
+  }
+
   function handleToggleSelectedSnapshotProtection(): void {
     if (!selectedSnapshot) {
       return
@@ -440,6 +482,7 @@ export function useSnapshotLibrary({
   }
 
   return {
+    handleEditSnapshotMetadata,
     handleCaptureLiveSnapshot,
     handleOverwriteSelectedSnapshot,
     handleImportSnapshotFile,
