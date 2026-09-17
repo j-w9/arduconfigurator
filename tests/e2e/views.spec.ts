@@ -5702,6 +5702,40 @@ test.describe('Inspectors (expert-only)', () => {
 })
 
 test.describe('Snapshot restore', () => {
+  test('a saved snapshot\'s details can be edited, and placeholders clear on focus', async ({ page }) => {
+    // Label, tags and note could only be set at CAPTURE time: afterwards the
+    // library offered overwrite, protect, export and delete, so a typo was
+    // permanent short of re-capturing.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'snapshots')
+
+    // Placeholders read as real content, so people select and try to delete
+    // them. They clear on focus instead.
+    const label = page.getByTestId('snapshot-label-input')
+    expect(await label.evaluate((el) => getComputedStyle(el, '::placeholder').color)).not.toBe(
+      'rgba(0, 0, 0, 0)'
+    )
+    await label.focus()
+    expect(await label.evaluate((el) => getComputedStyle(el, '::placeholder').color)).toBe('rgba(0, 0, 0, 0)')
+
+    await label.fill('Original label')
+    await page.getByTestId('capture-live-snapshot-button').click()
+
+    // The form seeds from the selection rather than starting blank.
+    await page.getByTestId('edit-selected-snapshot-button').click()
+    await expect(page.getByTestId('snapshot-edit-label')).toHaveValue('Original label')
+
+    await page.getByTestId('snapshot-edit-label').fill('Renamed after the fact')
+    await page.getByTestId('snapshot-edit-note').fill('Edited without re-capturing.')
+    await page.getByTestId('snapshot-edit-save').click()
+
+    await expect(page.getByTestId('snapshot-edit-form')).toHaveCount(0)
+    await expect(page.locator('body')).toContainText('Renamed after the fact')
+    // Says plainly that only the description moved — the point of the feature.
+    await expect(page.locator('body')).toContainText('The captured values are unchanged.')
+  })
+
   test('leaving Expert mode stops carrying snapshot calibrations', async ({ page }) => {
     // The gate is enforced on the import options, not only on the checkbox.
     // Hiding the control while its state stayed true would keep carrying another

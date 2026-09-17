@@ -2278,7 +2278,8 @@ export function App() {
     handleExportSelectedSnapshotToDesktop,
     handleExportSelectedSnapshot,
     handleDeleteSelectedSnapshot,
-    handleToggleSelectedSnapshotProtection
+    handleToggleSelectedSnapshotProtection,
+    handleEditSnapshotMetadata
   } = useSnapshotLibrary({
     snapshot,
     desktopBridge,
@@ -9373,7 +9374,8 @@ export function App() {
             handleStageSelectedProvisioningProfileDiff,
             handleStageSelectedSnapshotDiff,
             handleToggleSelectedProvisioningProfileProtection,
-            handleToggleSelectedSnapshotProtection
+            handleToggleSelectedSnapshotProtection,
+            handleEditSnapshotMetadata
           }}
         />
       ) : null}

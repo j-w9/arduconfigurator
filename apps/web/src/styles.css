@@ -442,6 +442,21 @@ textarea::placeholder {
   color: var(--text-dim);
 }
 
+/* Placeholders clear the moment the field is focused.
+ *
+ * Field report: the sample text reads as real content, so people select it and
+ * try to delete it before remembering that typing replaces it. Hiding it on
+ * focus removes the question — the box you are about to type in is visibly
+ * empty. The hint is still there to read before you click, which is all a
+ * placeholder is for.
+ *
+ * `color: transparent` rather than `content: ''`: it keeps the field's layout
+ * and does not fight the per-surface placeholder colours defined further down. */
+input:focus::placeholder,
+textarea:focus::placeholder {
+  color: transparent;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -8584,6 +8599,14 @@ body.is-status-dash-dragging {
   color: rgba(197, 205, 214, 0.38);
 }
 
+/* Same specificity as the rule above and later in the file, so the focus case
+   wins. The bare input:focus::placeholder near the top cannot: it ties on
+   specificity with these scoped rules and loses on order. */
+.scoped-editor-field input:focus::placeholder,
+.scoped-editor-field textarea:focus::placeholder {
+  color: transparent;
+}
+
 .scoped-editor-field input:disabled,
 .scoped-editor-field select:disabled,
 .scoped-editor-field textarea:disabled {
@@ -9020,6 +9043,26 @@ details.metadata-settings-section:not([open]) > summary::after {
 .ports-matrix-row__title {
   display: grid;
   gap: 2px;
+}
+
+/* Live-traffic dot from @SYS/uarts.txt. Green when the port has moved bytes
+   since the last read, hollow when it is idle, ABSENT when uarts.txt has not
+   been read — "we cannot tell" must not render as "idle". Byte counts and drops
+   are on the title attribute so the row stays a row. */
+.ports-traffic-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border: 1px solid var(--text-dim);
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.ports-traffic-dot.is-active {
+  border-color: var(--success, #3fb950);
+  background: var(--success, #3fb950);
+  box-shadow: 0 0 5px rgba(63, 185, 80, 0.55);
 }
 
 .ports-matrix-row__title strong {
@@ -11027,6 +11070,13 @@ details.metadata-settings-section:not([open]) > summary::after {
 .tuning-page .snapshots-field input::placeholder,
 .tuning-page .snapshots-field textarea::placeholder {
   color: rgba(197, 205, 214, 0.38);
+}
+
+.snapshots-page .snapshots-field input:focus::placeholder,
+.snapshots-page .snapshots-field textarea:focus::placeholder,
+.tuning-page .snapshots-field input:focus::placeholder,
+.tuning-page .snapshots-field textarea:focus::placeholder {
+  color: transparent;
 }
 
 .snapshots-page .snapshots-field input:hover,

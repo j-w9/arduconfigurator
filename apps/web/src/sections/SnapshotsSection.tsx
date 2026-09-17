@@ -8,7 +8,7 @@
 // No behaviour change — every JSX attribute and inline closure is verbatim
 // from the original block.
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent, ReactElement, ReactNode, RefObject } from 'react'
 import type {
   ConfiguratorSnapshot,
@@ -173,6 +173,7 @@ export interface SnapshotsSectionHandlers {
   handleStageSelectedSnapshotDiff: () => void
   handleToggleSelectedProvisioningProfileProtection: () => void | Promise<void>
   handleToggleSelectedSnapshotProtection: () => void | Promise<void>
+  handleEditSnapshotMetadata: (metadata: { label: string; tags: string; note: string }) => void
 }
 
 export interface SnapshotsSectionProps {
@@ -338,7 +339,8 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
     handleStageSelectedProvisioningProfileDiff,
     handleStageSelectedSnapshotDiff,
     handleToggleSelectedProvisioningProfileProtection,
-    handleToggleSelectedSnapshotProtection
+    handleToggleSelectedSnapshotProtection,
+    handleEditSnapshotMetadata
   } = handlers
 
   // Only the metadata-derived rejections (min / max / enum) can be rescued by
@@ -348,6 +350,24 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
   // Bulk selection over the restore diff — shift-click ranges and a one-press
   // "Drop selected", the same controls the Parameters review has had. Without
   // it, abandoning part of a restore meant dropping rows one at a time.
+  // Editing a saved snapshot's description. Seeded from the selection and
+  // re-seeded whenever it changes, so opening the form on a different snapshot
+  // never shows the previous one's text.
+  const [editingSnapshot, setEditingSnapshot] = useState(false)
+  const [editLabel, setEditLabel] = useState('')
+  const [editTags, setEditTags] = useState('')
+  const [editNote, setEditNote] = useState('')
+
+  const selectedSnapshotId = selectedSnapshot?.id
+  useEffect(() => {
+    setEditingSnapshot(false)
+    setEditLabel(selectedSnapshot?.label ?? '')
+    setEditTags((selectedSnapshot?.tags ?? []).join(', '))
+    setEditNote(selectedSnapshot?.note ?? '')
+    // Keyed on the id, not the object: the library array is rebuilt on every
+    // save, and depending on the object would reset the form mid-edit.
+  }, [selectedSnapshotId])
+
   const snapshotRestoreOrderedIds = useMemo(
     () => selectedSnapshotDiffGroups.flatMap((group) => group.entries.map((entry) => entry.id)),
     [selectedSnapshotDiffGroups]
@@ -1242,6 +1262,14 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     {selectedSnapshot.protected ? 'Unprotect Selected' : 'Protect Selected'}
                   </button>
                   <button
+                    data-testid="edit-selected-snapshot-button"
+                    className="snapshots-button snapshots-button--ghost"
+                    onClick={() => setEditingSnapshot((open) => !open)}
+                    disabled={busyAction !== undefined}
+                  >
+                    {editingSnapshot ? 'Cancel Edit' : 'Edit Details'}
+                  </button>
+                  <button
                     data-testid="delete-selected-snapshot-button"
                     className="snapshots-button snapshots-button--ghost"
                     onClick={handleDeleteSelectedSnapshot}
@@ -1250,6 +1278,59 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     Delete Selected
                   </button>
                 </div>
+
+                {/* Label, tags and note could only be set at CAPTURE time, so a
+                    typo or a note written before you knew what the tune became
+                    was permanent short of re-capturing. This edits the
+                    description only — the captured parameter values, and the
+                    entry's identity in the library, are untouched. */}
+                {editingSnapshot ? (
+                  <div className="snapshot-edit-form" data-testid="snapshot-edit-form">
+                    <label className="scoped-editor-field snapshots-field">
+                      <span>Snapshot label</span>
+                      <input
+                        data-testid="snapshot-edit-label"
+                        type="text"
+                        value={editLabel}
+                        onChange={(event) => setEditLabel(event.target.value)}
+                      />
+                      <small>Blank keeps the current label.</small>
+                    </label>
+                    <label className="scoped-editor-field snapshots-field">
+                      <span>Tags</span>
+                      <input
+                        data-testid="snapshot-edit-tags"
+                        type="text"
+                        value={editTags}
+                        onChange={(event) => setEditTags(event.target.value)}
+                      />
+                      <small>Comma-separated.</small>
+                    </label>
+                    <label className="scoped-editor-field snapshots-field snapshots-field--wide">
+                      <span>Note</span>
+                      <textarea
+                        data-testid="snapshot-edit-note"
+                        value={editNote}
+                        onChange={(event) => setEditNote(event.target.value)}
+                        rows={3}
+                      />
+                      <small>Travels with exported libraries.</small>
+                    </label>
+                    <div className="snapshots-action-row">
+                      <button
+                        data-testid="snapshot-edit-save"
+                        className="snapshots-button snapshots-button--primary"
+                        onClick={() => {
+                          handleEditSnapshotMetadata({ label: editLabel, tags: editTags, note: editNote })
+                          setEditingSnapshot(false)
+                        }}
+                        disabled={busyAction !== undefined}
+                      >
+                        Save Details
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="snapshots-empty-state snapshots-empty-state--detail">
