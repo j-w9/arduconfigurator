@@ -15022,6 +15022,33 @@ details.bf-gui-box:not([open]) > summary::after {
   font-size: var(--text-sm);
 }
 
+/* Betaflight board identity: a compact label/value grid, not a table — six
+   short fields that should wrap rather than scroll on a phone. */
+.betaflight-identity {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.betaflight-identity div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.betaflight-identity dt {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.betaflight-identity dd {
+  margin: 0;
+  font-weight: 600;
+}
+
 .firmware-wizard__quick-actions {
   display: flex;
   flex-wrap: wrap;

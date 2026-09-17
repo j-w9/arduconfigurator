@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   BootloaderClient,
   parseApj,
@@ -96,6 +96,9 @@ export interface FirmwareFlasherProps {
    * absent, still loading, or reporting that nothing could be read.
    */
   bootloaderIdentity?: BootloaderHashPreview
+  /** The Betaflight-board surface, rendered above the wizard. A slot so this
+   *  component keeps knowing nothing about MSP. */
+  betaflightSlot?: ReactNode
   /** Ask the host to read both bootloader images. Called when the update is
    *  armed, so nothing is read off the vehicle until an operator has actually
    *  reached for the button. */
@@ -235,6 +238,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     onFlashBootloader,
     flashBootloaderDisabledReason,
     bootloaderIdentity,
+    betaflightSlot,
     onLoadBootloaderIdentity
   } = props
   const requestPort = props.requestPort ?? defaultRequestPort
@@ -1046,6 +1050,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           * live MAVLink link) and custom build-server URL (always
           * available). Both fold open from a single row of buttons so
           * the default surface stays the 3-step flash wizard. */}
+        {betaflightSlot}
         <div className="firmware-wizard__quick-actions" data-testid="firmware-quick-actions">
           {onReboot ? (
             <button

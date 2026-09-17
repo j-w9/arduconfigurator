@@ -4306,29 +4306,79 @@ test.describe('ArduPlane demo', () => {
     await expect(page.locator('body')).toContainText('6 staged changes')
   })
 
-  test('Calibration: the Baro Thrust (VALT) card is absent without a log-server sign-in', async ({ page }) => {
+  test('Calibration: hover learning sequences two flights', async ({ page }) => {
+    // MOT_HOVER_LEARN and ACC_ZBIAS_LEARN both learn in the AIR and save on
+    // disarm, so neither can be driven from a bench. The card only stages the
+    // right value before a flight and moves the operator on afterwards, which
+    // is why its whole behaviour is which stage it shows.
+    const open = async (overrides) => {
+      await page.goto(overrides ? `/?demoParamOverrides=${encodeURIComponent(overrides)}` : '/')
+      await page.getByTestId('transport-mode-select').selectOption('demo')
+      await page.getByTestId('connect-button').click()
+      await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', {
+        timeout: VEHICLE_CONNECT_TIMEOUT
+      })
+      await enableExpertMode(page)
+      await openView(page, 'calibration')
+    }
+
+    await open('')
+    const card = page.getByTestId('calibration-card-hover-learn')
+    await expect(card).toBeVisible()
+    // Flight 1 stages MOT_HOVER_LEARN = 2 (Learn AND Save) — a learn that is
+    // not saved is a wasted flight.
+    await expect(page.getByTestId('hover-learn-start')).toBeVisible()
+    await expect(card).toContainText('about 5 m')
+
+    // Armed: the card waits for the operator to come back and confirm.
+    await open('MOT_HOVER_LEARN:2')
+    await expect(page.getByTestId('hover-learn-accept-flight-1')).toBeVisible()
+
+    // Bit 0 alone = learn the bias. Not 3 yet: applying a bias that has not
+    // been measured would be worse than not applying one.
+    await open('MOT_HOVER_LEARN:2,ACC_ZBIAS_LEARN:1')
+    await expect(page.getByTestId('hover-learn-accept-flight-2')).toBeVisible()
+    await expect(card).toContainText('Flight 2')
+
+    // Bits 0|1 = keep learning and start applying it.
+    await open('MOT_HOVER_LEARN:2,ACC_ZBIAS_LEARN:3')
+    await expect(page.getByTestId('hover-learn-done')).toBeVisible()
+
+    // EKF3 only: the correction is applied inside EKF3, so anything else
+    // learns nothing and the card says so rather than letting a flight be
+    // wasted.
+    await open('AHRS_EKF_TYPE:2')
+    await expect(page.getByTestId('hover-learn-ekf-warning')).toBeVisible()
+  })
+
+  test('Calibration: the Baro Thrust (VALT) card follows the FIRMWARE, not a sign-in', async ({ page }) => {
+    // It used to be gated on being signed in to the log server, which is a
+    // statement about the OPERATOR rather than the aircraft: it hid the card on
+    // a board that supports the feature and offered it on one that does not.
+    // Baro thrust compensation is compiled out of stock ArduPilot
+    // (AP_BARO_THST_COMP_ENABLED, default off), so BARO1_THST_SCALE's presence
+    // is the durable signal. The demo reports it.
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'calibration')
-    // Default (non-Expert): hidden.
+    // Still Expert-only.
     await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
 
-    // Expert mode is not enough on its own. Signed out there is no card at all
-    // -- not a locked one -- because the calibration is fit from a hover log.
     await enableExpertMode(page)
     // Guard the guard: Expert really did take effect, so this cannot pass for
     // the wrong reason.
     await expect(page.getByTestId('calibration-card-tcal')).toBeVisible()
-    await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
+    // Present with NO log-server session — the firmware supports it.
+    await expect(page.getByTestId('calibration-card-valt')).toBeVisible()
   })
 
-  test('Calibration: a signed-in log server brings the VALT card back', async ({ page }) => {
-    // The session is what useLogUpload restores on mount, so seeding it is the
-    // same state a real sign-in leaves behind — no server needed to prove the
-    // gate opens.
+  test('Calibration: a signed-in log server names the server on the VALT card', async ({ page }) => {
+    // Signing in no longer GATES the card — it only tells the card which server
+    // it would pull hover logs from. The session is what useLogUpload restores
+    // on mount, so seeding it is the same state a real sign-in leaves behind.
     await page.goto('/')
     await page.evaluate(() => {
       window.sessionStorage.setItem(
