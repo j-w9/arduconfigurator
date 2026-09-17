@@ -356,7 +356,34 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                     <div className="ports-matrix-row__cell ports-matrix-row__cell--port">
                                       <div className="ports-matrix-row__identity">
                                         <div className="ports-matrix-row__title">
-                                          <strong>{portHeading}</strong>
+                                          {/* Live traffic from @SYS/uarts.txt, which the app already
+                                              parsed and then never showed. A dot rather than the old
+                                              text pill that was pulled as redundant chrome: "is this
+                                              port actually doing anything" is the question, and the
+                                              byte counts belong on hover.
+
+                                              Three states, not two — undefined means uarts.txt has
+                                              not been read, which is not the same as idle, so the dot
+                                              is absent rather than grey-and-wrong. */}
+                                          <strong>
+                                            {/* Inside the heading, not beside it: the title is a
+                                                grid whose strong is display:block, so a sibling
+                                                would stack above the name instead of sitting with
+                                                it. */}
+                                            {port.boardTrafficActive !== undefined ? (
+                                              <span
+                                                className={`ports-traffic-dot${port.boardTrafficActive ? ' is-active' : ''}`}
+                                                data-testid={`ports-traffic-${port.portNumber}`}
+                                                title={port.boardTrafficSummary}
+                                                aria-label={
+                                                  port.boardTrafficActive
+                                                    ? `SERIAL${port.portNumber} is passing traffic`
+                                                    : `SERIAL${port.portNumber} is idle`
+                                                }
+                                              />
+                                            ) : null}
+                                            {portHeading}
+                                          </strong>
                                           <small>
                                             {`SERIAL${port.portNumber}_PROTOCOL `}
                                             {port.protocolValue ?? '—'}

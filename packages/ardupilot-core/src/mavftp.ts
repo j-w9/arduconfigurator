@@ -268,25 +268,38 @@ export function parseUartsFile(rawText: string): BoardSerialPortMapping[] {
 }
 
 function parseUartsLine(line: string): BoardSerialPortMapping | undefined {
+  // The real format, from AP_HAL_ChibiOS/UARTDriver.cpp:
+  //
+  //   TX%c=%8u RX%c=%8u TXBD=%6u RXBD=%6u RXDRP=%8u [FE=%lu OE=%lu NE=%lu] FlowCtrl=%u
+  //
+  // The previous pattern anchored with `RXBD=(\d+)$`, so it never matched a
+  // real board — every line fell through to the name-only branch below and came
+  // back with txActive/rxActive hardcoded false and no counters at all. That is
+  // why the traffic summary always read "Idle".
+  //
+  // FE/OE/NE are compiled out when CH_CFG_USE_EVENTS is off, so they are
+  // optional here rather than assumed.
   const detailedMatch = line.match(
-    /^SERIAL(\d+)\s+(\S+)\s+TX(\*?)\s*=\s*(\d+)\s+RX(\*?)\s*=\s*(\d+)\s+TXBD=\s*(\d+)\s+RXBD=\s*(\d+)$/i
+    /^SERIAL(\d+)\s+(\S+)\s+TX(\*?)\s*=\s*(\d+)\s+RX(\*?)\s*=\s*(\d+)\s+TXBD=\s*(\d+)\s+RXBD=\s*(\d+)\s+RXDRP=\s*(\d+)/i
   )
   if (detailedMatch) {
-    const serialPortNumber = Number(detailedMatch[1])
-    const hardwarePort = detailedMatch[2]
+    // TX/RX are the CHANGE since the last read (StatsTracker::update), so a
+    // non-zero count means the port moved bytes in that window — which is the
+    // activity signal. The asterisk is DMA, not activity.
     const txBytes = Number(detailedMatch[4])
     const rxBytes = Number(detailedMatch[6])
-    const txBufferDrops = Number(detailedMatch[7])
-    const rxBufferDrops = Number(detailedMatch[8])
     return {
-      serialPortNumber,
-      hardwarePort,
+      serialPortNumber: Number(detailedMatch[1]),
+      hardwarePort: detailedMatch[2],
       txActive: txBytes > 0,
       rxActive: rxBytes > 0,
+      txDma: detailedMatch[3] === '*',
+      rxDma: detailedMatch[5] === '*',
       txBytes,
       rxBytes,
-      txBufferDrops,
-      rxBufferDrops
+      txThroughput: Number(detailedMatch[7]),
+      rxThroughput: Number(detailedMatch[8]),
+      rxDroppedBytes: Number(detailedMatch[9])
     }
   }
 
@@ -302,6 +315,7 @@ function parseUartsLine(line: string): BoardSerialPortMapping | undefined {
     rxActive: false
   }
 }
+
 
 // Reject device-supplied entry names that could escape their directory if
 // a name is ever mapped to a local filesystem path. Names are FC-controlled,

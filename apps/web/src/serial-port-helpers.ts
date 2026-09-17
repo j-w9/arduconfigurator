@@ -21,6 +21,15 @@ export interface SerialPortViewModel {
   hardwarePort?: string
   boardConnectorLabel?: string
   boardTrafficSummary?: string
+  /**
+   * The port has moved bytes since the last @SYS/uarts.txt read.
+   *
+   * A boolean rather than parsing the summary string back out: this drives a
+   * status dot, and a renderer should not have to know the summary's wording.
+   * Undefined when uarts.txt has not been read (or the board does not serve
+   * it), which is deliberately NOT the same as "idle" — we cannot tell.
+   */
+  boardTrafficActive?: boolean
   protocolParameter?: ParameterState
   baudParameter?: ParameterState
   optionsParameter?: ParameterState
@@ -146,8 +155,10 @@ export function describeBoardTrafficSummary(mapping: ConfiguratorSnapshot['hardw
   if (mapping.rxActive) {
     notes.push(`RX ${mapping.rxBytes ?? 0}`)
   }
-  if ((mapping.txBufferDrops ?? 0) > 0 || (mapping.rxBufferDrops ?? 0) > 0) {
-    notes.push(`Drops ${(mapping.txBufferDrops ?? 0) + (mapping.rxBufferDrops ?? 0)}`)
+  // RXDRP, the real dropped-byte counter. This used to add TXBD+RXBD, which are
+  // throughput rather than drops — so a busy port reported drops it never had.
+  if ((mapping.rxDroppedBytes ?? 0) > 0) {
+    notes.push(`RX dropped ${mapping.rxDroppedBytes}`)
   }
 
   return notes.length > 0 ? notes.join(' · ') : 'Idle in current `uarts.txt` snapshot.'
@@ -191,6 +202,8 @@ export function buildSerialPortViewModels(snapshot: ConfiguratorSnapshot, boardC
       hardwarePort: hardwareMapping?.hardwarePort,
       boardConnectorLabel,
       boardTrafficSummary: describeBoardTrafficSummary(hardwareMapping),
+      boardTrafficActive:
+        hardwareMapping === undefined ? undefined : Boolean(hardwareMapping.txActive || hardwareMapping.rxActive),
       protocolParameter,
       baudParameter,
       optionsParameter,

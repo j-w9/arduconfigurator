@@ -76,8 +76,20 @@ export interface BoardSerialPortMapping {
   rxActive: boolean
   txBytes?: number
   rxBytes?: number
-  txBufferDrops?: number
-  rxBufferDrops?: number
+  /**
+   * TXBD / RXBD: throughput, NOT drops.
+   *
+   * AP_HAL_ChibiOS/UARTDriver.cpp prints `(bytes * 10000) / dt_ms` — bytes per
+   * second times ten. They were read as "buffer drops" and summarised to the
+   * operator as such, which turned a busy port into a broken-looking one.
+   */
+  txThroughput?: number
+  rxThroughput?: number
+  /** RXDRP: the real dropped-byte counter, cumulative since boot. */
+  rxDroppedBytes?: number
+  /** The asterisk in the file (TX* / RX*) — DMA enabled. Not an activity signal. */
+  txDma?: boolean
+  rxDma?: boolean
 }
 
 export type BoardFileStatus = 'idle' | 'loading' | 'ready' | 'unsupported' | 'missing' | 'error'
