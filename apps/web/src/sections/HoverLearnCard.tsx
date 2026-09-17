@@ -1,27 +1,20 @@
-// Two-flight hover learning: MOT_HOVER_LEARN, then ACC_ZBIAS_LEARN.
-//
-// Both parameters learn in the air and save on DISARM, so neither can be driven
-// from a bench — the card's job is to stage the right value before a flight and
-// then move the operator on afterwards. Nothing here measures anything; the
-// firmware does the learning and this only sequences it.
-//
-// Values are ArduPilot's:
-//   MOT_HOVER_LEARN (AP_MotorsMulticopter.cpp): 0 Disabled, 1 Learn,
-//     2 Learn and Save. Stage 2 — a learn that is not saved is a wasted flight.
-//   ACC_ZBIAS_LEARN (fork, ArduCopter/Parameters.cpp) is a BITMASK, not an
-//     enum: bit 0 Learn and Save, bit 1 Use Saved Values, bit 2 Disable Ground
-//     Learning. It compensates vibration rectification and is EKF3-only.
-//
-// So the second flight stages bit 0 alone (learn it), and accepting that flight
-// stages bits 0|1 = 3, which keeps learning while also APPLYING the correction.
-// Staging 3 up front would apply a bias that has not been measured yet.
+// Two-flight hover learning: the hover throttle, then the accelerometer Z-bias
+// that vibration leaves behind. Both are learned in the AIR and saved on
+// DISARM, so neither can be driven from a bench — this card only sequences
+// them and reports what the vehicle came back with.
 
 import type { ReactElement } from 'react'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
-import { readRoundedParameter } from '../selectors/parameter-read'
+import {
+  ACC_ZBIAS_LEARN_SAVE,
+  ACC_ZBIAS_LEARN_USE,
+  MOT_HOVER_LEARN_AND_SAVE,
+  MOT_THST_HOVER_DEFAULT,
+  deriveHoverLearnState
+} from '../view-models/hover-learn-stage'
 
 export interface HoverLearnCardProps {
   snapshot: ConfiguratorSnapshot
@@ -30,10 +23,6 @@ export interface HoverLearnCardProps {
   setDraft: (paramId: string, value: string) => void
 }
 
-const ACC_ZBIAS_LEARN_SAVE = 1 << 0
-const ACC_ZBIAS_LEARN_USE = 1 << 1
-
-/** The hover blurb, used for both flights — the flying is identical. */
 const FLIGHT_INSTRUCTIONS =
   'Take off, climb to about 5 m, and let it hover with as little stick input as you can. ' +
   'Give it a steady minute or so, then land and disarm — the value is saved on disarm.'
@@ -44,127 +33,169 @@ export function HoverLearnCard({
   busyAction,
   setDraft
 }: HoverLearnCardProps): ReactElement | null {
-  const hoverLearn = readRoundedParameter(snapshot, 'MOT_HOVER_LEARN')
-  const zbias = readRoundedParameter(snapshot, 'ACC_ZBIAS_LEARN')
-  const ekfType = readRoundedParameter(snapshot, 'AHRS_EKF_TYPE')
+  const state = deriveHoverLearnState(snapshot)
 
-  // Fork-only: ACC_ZBIAS_LEARN does not exist on stock ArduPilot, so its
-  // absence means this sequence cannot be completed and the card has no
-  // business being on screen.
-  if (zbias === undefined) {
+  // Fork-only: without ACC_ZBIAS_LEARN the sequence cannot be completed.
+  if (!state.supported) {
     return null
   }
 
-  const thrustHover = snapshot.parameters.find((parameter) => parameter.id === 'MOT_THST_HOVER')?.value
-  const hoverLearnArmed = (hoverLearn ?? 0) >= 2
-  const zbiasLearning = ((zbias ?? 0) & ACC_ZBIAS_LEARN_SAVE) !== 0
-  const zbiasApplied = ((zbias ?? 0) & ACC_ZBIAS_LEARN_USE) !== 0
   const canStage = canApplyDraftParameters && busyAction === undefined
+  const { stage } = state
+  const ekfWrong = state.ekfType !== undefined && state.ekfType !== 3
 
-  // Stage 1 until hover learning is armed, stage 2 once it is, done once the
-  // bias is being applied. Read from the vehicle rather than local state so it
-  // survives the reconnect the flow is built around.
-  const stage = zbiasApplied ? 'done' : zbiasLearning ? 'zbias' : hoverLearnArmed ? 'hover-flown' : 'hover'
-
-  // EKF3 only — the bias correction is applied inside EKF3, so on any other
-  // estimator the second flight learns nothing.
-  const ekfWrong = ekfType !== undefined && ekfType !== 3
+  /** Put the vehicle back to "never calibrated" and start at flight 1. */
+  const zeroize = (): void => {
+    // The LEARNED values, not just the enables — a vehicle arriving with a
+    // previous calibration is exactly the case this exists for, and leaving
+    // MOT_THST_HOVER or the bias in place would leave it reading as done.
+    setDraft('MOT_THST_HOVER', String(MOT_THST_HOVER_DEFAULT))
+    for (const id of state.biasParamIds) {
+      setDraft(id, '0')
+    }
+    setDraft('ACC_ZBIAS_LEARN', '0')
+    // Back to the firmware default rather than 0: 2 is what a stock copter
+    // ships with, and it is what makes the next flight learn at all.
+    setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))
+  }
 
   return (
     <article className="calibration-card" data-testid="calibration-card-hover-learn">
       <div className="calibration-card__header">
         <strong>Hover learning (two flights)</strong>
-        <StatusBadge tone={stage === 'done' ? 'success' : 'warning'}>
-          {stage === 'done' ? 'complete' : stage === 'hover' ? 'flight 1' : 'flight 2'}
+        <StatusBadge tone={stage === 'complete' ? 'success' : 'warning'}>
+          {stage === 'complete' ? 'complete' : stage.startsWith('flight-1') ? 'flight 1' : 'flight 2'}
         </StatusBadge>
       </div>
       <p>
-        Learns the hover throttle, then the accelerometer Z-bias that vibration leaves behind. Both are
-        learned in the air and saved when you disarm, so each one costs a flight.
+        Learns the hover throttle, then the accelerometer Z-bias that vibration leaves behind. Each costs
+        a flight, and both are saved when you disarm.
       </p>
 
       <div className="config-pills">
-        <span data-tone={hoverLearnArmed ? 'success' : 'neutral'}>
-          MOT_HOVER_LEARN: {hoverLearn ?? '—'}
+        <span data-tone={stage === 'flight-1' ? 'neutral' : 'success'}>
+          MOT_THST_HOVER: {state.hoverThrottle !== undefined ? state.hoverThrottle.toFixed(3) : '—'}
         </span>
-        <span data-tone={thrustHover !== undefined ? 'neutral' : 'neutral'}>
-          MOT_THST_HOVER: {thrustHover !== undefined ? thrustHover.toFixed(3) : '—'}
-        </span>
-        <span data-tone={zbiasApplied ? 'success' : zbiasLearning ? 'warning' : 'neutral'}>
-          ACC_ZBIAS_LEARN: {zbias ?? '—'}
+        <span data-tone={state.biasLearned ? 'success' : 'neutral'}>
+          Z-bias: {state.biasLearned ? 'learned' : 'not learned'}
         </span>
       </div>
 
       {ekfWrong ? (
         <p className="switch-exercise-warning" data-testid="hover-learn-ekf-warning">
-          Z-bias learning only works on EKF3 (AHRS_EKF_TYPE = 3); this vehicle reports {ekfType}. The
-          second flight will not learn anything until that is changed.
+          Z-bias learning only works on EKF3 (AHRS_EKF_TYPE = 3); this vehicle reports {state.ekfType}.
+          The second flight will not learn anything until that is changed.
         </p>
       ) : null}
 
-      {stage === 'hover' ? (
+      {stage === 'flight-1' ? (
+        <p data-testid="hover-learn-step">
+          <strong>Flight 1 — hover throttle.</strong> {FLIGHT_INSTRUCTIONS} Nothing to stage: ArduCopter
+          learns the hover throttle by default, so just go and fly it.
+        </p>
+      ) : null}
+
+      {stage === 'flight-1-review' ? (
         <>
           <p data-testid="hover-learn-step">
-            <strong>Flight 1 — hover throttle.</strong> {FLIGHT_INSTRUCTIONS}
+            <strong>Flight 1 done.</strong> It learned a hover throttle of{' '}
+            {state.hoverThrottle?.toFixed(3)}. Was that a good, steady hover?
           </p>
-          <button
-            type="button"
-            style={buttonStyle('primary')}
-            data-testid="hover-learn-start"
-            disabled={!canStage}
-            onClick={() => setDraft('MOT_HOVER_LEARN', '2')}
-          >
-            Stage Flight 1 (learn hover throttle)
-          </button>
+          <div className="button-row">
+            <button
+              type="button"
+              style={buttonStyle('primary')}
+              data-testid="hover-learn-flight-1-yes"
+              disabled={!canStage}
+              onClick={() => setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE))}
+            >
+              Yes — go to flight 2
+            </button>
+            <button
+              type="button"
+              style={buttonStyle()}
+              data-testid="hover-learn-flight-1-no"
+              disabled={!canStage}
+              // Nothing to undo: MOT_HOVER_LEARN stays at Learn-and-Save, so
+              // the next hover overwrites what this one learned. Re-assert it
+              // in case a previous session left it disabled.
+              onClick={() => setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))}
+            >
+              No — fly flight 1 again
+            </button>
+          </div>
+          <small data-testid="hover-learn-flight-1-no-hint">
+            Flying again simply overwrites it — the vehicle re-learns the hover throttle every flight
+            while MOT_HOVER_LEARN is 2.
+          </small>
         </>
       ) : null}
 
-      {stage === 'hover-flown' ? (
+      {stage === 'flight-2' ? (
+        <p data-testid="hover-learn-step">
+          <strong>Flight 2 — accelerometer Z-bias.</strong> {FLIGHT_INSTRUCTIONS} Same flight as before.
+        </p>
+      ) : null}
+
+      {stage === 'flight-2-review' ? (
         <>
           <p data-testid="hover-learn-step">
-            <strong>Flight 1 is armed.</strong> {FLIGHT_INSTRUCTIONS} Come back, plug in, and confirm
-            below — MOT_THST_HOVER above is what it learned.
+            <strong>Flight 2 done.</strong> A Z-bias was learned. Was that a good, steady hover?
           </p>
-          <button
-            type="button"
-            style={buttonStyle('primary')}
-            data-testid="hover-learn-accept-flight-1"
-            disabled={!canStage}
-            onClick={() => setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE))}
-          >
-            Good flight — move on to flight 2
-          </button>
+          <div className="button-row">
+            <button
+              type="button"
+              style={buttonStyle('primary')}
+              data-testid="hover-learn-flight-2-yes"
+              disabled={!canStage}
+              // Keep bit 0 set so later hovers keep refining it, and add bit 1
+              // so the learned bias is actually applied.
+              onClick={() =>
+                setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE))
+              }
+            >
+              Yes — apply the learned bias
+            </button>
+            <button
+              type="button"
+              style={buttonStyle()}
+              data-testid="hover-learn-flight-2-no"
+              disabled={!canStage}
+              // Clear the learned bias so the next flight starts from zero
+              // rather than refining a bad measurement.
+              onClick={() => {
+                for (const id of state.biasParamIds) {
+                  setDraft(id, '0')
+                }
+                setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE))
+              }}
+            >
+              No — fly flight 2 again
+            </button>
+          </div>
         </>
       ) : null}
 
-      {stage === 'zbias' ? (
-        <>
-          <p data-testid="hover-learn-step">
-            <strong>Flight 2 — accelerometer Z-bias.</strong> {FLIGHT_INSTRUCTIONS} Same flight as
-            before. Confirm below afterwards and the learned bias starts being applied.
-          </p>
-          <button
-            type="button"
-            style={buttonStyle('primary')}
-            data-testid="hover-learn-accept-flight-2"
-            disabled={!canStage}
-            onClick={() =>
-              // Keep learning AND start using it: bit 0 stays set so later
-              // flights refine the value.
-              setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE))
-            }
-          >
-            Good flight — apply the learned bias
-          </button>
-        </>
-      ) : null}
-
-      {stage === 'done' ? (
+      {stage === 'complete' ? (
         <p className="success-copy" data-testid="hover-learn-done">
-          Both flights are done and the learned Z-bias is being applied. Bit 0 is still set, so further
-          hovers keep refining it.
+          Both flights are done and the learned Z-bias is being applied. Further hovers keep refining it.
         </p>
       ) : null}
+
+      {/* Start over on a vehicle that arrives with someone else's calibration —
+          the case that makes a drone read as already finished. */}
+      <div className="button-row">
+        <button
+          type="button"
+          style={buttonStyle()}
+          data-testid="hover-learn-zeroize"
+          disabled={!canStage}
+          onClick={zeroize}
+          title="Clears the learned hover throttle and Z-bias and returns to flight 1."
+        >
+          Zeroize Hover Cal
+        </button>
+      </div>
 
       <small>
         {canStage

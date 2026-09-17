@@ -130,8 +130,14 @@ const mockParameters: ParameterState = {
   // Hover learning. MOT_HOVER_LEARN is stock (AP_MotorsMulticopter.cpp, default
   // 2 = Learn and Save); ACC_ZBIAS_LEARN is fork-only and gates the two-flight
   // card, so the demo carries it to exercise that flow.
-  MOT_HOVER_LEARN: 0,
+  // MOT_HOVER_LEARN's firmware default is 2 (HOVER_LEARN_AND_SAVE), which is
+  // why the hover card keys its stage off the learned VALUES rather than this.
+  MOT_HOVER_LEARN: 2,
   ACC_ZBIAS_LEARN: 0,
+  // The learned Z-bias, fork-only (INS_ACC_VRFB_Z / per-instance ACC_VRFB_Z).
+  // Zero means nothing learned yet.
+  INS_ACC_VRFB_Z: 0,
+  INS_ACC2_VRFB_Z: 0,
   // Per-IMU thermal-calibration enable (INS_TCALn_ENABLE) so the Expert-only TCAL
   // card renders its full (per-IMU state) surface in demo instead of the n/a
   // variant. 0 = thermal cal off (the default), matching a fresh board.

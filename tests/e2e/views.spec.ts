@@ -4334,11 +4334,13 @@ test.describe('ArduPlane demo', () => {
     await expect(page.locator('body')).toContainText('6 staged changes')
   })
 
-  test('Calibration: hover learning sequences two flights', async ({ page }) => {
-    // MOT_HOVER_LEARN and ACC_ZBIAS_LEARN both learn in the AIR and save on
-    // disarm, so neither can be driven from a bench. The card only stages the
-    // right value before a flight and moves the operator on afterwards, which
-    // is why its whole behaviour is which stage it shows.
+  test('Calibration: hover learning follows the LEARNED values, not the enables', async ({ page }) => {
+    // The stage used to key off MOT_HOVER_LEARN >= 2. That is the FIRMWARE
+    // DEFAULT (HOVER_LEARN_AND_SAVE, AP_MotorsMulticopter.cpp), so every
+    // copter — including one arriving with somebody else's calibration — read
+    // as already past flight one. What proves a flight happened is the value
+    // it left behind: MOT_THST_HOVER off its 0.35 default, then a non-zero
+    // INS*_ACC_VRFB_Z.
     const open = async (overrides) => {
       await page.goto(overrides ? `/?demoParamOverrides=${encodeURIComponent(overrides)}` : '/')
       await page.getByTestId('transport-mode-select').selectOption('demo')
@@ -4350,33 +4352,62 @@ test.describe('ArduPlane demo', () => {
       await openView(page, 'calibration')
     }
 
+    // Stock defaults: nothing learned, so flight 1 — and nothing to stage,
+    // because ArduCopter already learns the hover throttle by default.
     await open('')
     const card = page.getByTestId('calibration-card-hover-learn')
     await expect(card).toBeVisible()
-    // Flight 1 stages MOT_HOVER_LEARN = 2 (Learn AND Save) — a learn that is
-    // not saved is a wasted flight.
-    await expect(page.getByTestId('hover-learn-start')).toBeVisible()
+    await expect(card).toContainText('Flight 1')
     await expect(card).toContainText('about 5 m')
 
-    // Armed: the card waits for the operator to come back and confirm.
-    await open('MOT_HOVER_LEARN:2')
-    await expect(page.getByTestId('hover-learn-accept-flight-1')).toBeVisible()
+    // A learned hover throttle asks whether the flight was any good, and "no"
+    // is a real answer — the vehicle re-learns every flight, so flying again
+    // simply overwrites it.
+    await open('MOT_THST_HOVER:0.42')
+    await expect(page.getByTestId('hover-learn-flight-1-yes')).toBeVisible()
+    await expect(page.getByTestId('hover-learn-flight-1-no')).toBeVisible()
+    await expect(card).toContainText('0.420')
 
-    // Bit 0 alone = learn the bias. Not 3 yet: applying a bias that has not
-    // been measured would be worse than not applying one.
-    await open('MOT_HOVER_LEARN:2,ACC_ZBIAS_LEARN:1')
-    await expect(page.getByTestId('hover-learn-accept-flight-2')).toBeVisible()
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:1')
     await expect(card).toContainText('Flight 2')
 
-    // Bits 0|1 = keep learning and start applying it.
-    await open('MOT_HOVER_LEARN:2,ACC_ZBIAS_LEARN:3')
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:1,INS_ACC_VRFB_Z:0.08')
+    await expect(page.getByTestId('hover-learn-flight-2-yes')).toBeVisible()
+    await expect(page.getByTestId('hover-learn-flight-2-no')).toBeVisible()
+
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08')
     await expect(page.getByTestId('hover-learn-done')).toBeVisible()
 
-    // EKF3 only: the correction is applied inside EKF3, so anything else
-    // learns nothing and the card says so rather than letting a flight be
-    // wasted.
+    // EKF3 only — the correction is applied inside EKF3, so anything else
+    // learns nothing and the card says so rather than wasting a flight.
     await open('AHRS_EKF_TYPE:2')
     await expect(page.getByTestId('hover-learn-ekf-warning')).toBeVisible()
+  })
+
+  test('Calibration: zeroize clears a previous hover calibration', async ({ page }) => {
+    // The reported problem: a drone with a previous calibration arrives
+    // reading as already finished, with no way back to the start.
+    await page.goto(
+      `/?demoParamOverrides=${encodeURIComponent('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08')}`
+    )
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', {
+      timeout: VEHICLE_CONNECT_TIMEOUT
+    })
+    await enableExpertMode(page)
+    await openView(page, 'calibration')
+
+    await expect(page.getByTestId('hover-learn-done')).toBeVisible()
+
+    await page.getByTestId('hover-learn-zeroize').scrollIntoViewIfNeeded()
+    await page.getByTestId('hover-learn-zeroize').click()
+
+    // Three real changes: the learned hover throttle back to its 0.35 default,
+    // the learned bias to zero, and the enable cleared. MOT_HOVER_LEARN and the
+    // second IMU's bias are already at their reset values, so they correctly do
+    // NOT become drafts — clearing the LEARNED values is the point.
+    await expect(page.locator('body')).toContainText('3 staged changes')
   })
 
   test('Calibration: the Baro Thrust (VALT) card follows the FIRMWARE, not a sign-in', async ({ page }) => {
