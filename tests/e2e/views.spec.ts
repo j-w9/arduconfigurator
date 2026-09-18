@@ -1537,7 +1537,7 @@ test.describe('Ports ▸ receive activity', () => {
     // @SYS/uarts.txt arrives over MAVFTP a few seconds after connect, so wait
     // for the dots rather than racing them — before it lands there are none at
     // all, which is deliberately distinct from "all idle".
-    await expect(page.locator('.ports-traffic-dot.is-active').first()).toBeVisible({
+    await expect(page.locator('.ports-traffic-dot--working').first()).toBeVisible({
       timeout: COMMAND_ACK_TIMEOUT
     })
 
@@ -1546,10 +1546,29 @@ test.describe('Ports ▸ receive activity', () => {
         const name = (row.querySelector('.ports-matrix-row__title strong') as HTMLElement | null)?.innerText
           .trim()
           .split('\n')[0]
-        const dot = row.querySelector('.ports-traffic-dot')
-        return { name, active: dot ? dot.classList.contains('is-active') : null }
+        const dot = row.querySelector('.ports-traffic-dot') as HTMLElement | null
+        return {
+          name,
+          active: dot ? dot.dataset.state === 'working' : null,
+          liveness: dot?.dataset.state ?? null,
+          detail: dot?.title ?? ''
+        }
       })
     )
+
+    // The port's PROTOCOL picks the evidence, so a peripheral proves itself
+    // even when its byte counter is quiet: the demo's GPS port reports
+    // satellites while its uarts.txt line reads idle.
+    const gps = state.find((row) => row.detail.includes('satellites'))
+    expect(gps?.liveness).toBe('working')
+
+    // ArduPilot DRIVES SmartAudio and DisplayPort, so silence there proves
+    // nothing and must not read as a fault.
+    expect(state.some((row) => row.liveness === 'output-only')).toBe(true)
+
+    // ...while a port that WAS expecting inbound traffic and got none is the
+    // one genuinely worth flagging.
+    expect(state.some((row) => row.liveness === 'silent')).toBe(true)
 
     // The demo's uarts.txt gives SERIAL2 TX*=63 RX*=0 and SERIAL8 TX=4 RX=0 —
     // transmit-only ports that used to read as active.

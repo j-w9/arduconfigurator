@@ -20,6 +20,7 @@ import {
   formatArducopterSerialRtscts
 } from '@arduconfig/param-metadata'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+import { derivePortLiveness } from '../view-models/port-liveness'
 
 import { SERIAL_BAUD_PRESET_RATES, formatBaudRate, isPresetBaudRate, parseSerialBaudInput, selectedBaudPresetValue } from '../baud-helpers'
 import type { ParameterNotice } from '../hooks/use-parameter-feedback'
@@ -328,6 +329,12 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                               // "OTG2" names the STM32 peripheral, but what the
                               // operator has in front of them is the second
                               // interface on the same USB cable.
+                              const liveness = derivePortLiveness(
+                                snapshot,
+                                port.protocolValue,
+                                port.boardTrafficActive,
+                                port.optionsValue
+                              )
                               const portHeading =
                                 port.portNumber === 0
                                   ? 'USB / Console'
@@ -398,15 +405,28 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                                 grid whose strong is display:block, so a sibling
                                                 would stack above the name instead of sitting with
                                                 it. */}
-                                            {port.boardTrafficActive !== undefined ? (
+                                            {/* The PORT'S PROTOCOL picks the evidence. A byte
+                                                counter only says the wire is busy; the GPS driver's
+                                                satellite count says the peripheral works. Three
+                                                states, because "output-only" and "silent" are
+                                                different facts — a SmartAudio VTX is mostly talked
+                                                at, so calling a working one silent cries wolf. */}
+                                            {liveness.state !== 'unknown' ? (
                                               <span
-                                                className={`ports-traffic-dot${port.boardTrafficActive ? ' is-active' : ''}`}
+                                                className={`ports-traffic-dot ports-traffic-dot--${liveness.state}`}
                                                 data-testid={`ports-traffic-${port.portNumber}`}
-                                                title={port.boardTrafficSummary}
+                                                data-state={liveness.state}
+                                                title={
+                                                  liveness.detail
+                                                    ? `${liveness.detail}${port.boardTrafficSummary ? ` · ${port.boardTrafficSummary}` : ''}`
+                                                    : port.boardTrafficSummary
+                                                }
                                                 aria-label={
-                                                  port.boardTrafficActive
-                                                    ? `SERIAL${port.portNumber} is passing traffic`
-                                                    : `SERIAL${port.portNumber} is idle`
+                                                  liveness.state === 'working'
+                                                    ? `SERIAL${port.portNumber} is working: ${liveness.detail ?? 'receiving data'}`
+                                                    : liveness.state === 'output-only'
+                                                      ? `SERIAL${port.portNumber} is output only`
+                                                      : `SERIAL${port.portNumber} has nothing arriving`
                                                 }
                                               />
                                             ) : null}

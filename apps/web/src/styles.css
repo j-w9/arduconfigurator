@@ -9061,10 +9061,29 @@ details.metadata-settings-section:not([open]) > summary::after {
   vertical-align: middle;
 }
 
-.ports-traffic-dot.is-active {
+/* Proven working — the port's own protocol telemetry is arriving (satellites,
+   RC channels, ESC readings), or for a link with no such signal, inbound
+   bytes. */
+.ports-traffic-dot--working {
   border-color: var(--success, #3fb950);
   background: var(--success, #3fb950);
   box-shadow: 0 0 5px rgba(63, 185, 80, 0.55);
+}
+
+/* ArduPilot drives this port and nothing inbound can confirm it — a SmartAudio
+   VTX or a DisplayPort OSD. Filled but muted: something IS configured here, and
+   an empty ring would read as "broken" on a port that is probably fine. */
+.ports-traffic-dot--output-only {
+  border-color: var(--text-dim);
+  background: var(--text-dim);
+  opacity: 0.55;
+}
+
+/* Inbound traffic was expected and there is none. The only genuinely
+   suspicious state, so it is the one left hollow. */
+.ports-traffic-dot--silent {
+  border-color: var(--text-dim);
+  background: transparent;
 }
 
 .ports-matrix-row__title strong {
