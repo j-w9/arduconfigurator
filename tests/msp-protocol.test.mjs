@@ -188,3 +188,64 @@ test('a reboot acknowledged as a DIFFERENT mode is treated as a failure', async 
     await session.disconnect()
   }
 })
+
+test('the CLI capture enters, reads, and always leaves', async () => {
+  // `diff` is a CLI command — there is no MSP message that returns a board's
+  // non-default settings, which is why the old "dump" held only the ports.
+  const { captureCliCommand, cleanCliCapture } = await import('../packages/protocol-msp/dist/index.js')
+
+  const sent = []
+  const listeners = new Set()
+  const encoder = new TextEncoder()
+  const transport = {
+    async send(frame) {
+      const text = new TextDecoder().decode(frame)
+      sent.push(text)
+      // A board answers '#' with the prompt, and a command with its output.
+      if (text === '#') {
+        queueMicrotask(() => listeners.forEach((l) => l(encoder.encode('\r\n# '))))
+      } else if (text.startsWith('diff')) {
+        queueMicrotask(() =>
+          listeners.forEach((l) => l(encoder.encode('diff\r\n# version\r\nboard_name MATEKH743\r\n\r\n# ')))
+        )
+      }
+    },
+    onFrame(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    }
+  }
+
+  const raw = await captureCliCommand(transport, 'diff', { quietMs: 30, enterTimeoutMs: 1500 })
+  assert.equal(sent[0], '#', 'enters the CLI first')
+  assert.ok(sent.some((line) => line.startsWith('diff')), 'runs the command')
+  assert.ok(sent.includes('exit\r\n'), 'always leaves the CLI')
+
+  // The echoed command and trailing prompt are not part of the file.
+  const cleaned = cleanCliCapture(raw, 'diff')
+  assert.ok(cleaned.startsWith('# version'), `unexpected start: ${JSON.stringify(cleaned.slice(0, 40))}`)
+  assert.ok(cleaned.includes('board_name MATEKH743'))
+  assert.ok(!cleaned.trimEnd().endsWith('#'), 'trailing prompt removed')
+})
+
+test('a board that never shows a prompt is not sent the command', async () => {
+  // Sending `diff` into whatever mode the board is actually in is worse than
+  // failing: the point of waiting for the prompt is to know where we are.
+  const { captureCliCommand } = await import('../packages/protocol-msp/dist/index.js')
+  const sent = []
+  const transport = {
+    async send(frame) {
+      sent.push(new TextDecoder().decode(frame))
+    },
+    onFrame() {
+      return () => {}
+    }
+  }
+
+  await assert.rejects(
+    () => captureCliCommand(transport, 'diff', { enterTimeoutMs: 120, quietMs: 20 }),
+    /CLI prompt/i
+  )
+  assert.ok(!sent.some((line) => line.startsWith('diff')), 'never sent the command')
+  assert.ok(sent.includes('exit\r\n'), 'still tried to leave the CLI')
+})

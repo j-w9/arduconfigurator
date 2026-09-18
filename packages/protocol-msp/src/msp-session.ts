@@ -7,6 +7,7 @@
 
 import type { Transport, Unsubscribe } from '@arduconfig/transport'
 
+import { captureCliCommand, cleanCliCapture } from './cli.js'
 import { MSP_COMMANDS, MSP_REBOOT_MODES } from './constants.js'
 import { encodeMspV1Request, MspV1Decoder, type MspFrame } from './msp-v1-codec.js'
 import {
@@ -128,6 +129,28 @@ export class MspSession {
     }
 
     return identity
+  }
+
+  /**
+   * Read the board's `diff` — its non-default settings — as CLI text.
+   *
+   * This is what a Betaflight user means by a dump, and what pastes back into
+   * Betaflight Configurator. A real diff of this board was ~80 lines against
+   * ~1200 for a full `dump`, and only the diff describes what was actually
+   * changed.
+   *
+   * MSP is suspended for the duration: the CLI is a different mode on the same
+   * port, so raw text would otherwise be fed to the MSP decoder.
+   */
+  async readCliDiff(): Promise<string> {
+    const raw = await captureCliCommand(
+      {
+        send: (frame) => this.transport.send(frame),
+        onFrame: (listener) => this.transport.onFrame(listener)
+      },
+      'diff'
+    )
+    return cleanCliCapture(raw, 'diff')
   }
 
   async readSerialConfig(): Promise<MspSerialPortConfig[]> {

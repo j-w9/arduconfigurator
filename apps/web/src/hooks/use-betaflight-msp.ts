@@ -26,7 +26,9 @@ export interface UseBetaflightMspResult {
   connect: () => Promise<void>
   disconnect: () => Promise<void>
   rebootToDfu: () => Promise<void>
-  downloadDump: () => void
+  /** Save the board's `diff` as CLI text — what pastes back into Betaflight. */
+  downloadDump: () => Promise<void>
+  dumpBusy: boolean
 }
 
 export function useBetaflightMsp(): UseBetaflightMspResult {
@@ -35,6 +37,7 @@ export function useBetaflightMsp(): UseBetaflightMspResult {
   const [ports, setPorts] = useState<MspSerialPortConfig[]>([])
   const [error, setError] = useState<string | undefined>(undefined)
   const [handedToDfu, setHandedToDfu] = useState(false)
+  const [dumpBusy, setDumpBusy] = useState(false)
   const sessionRef = useRef<MspSession | undefined>(undefined)
 
   const disconnect = useCallback(async () => {
@@ -99,24 +102,57 @@ export function useBetaflightMsp(): UseBetaflightMspResult {
     }
   }, [])
 
-  const downloadDump = useCallback(() => {
-    // A record of what the board was before it gets overwritten. Deliberately
-    // captured from what we READ, not re-queried: the file should describe the
-    // board as shown, and after a DFU reboot there is nothing left to ask.
-    const dump = {
-      capturedAt: new Date().toISOString(),
-      source: 'ArduConfigurator MSP read',
-      identity,
-      serialPorts: ports
+  const downloadDump = useCallback(async () => {
+    const session = sessionRef.current
+    if (!session) return
+    setError(undefined)
+    setDumpBusy(true)
+    try {
+      // The board's own `diff`, captured over the CLI, saved as .txt.
+      //
+      // It used to write our JSON view of the serial config, which was neither
+      // a dump nor loadable: it held the ports and nothing else, in a format no
+      // Betaflight tool reads. A diff is what a Betaflight user means, it is
+      // what pastes back into Betaflight Configurator, and on a real board it
+      // was ~80 lines against ~1200 for a full dump because it lists only what
+      // was actually changed.
+      const diff = await session.readCliDiff()
+      const board = identity?.boardName ?? identity?.targetName ?? 'board'
+      const stamp = new Date()
+        .toISOString()
+        .replace(/[-:]/g, '')
+        .replace(/\..+$/, '')
+        .replace('T', '_')
+      const blob = new Blob([diff], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      // Betaflight's own naming, so it sits alongside files saved by their
+      // Configurator rather than looking like something else.
+      link.download = `BTFL_cli_${stamp}_${board}.txt`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? `Could not read the board's settings: ${caught.message}`
+          : "Could not read the board's settings."
+      )
+    } finally {
+      setDumpBusy(false)
     }
-    const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `betaflight-${identity?.boardName ?? identity?.targetName ?? 'board'}-settings.json`
-    link.click()
-    URL.revokeObjectURL(url)
-  }, [identity, ports])
+  }, [identity])
 
-  return { status, identity, ports, error, handedToDfu, connect, disconnect, rebootToDfu, downloadDump }
+  return {
+    status,
+    identity,
+    ports,
+    error,
+    handedToDfu,
+    dumpBusy,
+    connect,
+    disconnect,
+    rebootToDfu,
+    downloadDump
+  }
 }
