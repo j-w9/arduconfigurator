@@ -28,8 +28,9 @@ const BASELINE_IMU_INTERVAL_US = 1_000_000
 import { CalibrationLocationButton } from './CalibrationLocationCard'
 import { BoardOrientationResult } from '../views/BoardOrientationResult'
 import { TcalCalibrationCard } from './TcalCalibrationCard'
-import { ValtCalibrationCard } from './ValtCalibrationCard'
+import { ValtCalibrationCard, type ValtCalibrationCardProps } from './ValtCalibrationCard'
 import { HoverLearnCard } from './HoverLearnCard'
+import { AutotuneFlightCard } from './AutotuneFlightCard'
 import {
   accelerometerPoseFromAction,
   guidedActionBlockingReason,
@@ -63,6 +64,8 @@ export interface CalibrationSectionProps {
   setDraft: (paramId: string, value: string) => void
   /** Signed in to a log server: the baro thrust (VALT) calibration is gated on it. */
   logServerSignedIn: boolean
+  /** The vehicle's own logs, so a calibration can fit a flight without a download. */
+  onboardLogs?: ValtCalibrationCardProps['onboardLogs']
   /** Where they are signed in, shown on the VALT card. */
   logServerLabel?: string
   clearDraft: (paramId: string) => void
@@ -311,6 +314,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     safetyAcks,
     setDraft,
     logServerSignedIn,
+    onboardLogs,
 
     logServerLabel,
     clearDraft,
@@ -1556,6 +1560,14 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   the vehicle, and this one feeds the same fork builds. Gates
                   itself on ACC_ZBIAS_LEARN being present. */}
               {isExpertMode ? (
+                <AutotuneFlightCard
+                  snapshot={snapshot}
+                  canApplyDraftParameters={canApplyDraftParameters}
+                  busyAction={busyAction}
+                  setDraft={setDraft}
+                />
+              ) : null}
+              {isExpertMode ? (
                 <HoverLearnCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
@@ -1573,6 +1585,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   // operator is signed in the card still names the server it
                   // would pull logs from.
                   logServerLabel={logServerSignedIn ? logServerLabel : undefined}
+                  onboardLogs={onboardLogs}
                 />
               ) : null}
             </div>

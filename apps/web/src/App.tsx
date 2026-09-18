@@ -305,6 +305,7 @@ import { SnapshotsSection } from './sections/SnapshotsSection'
 import { TuningCopterSection } from './sections/TuningCopterSection'
 import { BetaflightConnect } from './views/BetaflightConnect'
 import { useBetaflightMsp } from './hooks/use-betaflight-msp'
+import { useSilentLink } from './hooks/use-silent-link'
 import { InitialTuneView } from './views/InitialTune'
 import { FilterNotchHelp } from './views/FilterNotchHelp'
 import { FiltersFromGyro } from './views/FiltersFromGyro'
@@ -697,6 +698,10 @@ export function App() {
   // Unknown / 4.6 / non-copter get the untouched base catalog.
   // VALT (mode 29) exists only on fork builds with MODE_VALT_ENABLED; detected
   // by the presence of VALT_POS_EXPO rather than by a version-string match.
+  // Connected with nothing ever talking — most often a Betaflight board, which
+  // does not speak MAVLink and so never produces a heartbeat to identify.
+  const linkSilent = useSilentLink(snapshot)
+
   const valtModeAvailable = useMemo(
     () => detectSfdValtMode(snapshot.parameters.map((parameter) => parameter.id)),
     [snapshot.parameters]
@@ -8217,6 +8222,8 @@ export function App() {
             busyAction={busyAction}
             onRebootAutopilot={() => void handleGuidedAction('reboot-autopilot')}
             onPullParameters={() => void handleGuidedAction('request-parameters')}
+            linkSilent={linkSilent}
+            onOpenBetaflight={() => setActiveViewId('flash')}
           />
 
           {activeViewDescriptor && !showLanding ? (
@@ -10092,6 +10099,13 @@ export function App() {
           calibrationNotices={calibrationNotices}
           safetyAcks={safetyAcks}
           setDraft={setDraft}
+          onboardLogs={{
+            logs: onboardLogs.logs,
+            status: onboardLogs.status,
+            list: onboardLogs.list,
+            fetchBytes: onboardLogs.fetchBytes,
+            logNamesById: onboardLogs.logNamesById
+          }}
           clearDraft={clearDraft}
           setParameterNotice={setParameterNotice}
           handleGuidedAction={handleGuidedAction}

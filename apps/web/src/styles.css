@@ -15051,6 +15051,38 @@ details.bf-gui-box:not([open]) > summary::after {
   font-weight: 600;
 }
 
+/* "What this board had wired up" — one row per Betaflight serial function with
+   its ArduPilot equivalent. A list rather than a table: the rows are short and
+   should wrap on a phone rather than scroll. */
+.betaflight-suggestions {
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius-md);
+}
+
+.betaflight-suggestions ul {
+  margin: var(--space-2) 0 var(--space-1);
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.betaflight-suggestions li {
+  display: grid;
+  gap: 1px;
+}
+
+.betaflight-suggestions__from {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.betaflight-suggestions__to {
+  font-weight: 600;
+}
+
 .firmware-wizard__quick-actions {
   display: flex;
   flex-wrap: wrap;
@@ -16100,6 +16132,15 @@ details.bf-gui-box:not([open]) > summary::after {
 /* TCAL start/target temperature pair. Two short numeric fields side by side —
    the target is the one that ends the learn, so they read as one range rather
    than two unrelated settings. */
+/* Autotune axis checkboxes — a row that wraps, not a column: four short
+   labels that should stay on one line where there is room. */
+.autotune-axis-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
 .tcal-temp-range {
   display: flex;
   flex-wrap: wrap;

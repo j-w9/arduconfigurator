@@ -1568,6 +1568,18 @@ test.describe('Ports ▸ receive activity', () => {
 })
 
 test.describe('Flash ▸ Betaflight', () => {
+  test('a healthy MAVLink link never offers the Betaflight detour', async ({ page }) => {
+    // The silent-link banner exists because a Betaflight board produces no
+    // heartbeat at all, so the app sat on "Waiting for heartbeat" forever. The
+    // dangerous direction is the false positive: telling someone with a working
+    // ArduPilot vehicle that their board might be Betaflight. A slow boot must
+    // never trip it either, which is why it waits before saying anything.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await expect(page.getByTestId('silent-link-banner')).toHaveCount(0)
+  })
+
   test('is its own tab beside Firmware and DFU', async ({ page }) => {
     // Coming FROM Betaflight is its own route onto the Flash view: identify the
     // board and put it in DFU, then the sibling tabs do the actual flash. It
@@ -4386,6 +4398,47 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('tcal-tmax').fill('45')
     await page.getByTestId('tcal-start').click()
     await expect(page.locator('body')).toContainText('6 staged changes')
+  })
+
+  test('Calibration: autotune is a flight you come back from', async ({ page }) => {
+    // Autotune runs in the air and saves on disarm, so the configurator cannot
+    // watch it. It remembers the gains before the flight and compares after —
+    // the same answer as hover learning, for the same reason: the values left
+    // behind, not a flag saying what was asked for.
+    const open = async (overrides) => {
+      await page.goto(overrides ? `/?demoParamOverrides=${encodeURIComponent(overrides)}` : '/')
+      await page.getByTestId('transport-mode-select').selectOption('demo')
+      await page.getByTestId('connect-button').click()
+      await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', {
+        timeout: VEHICLE_CONNECT_TIMEOUT
+      })
+      await enableExpertMode(page)
+      await openView(page, 'calibration')
+    }
+
+    await open('')
+    const card = page.getByTestId('calibration-card-autotune-flight')
+    await expect(card).toBeVisible()
+    // AUTOTUNE_AXES is a bitmask defaulting to 7 (roll+pitch+yaw).
+    await expect(page.getByTestId('autotune-arm')).toHaveText(/Roll, Pitch, Yaw/)
+
+    // One axis at a time is the searching case; two once you are close.
+    await page.getByTestId('autotune-axis-yaw').uncheck()
+    await expect(page.getByTestId('autotune-arm')).toHaveText(/Roll, Pitch$/)
+    await page.getByTestId('autotune-arm').click()
+    await expect(page.getByTestId('autotune-flight-result')).toContainText('Nothing has changed yet')
+
+    // A partial tune must be reported per axis: autotune can finish roll and
+    // give up on pitch, and "it didn't work" would be wrong about half of it.
+    await open('ATC_RAT_RLL_P:0.162')
+    await expect(page.getByTestId('autotune-flight-result')).toContainText('saved Roll')
+    await expect(page.getByTestId('autotune-flight-result')).toContainText('Pitch came back unchanged')
+
+    // Both moved: a completed tune, and the yes/no question.
+    await open('ATC_RAT_RLL_P:0.162,ATC_RAT_PIT_P:0.151')
+    await expect(page.getByTestId('autotune-flight-result')).toContainText('Was that a good flight?')
+    await page.getByTestId('autotune-accept').click()
+    await expect(page.getByTestId('autotune-axis-picker')).toBeVisible()
   })
 
   test('Calibration: hover learning follows the LEARNED values, not the enables', async ({ page }) => {
