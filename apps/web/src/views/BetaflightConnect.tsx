@@ -8,6 +8,7 @@
 import type { ReactElement } from 'react'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { buildBetaflightPortSuggestions } from '../view-models/betaflight-port-suggestions'
 import type { UseBetaflightMspResult } from '../hooks/use-betaflight-msp'
 
 export interface BetaflightConnectProps {
@@ -16,12 +17,13 @@ export interface BetaflightConnectProps {
 }
 
 export function BetaflightConnect({ msp, disabled = false }: BetaflightConnectProps): ReactElement {
-  const { status, identity, ports, error, handedToDfu } = msp
+  const { status, identity, ports, error, handedToDfu, dumpBusy } = msp
   const busy = status === 'connecting' || status === 'rebooting'
   // "BTFL" is Betaflight's own MSP_FC_VARIANT string. Anything else that speaks
   // MSP is still shown rather than rejected — INAV and Emuflight answer these
   // same commands, and the DFU reboot is a Betaflight-lineage feature they share.
   const variant = identity?.fcVariant
+  const suggestions = buildBetaflightPortSuggestions(ports)
 
   return (
     <section className="bf-gui-box" data-testid="betaflight-connect">
@@ -68,6 +70,40 @@ export function BetaflightConnect({ msp, disabled = false }: BetaflightConnectPr
           </dl>
         ) : null}
 
+        {/* The wiring does not change when the firmware does: whatever was
+            soldered to each UART is still soldered there afterwards. Naming the
+            ArduPilot equivalent saves re-deriving it by hand, which is the
+            tedious part of the move.
+
+            Not an automatic port mapping — a Betaflight serial identifier and
+            an ArduPilot SERIALn index are different numbering over the same
+            hardware, and which is which depends on the board. Guessing would
+            put a GPS on the receiver's port. */}
+        {status === 'connected' && suggestions.length > 0 ? (
+          <div className="betaflight-suggestions" data-testid="betaflight-port-suggestions">
+            <strong>What this board had wired up</strong>
+            <ul>
+              {suggestions.map((suggestion, index) => (
+                <li key={`${suggestion.identifier}:${suggestion.betaflightFunction}:${index}`}>
+                  <span className="betaflight-suggestions__from">
+                    Betaflight serial {suggestion.identifier}: {suggestion.betaflightFunction}
+                  </span>
+                  <span className="betaflight-suggestions__to">
+                    {suggestion.ardupilotProtocol !== undefined
+                      ? `ArduPilot: ${suggestion.ardupilotLabel} (SERIALn_PROTOCOL ${suggestion.ardupilotProtocol})`
+                      : `ArduPilot: ${suggestion.ardupilotLabel}`}
+                  </span>
+                  {suggestion.note ? <small>{suggestion.note}</small> : null}
+                </li>
+              ))}
+            </ul>
+            <small>
+              Set these on the Ports tab once ArduPilot is flashed — the port numbers differ between the
+              two firmwares, so match them by what is physically on each UART.
+            </small>
+          </div>
+        ) : null}
+
         {handedToDfu ? (
           <p className="bf-note bf-note--warning" data-testid="betaflight-dfu-handoff">
             The board acknowledged the DFU request and is rebooting. It will come back as a DFU device —
@@ -98,10 +134,10 @@ export function BetaflightConnect({ msp, disabled = false }: BetaflightConnectPr
                 type="button"
                 style={buttonStyle()}
                 data-testid="betaflight-download-dump"
-                disabled={disabled || busy}
-                onClick={msp.downloadDump}
+                disabled={disabled || busy || dumpBusy}
+                onClick={() => void msp.downloadDump()}
               >
-                Save Settings Dump
+                {dumpBusy ? 'Reading diff…' : 'Save Settings (diff .txt)'}
               </button>
               <button
                 type="button"
@@ -127,8 +163,9 @@ export function BetaflightConnect({ msp, disabled = false }: BetaflightConnectPr
         </div>
 
         <small>
-          Save the dump before rebooting to DFU — once ArduPilot is flashed the Betaflight settings are
-          gone, and this is the only record of them.
+          Save the settings before rebooting to DFU — once ArduPilot is flashed they are gone, and this
+          file is the only record. It is the board&apos;s own <code>diff</code>, so it pastes straight back
+          into Betaflight Configurator&apos;s CLI if you ever go back.
         </small>
       </div>
     </section>
