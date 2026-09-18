@@ -9045,10 +9045,12 @@ details.metadata-settings-section:not([open]) > summary::after {
   gap: 2px;
 }
 
-/* Live-traffic dot from @SYS/uarts.txt. Green when the port has moved bytes
-   since the last read, hollow when it is idle, ABSENT when uarts.txt has not
-   been read — "we cannot tell" must not render as "idle". Byte counts and drops
-   are on the title attribute so the row stays a row. */
+/* Live-traffic dot from @SYS/uarts.txt. Green when the port has RECEIVED bytes
+   since the last read, hollow when it has not, ABSENT when uarts.txt has not
+   been read — "we cannot tell" must not render as "idle". TX is excluded on
+   purpose: ArduPilot transmits on a configured port with nothing attached, so a
+   TX-driven light lit up every port on an unsoldered board. Byte counts are on
+   the title attribute so the row stays a row. */
 .ports-traffic-dot {
   display: inline-block;
   width: 7px;

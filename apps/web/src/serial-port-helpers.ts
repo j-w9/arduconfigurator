@@ -202,8 +202,19 @@ export function buildSerialPortViewModels(snapshot: ConfiguratorSnapshot, boardC
       hardwarePort: hardwareMapping?.hardwarePort,
       boardConnectorLabel,
       boardTrafficSummary: describeBoardTrafficSummary(hardwareMapping),
-      boardTrafficActive:
-        hardwareMapping === undefined ? undefined : Boolean(hardwareMapping.txActive || hardwareMapping.rxActive),
+      // RECEIVE only, deliberately.
+      //
+      // TX on its own proves nothing is attached: ArduPilot transmits on a
+      // configured port whether or not anything is listening — a MAVLink UART
+      // streams telemetry to an empty header, and a GPS port sends its init
+      // strings to no one. Bench report: every configured port lit up green
+      // with nothing soldered to any of them.
+      //
+      // Bytes ARRIVING are the signal worth a light: something out there is
+      // talking back. That is also the question the operator is asking — "is my
+      // GPS actually plugged in" — rather than "did I configure this port".
+      // The TX counters stay in the hover text.
+      boardTrafficActive: hardwareMapping === undefined ? undefined : hardwareMapping.rxActive,
       protocolParameter,
       baudParameter,
       optionsParameter,

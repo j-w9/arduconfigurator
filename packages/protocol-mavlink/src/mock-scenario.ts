@@ -819,7 +819,9 @@ const mockUartsText = [
   'SERIAL5 USART2  TX =      0 RX =      0 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0',
   'SERIAL6 UART4   TX =      0 RX =      0 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0',
   'SERIAL7 USART3  TX =      0 RX =      0 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0',
-  'SERIAL8 USART6  TX =      4 RX =      0 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0'
+  // SERIAL8 is OTG2 on an H743 — a second USB interface rather than a
+  // solderable UART, which is why the Ports tab names and sorts it apart.
+  'SERIAL8 OTG2    TX =      4 RX =      0 TXBD=     0 RXBD=     0 RXDRP=       0 FE=0 OE=0 NE=0 FlowCtrl=0'
 ].join('\n')
 
 const mockUartsBytes = new TextEncoder().encode(mockUartsText)

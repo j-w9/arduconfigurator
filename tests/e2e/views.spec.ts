@@ -1513,6 +1513,60 @@ test.describe('Tuning tab', () => {
   })
 })
 
+test.describe('Ports ▸ receive activity', () => {
+  test('only ports actually RECEIVING light up, and OTG sorts last', async ({ page }) => {
+    // Bench report: every configured port showed green with nothing soldered to
+    // any of them. TX proves nothing is attached — ArduPilot transmits on a
+    // configured port whether or not anything listens, so a MAVLink UART
+    // streams to an empty header and a GPS port sends init strings to no one.
+    // Bytes ARRIVING are the signal worth a light.
+    await page.goto('/')
+    await connectViaHeader(page)
+    // Rows come from the synced SERIALn_PROTOCOL parameters, so asserting
+    // before the sync finishes sees a SUBSET of the ports — which is how an
+    // earlier version of this test passed on timing luck and then failed.
+    await expectParameterSyncComplete(page)
+    await openView(page, 'ports')
+
+    const rows = page.locator('.ports-matrix-row')
+    await expect(rows.first()).toBeVisible()
+    await expect(page.getByText('OTG2', { exact: false }).first()).toBeVisible({
+      timeout: COMMAND_ACK_TIMEOUT
+    })
+
+    // @SYS/uarts.txt arrives over MAVFTP a few seconds after connect, so wait
+    // for the dots rather than racing them — before it lands there are none at
+    // all, which is deliberately distinct from "all idle".
+    await expect(page.locator('.ports-traffic-dot.is-active').first()).toBeVisible({
+      timeout: COMMAND_ACK_TIMEOUT
+    })
+
+    const state = await page.evaluate(() =>
+      [...document.querySelectorAll('.ports-matrix-row')].map((row) => {
+        const name = (row.querySelector('.ports-matrix-row__title strong') as HTMLElement | null)?.innerText
+          .trim()
+          .split('\n')[0]
+        const dot = row.querySelector('.ports-traffic-dot')
+        return { name, active: dot ? dot.classList.contains('is-active') : null }
+      })
+    )
+
+    // The demo's uarts.txt gives SERIAL2 TX*=63 RX*=0 and SERIAL8 TX=4 RX=0 —
+    // transmit-only ports that used to read as active.
+    const active = state.filter((row) => row.active).map((row) => row.name)
+    expect(active.length).toBeGreaterThan(0)
+    expect(active.length).toBeLessThan(state.length)
+
+    // OTGn is a USB interface, not a solderable UART: named for the cable the
+    // operator actually has, and sorted below the real UARTs rather than
+    // landing mid-list because its digit is small.
+    const otg = state.findIndex((row) => row.name?.includes('OTG2'))
+    expect(otg).toBeGreaterThan(-1)
+    expect(state[otg].name).toContain('USB1_2')
+    expect(otg).toBe(state.length - 1)
+  })
+})
+
 test.describe('Flash ▸ Betaflight', () => {
   test('is its own tab beside Firmware and DFU', async ({ page }) => {
     // Coming FROM Betaflight is its own route onto the Flash view: identify the

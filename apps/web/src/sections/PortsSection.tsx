@@ -267,6 +267,20 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                             <small>{portVisibilitySummary}</small>
                           </div>
 
+                          {/* Without @SYS/uarts.txt there are no activity dots
+                              at all, which is indistinguishable from "every
+                              port is idle". Bench report: a working drive
+                              plugged in and showed no lights, with nothing
+                              saying why. Absence of the file is now stated. */}
+                          {snapshot.hardware.uartsFile.status !== 'ready' ? (
+                            <p className="bf-note" data-testid="ports-activity-unavailable">
+                              {snapshot.hardware.uartsFile.status === 'unsupported'
+                                ? 'This firmware does not serve @SYS/uarts.txt, so per-port receive activity cannot be shown.'
+                                : snapshot.hardware.uartsFile.status === 'loading'
+                                  ? 'Reading @SYS/uarts.txt for per-port receive activity…'
+                                  : 'Per-port receive activity is unavailable — @SYS/uarts.txt has not been read.'}
+                            </p>
+                          ) : null}
                           <div className="ports-matrix">
                             <div className="ports-matrix__head">
                               <span>Port</span>
@@ -288,6 +302,13 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                   if (port.portNumber === 0) {
                                     return -1
                                   }
+                                  // OTGn sorts last. It is a USB interface
+                                  // rather than a solderable UART, so it was
+                                  // landing in the middle of the physical ports
+                                  // purely because its digit is small.
+                                  if (port.hardwarePort?.startsWith('OTG')) {
+                                    return 9000 + port.portNumber
+                                  }
                                   const match = /(\d+)/.exec(port.hardwarePort ?? '')
                                   return match ? Number(match[1]) : 1000 + port.portNumber
                                 }
@@ -302,10 +323,17 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                               // Rows are still ordered by SERIAL number. Falls back
                               // to "SERIAL n" when the board map is unknown; SERIAL0
                               // is the USB console.
+                              // OTGn is a USB peripheral, not a UART. Reported
+                              // bench-side as confusing next to UART1/UART2:
+                              // "OTG2" names the STM32 peripheral, but what the
+                              // operator has in front of them is the second
+                              // interface on the same USB cable.
                               const portHeading =
                                 port.portNumber === 0
                                   ? 'USB / Console'
-                                  : port.hardwarePort ?? `SERIAL ${port.portNumber}`
+                                  : port.hardwarePort?.startsWith('OTG')
+                                    ? `USB1_${port.hardwarePort.slice(3)} (${port.hardwarePort})`
+                                    : port.hardwarePort ?? `SERIAL ${port.portNumber}`
                               const protocolParameter = port.protocolParameter
                               const baudParameter = port.baudParameter
                               const optionsParameter = port.optionsParameter
