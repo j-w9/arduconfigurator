@@ -31,6 +31,17 @@ export interface ValtCalibrationCardProps {
   busyAction: string | undefined
   setDraft: (paramId: string, value: string) => void
   /**
+   * The vehicle's own logs, so a flight can be fitted without downloading it
+   * first. Absent when nothing is connected.
+   */
+  onboardLogs?: {
+    logs: readonly { id: number; sizeBytes: number }[]
+    status: string
+    list: () => void
+    fetchBytes: (id: number) => Promise<Uint8Array | undefined>
+    logNamesById?: ReadonlyMap<number, string>
+  }
+  /**
    * Where they are signed in, so the card says so rather than just being here.
    *
    * The card is only rendered when a log server IS signed in -- that gate lives
@@ -44,7 +55,8 @@ export function ValtCalibrationCard({
   canApplyDraftParameters,
   busyAction,
   setDraft,
-  logServerLabel
+  logServerLabel,
+  onboardLogs
 }: ValtCalibrationCardProps): ReactElement {
   const [result, setResult] = useState<ValtResult | null>(null)
   // Keep the uploaded buffer so a manual-height entry can re-fit the same log
@@ -92,6 +104,40 @@ export function ValtCalibrationCard({
       setError(caught instanceof Error ? caught.message : 'Could not read or parse that log.')
     }
   }, [])
+
+  /**
+   * Analyse a log the VEHICLE is holding.
+   *
+   * Same path as a chosen file, minus the round trip through the filesystem:
+   * downloading a log and handing it straight back through a file picker is
+   * two copies of a file the vehicle already has.
+   */
+  const handleBytes = useCallback(
+    (bytes: Uint8Array, name: string) => {
+      setBusy(true)
+      setError(undefined)
+      setResult(null)
+      setStaged(false)
+      setManualHeight('')
+      try {
+        // Copy into a standalone ArrayBuffer: the parser keeps the buffer, and
+        // a view onto a larger allocation would carry the rest with it.
+        const buf = bytes.slice().buffer as ArrayBuffer
+        setBuffer(buf)
+        setFilename(name)
+        if (method === 'ramp') {
+          runRampAnalysis(buf)
+        } else {
+          runAnalysis(buf)
+        }
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : 'Could not read or parse that log.')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [method, runAnalysis, runRampAnalysis]
+  )
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -210,6 +256,64 @@ export function ValtCalibrationCard({
             }}
           />
         </label>
+        {/* The vehicle is already holding the log. Making the operator download
+            it and hand it back through a file picker is a round trip through
+            the filesystem for a file that is right there. */}
+        {onboardLogs ? (
+          <div className="valt-onboard-logs" data-testid="valt-onboard-logs">
+            {onboardLogs.logs.length === 0 ? (
+              <button
+                type="button"
+                style={buttonStyle()}
+                data-testid="valt-list-onboard-logs"
+                disabled={busy || onboardLogs.status === 'listing'}
+                onClick={onboardLogs.list}
+              >
+                {onboardLogs.status === 'listing' ? 'Reading log list…' : 'Pick from vehicle'}
+              </button>
+            ) : (
+              <label className="scoped-editor-field scoped-editor-field--compact">
+                <span>From the vehicle</span>
+                <select
+                  data-testid="valt-onboard-log-select"
+                  disabled={busy}
+                  defaultValue=""
+                  onChange={(event) => {
+                    const id = Number(event.target.value)
+                    event.target.value = ''
+                    if (!Number.isFinite(id)) return
+                    void (async () => {
+                      setBusy(true)
+                      setError(undefined)
+                      try {
+                        const bytes = await onboardLogs.fetchBytes(id)
+                        if (!bytes) {
+                          setError('That log could not be read from the vehicle.')
+                          return
+                        }
+                        handleBytes(bytes, onboardLogs.logNamesById?.get(id) ?? `log ${id}.bin`)
+                      } catch (caught) {
+                        setError(
+                          caught instanceof Error ? caught.message : 'That log could not be read from the vehicle.'
+                        )
+                      } finally {
+                        setBusy(false)
+                      }
+                    })()
+                  }}
+                >
+                  <option value="">Choose a log…</option>
+                  {onboardLogs.logs.map((log) => (
+                    <option key={log.id} value={log.id}>
+                      {onboardLogs.logNamesById?.get(log.id) ?? `Log ${log.id}`} (
+                      {(log.sizeBytes / 1024 / 1024).toFixed(1)} MB)
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+        ) : null}
         {filename ? <small className="log-tuning__filename">{filename}</small> : null}
       </div>
 

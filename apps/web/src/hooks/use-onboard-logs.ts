@@ -63,6 +63,8 @@ export interface OnboardLogs extends OnboardLogsState {
   list: () => void
   /** Download one log's bytes to a browser file, reporting progress. */
   download: (id: number) => void
+  /** The log's bytes, for a caller that wants to analyse rather than save it. */
+  fetchBytes: (id: number) => Promise<Uint8Array | undefined>
   /** Erase every log on the card. Irreversible; the caller confirms first. */
   erase: () => void
 }
@@ -264,10 +266,32 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
     [runtime]
   )
 
+  /**
+   * Fetch a log's BYTES instead of saving it to disk.
+   *
+   * The calibration cards fit a curve from a log; making the operator download
+   * one and then hand it back through a file picker is a round trip through the
+   * filesystem for a file the vehicle is already holding. Deliberately separate
+   * from download(), which saves and must keep doing so for the Logs tab.
+   */
+  const fetchBytes = useCallback(
+    async (id: number): Promise<Uint8Array | undefined> => {
+      if (!runtime) return undefined
+      const log = logsRef.current.find((entry) => entry.id === id)
+      if (!log) return undefined
+      const mavftpItem = mavftpItemsRef.current.get(id)
+      return mavftpItem
+        ? runtime.downloadMavftpLog(mavftpItem.path)
+        : runtime.downloadOnboardLog(id, log.sizeBytes)
+    },
+    [runtime]
+  )
+
   return {
     ...state,
     list: () => void list(),
     download: (id) => void download(id),
+    fetchBytes,
     erase: () => void erase()
   }
 }
