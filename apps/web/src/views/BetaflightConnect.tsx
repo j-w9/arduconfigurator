@@ -17,13 +17,13 @@ export interface BetaflightConnectProps {
 }
 
 export function BetaflightConnect({ msp, disabled = false }: BetaflightConnectProps): ReactElement {
-  const { status, identity, ports, error, handedToDfu, dumpBusy } = msp
+  const { status, identity, ports, cliDiff, error, handedToDfu, dumpBusy } = msp
   const busy = status === 'connecting' || status === 'rebooting'
   // "BTFL" is Betaflight's own MSP_FC_VARIANT string. Anything else that speaks
   // MSP is still shown rather than rejected — INAV and Emuflight answer these
   // same commands, and the DFU reboot is a Betaflight-lineage feature they share.
   const variant = identity?.fcVariant
-  const suggestions = buildBetaflightPortSuggestions(ports)
+  const suggestions = buildBetaflightPortSuggestions(ports, cliDiff)
 
   return (
     <section className="bf-gui-box" data-testid="betaflight-connect">
@@ -86,7 +86,7 @@ export function BetaflightConnect({ msp, disabled = false }: BetaflightConnectPr
               {suggestions.map((suggestion, index) => (
                 <li key={`${suggestion.identifier}:${suggestion.betaflightFunction}:${index}`}>
                   <span className="betaflight-suggestions__from">
-                    Betaflight serial {suggestion.identifier}: {suggestion.betaflightFunction}
+                    Betaflight {suggestion.portLabel}: {suggestion.betaflightFunction}
                   </span>
                   <span className="betaflight-suggestions__to">
                     {suggestion.ardupilotProtocol !== undefined
@@ -98,8 +98,10 @@ export function BetaflightConnect({ msp, disabled = false }: BetaflightConnectPr
               ))}
             </ul>
             <small>
-              Set these on the Ports tab once ArduPilot is flashed — the port numbers differ between the
-              two firmwares, so match them by what is physically on each UART.
+              Named as they are on the board (Betaflight counts UART6 as serial 5). Set these on the
+              Ports tab once ArduPilot is flashed — ArduPilot&apos;s SERIALn numbering is its own, so
+              match them by what is physically on each UART. The USB port is left out: it carries MSP
+              on every Betaflight board and has nothing wired to it.
             </small>
           </div>
         ) : null}

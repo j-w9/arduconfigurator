@@ -20,6 +20,9 @@ export interface UseBetaflightMspResult {
   status: BetaflightStatus
   identity?: MspIdentity
   ports: MspSerialPortConfig[]
+  /** The board's `diff`, captured at connect. Carries the settings the serial
+   *  config cannot express — notably whether the OSD runs over MSP. */
+  cliDiff?: string
   error?: string
   /** True once the board has been asked to enter DFU — the link is gone. */
   handedToDfu: boolean
@@ -35,6 +38,7 @@ export function useBetaflightMsp(): UseBetaflightMspResult {
   const [status, setStatus] = useState<BetaflightStatus>('idle')
   const [identity, setIdentity] = useState<MspIdentity | undefined>(undefined)
   const [ports, setPorts] = useState<MspSerialPortConfig[]>([])
+  const [cliDiff, setCliDiff] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
   const [handedToDfu, setHandedToDfu] = useState(false)
   const [dumpBusy, setDumpBusy] = useState(false)
@@ -58,6 +62,7 @@ export function useBetaflightMsp(): UseBetaflightMspResult {
   const connect = useCallback(async () => {
     setError(undefined)
     setHandedToDfu(false)
+    setCliDiff(undefined)
     setStatus('connecting')
     const transport = new WebSerialTransport('betaflight-msp', { baudRate: MSP_BAUD_RATE })
     const session = new MspSession(transport)
@@ -73,6 +78,17 @@ export function useBetaflightMsp(): UseBetaflightMspResult {
         setPorts(await session.readSerialConfig())
       } catch {
         setPorts([])
+      }
+      // Read the board's `diff` here rather than only when the operator saves
+      // it. Two things need it: MSP DisplayPort cannot be seen in the serial
+      // config at all (it is an OSD setting on a plain MSP port), and Save then
+      // costs nothing. Best-effort — a board that will not drop into the CLI is
+      // still identified, still translated, and still flashable. Safe to do
+      // unasked: the capture is read-only and leaves with `exit noreboot`.
+      try {
+        setCliDiff(await session.readCliDiff())
+      } catch {
+        setCliDiff(undefined)
       }
       setStatus('connected')
     } catch (caught) {
@@ -116,7 +132,7 @@ export function useBetaflightMsp(): UseBetaflightMspResult {
       // what pastes back into Betaflight Configurator, and on a real board it
       // was ~80 lines against ~1200 for a full dump because it lists only what
       // was actually changed.
-      const diff = await session.readCliDiff()
+      const diff = cliDiff ?? (await session.readCliDiff())
       const board = identity?.boardName ?? identity?.targetName ?? 'board'
       const stamp = new Date()
         .toISOString()
@@ -141,12 +157,13 @@ export function useBetaflightMsp(): UseBetaflightMspResult {
     } finally {
       setDumpBusy(false)
     }
-  }, [identity])
+  }, [cliDiff, identity])
 
   return {
     status,
     identity,
     ports,
+    cliDiff,
     error,
     handedToDfu,
     dumpBusy,

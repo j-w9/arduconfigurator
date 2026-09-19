@@ -1610,16 +1610,18 @@ test.describe('Ports ▸ receive activity', () => {
 })
 
 test.describe('Flash ▸ Betaflight', () => {
-  test('a healthy MAVLink link never offers the Betaflight detour', async ({ page }) => {
-    // The silent-link banner exists because a Betaflight board produces no
-    // heartbeat at all, so the app sat on "Waiting for heartbeat" forever. The
-    // dangerous direction is the false positive: telling someone with a working
-    // ArduPilot vehicle that their board might be Betaflight. A slow boot must
-    // never trip it either, which is why it waits before saying anything.
+  test('a silent link is never called a Betaflight board', async ({ page }) => {
+    // There used to be a banner that offered the Betaflight route when a
+    // connected link produced no heartbeat. It is gone: silence has many
+    // ordinary causes (the board's second USB serial port, the wrong baud, a
+    // board still booting), and naming Betaflight as the likely one sent
+    // operators toward flashing firmware over a cabling mistake. Betaflight is
+    // reached deliberately, from the Flash tab.
     await page.goto('/')
     await connectViaHeader(page)
     await expectParameterSyncComplete(page)
     await expect(page.getByTestId('silent-link-banner')).toHaveCount(0)
+    await expect(page.getByTestId('silent-link-open-betaflight')).toHaveCount(0)
   })
 
   test('is its own tab beside Firmware and DFU', async ({ page }) => {

@@ -219,7 +219,9 @@ test('the CLI capture enters, reads, and always leaves', async () => {
   const raw = await captureCliCommand(transport, 'diff', { quietMs: 30, enterTimeoutMs: 1500 })
   assert.equal(sent[0], '#', 'enters the CLI first')
   assert.ok(sent.some((line) => line.startsWith('diff')), 'runs the command')
-  assert.ok(sent.includes('exit\r\n'), 'always leaves the CLI')
+  // `noreboot`: a bare `exit` reboots the board (cli.c cliExitCmd), which would
+  // drop the MSP link the operator is about to hand to DFU.
+  assert.ok(sent.includes('exit noreboot\r\n'), 'leaves the CLI without rebooting')
 
   // The echoed command and trailing prompt are not part of the file.
   const cleaned = cleanCliCapture(raw, 'diff')
@@ -247,5 +249,5 @@ test('a board that never shows a prompt is not sent the command', async () => {
     /CLI prompt/i
   )
   assert.ok(!sent.some((line) => line.startsWith('diff')), 'never sent the command')
-  assert.ok(sent.includes('exit\r\n'), 'still tried to leave the CLI')
+  assert.ok(sent.includes('exit noreboot\r\n'), 'still tried to leave the CLI')
 })

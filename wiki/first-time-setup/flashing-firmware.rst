@@ -143,9 +143,11 @@ and connecting here does not disturb a connected ArduPilot vehicle.
 
 .. note::
 
-   If you connect to a Betaflight board the normal way, the app sits waiting for
-   a heartbeat that will never arrive. After a few seconds it says so —
-   *"Connected, but nothing is talking"* — and offers to bring you here.
+   If you connect to a Betaflight board the normal way, the app waits for a
+   heartbeat that will never arrive. It does not try to guess that a silent
+   link means Betaflight — silence has too many ordinary causes, starting with
+   the board's second USB serial interface — so come here deliberately when you
+   know the board is running Betaflight.
 
 **Connect Betaflight Board** reports the firmware variant and version, the
 target, the board and manufacturer names, the MSP API version, and how many
@@ -157,7 +159,9 @@ Save the settings first
 **Save Settings (diff .txt)** writes the board's own ``diff`` — its non-default
 settings — as a Betaflight CLI text file, named the way Betaflight Configurator
 names its own. It pastes straight back into Betaflight's CLI if you ever go
-back.
+back. The ``diff`` is read once when you connect, so saving it is instant; the
+read is read-only and leaves the CLI with ``exit noreboot``, so it never
+restarts the board.
 
 Do this **before** rebooting to DFU. Once ArduPilot is flashed those settings are
 gone, and this file is the only record of them.
@@ -169,6 +173,18 @@ The card also lists what Betaflight had on each UART beside its ArduPilot
 equivalent — a serial receiver becomes ``RCIN``, SmartAudio becomes
 ``SmartAudio``, and so on. Whatever is soldered to a UART is still soldered
 there after the flash, so this saves re-deriving the port setup by hand.
+
+Ports are named the way they are on the board and in Betaflight's own Ports tab
+— ``UART1``, ``UART6`` — not by the raw serial identifier MSP reports, which
+counts from zero (identifier 5 is UART6). The USB port is left out: every
+Betaflight board carries MSP on it, that is how Betaflight Configurator talks to
+the board, and there is nothing wired to it to carry over.
+
+**MSP DisplayPort** — goggle OSD over MSP — is read from the saved ``diff``
+rather than from the serial config, because Betaflight does not record it as a
+serial function: the UART carries plain MSP and ``osd_displayport_device = MSP``
+is what makes it a display link. It maps to ArduPilot's ``DisplayPort``
+(``SERIALn_PROTOCOL`` 42), which is a different protocol from ``MSP``.
 
 It deliberately does **not** map ports for you. A Betaflight serial identifier
 and an ArduPilot ``SERIALn`` index are different numbering over the same

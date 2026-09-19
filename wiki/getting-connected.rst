@@ -88,18 +88,16 @@ link indicator, and the parameter table syncs. From here, head to
 When nothing ever answers
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If the port opens and **no heartbeat ever arrives**, the app says so after a few
-seconds rather than sitting on *"Waiting for heartbeat"* indefinitely:
-**"Connected, but nothing is talking."**
+If the port opens and **no heartbeat ever arrives**, check the baud rate and
+that you picked the MAVLink port — most controllers expose two USB serial
+interfaces and only one of them speaks MAVLink. A board that is still booting
+can also take several seconds to send its first heartbeat.
 
-The usual cause is a board that is not running ArduPilot at all. A **Betaflight**
-board does not speak MAVLink, so there is no heartbeat to wait for — the banner
-offers to take you to :doc:`first-time-setup/flashing-firmware`, where the
-Betaflight sub-tab can read the board and put it into DFU.
-
-If it *is* an ArduPilot board, check the baud rate and that you picked the
-MAVLink port — some controllers expose two USB serial interfaces, and only the
-first is MAVLink.
+A board running **Betaflight** never sends one at all, because it does not speak
+MAVLink. The app does not guess at this: silence has too many ordinary causes to
+accuse a board of running the wrong firmware. If you know the board is running
+Betaflight, go to :doc:`first-time-setup/flashing-firmware` and open the
+Betaflight sub-tab, which reads the board over MSP and puts it into DFU.
 
 When it answers, but not as ArduPilot
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

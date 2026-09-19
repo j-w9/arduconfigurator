@@ -305,7 +305,6 @@ import { SnapshotsSection } from './sections/SnapshotsSection'
 import { TuningCopterSection } from './sections/TuningCopterSection'
 import { BetaflightConnect } from './views/BetaflightConnect'
 import { useBetaflightMsp } from './hooks/use-betaflight-msp'
-import { useSilentLink } from './hooks/use-silent-link'
 import { InitialTuneView } from './views/InitialTune'
 import { FilterNotchHelp } from './views/FilterNotchHelp'
 import { FiltersFromGyro } from './views/FiltersFromGyro'
@@ -700,7 +699,6 @@ export function App() {
   // by the presence of VALT_POS_EXPO rather than by a version-string match.
   // Connected with nothing ever talking — most often a Betaflight board, which
   // does not speak MAVLink and so never produces a heartbeat to identify.
-  const linkSilent = useSilentLink(snapshot)
 
   const valtModeAvailable = useMemo(
     () => detectSfdValtMode(snapshot.parameters.map((parameter) => parameter.id)),
@@ -8228,8 +8226,6 @@ export function App() {
             busyAction={busyAction}
             onRebootAutopilot={() => void handleGuidedAction('reboot-autopilot')}
             onPullParameters={() => void handleGuidedAction('request-parameters')}
-            linkSilent={linkSilent}
-            onOpenBetaflight={() => setActiveViewId('flash')}
           />
 
           {activeViewDescriptor && !showLanding ? (

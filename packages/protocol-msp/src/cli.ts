@@ -5,8 +5,8 @@
 // into the CLI, and so does this.
 //
 // Everything here is READ-ONLY. It sends `#` to enter, `diff` to read, and
-// `exit` to leave. It never sends `set`, `save`, or anything that writes — a
-// dump exists to record what was on the board, not to change it.
+// `exit noreboot` to leave. It never sends `set`, `save`, or anything that
+// writes — a dump exists to record what was on the board, not to change it.
 
 /** cliPrompt() in cli.c prints "\r\n# ". Seeing it is how we know we are in. */
 export const CLI_PROMPT = '# '
@@ -86,11 +86,17 @@ export async function captureCliCommand(
 
     return buffer
   } finally {
-    // Leave the CLI whatever happened. `exit` does not save — nothing was
-    // changed, so there is nothing to save — and a board left sitting in the
-    // CLI stops answering MSP.
+    // Leave the CLI whatever happened — a board left sitting in the CLI stops
+    // answering MSP.
+    //
+    // `noreboot` matters: cliExitCmd() in cli.c reads its argument as
+    // `reboot = strcasecmp(cmdline, "noreboot") != 0`, so a bare `exit`
+    // REBOOTS the board ("leaving CLI mode, unsaved changes lost"). Reading a
+    // board's settings must not restart it — the operator would lose the MSP
+    // link they are about to hand to DFU. Nothing was changed either way:
+    // neither form saves.
     try {
-      await transport.send(encoder.encode('exit\r\n'))
+      await transport.send(encoder.encode('exit noreboot\r\n'))
     } catch {
       /* the port may already be gone; the board leaves the CLI on reboot anyway */
     }

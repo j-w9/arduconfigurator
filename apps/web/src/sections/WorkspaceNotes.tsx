@@ -26,10 +26,6 @@ export interface WorkspaceNotesProps {
   busyAction: string | undefined
   onRebootAutopilot: () => void
   onPullParameters: () => void
-  /** The link is up but nothing has ever spoken — see useSilentLink. */
-  linkSilent?: boolean
-  /** Take the operator to Flash ▸ Betaflight. */
-  onOpenBetaflight?: () => void
 }
 
 export function WorkspaceNotes({
@@ -42,17 +38,19 @@ export function WorkspaceNotes({
   busyAction,
   onRebootAutopilot,
   onPullParameters,
-  linkSilent = false,
-  onOpenBetaflight
 }: WorkspaceNotesProps) {
   const staleLink = snapshot.staleLink
   const unsupportedAutopilot = snapshot.unsupportedAutopilot
-  const offerBetaflight = linkSilent && onOpenBetaflight !== undefined
+  // A silent link used to raise "is this a Betaflight board?". Removed: a
+  // connection that produces no heartbeat has many ordinary causes — the
+  // second USB serial port, the wrong baud, a board still booting — and
+  // naming one of them as the likely answer sent operators off to flash
+  // firmware over what was usually a cabling or port-selection mistake.
+  // Betaflight is reached deliberately, from Flash ▸ Betaflight.
 
   if (
     !staleLink &&
     !unsupportedAutopilot &&
-    !offerBetaflight &&
     !sessionNotice &&
     !parameterFollowUp &&
     !(!isExpertMode && stagedParameterDraftCount > 0)
@@ -66,38 +64,6 @@ export function WorkspaceNotes({
           autopilot this app cannot configure. Without this the operator sees
           "Waiting for heartbeat" indefinitely, which says the opposite of what
           is happening and sends them to check cabling that is fine. */}
-      {/* The port opened and then nothing ever spoke. A Betaflight board is the
-          common reason — it does not speak MAVLink at all, so there is no
-          heartbeat to identify and the app would otherwise sit on "Waiting for
-          heartbeat" forever. Offered as a question, not a diagnosis: a
-          half-booted ArduPilot board looks the same from here. */}
-      {offerBetaflight ? (
-        <div className="workspace-note workspace-note--stale" data-testid="silent-link-banner" role="status">
-          <div className="workspace-note--stale__headline">
-            <span className="workspace-note--stale__dot" aria-hidden="true" />
-            <strong>Connected, but nothing is talking</strong>
-          </div>
-          <p>
-            The port is open and no MAVLink heartbeat has arrived. If this board runs Betaflight that is
-            expected — it does not speak MAVLink. Want to read it and flash ArduPilot onto it?
-          </p>
-          <div className="button-row">
-            <button
-              type="button"
-              style={buttonStyle('primary')}
-              data-testid="silent-link-open-betaflight"
-              onClick={onOpenBetaflight}
-            >
-              It&apos;s a Betaflight board
-            </button>
-          </div>
-          <small>
-            If it is an ArduPilot board, check the baud rate and that you picked the MAVLink port — some
-            controllers expose two.
-          </small>
-        </div>
-      ) : null}
-
       {unsupportedAutopilot ? (
         <div className="workspace-note workspace-note--stale" data-testid="unsupported-autopilot-banner" role="status">
           <div className="workspace-note--stale__headline">
