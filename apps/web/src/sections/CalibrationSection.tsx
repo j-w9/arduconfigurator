@@ -323,6 +323,22 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     handleCancelGuidedAction
   } = props
 
+  /*
+   * Calibration is three different jobs, not one long page.
+   *
+   * It had accumulated eleven cards in a single grid — accelerometer, level,
+   * compass, thermal, battery, battery current, ESC, airspeed, hover learning,
+   * autotune and baro thrust — and reads as a wall. Grouping matches what the
+   * operator is actually doing:
+   *
+   *   Sensors  bench work on the airframe's own sensors
+   *   Power    battery, current and ESC range
+   *   Flight   things that need an actual flight and a return trip
+   *
+   * Same shape as the Config tab's categories, so the two navigate alike.
+   */
+  const [calibrationTab, setCalibrationTab] = useState<'sensors' | 'power' | 'flight'>('sensors')
+
   // Baro thrust compensation is compiled out of stock ArduPilot, so the
   // parameter's presence is the only durable signal that this board supports
   // the calibration at all.
@@ -466,14 +482,33 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
         <section className="grid one-up" id="setup-panel-calibration">
           <Panel
             title="Calibration"
-            subtitle="Accelerometer, level, and compass calibration."
+            subtitle="Bench sensor calibration, power measurement, and the ones that need a flight."
           >
-            <div className="calibration-grid" data-testid="calibration-grid">
+            <div className="tab-strip" data-testid="calibration-tab-nav" role="tablist">
               {([
+                { id: 'sensors', label: 'Sensors' },
+                { id: 'power', label: 'Power' },
+                { id: 'flight', label: 'Flight' }
+              ] as const).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={calibrationTab === tab.id}
+                  data-testid={`calibration-tab-${tab.id}`}
+                  className={`tab-strip__tab${calibrationTab === tab.id ? ' is-active' : ''}`}
+                  onClick={() => setCalibrationTab(tab.id)}
+                >
+                  <span className="tab-strip__tab-title">{tab.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="calibration-grid" data-testid="calibration-grid">
+              {(calibrationTab === 'sensors' ? [
                 { actionId: 'calibrate-accelerometer' as const, title: 'Accelerometer', copy: 'Keep the aircraft flat, then step through the six pose prompts until the calibration completes.' },
                 { actionId: 'calibrate-level' as const, title: 'Level', copy: 'Set the aircraft level on the bench and run a quick level trim (AHRS_TRIM).' },
                 { actionId: 'calibrate-compass' as const, title: 'Compass', copy: 'Run onboard compass calibration; rotate the vehicle through all axes when prompted.' }
-              ]).map((action) => {
+              ] : []).map((action) => {
                 const actionState = snapshot.guidedActions[action.actionId]
                 const blockingReason = guidedActionBlockingReason(snapshot, action.actionId)
                 const busyReason = setupActionBusyReason(busyAction, action.actionId, action.title)
@@ -637,7 +672,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       : currentMult === undefined
                         ? 'BATT_VOLT_MULT not retrieved yet.'
                         : undefined
-                return (
+                return calibrationTab !== 'power' ? null : (
                   <article className="calibration-card" data-testid="calibration-card-battery">
                     <div className="calibration-card__header">
                       <strong>Battery voltage</strong>
@@ -752,7 +787,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   // to set it up; this card belongs hidden until then.
                   return null
                 }
-                return (
+                return calibrationTab !== 'power' ? null : (
                   <article className="calibration-card" data-testid="calibration-card-battery-current">
                     <div className="calibration-card__header">
                       <strong>Battery current</strong>
@@ -1302,7 +1337,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   : !canApplyDraftParameters
                     ? 'Finish parameter sync and disarm before applying.'
                     : undefined
-                return (
+                return calibrationTab !== 'sensors' ? null : (
                   <article className="calibration-card" data-testid="calibration-card-airspeed">
                     <div className="calibration-card__header">
                       <strong>Airspeed</strong>
@@ -1407,6 +1442,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       * startCompassMotCalibration() in case a guided flow
                       * needs it later. */}
 
+                    {calibrationTab !== 'power' ? null : (
                     <article className="calibration-card" data-testid="calibration-card-esc">
                       <div className="calibration-card__header">
                         <strong>ESC calibration</strong>
@@ -1527,12 +1563,13 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                         </>
                       )}
                     </article>
+                    )}
                   </>
                 )
               })()}
 
               {/* Thermal calibration (TCAL) — Expert-only advanced surface. */}
-              {isExpertMode ? (
+              {isExpertMode && calibrationTab === 'sensors' ? (
                 <TcalCalibrationCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
@@ -1559,7 +1596,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
               {/* Sits with the VALT card: both are about what a hover teaches
                   the vehicle, and this one feeds the same fork builds. Gates
                   itself on ACC_ZBIAS_LEARN being present. */}
-              {isExpertMode ? (
+              {isExpertMode && calibrationTab === 'flight' ? (
                 <AutotuneFlightCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
@@ -1567,7 +1604,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   setDraft={setDraft}
                 />
               ) : null}
-              {isExpertMode ? (
+              {isExpertMode && calibrationTab === 'flight' ? (
                 <HoverLearnCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
@@ -1575,7 +1612,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   setDraft={setDraft}
                 />
               ) : null}
-              {isExpertMode && baroThrustSupported ? (
+              {isExpertMode && baroThrustSupported && calibrationTab === 'flight' ? (
                 <ValtCalibrationCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}

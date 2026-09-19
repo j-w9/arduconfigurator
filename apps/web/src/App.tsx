@@ -6616,6 +6616,12 @@ export function App() {
         <ModesView
           modeChannelLabel={configuredModeChannel !== undefined ? `CH${configuredModeChannel}` : 'Not configured'}
           modeChannelParamName={snapshot.vehicle?.vehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH'}
+          // Editable here, not just named: which channel selects the flight
+          // mode is mode setup. Rover calls it MODE_CH.
+          modeChannelParameter={selectParameterById(
+            snapshot,
+            snapshot.vehicle?.vehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH'
+          )}
           modeChannelRcLogicClaim={configuredModeChannel !== undefined ? rcLogicChannelClaims.get(configuredModeChannel) : undefined}
           joystickModeNote={
             snapshot.vehicle?.vehicle === 'ArduSub'

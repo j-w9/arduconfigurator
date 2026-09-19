@@ -22,6 +22,15 @@ export interface ModesViewSlot {
 export interface ModesViewProps {
   modeChannelLabel: string
   modeChannelParamName: string
+  /**
+   * The mode-channel parameter itself, so the card can EDIT it rather than only
+   * name it.
+   *
+   * Field request: which channel selects the flight mode is mode setup, and it
+   * belonged on this screen rather than only being readable here and settable
+   * somewhere else. Absent when the vehicle has not reported it.
+   */
+  modeChannelParameter?: ParameterState
   /** RC Mixer (AP_RC_Logic) function labels layered on the mode channel, if any,
    *  so the operator sees the mode switch shares its channel with an RCL term. */
   modeChannelRcLogicClaim?: readonly string[]
@@ -53,6 +62,7 @@ export function ModesView(props: ModesViewProps) {
   const {
     modeChannelLabel,
     modeChannelParamName,
+    modeChannelParameter,
     modeChannelRcLogicClaim,
     currentSlotLabel,
     currentSlotSubtext,
@@ -108,7 +118,23 @@ export function ModesView(props: ModesViewProps) {
           <div className="modes-status">
             <article className="modes-status__card">
               <span>Mode channel</span>
-              <strong>{modeChannelLabel}</strong>
+              {/* Editable when the plumbing and the parameter are both here;
+                  otherwise the original read-only label, so a vehicle that has
+                  not reported it still says what it is. */}
+              {canEditInPlace && modeChannelParameter ? (
+                <div data-testid="modes-mode-channel-field">
+                  <ScopedSelectField
+                    parameter={modeChannelParameter}
+                    liveValue={modeChannelParameter.value}
+                    editedValues={editedValues!}
+                    onChange={onChangeSlot!}
+                    draftStatusById={draftStatusById!}
+                    allowCustomValue
+                  />
+                </div>
+              ) : (
+                <strong>{modeChannelLabel}</strong>
+              )}
               <small>{modeChannelParamName} selects which RC channel switches the flight mode.</small>
               {modeChannelRcLogicClaim?.length ? (
                 <small className="modes-mode-channel__rcl-claim" data-testid="modes-mode-channel-rcl-claim">

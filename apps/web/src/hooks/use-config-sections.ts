@@ -18,9 +18,17 @@ const CATEGORY_BY_SECTION: Record<string, ConfigCategoryId> = {
   'board-orientation': 'airframe',
   'esc-dshot': 'airframe',
   compass: 'sensors',
-  'active-imu': 'sensors',
-  'system-rates': 'sensors',
-  'fast-loop-rate': 'sensors',
+  // Scheduler and IMU settings are SYSTEM settings, not sensor setup.
+  //
+  // "System rates" is the main (PID) loop frequency, the gyro update rate and
+  // the fast-sample mask — how hard the flight controller runs, which is the
+  // same kind of decision as logging or board identity. Field report asked for
+  // these under System, and the Sensors tab is becoming Peripherals (attached
+  // hardware: GPS, compass, flow, lidar, gimbal), where an onboard IMU and a
+  // scheduler rate plainly do not belong.
+  'active-imu': 'system',
+  'system-rates': 'system',
+  'fast-loop-rate': 'system',
   gps: 'gps',
   'receiver-signal': 'rc',
   arming: 'arming',
