@@ -11,15 +11,28 @@ staged-draft workflow used across the app (edit → review → apply).
 Category tabs
 -------------
 
-The settings are grouped into five **category tabs** across the top, so you only
-see one area at a time instead of a wall of cards:
+The settings are grouped into **category tabs** across the top, so you only see
+one area at a time instead of a wall of cards:
 
-- **Airframe** — frame class/type, board orientation, and the ESC/DShot protocol.
-- **Sensors** — compass, active IMUs, and the system (loop/gyro) rates.
+- **Airframe & Powertrain** — frame class/type, board orientation, and the whole
+  power train: ESC protocol, DShot rate, BLHeli, motor poles and reverse mask.
+- **Sensors** — compass setup.
 - **GPS** — GPS driver, auto-config, update rate, and multi-GPS behavior.
-- **RC & Arming** — RSSI/mode-channel and RC settings, arming checks and
-  arm/disarm behavior, and the pilot stick rates.
-- **System** — MAVLink identity, logging, the beeper/LED, and camera trigger.
+- **RC** — receiver protocol and options, and the RSSI source.
+- **Flight Modes** — which mode each switch position selects, the mode channel
+  itself, and the live position the vehicle reports.
+- **Arming** — arming checks and arm/disarm behavior.
+- **Power** — battery monitor, capacity, and the arming thresholds that depend
+  on them, with live voltage and current.
+- **System** — MAVLink identity, logging, the beeper/LED, camera trigger, and
+  the **system rates** (main loop frequency, gyro rate, fast-sample mask) plus
+  **active IMU** selection.
+
+.. note::
+
+   System rates and active-IMU selection used to sit under **Sensors**. They
+   are how hard the flight controller runs rather than which sensors are
+   attached, so they moved to **System**.
 
 Each card leads with the settings you actually reach for; rarely-touched fields
 (trims, expo, boot delay, log bitmask, and the like) fold under a per-card

@@ -4,8 +4,8 @@ Failsafe
 The **Failsafe** tab is where you decide what the vehicle does when something
 goes wrong — the RC link drops, the battery runs low, or the ground station
 stops talking. Each failsafe is a small set of ArduPilot parameters; the tab
-surfaces them as product-shaped cards (RC, battery, GCS, EKF, advanced) with
-read-only status summaries up top and inline editors below.
+surfaces them as product-shaped cards (RC, battery, GCS, EKF, geofence,
+advanced) with read-only status summaries up top and inline editors below.
 
 .. warning::
 
@@ -79,6 +79,34 @@ raw or sag-compensated voltage), and additional battery knobs such as
 ``BATT_LOW_TIMER`` surface in the **Additional failsafe settings** card. The same
 voltage and capacity thresholds can be edited from :doc:`power-battery` (Config ▸ Power) —
 both tabs share one staged-write model.
+
+Geofence
+--------
+
+The **Geofence** card sets the boundary the vehicle is allowed to fly inside and
+what happens when it reaches one. It sits here because a fence is the same shape
+as a failsafe: a condition that triggers an action.
+
+- ``FENCE_ENABLE`` — whether the fence is active at all. It can also be toggled
+  from an RC switch or over MAVLink, but those changes are not saved.
+- ``FENCE_TYPE`` — which limits are active, as independent checkboxes: max
+  altitude, a circle centred on home, inclusion/exclusion polygons, and a
+  minimum altitude. The max-altitude, circle and polygon fences take effect as
+  soon as they are configured; the minimum-altitude fence only arms once the
+  vehicle has climbed through it, so it cannot fire on the ground.
+- ``FENCE_ACTION`` — what a breach does: report only, RTL or Land, always Land,
+  SmartRTL variants, or Brake or Land.
+- ``FENCE_RADIUS`` / ``FENCE_ALT_MAX`` / ``FENCE_ALT_MIN`` — the boundaries
+  themselves, in metres.
+- ``FENCE_MARGIN`` — how far the autopilot keeps from the fence to avoid
+  breaching it.
+- ``FENCE_AUTOENABLE`` — whether fences arm themselves automatically.
+
+.. note::
+
+   ``FENCE_TOTAL`` is deliberately not offered as a field. ArduPilot's own
+   description says not to change it by hand — it counts the stored polygon
+   points, and editing it corrupts them.
 
 GCS, EKF, and advanced failsafes
 --------------------------------

@@ -8,11 +8,19 @@ tune can be roughed in without diving into the raw parameter tree. Every change
 is staged as a local draft and reviewed before it is written to the controller,
 and known-good tunes can be saved as reusable profiles.
 
-The tab is split into eight tasks: **Pilot**, **PID Gains**, **Filters**,
-**Autotune**, **Profiles**, **Review**, **Initial Tune**, and **Log Tuning**. The workspace is
-full-width — each task fills it — and every control carries an **"i" info bubble** with the
-parameter's plain-text description, its label, and its unit, so guidance is one
-hover away rather than a wall of text on the page.
+The tab shows **five tasks** by default — **Pilot**, **Filters**, **Autotune**,
+**Review** and **Initial Tune** — which together are a complete path: set stick
+feel, handle noise, let the vehicle find its gains, apply, and get a starting
+point for a new airframe.
+
+**Expert mode** adds three more: **PID Gains** (27 raw P/I/D/FF controls),
+**Profiles** (a local library of saved tunes) and **Log Tuning** (post-flight log
+analysis). They are tools for someone who already has a tune rather than steps
+toward getting one.
+
+The workspace is full-width — each task fills it — and every control carries an
+**"i" info bubble** with the parameter's plain-text description, its label, and
+its unit, so guidance is one hover away rather than a wall of text on the page.
 
 Pilot
 -----
@@ -90,24 +98,9 @@ stage the whole set at once. Deeper controller terms — D-term feedforward
 Filters
 -------
 
-The **Filters** task holds every filter parameter, so a noise-handling pass is
-one deliberate change in one place: the gyro and accelerometer filters, the nine
-rate-loop filters, and the harmonic notch.
-
-Each rate axis exposes a target, error, and D-term filter frequency:
-
-- ``ATC_RAT_RLL_FLTT`` / ``ATC_RAT_RLL_FLTE`` / ``ATC_RAT_RLL_FLTD``
-- ``ATC_RAT_PIT_FLTT`` / ``ATC_RAT_PIT_FLTE`` / ``ATC_RAT_PIT_FLTD``
-- ``ATC_RAT_YAW_FLTT`` / ``ATC_RAT_YAW_FLTE`` / ``ATC_RAT_YAW_FLTD``
-
-Higher frequencies preserve response but pass more noise; lower values smooth
-noise at the cost of latency. Zero is valid for some of these and intentionally
-disables that filter path.
-
-The sensor-side filters (``INS_GYRO_FILTER``, ``INS_ACCEL_FILTER``) and the
-harmonic notch sit in the same grid. These were briefly a second *Filter
-Editor* tab, which meant two Tuning tabs both called filters, editing
-overlapping parameters in two different layouts.
+The **Filters** task leads with the derived filter set, and in the default
+(non-Expert) mode that is the only filter surface: you give it one number and it
+works out the rest.
 
 Set filters from the gyro cutoff
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -148,6 +141,20 @@ no business being staged to a flight controller.
 
 A D-term filter edited above **0.75 × the gyro cutoff** is called out inline —
 ArduPilot documents that as not recommended.
+
+Manual override (Expert)
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Expert mode adds the raw grid back below the derived panel, under **Manual
+override**: every filter parameter as its own field, grouped by axis, plus the
+harmonic notch and the ``FILTn`` filter bank.
+
+Use it when you want a value the derived panel does not set, or one that
+deliberately departs from ArduPilot's ratios. A handful of parameters live only
+here, because there is no documented rule to derive them from —
+``INS_ACCEL_FILTER``, ``ATC_RAT_RLL_FLTE`` / ``ATC_RAT_PIT_FLTE``,
+``INS_HNTCH_HMNCS`` and ``INS_HNTCH_FM_RAT``. Inventing a ratio for them would
+be worse than leaving them to Expert mode.
 
 Everything else is yours
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -291,6 +298,12 @@ before there is anything worth autotuning.
 It uses the same formulas as Mission Planner's *Initial Parameters* screen, so
 the numbers agree with what that tool would have given you — with two
 deliberate corrections, both noted below.
+
+In the default mode it asks only those three questions and then stages the
+result; the parameter-by-parameter working is an **Expert** view, along with the
+two option checkboxes (**T-Motor ESCs**, **Failsafes & fence**). The count of
+what will be staged is on the button either way, and nothing is written until you
+apply it in Review.
 
 What it sets, all of it driven by prop size or the pack:
 

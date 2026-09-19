@@ -85,6 +85,34 @@ Once connected, the header shows the vehicle type, firmware version, and a live
 link indicator, and the parameter table syncs. From here, head to
 :doc:`guided-setup` for a fresh vehicle, or jump straight to any tab.
 
+When nothing ever answers
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If the port opens and **no heartbeat ever arrives**, the app says so after a few
+seconds rather than sitting on *"Waiting for heartbeat"* indefinitely:
+**"Connected, but nothing is talking."**
+
+The usual cause is a board that is not running ArduPilot at all. A **Betaflight**
+board does not speak MAVLink, so there is no heartbeat to wait for — the banner
+offers to take you to :doc:`first-time-setup/flashing-firmware`, where the
+Betaflight sub-tab can read the board and put it into DFU.
+
+If it *is* an ArduPilot board, check the baud rate and that you picked the
+MAVLink port — some controllers expose two USB serial interfaces, and only the
+first is MAVLink.
+
+When it answers, but not as ArduPilot
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A board running **PX4** *does* send heartbeats, just not ones this app can use.
+Rather than discarding them silently, the app names what it found:
+**"PX4 is not currently supported."** The board is connected and talking;
+nothing here will configure it. If you meant to run ArduPilot, flash it from the
+Flash tab and reconnect.
+
+Only PX4 is named by name. Any other autopilot type is reported by its MAVLink
+id rather than a guessed label.
+
 If the link drops mid-sync — for example a board that watchdog-resets partway
 through the parameter download — the configurator keeps the parameters it
 already read behind a **"link lost"** banner (they are marked as no longer

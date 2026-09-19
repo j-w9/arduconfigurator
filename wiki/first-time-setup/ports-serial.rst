@@ -10,7 +10,12 @@ The port matrix
 ---------------
 
 Each row is one UART, shown by its board name (``UART6``) and its ``SERIALn``
-label, with five columns:
+label, with five columns.
+
+USB interfaces are named for the cable rather than the STM32 peripheral — an
+``OTG2`` appears as ``USB1_2 (OTG2)`` and sorts below the solderable UARTs,
+because it is a second interface on the USB lead rather than a port you wire
+something to.
 
 - **Function** — the protocol, editing ``SERIALn_PROTOCOL``. The dropdown leads
   with the common choices (MAVLink2, GPS, ESC Telemetry, RC Input, Scripting,
@@ -86,11 +91,34 @@ one you are not using to **None**.
 Is the port dead, or just mis-configured?
 -----------------------------------------
 
+Each row carries a small **status dot** that answers "is anything actually on
+this port", and it is judged by the port's *protocol* rather than by raw byte
+counts:
+
+- **Green** — proven working by that protocol's own telemetry. A GPS port shows
+  its satellite count, an RC port its channel count, an ESC-telemetry port how
+  many ESCs are reporting. This is better evidence than bytes: it says the
+  *peripheral* works, not just that the wire is busy.
+- **Muted** — ArduPilot drives this port and nothing inbound can confirm it. A
+  SmartAudio VTX or a DisplayPort OSD is mostly talked *at*, so silence there
+  proves nothing.
+- **Hollow** — inbound traffic was expected and there is none. This is the one
+  genuinely suspicious state.
+- **Absent** — the board has not served ``@SYS/uarts.txt``, so there is nothing
+  to judge from. The tab says so rather than leaving you guessing.
+
+.. note::
+
+   A port configured **half-duplex** (``SERIALn_OPTIONS`` bit 2, one-wire) never
+   shows received bytes, whatever is attached: ArduPilot does not count RX on a
+   half-duplex port. The dot says that explicitly rather than implying the port
+   is quiet.
+
 "Nothing is working on that port" has two very different causes, and the flight
 controller can tell them apart. It keeps per-UART counters — bytes received,
 bytes transmitted, and low-level **framing errors** — and publishes them as the
-onboard file ``@SYS/uarts.txt``, which you can read yourself from the
-:doc:`../files` tab.
+onboard file ``@SYS/uarts.txt``, which the Ports tab reads for the dots above
+and which you can also read yourself from the :doc:`../files` tab.
 
 Read them like this:
 

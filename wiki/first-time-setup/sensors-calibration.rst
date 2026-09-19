@@ -5,9 +5,22 @@ The **Sensors** (Calibration) tab calibrates the inertial sensors and compass so
 the autopilot knows which way is up and where it is pointing. It runs each
 calibration as a *guided action*: you press one button and the app walks the
 flight controller through the procedure live, sending the MAVLink commands and
-watching the vehicle's replies. Three cards sit at the top — **Accelerometer**,
-**Level**, and **Compass** — followed by the conditional calibrations (battery
-voltage/current, airspeed on Plane, ESC on Copter).
+watching the vehicle's replies.
+
+The tab is grouped into three **sub-tabs**, because these are three different
+jobs:
+
+- **Sensors** — bench work on the airframe's own sensors: **Accelerometer**,
+  **Level**, **Compass**, thermal calibration (TCAL), and airspeed on Plane.
+- **Power** — **Battery voltage**, **Battery current**, and **ESC** throttle
+  range.
+- **Flight** — the ones that need an actual flight and a return trip:
+  **Autotune flight**, **Hover learning**, and **Baro thrust (VALT)**.
+
+The Flight cards all work the same way: you set something up, fly, land, plug
+back in, and the card tells you what the vehicle came back with. None of them
+can be driven from the bench, because the firmware does the learning in the air
+and saves it on disarm.
 
 .. warning::
 
@@ -273,19 +286,91 @@ Steps:
 #. **Start cold.** Power the board off and let it cool to ambient. A genuinely
    cold board matters — the wider the temperature swing between cold boot and
    warm, the better the fit.
-#. In **Calibration → Thermal calibration (TCAL)**, click **Prepare thermal
-   calibration**. This stages ``INS_TCALn_ENABLE = 2`` (learn) for each IMU;
-   **Apply** it in the draft bar.
+#. In **Calibration → Sensors → Thermal calibration (TCAL)**, set the
+   **Target** temperature. This is the one input that matters: the firmware ends
+   the learn when the IMU reaches it, and the firmware default of **70 °C** is
+   out of reach for most airframes — a board left on the default learns forever
+   and saves nothing. Pick a temperature this board actually reaches on the
+   bench; the live IMU temperature on the card tells you what that is.
+
+   **Start** is offered too, but the firmware overwrites it with wherever the
+   board actually began when it saves, so treat it as a floor for validity
+   rather than a promise about the run. The two must be at least **10 °C** apart
+   or the fit is never accepted, and the card will not stage a narrower range.
+#. Click **Prepare thermal calibration**. This stages the temperatures and
+   ``INS_TCALn_ENABLE = 2`` (learn) for each IMU; **Apply** it in the draft bar.
 #. **Reboot the board cold**, props off, and leave it powered and still. It
    self-heats through the range.
 #. At the top temperature the fit is computed and saved automatically, and each
    IMU's enable flips back to ``1`` (enabled). **Reboot once more** to use it.
 
 The card shows each IMU's current state (disabled / enabled / learning) and its
-``TMIN → TMAX`` range. When the flight controller streams IMU temperature (from
+``TMIN → TMAX`` range, and warns if the target you have chosen is one the board
+is unlikely to reach. When the flight controller streams IMU temperature (from
 ``SCALED_IMU``), the card also shows the live temperature and warm-up progress
 toward ``TMAX``; the firmware completes and saves the fit on its own once it
 reaches the target, so you don't need to watch it.
+
+Hover learning (two flights)
+----------------------------
+
+On **Calibration → Flight**, and only on firmware that carries the fork's
+``ACC_ZBIAS_LEARN``.
+
+Two things are learned in the air and saved when you disarm, so each costs a
+flight:
+
+#. **Hover throttle** (``MOT_THST_HOVER``), learned whenever
+   ``MOT_HOVER_LEARN`` is 2 — which is ArduCopter's default, so usually there is
+   nothing to stage. The card checks rather than assumes: if hover learning has
+   been turned *off* on this vehicle it says so, because a flight then records
+   nothing.
+#. **Accelerometer Z-bias** (``ACC_ZBIAS_LEARN``), which compensates the DC
+   offset motor vibration puts into AccZ. **EKF3 only** — the correction is
+   applied inside EKF3, and the card warns on any other estimator rather than
+   letting you waste a flight.
+
+Both flights are the same flying: climb to about **5 m** and hold a steady hover
+with as little stick input as you can for a minute or so, then land and disarm.
+
+Plug back in afterwards and the card asks whether that was a good flight.
+Answering **no** to flight 1 changes nothing — the vehicle re-learns the hover
+throttle every flight, so simply flying again overwrites it. Answering no to
+flight 2 clears the learned bias first, so the retry starts from zero instead of
+refining a bad measurement.
+
+Progress is read from the **values the flights left behind**, not from the enable
+parameters, so it survives the unplug and is honest about a vehicle that arrives
+with somebody else's calibration.
+
+**Zeroize Hover Cal** puts it back to the start: hover throttle to its 0.35
+default, every learned Z-bias to zero, and the enables cleared. Use it on a
+vehicle that arrives already calibrated and reads as finished.
+
+Autotune flight
+---------------
+
+Also on **Calibration → Flight**. Autotune runs in the air and saves on disarm,
+so the app cannot watch it — instead it remembers the gains before the flight
+and compares them afterwards.
+
+#. Pick the **axes** (``AUTOTUNE_AXES`` is a bitmask: roll, pitch, yaw, yaw-D).
+   One axis at a time converges faster while you are searching; two is usual once
+   you are close.
+#. Press **Stage autotune**, apply, and fly autotune as normal.
+#. Come back, plug in, and the card reports **per axis** what actually got
+   tuned.
+
+Per-axis matters: autotune genuinely finishes roll and gives up on yaw, and
+"it didn't work" would be wrong about most of that flight. An axis counts as
+tuned when any of its gains moved — autotune does not rewrite every term.
+
+**Zeroize Tune** returns the selected axes to ArduCopter's stock gains — back to
+*default*, not to zero, since a literal zero P gain is unflyable. It is
+Copter-only, stages only what actually differs, and tells you how many gains it
+would move. Take a snapshot first if you might want the tune back: nothing else
+on this card reverts anything, because autotune already saved those gains on the
+vehicle.
 
 Baro thrust calibration (VALT)
 ------------------------------
@@ -296,9 +381,19 @@ work. ArduPilot compensates for this linearly with ``BARO1_THST_SCALE`` (in
 Pascals, subtracted per unit of normalized throttle). **Baro thrust calibration
 (VALT)** fits that scale from a flight log.
 
-It is an **Expert-only**, log-based card: the app connects on the bench, not in
-flight, so the flying happens first and the log is uploaded afterwards. It also
-requires a **log server signed in** — see :doc:`../logs-inspectors`.
+It is an **Expert-only**, log-based card on **Calibration → Flight**: the app
+connects on the bench, not in flight, so the flying happens first and the log is
+read afterwards.
+
+The card appears when the **firmware carries** ``BARO1_THST_SCALE``. Baro thrust
+compensation is a compile-time feature (``AP_BARO_THST_COMP_ENABLED``, off by
+default), so a stock build simply does not have the parameter and cannot apply a
+scale. Signing in to a log server is *not* required — when you are signed in the
+card names the server it would pull logs from, and nothing more.
+
+You can hand it a log two ways: choose a ``.bin`` from disk, or press **Pick from
+vehicle** to list the logs the aircraft is still holding and read one straight
+off it, with no download-then-upload round trip.
 
 Two methods are offered, and the difference is what each needs to be true.
 
@@ -339,10 +434,15 @@ actually follows.
 Hover vs height
 ~~~~~~~~~~~~~~~
 
-When a bench ramp is not practical, fit against a ground-truth height instead:
+When a bench ramp is not practical, fit against a ground-truth height instead.
 
-#. Fit a **downward-facing rangefinder** and confirm it logs (an ``RFND`` message
-   with orientation *Down*).
+A downward rangefinder makes this easy but is **not required**: if the log has
+one the app fits against it automatically, and if it does not, you enter the
+height you hovered at and it fits against that.
+
+#. *Optional:* fit a **downward-facing rangefinder** and confirm it logs (an
+   ``RFND`` message with orientation *Down*). Without one, measure the hover
+   height yourself and enter it on the card afterwards.
 #. Fly a **steady hover** at a fixed height in a stable mode, holding the throttle
    as constant as you can for several seconds. Repeat at **2–3 different heights**
    so the fit has more than one point.

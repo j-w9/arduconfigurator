@@ -63,16 +63,19 @@ the token lives only until the tab closes.
 Uploads carry the log's descriptive name, the flight date, and an optional note,
 so the archive stays readable without opening anything.
 
-The baro thrust calibration needs it too
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The baro thrust calibration can use it
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The **Baro thrust (VALT)** calibration on the Calibration tab only appears with
-a log server signed in — signed out there is no card, not a locked one. It is
-the one calibration whose entire input is a flight log, and the scale it
-produces is only as good as the hover behind it, so the log that produced the
-number stays retrievable: both for comparing one calibration against the next,
-and for anyone asked to explain a value that ended up on an aircraft. It is
-Expert-gated as well, so both have to be true.
+The **Baro thrust (VALT)** calibration on **Calibration → Flight** is the one
+calibration whose entire input is a flight log, and the scale it produces is
+only as good as the hover behind it — so keeping that log retrievable is worth
+doing, both for comparing one calibration against the next and for anyone asked
+to explain a value that ended up on an aircraft.
+
+Signing in is **not** required to use the card, though. It appears whenever the
+firmware carries ``BARO1_THST_SCALE`` (and you are in Expert mode); when you are
+signed in it simply names the server it would pull logs from. The card can also
+read a log straight off the connected aircraft with **Pick from vehicle**.
 
 Configuration files go to the same place
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -141,6 +141,18 @@ all of which stage drafts through the same verified write path:
   labels, notes, tags, and deletion protection, captured from the live tree or
   imported from a backup. Use these to checkpoint a known-good state before a
   risky change.
+
+  A saved snapshot's description can be changed afterwards: select it and press
+  **Edit Details** to rewrite its label, tags or note. That edits the
+  *description only* — the captured values and the entry's place in the library
+  are untouched. To replace what it captured, use **Overwrite Selected**
+  instead.
+
+  Restoring can carry the calibration values (accelerometer, compass, RC trim)
+  or leave them out. They are excluded by default and the option to include them
+  is **Expert-only**: those values describe the hardware they were measured on,
+  so importing them onto a different board means flying on another unit's
+  measurements.
 - **Presets** — curated bundles of desired values that diff against the live
   tree and stage only what differs, with an applicability check so a preset that
   does not fit the current firmware/vehicle is flagged rather than applied
@@ -149,3 +161,9 @@ all of which stage drafts through the same verified write path:
 For the complete list of every parameter and its meaning, see the ArduPilot
 `Complete Parameter List
 <https://ardupilot.org/copter/docs/parameters.html>`__.
+
+.. note::
+
+   Snapshots, presets and tuning profiles live in **this browser**, not on a
+   server or on the aircraft. Clearing site data removes them. Export a library
+   (or upload it to a log server) if you want a copy that survives.

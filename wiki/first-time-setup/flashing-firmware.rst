@@ -2,8 +2,10 @@ Flashing Firmware
 =================
 
 The **Flash** tab installs ArduPilot firmware onto your flight controller. It has
-two sub-tabs: **Firmware (.apj)**, the normal ArduPilot serial-bootloader flow,
-and **DFU (.hex)**, which programs a raw ``.hex`` over WebUSB DFU.
+three sub-tabs: **Firmware (.apj)**, the normal ArduPilot serial-bootloader flow;
+**DFU (.hex)**, which programs a raw ``.hex`` over WebUSB DFU; and
+**Betaflight**, for boards that are still running Betaflight and need to be put
+into DFU before ArduPilot can be written to them.
 
 .. warning::
 
@@ -127,3 +129,61 @@ your serial ports.
 For the firmware concepts behind this tab, see the ArduPilot wiki:
 `Loading Firmware onto boards
 <https://ardupilot.org/copter/docs/common-loading-firmware-onto-pixhawk.html>`__.
+
+Coming from Betaflight
+----------------------
+
+The **Betaflight** sub-tab is for a board that is still running Betaflight. It
+reads what the board is, keeps a record of its settings, and puts it into DFU so
+one of the other two sub-tabs can write ArduPilot to it.
+
+It uses its own serial connection, separate from the vehicle link — a Betaflight
+board does not speak MAVLink, so it can never appear on the normal connection,
+and connecting here does not disturb a connected ArduPilot vehicle.
+
+.. note::
+
+   If you connect to a Betaflight board the normal way, the app sits waiting for
+   a heartbeat that will never arrive. After a few seconds it says so —
+   *"Connected, but nothing is talking"* — and offers to bring you here.
+
+**Connect Betaflight Board** reports the firmware variant and version, the
+target, the board and manufacturer names, the MSP API version, and how many
+UARTs it found.
+
+Save the settings first
+~~~~~~~~~~~~~~~~~~~~~~~
+
+**Save Settings (diff .txt)** writes the board's own ``diff`` — its non-default
+settings — as a Betaflight CLI text file, named the way Betaflight Configurator
+names its own. It pastes straight back into Betaflight's CLI if you ever go
+back.
+
+Do this **before** rebooting to DFU. Once ArduPilot is flashed those settings are
+gone, and this file is the only record of them.
+
+What the board had wired up
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The card also lists what Betaflight had on each UART beside its ArduPilot
+equivalent — a serial receiver becomes ``RCIN``, SmartAudio becomes
+``SmartAudio``, and so on. Whatever is soldered to a UART is still soldered
+there after the flash, so this saves re-deriving the port setup by hand.
+
+It deliberately does **not** map ports for you. A Betaflight serial identifier
+and an ArduPilot ``SERIALn`` index are different numbering over the same
+hardware, and which is which depends on the board — guessing would put a GPS on
+the receiver's port. Match them by what is physically on each UART, on the
+:doc:`ports-serial` tab, once ArduPilot is running.
+
+A couple of Betaflight functions have no ArduPilot equivalent and say so rather
+than being given one: **Blackbox** (ArduPilot logs to dataflash, not a serial
+port) and **Tramp**.
+
+Reboot to DFU
+~~~~~~~~~~~~~
+
+**Reboot to DFU** asks the board to restart into the STM32 ROM bootloader. The
+board acknowledges and then reboots, so the link drops immediately — that is
+expected. It comes back as a DFU device; switch to **DFU (.hex)** or
+**Firmware (.apj)** and flash ArduPilot as normal.
