@@ -109,7 +109,16 @@ export async function captureCliCommand(
  *
  * The board echoes the command back and finishes with a prompt; neither belongs
  * in a file meant to be pasted back into a CLI.
+ *
+ * Line endings are CRLF, which is what Betaflight Configurator writes and what
+ * the board itself sends (cliPrint ends every line "\r\n"). Compared side by
+ * side against a file saved by Betaflight Configurator from the same board,
+ * LF was the whole difference in the settings — so it is the whole fix. It
+ * matters beyond tidiness: these files get opened in Notepad on Windows, where
+ * an LF-only file is one long line.
  */
+export const CLI_LINE_ENDING = '\r\n'
+
 export function cleanCliCapture(raw: string, command: string): string {
   const lines = raw.replace(/\r\n/g, '\n').split('\n')
   while (lines.length > 0 && (lines[0].trim() === '' || lines[0].trim() === command)) {
@@ -118,5 +127,5 @@ export function cleanCliCapture(raw: string, command: string): string {
   while (lines.length > 0 && (lines[lines.length - 1].trim() === '' || lines[lines.length - 1].trim() === '#')) {
     lines.pop()
   }
-  return `${lines.join('\n')}\n`
+  return `${lines.join(CLI_LINE_ENDING)}${CLI_LINE_ENDING}`
 }

@@ -158,8 +158,9 @@ Save the settings first
 
 **Save Settings (diff .txt)** writes the board's own ``diff`` — its non-default
 settings — as a Betaflight CLI text file, named the way Betaflight Configurator
-names its own. It pastes straight back into Betaflight's CLI if you ever go
-back. The ``diff`` is read once when you connect, so saving it is instant; the
+names its own, with the same CRLF line endings — so it opens correctly in
+Notepad and compares clean against a file saved by Betaflight Configurator. It
+pastes straight back into Betaflight's CLI if you ever go back. The ``diff`` is read once when you connect, so saving it is instant; the
 read is read-only and leaves the CLI with ``exit noreboot``, so it never
 restarts the board.
 

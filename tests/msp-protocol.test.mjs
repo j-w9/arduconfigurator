@@ -225,6 +225,11 @@ test('the CLI capture enters, reads, and always leaves', async () => {
 
   // The echoed command and trailing prompt are not part of the file.
   const cleaned = cleanCliCapture(raw, 'diff')
+  // CRLF, like Betaflight Configurator's own saved file and like the board's
+  // own output. An LF-only file opens as a single line in Notepad.
+  assert.ok(cleaned.includes('\r\n'), 'lines end CRLF')
+  assert.ok(!/[^\r]\n/.test(cleaned), 'no bare LF survives')
+  assert.ok(cleaned.endsWith('\r\n'), 'ends with a line ending, like a text file should')
   assert.ok(cleaned.startsWith('# version'), `unexpected start: ${JSON.stringify(cleaned.slice(0, 40))}`)
   assert.ok(cleaned.includes('board_name MATEKH743'))
   assert.ok(!cleaned.trimEnd().endsWith('#'), 'trailing prompt removed')
