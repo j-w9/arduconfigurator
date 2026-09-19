@@ -32,6 +32,14 @@ export type AppViewId =
   // checklist work as a single block — only the nav was split.
   | 'motors'
   | 'servos'
+  // 'peripherals' gathers the attached hardware that is neither propulsion nor
+  // an onboard sensor: GPS, compass, gimbal/mount, rangefinder and optical
+  // flow. GPS and compass came from Config (they are not board settings), the
+  // gimbal and flow/lidar subsystems from the Servos tab (they are peripherals
+  // that happen to have a servo output, not servo setup). Injected as a nav
+  // descriptor at render time, and rendered by the same ConfigView machinery
+  // over the peripheral half of the config section list.
+  | 'peripherals'
   | 'power'
   | 'failsafe'
   | 'logs'

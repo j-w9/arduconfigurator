@@ -11,13 +11,25 @@ import { firmwareVersionAtLeast, type ConfiguratorSnapshot } from '@arduconfig/a
 
 import type { ConfigCategoryId, ConfigSection } from '../views/Config'
 
+// Categories that render on the PERIPHERALS tab instead of Config. Both tabs
+// are ConfigView instances over this one section list; membership here is what
+// decides which half a section lands in, so a section moves between tabs by
+// changing its category and nothing else.
+export const PERIPHERAL_CATEGORY_IDS: readonly ConfigCategoryId[] = ['gps', 'compass', 'gimbal', 'flow-lidar']
+
+function isPeripheralCategory(category: ConfigCategoryId | undefined): boolean {
+  return category !== undefined && PERIPHERAL_CATEGORY_IDS.includes(category)
+}
+
 // Which top-tab group each section belongs to. Sections not listed fall back to
 // 'system' (the catch-all), so a new section is never orphaned off the tabs.
 const CATEGORY_BY_SECTION: Record<string, ConfigCategoryId> = {
   frame: 'airframe',
   'board-orientation': 'airframe',
   'esc-dshot': 'airframe',
-  compass: 'sensors',
+  // Compass is attached hardware (very often an external mag on the GPS mast),
+  // so it moved with GPS onto the Peripherals tab.
+  compass: 'compass',
   // Scheduler and IMU settings are SYSTEM settings, not sensor setup.
   //
   // "System rates" is the main (PID) loop frequency, the gyro update rate and
@@ -337,6 +349,14 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     armingChecksLabel,
     armingDescription
   ])
+  const configTabSections = useMemo(
+    () => configSections.filter((section) => !isPeripheralCategory(section.category)),
+    [configSections]
+  )
+  const peripheralSections = useMemo(
+    () => configSections.filter((section) => isPeripheralCategory(section.category)),
+    [configSections]
+  )
   // The Config scope covers every editable section's paramId set —
   // staged drafts in any of them apply through a single "Apply Config"
   // press. STAT_* + any other readOnly-section ids are deliberately
@@ -344,10 +364,24 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
   // (The draft pool itself is selected later, after parameterDraftEntries
   // is declared — declaration order forced by the existing layout.)
   const isConfigParamId = useCallback((paramId: string): boolean => {
-    return configSections.some(
+    return configTabSections.some(
       (section) => !section.readOnly && section.fields.some((field) => field.paramId === paramId)
     )
-  }, [configSections])
+  }, [configTabSections])
 
-  return { configParametersById, configSections, isConfigParamId }
+  // Peripherals applies its own drafts, so a staged GPS change is never
+  // swept up by a press of Apply on the Config tab (and vice versa).
+  const isPeripheralParamId = useCallback((paramId: string): boolean => {
+    return peripheralSections.some(
+      (section) => !section.readOnly && section.fields.some((field) => field.paramId === paramId)
+    )
+  }, [peripheralSections])
+
+  return {
+    configParametersById,
+    configSections: configTabSections,
+    peripheralSections,
+    isConfigParamId,
+    isPeripheralParamId
+  }
 }

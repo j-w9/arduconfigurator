@@ -209,14 +209,6 @@ export interface OutputsSectionHandlers {
   confirmSetupSection: (sectionId: string, outcome?: import('../app-types').SetupSectionOutcome) => void
   clearSetupSectionConfirmation: (sectionId: string) => void
   renderMetadataParameterField: (parameter: ParameterState) => ReactNode
-  gimbalGroups: import('../view-models/peripherals').AdditionalSettingsGroup[]
-  gimbalDraftEntries: ParameterDraftEntry[]
-  gimbalStagedDrafts: ParameterDraftEntry[]
-  gimbalInvalidDrafts: ParameterDraftEntry[]
-  flowLidarGroups: import('../view-models/peripherals').AdditionalSettingsGroup[]
-  flowLidarDraftEntries: ParameterDraftEntry[]
-  flowLidarStagedDrafts: ParameterDraftEntry[]
-  flowLidarInvalidDrafts: ParameterDraftEntry[]
   renderAdditionalSettingsCard: (
     title: string,
     description: string,
@@ -441,14 +433,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     isExpertMode,
     handleRunMotorTest,
     handleStopMotorTest,
-    gimbalGroups,
-    gimbalDraftEntries,
-    gimbalStagedDrafts,
-    gimbalInvalidDrafts,
-    flowLidarGroups,
-    flowLidarDraftEntries,
-    flowLidarStagedDrafts,
-    flowLidarInvalidDrafts,
     renderAdditionalSettingsCard,
     setDraft,
     updateDrafts,
@@ -624,8 +608,8 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         // task strip stays as in-page navigation rather than a filter, so every
         // existing route into a specific task still lands somewhere real.
         //
-        // Servos keeps its sub-tabs: those are genuinely separate subsystems
-        // (gimbal, flow & lidar, relays), not three views of one job.
+        // Servos keeps its sub-tabs: the output map, notification hardware and
+        // relays are genuinely separate jobs, not three views of one.
         taskCards={
           activeViewId === 'motors'
             ? // Motors is three sub-tabs in a fixed order: ESC & protocol,
@@ -634,11 +618,12 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
               (['esc-protocol', 'motor-setup', 'direction-test'] as const)
                 .map((id) => outputTaskCards.find((card) => card.id === id))
                 .filter((card): card is (typeof outputTaskCards)[number] => card !== undefined)
-            : // Servos, in the order a build is worked through: outputs first,
-              // then the subsystems hanging off them. Gimbal and Flow & Lidar
-              // are whole subsystems rather than fields, so they are tabs
-              // instead of rows buried in Peripherals.
-              (['servo-mapping', 'peripherals', 'gimbal', 'flow-lidar', 'relays'] as const)
+            : // Servos, in the order a build is worked through: the output map
+              // first, then what hangs off the outputs. Gimbal and Flow & Lidar
+              // left for the Peripherals tab — a gimbal is a peripheral that
+              // happens to use a servo output, not servo setup, and a
+              // rangefinder usually has no servo output at all.
+              (['servo-mapping', 'peripherals', 'relays'] as const)
                 .map((id) => outputTaskCards.find((card) => card.id === id))
                 .filter((card): card is (typeof outputTaskCards)[number] => card !== undefined)
         }
@@ -1317,57 +1302,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     onApply={() => void handleApplyScopedParameterDrafts(outputAssignmentDraftEntries, 'outputs:assignments', 'Output assignments')}
                     onRevert={() => handleDiscardScopedParameterDrafts(outputAssignmentDraftEntries.map((entry) => entry.id), 'output assignments')}
                   />
-                </div>
-              ) : null}
-
-              {activeOutputTaskId === 'gimbal' ? (
-                <div className="outputs-task-panel outputs-task-panel--stack" data-testid="outputs-gimbal-panel">
-                  {gimbalGroups.length === 0 ? (
-                    <p className="bf-note">
-                      No gimbal parameters are exposed on this vehicle. A mount driver has to be
-                      enabled in firmware before MNT1_* appears.
-                    </p>
-                  ) : (
-                    renderAdditionalSettingsCard(
-                      'Gimbal',
-                      'Camera gimbal driver, control mode, and per-axis angle limits.',
-                      gimbalGroups,
-                      gimbalDraftEntries,
-                      gimbalStagedDrafts,
-                      gimbalInvalidDrafts,
-                      'outputs:gimbal',
-                      'Apply Gimbal Changes',
-                      'gimbal settings'
-                    )
-                  )}
-                </div>
-              ) : null}
-
-              {activeOutputTaskId === 'flow-lidar' ? (
-                <div className="outputs-task-panel outputs-task-panel--stack" data-testid="outputs-flow-lidar-panel">
-                  {/* Travels with the flow control it is about: the prompt
-                      appears when optical flow is set to DroneCAN and the bus
-                      is off, so it belongs beside that setting rather than on
-                      whichever tab happened to own flow before. */}
-                  {peripheralsCanEnableSlot}
-                  {flowLidarGroups.length === 0 ? (
-                    <p className="bf-note">
-                      No rangefinder or optical-flow parameters are exposed on this vehicle. Set
-                      RNGFND1_TYPE or FLOW_TYPE first, then reboot.
-                    </p>
-                  ) : (
-                    renderAdditionalSettingsCard(
-                      'Flow & Lidar',
-                      'Rangefinder/lidar driver and range limits, plus optical flow alignment and scaling. Flow needs a height reference, which is almost always the downward rangefinder configured here.',
-                      flowLidarGroups,
-                      flowLidarDraftEntries,
-                      flowLidarStagedDrafts,
-                      flowLidarInvalidDrafts,
-                      'outputs:flow-lidar',
-                      'Apply Flow & Lidar Changes',
-                      'flow and lidar settings'
-                    )
-                  )}
                 </div>
               ) : null}
 

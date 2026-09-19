@@ -3,8 +3,10 @@ Config
 
 The **Config** tab is the baseline-settings surface — the "everything else"
 knobs that don't warrant their own tab but that you still reach for on a fresh
-build: airframe geometry, board orientation, compass, GPS behavior, RC and
-arming settings, and system identity/logging. It edits the same parameters the
+build: airframe geometry, board orientation, RC and arming settings, and system
+identity/logging. Attached hardware — GPS, compass, gimbal, rangefinder and
+optical flow — lives on the :doc:`first-time-setup/peripherals-gimbal` tab
+instead. It edits the same parameters the
 :doc:`parameters` tab exposes, but grouped into a product-shaped layout with the
 staged-draft workflow used across the app (edit → review → apply).
 
@@ -16,8 +18,6 @@ one area at a time instead of a wall of cards:
 
 - **Airframe & Powertrain** — frame class/type, board orientation, and the whole
   power train: ESC protocol, DShot rate, BLHeli, motor poles and reverse mask.
-- **Sensors** — compass setup.
-- **GPS** — GPS driver, auto-config, update rate, and multi-GPS behavior.
 - **RC** — receiver protocol and options, and the RSSI source.
 - **Flight Modes** — which mode each switch position selects, the mode channel
   itself, and the live position the vehicle reports.
@@ -30,9 +30,12 @@ one area at a time instead of a wall of cards:
 
 .. note::
 
-   System rates and active-IMU selection used to sit under **Sensors**. They
-   are how hard the flight controller runs rather than which sensors are
-   attached, so they moved to **System**.
+   System rates and active-IMU selection used to sit under a **Sensors** tab.
+   They are how hard the flight controller runs rather than which sensors are
+   attached, so they moved to **System** — and the GPS and compass settings
+   that shared that tab moved to
+   :doc:`first-time-setup/peripherals-gimbal`, which is where the rest of the
+   attached hardware is.
 
 Each card leads with the settings you actually reach for; rarely-touched fields
 (trims, expo, boot delay, log bitmask, and the like) fold under a per-card
@@ -54,7 +57,8 @@ mounting matches reality rather than reading an enum value. Custom orientations
 Compass
 -------
 
-The **Compass** card (under *Sensors*) collects the compass settings ArduPilot
+The **Compass** card (on the :doc:`first-time-setup/peripherals-gimbal` tab)
+collects the compass settings ArduPilot
 otherwise leaves in the raw parameter tree: which compasses to use for yaw
 (``COMPASS_USE`` / ``USE2`` / ``USE3``), auto declination, how the primary
 external compass is mounted (``COMPASS_EXTERNAL``) and its orientation
@@ -69,6 +73,6 @@ Applying changes
 
 Edits stage as local drafts and don't touch the aircraft until you apply. The
 **Apply Config** / **Revert** toolbar at the bottom is global to the tab — it
-commits (or discards) every staged change across all five category tabs in one
+commits (or discards) every staged change across this tab's categories in one
 press, so you can range across categories and apply once. Reboot-sensitive
 changes prompt you to reboot afterward, the same as elsewhere in the app.

@@ -142,6 +142,17 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     badge: connectionKind === 'connected' ? 'ready' : 'idle',
     tone: 'neutral'
   }
+  // Peripherals — attached hardware (GPS, compass, gimbal, rangefinder/flow).
+  // Always visible: the empty-state copy inside each group names the parameter
+  // that has to be set before the hardware appears, which is exactly what an
+  // operator with a sensor that "isn't showing up" needs to read.
+  const peripheralsDescriptor: AppViewDescriptor = {
+    id: 'peripherals',
+    label: 'Peripherals',
+    description: 'Attached hardware — GPS, compass, camera gimbal, rangefinder/lidar, and optical flow.',
+    badge: connectionKind === 'connected' ? 'live' : 'idle',
+    tone: 'neutral'
+  }
   // Read-only live-traffic inspectors — expert-only advanced tools, injected
   // at render time and only when Expert mode is on.
   // (The DroneCAN inspector used to be a second descriptor here. It inspected the
@@ -192,7 +203,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   // follow a setup -> tuning -> tools flow. Views not listed fall to the
   // end in their original order.
   const CANONICAL_VIEW_ORDER = [
-    'setup', 'guided-setup', 'config', 'calibration', 'ports', 'receiver', 'modes', 'motors',
+    'setup', 'guided-setup', 'config', 'peripherals', 'calibration', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'failsafe', 'osd', 'tuning', 'presets',
     'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'elrs-flash', 'rc-mixer',
     'mavlink-inspector', 'ai-assistant'
@@ -212,6 +223,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const combined = [
     ...relabelled,
     guidedSetupDescriptor,
+    peripheralsDescriptor,
     calibrationDescriptor,
     canBusDescriptor,
     flashDescriptor,

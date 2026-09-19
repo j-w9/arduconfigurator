@@ -1240,7 +1240,13 @@ export function App() {
   // land as follow-up PRs. The sections array is small (5 items) and
   // doesn't need to be useMemo'd, but pre-build the parametersById map
   // once so each section card can render in O(1).
-  const { configParametersById, configSections, isConfigParamId } = useConfigSections(snapshot)
+  const {
+    configParametersById,
+    configSections,
+    peripheralSections,
+    isConfigParamId,
+    isPeripheralParamId
+  } = useConfigSections(snapshot)
   // Auto-enable bidirectional DShot when the operator picks a DShot MOT_PWM_TYPE.
   // Fires only on an actual change of the MOT_PWM_TYPE draft (ref-guarded so
   // other drafts / telemetry ticks don't retrigger it). If the firmware lacks
@@ -2648,6 +2654,9 @@ export function App() {
     configDraftEntries,
     configStagedDrafts,
     configInvalidDrafts,
+    peripheralDraftEntries,
+    peripheralStagedDrafts,
+    peripheralInvalidDrafts,
     osdStagedDrafts,
     osdInvalidDrafts,
     vtxStagedDrafts,
@@ -2697,7 +2706,7 @@ export function App() {
     relayDraftEntries,
     relayStagedDrafts,
     relayInvalidDrafts
-  } = useViewDraftSelectors({ parameterDraftEntries, isConfigParamId })
+  } = useViewDraftSelectors({ parameterDraftEntries, isConfigParamId, isPeripheralParamId })
 
   // Drop drafts that match the live value once a FRESH parameter sync lands.
   //
@@ -5625,8 +5634,6 @@ export function App() {
   const activeOutputTaskId: OutputTaskId = activeViewId === 'servos'
     ? (outputTaskOverride === 'servo-mapping' ||
        outputTaskOverride === 'peripherals' ||
-       outputTaskOverride === 'gimbal' ||
-       outputTaskOverride === 'flow-lidar' ||
        outputTaskOverride === 'relays'
         ? outputTaskOverride
         : 'servo-mapping')
@@ -5651,12 +5658,6 @@ export function App() {
         escReviewSummary,
         servoMappingRowCount: servoMappingRows.length,
         outputPeripheralInvalidDraftCount,
-        gimbalGroupCount: gimbalGroups.length,
-        gimbalStagedDraftCount: gimbalStagedDrafts.length,
-        gimbalInvalidDraftCount: gimbalInvalidDrafts.length,
-        flowLidarGroupCount: flowLidarGroups.length,
-        flowLidarStagedDraftCount: flowLidarStagedDrafts.length,
-        flowLidarInvalidDraftCount: flowLidarInvalidDrafts.length,
         outputPeripheralStagedDraftCount,
         hasNotificationLedTypes: Boolean(notificationLedTypesParameter),
         hasNotificationBuzzTypes: Boolean(notificationBuzzTypesParameter),
@@ -9227,14 +9228,6 @@ export function App() {
           confirmSetupSection,
           clearSetupSectionConfirmation,
           renderMetadataParameterField,
-          gimbalGroups,
-          gimbalDraftEntries,
-          gimbalStagedDrafts,
-          gimbalInvalidDrafts,
-          flowLidarGroups,
-          flowLidarDraftEntries,
-          flowLidarStagedDrafts,
-          flowLidarInvalidDrafts,
           renderAdditionalSettingsCard,
           setDraft,
           updateDrafts,
@@ -10164,6 +10157,95 @@ export function App() {
           isBusy={busyAction !== undefined}
           onApply={() => void handleApplyScopedParameterDrafts(configDraftEntries, 'config:apply', 'Configuration')}
           onRevert={() => handleDiscardScopedParameterDrafts(configDraftEntries.map((entry) => entry.id), 'configuration')}
+        />
+      ) : null}
+
+      {activeViewId === 'peripherals' ? (
+        <ConfigView
+          title="Peripherals"
+          subtitle="Attached hardware — GPS, compass, camera gimbal, rangefinder/lidar, and optical flow. One peripheral at a time; each group applies its own changes."
+          panelId="setup-panel-peripherals"
+          isExpertMode={isExpertMode}
+          // The same ConfigView over the peripheral half of the section list.
+          // Gimbal and Flow & Lidar have no fixed field list — they are whole
+          // metadata-driven parameter groups — so they arrive as footer-only
+          // sections, the way Flight Modes and Power already do on Config.
+          sections={[
+            ...peripheralSections,
+            {
+              id: 'gimbal',
+              title: 'Gimbal',
+              description: 'Camera gimbal/mount driver, control mode, and per-axis angle limits.',
+              category: 'gimbal' as const,
+              wide: true,
+              fields: [],
+              footer:
+                gimbalGroups.length === 0 ? (
+                  <p className="bf-note">
+                    No gimbal parameters are exposed on this vehicle. A mount driver has to be
+                    enabled in firmware before MNT1_* appears.
+                  </p>
+                ) : (
+                  renderAdditionalSettingsCard(
+                    'Gimbal',
+                    'Camera gimbal driver, control mode, and per-axis angle limits.',
+                    gimbalGroups,
+                    gimbalDraftEntries,
+                    gimbalStagedDrafts,
+                    gimbalInvalidDrafts,
+                    'outputs:gimbal',
+                    'Apply Gimbal Changes',
+                    'gimbal settings'
+                  )
+                )
+            },
+            {
+              id: 'flow-lidar',
+              title: 'Flow & Lidar',
+              description:
+                'Rangefinder/lidar driver and range limits, plus optical flow alignment and scaling.',
+              category: 'flow-lidar' as const,
+              wide: true,
+              fields: [],
+              footer: (
+                <>
+                  {/* Travels with the flow control it is about: a DroneCAN flow
+                      sensor on a disabled bus reports nothing at all. */}
+                  {opticalFlowCanEnablePrompt}
+                  {flowLidarGroups.length === 0 ? (
+                    <p className="bf-note">
+                      No rangefinder or optical-flow parameters are exposed on this vehicle. Set
+                      RNGFND1_TYPE or FLOW_TYPE first, then reboot.
+                    </p>
+                  ) : (
+                    renderAdditionalSettingsCard(
+                      'Flow & Lidar',
+                      'Rangefinder/lidar driver and range limits, plus optical flow alignment and scaling. Flow needs a height reference, which is almost always the downward rangefinder configured here.',
+                      flowLidarGroups,
+                      flowLidarDraftEntries,
+                      flowLidarStagedDrafts,
+                      flowLidarInvalidDrafts,
+                      'outputs:flow-lidar',
+                      'Apply Flow & Lidar Changes',
+                      'flow and lidar settings'
+                    )
+                  )}
+                </>
+              )
+            }
+          ]}
+          parametersById={configParametersById}
+          editedValues={editedValues}
+          onEditChange={(paramId, value) => setDraft(paramId, value)}
+          draftStatusById={parameterDraftById}
+          stagedCount={peripheralStagedDrafts.length}
+          invalidCount={peripheralInvalidDrafts.length}
+          draftCount={peripheralDraftEntries.length}
+          canApply={canApplyDraftParameters}
+          isApplying={busyAction === 'peripherals:apply'}
+          isBusy={busyAction !== undefined}
+          onApply={() => void handleApplyScopedParameterDrafts(peripheralDraftEntries, 'peripherals:apply', 'Peripherals')}
+          onRevert={() => handleDiscardScopedParameterDrafts(peripheralDraftEntries.map((entry) => entry.id), 'peripherals')}
         />
       ) : null}
 

@@ -56,8 +56,9 @@ function useViewDraftSlice(
 export function useViewDraftSelectors(input: {
   parameterDraftEntries: ParameterDraftEntry[]
   isConfigParamId: (paramId: string) => boolean
+  isPeripheralParamId: (paramId: string) => boolean
 }) {
-  const { parameterDraftEntries, isConfigParamId } = input
+  const { parameterDraftEntries, isConfigParamId, isPeripheralParamId } = input
 
   const {
     entries: receiverDraftEntries,
@@ -76,6 +77,13 @@ export function useViewDraftSelectors(input: {
     staged: configStagedDrafts,
     invalid: configInvalidDrafts
   } = useViewDraftSlice(parameterDraftEntries, isConfigParamId, [isConfigParamId])
+  // Peripherals tab — the same section-driven membership over the peripheral
+  // half of the section list, so each tab applies only what it shows.
+  const {
+    entries: peripheralDraftEntries,
+    staged: peripheralStagedDrafts,
+    invalid: peripheralInvalidDrafts
+  } = useViewDraftSlice(parameterDraftEntries, isPeripheralParamId, [isPeripheralParamId])
   const {
     staged: osdStagedDrafts,
     invalid: osdInvalidDrafts
@@ -199,6 +207,9 @@ export function useViewDraftSelectors(input: {
     configDraftEntries,
     configStagedDrafts,
     configInvalidDrafts,
+    peripheralDraftEntries,
+    peripheralStagedDrafts,
+    peripheralInvalidDrafts,
     osdStagedDrafts,
     osdInvalidDrafts,
     vtxStagedDrafts,

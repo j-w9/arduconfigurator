@@ -37,7 +37,13 @@ export interface ConfigSectionField {
 export type ConfigCategoryId =
   | 'airframe'
   | 'sensors'
+  // Peripheral groups. These render on the dedicated Peripherals tab rather
+  // than under Config — same section/category machinery, a second ConfigView
+  // instance fed the peripheral half of the section list.
   | 'gps'
+  | 'compass'
+  | 'gimbal'
+  | 'flow-lidar'
   | 'rc'
   | 'flight-modes'
   | 'arming'
@@ -65,7 +71,12 @@ export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
   // open a tab called Airframe.
   { id: 'airframe', label: 'Airframe & Powertrain' },
   { id: 'sensors', label: 'Sensors' },
+  // Peripherals-tab groups, in the order a build is worked through: the
+  // position sources first, then the payloads hanging off them.
   { id: 'gps', label: 'GPS' },
+  { id: 'compass', label: 'Compass' },
+  { id: 'gimbal', label: 'Gimbal' },
+  { id: 'flow-lidar', label: 'Flow & Lidar' },
   { id: 'rc', label: 'RC' },
   // Flight modes sat in a top-level Modes tab whose content overlapped
   // Receiver's own Flight Modes sub-tab. The tab is gone; the same panel lives
@@ -108,6 +119,12 @@ export interface ConfigSection {
 
 export interface ConfigViewProps {
   sections: readonly ConfigSection[]
+  /** Panel heading. Defaults to the Config tab's own copy — the Peripherals
+   *  tab renders the same surface over a different slice of sections. */
+  title?: string
+  subtitle?: string
+  /** DOM id on the wrapper, so two instances never collide. */
+  panelId?: string
   /** Expert mode opts into the whole surface, so the per-card Advanced folds
    *  start open rather than making the operator expand each one. */
   isExpertMode: boolean
@@ -147,6 +164,9 @@ function fieldHasUnsaved(draftStatusById: ScopedFieldDraftMap, paramId: string):
 export function ConfigView(props: ConfigViewProps) {
   const {
     sections,
+    title = 'Config',
+    subtitle = 'Airframe, sensors, GPS, RC, arming, and system settings — grouped so you only see one area at a time.',
+    panelId = 'setup-panel-config',
     isExpertMode,
     parametersById,
     editedValues,
@@ -264,11 +284,8 @@ export function ConfigView(props: ConfigViewProps) {
   }
 
   return (
-    <div id="setup-panel-config">
-      <Panel
-        title="Config"
-        subtitle="Airframe, sensors, GPS, RC, arming, and system settings — grouped so you only see one area at a time."
-      >
+    <div id={panelId}>
+      <Panel title={title} subtitle={subtitle}>
         {presentCategories.length > 1 ? (
           <div className="tab-strip config-category-nav" data-testid="config-category-nav" role="tablist">
             {presentCategories.map((category) => {

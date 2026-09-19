@@ -205,12 +205,16 @@ async function openFlightModes(page: Page): Promise<void> {
 }
 
 // The Config tab groups its sections into top-tab categories; click the tab that
-// holds a given section before asserting on it.
+// holds a given section before asserting on it. Sections whose category is a
+// PERIPHERAL one (GPS, Compass) render on the Peripherals nav tab instead —
+// openConfigSection switches views for those, so call sites don't have to know.
+const PERIPHERAL_SECTION_CATEGORIES = new Set(['gps', 'compass', 'gimbal', 'flow-lidar'])
 const CONFIG_SECTION_CATEGORY: Record<string, string> = {
   frame: 'airframe',
   'board-orientation': 'airframe',
   'esc-dshot': 'airframe',
-  compass: 'sensors',
+  // Compass is attached hardware, so it moved to Peripherals with GPS.
+  compass: 'compass',
   // Scheduler + IMU are System settings, not sensor setup — see
   // CATEGORY_BY_SECTION in use-config-sections.ts. This map mirrors it, so the
   // two must move together.
@@ -228,9 +232,11 @@ const CONFIG_SECTION_CATEGORY: Record<string, string> = {
 
 async function openConfigSection(page: Page, sectionId: string): Promise<void> {
   const category = CONFIG_SECTION_CATEGORY[sectionId]
-  if (category) {
-    await page.getByTestId(`config-category-${category}`).click()
+  if (!category) return
+  if (PERIPHERAL_SECTION_CATEGORIES.has(category)) {
+    await page.getByTestId('view-button-peripherals').click()
   }
+  await page.getByTestId(`config-category-${category}`).click()
 }
 
 test.describe('a11y', () => {
@@ -648,15 +654,17 @@ test.describe('Parameters tab (expert-only)', () => {
 })
 
 test.describe('tab order', () => {
-  test('nav leads with Status & Info, then Guided Setup, Config, Calibration', async ({ page }) => {
+  test('nav leads with Status & Info, then Guided Setup, Config, Peripherals, Calibration', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    // The first four nav buttons follow the canonical order (Status & Info,
-    // then the Guided Setup wizard tab, then Config and Calibration).
+    // The first five nav buttons follow the canonical order (Status & Info,
+    // then the Guided Setup wizard tab, then Config, Peripherals — attached
+    // hardware, next to the settings it used to be mixed into — and
+    // Calibration).
     const navIds = await page.locator('[data-testid^="view-button-"]').evaluateAll((els) =>
       els.map((el) => (el.getAttribute('data-testid') || '').replace('view-button-', ''))
     )
-    expect(navIds.slice(0, 4)).toEqual(['setup', 'guided-setup', 'config', 'calibration'])
+    expect(navIds.slice(0, 5)).toEqual(['setup', 'guided-setup', 'config', 'peripherals', 'calibration'])
     // The Setup tab is now labelled "Status & Info".
     await expect(page.getByTestId('view-button-setup')).toContainText('Status & Info')
   })
@@ -2215,7 +2223,6 @@ test.describe('Config view', () => {
     await expect(page.getByTestId('config-category-nav')).toBeVisible()
     for (const [sectionId, category] of [
       ['board-orientation', 'airframe'],
-      ['gps', 'gps'],
       ['receiver-signal', 'rc'],
       ['arming', 'arming'],
       ['identity', 'system'],
@@ -4853,11 +4860,6 @@ test.describe('ArduPlane demo', () => {
   })
 
   /** Open one of the Servos sub-tabs by its visible label. */
-  async function openServoTab(page: Page, label: string): Promise<void> {
-    await openView(page, 'servos')
-    await page.locator('.tab-strip__tab', { hasText: label }).first().click()
-  }
-
   async function connectCopter(page: Page): Promise<void> {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
@@ -4868,16 +4870,20 @@ test.describe('ArduPlane demo', () => {
     })
   }
 
-  // Gimbal and Rangefinder used to sit together under Peripherals and were
-  // asserted in one test. They are now separate sub-tabs, so the old
-  // "collapsing one does not hide the other" cross-check no longer means
-  // anything — they cannot be on screen together. Split accordingly; the
-  // substantive assertions (fields render, sections collapse, conditional
-  // fields gate on TYPE) are unchanged.
+  // Gimbal and Rangefinder used to sit together under Servos ▸ Peripherals and
+  // were asserted in one test, then became sub-tabs of Servos, and now live on
+  // the Peripherals NAV tab — a gimbal is a peripheral that happens to use a
+  // servo output, not servo setup. The substantive assertions (fields render,
+  // sections collapse, conditional fields gate on TYPE) are unchanged.
+  async function openPeripheralTab(page: Page, label: string): Promise<void> {
+    await openView(page, 'peripherals')
+    await page.locator('.tab-strip__tab', { hasText: label }).first().click()
+  }
+
   test('the Gimbal sub-tab renders the MNT1 driver fields and collapses', async ({ page }) => {
     await connectCopter(page)
-    await openServoTab(page, 'Gimbal')
-    await expect(page.getByTestId('outputs-gimbal-panel')).toBeVisible({ timeout: 15_000 })
+    await openPeripheralTab(page, 'Gimbal')
+    await expect(page.getByTestId('config-section-gimbal')).toBeVisible({ timeout: 15_000 })
     await expect(page.getByTestId('metadata-settings-section-gimbal')).toBeVisible()
     await expect(page.getByText('Gimbal Driver', { exact: true })).toBeVisible()
 
@@ -4888,8 +4894,8 @@ test.describe('ArduPlane demo', () => {
 
   test('the Flow & Lidar sub-tab gates the analog rangefinder fields on TYPE', async ({ page }) => {
     await connectCopter(page)
-    await openServoTab(page, 'Flow & Lidar')
-    await expect(page.getByTestId('outputs-flow-lidar-panel')).toBeVisible({ timeout: 15_000 })
+    await openPeripheralTab(page, 'Flow & Lidar')
+    await expect(page.getByTestId('config-section-flow-lidar')).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText('Rangefinder / Lidar', { exact: true })).toBeVisible()
     await expect(page.getByText('Rangefinder Type', { exact: true })).toBeVisible()
 
@@ -4911,7 +4917,7 @@ test.describe('ArduPlane demo', () => {
   // reproducing the operator's own miswired-CAN-flow situation.
   test('the Flow & Lidar sub-tab exposes Optical Flow, gated the same way as Rangefinder', async ({ page }) => {
     await connectCopter(page)
-    await openServoTab(page, 'Flow & Lidar')
+    await openPeripheralTab(page, 'Flow & Lidar')
 
     const flowSection = page.getByTestId('metadata-settings-section-optical-flow')
     await expect(flowSection).toBeVisible({ timeout: 15_000 })
@@ -4958,7 +4964,7 @@ test.describe('ArduPlane demo', () => {
   test('the Flow & Lidar sub-tab fits a 390px phone viewport without horizontal overflow', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await connectCopter(page)
-    await openServoTab(page, 'Flow & Lidar')
+    await openPeripheralTab(page, 'Flow & Lidar')
     await expect(page.getByTestId('metadata-settings-section-optical-flow')).toBeVisible({ timeout: 15_000 })
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
@@ -7055,54 +7061,79 @@ test.describe('Servos ▸ live output', () => {
   })
 })
 
-test.describe('Servos ▸ Gimbal and Flow & Lidar', () => {
-  // Promoted out of "Additional output settings", where each was a collapsed
-  // row among unrelated ones. They are whole subsystems, so they get tabs.
-  async function openServos(page: Page): Promise<void> {
+test.describe('Peripherals tab', () => {
+  // Attached hardware moved out of two tabs that were the wrong home for it:
+  // GPS and Compass came from Config (they are not board settings), Gimbal and
+  // Flow & Lidar from Servos (a gimbal is a peripheral that happens to use a
+  // servo output; a rangefinder usually has no servo output at all).
+  async function openPeripherals(page: Page): Promise<void> {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
-    await page.getByTestId('view-button-servos').click()
+    await page.getByTestId('view-button-peripherals').click()
   }
 
-  test('both appear as their own sub-tabs and open their panels', async ({ page }) => {
-    await openServos(page)
-    for (const [label, panel] of [
-      ['Gimbal', 'outputs-gimbal-panel'],
-      ['Flow & Lidar', 'outputs-flow-lidar-panel']
+  test('the tab carries GPS, Compass, Gimbal and Flow & Lidar', async ({ page }) => {
+    await openPeripherals(page)
+    for (const [category, sectionId] of [
+      ['gps', 'gps'],
+      ['compass', 'compass'],
+      ['gimbal', 'gimbal'],
+      ['flow-lidar', 'flow-lidar']
     ] as const) {
-      const tab = page.locator('.tab-strip__tab', { hasText: label }).first()
-      await expect(tab).toBeVisible()
-      await tab.click()
-      await expect(page.getByTestId(panel)).toBeVisible()
+      await page.getByTestId(`config-category-${category}`).click()
+      await expect(page.getByTestId(`config-section-${sectionId}`)).toBeVisible()
     }
   })
 
-  test('their settings no longer also appear under Additional output settings', async ({ page }) => {
-    // The point of the move. Showing them in two places gave an operator two
-    // ways to change the same thing with no sign which was authoritative.
-    await openServos(page)
-    await page.locator('.tab-strip__tab', { hasText: 'Peripherals' }).first().click()
-    const additional = page.locator('.outputs-task-panel')
-    const text = ((await additional.textContent()) ?? '')
-    expect(text).not.toContain('Gimbal / Mount')
-    expect(text).not.toContain('Rangefinder / Lidar')
-    expect(text).not.toContain('Optical Flow')
-    // And the airframe/output duplicates are gone from here too.
-    expect(text).not.toContain('Frame type')
-    expect(text).not.toContain('DShot rate')
+  test('GPS and Compass are gone from Config', async ({ page }) => {
+    // The point of the move: one home per peripheral. Two places to set
+    // GPS_TYPE gave an operator no sign which was authoritative.
+    await openPeripherals(page)
+    await page.getByTestId('view-button-config').click()
+    await expect(page.getByTestId('config-category-gps')).toHaveCount(0)
+    await expect(page.getByTestId('config-category-compass')).toHaveCount(0)
+    await expect(page.getByTestId('config-section-gps')).toHaveCount(0)
+    await expect(page.getByTestId('config-section-compass')).toHaveCount(0)
   })
 
-  test('the Servos tabs stay within a phone width', async ({ page }) => {
+  test('Gimbal and Flow & Lidar are gone from the Servos sub-tabs', async ({ page }) => {
+    await openPeripherals(page)
+    await page.getByTestId('view-button-servos').click()
+    const tabs = page.locator('.tab-strip__tab')
+    await expect(tabs.filter({ hasText: 'Gimbal' })).toHaveCount(0)
+    await expect(tabs.filter({ hasText: 'Flow & Lidar' })).toHaveCount(0)
+    // Servos keeps the jobs that really are servo work.
+    await expect(tabs.filter({ hasText: 'Servo' }).first()).toBeVisible()
+  })
+
+  test('a staged peripheral edit belongs to this tab, not to Config', async ({ page }) => {
+    // Each tab applies only what it shows. A compass edit staged here must not
+    // ride along with a press of Apply on Config, or an operator reviewing one
+    // tab's changes would be writing another's.
+    await openPeripherals(page)
+    await page.getByTestId('config-category-compass').click()
+    const compass = page.getByTestId('config-section-compass')
+    await expect(compass).toBeVisible()
+    await compass.getByText('Disabled', { exact: true }).first().click()
+    await expect(page.getByTestId('config-toolbar')).toContainText('1 staged')
+    await expect(page.getByTestId('config-apply')).toBeEnabled()
+
+    await page.getByTestId('view-button-config').click()
+    await expect(page.getByTestId('config-toolbar')).toContainText('0 staged')
+    await expect(page.getByTestId('config-apply')).toBeDisabled()
+  })
+
+  test('the Peripherals sub-tabs stay within a phone width', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await openServos(page)
+    await openPeripherals(page)
     await page.locator('.tab-strip__tab', { hasText: 'Flow & Lidar' }).first().click()
-    await expect(page.getByTestId('outputs-flow-lidar-panel')).toBeVisible()
+    await expect(page.getByTestId('config-section-flow-lidar')).toBeVisible()
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     )
-    expect(overflow, 'the Servos sub-tabs must not widen the page').toBeLessThanOrEqual(2)
+    expect(overflow, 'the Peripherals sub-tabs must not widen the page').toBeLessThanOrEqual(2)
   })
 })
 
