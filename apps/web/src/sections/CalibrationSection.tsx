@@ -1593,10 +1593,13 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 * a manually-entered hover height, so it does not require a
                 * rangefinder to be configured. Shows n/a on firmware without
                 * BARO1_THST_SCALE. */}
-              {/* Sits with the VALT card: both are about what a hover teaches
-                  the vehicle, and this one feeds the same fork builds. Gates
-                  itself on ACC_ZBIAS_LEARN being present. */}
-              {isExpertMode && calibrationTab === 'flight' ? (
+              {/* Autotune is NOT Expert-gated. It is stock ArduCopter, it is
+                  how an ordinary operator gets a tuned aircraft, and the card
+                  is safer than the alternative it replaces — flying AUTOTUNE
+                  from memory with no record of the gains it started from.
+                  Expert mode is for surfaces that can hurt someone who does
+                  not already know what they are; this is the opposite. */}
+              {calibrationTab === 'flight' ? (
                 <AutotuneFlightCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}

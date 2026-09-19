@@ -350,9 +350,11 @@ vehicle that arrives already calibrated and reads as finished.
 Autotune flight
 ---------------
 
-Also on **Calibration → Flight**. Autotune runs in the air and saves on disarm,
-so the app cannot watch it — instead it remembers the gains before the flight
-and compares them afterwards.
+Also on **Calibration → Flight**, and **not** gated behind Expert mode:
+autotune is stock ArduCopter and is how an ordinary operator gets a tuned
+aircraft. Autotune runs in the air and saves on disarm, so the app cannot watch
+it — instead it remembers the gains before the flight and compares them
+afterwards.
 
 #. Pick the **axes** (``AUTOTUNE_AXES`` is a bitmask: roll, pitch, yaw, yaw-D).
    One axis at a time converges faster while you are searching; two is usual once
