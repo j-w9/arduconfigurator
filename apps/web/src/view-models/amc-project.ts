@@ -20,7 +20,9 @@ import {
   type VehicleProject,
   buildZip,
   defaultsFile,
+  fitTemperatureCalibration,
   importComponentsFromParameters,
+  imuSamplesFromLog,
   readVehicleProject,
   unaccountedParameters,
   vehicleContext,
@@ -169,6 +171,35 @@ export function templateValues(
   const components = templateDocuments[id]
   if (!components) return {}
   return valuesFromComponents({ Components: components }, fields)
+}
+
+export interface TempcalOutcome {
+  /** The parameters to stage, across every IMU that could be fitted. */
+  readonly parameters: Readonly<Record<string, number>>
+  readonly fitted: readonly { readonly imu: number; readonly span: number; readonly samples: number }[]
+  readonly rejected: readonly { readonly imu: number; readonly reason: string }[]
+}
+
+/**
+ * Fit the IMU temperature calibration from a log the operator has loaded.
+ *
+ * Three of the sequence's steps are about this, and the middle one produced
+ * nothing usable here until now: cool the controller, fly it warm, then write
+ * the coefficients ArduPilot applies at runtime.
+ */
+export function fitTempcalFromLog(
+  messagesByType: ReadonlyMap<string, readonly ({ readonly name: string } & Record<string, unknown>)[]>
+): TempcalOutcome {
+  const { calibrations, rejected } = fitTemperatureCalibration(
+    imuSamplesFromLog(messagesByType as never)
+  )
+  const parameters: Record<string, number> = {}
+  for (const calibration of calibrations) Object.assign(parameters, calibration.parameters)
+  return {
+    parameters,
+    fitted: calibrations.map((c) => ({ imu: c.imu, span: c.temperatureSpan, samples: c.samples })),
+    rejected
+  }
 }
 
 export interface ProjectExportInputs {

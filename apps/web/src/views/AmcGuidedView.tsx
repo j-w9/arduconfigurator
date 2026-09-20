@@ -27,6 +27,7 @@ import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import {
   buildProject,
+  fitTempcalFromLog,
   importFromVehicle,
   projectArchive,
   projectFilename,
@@ -34,6 +35,7 @@ import {
   templateValues,
   vehicleTemplates
 } from '../view-models/amc-project'
+import type { TempcalOutcome } from '../view-models/amc-project'
 import {
   UNATTACHED_KEY,
   clearAmcProgress,
@@ -143,6 +145,14 @@ function stepDomId(filename: string): string {
 function fieldInputId(key: string): string {
   return `amc-field-${key.replace(/[^a-zA-Z0-9]+/g, '-')}`
 }
+
+/**
+ * The step whose whole job is to hold the calibration the flight produced.
+ *
+ * The sequence has three IMU temperature steps — set it up, fly the profile,
+ * write the results — and this is the third.
+ */
+const TEMPCAL_RESULT_STEP = '03_imu_temperature_calibration_results.param'
 
 /** The escape in a suggestions dropdown, for a value the templates never used. */
 const OTHER = '\u0000other'
@@ -296,6 +306,7 @@ function StepCard({
   onRequestReboot,
   onInstallFile,
   onWriteStep,
+  tempcal,
   defaultsRead,
   onOpenTool,
   onJump
@@ -311,6 +322,7 @@ function StepCard({
   onRequestReboot?: (() => void) | undefined
   onInstallFile?: ((file: { url: string; name: string; destination: string }) => Promise<void>) | undefined
   onWriteStep?: ((changes: readonly { parameter: string; value: number }[], label: string) => void) | undefined
+  tempcal?: TempcalOutcome | undefined
   defaultsRead?: 'idle' | 'asking' | 'nothing'
   onOpenTool?: ((view: AppToolView) => void) | undefined
   onJump?: ((filename: string) => void) | undefined
@@ -549,6 +561,51 @@ function StepCard({
               <span className="amc-step__stage-note">
                 Reviewed and written from the draft bar.
               </span>
+            </div>
+          ) : null}
+
+          {tempcal && row.filename === TEMPCAL_RESULT_STEP ? (
+            <div className="amc-step__tempcal">
+              {/* This step's whole job is to hold the calibration the flight
+                  produced. Without a log it has nothing to say, and AMC runs
+                  the same fit over the same .bin. */}
+              {tempcal.fitted.length > 0 ? (
+                <>
+                  <p>
+                    Fitted from your log: {tempcal.fitted.length} IMU
+                    {tempcal.fitted.length === 1 ? '' : 's'} over{' '}
+                    {tempcal.fitted.map((fit) => `${fit.span.toFixed(1)} °C`).join(', ')}.
+                    {onStage ? (
+                      <button
+                        style={buttonStyle('primary')}
+                        disabled={!connected}
+                        onClick={() =>
+                          onStage(
+                            Object.entries(tempcal.parameters).map(([parameter, value]) => ({
+                              parameter,
+                              value
+                            }))
+                          )
+                        }
+                      >
+                        Stage {Object.keys(tempcal.parameters).length} calibration values
+                      </button>
+                    ) : null}
+                  </p>
+                </>
+              ) : null}
+              {tempcal.rejected.length > 0 ? (
+                <ul className="amc-step__tempcal-rejected">
+                  {tempcal.rejected.map((rejection) => (
+                    <li key={rejection.imu}>
+                      {/* A confident calibration from a narrow temperature
+                          range is worse than none: ArduPilot would apply a
+                          curve fitted to noise at every temperature. */}
+                      IMU {rejection.imu + 1} was not calibrated — {rejection.reason}.
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           ) : null}
 
@@ -825,6 +882,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   // decoded messages are tens of megabytes and nothing here needs them.
   const [logCounts, setLogCounts] = useState<ReadonlyMap<string, number> | undefined>(undefined)
   const [logState, setLogState] = useState<'idle' | 'reading'>('idle')
+  // The IMU temperature calibration fitted from that log, when it held one.
+  const [tempcal, setTempcal] = useState<TempcalOutcome | undefined>(undefined)
   const [logNotice, setLogNotice] = useState<string | undefined>(undefined)
 
   const readLog = useCallback(async (file: File | undefined) => {
@@ -841,7 +900,22 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         return
       }
       setLogCounts(parsed.counts)
-      setLogNotice(`${file.name}: ${parsed.counts.size} message types.`)
+
+      // Three of the sequence's steps are the IMU temperature calibration,
+      // and the log is where its answer comes from. Fitted on load so the
+      // steps can offer it rather than asking for the same file twice.
+      const tempcal = fitTempcalFromLog(parsed.messagesByType)
+      setTempcal(Object.keys(tempcal.parameters).length > 0 || tempcal.rejected.length > 0 ? tempcal : undefined)
+
+      const parts = [`${file.name}: ${parsed.counts.size} message types`]
+      if (tempcal.fitted.length > 0) {
+        parts.push(
+          `IMU temperature calibration fitted for ${tempcal.fitted.length} IMU${
+            tempcal.fitted.length === 1 ? '' : 's'
+          }`
+        )
+      }
+      setLogNotice(`${parts.join('. ')}.`)
     } catch (error) {
       setLogNotice(`Could not read ${file.name}: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
@@ -1613,6 +1687,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   onRequestReboot={onRequestReboot}
                   onInstallFile={onInstallFile}
                   onWriteStep={onWriteStep}
+                  tempcal={tempcal}
                   defaultsRead={defaultsRead}
                   onOpenTool={onOpenTool}
                   onJump={jumpToStep}

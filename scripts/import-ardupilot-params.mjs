@@ -78,17 +78,34 @@ function transformParameter(meta) {
   // @ReadOnly and @Calibration. Carried so a configuration summary can separate
   // what an operator chose from what the vehicle wrote about itself: a
   // calibration result is not a decision, and a read-only value is not one
-  // either. Both are plain annotations in apm.pdef.json, same shape as
-  // RebootRequired above.
-  if (meta.ReadOnly && String(meta.ReadOnly).toLowerCase() === 'true') {
+  // either.
+  //
+  // They do NOT agree on how to say yes. ReadOnly and RebootRequired are the
+  // string "True"; Calibration is the string "1". Accepting only "true" read
+  // 77 read-only parameters and silently dropped all 192 calibration ones —
+  // which looked exactly like upstream not carrying the annotation.
+  if (isAnnotationSet(meta.ReadOnly)) {
     entry.readOnly = true
   }
-  if (meta.Calibration && String(meta.Calibration).toLowerCase() === 'true') {
+  if (isAnnotationSet(meta.Calibration)) {
     entry.calibration = true
   }
 
   // Skip params with no enrichment at all — they'd add bytes without value.
   return Object.keys(entry).length > 0 ? entry : undefined
+}
+
+/**
+ * Whether a boolean-ish annotation is set.
+ *
+ * ArduPilot's generator emits these inconsistently — "True" for ReadOnly and
+ * RebootRequired, "1" for Calibration — so this accepts every spelling of yes
+ * rather than one of them.
+ */
+function isAnnotationSet(value) {
+  if (value === undefined || value === null) return false
+  const text = String(value).trim().toLowerCase()
+  return text === 'true' || text === '1' || text === 'yes'
 }
 
 function transformBundle(raw) {

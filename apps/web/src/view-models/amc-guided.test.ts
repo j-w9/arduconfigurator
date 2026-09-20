@@ -362,12 +362,18 @@ describe('values the documented range disputes', () => {
     expect(row?.disputed?.overridable).toBe(true)
   })
 
-  it('flags a notch filter the sequence disables the same way', () => {
+  it('no longer disputes a notch filter the sequence disables', () => {
+    // This used to assert a dispute: ATC_RAT_RLL_NEF's documented minimum was
+    // 1, so the sequence's 0 read as out of range. ArduPilot has since fixed
+    // the annotation — the minimum is 0 and the description says "zero
+    // disables" — so the dispute is gone, and asserting it would be pinning a
+    // documentation bug in place.
     const summary = withVehicle({ ATC_RAT_RLL_NEF: 5 }, DECLARED)
     const row = summary.rows
       .flatMap((r) => r.changes)
       .find((c) => c.parameter === 'ATC_RAT_RLL_NEF' && c.value === 0)
-    expect(row?.disputed?.reason).toMatch(/below the documented minimum of 1/)
+    expect(row).toBeDefined()
+    expect(row?.disputed).toBeUndefined()
   })
 
   it('says nothing at all when no vehicle is connected', () => {

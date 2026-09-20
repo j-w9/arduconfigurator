@@ -19449,6 +19449,28 @@ button.mavlink-inspector__sent-row {
   color: var(--text-muted);
 }
 
+/* The IMU temperature calibration fitted from a flight log. */
+.amc-step__tempcal {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--primary-500);
+  background: var(--primary-transparent-1);
+}
+
+.amc-step__tempcal p {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.amc-step__tempcal-rejected {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  color: var(--text-muted);
+}
+
 /* Reading the declaration off the vehicle. */
 .amc-guided__from-vehicle-row {
   display: flex;
