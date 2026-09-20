@@ -75,6 +75,18 @@ function transformParameter(meta) {
     entry.rebootRequired = true
   }
 
+  // @ReadOnly and @Calibration. Carried so a configuration summary can separate
+  // what an operator chose from what the vehicle wrote about itself: a
+  // calibration result is not a decision, and a read-only value is not one
+  // either. Both are plain annotations in apm.pdef.json, same shape as
+  // RebootRequired above.
+  if (meta.ReadOnly && String(meta.ReadOnly).toLowerCase() === 'true') {
+    entry.readOnly = true
+  }
+  if (meta.Calibration && String(meta.Calibration).toLowerCase() === 'true') {
+    entry.calibration = true
+  }
+
   // Skip params with no enrichment at all — they'd add bytes without value.
   return Object.keys(entry).length > 0 ? entry : undefined
 }

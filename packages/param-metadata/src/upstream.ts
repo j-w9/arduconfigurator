@@ -13,6 +13,16 @@ export interface UpstreamParameter {
   options?: ParameterValueOption[]
   bitmask?: boolean
   rebootRequired?: boolean
+  /**
+   * ArduPilot's @ReadOnly: the firmware sets this, the operator does not.
+   *
+   * Carried because a configuration summary has to separate what was chosen
+   * from what the vehicle wrote about itself -- a calibration result is not a
+   * decision anyone made.
+   */
+  readOnly?: boolean
+  /** ArduPilot's @Calibration: produced by a calibration rather than chosen. */
+  calibration?: boolean
 }
 
 export type UpstreamParameterMap = Record<string, UpstreamParameter>
