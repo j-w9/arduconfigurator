@@ -1741,11 +1741,32 @@ test.describe('Failsafe view', () => {
     await expect(page.getByTestId('failsafe-row-BATT_LOW_VOLT')).toBeVisible()
     await expect(page.getByTestId('failsafe-row-FS_THR_VALUE')).toHaveCount(0)
 
-    // The metadata-backed extras and the planned servo-position card belong to
-    // Advanced rather than repeating under every tab.
+    // The metadata-backed extras follow the parameter, not the card: the
+    // battery ones sit under Battery with the battery rows. ArduPilot files
+    // every one of them under a single 'failsafe' category, so this is routed
+    // per parameter.
+    await expect(page.getByTestId('metadata-field-info-BATT_LOW_TIMER')).toBeVisible()
+    // FS_OPTIONS is a row rather than a metadata extra, and it is an Advanced
+    // one: not here.
+    await expect(page.getByTestId('failsafe-row-FS_OPTIONS')).toHaveCount(0)
+
+    // The planned servo-position card and the genuinely uncategorised knobs
+    // (FS_OPTIONS) belong to Advanced rather than repeating under every tab.
     await expect(page.getByTestId('failsafe-servo-position-placeholder')).toHaveCount(0)
     await page.getByTestId('failsafe-category-advanced').click()
     await expect(page.getByTestId('failsafe-servo-position-placeholder')).toBeVisible()
+    await expect(page.getByTestId('failsafe-row-FS_OPTIONS')).toBeVisible()
+    await expect(page.getByTestId('metadata-field-info-BATT_LOW_TIMER')).toHaveCount(0)
+
+    // Pre-arm checks are NOT here. ArduPilot files them under the failsafe
+    // category, so they used to arrive in this pile — but Config ▸ Arming
+    // edits that exact set, and a pre-arm check stops you arming rather than
+    // reacting in flight.
+    await expect(page.getByTestId('metadata-field-info-ARMING_CHECK')).toHaveCount(0)
+    await expect(page.getByTestId('metadata-field-info-ARMING_RUDDER')).toHaveCount(0)
+    await openView(page, 'config')
+    await page.getByTestId('config-category-arming').click()
+    await expect(page.getByTestId('config-section-arming')).toBeVisible()
   })
 
   test('a staged edit marks the tab it is on', async ({ page }) => {

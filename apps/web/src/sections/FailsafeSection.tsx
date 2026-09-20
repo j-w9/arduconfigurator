@@ -106,22 +106,114 @@ export function FailsafeSection(props: FailsafeSectionProps) {
   // Any 'failsafe' category param already shown in the primary FailsafeView
   // rows above is filtered out of the additional-settings groups so it
   // doesn't double-render.
+  //
+  // The pre-arm family goes too. ArduPilot files ARMING_CHECK / ARMING_SKIPCHK
+  // / ARMING_REQUIRE / ARMING_RUDDER under the 'failsafe' metadata category, so
+  // they arrived here — but Config ▸ Arming already edits that exact set, and a
+  // pre-arm check is not a failsafe: it is what stops you arming in the first
+  // place. Nothing becomes unreachable; the card below says where they live.
+  const isPreArmParamId = (paramId: string): boolean => paramId.startsWith('ARMING_')
   const additionalGroups: AdditionalSettingsGroup[] = failsafeAdditionalGroups
     .map((group) => ({
       ...group,
-      parameters: group.parameters.filter((parameter) => !failsafeIds.has(parameter.id))
+      parameters: group.parameters.filter(
+        (parameter) => !failsafeIds.has(parameter.id) && !isPreArmParamId(parameter.id)
+      )
     }))
     .filter((group) => group.parameters.length > 0)
-  // The geofence gets its own sub-tab rather than sitting in "additional
-  // settings" under Advanced. It is a failsafe in its own right — a boundary
-  // with a breach action — and it is the one in here a basic-mode operator is
-  // most likely to be looking for.
-  const fenceGroups = additionalGroups.filter((group) => group.categoryId === 'fence')
-  const otherAdditionalGroups = additionalGroups.filter((group) => group.categoryId !== 'fence')
-  const fenceParamIds = new Set(fenceGroups.flatMap((group) => group.parameters.map((parameter) => parameter.id)))
-  const additionalDraftEntries = failsafeAdditionalDraftEntries.filter((entry) => !failsafeIds.has(entry.id)) as ParameterDraftEntry[]
-  const additionalStagedDrafts = failsafeAdditionalStagedDrafts.filter((entry) => !failsafeIds.has(entry.id)) as ParameterDraftEntry[]
-  const additionalInvalidDrafts = failsafeAdditionalInvalidDrafts.filter((entry) => !failsafeIds.has(entry.id)) as ParameterDraftEntry[]
+  const inAdditionalScope = (paramId: string): boolean =>
+    !failsafeIds.has(paramId) && !isPreArmParamId(paramId)
+  const additionalDraftEntries = failsafeAdditionalDraftEntries.filter((entry) =>
+    inAdditionalScope(entry.id)
+  ) as ParameterDraftEntry[]
+  const additionalStagedDrafts = failsafeAdditionalStagedDrafts.filter((entry) =>
+    inAdditionalScope(entry.id)
+  ) as ParameterDraftEntry[]
+  const additionalInvalidDrafts = failsafeAdditionalInvalidDrafts.filter((entry) =>
+    inAdditionalScope(entry.id)
+  ) as ParameterDraftEntry[]
+
+  // Where each metadata-backed parameter belongs among the sub-tabs.
+  //
+  // ArduPilot files them all under ONE metadata category ('failsafe'), so
+  // routing has to be per parameter. Prefix rules rather than a hand-listed set
+  // of ids, so a knob this build has and the catalog does not still lands
+  // somewhere sensible, and a new BATT_FS_* in a future firmware needs no
+  // change here. Anything unmatched falls to Advanced, which is what that tab
+  // is for.
+  const ADDITIONAL_ROUTES: ReadonlyArray<{ source: string; match: (paramId: string) => boolean }> = [
+    { source: 'Battery failsafe', match: (id) => id.startsWith('BATT_') },
+    {
+      source: 'RC failsafe',
+      match: (id) =>
+        id.startsWith('FS_THR') || id.startsWith('RC_FS') || id.startsWith('THR_FS') || id === 'THR_FAILSAFE'
+    },
+    { source: 'GCS failsafe', match: (id) => id.startsWith('FS_GCS') },
+    // Vibration rides with EKF: it is the EKF that the vibration failsafe is
+    // protecting, and ArduPilot documents them together.
+    { source: 'EKF failsafe', match: (id) => id.startsWith('FS_EKF') || id.startsWith('FS_VIBE') },
+    // The geofence is a failsafe in its own right — a boundary with a breach
+    // action — and the one in here a basic-mode operator is most likely to be
+    // looking for, so it earns a tab rather than a row in a pile.
+    { source: 'Fence', match: (id) => id.startsWith('FENCE_') }
+  ]
+
+  const routeFor = (paramId: string): string =>
+    ADDITIONAL_ROUTES.find((route) => route.match(paramId))?.source ?? 'Advanced'
+  const slotId = (source: string): string => source.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+
+  // Split every group's parameters by route, keeping the group (and its label)
+  // intact within each destination.
+  const groupsBySlot = new Map<string, AdditionalSettingsGroup[]>()
+  for (const group of additionalGroups) {
+    const byRoute = new Map<string, typeof group.parameters>()
+    for (const parameter of group.parameters) {
+      const route = routeFor(parameter.id)
+      const existing = byRoute.get(route)
+      if (existing) existing.push(parameter)
+      else byRoute.set(route, [parameter])
+    }
+    for (const [route, parameters] of byRoute) {
+      const slot = slotId(route)
+      const bucket = groupsBySlot.get(slot) ?? []
+      bucket.push({ ...group, parameters })
+      groupsBySlot.set(slot, bucket)
+    }
+  }
+
+  const extraSlots: Record<string, ReactNode> = {}
+  for (const [slot, groups] of groupsBySlot) {
+    const ids = new Set(groups.flatMap((group) => group.parameters.map((parameter) => parameter.id)))
+    const entries = additionalDraftEntries.filter((entry) => ids.has(entry.id))
+    const staged = additionalStagedDrafts.filter((entry) => ids.has(entry.id))
+    const invalid = additionalInvalidDrafts.filter((entry) => ids.has(entry.id))
+    extraSlots[slot] =
+      slot === 'fence'
+        ? renderAdditionalSettingsCard(
+            'Geofence',
+            'A boundary and what the vehicle does when it reaches one.',
+            groups,
+            entries,
+            staged,
+            invalid,
+            'failsafe:fence',
+            'Apply Fence Changes',
+            'geofence settings'
+          )
+        : renderAdditionalSettingsCard(
+            'More settings',
+            slot === 'advanced'
+              ? 'The rest of the parameters ArduPilot files under failsafe. Pre-arm checks are not here — they stop you arming rather than react in flight, and Config ▸ Arming edits them.'
+              : 'The rest of the parameters ArduPilot files under this failsafe.',
+            groups,
+            entries,
+            staged,
+            invalid,
+            `failsafe:additional:${slot}`,
+            'Apply These Changes',
+            'additional failsafe settings'
+          )
+  }
 
   return (
     <section className="grid one-up">
@@ -157,34 +249,9 @@ export function FailsafeSection(props: FailsafeSectionProps) {
         onApply={() => void onApplyScopedDrafts(failsafeDraftEntries, 'failsafe:apply', 'Failsafe')}
         onRevert={() => onDiscardScopedDrafts(failsafeDraftEntries.map((entry) => entry.id), 'failsafe')}
         onOpenPower={onOpenPower}
-        // The metadata-backed extras belong with the Advanced rows, not stacked
-        // under every tab.
-        fenceSlot={
-          fenceGroups.length > 0
-            ? renderAdditionalSettingsCard(
-                'Geofence',
-                'A boundary and what the vehicle does when it reaches one.',
-                fenceGroups,
-                additionalDraftEntries.filter((entry) => fenceParamIds.has(entry.id)),
-                additionalStagedDrafts.filter((entry) => fenceParamIds.has(entry.id)),
-                additionalInvalidDrafts.filter((entry) => fenceParamIds.has(entry.id)),
-                'failsafe:fence',
-                'Apply Fence Changes',
-                'geofence settings'
-              )
-            : undefined
-        }
-        advancedSlot={renderAdditionalSettingsCard(
-          'Additional failsafe settings',
-          'Metadata-backed failsafe knobs that extend the rows above (advanced battery / EKF / pre-arm failsafe options).',
-          otherAdditionalGroups,
-          additionalDraftEntries.filter((entry) => !fenceParamIds.has(entry.id)),
-          additionalStagedDrafts.filter((entry) => !fenceParamIds.has(entry.id)),
-          additionalInvalidDrafts.filter((entry) => !fenceParamIds.has(entry.id)),
-          'failsafe:additional',
-          'Apply Additional Failsafe Changes',
-          'additional failsafe settings'
-        )}
+        // Split by which failsafe each parameter belongs to, rather than one
+        // "additional settings" pile at the end of the tab.
+        extraSlots={extraSlots}
       />
     </section>
   )
