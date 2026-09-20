@@ -1,7 +1,35 @@
+import { useMemo, useState, type ReactNode } from 'react'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import { ScopedField, type ScopedFieldDraftMap } from './ScopedField'
+
+/* Sub-tabs, by the kind of failsafe. The tab carried every row of every kind in
+   one grid — RC, battery, GCS, EKF and the advanced options stacked together —
+   so setting up one behaviour meant reading past four others. The groups are
+   the row `source` values the builders already assign, in the order a build is
+   worked through: the link first, then the battery, then the ones that only
+   matter once it is flying. */
+const FAILSAFE_CATEGORY_ORDER: readonly string[] = [
+  'RC failsafe',
+  'Battery failsafe',
+  'Fence',
+  'GCS failsafe',
+  'EKF failsafe',
+  'Advanced'
+]
+
+/** Short tab labels — the panel is already called Failsafe. */
+const FAILSAFE_CATEGORY_LABELS: Record<string, string> = {
+  'RC failsafe': 'RC',
+  'Battery failsafe': 'Battery',
+  Fence: 'Fence',
+  'GCS failsafe': 'GCS',
+  'EKF failsafe': 'EKF',
+  Advanced: 'Advanced'
+}
+
+const categoryId = (source: string): string => source.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
 export interface FailsafeViewRow {
   source: string
@@ -21,6 +49,12 @@ export interface FailsafeViewProps {
   batteryCriticalLabel: string
   batteryCriticalThresholdText: string
   rows: readonly FailsafeViewRow[]
+  /** The geofence card. Given when the firmware reports FENCE_* — it earns a
+   *  sub-tab of its own, being a failsafe in its own right. */
+  fenceSlot?: ReactNode
+  /** Rendered on the Advanced sub-tab, under its rows — the metadata-backed
+   *  "additional failsafe settings" card the section owns. */
+  advancedSlot?: ReactNode
   onOpenPower: () => void
   // Staged-write editing (same draft model as every other param tab).
   editedValues: Record<string, string>
@@ -45,6 +79,8 @@ export function FailsafeView(props: FailsafeViewProps) {
     batteryCriticalLabel,
     batteryCriticalThresholdText,
     rows,
+    fenceSlot,
+    advancedSlot,
     onOpenPower,
     editedValues,
     onEditChange,
@@ -58,6 +94,44 @@ export function FailsafeView(props: FailsafeViewProps) {
     onApply,
     onRevert
   } = props
+
+  // Only the groups this vehicle actually has rows for get a tab; a row whose
+  // source is not in the canonical list still renders rather than vanishing —
+  // it lands on Advanced, which is where an uncategorised knob belongs.
+  const groups = useMemo(() => {
+    const bySource = new Map<string, FailsafeViewRow[]>()
+    for (const row of rows) {
+      const source = FAILSAFE_CATEGORY_ORDER.includes(row.source) ? row.source : 'Advanced'
+      const existing = bySource.get(source)
+      if (existing) existing.push(row)
+      else bySource.set(source, [row])
+    }
+    return FAILSAFE_CATEGORY_ORDER.filter(
+      (source) =>
+        bySource.has(source) || source === 'Advanced' || (source === 'Fence' && fenceSlot !== undefined)
+    ).map((source) => ({ source, id: categoryId(source), rows: bySource.get(source) ?? [] }))
+  }, [rows, fenceSlot])
+
+  const [activeCategory, setActiveCategory] = useState<string>(groups[0]?.id ?? 'rc-failsafe')
+  const effectiveCategory = groups.some((group) => group.id === activeCategory)
+    ? activeCategory
+    : groups[0]?.id ?? 'rc-failsafe'
+  const activeGroup = groups.find((group) => group.id === effectiveCategory)
+  const visibleRows = activeGroup?.rows ?? []
+
+  // A staged edit on a tab you are not looking at is never invisible.
+  const unsavedByCategory = useMemo(() => {
+    const set = new Set<string>()
+    for (const group of groups) {
+      if (group.rows.some((row) => {
+        const status = draftStatusById.get(row.paramId)?.status
+        return status === 'staged' || status === 'invalid'
+      })) {
+        set.add(group.id)
+      }
+    }
+    return set
+  }, [groups, draftStatusById])
 
   return (
     <div id="setup-panel-failsafe">
@@ -84,8 +158,32 @@ export function FailsafeView(props: FailsafeViewProps) {
             </article>
           </div>
 
+          <div className="tab-strip failsafe-category-nav" data-testid="failsafe-category-nav" role="tablist">
+            {groups.map((group) => {
+              const isActive = group.id === effectiveCategory
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className={`tab-strip__tab${isActive ? ' is-active' : ''}`}
+                  data-testid={`failsafe-category-${group.id}`}
+                  onClick={() => setActiveCategory(group.id)}
+                >
+                  <span className="tab-strip__tab-title">
+                    {FAILSAFE_CATEGORY_LABELS[group.source] ?? group.source}
+                  </span>
+                  {unsavedByCategory.has(group.id) ? (
+                    <span className="config-category-nav__dot" title="Unsaved changes in this group" aria-label="unsaved changes" />
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+
           <div className="config-grid" data-testid="failsafe-editor-grid">
-            {rows.map((row) => (
+            {visibleRows.map((row) => (
               <article
                 key={row.paramId}
                 className="config-section"
@@ -138,6 +236,10 @@ export function FailsafeView(props: FailsafeViewProps) {
             </button>
           </div>
 
+          {effectiveCategory === 'fence' ? fenceSlot : null}
+          {effectiveCategory === 'advanced' ? advancedSlot : null}
+
+          {effectiveCategory === 'advanced' ? (
           <section
             className="failsafe-placeholder failsafe-servo-position"
             data-testid="failsafe-servo-position-placeholder"
@@ -160,6 +262,7 @@ export function FailsafeView(props: FailsafeViewProps) {
               Parameters tab.
             </p>
           </section>
+          ) : null}
 
           <div className="modes-help">
             <p>

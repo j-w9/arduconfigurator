@@ -154,6 +154,14 @@ const mockParameters: ParameterState = {
   INS_TCAL2_TMAX: 70,
   INS_TCAL3_TMIN: 0,
   INS_TCAL3_TMAX: 70,
+  // Baro temperature calibration (AP_TempCalibration, a Copter g2 subgroup) —
+  // a DIFFERENT family from the per-IMU INS_TCALn_* above. At the firmware's
+  // own defaults for a board that has never learned: off, no range, no
+  // exponent. TCAL_TEMP_MIN/MAX/BARO_EXP are @ReadOnly — the learn writes them.
+  TCAL_ENABLED: 0,
+  TCAL_TEMP_MIN: 0,
+  TCAL_TEMP_MAX: 0,
+  TCAL_BARO_EXP: 0,
   RNGFND1_GNDCLR: 0.1,
   RNGFND1_ADDR: 0,
   RNGFND1_POS_X: 0,

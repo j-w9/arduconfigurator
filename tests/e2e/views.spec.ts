@@ -1672,9 +1672,11 @@ test.describe('Failsafe view', () => {
     // Basic mode. Not an incidental default — it is the condition under test.
     await expect(page.getByTestId('product-mode-expert')).not.toBeChecked()
 
-    // Its own card rather than eight fields interleaved with the battery
-    // timers. The section id comes from the parameter category, so this also
-    // pins the fence to a category of its own.
+    // Its own SUB-TAB now, not eight fields interleaved with the battery
+    // timers: the fence is a failsafe in its own right — a boundary with a
+    // breach action — and the one in here a basic-mode operator is most likely
+    // to be looking for.
+    await page.getByTestId('failsafe-category-fence').click()
     const fence = page.getByTestId('metadata-settings-section-fence')
     await expect(fence).toContainText('Geofence')
     // The group is a <details>; open it if this build ships it collapsed so the
@@ -1708,11 +1710,60 @@ test.describe('Failsafe view', () => {
     await expect(page.getByTestId('failsafe-editor-grid')).toBeVisible()
 
     // Each failsafe param is now an inline editor seeded from the live value.
+    // The rows live under sub-tabs by kind of failsafe: RC leads, battery next.
     await expect(page.getByTestId('failsafe-row-FS_THR_VALUE').locator('input')).toHaveValue('975')
+    await page.getByTestId('failsafe-category-battery-failsafe').click()
     await expect(page.getByTestId('failsafe-row-BATT_LOW_VOLT').locator('input')).toHaveValue('14.4')
     await expect(page.getByTestId('failsafe-row-BATT_CRT_VOLT').locator('input')).toHaveValue('13.8')
 
     await expect(page.getByTestId('failsafe-go-to-power')).toBeVisible()
+  })
+
+  test('the rows are grouped into sub-tabs by kind of failsafe', async ({ page }) => {
+    // One grid held RC, battery, GCS, EKF and the advanced options together, so
+    // setting up one behaviour meant reading past four others.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await openView(page, 'failsafe')
+
+    const nav = page.getByTestId('failsafe-category-nav')
+    await expect(nav).toBeVisible()
+    for (const label of ['RC', 'Battery', 'Fence', 'GCS', 'EKF', 'Advanced']) {
+      await expect(nav.getByRole('tab', { name: label, exact: true })).toBeVisible()
+    }
+
+    // RC leads, and its rows are the only ones on screen.
+    await expect(page.getByTestId('failsafe-row-FS_THR_VALUE')).toBeVisible()
+    await expect(page.getByTestId('failsafe-row-BATT_LOW_VOLT')).toHaveCount(0)
+
+    await page.getByTestId('failsafe-category-battery-failsafe').click()
+    await expect(page.getByTestId('failsafe-row-BATT_LOW_VOLT')).toBeVisible()
+    await expect(page.getByTestId('failsafe-row-FS_THR_VALUE')).toHaveCount(0)
+
+    // The metadata-backed extras and the planned servo-position card belong to
+    // Advanced rather than repeating under every tab.
+    await expect(page.getByTestId('failsafe-servo-position-placeholder')).toHaveCount(0)
+    await page.getByTestId('failsafe-category-advanced').click()
+    await expect(page.getByTestId('failsafe-servo-position-placeholder')).toBeVisible()
+  })
+
+  test('a staged edit marks the tab it is on', async ({ page }) => {
+    // An edit on a tab you are not looking at must not be invisible.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await openView(page, 'failsafe')
+
+    const input = page.getByTestId('failsafe-row-FS_THR_VALUE').locator('input')
+    await input.fill('981')
+    await input.blur()
+    await page.getByTestId('failsafe-category-battery-failsafe').click()
+    await expect(
+      page.getByTestId('failsafe-category-rc-failsafe').locator('.config-category-nav__dot')
+    ).toBeVisible()
+    // Save is still global to the tab, so the staged RC edit applies from here.
+    await expect(page.getByTestId('failsafe-save')).toHaveText('Save Failsafe (1)')
   })
 
   test('failsafe params can be edited and staged for write', async ({ page }) => {
@@ -2226,8 +2277,6 @@ test.describe('Config view', () => {
       ['receiver-signal', 'rc'],
       ['arming', 'arming'],
       ['identity', 'system'],
-      ['beeper', 'system'],
-      ['camera-trigger', 'system'],
       ['logging', 'system']
     ] as const) {
       await page.getByTestId(`config-category-${category}`).click()
@@ -2235,6 +2284,16 @@ test.describe('Config view', () => {
     }
     // Statistics moved to the Setup side panel — no longer a Config section.
     await expect(page.getByTestId('config-section-statistics')).toHaveCount(0)
+    // The beeper/LED card was a second copy of the Peripherals LEDs & Buzzer
+    // card, and the camera trigger is attached hardware: both left Config.
+    await expect(page.getByTestId('config-section-beeper')).toHaveCount(0)
+    await expect(page.getByTestId('config-section-camera-trigger')).toHaveCount(0)
+    // Main loop rate is a System setting; it is no longer mirrored on the ESC
+    // card under Airframe.
+    await page.getByTestId('config-category-airframe').click()
+    await expect(
+      page.getByTestId('config-section-esc-dshot').getByText('Main loop rate')
+    ).toHaveCount(0)
     // Fast-rate thread is build-gated: the demo Copter mock does not stream
     // FSTRATE_*, so the Fast loop rate section must never render.
     await expect(page.getByTestId('config-section-fast-loop-rate')).toHaveCount(0)
@@ -4437,7 +4496,10 @@ test.describe('ArduPlane demo', () => {
     // Per-IMU state reads "TCAL: off" (not "disabled", which read as IMU-off).
     await expect(tcal).toContainText('IMU1 TCAL: off')
     // The step-by-step is collapsed into a How-it-works disclosure (compact card).
-    await expect(tcal.locator('.calibration-card__howto summary')).toHaveText(/How thermal calibration works/i)
+    // .first(): the card now carries a second how-to for the baro procedure.
+    await expect(tcal.locator('.calibration-card__howto summary').first()).toHaveText(
+      /How thermal calibration works/i
+    )
     await expect(page.getByTestId('tcal-start')).toBeVisible()
 
     // The temperature range the learn runs over, seeded from the vehicle.
@@ -4466,6 +4528,33 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('tcal-tmax').fill('45')
     await page.getByTestId('tcal-start').click()
     await expect(page.locator('body')).toContainText('6 staged changes')
+  })
+
+  test('Calibration: the TCAL card also runs the BARO temperature calibration', async ({ page }) => {
+    // A different parameter family and a different procedure from the per-IMU
+    // one above: AP_TempCalibration's TCAL_* (Copter g2), which learns how the
+    // barometer's pressure reading drifts with temperature. Same card because
+    // it is the same bench session — cold board, still, let it warm.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await enableExpertMode(page)
+    await openView(page, 'calibration')
+    await page.getByTestId('calibration-tab-sensors').click()
+
+    const baro = page.getByTestId('tcal-baro')
+    await expect(baro).toBeVisible()
+    // A board that has never learned: off, and no range.
+    await expect(baro).toContainText('Baro TCAL: off')
+    await expect(page.getByTestId('tcal-baro-range')).toHaveText('No range learned yet')
+    // Nothing to keep until it is learning.
+    await expect(page.getByTestId('tcal-baro-keep')).toBeDisabled()
+
+    // Preparing it stages TCAL_ENABLED = 2 (learn AND use) — one parameter, and
+    // NOT the per-IMU family.
+    await page.getByTestId('tcal-baro-start').click()
+    await expect(page.locator('body')).toContainText('1 staged change')
   })
 
   test('Calibration: autotune is a flight you come back from', async ({ page }) => {
@@ -4724,6 +4813,7 @@ test.describe('ArduPlane demo', () => {
     // ScopedSelectField with "Disabled" as the current selection. The
     // operator can flip the monitor right here instead of bouncing to
     // the Power view.
+    await page.getByTestId('failsafe-category-battery-failsafe').click()
     const battMonitorRow = page.getByTestId('failsafe-row-BATT_MONITOR')
     await expect(battMonitorRow).toBeVisible()
     await expect(battMonitorRow).toContainText('Battery failsafe')
@@ -7140,6 +7230,13 @@ test.describe('Peripherals tab', () => {
     await page.getByTestId('view-button-servos').click()
     await expect(page.getByTestId('outputs-task-nav')).toHaveCount(0)
     await expect(page.getByTestId('servo-mapping-task-body')).toBeVisible()
+  })
+
+  test('the camera trigger sits with the mount that carries the camera', async ({ page }) => {
+    await openPeripherals(page)
+    await page.getByTestId('config-category-gimbal').click()
+    await expect(page.getByTestId('config-section-camera-trigger')).toBeVisible()
+    await expect(page.getByTestId('config-section-gimbal')).toBeVisible()
   })
 
   test('the LED and buzzer card came over intact', async ({ page }) => {
