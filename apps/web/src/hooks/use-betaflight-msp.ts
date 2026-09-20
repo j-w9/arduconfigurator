@@ -7,7 +7,12 @@
 
 import { useCallback, useRef, useState } from 'react'
 
-import { MspSession, type MspIdentity, type MspSerialPortConfig } from '@arduconfig/protocol-msp'
+import {
+  MspSession,
+  formatCliCaptureFile,
+  type MspIdentity,
+  type MspSerialPortConfig
+} from '@arduconfig/protocol-msp'
 import { WebSerialTransport } from '@arduconfig/transport'
 
 /** Betaflight's default MSP baud. Not configurable: a board that has been
@@ -139,7 +144,10 @@ export function useBetaflightMsp(): UseBetaflightMspResult {
         .replace(/[-:]/g, '')
         .replace(/\..+$/, '')
         .replace('T', '_')
-      const blob = new Blob([diff], { type: 'text/plain' })
+      // Byte-for-byte what Betaflight Configurator saves: the CLI transcript
+      // (prompt, echoed command, output, trailing prompt) in CRLF. Verified
+      // against a real BTFL_cli_*.txt from the same board.
+      const blob = new Blob([formatCliCaptureFile(diff, 'diff')], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
