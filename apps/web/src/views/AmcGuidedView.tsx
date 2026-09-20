@@ -911,23 +911,22 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             an operator following a step should be able to reach the guide that
             explains it. */}
         <p className="amc-guided__credit">
-          The sequence is{' '}
-          <a href="https://github.com/ArduPilot/MethodicConfigurator" target="_blank" rel="noreferrer noopener">
-            ArduPilot Methodic Configurator
-          </a>
-          &apos;s, evaluated here. Its{' '}
-          <a href="https://ardupilot.github.io/MethodicConfigurator/" target="_blank" rel="noreferrer noopener">
-            documentation
-          </a>{' '}
-          and{' '}
-          <a
-            href={`https://ardupilot.github.io/MethodicConfigurator/TUNING_GUIDE_${kind}`}
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            {kind} tuning guide
-          </a>{' '}
-          explain the why behind each step.
+          The sequence is ArduPilot Methodic Configurator&apos;s, evaluated here. Its own docs explain
+          the why behind each step.
+        </p>
+        <p className="amc-guided__links">
+          {[
+            ['Project', 'https://github.com/ArduPilot/MethodicConfigurator'],
+            ['Introduction', 'https://discuss.ardupilot.org/t/new-ardupilot-methodic-configurator-gui/115038'],
+            ['Documentation', 'https://ardupilot.github.io/MethodicConfigurator/'],
+            // AMC publishes exactly four tuning guides, named for the four
+            // sequence kinds, so this always resolves to a real page.
+            [`${kind} tuning guide`, `https://ardupilot.github.io/MethodicConfigurator/TUNING_GUIDE_${kind}`]
+          ].map(([label, href]) => (
+            <a key={href} href={href} target="_blank" rel="noreferrer noopener">
+              {label}
+            </a>
+          ))}
         </p>
         <div className="amc-guided__controls">
           <label>

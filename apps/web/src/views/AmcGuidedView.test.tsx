@@ -430,10 +430,17 @@ describe('credit', () => {
     render(<AmcGuidedView {...base} />)
     await whenLoaded()
 
-    const project = screen.getByRole('link', { name: /ArduPilot Methodic Configurator/i })
+    const project = screen.getByRole('link', { name: 'Project' })
     expect(project.getAttribute('href')).toBe('https://github.com/ArduPilot/MethodicConfigurator')
     // Opened in a new tab, without handing the target window a reference back.
     expect(project.getAttribute('rel')).toContain('noopener')
+
+    expect(screen.getByRole('link', { name: 'Introduction' }).getAttribute('href')).toBe(
+      'https://discuss.ardupilot.org/t/new-ardupilot-methodic-configurator-gui/115038'
+    )
+    expect(screen.getByRole('link', { name: 'Documentation' }).getAttribute('href')).toBe(
+      'https://ardupilot.github.io/MethodicConfigurator/'
+    )
 
     // The guide follows the chosen sequence. AMC publishes exactly four, named
     // for the four sequence kinds, so the interpolated URL is always real —

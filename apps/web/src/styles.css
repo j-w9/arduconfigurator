@@ -19398,7 +19398,16 @@ button.mavlink-inspector__sent-row {
   max-width: 78ch;
 }
 
-.amc-guided__credit a {
+/* A row of destinations rather than links buried in a sentence: they are
+   reference material an operator returns to, not prose to read once. */
+.amc-guided__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 14px;
+}
+
+.amc-guided__links a {
   color: var(--primary-500);
 }
 
