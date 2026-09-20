@@ -1,5 +1,5 @@
 import type { ParameterState } from '@arduconfig/ardupilot-core'
-import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import { InfoDot } from './InfoDot'
 import { ParamInfoBubble } from './ParamInfoBubble'
@@ -86,41 +86,35 @@ export function ModesView(props: ModesViewProps) {
   if (joystickModeNote) {
     return (
       <div id="setup-panel-modes">
-        <Panel
-          title="Modes"
-          subtitle="Live flight mode reported by the vehicle heartbeat. This vehicle has no RC mode-switch channel."
-        >
-          <div className="modes-stack">
-            <div className="modes-status">
-              <article className="modes-status__card">
-                <span>Active mode</span>
-                <strong>{activeModeLabel}</strong>
-                <small>Mode reported by the vehicle heartbeat.</small>
-              </article>
-            </div>
-
-            <div className="modes-help">
-              <p data-testid="modes-joystick-note">{joystickModeNote}</p>
-            </div>
+        <div className="modes-stack">
+          <div className="modes-status">
+            <article className="modes-status__card">
+              <span>Active mode</span>
+              <strong>{activeModeLabel}</strong>
+            </article>
           </div>
-        </Panel>
+
+          <div className="modes-help">
+            <p data-testid="modes-joystick-note">{joystickModeNote}</p>
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
     <div id="setup-panel-modes">
-      <Panel
-        title="Modes"
-        subtitle="Flight-mode assignments for the configured switch channel and a live indicator on the active slot."
-      >
-        <div className="modes-stack">
+      {/* No Panel of its own. This renders inside the Config card already
+          headed "Flight modes", so a second heading and a sentence restating
+          it were two lines to read past before the thing itself. */}
+      <div className="modes-stack">
           <div className="modes-status">
             <article className="modes-status__card">
-              <span>Mode channel</span>
-              {/* Editable when the plumbing and the parameter are both here;
-                  otherwise the original read-only label, so a vehicle that has
-                  not reported it still says what it is. */}
+              {/* The editor names the parameter itself (label + id + info
+                  bubble), so the card kicker and the sentence under it only
+                  repeat it. Both stay for the read-only case, where nothing
+                  else says what this is. */}
+              {canEditInPlace && modeChannelParameter ? null : <span>Mode channel</span>}
               {canEditInPlace && modeChannelParameter ? (
                 <div data-testid="modes-mode-channel-field">
                   <ScopedSelectField
@@ -135,7 +129,9 @@ export function ModesView(props: ModesViewProps) {
               ) : (
                 <strong>{modeChannelLabel}</strong>
               )}
-              <small>{modeChannelParamName} selects which RC channel switches the flight mode.</small>
+              {canEditInPlace && modeChannelParameter ? null : (
+                <small>{modeChannelParamName} selects which RC channel switches the flight mode.</small>
+              )}
               {modeChannelRcLogicClaim?.length ? (
                 <small className="modes-mode-channel__rcl-claim" data-testid="modes-mode-channel-rcl-claim">
                   ⚠ This channel also drives an RC Mixer function: {modeChannelRcLogicClaim.join(', ')}
@@ -150,7 +146,6 @@ export function ModesView(props: ModesViewProps) {
             <article className="modes-status__card">
               <span>Active mode</span>
               <strong>{activeModeLabel}</strong>
-              <small>Mode reported by the vehicle heartbeat.</small>
             </article>
           </div>
 
@@ -255,8 +250,7 @@ export function ModesView(props: ModesViewProps) {
               Open Receiver → Flight Mode
             </button>
           </div>
-        </div>
-      </Panel>
+      </div>
     </div>
   )
 }
