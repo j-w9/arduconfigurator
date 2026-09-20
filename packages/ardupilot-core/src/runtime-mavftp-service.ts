@@ -56,6 +56,15 @@ const DEFAULT_MAVFTP_BURST_TIMEOUT_MS = 6000
 // hits many isolated stalls across the whole download; the budget is per-stall,
 // not per-download, so it must not be exhausted by total stall count.
 const MAX_MAVFTP_BURST_RETRIES = 6
+/**
+ * How long a QUEUED operation waits on a holder that has gone silent.
+ *
+ * Measured from the holder's last request on the wire, not from when the
+ * waiter joined: a log download is legitimately a multi-minute transfer, and
+ * one that is working keeps sending. Reaching this bound means the holder has
+ * stopped talking entirely, which is a fault, not slowness.
+ */
+const DEFAULT_MAVFTP_QUEUE_STALL_TIMEOUT_MS = 30000
 
 interface MavftpWaiter {
   seqNumber: number
@@ -154,6 +163,12 @@ export interface MavftpServiceOptions {
   getVehicle: () => VehicleIdentity | undefined
   ensureSupport: () => Promise<void>
   requestTimeoutMs?: number
+  /**
+   * How long a queued operation will wait on a holder that has gone SILENT
+   * before giving up. Injectable so the behaviour can be tested in
+   * milliseconds instead of minutes.
+   */
+  queueStallTimeoutMs?: number
 }
 
 /**
@@ -167,6 +182,7 @@ export class MavftpService {
   private readonly getVehicle: () => VehicleIdentity | undefined
   private readonly ensureSupport: () => Promise<void>
   private readonly requestTimeoutMs: number
+  private readonly queueStallTimeoutMs: number
   private readonly waiters = new Set<MavftpWaiter>()
   private activeBurst: BurstOperation | undefined
   /**
@@ -203,6 +219,7 @@ export class MavftpService {
     this.getVehicle = options.getVehicle
     this.ensureSupport = options.ensureSupport
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_MAVFTP_TIMEOUT_MS
+    this.queueStallTimeoutMs = options.queueStallTimeoutMs ?? DEFAULT_MAVFTP_QUEUE_STALL_TIMEOUT_MS
   }
 
   /**
@@ -299,11 +316,67 @@ export class MavftpService {
     this.transferQueue = predecessor.then(() => new Promise<void>((resolve) => {
       release = resolve
     }))
-    await predecessor
+    await this.awaitPredecessor(predecessor)
     try {
       return await operation()
     } finally {
       release()
+    }
+  }
+
+  /**
+   * Wait for the operation ahead of us — but not forever.
+   *
+   * Every individual MAVFTP operation is bounded (a request, a burst packet, a
+   * listing), yet the QUEUE they line up in was not: a transfer that somehow
+   * never settles held the session silently for the rest of the session, and
+   * the next caller awaited a promise that could never resolve. Nothing fired,
+   * nothing logged — the shape of a hang rather than an error.
+   *
+   * The bound is on SILENCE, not on elapsed time. A holder that is working
+   * stamps `lastTransferActivityAtMs` at every send, so a legitimately long
+   * download never trips this no matter how long it runs; a wedged holder
+   * stops sending and the waiter gives up with something to read.
+   *
+   * What this deliberately does NOT do is force-release the holder. Taking the
+   * session from a transfer that is merely slow would repoint session 0
+   * mid-download and fail it with the vehicle's own "file not found" — the
+   * exact corruption this queue exists to prevent (see the class comment). The
+   * waiter fails; the holder is left alone.
+   */
+  private async awaitPredecessor(predecessor: Promise<void>): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let settled = false
+    try {
+      await Promise.race([
+        predecessor.then(() => {
+          settled = true
+        }),
+        new Promise<never>((_resolve, reject) => {
+          const check = (): void => {
+            if (settled) return
+            // Silence is measured from the holder's last send, so this
+            // re-arms for as long as it keeps talking.
+            const silentForMs = this.lastTransferActivityAtMs > 0
+              ? Date.now() - this.lastTransferActivityAtMs
+              : 0
+            if (silentForMs >= this.queueStallTimeoutMs) {
+              reject(
+                new Error(
+                  `MAVFTP is still busy with an earlier transfer that has sent nothing for ${Math.round(silentForMs / 1000)}s. Reconnect if it does not recover.`
+                )
+              )
+              return
+            }
+            timer = setTimeout(check, this.queueStallTimeoutMs - silentForMs)
+          }
+          timer = setTimeout(check, this.queueStallTimeoutMs)
+        })
+      ])
+    } finally {
+      if (timer !== undefined) {
+        clearTimeout(timer)
+      }
     }
   }
 
@@ -728,6 +801,16 @@ export class MavftpService {
       return
     }
 
+    // Only packets for THIS burst's session count. ArduPilot echoes the
+    // session back on every reply (GCS_FTP.cpp), so a late packet from a
+    // previous, already-terminated burst is identifiable — and must be
+    // dropped rather than written into this file's buffer at its own offsets.
+    // It must not refresh the watchdog either: stale traffic that keeps a
+    // dead transfer "alive" is one of the two ways this could hang forever.
+    if (payload.session !== op.session) {
+      return
+    }
+
     if (payload.opcode === MAV_FTP_OPCODE.NAK) {
       const errorCode = payload.data[0] ?? 0
       if (errorCode === MAV_FTP_ERR.EOF) {
@@ -758,8 +841,6 @@ export class MavftpService {
       return
     }
 
-    this.bumpBurstTimer(op)
-
     const data = payload.data
     let writable = 0
     if (payload.offset < op.declaredSize && data.length > 0) {
@@ -774,6 +855,8 @@ export class MavftpService {
     // before it (no hole). A dropped middle packet leaves `received` at the
     // gap, so completion can't fire across it and the next burst re-requests
     // from the true frontier.
+    const highWaterBefore = op.highWater
+    const receivedBefore = op.received
     const contiguous = payload.offset <= op.received && payload.offset < op.declaredSize
     if (contiguous) {
       const before = op.received
@@ -785,6 +868,24 @@ export class MavftpService {
         op.retries = 0
         op.onProgress?.({ bytesReceived: op.received, totalBytes: op.declaredSize })
       }
+    }
+
+    // The watchdog is a PROGRESS watchdog, not an activity one.
+    //
+    // It used to be refreshed by every packet that arrived. A stream that
+    // keeps arriving without ever advancing the transfer — duplicates, a
+    // region past the declared size, the same hole re-filled over and over —
+    // then held the timeout off forever, so the burst never completed and
+    // never timed out, and the session it holds never came back. Both
+    // frontiers are monotonic and capped by declaredSize, so refreshing only
+    // on real progress bounds the number of refreshes: the op must settle,
+    // either by finishing or by the watchdog firing.
+    //
+    // Either frontier counts. `highWater` moves on an out-of-order packet
+    // landing beyond the contiguous point, and `received` moves when a hole
+    // fills below it — both are genuine progress toward the file.
+    if (op.highWater > highWaterBefore || op.received > receivedBefore) {
+      this.bumpBurstTimer(op)
     }
 
     if (op.received >= op.declaredSize) {
@@ -1009,6 +1110,14 @@ export class MavftpService {
     // so correlate the waiter to the expected response seq.
     const expectedResponseSeq = (requestSeq + 1) & 0xffff
     const waiter = this.waitForResponse(expectedResponseSeq, timeoutMs)
+    // Park a no-op handler on the waiter NOW, not after the send resolves.
+    // The awaits below are what normally handle it, but they are not reached
+    // until `session.send` settles — and if the transport stalls there while
+    // something else rejects the waiter (cancelAll on a link drop, say), the
+    // rejection lands with no handler attached and surfaces as an
+    // unhandledrejection in the browser. The real handling is unaffected: a
+    // promise can carry any number of handlers.
+    void waiter.promise.catch(() => {})
 
     try {
       await this.session.send({

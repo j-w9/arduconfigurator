@@ -84,11 +84,26 @@ export function FailsafeSection(props: FailsafeSectionProps) {
   // pre-arm check is not a failsafe: it is what stops you arming in the first
   // place. Nothing becomes unreachable; the card below says where they live.
   const isPreArmParamId = (paramId: string): boolean => paramId.startsWith('ARMING_')
+  // ...and the battery family when the battery library is off.
+  //
+  // With BATT_MONITOR = 0 ArduPilot never registers BATT_LOW_VOLT and friends,
+  // so buildFailsafeRows deliberately collapses them into one explainer row
+  // (regression #481: four "Not synced" rows read as "still loading" when the
+  // truth is "off by configuration"). The metadata catalog still lists them,
+  // so rendering the extras as rows would quietly bring the ghosts back — with
+  // the curated rows gone, there is nothing left to filter them against.
+  const batteryMonitorDisabled =
+    Math.round(selectParameterById(snapshot, 'BATT_MONITOR')?.value ?? Number.NaN) === 0
+  const isDisabledBatteryParamId = (paramId: string): boolean =>
+    batteryMonitorDisabled && paramId.startsWith('BATT_') && paramId !== 'BATT_MONITOR'
   const additionalGroups: AdditionalSettingsGroup[] = failsafeAdditionalGroups
     .map((group) => ({
       ...group,
       parameters: group.parameters.filter(
-        (parameter) => !failsafeIds.has(parameter.id) && !isPreArmParamId(parameter.id)
+        (parameter) =>
+          !failsafeIds.has(parameter.id) &&
+          !isPreArmParamId(parameter.id) &&
+          !isDisabledBatteryParamId(parameter.id)
       )
     }))
     .filter((group) => group.parameters.length > 0)
