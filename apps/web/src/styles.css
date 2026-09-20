@@ -19022,20 +19022,24 @@ button.mavlink-inspector__sent-row {
 }
 
 .amc-guided__components {
-  display: grid;
-  /* min(230px, 100%) rather than a bare 230px: when the column is narrower than
-     the track minimum -- a small window, or the app's own panels taking their
-     share -- a fixed minimum overflows instead of collapsing. */
-  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
-  gap: 10px;
-  align-items: start;
+  /* Columns rather than a grid. The components have wildly different heights --
+     Battery has seven fields, Propellers has one -- and in a grid every row is
+     as tall as its tallest card, so the short ones leave a hole beneath them
+     and the next row starts far down the page. Columns pack each card under
+     the previous one instead, and the column count still follows the width. */
+  columns: 230px 5;
+  column-gap: 10px;
 }
 
 .amc-guided__component {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 8px 10px 10px;
-  margin: 0;
+  padding: 6px 10px 10px;
+  /* A card must not be split across a column break, and the bottom margin is
+     what separates it from the next card in the same column. */
+  break-inside: avoid;
+  width: 100%;
+  margin: 0 0 10px;
 }
 
 .amc-guided__component legend {
@@ -19050,8 +19054,8 @@ button.mavlink-inspector__sent-row {
      them enough width -- the group was being cut off mid-word, which is how
      two different Protocol fields came to look like the same one. */
   display: grid;
-  gap: 3px;
-  margin-top: 10px;
+  gap: 2px;
+  margin-top: 7px;
 }
 
 .amc-guided__field-name {
