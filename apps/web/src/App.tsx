@@ -9805,6 +9805,10 @@ export function App() {
           // firmware that cannot serve the defaults should say so rather than
           // leaving the step looking like it found nothing.
           onReadDefaults={() => handleFetchParamDefaults()}
+          // The sequence needs a reboot BETWEEN steps, not only at the end: a
+          // step that sets a boot-time parameter has not taken effect until
+          // the vehicle restarts, and the steps after it read the old value.
+          onRequestReboot={() => void handleGuidedAction('reboot-autopilot')}
           // Several steps are done with a tool this app already has. The step
           // sends the operator there rather than the tab carrying a copy.
           onOpenTool={(view) => setActiveViewId(view)}

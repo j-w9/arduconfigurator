@@ -19,7 +19,7 @@ import {
   type Diagnosis,
   type ParameterDocs,
   type StepOutcome,
-  applyStep,
+  runThreaded,
   autoImportableParameters,
   componentOptionSources,
   milestonePhases,
@@ -310,6 +310,23 @@ export interface StepRow {
   readonly filename: string
   readonly index: number
   readonly phase?: string
+  /**
+   * Steps whose values this one reads, when any of them set it first.
+   *
+   * The sequence is run in order and each step sees what the ones before it
+   * did, so a value here can disagree with what the vehicle currently reports.
+   * That disagreement is correct and needs saying, or it reads as a bug.
+   */
+  readonly inheritedFrom?: readonly string[]
+  /**
+   * Parameters this step sets that only take effect after a reboot.
+   *
+   * This is what makes AMC's method step-by-step rather than a single bulk
+   * write: a later step reading one of these would read the OLD value until
+   * the vehicle has restarted, so the step has to be written and the vehicle
+   * rebooted before the rest of the sequence means anything.
+   */
+  readonly rebootParameters?: readonly string[]
   /** `05_board_orientation.param` reads as "Board orientation". */
   readonly title: string
   /** Why the step exists. */
@@ -436,7 +453,8 @@ function nonEmpty(value: string | undefined): value is string {
 }
 
 /** `13_initial_atc.param` -> `Initial ATC`. */
-function titleOf(filename: string): string {
+/** `05_board_orientation.param` reads as "Board orientation". */
+export function titleOf(filename: string): string {
   const stem = filename.replace(/\.param$/, '').replace(/^\d+_/, '').replace(/_/g, ' ')
   return stem.charAt(0).toUpperCase() + stem.slice(1)
 }
@@ -530,16 +548,35 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
   const pendingParameters = new Set<string>()
   const disputedParameters = new Set<string>()
 
+  // The sequence is run AS a sequence: each step sees the vehicle as the steps
+  // before it left it, not as it is now. The distinction is not theoretical --
+  // step 13 sets INS_GYRO_FILTER and MOT_THST_HOVER, and the notch-filter and
+  // throttle-controller steps read them, so evaluating those against the live
+  // vehicle answers a question nobody asked.
+  const threaded = runThreaded(sequence, context, parameters, docs ? { docs } : {})
+  const inheritedBy = new Map(threaded.steps.map((step) => [step.filename, step.inheritedFrom]))
+  const orderDependent = new Set(threaded.orderDependent)
+
   // Two passes: everything the sequence proposes is judged in one call, so the
   // validation sees the whole set rather than one step at a time.
-  const outcomes = sequence.map((entry) => {
-    const outcome = applyStep(entry.step, context, docs ? { docs } : {})
-    for (const change of outcome.changes) proposals.push({ parameter: change.parameter, value: change.value })
-    return { entry, outcome }
+  const outcomes = threaded.steps.map((step, index) => {
+    const entry = sequence[index] as AmcSequence[number]
+    for (const change of step.outcome.changes) {
+      proposals.push({ parameter: change.parameter, value: change.value })
+    }
+    return { entry, outcome: step.outcome }
   })
   const disputes = disputesFor(proposals, states ?? [])
+  // Which parameters the firmware only reads at boot. Taken from the app's own
+  // parameter metadata rather than restated here, so it follows ArduPilot.
+  const rebootRequired = new Set(
+    (states ?? []).filter((state) => state.definition?.rebootRequired).map((state) => state.id)
+  )
 
   for (const { entry, outcome } of outcomes) {
+    const rebootParameters = outcome.changes
+      .filter((change) => rebootRequired.has(change.parameter))
+      .map((change) => change.parameter)
     const changes = outcome.changes.map((change): ChangeRow => {
       const current = parameters[change.parameter]
       const satisfied = current !== undefined && sameValue(current, change.value)
@@ -636,6 +673,13 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
       capturePending: declaresCapture && (defaults === undefined || defaults.size === 0),
       filename: entry.filename,
       index: entry.index,
+      ...(rebootParameters.length > 0 ? { rebootParameters } : {}),
+      // Only worth saying when the ordering actually changed this step's
+      // answer: a step that reads an earlier value which happens to match the
+      // live one has nothing to explain.
+      ...(orderDependent.has(entry.filename) && (inheritedBy.get(entry.filename)?.length ?? 0) > 0
+        ? { inheritedFrom: inheritedBy.get(entry.filename) }
+        : {}),
       title: titleOf(entry.filename),
       changes,
       deletions: outcome.deletions,

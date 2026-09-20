@@ -576,3 +576,86 @@ describe('what the sequence says about a step', () => {
     }
   })
 })
+
+describe('the sequence runs in order', () => {
+  it('shows a step reading an earlier step\'s value, and says whose', () => {
+    // Not theoretical: 13_initial_atc sets INS_GYRO_FILTER and MOT_THST_HOVER,
+    // and the notch-filter and throttle-controller steps read them. Evaluated
+    // against the live vehicle instead, those steps answer a question nobody
+    // asked — and the number simply disagrees with the readout, which reads as
+    // a bug rather than as the sequence doing its job.
+    // A step that cannot be evaluated sets nothing, so nothing downstream can
+    // inherit from it — the vehicle has to be declared for this to mean
+    // anything at all.
+    const values: Record<string, string> = {}
+    for (const [match, value] of [
+      [/Propellers\/Specifications\/Diameter_inches/, '10'],
+      [/Battery\/Specifications\/Number of cells/, '4'],
+      [/Flight Controller\/Specifications\/MCU Series/, 'STM32H7xx']
+    ] as const) {
+      const field = fields.find((f) => match.test(f.key))
+      if (field) values[field.key] = value
+    }
+
+    const summary = runSequence({
+      sequence: copter,
+      fields,
+      values,
+      // A gyro filter the sequence will overwrite: if the later steps read
+      // THIS rather than what 13_initial_atc computes, nothing is threaded.
+      parameters: { INS_GYRO_FILTER: 20, MOT_THST_HOVER: 0.2 },
+      docs
+    })
+
+    const inheriting = summary.rows.filter((row) => (row.inheritedFrom?.length ?? 0) > 0)
+    expect(inheriting.length).toBeGreaterThan(0)
+
+    for (const row of inheriting) {
+      // Every step named must be a real step that runs BEFORE this one.
+      const here = summary.rows.findIndex((r) => r.filename === row.filename)
+      for (const from of row.inheritedFrom ?? []) {
+        const there = summary.rows.findIndex((r) => r.filename === from)
+        expect(there).toBeGreaterThanOrEqual(0)
+        expect(there).toBeLessThan(here)
+      }
+    }
+  })
+})
+
+describe('boot-time parameters', () => {
+  it('names the parameters that need a reboot before later steps mean anything', () => {
+    // The reason AMC's method is step-by-step rather than one bulk write: the
+    // firmware reads these at startup, so a later step reading one gets the
+    // OLD value until the vehicle has restarted.
+    const summary = runSequence({
+      sequence: copter,
+      fields,
+      values: {},
+      parameters: { INS_TCAL1_ENABLE: 0, LOG_BITMASK: 1 },
+      states: [
+        { id: 'INS_TCAL1_ENABLE', value: 0, index: 0, count: 2, definition: { rebootRequired: true } },
+        // Deliberately NOT reboot-required, so the filter is doing something.
+        { id: 'LOG_BITMASK', value: 1, index: 1, count: 2, definition: {} }
+      ] as never,
+      docs
+    })
+
+    const flagged = summary.rows.filter((row) => (row.rebootParameters?.length ?? 0) > 0)
+    expect(flagged.length).toBeGreaterThan(0)
+    for (const row of flagged) {
+      expect(row.rebootParameters).toContain('INS_TCAL1_ENABLE')
+      expect(row.rebootParameters).not.toContain('LOG_BITMASK')
+      // Only parameters the step actually sets.
+      for (const name of row.rebootParameters ?? []) {
+        expect(row.changes.some((change) => change.parameter === name)).toBe(true)
+      }
+    }
+  })
+
+  it('says nothing when the vehicle has not reported its parameters', () => {
+    // Without metadata there is no basis for the claim, and inventing one
+    // would put a reboot warning on every step.
+    const summary = runSequence({ sequence: copter, fields, values: {}, parameters: {}, docs })
+    expect(summary.rows.every((row) => row.rebootParameters === undefined)).toBe(true)
+  })
+})

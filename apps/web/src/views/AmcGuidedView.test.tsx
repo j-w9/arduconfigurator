@@ -10,7 +10,7 @@
 // restored. Both are render and effect ordering, and neither is visible from
 // outside a render.
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AmcGuidedView } from './AmcGuidedView'
@@ -380,5 +380,45 @@ describe('the configuration directory', () => {
 
     await whenLoaded()
     await waitFor(() => expect((screen.getByTestId('amc-open-project') as HTMLInputElement).disabled).toBe(false))
+  })
+})
+
+describe('connection fields', () => {
+  it('marks the protocols seen with the declared connection type', async () => {
+    // A CAN link carries DroneCAN and a serial one does not. The templates are
+    // evidence, so the list is reordered and annotated rather than cut — the
+    // operator can see their own wiring and we cannot.
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+
+    // The GNSS receiver, because the sequence asks for both halves of its
+    // connection. (The ESC's control connection has only a Protocol field —
+    // nothing reads its Type — so there is no pair there to constrain.)
+    await waitFor(
+      () => expect(document.getElementById('amc-field-GNSS-Receiver-FC-Connection-Type')).toBeTruthy(),
+      { timeout: 5000 }
+    )
+    const gnssType = document.getElementById(
+      'amc-field-GNSS-Receiver-FC-Connection-Type'
+    ) as HTMLSelectElement
+    const gnssProtocol = document.getElementById(
+      'amc-field-GNSS-Receiver-FC-Connection-Protocol'
+    ) as HTMLSelectElement
+
+    const before = [...gnssProtocol.options].map((o) => o.value)
+    expect(before.length).toBeGreaterThan(1)
+
+    // A CAN link carries DroneCAN; declaring one should float it to the top.
+    await act(async () => {
+      fireEvent.change(gnssType, { target: { value: 'CAN1' } })
+    })
+
+    const after = [...gnssProtocol.options]
+    const marked = after.filter((o) => o.textContent?.includes('seen with this connection'))
+    expect(marked.length).toBeGreaterThan(0)
+    // And nothing was taken away: the guarantee that makes evidence safe to
+    // act on at all.
+    const afterValues = after.map((o) => o.value)
+    for (const value of before) expect(afterValues).toContain(value)
   })
 })

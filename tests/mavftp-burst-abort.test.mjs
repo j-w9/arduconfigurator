@@ -48,7 +48,7 @@ function createService({ declaredSize = 4096 } = {}) {
 
 /** Drive a burst directly so the test controls its lifetime. */
 function startBurst(service, signal, declaredSize = 4096) {
-  return service.runBurst(1, declaredSize, 60_000, undefined, signal)
+  return service.runBurst(1, { declaredSize, timeoutMs: 60_000, signal })
 }
 
 test('aborting rejects with a distinguishable error, not a generic failure', async () => {

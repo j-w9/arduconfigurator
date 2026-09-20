@@ -19345,6 +19345,50 @@ button.mavlink-inspector__sent-row {
   cursor: pointer;
 }
 
+/* A step the firmware only reads at boot. This is what makes the method
+   step-by-step rather than one bulk write at the end. */
+.amc-step__reboot {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--warning);
+  background: var(--warning-weak);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.amc-step__reboot button {
+  background: var(--surface-300);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+/* A step whose answer depends on an earlier step's output. Stated on the step
+   itself because otherwise the number simply disagrees with the live readout
+   and reads as a bug. */
+.amc-step__inherited {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--primary-500);
+  background: var(--primary-transparent-1);
+  color: var(--text-muted);
+}
+
+.amc-step__inherited button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--primary-500);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* The configuration directory: writing one out, reading one back. */
 .amc-guided__project-blurb {
   margin: 0 0 12px;

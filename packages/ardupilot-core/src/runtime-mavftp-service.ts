@@ -51,6 +51,10 @@ const MAVFTP_BURST_READ_SIZE = 239
 // no-flow-control USB link leaves the transfer waiting; keep this short enough
 // that recovery is snappy but long enough to tolerate a slow SD card.
 const DEFAULT_MAVFTP_BURST_TIMEOUT_MS = 6000
+// Starting capacity for a file whose size the vehicle would not declare. It
+// doubles from here; 64 KB holds a parameter pack outright, so the common case
+// never reallocates at all.
+const UNKNOWN_SIZE_INITIAL_BYTES = 64 * 1024
 // CONSECUTIVE-stall retries (reset on any forward progress — see
 // handleBurstPacket). A large multi-burst log over a lossy link legitimately
 // hits many isolated stalls across the whole download; the budget is per-stall,
@@ -125,6 +129,21 @@ export function partialTransferOf(error: unknown): PartialTransfer | undefined {
   return value as PartialTransfer | undefined
 }
 
+/**
+ * Grow a buffer to hold at least `needed` bytes, doubling rather than fitting.
+ *
+ * Fitting exactly would reallocate and copy on every packet of a file whose
+ * end cannot be predicted -- quadratic over a long transfer. Doubling makes
+ * the copies logarithmic in the file's size.
+ */
+function growBuffer(buffer: Uint8Array, needed: number, cap: number): Uint8Array {
+  let capacity = Math.max(buffer.length, 1)
+  while (capacity < needed) capacity *= 2
+  const grown = new Uint8Array(Math.min(capacity, cap))
+  grown.set(buffer)
+  return grown
+}
+
 function attachPartialTransfer(error: Error, partial: PartialTransfer): void {
   Object.defineProperty(error, PARTIAL_TRANSFER, {
     value: partial,
@@ -137,7 +156,19 @@ interface BurstOperation {
   /** Detaches the abort listener, if one was attached. Called on every exit. */
   cleanup?: () => void
   session: number
+  /**
+   * The size the vehicle declared on OPEN, or 0 when it declared none.
+   *
+   * ArduPilot's `@`-mounted virtual files (@PARAM/param.pck, @SYS/...) are
+   * generated on the fly and report no size at all, so for those this is 0 and
+   * `sizeKnown` is false: the transfer is bounded by the EOF NAK and by
+   * `maxBytes` instead, and the buffer grows as data arrives.
+   */
   declaredSize: number
+  /** False for a vehicle that declared no size; see declaredSize. */
+  sizeKnown: boolean
+  /** Refuses to allocate past this, for a file whose end we cannot predict. */
+  maxBytes: number
   buffer: Uint8Array
   // Contiguous frontier — bytes [0, received) are all present — NOT a
   // high-water mark. A dropped middle packet must leave this at the gap so
@@ -693,13 +724,12 @@ export class MavftpService {
           ).getUint32(0, true)
         : 0
 
-    // Burst needs a known size to preallocate and detect completion; the
-    // single-read path already handles size-0 `@SYS` files (read-to-EOF).
-    if (declaredSize <= 0) {
-      await this.terminateSession(session)
-      // Already inside the lock — call the unlocked variant directly.
-      return this.readRemoteFileUnlocked(normalizedPath, { timeoutMs })
-    }
+    // A vehicle that declares no size used to send us down the sequential
+    // READ_FILE path — ~126 blocking 200-byte round trips for a 25 KB
+    // parameter pack, because that is what @PARAM and @SYS report. The burst
+    // server streams those perfectly well; it is only OUR reader that needed a
+    // size, to preallocate and to know when to stop. It no longer does: the
+    // buffer grows, and the EOF NAK says when the file ended.
     if (declaredSize > maxBytes) {
       await this.terminateSession(session)
       throw new Error(
@@ -708,7 +738,13 @@ export class MavftpService {
     }
 
     try {
-      return await this.runBurst(session, declaredSize, timeoutMs, options.onProgress, options.signal)
+      return await this.runBurst(session, {
+        declaredSize,
+        timeoutMs,
+        maxBytes,
+        onProgress: options.onProgress,
+        signal: options.signal
+      })
     } finally {
       await this.terminateSession(session)
     }
@@ -740,19 +776,45 @@ export class MavftpService {
     this.staleSessionsCleared = false
   }
 
+  /**
+   * Named rather than positional, and deliberately.
+   *
+   * This took five arguments, three of them optional and two of them
+   * `undefined`-able, and `maxBytes` was later added in the middle. Every
+   * positional caller then slid one place: an AbortSignal landed on
+   * `onProgress`, so aborting silently did nothing and the first data packet
+   * died with "op.onProgress is not a function". Two callers, both silent,
+   * both found only by running them. A misspelled key is a type error; a
+   * shifted argument is a runtime one.
+   */
   private runBurst(
     session: number,
-    declaredSize: number,
-    timeoutMs: number | undefined,
-    onProgress?: (progress: LogDownloadProgress) => void,
-    signal?: AbortSignal
+    options: {
+      declaredSize: number
+      timeoutMs?: number | undefined
+      /**
+       * Without a declared size this is the only thing bounding the transfer,
+       * so it defaults rather than being optional in effect: a caller that
+       * omits it must not end up with no cap at all.
+       */
+      maxBytes?: number
+      onProgress?: ((progress: LogDownloadProgress) => void) | undefined
+      signal?: AbortSignal | undefined
+    }
   ): Promise<Uint8Array> {
+    const { declaredSize, timeoutMs, maxBytes = MAX_MAVFTP_FILE_BYTES, onProgress, signal } = options
     const effectiveTimeoutMs = timeoutMs ?? DEFAULT_MAVFTP_BURST_TIMEOUT_MS
+    const sizeKnown = declaredSize > 0
     return new Promise<Uint8Array>((resolve, reject) => {
       const op: BurstOperation = {
         session,
         declaredSize,
-        buffer: new Uint8Array(declaredSize),
+        sizeKnown,
+        maxBytes,
+        // A known size is allocated once. An unknown one starts small and
+        // grows: over-allocating the cap up front would commit megabytes to
+        // read a 25 KB parameter pack.
+        buffer: new Uint8Array(sizeKnown ? declaredSize : UNKNOWN_SIZE_INITIAL_BYTES),
         received: 0,
         highWater: 0,
         retries: 0,
@@ -841,7 +903,7 @@ export class MavftpService {
         }
         this.failBurst(
           new Error(
-            `MAVFTP burst left a gap at ${op.received}/${op.declaredSize} bytes after ${MAX_MAVFTP_BURST_RETRIES} retries.`
+            `MAVFTP burst left a gap at ${op.received}/${op.sizeKnown ? op.declaredSize : op.highWater} bytes after ${MAX_MAVFTP_BURST_RETRIES} retries.`
           )
         )
         return
@@ -852,8 +914,22 @@ export class MavftpService {
 
     const data = payload.data
     let writable = 0
-    if (payload.offset < op.declaredSize && data.length > 0) {
-      writable = Math.min(data.length, op.declaredSize - payload.offset)
+    // With a declared size, anything past it is not part of the file. Without
+    // one, the only bound is the cap the caller set -- and passing it is a
+    // failure rather than a silent truncation, because a file we stopped
+    // reading halfway is indistinguishable from a complete one afterwards.
+    const limit = op.sizeKnown ? op.declaredSize : op.maxBytes
+    if (payload.offset >= op.maxBytes) {
+      this.failBurst(
+        new Error(`MAVFTP read exceeded the ${op.maxBytes}-byte cap (no EOF from the vehicle).`)
+      )
+      return
+    }
+    if (payload.offset < limit && data.length > 0) {
+      writable = Math.min(data.length, limit - payload.offset)
+      if (!op.sizeKnown && payload.offset + writable > op.buffer.length) {
+        op.buffer = growBuffer(op.buffer, payload.offset + writable, op.maxBytes)
+      }
       // Place at the true offset so an out-of-order packet still lands
       // correctly for a later contiguous fill.
       op.buffer.set(data.subarray(0, writable), payload.offset)
@@ -866,7 +942,7 @@ export class MavftpService {
     // from the true frontier.
     const highWaterBefore = op.highWater
     const receivedBefore = op.received
-    const contiguous = payload.offset <= op.received && payload.offset < op.declaredSize
+    const contiguous = payload.offset <= op.received && payload.offset < limit
     if (contiguous) {
       const before = op.received
       op.received = Math.max(op.received, payload.offset + writable)
@@ -875,7 +951,12 @@ export class MavftpService {
         // retry budget. Otherwise a long download over a lossy link would
         // accumulate isolated stalls and fail mid-transfer.
         op.retries = 0
-        op.onProgress?.({ bytesReceived: op.received, totalBytes: op.declaredSize })
+        // A vehicle that declared no size cannot be given a percentage, so
+        // the total is reported as what has arrived rather than as a guess.
+        op.onProgress?.({
+          bytesReceived: op.received,
+          totalBytes: op.sizeKnown ? op.declaredSize : op.received
+        })
       }
     }
 
@@ -897,7 +978,9 @@ export class MavftpService {
       this.bumpBurstTimer(op)
     }
 
-    if (op.received >= op.declaredSize) {
+    // Without a declared size there is nothing to compare against: the file
+    // ends when the vehicle says it does, via the EOF NAK handled above.
+    if (op.sizeKnown && op.received >= op.declaredSize) {
       this.finishBurst(op)
       return
     }
@@ -940,7 +1023,10 @@ export class MavftpService {
     clearTimeout(op.timer)
     op.cleanup?.()
     this.activeBurst = undefined
-    const bytes = op.received >= op.declaredSize ? op.buffer : op.buffer.slice(0, op.received)
+    // The buffer is exactly the file only when a size was declared and fully
+    // received; otherwise it is over-allocated and is cut to what arrived.
+    const bytes =
+      op.sizeKnown && op.received >= op.declaredSize ? op.buffer : op.buffer.slice(0, op.received)
     op.resolve(bytes)
   }
 

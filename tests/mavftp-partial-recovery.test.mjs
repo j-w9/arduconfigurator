@@ -44,7 +44,7 @@ const BURST_TIMEOUT_MS = 15
  * unhandled rejection.
  */
 const startBurst = (service, declaredSize, signal) =>
-  service.runBurst(1, declaredSize, BURST_TIMEOUT_MS, undefined, signal).then(
+  service.runBurst(1, { declaredSize, timeoutMs: BURST_TIMEOUT_MS, signal }).then(
     () => new Error('the burst resolved; it was supposed to fail'),
     (error) => error
   )

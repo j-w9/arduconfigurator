@@ -10,9 +10,16 @@ import {
   type StepRow,
   fieldsFor,
   loadSequence,
-  runSequence
+  runSequence,
+  titleOf
 } from '../view-models/amc-guided'
-import type { ParameterDocs } from '@arduconfig/amc-steps'
+import { connectionGroupOf, orderByPairing } from '@arduconfig/amc-steps'
+import type { ConnectionPairings, ParameterDocs } from '@arduconfig/amc-steps'
+import connectionPairingsJson from '@amc/data/component-pairings.json'
+
+// Observed from AMC's vehicle templates by scripts/sync-from-vendor.mjs. Small
+// (a few hundred bytes) so it rides along rather than being fetched.
+const connectionPairings = connectionPairingsJson as ConnectionPairings
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import { buildProject, projectArchive, projectFilename, readProject } from '../view-models/amc-project'
@@ -66,6 +73,12 @@ export interface AmcGuidedViewProps {
    * defaults actually arrived.
    */
   onReadDefaults?: () => void | Promise<void>
+  /**
+   * Restart the vehicle. The sequence needs this between steps, not only at
+   * the end: a step that sets a boot-time parameter has not taken effect until
+   * the vehicle has restarted, and the steps after it read the old value.
+   */
+  onRequestReboot?: () => void
   /** Open one of the app's own tools, for the steps that are done with one. */
   onOpenTool?: (view: AppToolView) => void
   /**
@@ -115,19 +128,37 @@ const OTHER = '\u0000other'
 function FieldControl({
   field,
   value,
+  pairedType,
   onChange
 }: {
   field: ComponentField
   value: string
+  /** The Type declared on this field's connection, when it has one. */
+  pairedType?: string
   onChange: (next: string) => void
 }) {
-  const choices = field.documented ?? field.suggested
+  const documented = field.documented ?? field.suggested
+  // A connection's Type and Protocol are not independent: a CAN link carries
+  // DroneCAN, a serial one a serial protocol. The pairings are observed from
+  // AMC's templates, so they are evidence rather than a specification — they
+  // reorder the list and never shorten it, because twenty-nine vehicles cannot
+  // prove that a protocol nobody used is invalid.
+  const { ordered: choices, likely } = useMemo(
+    () =>
+      orderByPairing(
+        documented ?? [],
+        connectionPairings,
+        connectionGroupOf(field.path),
+        pairedType
+      ),
+    [documented, field.path, pairedType]
+  )
   // Once "Other" is chosen, or a stored value is off-list, the field stays a
   // text box rather than silently snapping to something it does not mean.
-  const offList = value !== '' && choices !== undefined && !choices.includes(value)
+  const offList = value !== '' && documented !== undefined && !choices.includes(value)
   const [freeform, setFreeform] = useState(offList)
 
-  if (!choices || (freeform && field.suggested)) {
+  if (!documented || (freeform && field.suggested)) {
     return (
       <span className="amc-guided__field-control">
         <input
@@ -169,7 +200,11 @@ function FieldControl({
       <option value="">Not declared</option>
       {choices.map((option) => (
         <option key={option} value={option}>
+          {/* Marked rather than hidden: the operator can see their own wiring
+              and we cannot, so this is a hint about what is usual, not a rule
+              about what is possible. */}
           {option}
+          {likely.size > 0 && likely.has(option) ? ' — seen with this connection' : ''}
         </option>
       ))}
       {field.suggested ? <option value={OTHER}>Other…</option> : null}
@@ -214,6 +249,7 @@ function StepCard({
   onStage,
   onReviewed,
   onReadDefaults,
+  onRequestReboot,
   defaultsRead,
   onOpenTool,
   onJump
@@ -226,6 +262,7 @@ function StepCard({
   onStage: (changes: readonly { parameter: string; value: number }[]) => void
   onReviewed: (next: boolean) => void
   onReadDefaults?: (() => void) | undefined
+  onRequestReboot?: (() => void) | undefined
   defaultsRead?: 'idle' | 'asking' | 'nothing'
   onOpenTool?: ((view: AppToolView) => void) | undefined
   onJump?: ((filename: string) => void) | undefined
@@ -411,6 +448,27 @@ function StepCard({
             </div>
           ) : null}
 
+          {row.rebootParameters && row.rebootParameters.length > 0 ? (
+            <p className="amc-step__reboot">
+              {/* This is what makes the method step-by-step rather than one
+                  bulk write at the end: the firmware reads these at boot, so a
+                  later step that reads one would read the OLD value until the
+                  vehicle has restarted. */}
+              <strong>Write and reboot before continuing.</strong> The firmware only reads{' '}
+              <span className="amc-step__params">
+                {row.rebootParameters.map((name) => (
+                  <code key={name}>{name}</code>
+                ))}
+              </span>{' '}
+              at startup, so later steps see the previous value until the vehicle has restarted.
+              {onRequestReboot ? (
+                <button onClick={onRequestReboot} disabled={!connected}>
+                  Reboot the vehicle
+                </button>
+              ) : null}
+            </p>
+          ) : null}
+
           {row.deletions.length > 0 ? (
             <p className="amc-step__deletions">
               <span>Removes from the vehicle&apos;s file:</span>
@@ -466,6 +524,20 @@ function StepCard({
                 </tbody>
               </table>
             </details>
+          ) : null}
+
+          {row.inheritedFrom && row.inheritedFrom.length > 0 ? (
+            <p className="amc-step__inherited">
+              This step reads values an earlier step sets, so what it computes here can differ from
+              what the vehicle reports now — the sequence runs in order, and{' '}
+              {row.inheritedFrom.map((from, index) => (
+                <span key={from}>
+                  {index > 0 ? ' and ' : ''}
+                  <button onClick={() => onJump?.(from)}>{titleOf(from)}</button>
+                </span>
+              ))}{' '}
+              {row.inheritedFrom.length === 1 ? 'comes' : 'come'} first.
+            </p>
           ) : null}
 
           {row.capturePending ? (
@@ -567,6 +639,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     states,
     defaults,
     onReadDefaults,
+    onRequestReboot,
     onOpenTool,
     suggestedKind,
     vehicleFirmwareVersion,
@@ -960,6 +1033,13 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   <FieldControl
                     field={field}
                     value={values[field.key] ?? ''}
+                    // A Protocol is constrained by the Type on the SAME
+                    // connection, which is the sibling field one level up.
+                    pairedType={
+                      field.path.length === 3 && field.path[2] === 'Protocol'
+                        ? values[[...field.path.slice(0, 2), 'Type'].join('/')]
+                        : undefined
+                    }
                     onChange={(next) => setValues((previous) => ({ ...previous, [field.key]: next }))}
                   />
                   {field.key === versionKey && vehicleFirmwareVersion && values[field.key] === vehicleFirmwareVersion ? (
@@ -1169,6 +1249,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   onDeclareField={focusField}
                   onStage={onStage}
                   onReadDefaults={onReadDefaults ? readDefaults : undefined}
+                  onRequestReboot={onRequestReboot}
                   defaultsRead={defaultsRead}
                   onOpenTool={onOpenTool}
                   onJump={jumpToStep}
