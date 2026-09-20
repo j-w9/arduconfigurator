@@ -1741,7 +1741,7 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
       }
     }
   }
-  const ftpFiles = createMockFtpFiles()
+  const ftpFiles = createMockFtpFiles(parameters)
   const ftpSessions = new Map<number, { path: string; mode: 'read' | 'write' }>()
   let nextFtpSession = 1
   // Tracks the pose the FC is currently asking the operator to confirm.
@@ -3202,8 +3202,69 @@ function createMockOsdShorthandBytes(): Uint8Array {
   return buf
 }
 
-function createMockFtpFiles(): MockFtpFileMap {
+
+/**
+ * ArduPilot's packed parameter table, as served from
+ * `@PARAM/param.pck?withdefaults=1` (4.5+).
+ *
+ * Present so the demo can exercise everything that depends on knowing a
+ * parameter's firmware default -- the "changed only" filter, the Default
+ * column, and the guided sequence's capture of settings already on the
+ * vehicle. Without it those paths could only ever be tested against hardware.
+ *
+ * Format per AP_Filesystem_Param.cpp, matching apps/web/src/view-models/param-pck.ts:
+ *   header: magic u16 LE (0x671c with defaults), count u16, total u16
+ *   entry:  b0 = type nibble (4 = FLOAT) | 0x10 when the value is non-default
+ *           b1 = common-prefix nibble | ((name length - 1) << 4)
+ *           name suffix, value f32 LE, and the default f32 LE when non-default
+ */
+export function createMockParamPckBytes(parameters: Record<string, number>): Uint8Array {
+  const names = Object.keys(parameters)
+    .filter((name) => name.length >= 1 && name.length <= 16)
+    .sort()
+
+  // A real vehicle has a good many parameters away from default. Chosen by
+  // position rather than by a hash of the name: both are deterministic, but a
+  // hash can select nothing at all from a short list, which would leave the
+  // paths this pack exists for untested while looking fine.
+  const isNonDefault = (index: number): boolean => index % 3 === 0
+
+  const bytes: number[] = []
+  const pushFloat = (value: number): void => {
+    const buffer = new ArrayBuffer(4)
+    new DataView(buffer).setFloat32(0, value, true)
+    bytes.push(...new Uint8Array(buffer))
+  }
+
+  bytes.push(0x1c, 0x67) // magic 0x671c — with defaults
+  bytes.push(names.length & 0xff, (names.length >> 8) & 0xff)
+  bytes.push(names.length & 0xff, (names.length >> 8) & 0xff)
+
+  for (const [index, name] of names.entries()) {
+    const value = parameters[name] ?? 0
+    const nonDefault = isNonDefault(index)
+    bytes.push(0x04 | (nonDefault ? 0x10 : 0))
+    // Common prefix always 0: valid, just less compact than the firmware's own
+    // encoding, and the reader handles both.
+    bytes.push((name.length - 1) << 4)
+    for (let i = 0; i < name.length; i += 1) bytes.push(name.charCodeAt(i) & 0xff)
+    pushFloat(value)
+    // A non-default parameter carries the default after the value. Something
+    // plainly different from the live value, so a comparison cannot pass by
+    // accident.
+    if (nonDefault) pushFloat(value === 0 ? 1 : 0)
+  }
+
+  return new Uint8Array(bytes)
+}
+
+function createMockFtpFiles(parameters: Record<string, number>): MockFtpFileMap {
+  const paramPck = createMockParamPckBytes(parameters)
   return new Map<string, Uint8Array>([
+    // The client asks for the query-string form; the bare path is served too so
+    // a caller that drops the query still gets a valid pack.
+    ['@PARAM/param.pck?withdefaults=1', paramPck.slice()],
+    ['@PARAM/param.pck', paramPck.slice()],
     ['@SYS/uarts.txt', mockUartsBytes.slice()],
     // OSD message shorthand table (@OSD FTP mount, fork feature) — present so the
     // demo shows the shorthand editor and supports read/write round-trips.

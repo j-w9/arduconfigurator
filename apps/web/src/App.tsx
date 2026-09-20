@@ -9817,6 +9817,10 @@ export function App() {
           connected={snapshot.connection.kind === 'connected'}
           parameters={amcLiveParameters}
           states={snapshot.parameters}
+          // The sequence's capture steps need the firmware's own defaults, which
+          // the Parameters view already knows how to fetch over MAVFTP.
+          defaults={parameterDefaults ?? undefined}
+          onReadDefaults={() => void handleFetchParamDefaults({ silent: true })}
           staged={editedValues}
           // The AMC sequence proposes; it does not write. Its changes go into
           // the same draft model as every other edit, so the draft bar's

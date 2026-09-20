@@ -19526,3 +19526,30 @@ button.mavlink-inspector__sent-row {
   flex-wrap: wrap;
   gap: 12px;
 }
+
+/* Values the vehicle already has that a step is responsible for. Not something
+   the step sets -- something it takes account of. */
+.amc-step__captured summary,
+.amc-step__capture-pending {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.amc-step__capture-pending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  cursor: default;
+}
+
+.amc-step__capture-pending button {
+  background: var(--surface-300);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+}

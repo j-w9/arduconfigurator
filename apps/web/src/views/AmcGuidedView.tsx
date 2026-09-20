@@ -53,6 +53,10 @@ export interface AmcGuidedViewProps {
   parameters: Readonly<Record<string, number>>
   /** The same parameters as the app holds them, used to predict the draft bar. */
   states?: readonly ParameterState[]
+  /** The firmware's own defaults, needed before a step can capture anything. */
+  defaults?: ReadonlyMap<string, number>
+  /** Read them from the vehicle; absent when the link cannot serve them. */
+  onReadDefaults?: () => void
   /**
    * Where this vehicle's declaration is kept, from the board's identity.
    *
@@ -192,7 +196,8 @@ function StepCard({
   reviewed,
   onDeclareField,
   onStage,
-  onReviewed
+  onReviewed,
+  onReadDefaults
 }: {
   row: StepRow
   connected: boolean
@@ -201,6 +206,7 @@ function StepCard({
   onDeclareField: (key: string) => void
   onStage: (changes: readonly { parameter: string; value: number }[]) => void
   onReviewed: (next: boolean) => void
+  onReadDefaults?: (() => void) | undefined
 }) {
   const [open, setOpen] = useState(false)
   const blocked = row.blocked.length > 0
@@ -217,6 +223,11 @@ function StepCard({
         {row.autoChangedBy ? (
           <span className="amc-step__tag" title={row.autoChangedBy}>
             needs something done elsewhere
+          </span>
+        ) : null}
+        {row.capturePending ? (
+          <span className="amc-step__tag" title="Needs the vehicle's defaults before it can take account of your existing settings">
+            needs defaults
           </span>
         ) : null}
         {row.plugin ? (
@@ -415,6 +426,36 @@ function StepCard({
             </label>
           ) : null}
 
+          {row.captured.length > 0 ? (
+            <details className="amc-step__captured">
+              <summary>
+                {row.captured.length} value{row.captured.length === 1 ? '' : 's'} on this vehicle belong to this step
+              </summary>
+              <table className="amc-step__table">
+                <tbody>
+                  {row.captured.map((entry) => (
+                    <tr key={entry.parameter}>
+                      <td>
+                        <code>{entry.parameter}</code>
+                      </td>
+                      <td>{entry.value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          ) : null}
+
+          {row.capturePending ? (
+            <p className="amc-step__capture-pending">
+              This step also takes account of settings you have already changed, which needs the
+              vehicle&apos;s own defaults.
+              {onReadDefaults ? (
+                <button onClick={onReadDefaults}>Read them from the vehicle</button>
+              ) : null}
+            </p>
+          ) : null}
+
           {row.logMessages.length > 0 ? (
             <details className="amc-step__logs">
               <summary>
@@ -475,6 +516,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     connected,
     parameters,
     states,
+    defaults,
+    onReadDefaults,
     suggestedKind,
     vehicleFirmwareVersion,
     progressKey,
@@ -587,10 +630,11 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             values,
             parameters,
             ...(states ? { states } : {}),
+            ...(defaults ? { defaults } : {}),
             ...(docs ? { docs } : {})
           })
         : undefined,
-    [steps, loaded, fields, values, parameters, states, docs]
+    [steps, loaded, fields, values, parameters, states, defaults, docs]
   )
 
   const declaredCount = fields.length - (summary?.missing.length ?? fields.length)
@@ -669,6 +713,12 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             <dt>Blocked</dt>
             <dd>{summary.totalFailures}</dd>
           </div>
+          {summary.totalCaptured > 0 ? (
+            <div title="Settings already on this vehicle that the sequence's steps claim — a calibration you have run, or anything another tool changed.">
+              <dt>Already yours</dt>
+              <dd>{summary.totalCaptured}</dd>
+            </div>
+          ) : null}
           {summary.totalDisputed > 0 ? (
             <div title="Values the sequence intends that ArduPilot's documented range disputes — most often a 0 that means 'disabled' on a parameter whose range starts higher.">
               <dt>Outside documented range</dt>
@@ -809,13 +859,14 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               ) : null}
               {group.rows.map((row) => (
                 <StepCard
-              key={row.filename}
-              row={row}
-              connected={connected}
-              staged={staged}
-              reviewed={reviewed.has(row.filename)}
-              onDeclareField={focusField}
-              onStage={onStage}
+                  key={row.filename}
+                  row={row}
+                  connected={connected}
+                  staged={staged}
+                  reviewed={reviewed.has(row.filename)}
+                  onDeclareField={focusField}
+                  onStage={onStage}
+                  onReadDefaults={onReadDefaults}
                   onReviewed={(next) =>
                     setReviewed((previous) => {
                       const updated = new Set(previous)

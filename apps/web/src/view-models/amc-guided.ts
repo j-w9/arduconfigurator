@@ -20,6 +20,7 @@ import {
   type ParameterDocs,
   type StepOutcome,
   applyStep,
+  autoImportableParameters,
   componentOptionSources,
   milestonePhases,
   orderedPhases,
@@ -332,6 +333,16 @@ export interface StepRow {
   readonly file?: { readonly url: string; readonly destination: string }
   /** An embedded tool the sequence places beside the step. */
   readonly plugin?: string
+  /**
+   * Values already on the vehicle that this step is responsible for.
+   *
+   * Not something the step sets -- something it takes account of. A completed
+   * calibration, or anything another tool changed, belongs in the record of
+   * the step that owns those parameters.
+   */
+  readonly captured: readonly { readonly parameter: string; readonly value: number }[]
+  /** The step declares patterns but the vehicle's defaults have not been read. */
+  readonly capturePending: boolean
   readonly wikiUrl?: string
   readonly changes: readonly ChangeRow[]
   readonly deletions: readonly string[]
@@ -352,6 +363,10 @@ export interface PhaseGroup {
 
 export interface SequenceSummary {
   readonly rows: readonly StepRow[]
+  /** Values on the vehicle that the sequence's steps claim. */
+  readonly totalCaptured: number
+  /** Steps that would capture, once the vehicle's defaults have been read. */
+  readonly captureBlocked: number
   /** The steps grouped under their phase, in order. */
   readonly groups: readonly PhaseGroup[]
   /**
@@ -444,6 +459,12 @@ export interface RunInputs {
    * of either.
    */
   readonly states?: readonly ParameterState[]
+  /**
+   * The firmware's own default per parameter, from
+   * `@PARAM/param.pck?withdefaults=1`. Without it nothing can be captured,
+   * because "differs from default" is the whole test.
+   */
+  readonly defaults?: ReadonlyMap<string, number>
   readonly docs?: ParameterDocs
 }
 
@@ -455,7 +476,7 @@ export interface RunInputs {
  * not told me" is the most useful thing the screen can say.
  */
 export function runSequence(inputs: RunInputs): SequenceSummary {
-  const { sequence, file, fields, values, parameters, states, docs } = inputs
+  const { sequence, file, fields, values, parameters, states, defaults, docs } = inputs
   const componentsJson = buildComponentsJson(fields, values)
   const context = vehicleContext(componentsJson, parameters)
 
@@ -569,7 +590,14 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
       ...link('tool', 'External tool', step.external_tool_text, step.external_tool_url)
     ]
 
+    const capturedNames = autoImportableParameters(step, parameters, defaults)
+    const declaresCapture = (step.autoimport_nondefault_regexp ?? []).length > 0
+
     rows.push({
+      captured: capturedNames.map((parameter) => ({ parameter, value: parameters[parameter] as number })),
+      // A step that wants to capture but cannot say so, rather than looking
+      // like a step that found nothing.
+      capturePending: declaresCapture && (defaults === undefined || defaults.size === 0),
       filename: entry.filename,
       index: entry.index,
       title: titleOf(entry.filename),
@@ -633,8 +661,13 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
     })
   }
 
+  const totalCaptured = rows.reduce((total, row) => total + row.captured.length, 0)
+  const captureBlocked = rows.filter((row) => row.capturePending).length
+
   return {
     rows,
+    totalCaptured,
+    captureBlocked,
     groups,
     milestones: file ? milestonePhases(file) : [],
     phases,
