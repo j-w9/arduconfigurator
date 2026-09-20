@@ -70,7 +70,9 @@ test('a queued operation gives up on a holder that has gone silent', async () =>
   const startedAt = Date.now()
   await assert.rejects(
     () => service.readRemoteTextFile('/@SYS/uarts.txt'),
-    /still busy with an earlier transfer that has sent nothing/i,
+    // The holder is named: "something is wedged" tells an operator neither
+    // which transfer to wait for nor which one to report as broken.
+    /still busy with an earlier transfer \(list \/APM\/LOGS\) that has sent nothing/i,
     'the waiter must come back with something to read, not wait forever'
   )
   // It waited for the bound rather than failing instantly...

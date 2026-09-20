@@ -201,6 +201,10 @@ export class MavftpService {
   private lastTransferActivityAtMs = 0
   /** Tail of the serialization chain — see withExclusiveSession. */
   private transferQueue: Promise<void> = Promise.resolve()
+  // What currently holds the session, for the stall message. A waiter that
+  // gives up otherwise reports only that *something* is wedged, which names
+  // neither the transfer to wait for nor the one to report as broken.
+  private currentHolder: string | undefined
   // The seq_number to put on the NEXT request. Not a private counter: MAVFTP's
   // seq_number is a SHARED, monotonically rising conversation counter that the
   // server advances too. A burst reply stream bumps the server's copy once per
@@ -255,38 +259,38 @@ export class MavftpService {
   // answer. It is also honest about the hardware: one link, one conversation.
 
   listRemoteDirectory(path: string): Promise<MavftpDirectoryEntry[]> {
-    return this.withExclusiveSession(() => this.listRemoteDirectoryUnlocked(path))
+    return this.withExclusiveSession(`list ${path}`, () => this.listRemoteDirectoryUnlocked(path))
   }
 
   downloadRemoteFile(path: string): Promise<Uint8Array> {
-    return this.withExclusiveSession(() => this.downloadRemoteFileUnlocked(path))
+    return this.withExclusiveSession(`download ${path}`, () => this.downloadRemoteFileUnlocked(path))
   }
 
   uploadRemoteFile(path: string, bytes: Uint8Array, options: { overwrite?: boolean } = {}): Promise<void> {
-    return this.withExclusiveSession(() => this.uploadRemoteFileUnlocked(path, bytes, options))
+    return this.withExclusiveSession(`upload ${path}`, () => this.uploadRemoteFileUnlocked(path, bytes, options))
   }
 
   deleteRemotePath(path: string, kind: 'file' | 'directory' = 'file'): Promise<void> {
-    return this.withExclusiveSession(() => this.deleteRemotePathUnlocked(path, kind))
+    return this.withExclusiveSession(`delete ${path}`, () => this.deleteRemotePathUnlocked(path, kind))
   }
 
   readRemoteTextFile(path: string, options: { timeoutMs?: number } = {}): Promise<string> {
-    return this.withExclusiveSession(() => this.readRemoteTextFileUnlocked(path, options))
+    return this.withExclusiveSession(`read ${path}`, () => this.readRemoteTextFileUnlocked(path, options))
   }
 
   readRemoteFilePrefix(path: string, byteLimit: number, options: { timeoutMs?: number } = {}): Promise<Uint8Array> {
-    return this.withExclusiveSession(() => this.readRemoteFilePrefixUnlocked(path, byteLimit, options))
+    return this.withExclusiveSession(`read ${path}`, () => this.readRemoteFilePrefixUnlocked(path, byteLimit, options))
   }
 
   readRemoteFile(path: string, options: { timeoutMs?: number; byteLimit?: number } = {}): Promise<Uint8Array> {
-    return this.withExclusiveSession(() => this.readRemoteFileUnlocked(path, options))
+    return this.withExclusiveSession(`read ${path}`, () => this.readRemoteFileUnlocked(path, options))
   }
 
   downloadRemoteFileBurst(
     path: string,
     options: Parameters<MavftpService['downloadRemoteFileBurstUnlocked']>[1] = {}
   ): Promise<Uint8Array> {
-    return this.withExclusiveSession(() => this.downloadRemoteFileBurstUnlocked(path, options))
+    return this.withExclusiveSession(`download ${path}`, () => this.downloadRemoteFileBurstUnlocked(path, options))
   }
 
   /**
@@ -308,7 +312,7 @@ export class MavftpService {
    * Anything reached from inside an operation must do the same or it will
    * deadlock against this queue.
    */
-  private async withExclusiveSession<T>(operation: () => Promise<T>): Promise<T> {
+  private async withExclusiveSession<T>(label: string, operation: () => Promise<T>): Promise<T> {
     const predecessor = this.transferQueue
     let release = (): void => {}
     // The queue link resolves only from the finally below, so it can never
@@ -317,9 +321,14 @@ export class MavftpService {
       release = resolve
     }))
     await this.awaitPredecessor(predecessor)
+    // Claimed only once the predecessor is gone, so this always names the
+    // operation actually holding the session rather than one queued behind it.
+    const previousHolder = this.currentHolder
+    this.currentHolder = label
     try {
       return await operation()
     } finally {
+      this.currentHolder = previousHolder
       release()
     }
   }
@@ -363,7 +372,7 @@ export class MavftpService {
             if (silentForMs >= this.queueStallTimeoutMs) {
               reject(
                 new Error(
-                  `MAVFTP is still busy with an earlier transfer that has sent nothing for ${Math.round(silentForMs / 1000)}s. Reconnect if it does not recover.`
+                  `MAVFTP is still busy with an earlier transfer (${this.currentHolder ?? 'unknown'}) that has sent nothing for ${Math.round(silentForMs / 1000)}s. Reconnect if it does not recover.`
                 )
               )
               return
