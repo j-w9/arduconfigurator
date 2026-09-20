@@ -556,7 +556,9 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         subtitle={
           activeViewId === 'motors'
             ? 'Frame class, output map, direction & test, ESC protocol, and verification review for propulsion motors.'
-            : 'Assign each output to a function — aux servos for a parachute, gripper, or control surface — and the output settings that extend the map.'
+            // Short on purpose: the table below says what it is, and the tab
+            // is called Servos. The long version restated the heading.
+            : 'Assign a function to each output and set its PWM range, trim and direction.'
         }
         activeTaskId={activeOutputTaskId}
         activeTask={activeOutputTask}
