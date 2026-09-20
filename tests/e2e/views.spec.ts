@@ -2226,8 +2226,6 @@ test.describe('Config view', () => {
       ['receiver-signal', 'rc'],
       ['arming', 'arming'],
       ['identity', 'system'],
-      ['beeper', 'system'],
-      ['camera-trigger', 'system'],
       ['logging', 'system']
     ] as const) {
       await page.getByTestId(`config-category-${category}`).click()
@@ -2235,6 +2233,16 @@ test.describe('Config view', () => {
     }
     // Statistics moved to the Setup side panel — no longer a Config section.
     await expect(page.getByTestId('config-section-statistics')).toHaveCount(0)
+    // The beeper/LED card was a second copy of the Peripherals LEDs & Buzzer
+    // card, and the camera trigger is attached hardware: both left Config.
+    await expect(page.getByTestId('config-section-beeper')).toHaveCount(0)
+    await expect(page.getByTestId('config-section-camera-trigger')).toHaveCount(0)
+    // Main loop rate is a System setting; it is no longer mirrored on the ESC
+    // card under Airframe.
+    await page.getByTestId('config-category-airframe').click()
+    await expect(
+      page.getByTestId('config-section-esc-dshot').getByText('Main loop rate')
+    ).toHaveCount(0)
     // Fast-rate thread is build-gated: the demo Copter mock does not stream
     // FSTRATE_*, so the Fast loop rate section must never render.
     await expect(page.getByTestId('config-section-fast-loop-rate')).toHaveCount(0)
@@ -7140,6 +7148,13 @@ test.describe('Peripherals tab', () => {
     await page.getByTestId('view-button-servos').click()
     await expect(page.getByTestId('outputs-task-nav')).toHaveCount(0)
     await expect(page.getByTestId('servo-mapping-task-body')).toBeVisible()
+  })
+
+  test('the camera trigger sits with the mount that carries the camera', async ({ page }) => {
+    await openPeripherals(page)
+    await page.getByTestId('config-category-gimbal').click()
+    await expect(page.getByTestId('config-section-camera-trigger')).toBeVisible()
+    await expect(page.getByTestId('config-section-gimbal')).toBeVisible()
   })
 
   test('the LED and buzzer card came over intact', async ({ page }) => {

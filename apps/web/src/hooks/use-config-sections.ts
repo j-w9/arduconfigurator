@@ -53,8 +53,9 @@ const CATEGORY_BY_SECTION: Record<string, ConfigCategoryId> = {
   arming: 'arming',
   identity: 'system',
   logging: 'system',
-  beeper: 'system',
-  'camera-trigger': 'system'
+  // A triggered camera is attached hardware, and it sits beside the mount that
+  // carries it: Peripherals ▸ Camera & Gimbal.
+  'camera-trigger': 'gimbal'
 }
 
 // Rarely-touched fields folded into each card's "Advanced" disclosure, so a card
@@ -85,7 +86,6 @@ const ADVANCED_FIELDS: Record<string, readonly string[]> = {
   // LOG_DISARMED / LOG_REPLAY are routinely set per-build (LOG_DISARMED=2 +
   // LOG_REPLAY=1 is a common "full logs" pairing), so they lead the card.
   logging: ['LOG_BITMASK'],
-  beeper: ['NTF_BUZZ_TYPES'],
   'camera-trigger': ['CAM_DURATION', 'CAM_AUTO_ONLY', 'CAM_SERVO_ON', 'CAM_SERVO_OFF']
 }
 
@@ -189,17 +189,13 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     {
       id: 'esc-dshot',
       title: 'ESC & DShot',
-      description: 'Output protocol and DShot/BLHeli behavior — set this before motor testing. DShot rate is a multiple of the main loop rate, so both are here; the resulting output rate should never fall below 500 Hz. Bidirectional DShot needs a DShot protocol; check it on the first 4 outputs (some boards do 8) and enable BLHeli auto. ESC type must be set (not "None") for reverse/3D DShot commands to be sent at all. Reverse a motor here instead of swapping wires.',
+      description: 'Output protocol and DShot/BLHeli behavior — set this before motor testing. DShot rate is a multiple of the main loop rate (System ▸ System rates); the resulting output rate should never fall below 500 Hz. Bidirectional DShot needs a DShot protocol; check it on the first 4 outputs (some boards do 8) and enable BLHeli auto. ESC type must be set (not "None") for reverse/3D DShot commands to be sent at all. Reverse a motor here instead of swapping wires.',
       fields: [
         { paramId: 'MOT_PWM_TYPE', label: 'ESC protocol', digits: 0 },
-        // Shown here as well as under Sensors -> System rates, because DShot
-        // rate is defined as a MULTIPLE of it: SRV_Channels.cpp describes
-        // SERVO_DSHOT_RATE as "the DShot output rate for all outputs as a
-        // multiple of the loop rate", with 0 pinning 1 kHz for low loop rates
-        // and a warning never to end up below 500 Hz. Setting the multiplier
-        // without the thing it multiplies is guesswork. Same parameter, same
-        // draft -- editing it in either place is one edit.
-        { paramId: 'SCHED_LOOP_RATE', label: 'Main loop rate', unit: 'Hz', digits: 0 },
+        // SCHED_LOOP_RATE used to be mirrored here, because DShot rate is a
+        // MULTIPLE of it. Field report: it now lives on System (System rates)
+        // and having it in two tabs was the confusing part, not the help. The
+        // DShot rate row below names the relationship instead.
         { paramId: 'SERVO_DSHOT_RATE', label: 'DShot rate', digits: 0 },
         { paramId: 'SERVO_DSHOT_ESC', label: 'ESC type', digits: 0 },
         { paramId: 'SERVO_BLH_AUTO', label: 'BLHeli auto', digits: 0 },
@@ -282,14 +278,19 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
         // (Display order only — writes are staged/applied from the draft pool,
         // which is keyed by parameter id and unaffected by card layout.)
         { paramId: 'RC_PROTOCOLS', label: 'RC protocols (type)', digits: 0 },
-        { paramId: 'RC_OPTIONS', label: 'RC options', digits: 0 },
-        { paramId: 'RSSI_TYPE', label: 'RSSI source', digits: 0 },
-        { paramId: 'RSSI_CHANNEL', label: 'RSSI channel', digits: 0 },
         // Mode channel param is vehicle-specific: Rover uses MODE_CH, Copter/
         // Plane use FLTMODE_CH, and Sub has no RC mode channel (button modes).
+        //
+        // Second, not last. RC_OPTIONS is a tall bitmask, so in the card's
+        // column flow a trailing field wrapped to the bottom of the first
+        // column, under all of it — reported as "a little hidden". It is also
+        // the knob an operator reaches for right after the protocol.
         ...(activeVehicle === 'ArduSub'
           ? []
-          : [{ paramId: activeVehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH', label: 'Flight-mode channel', digits: 0 }])
+          : [{ paramId: activeVehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH', label: 'Flight-mode channel', digits: 0 }]),
+        { paramId: 'RC_OPTIONS', label: 'RC options', digits: 0 },
+        { paramId: 'RSSI_TYPE', label: 'RSSI source', digits: 0 },
+        { paramId: 'RSSI_CHANNEL', label: 'RSSI channel', digits: 0 }
       ]
     },
     {
@@ -321,16 +322,6 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
         { paramId: 'LOG_BITMASK', label: 'Bitmask', digits: 0 },
         { paramId: 'LOG_DISARMED', label: 'Log while disarmed', digits: 0 },
         { paramId: 'LOG_REPLAY', label: 'Replay log', digits: 0 }
-      ]
-    },
-    {
-      id: 'beeper',
-      title: 'Beeper / notification',
-      description: 'Buzzer + LED notification volumes. Same params are also reachable from Servos → Peripherals; surfaced here for BF parity.',
-      fields: [
-        { paramId: 'NTF_BUZZ_VOLUME', label: 'Buzzer volume', unit: '%', digits: 0 },
-        { paramId: 'NTF_BUZZ_TYPES', label: 'Buzzer types', digits: 0 },
-        { paramId: 'NTF_LED_BRIGHT', label: 'LED brightness', digits: 0 }
       ]
     },
     {

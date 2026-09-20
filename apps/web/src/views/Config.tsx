@@ -77,7 +77,7 @@ export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
   // position sources first, then the payloads hanging off them.
   { id: 'gps', label: 'GPS' },
   { id: 'compass', label: 'Compass' },
-  { id: 'gimbal', label: 'Gimbal' },
+  { id: 'gimbal', label: 'Camera & Gimbal' },
   { id: 'flow-lidar', label: 'Flow & Lidar' },
   // Notification hardware and switched outputs came from the Servos tab: an LED
   // strip and a relay are things wired to the board, not servo setup.
@@ -171,7 +171,9 @@ export function ConfigView(props: ConfigViewProps) {
   const {
     sections,
     title = 'Config',
-    subtitle = 'Airframe, sensors, GPS, RC, arming, and system settings — grouped so you only see one area at a time.',
+    // GPS and sensors left for Peripherals; the subtitle should not still
+    // offer them here.
+    subtitle = 'Airframe, RC, flight modes, arming, power and system settings — one area at a time.',
     panelId = 'setup-panel-config',
     isExpertMode,
     parametersById,
@@ -218,6 +220,15 @@ export function ConfigView(props: ConfigViewProps) {
     () => sections.filter((section) => (section.category ?? 'system') === effectiveCategory),
     [sections, effectiveCategory]
   )
+
+  // A group holding ONE card gets the width instead of a 360px column.
+  //
+  // The multicolumn grid is right when a tab holds several cards — they pack
+  // and short ones tuck under tall ones. With a single card it just made a tall
+  // single-file list of fields with most of the screen empty, which is all
+  // scrolling and no reason: RC and Arming on Config, and every Peripherals
+  // sub-tab, which holds exactly one card by construction.
+  const spreadWide = visibleSections.length === 1
 
   // One editable field row (or the "(not reported)" placeholder). Shared by the
   // common set and the folded Advanced set.
@@ -316,7 +327,10 @@ export function ConfigView(props: ConfigViewProps) {
           </div>
         ) : null}
 
-        <div className="config-grid" data-testid="config-section-grid">
+        <div
+          className={`config-grid${spreadWide ? ' config-grid--wide' : ''}`}
+          data-testid="config-section-grid"
+        >
           {visibleSections.map((section) => (
             <article
               key={section.id}

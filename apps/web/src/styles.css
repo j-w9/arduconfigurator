@@ -14535,17 +14535,18 @@ details.metadata-settings-section:not([open]) > summary::after {
   max-width: 1180px;
 }
 
-/* Peripherals renders ONE card per sub-tab, so the 360px column above left GPS
-   and Compass as a tall single-file list with most of the screen empty — all
-   scrolling, no reason. Give that panel the full width and let the card flow
-   its fields into as many columns as fit (one on a phone, where auto-fit
-   collapses the tracks). */
-#setup-panel-peripherals .config-grid {
+/* A group holding ONE card takes the full width and flows its fields into as
+   many columns as fit (one on a phone, where auto-fit collapses the tracks).
+   The 360px column above is right when a tab holds several cards; with a single
+   card it left a tall single-file list with most of the screen empty. Applied
+   by ConfigView wherever a category resolves to one card — every Peripherals
+   sub-tab, and RC and Arming on Config. */
+.config-grid--wide {
   columns: auto;
   max-width: none;
 }
 
-#setup-panel-peripherals .config-section__editors {
+.config-grid--wide .config-section__editors {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   column-gap: var(--space-3);
 }

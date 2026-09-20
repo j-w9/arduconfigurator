@@ -3,9 +3,10 @@ Peripherals & Gimbal
 
 The **Peripherals** tab configures the hardware that hangs off the flight
 controller: the GPS, the compass, a rangefinder/LiDAR for height and obstacle
-sensing, an optical flow sensor, a camera mount/gimbal, the notification LEDs
-and buzzer, and the relay outputs. It has one sub-tab per peripheral — **GPS**,
-**Compass**, **Gimbal**, **Flow & Lidar**, **LEDs & Buzzer**, **Relays** — so
+sensing, an optical flow sensor, a camera mount/gimbal and its shutter trigger,
+the notification LEDs and buzzer, and the relay outputs. It has one sub-tab per
+peripheral — **GPS**, **Compass**, **Camera & Gimbal**, **Flow & Lidar**,
+**LEDs & Buzzer**, **Relays** — so
 you work on one at a time, and each section only renders the parameters the
 connected firmware actually reports.
 
