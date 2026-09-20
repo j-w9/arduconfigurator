@@ -12,6 +12,7 @@ import {
   runSequence
 } from '../view-models/amc-guided'
 import type { ParameterDocs } from '@arduconfig/amc-steps'
+import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 // AMC guided mode — the experimental tab.
 //
@@ -43,6 +44,8 @@ export interface AmcGuidedViewProps {
   firmwareVehicle?: string
   /** Live parameter values, keyed by name. Empty when not connected. */
   parameters: Readonly<Record<string, number>>
+  /** The same parameters as the app holds them, used to predict the draft bar. */
+  states?: readonly ParameterState[]
   /** Suggested sequence for the connected firmware, when there is one. */
   suggestedKind?: AmcVehicleKind
   /** ArduPilot parameter documentation, loaded lazily by App. */
@@ -266,8 +269,18 @@ function StepCard({
                     <td>
                       {change.value}
                       {staged[change.parameter] !== undefined ? <span className="amc-step__tag">staged</span> : null}
+                      {change.disputed ? (
+                        <span className="amc-step__disputed" title={change.disputed.reason}>
+                          {change.disputed.overridable ? 'needs override' : 'refused'}
+                        </span>
+                      ) : null}
                     </td>
-                    <td className="amc-step__reason">{change.reason ?? ''}</td>
+                    <td className="amc-step__reason">
+                      {change.reason ?? ''}
+                      {change.disputed ? (
+                        <span className="amc-step__disputed-why">{change.disputed.reason}</span>
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -338,7 +351,7 @@ function StepCard({
 }
 
 export function AmcGuidedView(props: AmcGuidedViewProps) {
-  const { connected, parameters, suggestedKind, docs, docsVehicle, onDocsVehicleChange, onStage, staged } = props
+  const { connected, parameters, states, suggestedKind, docs, docsVehicle, onDocsVehicleChange, onStage, staged } = props
 
   const [kind, setKind] = useState<AmcVehicleKind>(suggestedKind ?? 'ArduCopter')
   const [values, setValues] = useState<Record<string, string>>({})
@@ -381,8 +394,11 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   }, [kind, onDocsVehicleChange])
 
   const summary = useMemo(
-    () => (steps ? runSequence({ sequence: steps, fields, values, parameters, ...(docs ? { docs } : {}) }) : undefined),
-    [steps, fields, values, parameters, docs]
+    () =>
+      steps
+        ? runSequence({ sequence: steps, fields, values, parameters, ...(states ? { states } : {}), ...(docs ? { docs } : {}) })
+        : undefined,
+    [steps, fields, values, parameters, states, docs]
   )
 
   const declaredCount = fields.length - (summary?.missing.length ?? fields.length)
@@ -448,6 +464,12 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             <dt>Blocked</dt>
             <dd>{summary.totalFailures}</dd>
           </div>
+          {summary.totalDisputed > 0 ? (
+            <div title="Values the sequence intends that ArduPilot's documented range disputes — most often a 0 that means 'disabled' on a parameter whose range starts higher.">
+              <dt>Outside documented range</dt>
+              <dd>{summary.totalDisputed}</dd>
+            </div>
+          ) : null}
         </dl>
         )}
       </Panel>
@@ -518,7 +540,12 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             >
               Stage all {summary.totalPending} pending
             </button>
-            <span>Review and write them from the draft bar.</span>
+            <span>
+              Review and write them from the draft bar.
+              {summary.totalDisputed > 0
+                ? ` ${summary.totalDisputed} sit outside ArduPilot's documented range and the draft bar will hold them until you override.`
+                : ''}
+            </span>
           </div>
         ) : null}
         <div className="amc-guided__steps">

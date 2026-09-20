@@ -8,6 +8,9 @@
 //
 // Pure, per the view-model pattern — no React, no runtime, no transport.
 
+import { deriveParameterDraftEntries } from '@arduconfig/ardupilot-core'
+import type { ParameterState } from '@arduconfig/ardupilot-core'
+
 import observedComponentValues from '@amc/data/component-values.json'
 
 import {
@@ -222,6 +225,22 @@ export function buildComponentsJson(fields: readonly ComponentField[], values: R
 /** A JSON number literal, which is what keeps `4.0` distinct from `4`. */
 const NUMERIC = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/
 
+/**
+ * Why the draft bar would refuse a value.
+ *
+ * Several of the sequence's values sit outside what ArduPilot's *documented*
+ * range allows while being exactly what the firmware expects -- most often a
+ * 0 that means "disabled" on a parameter whose range starts at 5. Left to the
+ * draft bar alone that arrives as an unexplained "N invalid" after staging, so
+ * the same rules are run here and the reason is shown next to the value that
+ * causes it, before anything is staged.
+ */
+export interface Disputed {
+  readonly reason: string
+  /** Whether the app's "Override and write anyway" can carry it through. */
+  readonly overridable: boolean
+}
+
 /** A parameter the sequence would set, next to what the vehicle has now. */
 export interface ChangeRow {
   readonly parameter: string
@@ -232,6 +251,8 @@ export interface ChangeRow {
   readonly current?: number
   /** True when the vehicle's value already matches. */
   readonly satisfied: boolean
+  /** Set when the draft validation would reject this value, with its reason. */
+  readonly disputed?: Disputed
 }
 
 /**
@@ -276,13 +297,20 @@ export interface StepRow {
 export interface SequenceSummary {
   readonly rows: readonly StepRow[]
   readonly phases: readonly string[]
-  /** Fields the operator has not declared yet. */
+  /** Distinct parameters whose value differs from the vehicle's. */
   readonly missing: readonly ComponentField[]
   /** Fields that would unblock the most directives, most first. */
   readonly nextFields: readonly { readonly field: ComponentField; readonly unblocks: number }[]
   readonly totalChanges: number
   readonly totalPending: number
   readonly totalFailures: number
+  /**
+   * Distinct parameters the draft bar would refuse.
+   *
+   * Distinct, like `totalPending`, because staging produces one draft per
+   * parameter however many steps set it.
+   */
+  readonly totalDisputed: number
 }
 
 /** `13_initial_atc.param` -> `Initial ATC`. */
@@ -296,12 +324,53 @@ function sameValue(left: number, right: number): boolean {
   return Math.abs(left - right) <= Math.max(1e-6, Math.abs(right) * 1e-6)
 }
 
+/**
+ * Ask the app's own draft validation what it makes of the sequence's values.
+ *
+ * Deliberately the real `deriveParameterDraftEntries` rather than a
+ * reimplementation of min/max/enum/bitmask here: this screen's whole job is to
+ * predict what the draft bar will say, and a second copy of the rules would
+ * eventually disagree with the first.
+ */
+function disputesFor(
+  proposals: readonly { parameter: string; value: number }[],
+  states: readonly ParameterState[]
+): Map<string, Disputed> {
+  const disputes = new Map<string, Disputed>()
+  // Nothing is known about the vehicle, so there is nothing to predict; the
+  // tab is showing the sequence rather than a plan for a particular aircraft.
+  if (states.length === 0) return disputes
+
+  const drafts: Record<string, string> = {}
+  for (const proposal of proposals) drafts[proposal.parameter] = String(proposal.value)
+
+  // The vehicle's own parameter list, with the app's own definitions. Passing
+  // these rather than a reconstruction is what makes the prediction exact:
+  // the draft bar is about to run this same function over this same input.
+  for (const entry of deriveParameterDraftEntries([...states], drafts)) {
+    if (entry.status !== 'invalid') continue
+    disputes.set(entry.id, {
+      reason: entry.reason ?? 'The draft bar would refuse this value.',
+      overridable: entry.overridable === true
+    })
+  }
+  return disputes
+}
+
 export interface RunInputs {
   readonly sequence: AmcSequence
   readonly fields: readonly ComponentField[]
   readonly values: Readonly<Record<string, string>>
   /** The vehicle's current parameters, when connected. */
   readonly parameters: Readonly<Record<string, number>>
+  /**
+   * The vehicle's parameters as the app holds them, definitions included.
+   *
+   * Used to predict exactly what the draft bar will accept, by running the
+   * app's own validation over the app's own data rather than a reconstruction
+   * of either.
+   */
+  readonly states?: readonly ParameterState[]
   readonly docs?: ParameterDocs
 }
 
@@ -313,31 +382,47 @@ export interface RunInputs {
  * not told me" is the most useful thing the screen can say.
  */
 export function runSequence(inputs: RunInputs): SequenceSummary {
-  const { sequence, fields, values, parameters, docs } = inputs
+  const { sequence, fields, values, parameters, states, docs } = inputs
   const componentsJson = buildComponentsJson(fields, values)
   const context = vehicleContext(componentsJson, parameters)
 
   const declared: unknown = JSON.parse(componentsJson).Components
   const rows: StepRow[] = []
+  const proposals: { parameter: string; value: number }[] = []
   const phases: string[] = []
   const unblockCounts = new Map<string, number>()
   let totalChanges = 0
-  let totalPending = 0
   let totalFailures = 0
+  // Counted as distinct parameters, not as rows. One parameter is commonly set
+  // by several steps, and what gets staged -- and what the draft bar then
+  // reports -- is one draft per parameter, so counting rows here would promise
+  // a number the draft bar never shows.
+  const pendingParameters = new Set<string>()
+  const disputedParameters = new Set<string>()
 
-  for (const entry of sequence) {
+  // Two passes: everything the sequence proposes is judged in one call, so the
+  // validation sees the whole set rather than one step at a time.
+  const outcomes = sequence.map((entry) => {
     const outcome = applyStep(entry.step, context, docs ? { docs } : {})
+    for (const change of outcome.changes) proposals.push({ parameter: change.parameter, value: change.value })
+    return { entry, outcome }
+  })
+  const disputes = disputesFor(proposals, states ?? [])
+
+  for (const { entry, outcome } of outcomes) {
     const changes = outcome.changes.map((change): ChangeRow => {
       const current = parameters[change.parameter]
       const satisfied = current !== undefined && sameValue(current, change.value)
-      const base = { parameter: change.parameter, value: change.value, group: change.group, satisfied }
-      return current === undefined
-        ? change.reason === undefined
-          ? base
-          : { ...base, reason: change.reason }
-        : change.reason === undefined
-          ? { ...base, current }
-          : { ...base, current, reason: change.reason }
+      const disputed = satisfied ? undefined : disputes.get(change.parameter)
+      return {
+        parameter: change.parameter,
+        value: change.value,
+        group: change.group,
+        satisfied,
+        ...(current === undefined ? {} : { current }),
+        ...(change.reason === undefined ? {} : { reason: change.reason }),
+        ...(disputed === undefined ? {} : { disputed })
+      }
     })
     const causes = new Map<string, { diagnosis: Diagnosis; declare: BlockedRow['declare']; parameters: string[]; detail: string }>()
     for (const failure of outcome.failures) {
@@ -372,9 +457,13 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
             ? `Declare ${declare.map((entry) => entry.label).join(' and ')} to set ${blockedParams.length} parameters.`
             : diagnosis.summary.replace(`${blockedParams[0] as string} `, `${blockedParams.length} parameters `)
     }))
+    for (const change of changes) {
+      if (change.satisfied) continue
+      pendingParameters.add(change.parameter)
+      if (change.disputed) disputedParameters.add(change.parameter)
+    }
     const pending = changes.filter((change) => !change.satisfied).length
     totalChanges += changes.length
-    totalPending += pending
     // Counted in parameters, not causes, so it pairs with "Parameters set" in
     // the summary; the per-step list still groups causes.
     totalFailures += blocked.reduce((total, entry) => total + entry.parameters.length, 0)
@@ -407,7 +496,16 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
     .filter((entry): entry is { field: ComponentField; unblocks: number } => entry.field !== undefined)
     .sort((left, right) => right.unblocks - left.unblocks)
 
-  return { rows, phases, missing, nextFields, totalChanges, totalPending, totalFailures }
+  return {
+    rows,
+    phases,
+    missing,
+    nextFields,
+    totalChanges,
+    totalPending: pendingParameters.size,
+    totalFailures,
+    totalDisputed: disputedParameters.size
+  }
 }
 
 /**

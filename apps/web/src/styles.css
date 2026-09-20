@@ -19363,3 +19363,23 @@ button.mavlink-inspector__sent-row {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* A value the sequence intends that the documented range disputes. Marked
+   before staging, because the draft bar would otherwise report it as an
+   unexplained rejection after the fact. */
+.amc-step__disputed {
+  margin-left: 6px;
+  font-size: 0.75em;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.amc-step__disputed-why {
+  display: block;
+  color: var(--danger);
+  font-size: 0.85em;
+  margin-top: 2px;
+}

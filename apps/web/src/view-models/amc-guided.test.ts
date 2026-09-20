@@ -185,11 +185,16 @@ describe('runSequence', () => {
     expect(matched.totalPending).toBeLessThan(first.totalPending)
   })
 
-  it('counts pending changes only against a connected vehicle', () => {
-    // With no parameters known, nothing can be satisfied, so every change is
-    // pending -- which is what the tab shows when nothing is plugged in.
+  it('counts pending parameters, not the rows that set them', () => {
+    // A parameter set by three steps is one draft, one line in the draft bar,
+    // and one thing to decide about -- so counting rows would promise a number
+    // the draft bar never shows.
     const summary = run({ [keyFor('Diameter_inches')]: '10' })
-    expect(summary.totalPending).toBe(summary.totalChanges)
+    const distinct = new Set(
+      summary.rows.flatMap((row) => row.changes.filter((c) => !c.satisfied).map((c) => c.parameter))
+    )
+    expect(summary.totalPending).toBe(distinct.size)
+    expect(summary.totalPending).toBeLessThan(summary.totalChanges)
   })
 })
 
@@ -298,5 +303,100 @@ describe('field choices', () => {
   it('turns a meaningful share of the form into dropdowns', () => {
     const dropdowns = documentedFields.filter((field) => field.documented)
     expect(dropdowns.length).toBeGreaterThanOrEqual(6)
+  })
+})
+
+describe('values the documented range disputes', () => {
+  // The sequence proposes values ArduPilot's firmware accepts but its published
+  // *range* does not. Predicted here so the screen can say so before staging,
+  // rather than the draft bar reporting an unexplained "N invalid" after.
+  const upstream = JSON.parse(
+    readFileSync(fileURLToPath(new URL('../generated/param-upstream/arducopter.json', import.meta.url)), 'utf8')
+  ) as Record<string, { minimum?: number; maximum?: number; options?: { value: number; label: string }[]; bitmask?: boolean }>
+
+  /** The vehicle as the app holds it: a value and the definition behind it. */
+  const withVehicle = (parameters: Record<string, number>, values: Record<string, string> = {}) => {
+    const states = Object.entries(parameters).map(([id, value]) => ({
+      id,
+      value,
+      index: 0,
+      count: 0,
+      definition: { id, label: id, description: '', category: 'test', ...upstream[id] }
+    }))
+    return runSequence({ sequence: copter, fields: documentedFields, values, parameters, states, docs })
+  }
+  const keyFor = (label: string) => {
+    const field = documentedFields.find((candidate) => candidate.label === label)
+    if (!field) throw new Error(`no field named ${label}`)
+    return field.key
+  }
+
+  // A vehicle declared well enough that the tuning steps compute.
+  const DECLARED = {
+    [keyFor('Diameter_inches')]: '10',
+    [keyFor('Number of cells')]: '4',
+    [keyFor('MCU Series')]: 'STM32H7xx',
+    [keyFor('Version')]: '4.6.0',
+    [keyFor('Frame class')]: 'Quad'
+  }
+
+  it('flags a 0 that means disabled on a parameter whose range starts higher', () => {
+    // ATC_RAT_RLL_FLTE documents a minimum of 5; the sequence sets 0, which is
+    // how the error filter is turned off. The firmware takes it; the published
+    // range does not describe it.
+    const summary = withVehicle({ ATC_RAT_RLL_FLTE: 20 }, DECLARED)
+    const row = summary.rows
+      .flatMap((r) => r.changes)
+      .find((c) => c.parameter === 'ATC_RAT_RLL_FLTE' && c.value === 0)
+    expect(row).toBeDefined()
+    expect(row?.disputed?.reason).toMatch(/below the documented minimum of 5/)
+    // Overridable, because it is the range that is wrong rather than the value.
+    expect(row?.disputed?.overridable).toBe(true)
+  })
+
+  it('flags a notch filter the sequence disables the same way', () => {
+    const summary = withVehicle({ ATC_RAT_RLL_NEF: 5 }, DECLARED)
+    const row = summary.rows
+      .flatMap((r) => r.changes)
+      .find((c) => c.parameter === 'ATC_RAT_RLL_NEF' && c.value === 0)
+    expect(row?.disputed?.reason).toMatch(/below the documented minimum of 1/)
+  })
+
+  it('says nothing at all when no vehicle is connected', () => {
+    // With no vehicle there is no plan to check, so the tab shows the sequence
+    // without pretending to know what any of it would be refused for.
+    const summary = withVehicle({})
+    expect(summary.totalDisputed).toBe(0)
+    expect(summary.rows.flatMap((r) => r.changes).every((c) => c.disputed === undefined)).toBe(true)
+  })
+
+  it('reports a parameter this firmware does not have', () => {
+    // The dominant reason the draft bar refuses the sequence: it proposes
+    // parameters the connected vehicle never reported. Saying so here is the
+    // difference between "12 invalid" and "your firmware has no such setting".
+    const summary = withVehicle({ ATC_RAT_RLL_FLTE: 20 }, DECLARED)
+    const absent = summary.rows
+      .flatMap((r) => r.changes)
+      .filter((c) => c.disputed?.reason.includes('not present in the synced snapshot'))
+    expect(absent.length).toBeGreaterThan(0)
+    // Nothing can rescue it, so the screen must not offer an override.
+    expect(absent.every((c) => c.disputed?.overridable === false)).toBe(true)
+  })
+
+  it('counts disputed parameters the way the draft bar will', () => {
+    const summary = withVehicle({ ATC_RAT_RLL_FLTE: 20, ATC_RAT_RLL_NEF: 5 }, DECLARED)
+    const distinct = new Set(
+      summary.rows.flatMap((r) => r.changes.filter((c) => c.disputed).map((c) => c.parameter))
+    )
+    expect(summary.totalDisputed).toBe(distinct.size)
+    expect(summary.totalDisputed).toBeGreaterThan(0)
+  })
+
+  it('never disputes a value the vehicle already has', () => {
+    // A satisfied row is not going to be staged, so flagging it would be noise.
+    const summary = withVehicle({ ATC_RAT_RLL_FLTE: 0 }, DECLARED)
+    const row = summary.rows.flatMap((r) => r.changes).find((c) => c.parameter === 'ATC_RAT_RLL_FLTE')
+    expect(row?.satisfied).toBe(true)
+    expect(row?.disputed).toBeUndefined()
   })
 })

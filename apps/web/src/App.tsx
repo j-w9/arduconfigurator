@@ -9815,6 +9815,7 @@ export function App() {
         <AmcGuidedView
           connected={snapshot.connection.kind === 'connected'}
           parameters={amcLiveParameters}
+          states={snapshot.parameters}
           staged={editedValues}
           // The AMC sequence proposes; it does not write. Its changes go into
           // the same draft model as every other edit, so the draft bar's
