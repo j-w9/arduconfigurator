@@ -23,12 +23,22 @@ import type { ParameterDocs } from '@arduconfig/amc-steps'
 // MAVLink imports. The declared-components form is local UI state, like the AI
 // Assistant's composer draft — it describes the vehicle, not the app.
 //
-// Nothing on this screen writes to the flight controller. There is deliberately
-// no apply affordance yet: the sequence is being read against a real vehicle to
-// see whether it agrees with the native flow, which is the whole experiment.
+// Nothing here writes to the flight controller directly. Changes are *staged*
+// into the app's existing parameter-draft model, so the sequence's proposals
+// land in the same review-then-write flow as every other change in the app --
+// the draft bar, the Show changes list, the min/max/enum validation, Write all
+// and Discard. A step cannot push parameters on its own, and staging a step is
+// undoable the same way any other staged edit is.
 
 export interface AmcGuidedViewProps {
   connected: boolean
+  /**
+   * Stage changes into the app's parameter drafts. The existing draft bar
+   * reviews and writes them; this view never writes.
+   */
+  onStage: (changes: readonly { parameter: string; value: number }[]) => void
+  /** The currently staged drafts, so a step can show what it has contributed. */
+  staged: Readonly<Record<string, string>>
   /** The connected vehicle's firmware, used to pick a sequence. */
   firmwareVehicle?: string
   /** Live parameter values, keyed by name. Empty when not connected. */
@@ -46,27 +56,129 @@ function fieldInputId(key: string): string {
   return `amc-field-${key.replace(/[^a-zA-Z0-9]+/g, '-')}`
 }
 
-function groupFields(fields: readonly ComponentField[]): [string, ComponentField[]][] {
+/** The escape in a suggestions dropdown, for a value the templates never used. */
+const OTHER = '\u0000other'
+
+/**
+ * One field: a dropdown where the field is an enumeration, an input where it is
+ * a measurement.
+ *
+ * A suggested list is not known to be complete, so it keeps an "Other" escape
+ * that turns the field back into a text box; a documented list is complete, so
+ * it does not.
+ */
+function FieldControl({
+  field,
+  value,
+  onChange
+}: {
+  field: ComponentField
+  value: string
+  onChange: (next: string) => void
+}) {
+  const choices = field.documented ?? field.suggested
+  // Once "Other" is chosen, or a stored value is off-list, the field stays a
+  // text box rather than silently snapping to something it does not mean.
+  const offList = value !== '' && choices !== undefined && !choices.includes(value)
+  const [freeform, setFreeform] = useState(offList)
+
+  if (!choices || (freeform && field.suggested)) {
+    return (
+      <span className="amc-guided__field-control">
+        <input
+          id={fieldInputId(field.key)}
+          value={value}
+          type={field.numeric ? 'number' : 'text'}
+          inputMode={field.numeric ? 'decimal' : undefined}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        {field.suggested ? (
+          <button
+            type="button"
+            className="amc-guided__field-back"
+            onClick={() => {
+              setFreeform(false)
+              onChange('')
+            }}
+          >
+            Choose from list
+          </button>
+        ) : null}
+      </span>
+    )
+  }
+
+  return (
+    <select
+      id={fieldInputId(field.key)}
+      value={offList ? OTHER : value}
+      onChange={(event) => {
+        if (event.target.value === OTHER) {
+          setFreeform(true)
+          onChange('')
+          return
+        }
+        onChange(event.target.value)
+      }}
+    >
+      <option value="">Not declared</option>
+      {choices.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+      {field.suggested ? <option value={OTHER}>Other…</option> : null}
+    </select>
+  )
+}
+
+interface FieldGroup {
+  readonly component: string
+  readonly fields: readonly ComponentField[]
+  /**
+   * Whether to show each field's group alongside its name.
+   *
+   * It is only worth the space when the component has more than one: the ESC
+   * has a Protocol under both its telemetry and its control connection, so
+   * there the group is the whole difference. Where every field sits under
+   * "Specifications" it is the same word on every row and says nothing.
+   */
+  readonly showGroups: boolean
+}
+
+function groupFields(fields: readonly ComponentField[]): FieldGroup[] {
   const byComponent = new Map<string, ComponentField[]>()
   for (const field of fields) {
     const list = byComponent.get(field.component)
     if (list) list.push(field)
     else byComponent.set(field.component, [field])
   }
-  return [...byComponent]
+  return [...byComponent].map(([component, group]) => ({
+    component,
+    fields: group,
+    showGroups: new Set(group.map((field) => field.group)).size > 1
+  }))
 }
 
 function StepCard({
   row,
   connected,
-  onDeclareField
+  staged,
+  onDeclareField,
+  onStage
 }: {
   row: StepRow
   connected: boolean
+  staged: Readonly<Record<string, string>>
   onDeclareField: (key: string) => void
+  onStage: (changes: readonly { parameter: string; value: number }[]) => void
 }) {
   const [open, setOpen] = useState(false)
   const blocked = row.blocked.length > 0
+  // Staging a satisfied parameter would add a no-op draft to the review list,
+  // so a step offers only what actually differs from the vehicle.
+  const stageable = row.changes.filter((change) => !change.satisfied)
+  const stagedHere = row.changes.filter((change) => staged[change.parameter] !== undefined)
 
   return (
     <article className={`amc-step${blocked ? ' amc-step--blocked' : ''}`}>
@@ -136,7 +248,12 @@ function StepCard({
               </thead>
               <tbody>
                 {row.changes.map((change) => (
-                  <tr key={change.parameter} className={change.satisfied ? 'is-satisfied' : undefined}>
+                  <tr
+                    key={change.parameter}
+                    className={
+                      change.satisfied ? 'is-satisfied' : staged[change.parameter] !== undefined ? 'is-staged' : undefined
+                    }
+                  >
                     <td>
                       <code>{change.parameter}</code>
                       {change.group === 'forced_parameters' ? (
@@ -146,7 +263,10 @@ function StepCard({
                       ) : null}
                     </td>
                     {connected ? <td>{change.current === undefined ? '—' : change.current}</td> : null}
-                    <td>{change.value}</td>
+                    <td>
+                      {change.value}
+                      {staged[change.parameter] !== undefined ? <span className="amc-step__tag">staged</span> : null}
+                    </td>
                     <td className="amc-step__reason">{change.reason ?? ''}</td>
                   </tr>
                 ))}
@@ -154,9 +274,40 @@ function StepCard({
             </table>
           ) : null}
 
+          {stageable.length > 0 ? (
+            <div className="amc-step__stage">
+              <button
+                style={buttonStyle()}
+                disabled={!connected}
+                title={
+                  connected
+                    ? 'Stage these into the parameter drafts for review'
+                    : 'Connect a vehicle first — a draft for a parameter the vehicle has not reported cannot be written'
+                }
+                onClick={() => onStage(stageable.map((change) => ({ parameter: change.parameter, value: change.value })))}
+              >
+                Stage {stageable.length} change{stageable.length === 1 ? '' : 's'}
+              </button>
+              {stagedHere.length > 0 ? (
+                <StatusBadge tone="success">{stagedHere.length} staged</StatusBadge>
+              ) : null}
+              <span className="amc-step__stage-note">
+                Reviewed and written from the draft bar.
+              </span>
+            </div>
+          ) : null}
+
           {row.deletions.length > 0 ? (
             <p className="amc-step__deletions">
-              Removes from the vehicle&apos;s file: {row.deletions.map((name) => <code key={name}>{name}</code>)}
+              <span>Removes from the vehicle&apos;s file:</span>
+              {/* A wrapping list, not run-together inline code: adjacent <code>
+                  elements with no whitespace between them give the line no
+                  break opportunities at all, so it grows instead of wrapping. */}
+              <span className="amc-step__params">
+                {row.deletions.map((name) => (
+                  <code key={name}>{name}</code>
+                ))}
+              </span>
             </p>
           ) : null}
 
@@ -187,7 +338,7 @@ function StepCard({
 }
 
 export function AmcGuidedView(props: AmcGuidedViewProps) {
-  const { connected, parameters, suggestedKind, docs, docsVehicle, onDocsVehicleChange } = props
+  const { connected, parameters, suggestedKind, docs, docsVehicle, onDocsVehicleChange, onStage, staged } = props
 
   const [kind, setKind] = useState<AmcVehicleKind>(suggestedKind ?? 'ArduCopter')
   const [values, setValues] = useState<Record<string, string>>({})
@@ -219,7 +370,9 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   }, [kind])
 
   const steps = sequence?.kind === kind ? sequence.steps : undefined
-  const fields = useMemo(() => (steps ? fieldsFor(steps) : []), [steps])
+  // The documentation decides which fields are dropdowns, so the form is
+  // rebuilt once it has loaded.
+  const fields = useMemo(() => (steps ? fieldsFor(steps, docs) : []), [steps, docs])
 
   // The documentation is ~1.7 MB per vehicle and lazily loaded by App; ask for
   // the one this sequence needs whenever the sequence changes.
@@ -247,7 +400,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     <div className="amc-guided">
       <Panel
         title="AMC guided mode"
-        subtitle="ArduPilot Methodic Configurator's configuration sequence, evaluated here. Read-only — nothing on this screen writes to the vehicle."
+        subtitle="ArduPilot Methodic Configurator's setup sequence, run against your vehicle. Changes are staged for review — nothing is written from here."
       >
         <div className="amc-guided__controls">
           <label>
@@ -301,7 +454,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
 
       <Panel
         title="Declare the vehicle"
-        subtitle={`${declaredCount} of ${fields.length} fields. This list is derived from the sequence itself, so it is exactly what these steps read — nothing more.`}
+        subtitle={`${declaredCount} of ${fields.length} fields — exactly what the sequence reads, nothing more.`}
       >
         {summary && summary.nextFields.length > 0 ? (
           <p className="amc-guided__next">
@@ -315,19 +468,23 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
           </p>
         ) : null}
         <div className="amc-guided__components">
-          {groupFields(fields).map(([component, group]) => (
+          {groupFields(fields).map(({ component, fields: group, showGroups }) => (
             <fieldset key={component} className="amc-guided__component">
               <legend>{component}</legend>
               {group.map((field) => (
                 <label key={field.key} className="amc-guided__field">
-                  <span title={`${field.uses} expression${field.uses === 1 ? '' : 's'} read this`}>{field.label}</span>
-                  <input
-                    id={fieldInputId(field.key)}
+                  <span className="amc-guided__field-name">
+                    <span title={`${field.uses} expression${field.uses === 1 ? '' : 's'} read this`}>{field.label}</span>
+                    {/* Two fields in one component can share a name -- the ESC
+                        has a Protocol under both its telemetry and its control
+                        connection -- so the group is part of the label, not a
+                        placeholder that the input's width cuts off. */}
+                    {showGroups && field.group ? <em>{field.group}</em> : null}
+                  </span>
+                  <FieldControl
+                    field={field}
                     value={values[field.key] ?? ''}
-                    placeholder={field.group}
-                    onChange={(event) =>
-                      setValues((previous) => ({ ...previous, [field.key]: event.target.value }))
-                    }
+                    onChange={(next) => setValues((previous) => ({ ...previous, [field.key]: next }))}
                   />
                 </label>
               ))}
@@ -341,10 +498,39 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         </div>
       </Panel>
 
-      <Panel title="The sequence" subtitle="Each step, and the parameters it would set for this vehicle.">
+      <Panel
+        title="The sequence"
+        subtitle="Each step, and what it would set on this vehicle."
+      >
+        {summary && connected && summary.totalPending > 0 ? (
+          <div className="amc-guided__stage-all">
+            <button
+              style={buttonStyle()}
+              onClick={() =>
+                onStage(
+                  summary.rows.flatMap((row) =>
+                    row.changes
+                      .filter((change) => !change.satisfied)
+                      .map((change) => ({ parameter: change.parameter, value: change.value }))
+                  )
+                )
+              }
+            >
+              Stage all {summary.totalPending} pending
+            </button>
+            <span>Review and write them from the draft bar.</span>
+          </div>
+        ) : null}
         <div className="amc-guided__steps">
           {(summary?.rows ?? []).map((row) => (
-            <StepCard key={row.filename} row={row} connected={connected} onDeclareField={focusField} />
+            <StepCard
+              key={row.filename}
+              row={row}
+              connected={connected}
+              staged={staged}
+              onDeclareField={focusField}
+              onStage={onStage}
+            />
           ))}
         </div>
       </Panel>

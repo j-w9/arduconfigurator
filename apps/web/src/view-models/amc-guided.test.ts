@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildComponentsJson,
+  draftsFrom,
   fieldsFor,
   loadSequence,
   runSequence,
@@ -15,6 +16,16 @@ import {
 
 const copter = await loadSequence('ArduCopter')
 const fields = fieldsFor(copter)
+
+// The same sequence with ArduPilot's documentation available, which is what
+// turns the enumerated fields into dropdowns.
+const { readFileSync } = await import('node:fs')
+const { fileURLToPath } = await import('node:url')
+const { parameterDocsFrom } = await import('@arduconfig/amc-steps')
+const docs = parameterDocsFrom(
+  JSON.parse(readFileSync(fileURLToPath(new URL('../generated/param-upstream/arducopter.json', import.meta.url)), 'utf8'))
+)
+const documentedFields = fieldsFor(copter, docs)
 const keyFor = (label: string): string => {
   const field = fields.find((candidate) => candidate.label === label)
   if (!field) throw new Error(`no field named ${label}`)
@@ -179,5 +190,103 @@ describe('runSequence', () => {
     // pending -- which is what the tab shows when nothing is plugged in.
     const summary = run({ [keyFor('Diameter_inches')]: '10' })
     expect(summary.totalPending).toBe(summary.totalChanges)
+  })
+})
+
+describe('draftsFrom', () => {
+  it('renders values the way the draft model expects them', () => {
+    expect(draftsFrom([{ parameter: 'INS_GYRO_FILTER', value: 42 }])).toEqual({ INS_GYRO_FILTER: '42' })
+    expect(draftsFrom([{ parameter: 'MOT_THST_EXPO', value: 0.6 }])).toEqual({ MOT_THST_EXPO: '0.6' })
+  })
+
+  it('lets the later step decide when two propose the same parameter', () => {
+    expect(
+      draftsFrom([
+        { parameter: 'LOG_BITMASK', value: 1 },
+        { parameter: 'LOG_BITMASK', value: 2 }
+      ])
+    ).toEqual({ LOG_BITMASK: '2' })
+  })
+
+  it('stages nothing for nothing', () => {
+    expect(draftsFrom([])).toEqual({})
+  })
+
+  it('covers every pending change the sequence proposes', () => {
+    const values = { [keyFor('Diameter_inches')]: '10', [keyFor('Number of cells')]: '4' }
+    const summary = runSequence({ sequence: copter, fields, values, parameters: {} })
+    const pending = summary.rows.flatMap((row) => row.changes.filter((change) => !change.satisfied))
+    const drafts = draftsFrom(pending)
+    // Deduplication is expected, so the draft count is the distinct parameters.
+    expect(Object.keys(drafts).length).toBe(new Set(pending.map((change) => change.parameter)).size)
+    for (const key of Object.keys(drafts)) {
+      expect(Number.isNaN(Number(drafts[key]))).toBe(false)
+    }
+  })
+})
+
+describe('field choices', () => {
+  const find = (label: string, source = documentedFields) => {
+    const field = source.find((candidate) => candidate.label === label)
+    if (!field) throw new Error(`no field named ${label}`)
+    return field
+  }
+
+  it('makes an enumerated field a dropdown, from the documentation', () => {
+    // Which parameter a field supplies is stated by the step files, so this
+    // mapping is derived rather than kept here.
+    expect(find('Frame class').documented).toContain('Quad')
+    expect(find('Frame class').documented).toContain('Hexa')
+    const escProtocol = documentedFields.find(
+      (field) => field.component === 'ESC' && field.group === 'FC->ESC Connection' && field.label === 'Protocol'
+    )
+    expect(escProtocol?.documented).toContain('DShot600')
+  })
+
+  it('leaves a measurement as a number field, not a list', () => {
+    // The templates give plenty of observed diameters and cell voltages, but a
+    // list of other people's hardware is not how you enter your own.
+    for (const label of ['Diameter_inches', 'Capacity mAh', 'Volt per cell max', 'Number of cells']) {
+      const field = find(label)
+      expect(field.documented, label).toBeUndefined()
+      expect(field.suggested, label).toBeUndefined()
+      expect(field.numeric, label).toBe(true)
+    }
+  })
+
+  it('offers a dropdown for every enumeration and nothing else', () => {
+    for (const field of documentedFields) {
+      const isList = field.documented !== undefined || field.suggested !== undefined
+      // Exactly one of the two: a list, or a number. Never both, never neither
+      // without good reason.
+      expect(isList && field.numeric, `${field.component} > ${field.label}`).toBe(false)
+    }
+    const lists = documentedFields.filter((field) => field.documented ?? field.suggested)
+    expect(lists.length).toBeGreaterThanOrEqual(10)
+  })
+
+  it('suggests values from the templates where the documentation has none', () => {
+    // MCU Series is an enumeration AMC keeps in code rather than in the
+    // parameter documentation, so it stays free text with suggestions.
+    const mcu = find('MCU Series')
+    expect(mcu.documented).toBeUndefined()
+    expect(mcu.suggested).toContain('STM32H7xx')
+    expect(mcu.numeric).toBe(false)
+  })
+
+  it('offers no choices at all without documentation', () => {
+    expect(find('Frame class', fields).documented).toBeUndefined()
+  })
+
+  it('never offers an empty list of choices', () => {
+    for (const field of documentedFields) {
+      if (field.documented) expect(field.documented.length).toBeGreaterThan(0)
+      if (field.suggested) expect(field.suggested.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('turns a meaningful share of the form into dropdowns', () => {
+    const dropdowns = documentedFields.filter((field) => field.documented)
+    expect(dropdowns.length).toBeGreaterThanOrEqual(6)
   })
 })

@@ -18971,6 +18971,16 @@ button.mavlink-inspector__sent-row {
 .amc-guided {
   display: grid;
   gap: 12px;
+  /* A grid item's default min-width is its content, so a wide table or a long
+     unbroken parameter name would push the whole tab past the viewport rather
+     than wrapping inside it. */
+  min-width: 0;
+  max-width: 100%;
+}
+
+.amc-guided *,
+.amc-step * {
+  min-width: 0;
 }
 
 .amc-guided__controls {
@@ -19013,8 +19023,12 @@ button.mavlink-inspector__sent-row {
 
 .amc-guided__components {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  /* min(230px, 100%) rather than a bare 230px: when the column is narrower than
+     the track minimum -- a small window, or the app's own panels taking their
+     share -- a fixed minimum overflows instead of collapsing. */
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
   gap: 10px;
+  align-items: start;
 }
 
 .amc-guided__component {
@@ -19031,17 +19045,39 @@ button.mavlink-inspector__sent-row {
 }
 
 .amc-guided__field {
+  /* Stacked rather than side by side: the field names carry a qualifying group
+     ("ESC->FC Telemetry"), and sharing a row with the input left neither of
+     them enough width -- the group was being cut off mid-word, which is how
+     two different Protocol fields came to look like the same one. */
   display: grid;
-  grid-template-columns: 1fr minmax(90px, 40%);
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
+  gap: 3px;
+  margin-top: 10px;
 }
 
-.amc-guided__field span {
+.amc-guided__field-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1.3;
+}
+
+.amc-guided__field-name > span {
   /* The title attribute says how many expressions read the field, so the
      help cursor is a real affordance rather than decoration. */
   cursor: help;
+}
+
+.amc-guided__field-name em {
+  color: var(--text-dim);
+  font-size: 0.8em;
+  font-style: normal;
+}
+
+.amc-guided__field input,
+.amc-guided__field select {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .amc-guided__steps {
@@ -19109,8 +19145,12 @@ button.mavlink-inspector__sent-row {
 
 .amc-step__table {
   width: 100%;
+  /* Fixed layout so a long reason or parameter name wraps rather than widening
+     the table, which would widen the tab, which would overflow the page. */
+  table-layout: fixed;
   border-collapse: collapse;
   font-family: var(--font-data);
+  word-break: break-word;
 }
 
 .amc-step__table th {
@@ -19144,11 +19184,13 @@ button.mavlink-inspector__sent-row {
 .amc-step__reason {
   font-family: var(--font-ui);
   color: var(--text-muted);
-  max-width: 34em;
 }
 
-.amc-step__deletions code {
-  margin-right: 6px;
+.amc-step__deletions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .amc-step__deletions,
@@ -19162,6 +19204,7 @@ button.mavlink-inspector__sent-row {
    put the cursor in the field rather than leaving it to be hunted for. */
 .amc-guided__next {
   display: flex;
+  max-width: 100%;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
@@ -19200,6 +19243,7 @@ button.mavlink-inspector__sent-row {
 
 .amc-step__failures li {
   margin-bottom: 6px;
+  overflow-wrap: anywhere;
 }
 
 .amc-step__failures details {
@@ -19225,4 +19269,53 @@ button.mavlink-inspector__sent-row {
 .amc-step__params code {
   color: var(--text-dim);
   font-size: 0.85em;
+}
+
+/* Staging: a step hands its changes to the app's parameter drafts, and the
+   existing draft bar reviews and writes them. Nothing is written from here,
+   so these read as "send for review", not as an apply button. */
+.amc-guided__stage-all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.amc-guided__stage-all span,
+.amc-step__stage-note {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.amc-step__stage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* A row already staged is accounted for, so it reads as settled rather than
+   outstanding -- but not as faded as one the vehicle already satisfies. */
+.amc-step__table tr.is-staged td {
+  color: var(--success);
+}
+
+/* A suggested list is not known to be complete, so it keeps an escape back to
+   free text -- and a way back to the list from there. */
+.amc-guided__field-control {
+  display: grid;
+  gap: 3px;
+}
+
+.amc-guided__field-back {
+  justify-self: start;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.8em;
+  text-decoration: underline;
+  cursor: pointer;
 }

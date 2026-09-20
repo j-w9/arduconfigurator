@@ -374,7 +374,7 @@ import { buildRelayGroups } from './view-models/relay-groups'
 import { buildSetupFlowSections } from './view-models/setup-flow-sections'
 import { buildGuidedSetupOverview } from './view-models/guided-setup-overview'
 import { AmcGuidedView } from './views/AmcGuidedView'
-import { sequenceForFirmware } from './view-models/amc-guided'
+import { draftsFrom, sequenceForFirmware } from './view-models/amc-guided'
 import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
 import { ConfigView } from './views/Config'
 import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
@@ -9828,6 +9828,11 @@ export function App() {
         <AmcGuidedView
           connected={snapshot.connection.kind === 'connected'}
           parameters={amcLiveParameters}
+          staged={editedValues}
+          // The AMC sequence proposes; it does not write. Its changes go into
+          // the same draft model as every other edit, so the draft bar's
+          // review, validation, Write all and Discard apply unchanged.
+          onStage={(changes) => mergeDrafts(draftsFrom(changes))}
           suggestedKind={sequenceForFirmware(snapshot.vehicle?.vehicle)}
           docs={amcDocs ? (name) => amcDocs.params[name] : undefined}
           docsVehicle={amcDocsVehicle}

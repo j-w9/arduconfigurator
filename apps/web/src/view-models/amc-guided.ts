@@ -8,14 +8,18 @@
 //
 // Pure, per the view-model pattern — no React, no runtime, no transport.
 
+import observedComponentValues from '@amc/data/component-values.json'
+
 import {
   type ComponentRequirement,
   type Diagnosis,
   type ParameterDocs,
   type StepOutcome,
   applyStep,
+  componentOptionSources,
   describePath,
   diagnose,
+  optionsForField,
   missingComponents,
   orderSteps,
   parseStepFile,
@@ -85,6 +89,14 @@ export async function loadSequence(kind: AmcVehicleKind): Promise<AmcSequence> {
   return ordered
 }
 
+/** Every value AMC's own vehicle templates use for a field, by path. */
+const OBSERVED: Readonly<Record<string, readonly string[]>> = observedComponentValues
+
+/** A field whose every observed value is a number is a number field. */
+function looksNumeric(values: readonly string[] | undefined): boolean {
+  return values !== undefined && values.length > 0 && values.every((value) => value.trim() !== '' && !Number.isNaN(Number(value)))
+}
+
 /** One field the operator has to declare, ready to render as a form row. */
 export interface ComponentField {
   /** Stable key for form state: the path, slash-joined. */
@@ -98,17 +110,41 @@ export interface ComponentField {
   readonly group: string
   /** How many expressions read it — how much of the sequence it unlocks. */
   readonly uses: number
+  /**
+   * The values this field accepts, when it is an enumeration.
+   *
+   * Both render as a dropdown. They differ in authority, which the UI says out
+   * loud: `documented` comes from ArduPilot's parameter documentation and is
+   * the whole set, so nothing outside it is valid. `suggested` is every value
+   * AMC's own vehicle templates use, for the fields whose lists AMC keeps in
+   * code rather than in the documentation -- evidence of real values, but not
+   * proof of the whole set, so those keep an escape to type something else.
+   */
+  readonly documented?: readonly string[]
+  readonly suggested?: readonly string[]
+  /** Every value ever seen for it is a number. */
+  readonly numeric: boolean
 }
 
-function toField(requirement: ComponentRequirement): ComponentField {
+function toField(requirement: ComponentRequirement, documented?: readonly string[]): ComponentField {
   const path = requirement.path
+  const key = path.join('/')
+  const observed = OBSERVED[key]
+  // A measurement is not an enumeration, whatever values happen to have been
+  // observed: a propeller diameter or a cell voltage is a number the operator
+  // reads off their hardware, and a list of the sizes other people's vehicles
+  // used would be a worse way to enter it.
+  const numeric = documented === undefined && looksNumeric(observed)
   return {
-    key: path.join('/'),
+    key,
     path,
     component: path[0] as string,
     group: path.length > 2 ? (path[1] as string) : '',
     label: path[path.length - 1] as string,
-    uses: requirement.uses
+    uses: requirement.uses,
+    numeric,
+    ...(documented === undefined ? {} : { documented }),
+    ...(documented !== undefined || numeric || observed === undefined ? {} : { suggested: observed })
   }
 }
 
@@ -119,8 +155,14 @@ function toField(requirement: ComponentRequirement): ComponentField {
  * component field and it appears here, because the requirement is read off the
  * parsed expressions rather than maintained by hand.
  */
-export function fieldsFor(sequence: AmcSequence): ComponentField[] {
-  return requiredComponents(sequence.map((entry) => entry.step)).map(toField)
+export function fieldsFor(sequence: AmcSequence, docs?: ParameterDocs): ComponentField[] {
+  const steps = sequence.map((entry) => entry.step)
+  // Which parameter each field supplies is stated by the step files, so the
+  // dropdowns follow upstream rather than a list kept here.
+  const sources = docs ? componentOptionSources(steps) : undefined
+  return requiredComponents(steps).map((requirement) =>
+    toField(requirement, docs && sources ? optionsForField(requirement.path, sources, docs) : undefined)
+  )
 }
 
 /**
@@ -337,7 +379,9 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
     })
   }
 
-  const missing = missingComponents(declared, requiredComponents(sequence.map((entry) => entry.step))).map(toField)
+  const missing = missingComponents(declared, requiredComponents(sequence.map((entry) => entry.step))).map((requirement) =>
+    toField(requirement)
+  )
 
   // What to fill in next: the field standing between this vehicle and the most
   // blocked directives.
@@ -348,4 +392,19 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
     .sort((left, right) => right.unblocks - left.unblocks)
 
   return { rows, phases, missing, nextFields, totalChanges, totalPending, totalFailures }
+}
+
+/**
+ * Turn the sequence's proposals into parameter drafts.
+ *
+ * The app's draft model is `parameter id -> the string an operator would have
+ * typed`, so the sequence's numbers are rendered the same way. Deduplicated on
+ * the way in: one parameter can be proposed by more than one step, and the last
+ * step in the sequence is the one that decides, as it would be if the steps
+ * were walked in order.
+ */
+export function draftsFrom(changes: readonly { parameter: string; value: number }[]): Record<string, string> {
+  const drafts: Record<string, string> = {}
+  for (const change of changes) drafts[change.parameter] = String(change.value)
+  return drafts
 }
