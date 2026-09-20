@@ -1771,6 +1771,38 @@ test.describe('Failsafe view', () => {
     await expect(page.getByTestId('config-section-arming')).toBeVisible()
   })
 
+  test('a threshold and the action it takes sit in one box', async ({ page }) => {
+    // Setting up a low-battery failsafe is one decision: at what voltage (or
+    // remaining capacity), and what the vehicle then does. Scattered across a
+    // masonry grid it meant reading the page to set one behaviour.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await openView(page, 'failsafe')
+    await page.getByTestId('failsafe-category-battery-failsafe').click()
+
+    const low = page.getByTestId('failsafe-group-low-battery')
+    await expect(low).toContainText('Low battery')
+    for (const id of ['BATT_LOW_VOLT', 'BATT_LOW_MAH', 'BATT_FS_LOW_ACT']) {
+      await expect(low.getByTestId(`failsafe-row-${id}`)).toBeVisible()
+    }
+    // The metadata-derived hold time joins its siblings rather than starting a
+    // second box with the same name.
+    await expect(low.getByTestId('failsafe-row-BATT_LOW_TIMER')).toBeVisible()
+
+    const critical = page.getByTestId('failsafe-group-critical-battery')
+    await expect(critical).toContainText('Critical battery')
+    for (const id of ['BATT_CRT_VOLT', 'BATT_CRT_MAH', 'BATT_FS_CRT_ACT']) {
+      await expect(critical.getByTestId(`failsafe-row-${id}`)).toBeVisible()
+    }
+    // ...and the two boxes do not bleed into each other.
+    await expect(low.getByTestId('failsafe-row-BATT_CRT_VOLT')).toHaveCount(0)
+    await expect(critical.getByTestId('failsafe-row-BATT_LOW_VOLT')).toHaveCount(0)
+
+    // Rows that are a single decision keep a card to themselves.
+    await expect(page.getByTestId('failsafe-row-BATT_FS_VOLTSRC')).toBeVisible()
+  })
+
   test('a staged edit marks the tab it is on', async ({ page }) => {
     // An edit on a tab you are not looking at must not be invisible.
     await page.goto('/')

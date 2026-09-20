@@ -35,6 +35,15 @@ const categoryId = (source: string): string => source.toLowerCase().replace(/[^a
 
 export interface FailsafeViewRow {
   source: string
+  /**
+   * Rows sharing a group render in ONE box, in the order they arrive.
+   *
+   * A battery failsafe is a threshold AND the action it takes; scattering
+   * BATT_LOW_VOLT, BATT_LOW_MAH and BATT_FS_LOW_ACT across three cards in a
+   * masonry grid meant reading the page to set one behaviour. Ungrouped rows
+   * keep a card each, which is right for the ones that are a single decision.
+   */
+  group?: string
   paramId: string
   formatted: string
   isSynced: boolean
@@ -134,6 +143,51 @@ export function FailsafeView(props: FailsafeViewProps) {
     return set
   }, [groups, draftStatusById])
 
+  // Rows sharing a `group` collapse into one box, in first-appearance order,
+  // so a metadata-derived row appended later (BATT_LOW_TIMER) still lands in
+  // the box it belongs to rather than starting a second one with the same name.
+  const visibleBoxes = useMemo(() => {
+    const boxes: Array<{ group?: string; rows: FailsafeViewRow[] }> = []
+    const byGroup = new Map<string, { group?: string; rows: FailsafeViewRow[] }>()
+    for (const row of visibleRows) {
+      if (row.group === undefined) {
+        boxes.push({ rows: [row] })
+        continue
+      }
+      const existing = byGroup.get(row.group)
+      if (existing) {
+        existing.rows.push(row)
+        continue
+      }
+      const box = { group: row.group, rows: [row] }
+      byGroup.set(row.group, box)
+      boxes.push(box)
+    }
+    return boxes
+  }, [visibleRows])
+
+  function renderRowEditor(row: FailsafeViewRow): ReactNode {
+    if (row.parameter) {
+      return (
+        <ScopedField
+          parameter={row.parameter}
+          liveValue={row.parameter.value}
+          editedValues={editedValues}
+          draftStatusById={draftStatusById}
+          onChange={onEditChange}
+          stepFallback={row.parameter.definition?.step ?? 1}
+        />
+      )
+    }
+    return (
+      <div className="scoped-editor-field scoped-editor-field--compact">
+        <span>{row.paramId}</span>
+        <p className="scoped-editor-field__readonly">{row.formatted}</p>
+        <StatusBadge tone="warning">not synced</StatusBadge>
+      </div>
+    )
+  }
+
   return (
     <div id="setup-panel-failsafe">
       <Panel title="Failsafe" subtitle="What the vehicle does when something goes wrong.">
@@ -167,33 +221,39 @@ export function FailsafeView(props: FailsafeViewProps) {
           </div>
 
           <div className="config-grid" data-testid="failsafe-editor-grid">
-            {visibleRows.map((row) => (
-              <article
-                key={row.paramId}
-                className="config-section"
-                data-testid={`failsafe-row-${row.paramId}`}
-              >
-                <div className="config-section__header">
-                  <span className="config-section__kicker">{row.source}</span>
-                </div>
-                {row.parameter ? (
-                  <ScopedField
-                    parameter={row.parameter}
-                    liveValue={row.parameter.value}
-                    editedValues={editedValues}
-                    draftStatusById={draftStatusById}
-                    onChange={onEditChange}
-                    stepFallback={row.parameter.definition?.step ?? 1}
-                  />
-                ) : (
-                  <div className="scoped-editor-field scoped-editor-field--compact">
-                    <span>{row.paramId}</span>
-                    <p className="scoped-editor-field__readonly">{row.formatted}</p>
-                    <StatusBadge tone="warning">not synced</StatusBadge>
+            {visibleBoxes.map((box) =>
+              box.group === undefined ? (
+                // A single decision keeps a card to itself, exactly as before —
+                // testid on the article, so nothing that looks up a row moves.
+                <article
+                  key={box.rows[0].paramId}
+                  className="config-section"
+                  data-testid={`failsafe-row-${box.rows[0].paramId}`}
+                >
+                  <div className="config-section__header">
+                    <span className="config-section__kicker">{box.rows[0].source}</span>
                   </div>
-                )}
-              </article>
-            ))}
+                  {renderRowEditor(box.rows[0])}
+                </article>
+              ) : (
+                <article
+                  key={`group:${box.group}`}
+                  className="config-section"
+                  data-testid={`failsafe-group-${categoryId(box.group)}`}
+                >
+                  <div className="config-section__header">
+                    <span className="config-section__kicker">{box.group}</span>
+                  </div>
+                  <div className="config-section__editors">
+                    {box.rows.map((row) => (
+                      <div key={row.paramId} data-testid={`failsafe-row-${row.paramId}`}>
+                        {renderRowEditor(row)}
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              )
+            )}
           </div>
 
           {/* Above the Save/Revert footer: the footer ends the tab, so an

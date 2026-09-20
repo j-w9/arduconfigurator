@@ -89,7 +89,8 @@ export function modeSlotParamId(vehicle: DetectedVehicle | undefined, slot: numb
 export function genericFailsafeRow(
   snapshot: ConfiguratorSnapshot,
   source: string,
-  paramId: string
+  paramId: string,
+  group?: string
 ): FailsafeViewRow {
   const param = selectParameterById(snapshot, paramId)
   const value = param?.value
@@ -98,7 +99,7 @@ export function genericFailsafeRow(
     const option = param?.definition?.options?.find((entry) => entry.value === Math.round(value))
     formatted = option ? option.label : String(Number.isInteger(value) ? value : Number(value.toFixed(2)))
   }
-  return { source, paramId, formatted, isSynced: value !== undefined, parameter: param }
+  return { source, group, paramId, formatted, isSynced: value !== undefined, parameter: param }
 }
 
 // Vehicle-correct enum label for a failsafe-action summary value.
@@ -150,10 +151,10 @@ export function buildSharedBatteryFailsafeRows(snapshot: ConfiguratorSnapshot): 
     ]
   }
   return [
-    genericFailsafeRow(snapshot, 'Battery failsafe', 'BATT_LOW_VOLT'),
-    genericFailsafeRow(snapshot, 'Battery failsafe', 'BATT_FS_LOW_ACT'),
-    genericFailsafeRow(snapshot, 'Battery failsafe', 'BATT_CRT_VOLT'),
-    genericFailsafeRow(snapshot, 'Battery failsafe', 'BATT_FS_CRT_ACT')
+    genericFailsafeRow(snapshot, 'Battery failsafe', 'BATT_LOW_VOLT', 'Low battery'),
+    genericFailsafeRow(snapshot, 'Battery failsafe', 'BATT_FS_LOW_ACT', 'Low battery'),
+    genericFailsafeRow(snapshot, 'Battery failsafe', 'BATT_CRT_VOLT', 'Critical battery'),
+    genericFailsafeRow(snapshot, 'Battery failsafe', 'BATT_FS_CRT_ACT', 'Critical battery')
   ]
 }
 
@@ -235,12 +236,14 @@ export function buildFailsafeRows(input: {
       : [
           {
             source: 'Battery failsafe',
+            group: 'Low battery',
             paramId: 'BATT_LOW_VOLT',
             formatted: input.batteryLowVoltage !== undefined ? `${input.batteryLowVoltage.toFixed(2)} V` : 'Not synced',
             isSynced: input.batteryLowVoltage !== undefined
           },
           {
             source: 'Battery failsafe',
+            group: 'Low battery',
             paramId: 'BATT_LOW_MAH',
             formatted: (() => {
               const raw = readRoundedParameter(input.snapshot, 'BATT_LOW_MAH')
@@ -250,18 +253,21 @@ export function buildFailsafeRows(input: {
           },
           {
             source: 'Battery failsafe',
+            group: 'Low battery',
             paramId: 'BATT_FS_LOW_ACT',
             formatted: formatArducopterBatteryFailsafeAction(input.batteryFailsafe),
             isSynced: input.batteryFailsafe !== undefined
           },
           {
             source: 'Battery failsafe',
+            group: 'Critical battery',
             paramId: 'BATT_CRT_VOLT',
             formatted: input.batteryCriticalVoltage !== undefined ? `${input.batteryCriticalVoltage.toFixed(2)} V` : 'Not synced',
             isSynced: input.batteryCriticalVoltage !== undefined
           },
           {
             source: 'Battery failsafe',
+            group: 'Critical battery',
             paramId: 'BATT_CRT_MAH',
             formatted: (() => {
               const raw = readRoundedParameter(input.snapshot, 'BATT_CRT_MAH')
@@ -271,6 +277,7 @@ export function buildFailsafeRows(input: {
           },
           {
             source: 'Battery failsafe',
+            group: 'Critical battery',
             paramId: 'BATT_FS_CRT_ACT',
             formatted: formatArducopterBatteryFailsafeAction(input.batteryCriticalFailsafe),
             isSynced: input.batteryCriticalFailsafe !== undefined
