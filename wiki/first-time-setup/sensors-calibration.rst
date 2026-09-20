@@ -311,6 +311,32 @@ is unlikely to reach. When the flight controller streams IMU temperature (from
 toward ``TMAX``; the firmware completes and saves the fit on its own once it
 reaches the target, so you don't need to watch it.
 
+Barometer temperature calibration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The barometer has a **separate** temperature calibration, with its own
+parameters and its own procedure — ``TCAL_*`` (ArduPilot's ``AP_TempCalibration``,
+a Copter feature), not the per-IMU ``INS_TCALn_*`` above. It learns how the
+barometer's pressure reading drifts as the board heats and corrects for it,
+which is the altitude equivalent of what the IMU calibration does for attitude.
+It shares the TCAL card because it is the same bench session: a cold board, left
+still, warming up.
+
+#. Start cold, props off, on the bench. The vehicle must stay **disarmed and
+   completely still** — the firmware restarts the learn the moment the IMUs
+   report movement.
+#. Click **Prepare baro calibration** and **Apply**. That stages
+   ``TCAL_ENABLED = 2`` (learn *and* use) — one parameter.
+#. Leave it powered and untouched while it self-heats. Nothing is collected
+   below **25 °C**, and it needs at least **7 °C** of rise before it fits.
+#. The fit saves itself into ``TCAL_BARO_EXP``, with the range it covered in
+   ``TCAL_TEMP_MIN`` / ``TCAL_TEMP_MAX``. All three are read-only — the learn
+   writes them.
+#. Leave it learning to keep refining, or press **Stop learning, keep values**
+   to pin what it has (``TCAL_ENABLED = 1``, use the learned values).
+
+The correction applies to the **first barometer** only.
+
 Hover learning (two flights)
 ----------------------------
 

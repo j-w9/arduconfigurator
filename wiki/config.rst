@@ -24,9 +24,21 @@ one area at a time instead of a wall of cards:
 - **Arming** — arming checks and arm/disarm behavior.
 - **Power** — battery monitor, capacity, and the arming thresholds that depend
   on them, with live voltage and current.
-- **System** — MAVLink identity, logging, the beeper/LED, camera trigger, and
-  the **system rates** (main loop frequency, gyro rate, fast-sample mask) plus
-  **active IMU** selection.
+- **System** — MAVLink identity, logging, and the **system rates** (main loop
+  frequency, gyro rate, fast-sample mask) plus **active IMU** selection.
+
+.. note::
+
+   The beeper/LED card moved to :doc:`first-time-setup/peripherals-gimbal`
+   (**LEDs & Buzzer**), where it is one card rather than two copies of the same
+   parameters, and the camera trigger moved to that tab's **Camera & Gimbal**
+   group, beside the mount that carries the camera. The main loop rate is no
+   longer mirrored on the ESC card either — it is a System setting, and having
+   it in two tabs was the confusing part.
+
+A category holding a single card takes the full width and flows its fields into
+as many columns as fit, rather than leaving a tall single-file list in a narrow
+column.
 
 .. note::
 

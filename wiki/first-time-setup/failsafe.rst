@@ -3,9 +3,14 @@ Failsafe
 
 The **Failsafe** tab is where you decide what the vehicle does when something
 goes wrong — the RC link drops, the battery runs low, or the ground station
-stops talking. Each failsafe is a small set of ArduPilot parameters; the tab
-surfaces them as product-shaped cards (RC, battery, GCS, EKF, geofence,
-advanced) with read-only status summaries up top and inline editors below.
+stops talking. Each failsafe is a small set of ArduPilot parameters.
+
+The tab is grouped into **sub-tabs by the kind of failsafe** — **RC** ·
+**Battery** · **Fence** · **GCS** · **EKF** · **Advanced** — so you set up one
+behaviour at a time instead of reading past four others. Status summaries for
+RC and battery stay above the tabs, and **Save Failsafe** is global to the tab:
+it applies every staged change across the sub-tabs in one press, with a dot
+marking any tab holding an unsaved edit.
 
 .. warning::
 
@@ -82,6 +87,10 @@ both tabs share one staged-write model.
 
 Geofence
 --------
+
+On its own **Fence** sub-tab. It is a failsafe in its own right — a boundary
+with a breach action — and the one here a basic-mode operator is most likely to
+be looking for.
 
 The **Geofence** card sets the boundary the vehicle is allowed to fly inside and
 what happens when it reaches one. It sits here because a fence is the same shape
