@@ -102,6 +102,37 @@ test.describe('Guided setup flow', () => {
     })
   }
 
+  // Where each step's "Open ..." excursion is supposed to land. This is the
+  // coupling that breaks silently when a surface moves: the wizard routes by
+  // panel id, the panel id maps to a view, and if that view stopped existing —
+  // or the panel now lives inside a Config CATEGORY that is not the active one
+  // — the operator lands somewhere blank with nothing failing. Flight modes and
+  // Power have both moved into Config; that is exactly how this was found.
+  const PANEL_DESTINATIONS: Array<{ section: string; panelId: string }> = [
+    { section: 'ports', panelId: 'setup-panel-ports' },
+    { section: 'outputs', panelId: 'setup-panel-outputs' },
+    { section: 'radio', panelId: 'setup-panel-rc' },
+    { section: 'modes', panelId: 'setup-panel-modes' },
+    { section: 'power', panelId: 'setup-panel-power' },
+    { section: 'failsafe', panelId: 'setup-panel-failsafe' }
+  ]
+
+  for (const { section, panelId } of PANEL_DESTINATIONS) {
+    test(`step "${section}" lands on a real panel, not an empty view`, async ({ page }) => {
+      await openGuidedSetup(page, section)
+      const open = page.locator('.setup-wizard__body button:visible', { hasText: /^Open / }).first()
+      await expect(open, `step ${section} offers no "Open ..." action`).toBeVisible()
+      await open.click()
+
+      // The panel itself is on screen — not merely the right tab.
+      await expect(page.locator(`#${panelId}`)).toBeVisible({ timeout: 15_000 })
+      // ...and the nav shows where we are, so the operator is not lost.
+      await expect(page.locator('.workspace-nav__item--tab.is-active')).toHaveCount(1)
+      // ...with a way back that names the step.
+      await expect(page.getByTestId('setup-return-to-wizard')).toBeVisible()
+    })
+  }
+
   test('the first step offers no way backwards, the last no way onwards', async ({ page }) => {
     // Both ends are where a wizard usually breaks: a Previous that leaves the
     // flow, or a Continue past the end.

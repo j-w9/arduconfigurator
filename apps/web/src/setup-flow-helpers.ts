@@ -147,7 +147,13 @@ export function appViewForPanel(panelId: string): AppViewId {
     case 'setup-panel-calibration':
       return 'calibration'
     case 'setup-panel-modes':
-      return 'modes'
+      // Flight modes stopped being a tab and became a Config category, so the
+      // old 'modes' target renders an empty section with nothing selected in
+      // the nav — the step strands with no visible error. Same silent
+      // breakage the power mapping below documents; see
+      // configCategoryForPanel for the other half, since a Config category
+      // only exists in the DOM while it is the active one.
+      return 'config'
     case 'setup-panel-failsafe':
       return 'failsafe'
     case 'setup-panel-power':
@@ -158,6 +164,25 @@ export function appViewForPanel(panelId: string): AppViewId {
       return 'config'
     default:
       return 'parameters'
+  }
+}
+
+/**
+ * The Config CATEGORY a guided panel lives in, if it lives in one.
+ *
+ * Routing to the Config view is not enough on its own: ConfigView renders only
+ * the active category, so a scroll to `#setup-panel-power` on a Config tab
+ * sitting on Airframe finds nothing, retries eight frames, and gives up
+ * silently. The caller selects the category before scrolling.
+ */
+export function configCategoryForPanel(panelId: string): 'power' | 'flight-modes' | undefined {
+  switch (panelId) {
+    case 'setup-panel-power':
+      return 'power'
+    case 'setup-panel-modes':
+      return 'flight-modes'
+    default:
+      return undefined
   }
 }
 

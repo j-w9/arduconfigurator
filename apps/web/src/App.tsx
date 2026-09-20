@@ -226,6 +226,7 @@ import {
 } from './setup-format-helpers'
 import {
   appViewForPanel,
+  configCategoryForPanel,
   OUTPUTS_ORIENTATION_TARGET_ID,
   OUTPUTS_ORIENTATION_BUTTON_ID,
   OUTPUTS_BENCH_TARGET_ID,
@@ -376,7 +377,7 @@ import { buildRelayGroups } from './view-models/relay-groups'
 import { buildSetupFlowSections } from './view-models/setup-flow-sections'
 import { buildGuidedSetupOverview } from './view-models/guided-setup-overview'
 import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
-import { ConfigView } from './views/Config'
+import { ConfigView, type ConfigCategoryId } from './views/Config'
 import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
 import { withFlightModeOptions } from './view-models/flight-mode-options'
 import { isFiberModeAvailable } from './view-models/fiber-mode-detection'
@@ -1242,6 +1243,10 @@ export function App() {
   // land as follow-up PRs. The sections array is small (5 items) and
   // doesn't need to be useMemo'd, but pre-build the parametersById map
   // once so each section card can render in O(1).
+  // Set when the guided setup (or any deep link) routes to a panel that lives
+  // inside a Config category; ConfigView opens it. Stays set afterwards, which
+  // is harmless — it only re-applies when the value CHANGES.
+  const [requestedConfigCategory, setRequestedConfigCategory] = useState<ConfigCategoryId | undefined>(undefined)
   const {
     configParametersById,
     configSections,
@@ -3428,6 +3433,13 @@ export function App() {
   function scrollToPanel(panelId: string, targetElementId?: string): void {
     const targetViewId = appViewForPanel(panelId)
     const scrollTargetId = targetElementId ?? panelId
+    // Config renders only its ACTIVE category, so a panel that lives inside
+    // one has to have that category opened before the scroll goes looking for
+    // it — otherwise the retry loop just expires and the step strands.
+    const configCategory = configCategoryForPanel(panelId)
+    if (configCategory) {
+      setRequestedConfigCategory(configCategory)
+    }
     if (targetViewId === 'motors' || targetViewId === 'servos') {
       const outputTaskId = outputTaskForTarget(targetElementId)
       if (outputTaskId) {
@@ -10083,6 +10095,7 @@ export function App() {
       {activeViewId === 'config' ? (
         <ConfigView
           isExpertMode={isExpertMode}
+          requestedCategory={requestedConfigCategory}
           sections={configSections.map((section) => {
             if (section.id === 'esc-dshot') {
               return { ...section, footer: renderEscDshotFooter() }
