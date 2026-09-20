@@ -5182,14 +5182,12 @@ test.describe('ArduRover / ArduSub demo', () => {
     const modesTable = page.getByTestId('modes-slot-table')
     await expect(modesTable.getByTestId('modes-slot-6').locator('select option:checked')).toHaveText('Steering')
 
-    // The mode-channel subtitle names the real Rover param (MODE_CH), not
-    // the Copter-hardcoded FLTMODE_CH.
-    await expect(
-      page.getByText('MODE_CH selects which RC channel', { exact: false })
-    ).toBeVisible()
-    await expect(
-      page.getByText('FLTMODE_CH selects which RC channel', { exact: false })
-    ).toHaveCount(0)
+    // The mode-channel EDITOR is bound to the real Rover param (MODE_CH), not
+    // the Copter-hardcoded FLTMODE_CH. (It used to be a sentence under the
+    // field; the field names itself now, so assert on the field.)
+    const modeChannelField = page.getByTestId('modes-mode-channel-field')
+    await expect(modeChannelField).toContainText('MODE_CH')
+    await expect(modeChannelField).not.toContainText('FLTMODE_CH')
 
     // Non-Copter Outputs gating holds for a Rover (vehicle-aware nav
     // badge — the non-multirotor Outputs body is covered by the demo-sub
@@ -5303,11 +5301,16 @@ test.describe('ArduRover / ArduSub demo', () => {
     await expect(page.getByTestId('failsafe-row-FS_LEAK_ENABLE')).toContainText('Enter surface mode')
     await expect(page.getByTestId('failsafe-row-FS_THR_ENABLE')).toHaveCount(0)
 
-    // Safety-relevant: the battery-failsafe action label must be the Sub
+    // Safety-relevant: the battery-failsafe action must resolve through the Sub
     // enum, not the Copter one. Mock seeds BATT_FS_LOW_ACT = 2, which is
     // "Disarm" on Sub but "RTL" on Copter — the operator must see "Disarm".
-    await expect(page.getByTestId('failsafe-battery-low-label')).toHaveText('Disarm')
-    await expect(page.getByTestId('failsafe-battery-low-label')).not.toHaveText('RTL')
+    // Read from the row's editor: the summary cards that used to carry this
+    // are gone, and the editor is what the operator actually acts on.
+    await page.getByTestId('failsafe-category-battery-failsafe').click()
+    const subBatteryAction = page
+      .getByTestId('failsafe-row-BATT_FS_LOW_ACT')
+      .locator('select option:checked')
+    await expect(subBatteryAction).toHaveText('Disarm')
 
     // Modes: ArduSub has no RC mode-switch channel (joystick-bound). The
     // view shows an honest note plus the live heartbeat mode only — not the

@@ -5,18 +5,12 @@
 // the parent owns the draft pool and the apply/discard handlers, and just
 // hands the inputs in.
 
-import type { ReactNode } from 'react'
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 import type { ParameterDraftEntry } from '@arduconfig/ardupilot-core'
-import {
-  formatArducopterBatteryFailsafeAction,
-  formatArducopterThrottleFailsafe
-} from '@arduconfig/param-metadata'
-
-import { buildFailsafeRows, failsafeActionLabel } from '../modes-failsafe-helpers'
+import { buildFailsafeRows } from '../modes-failsafe-helpers'
 import { selectParameterById } from '../selectors/parameter-read'
 import type { AdditionalSettingsGroup } from '../view-models/peripherals'
-import { FailsafeView } from '../views/Failsafe'
+import { FailsafeView, type FailsafeViewRow } from '../views/Failsafe'
 import type { ScopedFieldDraftMap } from '../views/ScopedField'
 
 export interface FailsafeSectionProps {
@@ -42,20 +36,6 @@ export interface FailsafeSectionProps {
   /** Additional-settings groups for the 'failsafe' view category (the
    *  metadata-driven catch-all surface that used to leak into Power). */
   failsafeAdditionalGroups: readonly AdditionalSettingsGroup[]
-  failsafeAdditionalDraftEntries: readonly ParameterDraftEntry[]
-  failsafeAdditionalStagedDrafts: readonly ParameterDraftEntry[]
-  failsafeAdditionalInvalidDrafts: readonly ParameterDraftEntry[]
-  renderAdditionalSettingsCard: (
-    title: string,
-    description: string,
-    groups: AdditionalSettingsGroup[],
-    drafts: ParameterDraftEntry[],
-    staged: ParameterDraftEntry[],
-    invalid: ParameterDraftEntry[],
-    busyKey: string,
-    applyLabel: string,
-    scopeLabel: string
-  ) => ReactNode
 }
 
 export function FailsafeSection(props: FailsafeSectionProps) {
@@ -76,10 +56,6 @@ export function FailsafeSection(props: FailsafeSectionProps) {
     onApplyScopedDrafts,
     onDiscardScopedDrafts,
     failsafeAdditionalGroups,
-    failsafeAdditionalDraftEntries,
-    failsafeAdditionalStagedDrafts,
-    failsafeAdditionalInvalidDrafts,
-    renderAdditionalSettingsCard
   } = props
 
   const failsafeRows = buildFailsafeRows({
@@ -97,9 +73,6 @@ export function FailsafeSection(props: FailsafeSectionProps) {
   }).map((row) => ({ ...row, parameter: row.parameter ?? selectParameterById(snapshot, row.paramId) }))
 
   const failsafeIds = new Set(failsafeRows.map((row) => row.paramId))
-  const failsafeDraftEntries = parameterDraftEntries.filter((entry) => failsafeIds.has(entry.id))
-  const failsafeStagedDrafts = failsafeDraftEntries.filter((entry) => entry.status === 'staged')
-  const failsafeInvalidDrafts = failsafeDraftEntries.filter((entry) => entry.status === 'invalid')
 
   // Any 'failsafe' category param already shown in the primary FailsafeView
   // rows above is filtered out of the additional-settings groups so it
@@ -119,17 +92,6 @@ export function FailsafeSection(props: FailsafeSectionProps) {
       )
     }))
     .filter((group) => group.parameters.length > 0)
-  const inAdditionalScope = (paramId: string): boolean =>
-    !failsafeIds.has(paramId) && !isPreArmParamId(paramId)
-  const additionalDraftEntries = failsafeAdditionalDraftEntries.filter((entry) =>
-    inAdditionalScope(entry.id)
-  ) as ParameterDraftEntry[]
-  const additionalStagedDrafts = failsafeAdditionalStagedDrafts.filter((entry) =>
-    inAdditionalScope(entry.id)
-  ) as ParameterDraftEntry[]
-  const additionalInvalidDrafts = failsafeAdditionalInvalidDrafts.filter((entry) =>
-    inAdditionalScope(entry.id)
-  ) as ParameterDraftEntry[]
 
   // Where each metadata-backed parameter belongs among the sub-tabs.
   //
@@ -158,97 +120,43 @@ export function FailsafeSection(props: FailsafeSectionProps) {
 
   const routeFor = (paramId: string): string =>
     ADDITIONAL_ROUTES.find((route) => route.match(paramId))?.source ?? 'Advanced'
-  const slotId = (source: string): string => source.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 
-  // Split every group's parameters by route, keeping the group (and its label)
-  // intact within each destination.
-  const groupsBySlot = new Map<string, AdditionalSettingsGroup[]>()
-  for (const group of additionalGroups) {
-    const byRoute = new Map<string, typeof group.parameters>()
-    for (const parameter of group.parameters) {
-      const route = routeFor(parameter.id)
-      const existing = byRoute.get(route)
-      if (existing) existing.push(parameter)
-      else byRoute.set(route, [parameter])
-    }
-    for (const [route, parameters] of byRoute) {
-      const slot = slotId(route)
-      const bucket = groupsBySlot.get(slot) ?? []
-      bucket.push({ ...group, parameters })
-      groupsBySlot.set(slot, bucket)
-    }
-  }
-
-  const extraSlots: Record<string, ReactNode> = {}
-  for (const [slot, groups] of groupsBySlot) {
-    const ids = new Set(groups.flatMap((group) => group.parameters.map((parameter) => parameter.id)))
-    const entries = additionalDraftEntries.filter((entry) => ids.has(entry.id))
-    const staged = additionalStagedDrafts.filter((entry) => ids.has(entry.id))
-    const invalid = additionalInvalidDrafts.filter((entry) => ids.has(entry.id))
-    extraSlots[slot] =
-      slot === 'fence'
-        ? renderAdditionalSettingsCard(
-            'Geofence',
-            'A boundary and what the vehicle does when it reaches one.',
-            groups,
-            entries,
-            staged,
-            invalid,
-            'failsafe:fence',
-            'Apply Fence Changes',
-            'geofence settings'
-          )
-        : renderAdditionalSettingsCard(
-            'More settings',
-            slot === 'advanced'
-              ? 'The rest of the parameters ArduPilot files under failsafe. Pre-arm checks are not here — they stop you arming rather than react in flight, and Config ▸ Arming edits them.'
-              : 'The rest of the parameters ArduPilot files under this failsafe.',
-            groups,
-            entries,
-            staged,
-            invalid,
-            `failsafe:additional:${slot}`,
-            'Apply These Changes',
-            'additional failsafe settings'
-          )
-  }
+  // These become ROWS in the tab's own grid, not a "More settings" card under
+  // it with its own apply button. There is no difference in kind between
+  // BATT_LOW_VOLT (a curated row) and BATT_LOW_TIMER (a metadata one) to the
+  // operator setting up a battery failsafe — only in where the app happened to
+  // get them from. One grid, one Save.
+  const additionalRows: FailsafeViewRow[] = additionalGroups.flatMap((group) =>
+    group.parameters.map((parameter) => ({
+      source: routeFor(parameter.id),
+      paramId: parameter.id,
+      formatted: parameter.value !== undefined ? String(parameter.value) : 'Not synced',
+      isSynced: parameter.value !== undefined,
+      parameter
+    }))
+  )
+  const rows = [...failsafeRows, ...additionalRows]
+  // Save covers everything the tab shows, so the extra rows join the scope.
+  const rowIds = new Set(rows.map((row) => row.paramId))
+  const draftEntries = parameterDraftEntries.filter((entry) => rowIds.has(entry.id))
+  const stagedDrafts = draftEntries.filter((entry) => entry.status === 'staged')
+  const invalidDrafts = draftEntries.filter((entry) => entry.status === 'invalid')
 
   return (
     <section className="grid one-up">
       <FailsafeView
-        rcFailsafeLabel={failsafeActionLabel(snapshot, 'FS_THR_ENABLE', throttleFailsafe, formatArducopterThrottleFailsafe)}
-        rcFailsafeThresholdText={
-          throttleFailsafeValue !== undefined
-            ? `Triggers below ${Math.round(throttleFailsafeValue)} us throttle PWM.`
-            : 'No FS_THR_VALUE threshold configured.'
-        }
-        batteryLowLabel={failsafeActionLabel(snapshot, 'BATT_FS_LOW_ACT', batteryFailsafe, formatArducopterBatteryFailsafeAction)}
-        batteryLowThresholdText={
-          batteryLowVoltage !== undefined
-            ? `Threshold ${batteryLowVoltage.toFixed(1)} V (BATT_LOW_VOLT).`
-            : 'No BATT_LOW_VOLT threshold configured.'
-        }
-        batteryCriticalLabel={failsafeActionLabel(snapshot, 'BATT_FS_CRT_ACT', batteryCriticalFailsafe, formatArducopterBatteryFailsafeAction)}
-        batteryCriticalThresholdText={
-          batteryCriticalVoltage !== undefined
-            ? `Threshold ${batteryCriticalVoltage.toFixed(1)} V (BATT_CRT_VOLT).`
-            : 'No BATT_CRT_VOLT threshold configured.'
-        }
-        rows={failsafeRows}
+        rows={rows}
         editedValues={editedValues}
         onEditChange={(paramId, value) => setDraft(paramId, value)}
         draftStatusById={parameterDraftById}
-        stagedCount={failsafeStagedDrafts.length}
-        invalidCount={failsafeInvalidDrafts.length}
-        draftCount={failsafeDraftEntries.length}
+        stagedCount={stagedDrafts.length}
+        invalidCount={invalidDrafts.length}
+        draftCount={draftEntries.length}
         canApply={canApplyDraftParameters}
         isApplying={busyAction === 'failsafe:apply'}
         isBusy={busyAction !== undefined}
-        onApply={() => void onApplyScopedDrafts(failsafeDraftEntries, 'failsafe:apply', 'Failsafe')}
-        onRevert={() => onDiscardScopedDrafts(failsafeDraftEntries.map((entry) => entry.id), 'failsafe')}
-        // Split by which failsafe each parameter belongs to, rather than one
-        // "additional settings" pile at the end of the tab.
-        extraSlots={extraSlots}
+        onApply={() => void onApplyScopedDrafts(draftEntries, 'failsafe:apply', 'Failsafe')}
+        onRevert={() => onDiscardScopedDrafts(draftEntries.map((entry) => entry.id), 'failsafe')}
       />
     </section>
   )

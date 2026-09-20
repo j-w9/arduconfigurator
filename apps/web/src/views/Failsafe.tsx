@@ -44,12 +44,6 @@ export interface FailsafeViewRow {
 }
 
 export interface FailsafeViewProps {
-  rcFailsafeLabel: string
-  rcFailsafeThresholdText: string
-  batteryLowLabel: string
-  batteryLowThresholdText: string
-  batteryCriticalLabel: string
-  batteryCriticalThresholdText: string
   rows: readonly FailsafeViewRow[]
   /**
    * Extra cards per sub-tab, keyed by category id ('battery-failsafe',
@@ -77,12 +71,6 @@ export interface FailsafeViewProps {
 
 export function FailsafeView(props: FailsafeViewProps) {
   const {
-    rcFailsafeLabel,
-    rcFailsafeThresholdText,
-    batteryLowLabel,
-    batteryLowThresholdText,
-    batteryCriticalLabel,
-    batteryCriticalThresholdText,
     rows,
     extraSlots = {},
     editedValues,
@@ -148,28 +136,13 @@ export function FailsafeView(props: FailsafeViewProps) {
 
   return (
     <div id="setup-panel-failsafe">
-      <Panel
-        title="Failsafe"
-        subtitle="RC, battery, and advanced failsafe parameters."
-      >
+      <Panel title="Failsafe" subtitle="What the vehicle does when something goes wrong.">
         <div className="modes-stack">
-          <div className="modes-status">
-            <article className="modes-status__card">
-              <span>RC failsafe</span>
-              <strong data-testid="failsafe-rc-label">{rcFailsafeLabel}</strong>
-              <small>{rcFailsafeThresholdText}</small>
-            </article>
-            <article className="modes-status__card">
-              <span>Battery low</span>
-              <strong data-testid="failsafe-battery-low-label">{batteryLowLabel}</strong>
-              <small>{batteryLowThresholdText}</small>
-            </article>
-            <article className="modes-status__card">
-              <span>Battery critical</span>
-              <strong data-testid="failsafe-battery-critical-label">{batteryCriticalLabel}</strong>
-              <small>{batteryCriticalThresholdText}</small>
-            </article>
-          </div>
+          {/* The three summary cards (RC failsafe / Battery low / Battery
+              critical) used to sit here, restating an action and a threshold
+              that the rows below now show in full — and, since the tab is
+              grouped by kind of failsafe, on the very tab you are standing on.
+              A summary of the thing you are looking at is not a summary. */}
 
           <div className="tab-strip failsafe-category-nav" data-testid="failsafe-category-nav" role="tablist">
             {groups.map((group) => {

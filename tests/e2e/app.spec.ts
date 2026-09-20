@@ -894,15 +894,19 @@ test.describe('browser configurator regression flows', () => {
     await page.getByTestId('preset-apply-ack').check()
     await expect(page.getByTestId('apply-preset-button')).toBeEnabled()
     await page.getByTestId('apply-preset-button').click()
-    // The combined write captures one pre-apply backup for the whole selection
-    // and reports both presets as the source of the live changes.
-    await expect(page.getByText('Pre-apply backup — 2 presets')).toBeVisible()
+    // The combined write reports both presets as the source of the live changes.
     await expect(page.getByText(/2 presets \(Smooth Explorer, Sport Acro\) changed live tuning values/).first()).toBeVisible()
 
     // Re-clicking an active card toggles it back off.
     await page.getByTestId('preset-card-flight-feel-soft').click()
     await expect(page.getByTestId('preset-card-flight-feel-soft')).not.toHaveClass(/is-active/)
     await expect(page.getByTestId('preset-card-acro-rates-sport')).toHaveClass(/is-active/)
+
+    // ...and it captured ONE pre-apply backup for the whole selection. Asserted
+    // on the Snapshots tab, which is where snapshots live: this used to be
+    // readable from the sidebar's Active Baseline panel, which is gone.
+    await openView(page, 'snapshots')
+    await expect(page.getByText('Pre-apply backup — 2 presets').first()).toBeVisible()
   })
 
   test('presets: a param can be dropped from the review diff before applying', async ({ page }) => {
