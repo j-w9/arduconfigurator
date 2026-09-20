@@ -719,6 +719,9 @@ test.describe('browser configurator regression flows', () => {
     // failsafe category used to route through Power; it now routes to
     // its own dedicated tab.
     await openView(page, 'failsafe')
+    // The metadata-backed extras live on the Advanced sub-tab now — the rows
+    // are grouped by kind of failsafe.
+    await page.getByTestId('failsafe-category-advanced').click()
 
     // FS_OPTIONS is flagged bitmask, so it renders as per-bit chips, not a
     // dropdown.

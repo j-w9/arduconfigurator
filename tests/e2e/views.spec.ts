@@ -5162,8 +5162,11 @@ test.describe('ArduRover / ArduSub demo', () => {
 
     // Failsafe view is the real Rover failsafe set, not the hardcoded
     // Copter rows: FS_ACTION (2 -> "Hold") shows; the Copter-only
-    // FS_EKF_ACTION / FS_OPTIONS rows are absent.
+    // FS_EKF_ACTION / FS_OPTIONS rows are absent. Rover's own failsafe gets
+    // its own sub-tab rather than being folded into Advanced — it is the main
+    // failsafe of the vehicle.
     await openView(page, 'failsafe')
+    await page.getByTestId('failsafe-category-failsafe-action').click()
     await expect(page.getByTestId('failsafe-row-FS_ACTION')).toContainText('Hold')
     await expect(page.getByTestId('failsafe-row-FS_EKF_ACTION')).toHaveCount(0)
     await expect(page.getByTestId('failsafe-row-FS_OPTIONS')).toHaveCount(0)
@@ -5257,6 +5260,10 @@ test.describe('ArduRover / ArduSub demo', () => {
     // ArduSub/Parameters.cpp @Param: FS_LEAK_ENABLE @Values); the Copter RC
     // throttle failsafe row must not appear for a Sub.
     await openView(page, 'failsafe')
+    // A Sub's own failsafes each get a sub-tab: Leak, and internal pressure /
+    // temperature. Burying them under Advanced would hide the one that matters
+    // most on a Sub.
+    await page.getByTestId('failsafe-category-leak-failsafe').click()
     await expect(page.getByTestId('failsafe-row-FS_LEAK_ENABLE')).toContainText('Leak failsafe')
     await expect(page.getByTestId('failsafe-row-FS_LEAK_ENABLE')).toContainText('Enter surface mode')
     await expect(page.getByTestId('failsafe-row-FS_THR_ENABLE')).toHaveCount(0)

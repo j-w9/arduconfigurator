@@ -278,14 +278,19 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
         // (Display order only — writes are staged/applied from the draft pool,
         // which is keyed by parameter id and unaffected by card layout.)
         { paramId: 'RC_PROTOCOLS', label: 'RC protocols (type)', digits: 0 },
-        { paramId: 'RC_OPTIONS', label: 'RC options', digits: 0 },
-        { paramId: 'RSSI_TYPE', label: 'RSSI source', digits: 0 },
-        { paramId: 'RSSI_CHANNEL', label: 'RSSI channel', digits: 0 },
         // Mode channel param is vehicle-specific: Rover uses MODE_CH, Copter/
         // Plane use FLTMODE_CH, and Sub has no RC mode channel (button modes).
+        //
+        // Second, not last. RC_OPTIONS is a tall bitmask, so in the card's
+        // column flow a trailing field wrapped to the bottom of the first
+        // column, under all of it — reported as "a little hidden". It is also
+        // the knob an operator reaches for right after the protocol.
         ...(activeVehicle === 'ArduSub'
           ? []
-          : [{ paramId: activeVehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH', label: 'Flight-mode channel', digits: 0 }])
+          : [{ paramId: activeVehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH', label: 'Flight-mode channel', digits: 0 }]),
+        { paramId: 'RC_OPTIONS', label: 'RC options', digits: 0 },
+        { paramId: 'RSSI_TYPE', label: 'RSSI source', digits: 0 },
+        { paramId: 'RSSI_CHANNEL', label: 'RSSI channel', digits: 0 }
       ]
     },
     {
