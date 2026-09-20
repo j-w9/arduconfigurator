@@ -1688,24 +1688,16 @@ test.describe('Failsafe view', () => {
     // breach action — and the one in here a basic-mode operator is most likely
     // to be looking for.
     await page.getByTestId('failsafe-category-fence').click()
-    const fence = page.getByTestId('metadata-settings-section-fence')
-    await expect(fence).toContainText('Geofence')
-    // The group is a <details>; open it if this build ships it collapsed so the
-    // assertions below are about the fields, not about the disclosure.
-    if (!(await fence.evaluate((el) => (el as HTMLDetailsElement).open))) {
-      await fence.locator('summary').click()
-    }
-
-    // .first(): each field renders its id in the label, the info bubble, and
-    // the bubble's own header.
+    // Rows in the tab's own grid, like every other failsafe: no "more
+    // settings" card with its own apply button behind a disclosure.
     for (const id of ['FENCE_ENABLE', 'FENCE_TYPE', 'FENCE_ACTION', 'FENCE_RADIUS', 'FENCE_ALT_MAX']) {
-      await expect(fence.getByText(id, { exact: true }).first()).toBeVisible()
+      await expect(page.getByTestId(`failsafe-row-${id}`)).toBeVisible()
     }
 
     // Curated metadata, not a raw number: the breach action is a named list
     // sitting on ArduPilot's default of 1 (RTL or Land), which is the
     // difference between the fence being configurable and merely present.
-    const action = fence.locator('select').first()
+    const action = page.getByTestId('failsafe-row-FENCE_ACTION').locator('select')
     await expect(action).toHaveValue('1')
     expect(await action.evaluate((el) => (el as HTMLSelectElement).selectedOptions[0]?.textContent)).toBe(
       'RTL or Land'
@@ -1755,7 +1747,7 @@ test.describe('Failsafe view', () => {
     // battery ones sit under Battery with the battery rows. ArduPilot files
     // every one of them under a single 'failsafe' category, so this is routed
     // per parameter.
-    await expect(page.getByTestId('metadata-field-info-BATT_LOW_TIMER')).toBeVisible()
+    await expect(page.getByTestId('failsafe-row-BATT_LOW_TIMER')).toBeVisible()
     // FS_OPTIONS is a row rather than a metadata extra, and it is an Advanced
     // one: not here.
     await expect(page.getByTestId('failsafe-row-FS_OPTIONS')).toHaveCount(0)
@@ -1766,14 +1758,14 @@ test.describe('Failsafe view', () => {
     await page.getByTestId('failsafe-category-advanced').click()
     await expect(page.getByTestId('failsafe-servo-position-placeholder')).toBeVisible()
     await expect(page.getByTestId('failsafe-row-FS_OPTIONS')).toBeVisible()
-    await expect(page.getByTestId('metadata-field-info-BATT_LOW_TIMER')).toHaveCount(0)
+    await expect(page.getByTestId('failsafe-row-BATT_LOW_TIMER')).toHaveCount(0)
 
     // Pre-arm checks are NOT here. ArduPilot files them under the failsafe
     // category, so they used to arrive in this pile — but Config ▸ Arming
     // edits that exact set, and a pre-arm check stops you arming rather than
     // reacting in flight.
-    await expect(page.getByTestId('metadata-field-info-ARMING_CHECK')).toHaveCount(0)
-    await expect(page.getByTestId('metadata-field-info-ARMING_RUDDER')).toHaveCount(0)
+    await expect(page.getByTestId('failsafe-row-ARMING_CHECK')).toHaveCount(0)
+    await expect(page.getByTestId('failsafe-row-ARMING_RUDDER')).toHaveCount(0)
     await openView(page, 'config')
     await page.getByTestId('config-category-arming').click()
     await expect(page.getByTestId('config-section-arming')).toBeVisible()
@@ -5182,14 +5174,12 @@ test.describe('ArduRover / ArduSub demo', () => {
     const modesTable = page.getByTestId('modes-slot-table')
     await expect(modesTable.getByTestId('modes-slot-6').locator('select option:checked')).toHaveText('Steering')
 
-    // The mode-channel subtitle names the real Rover param (MODE_CH), not
-    // the Copter-hardcoded FLTMODE_CH.
-    await expect(
-      page.getByText('MODE_CH selects which RC channel', { exact: false })
-    ).toBeVisible()
-    await expect(
-      page.getByText('FLTMODE_CH selects which RC channel', { exact: false })
-    ).toHaveCount(0)
+    // The mode-channel EDITOR is bound to the real Rover param (MODE_CH), not
+    // the Copter-hardcoded FLTMODE_CH. (It used to be a sentence under the
+    // field; the field names itself now, so assert on the field.)
+    const modeChannelField = page.getByTestId('modes-mode-channel-field')
+    await expect(modeChannelField).toContainText('MODE_CH')
+    await expect(modeChannelField).not.toContainText('FLTMODE_CH')
 
     // Non-Copter Outputs gating holds for a Rover (vehicle-aware nav
     // badge — the non-multirotor Outputs body is covered by the demo-sub
@@ -5303,11 +5293,16 @@ test.describe('ArduRover / ArduSub demo', () => {
     await expect(page.getByTestId('failsafe-row-FS_LEAK_ENABLE')).toContainText('Enter surface mode')
     await expect(page.getByTestId('failsafe-row-FS_THR_ENABLE')).toHaveCount(0)
 
-    // Safety-relevant: the battery-failsafe action label must be the Sub
+    // Safety-relevant: the battery-failsafe action must resolve through the Sub
     // enum, not the Copter one. Mock seeds BATT_FS_LOW_ACT = 2, which is
     // "Disarm" on Sub but "RTL" on Copter — the operator must see "Disarm".
-    await expect(page.getByTestId('failsafe-battery-low-label')).toHaveText('Disarm')
-    await expect(page.getByTestId('failsafe-battery-low-label')).not.toHaveText('RTL')
+    // Read from the row's editor: the summary cards that used to carry this
+    // are gone, and the editor is what the operator actually acts on.
+    await page.getByTestId('failsafe-category-battery-failsafe').click()
+    const subBatteryAction = page
+      .getByTestId('failsafe-row-BATT_FS_LOW_ACT')
+      .locator('select option:checked')
+    await expect(subBatteryAction).toHaveText('Disarm')
 
     // Modes: ArduSub has no RC mode-switch channel (joystick-bound). The
     // view shows an honest note plus the live heartbeat mode only — not the

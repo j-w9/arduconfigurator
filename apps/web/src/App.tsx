@@ -3022,15 +3022,11 @@ export function App() {
   })
   // Failsafe gets its own additional-settings scope now that the 'failsafe'
   // category routes to the Failsafe view (it used to leak into Power).
-  // No exclusion: the FailsafeSection builds its primary rows from
-  // buildFailsafeRows + filters those ids out of the additional list at
-  // render time so a param doesn't double-render.
-  const {
-    groups: failsafeAdditionalGroups,
-    entries: failsafeAdditionalDraftEntries,
-    staged: failsafeAdditionalStagedDrafts,
-    invalid: failsafeAdditionalInvalidDrafts
-  } = useAdditionalScope({
+  // Only the GROUPS: the Failsafe tab renders these as rows in its own grid
+  // and applies them with its own Save, so it derives the draft bags itself
+  // from the rows it ends up showing. No exclusion here — the section filters
+  // out the ids its curated rows already carry.
+  const { groups: failsafeAdditionalGroups } = useAdditionalScope({
     snapshot,
     metadataCatalog,
     viewId: 'failsafe',
@@ -9125,10 +9121,6 @@ export function App() {
           onApplyScopedDrafts={handleApplyScopedParameterDrafts}
           onDiscardScopedDrafts={handleDiscardScopedParameterDrafts}
           failsafeAdditionalGroups={failsafeAdditionalGroups}
-          failsafeAdditionalDraftEntries={failsafeAdditionalDraftEntries}
-          failsafeAdditionalStagedDrafts={failsafeAdditionalStagedDrafts}
-          failsafeAdditionalInvalidDrafts={failsafeAdditionalInvalidDrafts}
-          renderAdditionalSettingsCard={renderAdditionalSettingsCard}
         />
       ) : null}
 
