@@ -535,12 +535,17 @@ describe('what the sequence says about a step', () => {
     }
   })
 
-  it('names the file a step needs on the flight controller', () => {
+  it('names the file a step needs, what it is called, and where it goes', () => {
     const withFile = summary.rows.filter((r) => r.file)
     expect(withFile.length).toBeGreaterThan(0)
     for (const row of withFile) {
       expect(row.file?.url).toMatch(/^https?:/)
       expect(row.file?.destination).toMatch(/^\//)
+      // The name is taken from what the step says to upload, not from the end
+      // of the URL -- those are not always the same, and the flight controller
+      // cares which one it gets.
+      expect(row.file?.name.length).toBeGreaterThan(0)
+      expect(row.file?.destination.endsWith(row.file.name)).toBe(true)
     }
   })
 

@@ -346,8 +346,15 @@ export interface StepRow {
   readonly jumps: readonly { readonly to: string; readonly filename: string; readonly cost: string }[]
   /** Log messages this step's configuration should produce. */
   readonly logMessages: readonly { readonly id: string; readonly name: string; readonly required: boolean }[]
-  /** A file the step fetches and puts on the flight controller. */
-  readonly file?: { readonly url: string; readonly destination: string }
+  /**
+   * A file the step needs on the flight controller.
+   *
+   * `name` is what it must be called, which is not always the last segment of
+   * the URL, and `destination` is where it goes. The fetch and the upload are
+   * separate acts here: the applet can be downloaded and read before anything
+   * is put on an aircraft.
+   */
+  readonly file?: { readonly url: string; readonly name: string; readonly destination: string }
   /**
    * A tool the sequence places beside the step, and where this app keeps it.
    *
@@ -663,7 +670,13 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
           }
         : {}),
       ...(step.download_file && step.upload_file
-        ? { file: { url: step.download_file.source_url, destination: step.upload_file.dest_on_fc } }
+        ? {
+            file: {
+              url: step.download_file.source_url,
+              name: step.upload_file.source_local,
+              destination: step.upload_file.dest_on_fc
+            }
+          }
         : {}),
       ...(step.wiki_url === undefined ? {} : { wikiUrl: step.wiki_url })
     })

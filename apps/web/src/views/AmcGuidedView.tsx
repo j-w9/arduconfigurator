@@ -504,11 +504,17 @@ function StepCard({
 
           {row.file ? (
             <p className="amc-step__file">
-              Needs <code>{row.file.destination}</code> on the flight controller, from{' '}
-              <a href={row.file.url} target="_blank" rel="noreferrer">
-                the ArduPilot applet
-              </a>
-              . Not fetched from here yet.
+              {/* Two separate acts on purpose. Fetching the applet is harmless
+                  and the operator can read it; putting a file on an aircraft is
+                  not, and goes over the MAVFTP transfer that is currently known
+                  to hang — so this stops at the download and says where the
+                  file has to end up. */}
+              This step needs <code>{row.file.name}</code> at <code>{row.file.destination}</code> on the
+              flight controller.{' '}
+              <a href={row.file.url} download={row.file.name} target="_blank" rel="noreferrer">
+                Download it
+              </a>{' '}
+              and copy it across with the Files tab; this tab does not put files on the vehicle.
             </p>
           ) : null}
 
