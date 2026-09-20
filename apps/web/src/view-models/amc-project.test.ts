@@ -224,3 +224,48 @@ describe('reading the declaration off the vehicle', () => {
     expect(result.values['ESC/FC->ESC Connection/Protocol']).toBe('DShot600-from-firmware')
   })
 })
+
+describe('opening a directory written for older firmware', () => {
+  /** A directory declaring 4.5, holding a parameter 4.7 renamed and rescaled. */
+  const oldProject = (version: string) => [
+    {
+      filename: 'vehicle_components.json',
+      text: JSON.stringify({ Components: { 'Flight Controller': { Firmware: { Version: version } } } })
+    },
+    {
+      filename: '13_initial_atc.param',
+      // ANGLE_MAX was centidegrees; ATC_ANGLE_MAX is degrees.
+      text: 'ANGLE_MAX,3000  # 30 degrees\n'
+    }
+  ]
+
+  it('renames and rescales what the firmware moved', () => {
+    const read = readProject(copter, oldProject('4.5.0'), fields, { vehicleFirmwareVersion: '4.7.0' })
+
+    const step = read.steps.find((s) => s.filename === '13_initial_atc.param')
+    expect(step?.entries.get('ATC_ANGLE_MAX')?.value).toBe(30)
+    expect(step?.entries.has('ANGLE_MAX')).toBe(false)
+
+    const rename = read.renamedParameters?.find((r) => r.from === 'ANGLE_MAX')
+    expect(rename?.to).toBe('ATC_ANGLE_MAX')
+    // The rescale is reported, because the number in the file and the number
+    // on the vehicle are deliberately not the same.
+    expect(rename?.scale).toBe(0.01)
+  })
+
+  it('leaves a directory written for this firmware alone', () => {
+    const read = readProject(copter, oldProject('4.7.0'), fields, { vehicleFirmwareVersion: '4.7.0' })
+    const step = read.steps.find((s) => s.filename === '13_initial_atc.param')
+    expect(step?.entries.get('ANGLE_MAX')?.value).toBe(3000)
+    expect(read.renamedParameters ?? []).toEqual([])
+  })
+
+  it('renames nothing when either version is unknown', () => {
+    // Renaming on a guess moves values that should have stayed put.
+    const noVehicle = readProject(copter, oldProject('4.5.0'), fields)
+    expect(noVehicle.steps.find((s) => s.filename === '13_initial_atc.param')?.entries.has('ANGLE_MAX')).toBe(true)
+
+    const noFile = readProject(copter, oldProject(''), fields, { vehicleFirmwareVersion: '4.7.0' })
+    expect(noFile.steps.find((s) => s.filename === '13_initial_atc.param')?.entries.has('ANGLE_MAX')).toBe(true)
+  })
+})

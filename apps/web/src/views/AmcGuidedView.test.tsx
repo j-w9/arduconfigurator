@@ -416,10 +416,39 @@ describe('connection fields', () => {
     const after = [...gnssProtocol.options]
     const marked = after.filter((o) => o.textContent?.includes('seen with this connection'))
     expect(marked.length).toBeGreaterThan(0)
-    // And nothing was taken away: the guarantee that makes evidence safe to
-    // act on at all.
+
+    // A CAN receiver speaks DroneCAN and not a serial protocol. This is a
+    // RULE, from ArduPilot's own parameter values, so it removes rather than
+    // reorders — the evidence-based pairings above never do.
     const afterValues = after.map((o) => o.value)
-    for (const value of before) expect(afterValues).toContain(value)
+    expect(afterValues).toContain('DroneCAN')
+    expect(afterValues).not.toContain('uBlox')
+    expect(before).toContain('uBlox')
+  })
+
+  it('never makes the operator\'s own answer unselectable', async () => {
+    // They can see the wiring and this cannot. A declared value that vanishes
+    // from the list is a value they cannot argue with.
+    const key = 'arduconfig.amc-progress.uid:cascade'
+    saveAmcProgress(key, {
+      vehicleKind: 'ArduCopter',
+      declaration: {
+        'GNSS Receiver/FC Connection/Type': 'CAN1',
+        'GNSS Receiver/FC Connection/Protocol': 'uBlox'
+      },
+      reviewed: []
+    })
+    render(<AmcGuidedView {...base} progressKey={key} />)
+    await whenLoaded()
+
+    await waitFor(() =>
+      expect(document.getElementById('amc-field-GNSS-Receiver-FC-Connection-Protocol')).toBeTruthy()
+    )
+    const protocol = document.getElementById(
+      'amc-field-GNSS-Receiver-FC-Connection-Protocol'
+    ) as HTMLSelectElement
+    // The rule says a CAN receiver is not uBlox, but they said it is.
+    expect([...protocol.options].map((o) => o.value)).toContain('uBlox')
   })
 })
 

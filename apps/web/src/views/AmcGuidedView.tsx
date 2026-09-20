@@ -13,13 +13,16 @@ import {
   runSequence,
   titleOf
 } from '../view-models/amc-guided'
-import { connectionGroupOf, orderByPairing } from '@arduconfig/amc-steps'
-import type { ConnectionPairings, ParameterDocs } from '@arduconfig/amc-steps'
+import { connectionGroupOf, orderByPairing, protocolsForConnection } from '@arduconfig/amc-steps'
+import type { ConnectionPairings, ConnectionTables, ParameterDocs } from '@arduconfig/amc-steps'
 import connectionPairingsJson from '@amc/data/component-pairings.json'
+import connectionTablesJson from '@amc/data/connection-tables.json'
 
 // Observed from AMC's vehicle templates by scripts/sync-from-vendor.mjs. Small
 // (a few hundred bytes) so it rides along rather than being fetched.
 const connectionPairings = connectionPairingsJson as ConnectionPairings
+// ArduPilot's own type-to-protocol rules, extracted from AMC's source.
+const connectionTables = connectionTablesJson as unknown as ConnectionTables
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import { buildProject, importFromVehicle, projectArchive, projectFilename, readProject } from '../view-models/amc-project'
@@ -162,16 +165,30 @@ function FieldControl({
   // AMC's templates, so they are evidence rather than a specification — they
   // reorder the list and never shorten it, because twenty-nine vehicles cannot
   // prove that a protocol nobody used is invalid.
-  const { ordered: choices, likely } = useMemo(
-    () =>
-      orderByPairing(
-        documented ?? [],
-        connectionPairings,
-        connectionGroupOf(field.path),
-        pairedType
-      ),
-    [documented, field.path, pairedType]
-  )
+  const { ordered: choices, likely } = useMemo(() => {
+    const ordered = orderByPairing(
+      documented ?? [],
+      connectionPairings,
+      connectionGroupOf(field.path),
+      pairedType
+    )
+    // Where ArduPilot's own tables settle it, the type does not merely reorder
+    // the protocols — it decides them. A GNSS on CAN1 speaks DroneCAN and a
+    // GNSS on SERIAL3 does not, and offering the whole list under every type
+    // invites a declaration the sequence cannot resolve.
+    const allowed =
+      field.path.length === 3 && field.path[2] === 'Protocol' && pairedType
+        ? protocolsForConnection(connectionTables, field.path[0] as string, pairedType)
+        : undefined
+    if (!allowed) return ordered
+    return {
+      ...ordered,
+      // The operator's own answer is never made unselectable, even when the
+      // rule disagrees with it: they can see the wiring and this cannot, and
+      // a value that vanishes from the list is a value they cannot argue with.
+      ordered: ordered.ordered.filter((option) => allowed.has(option) || option === value)
+    }
+  }, [documented, field.path, pairedType, value])
   // Once "Other" is chosen, or a stored value is off-list, the field stays a
   // text box rather than silently snapping to something it does not mean.
   const offList = value !== '' && documented !== undefined && !choices.includes(value)
@@ -1050,7 +1067,9 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         }))
       )
 
-      const project = readProject(steps, files, fields)
+      const project = readProject(steps, files, fields, {
+        ...(vehicleFirmwareVersion ? { vehicleFirmwareVersion } : {})
+      })
       if (project.steps.length === 0 && project.componentValues === undefined) {
         setProjectNotice({
           tone: 'warning',
@@ -1071,6 +1090,17 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       // project predates the current sequence.
       if (project.renamed.length > 0) {
         parts.push(`${project.renamed.length} under names the sequence has since changed`)
+      }
+      // A rename that also changed units is worth its own mention: the number
+      // in the file and the number now on the vehicle are deliberately not
+      // the same, and an operator comparing them would otherwise be puzzled.
+      const upgraded = project.renamedParameters ?? []
+      if (upgraded.length > 0) {
+        const rescaled = upgraded.filter((rename) => rename.scale !== undefined).length
+        parts.push(
+          `${upgraded.length} parameter${upgraded.length === 1 ? '' : 's'} renamed for this firmware` +
+            (rescaled > 0 ? ` (${rescaled} rescaled with it)` : '')
+        )
       }
       setProjectNotice({
         tone: project.unmatched.length > 0 ? 'warning' : 'ok',

@@ -25,12 +25,16 @@ import {
   vehicleContext,
   vehicleFiles
 } from '@arduconfig/amc-steps'
+import type { ParameterRename, UpgradeTables } from '@arduconfig/amc-steps'
+import { upgradeParameters, upgradesBetween } from '@arduconfig/amc-steps'
 import connectionTablesJson from '@amc/data/connection-tables.json'
 
 // Extracted from AMC's own source by scripts/extract-connection-tables.py, so
 // the mapping from parameter values to hardware follows upstream rather than
 // being restated here.
 const connectionTables = connectionTablesJson as unknown as ConnectionTables
+// The same file carries ArduPilot's parameter renames between versions.
+const upgradeTables = connectionTablesJson as unknown as UpgradeTables
 import type { ParameterDocs } from '@arduconfig/amc-steps'
 
 import type { AmcSequence, ComponentField } from './amc-guided'
@@ -184,6 +188,11 @@ export function projectFilename(vehicleName: string | undefined): string {
 export interface ProjectImport extends VehicleProject {
   /** Declared components, when the directory carried them. */
   readonly componentValues?: Readonly<Record<string, string>>
+  /**
+   * Parameters renamed because the vehicle's firmware is newer than the
+   * directory's. Empty unless a version boundary was actually crossed.
+   */
+  readonly renamedParameters?: readonly ParameterRename[]
 }
 
 /**
@@ -196,7 +205,8 @@ export interface ProjectImport extends VehicleProject {
 export function readProject(
   sequence: AmcSequence,
   files: readonly ProjectFile[],
-  fields: readonly ComponentField[]
+  fields: readonly ComponentField[],
+  options: { readonly vehicleFirmwareVersion?: string } = {}
 ): ProjectImport {
   const project = readVehicleProject(sequence, files)
   if (project.components === undefined) return project
@@ -211,8 +221,36 @@ export function readProject(
     return project
   }
 
-  return { ...project, componentValues: valuesFromComponents(parsed, fields) }
+  const componentValues = valuesFromComponents(parsed, fields)
+
+  // A directory written against an older firmware names parameters the
+  // vehicle no longer has: ANGLE_MAX became ATC_ANGLE_MAX, and in degrees
+  // rather than centidegrees. Left alone, reading it back drops those values
+  // silently — the file says one thing, the vehicle has another, and nothing
+  // reports the gap. The directory's own declared firmware version is what
+  // says where it started.
+  const fileVersion = componentValues[FIRMWARE_VERSION_KEY] ?? ''
+  const crossed = upgradesBetween(fileVersion, options.vehicleFirmwareVersion ?? '')
+  if (crossed.length === 0) return { ...project, componentValues }
+
+  const renames: ParameterRename[] = []
+  const steps = project.steps.map((step) => {
+    const upgraded = upgradeParameters(
+      step.entries,
+      upgradeTables,
+      crossed,
+      (entry) => entry.value,
+      (entry, value) => ({ ...entry, value })
+    )
+    renames.push(...upgraded.renamed)
+    return { ...step, entries: upgraded.parameters }
+  })
+
+  return { ...project, componentValues, steps, renamedParameters: renames }
 }
+
+/** Where the operator declares the firmware a directory was written for. */
+const FIRMWARE_VERSION_KEY = 'Flight Controller/Firmware/Version'
 
 /**
  * Flatten the declared components back into the form the field list uses.
