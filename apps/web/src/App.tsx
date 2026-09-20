@@ -377,6 +377,7 @@ import { buildSetupFlowSections } from './view-models/setup-flow-sections'
 import { buildGuidedSetupOverview } from './view-models/guided-setup-overview'
 import { AmcGuidedView } from './views/AmcGuidedView'
 import { draftsFrom, sequenceForFirmware } from './view-models/amc-guided'
+import { deriveAmcProgressKey } from './amc-progress-storage'
 import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
 import { ConfigView } from './views/Config'
 import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
@@ -9822,6 +9823,8 @@ export function App() {
           // review, validation, Write all and Discard apply unchanged.
           onStage={(changes) => mergeDrafts(draftsFrom(changes))}
           suggestedKind={sequenceForFirmware(snapshot.vehicle?.vehicle)}
+          vehicleFirmwareVersion={snapshot.hardware.board?.firmwareVersion}
+          progressKey={deriveAmcProgressKey(snapshot)}
           docs={amcDocs ? (name) => amcDocs.params[name] : undefined}
           docsVehicle={amcDocsVehicle}
           onDocsVehicleChange={setAmcDocsVehicle}

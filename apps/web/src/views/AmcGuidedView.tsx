@@ -14,6 +14,13 @@ import {
 import type { ParameterDocs } from '@arduconfig/amc-steps'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
+import {
+  UNATTACHED_KEY,
+  clearAmcProgress,
+  loadAmcProgress,
+  saveAmcProgress
+} from '../amc-progress-storage'
+
 // AMC guided mode — the experimental tab.
 //
 // ArduPilot Methodic Configurator's configuration sequence, evaluated here and
@@ -46,8 +53,23 @@ export interface AmcGuidedViewProps {
   parameters: Readonly<Record<string, number>>
   /** The same parameters as the app holds them, used to predict the draft bar. */
   states?: readonly ParameterState[]
+  /**
+   * Where this vehicle's declaration is kept, from the board's identity.
+   *
+   * Passed in rather than derived here so the view keeps no opinion about what
+   * counts as the same aircraft.
+   */
+  progressKey: string
   /** Suggested sequence for the connected firmware, when there is one. */
   suggestedKind?: AmcVehicleKind
+  /**
+   * The firmware version the vehicle reports, e.g. "4.5.3 (official)".
+   *
+   * The sequence asks for this, and the vehicle already knows it, so it is
+   * filled in from the link rather than typed or picked off a list of the
+   * versions other people's aircraft happened to run.
+   */
+  vehicleFirmwareVersion?: string
   /** ArduPilot parameter documentation, loaded lazily by App. */
   docs?: ParameterDocs
   docsVehicle?: string
@@ -167,14 +189,18 @@ function StepCard({
   row,
   connected,
   staged,
+  reviewed,
   onDeclareField,
-  onStage
+  onStage,
+  onReviewed
 }: {
   row: StepRow
   connected: boolean
   staged: Readonly<Record<string, string>>
+  reviewed: boolean
   onDeclareField: (key: string) => void
   onStage: (changes: readonly { parameter: string; value: number }[]) => void
+  onReviewed: (next: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
   const blocked = row.blocked.length > 0
@@ -191,7 +217,11 @@ function StepCard({
         {blocked ? (
           <StatusBadge tone="danger">{row.blocked.length} blocked</StatusBadge>
         ) : row.changes.length === 0 ? (
-          <StatusBadge tone="neutral">nothing to set</StatusBadge>
+          reviewed ? (
+            <StatusBadge tone="success">reviewed</StatusBadge>
+          ) : (
+            <StatusBadge tone="neutral">nothing to set</StatusBadge>
+          )
         ) : connected && row.pending === 0 ? (
           <StatusBadge tone="success">already set</StatusBadge>
         ) : (
@@ -337,6 +367,16 @@ function StepCard({
             </details>
           ) : null}
 
+          {/* A step that sets nothing leaves no trace in the parameters, so the
+              operator's own mark is the only record that it was done. Steps
+              that do set something are judged by the vehicle instead. */}
+          {row.changes.length === 0 && row.blocked.length === 0 ? (
+            <label className="amc-step__reviewed">
+              <input type="checkbox" checked={reviewed} onChange={(event) => onReviewed(event.target.checked)} />
+              <span>I have done this</span>
+            </label>
+          ) : null}
+
           {row.wikiUrl ? (
             <p className="amc-step__link">
               <a href={row.wikiUrl} target="_blank" rel="noreferrer">
@@ -351,10 +391,59 @@ function StepCard({
 }
 
 export function AmcGuidedView(props: AmcGuidedViewProps) {
-  const { connected, parameters, states, suggestedKind, docs, docsVehicle, onDocsVehicleChange, onStage, staged } = props
+  const {
+    connected,
+    parameters,
+    states,
+    suggestedKind,
+    vehicleFirmwareVersion,
+    progressKey,
+    docs,
+    docsVehicle,
+    onDocsVehicleChange,
+    onStage,
+    staged
+  } = props
 
   const [kind, setKind] = useState<AmcVehicleKind>(suggestedKind ?? 'ArduCopter')
   const [values, setValues] = useState<Record<string, string>>({})
+  const [reviewed, setReviewed] = useState<ReadonlySet<string>>(new Set())
+  // A declaration made before connecting, offered rather than applied when a
+  // vehicle turns up with nothing of its own stored.
+  const [carryOver, setCarryOver] = useState<Record<string, string> | undefined>(undefined)
+
+  // Which vehicle the values in state belong to.
+  //
+  // Saving is held until this matches, because the key changes the moment a
+  // vehicle connects and the values in hand at that instant still belong to
+  // whatever came before. Without the guard, connecting saves the previous
+  // (usually empty) declaration over the one stored for this aircraft, and the
+  // work is gone -- which is exactly what it did.
+  const [loadedKey, setLoadedKey] = useState<string | undefined>(undefined)
+
+  // Restore whatever belongs to this vehicle. Runs again when the key changes,
+  // which is what makes connecting to a different aircraft show its own work
+  // rather than the last one's.
+  useEffect(() => {
+    const stored = loadAmcProgress(progressKey)
+    setValues(stored?.declaration ?? {})
+    setReviewed(new Set(stored?.reviewed ?? []))
+    setLoadedKey(progressKey)
+    if (stored || progressKey === UNATTACHED_KEY) {
+      setCarryOver(undefined)
+      return
+    }
+    // Nothing stored for this aircraft: if there is unattached work, offer it.
+    const unattached = loadAmcProgress(UNATTACHED_KEY)
+    setCarryOver(
+      unattached && Object.keys(unattached.declaration).length > 0 ? unattached.declaration : undefined
+    )
+  }, [progressKey])
+
+  useEffect(() => {
+    if (loadedKey !== progressKey) return
+    saveAmcProgress(progressKey, { vehicleKind: kind, declaration: values, reviewed: [...reviewed] })
+  }, [loadedKey, progressKey, kind, values, reviewed])
 
   // Follow the connected vehicle, but never override a sequence the operator
   // picked by hand for a vehicle that is not connected.
@@ -383,9 +472,23 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   }, [kind])
 
   const steps = sequence?.kind === kind ? sequence.steps : undefined
+
   // The documentation decides which fields are dropdowns, so the form is
   // rebuilt once it has loaded.
   const fields = useMemo(() => (steps ? fieldsFor(steps, docs) : []), [steps, docs])
+
+  // The firmware version unblocks more of the sequence than any other field,
+  // and the vehicle reports it -- so it is read off the link rather than typed
+  // or picked from a list of the versions other aircraft happened to run.
+  // Filled in only when the operator has not answered it themselves.
+  const versionKey = useMemo(
+    () => fields.find((field) => field.component === 'Flight Controller' && field.label === 'Version')?.key,
+    [fields]
+  )
+  useEffect(() => {
+    if (!vehicleFirmwareVersion || !versionKey) return
+    setValues((previous) => (previous[versionKey] ? previous : { ...previous, [versionKey]: vehicleFirmwareVersion }))
+  }, [vehicleFirmwareVersion, versionKey])
 
   // The documentation is ~1.7 MB per vehicle and lazily loaded by App; ask for
   // the one this sequence needs whenever the sequence changes.
@@ -461,6 +564,19 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             </div>
           ) : null}
           <div>
+            <dt>Done</dt>
+            <dd>
+              {
+                summary.rows.filter(
+                  (row) =>
+                    reviewed.has(row.filename) ||
+                    (row.blocked.length === 0 && row.changes.length > 0 && row.pending === 0)
+                ).length
+              }{' '}
+              / {summary.rows.length}
+            </dd>
+          </div>
+          <div>
             <dt>Blocked</dt>
             <dd>{summary.totalFailures}</dd>
           </div>
@@ -478,6 +594,26 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         title="Declare the vehicle"
         subtitle={`${declaredCount} of ${fields.length} fields — exactly what the sequence reads, nothing more.`}
       >
+        {carryOver ? (
+          <p className="amc-guided__carry-over">
+            You declared a vehicle before connecting. Use it for this one?
+            <button
+              onClick={() => {
+                setValues(carryOver)
+                setCarryOver(undefined)
+              }}
+            >
+              Use it
+            </button>
+            <button
+              onClick={() => {
+                setCarryOver(undefined)
+              }}
+            >
+              Start fresh
+            </button>
+          </p>
+        ) : null}
         {summary && summary.nextFields.length > 0 ? (
           <p className="amc-guided__next">
             Most blocking:{' '}
@@ -508,13 +644,23 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                     value={values[field.key] ?? ''}
                     onChange={(next) => setValues((previous) => ({ ...previous, [field.key]: next }))}
                   />
+                  {field.key === versionKey && vehicleFirmwareVersion && values[field.key] === vehicleFirmwareVersion ? (
+                    <em className="amc-guided__from-vehicle">read from the vehicle</em>
+                  ) : null}
                 </label>
               ))}
             </fieldset>
           ))}
         </div>
         <div className="button-row">
-          <button style={buttonStyle()} onClick={() => setValues({})}>
+          <button
+            style={buttonStyle()}
+            onClick={() => {
+              setValues({})
+              setReviewed(new Set())
+              clearAmcProgress(progressKey)
+            }}
+          >
             Clear
           </button>
         </div>
@@ -555,8 +701,17 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               row={row}
               connected={connected}
               staged={staged}
+              reviewed={reviewed.has(row.filename)}
               onDeclareField={focusField}
               onStage={onStage}
+              onReviewed={(next) =>
+                setReviewed((previous) => {
+                  const updated = new Set(previous)
+                  if (next) updated.add(row.filename)
+                  else updated.delete(row.filename)
+                  return updated
+                })
+              }
             />
           ))}
         </div>

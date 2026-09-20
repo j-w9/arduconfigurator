@@ -19383,3 +19383,44 @@ button.mavlink-inspector__sent-row {
   font-size: 0.85em;
   margin-top: 2px;
 }
+
+/* A field answered by the link rather than the operator. */
+.amc-guided__from-vehicle {
+  color: var(--success);
+  font-size: 0.75em;
+  font-style: normal;
+}
+
+/* Work carried over from before a vehicle was attached, offered rather than
+   applied: a declaration describes one aircraft and should not migrate to
+   another without being asked for. */
+.amc-guided__carry-over {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--primary-500);
+  border-radius: var(--radius-sm);
+  background: var(--primary-transparent-1);
+}
+
+.amc-guided__carry-over button {
+  background: var(--surface-300);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+/* The only record there can be for a step that sets no parameters. */
+.amc-step__reviewed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
