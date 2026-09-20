@@ -30,12 +30,7 @@ function baseInputs(overrides: Partial<OutputTaskCardInputs> = {}): OutputTaskCa
     servoMappingRowCount: 8,
     outputPeripheralInvalidDraftCount: 0,
     outputPeripheralStagedDraftCount: 0,
-    hasNotificationLedTypes: false,
-    hasNotificationBuzzTypes: false,
     outputAdditionalGroupCount: 0,
-    relayInstanceCount: 0,
-    relayStagedCount: 0,
-    relayInvalidCount: 0,
     totalOutputInvalidDrafts: 0,
     totalOutputStagedDrafts: 0,
     ...overrides
@@ -58,20 +53,8 @@ describe('buildOutputTaskCards', () => {
       'esc-protocol',
       'servo-mapping',
       'peripherals',
-      'relays',
       'review'
     ])
-  })
-
-  it('relays: instance count, staged, and invalid drive the value + tone', () => {
-    expect(card(buildOutputTaskCards(baseInputs({ relayInstanceCount: 6 })), 'relays').value).toBe('6 relays')
-    expect(card(buildOutputTaskCards(baseInputs({ relayInstanceCount: 1 })), 'relays').value).toBe('1 relay')
-    const staged = card(buildOutputTaskCards(baseInputs({ relayInstanceCount: 6, relayStagedCount: 2 })), 'relays')
-    expect(staged.value).toBe('2 staged')
-    expect(staged.tone).toBe('warning')
-    const invalid = card(buildOutputTaskCards(baseInputs({ relayStagedCount: 2, relayInvalidCount: 1 })), 'relays')
-    expect(invalid.value).toBe('1 invalid')
-    expect(invalid.tone).toBe('danger')
   })
 
   it('motor-setup: invalid drafts win over staged and dominate the tone', () => {

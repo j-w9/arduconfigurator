@@ -1,16 +1,23 @@
-Servos and Relays
-=================
+Servos
+======
 
-The **Servos** tab assigns a function to each auxiliary output, and the
-**Relays** sub-tab configures the GPIO-style relay outputs used for switched
-payloads. Both live under the **Outputs** panel's task strip alongside motor
-setup, ESC protocol, and peripherals. Notify devices — external LEDs and
-buzzers — are configured nearby in the Outputs peripherals card.
+The **Servos** tab assigns a function to each auxiliary output. It is a single
+page — the output map, then the metadata-backed output settings that extend it
+— with no sub-tabs.
+
+.. note::
+
+   Relays, the notification LEDs and buzzer, the gimbal and the
+   rangefinder/optical-flow surfaces used to be sub-tabs here. They are
+   hardware wired to the board rather than servo setup, so they moved to
+   :doc:`peripherals-gimbal`, and Servos lost its task strip along with them.
+   Relays are documented below for reference; they are configured on the
+   Peripherals tab.
 
 Servo output functions
 -----------------------
 
-The **Servos** task (the *servo mapping* tab) shows a table of every output
+The servo mapping table shows a row for every output
 channel the flight controller reports, with columns **Channel · Function · Min ·
 Trim · Max · Live · Rev · Kind**. The *Function* cell assigns ``SERVOn_FUNCTION`` —
 what that physical output drives. ArduPilot offers a long list; common choices
@@ -82,15 +89,15 @@ strip), ``NTF_LED_OVERRIDE`` (the LED source), and ``NTF_BUZZ_VOLUME``.
 .. note::
 
    For an addressable LED strip to light up, an output must also carry a
-   *NeoPixel* function (``SERVOn_FUNCTION`` 120–123). The notifications card
-   detects and lists any such configured outputs and prompts you to assign one
-   if none is set.
+   *NeoPixel* function (``SERVOn_FUNCTION`` 120–123). The notifications card on
+   :doc:`peripherals-gimbal` detects and lists any such configured outputs and
+   prompts you to assign one if none is set.
 
 Relays
 ------
 
-The **Relays** sub-tab configures up to six relay outputs as a grid of per-relay
-cards. Each relay has:
+The **Relays** section (on :doc:`peripherals-gimbal`) configures up to six relay
+outputs as a grid of per-relay cards. Each relay has:
 
 - ``RELAYn_FUNCTION`` — what the relay is for: *None*, *Relay* (manual on/off),
   *Ignition*, *Parachute*, *Camera*, brushed-motor-reverse functions, *ICE

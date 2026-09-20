@@ -26,19 +26,12 @@ import type {
   evaluateMotorTestEligibility
 } from '@arduconfig/ardupilot-core'
 import { MAX_MOTOR_TEST_THROTTLE_PERCENT } from '@arduconfig/ardupilot-core'
-import {
-  ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS,
-  ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS,
-  formatArducopterNotificationLedBrightness,
-  formatArducopterNotificationLedOverride
-} from '@arduconfig/param-metadata'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import type { useMotorManagement } from '../hooks/use-motor-management'
 import type { useMotorOutputAssignments } from '../hooks/use-motor-output-assignments'
 import type { useMotorTestConfig } from '../hooks/use-motor-test-config'
 import type { useOutputAssignmentVisibility } from '../hooks/use-output-assignment-visibility'
-import type { useOutputNotificationCatalog } from '../hooks/use-output-notification-catalog'
 import type { useSafetyAcks } from '../hooks/use-safety-acks'
 import type { ParameterDraftValues } from '../hooks/use-parameter-drafts'
 import type { buildVehicleOutputSummary } from '../view-models/vehicle-output-summary'
@@ -64,8 +57,7 @@ import {
   SPIN_WIZARD_WATCHDOG_SECONDS
 } from '../view-models/spin-threshold-wizard'
 import { MotorMixerDiagram } from '../views/MotorMixerDiagram'
-import { formatParameterValue, normalizeBitmaskValue } from '../parameter-format'
-import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
+import { formatParameterValue } from '../parameter-format'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
 import { QUADPLANE_ESC_PARAM_IDS } from '../param-groups'
 import { buildPlaneControlSurfaces } from '../view-models/plane-control-surfaces'
@@ -84,11 +76,9 @@ import {
 } from '../tone-helpers'
 import { OutputsView } from '../views/Outputs'
 import { EscRpmReadout } from '../views/EscRpmReadout'
-import { ParamInfoBubble } from '../views/ParamInfoBubble'
 import { buildEscRpmReadoutViewModel } from '../view-models/esc-rpm-readout'
 import type { OutputsTaskId, OutputsViewProps } from '../views/Outputs'
 import { ScopedField, ScopedSelectField } from '../views/ScopedField'
-import { RelaysView } from '../views/RelaysView'
 import { ServoFunctionMappingView } from '../views/ServoFunctionMapping'
 import type { ServoFunctionMappingViewProps } from '../views/ServoFunctionMapping'
 
@@ -109,7 +99,6 @@ export interface OutputsSectionDerived {
   isCopterVehicle: boolean
   configuredOutputs: readonly ConfiguredOutput[]
   visibleDisabledOutputs: readonly ConfiguredOutput[]
-  notificationLedOutputs: readonly ConfiguredOutput[]
   frameConfigEditable: boolean
   frameClassParameter: ParameterState | undefined
   frameTypeParameter: ParameterState | undefined
@@ -134,23 +123,12 @@ export interface OutputsSectionDerived {
   showAllOutputAssignments: boolean
   outputAssignmentReviewLabel: string
   servoMappingRows: ServoFunctionMappingViewProps['rows']
-  notificationLedTypes: number | undefined
-  notificationLedBrightness: number | undefined
-  notificationLedLength: number | undefined
-  notificationLedOverride: number | undefined
-  notificationBuzzTypes: number | undefined
-  notificationBuzzVolume: number | undefined
-  editedNotificationLedTypes: number
-  editedNotificationBuzzTypes: number
   outputAssignmentDraftEntries: ParameterDraftEntry[]
   outputAssignmentStagedDrafts: ParameterDraftEntry[]
   outputAssignmentInvalidDrafts: ParameterDraftEntry[]
   outputReviewDraftEntries: ParameterDraftEntry[]
   outputReviewStagedDrafts: ParameterDraftEntry[]
   outputReviewInvalidDrafts: ParameterDraftEntry[]
-  outputNotificationDraftEntries: ParameterDraftEntry[]
-  outputNotificationStagedDrafts: ParameterDraftEntry[]
-  outputNotificationInvalidDrafts: ParameterDraftEntry[]
   outputAdditionalGroups: import('../view-models/peripherals').AdditionalSettingsGroup[]
   outputAdditionalDraftEntries: ParameterDraftEntry[]
   outputAdditionalStagedDrafts: ParameterDraftEntry[]
@@ -164,10 +142,6 @@ export interface OutputsSectionDerived {
   outputTaskCards: OutputsViewProps['taskCards']
   activeOutputTaskId: OutputsTaskId
   activeOutputTask: OutputsViewProps['activeTask']
-  relayGroups: import('../view-models/relay-groups').RelayInstanceGroup[]
-  relayDraftEntries: ParameterDraftEntry[]
-  relayStagedDrafts: ParameterDraftEntry[]
-  relayInvalidDrafts: ParameterDraftEntry[]
   /**
    * Optional "enable the CAN bus for DroneCAN" offer rendered at the top of the
    * Peripherals task, above the metadata sections. Supplied by App.tsx ONLY when
@@ -221,7 +195,6 @@ export interface OutputsSectionHandlers {
     discardScope: string
   ) => ReactNode
   setDraft: (paramId: string, value: string) => void
-  updateDrafts: (updater: (existing: ParameterDraftValues) => ParameterDraftValues) => void
   setShowAllOutputAssignments: (updater: (current: boolean) => boolean) => void
   setOutputTaskOverride: (taskId: OutputsTaskId) => void
 }
@@ -237,7 +210,6 @@ export interface OutputsSectionProps {
   parameterDraftById: ReadonlyMap<string, ParameterDraftEntry>
   motorOutputAssignments: ReturnType<typeof useMotorOutputAssignments>
   outputAssignmentVisibility: ReturnType<typeof useOutputAssignmentVisibility>
-  outputNotificationCatalog: ReturnType<typeof useOutputNotificationCatalog>
   motorTestConfig: ReturnType<typeof useMotorTestConfig>
   motorManagement: ReturnType<typeof useMotorManagement>
   safetyAcks: ReturnType<typeof useSafetyAcks>
@@ -261,26 +233,6 @@ export interface OutputsSectionProps {
  * anchor inside a <label> is invalid markup and the label's click handling
  * swallows it.
  */
-function NotificationFieldRow({
-  parameter,
-  children
-}: {
-  parameter: ParameterState
-  children: ReactNode
-}): ReactElement {
-  return (
-    <div className="config-section__field-row">
-      {children}
-      <ParamInfoBubble
-        paramId={parameter.id}
-        label={parameter.definition?.label ?? parameter.id}
-        description={parameter.definition?.description}
-        testId={`peripheral-field-info-${parameter.id}`}
-      />
-    </div>
-  )
-}
-
 /**
  * Pole-count reference for SERVO_BLH_POLES.
  *
@@ -327,7 +279,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     busyAction,
     editedValues,
     parameterDraftById,
-    outputNotificationCatalog,
     motorTestConfig,
     motorManagement,
     safetyAcks,
@@ -338,14 +289,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
 
 
 
-  const {
-    notificationLedTypesParameter,
-    notificationLedLengthParameter,
-    notificationLedBrightnessParameter,
-    notificationLedOverrideParameter,
-    notificationBuzzTypesParameter,
-    notificationBuzzVolumeParameter
-  } = outputNotificationCatalog
 
   const {
     motorTestOutput,
@@ -381,7 +324,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     frameStagedDrafts,
     motorTestEligibility,
     isCopterVehicle,
-    notificationLedOutputs,
     escReviewSummary,
     currentMotorTestSucceeded,
     motorTestSliderTargets,
@@ -390,23 +332,12 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     canRunMotorTest,
     outputReviewParameters,
     servoMappingRows,
-    notificationLedTypes,
-    notificationLedBrightness,
-    notificationLedLength,
-    notificationLedOverride,
-    notificationBuzzTypes,
-    notificationBuzzVolume,
-    editedNotificationLedTypes,
-    editedNotificationBuzzTypes,
     outputAssignmentDraftEntries,
     outputAssignmentStagedDrafts,
     outputAssignmentInvalidDrafts,
     outputReviewDraftEntries,
     outputReviewStagedDrafts,
     outputReviewInvalidDrafts,
-    outputNotificationDraftEntries,
-    outputNotificationStagedDrafts,
-    outputNotificationInvalidDrafts,
     outputAdditionalGroups,
     outputAdditionalDraftEntries,
     outputAdditionalStagedDrafts,
@@ -420,10 +351,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     outputTaskCards,
     activeOutputTaskId,
     activeOutputTask,
-    relayGroups,
-    relayDraftEntries,
-    relayStagedDrafts,
-    relayInvalidDrafts,
     peripheralsCanEnableSlot
   } = derived
 
@@ -435,7 +362,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     handleStopMotorTest,
     renderAdditionalSettingsCard,
     setDraft,
-    updateDrafts,
     setOutputTaskOverride
   } = handlers
 
@@ -562,11 +488,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
   // MOT_* ESC surface. Only meaningful when VTOL is enabled (Q_ENABLE=1); built
   // from the existing draft machinery so edits stage/apply like the copter card.
   const isQuadPlane = !isCopterVehicle && readRoundedParameter(snapshot, 'Q_ENABLE') === 1
-  // Live RCn_OPTION per channel — feeds the Relays tab's "RC Channel" binding.
-  const relayRcOptionByChannel = new Map<number, number>()
-  for (let channel = 1; channel <= 16; channel += 1) {
-    relayRcOptionByChannel.set(channel, readRoundedParameter(snapshot, `RC${channel}_OPTION`) ?? 0)
-  }
   const quadplaneEscParameters = isQuadPlane
     ? QUADPLANE_ESC_PARAM_IDS.map((id) => selectParameterById(snapshot, id)).filter(
         (parameter): parameter is ParameterState => parameter !== undefined
@@ -587,8 +508,14 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         (channelNumber) => readRoundedParameter(snapshot, `SERVO${channelNumber}_REVERSED`) === 1
       )
 
-  // Motors shows every task on one page; Servos keeps its sub-tabs.
+  // Both Motors and Servos are single pages now. Servos kept sub-tabs while it
+  // hosted four unrelated subsystems; with the gimbal, flow/lidar, notification
+  // hardware and relays moved to the Peripherals tab it has one job left — the
+  // output map, plus the metadata-backed output settings that extend it — so a
+  // tab strip over two cards was navigation for its own sake.
   const showAllMotorTasks = activeViewId === 'motors'
+  const showAllServoTasks = activeViewId === 'servos'
+  const singlePageOutputs = showAllMotorTasks || showAllServoTasks
 
   return (
     <>
@@ -631,7 +558,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         subtitle={
           activeViewId === 'motors'
             ? 'Frame class, output map, direction & test, ESC protocol, and verification review for propulsion motors.'
-            : 'Auxiliary peripheral servo outputs — gimbal, parachute, gripper, and other aux roles.'
+            : 'Assign each output to a function — aux servos for a parachute, gripper, or control surface — and the output settings that extend the map.'
         }
         activeTaskId={activeOutputTaskId}
         activeTask={activeOutputTask}
@@ -651,7 +578,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
           }
         }}
         // Motors is one page: no task strip, and the denser one-page rhythm.
-        singlePage={showAllMotorTasks}
+        singlePage={singlePageOutputs}
         // The output overview panel was removed as part of the Motors/Outputs
         // declutter — the task surfaces below carry the per-output detail.
         overviewSlot={undefined}
@@ -1286,7 +1213,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                 </div>
               ) : null}
 
-              {activeOutputTaskId === 'servo-mapping' ? (
+              {showAllServoTasks || activeOutputTaskId === 'servo-mapping' ? (
                 <div className="outputs-task-panel outputs-task-panel--stack" data-testid="servo-mapping-task-body">
                   <ServoFunctionMappingView
                     rows={servoMappingRows}
@@ -1305,225 +1232,12 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                 </div>
               ) : null}
 
-              {activeOutputTaskId === 'relays' ? (
-                <div className="outputs-task-panel outputs-task-panel--stack">
-                  <RelaysView
-                    groups={relayGroups}
-                    rcOptionByChannel={relayRcOptionByChannel}
-                    editedValues={editedValues}
-                    onEditChange={(paramId, value) => setDraft(paramId, value)}
-                    draftStatusById={parameterDraftById}
-                    stagedCount={relayStagedDrafts.length}
-                    invalidCount={relayInvalidDrafts.length}
-                    draftCount={relayDraftEntries.length}
-                    canApply={canApplyDraftParameters}
-                    isApplying={busyAction === 'outputs:relays'}
-                    isBusy={busyAction !== undefined}
-                    onApply={() => void handleApplyScopedParameterDrafts(relayDraftEntries, 'outputs:relays', 'Relays')}
-                    onRevert={() => handleDiscardScopedParameterDrafts(relayDraftEntries.map((entry) => entry.id), 'relays')}
-                  />
-                </div>
-              ) : null}
-
-              {activeOutputTaskId === 'peripherals' ? (
+              {showAllServoTasks || activeOutputTaskId === 'peripherals' ? (
                 <div className="outputs-task-panel outputs-task-panel--stack">
                   {/* Sits ABOVE the cards: a DroneCAN sensor on a disabled bus
                       reports nothing at all, so the fix has to be visible before
                       the operator starts second-guessing the fields below it. */}
                   {peripheralsCanEnableSlot}
-                  {notificationLedTypesParameter || notificationLedLengthParameter || notificationLedBrightnessParameter || notificationLedOverrideParameter || notificationBuzzTypesParameter || notificationBuzzVolumeParameter ? (
-                    <div className="scoped-review-card scoped-review-card--compact">
-                      <div className="switch-exercise-card__header">
-                        <div>
-                          <strong>LED & buzzer notifications</strong>
-                          <p>Keep common FPV notification hardware setup local to Outputs instead of dropping into raw parameters.</p>
-                        </div>
-                        <StatusBadge tone={toneForScopedDraftReview(outputNotificationStagedDrafts.length, outputNotificationInvalidDrafts.length)}>
-                          {outputNotificationInvalidDrafts.length > 0
-                            ? `${outputNotificationInvalidDrafts.length} invalid`
-                            : outputNotificationStagedDrafts.length > 0
-                              ? `${outputNotificationStagedDrafts.length} staged`
-                              : 'in sync'}
-                        </StatusBadge>
-                      </div>
-
-                      <div className="config-pills">
-                        {notificationLedTypesParameter ? <span>LED drivers: {describeBitmaskSelections(notificationLedTypes, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}</span> : null}
-                        {notificationLedBrightnessParameter ? <span>Brightness: {formatArducopterNotificationLedBrightness(notificationLedBrightness)}</span> : null}
-                        {notificationLedLengthParameter ? <span>LED length: {notificationLedLength ?? 'Unknown'}</span> : null}
-                        {notificationLedOverrideParameter ? <span>LED source: {formatArducopterNotificationLedOverride(notificationLedOverride)}</span> : null}
-                        {notificationBuzzTypesParameter ? <span>Buzzer drivers: {describeBitmaskSelections(notificationBuzzTypes, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}</span> : null}
-                        {notificationBuzzVolumeParameter ? <span>Buzzer volume: {notificationBuzzVolume !== undefined ? `${notificationBuzzVolume}%` : 'Unknown'}</span> : null}
-                        {notificationLedOutputs.length > 0
-                          ? notificationLedOutputs.map((output) => <span key={`notification-output:${output.channelNumber}`}>OUT{output.channelNumber}: {output.functionLabel}</span>)
-                          : <span>No NeoPixel output assignment detected yet</span>}
-                      </div>
-
-                      <div className="scoped-editor-grid">
-                        {notificationLedTypesParameter ? (
-                          <NotificationFieldRow parameter={notificationLedTypesParameter}>
-                            <label className={`scoped-editor-field scoped-editor-field--${parameterDraftById.get(notificationLedTypesParameter.id)?.status ?? 'unchanged'}`}>
-                              <span>{notificationLedTypesParameter.definition?.label ?? notificationLedTypesParameter.id}</span>
-                              <div className="scoped-bitmask-bits">
-                                {Object.entries(ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS).map(([bit, label]) => {
-                                  const numericBit = Number(bit)
-                                  const checked = hasBitmaskFlag(editedNotificationLedTypes, numericBit)
-                                  return (
-                                    <button
-                                      type="button"
-                                      key={`${notificationLedTypesParameter.id}:${bit}`}
-                                      className={`scoped-bitmask-bit${checked ? ' is-set' : ''}`}
-                                      aria-pressed={checked}
-                                      onClick={() =>
-                                        updateDrafts((existing) => {
-                                          const currentValue = normalizeBitmaskValue(existing[notificationLedTypesParameter.id], notificationLedTypes)
-                                          const nextValue = toggleBitmaskFlag(currentValue, numericBit, !checked)
-
-                                          return {
-                                            ...existing,
-                                            [notificationLedTypesParameter.id]: String(nextValue)
-                                          }
-                                        })
-                                      }
-                                    >
-                                      {label}
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                              <small>
-                                {parameterDraftById.get(notificationLedTypesParameter.id)?.status === 'staged'
-                                  ? `Staged ${describeBitmaskSelections(parameterDraftById.get(notificationLedTypesParameter.id)?.nextValue, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}`
-                                  : parameterDraftById.get(notificationLedTypesParameter.id)?.reason ??
-                                    `Current ${describeBitmaskSelections(notificationLedTypes, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}`}
-                              </small>
-                            </label>
-                          </NotificationFieldRow>
-                        ) : null}
-
-                        {notificationLedBrightnessParameter ? (
-                          <NotificationFieldRow parameter={notificationLedBrightnessParameter}>
-                            <ScopedSelectField
-                              parameter={notificationLedBrightnessParameter}
-                              liveValue={notificationLedBrightness}
-                              editedValues={editedValues}
-                              onChange={(paramId, value) => setDraft(paramId, value)}
-                              draftStatusById={parameterDraftById}
-                            />
-                          </NotificationFieldRow>
-                        ) : null}
-
-                        {notificationLedLengthParameter ? (
-                          <NotificationFieldRow parameter={notificationLedLengthParameter}>
-                            <ScopedField
-                              parameter={notificationLedLengthParameter}
-                              liveValue={notificationLedLength}
-                              editedValues={editedValues}
-                              onChange={(paramId, value) => setDraft(paramId, value)}
-                              draftStatusById={parameterDraftById}
-                            />
-                          </NotificationFieldRow>
-                        ) : null}
-
-                        {notificationLedOverrideParameter ? (
-                          <NotificationFieldRow parameter={notificationLedOverrideParameter}>
-                            <ScopedSelectField
-                              parameter={notificationLedOverrideParameter}
-                              liveValue={notificationLedOverride}
-                              editedValues={editedValues}
-                              onChange={(paramId, value) => setDraft(paramId, value)}
-                              draftStatusById={parameterDraftById}
-                            />
-                          </NotificationFieldRow>
-                        ) : null}
-
-                        {notificationBuzzTypesParameter ? (
-                          <NotificationFieldRow parameter={notificationBuzzTypesParameter}>
-                            <label className={`scoped-editor-field scoped-editor-field--${parameterDraftById.get(notificationBuzzTypesParameter.id)?.status ?? 'unchanged'}`}>
-                              <span>{notificationBuzzTypesParameter.definition?.label ?? notificationBuzzTypesParameter.id}</span>
-                              <div className="scoped-bitmask-bits">
-                                {Object.entries(ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS).map(([bit, label]) => {
-                                  const numericBit = Number(bit)
-                                  const checked = hasBitmaskFlag(editedNotificationBuzzTypes, numericBit)
-                                  return (
-                                    <button
-                                      type="button"
-                                      key={`${notificationBuzzTypesParameter.id}:${bit}`}
-                                      className={`scoped-bitmask-bit${checked ? ' is-set' : ''}`}
-                                      aria-pressed={checked}
-                                      onClick={() =>
-                                        updateDrafts((existing) => {
-                                          const currentValue = normalizeBitmaskValue(existing[notificationBuzzTypesParameter.id], notificationBuzzTypes)
-                                          const nextValue = toggleBitmaskFlag(currentValue, numericBit, !checked)
-
-                                          return {
-                                            ...existing,
-                                            [notificationBuzzTypesParameter.id]: String(nextValue)
-                                          }
-                                        })
-                                      }
-                                    >
-                                      {label}
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                              <small>
-                                {parameterDraftById.get(notificationBuzzTypesParameter.id)?.status === 'staged'
-                                  ? `Staged ${describeBitmaskSelections(parameterDraftById.get(notificationBuzzTypesParameter.id)?.nextValue, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}`
-                                  : parameterDraftById.get(notificationBuzzTypesParameter.id)?.reason ??
-                                    `Current ${describeBitmaskSelections(notificationBuzzTypes, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}`}
-                              </small>
-                            </label>
-                          </NotificationFieldRow>
-                        ) : null}
-
-                        {notificationBuzzVolumeParameter ? (
-                          <NotificationFieldRow parameter={notificationBuzzVolumeParameter}>
-                            <ScopedField
-                              parameter={notificationBuzzVolumeParameter}
-                              liveValue={notificationBuzzVolume}
-                              editedValues={editedValues}
-                              onChange={(paramId, value) => setDraft(paramId, value)}
-                              draftStatusById={parameterDraftById}
-                            />
-                          </NotificationFieldRow>
-                        ) : null}
-                      </div>
-
-                      <ul className="output-note-list">
-                        <li>Assign a NeoPixel output in the Output assignments card before expecting external LED strips to respond.</li>
-                        <li>After notification-driver changes, bench-check the LEDs and buzzer with props off before flight.</li>
-                      </ul>
-
-                      <div className="switch-exercise-controls">
-                        <button
-                          style={buttonStyle('primary')}
-                          onClick={() =>
-                            void handleApplyScopedParameterDrafts(outputNotificationDraftEntries, 'outputs:notifications', 'Notification outputs')
-                          }
-                          disabled={
-                            busyAction !== undefined ||
-                            outputNotificationStagedDrafts.length === 0 ||
-                            outputNotificationInvalidDrafts.length > 0 ||
-                            !canApplyDraftParameters
-                          }
-                        >
-                          {busyAction === 'outputs:notifications' ? 'Applying…' : `Apply Notification Changes (${outputNotificationStagedDrafts.length})`}
-                        </button>
-                        <button
-                          style={buttonStyle()}
-                          onClick={() =>
-                            handleDiscardScopedParameterDrafts(outputNotificationDraftEntries.map((entry) => entry.id), 'notification outputs')
-                          }
-                          disabled={busyAction !== undefined || outputNotificationDraftEntries.length === 0}
-                        >
-                          Discard Notification Changes
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
                   {renderAdditionalSettingsCard(
                     'Additional output settings',
                     'These metadata-backed output and airframe settings extend Outputs without forcing routine configuration back into raw Parameters.',
@@ -1659,43 +1373,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     </div>
                   ) : null}
 
-                  {(outputNotificationDraftEntries.length > 0 || outputNotificationInvalidDrafts.length > 0 || outputNotificationStagedDrafts.length > 0) ? (
-                    <div className="outputs-inline-toggle">
-                      <div>
-                        <strong>Notification drafts</strong>
-                        <p>LED and buzzer changes stay local to Outputs. Review them here or jump back into Peripherals & Alerts.</p>
-                      </div>
-                      <div className="outputs-inline-toggle__actions">
-                        <button style={buttonStyle()} onClick={() => setOutputTaskOverride('peripherals')}>
-                          Open Peripherals & Alerts
-                        </button>
-                        <button
-                          style={buttonStyle('primary')}
-                          onClick={() =>
-                            void handleApplyScopedParameterDrafts(outputNotificationDraftEntries, 'outputs:notifications', 'Notification outputs')
-                          }
-                          disabled={
-                            busyAction !== undefined ||
-                            outputNotificationStagedDrafts.length === 0 ||
-                            outputNotificationInvalidDrafts.length > 0 ||
-                            !canApplyDraftParameters
-                          }
-                        >
-                          {busyAction === 'outputs:notifications' ? 'Applying…' : `Apply Notification Changes (${outputNotificationStagedDrafts.length})`}
-                        </button>
-                        <button
-                          style={buttonStyle()}
-                          onClick={() =>
-                            handleDiscardScopedParameterDrafts(outputNotificationDraftEntries.map((entry) => entry.id), 'notification outputs')
-                          }
-                          disabled={busyAction !== undefined || outputNotificationDraftEntries.length === 0}
-                        >
-                          Discard
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
                   {(outputAdditionalDraftEntries.length > 0 || outputAdditionalInvalidDrafts.length > 0 || outputAdditionalStagedDrafts.length > 0) ? (
                     <div className="outputs-inline-toggle">
                       <div>
@@ -1704,7 +1381,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                       </div>
                       <div className="outputs-inline-toggle__actions">
                         <button style={buttonStyle()} onClick={() => setOutputTaskOverride('peripherals')}>
-                          Open Peripherals & Alerts
+                          Open Additional Settings
                         </button>
                         <button
                           style={buttonStyle('primary')}

@@ -38,12 +38,7 @@ export interface OutputTaskCardInputs {
   servoMappingRowCount: number
   outputPeripheralInvalidDraftCount: number
   outputPeripheralStagedDraftCount: number
-  hasNotificationLedTypes: boolean
-  hasNotificationBuzzTypes: boolean
   outputAdditionalGroupCount: number
-  relayInstanceCount: number
-  relayStagedCount: number
-  relayInvalidCount: number
   totalOutputInvalidDrafts: number
   totalOutputStagedDrafts: number
 }
@@ -136,12 +131,7 @@ export function buildOutputTaskCards(inputs: OutputTaskCardInputs): OutputTaskCa
     servoMappingRowCount,
     outputPeripheralInvalidDraftCount,
     outputPeripheralStagedDraftCount,
-    hasNotificationLedTypes,
-    hasNotificationBuzzTypes,
     outputAdditionalGroupCount,
-    relayInstanceCount,
-    relayStagedCount,
-    relayInvalidCount,
     totalOutputInvalidDrafts,
     totalOutputStagedDrafts
   } = inputs
@@ -232,8 +222,11 @@ export function buildOutputTaskCards(inputs: OutputTaskCardInputs): OutputTaskCa
               : 'warning'
     },
     {
+      // Notifications, LEDs, the buzzer and relays moved to the Peripherals
+      // TAB — they are hardware wired to the board, not servo setup. What is
+      // left here is the metadata-backed output settings that extend the map.
       id: 'peripherals' as const,
-      label: 'Peripherals & Alerts',
+      label: 'Additional settings',
       value:
         outputPeripheralInvalidDraftCount > 0
           ? `${outputPeripheralInvalidDraftCount} invalid`
@@ -241,9 +234,9 @@ export function buildOutputTaskCards(inputs: OutputTaskCardInputs): OutputTaskCa
             ? `${outputPeripheralStagedDraftCount} staged`
             : `${configuredAuxOutputCount} aux`,
       detail:
-        hasNotificationLedTypes || hasNotificationBuzzTypes || outputAdditionalGroupCount > 0
-          ? 'Output-role editing, notifications, LEDs, buzzer configuration, and additional output settings stay grouped here.'
-          : 'No notification or auxiliary-output settings are currently exposed on this vehicle.',
+        outputAdditionalGroupCount > 0
+          ? 'Metadata-backed output and airframe settings that extend the output map.'
+          : 'No additional output settings are currently exposed on this vehicle.',
       tone:
         outputPeripheralInvalidDraftCount > 0
           ? 'danger'
@@ -252,26 +245,6 @@ export function buildOutputTaskCards(inputs: OutputTaskCardInputs): OutputTaskCa
             : configuredAuxOutputCount > 0
               ? 'success'
               : 'neutral'
-    },
-    {
-      id: 'relays' as const,
-      label: 'Relays',
-      value:
-        relayInvalidCount > 0
-          ? `${relayInvalidCount} invalid`
-          : relayStagedCount > 0
-            ? `${relayStagedCount} staged`
-            : `${relayInstanceCount} relay${relayInstanceCount === 1 ? '' : 's'}`,
-      detail:
-        relayInstanceCount > 0
-          ? 'Map flight-controller GPIO pins to relay functions and set each relay default state and polarity.'
-          : 'No relay parameters are currently exposed on this vehicle.',
-      tone:
-        relayInvalidCount > 0
-          ? 'danger'
-          : relayStagedCount > 0
-            ? 'warning'
-            : 'neutral'
     },
     {
       id: 'review' as const,

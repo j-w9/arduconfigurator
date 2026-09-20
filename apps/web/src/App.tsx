@@ -302,6 +302,8 @@ import { PortsSection } from './sections/PortsSection'
 import { PresetsSection } from './sections/PresetsSection'
 import { ReceiverSection } from './sections/ReceiverSection'
 import { SnapshotsSection } from './sections/SnapshotsSection'
+import { NotificationAlertsCard } from './sections/NotificationAlertsCard'
+import { RelaysView } from './views/RelaysView'
 import { TuningCopterSection } from './sections/TuningCopterSection'
 import { BetaflightConnect } from './views/BetaflightConnect'
 import { useBetaflightMsp } from './hooks/use-betaflight-msp'
@@ -2858,6 +2860,15 @@ export function App() {
   // Relay tab: one card per reported RELAYx instance, grouped from the live
   // snapshot. Edits flow through the shared relay draft scope (isRelayParamId).
   const relayGroups = useMemo(() => buildRelayGroups(snapshot.parameters), [snapshot.parameters])
+  // Live RCn_OPTION per channel — feeds the Relays card's "RC Channel" binding.
+  // Moved here with the card itself (it was computed inside OutputsSection).
+  const relayRcOptionByChannel = useMemo(() => {
+    const byChannel = new Map<number, number>()
+    for (let channel = 1; channel <= 16; channel += 1) {
+      byChannel.set(channel, readRoundedParameter(snapshot, `RC${channel}_OPTION`) ?? 0)
+    }
+    return byChannel
+  }, [snapshot])
   const outputNotificationCatalog = useOutputNotificationCatalog(snapshot)
   const {
     notificationLedTypesParameter,
@@ -5659,12 +5670,7 @@ export function App() {
         servoMappingRowCount: servoMappingRows.length,
         outputPeripheralInvalidDraftCount,
         outputPeripheralStagedDraftCount,
-        hasNotificationLedTypes: Boolean(notificationLedTypesParameter),
-        hasNotificationBuzzTypes: Boolean(notificationBuzzTypesParameter),
         outputAdditionalGroupCount: outputAdditionalGroups.length,
-        relayInstanceCount: relayGroups.length,
-        relayStagedCount: relayStagedDrafts.length,
-        relayInvalidCount: relayInvalidDrafts.length,
         totalOutputInvalidDrafts,
         totalOutputStagedDrafts
       }),
@@ -9136,7 +9142,6 @@ export function App() {
         parameterDraftById={parameterDraftById}
         motorOutputAssignments={motorOutputAssignments}
         outputAssignmentVisibility={outputAssignmentVisibility}
-        outputNotificationCatalog={outputNotificationCatalog}
         motorTestConfig={motorTestConfig}
         motorManagement={motorManagement}
         safetyAcks={safetyAcks}
@@ -9153,7 +9158,6 @@ export function App() {
           isCopterVehicle,
           configuredOutputs,
           visibleDisabledOutputs,
-          notificationLedOutputs,
           frameConfigEditable,
           frameClassParameter,
           frameTypeParameter,
@@ -9178,23 +9182,12 @@ export function App() {
           showAllOutputAssignments,
           outputAssignmentReviewLabel,
           servoMappingRows,
-          notificationLedTypes,
-          notificationLedBrightness,
-          notificationLedLength,
-          notificationLedOverride,
-          notificationBuzzTypes,
-          notificationBuzzVolume,
-          editedNotificationLedTypes,
-          editedNotificationBuzzTypes,
           outputAssignmentDraftEntries,
           outputAssignmentStagedDrafts,
           outputAssignmentInvalidDrafts,
           outputReviewDraftEntries,
           outputReviewStagedDrafts,
           outputReviewInvalidDrafts,
-          outputNotificationDraftEntries,
-          outputNotificationStagedDrafts,
-          outputNotificationInvalidDrafts,
           outputAdditionalGroups,
           outputAdditionalDraftEntries,
           outputAdditionalStagedDrafts,
@@ -9208,10 +9201,6 @@ export function App() {
           outputTaskCards,
           activeOutputTaskId,
           activeOutputTask,
-          relayGroups,
-          relayDraftEntries,
-          relayStagedDrafts,
-          relayInvalidDrafts,
           peripheralsCanEnableSlot: opticalFlowCanEnablePrompt
         }}
         handlers={{
@@ -9230,7 +9219,6 @@ export function App() {
           renderMetadataParameterField,
           renderAdditionalSettingsCard,
           setDraft,
-          updateDrafts,
           setShowAllOutputAssignments,
           setOutputTaskOverride
         }}
@@ -10163,7 +10151,9 @@ export function App() {
       {activeViewId === 'peripherals' ? (
         <ConfigView
           title="Peripherals"
-          subtitle="Attached hardware — GPS, compass, camera gimbal, rangefinder/lidar, and optical flow. One peripheral at a time; each group applies its own changes."
+          // No subtitle: the sub-tabs name what is here, and a paragraph
+          // restating them is a line to read past on every visit.
+          subtitle=""
           panelId="setup-panel-peripherals"
           isExpertMode={isExpertMode}
           // The same ConfigView over the peripheral half of the section list.
@@ -10198,6 +10188,69 @@ export function App() {
                     'gimbal settings'
                   )
                 )
+            },
+            {
+              id: 'alerts',
+              title: 'LEDs & buzzer',
+              description: 'Notification LED drivers, brightness and strip length, and the buzzer.',
+              category: 'alerts' as const,
+              wide: true,
+              fields: [],
+              footer: (
+                <NotificationAlertsCard
+                  notificationLedTypesParameter={outputNotificationCatalog.notificationLedTypesParameter}
+                  notificationLedBrightnessParameter={outputNotificationCatalog.notificationLedBrightnessParameter}
+                  notificationLedLengthParameter={outputNotificationCatalog.notificationLedLengthParameter}
+                  notificationLedOverrideParameter={outputNotificationCatalog.notificationLedOverrideParameter}
+                  notificationBuzzTypesParameter={outputNotificationCatalog.notificationBuzzTypesParameter}
+                  notificationBuzzVolumeParameter={outputNotificationCatalog.notificationBuzzVolumeParameter}
+                  notificationLedTypes={notificationLedTypes}
+                  notificationLedBrightness={notificationLedBrightness}
+                  notificationLedLength={notificationLedLength}
+                  notificationLedOverride={notificationLedOverride}
+                  notificationBuzzTypes={notificationBuzzTypes}
+                  notificationBuzzVolume={notificationBuzzVolume}
+                  editedNotificationLedTypes={editedNotificationLedTypes}
+                  editedNotificationBuzzTypes={editedNotificationBuzzTypes}
+                  notificationLedOutputs={notificationLedOutputs}
+                  outputNotificationDraftEntries={outputNotificationDraftEntries}
+                  outputNotificationStagedDrafts={outputNotificationStagedDrafts}
+                  outputNotificationInvalidDrafts={outputNotificationInvalidDrafts}
+                  parameterDraftById={parameterDraftById}
+                  editedValues={editedValues}
+                  busyAction={busyAction}
+                  canApplyDraftParameters={canApplyDraftParameters}
+                  setDraft={setDraft}
+                  updateDrafts={updateDrafts}
+                  handleApplyScopedParameterDrafts={handleApplyScopedParameterDrafts}
+                  handleDiscardScopedParameterDrafts={handleDiscardScopedParameterDrafts}
+                />
+              )
+            },
+            {
+              id: 'relays',
+              title: 'Relays',
+              description: 'Switched outputs — relay pins, their default state, and the RC channel that toggles them.',
+              category: 'relays' as const,
+              wide: true,
+              fields: [],
+              footer: (
+                <RelaysView
+                  groups={relayGroups}
+                  rcOptionByChannel={relayRcOptionByChannel}
+                  editedValues={editedValues}
+                  onEditChange={(paramId, value) => setDraft(paramId, value)}
+                  draftStatusById={parameterDraftById}
+                  stagedCount={relayStagedDrafts.length}
+                  invalidCount={relayInvalidDrafts.length}
+                  draftCount={relayDraftEntries.length}
+                  canApply={canApplyDraftParameters}
+                  isApplying={busyAction === 'outputs:relays'}
+                  isBusy={busyAction !== undefined}
+                  onApply={() => void handleApplyScopedParameterDrafts(relayDraftEntries, 'outputs:relays', 'Relays')}
+                  onRevert={() => handleDiscardScopedParameterDrafts(relayDraftEntries.map((entry) => entry.id), 'relays')}
+                />
+              )
             },
             {
               id: 'flow-lidar',
