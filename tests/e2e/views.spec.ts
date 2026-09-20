@@ -2310,11 +2310,18 @@ test.describe('Config view', () => {
     await expect(page.getByTestId('config-section-beeper')).toHaveCount(0)
     await expect(page.getByTestId('config-section-camera-trigger')).toHaveCount(0)
     // Main loop rate is a System setting; it is no longer mirrored on the ESC
-    // card under Airframe.
+    // card under Airframe. Assert on the FIELD, not on text: getByText is a
+    // case-insensitive substring match, and the card's own description still
+    // (correctly) says DShot rate is a multiple of the main loop rate.
     await page.getByTestId('config-category-airframe').click()
     await expect(
-      page.getByTestId('config-section-esc-dshot').getByText('Main loop rate')
+      page.getByTestId('config-section-esc-dshot').getByTestId('config-field-info-SCHED_LOOP_RATE')
     ).toHaveCount(0)
+    // ...and it is still reachable where it now lives.
+    await page.getByTestId('config-category-system').click()
+    await expect(
+      page.getByTestId('config-section-system-rates').getByTestId('config-field-info-SCHED_LOOP_RATE')
+    ).toBeVisible()
     // Fast-rate thread is build-gated: the demo Copter mock does not stream
     // FSTRATE_*, so the Fast loop rate section must never render.
     await expect(page.getByTestId('config-section-fast-loop-rate')).toHaveCount(0)
