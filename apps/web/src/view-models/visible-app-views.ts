@@ -133,6 +133,18 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     badge: 'beta',
     tone: 'warning'
   }
+  // AMC guided mode — ArduPilot Methodic Configurator's configuration sequence,
+  // evaluated in the browser and shown read-only beside the native Guided Setup
+  // tab so the two can be compared on the same vehicle. Expert-only: it is an
+  // experiment, and it writes nothing.
+  const amcGuidedDescriptor: AppViewDescriptor = {
+    id: 'amc-guided',
+    label: 'AMC Guided',
+    description:
+      "ArduPilot Methodic Configurator's configuration sequence, evaluated here against your vehicle. Shows what each step would set and why, without writing anything.",
+    badge: 'experiment',
+    tone: 'warning'
+  }
   // Dedicated Calibration surface — the accelerometer / level / compass
   // guided-action flow gathered into one tab (same actions as Setup).
   const calibrationDescriptor: AppViewDescriptor = {
@@ -203,7 +215,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   // follow a setup -> tuning -> tools flow. Views not listed fall to the
   // end in their original order.
   const CANONICAL_VIEW_ORDER = [
-    'setup', 'guided-setup', 'config', 'peripherals', 'calibration', 'ports', 'receiver', 'modes', 'motors',
+    'setup', 'guided-setup', 'amc-guided', 'config', 'peripherals', 'calibration', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'failsafe', 'osd', 'tuning', 'presets',
     'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'elrs-flash', 'rc-mixer',
     'mavlink-inspector', 'ai-assistant'
@@ -237,7 +249,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     ...(ELRS_FLASH_ENABLED && isExpertMode && hasSerialPassthrough ? [elrsFlashDescriptor] : []),
     // Expert-only views — only surfaced when Expert mode is on.
     ...(isExpertMode
-      ? [rcMixerDescriptor, mavlinkInspectorDescriptor, aiAssistantDescriptor]
+      ? [amcGuidedDescriptor, rcMixerDescriptor, mavlinkInspectorDescriptor, aiAssistantDescriptor]
       : [])
   ]
   const rankOf = (id: string): number => {

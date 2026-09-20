@@ -12,6 +12,14 @@ const root = new URL('../../', import.meta.url)
 const pkg = (name: string, entry: string) =>
   [name, fileURLToPath(new URL(`packages/${entry}`, root))] as const
 
+// The AMC guided-mode experiment's packages and step data live in the
+// arduconfig-amc fork that has this repository as a submodule, two levels up.
+// Aliased here for the same reason as the workspace packages above: the tests
+// import the sources the app build uses, with no build step in between.
+const amcRoot = new URL('../../', root)
+const amc = (name: string, entry: string) =>
+  [name, fileURLToPath(new URL(entry, amcRoot))] as const
+
 export default defineConfig({
   resolve: {
     alias: Object.fromEntries([
@@ -21,7 +29,10 @@ export default defineConfig({
       pkg('@arduconfig/ardupilot-core', 'ardupilot-core/src/index.ts'),
       pkg('@arduconfig/param-metadata', 'param-metadata/src/index.ts'),
       pkg('@arduconfig/ai-assistant', 'ai-assistant/src/index.ts'),
-      pkg('@arduconfig/ui-kit', 'ui-kit/src/index.tsx')
+      pkg('@arduconfig/ui-kit', 'ui-kit/src/index.tsx'),
+      amc('@arduconfig/amc-expr', 'packages/amc-expr/src/index.ts'),
+      amc('@arduconfig/amc-steps', 'packages/amc-steps/src/index.ts'),
+      amc('@amc/data', 'steps')
     ])
   },
   test: {

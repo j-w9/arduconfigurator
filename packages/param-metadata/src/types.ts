@@ -18,6 +18,11 @@ export type AppViewId =
   // dashboard; the wizard renders here. Injected as a nav descriptor at render
   // time (like 'calibration'), not sourced from the metadata catalogs.
   | 'guided-setup'
+  // The AMC guided-mode experiment: ArduPilot Methodic Configurator's
+  // configuration sequence, evaluated in the browser and shown read-only. Sits
+  // beside 'guided-setup' rather than replacing it, so the two flows can be
+  // compared on the same vehicle. Expert-only while it is being built out.
+  | 'amc-guided'
   | 'ports'
   | 'vtx'
   | 'osd'

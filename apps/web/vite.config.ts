@@ -9,6 +9,14 @@ import { defineConfig } from 'vite'
 const root = new URL('../..', import.meta.url)
 const packagesDir = fileURLToPath(new URL('packages/', root))
 
+// The AMC guided-mode experiment lives in the arduconfig-amc fork repo, which
+// has this repository as a submodule -- so its packages and step data sit two
+// levels above this checkout. Resolved here rather than vendored in, so the
+// experiment tracks the fork without this branch carrying a copy of it.
+const amcRoot = new URL('../../', root)
+const amcPackage = (name: string): string => fileURLToPath(new URL(`packages/${name}/src/index.ts`, amcRoot))
+const amcDataDir = fileURLToPath(new URL('steps/', amcRoot))
+
 // Build-time metadata surfaced in the UI (System info + header). App
 // version comes from this workspace's package.json; the git hash/branch
 // are read once at build (best-effort — CI shallow clones / tarball builds
@@ -65,7 +73,16 @@ export default defineConfig({
       '@arduconfig/ardupilot-core': fileURLToPath(new URL('packages/ardupilot-core/src/index.ts', root)),
       '@arduconfig/param-metadata': fileURLToPath(new URL('packages/param-metadata/src/index.ts', root)),
       '@arduconfig/log-analysis': fileURLToPath(new URL('packages/log-analysis/src/index.ts', root)),
-      '@arduconfig/ui-kit': fileURLToPath(new URL('packages/ui-kit/src/index.tsx', root))
+      '@arduconfig/ui-kit': fileURLToPath(new URL('packages/ui-kit/src/index.tsx', root)),
+      '@arduconfig/amc-expr': amcPackage('amc-expr'),
+      '@arduconfig/amc-steps': amcPackage('amc-steps'),
+      '@amc/data': amcDataDir
+    }
+  },
+  server: {
+    fs: {
+      // The AMC packages and step data are outside this project root.
+      allow: [fileURLToPath(root), fileURLToPath(amcRoot)]
     }
   },
   build: {

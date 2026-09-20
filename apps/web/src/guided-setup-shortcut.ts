@@ -23,7 +23,9 @@ export function isExpertOnlyView(viewId: AppViewId): boolean {
     viewId === 'mavlink-inspector' ||
     viewId === 'networking' ||
     viewId === 'lua' ||
-    viewId === 'ai-assistant'
+    viewId === 'ai-assistant' ||
+    // The AMC guided-mode experiment — read-only, and still being built out.
+    viewId === 'amc-guided'
   )
 }
 

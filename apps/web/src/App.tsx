@@ -373,6 +373,8 @@ import { buildOutputTaskCards, recommendOutputTaskId, type OutputTaskCard } from
 import { buildRelayGroups } from './view-models/relay-groups'
 import { buildSetupFlowSections } from './view-models/setup-flow-sections'
 import { buildGuidedSetupOverview } from './view-models/guided-setup-overview'
+import { AmcGuidedView } from './views/AmcGuidedView'
+import { sequenceForFirmware } from './view-models/amc-guided'
 import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
 import { ConfigView } from './views/Config'
 import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
@@ -670,6 +672,43 @@ export function App() {
       cancelled = true
     }
   }, [activeVehicle])
+
+  // The AMC guided-mode experiment resolves named component values ('Quad',
+  // 'DShot600') against this same documentation, but its sequence is chosen in
+  // the tab and need not be the connected vehicle's — so it asks for the bundle
+  // it needs and is loaded separately from the enrichment above.
+  const [amcDocsVehicle, setAmcDocsVehicle] = useState<string | undefined>(undefined)
+  const [amcDocs, setAmcDocs] = useState<{ vehicle: string; params: UpstreamParameterMap } | undefined>(undefined)
+  useEffect(() => {
+    if (!amcDocsVehicle || amcDocs?.vehicle === amcDocsVehicle) {
+      return
+    }
+    let cancelled = false
+    loadUpstreamParameters(amcDocsVehicle)
+      .then((params) => {
+        if (!cancelled && params) {
+          setAmcDocs({ vehicle: amcDocsVehicle, params })
+        }
+      })
+      .catch(() => {
+        // Without documentation the steps that set a parameter from a named
+        // value report themselves as blocked, which is the honest outcome.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [amcDocsVehicle, amcDocs?.vehicle])
+
+  // The sequence reads `fc_parameters` by name, so the live parameter list is
+  // flattened to a name -> value map. Empty when not connected, which is what
+  // makes the tab readable on the bench with no vehicle attached.
+  const amcLiveParameters = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const parameter of snapshot.parameters) {
+      map[parameter.id] = parameter.value
+    }
+    return map
+  }, [snapshot.parameters])
 
   const activeMetadataBundle = useMemo(() => {
     const base =
@@ -9783,6 +9822,17 @@ export function App() {
         onRemove={luaScripts.remove}
         onUpload={luaScripts.upload}
       />
+      ) : null}
+
+      {activeViewId === 'amc-guided' ? (
+        <AmcGuidedView
+          connected={snapshot.connection.kind === 'connected'}
+          parameters={amcLiveParameters}
+          suggestedKind={sequenceForFirmware(snapshot.vehicle?.vehicle)}
+          docs={amcDocs ? (name) => amcDocs.params[name] : undefined}
+          docsVehicle={amcDocsVehicle}
+          onDocsVehicleChange={setAmcDocsVehicle}
+        />
       ) : null}
 
       {activeViewId === 'ai-assistant' ? (

@@ -18964,3 +18964,195 @@ button.mavlink-inspector__sent-row {
   }
 }
 
+
+/* AMC guided mode — the experimental tab that evaluates ArduPilot Methodic
+   Configurator's configuration sequence. Read-only: there is no apply
+   affordance to style, only the declaration form and the step list. */
+.amc-guided {
+  display: grid;
+  gap: 12px;
+}
+
+.amc-guided__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.amc-guided__controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.amc-guided__loading {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.amc-guided__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 0;
+}
+
+.amc-guided__summary dt {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.amc-guided__summary dd {
+  margin: 2px 0 0;
+  font-family: var(--font-data);
+  font-size: 1.3em;
+}
+
+.amc-guided__components {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.amc-guided__component {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px 10px;
+  margin: 0;
+}
+
+.amc-guided__component legend {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  padding: 0 4px;
+}
+
+.amc-guided__field {
+  display: grid;
+  grid-template-columns: 1fr minmax(90px, 40%);
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.amc-guided__field span {
+  /* The title attribute says how many expressions read the field, so the
+     help cursor is a real affordance rather than decoration. */
+  cursor: help;
+}
+
+.amc-guided__steps {
+  display: grid;
+  gap: 6px;
+}
+
+.amc-step {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-200);
+}
+
+.amc-step--blocked {
+  border-color: var(--danger);
+  background: var(--danger-weak);
+}
+
+.amc-step__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.amc-step__index {
+  font-family: var(--font-data);
+  color: var(--text-dim);
+  min-width: 2.2em;
+}
+
+.amc-step__title {
+  flex: 1;
+}
+
+.amc-step__body {
+  padding: 0 10px 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.amc-step__why {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.amc-step__failures {
+  border-left: 3px solid var(--danger);
+  padding-left: 8px;
+}
+
+.amc-step__failures ul,
+.amc-step__skipped ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+}
+
+.amc-step__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-data);
+}
+
+.amc-step__table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: normal;
+  font-size: 0.85em;
+  border-bottom: 1px solid var(--border);
+  padding: 4px 6px;
+}
+
+.amc-step__table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--surface-200);
+}
+
+/* A row the vehicle already satisfies is context, not a pending change. */
+.amc-step__table tr.is-satisfied td {
+  color: var(--text-dim);
+}
+
+.amc-step__tag {
+  margin-left: 6px;
+  font-size: 0.75em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+}
+
+.amc-step__reason {
+  font-family: var(--font-ui);
+  color: var(--text-muted);
+  max-width: 34em;
+}
+
+.amc-step__deletions code {
+  margin-right: 6px;
+}
+
+.amc-step__deletions,
+.amc-step__link {
+  margin: 0;
+  color: var(--text-muted);
+}

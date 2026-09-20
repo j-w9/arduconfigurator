@@ -23,7 +23,16 @@
       "@arduconfig/sitl-harness": ["./packages/sitl-harness/src/index.ts"],
       "@arduconfig/param-metadata": ["./packages/param-metadata/src/index.ts"],
       "@arduconfig/ai-assistant": ["./packages/ai-assistant/src/index.ts"],
-      "@arduconfig/ui-kit": ["./packages/ui-kit/src/index.tsx"]
+      "@arduconfig/amc-expr": [
+      "../../packages/amc-expr/src/index.ts"
+    ],
+    "@arduconfig/amc-steps": [
+      "../../packages/amc-steps/src/index.ts"
+    ],
+    "@amc/data/*": [
+      "../../steps/*"
+    ],
+    "@arduconfig/ui-kit": ["./packages/ui-kit/src/index.tsx"]
     }
   }
 }
