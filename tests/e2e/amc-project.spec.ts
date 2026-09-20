@@ -21,11 +21,9 @@ async function openAmcGuided(page: Page): Promise<void> {
     timeout: VEHICLE_CONNECT_TIMEOUT
   })
 
-  const sheet = page.getByTestId('header-more-toggle')
-  if ((await sheet.isVisible()) && (await sheet.getAttribute('aria-expanded')) !== 'true') {
-    await sheet.click()
-  }
-  await page.getByTestId('product-mode-expert').check()
+  // Deliberately WITHOUT enabling Expert mode: the tab is not gated behind it,
+  // and this is what proves it — the sequence is the gentlest surface in the
+  // app and suits a first-time operator, who will not have found that toggle.
   await page.getByTestId('view-button-amc-guided').click()
   await expect(page.getByRole('heading', { name: 'AMC guided mode' })).toBeVisible()
   // The sequence is dynamic-imported, and a directory means nothing without

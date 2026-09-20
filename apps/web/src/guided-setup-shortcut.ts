@@ -1,9 +1,11 @@
 // Testing helpers for the guided-Setup flow + the expert-only view check.
 //
 // `isExpertOnlyView` answers "should this tab only render under Expert
-// product-mode?" Currently only the raw Parameters tab qualifies, but
-// the predicate exists so callsites are stable if more expert tabs are
-// added.
+// product-mode?" It is the SECOND of two gates -- visible-app-views decides
+// what the sidebar lists, this decides what will actually render, and App.tsx
+// sends you back to Setup for anything it rejects. A tab removed from one and
+// not the other is listed in the sidebar and bounces when clicked, which is
+// how AMC Guided behaved for exactly one build.
 //
 // The other two helpers honour a `?guidedSetupStep=<sectionId>` query
 // parameter that lets a dev/CI flow jump straight to a Setup section
@@ -23,9 +25,7 @@ export function isExpertOnlyView(viewId: AppViewId): boolean {
     viewId === 'mavlink-inspector' ||
     viewId === 'networking' ||
     viewId === 'lua' ||
-    viewId === 'ai-assistant' ||
-    // The AMC guided-mode experiment — read-only, and still being built out.
-    viewId === 'amc-guided'
+    viewId === 'ai-assistant'
   )
 }
 

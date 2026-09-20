@@ -101,10 +101,9 @@ describe('buildVisibleAppViews', () => {
     const result = ids(
       buildVisibleAppViews(baseInputs({ appViews: [view('modes'), view('setup'), view('mystery-view')] }))
     )
-    // setup leads, guided-setup second, then the AMC Guided experiment (Expert
-    // mode is on in these inputs), then Peripherals and Calibration, modes
-    // before the tools cluster, unknown id last. (Config is absent from this
-    // input, so Peripherals lands fourth.)
+    // setup leads, guided-setup second, then AMC Guided, then Peripherals and
+    // Calibration, modes before the tools cluster, unknown id last. (Config is
+    // absent from this input, so Peripherals lands fourth.)
     expect(result[0]).toBe('setup')
     expect(result[1]).toBe('guided-setup')
     expect(result[2]).toBe('amc-guided')
@@ -138,5 +137,26 @@ describe('buildVisibleAppViews', () => {
     const disconnected = buildVisibleAppViews(baseInputs({ connectionKind: 'disconnected' }))
     expect(byId(disconnected, 'files').badge).toBe('idle')
     expect(byId(disconnected, 'calibration').badge).toBe('idle')
+  })
+})
+
+describe('AMC Guided visibility', () => {
+  it('is offered without Expert mode', () => {
+    // It shows what each step would set and why before anything is written,
+    // which is what a first-time operator needs most — gating it behind Expert
+    // mode hid the gentlest surface in the app from the people it suits.
+    const plain = ids(buildVisibleAppViews(baseInputs({ isExpertMode: false })))
+    expect(plain).toContain('amc-guided')
+
+    // The genuinely expert tools stay gated, so this did not open everything.
+    expect(plain).not.toContain('mavlink-inspector')
+    expect(plain).not.toContain('rc-mixer')
+  })
+
+  it('appears exactly once when Expert mode is on', () => {
+    // It used to be listed only in the Expert-only block; moving it without
+    // removing it there would list it twice.
+    const expert = ids(buildVisibleAppViews(baseInputs({ isExpertMode: true })))
+    expect(expert.filter((id) => id === 'amc-guided')).toHaveLength(1)
   })
 })

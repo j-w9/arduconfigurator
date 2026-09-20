@@ -134,9 +134,11 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     tone: 'warning'
   }
   // AMC guided mode — ArduPilot Methodic Configurator's configuration sequence,
-  // evaluated in the browser and shown read-only beside the native Guided Setup
-  // tab so the two can be compared on the same vehicle. Expert-only: it is an
-  // experiment, and it writes nothing.
+  // evaluated in the browser and shown beside the native Guided Setup tab so
+  // the two can be compared on the same vehicle. Not Expert-gated: it is the
+  // gentlest surface in the app, showing what each step would set and why
+  // before anything is written, which is exactly what a first-time operator
+  // needs. Its `experiment` badge says what it is.
   const amcGuidedDescriptor: AppViewDescriptor = {
     id: 'amc-guided',
     label: 'AMC Guided',
@@ -235,6 +237,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const combined = [
     ...relabelled,
     guidedSetupDescriptor,
+    amcGuidedDescriptor,
     peripheralsDescriptor,
     calibrationDescriptor,
     canBusDescriptor,
@@ -248,9 +251,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     // bridge. Gated OFF via ELRS_FLASH_ENABLED above until the chunked flasher lands.
     ...(ELRS_FLASH_ENABLED && isExpertMode && hasSerialPassthrough ? [elrsFlashDescriptor] : []),
     // Expert-only views — only surfaced when Expert mode is on.
-    ...(isExpertMode
-      ? [amcGuidedDescriptor, rcMixerDescriptor, mavlinkInspectorDescriptor, aiAssistantDescriptor]
-      : [])
+    ...(isExpertMode ? [rcMixerDescriptor, mavlinkInspectorDescriptor, aiAssistantDescriptor] : [])
   ]
   const rankOf = (id: string): number => {
     const index = CANONICAL_VIEW_ORDER.indexOf(id)
