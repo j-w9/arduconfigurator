@@ -11,7 +11,8 @@ The tab is grouped into three **sub-tabs**, because these are three different
 jobs:
 
 - **Sensors** — bench work on the airframe's own sensors: **Accelerometer**,
-  **Level**, **Compass**, thermal calibration (TCAL), and airspeed on Plane.
+  **Level**, **Compass**, **thermal calibration (TCAL)** — IMU and barometer —
+  and airspeed on Plane.
 - **Power** — **Battery voltage**, **Battery current**, and **ESC** throttle
   range.
 - **Flight** — the ones that need an actual flight and a return trip:
@@ -267,10 +268,9 @@ Thermal calibration (TCAL)
 
 **Thermal calibration** learns per-IMU gyro and accelerometer offsets *across
 temperature* so the estimator stays stable from a cold boot to warm — it removes
-the drift you'd otherwise see as the board heats up after power-on. It is an
-**Expert-only** card at the bottom of the Calibration tab (enable Expert product
-mode to see it), and it appears only on firmware that exposes the
-``INS_TCALn_*`` parameters.
+the drift you'd otherwise see as the board heats up after power-on. It lives on
+**Calibration → Sensors**, is **not** gated behind Expert mode, and appears only
+on firmware that exposes the ``INS_TCALn_*`` parameters.
 
 ArduPilot learns the fit **online**: you enable "learn", boot the board cold, and
 let it warm through its temperature range — the firmware computes and saves the
