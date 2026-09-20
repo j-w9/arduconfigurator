@@ -3,6 +3,7 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import {
   AMC_VEHICLE_KINDS,
+  type AppToolView,
   type AmcVehicleKind,
   type LoadedSequence,
   type ComponentField,
@@ -64,6 +65,8 @@ export interface AmcGuidedViewProps {
    * defaults actually arrived.
    */
   onReadDefaults?: () => void | Promise<void>
+  /** Open one of the app's own tools, for the steps that are done with one. */
+  onOpenTool?: (view: AppToolView) => void
   /**
    * Where this vehicle's declaration is kept, from the board's identity.
    *
@@ -85,6 +88,11 @@ export interface AmcGuidedViewProps {
   docs?: ParameterDocs
   docsVehicle?: string
   onDocsVehicleChange: (vehicle: string) => void
+}
+
+/** A stable DOM id per step, so a jump can bring its destination into view. */
+function stepDomId(filename: string): string {
+  return `amc-step-${filename.replace(/[^a-zA-Z0-9]+/g, '-')}`
 }
 
 /** A stable DOM id per declaration field, so a blocked step can focus one. */
@@ -205,7 +213,9 @@ function StepCard({
   onStage,
   onReviewed,
   onReadDefaults,
-  defaultsRead
+  defaultsRead,
+  onOpenTool,
+  onJump
 }: {
   row: StepRow
   connected: boolean
@@ -216,6 +226,8 @@ function StepCard({
   onReviewed: (next: boolean) => void
   onReadDefaults?: (() => void) | undefined
   defaultsRead?: 'idle' | 'asking' | 'nothing'
+  onOpenTool?: ((view: AppToolView) => void) | undefined
+  onJump?: ((filename: string) => void) | undefined
 }) {
   const [open, setOpen] = useState(false)
   const blocked = row.blocked.length > 0
@@ -225,7 +237,7 @@ function StepCard({
   const stagedHere = row.changes.filter((change) => staged[change.parameter] !== undefined)
 
   return (
-    <article className={`amc-step${blocked ? ' amc-step--blocked' : ''}`}>
+    <article id={stepDomId(row.filename)} className={`amc-step${blocked ? ' amc-step--blocked' : ''}`}>
       <button className="amc-step__head" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
         <span className="amc-step__index">{row.index + 1}</span>
         <span className="amc-step__title">{row.title}</span>
@@ -239,9 +251,9 @@ function StepCard({
             needs defaults
           </span>
         ) : null}
-        {row.plugin ? (
-          <span className="amc-step__tag" title={`AMC places its ${row.plugin} tool here`}>
-            {row.plugin.replace(/_/g, ' ')}
+        {row.tool ? (
+          <span className="amc-step__tag" title={`This step is done with the ${row.tool.label} tool`}>
+            {row.tool.label}
           </span>
         ) : null}
         {blocked ? (
@@ -500,13 +512,26 @@ function StepCard({
             </p>
           ) : null}
 
+          {row.tool && onOpenTool ? (
+            <p className="amc-step__tool">
+              {/* AMC embeds this tool in the step; here it already exists as
+                  its own surface, so the step sends you to it rather than
+                  carrying a second copy. */}
+              This step is done with the {row.tool.label} tool.
+              <button onClick={() => onOpenTool(row.tool!.view)}>Open it</button>
+            </p>
+          ) : null}
+
           {row.jumps.length > 0 ? (
             <details className="amc-step__jumps">
               <summary>You may skip ahead from here</summary>
               <ul>
                 {row.jumps.map((jump) => (
-                  <li key={jump.to}>
-                    <strong>{jump.to}</strong> — {jump.cost}
+                  <li key={jump.filename}>
+                    <button className="amc-step__jump-to" onClick={() => onJump?.(jump.filename)}>
+                      {jump.to}
+                    </button>{' '}
+                    — {jump.cost}
                   </li>
                 ))}
               </ul>
@@ -535,6 +560,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     states,
     defaults,
     onReadDefaults,
+    onOpenTool,
     suggestedKind,
     vehicleFirmwareVersion,
     progressKey,
@@ -679,6 +705,15 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
 
   // A blocked step names the field that would unblock it; clicking it should
   // put the cursor there rather than leaving the operator to find it.
+  // A jump names another step; bringing it into view is the least this can do
+  // without pretending the sequence has been reordered.
+  const jumpToStep = useCallback((filename: string) => {
+    const target = document.getElementById(stepDomId(filename))
+    if (!target) return
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    target.querySelector<HTMLButtonElement>('.amc-step__head')?.focus()
+  }, [])
+
   const focusField = useCallback((key: string) => {
     const input = document.getElementById(fieldInputId(key))
     if (!(input instanceof HTMLInputElement)) return
@@ -843,6 +878,78 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         </div>
       </Panel>
 
+      {summary?.configuration ? (
+        <Panel
+          title="What this vehicle has"
+          subtitle="Everything that differs from the firmware's own defaults, sorted by who decided it."
+        >
+          <dl className="amc-guided__summary">
+            <div>
+              <dt>Changed</dt>
+              <dd>
+                {summary.configuration.changed.length}
+                <span> of {summary.configuration.compared}</span>
+              </dd>
+            </div>
+            {summary.configuration.categoriesAvailable ? (
+              <>
+                <div title="Produced by a calibration rather than chosen by anyone.">
+                  <dt>From calibration</dt>
+                  <dd>{summary.configuration.calibration.length}</dd>
+                </div>
+                <div title="Written by the firmware about itself; not an operator's decision.">
+                  <dt>Written by the vehicle</dt>
+                  <dd>{summary.configuration.readOnly.length}</dd>
+                </div>
+              </>
+            ) : null}
+            <div title="SYSID_THISMAV and friends — which aircraft this is, which matters when a configuration is shared.">
+              <dt>Identity</dt>
+              <dd>{summary.configuration.identity.length}</dd>
+            </div>
+            <div title="What is left once calibration, firmware-written and identity values are set aside.">
+              <dt>Decisions</dt>
+              <dd>{summary.configuration.chosen.length}</dd>
+            </div>
+          </dl>
+
+          {/* Without ArduPilot's @ReadOnly and @Calibration annotations every
+              changed value looks like a decision, which overstates how much was
+              actually decided. Better to say so than to show a confident
+              number that is wrong. */}
+          {!summary.configuration.categoriesAvailable ? (
+            <p className="amc-guided__summary-note">
+              Calibration results and firmware-written values cannot be separated out: the parameter
+              documentation in this build does not carry those flags, so they are counted as decisions.
+            </p>
+          ) : null}
+
+          <details className="amc-guided__summary-list">
+            <summary>The {summary.configuration.chosen.length} decisions</summary>
+            <table className="amc-step__table">
+              <thead>
+                <tr>
+                  <th>Parameter</th>
+                  <th>Default</th>
+                  <th>This vehicle</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.configuration.chosen.map((entry) => (
+                  <tr key={entry.parameter}>
+                    <td>
+                      <code>{entry.parameter}</code>
+                    </td>
+                    <td>{entry.defaultValue}</td>
+                    <td>{entry.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        </Panel>
+      ) : null}
+
       <Panel
         title="The sequence"
         subtitle="Each step, and what it would set on this vehicle."
@@ -906,6 +1013,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   onStage={onStage}
                   onReadDefaults={onReadDefaults ? readDefaults : undefined}
                   defaultsRead={defaultsRead}
+                  onOpenTool={onOpenTool}
+                  onJump={jumpToStep}
                   onReviewed={(next) =>
                     setReviewed((previous) => {
                       const updated = new Set(previous)

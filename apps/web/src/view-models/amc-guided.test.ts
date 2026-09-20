@@ -539,8 +539,20 @@ describe('what the sequence says about a step', () => {
     }
   })
 
-  it('names the tool AMC places beside a step', () => {
-    expect(step('05_').plugin).toBe('ahrs_orientation')
+  it('points a step at the tool this app already has for it', () => {
+    // AMC embeds these; here they exist as their own surfaces, so the step
+    // names the destination rather than carrying a second copy.
+    const orientation = step('05_')
+    expect(orientation.tool?.name).toBe('ahrs_orientation')
+    expect(orientation.tool?.label).toBe('Board orientation')
+    // Board orientation is a Config category here, not its own tab.
+    expect(orientation.tool?.view).toBe('config')
+
+    const tools = summary.rows.filter((r) => r.tool)
+    expect(tools.length).toBeGreaterThan(0)
+    for (const row of tools) {
+      expect(['config', 'motors', 'calibration']).toContain(row.tool?.view)
+    }
   })
 
   it('does not invent content the sequence left empty', () => {

@@ -19554,3 +19554,57 @@ button.mavlink-inspector__sent-row {
   padding: 2px 8px;
   cursor: pointer;
 }
+
+/* The configuration summary: what this vehicle has that the firmware did not
+   give it, sorted by who decided it. */
+.amc-guided__summary dd span {
+  color: var(--text-dim);
+  font-size: 0.6em;
+  margin-left: 4px;
+}
+
+.amc-guided__summary-note {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.amc-guided__summary-list {
+  margin-top: 10px;
+}
+
+.amc-guided__summary-list summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.amc-guided__summary-list table {
+  margin-top: 6px;
+}
+
+/* A step that is done with one of the app's own tools, and the jumps that let
+   the operator skip ahead with their eyes open. */
+.amc-step__tool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.amc-step__tool button,
+.amc-step__jump-to {
+  background: var(--surface-300);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.amc-step__jump-to:hover,
+.amc-step__tool button:hover {
+  border-color: var(--primary-500);
+}

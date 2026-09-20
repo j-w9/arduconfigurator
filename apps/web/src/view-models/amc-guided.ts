@@ -13,7 +13,7 @@ import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import observedComponentValues from '@amc/data/component-values.json'
 
-import type { ConfigurationStepFile } from '@arduconfig/amc-steps'
+import type { ConfigurationStepFile, ConfigurationSummary } from '@arduconfig/amc-steps'
 import {
   type ComponentRequirement,
   type Diagnosis,
@@ -24,6 +24,7 @@ import {
   componentOptionSources,
   milestonePhases,
   orderedPhases,
+  summarize,
   describePath,
   diagnose,
   optionsForField,
@@ -33,6 +34,22 @@ import {
   requiredComponents,
   vehicleContext
 } from '@arduconfig/amc-steps'
+
+/**
+ * Where this app keeps the tools AMC embeds in its steps.
+ *
+ * Deliberately a map rather than a guess from the name: `battery_monitor` and
+ * `ahrs_orientation` are Config categories here, while the motor tools have
+ * their own tab, and Power stopped being a tab of its own some time ago.
+ */
+export type AppToolView = 'config' | 'motors' | 'calibration'
+
+const STEP_TOOLS: Readonly<Record<string, { label: string; view: AppToolView }>> = {
+  ahrs_orientation: { label: 'Board orientation', view: 'config' },
+  battery_monitor: { label: 'Battery monitor', view: 'config' },
+  esc_rpm_scale: { label: 'ESC telemetry', view: 'motors' },
+  motor_test: { label: 'Motor test', view: 'motors' }
+}
 
 /** The four sequences AMC ships. Sub is not among them. */
 export type AmcVehicleKind = 'ArduCopter' | 'ArduPlane' | 'Rover' | 'Heli'
@@ -326,13 +343,18 @@ export interface StepRow {
     readonly kind: 'wiki' | 'blog' | 'tool'
   }[]
   /** Steps that may be skipped to from here, and what skipping costs. */
-  readonly jumps: readonly { readonly to: string; readonly cost: string }[]
+  readonly jumps: readonly { readonly to: string; readonly filename: string; readonly cost: string }[]
   /** Log messages this step's configuration should produce. */
   readonly logMessages: readonly { readonly id: string; readonly name: string; readonly required: boolean }[]
   /** A file the step fetches and puts on the flight controller. */
   readonly file?: { readonly url: string; readonly destination: string }
-  /** An embedded tool the sequence places beside the step. */
-  readonly plugin?: string
+  /**
+   * A tool the sequence places beside the step, and where this app keeps it.
+   *
+   * AMC embeds these; here they already exist as their own surfaces, so the
+   * step points at the one that does the work rather than reimplementing it.
+   */
+  readonly tool?: { readonly name: string; readonly label: string; readonly view: AppToolView }
   /**
    * Values already on the vehicle that this step is responsible for.
    *
@@ -363,6 +385,13 @@ export interface PhaseGroup {
 
 export interface SequenceSummary {
   readonly rows: readonly StepRow[]
+  /**
+   * What this vehicle has that the firmware did not give it.
+   *
+   * Undefined until the firmware's defaults are known, because every category
+   * in it is a statement about differing from a default.
+   */
+  readonly configuration?: ConfigurationSummary
   /** Values on the vehicle that the sequence's steps claim. */
   readonly totalCaptured: number
   /** Steps that would capture, once the vehicle's defaults have been read. */
@@ -607,7 +636,11 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
       blocked,
       pending,
       links,
-      jumps: Object.entries(step.jump_possible ?? {}).map(([to, cost]) => ({ to: titleOf(to), cost })),
+      jumps: Object.entries(step.jump_possible ?? {}).map(([to, cost]) => ({
+        to: titleOf(to),
+        filename: to,
+        cost
+      })),
       logMessages: Object.entries(step.related_bin_messages ?? {}).map(([id, message]) => ({
         id,
         name: message.name,
@@ -620,7 +653,15 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
       ...(nonEmpty(step.component) ? { component: step.component } : {}),
       ...(nonEmpty(step.auto_changed_by) ? { autoChangedBy: step.auto_changed_by } : {}),
       ...(step.instructions_popup ? { popup: step.instructions_popup } : {}),
-      ...(step.plugin ? { plugin: step.plugin.name } : {}),
+      ...(step.plugin && STEP_TOOLS[step.plugin.name]
+        ? {
+            tool: {
+              name: step.plugin.name,
+              label: (STEP_TOOLS[step.plugin.name] as { label: string }).label,
+              view: (STEP_TOOLS[step.plugin.name] as { view: AppToolView }).view
+            }
+          }
+        : {}),
       ...(step.download_file && step.upload_file
         ? { file: { url: step.download_file.source_url, destination: step.upload_file.dest_on_fc } }
         : {}),
@@ -664,8 +705,11 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
   const totalCaptured = rows.reduce((total, row) => total + row.captured.length, 0)
   const captureBlocked = rows.filter((row) => row.capturePending).length
 
+  const configuration = defaults && defaults.size > 0 ? summarize(parameters, defaults, docs) : undefined
+
   return {
     rows,
+    ...(configuration ? { configuration } : {}),
     totalCaptured,
     captureBlocked,
     groups,

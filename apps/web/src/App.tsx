@@ -9824,6 +9824,9 @@ export function App() {
           // firmware that cannot serve the defaults should say so rather than
           // leaving the step looking like it found nothing.
           onReadDefaults={() => handleFetchParamDefaults()}
+          // Several steps are done with a tool this app already has. The step
+          // sends the operator there rather than the tab carrying a copy.
+          onOpenTool={(view) => setActiveViewId(view)}
           staged={editedValues}
           // The AMC sequence proposes; it does not write. Its changes go into
           // the same draft model as every other edit, so the draft bar's

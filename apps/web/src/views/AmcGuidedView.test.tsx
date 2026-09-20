@@ -239,8 +239,12 @@ describe('capturing settings already on the vehicle', () => {
       { timeout: 5000 }
     )
     step.click()
-    await waitFor(() => expect(screen.getByText(/belong to this step/i)).toBeTruthy(), { timeout: 5000 })
-    expect(screen.getByText('RC_SPEED')).toBeTruthy()
+    const claim = await waitFor(() => screen.getByText(/belong to this step/i), { timeout: 5000 })
+    // Scoped to the step. RC_SPEED also appears in the configuration summary,
+    // which is a different statement about the same parameter: one says the
+    // step is responsible for it, the other that it differs from default.
+    const within = claim.closest('details')
+    expect(within?.textContent).toContain('RC_SPEED')
   })
 
   it('claims nothing when every value is already its default', async () => {
@@ -258,5 +262,50 @@ describe('capturing settings already on the vehicle', () => {
     screen.getByText(/Remote controller receiver/i).closest('button')?.click()
     await waitFor(() => expect(screen.getByText(/Declare the vehicle/i)).toBeTruthy(), { timeout: 5000 })
     expect(screen.queryAllByText(/belong to this step/i)).toEqual([])
+  })
+})
+
+describe('what this vehicle has', () => {
+  // The summary exists to separate what somebody chose from what the vehicle
+  // wrote about itself, so the interesting assertions are about that split --
+  // and about saying so when the split cannot be made.
+  const DEFAULTS = new Map([
+    ['RC_SPEED', 490],
+    ['COMPASS_OFS_X', 0],
+    ['SYSID_THISMAV', 1]
+  ])
+  const LIVE = { RC_SPEED: 400, COMPASS_OFS_X: 42, SYSID_THISMAV: 7 }
+
+  it('says nothing at all without the vehicle\'s defaults', async () => {
+    // Every category is a statement about differing from a default.
+    render(<AmcGuidedView {...base} connected parameters={LIVE} />)
+    await whenLoaded()
+    expect(screen.queryByText(/What this vehicle has/i)).toBeNull()
+  })
+
+  it('counts what differs from the firmware default', async () => {
+    render(<AmcGuidedView {...base} connected parameters={LIVE} defaults={DEFAULTS} />)
+    await whenLoaded()
+    await waitFor(() => expect(screen.getByText(/What this vehicle has/i)).toBeTruthy(), { timeout: 5000 })
+    expect(screen.getByText(/of 3/)).toBeTruthy()
+  })
+
+  it('keeps the vehicle\'s identity out of the decisions', async () => {
+    render(<AmcGuidedView {...base} connected parameters={LIVE} defaults={DEFAULTS} />)
+    await whenLoaded()
+    await waitFor(() => expect(screen.getByText('Identity')).toBeTruthy(), { timeout: 5000 })
+    expect(screen.getByText('Decisions')).toBeTruthy()
+  })
+
+  it('admits when the documentation cannot separate calibration from choice', async () => {
+    // The app's generated metadata carries no @ReadOnly or @Calibration, so
+    // every changed value would otherwise be presented as a decision.
+    render(<AmcGuidedView {...base} connected parameters={LIVE} defaults={DEFAULTS} />)
+    await whenLoaded()
+    await waitFor(
+      () => expect(screen.getByText(/does not carry those flags/i)).toBeTruthy(),
+      { timeout: 5000 }
+    )
+    expect(screen.queryByText('From calibration')).toBeNull()
   })
 })
