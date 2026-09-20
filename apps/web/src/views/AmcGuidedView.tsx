@@ -605,14 +605,35 @@ function StepCard({
           {row.logMessages.length > 0 ? (
             <details className="amc-step__logs">
               <summary>
-                {row.logMessages.filter((m) => m.required).length} log message
-                {row.logMessages.filter((m) => m.required).length === 1 ? '' : 's'} this step should produce
+                {/* With a log loaded this is a verdict rather than a list:
+                    several steps configure something whose only proof is in
+                    the log, and ESC telemetry either arrived or it did not. */}
+                {row.logSatisfied === undefined
+                  ? `${row.logMessages.filter((m) => m.required).length} log message${
+                      row.logMessages.filter((m) => m.required).length === 1 ? '' : 's'
+                    } this step should produce`
+                  : row.logSatisfied
+                    ? 'The flight log has everything this step should produce'
+                    : `The flight log is missing ${
+                        row.logMessages.filter((m) => m.required && !m.count).length
+                      } message${
+                        row.logMessages.filter((m) => m.required && !m.count).length === 1 ? '' : 's'
+                      } this step should produce`}
               </summary>
               <ul>
                 {row.logMessages.map((message) => (
                   <li key={message.id}>
                     <code>{message.id}</code> {message.name}
                     {message.required ? <span className="amc-step__tag">required</span> : null}
+                    {message.count !== undefined ? (
+                      <span
+                        className={`amc-step__log-count amc-step__log-count--${
+                          message.count > 0 ? 'present' : message.required ? 'missing' : 'absent'
+                        }`}
+                      >
+                        {message.count > 0 ? `${message.count.toLocaleString()} in the log` : 'not in the log'}
+                      </span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -739,6 +760,33 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   const [importNotice, setImportNotice] = useState<
     { tone: 'ok' | 'warning'; text: string; undetermined: readonly string[] } | undefined
   >(undefined)
+  // Message counts from a flight log the operator picked. Counts only: the
+  // decoded messages are tens of megabytes and nothing here needs them.
+  const [logCounts, setLogCounts] = useState<ReadonlyMap<string, number> | undefined>(undefined)
+  const [logState, setLogState] = useState<'idle' | 'reading'>('idle')
+  const [logNotice, setLogNotice] = useState<string | undefined>(undefined)
+
+  const readLog = useCallback(async (file: File | undefined) => {
+    if (!file) return
+    setLogState('reading')
+    setLogNotice(undefined)
+    try {
+      // Dynamic-imported: the parser is large and most sessions never open a
+      // log, so it should not be in the tab's first paint.
+      const { parseDataflashLog } = await import('@arduconfig/log-analysis')
+      const parsed = parseDataflashLog(await file.arrayBuffer())
+      if (parsed.counts.size === 0) {
+        setLogNotice(`${file.name} holds no recognisable messages — is it a DataFlash .bin log?`)
+        return
+      }
+      setLogCounts(parsed.counts)
+      setLogNotice(`${file.name}: ${parsed.counts.size} message types.`)
+    } catch (error) {
+      setLogNotice(`Could not read ${file.name}: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setLogState('idle')
+    }
+  }, [])
 
   const readDefaults = useCallback(async () => {
     if (!onReadDefaults) return
@@ -853,10 +901,11 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             parameters,
             ...(states ? { states } : {}),
             ...(defaults ? { defaults } : {}),
-            ...(docs ? { docs } : {})
+            ...(docs ? { docs } : {}),
+            ...(logCounts ? { logCounts } : {})
           })
         : undefined,
-    [steps, loaded, fields, values, parameters, states, defaults, docs]
+    [steps, loaded, fields, values, parameters, states, defaults, docs, logCounts]
   )
 
   const declaredCount = fields.length - (summary?.missing.length ?? fields.length)
@@ -1125,6 +1174,28 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         title="Declare the vehicle"
         subtitle={`${declaredCount} of ${fields.length} fields — exactly what the sequence reads, nothing more.`}
       >
+        <p className="amc-guided__from-vehicle-row">
+          {/* Several steps configure something whose only proof is in a flight
+              log. The sequence names the messages each one depends on; this is
+              what turns that list into an answer. Parsed here in the browser —
+              nothing is uploaded anywhere. */}
+          <label className="amc-guided__import" style={buttonStyle()}>
+            {logState === 'reading' ? 'Reading the log…' : 'Check a flight log'}
+            <input
+              type="file"
+              accept=".bin,.BIN"
+              data-testid="amc-open-log"
+              disabled={logState === 'reading'}
+              onChange={(event) => {
+                void readLog(event.target.files?.[0])
+                event.target.value = ''
+              }}
+            />
+          </label>
+          <span>
+            {logNotice ?? 'Marks the messages each step should have produced. Read in your browser.'}
+          </span>
+        </p>
         {connected ? (
           <p className="amc-guided__from-vehicle-row">
             {/* The form asks two dozen questions a configured vehicle has

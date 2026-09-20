@@ -19431,6 +19431,24 @@ button.mavlink-inspector__sent-row {
   background: var(--warning-weak);
 }
 
+/* Whether a flight log holds the messages a step should have produced. */
+.amc-step__log-count {
+  margin-left: 8px;
+  font-size: 0.9em;
+}
+
+.amc-step__log-count--present {
+  color: var(--primary-500);
+}
+
+.amc-step__log-count--missing {
+  color: var(--warning);
+}
+
+.amc-step__log-count--absent {
+  color: var(--text-muted);
+}
+
 /* Reading the declaration off the vehicle. */
 .amc-guided__from-vehicle-row {
   display: flex;

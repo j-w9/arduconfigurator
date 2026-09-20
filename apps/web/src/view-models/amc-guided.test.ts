@@ -659,3 +659,43 @@ describe('boot-time parameters', () => {
     expect(summary.rows.every((row) => row.rebootParameters === undefined)).toBe(true)
   })
 })
+
+describe('a flight log', () => {
+  it('turns the list of messages a step should produce into a verdict', () => {
+    // Several steps configure something whose only proof is in the log: ESC
+    // telemetry either arrived or it did not.
+    const withLog = runSequence({
+      sequence: copter,
+      fields,
+      values: {},
+      parameters: {},
+      docs,
+      logCounts: new Map([
+        ['ESC', 1200],
+        ['BAT', 900]
+      ])
+    })
+
+    const escStep = withLog.rows.find((row) => row.filename === '09_esc_telemetry.param')
+    expect(escStep?.logSatisfied).toBe(true)
+    expect(escStep?.logMessages.find((m) => m.id === 'ESC')?.count).toBe(1200)
+
+    // A step whose required message is absent says so.
+    const gnss = withLog.rows.find((row) => row.filename === '12_gnss.param')
+    expect(gnss?.logSatisfied).toBe(false)
+    expect(gnss?.logMessages.find((m) => m.id === 'GPS')?.count).toBe(0)
+  })
+
+  it('says nothing about logs until one is loaded', () => {
+    // A count of zero would be a claim we cannot make without a log, and it
+    // would mark every step as failing.
+    const withoutLog = runSequence({ sequence: copter, fields, values: {}, parameters: {}, docs })
+    for (const row of withoutLog.rows) {
+      expect(row.logSatisfied).toBeUndefined()
+      for (const message of row.logMessages) expect(message.count).toBeUndefined()
+    }
+    // The list itself is still there — it is what the sequence says.
+    const escStep = withoutLog.rows.find((row) => row.filename === '09_esc_telemetry.param')
+    expect(escStep?.logMessages.length).toBeGreaterThan(0)
+  })
+})

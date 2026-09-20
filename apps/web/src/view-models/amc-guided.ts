@@ -19,6 +19,7 @@ import {
   type Diagnosis,
   type ParameterDocs,
   type StepOutcome,
+  checkStepLogMessages,
   runThreaded,
   autoImportableParameters,
   componentOptionSources,
@@ -362,7 +363,23 @@ export interface StepRow {
   /** Steps that may be skipped to from here, and what skipping costs. */
   readonly jumps: readonly { readonly to: string; readonly filename: string; readonly cost: string }[]
   /** Log messages this step's configuration should produce. */
-  readonly logMessages: readonly { readonly id: string; readonly name: string; readonly required: boolean }[]
+  readonly logMessages: readonly {
+    readonly id: string
+    readonly name: string
+    readonly required: boolean
+    /**
+     * How many of these the loaded flight log holds; undefined when no log has
+     * been loaded, which is a different statement from zero.
+     */
+    readonly count?: number
+  }[]
+  /**
+   * Whether the loaded log contains every message this step depends on.
+   *
+   * Undefined when no log is loaded. Only about REQUIRED messages: an optional
+   * one missing is a log that could tell you more, not a step that failed.
+   */
+  readonly logSatisfied?: boolean
   /**
    * A file the step needs on the flight controller.
    *
@@ -520,6 +537,14 @@ export interface RunInputs {
    */
   readonly defaults?: ReadonlyMap<string, number>
   readonly docs?: ParameterDocs
+  /**
+   * Message counts from a flight log, when one has been loaded.
+   *
+   * Several steps configure something whose only proof is in the log — ESC
+   * telemetry either arrives or it does not — and the sequence names the
+   * messages each one depends on.
+   */
+  readonly logCounts?: ReadonlyMap<string, number>
 }
 
 /**
@@ -530,7 +555,7 @@ export interface RunInputs {
  * not told me" is the most useful thing the screen can say.
  */
 export function runSequence(inputs: RunInputs): SequenceSummary {
-  const { sequence, file, fields, values, parameters, states, defaults, docs } = inputs
+  const { sequence, file, fields, values, parameters, states, defaults, docs, logCounts } = inputs
   const componentsJson = buildComponentsJson(fields, values)
   const context = vehicleContext(componentsJson, parameters)
 
@@ -574,6 +599,7 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
   )
 
   for (const { entry, outcome } of outcomes) {
+    const logCheck = logCounts ? checkStepLogMessages(entry.step, logCounts) : undefined
     const rebootParameters = outcome.changes
       .filter((change) => rebootRequired.has(change.parameter))
       .map((change) => change.parameter)
@@ -692,11 +718,22 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
         filename: to,
         cost
       })),
-      logMessages: Object.entries(step.related_bin_messages ?? {}).map(([id, message]) => ({
-        id,
-        name: message.name,
-        required: message.required
-      })),
+      // With a log loaded these carry their counts and the step says whether
+      // its evidence is complete; without one they are just the list the
+      // sequence names, and a count of zero would be a claim we cannot make.
+      logMessages: logCheck
+        ? logCheck.messages.map((message) => ({
+            id: message.id,
+            name: message.name,
+            required: message.required,
+            count: message.count
+          }))
+        : Object.entries(step.related_bin_messages ?? {}).map(([id, message]) => ({
+            id,
+            name: message.name,
+            required: message.required
+          })),
+      ...(logCheck ? { logSatisfied: logCheck.satisfied } : {}),
       ...(entry.phase === undefined ? {} : { phase: entry.phase }),
       ...(nonEmpty(step.why) ? { why: step.why } : {}),
       ...(nonEmpty(step.why_now) ? { whyNow: step.why_now } : {}),
