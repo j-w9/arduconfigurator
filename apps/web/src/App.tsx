@@ -9820,7 +9820,10 @@ export function App() {
           // The sequence's capture steps need the firmware's own defaults, which
           // the Parameters view already knows how to fetch over MAVFTP.
           defaults={parameterDefaults ?? undefined}
-          onReadDefaults={() => void handleFetchParamDefaults({ silent: true })}
+          // Not silent: the operator asked for this by pressing a button, so a
+          // firmware that cannot serve the defaults should say so rather than
+          // leaving the step looking like it found nothing.
+          onReadDefaults={() => void handleFetchParamDefaults()}
           staged={editedValues}
           // The AMC sequence proposes; it does not write. Its changes go into
           // the same draft model as every other edit, so the draft bar's

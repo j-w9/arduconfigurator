@@ -189,3 +189,74 @@ describe('staging', () => {
     expect(onStage).not.toHaveBeenCalled()
   })
 })
+
+describe('capturing settings already on the vehicle', () => {
+  // 94 steps take account of parameters they do not set. Rendering that needs
+  // the firmware's own defaults, so both states matter: what the step says
+  // when it has them, and what it says when it does not.
+  // RC_SPEED matches the `RC_.*` pattern a step declares; RC1_MIN does not,
+  // because that pattern needs a literal `RC_` prefix and RC1_ is a different
+  // family. Worth keeping both here: it is exactly the mistake that makes a
+  // capture rule look broken when it is the fixture that is wrong.
+  const RC_DEFAULTS = new Map([
+    ['RC_SPEED', 490],
+    ['RC1_MIN', 1100],
+    ['RC1_MAX', 1900]
+  ])
+  const RC_LIVE = { RC_SPEED: 400, RC1_MIN: 982, RC1_MAX: 1900 }
+
+  it('asks for the defaults rather than looking like it found nothing', async () => {
+    const onReadDefaults = vi.fn()
+    render(<AmcGuidedView {...base} connected parameters={RC_LIVE} onReadDefaults={onReadDefaults} />)
+    await whenLoaded()
+    await waitFor(() => expect(screen.getAllByText(/needs defaults/i).length).toBeGreaterThan(0), { timeout: 5000 })
+
+    // The offer is real: pressing it asks the vehicle.
+    const [step] = screen.getAllByText(/needs defaults/i)
+    step.closest('button')?.click()
+    await waitFor(() => expect(screen.getAllByText(/Read them from the vehicle/i).length).toBeGreaterThan(0), {
+      timeout: 5000
+    })
+    screen.getAllByText(/Read them from the vehicle/i)[0].click()
+    expect(onReadDefaults).toHaveBeenCalled()
+  })
+
+  it('claims a changed value once the defaults are known', async () => {
+    render(<AmcGuidedView {...base} connected parameters={RC_LIVE} defaults={RC_DEFAULTS} />)
+    await whenLoaded()
+    // Nothing asks for defaults any more...
+    await waitFor(() => expect(screen.queryAllByText(/needs defaults/i)).toEqual([]), { timeout: 5000 })
+
+    // ...and the step that owns RC_SPEED claims it. The claim lives in the
+    // step's body, so the step has to be open to see it -- which is the whole
+    // reason this is a component test and not a view-model one.
+    const step = await waitFor(
+      () => {
+        const found = screen.getByText(/Remote controller receiver/i).closest('button')
+        if (!found) throw new Error('step not rendered yet')
+        return found
+      },
+      { timeout: 5000 }
+    )
+    step.click()
+    await waitFor(() => expect(screen.getByText(/belong to this step/i)).toBeTruthy(), { timeout: 5000 })
+    expect(screen.getByText('RC_SPEED')).toBeTruthy()
+  })
+
+  it('claims nothing when every value is already its default', async () => {
+    render(
+      <AmcGuidedView
+        {...base}
+        connected
+        parameters={{ RC_SPEED: 490, RC1_MIN: 1100 }}
+        defaults={RC_DEFAULTS}
+      />
+    )
+    await whenLoaded()
+    await waitFor(() => expect(screen.queryAllByText(/needs defaults/i)).toEqual([]), { timeout: 5000 })
+    // Open the same step: with nothing changed there is nothing to claim.
+    screen.getByText(/Remote controller receiver/i).closest('button')?.click()
+    await waitFor(() => expect(screen.getByText(/Declare the vehicle/i)).toBeTruthy(), { timeout: 5000 })
+    expect(screen.queryAllByText(/belong to this step/i)).toEqual([])
+  })
+})
