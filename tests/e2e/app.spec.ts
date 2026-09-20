@@ -27,6 +27,12 @@ async function expectParameterSummaryComplete(page: Page): Promise<void> {
   })
 }
 
+// The bridge port the suite actually started (playwright.config.ts), so a
+// second checkout running e2e on its own ports still points the WebSocket
+// transport at ITS bridge rather than at the app's compiled-in default.
+const BRIDGE_PORT = process.env.ARDUCONFIG_E2E_BRIDGE_PORT ?? '14550'
+const BRIDGE_URL = `ws://127.0.0.1:${BRIDGE_PORT}`
+
 async function connectToVehicle(
   page: Page,
   transportMode: 'demo' | 'websocket' = 'demo',
@@ -35,6 +41,9 @@ async function connectToVehicle(
   await page.goto(path)
 
   await page.getByTestId('transport-mode-select').selectOption(transportMode)
+  if (transportMode === 'websocket' && BRIDGE_PORT !== '14550') {
+    await page.getByTestId('websocket-url-input').fill(BRIDGE_URL)
+  }
 
   await page.getByTestId('connect-button').click()
   await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
@@ -834,7 +843,7 @@ test.describe('browser configurator regression flows', () => {
   test('websocket transport connects through the bundled demo bridge', async ({ page }) => {
     await connectToVehicle(page, 'websocket')
 
-    await expect(page.getByText('WebSocket · ws://127.0.0.1:14550', { exact: true })).toBeVisible()
+    await expect(page.getByText(`WebSocket · ${BRIDGE_URL}`, { exact: true })).toBeVisible()
     await openView(page, 'ports')
     await expect(page.getByRole('heading', { name: 'Ports & Peripherals' })).toBeVisible()
   })
