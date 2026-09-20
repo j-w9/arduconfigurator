@@ -214,6 +214,16 @@ function StepCard({
       <button className="amc-step__head" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
         <span className="amc-step__index">{row.index + 1}</span>
         <span className="amc-step__title">{row.title}</span>
+        {row.autoChangedBy ? (
+          <span className="amc-step__tag" title={row.autoChangedBy}>
+            needs something done elsewhere
+          </span>
+        ) : null}
+        {row.plugin ? (
+          <span className="amc-step__tag" title={`AMC places its ${row.plugin} tool here`}>
+            {row.plugin.replace(/_/g, ' ')}
+          </span>
+        ) : null}
         {blocked ? (
           <StatusBadge tone="danger">{row.blocked.length} blocked</StatusBadge>
         ) : row.changes.length === 0 ? (
@@ -233,7 +243,35 @@ function StepCard({
 
       {open ? (
         <div className="amc-step__body">
+          {/* An instruction to read before starting, which is why it leads. */}
+          {row.popup ? (
+            <p className={`amc-step__popup amc-step__popup--${row.popup.type}`}>
+              <strong>{row.popup.type === 'warning' ? 'Before you start' : 'Note'}</strong>
+              {row.popup.msg}
+            </p>
+          ) : null}
+
+          {/* A precondition outside this app: the step cannot finish until it
+              has happened, so it reads as a blocker rather than a footnote. */}
+          {row.autoChangedBy ? (
+            <p className="amc-step__precondition">
+              <strong>Done elsewhere:</strong> {row.autoChangedBy}
+            </p>
+          ) : null}
+
           {row.why ? <p className="amc-step__why">{row.why}</p> : null}
+          {row.whyNow ? (
+            <p className="amc-step__why-now">
+              <strong>Why now:</strong> {row.whyNow}
+            </p>
+          ) : null}
+
+          {row.mandatory || row.component ? (
+            <p className="amc-step__facts">
+              {row.mandatory ? <span>{row.mandatory}</span> : null}
+              {row.component ? <span>configures {row.component}</span> : null}
+            </p>
+          ) : null}
 
           {row.blocked.length > 0 ? (
             <div className="amc-step__failures">
@@ -377,11 +415,53 @@ function StepCard({
             </label>
           ) : null}
 
-          {row.wikiUrl ? (
-            <p className="amc-step__link">
-              <a href={row.wikiUrl} target="_blank" rel="noreferrer">
-                ArduPilot wiki for this step
+          {row.logMessages.length > 0 ? (
+            <details className="amc-step__logs">
+              <summary>
+                {row.logMessages.filter((m) => m.required).length} log message
+                {row.logMessages.filter((m) => m.required).length === 1 ? '' : 's'} this step should produce
+              </summary>
+              <ul>
+                {row.logMessages.map((message) => (
+                  <li key={message.id}>
+                    <code>{message.id}</code> {message.name}
+                    {message.required ? <span className="amc-step__tag">required</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+
+          {row.file ? (
+            <p className="amc-step__file">
+              Needs <code>{row.file.destination}</code> on the flight controller, from{' '}
+              <a href={row.file.url} target="_blank" rel="noreferrer">
+                the ArduPilot applet
               </a>
+              . Not fetched from here yet.
+            </p>
+          ) : null}
+
+          {row.jumps.length > 0 ? (
+            <details className="amc-step__jumps">
+              <summary>You may skip ahead from here</summary>
+              <ul>
+                {row.jumps.map((jump) => (
+                  <li key={jump.to}>
+                    <strong>{jump.to}</strong> — {jump.cost}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+
+          {row.links.length > 0 ? (
+            <p className="amc-step__link">
+              {row.links.map((link) => (
+                <a key={link.url} href={link.url} target="_blank" rel="noreferrer" title={link.title ?? link.label}>
+                  {link.label}
+                </a>
+              ))}
             </p>
           ) : null}
         </div>

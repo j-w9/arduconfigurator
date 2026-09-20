@@ -19467,3 +19467,62 @@ button.mavlink-inspector__sent-row {
   color: var(--text-muted);
   font-size: 0.9em;
 }
+
+/* What the sequence says about a step: an instruction to read first, a
+   precondition that lives outside this app, why the step is here and why now.
+   A step is a briefing, not a parameter table. */
+.amc-step__popup {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--border);
+  background: var(--surface-300);
+}
+
+.amc-step__popup strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.amc-step__popup--warning {
+  border-left-color: var(--primary-500);
+}
+
+/* A precondition, not a note: the step cannot be finished until it happens. */
+.amc-step__precondition {
+  margin: 0;
+  color: var(--primary-400);
+}
+
+.amc-step__why-now,
+.amc-step__file {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.amc-step__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.85em;
+}
+
+.amc-step__logs ul,
+.amc-step__jumps ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+}
+
+.amc-step__logs summary,
+.amc-step__jumps summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.amc-step__link {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}

@@ -294,7 +294,44 @@ export interface StepRow {
   readonly phase?: string
   /** `05_board_orientation.param` reads as "Board orientation". */
   readonly title: string
+  /** Why the step exists. */
   readonly why?: string
+  /** Why it is done here rather than earlier or later. */
+  readonly whyNow?: string
+  /** How much of it is required, in the sequence's own words. */
+  readonly mandatory?: string
+  /** The component it configures, when it names one. */
+  readonly component?: string
+  /**
+   * Something outside this app has to happen first.
+   *
+   * A precondition, not a note: "first flight in ALT_HOLD for 30 seconds" or
+   * "do this in Mission Planner" means the step cannot be finished here yet.
+   */
+  readonly autoChangedBy?: string
+  /** An instruction to read before starting, with its severity. */
+  readonly popup?: { readonly type: string; readonly msg: string }
+  /**
+   * Further reading the sequence points at.
+   *
+   * `label` is short enough to read as a link; the sequence's own text is
+   * sometimes a title and sometimes a whole sentence, so the long ones become
+   * the `title` and the link falls back to naming its kind.
+   */
+  readonly links: readonly {
+    readonly label: string
+    readonly title?: string
+    readonly url: string
+    readonly kind: 'wiki' | 'blog' | 'tool'
+  }[]
+  /** Steps that may be skipped to from here, and what skipping costs. */
+  readonly jumps: readonly { readonly to: string; readonly cost: string }[]
+  /** Log messages this step's configuration should produce. */
+  readonly logMessages: readonly { readonly id: string; readonly name: string; readonly required: boolean }[]
+  /** A file the step fetches and puts on the flight controller. */
+  readonly file?: { readonly url: string; readonly destination: string }
+  /** An embedded tool the sequence places beside the step. */
+  readonly plugin?: string
   readonly wikiUrl?: string
   readonly changes: readonly ChangeRow[]
   readonly deletions: readonly string[]
@@ -337,6 +374,14 @@ export interface SequenceSummary {
    * parameter however many steps set it.
    */
   readonly totalDisputed: number
+}
+
+/**
+ * The sequence leaves fields present but empty rather than omitting them, so
+ * "has a value" is the test, not "is defined".
+ */
+function nonEmpty(value: string | undefined): value is string {
+  return typeof value === 'string' && value.trim().length > 0
 }
 
 /** `13_initial_atc.param` -> `Initial ATC`. */
@@ -497,6 +542,33 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
     totalFailures += blocked.reduce((total, entry) => total + entry.parameters.length, 0)
     if (entry.phase && !phases.includes(entry.phase)) phases.push(entry.phase)
 
+    const step = entry.step
+    // Everything the sequence says about the step, in one shape the view can
+    // render without knowing AMC's field names.
+    const link = (
+      kind: 'wiki' | 'blog' | 'tool',
+      fallback: string,
+      text: string | undefined,
+      url: string | undefined
+    ): StepRow['links'][number][] => {
+      if (!nonEmpty(url)) return []
+      // A label long enough to be a sentence is a description, not a link.
+      const short = nonEmpty(text) && text.length <= 48
+      return [
+        {
+          kind,
+          url,
+          label: short ? text : fallback,
+          ...(nonEmpty(text) && !short ? { title: text } : {})
+        }
+      ]
+    }
+    const links: StepRow['links'] = [
+      ...link('wiki', 'ArduPilot wiki', step.wiki_text, step.wiki_url),
+      ...link('blog', 'Tuning guide', step.blog_text, step.blog_url),
+      ...link('tool', 'External tool', step.external_tool_text, step.external_tool_url)
+    ]
+
     rows.push({
       filename: entry.filename,
       index: entry.index,
@@ -506,9 +578,25 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
       skipped: outcome.skipped,
       blocked,
       pending,
+      links,
+      jumps: Object.entries(step.jump_possible ?? {}).map(([to, cost]) => ({ to: titleOf(to), cost })),
+      logMessages: Object.entries(step.related_bin_messages ?? {}).map(([id, message]) => ({
+        id,
+        name: message.name,
+        required: message.required
+      })),
       ...(entry.phase === undefined ? {} : { phase: entry.phase }),
-      ...(entry.step.why === undefined ? {} : { why: entry.step.why }),
-      ...(entry.step.wiki_url === undefined ? {} : { wikiUrl: entry.step.wiki_url })
+      ...(nonEmpty(step.why) ? { why: step.why } : {}),
+      ...(nonEmpty(step.why_now) ? { whyNow: step.why_now } : {}),
+      ...(nonEmpty(step.mandatory_text) ? { mandatory: step.mandatory_text } : {}),
+      ...(nonEmpty(step.component) ? { component: step.component } : {}),
+      ...(nonEmpty(step.auto_changed_by) ? { autoChangedBy: step.auto_changed_by } : {}),
+      ...(step.instructions_popup ? { popup: step.instructions_popup } : {}),
+      ...(step.plugin ? { plugin: step.plugin.name } : {}),
+      ...(step.download_file && step.upload_file
+        ? { file: { url: step.download_file.source_url, destination: step.upload_file.dest_on_fc } }
+        : {}),
+      ...(step.wiki_url === undefined ? {} : { wikiUrl: step.wiki_url })
     })
   }
 

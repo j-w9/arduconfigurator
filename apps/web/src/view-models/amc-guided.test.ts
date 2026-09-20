@@ -451,3 +451,106 @@ describe('phases', () => {
     expect(without.milestones).toEqual([])
   })
 })
+
+describe('what the sequence says about a step', () => {
+  const summary = runSequence({ sequence: copter, file, fields, values: {}, parameters: {} })
+  const step = (prefix: string) => {
+    const row = summary.rows.find((r) => r.filename.startsWith(prefix))
+    if (!row) throw new Error(`no step ${prefix}`)
+    return row
+  }
+
+  it('carries the reasoning, not just the parameters', () => {
+    // 252 steps of parameter tables is a spreadsheet; the sequence explains
+    // itself and that explanation is most of its value.
+    const withWhy = summary.rows.filter((r) => r.why)
+    const withWhyNow = summary.rows.filter((r) => r.whyNow)
+    expect(withWhy.length).toBe(summary.rows.length)
+    expect(withWhyNow.length).toBe(summary.rows.length)
+    expect(summary.rows.every((r) => r.mandatory)).toBe(true)
+  })
+
+  it('reads an instruction meant to be seen before starting', () => {
+    const atc = step('13_')
+    expect(atc.popup?.type).toBe('warning')
+    expect(atc.popup?.msg).toMatch(/Only do this step once/)
+  })
+
+  it('treats work done outside this app as a precondition', () => {
+    // "Close this application and go fly" is not a footnote.
+    const withPrecondition = summary.rows.filter((r) => r.autoChangedBy)
+    expect(withPrecondition.length).toBeGreaterThan(0)
+    expect(step('14_').autoChangedBy).toMatch(/Mission Planner/)
+  })
+
+  it('gathers the further reading the sequence points at', () => {
+    const links = step('02_').links
+    expect(links.some((l) => l.kind === 'wiki')).toBe(true)
+    expect(links.some((l) => l.kind === 'blog')).toBe(true)
+    // Every link is labelled with the sequence's own words where it has them.
+    expect(links.every((l) => l.label.length > 0 && l.url.startsWith('http'))).toBe(true)
+  })
+
+  it('does not use a sentence as a link label', () => {
+    // Some of the sequence's link text is a title and some is a paragraph. A
+    // 90-character link is unreadable, so the long ones become the tooltip.
+    const all = summary.rows.flatMap((r) => r.links)
+    expect(all.length).toBeGreaterThan(100)
+    for (const l of all) expect(l.label.length).toBeLessThanOrEqual(48)
+    // And nothing is lost: a shortened label keeps the full text.
+    expect(all.some((l) => l.title && l.title.length > 48)).toBe(true)
+  })
+
+  it('names an external tool as a link, not as prose', () => {
+    const tool = summary.rows.flatMap((r) => r.links).find((l) => l.kind === 'tool')
+    expect(tool).toBeDefined()
+    expect(tool?.label.length).toBeGreaterThan(0)
+  })
+
+  it('lists the log messages a step should produce', () => {
+    const esc = step('09_')
+    expect(esc.logMessages.length).toBeGreaterThan(0)
+    const required = esc.logMessages.find((m) => m.required)
+    expect(required?.id).toBe('ESC')
+    expect(required?.name).toBe('ESC telemetry')
+    // Optional ones are carried too, and marked as such.
+    expect(esc.logMessages.some((m) => !m.required)).toBe(true)
+  })
+
+  it('knows which steps may be skipped, and what skipping costs', () => {
+    const withJumps = summary.rows.filter((r) => r.jumps.length > 0)
+    expect(withJumps.length).toBeGreaterThan(0)
+    for (const row of withJumps) {
+      for (const jump of row.jumps) {
+        // A destination and a reason -- a jump with no stated cost would be an
+        // invitation to skip something without knowing what it buys.
+        expect(jump.to.length).toBeGreaterThan(0)
+        expect(jump.cost.length).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  it('names the file a step needs on the flight controller', () => {
+    const withFile = summary.rows.filter((r) => r.file)
+    expect(withFile.length).toBeGreaterThan(0)
+    for (const row of withFile) {
+      expect(row.file?.url).toMatch(/^https?:/)
+      expect(row.file?.destination).toMatch(/^\//)
+    }
+  })
+
+  it('names the tool AMC places beside a step', () => {
+    expect(step('05_').plugin).toBe('ahrs_orientation')
+  })
+
+  it('does not invent content the sequence left empty', () => {
+    // The step files carry these keys on every step, mostly as empty strings.
+    // An empty string rendered as a heading is worse than nothing.
+    for (const row of summary.rows) {
+      for (const value of [row.why, row.whyNow, row.mandatory, row.component, row.autoChangedBy]) {
+        if (value !== undefined) expect(value.trim().length).toBeGreaterThan(0)
+      }
+      expect(row.links.every((l) => l.url.trim().length > 0)).toBe(true)
+    }
+  })
+})
