@@ -10,6 +10,19 @@
 //
 // Live IMU temperature (from SCALED_IMU, streamed at 1 Hz) is shown for warm-up
 // progress; the firmware itself computes and saves the fit at the top temperature.
+//
+// The BAROMETER has a separate temperature calibration with its own parameter
+// family and its own procedure — AP_TempCalibration (TCAL_*, a Copter g2
+// subgroup), not the per-IMU INS_TCALn_*. Same card because it is the same job
+// to an operator ("calibrate this board over temperature") and the same bench
+// session: power it cold, leave it still, let it warm. Everything below about
+// it is from AP_TempCalibration.cpp, not from the name looking similar:
+//   TCAL_ENABLED  0 = off, 1 = use learned values, 2 = learn AND use
+//   TCAL_TEMP_MIN / TEMP_MAX / BARO_EXP are @ReadOnly — the learn writes them
+//   learning runs only while DISARMED, while the IMU reads still (any movement
+//     resets it), and only above 25 degC (Tzero); it needs a rise of at least
+//     7 degC (min_learn_temp_range) before it fits and saves
+//   the correction is applied to the FIRST baro only ("just for first baro now")
 
 import { useEffect, useState, type ReactElement } from 'react'
 
@@ -26,6 +39,11 @@ export interface TcalCalibrationCardProps {
 }
 
 const IMU_INSTANCES = [1, 2, 3]
+
+// AP_TempCalibration.h: Tzero, the temperature below which the baro learn
+// collects nothing, and the minimum rise it needs before it fits and saves.
+const BARO_TCAL_MIN_TEMP_C = 25
+const BARO_TCAL_MIN_RANGE_C = 7
 
 // AP_InertialSensor_tempcal.cpp: learning finishes only when the IMU has both
 // risen TEMP_RANGE_MIN (10 degC) above where it started AND reached TMAX.
@@ -60,6 +78,91 @@ export function TcalCalibrationCard({
     tmax: readParameterValue(snapshot, `INS_TCAL${i}_TMAX`)
   })).filter((imu) => imu.enable !== undefined)
 
+  // Baro temperature calibration (AP_TempCalibration). Gated on the firmware
+  // actually reporting it: it is a Copter g2 subgroup and a compile-time
+  // feature, so plenty of builds have no TCAL_ENABLED at all.
+  const baroEnabled = readParameterValue(snapshot, 'TCAL_ENABLED')
+  const baroExponent = readParameterValue(snapshot, 'TCAL_BARO_EXP')
+  const baroTempMin = readParameterValue(snapshot, 'TCAL_TEMP_MIN')
+  const baroTempMax = readParameterValue(snapshot, 'TCAL_TEMP_MAX')
+  const hasBaroTcal = baroEnabled !== undefined
+  const baroLearning = (baroEnabled ?? 0) >= 2
+  const baroState = enableState(baroEnabled)
+  const baroConnected = snapshot.connection.kind === 'connected'
+  const canStartBaro =
+    baroConnected && canApplyDraftParameters && busyAction === undefined && hasBaroTcal && !baroLearning
+
+  const baroSection = hasBaroTcal ? (
+    <section className="calibration-card__subsection" data-testid="tcal-baro">
+      <div className="calibration-card__header">
+        <strong>Barometer (TCAL)</strong>
+        <StatusBadge tone={baroLearning ? 'warning' : baroState.tone}>{baroState.label}</StatusBadge>
+      </div>
+      <p>
+        Learns how the barometer&apos;s pressure reading drifts as the board heats, and corrects it — the
+        altitude equivalent of the IMU calibration above. Separate parameters (<code>TCAL_*</code>) and a
+        separate procedure.
+      </p>
+
+      <div className="config-pills">
+        <span data-tone={baroState.tone}>Baro TCAL: {baroState.label}</span>
+        {baroExponent !== undefined ? <span>Learned exponent: {baroExponent.toFixed(3)}</span> : null}
+        {baroTempMin !== undefined && baroTempMax !== undefined && baroTempMax > baroTempMin ? (
+          <span data-testid="tcal-baro-range">
+            Learned over {baroTempMin.toFixed(0)}→{baroTempMax.toFixed(0)}&thinsp;°C
+          </span>
+        ) : (
+          <span data-testid="tcal-baro-range">No range learned yet</span>
+        )}
+      </div>
+
+      <div className="button-row">
+        <button
+          type="button"
+          style={buttonStyle('primary')}
+          disabled={!canStartBaro}
+          data-testid="tcal-baro-start"
+          onClick={() => setDraft('TCAL_ENABLED', '2')}
+        >
+          {baroLearning ? 'Learning already enabled' : 'Prepare baro calibration'}
+        </button>
+        {/* Learning keeps refining for as long as it is on. Once the range is
+            learned, pinning it to "use" stops it re-fitting on every bench
+            session — and it is the only way back short of the raw parameter. */}
+        <button
+          type="button"
+          style={buttonStyle()}
+          disabled={
+            !baroConnected || !canApplyDraftParameters || busyAction !== undefined || !baroLearning
+          }
+          data-testid="tcal-baro-keep"
+          onClick={() => setDraft('TCAL_ENABLED', '1')}
+        >
+          Stop learning, keep values
+        </button>
+      </div>
+      <small>
+        {!baroConnected
+          ? 'Connect to a vehicle first.'
+          : !canApplyDraftParameters
+            ? 'Finish parameter sync and disarm first.'
+            : `Bench only, disarmed and completely still — any movement restarts the learn, and it only collects above ${BARO_TCAL_MIN_TEMP_C} °C.`}
+      </small>
+
+      <details className="calibration-card__howto">
+        <summary>How baro temperature calibration works</summary>
+        <ol>
+          <li><strong>Start cold</strong>, props off, on the bench. The vehicle must stay <strong>disarmed and still</strong> — the firmware restarts the learn the moment the IMUs report movement.</li>
+          <li>Click <strong>Prepare baro calibration</strong>, then <strong>Apply</strong> in the draft bar (stages <code>TCAL_ENABLED = 2</code>, learn and use).</li>
+          <li>Leave it powered and untouched while it self-heats. Nothing is collected below {BARO_TCAL_MIN_TEMP_C}&thinsp;°C, and it needs at least {BARO_TCAL_MIN_RANGE_C}&thinsp;°C of rise before it fits.</li>
+          <li>The fit saves itself into <code>TCAL_BARO_EXP</code> with the range in <code>TCAL_TEMP_MIN</code>/<code>TEMP_MAX</code> — all three are read-only, written by the learn.</li>
+          <li>Leave it learning to keep refining, or press <strong>Stop learning, keep values</strong> to pin what it has (<code>TCAL_ENABLED = 1</code>).</li>
+        </ol>
+        <p>Corrects the first barometer only.</p>
+      </details>
+    </section>
+  ) : null
+
   if (imus.length === 0) {
     return (
       <article className="calibration-card" data-testid="calibration-card-tcal">
@@ -68,9 +171,10 @@ export function TcalCalibrationCard({
           <StatusBadge tone="neutral">n/a</StatusBadge>
         </div>
         <p>
-          This firmware doesn't expose thermal-calibration parameters (<code>INS_TCALn_*</code>). Thermal cal is
-          available on builds with per-IMU temperature compensation compiled in.
+          This firmware doesn't expose per-IMU thermal-calibration parameters (<code>INS_TCALn_*</code>). Thermal
+          cal is available on builds with per-IMU temperature compensation compiled in.
         </p>
+        {baroSection}
       </article>
     )
   }
@@ -254,6 +358,8 @@ export function TcalCalibrationCard({
           <li>At the top temperature the fit saves automatically (state flips back to <em>on</em>). Reboot once more to use it.</li>
         </ol>
       </details>
+
+      {baroSection}
     </article>
   )
 }

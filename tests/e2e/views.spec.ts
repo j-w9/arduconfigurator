@@ -4496,7 +4496,10 @@ test.describe('ArduPlane demo', () => {
     // Per-IMU state reads "TCAL: off" (not "disabled", which read as IMU-off).
     await expect(tcal).toContainText('IMU1 TCAL: off')
     // The step-by-step is collapsed into a How-it-works disclosure (compact card).
-    await expect(tcal.locator('.calibration-card__howto summary')).toHaveText(/How thermal calibration works/i)
+    // .first(): the card now carries a second how-to for the baro procedure.
+    await expect(tcal.locator('.calibration-card__howto summary').first()).toHaveText(
+      /How thermal calibration works/i
+    )
     await expect(page.getByTestId('tcal-start')).toBeVisible()
 
     // The temperature range the learn runs over, seeded from the vehicle.
@@ -4525,6 +4528,33 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('tcal-tmax').fill('45')
     await page.getByTestId('tcal-start').click()
     await expect(page.locator('body')).toContainText('6 staged changes')
+  })
+
+  test('Calibration: the TCAL card also runs the BARO temperature calibration', async ({ page }) => {
+    // A different parameter family and a different procedure from the per-IMU
+    // one above: AP_TempCalibration's TCAL_* (Copter g2), which learns how the
+    // barometer's pressure reading drifts with temperature. Same card because
+    // it is the same bench session — cold board, still, let it warm.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await enableExpertMode(page)
+    await openView(page, 'calibration')
+    await page.getByTestId('calibration-tab-sensors').click()
+
+    const baro = page.getByTestId('tcal-baro')
+    await expect(baro).toBeVisible()
+    // A board that has never learned: off, and no range.
+    await expect(baro).toContainText('Baro TCAL: off')
+    await expect(page.getByTestId('tcal-baro-range')).toHaveText('No range learned yet')
+    // Nothing to keep until it is learning.
+    await expect(page.getByTestId('tcal-baro-keep')).toBeDisabled()
+
+    // Preparing it stages TCAL_ENABLED = 2 (learn AND use) — one parameter, and
+    // NOT the per-IMU family.
+    await page.getByTestId('tcal-baro-start').click()
+    await expect(page.locator('body')).toContainText('1 staged change')
   })
 
   test('Calibration: autotune is a flight you come back from', async ({ page }) => {
