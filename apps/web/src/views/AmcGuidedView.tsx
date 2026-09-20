@@ -88,6 +88,16 @@ export interface AmcGuidedViewProps {
    * a download and the Files tab.
    */
   onInstallFile?: (file: { url: string; name: string; destination: string }) => Promise<void>
+  /**
+   * Write one step's parameters to the vehicle now.
+   *
+   * The method is step-by-step, not one bulk write at the end: a step that
+   * sets a boot-time parameter has not taken effect until the vehicle
+   * restarts, and the steps after it read the old value. Goes through the
+   * app's own verified write and read-back, so a step is only "done" once the
+   * vehicle has confirmed it.
+   */
+  onWriteStep?: (changes: readonly { parameter: string; value: number }[], label: string) => void
   /** Open one of the app's own tools, for the steps that are done with one. */
   onOpenTool?: (view: AppToolView) => void
   /**
@@ -260,6 +270,7 @@ function StepCard({
   onReadDefaults,
   onRequestReboot,
   onInstallFile,
+  onWriteStep,
   defaultsRead,
   onOpenTool,
   onJump
@@ -274,6 +285,7 @@ function StepCard({
   onReadDefaults?: (() => void) | undefined
   onRequestReboot?: (() => void) | undefined
   onInstallFile?: ((file: { url: string; name: string; destination: string }) => Promise<void>) | undefined
+  onWriteStep?: ((changes: readonly { parameter: string; value: number }[], label: string) => void) | undefined
   defaultsRead?: 'idle' | 'asking' | 'nothing'
   onOpenTool?: ((view: AppToolView) => void) | undefined
   onJump?: ((filename: string) => void) | undefined
@@ -483,6 +495,29 @@ function StepCard({
               >
                 Stage {stageable.length} change{stageable.length === 1 ? '' : 's'}
               </button>
+              {onWriteStep ? (
+                <button
+                  style={buttonStyle('primary')}
+                  disabled={!connected}
+                  title={
+                    connected
+                      ? "Write just this step's parameters and let the vehicle confirm them"
+                      : 'Connect a vehicle first'
+                  }
+                  onClick={() =>
+                    onWriteStep(
+                      stageable.map((change) => ({ parameter: change.parameter, value: change.value })),
+                      row.title
+                    )
+                  }
+                >
+                  {/* The method is step-by-step: write this one, let the
+                      vehicle confirm it, reboot if it needs to, then move on.
+                      Goes through the app's own verified write, so the result
+                      and any reboot prompt appear in the usual place. */}
+                  Write this step
+                </button>
+              ) : null}
               {stagedHere.length > 0 ? (
                 <StatusBadge tone="success">{stagedHere.length} staged</StatusBadge>
               ) : null}
@@ -725,6 +760,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     onReadDefaults,
     onRequestReboot,
     onInstallFile,
+    onWriteStep,
     onOpenTool,
     suggestedKind,
     vehicleFirmwareVersion,
@@ -1492,6 +1528,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   onReadDefaults={onReadDefaults ? readDefaults : undefined}
                   onRequestReboot={onRequestReboot}
                   onInstallFile={onInstallFile}
+                  onWriteStep={onWriteStep}
                   defaultsRead={defaultsRead}
                   onOpenTool={onOpenTool}
                   onJump={jumpToStep}

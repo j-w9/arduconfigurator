@@ -2223,6 +2223,17 @@ export function App() {
     invalidParameterGroups,
     rebootRequiredDrafts
   } = useParameterDraftDerivations({ snapshot, editedValues, enumOverrides: parameterEnumOverrides })
+  // A step the operator asked to write, held until its values have actually
+  // become drafts.
+  //
+  // Staging goes through `editedValues`, and `parameterDraftEntries` derives
+  // from it, so the drafts a step just staged do not exist until the next
+  // render. Writing straight after staging would apply an empty scope and
+  // report "nothing to write" for a step that has plenty.
+  const [amcPendingWrite, setAmcPendingWrite] = useState<
+    { readonly parameters: readonly string[]; readonly label: string } | undefined
+  >(undefined)
+
   // Snapshot restore curation: off-by-default calibration exclusion (restoring
   // another unit's accel/gyro/compass calibration + AHRS trim onto different
   // hardware is wrong by default) plus a per-row Drop so the operator can
@@ -3801,6 +3812,21 @@ export function App() {
       return mutated ? next : current
     })
   }, [editedValues])
+
+  // Write one step's parameters, once staging has landed. The scope is the
+  // step's own parameter list, so this goes through exactly the same verified
+  // write, read-back and reboot follow-up as every other view's Apply.
+  useEffect(() => {
+    if (!amcPendingWrite) return
+    const wanted = new Set(amcPendingWrite.parameters)
+    const scoped = parameterDraftEntries.filter((entry) => wanted.has(entry.id))
+    // Wait for staging rather than writing a scope that is not there yet.
+    if (scoped.length === 0) return
+    setAmcPendingWrite(undefined)
+    void handleApplyScopedParameterDrafts(scoped, 'amc:write-step', amcPendingWrite.label)
+    // handleApplyScopedParameterDrafts is a stable function declaration on the body.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amcPendingWrite, parameterDraftEntries])
 
   async function handleApplyScopedParameterDrafts(
     drafts: readonly ParameterDraftEntry[],
@@ -9828,6 +9854,14 @@ export function App() {
           // the same draft model as every other edit, so the draft bar's
           // review, validation, Write all and Discard apply unchanged.
           onStage={(changes) => mergeDrafts(draftsFrom(changes))}
+          // AMC's method is step-by-step: write this step, let the vehicle
+          // confirm it, reboot if it needs to, then move on. Staging first and
+          // writing from the effect above, because the drafts do not exist
+          // until the render after they are staged.
+          onWriteStep={(changes, label) => {
+            mergeDrafts(draftsFrom(changes))
+            setAmcPendingWrite({ parameters: changes.map((change) => change.parameter), label })
+          }}
           suggestedKind={sequenceForFirmware(snapshot.vehicle?.vehicle)}
           vehicleFirmwareVersion={snapshot.hardware.board?.firmwareVersion}
           progressKey={deriveAmcProgressKey(snapshot)}

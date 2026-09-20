@@ -578,3 +578,54 @@ describe('a step that needs a script on the vehicle', () => {
     expect((button as HTMLButtonElement).disabled).toBe(true)
   })
 })
+
+describe('writing one step at a time', () => {
+  /** A vehicle reporting the parameters the first step sets. */
+  const live = { INS_TCAL1_ENABLE: 0, INS_TCAL2_ENABLE: 0, INS_TCAL3_ENABLE: 0, LOG_BITMASK: 1 }
+
+  it('writes only that step\'s parameters, and names the step', async () => {
+    // The method is step-by-step: write this one, let the vehicle confirm it,
+    // then move on. A bulk write at the end is a different method.
+    const writes: { parameters: string[]; label: string }[] = []
+    render(
+      <AmcGuidedView
+        {...base}
+        connected
+        parameters={live}
+        onWriteStep={(changes, label) => {
+          writes.push({ parameters: changes.map((c) => c.parameter), label })
+        }}
+      />
+    )
+    await whenLoaded()
+
+    const step = await screen.findByRole('button', { name: /Imu temperature calibration setup/i })
+    await act(async () => {
+      step.click()
+    })
+    await act(async () => {
+      ;(await screen.findByRole('button', { name: /^Write this step$/ })).click()
+    })
+
+    expect(writes).toHaveLength(1)
+    expect(writes[0]?.label).toMatch(/Imu temperature calibration setup/i)
+    // Its own parameters and nothing else. This step is IMU temperature
+    // calibration and the logging it needs, so every name it writes is an
+    // INS_ or a LOG_ one — and critically none of the attitude or motor
+    // parameters that later steps own, which a bulk write would have swept in.
+    expect(writes[0]?.parameters.length).toBeGreaterThan(0)
+    expect(writes[0]?.parameters.every((name) => /^(INS_|LOG_)/.test(name))).toBe(true)
+    expect(writes[0]?.parameters.some((name) => /^(ATC_|MOT_|PSC_)/.test(name))).toBe(false)
+  })
+
+  it('will not write without a vehicle to write to', async () => {
+    render(<AmcGuidedView {...base} parameters={live} onWriteStep={() => {}} />)
+    await whenLoaded()
+    const step = await screen.findByRole('button', { name: /Imu temperature calibration setup/i })
+    await act(async () => {
+      step.click()
+    })
+    const write = await screen.findByRole('button', { name: /^Write this step$/ })
+    expect((write as HTMLButtonElement).disabled).toBe(true)
+  })
+})
