@@ -289,8 +289,11 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
           ? []
           : [{ paramId: activeVehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH', label: 'Flight-mode channel', digits: 0 }]),
         { paramId: 'RC_OPTIONS', label: 'RC options', digits: 0 },
-        { paramId: 'RSSI_TYPE', label: 'RSSI source', digits: 0 },
-        { paramId: 'RSSI_CHANNEL', label: 'RSSI channel', digits: 0 }
+        // One cell, stacked: the channel is only meaningful as a property of
+        // the source. Flowing separately put it under the protocol list, four
+        // columns from the setting it belongs to.
+        { paramId: 'RSSI_TYPE', label: 'RSSI source', digits: 0, group: 'rssi' },
+        { paramId: 'RSSI_CHANNEL', label: 'RSSI channel', digits: 0, group: 'rssi' }
       ]
     },
     {
