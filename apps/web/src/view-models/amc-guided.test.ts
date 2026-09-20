@@ -269,10 +269,15 @@ describe('field choices', () => {
       // without good reason.
       expect(isList && field.numeric, `${field.component} > ${field.label}`).toBe(false)
     }
-    // Nine of the twenty-one fields are enumerations. The rest are
+    // Twelve of the twenty-four fields are enumerations. The rest are
     // measurements and one version string, which are typed, not chosen.
+    //
+    // It was nine of twenty-one until the connection a step's parameters
+    // belong to started counting as something the operator declares -- that
+    // added the RC receiver, GNSS and telemetry connection types, all three of
+    // which AMC also asks for as a choice.
     const lists = documentedFields.filter((field) => field.documented ?? field.suggested)
-    expect(lists.length).toBe(9)
+    expect(lists.length).toBe(12)
   })
 
   it('leaves a version as free text, not a list of other people\'s versions', () => {
