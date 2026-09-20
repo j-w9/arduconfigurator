@@ -1136,10 +1136,18 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
             // into a return INTO that tree. 20 m clears typical tree cover; the
             // operator can go lower deliberately, this only refuses the default
             // going unexamined.
-            {
-              label: 'RTL return altitude is set above typical tree height (20 m)',
-              met: rtlAltitudeMetres !== undefined && rtlAltitudeMetres >= 20
-            },
+            // Only for a vehicle that HAS a return altitude. A Rover's
+            // failsafe does not fly home and a Sub's cannot; asserting an
+            // altitude they never report made this criterion permanently
+            // false, which blocked the failsafe step and every step behind it.
+            ...(rtlAltitudeMetres !== undefined
+              ? [
+                  {
+                    label: 'RTL return altitude is set above typical tree height (20 m)',
+                    met: rtlAltitudeMetres >= 20
+                  }
+                ]
+              : []),
             {
               label: 'Live RC link is verified during review',
               met: snapshot.liveVerification.rcInput.verified

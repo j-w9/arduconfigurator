@@ -191,6 +191,63 @@ test.describe('Guided setup flow', () => {
     await expect(page.getByRole('button', { name: /Clear Sensors Review/i })).toBeVisible()
   })
 
+  test('the RTL-altitude check follows the vehicle, or is not asked at all', async ({ page }) => {
+    // The criterion read RTL_ALT / RTL_ALT_M, which only ArduCopter has.
+    // Plane's return altitude is RTL_ALTITUDE (metres, default 100 per
+    // ArduPlane/config.h ALT_HOLD_HOME); Rover and Sub have none at all — a
+    // rover's failsafe does not fly home. So on every non-Copter vehicle this
+    // criterion was permanently false, which blocked the failsafe step and
+    // everything behind it.
+    const criteriaOf = async () =>
+      (await page.locator('.setup-wizard__body li').allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim())
+
+    // Copter: asked, and failing on the firmware default of 15 m — which is
+    // the entire point of the check.
+    await openGuidedSetup(page, 'failsafe')
+    let criteria = await criteriaOf()
+    expect(criteria.some((c) => /RTL return altitude/i.test(c))).toBe(true)
+    expect(criteria.some((c) => /Pending.*RTL return altitude/i.test(c))).toBe(true)
+
+    // Copter with it raised: satisfied.
+    await page.goto('/?guidedSetupStep=failsafe&demoParamOverrides=RTL_ALT:3000')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
+      timeout: VEHICLE_CONNECT_TIMEOUT
+    })
+    await page.getByTestId('view-button-guided-setup').click()
+    await expect(page.getByTestId('setup-wizard')).toBeVisible({ timeout: 20_000 })
+    criteria = await criteriaOf()
+    expect(criteria.some((c) => /Complete.*RTL return altitude/i.test(c))).toBe(true)
+
+    // Plane: asked, and satisfied from ITS parameter (RTL_ALTITUDE = 100 m).
+    await page.goto('/?guidedSetupStep=failsafe')
+    await page.getByTestId('transport-mode-select').selectOption('demo-plane')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
+      timeout: VEHICLE_CONNECT_TIMEOUT
+    })
+    await page.getByTestId('view-button-guided-setup').click()
+    await expect(page.getByTestId('setup-wizard')).toBeVisible({ timeout: 20_000 })
+    criteria = await criteriaOf()
+    expect(criteria.some((c) => /Complete.*RTL return altitude/i.test(c))).toBe(true)
+
+    // Rover: not asked at all. A rover's failsafe does not fly home, and
+    // asserting an altitude it never reports blocked the step outright.
+    await page.goto('/?guidedSetupStep=failsafe')
+    await page.evaluate(() => window.localStorage.setItem('arduconfig:transport-mode', 'demo-rover'))
+    await page.reload()
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
+      timeout: VEHICLE_CONNECT_TIMEOUT
+    })
+    await page.getByTestId('view-button-guided-setup').click()
+    await expect(page.getByTestId('setup-wizard')).toBeVisible({ timeout: 20_000 })
+    criteria = await criteriaOf()
+    expect(criteria.length).toBeGreaterThan(0)
+    expect(criteria.some((c) => /RTL return altitude/i.test(c))).toBe(false)
+  })
+
   test('the first step offers no way backwards, the last no way onwards', async ({ page }) => {
     // Both ends are where a wizard usually breaks: a Previous that leaves the
     // flow, or a Continue past the end.

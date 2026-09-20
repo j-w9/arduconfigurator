@@ -158,6 +158,12 @@ const mockParameters: ParameterState = {
   // a DIFFERENT family from the per-IMU INS_TCALn_* above. At the firmware's
   // own defaults for a board that has never learned: off, no range, no
   // exponent. TCAL_TEMP_MIN/MAX/BARO_EXP are @ReadOnly — the learn writes them.
+  // ArduCopter's return altitude at the firmware default: 1500 cm = 15 m
+  // (ArduCopter/config.h RTL_ALT_M_DEFAULT). Deliberately BELOW the guided
+  // failsafe step's 20 m bar — that step exists to catch this default going
+  // unexamined, and a demo that omitted the parameter entirely could not show
+  // the check working at all.
+  RTL_ALT: 1500,
   TCAL_ENABLED: 0,
   TCAL_TEMP_MIN: 0,
   TCAL_TEMP_MAX: 0,
@@ -1230,6 +1236,11 @@ interface MockVehicleProfile {
 // the wired ArduPlane catalog expects.
 const arduplaneMockParameters: ParameterState = {
   ...mockParameters,
+  // Plane's return altitude, in METRES, at the firmware default
+  // (ArduPlane/config.h ALT_HOLD_HOME = 100). Plane has no RTL_ALT — the
+  // Copter base above carries one, which is exactly why the app resolves this
+  // by vehicle rather than by whichever name it finds first.
+  RTL_ALTITUDE: 100,
   Q_ENABLE: 1,
   Q_FRAME_CLASS: 1,
   Q_FRAME_TYPE: 1,

@@ -1389,7 +1389,27 @@ export function App() {
   // (ArduCopter/Parameters.cpp, @Units: cm, default 1500), master is RTL_ALT_M
   // in metres (mode_rtl.cpp, default 15). Same physical altitude either way, so
   // normalise to metres here rather than making every consumer know.
+  // Each vehicle names it differently, and only Copter uses centimetres:
+  //   Copter  RTL_ALT_M (m, 4.7+) / RTL_ALT (cm, <=4.6), default 15 m
+  //           (ArduCopter/config.h RTL_ALT_M_DEFAULT)
+  //   Plane   RTL_ALTITUDE (m), default 100 m (ArduPlane/config.h
+  //           ALT_HOLD_HOME) — the QuadPlane VTOL return uses Q_RTL_ALT
+  //   Rover / Sub have no RTL altitude at all, on the ground or underwater
+  // Reading only the Copter names made the failsafe step's altitude criterion
+  // permanently unsatisfiable on every other vehicle, which blocked the step
+  // and everything behind it.
   const rtlAltitudeMetres = (() => {
+    // Keyed on the VEHICLE, not on whichever name happens to be present: a
+    // board can report both (a Plane demo built on a Copter parameter base,
+    // or a leftover from a firmware change), and then name order decides
+    // which altitude the operator is shown. The vehicle knows which one it
+    // flies to.
+    if (snapshot.vehicle?.vehicle === 'ArduPlane') {
+      return readParameterValue(snapshot, 'RTL_ALTITUDE')
+    }
+    if (snapshot.vehicle?.vehicle === 'ArduRover' || snapshot.vehicle?.vehicle === 'ArduSub') {
+      return undefined
+    }
     const metres = readParameterValue(snapshot, 'RTL_ALT_M')
     if (metres !== undefined) {
       return metres
