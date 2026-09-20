@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import {
@@ -41,6 +41,11 @@ export interface AmcGuidedViewProps {
   onDocsVehicleChange: (vehicle: string) => void
 }
 
+/** A stable DOM id per declaration field, so a blocked step can focus one. */
+function fieldInputId(key: string): string {
+  return `amc-field-${key.replace(/[^a-zA-Z0-9]+/g, '-')}`
+}
+
 function groupFields(fields: readonly ComponentField[]): [string, ComponentField[]][] {
   const byComponent = new Map<string, ComponentField[]>()
   for (const field of fields) {
@@ -51,9 +56,17 @@ function groupFields(fields: readonly ComponentField[]): [string, ComponentField
   return [...byComponent]
 }
 
-function StepCard({ row, connected }: { row: StepRow; connected: boolean }) {
+function StepCard({
+  row,
+  connected,
+  onDeclareField
+}: {
+  row: StepRow
+  connected: boolean
+  onDeclareField: (key: string) => void
+}) {
   const [open, setOpen] = useState(false)
-  const blocked = row.failures.length > 0
+  const blocked = row.blocked.length > 0
 
   return (
     <article className={`amc-step${blocked ? ' amc-step--blocked' : ''}`}>
@@ -61,7 +74,7 @@ function StepCard({ row, connected }: { row: StepRow; connected: boolean }) {
         <span className="amc-step__index">{row.index + 1}</span>
         <span className="amc-step__title">{row.title}</span>
         {blocked ? (
-          <StatusBadge tone="danger">{row.failures.length} blocked</StatusBadge>
+          <StatusBadge tone="danger">{row.blocked.length} blocked</StatusBadge>
         ) : row.changes.length === 0 ? (
           <StatusBadge tone="neutral">nothing to set</StatusBadge>
         ) : connected && row.pending === 0 ? (
@@ -77,13 +90,34 @@ function StepCard({ row, connected }: { row: StepRow; connected: boolean }) {
         <div className="amc-step__body">
           {row.why ? <p className="amc-step__why">{row.why}</p> : null}
 
-          {row.failures.length > 0 ? (
+          {row.blocked.length > 0 ? (
             <div className="amc-step__failures">
               <strong>Cannot be computed yet</strong>
               <ul>
-                {row.failures.map((failure) => (
-                  <li key={`${failure.parameter}-${failure.expression}`}>
-                    <code>{failure.parameter}</code> — {failure.error}
+                {row.blocked.map((entry) => (
+                  <li key={entry.parameters.join(',')}>
+                    {entry.summary}
+                    {entry.declare.length > 0 ? (
+                      <span className="amc-step__jump">
+                        {entry.declare.map((target) => (
+                          <button key={target.key} onClick={() => onDeclareField(target.key)}>
+                            {target.label}
+                          </button>
+                        ))}
+                      </span>
+                    ) : null}
+                    {entry.parameters.length > 1 ? (
+                      <span className="amc-step__params">
+                        {entry.parameters.map((name) => (
+                          <code key={name}>{name}</code>
+                        ))}
+                      </span>
+                    ) : null}
+                    {/* The evaluator's own words, for when the summary is not enough. */}
+                    <details>
+                      <summary>details</summary>
+                      <code>{entry.detail}</code>
+                    </details>
                   </li>
                 ))}
               </ul>
@@ -200,6 +234,15 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
 
   const declaredCount = fields.length - (summary?.missing.length ?? fields.length)
 
+  // A blocked step names the field that would unblock it; clicking it should
+  // put the cursor there rather than leaving the operator to find it.
+  const focusField = useCallback((key: string) => {
+    const input = document.getElementById(fieldInputId(key))
+    if (!(input instanceof HTMLInputElement)) return
+    input.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    input.focus()
+  }, [])
+
   return (
     <div className="amc-guided">
       <Panel
@@ -260,6 +303,17 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         title="Declare the vehicle"
         subtitle={`${declaredCount} of ${fields.length} fields. This list is derived from the sequence itself, so it is exactly what these steps read — nothing more.`}
       >
+        {summary && summary.nextFields.length > 0 ? (
+          <p className="amc-guided__next">
+            Most blocking:{' '}
+            {summary.nextFields.slice(0, 3).map((entry) => (
+              <button key={entry.field.key} onClick={() => focusField(entry.field.key)}>
+                {entry.field.component} › {entry.field.label}
+                <span> unblocks {entry.unblocks}</span>
+              </button>
+            ))}
+          </p>
+        ) : null}
         <div className="amc-guided__components">
           {groupFields(fields).map(([component, group]) => (
             <fieldset key={component} className="amc-guided__component">
@@ -268,6 +322,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                 <label key={field.key} className="amc-guided__field">
                   <span title={`${field.uses} expression${field.uses === 1 ? '' : 's'} read this`}>{field.label}</span>
                   <input
+                    id={fieldInputId(field.key)}
                     value={values[field.key] ?? ''}
                     placeholder={field.group}
                     onChange={(event) =>
@@ -289,7 +344,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       <Panel title="The sequence" subtitle="Each step, and the parameters it would set for this vehicle.">
         <div className="amc-guided__steps">
           {(summary?.rows ?? []).map((row) => (
-            <StepCard key={row.filename} row={row} connected={connected} />
+            <StepCard key={row.filename} row={row} connected={connected} onDeclareField={focusField} />
           ))}
         </div>
       </Panel>

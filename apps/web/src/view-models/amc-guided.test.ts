@@ -87,8 +87,65 @@ describe('runSequence', () => {
     expect(summary.totalFailures).toBeGreaterThan(0)
     expect(summary.missing.length).toBeGreaterThan(0)
     for (const row of summary.rows) {
-      for (const failure of row.failures) {
-        expect(failure.error).not.toBe('')
+      for (const entry of row.blocked) {
+        expect(entry.parameters.length).toBeGreaterThan(0)
+        // The summary is what the step leads with, so it must never be the
+        // evaluator's own vocabulary.
+        expect(entry.summary).not.toBe('')
+        expect(entry.summary).not.toMatch(/KeyError|PyError|undefined/)
+        expect(entry.detail).not.toBe('')
+      }
+    }
+  })
+
+  it('names the field that unblocks the most steps', () => {
+    const summary = run({})
+    expect(summary.nextFields.length).toBeGreaterThan(0)
+    const unblocks = summary.nextFields.map((entry) => entry.unblocks)
+    expect(unblocks).toEqual([...unblocks].sort((left, right) => right - left))
+    // Every suggestion has to be a field the form actually renders, or the
+    // jump-to-field button would point at nothing.
+    for (const entry of summary.nextFields) {
+      expect(fields.some((field) => field.key === entry.field.key)).toBe(true)
+    }
+  })
+
+  it('counts blocked parameters, not causes, beside the parameters it set', () => {
+    const summary = run({})
+    const parameters = summary.rows.reduce(
+      (total, row) => total + row.blocked.reduce((sum, entry) => sum + entry.parameters.length, 0),
+      0
+    )
+    const causes = summary.rows.reduce((total, row) => total + row.blocked.length, 0)
+    expect(summary.totalFailures).toBe(parameters)
+    expect(causes).toBeLessThan(parameters)
+  })
+
+  it('says a shared cause once rather than once per parameter', () => {
+    // One undeclared ESC protocol blocks SERIAL1 through SERIAL9 plus more; as
+    // separate lines that is ten ways of saying the same sentence.
+    const rows = run({}).rows
+    const grouped = rows.flatMap((row) => row.blocked).filter((entry) => entry.parameters.length > 1)
+    expect(grouped.length).toBeGreaterThan(0)
+    for (const entry of grouped) {
+      expect(entry.summary).toMatch(/\d+ parameters/)
+      expect(new Set(entry.parameters).size).toBe(entry.parameters.length)
+    }
+
+    const esc = rows.find((row) => row.filename.includes('esc_telemetry'))
+    expect(esc).toBeDefined()
+    // Eleven blocked directives, but far fewer distinct things to go and do.
+    expect(esc?.blocked.length).toBeLessThan(
+      esc?.blocked.reduce((total, entry) => total + entry.parameters.length, 0) ?? 0
+    )
+  })
+
+  it('points a blocked step at a field the form renders', () => {
+    const blocked = run({}).rows.flatMap((row) => row.blocked).filter((entry) => entry.declare.length > 0)
+    expect(blocked.length).toBeGreaterThan(0)
+    for (const entry of blocked.slice(0, 20)) {
+      for (const target of entry.declare) {
+        expect(fields.some((field) => field.key === target.key)).toBe(true)
       }
     }
   })

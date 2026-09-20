@@ -10,9 +10,12 @@
 
 import {
   type ComponentRequirement,
+  type Diagnosis,
   type ParameterDocs,
   type StepOutcome,
   applyStep,
+  describePath,
+  diagnose,
   missingComponents,
   orderSteps,
   parseStepFile,
@@ -173,6 +176,29 @@ export interface ChangeRow {
   readonly satisfied: boolean
 }
 
+/**
+ * A directive that could not be computed, said in the operator's terms.
+ *
+ * The evaluator's own message is kept for the detail line, but what the step
+ * leads with is the thing to go and do about it.
+ */
+export interface BlockedRow {
+  /**
+   * Every parameter blocked by this one cause.
+   *
+   * Grouped because a single undeclared field commonly blocks a whole run of
+   * parameters -- one missing ESC protocol blocks SERIAL1 through SERIAL9 --
+   * and nine identical lines say no more than one line and a list does.
+   */
+  readonly parameters: readonly string[]
+  readonly summary: string
+  readonly kind: Diagnosis['kind']
+  /** Form fields to fill in, as keys into the declaration form. */
+  readonly declare: readonly { readonly key: string; readonly label: string }[]
+  /** The evaluator's own words, for when the summary is not enough. */
+  readonly detail: string
+}
+
 export interface StepRow {
   readonly filename: string
   readonly index: number
@@ -184,7 +210,7 @@ export interface StepRow {
   readonly changes: readonly ChangeRow[]
   readonly deletions: readonly string[]
   readonly skipped: StepOutcome['skipped']
-  readonly failures: StepOutcome['failures']
+  readonly blocked: readonly BlockedRow[]
   /** Changes whose value the vehicle does not already have. */
   readonly pending: number
 }
@@ -194,6 +220,8 @@ export interface SequenceSummary {
   readonly phases: readonly string[]
   /** Fields the operator has not declared yet. */
   readonly missing: readonly ComponentField[]
+  /** Fields that would unblock the most directives, most first. */
+  readonly nextFields: readonly { readonly field: ComponentField; readonly unblocks: number }[]
   readonly totalChanges: number
   readonly totalPending: number
   readonly totalFailures: number
@@ -230,10 +258,11 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
   const { sequence, fields, values, parameters, docs } = inputs
   const componentsJson = buildComponentsJson(fields, values)
   const context = vehicleContext(componentsJson, parameters)
-  const declared: unknown = JSON.parse(componentsJson).Components
 
+  const declared: unknown = JSON.parse(componentsJson).Components
   const rows: StepRow[] = []
   const phases: string[] = []
+  const unblockCounts = new Map<string, number>()
   let totalChanges = 0
   let totalPending = 0
   let totalFailures = 0
@@ -252,10 +281,45 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
           ? { ...base, current }
           : { ...base, current, reason: change.reason }
     })
+    const causes = new Map<string, { diagnosis: Diagnosis; declare: BlockedRow['declare']; parameters: string[]; detail: string }>()
+    for (const failure of outcome.failures) {
+      const diagnosis = diagnose(failure, declared)
+      const declare = diagnosis.declare.map((path) => ({ key: path.join('/'), label: describePath(path) }))
+      for (const entry of declare) {
+        unblockCounts.set(entry.key, (unblockCounts.get(entry.key) ?? 0) + 1)
+      }
+      // Same kind, same fields to fill in, same parameters absent: one cause.
+      const key = [diagnosis.kind, declare.map((entry) => entry.key).join('+'), diagnosis.parameters.join('+')].join('|')
+      const existing = causes.get(key)
+      if (!existing) {
+        causes.set(key, { diagnosis, declare, parameters: [failure.parameter], detail: failure.error })
+      } else if (!existing.parameters.includes(failure.parameter)) {
+        // The same parameter can be blocked twice in one step -- named in two
+        // directive groups -- and is still one thing to fix.
+        existing.parameters.push(failure.parameter)
+      }
+    }
+
+    const blocked = [...causes.values()].map(({ diagnosis, declare, parameters: blockedParams, detail }): BlockedRow => ({
+      parameters: blockedParams,
+      kind: diagnosis.kind,
+      declare,
+      detail,
+      // A single parameter keeps the diagnosis's own sentence, which names it;
+      // a group says the cause once and lets the list carry the parameters.
+      summary:
+        blockedParams.length === 1
+          ? diagnosis.summary
+          : declare.length > 0
+            ? `Declare ${declare.map((entry) => entry.label).join(' and ')} to set ${blockedParams.length} parameters.`
+            : diagnosis.summary.replace(`${blockedParams[0] as string} `, `${blockedParams.length} parameters `)
+    }))
     const pending = changes.filter((change) => !change.satisfied).length
     totalChanges += changes.length
     totalPending += pending
-    totalFailures += outcome.failures.length
+    // Counted in parameters, not causes, so it pairs with "Parameters set" in
+    // the summary; the per-step list still groups causes.
+    totalFailures += blocked.reduce((total, entry) => total + entry.parameters.length, 0)
     if (entry.phase && !phases.includes(entry.phase)) phases.push(entry.phase)
 
     rows.push({
@@ -265,7 +329,7 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
       changes,
       deletions: outcome.deletions,
       skipped: outcome.skipped,
-      failures: outcome.failures,
+      blocked,
       pending,
       ...(entry.phase === undefined ? {} : { phase: entry.phase }),
       ...(entry.step.why === undefined ? {} : { why: entry.step.why }),
@@ -275,5 +339,13 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
 
   const missing = missingComponents(declared, requiredComponents(sequence.map((entry) => entry.step))).map(toField)
 
-  return { rows, phases, missing, totalChanges, totalPending, totalFailures }
+  // What to fill in next: the field standing between this vehicle and the most
+  // blocked directives.
+  const byKey = new Map(missing.map((field) => [field.key, field]))
+  const nextFields = [...unblockCounts]
+    .map(([key, unblocks]) => ({ field: byKey.get(key), unblocks }))
+    .filter((entry): entry is { field: ComponentField; unblocks: number } => entry.field !== undefined)
+    .sort((left, right) => right.unblocks - left.unblocks)
+
+  return { rows, phases, missing, nextFields, totalChanges, totalPending, totalFailures }
 }

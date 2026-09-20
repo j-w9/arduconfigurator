@@ -19156,3 +19156,73 @@ button.mavlink-inspector__sent-row {
   margin: 0;
   color: var(--text-muted);
 }
+
+/* A blocked step names the field that would unblock it, and the declaration
+   panel leads with whichever field unblocks the most. Both are buttons that
+   put the cursor in the field rather than leaving it to be hunted for. */
+.amc-guided__next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  color: var(--text-muted);
+}
+
+.amc-guided__next button,
+.amc-step__jump button {
+  background: var(--surface-300);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.amc-guided__next button:hover,
+.amc-step__jump button:hover {
+  border-color: var(--primary-500);
+}
+
+.amc-guided__next button span {
+  color: var(--text-dim);
+  margin-left: 6px;
+  font-size: 0.85em;
+}
+
+.amc-step__jump {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.amc-step__failures li {
+  margin-bottom: 6px;
+}
+
+.amc-step__failures details {
+  display: inline;
+  margin-left: 8px;
+}
+
+.amc-step__failures details summary {
+  display: inline;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 0.85em;
+}
+
+/* The parameters a single blocked cause covers, listed once beneath it. */
+.amc-step__params {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.amc-step__params code {
+  color: var(--text-dim);
+  font-size: 0.85em;
+}
