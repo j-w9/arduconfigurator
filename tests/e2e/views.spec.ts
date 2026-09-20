@@ -3959,6 +3959,16 @@ test.describe('ArduPlane demo', () => {
     await expect(row1PwmInputs.nth(1)).toHaveValue('1500')
     await expect(row1PwmInputs.nth(2)).toHaveValue('2000')
 
+    // The Function column has room for the function name. It used to carry a
+    // min-width, which does NOT apply to table cells (CSS 2.1 §10.4), so the
+    // column collapsed to ~110px and both the header and SERVOn_FUNCTION
+    // wrapped one word per line with the dropdown clipped mid-word.
+    const functionCellWidth = await page
+      .locator('.servo-mapping__function')
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().width)
+    expect(functionCellWidth).toBeGreaterThan(200)
+
     // Servos is a single page: the mapping table and the metadata-backed
     // output settings render together, with no task strip to switch between
     // them. (The settings card only renders when the vehicle exposes such
@@ -7108,6 +7118,18 @@ test.describe('Peripherals tab', () => {
     await expect(page.getByTestId('config-category-compass')).toHaveCount(0)
     await expect(page.getByTestId('config-section-gps')).toHaveCount(0)
     await expect(page.getByTestId('config-section-compass')).toHaveCount(0)
+  })
+
+  test('the CAN-enable prompt travels with optical flow, not with Servos', async ({ page }) => {
+    // It is about FLOW_TYPE = DroneCAN, so it belongs beside the flow setting.
+    // On Servos it was a DroneCAN interruption over a servo output map.
+    await openPeripherals(page)
+    await page.getByTestId('view-button-servos').click()
+    await expect(page.getByTestId('peripherals-can-enable-prompt')).toHaveCount(0)
+
+    await page.getByTestId('view-button-peripherals').click()
+    await page.getByTestId('config-category-flow-lidar').click()
+    await expect(page.getByTestId('peripherals-can-enable-prompt')).toBeVisible()
   })
 
   test('Servos has no sub-tabs left once its peripherals moved here', async ({ page }) => {

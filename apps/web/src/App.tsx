@@ -6444,8 +6444,8 @@ export function App() {
     readRoundedParameter(snapshot, 'CAN_D2_UC_NODE')
   ].filter((id): id is number => typeof id === 'number' && id > 0)
   // The SAME "enable CAN bus & reboot" offer the CAN tab makes, mirrored into
-  // Servos ▸ Peripherals — but ONLY when the optical-flow driver is what fired
-  // it (FLOW_TYPE = 6 / DroneCAN). A DroneCAN GPS is a real problem too, and the
+  // Peripherals ▸ Flow & Lidar — but ONLY when the optical-flow driver is what
+  // fired it (FLOW_TYPE = 6 / DroneCAN). A DroneCAN GPS is a real problem too, and the
   // CAN tab still says so; it just isn't this card's business to interrupt with.
   // Reason: a CAN sensor on a disabled bus reports absolutely nothing, so the
   // operator is looking straight at the flow config wondering why it's dead —
@@ -9200,8 +9200,7 @@ export function App() {
           outputHasPendingReview,
           outputTaskCards,
           activeOutputTaskId,
-          activeOutputTask,
-          peripheralsCanEnableSlot: opticalFlowCanEnablePrompt
+          activeOutputTask
         }}
         handlers={{
           handleApplyScopedParameterDrafts,

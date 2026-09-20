@@ -150,7 +150,6 @@ export interface OutputsSectionDerived {
    * ReactNode slot (the established pattern for complex sub-surfaces here) so
    * this section keeps no runtime wiring of its own.
    */
-  peripheralsCanEnableSlot?: ReactNode
 }
 
 export interface OutputsSectionHandlers {
@@ -351,7 +350,6 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     outputTaskCards,
     activeOutputTaskId,
     activeOutputTask,
-    peripheralsCanEnableSlot
   } = derived
 
   const {
@@ -579,6 +577,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
         }}
         // Motors is one page: no task strip, and the denser one-page rhythm.
         singlePage={singlePageOutputs}
+        singleColumn={showAllServoTasks}
         // The output overview panel was removed as part of the Motors/Outputs
         // declutter — the task surfaces below carry the per-output detail.
         overviewSlot={undefined}
@@ -1234,10 +1233,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
 
               {showAllServoTasks || activeOutputTaskId === 'peripherals' ? (
                 <div className="outputs-task-panel outputs-task-panel--stack">
-                  {/* Sits ABOVE the cards: a DroneCAN sensor on a disabled bus
-                      reports nothing at all, so the fix has to be visible before
-                      the operator starts second-guessing the fields below it. */}
-                  {peripheralsCanEnableSlot}
+                  {/* The "enable the CAN bus" prompt used to sit here. It is
+                      about the optical-flow driver, and optical flow moved to
+                      the Peripherals tab — where the prompt now renders, beside
+                      the setting it is about. On Servos it was a DroneCAN
+                      interruption over a servo output map. */}
                   {renderAdditionalSettingsCard(
                     'Additional output settings',
                     'These metadata-backed output and airframe settings extend Outputs without forcing routine configuration back into raw Parameters.',

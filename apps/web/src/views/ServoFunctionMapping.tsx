@@ -92,7 +92,12 @@ export function ServoFunctionMappingView(props: ServoFunctionMappingViewProps) {
             table will populate.
           </p>
         ) : (
-          <table className="servo-mapping__table" data-testid="servo-mapping-table">
+          /* A scroll WRAPPER, not `display: block` on the table itself: that
+             dropped the table out of table layout, so the Function column's
+             min-width stopped applying and both the header and the function
+             name wrapped one word per line inside a ~70px cell. */
+          <div className="servo-mapping__scroller">
+            <table className="servo-mapping__table" data-testid="servo-mapping-table">
             <thead>
               <tr>
                 <th scope="col">Channel</th>
@@ -185,7 +190,8 @@ export function ServoFunctionMappingView(props: ServoFunctionMappingViewProps) {
                 )
               })}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
 
         <div className="servo-mapping__toolbar">
