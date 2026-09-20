@@ -44,18 +44,17 @@ export function WorkspaceSidebar({ visibleAppViews, activeViewId, onSelectView }
               <span className="workspace-nav__item-copy">
                 <strong>{view.label}</strong>
               </span>
-              {/* The rail stays quiet on purpose: badges live in the
-                  active-view header, not here. Two exceptions earn their space.
-                  Guided Setup carries its "beta" under-development flag, and
-                  Snapshots shows DRIFT — but only when there is drift to show
-                  ("3 diff", "2 invalid"; never "5 saved"). That drift used to
-                  be an Active Baseline panel above this rail, which said more
-                  than it needed to and duplicated the Snapshots tab; the one
-                  thing it did that the tab cannot is tell you about drift while
-                  you are somewhere else, and this keeps exactly that. */}
-              {(view.id === 'guided-setup' ||
-                (view.id === 'snapshots' && /\d+\s+(diff|invalid)/.test(view.badge ?? ''))) &&
-              view.badge ? (
+              {/* The rail stays quiet: badges live in the active-view header, not
+                  here. Guided Setup is the one exception, for its "beta"
+                  under-development flag.
+
+                  A Snapshots drift badge was tried and removed. It read as the
+                  one thing the deleted Active Baseline panel did that the
+                  Snapshots tab cannot — tell you about drift while you are
+                  elsewhere — but a count like "94 diff" is wider than the rail
+                  has room for, so it sat on top of the label. Drift is on the
+                  Snapshots tab, which is where you act on it. */}
+              {view.id === 'guided-setup' && view.badge ? (
                 <span className="workspace-nav__badge">
                   <StatusBadge tone={view.tone}>{view.badge}</StatusBadge>
                 </span>

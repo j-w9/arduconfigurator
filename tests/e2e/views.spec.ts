@@ -100,9 +100,11 @@ test.describe('Phone layout', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.locator('.workspace-sidebar .baseline-summary')).toHaveCount(0)
     await expect(page.locator('.workspace-sidebar .workspace-tabrail__header')).toHaveCount(0)
-    // The rail is the rail: no drift summary, no vehicle caption. Open
-    // Snapshots and it is all there.
+    // The rail is the rail: no drift summary, no vehicle caption, and no badge
+    // on Snapshots — a count like "94 diff" is wider than the rail has room
+    // for and lands on top of the label. Open Snapshots and it is all there.
     await expect(page.getByTestId('view-button-snapshots')).toHaveText('SNPSnapshots')
+    await expect(page.getByTestId('view-button-snapshots').locator('.workspace-nav__badge')).toHaveCount(0)
   })
 })
 
