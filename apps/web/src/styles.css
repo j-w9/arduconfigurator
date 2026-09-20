@@ -14546,6 +14546,14 @@ details.metadata-settings-section:not([open]) > summary::after {
   max-width: none;
 }
 
+/* Fields that only make sense together share a cell and stack in it. */
+.config-section__field-group {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  min-width: 0;
+}
+
 .config-grid--wide .config-section__editors {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   column-gap: var(--space-3);

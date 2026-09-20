@@ -51,12 +51,16 @@ export interface FailsafeViewProps {
   batteryCriticalLabel: string
   batteryCriticalThresholdText: string
   rows: readonly FailsafeViewRow[]
-  /** The geofence card. Given when the firmware reports FENCE_* — it earns a
-   *  sub-tab of its own, being a failsafe in its own right. */
-  fenceSlot?: ReactNode
-  /** Rendered on the Advanced sub-tab, under its rows — the metadata-backed
-   *  "additional failsafe settings" card the section owns. */
-  advancedSlot?: ReactNode
+  /**
+   * Extra cards per sub-tab, keyed by category id ('battery-failsafe',
+   * 'fence', 'advanced', …), rendered under that tab's rows.
+   *
+   * This is how the metadata-backed "additional settings" reach the operator:
+   * split by which failsafe each parameter belongs to instead of piled into one
+   * card at the end. A key with no rows behind it (the fence) still earns a
+   * tab.
+   */
+  extraSlots?: Record<string, ReactNode>
   onOpenPower: () => void
   // Staged-write editing (same draft model as every other param tab).
   editedValues: Record<string, string>
@@ -81,8 +85,7 @@ export function FailsafeView(props: FailsafeViewProps) {
     batteryCriticalLabel,
     batteryCriticalThresholdText,
     rows,
-    fenceSlot,
-    advancedSlot,
+    extraSlots = {},
     onOpenPower,
     editedValues,
     onEditChange,
@@ -108,7 +111,7 @@ export function FailsafeView(props: FailsafeViewProps) {
       else bySource.set(row.source, [row])
     }
     const leading = FAILSAFE_LEADING_CATEGORIES.filter(
-      (source) => bySource.has(source) || (source === 'Fence' && fenceSlot !== undefined)
+      (source) => bySource.has(source) || extraSlots[categoryId(source)] !== undefined
     )
     // Whatever this vehicle has that the list above does not name, in row
     // order — Plane's Short/Long, Rover's Failsafe action, Sub's Leak.
@@ -122,7 +125,7 @@ export function FailsafeView(props: FailsafeViewProps) {
       id: categoryId(source),
       rows: bySource.get(source) ?? []
     }))
-  }, [rows, fenceSlot])
+  }, [rows, extraSlots])
 
   const [activeCategory, setActiveCategory] = useState<string>(groups[0]?.id ?? 'rc-failsafe')
   const effectiveCategory = groups.some((group) => group.id === activeCategory)
@@ -222,6 +225,10 @@ export function FailsafeView(props: FailsafeViewProps) {
             ))}
           </div>
 
+          {/* Above the Save/Revert footer: the footer ends the tab, so an
+              extra card under it read as belonging to the next thing. */}
+          {extraSlots[effectiveCategory] ?? null}
+
           <div className="scoped-editor-footer" data-testid="failsafe-editor-footer">
             <div className="scoped-editor-footer__counts">
               <span>{stagedCount} staged</span>
@@ -245,9 +252,6 @@ export function FailsafeView(props: FailsafeViewProps) {
               Revert
             </button>
           </div>
-
-          {effectiveCategory === 'fence' ? fenceSlot : null}
-          {effectiveCategory === 'advanced' ? advancedSlot : null}
 
           {effectiveCategory === 'advanced' ? (
           <section

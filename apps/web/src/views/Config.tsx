@@ -31,6 +31,17 @@ export interface ConfigSectionField {
   /** Rarely-touched field folded into a per-card "Advanced" disclosure,
    *  so each card leads with the knobs an operator actually reaches for. */
   advanced?: boolean
+  /**
+   * Keep this field in the same grid cell as its neighbours carrying the same
+   * group id, stacked vertically.
+   *
+   * The card flows one field per cell, left to right, so two fields that only
+   * make sense together (RSSI source and the channel it reads) could land in
+   * different columns with something tall between them — the channel ended up
+   * under the protocol list, four columns away from the source. Consecutive
+   * fields sharing a group render as one cell instead.
+   */
+  group?: string
 }
 
 /** Config category ids — the top tab groups. */
@@ -300,6 +311,30 @@ export function ConfigView(props: ConfigViewProps) {
     )
   }
 
+  /** Render fields in order, collapsing a run that shares a `group` into one
+   *  cell so they stack together instead of flowing apart. */
+  function renderFields(fields: readonly ConfigSectionField[]): ReactNode[] {
+    const out: ReactNode[] = []
+    for (let index = 0; index < fields.length; index += 1) {
+      const field = fields[index]
+      if (field.group === undefined) {
+        out.push(renderField(field))
+        continue
+      }
+      const run = [field]
+      while (index + 1 < fields.length && fields[index + 1].group === field.group) {
+        index += 1
+        run.push(fields[index])
+      }
+      out.push(
+        <div className="config-section__field-group" key={`group:${field.group}`}>
+          {run.map((grouped) => renderField(grouped))}
+        </div>
+      )
+    }
+    return out
+  }
+
   return (
     <div id={panelId}>
       <Panel title={title} subtitle={subtitle}>
@@ -385,7 +420,7 @@ export function ConfigView(props: ConfigViewProps) {
                   const foldedUnsaved = foldedFields.some((field) => fieldHasUnsaved(draftStatusById, field.paramId))
                   return (
                     <div className="config-section__editors">
-                      {leadFields.map((field) => renderField(field))}
+                      {renderFields(leadFields)}
                       {foldedFields.length > 0 ? (
                         <details
                           className="config-section__advanced"
@@ -404,7 +439,7 @@ export function ConfigView(props: ConfigViewProps) {
                             {foldedUnsaved ? <span className="config-category-nav__dot" aria-label="unsaved changes" /> : null}
                           </summary>
                           <div className="config-section__editors config-section__editors--advanced">
-                            {foldedFields.map((field) => renderField(field))}
+                            {renderFields(foldedFields)}
                           </div>
                         </details>
                       ) : null}
