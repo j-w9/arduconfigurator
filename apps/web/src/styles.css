@@ -19424,3 +19424,46 @@ button.mavlink-inspector__sent-row {
   color: var(--text-muted);
   cursor: pointer;
 }
+
+/* The sequence's own phases. AMC groups its steps into named runs -- basic
+   configuration, then tuning that most vehicles need, then tuning that not
+   every vehicle does -- and the grouping is a large part of what makes 63
+   steps legible as a plan rather than a list. */
+.amc-guided__phase {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.amc-guided__phase-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.amc-guided__phase-head h4 {
+  margin: 0;
+  font-size: 1em;
+}
+
+.amc-guided__phase-count {
+  color: var(--text-dim);
+  font-size: 0.85em;
+  margin-left: auto;
+}
+
+.amc-guided__phase-head p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.amc-guided__milestones {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}

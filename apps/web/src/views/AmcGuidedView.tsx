@@ -3,8 +3,8 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import {
   AMC_VEHICLE_KINDS,
-  type AmcSequence,
   type AmcVehicleKind,
+  type LoadedSequence,
   type ComponentField,
   type StepRow,
   fieldsFor,
@@ -454,14 +454,14 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   // The step files are dynamic-imported, so the sequence arrives after the tab
   // does. A stale load for a sequence the operator has since switched away from
   // is discarded rather than rendered.
-  const [sequence, setSequence] = useState<{ kind: AmcVehicleKind; steps: AmcSequence } | undefined>(undefined)
+  const [sequence, setSequence] = useState<{ kind: AmcVehicleKind; loaded: LoadedSequence } | undefined>(undefined)
   const [loadError, setLoadError] = useState<string | undefined>(undefined)
   useEffect(() => {
     let cancelled = false
     setLoadError(undefined)
     loadSequence(kind)
-      .then((steps) => {
-        if (!cancelled) setSequence({ kind, steps })
+      .then((loaded) => {
+        if (!cancelled) setSequence({ kind, loaded })
       })
       .catch((error: unknown) => {
         if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error))
@@ -471,7 +471,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     }
   }, [kind])
 
-  const steps = sequence?.kind === kind ? sequence.steps : undefined
+  const loaded = sequence?.kind === kind ? sequence.loaded : undefined
+  const steps = loaded?.steps
 
   // The documentation decides which fields are dropdowns, so the form is
   // rebuilt once it has loaded.
@@ -499,9 +500,17 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   const summary = useMemo(
     () =>
       steps
-        ? runSequence({ sequence: steps, fields, values, parameters, ...(states ? { states } : {}), ...(docs ? { docs } : {}) })
+        ? runSequence({
+            sequence: steps,
+            ...(loaded ? { file: loaded.file } : {}),
+            fields,
+            values,
+            parameters,
+            ...(states ? { states } : {}),
+            ...(docs ? { docs } : {})
+          })
         : undefined,
-    [steps, fields, values, parameters, states, docs]
+    [steps, loaded, fields, values, parameters, states, docs]
   )
 
   const declaredCount = fields.length - (summary?.missing.length ?? fields.length)
@@ -695,8 +704,31 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
           </div>
         ) : null}
         <div className="amc-guided__steps">
-          {(summary?.rows ?? []).map((row) => (
-            <StepCard
+          {(summary?.groups ?? []).map((group) => (
+            <section key={group.name || 'unphased'} className="amc-guided__phase">
+              {group.name ? (
+                <header className="amc-guided__phase-head">
+                  <h4>{group.name}</h4>
+                  {group.optional ? (
+                    <StatusBadge tone="neutral">optional</StatusBadge>
+                  ) : (
+                    <StatusBadge tone="warning">required</StatusBadge>
+                  )}
+                  <span className="amc-guided__phase-count">
+                    {
+                      group.rows.filter(
+                        (row) =>
+                          reviewed.has(row.filename) ||
+                          (row.blocked.length === 0 && row.changes.length > 0 && row.pending === 0)
+                      ).length
+                    }{' '}
+                    / {group.rows.length} done
+                  </span>
+                  {group.description ? <p>{group.description}</p> : null}
+                </header>
+              ) : null}
+              {group.rows.map((row) => (
+                <StepCard
               key={row.filename}
               row={row}
               connected={connected}
@@ -704,17 +736,28 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               reviewed={reviewed.has(row.filename)}
               onDeclareField={focusField}
               onStage={onStage}
-              onReviewed={(next) =>
-                setReviewed((previous) => {
-                  const updated = new Set(previous)
-                  if (next) updated.add(row.filename)
-                  else updated.delete(row.filename)
-                  return updated
-                })
-              }
-            />
+                  onReviewed={(next) =>
+                    setReviewed((previous) => {
+                      const updated = new Set(previous)
+                      if (next) updated.add(row.filename)
+                      else updated.delete(row.filename)
+                      return updated
+                    })
+                  }
+                />
+              ))}
+            </section>
           ))}
         </div>
+        {summary && summary.milestones.length > 0 ? (
+          <p className="amc-guided__milestones">
+            {/* Phases that set no parameters at all: things done to the
+                aircraft between steps, which the sequence names but cannot
+                check. Listed so they are not simply missing from the plan. */}
+            Between these steps the sequence also expects:{' '}
+            {summary.milestones.map((m) => m.name).join('; ')}.
+          </p>
+        ) : null}
       </Panel>
     </div>
   )

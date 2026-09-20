@@ -13,6 +13,7 @@ import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import observedComponentValues from '@amc/data/component-values.json'
 
+import type { ConfigurationStepFile } from '@arduconfig/amc-steps'
 import {
   type ComponentRequirement,
   type Diagnosis,
@@ -20,6 +21,8 @@ import {
   type StepOutcome,
   applyStep,
   componentOptionSources,
+  milestonePhases,
+  orderedPhases,
   describePath,
   diagnose,
   optionsForField,
@@ -68,7 +71,13 @@ export function sequenceForFirmware(vehicle: string | undefined): AmcVehicleKind
 /** A loaded sequence: AMC's steps for one vehicle, in order. */
 export type AmcSequence = ReturnType<typeof orderSteps>
 
-const sequences = new Map<AmcVehicleKind, AmcSequence>()
+/** The steps, and the file they came from -- which is where the phases live. */
+export interface LoadedSequence {
+  readonly steps: AmcSequence
+  readonly file: ConfigurationStepFile
+}
+
+const sequences = new Map<AmcVehicleKind, LoadedSequence>()
 
 /**
  * Load one vehicle's sequence.
@@ -77,7 +86,7 @@ const sequences = new Map<AmcVehicleKind, AmcSequence>()
  * open, so each is a dynamic import and lands in its own chunk -- the same
  * treatment the upstream parameter metadata gets. Cached after the first load.
  */
-export async function loadSequence(kind: AmcVehicleKind): Promise<AmcSequence> {
+export async function loadSequence(kind: AmcVehicleKind): Promise<LoadedSequence> {
   const cached = sequences.get(kind)
   if (cached) return cached
   const source: unknown = await (kind === 'ArduCopter'
@@ -87,9 +96,10 @@ export async function loadSequence(kind: AmcVehicleKind): Promise<AmcSequence> {
       : kind === 'Rover'
         ? import('@amc/data/configuration_steps_Rover.json')
         : import('@amc/data/configuration_steps_Heli.json'))
-  const ordered = orderSteps(parseStepFile(JSON.stringify((source as { default: unknown }).default)))
-  sequences.set(kind, ordered)
-  return ordered
+  const file = parseStepFile(JSON.stringify((source as { default: unknown }).default))
+  const loaded: LoadedSequence = { steps: orderSteps(file), file }
+  sequences.set(kind, loaded)
+  return loaded
 }
 
 /** Every value AMC's own vehicle templates use for a field, by path. */
@@ -294,8 +304,24 @@ export interface StepRow {
   readonly pending: number
 }
 
+/** A phase of the sequence, with the steps that fall under it. */
+export interface PhaseGroup {
+  readonly name: string
+  readonly description?: string
+  /** Declared optional by the sequence: tuning not every vehicle needs. */
+  readonly optional: boolean
+  readonly rows: readonly StepRow[]
+}
+
 export interface SequenceSummary {
   readonly rows: readonly StepRow[]
+  /** The steps grouped under their phase, in order. */
+  readonly groups: readonly PhaseGroup[]
+  /**
+   * Phases that mark something to do between steps rather than a run of them --
+   * assembling the frame, flying it for the first time.
+   */
+  readonly milestones: readonly { readonly name: string; readonly description?: string }[]
   readonly phases: readonly string[]
   /** Distinct parameters whose value differs from the vehicle's. */
   readonly missing: readonly ComponentField[]
@@ -359,6 +385,8 @@ function disputesFor(
 
 export interface RunInputs {
   readonly sequence: AmcSequence
+  /** The step file the sequence came from, for its phases. */
+  readonly file?: ConfigurationStepFile
   readonly fields: readonly ComponentField[]
   readonly values: Readonly<Record<string, string>>
   /** The vehicle's current parameters, when connected. */
@@ -382,7 +410,7 @@ export interface RunInputs {
  * not told me" is the most useful thing the screen can say.
  */
 export function runSequence(inputs: RunInputs): SequenceSummary {
-  const { sequence, fields, values, parameters, states, docs } = inputs
+  const { sequence, file, fields, values, parameters, states, docs } = inputs
   const componentsJson = buildComponentsJson(fields, values)
   const context = vehicleContext(componentsJson, parameters)
 
@@ -496,8 +524,31 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
     .filter((entry): entry is { field: ComponentField; unblocks: number } => entry.field !== undefined)
     .sort((left, right) => right.unblocks - left.unblocks)
 
+  // Grouped for rendering. Steps before the first phase -- and any sequence
+  // that declares none -- fall into a single unnamed group rather than being
+  // dropped, so the list is always the whole sequence.
+  const spanning = file ? orderedPhases(file) : []
+  const groups: PhaseGroup[] = []
+  for (const row of rows) {
+    const name = row.phase ?? ''
+    const last = groups[groups.length - 1]
+    if (last && last.name === name) {
+      ;(last.rows as StepRow[]).push(row)
+      continue
+    }
+    const declared = spanning.find((phase) => phase.name === name)
+    groups.push({
+      name,
+      optional: declared?.optional === true,
+      rows: [row],
+      ...(declared?.description === undefined ? {} : { description: declared.description })
+    })
+  }
+
   return {
     rows,
+    groups,
+    milestones: file ? milestonePhases(file) : [],
     phases,
     missing,
     nextFields,

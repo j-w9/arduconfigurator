@@ -36,6 +36,12 @@ export default defineConfig({
     ])
   },
   test: {
+    // node by default: the view-models are pure and this keeps them fast. A
+    // component test opts into a DOM per file with
+    // `// @vitest-environment jsdom`, so only the files that need one pay for
+    // it. Component tests exist because two bugs shipped that the pure tests
+    // could not see -- a hook reading a ref declared below it, and an effect
+    // saving one vehicle's work under another's key.
     environment: 'node',
     // .tsx included too: a component test written as `.test.tsx` would
     // otherwise be silently never run, which looks identical to passing.

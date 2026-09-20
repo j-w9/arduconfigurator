@@ -14,7 +14,8 @@ import {
 // cover the part that lives here: turning the sequence into something the tab
 // can render, and getting the declared vehicle into it without losing meaning.
 
-const copter = await loadSequence('ArduCopter')
+const loaded = await loadSequence('ArduCopter')
+const copter = loaded.steps
 const fields = fieldsFor(copter)
 
 // The same sequence with ArduPilot's documentation available, which is what
@@ -26,6 +27,8 @@ const docs = parameterDocsFrom(
   JSON.parse(readFileSync(fileURLToPath(new URL('../generated/param-upstream/arducopter.json', import.meta.url)), 'utf8'))
 )
 const documentedFields = fieldsFor(copter, docs)
+/** Runs carry the file too, which is where the phases come from. */
+const file = loaded.file
 const keyFor = (label: string): string => {
   const field = fields.find((candidate) => candidate.label === label)
   if (!field) throw new Error(`no field named ${label}`)
@@ -85,7 +88,7 @@ describe('buildComponentsJson', () => {
 
 describe('runSequence', () => {
   const run = (values: Record<string, string>, parameters: Record<string, number> = {}) =>
-    runSequence({ sequence: copter, fields, values, parameters })
+    runSequence({ sequence: copter, file, fields, values, parameters })
 
   it('returns every step, including the ones it cannot compute', () => {
     const summary = run({})
@@ -219,7 +222,7 @@ describe('draftsFrom', () => {
 
   it('covers every pending change the sequence proposes', () => {
     const values = { [keyFor('Diameter_inches')]: '10', [keyFor('Number of cells')]: '4' }
-    const summary = runSequence({ sequence: copter, fields, values, parameters: {} })
+    const summary = runSequence({ sequence: copter, file, fields, values, parameters: {} })
     const pending = summary.rows.flatMap((row) => row.changes.filter((change) => !change.satisfied))
     const drafts = draftsFrom(pending)
     // Deduplication is expected, so the draft count is the distinct parameters.
@@ -323,7 +326,7 @@ describe('values the documented range disputes', () => {
       count: 0,
       definition: { id, label: id, description: '', category: 'test', ...upstream[id] }
     }))
-    return runSequence({ sequence: copter, fields: documentedFields, values, parameters, states, docs })
+    return runSequence({ sequence: copter, file, fields: documentedFields, values, parameters, states, docs })
   }
   const keyFor = (label: string) => {
     const field = documentedFields.find((candidate) => candidate.label === label)
@@ -398,5 +401,53 @@ describe('values the documented range disputes', () => {
     const row = summary.rows.flatMap((r) => r.changes).find((c) => c.parameter === 'ATC_RAT_RLL_FLTE')
     expect(row?.satisfied).toBe(true)
     expect(row?.disputed).toBeUndefined()
+  })
+})
+
+describe('phases', () => {
+  const summary = runSequence({ sequence: copter, file, fields, values: {}, parameters: {} })
+
+  it('groups every step under a phase heading, losing none', () => {
+    const grouped = summary.groups.flatMap((group) => group.rows)
+    expect(grouped.length).toBe(summary.rows.length)
+    expect(grouped.map((r) => r.filename)).toEqual(summary.rows.map((r) => r.filename))
+  })
+
+  it('keeps the sequence in order across the groups', () => {
+    const indexes = summary.groups.flatMap((group) => group.rows.map((r) => r.index))
+    expect(indexes).toEqual([...indexes].sort((a, b) => a - b))
+  })
+
+  it('names the phases the sequence declares, and marks the optional ones', () => {
+    const named = summary.groups.filter((group) => group.name !== '')
+    expect(named.length).toBeGreaterThan(5)
+    expect(named.map((g) => g.name)).toContain('Basic mandatory configuration')
+    const tuning = named.find((g) => g.name === 'Standard tuning')
+    expect(tuning?.optional).toBe(true)
+    expect(named.find((g) => g.name === 'Basic mandatory configuration')?.optional).toBe(false)
+  })
+
+  it('does not run one phase into another', () => {
+    // A heading appearing twice would mean the steps under it are not
+    // contiguous, and the list would read as if the phase restarted.
+    const names = summary.groups.map((g) => g.name).filter((n) => n !== '')
+    expect(new Set(names).size).toBe(names.length)
+  })
+
+  it('lists the milestones that own no steps', () => {
+    // "Assemble all components except the propellers" is something the
+    // operator does, not a step the sequence can check -- so it is named
+    // rather than silently absent.
+    expect(summary.milestones.map((m) => m.name)).toContain('Assemble all components except the propellers')
+    const phaseNames = new Set(summary.groups.map((g) => g.name))
+    for (const milestone of summary.milestones) {
+      expect(phaseNames.has(milestone.name)).toBe(false)
+    }
+  })
+
+  it('still returns the whole sequence when the file is not supplied', () => {
+    const without = runSequence({ sequence: copter, fields, values: {}, parameters: {} })
+    expect(without.groups.flatMap((g) => g.rows).length).toBe(without.rows.length)
+    expect(without.milestones).toEqual([])
   })
 })
