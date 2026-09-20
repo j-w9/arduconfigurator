@@ -22,7 +22,7 @@ import connectionPairingsJson from '@amc/data/component-pairings.json'
 const connectionPairings = connectionPairingsJson as ConnectionPairings
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
-import { buildProject, projectArchive, projectFilename, readProject } from '../view-models/amc-project'
+import { buildProject, importFromVehicle, projectArchive, projectFilename, readProject } from '../view-models/amc-project'
 import {
   UNATTACHED_KEY,
   clearAmcProgress,
@@ -669,6 +669,12 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   // here rather than merged into `values`: an @manual_override is a parameter
   // the operator overruled, not a component they declared.
   const [overrides, setOverrides] = useState<ReadonlyMap<string, { value: number; reason?: string }>>(new Map())
+  // What the last read off the vehicle found, including what it could not
+  // settle — a control that silently filled in some boxes would leave the
+  // operator unsure whether it had run.
+  const [importNotice, setImportNotice] = useState<
+    { tone: 'ok' | 'warning'; text: string; undetermined: readonly string[] } | undefined
+  >(undefined)
 
   const readDefaults = useCallback(async () => {
     if (!onReadDefaults) return
@@ -790,6 +796,54 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   )
 
   const declaredCount = fields.length - (summary?.missing.length ?? fields.length)
+
+  // Reading the declaration off the vehicle. Pure apart from setting state:
+  // the deriving is in the view-model, tested against AMC's 29 templates.
+  const pwmTypeValues = useMemo(() => {
+    const options = docs?.('MOT_PWM_TYPE')?.options
+    if (!options || options.length === 0) return undefined
+    return Object.fromEntries(options.map((option) => [String(option.value), option.label]))
+  }, [docs])
+
+  const readFromVehicle = useCallback(() => {
+    if (!steps) return
+    const result = importFromVehicle({
+      fields,
+      values,
+      parameters,
+      kind,
+      // The firmware's own documentation for MOT_PWM_TYPE beats the built-in
+      // table, which is only there for a build whose metadata we lack. The
+      // docs carry options as a list; the import wants them keyed by value.
+      ...(pwmTypeValues ? { pwmTypeValues } : {})
+    })
+
+    const filled = Object.keys(result.values).length
+    if (filled === 0) {
+      setImportNotice({
+        tone: 'warning',
+        text:
+          result.undetermined.length > 0
+            ? 'Its parameters did not settle anything the form still needs.'
+            : 'Everything its parameters can settle is already declared.',
+        undetermined: result.undetermined
+      })
+      return
+    }
+
+    setValues((previous) => ({ ...previous, ...result.values }))
+    const parts = [`Filled in ${filled} field${filled === 1 ? '' : 's'} from the vehicle`]
+    // Overwriting an answer the operator gave is the one thing worth calling
+    // out: it means the vehicle disagrees with them.
+    if (result.overwrites.length > 0) {
+      parts.push(`${result.overwrites.length} replaced what you had answered`)
+    }
+    setImportNotice({
+      tone: result.overwrites.length > 0 ? 'warning' : 'ok',
+      text: `${parts.join(', ')}.`,
+      undetermined: result.undetermined
+    })
+  }, [steps, fields, values, parameters, kind, pwmTypeValues])
 
   // Writing the directory out. The whole assembly is pure; the only part that
   // needs a browser is handing the bytes over, which is these few lines.
@@ -1007,6 +1061,36 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         title="Declare the vehicle"
         subtitle={`${declaredCount} of ${fields.length} fields — exactly what the sequence reads, nothing more.`}
       >
+        {connected ? (
+          <p className="amc-guided__from-vehicle-row">
+            {/* The form asks two dozen questions a configured vehicle has
+                already answered. Offered rather than applied: a parameter says
+                how the vehicle is CONFIGURED, which is not the same as how it
+                is wired, and only the operator can see the difference. */}
+            <button style={buttonStyle()} onClick={readFromVehicle} disabled={!steps}>
+              Read what the vehicle already knows
+            </button>
+            <span>Fills in what its parameters can settle. Nothing is written to the vehicle.</span>
+          </p>
+        ) : null}
+        {importNotice ? (
+          <div className={`amc-guided__import-notice amc-guided__import-notice--${importNotice.tone}`}>
+            <p>{importNotice.text}</p>
+            {importNotice.undetermined.length > 0 ? (
+              <details>
+                <summary>
+                  {importNotice.undetermined.length} thing
+                  {importNotice.undetermined.length === 1 ? '' : 's'} its parameters could not settle
+                </summary>
+                <ul>
+                  {importNotice.undetermined.map((message) => (
+                    <li key={message}>{message}</li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
         {carryOver ? (
           <p className="amc-guided__carry-over">
             You declared a vehicle before connecting. Use it for this one?

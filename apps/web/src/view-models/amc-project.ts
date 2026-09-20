@@ -14,18 +14,99 @@
  */
 
 import {
+  type ConnectionTables,
+  type FirmwareKind,
   type ProjectFile,
   type VehicleProject,
   buildZip,
   defaultsFile,
+  importComponentsFromParameters,
   readVehicleProject,
   vehicleContext,
   vehicleFiles
 } from '@arduconfig/amc-steps'
+import connectionTablesJson from '@amc/data/connection-tables.json'
+
+// Extracted from AMC's own source by scripts/extract-connection-tables.py, so
+// the mapping from parameter values to hardware follows upstream rather than
+// being restated here.
+const connectionTables = connectionTablesJson as unknown as ConnectionTables
 import type { ParameterDocs } from '@arduconfig/amc-steps'
 
 import type { AmcSequence, ComponentField } from './amc-guided'
 import { buildComponentsJson } from './amc-guided'
+
+export interface ImportFromVehicleInputs {
+  readonly fields: readonly ComponentField[]
+  /** What the operator has already declared, by field key. */
+  readonly values: Readonly<Record<string, string>>
+  readonly parameters: Readonly<Record<string, number>>
+  readonly kind: FirmwareKind
+  /** `MOT_PWM_TYPE`'s documented values, preferred over the built-in table. */
+  readonly pwmTypeValues?: Readonly<Record<string, string>>
+}
+
+export interface ImportFromVehicle {
+  /** Fields to fill in, by field key — only ones the form actually has. */
+  readonly values: Readonly<Record<string, string>>
+  /** Which of those would change an answer the operator already gave. */
+  readonly overwrites: readonly string[]
+  /** What the vehicle's parameters could not settle, in the operator's words. */
+  readonly undetermined: readonly string[]
+  /** Derived fields the form has no home for, so nothing is silently dropped. */
+  readonly unmapped: readonly string[]
+}
+
+/**
+ * Read the declaration off the vehicle instead of asking for it.
+ *
+ * A configured flight controller has already answered most of the form:
+ * SERIAL3_PROTOCOL says a GPS is on serial 3, BATT_MONITOR says how the
+ * battery is measured, MOT_BAT_VOLT_MAX over a per-cell voltage gives the cell
+ * count. On AMC's own templates this fills in around 21 of the 24 fields.
+ *
+ * Returned rather than applied, and separated into what is new and what would
+ * overwrite: a parameter says how a vehicle is CONFIGURED, which is not the
+ * same as how it is wired, and the operator is the one who can see the
+ * difference.
+ */
+export function importFromVehicle(inputs: ImportFromVehicleInputs): ImportFromVehicle {
+  const { fields, values, parameters, kind, pwmTypeValues } = inputs
+  // The form is keyed by slash-joined path, and so is the import's idea of
+  // "what is already declared".
+  const current: Record<string, string> = {}
+  for (const field of fields) {
+    const value = values[field.key]?.trim()
+    if (value) current[field.key] = value
+  }
+
+  const { derived, undetermined } = importComponentsFromParameters(parameters, connectionTables, kind, {
+    current,
+    ...(pwmTypeValues ? { pwmTypeValues } : {})
+  })
+
+  const known = new Set(fields.map((field) => field.key))
+  const next: Record<string, string> = {}
+  const overwrites: string[] = []
+  const unmapped: string[] = []
+
+  for (const entry of derived) {
+    const key = entry.path.join('/')
+    // A field this sequence never reads has nowhere to go. Reported rather
+    // than dropped: it usually means the sequence and the import disagree
+    // about what a component is called.
+    if (!known.has(key)) {
+      unmapped.push(key)
+      continue
+    }
+    const existing = current[key]
+    if (existing === entry.value) continue
+    if (existing !== undefined) overwrites.push(key)
+    next[key] = entry.value
+  }
+
+  return { values: next, overwrites, undetermined, unmapped }
+}
 
 export interface ProjectExportInputs {
   readonly sequence: AmcSequence

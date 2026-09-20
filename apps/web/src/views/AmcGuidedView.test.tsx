@@ -451,3 +451,62 @@ describe('credit', () => {
     )
   })
 })
+
+describe('reading the declaration off the vehicle', () => {
+  const configured = {
+    FRAME_CLASS: 1,
+    GPS1_TYPE: 2,
+    SERIAL3_PROTOCOL: 5,
+    RC_PROTOCOLS: 8,
+    MOT_PWM_TYPE: 6,
+    BATT_MONITOR: 4,
+    BATT_CAPACITY: 5000,
+    MOT_BAT_VOLT_MAX: 16.8
+  }
+
+  it('is not offered without a vehicle to read', async () => {
+    // Nothing to read from, so the control would only ever report failure.
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+    expect(screen.queryByRole('button', { name: /Read what the vehicle already knows/i })).toBeNull()
+  })
+
+  it('fills the form in from the vehicle and says what it did', async () => {
+    render(<AmcGuidedView {...base} connected parameters={configured} />)
+    await whenLoaded()
+
+    const diameter = document.getElementById(
+      'amc-field-Battery-Specifications-Capacity-mAh'
+    ) as HTMLInputElement
+    expect(diameter.value).toBe('')
+
+    await act(async () => {
+      screen.getByRole('button', { name: /Read what the vehicle already knows/i }).click()
+    })
+
+    // The capacity came off the vehicle, not out of the operator's head.
+    await waitFor(() => expect(diameter.value).toBe('5000'))
+    expect(screen.getByText(/Filled in \d+ fields from the vehicle/)).toBeTruthy()
+  })
+
+  it('says when it would replace an answer the operator gave', async () => {
+    // A parameter says how the vehicle is configured, not how it is wired, so
+    // disagreeing with the operator is worth calling out rather than doing
+    // quietly.
+    const key = 'arduconfig.amc-progress.uid:import'
+    saveAmcProgress(key, {
+      vehicleKind: 'ArduCopter',
+      declaration: { 'Battery/Specifications/Capacity mAh': '1234' },
+      reviewed: []
+    })
+    render(<AmcGuidedView {...base} connected parameters={configured} progressKey={key} />)
+    await whenLoaded()
+    await waitFor(() => expect(screen.getByDisplayValue('1234')).toBeTruthy())
+
+    await act(async () => {
+      screen.getByRole('button', { name: /Read what the vehicle already knows/i }).click()
+    })
+
+    await waitFor(() => expect(screen.getByText(/replaced what you had answered/)).toBeTruthy())
+  })
+})

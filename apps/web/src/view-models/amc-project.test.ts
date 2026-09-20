@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { fieldsFor, loadSequence } from './amc-guided'
-import { buildProject, projectArchive, projectFilename, readProject } from './amc-project'
+import { buildProject, importFromVehicle, projectArchive, projectFilename, readProject } from './amc-project'
 
 // The writing and reading halves are proven against AMC's own directories in
 // the fork's test suite. What lives here is the part that closes the loop for
@@ -131,5 +131,96 @@ describe('the download', () => {
     expect(projectFilename('../../etc/passwd')).toBe('.._.._etc_passwd.zip')
     expect(projectFilename('')).toBe('vehicle.zip')
     expect(projectFilename(undefined)).toBe('vehicle.zip')
+  })
+})
+
+describe('reading the declaration off the vehicle', () => {
+  /** A configured quadcopter, as its parameters would report it. */
+  const configured = {
+    FRAME_CLASS: 1,
+    GPS1_TYPE: 2,
+    SERIAL3_PROTOCOL: 5,
+    SERIAL1_PROTOCOL: 2,
+    RC_PROTOCOLS: 8,
+    MOT_PWM_TYPE: 6,
+    BATT_MONITOR: 4,
+    BATT_CAPACITY: 5000,
+    MOT_BAT_VOLT_MAX: 16.8
+  }
+
+  it('fills in what the vehicle can answer', () => {
+    const result = importFromVehicle({ fields, values: {}, parameters: configured, kind: 'ArduCopter' })
+
+    // The point of the feature: a configured vehicle answers most of the form.
+    expect(Object.keys(result.values).length).toBeGreaterThan(8)
+    expect(result.values['Frame/Specifications/Frame class']).toBe('Quad')
+    expect(result.values['Battery/Specifications/Number of cells']).toBe('4')
+    expect(result.values['Battery/Specifications/Capacity mAh']).toBe('5000')
+    expect(result.values['RC Receiver/FC Connection/Protocol']).toBe('SBUS')
+    // Three derived fields have no box on this form, and that is correct: the
+    // field list is built from what the SEQUENCE reads ("exactly what the
+    // sequence reads, nothing more"), and no ArduCopter expression reads the
+    // telemetry protocol, the ESC's connection type or the battery chemistry.
+    // Reported rather than dropped, so a derived value never disappears
+    // silently — and a sequence that starts reading one will show up here.
+    expect([...result.unmapped].sort()).toEqual([
+      'Battery/Specifications/Chemistry',
+      'ESC/FC->ESC Connection/Type',
+      'Telemetry/FC Connection/Protocol'
+    ])
+  })
+
+  it('says which answers it would replace', () => {
+    // A parameter says how the vehicle is CONFIGURED, not how it is wired, so
+    // overwriting the operator is the one outcome worth calling out.
+    const declared = { 'Frame/Specifications/Frame class': 'Hexa' }
+    const result = importFromVehicle({
+      fields,
+      values: declared,
+      parameters: configured,
+      kind: 'ArduCopter'
+    })
+    expect(result.overwrites).toContain('Frame/Specifications/Frame class')
+    expect(result.values['Frame/Specifications/Frame class']).toBe('Quad')
+  })
+
+  it('leaves an answer that already agrees alone', () => {
+    const result = importFromVehicle({
+      fields,
+      values: { 'Frame/Specifications/Frame class': 'Quad' },
+      parameters: configured,
+      kind: 'ArduCopter'
+    })
+    expect(result.overwrites).not.toContain('Frame/Specifications/Frame class')
+    expect(result.values['Frame/Specifications/Frame class']).toBeUndefined()
+  })
+
+  it('reports what the parameters could not settle', () => {
+    // Two ports set to GPS: the parameters do not say which one has the
+    // receiver, and saying so beats picking one silently.
+    const result = importFromVehicle({
+      fields,
+      values: {},
+      parameters: { ...configured, SERIAL4_PROTOCOL: 5 },
+      kind: 'ArduCopter'
+    })
+    expect(result.undetermined.some((m) => /SERIAL3 and SERIAL4/.test(m))).toBe(true)
+  })
+
+  it('derives nothing from a vehicle that has reported nothing', () => {
+    const result = importFromVehicle({ fields, values: {}, parameters: {}, kind: 'ArduCopter' })
+    expect(result.values).toEqual({})
+    expect(result.overwrites).toEqual([])
+  })
+
+  it("prefers the firmware's own MOT_PWM_TYPE labels over the built-in table", () => {
+    const result = importFromVehicle({
+      fields,
+      values: {},
+      parameters: configured,
+      kind: 'ArduCopter',
+      pwmTypeValues: { '6': 'DShot600-from-firmware' }
+    })
+    expect(result.values['ESC/FC->ESC Connection/Protocol']).toBe('DShot600-from-firmware')
   })
 })

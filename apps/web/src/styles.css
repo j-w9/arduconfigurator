@@ -19411,6 +19411,55 @@ button.mavlink-inspector__sent-row {
   color: var(--primary-500);
 }
 
+/* Reading the declaration off the vehicle. */
+.amc-guided__from-vehicle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.amc-guided__from-vehicle-row span {
+  color: var(--text-muted);
+}
+
+.amc-guided__import-notice {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.amc-guided__import-notice p {
+  margin: 0;
+}
+
+.amc-guided__import-notice--ok {
+  border-color: var(--primary-500);
+  background: var(--primary-transparent-1);
+}
+
+.amc-guided__import-notice--warning {
+  border-color: var(--warning);
+  background: var(--warning-weak);
+}
+
+.amc-guided__import-notice details {
+  margin-top: 6px;
+}
+
+.amc-guided__import-notice summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.amc-guided__import-notice ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  color: var(--text-muted);
+}
+
 /* The configuration directory: writing one out, reading one back. */
 .amc-guided__project-blurb {
   margin: 0 0 12px;
