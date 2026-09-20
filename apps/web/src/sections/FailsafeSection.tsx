@@ -141,9 +141,18 @@ export function FailsafeSection(props: FailsafeSectionProps) {
   // BATT_LOW_VOLT (a curated row) and BATT_LOW_TIMER (a metadata one) to the
   // operator setting up a battery failsafe — only in where the app happened to
   // get them from. One grid, one Save.
+  // Metadata rows join the box their curated siblings are in — a low-battery
+  // hold time is part of setting up the low-battery failsafe, not a loose
+  // parameter that happens to start with BATT_.
+  const groupFor = (paramId: string): string | undefined => {
+    if (/^BATT_(LOW|FS_LOW)/.test(paramId)) return 'Low battery'
+    if (/^BATT_(CRT|FS_CRT)/.test(paramId)) return 'Critical battery'
+    return undefined
+  }
   const additionalRows: FailsafeViewRow[] = additionalGroups.flatMap((group) =>
     group.parameters.map((parameter) => ({
       source: routeFor(parameter.id),
+      group: groupFor(parameter.id),
       paramId: parameter.id,
       formatted: parameter.value !== undefined ? String(parameter.value) : 'Not synced',
       isSynced: parameter.value !== undefined,

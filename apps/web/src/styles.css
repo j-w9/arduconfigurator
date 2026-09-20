@@ -13929,6 +13929,10 @@ details.metadata-settings-section:not([open]) > summary::after {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
+  /* Each card is as tall as its own content. Without this the grid stretches
+     every card to match the tallest — the mode-channel one, which carries a
+     dropdown — so the two text cards beside it were mostly empty space. */
+  align-items: start;
 }
 
 .modes-status__card {
@@ -13945,7 +13949,24 @@ details.metadata-settings-section:not([open]) > summary::after {
   background: var(--bg-panel-raised);
 }
 
-.modes-status__card span {
+/* The mode-channel card hosts a real editor. Nested inside a card that already
+   has a border and a background, the field's own box drew a second frame with
+   its own padding — which is what pushed its info dot out past that frame's
+   right edge and made the card twice the height it needed. Flush inside the
+   card instead. */
+.modes-status__card .scoped-editor-field {
+  padding: 0;
+  border: 0;
+  background: none;
+  gap: 4px;
+}
+
+/* DIRECT children only. These rules describe the card's own label/value/hint
+   line, but as descendant selectors they also hit the internals of any editor
+   nested in a card — and `small { flex: 1 0 100% }` landing on the field's
+   parameter-id line is what pushed its info dot onto a line of its own,
+   outside the field it belongs to. */
+.modes-status__card > span {
   flex: 0 0 auto;
   font-family: var(--font-data);
   font-size: var(--text-xs);
@@ -13954,14 +13975,14 @@ details.metadata-settings-section:not([open]) > summary::after {
   color: var(--text-muted);
 }
 
-.modes-status__card strong {
+.modes-status__card > strong {
   flex: 1 1 auto;
   min-width: 0;
   font-size: var(--text-lg);
   color: var(--text);
 }
 
-.modes-status__card small {
+.modes-status__card > small {
   flex: 1 0 100%;
   color: var(--text-muted);
   font-size: var(--text-sm);
