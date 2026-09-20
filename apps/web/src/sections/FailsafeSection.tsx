@@ -39,7 +39,6 @@ export interface FailsafeSectionProps {
     scopeLabel: string
   ) => void | Promise<void>
   onDiscardScopedDrafts: (paramIds: readonly string[], scopeLabel: string) => void
-  onOpenPower: () => void
   /** Additional-settings groups for the 'failsafe' view category (the
    *  metadata-driven catch-all surface that used to leak into Power). */
   failsafeAdditionalGroups: readonly AdditionalSettingsGroup[]
@@ -76,7 +75,6 @@ export function FailsafeSection(props: FailsafeSectionProps) {
     busyAction,
     onApplyScopedDrafts,
     onDiscardScopedDrafts,
-    onOpenPower,
     failsafeAdditionalGroups,
     failsafeAdditionalDraftEntries,
     failsafeAdditionalStagedDrafts,
@@ -248,7 +246,6 @@ export function FailsafeSection(props: FailsafeSectionProps) {
         isBusy={busyAction !== undefined}
         onApply={() => void onApplyScopedDrafts(failsafeDraftEntries, 'failsafe:apply', 'Failsafe')}
         onRevert={() => onDiscardScopedDrafts(failsafeDraftEntries.map((entry) => entry.id), 'failsafe')}
-        onOpenPower={onOpenPower}
         // Split by which failsafe each parameter belongs to, rather than one
         // "additional settings" pile at the end of the tab.
         extraSlots={extraSlots}

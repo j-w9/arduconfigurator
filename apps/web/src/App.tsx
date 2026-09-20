@@ -9084,7 +9084,6 @@ export function App() {
           busyAction={busyAction}
           onApplyScopedDrafts={handleApplyScopedParameterDrafts}
           onDiscardScopedDrafts={handleDiscardScopedParameterDrafts}
-          onOpenPower={() => setActiveViewId('config')}
           failsafeAdditionalGroups={failsafeAdditionalGroups}
           failsafeAdditionalDraftEntries={failsafeAdditionalDraftEntries}
           failsafeAdditionalStagedDrafts={failsafeAdditionalStagedDrafts}

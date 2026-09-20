@@ -1727,7 +1727,6 @@ test.describe('Failsafe view', () => {
     await expect(page.getByTestId('failsafe-row-BATT_LOW_VOLT').locator('input')).toHaveValue('14.4')
     await expect(page.getByTestId('failsafe-row-BATT_CRT_VOLT').locator('input')).toHaveValue('13.8')
 
-    await expect(page.getByTestId('failsafe-go-to-power')).toBeVisible()
   })
 
   test('the rows are grouped into sub-tabs by kind of failsafe', async ({ page }) => {
@@ -1816,19 +1815,16 @@ test.describe('Failsafe view', () => {
     await expect(save).toHaveText('Save Failsafe (0)', { timeout: COMMAND_ACK_TIMEOUT })
   })
 
-  test('deep-link button navigates to the battery setup, now under Config', async ({ page }) => {
-    // Power stopped being its own tab and became a Config category. The deep
-    // link has to follow the surface, or Failsafe points at a tab that is not
-    // there any more.
+  test('no "also editable in Power" footnote', async ({ page }) => {
+    // The tab used to end with a paragraph saying the battery and RC-loss
+    // thresholds are editable in Power too, and a button to go there. Every
+    // tab in this app shares one staged-write model, so saying it here was
+    // noise, and the deep link sent people away from the tab they had just
+    // opened to do the thing they came for.
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'failsafe')
-
-    await page.getByTestId('failsafe-go-to-power').click()
-
-    await expect(page.getByTestId('workspace-view-title')).toHaveText('Config')
-    await page.getByTestId('config-category-power').click()
-    await expect(page.getByText('Battery configuration')).toBeVisible()
+    await expect(page.getByTestId('failsafe-go-to-power')).toHaveCount(0)
   })
 
   test('footer counts are spaced apart, not collapsed into "0 staged0 invalid"', async ({ page }) => {
