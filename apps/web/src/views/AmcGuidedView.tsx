@@ -25,7 +25,15 @@ const connectionPairings = connectionPairingsJson as ConnectionPairings
 const connectionTables = connectionTablesJson as unknown as ConnectionTables
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
-import { buildProject, importFromVehicle, projectArchive, projectFilename, readProject } from '../view-models/amc-project'
+import {
+  buildProject,
+  importFromVehicle,
+  projectArchive,
+  projectFilename,
+  readProject,
+  templateValues,
+  vehicleTemplates
+} from '../view-models/amc-project'
 import {
   UNATTACHED_KEY,
   clearAmcProgress,
@@ -924,6 +932,28 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   // rebuilt once it has loaded.
   const fields = useMemo(() => (steps ? fieldsFor(steps, docs) : []), [steps, docs])
 
+  const templates = useMemo(() => vehicleTemplates(fields, kind), [fields, kind])
+
+  const applyTemplate = useCallback(
+    (id: string) => {
+      const values = templateValues(id, fields)
+      const filled = Object.keys(values).length
+      if (filled === 0) return
+      // Replaces rather than merges: a template describes one coherent
+      // aircraft, and half of one vehicle mixed with half of another is a
+      // vehicle that does not exist.
+      setValues(values)
+      setImportNotice({
+        tone: 'ok',
+        text: `Started from ${id.split('/')[1]?.replace(/_/g, ' ')}: ${filled} field${
+          filled === 1 ? '' : 's'
+        } filled in. Correct anything that differs from your vehicle.`,
+        undetermined: []
+      })
+    },
+    [fields]
+  )
+
   // The firmware version unblocks more of the sequence than any other field,
   // and the vehicle reports it -- so it is read off the link rather than typed
   // or picked from a list of the versions other aircraft happened to run.
@@ -1261,6 +1291,30 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
           <span>
             {logNotice ?? 'Marks the messages each step should have produced. Read in your browser.'}
           </span>
+        </p>
+        <p className="amc-guided__from-vehicle-row">
+          {/* A vehicle much like one AMC already describes is most of this
+              form answered by someone who owned that aircraft. Still a
+              starting point, not a claim about their vehicle. */}
+          <label>
+            Start from a similar vehicle
+            <select
+              data-testid="amc-template-select"
+              value=""
+              onChange={(event) => {
+                if (event.target.value) applyTemplate(event.target.value)
+                event.target.value = ''
+              }}
+            >
+              <option value="">Choose one…</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.label} — answers {template.answers}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span>Fills the form in from AMC&apos;s own vehicles. Correct anything that differs.</span>
         </p>
         {connected ? (
           <p className="amc-guided__from-vehicle-row">

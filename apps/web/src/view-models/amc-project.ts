@@ -22,12 +22,14 @@ import {
   defaultsFile,
   importComponentsFromParameters,
   readVehicleProject,
+  unaccountedParameters,
   vehicleContext,
   vehicleFiles
 } from '@arduconfig/amc-steps'
 import type { ParameterRename, UpgradeTables } from '@arduconfig/amc-steps'
 import { upgradeParameters, upgradesBetween } from '@arduconfig/amc-steps'
 import connectionTablesJson from '@amc/data/connection-tables.json'
+import vehicleTemplatesJson from '@amc/data/vehicle-templates.json'
 
 // Extracted from AMC's own source by scripts/extract-connection-tables.py, so
 // the mapping from parameter values to hardware follows upstream rather than
@@ -35,6 +37,8 @@ import connectionTablesJson from '@amc/data/connection-tables.json'
 const connectionTables = connectionTablesJson as unknown as ConnectionTables
 // The same file carries ArduPilot's parameter renames between versions.
 const upgradeTables = connectionTablesJson as unknown as UpgradeTables
+// The 25 vehicles AMC ships a declaration for, as starting points.
+const templateDocuments = vehicleTemplatesJson as unknown as Readonly<Record<string, unknown>>
 import type { ParameterDocs } from '@arduconfig/amc-steps'
 
 import type { AmcSequence, ComponentField } from './amc-guided'
@@ -112,6 +116,61 @@ export function importFromVehicle(inputs: ImportFromVehicleInputs): ImportFromVe
   return { values: next, overwrites, undetermined, unmapped }
 }
 
+export interface VehicleTemplate {
+  /** `ArduCopter/Holybro_X500` */
+  readonly id: string
+  /** The sequence it belongs to, so the list can be narrowed to one vehicle. */
+  readonly kind: string
+  /** `Holybro X500` */
+  readonly label: string
+  /** How many of THIS form's fields it answers. */
+  readonly answers: number
+}
+
+/**
+ * The vehicles AMC already describes, as starting points.
+ *
+ * A quadcopter much like a Holybro X500 is most of the declaration form
+ * already answered, by someone who owned that aircraft. The operator still
+ * corrects it — a template is a starting point, not a claim about their
+ * vehicle — but starting from "nearly right" beats starting from empty.
+ */
+export function vehicleTemplates(
+  fields: readonly ComponentField[],
+  kind?: string
+): readonly VehicleTemplate[] {
+  const known = new Set(fields.map((field) => field.key))
+  const templates: VehicleTemplate[] = []
+
+  for (const [id, components] of Object.entries(templateDocuments)) {
+    const [templateKind = '', name = ''] = id.split('/')
+    if (kind !== undefined && templateKind !== kind) continue
+    const values = valuesFromComponents({ Components: components }, fields)
+    templates.push({
+      id,
+      kind: templateKind,
+      // `Holybro_X500_V2` reads as `Holybro X500 V2`.
+      label: name.replace(/_/g, ' '),
+      answers: Object.keys(values).filter((key) => known.has(key)).length
+    })
+  }
+
+  // Most complete first: a template that answers two fields is a worse
+  // starting point than one that answers twenty, and the list should say so
+  // by its order rather than making the operator open each one.
+  return templates.sort((a, b) => b.answers - a.answers || a.label.localeCompare(b.label))
+}
+
+/** A template's declaration, in the form's own keys. */
+export function templateValues(
+  id: string,
+  fields: readonly ComponentField[]
+): Readonly<Record<string, string>> {
+  const components = templateDocuments[id]
+  if (!components) return {}
+  return valuesFromComponents({ Components: components }, fields)
+}
+
 export interface ProjectExportInputs {
   readonly sequence: AmcSequence
   readonly fields: readonly ComponentField[]
@@ -160,6 +219,21 @@ export function buildProject(inputs: ProjectExportInputs): ProjectExport {
   }
   for (const step of steps) {
     files.push({ filename: step.filename, text: step.text })
+  }
+
+  // What is on the aircraft that the sequence did NOT decide. An operator
+  // finishing the sequence is left asking "is that everything?", and without
+  // this the directory quietly implies that it is.
+  if (Object.keys(parameters).length > 0) {
+    const unaccounted = unaccountedParameters(steps, parameters, {
+      ...(defaults ? { defaults } : {})
+    })
+    // Only when there is something to say: an empty file would assert that
+    // the sequence accounts for the whole vehicle, which is a stronger claim
+    // than its absence makes.
+    if (unaccounted.count > 0) {
+      files.push({ filename: unaccounted.filename, text: unaccounted.text })
+    }
   }
 
   return {

@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import { fieldsFor, loadSequence } from './amc-guided'
-import { buildProject, importFromVehicle, projectArchive, projectFilename, readProject } from './amc-project'
+import {
+  buildProject,
+  importFromVehicle,
+  projectArchive,
+  projectFilename,
+  readProject,
+  templateValues,
+  vehicleTemplates
+} from './amc-project'
 
 // The writing and reading halves are proven against AMC's own directories in
 // the fork's test suite. What lives here is the part that closes the loop for
@@ -267,5 +275,87 @@ describe('opening a directory written for older firmware', () => {
 
     const noFile = readProject(copter, oldProject(''), fields, { vehicleFirmwareVersion: '4.7.0' })
     expect(noFile.steps.find((s) => s.filename === '13_initial_atc.param')?.entries.has('ANGLE_MAX')).toBe(true)
+  })
+})
+
+describe('what the sequence did not decide', () => {
+  it('writes a file naming what is on the vehicle that no step set', () => {
+    // The directory says what the method decided. Without this it quietly
+    // implies that is the whole vehicle.
+    const project = buildProject({
+      sequence: copter,
+      fields,
+      values: declare(),
+      parameters: { SOME_HAND_SET_THING: 7 }
+    })
+    const file = project.files.find((f) => f.filename === 'fc_params_not_accounted_for.param')
+    expect(file?.text).toMatch(/SOME_HAND_SET_THING/)
+    expect(file?.text).toMatch(/Not set by any step/)
+  })
+
+  it('leaves the file out when there is nothing to say', () => {
+    // An empty file would assert that the sequence accounts for the whole
+    // vehicle, which is a stronger claim than its absence makes.
+    const project = buildProject({ sequence: copter, fields, values: declare(), parameters: {} })
+    expect(project.files.some((f) => f.filename === 'fc_params_not_accounted_for.param')).toBe(false)
+  })
+
+  it('does not report a value still at its firmware default', () => {
+    const project = buildProject({
+      sequence: copter,
+      fields,
+      values: declare(),
+      parameters: { UNTOUCHED: 3 },
+      defaults: new Map([['UNTOUCHED', 3]])
+    })
+    const file = project.files.find((f) => f.filename === 'fc_params_not_accounted_for.param')
+    expect(file?.text ?? '').not.toMatch(/UNTOUCHED/)
+  })
+})
+
+describe('starting from a similar vehicle', () => {
+  it('offers AMC\'s own vehicles for this sequence, most complete first', () => {
+    const copterTemplates = vehicleTemplates(fields, 'ArduCopter')
+    expect(copterTemplates.length).toBeGreaterThan(10)
+    // Narrowed to the sequence: a Rover's declaration is not a starting point
+    // for a copter.
+    expect(copterTemplates.every((t) => t.kind === 'ArduCopter')).toBe(true)
+    // A template answering two fields is a worse starting point than one
+    // answering twenty, and the order should say so without the operator
+    // opening each.
+    for (let i = 1; i < copterTemplates.length; i += 1) {
+      expect(copterTemplates[i - 1]!.answers).toBeGreaterThanOrEqual(copterTemplates[i]!.answers)
+    }
+    expect(copterTemplates[0]!.answers).toBeGreaterThan(5)
+    // Readable, not the directory name.
+    expect(copterTemplates.some((t) => t.label.includes('_'))).toBe(false)
+  })
+
+  it('fills the form in from the template the operator chose', () => {
+    const [first] = vehicleTemplates(fields, 'ArduCopter')
+    const values = templateValues(first!.id, fields)
+    expect(Object.keys(values).length).toBe(first!.answers)
+    // Only fields this form actually has.
+    const known = new Set(fields.map((f) => f.key))
+    for (const key of Object.keys(values)) expect(known.has(key)).toBe(true)
+  })
+
+  it('and the result runs the sequence rather than just filling boxes', () => {
+    // The point of a starting point: the sequence can compute from it.
+    const [first] = vehicleTemplates(fields, 'ArduCopter')
+    const project = buildProject({
+      sequence: copter,
+      fields,
+      values: templateValues(first!.id, fields),
+      parameters: {}
+    })
+    expect(project.parameterCount).toBeGreaterThan(0)
+    // Fewer unevaluable steps than an empty declaration leaves.
+    const empty = buildProject({ sequence: copter, fields, values: {}, parameters: {} })
+    expect(project.incomplete.length).toBeLessThan(empty.incomplete.length)
+  })
+
+  it('an unknown template id changes nothing', () => {
+    expect(templateValues('NoSuch/Vehicle', fields)).toEqual({})
   })
 })

@@ -658,3 +658,28 @@ describe('writing one step at a time', () => {
     expect((write as HTMLButtonElement).disabled).toBe(true)
   })
 })
+
+describe('starting from a similar vehicle', () => {
+  it('fills the form from the chosen template and says what it did', async () => {
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+
+    const select = (await screen.findByTestId('amc-template-select')) as HTMLSelectElement
+    // AMC's own vehicles, narrowed to this sequence.
+    const options = [...select.options].filter((option) => option.value !== '')
+    expect(options.length).toBeGreaterThan(10)
+    expect(options.every((option) => option.value.startsWith('ArduCopter/'))).toBe(true)
+
+    const declaredBefore = screen.getByText(/0 of \d+ fields/)
+    expect(declaredBefore).toBeTruthy()
+
+    await act(async () => {
+      fireEvent.change(select, { target: { value: options[0]!.value } })
+    })
+
+    await waitFor(() => expect(screen.getByText(/Started from .*fields filled in/)).toBeTruthy())
+    // The count on the form moved off zero, which is the thing an operator
+    // sees.
+    await waitFor(() => expect(screen.queryByText(/^0 of \d+ fields/)).toBeNull())
+  })
+})
