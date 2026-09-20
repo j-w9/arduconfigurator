@@ -32,14 +32,28 @@ describe('resolveSetupConfirmationRecord', () => {
     ).toBeUndefined()
   })
 
-  it('drops a confirmation for a section that has no signature at all', () => {
+  it('keeps a confirmation for a section that defines no signature', () => {
+    // This assertion used to expect the opposite, and it was encoding a
+    // deadlock rather than protecting against one.
+    //
+    // buildSetupConfirmationSignatures only defines signatures for the Copter
+    // section ids. The generic ids every other vehicle declares — 'sensors',
+    // 'verify', 'drive', 'frame', 'controls' — have none, so dropping the
+    // record on `signature === undefined` threw their sign-offs away the
+    // instant they were made: the criterion stayed pending, the step could
+    // never complete, and the sequential lock stranded the whole flow behind
+    // it. A Plane could not get past step 3 of 8.
+    //
+    // `undefined` means "this section has no signature defined" (see the
+    // input's own docs), not "the signature failed" — and a section with
+    // nothing to compare against has nothing that can make its sign-off stale.
     expect(
       resolveSetupConfirmationRecord({
         record,
         signature: undefined,
         parameterSyncComplete: true
       })
-    ).toBeUndefined()
+    ).toEqual(record)
   })
 
   it('returns nothing when the operator never confirmed the section', () => {

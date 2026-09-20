@@ -664,6 +664,49 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           const actionState = snapshot.guidedActions['calibrate-level']
           confirmationOutcome = levelConfirmation?.outcome
           const levelCalRecorded = actionState.status === 'succeeded' || levelConfirmation !== undefined
+          // "Already Calibrated — Continue" has to actually let you continue.
+          //
+          // Accelerometer and compass both collapse to a single met criterion
+          // when the operator signs the step off as done elsewhere; level did
+          // not, so its waiver satisfied only the "recorded" criterion and left
+          // "completed successfully" pending forever. The step could not
+          // complete — and the Clear button below is disabled unless the
+          // in-app calibration succeeded, so the waiver could not be undone
+          // either. A button promising continuation that strands you, with its
+          // own undo greyed out.
+          if (levelConfirmation?.outcome === 'already-done') {
+            criteria = [
+              {
+                label: 'Operator marked board-level calibration as already completed externally',
+                met: true
+              }
+            ]
+            summary = 'Board-level calibration marked as already completed outside the configurator.'
+            detail =
+              'This step was resolved from known-good external setup rather than rerun here. Re-run the level calibration here any time you want to reconfirm it in-app.'
+            evidence = [
+              `Outcome: ${formatSetupOutcome(levelConfirmation.outcome)}`,
+              `Review: confirmed at ${formatConfirmationTime(levelConfirmation.confirmedAtMs)}`,
+              ...section.notes
+            ].slice(0, 4)
+            actions.unshift({
+              kind: 'clear-confirmation',
+              label: 'Clear External Level Confirmation',
+              tone: 'primary',
+              sectionId: 'level'
+            })
+            actions.splice(1, 0, {
+              kind: 'guided',
+              label:
+                actionState.status === 'idle'
+                  ? 'Run Level Calibration Instead'
+                  : guidedActionButtonLabel('calibrate-level', snapshot, busyAction),
+              tone: 'secondary',
+              actionId: 'calibrate-level',
+              disabled: busyAction !== undefined || !canRunGuidedAction(snapshot, 'calibrate-level')
+            })
+            break
+          }
           criteria = [
             {
               label: 'Board-level calibration completed successfully',

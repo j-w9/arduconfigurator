@@ -133,6 +133,64 @@ test.describe('Guided setup flow', () => {
     })
   }
 
+  test('"Already Calibrated — Continue" actually lets you continue', async ({ page }) => {
+    // Found by walking the flow: the level step's waiver recorded an
+    // 'already-done' confirmation that satisfied only its "recorded"
+    // criterion, leaving "completed successfully" pending forever — so the
+    // step could not complete. Its Clear button is disabled unless the in-app
+    // calibration succeeded, so the waiver could not be undone either. A
+    // button promising continuation that stranded you, with its own undo
+    // greyed out. Accelerometer and compass had always collapsed to a single
+    // met criterion here; level was the one that did not.
+    await openGuidedSetup(page, 'level')
+    const step = page.getByTestId('setup-step-level')
+
+    await page.getByRole('button', { name: /Already Calibrated — Continue/i }).click()
+
+    // The step completes...
+    await expect(step).toHaveAttribute('data-step-state', 'complete')
+    // ...the flow moves on...
+    await expect(page.getByRole('button', { name: /Continue to Compass Calibration/i })).toBeEnabled()
+    // ...and the waiver is undoable, which is what made this a trap rather
+    // than an inconvenience.
+    await expect(page.getByRole('button', { name: /Clear External Level Confirmation/i })).toBeEnabled()
+    // The in-app calibration stays available as the other way out.
+    await expect(page.getByRole('button', { name: /Run Level Calibration Instead/i })).toBeVisible()
+  })
+
+  test('a non-Copter vehicle can actually sign off its generic steps', async ({ page }) => {
+    // Plane, Rover and Sub declare section ids the Copter switch does not name
+    // ('sensors', 'verify', 'drive', 'frame', 'controls'), and those steps are
+    // completed by an operator sign-off. confirmSetupSection used to return
+    // SILENTLY unless the section had a signature — and signatures are defined
+    // only for the Copter ids. So the button did nothing: no record, no
+    // criterion met, no error, and the sequential lock stranded everything
+    // behind it. A Plane could not get past step 3 of 8.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo-plane')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
+      timeout: VEHICLE_CONNECT_TIMEOUT
+    })
+    await page.getByTestId('view-button-guided-setup').click()
+    await expect(page.getByTestId('setup-wizard')).toBeVisible({ timeout: 20_000 })
+
+    // Reach the first generic step the way the flow does.
+    await page.getByRole('button', { name: /Continue to Airframe/i }).click()
+    await page.getByRole('button', { name: /Orientation Verified Elsewhere/i }).click()
+    await page.getByRole('button', { name: /Continue to Sensors/i }).click()
+
+    const sensors = page.getByTestId('setup-step-sensors')
+    await expect(sensors).toHaveAttribute('data-step-state', 'current')
+    await page.getByRole('button', { name: /Confirm Sensors Review/i }).click()
+
+    // The sign-off sticks: criterion met, step complete, next step reachable.
+    await expect(sensors).toHaveAttribute('data-step-state', 'complete')
+    await expect(page.getByRole('button', { name: /Continue to Radio/i })).toBeEnabled()
+    // ...and it is undoable, like every other confirmed step.
+    await expect(page.getByRole('button', { name: /Clear Sensors Review/i })).toBeVisible()
+  })
+
   test('the first step offers no way backwards, the last no way onwards', async ({ page }) => {
     // Both ends are where a wizard usually breaks: a Previous that leaves the
     // flow, or a Continue past the end.

@@ -5713,10 +5713,20 @@ export function App() {
   const activeOutputTask = outputTaskCards.find((task) => task.id === activeOutputTaskId) ?? outputTaskCards[0]
 
   function confirmSetupSection(sectionId: string, outcome: SetupSectionOutcome = 'complete'): void {
+    // A section with no signature still gets confirmed.
+    //
+    // This used to return silently when the section had no signature defined —
+    // and buildSetupConfirmationSignatures only defines them for the COPTER
+    // section ids. So on Plane, Rover and Sub, pressing "Confirm Sensors
+    // Review" (or Verify, Drive, Frame, Controls) did nothing whatsoever: no
+    // record, no criterion met, no error. The step could never complete and
+    // the sequential lock stranded the whole flow behind it — a Plane could
+    // not get past step 3 of 8.
+    //
+    // Storing it with `signature: undefined` records what the operator
+    // actually did; the resolver holds such a record because a section with
+    // nothing to compare against has nothing that can make it stale.
     const signature = setupConfirmationSignatures[sectionId]
-    if (signature === undefined) {
-      return
-    }
 
     setSetupConfirmations((current) => ({
       ...current,

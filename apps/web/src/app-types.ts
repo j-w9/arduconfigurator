@@ -154,7 +154,13 @@ export interface SetupFlowCriterion {
 export type SetupFlowSequenceState = 'locked' | 'current' | 'complete'
 
 export interface SetupConfirmationRecord {
-  signature: string
+  /**
+   * The configuration this sign-off was made against, or undefined for a
+   * section that defines no signature (the generic steps every non-Copter
+   * vehicle declares). Undefined means "nothing can make this stale", not
+   * "unverified" — see resolveSetupConfirmationRecord.
+   */
+  signature: string | undefined
   confirmedAtMs: number
   outcome: SetupSectionOutcome
 }
