@@ -112,6 +112,13 @@ export function FailsafeSection(props: FailsafeSectionProps) {
       parameters: group.parameters.filter((parameter) => !failsafeIds.has(parameter.id))
     }))
     .filter((group) => group.parameters.length > 0)
+  // The geofence gets its own sub-tab rather than sitting in "additional
+  // settings" under Advanced. It is a failsafe in its own right — a boundary
+  // with a breach action — and it is the one in here a basic-mode operator is
+  // most likely to be looking for.
+  const fenceGroups = additionalGroups.filter((group) => group.categoryId === 'fence')
+  const otherAdditionalGroups = additionalGroups.filter((group) => group.categoryId !== 'fence')
+  const fenceParamIds = new Set(fenceGroups.flatMap((group) => group.parameters.map((parameter) => parameter.id)))
   const additionalDraftEntries = failsafeAdditionalDraftEntries.filter((entry) => !failsafeIds.has(entry.id)) as ParameterDraftEntry[]
   const additionalStagedDrafts = failsafeAdditionalStagedDrafts.filter((entry) => !failsafeIds.has(entry.id)) as ParameterDraftEntry[]
   const additionalInvalidDrafts = failsafeAdditionalInvalidDrafts.filter((entry) => !failsafeIds.has(entry.id)) as ParameterDraftEntry[]
@@ -150,18 +157,35 @@ export function FailsafeSection(props: FailsafeSectionProps) {
         onApply={() => void onApplyScopedDrafts(failsafeDraftEntries, 'failsafe:apply', 'Failsafe')}
         onRevert={() => onDiscardScopedDrafts(failsafeDraftEntries.map((entry) => entry.id), 'failsafe')}
         onOpenPower={onOpenPower}
+        // The metadata-backed extras belong with the Advanced rows, not stacked
+        // under every tab.
+        fenceSlot={
+          fenceGroups.length > 0
+            ? renderAdditionalSettingsCard(
+                'Geofence',
+                'A boundary and what the vehicle does when it reaches one.',
+                fenceGroups,
+                additionalDraftEntries.filter((entry) => fenceParamIds.has(entry.id)),
+                additionalStagedDrafts.filter((entry) => fenceParamIds.has(entry.id)),
+                additionalInvalidDrafts.filter((entry) => fenceParamIds.has(entry.id)),
+                'failsafe:fence',
+                'Apply Fence Changes',
+                'geofence settings'
+              )
+            : undefined
+        }
+        advancedSlot={renderAdditionalSettingsCard(
+          'Additional failsafe settings',
+          'Metadata-backed failsafe knobs that extend the rows above (advanced battery / EKF / pre-arm failsafe options).',
+          otherAdditionalGroups,
+          additionalDraftEntries.filter((entry) => !fenceParamIds.has(entry.id)),
+          additionalStagedDrafts.filter((entry) => !fenceParamIds.has(entry.id)),
+          additionalInvalidDrafts.filter((entry) => !fenceParamIds.has(entry.id)),
+          'failsafe:additional',
+          'Apply Additional Failsafe Changes',
+          'additional failsafe settings'
+        )}
       />
-      {renderAdditionalSettingsCard(
-        'Additional failsafe settings',
-        'Metadata-backed failsafe knobs that extend the rows above (advanced battery / EKF / pre-arm failsafe options).',
-        additionalGroups,
-        additionalDraftEntries,
-        additionalStagedDrafts,
-        additionalInvalidDrafts,
-        'failsafe:additional',
-        'Apply Additional Failsafe Changes',
-        'additional failsafe settings'
-      )}
     </section>
   )
 }

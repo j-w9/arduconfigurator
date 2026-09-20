@@ -1672,9 +1672,11 @@ test.describe('Failsafe view', () => {
     // Basic mode. Not an incidental default — it is the condition under test.
     await expect(page.getByTestId('product-mode-expert')).not.toBeChecked()
 
-    // Its own card rather than eight fields interleaved with the battery
-    // timers. The section id comes from the parameter category, so this also
-    // pins the fence to a category of its own.
+    // Its own SUB-TAB now, not eight fields interleaved with the battery
+    // timers: the fence is a failsafe in its own right — a boundary with a
+    // breach action — and the one in here a basic-mode operator is most likely
+    // to be looking for.
+    await page.getByTestId('failsafe-category-fence').click()
     const fence = page.getByTestId('metadata-settings-section-fence')
     await expect(fence).toContainText('Geofence')
     // The group is a <details>; open it if this build ships it collapsed so the
@@ -1708,11 +1710,60 @@ test.describe('Failsafe view', () => {
     await expect(page.getByTestId('failsafe-editor-grid')).toBeVisible()
 
     // Each failsafe param is now an inline editor seeded from the live value.
+    // The rows live under sub-tabs by kind of failsafe: RC leads, battery next.
     await expect(page.getByTestId('failsafe-row-FS_THR_VALUE').locator('input')).toHaveValue('975')
+    await page.getByTestId('failsafe-category-battery-failsafe').click()
     await expect(page.getByTestId('failsafe-row-BATT_LOW_VOLT').locator('input')).toHaveValue('14.4')
     await expect(page.getByTestId('failsafe-row-BATT_CRT_VOLT').locator('input')).toHaveValue('13.8')
 
     await expect(page.getByTestId('failsafe-go-to-power')).toBeVisible()
+  })
+
+  test('the rows are grouped into sub-tabs by kind of failsafe', async ({ page }) => {
+    // One grid held RC, battery, GCS, EKF and the advanced options together, so
+    // setting up one behaviour meant reading past four others.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await openView(page, 'failsafe')
+
+    const nav = page.getByTestId('failsafe-category-nav')
+    await expect(nav).toBeVisible()
+    for (const label of ['RC', 'Battery', 'Fence', 'GCS', 'EKF', 'Advanced']) {
+      await expect(nav.getByRole('tab', { name: label, exact: true })).toBeVisible()
+    }
+
+    // RC leads, and its rows are the only ones on screen.
+    await expect(page.getByTestId('failsafe-row-FS_THR_VALUE')).toBeVisible()
+    await expect(page.getByTestId('failsafe-row-BATT_LOW_VOLT')).toHaveCount(0)
+
+    await page.getByTestId('failsafe-category-battery-failsafe').click()
+    await expect(page.getByTestId('failsafe-row-BATT_LOW_VOLT')).toBeVisible()
+    await expect(page.getByTestId('failsafe-row-FS_THR_VALUE')).toHaveCount(0)
+
+    // The metadata-backed extras and the planned servo-position card belong to
+    // Advanced rather than repeating under every tab.
+    await expect(page.getByTestId('failsafe-servo-position-placeholder')).toHaveCount(0)
+    await page.getByTestId('failsafe-category-advanced').click()
+    await expect(page.getByTestId('failsafe-servo-position-placeholder')).toBeVisible()
+  })
+
+  test('a staged edit marks the tab it is on', async ({ page }) => {
+    // An edit on a tab you are not looking at must not be invisible.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await openView(page, 'failsafe')
+
+    const input = page.getByTestId('failsafe-row-FS_THR_VALUE').locator('input')
+    await input.fill('981')
+    await input.blur()
+    await page.getByTestId('failsafe-category-battery-failsafe').click()
+    await expect(
+      page.getByTestId('failsafe-category-rc-failsafe').locator('.config-category-nav__dot')
+    ).toBeVisible()
+    // Save is still global to the tab, so the staged RC edit applies from here.
+    await expect(page.getByTestId('failsafe-save')).toHaveText('Save Failsafe (1)')
   })
 
   test('failsafe params can be edited and staged for write', async ({ page }) => {
@@ -4732,6 +4783,7 @@ test.describe('ArduPlane demo', () => {
     // ScopedSelectField with "Disabled" as the current selection. The
     // operator can flip the monitor right here instead of bouncing to
     // the Power view.
+    await page.getByTestId('failsafe-category-battery-failsafe').click()
     const battMonitorRow = page.getByTestId('failsafe-row-BATT_MONITOR')
     await expect(battMonitorRow).toBeVisible()
     await expect(battMonitorRow).toContainText('Battery failsafe')
@@ -5080,8 +5132,11 @@ test.describe('ArduRover / ArduSub demo', () => {
 
     // Failsafe view is the real Rover failsafe set, not the hardcoded
     // Copter rows: FS_ACTION (2 -> "Hold") shows; the Copter-only
-    // FS_EKF_ACTION / FS_OPTIONS rows are absent.
+    // FS_EKF_ACTION / FS_OPTIONS rows are absent. Rover's own failsafe gets
+    // its own sub-tab rather than being folded into Advanced — it is the main
+    // failsafe of the vehicle.
     await openView(page, 'failsafe')
+    await page.getByTestId('failsafe-category-failsafe-action').click()
     await expect(page.getByTestId('failsafe-row-FS_ACTION')).toContainText('Hold')
     await expect(page.getByTestId('failsafe-row-FS_EKF_ACTION')).toHaveCount(0)
     await expect(page.getByTestId('failsafe-row-FS_OPTIONS')).toHaveCount(0)
@@ -5175,6 +5230,10 @@ test.describe('ArduRover / ArduSub demo', () => {
     // ArduSub/Parameters.cpp @Param: FS_LEAK_ENABLE @Values); the Copter RC
     // throttle failsafe row must not appear for a Sub.
     await openView(page, 'failsafe')
+    // A Sub's own failsafes each get a sub-tab: Leak, and internal pressure /
+    // temperature. Burying them under Advanced would hide the one that matters
+    // most on a Sub.
+    await page.getByTestId('failsafe-category-leak-failsafe').click()
     await expect(page.getByTestId('failsafe-row-FS_LEAK_ENABLE')).toContainText('Leak failsafe')
     await expect(page.getByTestId('failsafe-row-FS_LEAK_ENABLE')).toContainText('Enter surface mode')
     await expect(page.getByTestId('failsafe-row-FS_THR_ENABLE')).toHaveCount(0)
