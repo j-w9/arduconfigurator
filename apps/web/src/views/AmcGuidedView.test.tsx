@@ -422,3 +422,25 @@ describe('connection fields', () => {
     for (const value of before) expect(afterValues).toContain(value)
   })
 })
+
+describe('credit', () => {
+  it('links AMC and the tuning guide for the selected sequence', async () => {
+    // The sequence and the reasoning are AMC's work, and the guide explaining
+    // a step is more use than our one-line summary of it.
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+
+    const project = screen.getByRole('link', { name: /ArduPilot Methodic Configurator/i })
+    expect(project.getAttribute('href')).toBe('https://github.com/ArduPilot/MethodicConfigurator')
+    // Opened in a new tab, without handing the target window a reference back.
+    expect(project.getAttribute('rel')).toContain('noopener')
+
+    // The guide follows the chosen sequence. AMC publishes exactly four, named
+    // for the four sequence kinds, so the interpolated URL is always real —
+    // this asserts the one on screen rather than the template.
+    const guide = screen.getByRole('link', { name: /ArduCopter tuning guide/i })
+    expect(guide.getAttribute('href')).toBe(
+      'https://ardupilot.github.io/MethodicConfigurator/TUNING_GUIDE_ArduCopter'
+    )
+  })
+})

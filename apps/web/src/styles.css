@@ -19389,6 +19389,19 @@ button.mavlink-inspector__sent-row {
   cursor: pointer;
 }
 
+/* Credit and the upstream docs, at the top of the tab. The sequence and the
+   reasoning are AMC's work, and a step is better understood with the guide
+   that explains it than with our one-line summary of it. */
+.amc-guided__credit {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  max-width: 78ch;
+}
+
+.amc-guided__credit a {
+  color: var(--primary-500);
+}
+
 /* The configuration directory: writing one out, reading one back. */
 .amc-guided__project-blurb {
   margin: 0 0 12px;

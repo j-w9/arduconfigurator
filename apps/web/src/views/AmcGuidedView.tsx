@@ -906,6 +906,29 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         title="AMC guided mode"
         subtitle="AMC's setup sequence, run against your vehicle. Changes are staged, not written."
       >
+        {/* The sequence, the reasoning and the tuning guides are AMC's work.
+            This tab evaluates their data; it does not replace their docs, and
+            an operator following a step should be able to reach the guide that
+            explains it. */}
+        <p className="amc-guided__credit">
+          The sequence is{' '}
+          <a href="https://github.com/ArduPilot/MethodicConfigurator" target="_blank" rel="noreferrer noopener">
+            ArduPilot Methodic Configurator
+          </a>
+          &apos;s, evaluated here. Its{' '}
+          <a href="https://ardupilot.github.io/MethodicConfigurator/" target="_blank" rel="noreferrer noopener">
+            documentation
+          </a>{' '}
+          and{' '}
+          <a
+            href={`https://ardupilot.github.io/MethodicConfigurator/TUNING_GUIDE_${kind}`}
+            target="_blank"
+            rel="noreferrer noopener"
+          >
+            {kind} tuning guide
+          </a>{' '}
+          explain the why behind each step.
+        </p>
         <div className="amc-guided__controls">
           <label>
             Sequence
