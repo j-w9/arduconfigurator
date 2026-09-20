@@ -309,3 +309,76 @@ describe('what this vehicle has', () => {
     expect(screen.queryByText('From calibration')).toBeNull()
   })
 })
+
+describe('the configuration directory', () => {
+  it('will not write an empty one', async () => {
+    // An undeclared vehicle derives nothing, so the directory would record
+    // nothing -- and a file that looks like a saved configuration but holds no
+    // decisions is worse than no file.
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+    const download = screen.getByRole('button', { name: /Download the directory/i })
+    expect((download as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByText(/Nothing is declared yet/i)).toBeTruthy()
+  })
+
+  it('writes once the vehicle is declared, and says what it wrote', async () => {
+    const key = 'arduconfig.amc-progress.uid:export'
+    saveAmcProgress(key, {
+      vehicleKind: 'ArduCopter',
+      declaration: { 'Propellers/Specifications/Diameter_inches': '10' },
+      reviewed: []
+    })
+
+    // jsdom has neither of these, and a download that silently did nothing
+    // would look exactly like one that worked.
+    const createObjectURL = vi.fn(() => 'blob:vehicle')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL })
+    const clicked: HTMLAnchorElement[] = []
+    const realClick = HTMLAnchorElement.prototype.click
+    HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
+      clicked.push(this)
+    }
+
+    try {
+      render(<AmcGuidedView {...base} progressKey={key} />)
+      await whenLoaded()
+      await waitFor(() => expect(screen.getByDisplayValue('10')).toBeTruthy(), { timeout: 5000 })
+
+      screen.getByRole('button', { name: /Download the directory/i }).click()
+
+      await waitFor(() => expect(clicked.length).toBe(1), { timeout: 5000 })
+      // Named for the vehicle, so two exports are told apart by something
+      // other than "(1)".
+      expect(clicked[0]?.download).toMatch(/^ArduCopter.*\.zip$/)
+      expect(createObjectURL).toHaveBeenCalledTimes(1)
+      // Revoked: a blob URL held open pins the whole archive in memory.
+      expect(revokeObjectURL).toHaveBeenCalledTimes(1)
+      expect(screen.getByText(/Written(,| ).*(files|step)/i)).toBeTruthy()
+    } finally {
+      HTMLAnchorElement.prototype.click = realClick
+    }
+  })
+
+  it('offers a control to open one back up', async () => {
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+    expect(screen.getByText(/Open a directory/i)).toBeTruthy()
+  })
+
+  it('refuses to open one before the sequence it reads against exists', async () => {
+    // The silent drop this replaced: the sequence is dynamic-imported, and a
+    // directory picked before it arrived was read against nothing and
+    // discarded without a word. The control now says it is not ready instead.
+    render(<AmcGuidedView {...base} />)
+    // Read synchronously, on the first paint: the sequence resolves fast
+    // enough here that any await would step past the window being asserted.
+    expect((screen.getByTestId('amc-open-project') as HTMLInputElement).disabled).toBe(true)
+    expect(screen.getByText(/Loading the sequence/i)).toBeTruthy()
+
+    await whenLoaded()
+    await waitFor(() => expect((screen.getByTestId('amc-open-project') as HTMLInputElement).disabled).toBe(false))
+  })
+})

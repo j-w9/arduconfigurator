@@ -15,6 +15,7 @@ import {
 import type { ParameterDocs } from '@arduconfig/amc-steps'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
+import { buildProject, projectArchive, projectFilename, readProject } from '../view-models/amc-project'
 import {
   UNATTACHED_KEY,
   clearAmcProgress,
@@ -587,6 +588,14 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   // do nothing on a firmware that cannot serve it. A control on this screen
   // reports its own outcome rather than leaving the operator to infer it.
   const [defaultsRead, setDefaultsRead] = useState<'idle' | 'asking' | 'nothing'>('idle')
+  // What the last export or import did. Both are one-shot actions with no
+  // other visible effect -- a download that silently produced nothing, or an
+  // import that matched no files, would look identical to success.
+  const [projectNotice, setProjectNotice] = useState<{ tone: 'ok' | 'warning'; text: string } | undefined>(undefined)
+  // Decisions read back from a directory, so rewriting it keeps them. Held
+  // here rather than merged into `values`: an @manual_override is a parameter
+  // the operator overruled, not a component they declared.
+  const [overrides, setOverrides] = useState<ReadonlyMap<string, { value: number; reason?: string }>>(new Map())
 
   const readDefaults = useCallback(async () => {
     if (!onReadDefaults) return
@@ -708,6 +717,97 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   )
 
   const declaredCount = fields.length - (summary?.missing.length ?? fields.length)
+
+  // Writing the directory out. The whole assembly is pure; the only part that
+  // needs a browser is handing the bytes over, which is these few lines.
+  const exportProject = useCallback(() => {
+    if (!steps) return
+    const project = buildProject({
+      sequence: steps,
+      fields,
+      values,
+      parameters,
+      ...(defaults ? { defaults } : {}),
+      ...(docs ? { docs } : {}),
+      overrides
+    })
+    const blob = new Blob([projectArchive(project) as unknown as BlobPart], { type: 'application/zip' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    // The firmware version, when it is declared, distinguishes two exports of
+    // the same airframe taken months apart.
+    const version = versionKey ? values[versionKey] : undefined
+    link.download = projectFilename(version ? `${kind}_${version}` : kind)
+    link.click()
+    URL.revokeObjectURL(url)
+
+    // A step whose directives could not all be evaluated still gets a file --
+    // it just does not hold everything it should, and saying so beats the
+    // operator finding out when they read the directory back.
+    setProjectNotice(
+      project.incomplete.length > 0
+        ? {
+            tone: 'warning',
+            text: `Written, but ${project.incomplete.length} step${
+              project.incomplete.length === 1 ? '' : 's'
+            } could not be fully evaluated \u2014 declare the fields they need and download again.`
+          }
+        : {
+            tone: 'ok',
+            text: `Written: ${project.files.length} files, ${project.parameterCount} parameters.`
+          }
+    )
+  }, [steps, fields, values, parameters, defaults, docs, overrides, kind, versionKey])
+
+  // Reading one back. The picker hands over whatever the operator selected, so
+  // this has to be honest about what it could and could not place.
+  const importProject = useCallback(
+    async (picked: FileList | null) => {
+      if (!steps || !picked || picked.length === 0) return
+      const files = await Promise.all(
+        [...picked].map(async (file) => ({
+          // webkitRelativePath is set when a whole directory was chosen and is
+          // the only place the directory structure survives.
+          filename: (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
+          text: await file.text()
+        }))
+      )
+
+      const project = readProject(steps, files, fields)
+      if (project.steps.length === 0 && project.componentValues === undefined) {
+        setProjectNotice({
+          tone: 'warning',
+          text: 'Nothing in that selection belongs to this sequence. Pick the vehicle directory itself, or switch the sequence to the one it was written for.'
+        })
+        return
+      }
+
+      if (project.componentValues) setValues(project.componentValues)
+      setOverrides(project.overrides)
+
+      const parts = [`Read ${project.steps.length} step files`]
+      if (project.overrides.size > 0) {
+        parts.push(`${project.overrides.size} decision${project.overrides.size === 1 ? '' : 's'} you had recorded`)
+      }
+      // Old names are worth naming: the directory looked like it matched
+      // nothing until these were claimed, and the operator should know their
+      // project predates the current sequence.
+      if (project.renamed.length > 0) {
+        parts.push(`${project.renamed.length} under names the sequence has since changed`)
+      }
+      setProjectNotice({
+        tone: project.unmatched.length > 0 ? 'warning' : 'ok',
+        text:
+          project.unmatched.length > 0
+            ? `${parts.join(', ')}. ${project.unmatched.length} file${
+                project.unmatched.length === 1 ? '' : 's'
+              } left unread: ${project.unmatched.slice(0, 3).join(', ')}.`
+            : `${parts.join(', ')}.`
+      })
+    },
+    [steps, fields]
+  )
 
   // A blocked step names the field that would unblock it; clicking it should
   // put the cursor there rather than leaving the operator to find it.
@@ -882,6 +982,57 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             Clear
           </button>
         </div>
+      </Panel>
+
+      <Panel
+        title="The vehicle's configuration directory"
+        subtitle="One file per step, each value carrying the reason it was set — the artefact this method exists to produce."
+      >
+        <p className="amc-guided__project-blurb">
+          A configuration you cannot reopen later is one you have to redo from memory. The
+          directory holds what you declared alongside what the sequence derived from it, so both
+          the values and the reasoning survive.
+        </p>
+        <div className="button-row">
+          <button style={buttonStyle('primary')} onClick={exportProject} disabled={declaredCount === 0}>
+            Download the directory
+          </button>
+          {/* The sequence is what gives a directory's files meaning, and it is
+              dynamic-imported — so until it is here there is nothing to read
+              against. Disabled rather than silently doing nothing, which is
+              what it did: a directory picked in the first moment after the tab
+              opened was dropped without a word. */}
+          <label
+            className={`amc-guided__import${steps ? '' : ' amc-guided__import--waiting'}`}
+            style={buttonStyle()}
+            aria-disabled={steps ? undefined : true}
+          >
+            {steps ? 'Open a directory' : 'Loading the sequence…'}
+            <input
+              type="file"
+              multiple
+              disabled={!steps}
+              data-testid="amc-open-project"
+              accept=".param,.json"
+              onChange={(event) => {
+                void importProject(event.target.files)
+                // Cleared so picking the same directory twice fires again.
+                event.target.value = ''
+              }}
+            />
+          </label>
+        </div>
+        {projectNotice ? (
+          <p className={`amc-guided__project-notice amc-guided__project-notice--${projectNotice.tone}`}>
+            {projectNotice.text}
+          </p>
+        ) : null}
+        {declaredCount === 0 ? (
+          <p className="amc-guided__project-empty">
+            Nothing is declared yet, so there is nothing to derive — an empty directory records no
+            decisions at all.
+          </p>
+        ) : null}
       </Panel>
 
       {summary?.configuration ? (
