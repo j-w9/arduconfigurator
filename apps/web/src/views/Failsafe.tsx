@@ -61,7 +61,6 @@ export interface FailsafeViewProps {
    * tab.
    */
   extraSlots?: Record<string, ReactNode>
-  onOpenPower: () => void
   // Staged-write editing (same draft model as every other param tab).
   editedValues: Record<string, string>
   onEditChange: (paramId: string, value: string) => void
@@ -86,7 +85,6 @@ export function FailsafeView(props: FailsafeViewProps) {
     batteryCriticalThresholdText,
     rows,
     extraSlots = {},
-    onOpenPower,
     editedValues,
     onEditChange,
     draftStatusById,
@@ -278,20 +276,6 @@ export function FailsafeView(props: FailsafeViewProps) {
           </section>
           ) : null}
 
-          <div className="modes-help">
-            <p>
-              Battery and RC-loss thresholds can also be edited in the Power view; changes here and there share the
-              same staged-write model.
-            </p>
-            <button
-              type="button"
-              style={buttonStyle()}
-              data-testid="failsafe-go-to-power"
-              onClick={onOpenPower}
-            >
-              Open Power
-            </button>
-          </div>
         </div>
       </Panel>
     </div>

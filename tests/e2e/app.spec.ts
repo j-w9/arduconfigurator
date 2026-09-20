@@ -763,7 +763,10 @@ test.describe('browser configurator regression flows', () => {
     await page.getByTestId('capture-live-snapshot-button').click()
 
     await expect(page.getByText(/Saved snapshot "E2E baseline" with \d+ parameters\./)).toBeVisible()
-    await expect(page.getByTestId('active-baseline-label')).toHaveText('E2E baseline')
+    // The baseline is the selected snapshot; its own panel names it. (The
+    // sidebar's Active Baseline card is gone — the Snapshots nav item badges
+    // the drift, and this tab holds the detail.)
+    await expect(page.locator('.snapshot-selected h3').first()).toHaveText('E2E baseline')
 
     await openView(page, 'presets')
     await page.getByTestId('preset-card-flight-feel-soft').click()
@@ -792,7 +795,7 @@ test.describe('browser configurator regression flows', () => {
 
     // Once written, live matches the snapshot again.
     await expect(page.getByText('already matched')).toBeVisible()
-    await expect(page.getByTestId('active-baseline-label')).toHaveText('E2E baseline')
+    await expect(page.locator('.snapshot-selected h3').first()).toHaveText('E2E baseline')
   })
 
   test('snapshot restore differentiates the source board/vehicle from the connected FC', async ({ page }) => {

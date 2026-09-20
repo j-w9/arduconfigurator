@@ -8230,16 +8230,6 @@ export function App() {
 
       <div className="workspace-layout">
         <WorkspaceSidebar
-          snapshot={snapshot}
-          transportMode={transportMode}
-          rememberedSerialPortLabel={rememberedSerialPortLabel}
-          websocketUrl={websocketUrl}
-          webSerialSupported={webSerialSupported}
-          selectedSnapshot={selectedSnapshot}
-          selectedSnapshotInvalidCount={selectedSnapshotInvalidEntries.length}
-          selectedSnapshotChangedCount={selectedSnapshotChangedEntries.length}
-          selectedSnapshotRebootSensitiveCount={selectedSnapshotRebootSensitiveCount}
-          savedSnapshotCount={savedSnapshots.length}
           visibleAppViews={visibleAppViews}
           activeViewId={activeViewId}
           onSelectView={setActiveViewId}
@@ -9134,7 +9124,6 @@ export function App() {
           busyAction={busyAction}
           onApplyScopedDrafts={handleApplyScopedParameterDrafts}
           onDiscardScopedDrafts={handleDiscardScopedParameterDrafts}
-          onOpenPower={() => setActiveViewId('config')}
           failsafeAdditionalGroups={failsafeAdditionalGroups}
           failsafeAdditionalDraftEntries={failsafeAdditionalDraftEntries}
           failsafeAdditionalStagedDrafts={failsafeAdditionalStagedDrafts}
