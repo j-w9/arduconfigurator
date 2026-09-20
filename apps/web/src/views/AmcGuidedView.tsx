@@ -400,7 +400,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     <div className="amc-guided">
       <Panel
         title="AMC guided mode"
-        subtitle="ArduPilot Methodic Configurator's setup sequence, run against your vehicle. Changes are staged for review — nothing is written from here."
+        subtitle="AMC's setup sequence, run against your vehicle. Changes are staged, not written."
       >
         <div className="amc-guided__controls">
           <label>

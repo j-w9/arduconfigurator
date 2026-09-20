@@ -261,8 +261,18 @@ describe('field choices', () => {
       // without good reason.
       expect(isList && field.numeric, `${field.component} > ${field.label}`).toBe(false)
     }
+    // Nine of the twenty-one fields are enumerations. The rest are
+    // measurements and one version string, which are typed, not chosen.
     const lists = documentedFields.filter((field) => field.documented ?? field.suggested)
-    expect(lists.length).toBeGreaterThanOrEqual(10)
+    expect(lists.length).toBe(9)
+  })
+
+  it('leaves a version as free text, not a list of other people\'s versions', () => {
+    // The sequence compares versions (Version(x) > Version('4.6')), so the next
+    // release has to be typeable -- and it is not in AMC's templates.
+    const version = find('Version')
+    expect(version.documented).toBeUndefined()
+    expect(version.suggested).toBeUndefined()
   })
 
   it('suggests values from the templates where the documentation has none', () => {

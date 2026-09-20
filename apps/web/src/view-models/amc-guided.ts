@@ -97,6 +97,21 @@ function looksNumeric(values: readonly string[] | undefined): boolean {
   return values !== undefined && values.length > 0 && values.every((value) => value.trim() !== '' && !Number.isNaN(Number(value)))
 }
 
+/**
+ * A field whose observed values are version numbers is not an enumeration.
+ *
+ * The firmware version is the clearest case: the templates happen to contain
+ * fifteen of them ('4.6.0 dev', '4.7.1 beta'), but the next release is not in
+ * that list and the sequence compares versions with `Version(x) > Version(y)`,
+ * so any version has to be typeable. Offering a list of the versions other
+ * people's vehicles ran would put most operators on the "Other" escape.
+ */
+function looksVersioned(values: readonly string[] | undefined): boolean {
+  if (values === undefined || values.length === 0) return false
+  const versions = values.filter((value) => /^\s*v?\d+\.\d+/.test(value)).length
+  return versions > values.length / 2
+}
+
 /** One field the operator has to declare, ready to render as a form row. */
 export interface ComponentField {
   /** Stable key for form state: the path, slash-joined. */
@@ -135,6 +150,7 @@ function toField(requirement: ComponentRequirement, documented?: readonly string
   // reads off their hardware, and a list of the sizes other people's vehicles
   // used would be a worse way to enter it.
   const numeric = documented === undefined && looksNumeric(observed)
+  const freeform = numeric || looksVersioned(observed)
   return {
     key,
     path,
@@ -144,7 +160,7 @@ function toField(requirement: ComponentRequirement, documented?: readonly string
     uses: requirement.uses,
     numeric,
     ...(documented === undefined ? {} : { documented }),
-    ...(documented !== undefined || numeric || observed === undefined ? {} : { suggested: observed })
+    ...(documented !== undefined || freeform || observed === undefined ? {} : { suggested: observed })
   }
 }
 
