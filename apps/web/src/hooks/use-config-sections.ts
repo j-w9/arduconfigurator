@@ -15,7 +15,14 @@ import type { ConfigCategoryId, ConfigSection } from '../views/Config'
 // are ConfigView instances over this one section list; membership here is what
 // decides which half a section lands in, so a section moves between tabs by
 // changing its category and nothing else.
-export const PERIPHERAL_CATEGORY_IDS: readonly ConfigCategoryId[] = ['gps', 'compass', 'gimbal', 'flow-lidar']
+export const PERIPHERAL_CATEGORY_IDS: readonly ConfigCategoryId[] = [
+  'gps',
+  'compass',
+  'gimbal',
+  'flow-lidar',
+  'alerts',
+  'relays'
+]
 
 function isPeripheralCategory(category: ConfigCategoryId | undefined): boolean {
   return category !== undefined && PERIPHERAL_CATEGORY_IDS.includes(category)
@@ -345,6 +352,16 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     activeVehicle,
     hasFastRate,
     hasFrame,
+    // hasCompass and configParametersById were MISSING here, and it was a real
+    // bug, not a tidy-up: the compass card is gated on hasCompass and its extra
+    // rows on configParametersById (COMPASS_USE2 / USE3 / DISBLMSK). If the
+    // sections were first built before COMPASS_USE had arrived in the sync, the
+    // memo never recomputed when it did — every other dependency is stable
+    // after connect — so the compass card stayed absent for the whole session.
+    // Caught as an intermittently missing Compass sub-tab on Peripherals; the
+    // same staleness could drop the card from Config before the move.
+    hasCompass,
+    configParametersById,
     armingChecksParamId,
     armingChecksLabel,
     armingDescription

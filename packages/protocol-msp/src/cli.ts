@@ -129,3 +129,20 @@ export function cleanCliCapture(raw: string, command: string): string {
   }
   return `${lines.join(CLI_LINE_ENDING)}${CLI_LINE_ENDING}`
 }
+
+/**
+ * Wrap cleaned output the way Betaflight Configurator writes it to a file.
+ *
+ * Its saved file is the CLI TRANSCRIPT, not just the output: the prompt, the
+ * echoed command, a blank line, the output, a blank line, and a final prompt
+ * with no trailing newline. Byte-compared against a real
+ * BTFL_cli_*.txt saved by Betaflight Configurator from the same board, this
+ * framing plus CRLF reproduces the file exactly.
+ *
+ * Harmless to paste back: `#` enters the CLI and the echoed command simply
+ * re-runs the same read-only query.
+ */
+export function formatCliCaptureFile(cleaned: string, command: string): string {
+  const body = cleaned.endsWith(CLI_LINE_ENDING) ? cleaned : `${cleaned}${CLI_LINE_ENDING}`
+  return `# ${CLI_LINE_ENDING}# ${command}${CLI_LINE_ENDING}${CLI_LINE_ENDING}${body}${CLI_LINE_ENDING}# `
+}

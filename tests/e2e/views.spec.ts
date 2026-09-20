@@ -3959,19 +3959,34 @@ test.describe('ArduPlane demo', () => {
     await expect(row1PwmInputs.nth(1)).toHaveValue('1500')
     await expect(row1PwmInputs.nth(2)).toHaveValue('2000')
 
-    await page.getByTestId('outputs-task-nav').getByRole('tab', { name: /Peripherals & Alerts/i }).click()
-    await expect(page.getByTestId('servo-mapping-task-body')).toHaveCount(0)
-    await expect(page.getByText('LED & buzzer notifications')).toBeVisible()
+    // The Function column has room for the function name. It used to carry a
+    // min-width, which does NOT apply to table cells (CSS 2.1 §10.4), so the
+    // column collapsed to ~110px and both the header and SERVOn_FUNCTION
+    // wrapped one word per line with the dropdown clipped mid-word.
+    const functionCellWidth = await page
+      .locator('.servo-mapping__function')
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().width)
+    expect(functionCellWidth).toBeGreaterThan(200)
+
+    // Servos is a single page: the mapping table and the metadata-backed
+    // output settings render together, with no task strip to switch between
+    // them. (The settings card only renders when the vehicle exposes such
+    // groups, so it is not asserted here — the absence of the strip is.)
+    await expect(page.getByTestId('outputs-task-nav')).toHaveCount(0)
+    // The LED/buzzer card that used to be a sub-tab here is on Peripherals now.
+    await expect(page.getByText('LED & buzzer notifications')).toHaveCount(0)
   })
 
-  test('Servos tab exposes a Relays tab that renders relay cards and stages an edit', async ({ page }) => {
+  test('Peripherals ▸ Relays renders relay cards and stages an edit', async ({ page }) => {
+    // Relays were a Servos sub-tab. A relay is a switched output wired to the
+    // board, not servo setup, so it moved to Peripherals with the rest of the
+    // attached hardware.
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('view-button-servos').click()
-
-    // Switch to the Relays sub-tab; the seeded RELAY1/RELAY2 cards render.
-    await page.getByTestId('outputs-task-nav').getByRole('tab', { name: /Relays/i }).click()
+    await page.getByTestId('view-button-peripherals').click()
+    await page.getByTestId('config-category-relays').click()
     await expect(page.getByTestId('relays-task-body')).toBeVisible()
     await expect(page.getByTestId('relay-card-1')).toBeVisible()
     await expect(page.getByTestId('relay-card-2')).toBeVisible()
@@ -3983,12 +3998,12 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('relays-apply')).toContainText('Apply relay changes (1)')
   })
 
-  test('Relays tab binds an RC switch channel to a relay (writes RCn_OPTION)', async ({ page }) => {
+  test('Relays binds an RC switch channel to a relay (writes RCn_OPTION)', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
-    await page.getByTestId('view-button-servos').click()
-    await page.getByTestId('outputs-task-nav').getByRole('tab', { name: /Relays/i }).click()
+    await page.getByTestId('view-button-peripherals').click()
+    await page.getByTestId('config-category-relays').click()
 
     const rcChannel = page.getByTestId('relay-rc-channel-1')
     await expect(rcChannel).toBeVisible()
@@ -7072,15 +7087,22 @@ test.describe('Peripherals tab', () => {
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
     await page.getByTestId('view-button-peripherals').click()
+    // Wait for the sub-tab strip before clicking into it. The groups are
+    // parameter-gated (Compass needs COMPASS_USE), so on a loaded machine the
+    // strip can render a tab or two late — clicking blind timed out once in a
+    // full-suite run and passed alone.
+    await expect(page.getByTestId('config-category-nav')).toBeVisible()
   }
 
-  test('the tab carries GPS, Compass, Gimbal and Flow & Lidar', async ({ page }) => {
+  test('the tab carries GPS, Compass, Gimbal, Flow & Lidar, LEDs and Relays', async ({ page }) => {
     await openPeripherals(page)
     for (const [category, sectionId] of [
       ['gps', 'gps'],
       ['compass', 'compass'],
       ['gimbal', 'gimbal'],
-      ['flow-lidar', 'flow-lidar']
+      ['flow-lidar', 'flow-lidar'],
+      ['alerts', 'alerts'],
+      ['relays', 'relays']
     ] as const) {
       await page.getByTestId(`config-category-${category}`).click()
       await expect(page.getByTestId(`config-section-${sectionId}`)).toBeVisible()
@@ -7098,14 +7120,34 @@ test.describe('Peripherals tab', () => {
     await expect(page.getByTestId('config-section-compass')).toHaveCount(0)
   })
 
-  test('Gimbal and Flow & Lidar are gone from the Servos sub-tabs', async ({ page }) => {
+  test('the CAN-enable prompt travels with optical flow, not with Servos', async ({ page }) => {
+    // It is about FLOW_TYPE = DroneCAN, so it belongs beside the flow setting.
+    // On Servos it was a DroneCAN interruption over a servo output map.
     await openPeripherals(page)
     await page.getByTestId('view-button-servos').click()
-    const tabs = page.locator('.tab-strip__tab')
-    await expect(tabs.filter({ hasText: 'Gimbal' })).toHaveCount(0)
-    await expect(tabs.filter({ hasText: 'Flow & Lidar' })).toHaveCount(0)
-    // Servos keeps the jobs that really are servo work.
-    await expect(tabs.filter({ hasText: 'Servo' }).first()).toBeVisible()
+    await expect(page.getByTestId('peripherals-can-enable-prompt')).toHaveCount(0)
+
+    await page.getByTestId('view-button-peripherals').click()
+    await page.getByTestId('config-category-flow-lidar').click()
+    await expect(page.getByTestId('peripherals-can-enable-prompt')).toBeVisible()
+  })
+
+  test('Servos has no sub-tabs left once its peripherals moved here', async ({ page }) => {
+    // Gimbal, Flow & Lidar, LED/buzzer and relays all moved to this tab. What
+    // remains on Servos is one job — the output map and the settings that
+    // extend it — so the task strip is gone and both render on one page.
+    await openPeripherals(page)
+    await page.getByTestId('view-button-servos').click()
+    await expect(page.getByTestId('outputs-task-nav')).toHaveCount(0)
+    await expect(page.getByTestId('servo-mapping-task-body')).toBeVisible()
+  })
+
+  test('the LED and buzzer card came over intact', async ({ page }) => {
+    await openPeripherals(page)
+    await page.getByTestId('config-category-alerts').click()
+    await expect(page.getByText('LED & buzzer notifications', { exact: true })).toBeVisible()
+    // Its own scoped apply, as it had on Servos.
+    await expect(page.getByRole('button', { name: /Apply Notification Changes/ })).toBeVisible()
   })
 
   test('a staged peripheral edit belongs to this tab, not to Config', async ({ page }) => {

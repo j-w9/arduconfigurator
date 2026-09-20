@@ -192,7 +192,9 @@ test('a reboot acknowledged as a DIFFERENT mode is treated as a failure', async 
 test('the CLI capture enters, reads, and always leaves', async () => {
   // `diff` is a CLI command — there is no MSP message that returns a board's
   // non-default settings, which is why the old "dump" held only the ports.
-  const { captureCliCommand, cleanCliCapture } = await import('../packages/protocol-msp/dist/index.js')
+  const { captureCliCommand, cleanCliCapture, formatCliCaptureFile } = await import(
+    '../packages/protocol-msp/dist/index.js'
+  )
 
   const sent = []
   const listeners = new Set()
@@ -233,6 +235,15 @@ test('the CLI capture enters, reads, and always leaves', async () => {
   assert.ok(cleaned.startsWith('# version'), `unexpected start: ${JSON.stringify(cleaned.slice(0, 40))}`)
   assert.ok(cleaned.includes('board_name MATEKH743'))
   assert.ok(!cleaned.trimEnd().endsWith('#'), 'trailing prompt removed')
+
+  // The SAVED file is Betaflight Configurator's own transcript framing, which a
+  // byte comparison against a real BTFL_cli_*.txt from a FLYWOOF405S pinned
+  // down: prompt, echoed command, blank, output, blank, prompt, no trailing
+  // newline.
+  const file = formatCliCaptureFile(cleaned, 'diff')
+  assert.ok(file.startsWith('# \r\n# diff\r\n\r\n'), 'opens with the prompt and the echoed command')
+  assert.ok(file.endsWith('\r\n# '), 'ends on a bare prompt with no newline after it')
+  assert.equal(file, `# \r\n# diff\r\n\r\n${cleaned}\r\n# `)
 })
 
 test('a board that never shows a prompt is not sent the command', async () => {

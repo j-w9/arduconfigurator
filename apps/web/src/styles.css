@@ -14319,9 +14319,12 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 /* The per-channel SERVOn mapping table is a real wide table (~560px+ of
    fixed columns) with no responsive collapse — let it scroll horizontally
-   instead of clipping/overflowing the panel in the narrow content well. */
-.servo-mapping__table {
-  display: block;
+   instead of clipping/overflowing the panel in the narrow content well.
+   The SCROLLER is a wrapper: putting `display: block` on the <table> took it
+   out of table layout, so the Function column's min-width stopped applying and
+   its header and the SERVOn_FUNCTION label wrapped one word per line in a
+   ~70px cell. */
+.servo-mapping__scroller {
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -14334,6 +14337,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .servo-mapping__table {
   width: 100%;
+  /* Below this the columns start stealing from each other; the wrapper
+     scrolls instead. */
+  min-width: 760px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--text-md);
@@ -14387,11 +14393,23 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .servo-mapping__function {
-  min-width: 280px;
+  /* `width`, not `min-width`: min-width/max-width DO NOT APPLY to table cells
+     (CSS 2.1 §10.4), so the 280px min-width this used to carry was inert and
+     the auto table layout squeezed the column to ~110px — the header and the
+     SERVOn_FUNCTION label then wrapped one word per line and the dropdown was
+     clipped mid-word. In auto layout a cell's `width` is a preferred width,
+     which the column does honour. */
+  width: 320px;
 }
 
 .servo-mapping__function .scoped-editor-field {
   margin: 0;
+}
+
+/* Full words, never truncated: the function name is the point of the cell. */
+.servo-mapping__function .scoped-editor-field select,
+.servo-mapping__function .scoped-editor-field input {
+  width: 100%;
 }
 
 .servo-mapping__kind {
@@ -14515,6 +14533,21 @@ details.metadata-settings-section:not([open]) > summary::after {
   column-gap: var(--space-3);
   padding-right: 6px;
   max-width: 1180px;
+}
+
+/* Peripherals renders ONE card per sub-tab, so the 360px column above left GPS
+   and Compass as a tall single-file list with most of the screen empty — all
+   scrolling, no reason. Give that panel the full width and let the card flow
+   its fields into as many columns as fit (one on a phone, where auto-fit
+   collapses the tracks). */
+#setup-panel-peripherals .config-grid {
+  columns: auto;
+  max-width: none;
+}
+
+#setup-panel-peripherals .config-section__editors {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  column-gap: var(--space-3);
 }
 
 /* Category tab strip — reuses .tab-strip; a little breathing room + the
@@ -18779,6 +18812,13 @@ button.mavlink-inspector__sent-row {
     grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.75fr);
     grid-template-rows: auto auto;
     align-items: start;
+  }
+
+  /* Servos is one wide table, not a picture beside a control column. The
+     two-column split above handed it 1.5fr and left the other column empty,
+     which is what squeezed the Function column in the first place. */
+  .outputs-tab-body--single-page.outputs-tab-body--single-column {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   /* Mixer picture and the order/direction work first: that is the thing you

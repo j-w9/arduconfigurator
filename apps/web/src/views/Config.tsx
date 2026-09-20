@@ -44,6 +44,8 @@ export type ConfigCategoryId =
   | 'compass'
   | 'gimbal'
   | 'flow-lidar'
+  | 'alerts'
+  | 'relays'
   | 'rc'
   | 'flight-modes'
   | 'arming'
@@ -77,6 +79,10 @@ export const CONFIG_CATEGORIES: readonly ConfigCategory[] = [
   { id: 'compass', label: 'Compass' },
   { id: 'gimbal', label: 'Gimbal' },
   { id: 'flow-lidar', label: 'Flow & Lidar' },
+  // Notification hardware and switched outputs came from the Servos tab: an LED
+  // strip and a relay are things wired to the board, not servo setup.
+  { id: 'alerts', label: 'LEDs & Buzzer' },
+  { id: 'relays', label: 'Relays' },
   { id: 'rc', label: 'RC' },
   // Flight modes sat in a top-level Modes tab whose content overlapped
   // Receiver's own Flight Modes sub-tab. The tab is gone; the same panel lives

@@ -3,19 +3,23 @@ Peripherals & Gimbal
 
 The **Peripherals** tab configures the hardware that hangs off the flight
 controller: the GPS, the compass, a rangefinder/LiDAR for height and obstacle
-sensing, an optical flow sensor, and a camera mount/gimbal. It has one sub-tab
-per peripheral — **GPS**, **Compass**, **Gimbal**, **Flow & Lidar** — so you
-work on one at a time, and each section only renders the parameters the
+sensing, an optical flow sensor, a camera mount/gimbal, the notification LEDs
+and buzzer, and the relay outputs. It has one sub-tab per peripheral — **GPS**,
+**Compass**, **Gimbal**, **Flow & Lidar**, **LEDs & Buzzer**, **Relays** — so
+you work on one at a time, and each section only renders the parameters the
 connected firmware actually reports.
 
 .. note::
 
    These used to be split across two tabs that were the wrong home for them:
    GPS and compass sat under **Config** (they are attached hardware, not board
-   settings), and the gimbal and flow/lidar sections were sub-tabs of
-   **Servos** — a gimbal is a peripheral that happens to use a servo output,
-   and a rangefinder usually has no servo output at all. **Servos** keeps the
-   output map, the notification LED/buzzer hardware, and relays.
+   settings), and the gimbal, flow/lidar, LED/buzzer and relay surfaces were
+   sub-tabs of **Servos** — a gimbal is a peripheral that happens to use a
+   servo output, a rangefinder usually has no servo output at all, and an LED
+   strip or a relay is simply wired to the board.
+
+   With those moved, :doc:`servos-relays` has one job left — the output map and
+   the settings that extend it — so it is a single page with no sub-tabs.
 
    GPS and compass are documented in detail on :doc:`../config` and
    :doc:`sensors-calibration`; the rest of this page covers the sections that

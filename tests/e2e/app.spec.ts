@@ -666,15 +666,14 @@ test.describe('browser configurator regression flows', () => {
     // Motors is one page and has no task strip; its reorder panel renders
     // inline, which is the surface this walk-through is checking for.
     await expect(page.getByTestId('motor-reorder-lightbox-tabs')).toBeVisible()
-    // Peripherals & Alerts moved to its own Servos nav tab as part of
-    // the Outputs split (#227). After #229, the Servos tab lands on
-    // the servo-function mapping table by default; click into the
-    // Peripherals task explicitly to confirm the LED/buzzer copy
-    // still renders there, then come back to Motors for the Direction
-    // & Test continuation below.
+    // Servos is one page now: the mapping table plus the additional output
+    // settings, with no task strip. The LED/buzzer card that used to be a
+    // sub-tab here lives on the Peripherals tab.
     await openView(page, 'servos')
     await expect(page.getByTestId('servo-mapping-task-body')).toBeVisible()
-    await page.getByTestId('outputs-task-nav').getByRole('tab', { name: /Peripherals & Alerts/i }).click()
+    await expect(page.getByTestId('outputs-task-nav')).toHaveCount(0)
+    await openView(page, 'peripherals')
+    await page.getByTestId('config-category-alerts').click()
     await expect(page.getByText('LED & buzzer notifications', { exact: true })).toBeVisible()
     await openView(page, 'motors')
     await page.getByTestId('motor-reorder-props-off-ack').check()

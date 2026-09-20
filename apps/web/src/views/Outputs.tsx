@@ -42,6 +42,11 @@ export interface OutputsViewProps {
    *  switches the body to the denser one-page rhythm; Servos, whose tasks are
    *  genuinely separate subsystems, leaves it alone. */
   singlePage?: boolean
+  /** One full-width column instead of the two-column single-page layout.
+   *  The two-column split exists for Motors (mixer picture beside the
+   *  sliders); Servos is one wide table and was being squeezed into 1.5fr
+   *  with the other column empty. */
+  singleColumn?: boolean
 }
 
 export function OutputsView(props: OutputsViewProps) {
@@ -54,7 +59,8 @@ export function OutputsView(props: OutputsViewProps) {
     reviewDockSlot,
     title = 'Outputs',
     subtitle = 'Review frame geometry, output assignments, and key motor/peripheral settings before any output testing.',
-    singlePage = false
+    singlePage = false,
+    singleColumn = false
   } = props
 
   return (
@@ -87,7 +93,10 @@ export function OutputsView(props: OutputsViewProps) {
           </div>
           )}
 
-          <div className={`outputs-tab-body${singlePage ? ' outputs-tab-body--single-page' : ''}`} data-testid={`outputs-task-body-${activeTaskId}`}>
+          <div
+            className={`outputs-tab-body${singlePage ? ' outputs-tab-body--single-page' : ''}${singleColumn ? ' outputs-tab-body--single-column' : ''}`}
+            data-testid={`outputs-task-body-${activeTaskId}`}
+          >
             {taskBodySlot}
           </div>
 
