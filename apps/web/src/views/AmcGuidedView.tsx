@@ -55,8 +55,15 @@ export interface AmcGuidedViewProps {
   states?: readonly ParameterState[]
   /** The firmware's own defaults, needed before a step can capture anything. */
   defaults?: ReadonlyMap<string, number>
-  /** Read them from the vehicle; absent when the link cannot serve them. */
-  onReadDefaults?: () => void
+  /**
+   * Read the defaults from the vehicle.
+   *
+   * Resolves when the attempt is over, whether or not it produced anything --
+   * the app's own fetch reports failures through the Parameters view's notice,
+   * which is not this screen, so this tab judges the outcome by whether
+   * defaults actually arrived.
+   */
+  onReadDefaults?: () => void | Promise<void>
   /**
    * Where this vehicle's declaration is kept, from the board's identity.
    *
@@ -197,7 +204,8 @@ function StepCard({
   onDeclareField,
   onStage,
   onReviewed,
-  onReadDefaults
+  onReadDefaults,
+  defaultsRead
 }: {
   row: StepRow
   connected: boolean
@@ -207,6 +215,7 @@ function StepCard({
   onStage: (changes: readonly { parameter: string; value: number }[]) => void
   onReviewed: (next: boolean) => void
   onReadDefaults?: (() => void) | undefined
+  defaultsRead?: 'idle' | 'asking' | 'nothing'
 }) {
   const [open, setOpen] = useState(false)
   const blocked = row.blocked.length > 0
@@ -451,7 +460,15 @@ function StepCard({
               This step also takes account of settings you have already changed, which needs the
               vehicle&apos;s own defaults.
               {onReadDefaults ? (
-                <button onClick={onReadDefaults}>Read them from the vehicle</button>
+                <button onClick={onReadDefaults} disabled={defaultsRead === 'asking'}>
+                  {defaultsRead === 'asking' ? 'Reading…' : 'Read them from the vehicle'}
+                </button>
+              ) : null}
+              {defaultsRead === 'nothing' ? (
+                <span className="amc-step__disputed-why">
+                  The vehicle sent no defaults. That needs MAVFTP on ArduPilot 4.5 or later; the
+                  Parameters view reports the reason.
+                </span>
               ) : null}
             </p>
           ) : null}
@@ -534,6 +551,27 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   // A declaration made before connecting, offered rather than applied when a
   // vehicle turns up with nothing of its own stored.
   const [carryOver, setCarryOver] = useState<Record<string, string> | undefined>(undefined)
+  // Asking the vehicle for its defaults is a MAVFTP transfer that can quietly
+  // do nothing on a firmware that cannot serve it. A control on this screen
+  // reports its own outcome rather than leaving the operator to infer it.
+  const [defaultsRead, setDefaultsRead] = useState<'idle' | 'asking' | 'nothing'>('idle')
+
+  const readDefaults = useCallback(async () => {
+    if (!onReadDefaults) return
+    setDefaultsRead('asking')
+    try {
+      await onReadDefaults()
+    } finally {
+      // Judged on the next render by whether defaults arrived; see below.
+      setDefaultsRead((current) => (current === 'asking' ? 'nothing' : current))
+    }
+  }, [onReadDefaults])
+
+  // Anything that arrives clears the failure state, including a fetch the app
+  // made for its own reasons.
+  useEffect(() => {
+    if (defaults && defaults.size > 0) setDefaultsRead('idle')
+  }, [defaults])
 
   // Which vehicle the values in state belong to.
   //
@@ -866,7 +904,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   reviewed={reviewed.has(row.filename)}
                   onDeclareField={focusField}
                   onStage={onStage}
-                  onReadDefaults={onReadDefaults}
+                  onReadDefaults={onReadDefaults ? readDefaults : undefined}
+                  defaultsRead={defaultsRead}
                   onReviewed={(next) =>
                     setReviewed((previous) => {
                       const updated = new Set(previous)
