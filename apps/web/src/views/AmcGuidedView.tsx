@@ -79,6 +79,15 @@ export interface AmcGuidedViewProps {
    * the vehicle has restarted, and the steps after it read the old value.
    */
   onRequestReboot?: () => void
+  /**
+   * Fetch a step's script and write it to the flight controller.
+   *
+   * Two steps need a Lua applet on the vehicle before they mean anything.
+   * Both sources send `Access-Control-Allow-Origin: *`, so the browser can
+   * fetch them directly and the operator does not have to round-trip through
+   * a download and the Files tab.
+   */
+  onInstallFile?: (file: { url: string; name: string; destination: string }) => Promise<void>
   /** Open one of the app's own tools, for the steps that are done with one. */
   onOpenTool?: (view: AppToolView) => void
   /**
@@ -250,6 +259,7 @@ function StepCard({
   onReviewed,
   onReadDefaults,
   onRequestReboot,
+  onInstallFile,
   defaultsRead,
   onOpenTool,
   onJump
@@ -263,11 +273,45 @@ function StepCard({
   onReviewed: (next: boolean) => void
   onReadDefaults?: (() => void) | undefined
   onRequestReboot?: (() => void) | undefined
+  onInstallFile?: ((file: { url: string; name: string; destination: string }) => Promise<void>) | undefined
   defaultsRead?: 'idle' | 'asking' | 'nothing'
   onOpenTool?: ((view: AppToolView) => void) | undefined
   onJump?: ((filename: string) => void) | undefined
 }) {
   const [open, setOpen] = useState(false)
+  // Which destination is being written, and how the last write went. Kept per
+  // step rather than globally: two steps each install a script, and a notice
+  // from one has nothing to say about the other.
+  const [installing, setInstalling] = useState<string | undefined>(undefined)
+  const [installNotice, setInstallNotice] = useState<
+    { destination: string; tone: 'ok' | 'warning'; text: string } | undefined
+  >(undefined)
+
+  const installFile = useCallback(
+    async (file: { url: string; name: string; destination: string }) => {
+      if (!onInstallFile) return
+      setInstalling(file.destination)
+      setInstallNotice(undefined)
+      try {
+        await onInstallFile(file)
+        setInstallNotice({
+          destination: file.destination,
+          tone: 'ok',
+          // Scripts run from boot, so an upload nobody restarts does nothing.
+          text: `Installed. Reboot the vehicle to start it.`
+        })
+      } catch (error) {
+        setInstallNotice({
+          destination: file.destination,
+          tone: 'warning',
+          text: error instanceof Error ? error.message : String(error)
+        })
+      } finally {
+        setInstalling(undefined)
+      }
+    },
+    [onInstallFile]
+  )
   const blocked = row.blocked.length > 0
   // Staging a satisfied parameter would add a no-op draft to the review list,
   // so a step offers only what actually differs from the vehicle.
@@ -577,17 +621,36 @@ function StepCard({
 
           {row.file ? (
             <p className="amc-step__file">
-              {/* Two separate acts on purpose. Fetching the applet is harmless
-                  and the operator can read it; putting a file on an aircraft is
-                  not, and goes over the MAVFTP transfer that is currently known
-                  to hang — so this stops at the download and says where the
-                  file has to end up. */}
               This step needs <code>{row.file.name}</code> at <code>{row.file.destination}</code> on the
               flight controller.{' '}
+              {/* The download stays, and not only as a fallback: putting a
+                  script on an aircraft is worth being able to read first. */}
               <a href={row.file.url} download={row.file.name} target="_blank" rel="noreferrer">
                 Download it
-              </a>{' '}
-              and copy it across with the Files tab; this tab does not put files on the vehicle.
+              </a>
+              {onInstallFile ? (
+                <>
+                  {' or '}
+                  <button
+                    onClick={() => void installFile(row.file!)}
+                    disabled={!connected || installing === row.file.destination}
+                    title={
+                      connected
+                        ? 'Fetch it and write it to the flight controller'
+                        : 'Connect a vehicle first'
+                    }
+                  >
+                    {installing === row.file.destination ? 'Installing…' : 'put it on the vehicle'}
+                  </button>
+                </>
+              ) : null}
+              {installNotice?.destination === row.file.destination ? (
+                <span
+                  className={`amc-step__file-notice amc-step__file-notice--${installNotice.tone}`}
+                >
+                  {installNotice.text}
+                </span>
+              ) : null}
             </p>
           ) : null}
 
@@ -640,6 +703,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     defaults,
     onReadDefaults,
     onRequestReboot,
+    onInstallFile,
     onOpenTool,
     suggestedKind,
     vehicleFirmwareVersion,
@@ -1356,6 +1420,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   onStage={onStage}
                   onReadDefaults={onReadDefaults ? readDefaults : undefined}
                   onRequestReboot={onRequestReboot}
+                  onInstallFile={onInstallFile}
                   defaultsRead={defaultsRead}
                   onOpenTool={onOpenTool}
                   onJump={jumpToStep}

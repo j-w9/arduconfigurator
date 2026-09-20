@@ -19411,6 +19411,26 @@ button.mavlink-inspector__sent-row {
   color: var(--primary-500);
 }
 
+/* The outcome of putting a step's script on the vehicle, next to the button
+   that did it rather than in a banner somewhere else. */
+.amc-step__file-notice {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.amc-step__file-notice--ok {
+  border-color: var(--primary-500);
+  background: var(--primary-transparent-1);
+}
+
+.amc-step__file-notice--warning {
+  border-color: var(--warning);
+  background: var(--warning-weak);
+}
+
 /* Reading the declaration off the vehicle. */
 .amc-guided__from-vehicle-row {
   display: flex;

@@ -2929,7 +2929,7 @@ function handleMockFtpRequest(
       })
     }
     case MAV_FTP_OPCODE.OPEN_FILE_RO: {
-      const path = normalizeMockFtpPath(new TextDecoder().decode(request.data).replace(/\0+$/, ''))
+      const path = resolveMockFtpPath(files, normalizeMockFtpPath(new TextDecoder().decode(request.data).replace(/\0+$/, '')))
       const fileBytes = files.get(path)
       if (!fileBytes) {
         return ftpNak(request, MAV_FTP_ERR.FILE_NOT_FOUND)
@@ -2978,7 +2978,7 @@ function handleMockFtpRequest(
       if (!parentPath || !directoryExists(files, parentPath)) {
         return ftpNak(request, MAV_FTP_ERR.FILE_NOT_FOUND)
       }
-      if (files.has(path)) {
+      if (files.has(resolveMockFtpPath(files, path))) {
         return ftpNak(request, MAV_FTP_ERR.FILE_EXISTS)
       }
 
@@ -3006,7 +3006,10 @@ function handleMockFtpRequest(
       })
     }
     case MAV_FTP_OPCODE.REMOVE_FILE: {
-      const path = normalizeMockFtpPath(new TextDecoder().decode(request.data).replace(/\0+$/, ''))
+      const path = resolveMockFtpPath(
+        files,
+        normalizeMockFtpPath(new TextDecoder().decode(request.data).replace(/\0+$/, ''))
+      )
       if (!files.has(path)) {
         return ftpNak(request, MAV_FTP_ERR.FILE_NOT_FOUND)
       }
@@ -3321,6 +3324,26 @@ function parentMockFtpPath(path: string): string | undefined {
   return separatorIndex > 0 ? normalizedPath.slice(0, separatorIndex) : undefined
 }
 
+/**
+ * Resolve a path to the key the map actually holds, ignoring case.
+ *
+ * ArduPilot's SD card is FAT, and FAT is case-insensitive: `/APM/Scripts` and
+ * `/APM/scripts` are the same directory on real hardware. The mock was case-
+ * SENSITIVE, so a write to the path AMC's sequence names ("/APM/Scripts/...",
+ * capital S) came back "File not found" against a mock that holds
+ * "/APM/scripts/...". That is a difference between the mock and a vehicle, not
+ * between the app and a vehicle, and it would have sent someone hunting
+ * through the upload path for a bug that is not there.
+ */
+function resolveMockFtpPath(files: MockFtpFileMap, path: string): string {
+  if (files.has(path)) return path
+  const lowered = path.toLowerCase()
+  for (const key of files.keys()) {
+    if (key.toLowerCase() === lowered) return key
+  }
+  return path
+}
+
 function directoryExists(files: MockFtpFileMap, path: string): boolean {
   const normalizedPath = normalizeMockFtpPath(path)
   // Always-present virtual mounts. @VTX is backed by AP_VideoTX's RAM table,
@@ -3330,8 +3353,8 @@ function directoryExists(files: MockFtpFileMap, path: string): boolean {
   if (normalizedPath === '@SYS' || normalizedPath === '@VTX' || normalizedPath === '@OSD') {
     return true
   }
-  const prefix = `${normalizedPath}/`
-  return [...files.keys()].some((filePath) => filePath.startsWith(prefix))
+  const prefix = `${normalizedPath}/`.toLowerCase()
+  return [...files.keys()].some((filePath) => filePath.toLowerCase().startsWith(prefix))
 }
 
 function listMockDirectoryEntries(files: MockFtpFileMap, path: string): Array<{ kind: 'file' | 'directory'; name: string; sizeBytes?: number }> | undefined {

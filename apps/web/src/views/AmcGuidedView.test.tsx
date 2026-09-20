@@ -510,3 +510,71 @@ describe('reading the declaration off the vehicle', () => {
     await waitFor(() => expect(screen.getByText(/replaced what you had answered/)).toBeTruthy())
   })
 })
+
+describe('a step that needs a script on the vehicle', () => {
+  /** The quick-tune step, which needs a Lua applet at /APM/Scripts. */
+  const openQuickTune = async () => {
+    const step = await screen.findByRole('button', { name: /Quick tune setup/i }, { timeout: 5000 })
+    await act(async () => {
+      step.click()
+    })
+  }
+
+  it('offers to put it there, and says so when it has', async () => {
+    const installed: { url: string; destination: string }[] = []
+    render(
+      <AmcGuidedView
+        {...base}
+        connected
+        onInstallFile={async (file) => {
+          installed.push({ url: file.url, destination: file.destination })
+        }}
+      />
+    )
+    await whenLoaded()
+    await openQuickTune()
+
+    const button = await screen.findByRole('button', { name: /put it on the vehicle/i })
+    await act(async () => {
+      button.click()
+    })
+
+    await waitFor(() => expect(installed).toHaveLength(1))
+    // The destination is the sequence's, not one we invented.
+    expect(installed[0]?.destination).toBe('/APM/Scripts/VTOL-quicktune.lua')
+    expect(installed[0]?.url).toMatch(/VTOL-quicktune\.lua$/)
+    // Scripts run from boot, so an upload nobody restarts does nothing.
+    await waitFor(() => expect(screen.getByText(/Reboot the vehicle to start it/i)).toBeTruthy())
+  })
+
+  it('reports a failure rather than claiming success', async () => {
+    render(
+      <AmcGuidedView
+        {...base}
+        connected
+        onInstallFile={async () => {
+          throw new Error('Could not fetch VTOL-quicktune.lua: 404 Not Found')
+        }}
+      />
+    )
+    await whenLoaded()
+    await openQuickTune()
+
+    await act(async () => {
+      ;(await screen.findByRole('button', { name: /put it on the vehicle/i })).click()
+    })
+    await waitFor(() => expect(screen.getByText(/404 Not Found/)).toBeTruthy())
+  })
+
+  it('keeps the download, and does not offer to install without a vehicle', async () => {
+    // Putting a script on an aircraft is worth being able to read first, and
+    // there is nothing to write to when nothing is connected.
+    render(<AmcGuidedView {...base} onInstallFile={async () => {}} />)
+    await whenLoaded()
+    await openQuickTune()
+
+    expect(screen.getByRole('link', { name: /Download it/i })).toBeTruthy()
+    const button = await screen.findByRole('button', { name: /put it on the vehicle/i })
+    expect((button as HTMLButtonElement).disabled).toBe(true)
+  })
+})

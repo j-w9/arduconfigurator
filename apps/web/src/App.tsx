@@ -9809,6 +9809,17 @@ export function App() {
           // step that sets a boot-time parameter has not taken effect until
           // the vehicle restarts, and the steps after it read the old value.
           onRequestReboot={() => void handleGuidedAction('reboot-autopilot')}
+          // Two steps need a Lua applet on the vehicle. Both sources allow
+          // cross-origin reads, so the fetch happens here rather than sending
+          // the operator off to a download and the Files tab.
+          onInstallFile={async (file) => {
+            const response = await fetch(file.url)
+            if (!response.ok) {
+              throw new Error(`Could not fetch ${file.name}: ${response.status} ${response.statusText}`)
+            }
+            const bytes = new Uint8Array(await response.arrayBuffer())
+            await runtime.uploadRemoteFile(file.destination, bytes, { overwrite: true })
+          }}
           // Several steps are done with a tool this app already has. The step
           // sends the operator there rather than the tab carrying a copy.
           onOpenTool={(view) => setActiveViewId(view)}
