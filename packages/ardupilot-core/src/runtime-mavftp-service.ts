@@ -51,6 +51,21 @@ const MAVFTP_BURST_READ_SIZE = 239
 // no-flow-control USB link leaves the transfer waiting; keep this short enough
 // that recovery is snappy but long enough to tolerate a slow SD card.
 const DEFAULT_MAVFTP_BURST_TIMEOUT_MS = 6000
+
+/**
+ * How long a transfer will wait for the session before giving up on it.
+ *
+ * Every operation below is bounded -- 3s for a request, 6s for a burst packet,
+ * 20s for a directory listing -- but the queue they line up in was not. One
+ * transfer that never settles therefore held the session silently and for the
+ * rest of the session: the next caller awaited a promise that would never
+ * resolve, with no timeout to fire and nothing logged.
+ *
+ * Generous on purpose. A log download is a legitimate multi-minute transfer and
+ * must not be cut off just because something else wants a turn; this is long
+ * enough that reaching it means something is wrong rather than slow.
+ */
+const MAVFTP_SESSION_WAIT_MS = 300_000
 // CONSECUTIVE-stall retries (reset on any forward progress — see
 // handleBurstPacket). A large multi-burst log over a lossy link legitimately
 // hits many isolated stalls across the whole download; the budget is per-stall,
@@ -153,6 +168,13 @@ export interface MavftpServiceOptions {
   session: MavlinkSession
   getVehicle: () => VehicleIdentity | undefined
   ensureSupport: () => Promise<void>
+  /**
+   * How long to wait for the session before giving up on whoever holds it.
+   *
+   * Overridable so the bound can be tested in milliseconds rather than
+   * minutes; nothing in the app passes it.
+   */
+  sessionWaitMs?: number
   requestTimeoutMs?: number
 }
 
@@ -166,6 +188,7 @@ export class MavftpService {
   private readonly session: MavlinkSession
   private readonly getVehicle: () => VehicleIdentity | undefined
   private readonly ensureSupport: () => Promise<void>
+  private readonly sessionWaitMs: number
   private readonly requestTimeoutMs: number
   private readonly waiters = new Set<MavftpWaiter>()
   private activeBurst: BurstOperation | undefined
@@ -202,6 +225,7 @@ export class MavftpService {
     this.session = options.session
     this.getVehicle = options.getVehicle
     this.ensureSupport = options.ensureSupport
+    this.sessionWaitMs = options.sessionWaitMs ?? MAVFTP_SESSION_WAIT_MS
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_MAVFTP_TIMEOUT_MS
   }
 
@@ -299,11 +323,44 @@ export class MavftpService {
     this.transferQueue = predecessor.then(() => new Promise<void>((resolve) => {
       release = resolve
     }))
-    await predecessor
+
+    // Waiting for the session is bounded, because everything else here is and
+    // this was the one place a caller could wait forever. Deliberately NOT a
+    // force-release of the holder: taking the session from a transfer that is
+    // merely slow would repoint session 0 mid-download and fail it with the
+    // flight controller's own "file not found", which is the exact failure the
+    // queue exists to prevent. Better to fail the waiter and say why.
+    await this.awaitSession(predecessor)
+
     try {
       return await operation()
     } finally {
       release()
+    }
+  }
+
+  /** Wait for the session, or fail saying that something else is holding it. */
+  private async awaitSession(predecessor: Promise<void>): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        predecessor,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `A MAVFTP transfer has held the session for over ${Math.round(
+                    this.sessionWaitMs / 1000
+                  )}s; giving up waiting for it. Reconnect to clear it.`
+                )
+              ),
+            this.sessionWaitMs
+          )
+        })
+      ])
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
     }
   }
 
