@@ -1568,8 +1568,16 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 )
               })()}
 
-              {/* Thermal calibration (TCAL) — Expert-only advanced surface. */}
-              {isExpertMode && calibrationTab === 'sensors' ? (
+              {/* Thermal calibration (TCAL) — NOT Expert-gated.
+                *
+                * It is stock ArduPilot, it is bench work with the props off,
+                * and the card is safer than the alternative it replaces:
+                * setting INS_TCALn_ENABLE by hand in raw Parameters, where
+                * nothing warns that the firmware's default 70 °C target is one
+                * most airframes never reach, so the learn runs forever and
+                * saves nothing. Expert mode is for surfaces that can hurt
+                * someone who does not already know what they are. */}
+              {calibrationTab === 'sensors' ? (
                 <TcalCalibrationCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}

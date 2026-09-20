@@ -6,7 +6,8 @@ import {
   escCalibrationInstructions,
   escCalibrationPathLabel,
   panelAnchorForSetupSection,
-  appViewForPanel
+  appViewForPanel,
+  configCategoryForPanel
 } from './setup-flow-helpers'
 
 const criterion = (met: boolean): SetupFlowCriterion => ({ label: 'c', met })
@@ -60,8 +61,22 @@ describe('panelAnchorForSetupSection', () => {
 
   it('routes each setup panel to a view that exists', () => {
     expect(appViewForPanel('setup-panel-failsafe')).toBe('failsafe')
-    expect(appViewForPanel('setup-panel-modes')).toBe('modes')
     expect(appViewForPanel('setup-panel-rc')).toBe('receiver')
     expect(appViewForPanel('setup-panel-outputs')).toBe('motors')
+    // Flight modes stopped being a tab and became a Config category. This
+    // assertion used to say 'modes' — a view that no longer exists, which is
+    // what the test's own name is about: the guided step routed there and
+    // rendered an empty section with nothing selected in the nav.
+    expect(appViewForPanel('setup-panel-modes')).toBe('config')
+    expect(appViewForPanel('setup-panel-power')).toBe('config')
+  })
+
+  it('names the Config category a panel lives in, for the ones that live in one', () => {
+    // Routing to Config is half the job: only the ACTIVE category renders, so
+    // a scroll to a panel inside a different one finds nothing and expires.
+    expect(configCategoryForPanel('setup-panel-modes')).toBe('flight-modes')
+    expect(configCategoryForPanel('setup-panel-power')).toBe('power')
+    expect(configCategoryForPanel('setup-panel-rc')).toBeUndefined()
+    expect(configCategoryForPanel('setup-panel-outputs')).toBeUndefined()
   })
 })

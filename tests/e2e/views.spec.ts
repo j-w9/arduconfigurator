@@ -100,9 +100,11 @@ test.describe('Phone layout', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.locator('.workspace-sidebar .baseline-summary')).toHaveCount(0)
     await expect(page.locator('.workspace-sidebar .workspace-tabrail__header')).toHaveCount(0)
-    // The rail is the rail: no drift summary, no vehicle caption. Open
-    // Snapshots and it is all there.
+    // The rail is the rail: no drift summary, no vehicle caption, and no badge
+    // on Snapshots — a count like "94 diff" is wider than the rail has room
+    // for and lands on top of the label. Open Snapshots and it is all there.
     await expect(page.getByTestId('view-button-snapshots')).toHaveText('SNPSnapshots')
+    await expect(page.getByTestId('view-button-snapshots').locator('.workspace-nav__badge')).toHaveCount(0)
   })
 })
 
@@ -4536,19 +4538,21 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('log-tuning-unusable')).toBeVisible()
   })
 
-  test('Calibration: the Thermal Calibration (TCAL) card is Expert-gated', async ({ page }) => {
+  test('Calibration: the Thermal Calibration (TCAL) card is offered to everyone', async ({ page }) => {
+    // NOT Expert-gated. It is stock ArduPilot, it is bench work with the props
+    // off, and the card is safer than setting INS_TCALn_ENABLE by hand in raw
+    // Parameters — where nothing warns that the firmware's 70 °C default
+    // target is one most airframes never reach.
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
-    // Default (non-Expert): the TCAL card is hidden.
     await openView(page, 'calibration')
     await page.getByTestId('calibration-tab-sensors').click()
-    await expect(page.getByTestId('calibration-card-tcal')).toHaveCount(0)
+    // Basic mode. Not an incidental default — it is the condition under test.
+    await expect(page.getByTestId('product-mode-expert')).not.toBeChecked()
 
-    // Expert mode reveals the full card (demo seeds INS_TCALn_ENABLE = 0).
-    await enableExpertMode(page)
     const tcal = page.getByTestId('calibration-card-tcal')
     await expect(tcal).toBeVisible()
     await expect(tcal).toContainText('Thermal calibration')
@@ -4598,7 +4602,6 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
-    await enableExpertMode(page)
     await openView(page, 'calibration')
     await page.getByTestId('calibration-tab-sensors').click()
 

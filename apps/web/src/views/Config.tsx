@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
@@ -142,6 +142,15 @@ export interface ConfigViewProps {
   subtitle?: string
   /** DOM id on the wrapper, so two instances never collide. */
   panelId?: string
+  /**
+   * Open this category, when something outside asks for it.
+   *
+   * The guided setup routes to a panel that lives inside a category (Power,
+   * Flight Modes), and only the ACTIVE category is rendered — so without this
+   * the jump lands on whichever category the tab was last on and the panel it
+   * wanted is not in the DOM at all.
+   */
+  requestedCategory?: ConfigCategoryId
   /** Expert mode opts into the whole surface, so the per-card Advanced folds
    *  start open rather than making the operator expand each one. */
   isExpertMode: boolean
@@ -186,6 +195,7 @@ export function ConfigView(props: ConfigViewProps) {
     // offer them here.
     subtitle = 'Airframe, RC, flight modes, arming, power and system settings — one area at a time.',
     panelId = 'setup-panel-config',
+    requestedCategory,
     isExpertMode,
     parametersById,
     editedValues,
@@ -209,6 +219,14 @@ export function ConfigView(props: ConfigViewProps) {
   )
 
   const [activeCategory, setActiveCategory] = useState<ConfigCategoryId>(presentCategories[0]?.id ?? 'airframe')
+  // A request from outside wins once, and then the operator's own clicks do:
+  // this only fires when the requested category CHANGES, so it never fights
+  // the tab strip.
+  useEffect(() => {
+    if (requestedCategory !== undefined) {
+      setActiveCategory(requestedCategory)
+    }
+  }, [requestedCategory])
   // Keep the active tab valid if the section set changes under us.
   const effectiveCategory = presentCategories.some((category) => category.id === activeCategory)
     ? activeCategory

@@ -57,7 +57,24 @@ export function resolveSetupConfirmationRecord({
     return record
   }
 
-  if (signature === undefined || record.signature !== signature) {
+  // No signature DEFINED for this section — not "the signature failed".
+  //
+  // buildSetupConfirmationSignatures only defines signatures for the Copter
+  // section ids. The generic ones every other vehicle declares — 'sensors',
+  // 'verify', 'drive', 'frame', 'controls' — have none, so this branch threw
+  // their confirmations away the instant they were made: the operator pressed
+  // "Confirm Sensors Review", the criterion stayed pending, and the step could
+  // never complete. With the sequential lock behind it, that stranded EVERY
+  // non-Copter vehicle at its first generic step. (Plane: step 3 of 8.)
+  //
+  // A section with no signature has nothing that can make its sign-off stale,
+  // which is what the input's own docs say `undefined` means. Hold the record,
+  // exactly as this did before signatures existed.
+  if (signature === undefined) {
+    return record
+  }
+
+  if (record.signature !== signature) {
     return undefined
   }
 

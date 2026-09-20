@@ -33,6 +33,21 @@ function detectBrowserExecutable(): string | undefined {
 
 const executablePath = detectBrowserExecutable()
 
+/**
+ * Preview port, overridable so two checkouts can run e2e at the same time.
+ *
+ * Both the preview server and the bridge bind fixed ports, so a second
+ * checkout running its own suite takes the server out from under the first
+ * mid-run — the failure looks like a pile of ERR_CONNECTION_REFUSED and a
+ * `code 143` SIGTERM on the webServer, which reads like a flaky app rather
+ * than a port collision. Default unchanged, so CI and a single checkout
+ * behave exactly as before; a second checkout sets ARDUCONFIG_E2E_PORT (and
+ * ARDUCONFIG_E2E_BRIDGE_PORT, if it runs a bridge too).
+ */
+const previewPort = Number(process.env.ARDUCONFIG_E2E_PORT ?? 4173)
+const bridgePort = Number(process.env.ARDUCONFIG_E2E_BRIDGE_PORT ?? 14550)
+const baseURL = `http://127.0.0.1:${previewPort}`
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
@@ -48,7 +63,7 @@ export default defineConfig({
   },
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL,
     headless: true,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
@@ -60,14 +75,14 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'npm run preview --workspace @arduconfig/web -- --host 127.0.0.1 --port 4173 --strictPort',
-      url: 'http://127.0.0.1:4173',
+      command: `npm run preview --workspace @arduconfig/web -- --host 127.0.0.1 --port ${previewPort} --strictPort`,
+      url: baseURL,
       reuseExistingServer: process.env.ARDUCONFIG_E2E_REUSE_EXISTING === '1',
       timeout: 120_000
     },
     {
-      command: 'node apps/desktop/dist/bridge-websocket.js --demo --host=127.0.0.1 --port=14550',
-      url: 'http://127.0.0.1:14550',
+      command: `node apps/desktop/dist/bridge-websocket.js --demo --host=127.0.0.1 --port=${bridgePort}`,
+      url: `http://127.0.0.1:${bridgePort}`,
       reuseExistingServer: process.env.ARDUCONFIG_E2E_REUSE_EXISTING === '1',
       timeout: 120_000
     }

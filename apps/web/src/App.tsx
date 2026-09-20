@@ -226,6 +226,7 @@ import {
 } from './setup-format-helpers'
 import {
   appViewForPanel,
+  configCategoryForPanel,
   OUTPUTS_ORIENTATION_TARGET_ID,
   OUTPUTS_ORIENTATION_BUTTON_ID,
   OUTPUTS_BENCH_TARGET_ID,
@@ -379,7 +380,7 @@ import { AmcGuidedView } from './views/AmcGuidedView'
 import { draftsFrom, sequenceForFirmware } from './view-models/amc-guided'
 import { deriveAmcProgressKey } from './amc-progress-storage'
 import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
-import { ConfigView } from './views/Config'
+import { ConfigView, type ConfigCategoryId } from './views/Config'
 import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
 import { withFlightModeOptions } from './view-models/flight-mode-options'
 import { isFiberModeAvailable } from './view-models/fiber-mode-detection'
@@ -1282,6 +1283,10 @@ export function App() {
   // land as follow-up PRs. The sections array is small (5 items) and
   // doesn't need to be useMemo'd, but pre-build the parametersById map
   // once so each section card can render in O(1).
+  // Set when the guided setup (or any deep link) routes to a panel that lives
+  // inside a Config category; ConfigView opens it. Stays set afterwards, which
+  // is harmless — it only re-applies when the value CHANGES.
+  const [requestedConfigCategory, setRequestedConfigCategory] = useState<ConfigCategoryId | undefined>(undefined)
   const {
     configParametersById,
     configSections,
@@ -1424,7 +1429,27 @@ export function App() {
   // (ArduCopter/Parameters.cpp, @Units: cm, default 1500), master is RTL_ALT_M
   // in metres (mode_rtl.cpp, default 15). Same physical altitude either way, so
   // normalise to metres here rather than making every consumer know.
+  // Each vehicle names it differently, and only Copter uses centimetres:
+  //   Copter  RTL_ALT_M (m, 4.7+) / RTL_ALT (cm, <=4.6), default 15 m
+  //           (ArduCopter/config.h RTL_ALT_M_DEFAULT)
+  //   Plane   RTL_ALTITUDE (m), default 100 m (ArduPlane/config.h
+  //           ALT_HOLD_HOME) — the QuadPlane VTOL return uses Q_RTL_ALT
+  //   Rover / Sub have no RTL altitude at all, on the ground or underwater
+  // Reading only the Copter names made the failsafe step's altitude criterion
+  // permanently unsatisfiable on every other vehicle, which blocked the step
+  // and everything behind it.
   const rtlAltitudeMetres = (() => {
+    // Keyed on the VEHICLE, not on whichever name happens to be present: a
+    // board can report both (a Plane demo built on a Copter parameter base,
+    // or a leftover from a firmware change), and then name order decides
+    // which altitude the operator is shown. The vehicle knows which one it
+    // flies to.
+    if (snapshot.vehicle?.vehicle === 'ArduPlane') {
+      return readParameterValue(snapshot, 'RTL_ALTITUDE')
+    }
+    if (snapshot.vehicle?.vehicle === 'ArduRover' || snapshot.vehicle?.vehicle === 'ArduSub') {
+      return undefined
+    }
     const metres = readParameterValue(snapshot, 'RTL_ALT_M')
     if (metres !== undefined) {
       return metres
@@ -3479,6 +3504,13 @@ export function App() {
   function scrollToPanel(panelId: string, targetElementId?: string): void {
     const targetViewId = appViewForPanel(panelId)
     const scrollTargetId = targetElementId ?? panelId
+    // Config renders only its ACTIVE category, so a panel that lives inside
+    // one has to have that category opened before the scroll goes looking for
+    // it — otherwise the retry loop just expires and the step strands.
+    const configCategory = configCategoryForPanel(panelId)
+    if (configCategory) {
+      setRequestedConfigCategory(configCategory)
+    }
     if (targetViewId === 'motors' || targetViewId === 'servos') {
       const outputTaskId = outputTaskForTarget(targetElementId)
       if (outputTaskId) {
@@ -5767,10 +5799,20 @@ export function App() {
   const activeOutputTask = outputTaskCards.find((task) => task.id === activeOutputTaskId) ?? outputTaskCards[0]
 
   function confirmSetupSection(sectionId: string, outcome: SetupSectionOutcome = 'complete'): void {
+    // A section with no signature still gets confirmed.
+    //
+    // This used to return silently when the section had no signature defined —
+    // and buildSetupConfirmationSignatures only defines them for the COPTER
+    // section ids. So on Plane, Rover and Sub, pressing "Confirm Sensors
+    // Review" (or Verify, Drive, Frame, Controls) did nothing whatsoever: no
+    // record, no criterion met, no error. The step could never complete and
+    // the sequential lock stranded the whole flow behind it — a Plane could
+    // not get past step 3 of 8.
+    //
+    // Storing it with `signature: undefined` records what the operator
+    // actually did; the resolver holds such a record because a section with
+    // nothing to compare against has nothing that can make it stale.
     const signature = setupConfirmationSignatures[sectionId]
-    if (signature === undefined) {
-      return
-    }
 
     setSetupConfirmations((current) => ({
       ...current,
@@ -10201,6 +10243,7 @@ export function App() {
       {activeViewId === 'config' ? (
         <ConfigView
           isExpertMode={isExpertMode}
+          requestedCategory={requestedConfigCategory}
           sections={configSections.map((section) => {
             if (section.id === 'esc-dshot') {
               return { ...section, footer: renderEscDshotFooter() }
