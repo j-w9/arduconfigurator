@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import type { ParameterState, ServoOutputAssignment } from '@arduconfig/ardupilot-core'
-import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import { ScopedField, ScopedSelectField, type ScopedFieldDraftMap } from './ScopedField'
 import type { ServoLiveOutput } from '../view-models/servo-live-output'
@@ -80,11 +80,13 @@ export function ServoFunctionMappingView(props: ServoFunctionMappingViewProps) {
   const auxCount = rows.filter((row) => row.assignment.kind !== 'motor' && row.assignment.kind !== 'unused').length
   const disabledCount = rows.filter((row) => row.assignment.kind === 'unused').length
 
+  // No Panel of its own. This used to render "Servo function mapping" with a
+  // sentence under it INSIDE the Servos panel, which already had a title and a
+  // sentence of its own — two headings and two blurbs restating each other
+  // before the table the operator came for. The channel counts were the only
+  // part carrying information, so they moved to the toolbar beside the staged
+  // and invalid counts.
   return (
-    <Panel
-      title="Servo function mapping"
-      subtitle={`Assign a function to each output channel and dial the PWM range, trim, and direction. ${motorCount} motor · ${auxCount} aux · ${disabledCount} unused.`}
-    >
       <div className="servo-mapping">
         {rows.length === 0 ? (
           <p className="servo-mapping__empty">
@@ -196,6 +198,9 @@ export function ServoFunctionMappingView(props: ServoFunctionMappingViewProps) {
 
         <div className="servo-mapping__toolbar">
           <div className="servo-mapping__toolbar-status">
+            <span data-testid="servo-mapping-counts">
+              {motorCount} motor · {auxCount} aux · {disabledCount} unused
+            </span>
             <span>{stagedCount} staged</span>
             <span>{invalidCount} invalid</span>
           </div>
@@ -219,7 +224,6 @@ export function ServoFunctionMappingView(props: ServoFunctionMappingViewProps) {
           </button>
         </div>
       </div>
-    </Panel>
   )
 }
 
