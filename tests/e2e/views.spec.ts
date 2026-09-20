@@ -41,9 +41,11 @@ test.describe('Phone layout', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await page.getByTestId('view-button-config').click()
-    // The Active Baseline panel (snapshot drift summary) is hidden on phone —
-    // it lives in the sidebar and was burying the active tab's content.
-    await expect(page.locator('.workspace-sidebar .baseline-summary')).toBeHidden()
+    // The Active Baseline panel is gone from the sidebar entirely now — the
+    // Snapshots nav item badges the drift count, and the detail is in the
+    // Snapshots tab. It used to be hidden at phone width for space; there is
+    // nothing left to hide.
+    await expect(page.locator('.workspace-sidebar .baseline-summary')).toHaveCount(0)
     // No horizontal overflow at phone width.
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(overflow).toBeLessThanOrEqual(2)
@@ -85,13 +87,22 @@ test.describe('Phone layout', () => {
     await expect(page.getByTestId('parameter-search-input')).toBeVisible()
   })
 
-  test('keeps the baseline panel on desktop width', async ({ page }) => {
+  test('the sidebar is the nav rail and nothing else', async ({ page }) => {
+    // The sidebar used to open with a "Connected Tabs" caption naming the
+    // vehicle and transport, and an Active Baseline panel with the snapshot
+    // drift summary. The header already carries the vehicle and the transport,
+    // the status bar carries the link, and the drift detail is on the Snapshots
+    // tab itself — which is where you are when you care about it.
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
-    await expect(page.locator('.workspace-sidebar .baseline-summary')).toBeVisible()
+    await expect(page.locator('.workspace-sidebar .baseline-summary')).toHaveCount(0)
+    await expect(page.locator('.workspace-sidebar .workspace-tabrail__header')).toHaveCount(0)
+    // The rail is the rail: no drift summary, no vehicle caption. Open
+    // Snapshots and it is all there.
+    await expect(page.getByTestId('view-button-snapshots')).toHaveText('SNPSnapshots')
   })
 })
 
