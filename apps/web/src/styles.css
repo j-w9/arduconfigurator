@@ -14514,7 +14514,14 @@ details.metadata-settings-section:not([open]) > summary::after {
   min-width: 0;
 }
 
-.config-grid--wide .config-section__editors {
+/* A full-width card flows its fields into as many columns as fit, whether it
+   got the width from being the only card in the group (`config-grid--wide`) or
+   from spanning the columns itself (`config-section--wide`). Without the second
+   selector a spanning card stretched to the full width but kept a single
+   column of fields, which is the tall single-file list the width was meant to
+   fix. auto-fit collapses to one track on a phone. */
+.config-grid--wide .config-section__editors,
+.config-section--wide .config-section__editors {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   column-gap: var(--space-3);
 }

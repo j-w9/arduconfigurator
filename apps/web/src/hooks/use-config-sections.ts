@@ -86,7 +86,11 @@ const ADVANCED_FIELDS: Record<string, readonly string[]> = {
   // LOG_DISARMED / LOG_REPLAY are routinely set per-build (LOG_DISARMED=2 +
   // LOG_REPLAY=1 is a common "full logs" pairing), so they lead the card.
   logging: ['LOG_BITMASK'],
-  'camera-trigger': ['CAM_DURATION', 'CAM_AUTO_ONLY', 'CAM_SERVO_ON', 'CAM_SERVO_OFF']
+  // Camera: everything visible, same call as RC and Arming above. Folding four
+  // of the five fields left the card showing only the trigger type — an
+  // operator wiring a shutter needs the pulse width and the servo endpoints in
+  // front of them, and the card is `wide`, so there is room to show them.
+  'camera-trigger': []
 }
 
 // Tag a built section with its category + which of its fields are advanced.
@@ -331,6 +335,11 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
       id: 'camera-trigger',
       title: 'Camera trigger',
       description: 'Triggered camera shutter behavior — type/duration/auto. Pair with a SERVOn_FUNCTION = 10 (Camera Trigger) output.',
+      // Full width, so the five fields flow into columns instead of a tall
+      // single-file list with the rest of the row empty. The Camera & Gimbal
+      // sub-tab also holds the (wide) metadata-driven gimbal panel, so the
+      // one-card `config-grid--wide` path does not apply here.
+      wide: true,
       fields: [
         { paramId: 'CAM_TRIGG_TYPE', label: 'Trigger type', digits: 0 },
         { paramId: 'CAM_DURATION', label: 'Pulse duration', unit: 's·10', digits: 0 },
