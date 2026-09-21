@@ -173,6 +173,14 @@ export function templateValues(
   return valuesFromComponents({ Components: components }, fields)
 }
 
+/**
+ * A template's whole declaration, including everything the form never asks
+ * about — so a directory written from it is a complete vehicle project.
+ */
+export function templateComponents(id: string): Readonly<Record<string, unknown>> | undefined {
+  return templateDocuments[id] as Readonly<Record<string, unknown>> | undefined
+}
+
 export interface TempcalOutcome {
   /** The parameters to stage, across every IMU that could be fitted. */
   readonly parameters: Readonly<Record<string, number>>
@@ -211,6 +219,16 @@ export interface ProjectExportInputs {
   readonly docs?: ParameterDocs
   /** Decisions read back from a previous project, so a rewrite keeps them. */
   readonly overrides?: ReadonlyMap<string, { value: number; reason?: string }>
+  /**
+   * The declaration the operator started from — a template, or a directory
+   * they opened.
+   *
+   * Carried through so the written directory keeps the fields this form never
+   * asks about: a motor's manufacturer, the operator's notes. Without it the
+   * result holds only what the sequence reads, which is not a vehicle project
+   * AMC could open.
+   */
+  readonly baseComponents?: Readonly<Record<string, unknown>>
 }
 
 export interface ProjectExport {
@@ -229,8 +247,8 @@ export interface ProjectExport {
  * and re-deriving them is impossible.
  */
 export function buildProject(inputs: ProjectExportInputs): ProjectExport {
-  const { sequence, fields, values, parameters, defaults, docs, overrides } = inputs
-  const componentsJson = buildComponentsJson(fields, values)
+  const { sequence, fields, values, parameters, defaults, docs, overrides, baseComponents } = inputs
+  const componentsJson = buildComponentsJson(fields, values, baseComponents)
   const context = vehicleContext(componentsJson, parameters)
 
   const steps = vehicleFiles(sequence, context, {

@@ -221,9 +221,24 @@ export function fieldsFor(sequence: AmcSequence, docs?: ParameterDocs): Componen
  * JavaScript object would erase that distinction. So each field's raw input is
  * emitted as the operator typed it.
  */
-export function buildComponentsJson(fields: readonly ComponentField[], values: Readonly<Record<string, string>>): string {
+export function buildComponentsJson(
+  fields: readonly ComponentField[],
+  values: Readonly<Record<string, string>>,
+  base?: Readonly<Record<string, unknown>>
+): string {
   type Node = { children: Map<string, Node>; literal?: string }
   const root: Node = { children: new Map() }
+
+  // Everything the vehicle already carried that this form never asks about:
+  // a motor's manufacturer, a receiver's URL, the operator's notes. The form
+  // is built from what the SEQUENCE reads, so without this a directory
+  // written here would drop every other field — and the result is not a
+  // vehicle project AMC could open, only the parts of one we happened to use.
+  //
+  // Rendered through JSON.stringify rather than the literal path below: no
+  // expression reads these, so the `4` versus `4.0` distinction that matters
+  // for declared values cannot matter for them.
+  if (base) seed(root, base)
 
   for (const field of fields) {
     const raw = values[field.key]?.trim()
@@ -248,8 +263,28 @@ export function buildComponentsJson(fields: readonly ComponentField[], values: R
     return `{${entries.join(',')}}`
   }
 
-  return `{"Components":${render(root)}}`
+  // "Format version" is REQUIRED by AMC's schema, and its absence is the
+  // difference between a directory AMC can open and one it refuses.
+  return `{"Format version":${COMPONENTS_FORMAT_VERSION},"Components":${render(root)}}`
+
+  function seed(node: Node, value: Readonly<Record<string, unknown>>): void {
+    for (const [key, child] of Object.entries(value)) {
+      if (child !== null && typeof child === 'object' && !Array.isArray(child)) {
+        let next = node.children.get(key)
+        if (!next) {
+          next = { children: new Map() }
+          node.children.set(key, next)
+        }
+        seed(next, child as Readonly<Record<string, unknown>>)
+        continue
+      }
+      node.children.set(key, { children: new Map(), literal: JSON.stringify(child) })
+    }
+  }
 }
+
+/** The schema version AMC's templates carry, and validate against. */
+const COMPONENTS_FORMAT_VERSION = 1
 
 /** A JSON number literal, which is what keeps `4.0` distinct from `4`. */
 const NUMERIC = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/

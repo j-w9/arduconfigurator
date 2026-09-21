@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import schemaJson from '@amc/data/vehicle_components_schema.json'
+
 import { fieldsFor, loadSequence } from './amc-guided'
 import {
   buildProject,
@@ -7,6 +9,7 @@ import {
   projectArchive,
   projectFilename,
   readProject,
+  templateComponents,
   templateValues,
   vehicleTemplates
 } from './amc-project'
@@ -357,5 +360,77 @@ describe('starting from a similar vehicle', () => {
 
   it('an unknown template id changes nothing', () => {
     expect(templateValues('NoSuch/Vehicle', fields)).toEqual({})
+  })
+})
+
+describe('the directory AMC would have to open', () => {
+  /** AMC's own schema, which its project opener validates against. */
+  // Aliased the same way the step data is: the fork holds AMC's schema.
+  const schema = schemaJson as unknown as {
+    required?: string[]
+    properties?: { Components?: { required?: string[] } }
+  }
+
+  const componentsOf = (project: { files: readonly { filename: string; text: string }[] }) =>
+    JSON.parse(project.files.find((f) => f.filename === 'vehicle_components.json')!.text)
+
+  it('carries the Format version the schema requires', () => {
+    // Its absence is the difference between a directory AMC opens and one it
+    // refuses, and nothing about the parameter files gives it away.
+    const doc = componentsOf(buildProject({ sequence: copter, fields, values: declare(), parameters: {} }))
+    for (const key of schema.required ?? []) {
+      expect(Object.keys(doc)).toContain(key)
+    }
+    expect(doc['Format version']).toBe(1)
+  })
+
+  it('keeps every component when started from one of AMC\'s vehicles', () => {
+    // The form only asks about what the SEQUENCE reads, so a directory built
+    // from the answers alone is missing whole components the schema requires —
+    // Motors, ESC, Frame — along with every manufacturer, URL and note.
+    const [template] = vehicleTemplates(fields, 'ArduCopter')
+    const base = templateComponents(template!.id)
+    const doc = componentsOf(
+      buildProject({
+        sequence: copter,
+        fields,
+        values: templateValues(template!.id, fields),
+        parameters: {},
+        baseComponents: base
+      })
+    )
+
+    for (const component of schema.properties?.Components?.required ?? []) {
+      expect(Object.keys(doc.Components)).toContain(component)
+    }
+    // And nothing was dropped: every leaf the template carried is present,
+    // which is a stronger claim than any single field being populated (the
+    // most-complete template still leaves some blank).
+    const leaves = (node: unknown, trail: string[] = [], out: string[] = []): string[] => {
+      if (node !== null && typeof node === 'object' && !Array.isArray(node)) {
+        for (const [key, child] of Object.entries(node)) leaves(child, [...trail, key], out)
+        return out
+      }
+      out.push(trail.join('/'))
+      return out
+    }
+    const missing = leaves(base).filter((path) => !leaves(doc.Components).includes(path))
+    expect(missing).toEqual([])
+    expect(leaves(base).length).toBeGreaterThan(30)
+  })
+
+  it('lets the operator\'s answer win over the vehicle it started from', () => {
+    // A template is a starting point, not a claim: what they corrected has to
+    // be what gets written.
+    const [template] = vehicleTemplates(fields, 'ArduCopter')
+    const base = templateComponents(template!.id)
+    const values = { ...templateValues(template!.id, fields) }
+    const cellsKey = fields.find((f) => /Number of cells/.test(f.key))!.key
+    values[cellsKey] = '12'
+
+    const doc = componentsOf(
+      buildProject({ sequence: copter, fields, values, parameters: {}, baseComponents: base })
+    )
+    expect(doc.Components.Battery.Specifications['Number of cells']).toBe(12)
   })
 })

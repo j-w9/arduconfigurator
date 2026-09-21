@@ -32,6 +32,7 @@ import {
   projectArchive,
   projectFilename,
   readProject,
+  templateComponents,
   templateValues,
   vehicleTemplates
 } from '../view-models/amc-project'
@@ -884,6 +885,12 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   const [logState, setLogState] = useState<'idle' | 'reading'>('idle')
   // The IMU temperature calibration fitted from that log, when it held one.
   const [tempcal, setTempcal] = useState<TempcalOutcome | undefined>(undefined)
+  // The declaration the operator started from, whole. The form only asks
+  // about what the sequence reads, so without this a written directory drops
+  // every other field and stops being a vehicle project AMC could open.
+  const [baseComponents, setBaseComponents] = useState<Readonly<Record<string, unknown>> | undefined>(
+    undefined
+  )
   const [logNotice, setLogNotice] = useState<string | undefined>(undefined)
 
   const readLog = useCallback(async (file: File | undefined) => {
@@ -1017,6 +1024,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       // aircraft, and half of one vehicle mixed with half of another is a
       // vehicle that does not exist.
       setValues(values)
+      setBaseComponents(templateComponents(id))
       setImportNotice({
         tone: 'ok',
         text: `Started from ${id.split('/')[1]?.replace(/_/g, ' ')}: ${filled} field${
@@ -1126,7 +1134,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       parameters,
       ...(defaults ? { defaults } : {}),
       ...(docs ? { docs } : {}),
-      overrides
+      overrides,
+      ...(baseComponents ? { baseComponents } : {})
     })
     const blob = new Blob([projectArchive(project) as unknown as BlobPart], { type: 'application/zip' })
     const url = URL.createObjectURL(blob)
@@ -1155,7 +1164,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             text: `Written: ${project.files.length} files, ${project.parameterCount} parameters.`
           }
     )
-  }, [steps, fields, values, parameters, defaults, docs, overrides, kind, versionKey])
+  }, [steps, fields, values, parameters, defaults, docs, overrides, baseComponents, kind, versionKey])
 
   // Reading one back. The picker hands over whatever the operator selected, so
   // this has to be honest about what it could and could not place.
@@ -1183,6 +1192,17 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       }
 
       if (project.componentValues) setValues(project.componentValues)
+      // Everything the opened directory held that this form never asks about
+      // travels with it, so rewriting does not quietly strip the vehicle down
+      // to the fields the sequence happens to read.
+      if (project.components) {
+        try {
+          const parsed = JSON.parse(project.components) as { Components?: Record<string, unknown> }
+          if (parsed.Components) setBaseComponents(parsed.Components)
+        } catch {
+          // Already reported by readProject leaving componentValues unset.
+        }
+      }
       setOverrides(project.overrides)
 
       const parts = [`Read ${project.steps.length} step files`]
