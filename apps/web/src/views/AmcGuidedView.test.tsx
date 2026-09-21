@@ -1485,3 +1485,59 @@ describe('starting from ArduPilot\'s own defaults', () => {
     expect((screen.getByTestId('amc-baseline-toggle') as HTMLInputElement).checked).toBe(false)
   })
 })
+
+describe('a firmware without the IMU temperature calibration', () => {
+  // ArduPilot leaves it out on boards short of flash. AMC tests for it by name
+  // and opens a fresh directory past it, rather than on a calibration the
+  // vehicle can never perform.
+
+  function paramFile(name: string, text: string): File {
+    const file = new File([text], name, { type: 'text/plain' })
+    Object.defineProperty(file, 'text', { value: async () => text })
+    return file
+  }
+
+  const emptyDirectory = {
+    'vehicle_components.json': JSON.stringify({
+      'Format version': 1,
+      Components: { 'Flight Controller': { Firmware: { Type: 'ArduCopter' } } }
+    }),
+    '05_board_orientation.param': 'AHRS_ORIENTATION,0\n'
+  }
+
+  async function openDirectory(props: Record<string, unknown>) {
+    render(<AmcGuidedView {...base} docs={docs} {...props} />)
+    await whenLoaded()
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('amc-open-project'), {
+        target: {
+          files: Object.entries(emptyDirectory).map(([name, text]) => paramFile(name, text))
+        }
+      })
+    })
+  }
+
+  it('says why it started past the calibration steps', async () => {
+    // A complete parameter list with no INS_TCAL1_ENABLE in it.
+    await openDirectory({ connected: true, parameters: { AHRS_ORIENTATION: 0 } })
+    await waitFor(() =>
+      expect(screen.getByText(/this firmware has no IMU temperature calibration/)).toBeTruthy()
+    )
+  })
+
+  it('says nothing of the sort when the firmware does have it', async () => {
+    await openDirectory({
+      connected: true,
+      parameters: { AHRS_ORIENTATION: 0, INS_TCAL1_ENABLE: 0 }
+    })
+    await waitFor(() => expect(screen.getByText(/Read \d+ step files/)).toBeTruthy())
+    expect(screen.queryByText(/no IMU temperature calibration/)).toBeNull()
+  })
+
+  it('says nothing of the sort on the bench, with no vehicle to ask', async () => {
+    // AMC's own check is true when there are no parameters at all.
+    await openDirectory({})
+    await waitFor(() => expect(screen.getByText(/Read \d+ step files/)).toBeTruthy())
+    expect(screen.queryByText(/no IMU temperature calibration/)).toBeNull()
+  })
+})

@@ -1736,6 +1736,17 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   )
   const effectiveBaseline = seedFromBaseline ? baseline : undefined
 
+  /**
+   * Whether this firmware has the IMU temperature calibration at all.
+   *
+   * A build-time option in ArduPilot, left out on boards short of flash. AMC
+   * tests for it by name, and treats "no parameters at all" as available --
+   * a tab open on the bench should show the sequence from its start rather
+   * than pretending a vehicle it cannot see lacks the feature.
+   */
+  const supportsTemperatureCalibration =
+    Object.keys(parameters).length === 0 || Object.hasOwn(parameters, 'INS_TCAL1_ENABLE')
+
   // The documentation is ~1.7 MB per vehicle and lazily loaded by App; ask for
   // the one this sequence needs whenever the sequence changes.
   useEffect(() => {
@@ -1946,7 +1957,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
 
       const project = readProject(steps, files, fields, {
         ...(vehicleFirmwareVersion ? { vehicleFirmwareVersion } : {}),
-        migrations: migrationTables
+        migrations: migrationTables,
+        supportsTemperatureCalibration
       })
       if (project.steps.length === 0 && project.componentValues === undefined) {
         setProjectNotice({
@@ -2037,6 +2049,12 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         parts.push('the sequence was finished')
       } else if (project.resume?.reason === 'unrecognised') {
         parts.push('its last step is not one this sequence has, so it starts from the beginning')
+      } else if (project.resume?.reason === 'fresh-no-tempcal' && resumeAt) {
+        // Worth saying: the operator did not skip those steps, their firmware
+        // has no temperature calibration to run.
+        parts.push(
+          `starting at ${titleOf(resumeAt)} — this firmware has no IMU temperature calibration`
+        )
       }
       if (project.overrides.size > 0) {
         parts.push(`${project.overrides.size} decision${project.overrides.size === 1 ? '' : 's'} you had recorded`)

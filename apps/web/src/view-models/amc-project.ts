@@ -500,7 +500,17 @@ export function readProject(
   sequence: AmcSequence,
   files: readonly ProjectFile[],
   fields: readonly ComponentField[],
-  options: { readonly vehicleFirmwareVersion?: string; readonly migrations?: MigrationTables } = {}
+  options: {
+    readonly vehicleFirmwareVersion?: string
+    readonly migrations?: MigrationTables
+    /**
+     * Whether the connected firmware has the IMU temperature calibration.
+     *
+     * A build without it should not open on a calibration it can never
+     * perform; AMC tests for it by name and starts two steps in.
+     */
+    readonly supportsTemperatureCalibration?: boolean
+  } = {}
 ): ProjectImport {
   // A directory an older AMC wrote is brought up to the current layout first,
   // because everything below reads it against the CURRENT sequence: a
@@ -508,7 +518,11 @@ export function readProject(
   // step owns that name now, and a file the sequence has retired would be
   // reported to the operator as work left unread.
   const migration = options.migrations ? migrateProject(files, options.migrations) : undefined
-  const project = readVehicleProject(sequence, migration ? migration.files : files)
+  const project = readVehicleProject(sequence, migration ? migration.files : files, {
+    ...(options.supportsTemperatureCalibration === undefined
+      ? {}
+      : { supportsTemperatureCalibration: options.supportsTemperatureCalibration })
+  })
   const withMigration = <T extends VehicleProject>(result: T): T =>
     migration ? { ...result, migration } : result
   if (project.components === undefined) return withMigration(project)
