@@ -16,10 +16,13 @@
 import {
   type ConnectionTables,
   type FirmwareKind,
+  type Migration,
+  type MigrationTables,
   type ProjectFile,
   type VehicleProject,
   annotateParamFile,
   buildZip,
+  migrateProject,
   completeFile,
   defaultsFile,
   lastWrittenFile,
@@ -449,6 +452,14 @@ export interface ProjectImport extends VehicleProject {
    * back for the notch filters — so a directory records the step last
    * written, and reopening starts after it rather than at the beginning.
    */
+  /**
+   * What had to change before the directory could be read at all.
+   *
+   * Set only when the directory declared an older format version. Reported
+   * rather than done quietly: the operator opened a directory and it changed
+   * shape, and they are owed an account of which of their values moved where.
+   */
+  readonly migration?: Migration
 }
 
 /**
@@ -462,10 +473,18 @@ export function readProject(
   sequence: AmcSequence,
   files: readonly ProjectFile[],
   fields: readonly ComponentField[],
-  options: { readonly vehicleFirmwareVersion?: string } = {}
+  options: { readonly vehicleFirmwareVersion?: string; readonly migrations?: MigrationTables } = {}
 ): ProjectImport {
-  const project = readVehicleProject(sequence, files)
-  if (project.components === undefined) return project
+  // A directory an older AMC wrote is brought up to the current layout first,
+  // because everything below reads it against the CURRENT sequence: a
+  // parameter still sitting in its v0 file would be attributed to whichever
+  // step owns that name now, and a file the sequence has retired would be
+  // reported to the operator as work left unread.
+  const migration = options.migrations ? migrateProject(files, options.migrations) : undefined
+  const project = readVehicleProject(sequence, migration ? migration.files : files)
+  const withMigration = <T extends VehicleProject>(result: T): T =>
+    migration ? { ...result, migration } : result
+  if (project.components === undefined) return withMigration(project)
 
   let parsed: unknown
   try {
@@ -474,7 +493,7 @@ export function readProject(
     // A components file we cannot parse is reported by its absence from the
     // result rather than by throwing: the parameter files still read, and a
     // directory that is partly readable is more useful than an error.
-    return project
+    return withMigration(project)
   }
 
   const componentValues = valuesFromComponents(parsed, fields)
@@ -490,7 +509,7 @@ export function readProject(
   // says where it started.
   const fileVersion = componentValues[FIRMWARE_VERSION_KEY] ?? ''
   const crossed = upgradesBetween(fileVersion, options.vehicleFirmwareVersion ?? '')
-  if (crossed.length === 0) return { ...project, componentValues, resume }
+  if (crossed.length === 0) return withMigration({ ...project, componentValues, resume })
 
   // Stream rates are renamed by POSITION — SR2_ becomes MAV1_ when serial 2
   // is the first MAVLink port — so the mapping needs the whole directory's
@@ -520,7 +539,7 @@ export function readProject(
     return { ...step, entries: streamed.parameters }
   })
 
-  return { ...project, componentValues, resume, steps, renamedParameters: renames }
+  return withMigration({ ...project, componentValues, resume, steps, renamedParameters: renames })
 }
 
 /** Where the operator declares the firmware a directory was written for. */

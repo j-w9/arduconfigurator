@@ -1053,3 +1053,60 @@ describe('checking the declaration before anything is computed from it', () => {
     expect(screen.queryByText(/AMC would reject/)).toBeNull()
   })
 })
+
+describe('opening a directory an older AMC wrote', () => {
+  // old_filenames covers the renames; what it cannot express is the rest of
+  // format version 0 -> 1. Without that a pre-v1 directory reads ALMOST
+  // correctly, which is the worst way to be wrong.
+
+  function paramFile(name: string, text: string): File {
+    const file = new File([text], name, { type: 'text/plain' })
+    Object.defineProperty(file, 'text', { value: async () => text })
+    return file
+  }
+
+  const v0 = {
+    'vehicle_components.json': JSON.stringify({
+      Components: { 'Flight Controller': { Firmware: { Type: 'ArduCopter' } } }
+    }),
+    '04_board_orientation.param':
+      'AHRS_ORIENTATION,0\nBRD_HEAT_TARG,45  # @manual_override warm board\nLOG_DISARMED,1\n',
+    '09_batt2.param': 'BATT2_MONITOR,4\n'
+  }
+
+  it('says the directory was an older layout, and what moved', async () => {
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+    const input = screen.getByTestId('amc-open-project') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, {
+        target: { files: Object.entries(v0).map(([name, text]) => paramFile(name, text)) }
+      })
+    })
+
+    await waitFor(() =>
+      expect(screen.getByText(/written for an older layout \(version 0\), brought up to 1/)).toBeTruthy()
+    )
+    // The part that matters to the operator: their values were not dropped.
+    expect(screen.getByText(/parameters? moved to the step that owns/)).toBeTruthy()
+  })
+
+  it('does not call a current directory migrated', async () => {
+    const current = {
+      ...v0,
+      'vehicle_components.json': JSON.stringify({
+        'Format version': 1,
+        Components: { 'Flight Controller': { Firmware: { Type: 'ArduCopter' } } }
+      })
+    }
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('amc-open-project'), {
+        target: { files: Object.entries(current).map(([name, text]) => paramFile(name, text)) }
+      })
+    })
+    await waitFor(() => expect(screen.getByText(/Read \d+ step files/)).toBeTruthy())
+    expect(screen.queryByText(/older layout/)).toBeNull()
+  })
+})

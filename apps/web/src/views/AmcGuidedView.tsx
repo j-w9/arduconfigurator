@@ -33,17 +33,21 @@ import type {
   ConnectionPairings,
   ConnectionTables,
   ExternalParamFile,
+  MigrationTables,
   ParameterDocs,
   ValidationError
 } from '@arduconfig/amc-steps'
 import connectionPairingsJson from '@amc/data/component-pairings.json'
 import connectionTablesJson from '@amc/data/connection-tables.json'
+import migrationTablesJson from '@amc/data/migration.json'
 
 // Observed from AMC's vehicle templates by scripts/sync-from-vendor.mjs. Small
 // (a few hundred bytes) so it rides along rather than being fetched.
 const connectionPairings = connectionPairingsJson as ConnectionPairings
 // ArduPilot's own type-to-protocol rules, extracted from AMC's source.
 const connectionTables = connectionTablesJson as unknown as ConnectionTables
+// What moved where between the directory formats, likewise extracted.
+const migrationTables = migrationTablesJson as unknown as MigrationTables
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import {
@@ -1458,7 +1462,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       )
 
       const project = readProject(steps, files, fields, {
-        ...(vehicleFirmwareVersion ? { vehicleFirmwareVersion } : {})
+        ...(vehicleFirmwareVersion ? { vehicleFirmwareVersion } : {}),
+        migrations: migrationTables
       })
       if (project.steps.length === 0 && project.componentValues === undefined) {
         setProjectNotice({
@@ -1492,6 +1497,38 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       }
 
       const parts = [`Read ${project.steps.length} step files`]
+      // Said first, because it is the only part of this that changed the
+      // directory rather than merely read it. An operator whose files moved
+      // should hear that before they hear how many were read.
+      if (project.migration) {
+        const { migration } = project
+        const details: string[] = []
+        if (migration.moved.length > 0) {
+          details.push(
+            `${migration.moved.length} parameter${migration.moved.length === 1 ? '' : 's'} moved to the step that owns ${migration.moved.length === 1 ? 'it' : 'them'} now`
+          )
+        }
+        if (migration.created.length > 0) {
+          details.push(`${migration.created.length} new step files`)
+        }
+        // A retired file that still held values is the one case worth naming
+        // outright: it is the operator's work going away.
+        const withValues = migration.removed.filter((file) => file.parameters.length > 0)
+        if (withValues.length > 0) {
+          details.push(
+            `${withValues.map((file) => file.filename).join(', ')} retired upstream, still holding ${withValues
+              .flatMap((file) => file.parameters)
+              .join(', ')}`
+          )
+        } else if (migration.removed.length > 0) {
+          details.push(`${migration.removed.length} files retired upstream`)
+        }
+        parts.push(
+          `written for an older layout (version ${migration.from}), brought up to ${migration.to}${
+            details.length > 0 ? `: ${details.join(', ')}` : ''
+          }`
+        )
+      }
       if (project.resume?.reason === 'after-last-written' && resumeAt) {
         parts.push(`resuming at ${titleOf(resumeAt)}`)
       } else if (project.resume?.reason === 'finished') {
@@ -1589,7 +1626,11 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   const jumpToStep = useCallback((filename: string) => {
     const target = document.getElementById(stepDomId(filename))
     if (!target) return
-    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    // Optional because this runs from a timer: an environment without
+    // scrollIntoView (jsdom, and any browser that has not implemented the
+    // options form) would otherwise throw where nothing can catch it, and
+    // bringing a step into view is not worth an unhandled exception.
+    target.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
     target.querySelector<HTMLButtonElement>('.amc-step__head')?.focus()
   }, [])
 
