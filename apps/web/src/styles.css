@@ -19594,6 +19594,24 @@ button.mavlink-inspector__sent-row {
   justify-self: stretch;
 }
 
+/* An action offered inside a sentence, where a button of its own would be
+   heavier than the thing it does. */
+.amc-guided__inline-action {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--primary-500);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.amc-guided__inline-action:disabled {
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: default;
+}
+
 .amc-guided__sources .amc-guided__annotate {
   grid-column: 1 / -1;
   margin-top: 2px;

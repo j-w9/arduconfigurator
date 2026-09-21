@@ -751,3 +751,98 @@ describe('an ESC whose telemetry rides its control connection', () => {
     expect(screen.queryByText(/same as the control connection/)).toBeNull()
   })
 })
+
+describe('finishing a step that needs a restart', () => {
+  const live = { INS_TCAL1_ENABLE: 0, LOG_BITMASK: 1, BRD_BOOT_DELAY: 3000 }
+  const states = [
+    { id: 'INS_TCAL1_ENABLE', value: 0, index: 0, count: 2, definition: { rebootRequired: true } },
+    { id: 'LOG_BITMASK', value: 1, index: 1, count: 2, definition: {} }
+  ] as never
+
+  it('reboots, waits out the board\'s own delay, and reconnects', async () => {
+    // One action, because the step is not finished when the write is
+    // acknowledged — it is finished when the vehicle has restarted and read
+    // the value.
+    const waits: number[] = []
+    render(
+      <AmcGuidedView
+        {...base}
+        connected
+        parameters={live}
+        states={states}
+        onRebootAndReconnect={async (seconds) => {
+          waits.push(seconds)
+        }}
+      />
+    )
+    await whenLoaded()
+
+    const step = await screen.findByRole('button', { name: /Imu temperature calibration setup/i })
+    await act(async () => {
+      step.click()
+    })
+    await act(async () => {
+      ;(await screen.findByRole('button', { name: /Reboot and reconnect/i })).click()
+    })
+
+    // BRD_BOOT_DELAY is 3000 ms, so four seconds: the board's own delay plus
+    // the moment it takes to boot at all.
+    await waitFor(() => expect(waits).toEqual([4]))
+  })
+
+  it('falls back to a plain reboot when reconnecting is not offered', async () => {
+    render(<AmcGuidedView {...base} connected parameters={live} states={states} onRequestReboot={() => {}} />)
+    await whenLoaded()
+    const step = await screen.findByRole('button', { name: /Imu temperature calibration setup/i })
+    await act(async () => {
+      step.click()
+    })
+    expect(await screen.findByRole('button', { name: /Reboot the vehicle/i })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Reboot and reconnect/i })).toBeNull()
+  })
+})
+
+describe('taking the log off the vehicle', () => {
+  it('fetches the newest log and reads it the way a picked file is read', async () => {
+    // The vehicle has the log. Sending the operator to another tab to
+    // download it, then back here to load it, is three steps for something
+    // the sequence already needs.
+    let asked = 0
+    render(
+      <AmcGuidedView
+        {...base}
+        connected
+        onDownloadLatestLog={async () => {
+          asked += 1
+          // Not a real log on purpose: what matters is that the bytes reach
+          // the same reader a picked file does, and that it says so when they
+          // turn out not to be a log.
+          return { name: '00000042.BIN', bytes: new Uint8Array([1, 2, 3]) }
+        }}
+      />
+    )
+    await whenLoaded()
+
+    await act(async () => {
+      ;(await screen.findByRole('button', { name: /take the latest off the vehicle/i })).click()
+    })
+
+    expect(asked).toBe(1)
+    await waitFor(() => expect(screen.getByText(/00000042\.BIN holds no recognisable messages/)).toBeTruthy())
+  })
+
+  it('is not offered without a vehicle to take it from', async () => {
+    render(<AmcGuidedView {...base} onDownloadLatestLog={async () => undefined} />)
+    await whenLoaded()
+    expect(screen.queryByRole('button', { name: /take the latest off the vehicle/i })).toBeNull()
+  })
+
+  it('says so when the vehicle has no logs', async () => {
+    render(<AmcGuidedView {...base} connected onDownloadLatestLog={async () => undefined} />)
+    await whenLoaded()
+    await act(async () => {
+      ;(await screen.findByRole('button', { name: /take the latest off the vehicle/i })).click()
+    })
+    await waitFor(() => expect(screen.getByText(/The vehicle has no logs on it/)).toBeTruthy())
+  })
+})

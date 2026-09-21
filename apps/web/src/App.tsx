@@ -9877,6 +9877,28 @@ export function App() {
           // step that sets a boot-time parameter has not taken effect until
           // the vehicle restarts, and the steps after it read the old value.
           onRequestReboot={() => void handleGuidedAction('reboot-autopilot')}
+          // Reboot, wait out the board's own boot delay, then reconnect — one
+          // action, because a step that sets a boot-time parameter is not
+          // finished until the vehicle has restarted and read it.
+          onRebootAndReconnect={async (waitSeconds) => {
+            await handleGuidedAction('reboot-autopilot')
+            // The link drops when the autopilot accepts the reboot, so the
+            // wait starts here rather than after a disconnect we would race.
+            await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000))
+            await handleConnect()
+          }}
+          // The vehicle has the log. Fetching it here saves a trip to the
+          // Logs tab and back for something the sequence already needs.
+          onDownloadLatestLog={async () => {
+            const logs = await runtime.listMavftpLogs()
+            if (logs.length === 0) return undefined
+            // Newest last on the vehicle, which is the flight just finished —
+            // the one a step is asking about.
+            const latest = logs[logs.length - 1]
+            if (!latest) return undefined
+            const bytes = await runtime.downloadMavftpLog(latest.path)
+            return { name: latest.name, bytes }
+          }}
           // Two steps need a Lua applet on the vehicle. Both sources allow
           // cross-origin reads, so the fetch happens here rather than sending
           // the operator off to a download and the Files tab.

@@ -14,10 +14,12 @@ import {
   titleOf
 } from '../view-models/amc-guided'
 import {
+  changesBootDelay,
   connectionGroupOf,
   escTelemetryMirror,
   orderByPairing,
-  protocolsForConnection
+  protocolsForConnection,
+  rebootWaitSeconds
 } from '@arduconfig/amc-steps'
 import type { ConnectionPairings, ConnectionTables, ParameterDocs } from '@arduconfig/amc-steps'
 import connectionPairingsJson from '@amc/data/component-pairings.json'
@@ -98,6 +100,23 @@ export interface AmcGuidedViewProps {
    * the vehicle has restarted, and the steps after it read the old value.
    */
   onRequestReboot?: () => void
+  /**
+   * Reboot, wait out the boot delay, and reconnect — as one action.
+   *
+   * A step that sets a boot-time parameter is finished when the vehicle has
+   * restarted and read it, not when the write is acknowledged. Leaving the
+   * operator to do the waiting and the reconnecting turns the sequence into a
+   * series of manual recoveries.
+   */
+  onRebootAndReconnect?: (waitSeconds: number) => Promise<void>
+  /**
+   * Fetch the newest dataflash log off the vehicle.
+   *
+   * The vehicle has the log. Sending the operator to another tab to download
+   * it, then back here to load it, is three steps for something the sequence
+   * already needs.
+   */
+  onDownloadLatestLog?: () => Promise<{ name: string; bytes: Uint8Array } | undefined>
   /**
    * Fetch a step's script and write it to the flight controller.
    *
@@ -351,6 +370,8 @@ function StepCard({
   onReadDefaults,
   onRequestReboot,
   onInstallFile,
+  onRebootAndReconnect,
+  bootDelay,
   onWriteStep,
   onStepWritten,
   tempcal,
@@ -368,6 +389,8 @@ function StepCard({
   onReadDefaults?: (() => void) | undefined
   onRequestReboot?: (() => void) | undefined
   onInstallFile?: ((file: { url: string; name: string; destination: string }) => Promise<void>) | undefined
+  onRebootAndReconnect?: ((waitSeconds: number) => Promise<void>) | undefined
+  bootDelay?: number | undefined
   onWriteStep?: ((changes: readonly { parameter: string; value: number }[], label: string) => void) | undefined
   onStepWritten?: ((filename: string) => void) | undefined
   tempcal?: TempcalOutcome | undefined
@@ -383,6 +406,32 @@ function StepCard({
   const [installNotice, setInstallNotice] = useState<
     { destination: string; tone: 'ok' | 'warning'; text: string } | undefined
   >(undefined)
+  const [rebooting, setRebooting] = useState(false)
+  const [rebootCountdown, setRebootCountdown] = useState(0)
+
+  const rebootAndWait = useCallback(
+    async (changes: readonly { parameter: string; value: number }[]) => {
+      if (!onRebootAndReconnect) return
+      // The wait is the larger of what the vehicle has and what this step is
+      // about to set: the step may be the very thing that lengthens it.
+      const seconds = rebootWaitSeconds({
+        ...(bootDelay !== undefined ? { current: bootDelay } : {}),
+        ...(changesBootDelay(changes) !== undefined ? { staged: changesBootDelay(changes) } : {})
+      })
+      setRebooting(true)
+      setRebootCountdown(seconds)
+      // Counted down out loud, because a silent wait of several seconds looks
+      // like nothing happening.
+      const timer = window.setInterval(() => setRebootCountdown((left) => Math.max(0, left - 1)), 1000)
+      try {
+        await onRebootAndReconnect(seconds)
+      } finally {
+        window.clearInterval(timer)
+        setRebooting(false)
+      }
+    },
+    [onRebootAndReconnect, bootDelay]
+  )
 
   const installFile = useCallback(
     async (file: { url: string; name: string; destination: string }) => {
@@ -685,7 +734,19 @@ function StepCard({
                 ))}
               </span>{' '}
               at startup, so later steps see the previous value until the vehicle has restarted.
-              {onRequestReboot ? (
+              {onRebootAndReconnect ? (
+                <button
+                  onClick={() => void rebootAndWait(row.changes)}
+                  disabled={!connected || rebooting}
+                >
+                  {/* Reboot, wait, reconnect — one action, because the step is
+                      not finished until the vehicle has restarted and read the
+                      value. Leaving the operator to do the waiting and the
+                      reconnecting themselves turns the sequence into a series
+                      of manual recoveries. */}
+                  {rebooting ? `Rebooting… ${rebootCountdown}s` : 'Reboot and reconnect'}
+                </button>
+              ) : onRequestReboot ? (
                 <button onClick={onRequestReboot} disabled={!connected}>
                   Reboot the vehicle
                 </button>
@@ -904,6 +965,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     defaults,
     onReadDefaults,
     onRequestReboot,
+    onRebootAndReconnect,
+    onDownloadLatestLog,
     onInstallFile,
     onWriteStep,
     onOpenTool,
@@ -944,7 +1007,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   // Message counts from a flight log the operator picked. Counts only: the
   // decoded messages are tens of megabytes and nothing here needs them.
   const [logCounts, setLogCounts] = useState<ReadonlyMap<string, number> | undefined>(undefined)
-  const [logState, setLogState] = useState<'idle' | 'reading'>('idle')
+  const [logState, setLogState] = useState<'idle' | 'reading' | 'downloading'>('idle')
   // The IMU temperature calibration fitted from that log, when it held one.
   const [tempcal, setTempcal] = useState<TempcalOutcome | undefined>(undefined)
   // The declaration the operator started from, whole. The form only asks
@@ -962,17 +1025,47 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   const [annotate, setAnnotate] = useState(false)
   const [logNotice, setLogNotice] = useState<string | undefined>(undefined)
 
-  const readLog = useCallback(async (file: File | undefined) => {
-    if (!file) return
+  const fetchLatestLog = useCallback(async () => {
+    if (!onDownloadLatestLog) return
+    setLogState('downloading')
+    setLogNotice(undefined)
+    try {
+      const latest = await onDownloadLatestLog()
+      if (!latest) {
+        setLogNotice('The vehicle has no logs on it.')
+        return
+      }
+      // Straight into the same path a picked file takes, so there is one
+      // place where a log becomes an answer.
+      await readLogBytes(latest.name, latest.bytes)
+    } catch (error) {
+      setLogNotice(
+        `Could not fetch the log: ${error instanceof Error ? error.message : String(error)}`
+      )
+    } finally {
+      setLogState('idle')
+    }
+    // readLogBytes is declared below and stable; see the note there.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onDownloadLatestLog])
+
+  /**
+   * Turn a log's bytes into the answer each step needs.
+   *
+   * One implementation for both ways in — a file the operator picked and a
+   * log pulled off the vehicle — so there is a single place where a log
+   * becomes a verdict.
+   */
+  const readLogBytes = useCallback(async (name: string, bytes: ArrayBuffer | Uint8Array) => {
     setLogState('reading')
     setLogNotice(undefined)
     try {
       // Dynamic-imported: the parser is large and most sessions never open a
       // log, so it should not be in the tab's first paint.
       const { parseDataflashLog } = await import('@arduconfig/log-analysis')
-      const parsed = parseDataflashLog(await file.arrayBuffer())
+      const parsed = parseDataflashLog(bytes)
       if (parsed.counts.size === 0) {
-        setLogNotice(`${file.name} holds no recognisable messages — is it a DataFlash .bin log?`)
+        setLogNotice(`${name} holds no recognisable messages — is it a DataFlash .bin log?`)
         return
       }
       setLogCounts(parsed.counts)
@@ -980,24 +1073,36 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       // Three of the sequence's steps are the IMU temperature calibration,
       // and the log is where its answer comes from. Fitted on load so the
       // steps can offer it rather than asking for the same file twice.
-      const tempcal = fitTempcalFromLog(parsed.messagesByType)
-      setTempcal(Object.keys(tempcal.parameters).length > 0 || tempcal.rejected.length > 0 ? tempcal : undefined)
+      const tempcalResult = fitTempcalFromLog(parsed.messagesByType)
+      setTempcal(
+        Object.keys(tempcalResult.parameters).length > 0 || tempcalResult.rejected.length > 0
+          ? tempcalResult
+          : undefined
+      )
 
-      const parts = [`${file.name}: ${parsed.counts.size} message types`]
-      if (tempcal.fitted.length > 0) {
+      const parts = [`${name}: ${parsed.counts.size} message types`]
+      if (tempcalResult.fitted.length > 0) {
         parts.push(
-          `IMU temperature calibration fitted for ${tempcal.fitted.length} IMU${
-            tempcal.fitted.length === 1 ? '' : 's'
+          `IMU temperature calibration fitted for ${tempcalResult.fitted.length} IMU${
+            tempcalResult.fitted.length === 1 ? '' : 's'
           }`
         )
       }
       setLogNotice(`${parts.join('. ')}.`)
     } catch (error) {
-      setLogNotice(`Could not read ${file.name}: ${error instanceof Error ? error.message : String(error)}`)
+      setLogNotice(`Could not read ${name}: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setLogState('idle')
     }
   }, [])
+
+  const readLog = useCallback(
+    async (file: File | undefined) => {
+      if (!file) return
+      await readLogBytes(file.name, await file.arrayBuffer())
+    },
+    [readLogBytes]
+  )
 
   const readDefaults = useCallback(async () => {
     if (!onReadDefaults) return
@@ -1524,6 +1629,21 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
           </label>
           <span>
             {logNotice ?? 'Marks the messages each step should have produced. Read in your browser.'}
+            {onDownloadLatestLog && connected ? (
+              <>
+                {' '}
+                {/* The vehicle has the log. Sending the operator to another
+                    tab to fetch it, then back here to load it, is three steps
+                    for something the sequence already needs. */}
+                <button
+                  className="amc-guided__inline-action"
+                  onClick={() => void fetchLatestLog()}
+                  disabled={logState !== 'idle'}
+                >
+                  {logState === 'downloading' ? 'Downloading…' : 'or take the latest off the vehicle'}
+                </button>
+              </>
+            ) : null}
           </span>
         </p>
         {importNotice ? (
@@ -1887,6 +2007,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   onReadDefaults={onReadDefaults ? readDefaults : undefined}
                   onRequestReboot={onRequestReboot}
                   onInstallFile={onInstallFile}
+                  onRebootAndReconnect={onRebootAndReconnect}
+                  bootDelay={parameters.BRD_BOOT_DELAY}
                   onWriteStep={onWriteStep}
                   onStepWritten={setLastWritten}
                   tempcal={tempcal}
