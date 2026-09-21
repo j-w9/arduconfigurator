@@ -11,12 +11,14 @@ import {
   fieldsFor,
   loadSequence,
   runSequence,
+  sameValue,
   titleOf
 } from '../view-models/amc-guided'
 import {
   changesBootDelay,
   connectionGroupOf,
   escTelemetryMirror,
+  nextRequiredStep,
   orderByPairing,
   protocolsForConnection,
   rebootWaitSeconds
@@ -433,6 +435,17 @@ function StepCard({
     [onRebootAndReconnect, bootDelay]
   )
 
+  // What the vehicle already holds for the parameters this step covers.
+  // Only where the value actually differs from the sequence's — otherwise
+  // "take from the vehicle" would offer to change nothing.
+  const fromVehicle = useMemo(
+    () =>
+      row.changes
+        .filter((change) => change.current !== undefined && !sameValue(change.current, change.value))
+        .map((change) => ({ parameter: change.parameter, value: change.current as number })),
+    [row.changes]
+  )
+
   const installFile = useCallback(
     async (file: { url: string; name: string; destination: string }) => {
       if (!onInstallFile) return
@@ -654,6 +667,22 @@ function StepCard({
                       Goes through the app's own verified write, so the result
                       and any reboot prompt appear in the usual place. */}
                   Write this step
+                </button>
+              ) : null}
+              {fromVehicle.length > 0 ? (
+                <button
+                  style={buttonStyle()}
+                  disabled={!connected}
+                  title="Record what the vehicle already has for this step, instead of what the sequence would set"
+                  onClick={() => onStage(fromVehicle)}
+                >
+                  {/* Distinct from the automatic capture above it: that only
+                      covers the parameters the step declares importable and
+                      which differ from their default. This takes everything
+                      the step touches, for an operator whose vehicle is
+                      already configured and who wants the directory to record
+                      what it HAS rather than what the sequence would impose. */}
+                  Take {fromVehicle.length} from the vehicle
                 </button>
               ) : null}
               {stagedHere.length > 0 ? (
@@ -1023,6 +1052,9 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   // which is worth it for a directory someone will read and not for one they
   // will only feed back in.
   const [annotate, setAnnotate] = useState(false)
+  // Where "next" counts from. Kept separate from the step an operator has
+  // merely expanded: pressing next twice should advance twice.
+  const [lastVisited, setLastVisited] = useState<string | undefined>(undefined)
   const [logNotice, setLogNotice] = useState<string | undefined>(undefined)
 
   const fetchLatestLog = useCallback(async () => {
@@ -1969,6 +2001,22 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   </button>
                 )
               })}
+            {/* Not every step is for every vehicle: the sequence says how
+                mandatory each one is, and a dozen of the 63 may be about a
+                feature this aircraft does not have. This steps past those. */}
+            <button
+              className="amc-guided__phase-jump amc-guided__phase-jump--next"
+              onClick={() => {
+                const next = nextRequiredStep(steps ?? [], lastVisited)
+                if (next) {
+                  setLastVisited(next)
+                  jumpToStep(next)
+                }
+              }}
+              title="Skip the steps most vehicles do not need"
+            >
+              Next step that matters →
+            </button>
           </nav>
         ) : null}
         <div className="amc-guided__steps">

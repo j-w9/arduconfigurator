@@ -846,3 +846,59 @@ describe('taking the log off the vehicle', () => {
     await waitFor(() => expect(screen.getByText(/The vehicle has no logs on it/)).toBeTruthy())
   })
 })
+
+describe('stepping past what does not apply', () => {
+  it('skips the steps most vehicles do not need', async () => {
+    // The sequence says how mandatory each step is, and a dozen of the 63 may
+    // be about a feature this aircraft does not have.
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+    const next = await screen.findByRole('button', { name: /Next step that matters/i })
+    expect(next).toBeTruthy()
+    // It is in the phase nav, where the rest of the moving-about lives.
+    expect(next.closest('nav')).toBeTruthy()
+  })
+})
+
+describe('recording what the vehicle already has', () => {
+  it('offers to take a step\'s values from the vehicle, where they differ', async () => {
+    // Distinct from the automatic capture: that covers only the parameters a
+    // step declares importable AND which differ from their default. This is
+    // for an operator whose vehicle is already configured and who wants the
+    // directory to record what it HAS.
+    const staged: { parameter: string; value: number }[] = []
+    render(
+      <AmcGuidedView
+        {...base}
+        connected
+        // A vehicle whose logging differs from what the step would impose.
+        parameters={{ INS_TCAL1_ENABLE: 0, INS_TCAL2_ENABLE: 0, INS_TCAL3_ENABLE: 0, LOG_BITMASK: 999 }}
+        onStage={(changes) => staged.push(...changes)}
+      />
+    )
+    await whenLoaded()
+
+    const step = await screen.findByRole('button', { name: /Imu temperature calibration setup/i })
+    await act(async () => {
+      step.click()
+    })
+    await act(async () => {
+      ;(await screen.findByRole('button', { name: /Take \d+ from the vehicle/i })).click()
+    })
+
+    // What it staged is the VEHICLE's value, not the sequence's.
+    const logBitmask = staged.find((change) => change.parameter === 'LOG_BITMASK')
+    expect(logBitmask?.value).toBe(999)
+  })
+
+  it('is not offered when the vehicle already agrees with the sequence', async () => {
+    // Nothing to take: the button would offer to change nothing.
+    render(<AmcGuidedView {...base} connected parameters={{}} onStage={() => {}} />)
+    await whenLoaded()
+    const step = await screen.findByRole('button', { name: /Board orientation/i })
+    await act(async () => {
+      step.click()
+    })
+    expect(screen.queryByRole('button', { name: /Take \d+ from the vehicle/i })).toBeNull()
+  })
+})

@@ -19519,6 +19519,13 @@ button.mavlink-inspector__sent-row {
 
 /* A phase with nothing left to do earns a quieter treatment than one that
    still wants attention. */
+/* The step-forward control sits with the phases but is not one of them. */
+.amc-guided__phase-jump--next {
+  margin-left: auto;
+  border-color: var(--primary-500);
+  color: var(--primary-500);
+}
+
 .amc-guided__phase-jump--done {
   opacity: 0.55;
 }

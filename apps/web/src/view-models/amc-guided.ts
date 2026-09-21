@@ -512,7 +512,8 @@ export function titleOf(filename: string): string {
 }
 
 /** Parameters are floats, so compare with tolerance rather than for equality. */
-function sameValue(left: number, right: number): boolean {
+/** Two parameter values that a flight controller would not tell apart. */
+export function sameValue(left: number, right: number): boolean {
   return Math.abs(left - right) <= Math.max(1e-6, Math.abs(right) * 1e-6)
 }
 
