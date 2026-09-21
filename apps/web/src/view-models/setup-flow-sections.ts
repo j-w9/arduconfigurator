@@ -45,7 +45,13 @@ import { canRunGuidedAction, deriveCompassStepSkipReason, guidedActionButtonLabe
 import { readRoundedParameter } from '../selectors/parameter-read'
 import { buildSetupPortsEvidence, describeDuplicateRcin, describeUnconfiguredPort } from './setup-ports-evidence'
 import { isReceiverSerialProtocol } from '../serial-port-helpers'
-import { batteryHealthLabel, describeBatteryMonitor, formatRemaining, formatVoltage } from '../device-display'
+import {
+  batteryHealthLabel,
+  batteryHealthTone,
+  describeBatteryMonitor,
+  formatRemaining,
+  formatVoltage
+} from '../device-display'
 import { failsafeActionLabel } from '../modes-failsafe-helpers'
 import { formatConfirmationTime, formatOrientationLabel, formatSetupOutcome } from '../setup-format-helpers'
 import { formatParameterSync } from '../status-formatters'
@@ -1325,7 +1331,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
               )}.`
             : 'Battery telemetry has not been verified yet.'
           detail =
-            batteryHealthLabel(snapshot) === 'Battery healthy'
+            batteryHealthTone(snapshot) === 'success'
               ? 'Power telemetry is live and currently healthy. Reboot is available here when setup changes require it.'
               : 'Use the power panel to verify the battery monitor, remaining estimate, and any required reboot/refresh steps.'
           evidence = [
