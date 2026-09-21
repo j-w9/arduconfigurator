@@ -1541,3 +1541,97 @@ describe('a firmware without the IMU temperature calibration', () => {
     expect(screen.queryByText(/no IMU temperature calibration/)).toBeNull()
   })
 })
+
+describe('a declaration written before the battery fields existed', () => {
+  // Volt per cell arm and Volt per cell min were added to AMC's schema in
+  // v2.11.0. The sequence reads both, so leaving them blank means the failsafe
+  // steps quietly produce nothing.
+
+  function paramFile(name: string, text: string): File {
+    const file = new File([text], name, { type: 'text/plain' })
+    Object.defineProperty(file, 'text', { value: async () => text })
+    return file
+  }
+
+  const legacyDirectory = {
+    'vehicle_components.json': JSON.stringify({
+      'Format version': 1,
+      Components: {
+        'Flight Controller': { Firmware: { Type: 'ArduCopter' } },
+        Battery: {
+          Specifications: {
+            Chemistry: 'Lipo',
+            'Volt per cell max': 4.2,
+            'Volt per cell low': 3.6,
+            'Volt per cell crit': 3.3,
+            'Number of cells': 4,
+            'Capacity mAh': 5000
+          }
+        }
+      }
+    }),
+    '05_board_orientation.param': 'AHRS_ORIENTATION,0\n'
+  }
+
+  async function openLegacy(props: Record<string, unknown>) {
+    render(<AmcGuidedView {...base} docs={docs} {...props} />)
+    await whenLoaded()
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('amc-open-project'), {
+        target: {
+          files: Object.entries(legacyDirectory).map(([name, text]) => paramFile(name, text))
+        }
+      })
+    })
+  }
+
+  it('fills them from the vehicle, and says where the numbers came from', async () => {
+    // Values appearing in a form nobody typed them into is worse than the
+    // blank they replaced, unless it says so.
+    await openLegacy({ connected: true, parameters: { BATT_ARM_VOLT: 15.2, MOT_BAT_VOLT_MIN: 12.8 } })
+    await waitFor(() => expect(screen.getByText(/battery fields this directory predates/)).toBeTruthy())
+    expect(screen.getByText(/from your vehicle/)).toBeTruthy()
+
+    const arm = document.getElementById(
+      'amc-field-Battery-Specifications-Volt-per-cell-arm'
+    ) as HTMLInputElement
+    expect(arm.value).toBe('3.8')
+  })
+
+  it('falls back to the declared chemistry with no vehicle to ask', async () => {
+    await openLegacy({})
+    await waitFor(() => expect(screen.getByText(/from the declared chemistry/)).toBeTruthy())
+  })
+
+  it('says nothing for a directory that already has them', async () => {
+    const modern = {
+      ...legacyDirectory,
+      'vehicle_components.json': JSON.stringify({
+        'Format version': 1,
+        Components: {
+          'Flight Controller': { Firmware: { Type: 'ArduCopter' } },
+          Battery: {
+            Specifications: {
+              Chemistry: 'Lipo',
+              'Volt per cell max': 4.2,
+              'Volt per cell arm': 3.8,
+              'Volt per cell low': 3.6,
+              'Volt per cell crit': 3.3,
+              'Volt per cell min': 3.2,
+              'Number of cells': 4
+            }
+          }
+        }
+      })
+    }
+    render(<AmcGuidedView {...base} docs={docs} />)
+    await whenLoaded()
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('amc-open-project'), {
+        target: { files: Object.entries(modern).map(([name, text]) => paramFile(name, text)) }
+      })
+    })
+    await waitFor(() => expect(screen.getByText(/Read \d+ step files/)).toBeTruthy())
+    expect(screen.queryByText(/this directory predates/)).toBeNull()
+  })
+})

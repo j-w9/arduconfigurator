@@ -27,6 +27,7 @@ import {
   checkAddition,
   escTelemetryMirror,
   explainValue,
+  legacyBatteryFields,
   externalParamWrites,
   logHasDefaults,
   parametersFromLog,
@@ -800,16 +801,30 @@ function StepCard({
                       {(() => {
                         const explained = explainValue(change.parameter, change.value, docs)
                         return explained ? (
-                          <span
-                            className="amc-step__means"
-                            title={
-                              explained.bits.length > 0
-                                ? explained.bits.join('\n')
-                                : explained.summary
-                            }
-                          >
-                            {explained.summary}
-                          </span>
+                          <>
+                            <span
+                              className="amc-step__means"
+                              title={
+                                explained.bits.length > 0
+                                  ? explained.bits.join('\n')
+                                  : explained.summary
+                              }
+                            >
+                              {explained.summary}
+                            </span>
+                            {explained.unknownBits ? (
+                              // A mask carrying bits this firmware cannot name
+                              // usually came from another version, where they
+                              // meant something they no longer do.
+                              <span
+                                className="amc-step__disputed"
+                                title="This firmware's documentation does not name these bits — the value may be from another version"
+                              >
+                                {explained.unknownBits} unknown bit
+                                {explained.unknownBits === 1 ? '' : 's'}
+                              </span>
+                            ) : null}
+                          </>
                         ) : null
                       })()}
                       {staged[change.parameter] !== undefined ? <span className="amc-step__tag">staged</span> : null}
@@ -1410,6 +1425,10 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   // merely expanded: pressing next twice should advance twice.
   const [lastVisited, setLastVisited] = useState<string | undefined>(undefined)
   const [logNotice, setLogNotice] = useState<string | undefined>(undefined)
+  // Battery fields an older declaration predates, and where their values came
+  // from. Said out loud: values appearing in a form nobody typed them into is
+  // worse than the blank they replaced.
+  const [legacyBatteryNotice, setLegacyBatteryNotice] = useState<string | undefined>(undefined)
   /**
    * The firmware's defaults, taken out of a flight log's PARM records.
    *
@@ -1968,7 +1987,27 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         return
       }
 
-      if (project.componentValues) setValues(project.componentValues)
+      if (project.componentValues) {
+        // Two battery fields were added to AMC's schema after some directories
+        // were written, and the sequence reads both. Filled rather than left
+        // blank, as AMC does: the vehicle's own BATT_ARM_VOLT over the cell
+        // count beats an empty box, and the declared chemistry beats nothing.
+        const filled = { ...project.componentValues }
+        const fills = legacyBatteryFields(filled, connectionTables, { parameters })
+        for (const fill of fills) filled[fill.key] = String(fill.value)
+        setValues(filled)
+        if (fills.length > 0) {
+          setLegacyBatteryNotice(
+            `${fills.length} battery field${fills.length === 1 ? '' : 's'} this directory predates — ` +
+              fills
+                .map(
+                  (fill) =>
+                    `${fill.field} set to ${fill.value} from ${fill.source === 'vehicle' ? 'your vehicle' : 'the declared chemistry'}`
+                )
+                .join(', ')
+          )
+        }
+      }
       // Everything the opened directory held that this form never asks about
       // travels with it, so rewriting does not quietly strip the vehicle down
       // to the fields the sequence happens to read.
@@ -2470,6 +2509,11 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             and still allows it: the directory is the operator's record, and a
             half-finished one they can reopen is more use than a refusal. What
             it will not do is let the download look like it went well. */}
+        {legacyBatteryNotice ? (
+          <p className="amc-guided__project-notice amc-guided__project-notice--ok">
+            {legacyBatteryNotice}
+          </p>
+        ) : null}
         {declarationErrors.size > 0 ? (
           <div className="amc-guided__project-notice amc-guided__project-notice--warning">
             <p>
