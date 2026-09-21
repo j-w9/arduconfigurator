@@ -505,3 +505,54 @@ describe('a directory you can come back to', () => {
     expect(read.steps.length).toBe(copter.length)
   })
 })
+
+describe('the summary files beside the sequence', () => {
+  const summary = {
+    readOnly: [{ parameter: 'STAT_RUNTIME', value: 4200, category: 'readOnly' as const }],
+    calibration: [{ parameter: 'INS_ACCOFFS_X', value: 0.12, category: 'calibration' as const }],
+    identity: [{ parameter: 'SYSID_THISMAV', value: 7, category: 'identity' as const }],
+    chosen: [{ parameter: 'ATC_RAT_RLL_P', value: 0.135, category: 'chosen' as const }],
+    changed: [],
+    compared: 4,
+    categoriesAvailable: true
+  }
+
+  it('writes what the vehicle holds, split by who decided it', () => {
+    // complete.param says what the METHOD decided. These say what is on the
+    // aircraft, and the split is what lets a configuration be reused without
+    // carrying another airframe's calibration or identity along with it.
+    const project = buildProject({
+      sequence: copter,
+      fields,
+      values: declare(),
+      parameters: {},
+      summary
+    })
+    const names = project.files.map((f) => f.filename)
+    expect(names).toContain('non-default_read-only.param')
+    expect(names).toContain('non-default_writable_calibrations.param')
+    expect(names).toContain('non-default_writable_ids.param')
+    expect(names).toContain('reusable.param')
+
+    const reusable = project.files.find((f) => f.filename === 'reusable.param')!
+    expect(reusable.text).toMatch(/ATC_RAT_RLL_P/)
+    expect(reusable.text).not.toMatch(/INS_ACCOFFS_X/)
+    expect(reusable.text).not.toMatch(/SYSID_THISMAV/)
+  })
+
+  it('writes none of them when there is no summary to write', () => {
+    const project = buildProject({ sequence: copter, fields, values: declare(), parameters: {} })
+    expect(project.files.some((f) => f.filename.startsWith('non-default_'))).toBe(false)
+  })
+
+  it('does not report them as unread when the directory is reopened', () => {
+    const project = buildProject({
+      sequence: copter,
+      fields,
+      values: declare(),
+      parameters: {},
+      summary
+    })
+    expect(readProject(copter, project.files, fields).unmatched).toEqual([])
+  })
+})

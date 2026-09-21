@@ -25,6 +25,7 @@ import {
   lastWrittenFile,
   lastWrittenFrom,
   resumePoint,
+  summaryFiles,
   fitTemperatureCalibration,
   importComponentsFromParameters,
   imuSamplesFromLog,
@@ -34,7 +35,7 @@ import {
   vehicleContext,
   vehicleFiles
 } from '@arduconfig/amc-steps'
-import type { AnnotationDocs, ParameterRename, ResumePoint, UpgradeTables } from '@arduconfig/amc-steps'
+import type { AnnotationDocs, ConfigurationSummary, ParameterRename, ResumePoint, UpgradeTables } from '@arduconfig/amc-steps'
 import { upgradeParameters, upgradesBetween } from '@arduconfig/amc-steps'
 import connectionTablesJson from '@amc/data/connection-tables.json'
 import vehicleTemplatesJson from '@amc/data/vehicle-templates.json'
@@ -267,6 +268,13 @@ export interface ProjectExportInputs {
   /** The step the operator last wrote, so the directory records the place. */
   readonly lastWritten?: string
   /**
+   * What the vehicle holds, categorised — the summary the tab already shows.
+   *
+   * Passed in rather than recomputed: the categories need the parameter
+   * documentation and the firmware defaults, which the caller already has.
+   */
+  readonly summary?: ConfigurationSummary
+  /**
    * Parameter documentation to write above each value.
    *
    * Off unless asked for: it roughly triples the size of every file, which is
@@ -302,7 +310,8 @@ export function buildProject(inputs: ProjectExportInputs): ProjectExport {
     overrides,
     baseComponents,
     lastWritten,
-    annotate
+    annotate,
+    summary
   } = inputs
   const componentsJson = buildComponentsJson(fields, values, baseComponents)
   const context = vehicleContext(componentsJson, parameters)
@@ -337,6 +346,16 @@ export function buildProject(inputs: ProjectExportInputs): ProjectExport {
   if (lastWritten) {
     const marker = lastWrittenFile(lastWritten)
     files.push({ filename: marker.filename, text: marker.text })
+  }
+
+  // What the VEHICLE now holds, split by who decided it. complete.param says
+  // what the method decided; these say what is actually on the aircraft, and
+  // the split is what lets someone reuse a configuration without carrying
+  // another airframe's calibration or identity with it.
+  if (summary) {
+    for (const file of summaryFiles(summary)) {
+      files.push({ filename: file.filename, text: file.text })
+    }
   }
 
   // What is on the aircraft that the sequence did NOT decide. An operator

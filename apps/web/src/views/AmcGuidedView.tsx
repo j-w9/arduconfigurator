@@ -1206,6 +1206,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       overrides,
       ...(baseComponents ? { baseComponents } : {}),
       ...(lastWritten ? { lastWritten } : {}),
+      ...(summary?.configuration ? { summary: summary.configuration } : {}),
       ...(annotate && docs ? { annotate: docs } : {})
     })
     const blob = new Blob([projectArchive(project) as unknown as BlobPart], { type: 'application/zip' })
@@ -1235,7 +1236,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             text: `Written: ${project.files.length} files, ${project.parameterCount} parameters.`
           }
     )
-  }, [steps, fields, values, parameters, defaults, docs, overrides, baseComponents, lastWritten, annotate, kind, versionKey])
+  }, [steps, fields, values, parameters, defaults, docs, overrides, baseComponents, lastWritten, annotate, summary, kind, versionKey])
 
   // Reading one back. The picker hands over whatever the operator selected, so
   // this has to be honest about what it could and could not place.
@@ -1460,7 +1461,12 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         {/* Everything that fills the declaration in. They belong together:
             each one answers "where does this vehicle's description come
             from?", and having them scattered down the page made the tab read
-            as one long form rather than a place you arrive with something. */}
+            as one long form rather than a place you arrive with something.
+            Laid out as a grid so the controls share an edge and the
+            descriptions share another — as three loose rows they read as a
+            ragged list rather than three ways to do one thing. */}
+        <div className="amc-guided__sources">
+          <h4>Fill it in from</h4>
         <p className="amc-guided__from-vehicle-row">
           {/* A vehicle much like one AMC already describes is most of this
               form answered by someone who owned that aircraft. Still a
@@ -1538,15 +1544,16 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
           </div>
         ) : null}
 
-        <div className="button-row">
-          <button style={buttonStyle('primary')} onClick={exportProject} disabled={declaredCount === 0}>
-            Download the directory
-          </button>
-          {/* The sequence is what gives a directory's files meaning, and it is
-              dynamic-imported — so until it is here there is nothing to read
-              against. Disabled rather than silently doing nothing, which is
-              what it did: a directory picked in the first moment after the tab
-              opened was dropped without a word. */}
+        <p className="amc-guided__from-vehicle-row">
+          {/* Opening a directory is a SOURCE like the three above it: it is
+              where a vehicle's description comes from when the operator
+              already has one. Only the download belongs on the other side.
+
+              The sequence is what gives a directory's files meaning, and it
+              is dynamic-imported — so until it is here there is nothing to
+              read against. Disabled rather than silently doing nothing, which
+              is what it did: a directory picked in the first moment after the
+              tab opened was dropped without a word. */}
           <label
             className={`amc-guided__import${steps ? '' : ' amc-guided__import--waiting'}`}
             style={buttonStyle()}
@@ -1566,7 +1573,20 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               }}
             />
           </label>
+          <span>Picks up a directory you wrote before, at the step you stopped on.</span>
+        </p>
         </div>
+
+        <div className="amc-guided__sources amc-guided__sources--out">
+          <h4>When you are done</h4>
+          <p className="amc-guided__from-vehicle-row">
+            <button style={buttonStyle('primary')} onClick={exportProject} disabled={declaredCount === 0}>
+              Download the directory
+            </button>
+            <span>
+              One file per step, plus what you declared and everything the sequence decided.
+            </span>
+          </p>
           <label className="amc-guided__annotate">
             <input
               type="checkbox"
@@ -1582,6 +1602,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               Write ArduPilot&apos;s documentation into the files
             </span>
           </label>
+        </div>
+
         {projectNotice ? (
           <p className={`amc-guided__project-notice amc-guided__project-notice--${projectNotice.tone}`}>
             {projectNotice.text}

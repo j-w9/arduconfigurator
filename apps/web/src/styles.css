@@ -19549,17 +19549,54 @@ button.mavlink-inspector__sent-row {
   color: var(--text-muted);
 }
 
-/* Reading the declaration off the vehicle. */
-.amc-guided__from-vehicle-row {
-  display: flex;
-  flex-wrap: wrap;
+/* Where a vehicle's description comes from, and where it goes.
+   
+   A grid rather than a stack of flex rows: every control shares a right edge
+   and every description shares a left one, so the group reads as several ways
+   to do one thing instead of a ragged list. */
+.amc-guided__sources {
+  display: grid;
+  grid-template-columns: max-content 1fr;
   align-items: center;
-  gap: 10px;
-  margin: 0 0 12px;
+  gap: 8px 14px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-200, var(--surface-300));
 }
 
-.amc-guided__from-vehicle-row span {
+.amc-guided__sources > h4 {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
+}
+
+/* Each row hands its control to the first column and its explanation to the
+   second, which is what makes the edges line up. */
+.amc-guided__from-vehicle-row {
+  display: contents;
+}
+
+.amc-guided__from-vehicle-row > span {
+  color: var(--text-muted);
+}
+
+/* The template row is a label wrapping its own select, so it needs to behave
+   like the bare buttons beside it. */
+.amc-guided__from-vehicle-row > label:not(.amc-guided__import) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: stretch;
+}
+
+.amc-guided__sources .amc-guided__annotate {
+  grid-column: 1 / -1;
+  margin-top: 2px;
 }
 
 .amc-guided__import-notice {
