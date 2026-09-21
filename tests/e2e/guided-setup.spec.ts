@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { worstViewportOverflow } from './support/overflow'
 
 // The guided setup, walked end to end.
 //
@@ -94,9 +95,7 @@ test.describe('Guided setup flow', () => {
       // 390px everywhere else and the wizard is no exception.
       for (const width of [1280, 390]) {
         await page.setViewportSize({ width, height: 900 })
-        const overflow = await page.evaluate(
-          () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-        )
+        const overflow = (await worstViewportOverflow(page)).worst
         expect(overflow, `step ${id} overflows at ${width}px`).toBeLessThanOrEqual(2)
       }
     })

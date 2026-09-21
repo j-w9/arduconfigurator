@@ -254,11 +254,11 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                         </article>
                         <article className="telemetry-metric-card">
                           <span>Primary GPS</span>
-                          <strong>{formatArducopterGpsType(gpsPeripheralViewModels.find((peripheral) => peripheral.label === 'Primary GPS')?.value)}</strong>
+                          <strong>{formatArducopterGpsType(gpsPeripheralViewModels.find((peripheral) => peripheral.id === 'primary')?.value)}</strong>
                         </article>
                         <article className="telemetry-metric-card">
                           <span>Secondary GPS</span>
-                          <strong>{formatArducopterGpsType(gpsPeripheralViewModels.find((peripheral) => peripheral.label === 'Secondary GPS')?.value)}</strong>
+                          <strong>{formatArducopterGpsType(gpsPeripheralViewModels.find((peripheral) => peripheral.id === 'secondary')?.value)}</strong>
                         </article>
                       </div>
 
@@ -749,23 +749,23 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                           tone={
                             peripheral.value === 0
                               ? 'neutral'
-                              : peripheral.label === 'Primary GPS' && snapshot.liveVerification.globalPosition.verified
+                              : peripheral.id === 'primary' && snapshot.liveVerification.globalPosition.verified
                                 ? 'success'
-                                : peripheral.label === 'Primary GPS' && !snapshot.liveVerification.gpsReceiver.detected
+                                : peripheral.id === 'primary' && !snapshot.liveVerification.gpsReceiver.detected
                                   ? 'danger'
                                   : 'warning'
                           }
                         >
 	                        {peripheral.value === 0
                             ? 'disabled'
-                            : peripheral.label === 'Primary GPS' && snapshot.liveVerification.globalPosition.verified
+                            : peripheral.id === 'primary' && snapshot.liveVerification.globalPosition.verified
                               ? 'live position'
                               // "configured" used to cover BOTH a working GPS
                               // waiting on a fix and a GPS that was never wired
                               // up — a driver selected in a parameter reads as
                               // an accomplished setup. GPS_RAW_INT separates
                               // them: no frames at all means nothing is talking.
-                              : peripheral.label !== 'Primary GPS'
+                              : peripheral.id !== 'primary'
                                 ? 'configured'
                                 : !snapshot.liveVerification.gpsReceiver.detected
                                   ? 'not detected'
@@ -773,11 +773,11 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 	                      </StatusBadge>
 	                    </div>
 	                    <p>
-                        {peripheral.label === 'Primary GPS' && snapshot.liveVerification.globalPosition.verified
+                        {peripheral.id === 'primary' && snapshot.liveVerification.globalPosition.verified
                           ? 'Live position is arriving. Keep the configured driver consistent with the actual hardware after reboot and reconnect.'
-                          : peripheral.label === 'Primary GPS' && !snapshot.liveVerification.gpsReceiver.detected
+                          : peripheral.id === 'primary' && !snapshot.liveVerification.gpsReceiver.detected
                             ? 'A driver is selected but no GPS is reporting at all — not even an unfixed one. That points at wiring rather than sky view: check the module is on a UART with TX/RX the right way round (a GPS on I2C pins never reports), that the port protocol is GPS, and that the module has power.'
-                            : peripheral.label === 'Primary GPS'
+                            : peripheral.id === 'primary'
                               ? 'The GPS module is reporting but has no position fix yet. This is normal indoors — give it sky view.'
                               : 'Choose the expected GPS/peripheral driver, then verify the live device after reboot and reconnect.'}
                       </p>

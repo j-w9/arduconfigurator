@@ -13,6 +13,15 @@ import { readRoundedParameter, selectParameterById } from '../selectors/paramete
 // instead of building local maps on every call.
 
 export interface GpsPeripheralViewModel {
+  /**
+   * Stable identity for the receiver, for logic to branch on. `label` is
+   * display text and must never be compared — PortsSection used to decide
+   * which live-verification state applied by testing
+   * `peripheral.label === 'Primary GPS'`, so rewording a heading would have
+   * silently pointed the GPS-fix and receiver-detected checks at the wrong
+   * receiver.
+   */
+  id: 'primary' | 'secondary'
   label: string
   parameter?: ParameterState
   value?: number
@@ -28,11 +37,13 @@ export interface AdditionalSettingsGroup {
 export function buildGpsPeripheralViewModels(snapshot: ConfiguratorSnapshot): GpsPeripheralViewModel[] {
   return [
     {
+      id: 'primary' as const,
       label: 'Primary GPS',
       parameter: selectParameterById(snapshot, 'GPS_TYPE'),
       value: readRoundedParameter(snapshot, 'GPS_TYPE')
     },
     {
+      id: 'secondary' as const,
       label: 'Secondary GPS',
       parameter: selectParameterById(snapshot, 'GPS_TYPE2'),
       value: readRoundedParameter(snapshot, 'GPS_TYPE2')
