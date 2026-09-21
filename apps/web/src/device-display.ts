@@ -69,6 +69,16 @@ export function batteryHealthTone(snapshot: ConfiguratorSnapshot): StatusTone {
   return 'success'
 }
 
+/**
+ * Display text for the battery verdict. **Nothing may branch on what this
+ * returns** — `batteryHealthTone` is the same derivation expressed as data, and
+ * that is what logic reads.
+ *
+ * A guided-setup step used to test `batteryHealthLabel(snapshot) === 'Battery
+ * healthy'`, which made a wizard branch depend on the exact wording of a
+ * user-facing string: reword the label and the step silently takes the wrong
+ * path, with nothing failing to say so.
+ */
 export function batteryHealthLabel(snapshot: ConfiguratorSnapshot): string {
   const { batteryTelemetry } = snapshot.liveVerification
   if (!batteryTelemetry.verified) {
