@@ -19465,10 +19465,70 @@ button.mavlink-inspector__sent-row {
   gap: 8px;
 }
 
+.amc-step__tempcal-plots figure {
+  margin: 10px 0 0;
+  /* currentColor throughout the SVG, so the plot follows the theme. */
+  color: var(--text);
+  overflow-x: auto;
+}
+
+.amc-step__tempcal-plots svg {
+  max-width: 100%;
+  height: auto;
+}
+
 .amc-step__tempcal-rejected {
   margin: 6px 0 0;
   padding-left: 20px;
   color: var(--text-muted);
+}
+
+/* Phase navigation: the sequence is 63 steps, and without a way back to a
+   phase the tab is one uninterrupted scroll. */
+.amc-guided__phase-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.amc-guided__phase-jump {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-300);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.amc-guided__phase-jump:hover {
+  border-color: var(--primary-500);
+}
+
+.amc-guided__phase-jump span {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A phase with nothing left to do earns a quieter treatment than one that
+   still wants attention. */
+.amc-guided__phase-jump--done {
+  opacity: 0.55;
+}
+
+/* The declaration form folds away once the vehicle is described: 24 fields
+   filled once should not sit above the sequence for the rest of a session. */
+.amc-guided__components-fold > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  margin-bottom: 10px;
 }
 
 /* An ESC telemetry field whose control connection already settles it. */

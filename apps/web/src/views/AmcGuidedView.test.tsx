@@ -75,12 +75,28 @@ describe('rendering', () => {
   it('shows the sequence grouped under its phases', async () => {
     render(<AmcGuidedView {...base} />)
     await whenLoaded()
-    await waitFor(() => expect(screen.getByText('Basic mandatory configuration')).toBeTruthy(), { timeout: 5000 })
-    expect(screen.getByText('Standard tuning')).toBeTruthy()
+    // getAllByText, not getByText: each phase name appears twice now, once in
+    // the jump nav and once as the heading it jumps to.
+    await waitFor(() => expect(screen.getAllByText('Basic mandatory configuration').length).toBe(2), {
+      timeout: 5000
+    })
+    expect(screen.getAllByText('Standard tuning').length).toBe(2)
     // The optional phases are marked as such, so a required one is not mistaken
     // for something that can be skipped.
     expect(screen.getAllByText('optional').length).toBeGreaterThan(0)
     expect(screen.getAllByText('required').length).toBeGreaterThan(0)
+  })
+
+  it('offers a way back to each phase', async () => {
+    // 63 steps in a dozen phases is one uninterrupted scroll without this —
+    // you cannot see the shape of the work or return to where you were.
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+    const nav = await screen.findByRole('navigation', { name: /Jump to a phase/i })
+    const jumps = nav.querySelectorAll('button')
+    expect(jumps.length).toBeGreaterThan(5)
+    // Each carries its own progress, so the nav says where the work is.
+    expect(nav.textContent).toMatch(/\d+\/\d+/)
   })
 
   it('names the milestones that own no steps', async () => {

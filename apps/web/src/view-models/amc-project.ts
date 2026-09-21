@@ -28,6 +28,7 @@ import {
   fitTemperatureCalibration,
   importComponentsFromParameters,
   imuSamplesFromLog,
+  plotTemperatureFit,
   readVehicleProject,
   unaccountedParameters,
   vehicleContext,
@@ -191,6 +192,14 @@ export interface TempcalOutcome {
   readonly parameters: Readonly<Record<string, number>>
   readonly fitted: readonly { readonly imu: number; readonly span: number; readonly samples: number }[]
   readonly rejected: readonly { readonly imu: number; readonly reason: string }[]
+  /**
+   * The fit, drawn.
+   *
+   * A cubic through a narrow or noisy sweep produces confident-looking
+   * coefficients, and the cheap way to tell a good calibration from a bad one
+   * is to look at it. AMC writes PNGs beside the results for the same reason.
+   */
+  readonly plots: readonly { readonly label: string; readonly svg: string }[]
 }
 
 /**
@@ -208,10 +217,31 @@ export function fitTempcalFromLog(
   )
   const parameters: Record<string, number> = {}
   for (const calibration of calibrations) Object.assign(parameters, calibration.parameters)
+
+  // One plot per IMU, gyro X: enough to see whether the sweep was wide enough
+  // and the curve follows its samples, without eighteen charts for a
+  // three-IMU vehicle.
+  const samples = imuSamplesFromLog(messagesByType as never)
+  const plots = calibrations.flatMap((calibration) => {
+    const imu = samples.find((entry) => entry.imu === calibration.imu)
+    if (!imu) return []
+    const n = calibration.imu + 1
+    // Back out of the stored scaling, and into highest-order-first, which is
+    // the order the plot evaluates.
+    const coefficients = [3, 2, 1].map(
+      (order) => (calibration.parameters[`INS_TCAL${n}_GYR${order}_X`] ?? 0) / 1e6
+    )
+    const svg = plotTemperatureFit(imu.gyro, 'x', [...coefficients, 0], {
+      label: `IMU ${n} gyro X drift over ${calibration.temperatureSpan.toFixed(0)} °C`
+    })
+    return svg ? [{ label: `IMU ${n}`, svg }] : []
+  })
+
   return {
     parameters,
     fitted: calibrations.map((c) => ({ imu: c.imu, span: c.temperatureSpan, samples: c.samples })),
-    rejected
+    rejected,
+    plots
   }
 }
 

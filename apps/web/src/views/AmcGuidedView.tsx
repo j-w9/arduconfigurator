@@ -646,6 +646,17 @@ function StepCard({
                   </p>
                 </>
               ) : null}
+              {tempcal.plots.length > 0 ? (
+                <div className="amc-step__tempcal-plots">
+                  {/* Drawn because the numbers alone cannot say whether the
+                      fit is any good: a curve that follows its samples is
+                      trustworthy, one that swings away from them at the ends
+                      is a polynomial doing what polynomials do. */}
+                  {tempcal.plots.map((plot) => (
+                    <figure key={plot.label} dangerouslySetInnerHTML={{ __html: plot.svg }} />
+                  ))}
+                </div>
+              ) : null}
               {tempcal.rejected.length > 0 ? (
                 <ul className="amc-step__tempcal-rejected">
                   {tempcal.rejected.map((rejection) => (
@@ -1344,8 +1355,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             an operator following a step should be able to reach the guide that
             explains it. */}
         <p className="amc-guided__credit">
-          The sequence is ArduPilot Methodic Configurator&apos;s, evaluated here. Its own docs explain
-          the why behind each step.
+          The sequence below is ArduPilot Methodic Configurator&apos;s work. This tab runs it against
+          your vehicle; their docs are where the reasoning lives.
         </p>
         <p className="amc-guided__links">
           {[
@@ -1437,31 +1448,19 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       </Panel>
 
       <Panel
-        title="Declare the vehicle"
-        subtitle={`${declaredCount} of ${fields.length} fields — exactly what the sequence reads, nothing more.`}
+        title="The vehicle's configuration directory"
+        subtitle="One file per step, each value carrying the reason it was set — the artefact this method exists to produce."
       >
-        <p className="amc-guided__from-vehicle-row">
-          {/* Several steps configure something whose only proof is in a flight
-              log. The sequence names the messages each one depends on; this is
-              what turns that list into an answer. Parsed here in the browser —
-              nothing is uploaded anywhere. */}
-          <label className="amc-guided__import" style={buttonStyle()}>
-            {logState === 'reading' ? 'Reading the log…' : 'Check a flight log'}
-            <input
-              type="file"
-              accept=".bin,.BIN"
-              data-testid="amc-open-log"
-              disabled={logState === 'reading'}
-              onChange={(event) => {
-                void readLog(event.target.files?.[0])
-                event.target.value = ''
-              }}
-            />
-          </label>
-          <span>
-            {logNotice ?? 'Marks the messages each step should have produced. Read in your browser.'}
-          </span>
+        <p className="amc-guided__project-blurb">
+          A configuration you cannot reopen later is one you have to redo from memory. Start from
+          something — a directory, a similar aircraft, the vehicle itself — and write the result
+          back out when you are done.
         </p>
+
+        {/* Everything that fills the declaration in. They belong together:
+            each one answers "where does this vehicle's description come
+            from?", and having them scattered down the page made the tab read
+            as one long form rather than a place you arrive with something. */}
         <p className="amc-guided__from-vehicle-row">
           {/* A vehicle much like one AMC already describes is most of this
               form answered by someone who owned that aircraft. Still a
@@ -1498,6 +1497,28 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             <span>Fills in what its parameters can settle. Nothing is written to the vehicle.</span>
           </p>
         ) : null}
+        <p className="amc-guided__from-vehicle-row">
+          {/* Several steps configure something whose only proof is in a flight
+              log. The sequence names the messages each one depends on; this is
+              what turns that list into an answer. Parsed here in the browser —
+              nothing is uploaded anywhere. */}
+          <label className="amc-guided__import" style={buttonStyle()}>
+            {logState === 'reading' ? 'Reading the log…' : 'Check a flight log'}
+            <input
+              type="file"
+              accept=".bin,.BIN"
+              data-testid="amc-open-log"
+              disabled={logState === 'reading'}
+              onChange={(event) => {
+                void readLog(event.target.files?.[0])
+                event.target.value = ''
+              }}
+            />
+          </label>
+          <span>
+            {logNotice ?? 'Marks the messages each step should have produced. Read in your browser.'}
+          </span>
+        </p>
         {importNotice ? (
           <div className={`amc-guided__import-notice amc-guided__import-notice--${importNotice.tone}`}>
             <p>{importNotice.text}</p>
@@ -1516,6 +1537,68 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             ) : null}
           </div>
         ) : null}
+
+        <div className="button-row">
+          <button style={buttonStyle('primary')} onClick={exportProject} disabled={declaredCount === 0}>
+            Download the directory
+          </button>
+          {/* The sequence is what gives a directory's files meaning, and it is
+              dynamic-imported — so until it is here there is nothing to read
+              against. Disabled rather than silently doing nothing, which is
+              what it did: a directory picked in the first moment after the tab
+              opened was dropped without a word. */}
+          <label
+            className={`amc-guided__import${steps ? '' : ' amc-guided__import--waiting'}`}
+            style={buttonStyle()}
+            aria-disabled={steps ? undefined : true}
+          >
+            {steps ? 'Open a directory' : 'Loading the sequence…'}
+            <input
+              type="file"
+              multiple
+              disabled={!steps}
+              data-testid="amc-open-project"
+              accept=".param,.json"
+              onChange={(event) => {
+                void importProject(event.target.files)
+                // Cleared so picking the same directory twice fires again.
+                event.target.value = ''
+              }}
+            />
+          </label>
+        </div>
+          <label className="amc-guided__annotate">
+            <input
+              type="checkbox"
+              data-testid="amc-annotate-toggle"
+              checked={annotate}
+              disabled={!docs}
+              onChange={(event) => setAnnotate(event.target.checked)}
+            />
+            <span>
+              {/* Worth an explicit choice: the files roughly triple in size,
+                  which suits a directory someone will read and not one that
+                  only gets fed back in. */}
+              Write ArduPilot&apos;s documentation into the files
+            </span>
+          </label>
+        {projectNotice ? (
+          <p className={`amc-guided__project-notice amc-guided__project-notice--${projectNotice.tone}`}>
+            {projectNotice.text}
+          </p>
+        ) : null}
+        {declaredCount === 0 ? (
+          <p className="amc-guided__project-empty">
+            Nothing is declared yet, so there is nothing to derive — an empty directory records no
+            decisions at all.
+          </p>
+        ) : null}
+      </Panel>
+
+      <Panel
+        title="Declare the vehicle"
+        subtitle={`${declaredCount} of ${fields.length} fields — exactly what the sequence reads, nothing more.`}
+      >
         {carryOver ? (
           <p className="amc-guided__carry-over">
             You declared a vehicle before connecting. Use it for this one?
@@ -1547,6 +1630,16 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             ))}
           </p>
         ) : null}
+        {/* Open while there is still something to answer, folded away once
+            there is not: this is 24 fields you fill in once, and leaving it
+            expanded puts the sequence itself below the fold for the rest of
+            the session. */}
+        <details className="amc-guided__components-fold" open={declaredCount < fields.length}>
+          <summary>
+            {declaredCount >= fields.length
+              ? 'The vehicle is described — open to change an answer'
+              : `${fields.length - declaredCount} still to answer`}
+          </summary>
         <div className="amc-guided__components">
           {groupFields(fields).map(({ component, fields: group, showGroups }) => (
             <fieldset key={component} className="amc-guided__component">
@@ -1587,6 +1680,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             </fieldset>
           ))}
         </div>
+        </details>
         <div className="button-row">
           <button
             style={buttonStyle()}
@@ -1599,72 +1693,6 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             Clear
           </button>
         </div>
-      </Panel>
-
-      <Panel
-        title="The vehicle's configuration directory"
-        subtitle="One file per step, each value carrying the reason it was set — the artefact this method exists to produce."
-      >
-        <p className="amc-guided__project-blurb">
-          A configuration you cannot reopen later is one you have to redo from memory. The
-          directory holds what you declared alongside what the sequence derived from it, so both
-          the values and the reasoning survive.
-        </p>
-        <div className="button-row">
-          <button style={buttonStyle('primary')} onClick={exportProject} disabled={declaredCount === 0}>
-            Download the directory
-          </button>
-          {/* The sequence is what gives a directory's files meaning, and it is
-              dynamic-imported — so until it is here there is nothing to read
-              against. Disabled rather than silently doing nothing, which is
-              what it did: a directory picked in the first moment after the tab
-              opened was dropped without a word. */}
-          <label className="amc-guided__annotate">
-            <input
-              type="checkbox"
-              data-testid="amc-annotate-toggle"
-              checked={annotate}
-              disabled={!docs}
-              onChange={(event) => setAnnotate(event.target.checked)}
-            />
-            <span>
-              {/* Worth an explicit choice: the files roughly triple in size,
-                  which suits a directory someone will read and not one that
-                  only gets fed back in. */}
-              Write ArduPilot&apos;s documentation into the files
-            </span>
-          </label>
-          <label
-            className={`amc-guided__import${steps ? '' : ' amc-guided__import--waiting'}`}
-            style={buttonStyle()}
-            aria-disabled={steps ? undefined : true}
-          >
-            {steps ? 'Open a directory' : 'Loading the sequence…'}
-            <input
-              type="file"
-              multiple
-              disabled={!steps}
-              data-testid="amc-open-project"
-              accept=".param,.json"
-              onChange={(event) => {
-                void importProject(event.target.files)
-                // Cleared so picking the same directory twice fires again.
-                event.target.value = ''
-              }}
-            />
-          </label>
-        </div>
-        {projectNotice ? (
-          <p className={`amc-guided__project-notice amc-guided__project-notice--${projectNotice.tone}`}>
-            {projectNotice.text}
-          </p>
-        ) : null}
-        {declaredCount === 0 ? (
-          <p className="amc-guided__project-empty">
-            Nothing is declared yet, so there is nothing to derive — an empty directory records no
-            decisions at all.
-          </p>
-        ) : null}
       </Panel>
 
       {summary?.configuration ? (
@@ -1766,6 +1794,39 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                 : ''}
             </span>
           </div>
+        ) : null}
+        {/* The sequence is 63 steps in a dozen phases, and without this the
+            tab is one uninterrupted scroll — you cannot see the shape of the
+            work or get back to the phase you were in. */}
+        {(summary?.groups ?? []).filter((group) => group.name).length > 1 ? (
+          <nav className="amc-guided__phase-nav" aria-label="Jump to a phase">
+            {(summary?.groups ?? [])
+              .filter((group) => group.name)
+              .map((group) => {
+                const done = group.rows.filter(
+                  (row) =>
+                    reviewed.has(row.filename) ||
+                    (row.blocked.length === 0 && row.changes.length > 0 && row.pending === 0)
+                ).length
+                return (
+                  <button
+                    key={group.name}
+                    className={`amc-guided__phase-jump${
+                      done === group.rows.length ? ' amc-guided__phase-jump--done' : ''
+                    }`}
+                    onClick={() => {
+                      const first = group.rows[0]?.filename
+                      if (first) jumpToStep(first)
+                    }}
+                  >
+                    {group.name}
+                    <span>
+                      {done}/{group.rows.length}
+                    </span>
+                  </button>
+                )
+              })}
+          </nav>
         ) : null}
         <div className="amc-guided__steps">
           {(summary?.groups ?? []).map((group) => (

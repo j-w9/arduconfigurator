@@ -86,6 +86,11 @@ test('a log with an IMU temperature sweep fits a calibration', async ({ page }) 
   await page.getByRole('button', { name: /Imu temperature calibration results/i }).click()
   await expect(page.getByText(/Fitted from your log: 1 IMU over 60\.0 °C/)).toBeVisible()
   await expect(page.getByRole('button', { name: /Stage \d+ calibration values/ })).toBeVisible()
+
+  // Drawn, because the numbers alone cannot say whether the fit is any good.
+  const plot = page.locator('.amc-step__tempcal-plots svg')
+  await expect(plot).toHaveCount(1)
+  await expect(plot).toBeVisible()
 })
 
 test('a log whose IMU barely warmed says why it was not calibrated', async ({ page }) => {
