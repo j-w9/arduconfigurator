@@ -20028,3 +20028,28 @@ button.mavlink-inspector__sent-row {
   color: var(--text-muted);
   margin: 8px 0;
 }
+
+/* What AMC's own directories hold for a step that the sequence never decides.
+   Folded away: it is context, not a task, and every step has some. */
+.amc-step__unasked {
+  margin: 10px 0;
+  color: var(--text-muted);
+}
+
+.amc-step__unasked > summary {
+  cursor: pointer;
+}
+
+.amc-step__unasked ul {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.amc-step__unasked-count {
+  font-size: 0.85em;
+}
+
+/* The vehicle's own answer, which is the honest one. */
+.amc-step__unasked-live {
+  color: var(--text);
+}

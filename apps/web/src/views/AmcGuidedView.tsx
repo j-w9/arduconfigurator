@@ -21,6 +21,7 @@ import {
   connectionGroupOf,
   declarationFrom,
   defaultSelection,
+  answerableFromVehicle,
   escTelemetryMirror,
   explainValue,
   externalParamWrites,
@@ -30,6 +31,7 @@ import {
   orderByPairing,
   protocolsForConnection,
   rebootWaitSeconds,
+  templateOnlyParameters,
   validateDeclaration
 } from '@arduconfig/amc-steps'
 import type {
@@ -38,11 +40,13 @@ import type {
   ExternalParamFile,
   MigrationTables,
   ParameterDocs,
+  TemplateOnlyTable,
   ValidationError
 } from '@arduconfig/amc-steps'
 import connectionPairingsJson from '@amc/data/component-pairings.json'
 import connectionTablesJson from '@amc/data/connection-tables.json'
 import migrationTablesJson from '@amc/data/migration.json'
+import templateOnlyJson from '@amc/data/template-only.json'
 
 // Observed from AMC's vehicle templates by scripts/sync-from-vendor.mjs. Small
 // (a few hundred bytes) so it rides along rather than being fetched.
@@ -51,6 +55,9 @@ const connectionPairings = connectionPairingsJson as ConnectionPairings
 const connectionTables = connectionTablesJson as unknown as ConnectionTables
 // What moved where between the directory formats, likewise extracted.
 const migrationTables = migrationTablesJson as unknown as MigrationTables
+// What AMC's own directories hold for each step that the sequence never
+// decides, observed across its templates by scripts/sync-from-vendor.mjs.
+const templateOnly = templateOnlyJson as unknown as TemplateOnlyTable
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import {
@@ -424,7 +431,9 @@ function StepCard({
   defaultsRead,
   onOpenTool,
   onJump,
-  docs
+  docs,
+  kind,
+  parameters
 }: {
   row: StepRow
   connected: boolean
@@ -753,6 +762,61 @@ function StepCard({
               .
             </p>
           ) : null}
+
+          {(() => {
+            // What AMC's own directories hold for this step that the sequence
+            // never decides. AMC seeds a directory by copying a template's
+            // .param files; this tab computes from the directives alone, so
+            // these are simply absent rather than set to something wrong.
+            //
+            // The names, not the values: GPS_POS1_X is one particular
+            // aircraft's antenna offset, and asserting it as this one's would
+            // be worse than leaving it out. The vehicle is the honest source,
+            // so where it has an answer it is offered.
+            const unasked = templateOnlyParameters(templateOnly, kind, row.filename)
+            if (unasked.length === 0) return null
+            const fromVehicle = answerableFromVehicle(unasked, parameters)
+            return (
+              <details className="amc-step__unasked">
+                <summary>
+                  {unasked.length} setting{unasked.length === 1 ? '' : 's'} the sequence does not
+                  decide
+                </summary>
+                <p>
+                  AMC&apos;s own vehicle directories set {unasked.length === 1 ? 'this' : 'these'}{' '}
+                  for this step, but no directive computes{' '}
+                  {unasked.length === 1 ? 'it' : 'them'} — {unasked.length === 1 ? 'it comes' : 'they come'}{' '}
+                  from the aircraft rather than from the method.
+                </p>
+                <ul>
+                  {unasked.map((entry) => (
+                    <li key={entry.parameter}>
+                      <code>{entry.parameter}</code>{' '}
+                      <span
+                        className="amc-step__unasked-count"
+                        title={`Set by ${entry.templates} of AMC's vehicle templates for this step`}
+                      >
+                        {Math.round(entry.share * 100)}% of AMC&apos;s vehicles
+                      </span>
+                      {parameters[entry.parameter] !== undefined ? (
+                        <span className="amc-step__unasked-live"> — yours: {parameters[entry.parameter]}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                {fromVehicle.length > 0 ? (
+                  <button
+                    style={buttonStyle()}
+                    disabled={!connected}
+                    title="Record what your vehicle already has for these, rather than what someone else's template used"
+                    onClick={() => onStage(fromVehicle)}
+                  >
+                    Take {fromVehicle.length} from the vehicle
+                  </button>
+                ) : null}
+              </details>
+            )
+          })()}
 
           {stageable.length > 0 ? (
             <div className="amc-step__stage">
@@ -2556,6 +2620,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   onOpenTool={onOpenTool}
                   onJump={jumpToStep}
                   docs={docs}
+                  kind={kind}
+                  parameters={parameters}
                   onReviewed={(next) =>
                     setReviewed((previous) => {
                       const updated = new Set(previous)

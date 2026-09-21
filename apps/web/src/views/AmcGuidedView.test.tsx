@@ -10,7 +10,7 @@
 // restored. Both are render and effect ordering, and neither is visible from
 // outside a render.
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { parameterDocsFrom } from '@arduconfig/amc-steps'
@@ -1252,5 +1252,71 @@ describe('a derived value the firmware has nowhere to put', () => {
       step.click()
     })
     expect(screen.queryByText(/this firmware has no/)).toBeNull()
+  })
+})
+
+describe('what the sequence does not decide', () => {
+  // AMC seeds a vehicle directory by copying a template's .param files and
+  // then lets the sequence edit them; this tab computes from the directives
+  // alone. 69 of the 662 parameters in AMC's own empty_4.6.x ArduCopter
+  // directory come from directives, so most of what AMC would write is simply
+  // absent here. Copying the values across would be wrong — they are one
+  // particular aircraft's — but saying nothing is worse than asking.
+
+  /** "Telemetry" also matches the ESC telemetry step, so pick the right one. */
+  async function openTelemetryStep() {
+    const step = (await screen.findAllByRole('button', { name: /Telemetry/i })).find(
+      (button) => !/esc/i.test(button.textContent ?? '')
+    )
+    if (!step) throw new Error('no telemetry step')
+    await act(async () => {
+      step.click()
+    })
+  }
+
+  it('names the settings AMC\'s directories hold that no directive computes', async () => {
+    render(<AmcGuidedView {...base} docs={docs} />)
+    await whenLoaded()
+    await openTelemetryStep()
+
+    const fold = await screen.findByText(/settings? the sequence does not decide/)
+    await act(async () => {
+      ;(fold.closest('details') as HTMLDetailsElement).open = true
+    })
+    // The serial port's baud and flow control are most of setting telemetry
+    // up, and no directive of that step touches either.
+    expect(screen.getByText('SERIAL1_BAUD')).toBeTruthy()
+    expect(screen.getByText('BRD_SER1_RTSCTS')).toBeTruthy()
+  })
+
+  it('offers the vehicle as the source, not somebody else\'s template', async () => {
+    // The honest way to fill these in: the operator's own aircraft has a
+    // value, and that value is a fact about this vehicle.
+    const staged: { parameter: string; value: number }[] = []
+    render(
+      <AmcGuidedView
+        {...base}
+        connected
+        docs={docs}
+        parameters={{ SERIAL1_BAUD: 115, BRD_SER1_RTSCTS: 2 }}
+        onStage={(changes) => staged.push(...changes)}
+      />
+    )
+    await whenLoaded()
+    await openTelemetryStep()
+    const fold = (await screen.findByText(/settings? the sequence does not decide/)).closest(
+      'details'
+    ) as HTMLDetailsElement
+    await act(async () => {
+      fold.open = true
+    })
+
+    const take = within(fold).getByRole('button', { name: /Take \d+ from the vehicle/i })
+    await act(async () => {
+      take.click()
+    })
+    expect(staged).toEqual(
+      expect.arrayContaining([{ parameter: 'SERIAL1_BAUD', value: 115 }])
+    )
   })
 })
