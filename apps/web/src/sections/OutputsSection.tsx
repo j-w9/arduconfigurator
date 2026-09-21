@@ -179,8 +179,6 @@ export interface OutputsSectionHandlers {
   handleConfirmMotorVerification: () => void
   handleFailMotorVerification: () => void
   handleResetMotorVerification: () => void
-  confirmSetupSection: (sectionId: string, outcome?: import('../app-types').SetupSectionOutcome) => void
-  clearSetupSectionConfirmation: (sectionId: string) => void
   renderMetadataParameterField: (parameter: ParameterState) => ReactNode
   renderAdditionalSettingsCard: (
     title: string,

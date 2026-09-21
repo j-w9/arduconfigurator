@@ -9302,8 +9302,6 @@ export function App() {
           handleConfirmMotorVerification,
           handleFailMotorVerification,
           handleResetMotorVerification,
-          confirmSetupSection,
-          clearSetupSectionConfirmation,
           renderMetadataParameterField,
           renderAdditionalSettingsCard,
           setDraft,

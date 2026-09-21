@@ -248,6 +248,63 @@ test.describe('Guided setup flow', () => {
     expect(criteria.some((c) => /RTL return altitude/i.test(c))).toBe(false)
   })
 
+  test('a whole vehicle can be taken from step one to every step complete', async ({ page }) => {
+    // The assertion the rest of this file could not make: not that each step
+    // renders, but that the flow can be FINISHED. A Rover, because it is the
+    // shortest flow and — until the sign-off fix — could not get past step 2
+    // of 7. It needs no bench exercises, so it can be walked headlessly.
+    test.setTimeout(180_000)
+    await page.goto('/')
+    await page.evaluate(() => window.localStorage.setItem('arduconfig:transport-mode', 'demo-rover'))
+    await page.reload()
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-parameter-summary')).toHaveText(/^(\d+ params|Params \d+)$/, {
+      timeout: VEHICLE_CONNECT_TIMEOUT
+    })
+    await page.getByTestId('view-button-guided-setup').click()
+    await expect(page.getByTestId('setup-wizard')).toBeVisible({ timeout: 20_000 })
+
+    // Walk the way an operator does: move on when allowed, else take the
+    // documented waiver (a bench cannot pass the motion exercises), else sign
+    // the step off.
+    //
+    // Each hop POLLS for a usable button instead of sampling once: several
+    // criteria track live vehicle state — the power step's "pre-arm checks
+    // passing" flickers with the FC's own reporting — so a single look can
+    // catch a step mid-blink and call a healthy flow stuck.
+    const clickForward = async (): Promise<boolean> => {
+      const patterns = [/Continue to /i, /Verified Elsewhere|Already Calibrated/i, /Confirm /i]
+      const deadline = Date.now() + 20_000
+      while (Date.now() < deadline) {
+        for (const pattern of patterns) {
+          const buttons = page.locator('.setup-wizard button:visible', { hasText: pattern })
+          for (let i = 0; i < (await buttons.count()); i += 1) {
+            if (await buttons.nth(i).isEnabled()) {
+              await buttons.nth(i).click()
+              return true
+            }
+          }
+        }
+        await page.waitForTimeout(500)
+      }
+      return false
+    }
+
+    for (let hop = 0; hop < 30; hop += 1) {
+      if (!(await clickForward())) break
+      await page.waitForTimeout(300)
+    }
+
+    // Every step, green. Reported per step so a failure names which one stuck.
+    const states = await page
+      .locator('.setup-wizard-step')
+      .evaluateAll((els) =>
+        els.map((el) => `${(el.getAttribute('data-testid') ?? '').replace('setup-step-', '')}=${el.getAttribute('data-step-state')}`)
+      )
+    expect(states.length).toBeGreaterThan(4)
+    expect(states.filter((state) => !state.endsWith('=complete'))).toEqual([])
+  })
+
   test('the first step offers no way backwards, the last no way onwards', async ({ page }) => {
     // Both ends are where a wizard usually breaks: a Previous that leaves the
     // flow, or a Continue past the end.
