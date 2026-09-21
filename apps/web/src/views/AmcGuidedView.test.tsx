@@ -978,3 +978,78 @@ describe('a parameter file from somewhere else', () => {
     expect(opened).toEqual(['flash'])
   })
 })
+
+describe('checking the declaration before anything is computed from it', () => {
+  // The sequence derives everything from these values, so one that is merely
+  // plausible produces a directory that is confidently wrong. AMC refuses to
+  // write such a declaration; this says so without refusing.
+
+  async function declare(entries: Record<string, string>) {
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+    for (const [key, value] of Object.entries(entries)) {
+      const input = document.getElementById(`amc-field-${key.replace(/[^a-zA-Z0-9]+/g, '-')}`)
+      if (!input) throw new Error(`no field for ${key}`)
+      await act(async () => {
+        fireEvent.change(input, { target: { value } })
+      })
+    }
+  }
+
+  it('says when a cell voltage is ordered the wrong way round', async () => {
+    // Arming below the low threshold trips the failsafe the moment the
+    // vehicle arms, which is why AMC checks both sides of this one. Both
+    // values are given: a blank neighbour is unanswered, not disagreed with.
+    await declare({
+      'Battery/Specifications/Volt per cell low': '3.6',
+      'Battery/Specifications/Volt per cell arm': '3.1'
+    })
+    await waitFor(() =>
+      expect(screen.getAllByText(/is below the Volt per cell low/).length).toBeGreaterThan(0)
+    )
+  })
+
+  it('offers the value AMC would put there instead', async () => {
+    await declare({ 'Battery/Specifications/Number of cells': '99' })
+    const fix = await screen.findByRole('button', { name: /use 50/ })
+    await act(async () => {
+      fix.click()
+    })
+    const input = document.getElementById(
+      'amc-field-Battery-Specifications-Number-of-cells'
+    ) as HTMLInputElement
+    expect(input.value).toBe('50')
+  })
+
+  it('wants an even number of magnetic rotor poles', async () => {
+    await declare({ 'Motors/Specifications/Poles': '13' })
+    // Said twice on purpose: beside the field, and again in the list above the
+    // directory download, which is the moment it stops being recoverable.
+    await waitFor(() =>
+      expect(screen.getAllByText(/magnetic rotor poles must be even/).length).toBe(2)
+    )
+  })
+
+  it('re-seeds the cell voltages when the chemistry changes', async () => {
+    // Without this a pack switched from LiPo to Li-ion keeps LiPo's
+    // thresholds, every one of which is then outside the new range at once.
+    await declare({ 'Battery/Specifications/Chemistry': 'LiIon' })
+    const low = document.getElementById(
+      'amc-field-Battery-Specifications-Volt-per-cell-low'
+    ) as HTMLInputElement
+    // LiIon's recommended low, not LiPo's 3.6.
+    expect(Number(low.value)).toBeLessThan(3.6)
+  })
+
+  it('says so beside the directory, where it would be written', async () => {
+    await declare({ 'Motors/Specifications/Poles': '13' })
+    await waitFor(() => expect(screen.getByText(/AMC would reject/)).toBeTruthy())
+  })
+
+  it('says nothing about a declaration that is merely unfinished', async () => {
+    // Empty is not wrong -- it is 24 fields nobody has got to yet.
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+    expect(screen.queryByText(/AMC would reject/)).toBeNull()
+  })
+})

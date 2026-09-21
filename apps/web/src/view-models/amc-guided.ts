@@ -208,9 +208,32 @@ export function fieldsFor(sequence: AmcSequence, docs?: ParameterDocs): Componen
   // Which parameter each field supplies is stated by the step files, so the
   // dropdowns follow upstream rather than a list kept here.
   const sources = docs ? componentOptionSources(steps) : undefined
-  return requiredComponents(steps).map((requirement) =>
+  const fields = requiredComponents(steps).map((requirement) =>
     toField(requirement, docs && sources ? optionsForField(requirement.path, sources, docs) : undefined)
   )
+
+  // The one field the sequence does not read but the form still needs.
+  //
+  // No expression names the chemistry -- the steps read the five cell voltages
+  // directly. But the voltages are only judged as sensible against a
+  // chemistry: 2.5 V is a flat Li-ion cell and a destroyed LiPo one. Without
+  // this the checks fall back on AMC's default of LiPo and would reject a
+  // perfectly good Li-ion pack, so it is asked rather than assumed.
+  if (fields.some((field) => field.key.startsWith('Battery/Specifications/Volt per cell'))) {
+    const chemistry = OBSERVED['Battery/Specifications/Chemistry']
+    fields.push({
+      key: 'Battery/Specifications/Chemistry',
+      path: ['Battery', 'Specifications', 'Chemistry'],
+      component: 'Battery',
+      group: 'Specifications',
+      label: 'Chemistry',
+      uses: 0,
+      numeric: false,
+      ...(chemistry === undefined ? {} : { suggested: chemistry })
+    })
+  }
+
+  return fields
 }
 
 /**

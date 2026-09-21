@@ -269,15 +269,17 @@ describe('field choices', () => {
       // without good reason.
       expect(isList && field.numeric, `${field.component} > ${field.label}`).toBe(false)
     }
-    // Twelve of the twenty-four fields are enumerations. The rest are
-    // measurements and one version string, which are typed, not chosen.
+    // Thirteen of the fields are enumerations. The rest are measurements and
+    // one version string, which are typed, not chosen.
     //
-    // It was nine of twenty-one until the connection a step's parameters
-    // belong to started counting as something the operator declares -- that
-    // added the RC receiver, GNSS and telemetry connection types, all three of
-    // which AMC also asks for as a choice.
+    // It was nine until the connection a step's parameters belong to started
+    // counting as something the operator declares -- that added the RC
+    // receiver, GNSS and telemetry connection types, all three of which AMC
+    // also asks for as a choice. The thirteenth is the battery chemistry,
+    // which no expression reads but the cell-voltage checks need: 2.5 V is a
+    // flat Li-ion cell and a destroyed LiPo one.
     const lists = documentedFields.filter((field) => field.documented ?? field.suggested)
-    expect(lists.length).toBe(12)
+    expect(lists.length).toBe(13)
   })
 
   it('leaves a version as free text, not a list of other people\'s versions', () => {

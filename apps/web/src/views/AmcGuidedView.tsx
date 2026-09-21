@@ -16,21 +16,25 @@ import {
 } from '../view-models/amc-guided'
 import {
   changesBootDelay,
+  cellVoltagesFor,
   compareExternalParams,
   connectionGroupOf,
+  declarationFrom,
   defaultSelection,
   escTelemetryMirror,
   externalParamWrites,
   nextRequiredStep,
   orderByPairing,
   protocolsForConnection,
-  rebootWaitSeconds
+  rebootWaitSeconds,
+  validateDeclaration
 } from '@arduconfig/amc-steps'
 import type {
   ConnectionPairings,
   ConnectionTables,
   ExternalParamFile,
-  ParameterDocs
+  ParameterDocs,
+  ValidationError
 } from '@arduconfig/amc-steps'
 import connectionPairingsJson from '@amc/data/component-pairings.json'
 import connectionTablesJson from '@amc/data/connection-tables.json'
@@ -179,6 +183,23 @@ function stepDomId(filename: string): string {
 /** A stable DOM id per declaration field, so a blocked step can focus one. */
 function fieldInputId(key: string): string {
   return `amc-field-${key.replace(/[^a-zA-Z0-9]+/g, '-')}`
+}
+
+/**
+ * Changing the chemistry changes what the cell voltages should be.
+ *
+ * A side effect of AMC's `set_component_value`, and not an optional one: a
+ * pack switched from LiPo to Li-ion that keeps LiPo's thresholds has four
+ * values outside the new chemistry's range at once, and the operator would
+ * have to know which four to go and fix.
+ */
+function reseededVoltages(field: ComponentField, chemistry: string): Record<string, string> {
+  if (field.key !== 'Battery/Specifications/Chemistry') return {}
+  const seeded: Record<string, string> = {}
+  for (const [type, voltage] of cellVoltagesFor(connectionTables, chemistry)) {
+    seeded[`Battery/Specifications/${type}`] = String(voltage)
+  }
+  return seeded
 }
 
 /**
@@ -1237,6 +1258,29 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   // rebuilt once it has loaded.
   const fields = useMemo(() => (steps ? fieldsFor(steps, docs) : []), [steps, docs])
 
+  /**
+   * What AMC would refuse to write, keyed by field.
+   *
+   * The sequence computes everything from the declaration, so a value that is
+   * merely plausible produces a directory that is confidently wrong -- cell
+   * voltages out of order drive the battery failsafes to thresholds that trip
+   * on a full pack. AMC checks these before it writes anything, and the check
+   * is worth as much here.
+   */
+  const declarationErrors = useMemo(() => {
+    const entries = fields
+      .filter((field) => (values[field.key] ?? '') !== '')
+      .map((field) => [field.path, values[field.key] as string] as const)
+    const byField = new Map<string, ValidationError>()
+    for (const error of validateDeclaration(entries, declarationFrom(values), connectionTables)) {
+      // First one per field: the later checks reason about a value the earlier
+      // one already rejected, so a second message would be about a value that
+      // is not really there.
+      if (!byField.has(error.path.join('/'))) byField.set(error.path.join('/'), error)
+    }
+    return byField
+  }, [fields, values])
+
   const templates = useMemo(() => vehicleTemplates(fields, kind), [fields, kind])
 
   const applyTemplate = useCallback(
@@ -1297,7 +1341,12 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     [steps, loaded, fields, values, parameters, states, defaults, docs, logCounts]
   )
 
-  const declaredCount = fields.length - (summary?.missing.length ?? fields.length)
+  // Counted over the fields the SEQUENCE reads, which is what `missing` is a
+  // count of. Chemistry is asked for so the cell voltages can be judged, but no
+  // expression names it, so including it here would report one field declared
+  // on an empty form.
+  const sequenceFields = useMemo(() => fields.filter((field) => field.uses > 0), [fields])
+  const declaredCount = sequenceFields.length - (summary?.missing.length ?? sequenceFields.length)
 
   // Reading the declaration off the vehicle. Pure apart from setting state:
   // the deriving is in the view-model, tested against AMC's 29 templates.
@@ -1836,6 +1885,27 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             decisions at all.
           </p>
         ) : null}
+        {/* AMC refuses to write a declaration that fails these. This says so
+            and still allows it: the directory is the operator's record, and a
+            half-finished one they can reopen is more use than a refusal. What
+            it will not do is let the download look like it went well. */}
+        {declarationErrors.size > 0 ? (
+          <div className="amc-guided__project-notice amc-guided__project-notice--warning">
+            <p>
+              {declarationErrors.size} declared value
+              {declarationErrors.size === 1 ? '' : 's'} AMC would reject. Everything the sequence
+              computes from {declarationErrors.size === 1 ? 'it' : 'them'} will be wrong.
+            </p>
+            <ul className="amc-guided__declaration-errors">
+              {[...declarationErrors.values()].map((error) => (
+                <li key={error.where}>
+                  <button onClick={() => focusField(error.path.join('/'))}>{error.where}</button>{' '}
+                  {error.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </Panel>
 
       {/* AMC's "compare and upload" window. Kept a panel of its own rather
@@ -2077,10 +2147,34 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                     // question, and asking it invites a different answer the
                     // sequence would then compute from.
                     mirroredFrom={mirroredTelemetry(field, values, kind)}
-                    onChange={(next) => setValues((previous) => ({ ...previous, [field.key]: next }))}
+                    onChange={(next) =>
+                      setValues((previous) => ({ ...previous, [field.key]: next, ...reseededVoltages(field, next) }))
+                    }
                   />
                   {field.key === versionKey && vehicleFirmwareVersion && values[field.key] === vehicleFirmwareVersion ? (
                     <em className="amc-guided__from-vehicle">read from the vehicle</em>
+                  ) : null}
+                  {declarationErrors.get(field.key) ? (
+                    <em className="amc-guided__field-error">
+                      {declarationErrors.get(field.key)?.message}
+                      {/* AMC does not only complain: it puts the limit in the
+                          field. Offered rather than applied, because silently
+                          rewriting what someone typed is worse than saying
+                          what would be written instead. */}
+                      {declarationErrors.get(field.key)?.suggestion !== undefined ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setValues((previous) => ({
+                              ...previous,
+                              [field.key]: String(declarationErrors.get(field.key)?.suggestion)
+                            }))
+                          }
+                        >
+                          use {String(declarationErrors.get(field.key)?.suggestion)}
+                        </button>
+                      ) : null}
+                    </em>
                   ) : null}
                 </label>
               ))}

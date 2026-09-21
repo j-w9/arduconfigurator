@@ -19951,3 +19951,45 @@ button.mavlink-inspector__sent-row {
   margin-top: 12px;
   color: var(--text-muted);
 }
+
+/* What AMC would refuse to write, said next to the field and again before the
+   directory is downloaded. Not a block: the directory is the operator's own
+   record, and a half-finished one they can reopen beats a refusal. */
+.amc-guided__field-error {
+  color: var(--danger, #c53030);
+  font-style: normal;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.amc-guided__field-error > button {
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0 6px;
+}
+
+.amc-guided__declaration-errors {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.amc-guided__declaration-errors > li {
+  margin-bottom: 2px;
+}
+
+/* The path is the thing to click: it is where the value is. */
+.amc-guided__declaration-errors button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
