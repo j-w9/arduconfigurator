@@ -667,17 +667,29 @@ test.describe('Parameters tab (expert-only)', () => {
 })
 
 test.describe('tab order', () => {
-  test('nav leads with Status & Info, then Guided Setup, Config, Peripherals, Calibration', async ({ page }) => {
+  test('nav leads with Status & Info, the two guided tabs, then Config, Peripherals, Calibration', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    // The first five nav buttons follow the canonical order (Status & Info,
-    // then the Guided Setup wizard tab, then Config, Peripherals — attached
-    // hardware, next to the settings it used to be mixed into — and
-    // Calibration).
+    // The first six nav buttons follow the canonical order (Status & Info,
+    // then the two guided tabs — the native wizard and the AMC sequence,
+    // beside each other so they can be compared on the same vehicle — then
+    // Config, Peripherals (attached hardware, next to the settings it used to
+    // be mixed into) and Calibration).
+    //
+    // AMC Guided joined this list when it stopped being Expert-gated. It is
+    // the gentlest surface in the app: it shows what each step would set and
+    // why before anything is written.
     const navIds = await page.locator('[data-testid^="view-button-"]').evaluateAll((els) =>
       els.map((el) => (el.getAttribute('data-testid') || '').replace('view-button-', ''))
     )
-    expect(navIds.slice(0, 5)).toEqual(['setup', 'guided-setup', 'config', 'peripherals', 'calibration'])
+    expect(navIds.slice(0, 6)).toEqual([
+      'setup',
+      'guided-setup',
+      'amc-guided',
+      'config',
+      'peripherals',
+      'calibration'
+    ])
     // The Setup tab is now labelled "Status & Info".
     await expect(page.getByTestId('view-button-setup')).toContainText('Status & Info')
   })
