@@ -19912,3 +19912,42 @@ button.mavlink-inspector__sent-row {
 .amc-step__tool button:hover {
   border-color: var(--primary-500);
 }
+
+/* A parameter file from outside the vehicle directory.
+   
+   Its own panel, and deliberately plainer than the sequence's own tables: the
+   point is that this file has no standing here. It is shown beside the vehicle
+   so the operator can judge it, and nothing about it is recorded. */
+.amc-guided__external-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.amc-guided__external-row > span {
+  color: var(--text-muted);
+}
+
+.amc-guided__external-summary {
+  color: var(--text-muted);
+}
+
+/* A file written for another firmware version is the case this number exists
+   to surface, so it is coloured like a problem rather than a footnote. */
+.amc-guided__external-absent {
+  color: var(--warning, #b7791f);
+}
+
+/* Long files are common -- a full parameter dump is a thousand rows -- so the
+   table scrolls inside the panel rather than pushing the sequence off screen. */
+.amc-guided__external-table {
+  display: block;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.amc-guided__external-reset {
+  margin-top: 12px;
+  color: var(--text-muted);
+}

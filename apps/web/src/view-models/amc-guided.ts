@@ -43,7 +43,7 @@ import {
  * `ahrs_orientation` are Config categories here, while the motor tools have
  * their own tab, and Power stopped being a tab of its own some time ago.
  */
-export type AppToolView = 'config' | 'motors' | 'calibration'
+export type AppToolView = 'config' | 'motors' | 'calibration' | 'flash'
 
 const STEP_TOOLS: Readonly<Record<string, { label: string; view: AppToolView }>> = {
   ahrs_orientation: { label: 'Board orientation', view: 'config' },

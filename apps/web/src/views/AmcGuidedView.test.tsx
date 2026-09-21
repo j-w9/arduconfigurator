@@ -902,3 +902,79 @@ describe('recording what the vehicle already has', () => {
     expect(screen.queryByRole('button', { name: /Take \d+ from the vehicle/i })).toBeNull()
   })
 })
+
+describe('a parameter file from somewhere else', () => {
+  // AMC's "compare and upload" window. The distinction it exists to keep is
+  // that this file is NOT part of the directory: AMC uploads it with
+  // persist_project_state=False, so nothing about it is written into a step.
+
+  function paramFile(name: string, text: string): File {
+    // jsdom's File does not implement text(), and the view reads the file that
+    // way, so it is supplied here.
+    const file = new File([text], name, { type: 'text/plain' })
+    Object.defineProperty(file, 'text', { value: async () => text })
+    return file
+  }
+
+  async function open(text: string, props: Partial<Parameters<typeof AmcGuidedView>[0]> = {}) {
+    render(<AmcGuidedView {...base} connected parameters={{ ATC_RAT_RLL_P: 0.2 }} {...props} />)
+    await whenLoaded()
+    const input = screen.getByTestId('amc-open-external') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [paramFile('someone-elses.param', text)] } })
+    })
+  }
+
+  it('shows what the file would change and what it would not', async () => {
+    await open(['ATC_RAT_RLL_P,0.135', 'ATC_RAT_PIT_P,0.135'].join('\n'))
+
+    await waitFor(() => expect(screen.getByText(/someone-elses\.param/)).toBeTruthy())
+    // One row the vehicle has and disagrees with, one it does not have at all.
+    expect(screen.getByText(/1 the vehicle does not already have/)).toBeTruthy()
+    expect(screen.getByText(/1 this firmware does not have/)).toBeTruthy()
+  })
+
+  it('will not send a parameter this firmware does not have', async () => {
+    await open(['ATC_RAT_RLL_P,0.135', 'ATC_RAT_PIT_P,0.135'].join('\n'))
+    await waitFor(() => expect(screen.getByText(/someone-elses\.param/)).toBeTruthy())
+
+    // Checked by default would be a write that cannot land; the box is
+    // disabled rather than merely unchecked.
+    const absent = screen.getByLabelText('Send ATC_RAT_PIT_P') as HTMLInputElement
+    expect(absent.disabled).toBe(true)
+    // And the count offered covers only the one that can be sent.
+    expect(screen.getByRole('button', { name: /Stage 1 change/ })).toBeTruthy()
+  })
+
+  it('sends the checked rows without recording them anywhere', async () => {
+    const staged: { parameter: string; value: number }[] = []
+    await open('ATC_RAT_RLL_P,0.135', { onStage: (changes) => staged.push(...changes) })
+    await waitFor(() => expect(screen.getByText(/someone-elses\.param/)).toBeTruthy())
+
+    await act(async () => {
+      screen.getByRole('button', { name: /Stage 1 change/ }).click()
+    })
+    expect(staged).toEqual([{ parameter: 'ATC_RAT_RLL_P', value: 0.135 }])
+    // The directory is untouched: this file never became a step.
+    expect(screen.queryByText(/someone-elses\.param/)?.closest('table')).toBeFalsy()
+  })
+
+  it('says so when the file holds nothing it can read', async () => {
+    await open('# just a comment\n\n')
+    await waitFor(() => expect(screen.getByText(/holds no parameters/)).toBeTruthy())
+  })
+
+  it('points at the app for a reset rather than offering a second one', async () => {
+    // AMC puts "reset all FC parameters to defaults" on this same window. The
+    // app already has that action, with its own confirmation and armed check,
+    // so this offers the affordance in AMC's place without a second
+    // implementation of a destructive command.
+    const opened: string[] = []
+    render(<AmcGuidedView {...base} connected onOpenTool={(view) => opened.push(view)} />)
+    await whenLoaded()
+    await act(async () => {
+      screen.getByRole('button', { name: /Reset it to firmware defaults/i }).click()
+    })
+    expect(opened).toEqual(['flash'])
+  })
+})

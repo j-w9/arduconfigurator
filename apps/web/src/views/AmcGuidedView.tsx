@@ -16,14 +16,22 @@ import {
 } from '../view-models/amc-guided'
 import {
   changesBootDelay,
+  compareExternalParams,
   connectionGroupOf,
+  defaultSelection,
   escTelemetryMirror,
+  externalParamWrites,
   nextRequiredStep,
   orderByPairing,
   protocolsForConnection,
   rebootWaitSeconds
 } from '@arduconfig/amc-steps'
-import type { ConnectionPairings, ConnectionTables, ParameterDocs } from '@arduconfig/amc-steps'
+import type {
+  ConnectionPairings,
+  ConnectionTables,
+  ExternalParamFile,
+  ParameterDocs
+} from '@arduconfig/amc-steps'
 import connectionPairingsJson from '@amc/data/component-pairings.json'
 import connectionTablesJson from '@amc/data/connection-tables.json'
 
@@ -1057,6 +1065,16 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   const [lastVisited, setLastVisited] = useState<string | undefined>(undefined)
   const [logNotice, setLogNotice] = useState<string | undefined>(undefined)
 
+  // A parameter file from outside the directory, held beside the vehicle so
+  // the operator can see what it would change before any of it is sent.
+  // Deliberately not project state: AMC runs this path with
+  // persist_project_state=False, and nothing here is written into a step file.
+  const [external, setExternal] = useState<
+    { name: string; file: ExternalParamFile; selected: ReadonlySet<string> } | undefined
+  >(undefined)
+  const [externalError, setExternalError] = useState<string | undefined>(undefined)
+  const [externalOnlyChanged, setExternalOnlyChanged] = useState(false)
+
   const fetchLatestLog = useCallback(async () => {
     if (!onDownloadLatestLog) return
     setLogState('downloading')
@@ -1465,6 +1483,56 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     [steps, fields]
   )
 
+  // Opening a parameter file that has nothing to do with this directory.
+  //
+  // AMC's "compare and upload" window: a tune off a forum post, a file saved
+  // from another aircraft, a vendor's settings. It is shown beside the vehicle
+  // and nothing about it is recorded -- the file is a visitor, not a step.
+  const openExternalFile = useCallback(
+    async (picked: FileList | null) => {
+      const file = picked?.[0]
+      if (!file) return
+      setExternalError(undefined)
+      try {
+        const compared = compareExternalParams(await file.text(), parameters)
+        if (compared.rows.length === 0) {
+          setExternal(undefined)
+          setExternalError(`${file.name} holds no parameters this could read.`)
+          return
+        }
+        // Opens with the differing rows checked, as AMC's does: a parameter
+        // the vehicle already holds costs a write and a read-back to confirm
+        // that nothing happened.
+        setExternal({ name: file.name, file: compared, selected: defaultSelection(compared) })
+      } catch {
+        setExternalError(`${file.name} could not be read.`)
+      }
+    },
+    [parameters]
+  )
+
+  const toggleExternal = useCallback((parameter: string) => {
+    setExternal((current) => {
+      if (!current) return current
+      const next = new Set(current.selected)
+      if (next.has(parameter)) next.delete(parameter)
+      else next.add(parameter)
+      return { ...current, selected: next }
+    })
+  }, [])
+
+  const externalRows = useMemo(() => {
+    if (!external) return []
+    return externalOnlyChanged
+      ? external.file.rows.filter((row) => row.status !== 'same')
+      : external.file.rows
+  }, [external, externalOnlyChanged])
+
+  const externalWrites = useMemo(
+    () => (external ? externalParamWrites(external.file, external.selected) : []),
+    [external]
+  )
+
   // A blocked step names the field that would unblock it; clicking it should
   // put the cursor there rather than leaving the operator to find it.
   // A jump names another step; bringing it into view is the least this can do
@@ -1766,6 +1834,170 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
           <p className="amc-guided__project-empty">
             Nothing is declared yet, so there is nothing to derive — an empty directory records no
             decisions at all.
+          </p>
+        ) : null}
+      </Panel>
+
+      {/* AMC's "compare and upload" window. Kept a panel of its own rather
+          than folded into the directory above, because the whole point of it
+          is that this file is NOT part of the directory: AMC runs the upload
+          with persist_project_state=False, so no step file is written and no
+          summary is regenerated. A tune off a forum post should not quietly
+          become part of the record of how this aircraft was configured. */}
+      <Panel
+        title="A parameter file from somewhere else"
+        subtitle="Compare any .param file against the vehicle and send the parts you choose. Nothing here is recorded in the directory."
+      >
+        <p className="amc-guided__external-row">
+          <label style={buttonStyle()} className="amc-guided__import">
+            Open a parameter file
+            <input
+              type="file"
+              data-testid="amc-open-external"
+              accept=".param,.parm"
+              onChange={(event) => {
+                void openExternalFile(event.target.files)
+                event.target.value = ''
+              }}
+            />
+          </label>
+          <span>
+            A tune from a forum post, a file saved off another aircraft, a vendor&apos;s settings.
+          </span>
+        </p>
+
+        {externalError ? (
+          <p className="amc-guided__project-notice amc-guided__project-notice--warning">
+            {externalError}
+          </p>
+        ) : null}
+
+        {external ? (
+          <>
+            <p className="amc-guided__external-summary">
+              <strong>{external.name}</strong> — {external.file.rows.length} parameter
+              {external.file.rows.length === 1 ? '' : 's'},{' '}
+              {connected
+                ? `${external.file.changedCount} the vehicle does not already have`
+                : 'nothing to compare against until a vehicle is connected'}
+              {external.file.absentCount > 0 ? (
+                <>
+                  {', '}
+                  {/* Worth naming rather than hiding. A file written for
+                      another firmware version is exactly the case where this
+                      number is the whole story. */}
+                  <span className="amc-guided__external-absent">
+                    {external.file.absentCount} this firmware does not have
+                  </span>
+                </>
+              ) : null}
+              .
+            </p>
+
+            <label className="amc-guided__annotate">
+              <input
+                type="checkbox"
+                data-testid="amc-external-only-changed"
+                checked={externalOnlyChanged}
+                onChange={(event) => setExternalOnlyChanged(event.target.checked)}
+              />
+              <span>Show only what differs</span>
+            </label>
+
+            <table className="amc-step__changes amc-guided__external-table">
+              <thead>
+                <tr>
+                  <th>Send</th>
+                  <th>Parameter</th>
+                  <th>On the vehicle</th>
+                  <th>In the file</th>
+                </tr>
+              </thead>
+              <tbody>
+                {externalRows.map((row) => (
+                  <tr key={row.parameter} className={row.status === 'same' ? 'is-satisfied' : undefined}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`Send ${row.parameter}`}
+                        checked={external.selected.has(row.parameter)}
+                        disabled={row.status === 'absent'}
+                        onChange={() => toggleExternal(row.parameter)}
+                      />
+                    </td>
+                    <td>
+                      <code>{row.parameter}</code>
+                      {row.manualOverride ? (
+                        <span
+                          className="amc-step__tag"
+                          title="The file records this as a value someone chose deliberately"
+                        >
+                          chosen
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>
+                      {row.status === 'absent' ? (
+                        <span
+                          className="amc-step__disputed"
+                          title="This firmware has no such parameter, so it cannot be sent"
+                        >
+                          not on this firmware
+                        </span>
+                      ) : (
+                        row.current
+                      )}
+                    </td>
+                    <td>
+                      {row.value}
+                      {row.comment ? (
+                        <span className="amc-step__disputed-why">{row.comment}</span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="amc-step__stage">
+              <button
+                style={buttonStyle()}
+                disabled={!connected || externalWrites.length === 0}
+                title="Stage these into the parameter drafts for review"
+                onClick={() => onStage(externalWrites)}
+              >
+                Stage {externalWrites.length} change{externalWrites.length === 1 ? '' : 's'}
+              </button>
+              {onWriteStep ? (
+                <button
+                  style={buttonStyle('primary')}
+                  disabled={!connected || externalWrites.length === 0}
+                  title="Write the checked parameters and let the vehicle confirm them"
+                  onClick={() => onWriteStep(externalWrites, external.name)}
+                >
+                  Write {externalWrites.length} to the vehicle
+                </button>
+              ) : null}
+              <button style={buttonStyle()} onClick={() => setExternal(undefined)}>
+                Close the file
+              </button>
+            </div>
+          </>
+        ) : null}
+
+        {/* AMC puts "reset all FC parameters to defaults" on this same window,
+            and it is the right place for it: it is the other thing you reach
+            for when a vehicle's parameters came from somewhere you no longer
+            trust. The app already does this, with its own confirmation and its
+            own armed check, so this points at that rather than becoming a
+            third destructive button with a third implementation. */}
+        {onOpenTool ? (
+          <p className="amc-guided__external-reset">
+            Starting the vehicle from nothing instead?{' '}
+            <button style={buttonStyle()} onClick={() => onOpenTool('flash')}>
+              Reset it to firmware defaults
+            </button>{' '}
+            — on the Firmware tab, which asks before it does it.
           </p>
         ) : null}
       </Panel>
