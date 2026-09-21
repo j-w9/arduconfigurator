@@ -295,7 +295,12 @@ describe('what the sequence did not decide', () => {
       values: declare(),
       parameters: { SOME_HAND_SET_THING: 7 }
     })
-    const file = project.files.find((f) => f.filename === 'fc_params_not_accounted_for.param')
+    // AMC's name, which spells out the range of steps it covers: "not
+    // accounted for" is only meaningful against a stated set of files.
+    const file = project.files.find((f) =>
+      f.filename.startsWith('fc_params_missing_or_different_in_the_amc_param_files_')
+    )
+    expect(file?.filename).toMatch(/_to_\d+_\w+\.param$/)
     expect(file?.text).toMatch(/SOME_HAND_SET_THING/)
     expect(file?.text).toMatch(/Not set by any step/)
   })
@@ -304,7 +309,7 @@ describe('what the sequence did not decide', () => {
     // An empty file would assert that the sequence accounts for the whole
     // vehicle, which is a stronger claim than its absence makes.
     const project = buildProject({ sequence: copter, fields, values: declare(), parameters: {} })
-    expect(project.files.some((f) => f.filename === 'fc_params_not_accounted_for.param')).toBe(false)
+    expect(project.files.some((f) => f.filename.startsWith('fc_params_missing_or_different'))).toBe(false)
   })
 
   it('does not report a value still at its firmware default', () => {
@@ -315,7 +320,7 @@ describe('what the sequence did not decide', () => {
       parameters: { UNTOUCHED: 3 },
       defaults: new Map([['UNTOUCHED', 3]])
     })
-    const file = project.files.find((f) => f.filename === 'fc_params_not_accounted_for.param')
+    const file = project.files.find((f) => f.filename.startsWith('fc_params_missing_or_different'))
     expect(file?.text ?? '').not.toMatch(/UNTOUCHED/)
   })
 })
@@ -508,10 +513,10 @@ describe('a directory you can come back to', () => {
 
 describe('the summary files beside the sequence', () => {
   const summary = {
-    readOnly: [{ parameter: 'STAT_RUNTIME', value: 4200, category: 'readOnly' as const }],
-    calibration: [{ parameter: 'INS_ACCOFFS_X', value: 0.12, category: 'calibration' as const }],
-    identity: [{ parameter: 'SYSID_THISMAV', value: 7, category: 'identity' as const }],
-    chosen: [{ parameter: 'ATC_RAT_RLL_P', value: 0.135, category: 'chosen' as const }],
+    readOnly: [{ parameter: 'STAT_RUNTIME', value: 4200, defaultValue: 0, category: 'readOnly' as const }],
+    calibration: [{ parameter: 'INS_ACCOFFS_X', value: 0.12, defaultValue: 0, category: 'calibration' as const }],
+    identity: [{ parameter: 'SYSID_THISMAV', value: 7, defaultValue: 1, category: 'identity' as const }],
+    chosen: [{ parameter: 'ATC_RAT_RLL_P', value: 0.135, defaultValue: 0.135, category: 'chosen' as const }],
     changed: [],
     compared: 4,
     categoriesAvailable: true

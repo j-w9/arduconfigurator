@@ -23,9 +23,9 @@ import {
   completeFile,
   defaultsFile,
   lastWrittenFile,
-  lastWrittenFrom,
-  resumePoint,
   summaryFiles,
+  hasTuningHistory,
+  tuningReport,
   fitTemperatureCalibration,
   importComponentsFromParameters,
   imuSamplesFromLog,
@@ -35,8 +35,14 @@ import {
   vehicleContext,
   vehicleFiles
 } from '@arduconfig/amc-steps'
-import type { AnnotationDocs, ConfigurationSummary, ParameterRename, ResumePoint, UpgradeTables } from '@arduconfig/amc-steps'
-import { upgradeParameters, upgradesBetween } from '@arduconfig/amc-steps'
+import type { AnnotationDocs, ConfigurationSummary, ParameterRename, UpgradeTables } from '@arduconfig/amc-steps'
+import {
+  mavlinkProtocolNumbers,
+  streamRateRenames,
+  upgradeParameters,
+  upgradeStreamRates,
+  upgradesBetween
+} from '@arduconfig/amc-steps'
 import connectionTablesJson from '@amc/data/connection-tables.json'
 import vehicleTemplatesJson from '@amc/data/vehicle-templates.json'
 
@@ -200,7 +206,7 @@ export interface TempcalOutcome {
    * coefficients, and the cheap way to tell a good calibration from a bad one
    * is to look at it. AMC writes PNGs beside the results for the same reason.
    */
-  readonly plots: readonly { readonly label: string; readonly svg: string }[]
+  readonly plots: readonly { readonly label: string; readonly filename: string; readonly svg: string }[]
 }
 
 /**
@@ -235,7 +241,9 @@ export function fitTempcalFromLog(
     const svg = plotTemperatureFit(imu.gyro, 'x', [...coefficients, 0], {
       label: `IMU ${n} gyro X drift over ${calibration.temperatureSpan.toFixed(0)} °C`
     })
-    return svg ? [{ label: `IMU ${n}`, svg }] : []
+    // Named the way AMC names its own, numbered per IMU so three sensors do
+    // not overwrite each other.
+    return svg ? [{ label: `IMU ${n}`, filename: `tempcal_gyro_imu${n}.svg`, svg }] : []
   })
 
   return {
@@ -274,6 +282,8 @@ export interface ProjectExportInputs {
    * documentation and the firmware defaults, which the caller already has.
    */
   readonly summary?: ConfigurationSummary
+  /** The temperature fit drawn, when a log produced one. */
+  readonly tempcalPlots?: readonly { readonly filename: string; readonly svg: string }[]
   /**
    * Parameter documentation to write above each value.
    *
@@ -311,7 +321,8 @@ export function buildProject(inputs: ProjectExportInputs): ProjectExport {
     baseComponents,
     lastWritten,
     annotate,
-    summary
+    summary,
+    tempcalPlots
   } = inputs
   const componentsJson = buildComponentsJson(fields, values, baseComponents)
   const context = vehicleContext(componentsJson, parameters)
@@ -356,6 +367,21 @@ export function buildProject(inputs: ProjectExportInputs): ProjectExport {
     for (const file of summaryFiles(summary)) {
       files.push({ filename: file.filename, text: file.text })
     }
+  }
+
+  // How the tuning moved across the session. Only when there is a history to
+  // report: a grid of 26 blank rows says nothing, and a file that says
+  // nothing is worse than one that is absent.
+  if (hasTuningHistory(steps, defaults)) {
+    const report = tuningReport(steps, defaults)
+    files.push({ filename: report.filename, text: report.text })
+  }
+
+  // The temperature fit, drawn. AMC writes PNGs; these are SVG for the same
+  // reason the tab renders them — a few kilobytes, sharp at any size, and
+  // readable without anything else installed.
+  for (const plot of tempcalPlots ?? []) {
+    files.push({ filename: plot.filename, text: plot.svg })
   }
 
   // What is on the aircraft that the sequence did NOT decide. An operator
@@ -423,7 +449,6 @@ export interface ProjectImport extends VehicleProject {
    * back for the notch filters — so a directory records the step last
    * written, and reopening starts after it rather than at the beginning.
    */
-  readonly resume?: ResumePoint
 }
 
 /**
@@ -453,9 +478,9 @@ export function readProject(
   }
 
   const componentValues = valuesFromComponents(parsed, fields)
-  // Resolved through the renames, so a directory written by an older AMC
-  // resumes where it left off rather than being sent back to step one.
-  const resume = resumePoint(sequence, lastWrittenFrom(files))
+  // readVehicleProject works this out now, resolved through the renames so a
+  // directory written by an older AMC resumes where it left off.
+  const { resume } = project
 
   // A directory written against an older firmware names parameters the
   // vehicle no longer has: ANGLE_MAX became ATC_ANGLE_MAX, and in degrees
@@ -467,6 +492,19 @@ export function readProject(
   const crossed = upgradesBetween(fileVersion, options.vehicleFirmwareVersion ?? '')
   if (crossed.length === 0) return { ...project, componentValues, resume }
 
+  // Stream rates are renamed by POSITION — SR2_ becomes MAV1_ when serial 2
+  // is the first MAVLink port — so the mapping needs the whole directory's
+  // serial configuration, not the file in hand.
+  const serialConfig: Record<string, number> = {}
+  for (const step of project.steps) {
+    for (const [name, entry] of step.entries) {
+      if (/^SERIAL\d+_PROTOCOL$/.test(name)) serialConfig[name] = entry.value
+    }
+  }
+  const streamRates = crossed.includes(4.6)
+    ? streamRateRenames(serialConfig, mavlinkProtocolNumbers(connectionTables.SERIAL_PROTOCOLS_DICT))
+    : new Map<string, string>()
+
   const renames: ParameterRename[] = []
   const steps = project.steps.map((step) => {
     const upgraded = upgradeParameters(
@@ -477,7 +515,9 @@ export function readProject(
       (entry, value) => ({ ...entry, value })
     )
     renames.push(...upgraded.renamed)
-    return { ...step, entries: upgraded.parameters }
+    const streamed = upgradeStreamRates(upgraded.parameters, streamRates)
+    renames.push(...streamed.renamed)
+    return { ...step, entries: streamed.parameters }
   })
 
   return { ...project, componentValues, resume, steps, renamedParameters: renames }

@@ -1207,6 +1207,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       ...(baseComponents ? { baseComponents } : {}),
       ...(lastWritten ? { lastWritten } : {}),
       ...(summary?.configuration ? { summary: summary.configuration } : {}),
+      ...(tempcal?.plots.length ? { tempcalPlots: tempcal.plots } : {}),
       ...(annotate && docs ? { annotate: docs } : {})
     })
     const blob = new Blob([projectArchive(project) as unknown as BlobPart], { type: 'application/zip' })
@@ -1236,7 +1237,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             text: `Written: ${project.files.length} files, ${project.parameterCount} parameters.`
           }
     )
-  }, [steps, fields, values, parameters, defaults, docs, overrides, baseComponents, lastWritten, annotate, summary, kind, versionKey])
+  }, [steps, fields, values, parameters, defaults, docs, overrides, baseComponents, lastWritten, annotate, summary, tempcal, kind, versionKey])
 
   // Reading one back. The picker hands over whatever the operator selected, so
   // this has to be honest about what it could and could not place.
