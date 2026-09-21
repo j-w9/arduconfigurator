@@ -584,6 +584,14 @@ function StepCard({
   defaultsRead?: 'idle' | 'asking' | 'nothing'
   onOpenTool?: ((view: AppToolView) => void) | undefined
   onJump?: ((filename: string) => void) | undefined
+  /** The sequence this vehicle is on, which picks the template observations. */
+  kind: AmcVehicleKind
+  /** The vehicle's live parameters, for the values it can answer itself. */
+  parameters: Readonly<Record<string, number>>
+  /** What the operator has already recorded against this step. */
+  additions?: ReadonlyMap<string, Addition> | undefined
+  onAdd: (filename: string, parameter: string, addition: Addition) => void
+  onRemoveAddition: (filename: string, parameter: string) => void
 }) {
   const [open, setOpen] = useState(false)
   // Which destination is being written, and how the last write went. Kept per

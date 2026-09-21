@@ -656,7 +656,7 @@ describe('a parameter the operator added to a step', () => {
     const telemetry = read.steps.find((step) => step.filename === '08_telemetry.param')
     const entry = telemetry?.entries.get('SERIAL1_BAUD')
     expect(entry?.value).toBe(115)
-    expect(entry?.reason ?? entry?.comment).toBe('my ESP32 link')
+    expect(entry?.comment).toBe('my ESP32 link')
     // Marked, which is what makes it recoverable at all.
     expect(entry?.manualOverride).toBe(true)
   })
