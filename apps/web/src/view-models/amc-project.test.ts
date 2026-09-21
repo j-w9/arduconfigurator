@@ -606,3 +606,69 @@ describe('the snapshot of what the vehicle had first', () => {
     expect(readProject(copter, project.files, fields).unmatched).toEqual([])
   })
 })
+
+describe('a parameter the operator added to a step', () => {
+  // Written with the @manual_override marker, because on the way back in there
+  // is otherwise no way to tell an addition from a value the sequence used to
+  // compute and no longer does — and an unmarked one would be dropped on the
+  // next rewrite.
+
+  const additions = new Map([
+    ['08_telemetry.param', new Map([['SERIAL1_BAUD', { value: 115, reason: 'my ESP32 link' }]])]
+  ])
+
+  it('is written into the step it belongs to, and nowhere else', () => {
+    const project = buildProject({
+      sequence: copter,
+      fields,
+      values: declare(),
+      parameters: {},
+      additions
+    })
+    const telemetry = project.files.find((file) => file.filename === '08_telemetry.param')
+    expect(telemetry?.text).toMatch(/SERIAL1_BAUD,115/)
+    expect(telemetry?.text).toMatch(/my ESP32 link/)
+
+    // No OTHER step holds it. complete.param and the summaries legitimately
+    // do — aggregating every step is what they are for.
+    const otherSteps = project.files.filter(
+      (file) =>
+        /^\d+_/.test(file.filename) &&
+        file.filename !== '08_telemetry.param' &&
+        /SERIAL1_BAUD/.test(file.text)
+    )
+    expect(otherSteps.map((file) => file.filename)).toEqual([])
+    expect(project.files.find((file) => file.filename === 'complete.param')?.text).toMatch(
+      /SERIAL1_BAUD/
+    )
+  })
+
+  it('comes back when the directory is read, against the same step', () => {
+    const project = buildProject({
+      sequence: copter,
+      fields,
+      values: declare(),
+      parameters: {},
+      additions
+    })
+    const read = readProject(copter, project.files, fields)
+
+    const telemetry = read.steps.find((step) => step.filename === '08_telemetry.param')
+    const entry = telemetry?.entries.get('SERIAL1_BAUD')
+    expect(entry?.value).toBe(115)
+    expect(entry?.reason ?? entry?.comment).toBe('my ESP32 link')
+    // Marked, which is what makes it recoverable at all.
+    expect(entry?.manualOverride).toBe(true)
+  })
+
+  it('is not reported as a file or value the directory could not place', () => {
+    const project = buildProject({
+      sequence: copter,
+      fields,
+      values: declare(),
+      parameters: {},
+      additions
+    })
+    expect(readProject(copter, project.files, fields).unmatched).toEqual([])
+  })
+})

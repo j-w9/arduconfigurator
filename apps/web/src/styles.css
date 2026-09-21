@@ -20053,3 +20053,46 @@ button.mavlink-inspector__sent-row {
 .amc-step__unasked-live {
   color: var(--text);
 }
+
+/* Adding a parameter to a step: the operator's own value, against the step it
+   belongs to, with their reason beside it. */
+.amc-step__add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.amc-step__add label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.amc-step__add label > span {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.amc-step__add-problem {
+  flex-basis: 100%;
+  color: var(--danger, #c53030);
+  margin: 0;
+}
+
+/* What the operator has already recorded against this step. */
+.amc-step__added ul {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.amc-step__added-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  margin-left: 8px;
+  text-decoration: underline;
+}

@@ -1320,3 +1320,122 @@ describe('what the sequence does not decide', () => {
     )
   })
 })
+
+describe('recording your own value against a step', () => {
+  // AMC's step files are editable. Telling an operator that a step usually
+  // needs SERIAL1_BAUD and then giving them nowhere to put their answer would
+  // be worse than saying nothing.
+
+  async function openTelemetryFold() {
+    const step = (await screen.findAllByRole('button', { name: /Telemetry/i })).find(
+      (button) => !/esc/i.test(button.textContent ?? '')
+    )
+    if (!step) throw new Error('no telemetry step')
+    await act(async () => {
+      step.click()
+    })
+    const fold = (await screen.findByText(/settings? the sequence does not decide/)).closest(
+      'details'
+    ) as HTMLDetailsElement
+    await act(async () => {
+      fold.open = true
+    })
+    return fold
+  }
+
+  it('keeps the value and the reason against the step it belongs to', async () => {
+    render(<AmcGuidedView {...base} connected docs={docs} parameters={{ SERIAL1_BAUD: 115 }} />)
+    await whenLoaded()
+    const fold = await openTelemetryFold()
+
+    await act(async () => {
+      fireEvent.change(within(fold).getByLabelText(/Parameter to add/i), {
+        target: { value: 'SERIAL1_BAUD' }
+      })
+    })
+    await act(async () => {
+      fireEvent.change(within(fold).getByLabelText(/Reason for the added/i), {
+        target: { value: 'my ESP32 link' }
+      })
+    })
+    await act(async () => {
+      within(fold).getByRole('button', { name: /Add to this step/i }).click()
+    })
+
+    // Recorded, with the reason, where a year later it still explains itself.
+    await waitFor(() => expect(screen.getByText(/You added/)).toBeTruthy())
+    expect(screen.getByText(/my ESP32 link/)).toBeTruthy()
+  })
+
+  it('takes the value off the vehicle as soon as the name is one it knows', async () => {
+    // The operator is recording what their aircraft holds, not inventing a
+    // number.
+    render(<AmcGuidedView {...base} connected docs={docs} parameters={{ SERIAL1_BAUD: 115 }} />)
+    await whenLoaded()
+    const fold = await openTelemetryFold()
+
+    await act(async () => {
+      fireEvent.change(within(fold).getByLabelText(/Parameter to add/i), {
+        target: { value: 'SERIAL1_BAUD' }
+      })
+    })
+    expect((within(fold).getByLabelText(/Value for the added/i) as HTMLInputElement).value).toBe('115')
+  })
+
+  it('points at the existing value rather than refusing a duplicate', async () => {
+    // AMC says "Parameter already exists, edit it instead" — the step is not
+    // rejecting the parameter, it is saying where the value already lives.
+    render(<AmcGuidedView {...base} connected docs={docs} parameters={{ SERIAL1_BAUD: 115 }} />)
+    await whenLoaded()
+    const fold = await openTelemetryFold()
+
+    for (const attempt of [1, 2]) {
+      await act(async () => {
+        fireEvent.change(within(fold).getByLabelText(/Parameter to add/i), {
+          target: { value: 'SERIAL1_BAUD' }
+        })
+      })
+      await act(async () => {
+        within(fold).getByRole('button', { name: /Add to this step/i }).click()
+      })
+      if (attempt === 2) {
+        expect(screen.getByText(/already in this step/)).toBeTruthy()
+      }
+    }
+  })
+
+  it('refuses a name ArduPilot could not hold', async () => {
+    render(<AmcGuidedView {...base} connected docs={docs} />)
+    await whenLoaded()
+    const fold = await openTelemetryFold()
+    await act(async () => {
+      fireEvent.change(within(fold).getByLabelText(/Parameter to add/i), {
+        target: { value: '1-not-a-name' }
+      })
+    })
+    await act(async () => {
+      within(fold).getByRole('button', { name: /Add to this step/i }).click()
+    })
+    expect(screen.getByText(/is not a parameter name ArduPilot could hold/)).toBeTruthy()
+  })
+
+  it('lets one be taken back', async () => {
+    render(<AmcGuidedView {...base} connected docs={docs} parameters={{ SERIAL1_BAUD: 115 }} />)
+    await whenLoaded()
+    const fold = await openTelemetryFold()
+    await act(async () => {
+      fireEvent.change(within(fold).getByLabelText(/Parameter to add/i), {
+        target: { value: 'SERIAL1_BAUD' }
+      })
+    })
+    await act(async () => {
+      within(fold).getByRole('button', { name: /Add to this step/i }).click()
+    })
+    await waitFor(() => expect(screen.getByText(/You added/)).toBeTruthy())
+
+    await act(async () => {
+      screen.getByRole('button', { name: /Remove SERIAL1_BAUD from this step/i }).click()
+    })
+    expect(screen.queryByText(/You added/)).toBeNull()
+  })
+})

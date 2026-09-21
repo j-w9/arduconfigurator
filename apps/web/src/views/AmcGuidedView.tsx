@@ -21,7 +21,9 @@ import {
   connectionGroupOf,
   declarationFrom,
   defaultSelection,
+  addableParameters,
   answerableFromVehicle,
+  checkAddition,
   escTelemetryMirror,
   explainValue,
   externalParamWrites,
@@ -31,6 +33,7 @@ import {
   orderByPairing,
   protocolsForConnection,
   rebootWaitSeconds,
+  startingValue,
   templateOnlyParameters,
   validateDeclaration
 } from '@arduconfig/amc-steps'
@@ -38,6 +41,8 @@ import type {
   ConnectionPairings,
   ConnectionTables,
   ExternalParamFile,
+  Addition,
+  Additions,
   MigrationTables,
   ParameterDocs,
   TemplateOnlyTable,
@@ -412,6 +417,123 @@ function groupFields(fields: readonly ComponentField[]): FieldGroup[] {
   }))
 }
 
+/**
+ * Adding a parameter to a step.
+ *
+ * AMC's step files are editable and this is the equivalent: the operator's own
+ * value, against the step it belongs to, with their reason beside it. The name
+ * list leads with the settings this step usually needs, because that is the
+ * question they have just been asked.
+ */
+function AddToStep({
+  filename,
+  alreadyInStep,
+  preferred,
+  parameters,
+  docs,
+  onAdd
+}: {
+  filename: string
+  alreadyInStep: readonly string[]
+  preferred: readonly string[]
+  parameters: Readonly<Record<string, number>>
+  docs?: ParameterDocs | undefined
+  onAdd: (filename: string, parameter: string, addition: Addition) => void
+}) {
+  const [name, setName] = useState('')
+  const [value, setValue] = useState('')
+  const [reason, setReason] = useState('')
+  const [problem, setProblem] = useState<string | undefined>(undefined)
+
+  const options = useMemo(
+    () =>
+      addableParameters(docs, preferred, {
+        alreadyInStep,
+        vehicleParameters: parameters,
+        preferred
+      }).slice(0, 50),
+    [docs, preferred, alreadyInStep, parameters]
+  )
+
+  const listId = `amc-add-${filename.replace(/[^a-zA-Z0-9]+/g, '-')}`
+
+  function submit() {
+    const checked = checkAddition(name, alreadyInStep)
+    if ('problem' in checked) {
+      setProblem(
+        checked.problem.kind === 'empty'
+          ? 'Name the parameter you want to record here.'
+          : checked.problem.kind === 'present'
+            ? `${checked.problem.name} is already in this step — change it there instead.`
+            : `${checked.problem.name} is not a parameter name ArduPilot could hold.`
+      )
+      return
+    }
+    const parsed = value.trim() === '' ? startingValue(checked.name, parameters) : Number(value)
+    if (!Number.isFinite(parsed)) {
+      setProblem(`${value} is not a number.`)
+      return
+    }
+    onAdd(filename, checked.name, {
+      value: parsed,
+      ...(reason.trim() === '' ? {} : { reason: reason.trim() })
+    })
+    setName('')
+    setValue('')
+    setReason('')
+    setProblem(undefined)
+  }
+
+  return (
+    <div className="amc-step__add">
+      <label>
+        <span>Record one here</span>
+        <input
+          list={listId}
+          value={name}
+          placeholder="PARAMETER"
+          aria-label="Parameter to add to this step"
+          onChange={(event) => {
+            setName(event.target.value)
+            setProblem(undefined)
+            // The vehicle's own value, offered the moment the name is one it
+            // recognises -- the operator is recording what their aircraft
+            // holds, not inventing a number.
+            const live = parameters[event.target.value.trim().toUpperCase()]
+            if (live !== undefined) setValue(String(live))
+          }}
+        />
+        <datalist id={listId}>
+          {options.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
+      </label>
+      <label>
+        <span>Value</span>
+        <input
+          value={value}
+          aria-label="Value for the added parameter"
+          onChange={(event) => setValue(event.target.value)}
+        />
+      </label>
+      <label>
+        <span>Why</span>
+        <input
+          value={reason}
+          placeholder="so it is still explained a year from now"
+          aria-label="Reason for the added parameter"
+          onChange={(event) => setReason(event.target.value)}
+        />
+      </label>
+      <button style={buttonStyle()} onClick={submit}>
+        Add to this step
+      </button>
+      {problem ? <p className="amc-step__add-problem">{problem}</p> : null}
+    </div>
+  )
+}
+
 function StepCard({
   row,
   connected,
@@ -433,7 +555,10 @@ function StepCard({
   onJump,
   docs,
   kind,
-  parameters
+  parameters,
+  additions,
+  onAdd,
+  onRemoveAddition
 }: {
   row: StepRow
   connected: boolean
@@ -703,6 +828,29 @@ function StepCard({
             </table>
           ) : null}
 
+          {additions && additions.size > 0 ? (
+            <div className="amc-step__added">
+              {/* Recorded against the step they belong to, which is the whole
+                  point: a year later the reason sits beside the value. */}
+              <h5>You added</h5>
+              <ul>
+                {[...additions].map(([parameter, addition]) => (
+                  <li key={parameter}>
+                    <code>{parameter}</code> = {addition.value}
+                    {addition.reason ? <span className="amc-step__reason"> — {addition.reason}</span> : null}
+                    <button
+                      className="amc-step__added-remove"
+                      onClick={() => onRemoveAddition(row.filename, parameter)}
+                      aria-label={`Remove ${parameter} from this step`}
+                    >
+                      remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {row.renamed && row.renamed.length > 0 ? (
             <p className="amc-step__renamed">
               {/* The sequence is written against one port and this vehicle
@@ -814,6 +962,17 @@ function StepCard({
                     Take {fromVehicle.length} from the vehicle
                   </button>
                 ) : null}
+                <AddToStep
+                  filename={row.filename}
+                  alreadyInStep={[
+                    ...row.changes.map((change) => change.parameter),
+                    ...(additions?.keys() ?? [])
+                  ]}
+                  preferred={unasked.map((entry) => entry.parameter)}
+                  parameters={parameters}
+                  docs={docs}
+                  onAdd={onAdd}
+                />
               </details>
             )
           })()}
@@ -1258,6 +1417,28 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
    * vehicle that is in pieces on the bench or not theirs to plug in.
    */
   const [logDefaults, setLogDefaults] = useState<ReadonlyMap<string, number> | undefined>(undefined)
+  /**
+   * Parameters the operator added to a step themselves.
+   *
+   * The other half of naming what the sequence does not decide: a step that
+   * says it usually needs SERIAL1_BAUD has to give them somewhere to put the
+   * answer. Kept per step, because that is the whole point -- the value is
+   * recorded against the step it belongs to.
+   */
+  const [ownAdditions, setOwnAdditions] = useState<ReadonlyMap<string, ReadonlyMap<string, Addition>>>(
+    new Map()
+  )
+  /**
+   * Marked entries read back out of a directory, before it is known which are
+   * additions and which are overrides of a value the sequence computes.
+   *
+   * Both are written with `@manual_override` -- an addition has to be, or a
+   * rewrite would drop it -- so telling them apart needs the sequence, which
+   * is not run until the render after the import.
+   */
+  const [importedMarks, setImportedMarks] = useState<ReadonlyMap<string, ReadonlyMap<string, Addition>>>(
+    new Map()
+  )
   // The vehicle's own answer wins: it is this firmware on this board, where a
   // log may be from another build. The log is the fallback, not the preference.
   const effectiveDefaults = defaults && defaults.size > 0 ? defaults : logDefaults
@@ -1534,6 +1715,71 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     [steps, loaded, fields, values, parameters, parametersComplete, states, effectiveDefaults, docs, logCounts]
   )
 
+  /**
+   * What actually gets written as an addition.
+   *
+   * A marked entry read out of a directory is an addition only if the sequence
+   * does not compute that parameter for that step; otherwise it is an override
+   * of a computed value, which the overrides map already carries. Both are
+   * written with the same marker, so the sequence is the only thing that can
+   * tell them apart — and it has run by the time this is needed.
+   */
+  const additions: Additions = useMemo(() => {
+    const computed = new Map(
+      (summary?.rows ?? []).map((row) => [row.filename, new Set(row.changes.map((change) => change.parameter))])
+    )
+    const merged = new Map<string, Map<string, Addition>>()
+
+    for (const [filename, marks] of importedMarks) {
+      const here = computed.get(filename)
+      for (const [parameter, addition] of marks) {
+        if (here?.has(parameter)) continue
+        const into = merged.get(filename) ?? new Map()
+        into.set(parameter, addition)
+        merged.set(filename, into)
+      }
+    }
+    // The operator's own wins over what a directory happened to hold.
+    for (const [filename, added] of ownAdditions) {
+      const into = merged.get(filename) ?? new Map()
+      for (const [parameter, addition] of added) into.set(parameter, addition)
+      merged.set(filename, into)
+    }
+    return merged
+  }, [importedMarks, ownAdditions, summary])
+
+  const addToStep = useCallback((filename: string, parameter: string, addition: Addition) => {
+    setOwnAdditions((previous) => {
+      const next = new Map(previous)
+      const into = new Map(next.get(filename) ?? [])
+      into.set(parameter, addition)
+      next.set(filename, into)
+      return next
+    })
+  }, [])
+
+  const removeFromStep = useCallback((filename: string, parameter: string) => {
+    // Removed from both: an addition the operator has taken back should not
+    // come back because a directory they opened earlier still mentions it.
+    setOwnAdditions((previous) => {
+      const next = new Map(previous)
+      const into = new Map(next.get(filename) ?? [])
+      into.delete(parameter)
+      if (into.size === 0) next.delete(filename)
+      else next.set(filename, into)
+      return next
+    })
+    setImportedMarks((previous) => {
+      const next = new Map(previous)
+      const into = new Map(next.get(filename) ?? [])
+      if (!into.has(parameter)) return previous
+      into.delete(parameter)
+      if (into.size === 0) next.delete(filename)
+      else next.set(filename, into)
+      return next
+    })
+  }, [])
+
   // Counted over the fields the SEQUENCE reads, which is what `missing` is a
   // count of. Chemistry is asked for so the cell voltages can be judged, but no
   // expression names it, so including it here would report one field declared
@@ -1599,6 +1845,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       values,
       parameters,
       ...(effectiveDefaults ? { defaults: effectiveDefaults } : {}),
+      ...(additions.size > 0 ? { additions } : {}),
       ...(docs ? { docs } : {}),
       overrides,
       ...(baseComponents ? { baseComponents } : {}),
@@ -1634,7 +1881,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             text: `Written: ${project.files.length} files, ${project.parameterCount} parameters.`
           }
     )
-  }, [steps, fields, values, parameters, effectiveDefaults, docs, overrides, baseComponents, lastWritten, annotate, summary, tempcal, kind, versionKey])
+  }, [steps, fields, values, parameters, effectiveDefaults, docs, overrides, additions, baseComponents, lastWritten, annotate, summary, tempcal, kind, versionKey])
 
   // Reading one back. The picker hands over whatever the operator selected, so
   // this has to be honest about what it could and could not place.
@@ -1675,6 +1922,25 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         }
       }
       setOverrides(project.overrides)
+      // Every marked entry, kept per step. Which of them are additions rather
+      // than overrides cannot be known until the sequence has run.
+      setImportedMarks(
+        new Map(
+          project.steps
+            .map((step) => {
+              const marked = new Map<string, Addition>()
+              for (const entry of step.entries.values()) {
+                if (!entry.manualOverride) continue
+                marked.set(entry.name, {
+                  value: entry.value,
+                  ...(entry.comment ? { reason: entry.comment } : {})
+                })
+              }
+              return [step.filename, marked] as const
+            })
+            .filter(([, marked]) => marked.size > 0)
+        )
+      )
 
       // Where the operator got to. Resuming at step one would be a surprising
       // answer to reopening a sequence they had nearly finished.
@@ -2622,6 +2888,9 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   docs={docs}
                   kind={kind}
                   parameters={parameters}
+                  additions={additions.get(row.filename)}
+                  onAdd={addToStep}
+                  onRemoveAddition={removeFromStep}
                   onReviewed={(next) =>
                     setReviewed((previous) => {
                       const updated = new Set(previous)

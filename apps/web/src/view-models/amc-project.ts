@@ -13,6 +13,7 @@
  * needs a browser is the two lines that hand bytes to the user.
  */
 
+import type { Additions } from '@arduconfig/amc-steps'
 import {
   type ConnectionTables,
   type FirmwareKind,
@@ -268,6 +269,14 @@ export interface ProjectExportInputs {
   /** Decisions read back from a previous project, so a rewrite keeps them. */
   readonly overrides?: ReadonlyMap<string, { value: number; reason?: string }>
   /**
+   * Parameters the operator added to a step themselves, by step filename.
+   *
+   * The other half of naming what the sequence does not decide: a step that
+   * says it usually needs SERIAL1_BAUD has to give the operator somewhere to
+   * put their answer.
+   */
+  readonly additions?: Additions
+  /**
    * The declaration the operator started from — a template, or a directory
    * they opened.
    *
@@ -322,6 +331,7 @@ export function buildProject(inputs: ProjectExportInputs): ProjectExport {
     defaults,
     docs,
     overrides,
+    additions,
     baseComponents,
     lastWritten,
     annotate,
@@ -335,7 +345,8 @@ export function buildProject(inputs: ProjectExportInputs): ProjectExport {
     ...(docs ? { docs } : {}),
     ...(defaults ? { defaults } : {}),
     parameters,
-    ...(overrides ? { overrides } : {})
+    ...(overrides ? { overrides } : {}),
+    ...(additions ? { additions } : {})
   })
 
   const files: ProjectFile[] = [{ filename: 'vehicle_components.json', text: componentsJson }]
