@@ -1439,3 +1439,49 @@ describe('recording your own value against a step', () => {
     expect(screen.queryByText(/You added/)).toBeNull()
   })
 })
+
+describe('starting from ArduPilot\'s own defaults', () => {
+  // AMC does not compute a directory from nothing: it copies a template's
+  // .param files and lets the sequence edit them. Which template is the whole
+  // question — a real aircraft's would assert its wiring and geometry as
+  // yours — so this uses AMC's own EMPTY template for the firmware, which is
+  // what AMC itself uses when starting a project from a connected vehicle.
+
+  it('offers the baseline for the firmware the vehicle reports', async () => {
+    render(<AmcGuidedView {...base} connected docs={docs} vehicleFirmwareVersion="4.6.3 (official)" />)
+    await whenLoaded()
+
+    const toggle = await waitFor(() => {
+      const found = screen.getByTestId('amc-baseline-toggle') as HTMLInputElement
+      expect(found.disabled).toBe(false)
+      return found
+    })
+    expect(toggle.checked).toBe(true)
+    expect(screen.getByText(/Start from ArduPilot's 4\.6 defaults/)).toBeTruthy()
+  })
+
+  it('says so plainly when AMC ships no empty template for this firmware', async () => {
+    // Not a failure — it is what this tab did until now. The directory still
+    // holds everything the sequence decides.
+    render(<AmcGuidedView {...base} connected docs={docs} vehicleFirmwareVersion="4.4.0" />)
+    await whenLoaded()
+    await waitFor(() =>
+      expect((screen.getByTestId('amc-baseline-toggle') as HTMLInputElement).disabled).toBe(true)
+    )
+    expect(screen.getByText(/No starting values/)).toBeTruthy()
+  })
+
+  it('can be turned off, for a directory of only what the method decided', async () => {
+    render(<AmcGuidedView {...base} connected docs={docs} vehicleFirmwareVersion="4.6.3" />)
+    await whenLoaded()
+    const toggle = await waitFor(() => {
+      const found = screen.getByTestId('amc-baseline-toggle') as HTMLInputElement
+      expect(found.disabled).toBe(false)
+      return found
+    })
+    await act(async () => {
+      fireEvent.click(toggle)
+    })
+    expect((screen.getByTestId('amc-baseline-toggle') as HTMLInputElement).checked).toBe(false)
+  })
+})

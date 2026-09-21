@@ -23,6 +23,7 @@ import {
   defaultSelection,
   addableParameters,
   answerableFromVehicle,
+  baselineFor,
   checkAddition,
   escTelemetryMirror,
   explainValue,
@@ -43,6 +44,8 @@ import type {
   ExternalParamFile,
   Addition,
   Additions,
+  Baseline,
+  BaselineTable,
   MigrationTables,
   ParameterDocs,
   TemplateOnlyTable,
@@ -1439,6 +1442,16 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   const [importedMarks, setImportedMarks] = useState<ReadonlyMap<string, ReadonlyMap<string, Addition>>>(
     new Map()
   )
+  /**
+   * AMC's empty template for this firmware, which a directory starts from.
+   *
+   * 144 KB of parameter text, so it is fetched alongside the sequence rather
+   * than riding in the main bundle -- the tab has to be usable before it
+   * arrives, and a directory written without it is the old behaviour rather
+   * than a broken one.
+   */
+  const [baselines, setBaselines] = useState<BaselineTable | undefined>(undefined)
+  const [seedFromBaseline, setSeedFromBaseline] = useState(true)
   // The vehicle's own answer wins: it is this firmware on this board, where a
   // log may be from another build. The log is the fallback, not the preference.
   const effectiveDefaults = defaults && defaults.size > 0 ? defaults : logDefaults
@@ -1624,6 +1637,21 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     }
   }, [kind])
 
+  // Fetched once, beside the sequence. A failure is silent on purpose: a
+  // directory written without a baseline is what this tab did until now, not
+  // something broken, and the panel says when there is none to use.
+  useEffect(() => {
+    let cancelled = false
+    import('@amc/data/baselines.json')
+      .then((module) => {
+        if (!cancelled) setBaselines((module.default ?? module) as unknown as BaselineTable)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const loaded = sequence?.kind === kind ? sequence.loaded : undefined
   const steps = loaded?.steps
 
@@ -1689,6 +1717,24 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     if (!vehicleFirmwareVersion || !versionKey) return
     setValues((previous) => (previous[versionKey] ? previous : { ...previous, [versionKey]: vehicleFirmwareVersion }))
   }, [vehicleFirmwareVersion, versionKey])
+
+  /**
+   * The empty template a directory starts from, when AMC ships one for this
+   * vehicle on this firmware.
+   *
+   * Matched exactly, as AMC does: a 4.5 baseline on 4.7 firmware would seed
+   * parameters that have since been renamed. Declared after `versionKey`
+   * because it reads it — a memo above its own inputs takes the tab down on
+   * the first paint, which is what these component tests exist for.
+   */
+  const baseline: Baseline | undefined = useMemo(
+    () =>
+      baselines
+        ? baselineFor(baselines, kind, (versionKey ? values[versionKey] : undefined) ?? vehicleFirmwareVersion)
+        : undefined,
+    [baselines, kind, values, versionKey, vehicleFirmwareVersion]
+  )
+  const effectiveBaseline = seedFromBaseline ? baseline : undefined
 
   // The documentation is ~1.7 MB per vehicle and lazily loaded by App; ask for
   // the one this sequence needs whenever the sequence changes.
@@ -1846,6 +1892,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       parameters,
       ...(effectiveDefaults ? { defaults: effectiveDefaults } : {}),
       ...(additions.size > 0 ? { additions } : {}),
+      ...(effectiveBaseline ? { baseline: effectiveBaseline } : {}),
       ...(docs ? { docs } : {}),
       overrides,
       ...(baseComponents ? { baseComponents } : {}),
@@ -1881,7 +1928,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             text: `Written: ${project.files.length} files, ${project.parameterCount} parameters.`
           }
     )
-  }, [steps, fields, values, parameters, effectiveDefaults, docs, overrides, additions, baseComponents, lastWritten, annotate, summary, tempcal, kind, versionKey])
+  }, [steps, fields, values, parameters, effectiveDefaults, docs, overrides, additions, effectiveBaseline, baseComponents, lastWritten, annotate, summary, tempcal, kind, versionKey])
 
   // Reading one back. The picker hands over whatever the operator selected, so
   // this has to be honest about what it could and could not place.
@@ -2353,6 +2400,26 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               One file per step, plus what you declared and everything the sequence decided.
             </span>
           </p>
+          <label className="amc-guided__annotate">
+            <input
+              type="checkbox"
+              data-testid="amc-baseline-toggle"
+              checked={seedFromBaseline && baseline !== undefined}
+              disabled={baseline === undefined}
+              onChange={(event) => setSeedFromBaseline(event.target.checked)}
+            />
+            <span>
+              {/* AMC does not compute a directory from nothing: it copies a
+                  template and lets the sequence edit it. Which template is
+                  the whole question — a real aircraft's would assert its
+                  wiring and geometry as yours, so this is AMC's own empty
+                  one for this firmware, which is what AMC itself uses when
+                  it starts a project from a connected vehicle. */}
+              {baseline
+                ? `Start from ArduPilot's ${baseline.version} defaults, as AMC does (${baseline.count} values the sequence then edits)`
+                : 'No starting values — AMC ships no empty template for this vehicle and firmware, so the directory holds only what the sequence decides'}
+            </span>
+          </label>
           <label className="amc-guided__annotate">
             <input
               type="checkbox"
