@@ -20007,3 +20007,17 @@ button.mavlink-inspector__sent-row {
   display: inline-block;
   vertical-align: bottom;
 }
+
+/* A conclusion about this vehicle that the sequence cannot express as a
+   parameter. AMC raises these as a dialog; inline interrupts less. */
+.amc-step__advisory {
+  border-left: 3px solid var(--warning, #b7791f);
+  padding-left: 10px;
+  margin: 10px 0;
+}
+
+/* Values the sequence computed for a parameter this firmware does not have. */
+.amc-step__dropped {
+  color: var(--text-muted);
+  margin: 8px 0;
+}

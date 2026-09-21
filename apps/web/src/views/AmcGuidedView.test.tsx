@@ -1157,3 +1157,100 @@ describe('saying what a value means', () => {
     expect(document.querySelectorAll('.amc-step__means').length).toBe(0)
   })
 })
+
+describe('what a step says beyond its values', () => {
+  // The ExpressLRS advisory is detected from the VEHICLE's RC_OPTIONS bits,
+  // not from the declaration. It has to be: the only directive that names
+  // FLTMODE_CH is guarded on a receiver Protocol of 'ExpressLRS', and neither
+  // ArduPilot's RC_PROTOCOLS documentation nor any of AMC's own templates
+  // ever uses that value, so that branch never fires. The semantics are
+  // covered in the fork; what a render proves is that it reaches the operator.
+
+  async function openReceiverStep() {
+    const step = await screen.findByRole('button', { name: /Remote controller receiver/i })
+    await act(async () => {
+      step.click()
+    })
+  }
+
+  it('warns an ExpressLRS vehicle whose flight mode is still on channel 5', async () => {
+    render(
+      <AmcGuidedView
+        {...base}
+        connected
+        docs={docs}
+        // Bit 9 is one of AMC's two ExpressLRS bits in RC_OPTIONS.
+        parameters={{ RC_OPTIONS: 1 << 9, FLTMODE_CH: 5 }}
+      />
+    )
+    await whenLoaded()
+    await openReceiverStep()
+
+    await waitFor(() => {
+      const found = document.querySelectorAll('.amc-step__advisory')
+      expect(found.length).toBeGreaterThan(0)
+      expect(found[0].textContent).toMatch(/FLTMODE_CH is 5/)
+    })
+  })
+
+  it('says nothing to a vehicle that is not on ExpressLRS', async () => {
+    render(<AmcGuidedView {...base} connected docs={docs} parameters={{ RC_OPTIONS: 1, FLTMODE_CH: 5 }} />)
+    await whenLoaded()
+    await openReceiverStep()
+    expect(document.querySelectorAll('.amc-step__advisory').length).toBe(0)
+  })
+
+  it('says nothing when the flight mode is already on another channel', async () => {
+    render(
+      <AmcGuidedView {...base} connected docs={docs} parameters={{ RC_OPTIONS: 1 << 9, FLTMODE_CH: 7 }} />
+    )
+    await whenLoaded()
+    await openReceiverStep()
+    expect(document.querySelectorAll('.amc-step__advisory').length).toBe(0)
+  })
+})
+
+describe('a derived value the firmware has nowhere to put', () => {
+  it('is named rather than quietly missing, once the whole list has arrived', async () => {
+    // AMC drops a derived parameter the flight controller does not report,
+    // because writing one is a failure the operator then has to interpret.
+    // Its absence from the table would otherwise be unexplained.
+    render(
+      <AmcGuidedView
+        {...base}
+        connected
+        docs={docs}
+        parametersComplete
+        // A complete list that happens not to include what step 06 derives.
+        parameters={{ RC_OPTIONS: 32, SCHED_LOOP_RATE: 400 }}
+      />
+    )
+    await whenLoaded()
+    // The throttle controller derives ATC_THR_MIX_MAN, which this firmware
+    // does not report.
+    const step = await screen.findByRole('button', { name: /Throttle controller/i })
+    await act(async () => {
+      step.click()
+    })
+    await waitFor(() => expect(screen.getByText(/this firmware has no/)).toBeTruthy())
+  })
+
+  it('drops nothing while the parameters are still arriving', async () => {
+    // The same snapshot without the completeness flag is a sync in progress.
+    // Judging against it would drop nearly everything the sequence computes.
+    render(
+      <AmcGuidedView
+        {...base}
+        connected
+        docs={docs}
+        parameters={{ RC_OPTIONS: 32, SCHED_LOOP_RATE: 400 }}
+      />
+    )
+    await whenLoaded()
+    const step = await screen.findByRole('button', { name: /Throttle controller/i })
+    await act(async () => {
+      step.click()
+    })
+    expect(screen.queryByText(/this firmware has no/)).toBeNull()
+  })
+})

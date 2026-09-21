@@ -9863,6 +9863,9 @@ export function App() {
         <AmcGuidedView
           connected={snapshot.connection.kind === 'connected'}
           parameters={amcLiveParameters}
+          // AMC drops a derived parameter the firmware does not have, which is
+          // only a safe judgement once the whole list has arrived.
+          parametersComplete={snapshot.parameterStats.status === 'complete'}
           states={snapshot.parameters}
           // The sequence's capture steps need the firmware's own defaults, which
           // the Parameters view already knows how to fetch over MAVFTP.

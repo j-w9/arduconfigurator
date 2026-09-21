@@ -18,6 +18,7 @@ import {
   type ComponentRequirement,
   type Diagnosis,
   type ParameterDocs,
+  type StepAdvisory,
   type StepOutcome,
   checkStepLogMessages,
   runThreaded,
@@ -386,6 +387,19 @@ export interface StepRow {
    * rebooted before the rest of the sequence means anything.
    */
   readonly rebootParameters?: readonly string[]
+  /**
+   * Derived parameters this firmware does not have, which were not written.
+   *
+   * AMC drops these rather than writing a parameter the vehicle would reject.
+   * Named here so a value the sequence computed and did not use is visible.
+   */
+  readonly dropped?: readonly string[]
+  /**
+   * Conclusions about this vehicle worth saying, which are not errors.
+   *
+   * AMC raises these while processing a step.
+   */
+  readonly advisories?: readonly StepAdvisory[]
   /** `05_board_orientation.param` reads as "Board orientation". */
   readonly title: string
   /** Why the step exists. */
@@ -582,6 +596,16 @@ export interface RunInputs {
   /** The vehicle's current parameters, when connected. */
   readonly parameters: Readonly<Record<string, number>>
   /**
+   * Whether `parameters` is the vehicle's WHOLE parameter list.
+   *
+   * AMC only ever has fc_parameters after a complete download, and it uses
+   * that completeness: a derived parameter the firmware does not have is
+   * dropped rather than written. Judged against a half-synced snapshot the
+   * same rule would drop nearly everything the sequence computes, so the
+   * filter waits for this.
+   */
+  readonly parametersComplete?: boolean
+  /**
    * The vehicle's parameters as the app holds them, definitions included.
    *
    * Used to predict exactly what the draft bar will accept, by running the
@@ -614,7 +638,8 @@ export interface RunInputs {
  * not told me" is the most useful thing the screen can say.
  */
 export function runSequence(inputs: RunInputs): SequenceSummary {
-  const { sequence, file, fields, values, parameters, states, defaults, docs, logCounts } = inputs
+  const { sequence, file, fields, values, parameters, states, defaults, docs, logCounts, parametersComplete } =
+    inputs
   const componentsJson = buildComponentsJson(fields, values)
   const context = vehicleContext(componentsJson, parameters)
 
@@ -637,7 +662,20 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
   // step 13 sets INS_GYRO_FILTER and MOT_THST_HOVER, and the notch-filter and
   // throttle-controller steps read them, so evaluating those against the live
   // vehicle answers a question nobody asked.
-  const threaded = runThreaded(sequence, context, parameters, docs ? { docs } : {})
+  // The vehicle's OWN parameters, not the threaded ones: AMC filters derived
+  // values against what the flight controller actually reports, and that set
+  // does not grow as the sequence runs.
+  //
+  // Dropping a derived value needs the list to be COMPLETE: only then is a
+  // missing parameter evidence that the firmware lacks it. A half-synced
+  // snapshot would otherwise look like a firmware missing almost everything.
+  const threaded = runThreaded(sequence, context, parameters, {
+    ...(docs ? { docs } : {}),
+    // Always given: conclusions drawn from what a parameter IS -- an
+    // ExpressLRS link read off RC_OPTIONS -- need no complete list.
+    ...(Object.keys(parameters).length > 0 ? { vehicleParameters: parameters } : {}),
+    ...(parametersComplete ? { parametersComplete } : {})
+  })
   const inheritedBy = new Map(threaded.steps.map((step) => [step.filename, step.inheritedFrom]))
   const orderDependent = new Set(threaded.orderDependent)
 
@@ -767,6 +805,8 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
         : {}),
       title: titleOf(entry.filename),
       changes,
+      ...(outcome.dropped.length > 0 ? { dropped: outcome.dropped } : {}),
+      ...(outcome.advisories.length > 0 ? { advisories: outcome.advisories } : {}),
       deletions: outcome.deletions,
       skipped: outcome.skipped,
       blocked,

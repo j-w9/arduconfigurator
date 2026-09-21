@@ -102,6 +102,14 @@ export interface AmcGuidedViewProps {
   firmwareVehicle?: string
   /** Live parameter values, keyed by name. Empty when not connected. */
   parameters: Readonly<Record<string, number>>
+  /**
+   * Whether `parameters` is the whole list rather than a sync in progress.
+   *
+   * AMC drops a derived parameter the firmware does not have. That is only a
+   * safe judgement once every parameter has arrived — against a half-synced
+   * snapshot it would drop nearly everything the sequence computes.
+   */
+  parametersComplete?: boolean
   /** The same parameters as the app holds them, used to predict the draft bar. */
   states?: readonly ParameterState[]
   /** The firmware's own defaults, needed before a step can capture anything. */
@@ -686,6 +694,31 @@ function StepCard({
             </table>
           ) : null}
 
+          {row.advisories?.map((advisory) => (
+            // Not an error and not a value: a conclusion about THIS vehicle
+            // that the sequence cannot express as a parameter. AMC raises
+            // these as a dialog; inline is less interrupting and just as read.
+            <p key={advisory.title} className="amc-step__advisory">
+              <strong>{advisory.title}</strong> {advisory.message}
+            </p>
+          ))}
+
+          {row.dropped && row.dropped.length > 0 ? (
+            <p className="amc-step__dropped">
+              {/* Named rather than silently dropped: a value the sequence
+                  computed and then did not use is worth knowing about, and
+                  its absence from the table would otherwise be unexplained. */}
+              Not written — this firmware has no{' '}
+              {row.dropped.map((parameter, index) => (
+                <span key={parameter}>
+                  {index > 0 ? ', ' : ''}
+                  <code>{parameter}</code>
+                </span>
+              ))}
+              .
+            </p>
+          ) : null}
+
           {stageable.length > 0 ? (
             <div className="amc-step__stage">
               <button
@@ -1049,6 +1082,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   const {
     connected,
     parameters,
+    parametersComplete,
     states,
     defaults,
     onReadDefaults,
@@ -1393,11 +1427,12 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             parameters,
             ...(states ? { states } : {}),
             ...(effectiveDefaults ? { defaults: effectiveDefaults } : {}),
+            ...(parametersComplete ? { parametersComplete } : {}),
             ...(docs ? { docs } : {}),
             ...(logCounts ? { logCounts } : {})
           })
         : undefined,
-    [steps, loaded, fields, values, parameters, states, effectiveDefaults, docs, logCounts]
+    [steps, loaded, fields, values, parameters, parametersComplete, states, effectiveDefaults, docs, logCounts]
   )
 
   // Counted over the fields the SEQUENCE reads, which is what `missing` is a
