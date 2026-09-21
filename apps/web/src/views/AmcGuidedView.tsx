@@ -22,6 +22,7 @@ import {
   declarationFrom,
   defaultSelection,
   escTelemetryMirror,
+  explainValue,
   externalParamWrites,
   logHasDefaults,
   parametersFromLog,
@@ -414,7 +415,8 @@ function StepCard({
   tempcal,
   defaultsRead,
   onOpenTool,
-  onJump
+  onJump,
+  docs
 }: {
   row: StepRow
   connected: boolean
@@ -429,6 +431,8 @@ function StepCard({
   onRebootAndReconnect?: ((waitSeconds: number) => Promise<void>) | undefined
   bootDelay?: number | undefined
   onWriteStep?: ((changes: readonly { parameter: string; value: number }[], label: string) => void) | undefined
+  /** ArduPilot's documentation, for saying what a value means. */
+  docs?: ParameterDocs | undefined
   onStepWritten?: ((filename: string) => void) | undefined
   tempcal?: TempcalOutcome | undefined
   defaultsRead?: 'idle' | 'asking' | 'nothing'
@@ -644,6 +648,25 @@ function StepCard({
                     {connected ? <td>{change.current === undefined ? '—' : change.current}</td> : null}
                     <td>
                       {change.value}
+                      {/* What the number means, where ArduPilot's own
+                          documentation says. A method whose claim is that
+                          every value carries its reason should not render
+                          LOG_BITMASK as 176126 and leave it there. */}
+                      {(() => {
+                        const explained = explainValue(change.parameter, change.value, docs)
+                        return explained ? (
+                          <span
+                            className="amc-step__means"
+                            title={
+                              explained.bits.length > 0
+                                ? explained.bits.join('\n')
+                                : explained.summary
+                            }
+                          >
+                            {explained.summary}
+                          </span>
+                        ) : null
+                      })()}
                       {staged[change.parameter] !== undefined ? <span className="amc-step__tag">staged</span> : null}
                       {change.disputed ? (
                         <span className="amc-step__disputed" title={change.disputed.reason}>
@@ -2462,6 +2485,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   defaultsRead={defaultsRead}
                   onOpenTool={onOpenTool}
                   onJump={jumpToStep}
+                  docs={docs}
                   onReviewed={(next) =>
                     setReviewed((previous) => {
                       const updated = new Set(previous)

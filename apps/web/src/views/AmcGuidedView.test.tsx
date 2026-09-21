@@ -13,6 +13,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { parameterDocsFrom } from '@arduconfig/amc-steps'
+
+import arducopterParams from '../generated/param-upstream/arducopter.json'
+
 import { AmcGuidedView } from './AmcGuidedView'
 import { UNATTACHED_KEY, loadAmcProgress, saveAmcProgress } from '../amc-progress-storage'
 
@@ -48,6 +52,16 @@ beforeEach(installStorage)
 afterEach(() => {
   cleanup()
 })
+
+/**
+ * ArduPilot's real parameter documentation, as the app generates it.
+ *
+ * Not a hand-written fixture: the labels asserted below are the ones an
+ * operator actually sees, and a fixture would let them drift.
+ */
+const docs = parameterDocsFrom(
+  arducopterParams as Readonly<Record<string, { options?: { value: number; label: string }[]; bitmask?: boolean }>>
+)
 
 const base = {
   connected: false,
@@ -1108,5 +1122,38 @@ describe('opening a directory an older AMC wrote', () => {
     })
     await waitFor(() => expect(screen.getByText(/Read \d+ step files/)).toBeTruthy())
     expect(screen.queryByText(/older layout/)).toBeNull()
+  })
+})
+
+describe('saying what a value means', () => {
+  // A method whose claim is that every value carries its reason should not
+  // render LOG_BITMASK as 176126 and leave it there.
+
+  // Which values get a label, and what the label says, is covered against
+  // ArduPilot's real metadata in the fork's explain-value tests. What only a
+  // render can answer is whether the documentation reaches the table at all.
+  it('decomposes a logging bitmask into the bits it sets', async () => {
+    render(<AmcGuidedView {...base} docs={docs} />)
+    await whenLoaded()
+    const step = await screen.findByRole('button', { name: /Imu temperature calibration setup/i })
+    await act(async () => {
+      step.click()
+    })
+    // LOG_BITMASK is what this step sets, and it is the parameter the raw
+    // number is least readable for.
+    const means = [...document.querySelectorAll('.amc-step__means')].map((el) => el.textContent)
+    expect(means.some((text) => /of \d+:|Attitude|nothing set/.test(text ?? ''))).toBe(true)
+  })
+
+  it('says nothing where the documentation says nothing', async () => {
+    // Without docs there is no explanation to give, and inventing one for a
+    // logging mask is worse than leaving the number alone.
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+    const step = await screen.findByRole('button', { name: /Imu temperature calibration setup/i })
+    await act(async () => {
+      step.click()
+    })
+    expect(document.querySelectorAll('.amc-step__means').length).toBe(0)
   })
 })

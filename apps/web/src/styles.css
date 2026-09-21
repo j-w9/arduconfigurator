@@ -19993,3 +19993,17 @@ button.mavlink-inspector__sent-row {
   padding: 0;
   text-decoration: underline;
 }
+
+/* What a parameter value means, beside the number. The tooltip carries the
+   full list where the summary had to shorten it. */
+.amc-step__means {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  margin-left: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 22ch;
+  display: inline-block;
+  vertical-align: bottom;
+}
