@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { worstViewportOverflow } from './support/overflow'
 
 // Parameter-group presets: select rows in the Parameter Editor, answer what the
 // group depends on, save, and find it in the Presets tab with those dependencies
@@ -206,7 +207,7 @@ test.describe('Parameter-group presets', () => {
     await page.getByTestId('parameter-create-preset').click()
     await expect(page.getByTestId('create-preset-dialog')).toBeVisible()
 
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
   })
 })

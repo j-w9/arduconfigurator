@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { deflateSync } from 'node:zlib'
+import { worstViewportOverflow } from './support/overflow'
 
 // The in-browser demo transport delivers inbound frames (param sync, command
 // ACKs, write read-backs) on a single setTimeout-paced timeline that shares the
@@ -47,7 +48,7 @@ test.describe('Phone layout', () => {
     // nothing left to hide.
     await expect(page.locator('.workspace-sidebar .baseline-summary')).toHaveCount(0)
     // No horizontal overflow at phone width.
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
   })
 
@@ -333,7 +334,7 @@ test.describe('Parameters tab (expert-only)', () => {
     expect(await dataRows.count()).toBeGreaterThan(10)
 
     // The dense table must not introduce horizontal overflow.
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
 
     // Filtering to a nonsense token shows the empty state, and clearing restores rows.
@@ -1278,9 +1279,7 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     await openView(page, 'calibration')
     await page.getByTestId('calibration-tab-power').click()
     await expect(page.getByTestId('calibration-card-battery-current')).toBeVisible()
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    )
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
   })
 
@@ -2172,9 +2171,7 @@ test.describe('Flash view', () => {
     // The demo's images differ, so there is nothing to say about forcing.
     await expect(page.getByTestId('firmware-bootloader-no-force')).toHaveCount(0)
 
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    )
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
 
     // Cancelling disarms the update but keeps the answer on screen: the read
@@ -3984,9 +3981,7 @@ test.describe('OSD view preview', () => {
     await page.getByTestId('osd-cell-COMPASS-1').check()
     await page.waitForTimeout(150)
     // No page-level horizontal scroll, and the matrix fits its own box.
-    const docOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    )
+    const docOverflow = (await worstViewportOverflow(page)).worst
     expect(docOverflow).toBeLessThanOrEqual(0)
     const matrixOverflow = await matrix.evaluate((el) => el.scrollWidth - el.clientWidth)
     expect(matrixOverflow).toBeLessThanOrEqual(1)
@@ -4284,7 +4279,7 @@ test.describe('ArduPlane demo', () => {
     // what breaks the horizontal-overflow gate.
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(page.getByTestId('setup-wizard')).toBeVisible()
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
   })
 
@@ -5133,9 +5128,7 @@ test.describe('ArduPlane demo', () => {
     await connectCopter(page)
     await openPeripheralTab(page, 'Flow & Lidar')
     await expect(page.getByTestId('metadata-settings-section-optical-flow')).toBeVisible({ timeout: 15_000 })
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    )
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(0)
   })
 
@@ -6672,9 +6665,7 @@ test.describe('Status & Info advanced sensor cards', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.getByTestId('setup-optical-flow-card')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
 
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    )
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
   })
 })
@@ -7019,9 +7010,7 @@ test.describe('Status & Info dashboard layout', () => {
     )
     expect(new Set(lefts).size).toBe(1)
 
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    )
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
   })
 })
@@ -7182,15 +7171,16 @@ test.describe('Tuning ▸ Initial Tune', () => {
     await expect(page.getByTestId('initial-tune-panel')).toBeVisible()
 
     // The house page-level gate.
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    )
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
 
-    // And an element-level check, because the page-level one is BLIND here: an
-    // ancestor clips horizontally, so forcing this panel to 1400px leaves
-    // documentElement.scrollWidth unmoved at 0 while the panel's own right edge
-    // goes to 1416. Measured, not assumed. The box does react, so assert on it.
+    // And a check on this panel specifically. This used to be here because the
+    // page-level gate was BLIND to it — an ancestor clips horizontally, so
+    // forcing the panel to 1400px left documentElement.scrollWidth unmoved at 0
+    // while the panel's own right edge went to 1416. `worstViewportOverflow`
+    // now walks elements and would catch it, so this is no longer the only
+    // thing watching; it stays because naming the panel makes a regression here
+    // report itself directly instead of as an anonymous number.
     const box = await page.getByTestId('initial-tune-panel').boundingBox()
     expect(box).not.toBeNull()
     expect(Math.round(box!.x + box!.width), 'the panel must fit a 390px phone').toBeLessThanOrEqual(390)
@@ -7341,9 +7331,7 @@ test.describe('Peripherals tab', () => {
     await openPeripherals(page)
     await page.locator('.tab-strip__tab', { hasText: 'Flow & Lidar' }).first().click()
     await expect(page.getByTestId('config-section-flow-lidar')).toBeVisible()
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    )
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow, 'the Peripherals sub-tabs must not widen the page').toBeLessThanOrEqual(2)
   })
 })
@@ -7404,9 +7392,7 @@ test.describe('Flight modes moved from a tab into Config', () => {
     // assignments are what made the old tab worth keeping.
     await expect(page.getByText(/Mode channel/i).first()).toBeVisible({ timeout: 15_000 })
 
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    )
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow, 'the Flight Modes panel must not widen the page').toBeLessThanOrEqual(2)
   })
 
@@ -7578,9 +7564,7 @@ test.describe('Tuning ▸ Filters', () => {
   test('fits a phone without overflowing', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await openFilters(page)
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    )
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
   })
 })

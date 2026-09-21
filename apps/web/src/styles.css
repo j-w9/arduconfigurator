@@ -6804,6 +6804,29 @@ body.is-status-dash-dragging {
   pointer-events: none;
   transition: opacity 0.12s ease;
 }
+
+/* Phone: the tip stops chasing the dot.
+ *
+ * It is centred on a 14px dot (`left: 50%` + `translateX(-50%)`), so at 390px a
+ * 240-300px box hangs off whichever side the dot is nearest — measured 29px off
+ * the right of a `--wide` tip on Tuning, with `html`/`body` `overflow-x: clip`
+ * hiding the evidence, so the guidance was silently truncated on a phone.
+ * Pinned to the viewport it always fits and stays readable; proximity to the
+ * dot matters less than legibility at this width, and the dot keeps its
+ * hover/focus relationship. */
+@media (max-width: 640px) {
+  .receiver-info-tip {
+    position: fixed;
+    top: auto;
+    bottom: var(--space-4);
+    left: var(--space-4);
+    right: var(--space-4);
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+}
+
 .receiver-info-dot:hover .receiver-info-tip,
 .receiver-info-dot:focus-visible .receiver-info-tip {
   opacity: 1;
@@ -6852,7 +6875,9 @@ body.is-status-dash-dragging {
 /* Let a card/section title's info dot sit a touch wider — card guidance runs a
    little longer than the terse tab-strip task detail. */
 .receiver-info-tip--wide {
-  max-width: 300px;
+  /* Clamped to the viewport so a wide tip near a screen edge cannot overhang it
+     on a narrow window that is still above the phone breakpoint above. */
+  max-width: min(300px, calc(100vw - 2 * var(--space-4, 16px)));
 }
 
 /* Card/section title paired with its guidance info dot on one row. Keeps the
@@ -8493,6 +8518,13 @@ body.is-status-dash-dragging {
 .scoped-editor-field select,
 .scoped-editor-field textarea {
   width: 100%;
+  /* A <select> sizes to its LONGEST OPTION, and as a grid item `min-width: auto`
+     refuses to shrink below that, so a verbose enum value can set a floor on the
+     whole field and push the page wider than the viewport. Defensive: the
+     measured 390px overflow turned out to come from the chip control rather
+     than a select, but the same hazard is real for any field that does render
+     one. The closed select ellipsizes; the open dropdown still shows full text. */
+  min-width: 0;
   min-height: 28px;
   border-radius: var(--radius-md);
   border: 1px solid rgba(var(--edge-rgb), 0.06);
@@ -8682,6 +8714,14 @@ body.is-status-dash-dragging {
   /* An option chip is a button the operator clicks, so it keeps sentence case
      and the app's UI face rather than the label treatment. */
   background: transparent;
+  /* Overrides the shared pill `white-space: nowrap` for THIS chip only. The
+     other pills on that rule are short fixed strings; an option chip carries
+     whatever the firmware enum says, and "BLHeli32 / AM32 / KISS + Extended
+     DShot Telemetry" is 298px that cannot wrap — which set the min-content of
+     the ESC & DShot card and pushed the whole page 8px past a 390px viewport
+     (invisible, because html/body are `overflow-x: clip`). Short chips are
+     unaffected: they fit on one line either way. */
+  white-space: normal;
   font-family: var(--font-ui);
   font-weight: 400;
   letter-spacing: normal;

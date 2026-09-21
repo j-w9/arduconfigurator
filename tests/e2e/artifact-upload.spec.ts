@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { worstViewportOverflow } from './support/overflow'
 
 // Naming a configuration upload before it is filed.
 //
@@ -204,16 +205,15 @@ test.describe('Naming a configuration upload', () => {
     await expect(page.getByTestId('upload-parameter-backup-button-form')).toBeVisible()
 
     // The house page-level gate, as used elsewhere for phone width.
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
-    )
+    const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow, 'the open upload form must not widen the page').toBeLessThanOrEqual(2)
 
-    // And an ELEMENT-level check, because the page-level one cannot see this
-    // particular form: an ancestor clips horizontally, so a form 1200px wide
-    // leaves documentElement.scrollWidth completely unchanged. Verified by
-    // forcing exactly that and watching the page-level number not move. The
-    // form's own right edge does react, so that is what is asserted.
+    // And a check on this form specifically. This used to be here because the
+    // page-level gate could not see it: an ancestor clips horizontally, so a
+    // form 1200px wide left documentElement.scrollWidth completely unchanged —
+    // verified by forcing exactly that and watching the number not move.
+    // `worstViewportOverflow` now walks elements and would catch it; this stays
+    // because naming the form makes a regression report itself directly.
     const box = await page.getByTestId('upload-parameter-backup-button-form').boundingBox()
     expect(box, 'the form should be laid out').not.toBeNull()
     expect(
