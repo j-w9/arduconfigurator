@@ -23,6 +23,8 @@ import {
   defaultSelection,
   escTelemetryMirror,
   externalParamWrites,
+  logHasDefaults,
+  parametersFromLog,
   nextRequiredStep,
   orderByPairing,
   protocolsForConnection,
@@ -899,7 +901,8 @@ function StepCard({
               {defaultsRead === 'nothing' ? (
                 <span className="amc-step__disputed-why">
                   The vehicle sent no defaults. That needs MAVFTP on ArduPilot 4.5 or later; the
-                  Parameters view reports the reason.
+                  Parameters view reports the reason. A flight log records them too — load one
+                  above and this step can use those instead.
                 </span>
               ) : null}
             </p>
@@ -1089,6 +1092,19 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   // merely expanded: pressing next twice should advance twice.
   const [lastVisited, setLastVisited] = useState<string | undefined>(undefined)
   const [logNotice, setLogNotice] = useState<string | undefined>(undefined)
+  /**
+   * The firmware's defaults, taken out of a flight log's PARM records.
+   *
+   * A step can only take account of what the operator has already changed,
+   * which means knowing what "unchanged" is. That normally comes off the
+   * vehicle over MAVFTP -- a live connection, and the part of this most likely
+   * to fail. A log the operator already has carries the same answer, for a
+   * vehicle that is in pieces on the bench or not theirs to plug in.
+   */
+  const [logDefaults, setLogDefaults] = useState<ReadonlyMap<string, number> | undefined>(undefined)
+  // The vehicle's own answer wins: it is this firmware on this board, where a
+  // log may be from another build. The log is the fallback, not the preference.
+  const effectiveDefaults = defaults && defaults.size > 0 ? defaults : logDefaults
 
   // A parameter file from outside the directory, held beside the vehicle so
   // the operator can see what it would change before any of it is sent.
@@ -1155,7 +1171,23 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
           : undefined
       )
 
+      // The log also carries what the firmware's defaults are, which is the
+      // one thing the steps need that a bench with no vehicle cannot supply.
+      const fromLog = parametersFromLog(parsed.messagesByType)
+      if (fromLog.defaults.size > 0) setLogDefaults(fromLog.defaults)
+
       const parts = [`${name}: ${parsed.counts.size} message types`]
+      if (fromLog.defaults.size > 0) {
+        parts.push(
+          `${fromLog.defaults.size} firmware defaults, so the steps can take account of the ${fromLog.changed.size} you have already changed`
+        )
+      } else if (fromLog.values.size > 0 && !logHasDefaults(parsed.messagesByType)) {
+        // Worth saying rather than staying quiet: the operator has done the
+        // right thing and it still cannot help them.
+        parts.push(
+          'no firmware defaults — this log is from a build that does not record them, so the steps still need the vehicle'
+        )
+      }
       if (tempcalResult.fitted.length > 0) {
         parts.push(
           `IMU temperature calibration fitted for ${tempcalResult.fitted.length} IMU${
@@ -1337,12 +1369,12 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             values,
             parameters,
             ...(states ? { states } : {}),
-            ...(defaults ? { defaults } : {}),
+            ...(effectiveDefaults ? { defaults: effectiveDefaults } : {}),
             ...(docs ? { docs } : {}),
             ...(logCounts ? { logCounts } : {})
           })
         : undefined,
-    [steps, loaded, fields, values, parameters, states, defaults, docs, logCounts]
+    [steps, loaded, fields, values, parameters, states, effectiveDefaults, docs, logCounts]
   )
 
   // Counted over the fields the SEQUENCE reads, which is what `missing` is a
@@ -1409,7 +1441,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       fields,
       values,
       parameters,
-      ...(defaults ? { defaults } : {}),
+      ...(effectiveDefaults ? { defaults: effectiveDefaults } : {}),
       ...(docs ? { docs } : {}),
       overrides,
       ...(baseComponents ? { baseComponents } : {}),
@@ -1445,7 +1477,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             text: `Written: ${project.files.length} files, ${project.parameterCount} parameters.`
           }
     )
-  }, [steps, fields, values, parameters, defaults, docs, overrides, baseComponents, lastWritten, annotate, summary, tempcal, kind, versionKey])
+  }, [steps, fields, values, parameters, effectiveDefaults, docs, overrides, baseComponents, lastWritten, annotate, summary, tempcal, kind, versionKey])
 
   // Reading one back. The picker hands over whatever the operator selected, so
   // this has to be honest about what it could and could not place.
