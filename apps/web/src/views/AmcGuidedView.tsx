@@ -13,7 +13,12 @@ import {
   runSequence,
   titleOf
 } from '../view-models/amc-guided'
-import { connectionGroupOf, orderByPairing, protocolsForConnection } from '@arduconfig/amc-steps'
+import {
+  connectionGroupOf,
+  escTelemetryMirror,
+  orderByPairing,
+  protocolsForConnection
+} from '@arduconfig/amc-steps'
 import type { ConnectionPairings, ConnectionTables, ParameterDocs } from '@arduconfig/amc-steps'
 import connectionPairingsJson from '@amc/data/component-pairings.json'
 import connectionTablesJson from '@amc/data/connection-tables.json'
@@ -166,19 +171,59 @@ const OTHER = '\u0000other'
  * that turns the field back into a text box; a documented list is complete, so
  * it does not.
  */
+/**
+ * The value an ESC telemetry field is fixed to, when its control connection
+ * carries the telemetry itself.
+ *
+ * Returns undefined for every other field, and for DShot — which CAN answer
+ * back on the same wire but can equally use a dedicated serial port or
+ * nothing, so there the question is real.
+ */
+function mirroredTelemetry(
+  field: ComponentField,
+  values: Readonly<Record<string, string>>,
+  kind: AmcVehicleKind
+): string | undefined {
+  if (field.path[0] !== 'ESC' || field.path[1] !== 'ESC->FC Telemetry') return undefined
+  const leaf = field.path[2]
+  if (leaf !== 'Type' && leaf !== 'Protocol') return undefined
+
+  const controlProtocol = values['ESC/FC->ESC Connection/Protocol']
+  if (!controlProtocol) return undefined
+  const mirror = escTelemetryMirror(connectionTables, kind, controlProtocol)
+  if (leaf === 'Type' && !mirror.type) return undefined
+  if (leaf === 'Protocol' && !mirror.protocol) return undefined
+  return values[`ESC/FC->ESC Connection/${leaf}`]
+}
+
 function FieldControl({
   field,
   value,
   pairedType,
+  mirroredFrom,
   onChange
 }: {
   field: ComponentField
   value: string
   /** The Type declared on this field's connection, when it has one. */
   pairedType?: string
+  /** Fixed to the control connection's value; see mirroredTelemetry. */
+  mirroredFrom?: string
   onChange: (next: string) => void
 }) {
   const documented = field.documented ?? field.suggested
+
+  // The control connection carries this, so there is nothing to choose. Shown
+  // rather than hidden: an operator should be able to see what their ESC
+  // protocol implied, not wonder where the field went.
+  if (mirroredFrom !== undefined && mirroredFrom !== '') {
+    return (
+      <span className="amc-guided__field-control amc-guided__field-mirrored">
+        <input id={fieldInputId(field.key)} value={mirroredFrom} readOnly />
+        <em>same as the control connection</em>
+      </span>
+    )
+  }
   // A connection's Type and Protocol are not independent: a CAN link carries
   // DroneCAN, a serial one a serial protocol. The pairings are observed from
   // AMC's templates, so they are evidence rather than a specification — they
@@ -307,6 +352,7 @@ function StepCard({
   onRequestReboot,
   onInstallFile,
   onWriteStep,
+  onStepWritten,
   tempcal,
   defaultsRead,
   onOpenTool,
@@ -323,6 +369,7 @@ function StepCard({
   onRequestReboot?: (() => void) | undefined
   onInstallFile?: ((file: { url: string; name: string; destination: string }) => Promise<void>) | undefined
   onWriteStep?: ((changes: readonly { parameter: string; value: number }[], label: string) => void) | undefined
+  onStepWritten?: ((filename: string) => void) | undefined
   tempcal?: TempcalOutcome | undefined
   defaultsRead?: 'idle' | 'asking' | 'nothing'
   onOpenTool?: ((view: AppToolView) => void) | undefined
@@ -542,12 +589,16 @@ function StepCard({
                       ? "Write just this step's parameters and let the vehicle confirm them"
                       : 'Connect a vehicle first'
                   }
-                  onClick={() =>
+                  onClick={() => {
                     onWriteStep(
                       stageable.map((change) => ({ parameter: change.parameter, value: change.value })),
                       row.title
                     )
-                  }
+                    // Recorded so the directory knows where the operator got
+                    // to: AMC's method runs over days, and reopening at step
+                    // one is a surprising answer.
+                    onStepWritten?.(row.filename)
+                  }}
                 >
                   {/* The method is step-by-step: write this one, let the
                       vehicle confirm it, reboot if it needs to, then move on.
@@ -891,6 +942,13 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
   const [baseComponents, setBaseComponents] = useState<Readonly<Record<string, unknown>> | undefined>(
     undefined
   )
+  // The step the operator last wrote, so the directory records where they got
+  // to and reopening resumes rather than starting over.
+  const [lastWritten, setLastWritten] = useState<string | undefined>(undefined)
+  // Written documentation is off by default: it roughly triples every file,
+  // which is worth it for a directory someone will read and not for one they
+  // will only feed back in.
+  const [annotate, setAnnotate] = useState(false)
   const [logNotice, setLogNotice] = useState<string | undefined>(undefined)
 
   const readLog = useCallback(async (file: File | undefined) => {
@@ -1135,7 +1193,9 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       ...(defaults ? { defaults } : {}),
       ...(docs ? { docs } : {}),
       overrides,
-      ...(baseComponents ? { baseComponents } : {})
+      ...(baseComponents ? { baseComponents } : {}),
+      ...(lastWritten ? { lastWritten } : {}),
+      ...(annotate && docs ? { annotate: docs } : {})
     })
     const blob = new Blob([projectArchive(project) as unknown as BlobPart], { type: 'application/zip' })
     const url = URL.createObjectURL(blob)
@@ -1164,7 +1224,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             text: `Written: ${project.files.length} files, ${project.parameterCount} parameters.`
           }
     )
-  }, [steps, fields, values, parameters, defaults, docs, overrides, baseComponents, kind, versionKey])
+  }, [steps, fields, values, parameters, defaults, docs, overrides, baseComponents, lastWritten, annotate, kind, versionKey])
 
   // Reading one back. The picker hands over whatever the operator selected, so
   // this has to be honest about what it could and could not place.
@@ -1205,7 +1265,23 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       }
       setOverrides(project.overrides)
 
+      // Where the operator got to. Resuming at step one would be a surprising
+      // answer to reopening a sequence they had nearly finished.
+      if (project.resume?.lastWritten) setLastWritten(project.resume.lastWritten)
+      const resumeAt = project.resume?.filename
+      if (resumeAt) {
+        // Brought into view rather than jumped to silently.
+        window.setTimeout(() => jumpToStep(resumeAt), 0)
+      }
+
       const parts = [`Read ${project.steps.length} step files`]
+      if (project.resume?.reason === 'after-last-written' && resumeAt) {
+        parts.push(`resuming at ${titleOf(resumeAt)}`)
+      } else if (project.resume?.reason === 'finished') {
+        parts.push('the sequence was finished')
+      } else if (project.resume?.reason === 'unrecognised') {
+        parts.push('its last step is not one this sequence has, so it starts from the beginning')
+      }
       if (project.overrides.size > 0) {
         parts.push(`${project.overrides.size} decision${project.overrides.size === 1 ? '' : 's'} you had recorded`)
       }
@@ -1495,6 +1571,12 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                         ? values[[...field.path.slice(0, 2), 'Type'].join('/')]
                         : undefined
                     }
+                    // Some ESC protocols carry telemetry back over the wire
+                    // that drives the motors — FETtecOneWire, DroneCAN and
+                    // friends — so the telemetry connection is not a separate
+                    // question, and asking it invites a different answer the
+                    // sequence would then compute from.
+                    mirroredFrom={mirroredTelemetry(field, values, kind)}
                     onChange={(next) => setValues((previous) => ({ ...previous, [field.key]: next }))}
                   />
                   {field.key === versionKey && vehicleFirmwareVersion && values[field.key] === vehicleFirmwareVersion ? (
@@ -1537,6 +1619,21 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               against. Disabled rather than silently doing nothing, which is
               what it did: a directory picked in the first moment after the tab
               opened was dropped without a word. */}
+          <label className="amc-guided__annotate">
+            <input
+              type="checkbox"
+              data-testid="amc-annotate-toggle"
+              checked={annotate}
+              disabled={!docs}
+              onChange={(event) => setAnnotate(event.target.checked)}
+            />
+            <span>
+              {/* Worth an explicit choice: the files roughly triple in size,
+                  which suits a directory someone will read and not one that
+                  only gets fed back in. */}
+              Write ArduPilot&apos;s documentation into the files
+            </span>
+          </label>
           <label
             className={`amc-guided__import${steps ? '' : ' amc-guided__import--waiting'}`}
             style={buttonStyle()}
@@ -1707,6 +1804,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   onRequestReboot={onRequestReboot}
                   onInstallFile={onInstallFile}
                   onWriteStep={onWriteStep}
+                  onStepWritten={setLastWritten}
                   tempcal={tempcal}
                   defaultsRead={defaultsRead}
                   onOpenTool={onOpenTool}

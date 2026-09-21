@@ -18,8 +18,13 @@ import {
   type FirmwareKind,
   type ProjectFile,
   type VehicleProject,
+  annotateParamFile,
   buildZip,
+  completeFile,
   defaultsFile,
+  lastWrittenFile,
+  lastWrittenFrom,
+  resumePoint,
   fitTemperatureCalibration,
   importComponentsFromParameters,
   imuSamplesFromLog,
@@ -28,7 +33,7 @@ import {
   vehicleContext,
   vehicleFiles
 } from '@arduconfig/amc-steps'
-import type { ParameterRename, UpgradeTables } from '@arduconfig/amc-steps'
+import type { AnnotationDocs, ParameterRename, ResumePoint, UpgradeTables } from '@arduconfig/amc-steps'
 import { upgradeParameters, upgradesBetween } from '@arduconfig/amc-steps'
 import connectionTablesJson from '@amc/data/connection-tables.json'
 import vehicleTemplatesJson from '@amc/data/vehicle-templates.json'
@@ -229,6 +234,16 @@ export interface ProjectExportInputs {
    * AMC could open.
    */
   readonly baseComponents?: Readonly<Record<string, unknown>>
+  /** The step the operator last wrote, so the directory records the place. */
+  readonly lastWritten?: string
+  /**
+   * Parameter documentation to write above each value.
+   *
+   * Off unless asked for: it roughly triples the size of every file, which is
+   * worth it for a directory someone will read and not for one they will
+   * only feed back in.
+   */
+  readonly annotate?: AnnotationDocs
 }
 
 export interface ProjectExport {
@@ -247,7 +262,18 @@ export interface ProjectExport {
  * and re-deriving them is impossible.
  */
 export function buildProject(inputs: ProjectExportInputs): ProjectExport {
-  const { sequence, fields, values, parameters, defaults, docs, overrides, baseComponents } = inputs
+  const {
+    sequence,
+    fields,
+    values,
+    parameters,
+    defaults,
+    docs,
+    overrides,
+    baseComponents,
+    lastWritten,
+    annotate
+  } = inputs
   const componentsJson = buildComponentsJson(fields, values, baseComponents)
   const context = vehicleContext(componentsJson, parameters)
 
@@ -270,6 +296,19 @@ export function buildProject(inputs: ProjectExportInputs): ProjectExport {
     files.push({ filename: step.filename, text: step.text })
   }
 
+  // Every value the sequence decided, in one file. It answers what the
+  // per-step files cannot: what does the method say this vehicle should be,
+  // all told?
+  const complete = completeFile(steps)
+  if (complete.count > 0) files.push({ filename: complete.filename, text: complete.text })
+
+  // Where the operator got to, so the next session resumes rather than
+  // starting over. AMC reads the same file.
+  if (lastWritten) {
+    const marker = lastWrittenFile(lastWritten)
+    files.push({ filename: marker.filename, text: marker.text })
+  }
+
   // What is on the aircraft that the sequence did NOT decide. An operator
   // finishing the sequence is left asking "is that everything?", and without
   // this the directory quietly implies that it is.
@@ -285,8 +324,20 @@ export function buildProject(inputs: ProjectExportInputs): ProjectExport {
     }
   }
 
+  // Written so the directory explains itself: a file opened months later, by
+  // someone who did not configure the vehicle, should not need ArduPilot's
+  // wiki in another window. Annotation is a comment block, so the result
+  // still parses as an ordinary .param file and still reads back.
+  const written = annotate
+    ? files.map((file) =>
+        file.filename.endsWith('.param')
+          ? { ...file, text: annotateParamFile(file.text, annotate) }
+          : file
+      )
+    : files
+
   return {
-    files,
+    files: written,
     incomplete: steps.filter((s) => s.incomplete > 0).map((s) => s.filename),
     parameterCount: steps.reduce((total, s) => total + s.count, 0)
   }
@@ -316,6 +367,14 @@ export interface ProjectImport extends VehicleProject {
    * directory's. Empty unless a version boundary was actually crossed.
    */
   readonly renamedParameters?: readonly ParameterRename[]
+  /**
+   * Where to pick the sequence up.
+   *
+   * AMC's method runs over days — cool the controller overnight, fly it, come
+   * back for the notch filters — so a directory records the step last
+   * written, and reopening starts after it rather than at the beginning.
+   */
+  readonly resume?: ResumePoint
 }
 
 /**
@@ -345,6 +404,9 @@ export function readProject(
   }
 
   const componentValues = valuesFromComponents(parsed, fields)
+  // Resolved through the renames, so a directory written by an older AMC
+  // resumes where it left off rather than being sent back to step one.
+  const resume = resumePoint(sequence, lastWrittenFrom(files))
 
   // A directory written against an older firmware names parameters the
   // vehicle no longer has: ANGLE_MAX became ATC_ANGLE_MAX, and in degrees
@@ -354,7 +416,7 @@ export function readProject(
   // says where it started.
   const fileVersion = componentValues[FIRMWARE_VERSION_KEY] ?? ''
   const crossed = upgradesBetween(fileVersion, options.vehicleFirmwareVersion ?? '')
-  if (crossed.length === 0) return { ...project, componentValues }
+  if (crossed.length === 0) return { ...project, componentValues, resume }
 
   const renames: ParameterRename[] = []
   const steps = project.steps.map((step) => {
@@ -369,7 +431,7 @@ export function readProject(
     return { ...step, entries: upgraded.parameters }
   })
 
-  return { ...project, componentValues, steps, renamedParameters: renames }
+  return { ...project, componentValues, resume, steps, renamedParameters: renames }
 }
 
 /** Where the operator declares the firmware a directory was written for. */

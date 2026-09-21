@@ -683,3 +683,55 @@ describe('starting from a similar vehicle', () => {
     await waitFor(() => expect(screen.queryByText(/^0 of \d+ fields/)).toBeNull())
   })
 })
+
+describe('an ESC whose telemetry rides its control connection', () => {
+  it('fixes the telemetry fields instead of asking twice', async () => {
+    // FETtecOneWire carries telemetry back over the wire that drives the
+    // motors. Asking the operator to declare it separately is a question with
+    // one answer, and inviting a different one the sequence would compute from.
+    const key = 'arduconfig.amc-progress.uid:mirror'
+    saveAmcProgress(key, {
+      vehicleKind: 'ArduCopter',
+      declaration: {
+        'ESC/FC->ESC Connection/Type': 'SERIAL1',
+        'ESC/FC->ESC Connection/Protocol': 'FETtecOneWire'
+      },
+      reviewed: []
+    })
+    render(<AmcGuidedView {...base} progressKey={key} />)
+    await whenLoaded()
+
+    await waitFor(() =>
+      expect(document.getElementById('amc-field-ESC-ESC-FC-Telemetry-Protocol')).toBeTruthy()
+    )
+    const protocol = document.getElementById('amc-field-ESC-ESC-FC-Telemetry-Protocol') as HTMLInputElement
+    expect(protocol.value).toBe('FETtecOneWire')
+    expect(protocol.readOnly).toBe(true)
+    // Shown rather than hidden: the operator should see what their choice
+    // implied, not wonder where the field went.
+    expect(screen.getAllByText(/same as the control connection/).length).toBeGreaterThan(0)
+  })
+
+  it('still asks when the protocol leaves the question open', async () => {
+    // DShot CAN answer back on the same wire, but can equally use a dedicated
+    // serial port or nothing at all.
+    const key = 'arduconfig.amc-progress.uid:dshot'
+    saveAmcProgress(key, {
+      vehicleKind: 'ArduCopter',
+      declaration: {
+        'ESC/FC->ESC Connection/Type': 'Main Out',
+        'ESC/FC->ESC Connection/Protocol': 'DShot600'
+      },
+      reviewed: []
+    })
+    render(<AmcGuidedView {...base} progressKey={key} />)
+    await whenLoaded()
+
+    await waitFor(() =>
+      expect(document.getElementById('amc-field-ESC-ESC-FC-Telemetry-Protocol')).toBeTruthy()
+    )
+    const protocol = document.getElementById('amc-field-ESC-ESC-FC-Telemetry-Protocol') as HTMLElement
+    expect(protocol.tagName).toBe('SELECT')
+    expect(screen.queryByText(/same as the control connection/)).toBeNull()
+  })
+})

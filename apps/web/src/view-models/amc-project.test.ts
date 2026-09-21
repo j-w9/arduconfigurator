@@ -44,7 +44,11 @@ describe('buildProject', () => {
     expect(project.files.some((f) => f.filename === 'vehicle_components.json')).toBe(true)
     // A step that decides nothing still gets a file — "considered, nothing to
     // set" is a different statement from the file being absent.
-    expect(project.files.length).toBe(copter.length + 1)
+    const stepFiles = project.files.filter((f) => /^\d+_/.test(f.filename))
+    expect(stepFiles.length).toBe(copter.length)
+    // Named rather than counted, so adding a file to the directory does not
+    // read as a regression in the step files.
+    expect(project.files.some((f) => f.filename === 'complete.param')).toBe(true)
   })
 
   it('leaves out 00_default.param when the firmware defaults are unknown', () => {
@@ -432,5 +436,72 @@ describe('the directory AMC would have to open', () => {
       buildProject({ sequence: copter, fields, values, parameters: {}, baseComponents: base })
     )
     expect(doc.Components.Battery.Specifications['Number of cells']).toBe(12)
+  })
+})
+
+describe('a directory you can come back to', () => {
+  const componentsOf = (project: { files: readonly { filename: string; text: string }[] }, name: string) =>
+    project.files.find((f) => f.filename === name)
+
+  it('records where the operator got to, and resumes after it', () => {
+    // AMC's method runs over days. Reopening at step one is a surprising
+    // answer to a sequence someone had nearly finished.
+    const stopped = copter[4]!.filename
+    const project = buildProject({
+      sequence: copter,
+      fields,
+      values: declare(),
+      parameters: {},
+      lastWritten: stopped
+    })
+    expect(componentsOf(project, 'last_uploaded_filename.txt')?.text).toBe(`${stopped}\n`)
+
+    const read = readProject(copter, project.files, fields)
+    expect(read.resume?.reason).toBe('after-last-written')
+    expect(read.resume?.lastWritten).toBe(stopped)
+    expect(read.resume?.filename).toBe(copter[5]!.filename)
+  })
+
+  it('does not report its own bookkeeping as unread work', () => {
+    // complete.param and the rest are the directory describing itself. Listed
+    // as unread they would look like the operator's work being dropped.
+    const project = buildProject({
+      sequence: copter,
+      fields,
+      values: declare(),
+      parameters: { SOMETHING: 1 },
+      lastWritten: copter[2]!.filename
+    })
+    expect(readProject(copter, project.files, fields).unmatched).toEqual([])
+  })
+
+  it('compounds every decision into complete.param', () => {
+    const project = buildProject({ sequence: copter, fields, values: declare(), parameters: {} })
+    const complete = componentsOf(project, 'complete.param')!
+    // Each value says which step settled it, which a compounded file
+    // otherwise loses.
+    expect(complete.text).toMatch(/#\s+\d+_\w+\.param/)
+  })
+
+  it('writes the documentation into the files only when asked', () => {
+    const plain = buildProject({ sequence: copter, fields, values: declare(), parameters: {} })
+    const annotated = buildProject({
+      sequence: copter,
+      fields,
+      values: declare(),
+      parameters: {},
+      annotate: (name) => (name === 'INS_TCAL1_ENABLE' ? { label: 'Temperature calibration enable' } : undefined)
+    })
+
+    const plainStep = plain.files.find((f) => f.filename.includes('imu_temperature_calibration_setup'))!
+    const richStep = annotated.files.find((f) => f.filename.includes('imu_temperature_calibration_setup'))!
+    expect(plainStep.text).not.toMatch(/Temperature calibration enable/)
+    expect(richStep.text).toMatch(/# Temperature calibration enable/)
+
+    // And an annotated directory still reads back: annotation is comments, so
+    // it must not change what the files mean.
+    const read = readProject(copter, annotated.files, fields)
+    expect(read.unmatched).toEqual([])
+    expect(read.steps.length).toBe(copter.length)
   })
 })

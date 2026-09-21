@@ -19471,6 +19471,24 @@ button.mavlink-inspector__sent-row {
   color: var(--text-muted);
 }
 
+/* An ESC telemetry field whose control connection already settles it. */
+.amc-guided__field-mirrored input {
+  opacity: 0.75;
+  cursor: default;
+}
+
+.amc-guided__field-mirrored em {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.amc-guided__annotate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
 /* Reading the declaration off the vehicle. */
 .amc-guided__from-vehicle-row {
   display: flex;
