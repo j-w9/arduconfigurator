@@ -21,6 +21,7 @@ import {
   type ProjectFile,
   type VehicleProject,
   annotateParamFile,
+  backupFiles,
   buildZip,
   migrateProject,
   completeFile,
@@ -400,6 +401,21 @@ export function buildProject(inputs: ProjectExportInputs): ProjectExport {
     if (unaccounted.count > 0) {
       files.push({ filename: unaccounted.filename, text: unaccounted.text })
     }
+  }
+
+  // What the aircraft held before any of this touched it.
+  //
+  // Not a step and never read back. It exists for the moment a configuration
+  // turns out wrong and the tuning that actually flew is two weeks of edits
+  // ago — which is exactly when it can no longer be regenerated. AMC takes
+  // the first one only into a directory the method has not been run in, so
+  // reopening a project cannot overwrite the original vehicle with a record
+  // of what this tool has already made of it.
+  for (const backup of backupFiles(parameters, {
+    existing: files.map((file) => file.filename),
+    ...(lastWritten === undefined ? {} : { alreadyStarted: true })
+  })) {
+    files.push({ filename: backup.filename, text: backup.text })
   }
 
   // Written so the directory explains itself: a file opened months later, by

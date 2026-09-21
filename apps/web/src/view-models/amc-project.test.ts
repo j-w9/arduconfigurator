@@ -565,3 +565,44 @@ describe('the summary files beside the sequence', () => {
     expect(readProject(copter, project.files, fields).unmatched).toEqual([])
   })
 })
+
+describe('the snapshot of what the vehicle had first', () => {
+  // AMC takes this once and never again, so it records the aircraft before the
+  // method ran — the thing you want back when a configuration turns out wrong
+  // and the tuning that actually flew is two weeks of edits ago.
+
+  const live = { ATC_RAT_RLL_P: 0.135, LOG_BITMASK: 176126 }
+
+  it('is written into the directory beside the step files', () => {
+    const project = buildProject({ sequence: copter, fields, values: declare(), parameters: live })
+    const names = project.files.map((file) => file.filename)
+    expect(names).toContain('autobackup_00_before_ardupilot_methodic_configurator.param')
+    expect(names).toContain('autobackup_01.param')
+  })
+
+  it('is not taken again once the sequence has been written to the vehicle', () => {
+    // By then the aircraft has already been changed, so a snapshot of it is no
+    // longer a snapshot of what was there before.
+    const project = buildProject({
+      sequence: copter,
+      fields,
+      values: declare(),
+      parameters: live,
+      lastWritten: '05_board_orientation.param'
+    })
+    const names = project.files.map((file) => file.filename)
+    expect(names).not.toContain('autobackup_00_before_ardupilot_methodic_configurator.param')
+    expect(names).toContain('autobackup_01.param')
+  })
+
+  it('is absent when the vehicle has reported nothing', () => {
+    // An empty backup would assert that the aircraft was blank.
+    const project = buildProject({ sequence: copter, fields, values: declare(), parameters: {} })
+    expect(project.files.some((file) => file.filename.startsWith('autobackup_'))).toBe(false)
+  })
+
+  it('survives the round trip without being called unread work', () => {
+    const project = buildProject({ sequence: copter, fields, values: declare(), parameters: live })
+    expect(readProject(copter, project.files, fields).unmatched).toEqual([])
+  })
+})
