@@ -388,6 +388,23 @@ export interface StepRow {
    */
   readonly rebootParameters?: readonly string[]
   /**
+   * Parameters moved onto the connection this vehicle actually uses.
+   *
+   * The step is written against one port -- the sequence says SERIAL1 -- and
+   * the vehicle may use another. Without saying so, the table shows a
+   * parameter the step never mentions and the operator has no way to tell
+   * whether that is the sequence working or a mistake.
+   */
+  readonly renamed?: readonly { readonly from: string; readonly to: string }[]
+  /**
+   * Renames refused because the destination was already in use.
+   *
+   * AMC refuses these too and leaves them to the operator. That makes saying
+   * so the whole of the feature: the parameter stays on the port the sequence
+   * assumed, which is not the one this vehicle uses.
+   */
+  readonly renameConflicts?: readonly string[]
+  /**
    * Derived parameters this firmware does not have, which were not written.
    *
    * AMC drops these rather than writing a parameter the vehicle would reject.
@@ -805,6 +822,8 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
         : {}),
       title: titleOf(entry.filename),
       changes,
+      ...(outcome.renamed.length > 0 ? { renamed: outcome.renamed } : {}),
+      ...(outcome.renameConflicts.length > 0 ? { renameConflicts: outcome.renameConflicts } : {}),
       ...(outcome.dropped.length > 0 ? { dropped: outcome.dropped } : {}),
       ...(outcome.advisories.length > 0 ? { advisories: outcome.advisories } : {}),
       deletions: outcome.deletions,

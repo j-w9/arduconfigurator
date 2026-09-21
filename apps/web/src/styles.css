@@ -20021,3 +20021,10 @@ button.mavlink-inspector__sent-row {
   color: var(--text-muted);
   margin: 8px 0;
 }
+
+/* Parameters the sequence wrote for one port, moved onto the one this vehicle
+   declared. Quiet: it is the sequence working, not a problem. */
+.amc-step__renamed {
+  color: var(--text-muted);
+  margin: 8px 0;
+}

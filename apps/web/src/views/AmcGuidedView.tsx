@@ -694,6 +694,41 @@ function StepCard({
             </table>
           ) : null}
 
+          {row.renamed && row.renamed.length > 0 ? (
+            <p className="amc-step__renamed">
+              {/* The sequence is written against one port and this vehicle
+                  uses another. Without this the table shows a parameter the
+                  step never mentions, and there is no way to tell the
+                  sequence working from a mistake. */}
+              Moved onto the connection you declared:{' '}
+              {row.renamed.map((rename, index) => (
+                <span key={rename.from}>
+                  {index > 0 ? ', ' : ''}
+                  <code>{rename.from}</code> → <code>{rename.to}</code>
+                </span>
+              ))}
+              .
+            </p>
+          ) : null}
+
+          {row.renameConflicts && row.renameConflicts.length > 0 ? (
+            <p className="amc-step__advisory">
+              {/* AMC refuses these and leaves them to the operator, which
+                  makes saying so the whole of the feature: the parameter
+                  stays on the port the sequence assumed. */}
+              <strong>Left where the sequence put them</strong>{' '}
+              {row.renameConflicts.map((parameter, index) => (
+                <span key={parameter}>
+                  {index > 0 ? ', ' : ''}
+                  <code>{parameter}</code>
+                </span>
+              ))}{' '}
+              could not move onto your connection because something already
+              holds the name. Worth a look — they are still set for the port the
+              sequence assumed.
+            </p>
+          ) : null}
+
           {row.advisories?.map((advisory) => (
             // Not an error and not a value: a conclusion about THIS vehicle
             // that the sequence cannot express as a parameter. AMC raises
