@@ -3333,11 +3333,6 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
-.status-dash-toolbar__hint {
-  color: var(--text-muted);
-  font-size: var(--text-md);
-}
-
 .status-dash-card {
   position: relative;
   min-width: 0;

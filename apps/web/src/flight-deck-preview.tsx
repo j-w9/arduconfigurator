@@ -33,8 +33,13 @@ interface FlightDeckPreviewProps {
   testId?: string
   // Overrides the caption's source line. Defaults to the FC-attitude wording;
   // the receiver stick preview passes its own (it's driven by sticks, not the
-  // flight controller's attitude telemetry).
+  // flight controller's attitude telemetry). An empty string hides it.
   captionLabel?: string
+  /** Hides the "Absolute heading" / "Bench-forward zeroed" status word.
+   *  The Set Bench Forward / Clear pair already says which state you are in —
+   *  Clear only exists once an offset is saved — so on a dense surface the
+   *  word is a label for "nothing special is happening". */
+  showHeadingReference?: boolean
 }
 
 interface ModelSceneState {
@@ -702,7 +707,8 @@ export function FlightDeckPreview({
   mini = false,
   liftNorm = 0.5,
   testId,
-  captionLabel
+  captionLabel,
+  showHeadingReference = true
 }: FlightDeckPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -1044,7 +1050,9 @@ export function FlightDeckPreview({
             <strong>{flightMode ?? 'No active mode'}</strong>
           </div>
           <div className="flight-deck__caption-actions">
-            <span className={`flight-deck__heading-reference${benchHeadingOffsetDeg !== null ? ' is-relative' : ''}`}>{headingStatusLabel}</span>
+            {showHeadingReference ? (
+              <span className={`flight-deck__heading-reference${benchHeadingOffsetDeg !== null ? ' is-relative' : ''}`}>{headingStatusLabel}</span>
+            ) : null}
             <div className="flight-deck__heading-actions">
               <button
                 type="button"

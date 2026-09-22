@@ -117,10 +117,7 @@ import {
   formatParameterSync,
   formatRcLink,
   formatStatHours,
-  formatBatteryTelemetry,
-  formatDegreeTelemetry,
-  formatHeadingTelemetry,
-  formatVehicleSystemStatus
+  formatBatteryTelemetry
 } from './status-formatters'
 import {
   formatParameterDraftValue,
@@ -7977,30 +7974,6 @@ export function App() {
       )
     },
     {
-      id: 'instruments',
-      label: 'Instruments',
-      node: (
-        <article className="setup-gui-box">
-          <div className="setup-gui-box__titlebar">
-            <strong>Instruments</strong>
-            <StatusBadge tone={snapshot.liveVerification.attitudeTelemetry.verified ? 'success' : 'warning'}>
-              {snapshot.liveVerification.attitudeTelemetry.verified ? 'live' : 'waiting'}
-            </StatusBadge>
-          </div>
-          <div className="setup-gui-box__body">
-            <div className="setup-gui-box__kv-list">
-              <div className="setup-gui-box__kv-row"><span>Flight mode</span><strong>{snapshot.vehicle?.flightMode ?? 'Waiting'}</strong></div>
-              <div className="setup-gui-box__kv-row" data-testid="setup-vehicle-system-status"><span>System state</span><strong>{formatVehicleSystemStatus(snapshot.vehicle?.systemStatus)}</strong></div>
-              <div className="setup-gui-box__kv-row"><span>Roll</span><strong>{formatDegreeTelemetry(snapshot.liveVerification.attitudeTelemetry.rollDeg)}</strong></div>
-              <div className="setup-gui-box__kv-row"><span>Pitch</span><strong>{formatDegreeTelemetry(snapshot.liveVerification.attitudeTelemetry.pitchDeg)}</strong></div>
-              <div className="setup-gui-box__kv-row"><span>Heading</span><strong>{formatHeadingTelemetry(snapshot.liveVerification.attitudeTelemetry.yawDeg)}</strong></div>
-              <div className="setup-gui-box__kv-row"><span>Link state</span><strong>{snapshot.liveVerification.attitudeTelemetry.verified ? 'Synced' : 'Waiting'}</strong></div>
-            </div>
-          </div>
-        </article>
-      )
-    },
-    {
       id: 'guided-setup',
       label: 'Guided setup',
       node: (
@@ -8066,7 +8039,6 @@ export function App() {
     { id: 'statistics', label: 'Statistics', column: 'midcol' },
     { id: 'notices', label: 'Recent Notices', column: 'noticecol' },
     { id: 'system-info', label: 'System Info', column: 'sidebar' },
-    { id: 'instruments', label: 'Instruments', column: 'sidebar' },
     { id: 'guided-setup', label: 'Guided setup', column: 'sidebar' }
   ]
   const statusDashboard = useStatusDashboardLayout(statusDashboardSpecs)
@@ -8413,14 +8385,12 @@ export function App() {
                      *  on a phone the page is one column and the default order
                      *  stands. */}
                     <StatusDashboardProvider controller={statusDashboard} cards={statusDashboardCards}>
-                    {statusDashboard.customisable ? (
+                    {/* The toolbar is only the Tidy/Reset pair now that the
+                     *  drag-and-drop instructions are gone, so it renders only
+                     *  once there is an arrangement to tidy or reset —
+                     *  otherwise it was an empty flex row still taking a gap. */}
+                    {statusDashboard.customisable && statusDashboard.customised ? (
                       <div className="status-dash-toolbar" data-testid="status-dash-toolbar">
-                        <span className="status-dash-toolbar__hint">
-                          Drag a card by its ⠿ handle to put it anywhere — beside another card, into a gap to open a new
-                          column, or above or below everything for a new row. Drag a column's right edge to set its
-                          width, or a card's bottom edge to set its height. Keyboard: focus a handle and use the arrow
-                          keys, with shift for width.
-                        </span>
                         {statusDashboard.customised ? (
                           <>
                             {/* Tidy is the way out of a mess that is not a full
@@ -8465,9 +8435,15 @@ export function App() {
                           Level the aircraft on the desk, verify the model response, then continue into the deeper ArduPilot workflow.
                         </p>
 
+                        {/* No caption source line and no heading-reference
+                         *  word here: the card is titled "Craft View" and the
+                         *  Set Bench Forward / Clear pair already says which
+                         *  heading state you are in. */}
                         <AttitudePreview
                           snapshot={snapshot}
                           showReadouts={false}
+                          captionLabel=""
+                          showHeadingReference={false}
                           frameClassLabel={airframe.frameClassLabel}
                           frameTypeLabel={airframe.frameTypeLabel}
                         />

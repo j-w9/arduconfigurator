@@ -619,7 +619,9 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('setup-prearm-summary')).toContainText('checks passing')
     await expect(page.getByTestId('flight-deck-zero-heading-button')).toBeVisible()
     await page.getByTestId('flight-deck-zero-heading-button').click()
-    await expect(page.getByText('Bench-forward zeroed')).toBeVisible()
+    // The "Bench-forward zeroed" word is gone from this card (the Craft View
+    // leads with the model, not with labels). Clear only exists once an offset
+    // is saved, so its appearance is the same proof that zeroing took effect.
     await expect(page.getByTestId('flight-deck-clear-heading-button')).toBeVisible()
     await expect(page.getByTestId('setup-gps-map-widget')).toBeVisible()
     await expect(page.getByTestId('setup-start-guided-button')).toBeVisible()
