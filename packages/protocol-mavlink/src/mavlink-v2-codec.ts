@@ -46,6 +46,7 @@ import type {
   DistanceSensorMessage,
   EscTelemetryMessage,
   RcChannelsMessage,
+  RcChannelsRawMessage,
   SetupSigningMessage,
   StatusTextMessage,
   SysStatusMessage,
@@ -648,6 +649,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeAttitudePayload(message)
     case 'RC_CHANNELS':
       return encodeRcChannelsPayload(message)
+    case 'RC_CHANNELS_RAW':
+      return encodeRcChannelsRawPayload(message)
     case 'SERVO_OUTPUT_RAW':
       return encodeServoOutputRawPayload(message)
     case 'FILE_TRANSFER_PROTOCOL':
@@ -725,6 +728,8 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
       return decodeScaledImuPayload(payload)
     case MAVLINK_MESSAGE_IDS.RC_CHANNELS:
       return decodeRcChannelsPayload(payload)
+    case MAVLINK_MESSAGE_IDS.RC_CHANNELS_RAW:
+      return decodeRcChannelsRawPayload(payload)
     case MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW:
       return decodeServoOutputRawPayload(payload)
     case MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL:
@@ -802,6 +807,8 @@ function messageIdFor(message: MavlinkMessage): number {
       return MAVLINK_MESSAGE_IDS.ATTITUDE
     case 'RC_CHANNELS':
       return MAVLINK_MESSAGE_IDS.RC_CHANNELS
+    case 'RC_CHANNELS_RAW':
+      return MAVLINK_MESSAGE_IDS.RC_CHANNELS_RAW
     case 'SERVO_OUTPUT_RAW':
       return MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW
     case 'FILE_TRANSFER_PROTOCOL':
@@ -1184,6 +1191,38 @@ function encodeRcChannelsPayload(message: RcChannelsMessage): Uint8Array {
   view.setUint8(40, message.channelCount)
   view.setUint8(41, message.rssi)
   return payload
+}
+
+/**
+ * Wire order is by descending type size, so `port` sits AFTER the eight
+ * channels even though the XML lists it second — verified against the
+ * generated packer (chan1@4 … chan8@18, port@20, rssi@21, 22 bytes total).
+ */
+function encodeRcChannelsRawPayload(message: RcChannelsRawMessage): Uint8Array {
+  const payload = new Uint8Array(MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.RC_CHANNELS_RAW])
+  const view = new DataView(payload.buffer)
+  view.setUint32(0, message.timeBootMs >>> 0, true)
+  for (let index = 0; index < 8; index += 1) {
+    view.setUint16(4 + index * 2, message.channels[index] ?? 0xffff, true)
+  }
+  view.setUint8(20, message.port)
+  view.setUint8(21, message.rssi)
+  return payload
+}
+
+function decodeRcChannelsRawPayload(payload: Uint8Array): RcChannelsRawMessage {
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength)
+  const channels: number[] = []
+  for (let index = 0; index < 8; index += 1) {
+    channels.push(view.getUint16(4 + index * 2, true))
+  }
+  return {
+    type: 'RC_CHANNELS_RAW',
+    timeBootMs: view.getUint32(0, true),
+    port: view.getUint8(20),
+    channels,
+    rssi: view.getUint8(21)
+  }
 }
 
 function decodeRcChannelsPayload(payload: Uint8Array): RcChannelsMessage {

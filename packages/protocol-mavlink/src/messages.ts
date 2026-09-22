@@ -34,6 +34,29 @@ export interface RcChannelsMessage {
 }
 
 /**
+ * The MAVLink1-era RC message: eight channels and a `port` selecting which bank
+ * of eight they are, with no channel count of its own.
+ *
+ * ArduPilot only sends this to a GCS talking MAVLink1 (GCS_Common.cpp
+ * `send_rc_channels_raw` returns early unless `sending_mavlink1()`), so on a v2
+ * link RC_CHANNELS is what arrives and this never does. It is decoded as a
+ * FALLBACK for links where 65 never shows up — a bridge or an OSD-oriented
+ * telemetry path that only forwards the legacy message — so those setups show
+ * real sticks instead of an empty channel list.
+ *
+ * `channels` is the raw eight; `port` is 0 for channels 1-8 (ArduPilot always
+ * sends 0). A consumer wanting absolute channel numbers must offset by
+ * `port * 8`.
+ */
+export interface RcChannelsRawMessage {
+  type: 'RC_CHANNELS_RAW'
+  timeBootMs: number
+  port: number
+  channels: number[]
+  rssi: number
+}
+
+/**
  * What the flight controller is actually driving each output to.
  *
  * The point of having it: SERVOn_FUNCTION says what an output is FOR, and the
@@ -612,6 +635,7 @@ export interface SetupSigningMessage {
 export type MavlinkMessage =
   | HeartbeatMessage
   | RcChannelsMessage
+  | RcChannelsRawMessage
   | ServoOutputRawMessage
   | SysStatusMessage
   | OpticalFlowMessage

@@ -8585,9 +8585,15 @@ export function App() {
                           </div>
 
                           <div className="setup-wizard__task-visual">
+                            {/* Same as the Craft View: the step's own heading
+                             *  and copy say what this is, and the standby
+                             *  overlay covers the no-telemetry case, so the
+                             *  source line and heading word are noise here. */}
                             <AttitudePreview
                               snapshot={snapshot}
                               compact
+                              captionLabel=""
+                              showHeadingReference={false}
                               frameClassLabel={airframe.frameClassLabel}
                               frameTypeLabel={airframe.frameTypeLabel}
                             />
