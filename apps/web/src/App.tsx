@@ -8347,14 +8347,12 @@ export function App() {
                      *  on a phone the page is one column and the default order
                      *  stands. */}
                     <StatusDashboardProvider controller={statusDashboard} cards={statusDashboardCards}>
-                    {statusDashboard.customisable ? (
+                    {/* The toolbar is only the Tidy/Reset pair now that the
+                     *  drag-and-drop instructions are gone, so it renders only
+                     *  once there is an arrangement to tidy or reset —
+                     *  otherwise it was an empty flex row still taking a gap. */}
+                    {statusDashboard.customisable && statusDashboard.customised ? (
                       <div className="status-dash-toolbar" data-testid="status-dash-toolbar">
-                        <span className="status-dash-toolbar__hint">
-                          Drag a card by its ⠿ handle to put it anywhere — beside another card, into a gap to open a new
-                          column, or above or below everything for a new row. Drag a column's right edge to set its
-                          width, or a card's bottom edge to set its height. Keyboard: focus a handle and use the arrow
-                          keys, with shift for width.
-                        </span>
                         {statusDashboard.customised ? (
                           <>
                             {/* Tidy is the way out of a mess that is not a full
@@ -8399,9 +8397,15 @@ export function App() {
                           Level the aircraft on the desk, verify the model response, then continue into the deeper ArduPilot workflow.
                         </p>
 
+                        {/* No caption source line and no heading-reference
+                         *  word here: the card is titled "Craft View" and the
+                         *  Set Bench Forward / Clear pair already says which
+                         *  heading state you are in. */}
                         <AttitudePreview
                           snapshot={snapshot}
                           showReadouts={false}
+                          captionLabel=""
+                          showHeadingReference={false}
                           frameClassLabel={airframe.frameClassLabel}
                           frameTypeLabel={airframe.frameTypeLabel}
                         />

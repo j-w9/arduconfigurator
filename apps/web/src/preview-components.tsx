@@ -34,13 +34,18 @@ export function AttitudePreview({
   compact = false,
   showReadouts = true,
   frameClassLabel,
-  frameTypeLabel
+  frameTypeLabel,
+  captionLabel,
+  showHeadingReference
 }: {
   snapshot: ConfiguratorSnapshot
   compact?: boolean
   showReadouts?: boolean
   frameClassLabel?: string
   frameTypeLabel?: string
+  /** Empty string hides the caption's source line entirely. */
+  captionLabel?: string
+  showHeadingReference?: boolean
 }) {
   return (
     <FlightDeckPreview
@@ -57,6 +62,8 @@ export function AttitudePreview({
       quadFrameType={readRoundedParameter(snapshot, 'Q_FRAME_TYPE')}
       compact={compact}
       showReadouts={showReadouts}
+      captionLabel={captionLabel}
+      showHeadingReference={showHeadingReference}
       testId={compact ? undefined : 'setup-craft-preview'}
     />
   )
