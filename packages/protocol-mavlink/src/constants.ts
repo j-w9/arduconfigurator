@@ -21,6 +21,7 @@ export const MAVLINK_MESSAGE_IDS = {
   ATTITUDE_QUATERNION: 31,
   SCALED_IMU: 26,
   RC_CHANNELS: 65,
+  RC_CHANNELS_RAW: 35,
   SERVO_OUTPUT_RAW: 36,
   FILE_TRANSFER_PROTOCOL: 110,
   COMMAND_ACK: 77,
@@ -81,6 +82,12 @@ export const MAVLINK_MESSAGE_CRCS: Record<number, number> = {
   // crc_extra 170 (pymavlink ardupilotmega SCALED_IMU) — decode-only, for IMU temp.
   [MAVLINK_MESSAGE_IDS.SCALED_IMU]: 170,
   [MAVLINK_MESSAGE_IDS.RC_CHANNELS]: 118,
+  // crc_extra 244 (c_library_v2 mavlink_msg_rc_channels_raw.h). Decode-only
+  // fallback: ArduPilot sends this ONLY to a MAVLink1 GCS
+  // (GCS_Common.cpp send_rc_channels_raw -> `if (!sending_mavlink1()) return;`),
+  // so on a v2 link RC_CHANNELS is what arrives. It is decoded anyway because a
+  // bridge or OSD-style link can forward it when 65 never shows up.
+  [MAVLINK_MESSAGE_IDS.RC_CHANNELS_RAW]: 244,
   // crc_extra 222, computed from the message definition rather than recalled:
   // the same routine reproduces HEARTBEAT=50 and GPS_RAW_INT=24 against the
   // values already in this table. Extension fields (servo9..16) are excluded
@@ -143,6 +150,8 @@ export const MAVLINK_PAYLOAD_LENGTHS: Record<number, number> = {
   // time_boot_ms(4) + xacc..zmag(9×2=18) + temperature(2) = 24.
   [MAVLINK_MESSAGE_IDS.SCALED_IMU]: 24,
   [MAVLINK_MESSAGE_IDS.RC_CHANNELS]: 42,
+  // time_boot_ms(4) + chan1..chan8(16) + port(1) + rssi(1) = 22.
+  [MAVLINK_MESSAGE_IDS.RC_CHANNELS_RAW]: 22,
   [MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW]: 37,
   [MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL]: 254,
   [MAVLINK_MESSAGE_IDS.COMMAND_ACK]: 10,
@@ -200,6 +209,7 @@ export const MAVLINK_MIN_PAYLOAD_LENGTHS: Record<number, number> = {
   // sender may truncate it when zero, so the min must not require it.
   [MAVLINK_MESSAGE_IDS.SCALED_IMU]: 22,
   [MAVLINK_MESSAGE_IDS.RC_CHANNELS]: 42,
+  [MAVLINK_MESSAGE_IDS.RC_CHANNELS_RAW]: 22,
   [MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW]: 21,
   [MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL]: 254,
   [MAVLINK_MESSAGE_IDS.COMMAND_ACK]: 3,

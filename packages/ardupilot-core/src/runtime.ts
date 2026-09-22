@@ -19,6 +19,7 @@ import type {
   MavlinkEnvelope,
   ParamValueMessage,
   RcChannelsMessage,
+  RcChannelsRawMessage,
   OpticalFlowMessage,
   DistanceSensorMessage,
   EscTelemetryMessage,
@@ -367,6 +368,15 @@ const PROXIMITY_SENSOR_ID_START = 10
  * hard with the parameter download, which shares STREAM_PARAMS.
  */
 const AVAILABLE_MODES_INTERVAL_US = 100000
+/**
+ * How long RC_CHANNELS_RAW defers to a recent RC_CHANNELS before it is allowed
+ * to drive the RC state. RC_CHANNELS is requested at 20 Hz, so this is ~20
+ * missed frames — long enough that jitter or a dropped frame never demotes a
+ * 16 channel receiver to the legacy message's eight, short enough that a link
+ * which genuinely stops sending 65 recovers within a second.
+ */
+const RC_CHANNELS_FALLBACK_AFTER_MS = 1000
+
 const LIVE_TELEMETRY_REQUESTS = [
   {
     // The RAW receiver report. Distinct from GLOBAL_POSITION_INT, which only
@@ -541,6 +551,9 @@ export class ArduPilotConfiguratorRuntime {
   // Coalesces high-rate emit()s into at most one snapshot notify per
   // animation frame. Undefined when no flush is pending.
   private emitHandle: number | undefined
+  /** When RC_CHANNELS (65) last arrived, so the MAVLink1 RC_CHANNELS_RAW
+   *  fallback can tell "65 is not coming" from "65 is fine, this is a stray". */
+  private rcChannelsSeenAtMs: number | undefined
   // setTimeout fallback for when requestAnimationFrame is suspended
   // (backgrounded tab). Whichever of rAF / timer fires first flushes and
   // cancels the other.
@@ -2456,6 +2469,9 @@ export class ArduPilotConfiguratorRuntime {
       case 'RC_CHANNELS':
         this.processRcChannels(envelope.message)
         break
+      case 'RC_CHANNELS_RAW':
+        this.processRcChannelsRaw(envelope.message)
+        break
       case 'GLOBAL_POSITION_INT':
         this.processGlobalPosition(envelope.message)
         break
@@ -3001,11 +3017,77 @@ export class ArduPilotConfiguratorRuntime {
   }
 
   private processRcChannels(message: RcChannelsMessage): void {
-    const validChannels = message.channels.filter((value, index) => index < message.channelCount && isPwmChannelValue(value))
+    this.rcChannelsSeenAtMs = Date.now()
+
+    // `chancount` UNDER-REPORTS on some links, so it cannot bound the list.
+    //
+    // ArduPilot fills the frame with `rc().get_radio_in(values, 18)`, which
+    // writes MIN(18, NUM_RC_CHANNELS) = 16 real channels from each RC_Channel's
+    // stored radio_in, and separately sets chancount to
+    // MIN(NUM_RC_CHANNELS, hal.rcin->num_channels()) — see GCS_Common.cpp
+    // send_rc_channels() and RC_Channels.cpp. Those two disagree whenever the
+    // backend reports fewer channels than the frame actually carries, which is
+    // what a MAVLink-over-ELRS link was seen doing: 16 channels of live PWM in
+    // the message, chancount 8. Slicing by chancount threw away eight moving
+    // channels and made the configurator disagree with Mission Planner, which
+    // reads the values and ignores the count.
+    //
+    // So trust the DATA: take everything up to the last channel carrying a
+    // plausible PWM value, and never report fewer than chancount claims.
+    let lastValidIndex = -1
+    for (let index = 0; index < message.channels.length; index += 1) {
+      if (isPwmChannelValue(message.channels[index]!)) {
+        lastValidIndex = index
+      }
+    }
+    const channelCount = Math.max(message.channelCount, lastValidIndex + 1)
+    const validChannels = message.channels.filter((value, index) => index < channelCount && isPwmChannelValue(value))
+
     this.liveVerification.rcInput = {
-      verified: message.channelCount > 0 && validChannels.length > 0,
-      channelCount: message.channelCount,
-      channels: message.channels.slice(0, Math.max(message.channelCount, 8)),
+      verified: channelCount > 0 && validChannels.length > 0,
+      channelCount,
+      channels: message.channels.slice(0, Math.max(channelCount, 8)),
+      rssi: message.rssi === 255 ? undefined : message.rssi,
+      lastSeenAtMs: Date.now()
+    }
+    this.liveVerification.satisfiedSignals = recomputeSatisfiedSignals(this.liveVerification)
+  }
+
+  /**
+   * MAVLink1-era RC message, used ONLY when RC_CHANNELS is not arriving.
+   *
+   * ArduPilot sends this to a MAVLink1 GCS only, so on a healthy v2 link it
+   * never appears and this does nothing. It matters on links where 65 never
+   * shows up — a bridge or OSD-oriented telemetry path that forwards just the
+   * legacy message — where the alternative is an empty channel list.
+   *
+   * It must never overwrite a live RC_CHANNELS reading: this carries eight
+   * channels and no count, so letting it win would silently truncate a 16
+   * channel receiver to 8. Hence the deference window — if 65 has been seen
+   * within it, this frame is dropped. The window is deliberately several times
+   * the 20 Hz request interval so ordinary jitter or a dropped frame does not
+   * hand control to the legacy message.
+   */
+  private processRcChannelsRaw(message: RcChannelsRawMessage): void {
+    if (this.rcChannelsSeenAtMs !== undefined && Date.now() - this.rcChannelsSeenAtMs < RC_CHANNELS_FALLBACK_AFTER_MS) {
+      return
+    }
+    // `port` banks the channels: 0 is 1-8, 1 is 9-16. ArduPilot always sends 0,
+    // but honouring it means a sender that banks does not overwrite channel 1
+    // with channel 9.
+    const offset = message.port * 8
+    const channels = [...(this.liveVerification.rcInput.channels ?? [])]
+    for (let index = 0; index < message.channels.length; index += 1) {
+      channels[offset + index] = message.channels[index]!
+    }
+    while (channels.length < 8) {
+      channels.push(0)
+    }
+    const validChannels = channels.filter((value) => isPwmChannelValue(value))
+    this.liveVerification.rcInput = {
+      verified: validChannels.length > 0,
+      channelCount: channels.length,
+      channels,
       rssi: message.rssi === 255 ? undefined : message.rssi,
       lastSeenAtMs: Date.now()
     }
