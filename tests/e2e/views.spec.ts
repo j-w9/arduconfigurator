@@ -6709,7 +6709,7 @@ test.describe('Status & Info dashboard layout', () => {
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
     expect(await columnIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
     expect(await columnIds(page, 'noticecol')).toEqual(['notices'])
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
     // Reset only appears once there is something to reset — an always-on
     // "Reset Layout" on a page nobody has customised is just noise.
     await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
@@ -6748,7 +6748,7 @@ test.describe('Status & Info dashboard layout', () => {
     await page.getByTestId('status-dash-handle-guided-setup').focus()
     await page.keyboard.press('ArrowLeft')
     await expect.poll(() => columnIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info'])
 
     // The move is saved, so it survives a reload.
     await page.reload()
@@ -6758,7 +6758,7 @@ test.describe('Status & Info dashboard layout', () => {
     expect(await columnIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
 
     await page.getByTestId('status-dash-reset-layout').click()
-    await expect.poll(() => columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    await expect.poll(() => columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
     await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
     // Reset CLEARS the saved arrangement rather than saving a copy of today's
     // default, so a later default change still reaches the operator.
@@ -6800,7 +6800,7 @@ test.describe('Status & Info dashboard layout', () => {
     // The absent cards are simply not placed; every card that IS present is.
     expect(await columnIds(page, 'sensors')).toEqual(['gps'])
     expect(await columnIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
   })
 
   test('a column can be widened, and the width is saved', async ({ page }) => {
@@ -6954,7 +6954,7 @@ test.describe('Status & Info dashboard layout', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
   })
 
   test('a layout saved by the zone model is dropped, not half-read', async ({ page }) => {
@@ -6973,7 +6973,7 @@ test.describe('Status & Info dashboard layout', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
     await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
   })
 
@@ -7003,7 +7003,7 @@ test.describe('Status & Info dashboard layout', () => {
     await expect(page.getByTestId('status-dash-toolbar')).toHaveCount(0)
     await expect(page.locator('.status-dash-card__handle')).toHaveCount(0)
     await expect(page.locator('.status-dash-col__width')).toHaveCount(0)
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'instruments', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
     // Every column is full width, so nothing sits beside anything else.
     const lefts = await page.$$eval('[data-status-dash-col-region="main"]', (nodes) =>
       nodes.map((node) => Math.round(node.getBoundingClientRect().left))

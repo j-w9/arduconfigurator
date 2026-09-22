@@ -117,10 +117,7 @@ import {
   formatParameterSync,
   formatRcLink,
   formatStatHours,
-  formatBatteryTelemetry,
-  formatDegreeTelemetry,
-  formatHeadingTelemetry,
-  formatVehicleSystemStatus
+  formatBatteryTelemetry
 } from './status-formatters'
 import {
   formatParameterDraftValue,
@@ -7911,30 +7908,6 @@ export function App() {
       )
     },
     {
-      id: 'instruments',
-      label: 'Instruments',
-      node: (
-        <article className="setup-gui-box">
-          <div className="setup-gui-box__titlebar">
-            <strong>Instruments</strong>
-            <StatusBadge tone={snapshot.liveVerification.attitudeTelemetry.verified ? 'success' : 'warning'}>
-              {snapshot.liveVerification.attitudeTelemetry.verified ? 'live' : 'waiting'}
-            </StatusBadge>
-          </div>
-          <div className="setup-gui-box__body">
-            <div className="setup-gui-box__kv-list">
-              <div className="setup-gui-box__kv-row"><span>Flight mode</span><strong>{snapshot.vehicle?.flightMode ?? 'Waiting'}</strong></div>
-              <div className="setup-gui-box__kv-row" data-testid="setup-vehicle-system-status"><span>System state</span><strong>{formatVehicleSystemStatus(snapshot.vehicle?.systemStatus)}</strong></div>
-              <div className="setup-gui-box__kv-row"><span>Roll</span><strong>{formatDegreeTelemetry(snapshot.liveVerification.attitudeTelemetry.rollDeg)}</strong></div>
-              <div className="setup-gui-box__kv-row"><span>Pitch</span><strong>{formatDegreeTelemetry(snapshot.liveVerification.attitudeTelemetry.pitchDeg)}</strong></div>
-              <div className="setup-gui-box__kv-row"><span>Heading</span><strong>{formatHeadingTelemetry(snapshot.liveVerification.attitudeTelemetry.yawDeg)}</strong></div>
-              <div className="setup-gui-box__kv-row"><span>Link state</span><strong>{snapshot.liveVerification.attitudeTelemetry.verified ? 'Synced' : 'Waiting'}</strong></div>
-            </div>
-          </div>
-        </article>
-      )
-    },
-    {
       id: 'guided-setup',
       label: 'Guided setup',
       node: (
@@ -8000,7 +7973,6 @@ export function App() {
     { id: 'statistics', label: 'Statistics', column: 'midcol' },
     { id: 'notices', label: 'Recent Notices', column: 'noticecol' },
     { id: 'system-info', label: 'System Info', column: 'sidebar' },
-    { id: 'instruments', label: 'Instruments', column: 'sidebar' },
     { id: 'guided-setup', label: 'Guided setup', column: 'sidebar' }
   ]
   const statusDashboard = useStatusDashboardLayout(statusDashboardSpecs)
