@@ -11,6 +11,8 @@ import {
   WebSocketTransport,
   createRecordedSession,
   createRecordedSessionEvent,
+  getAvailableWebSerialPorts,
+  getWebSerialNavigator,
   parseRecordedSession,
   serializeRecordedSession
 } from '../packages/transport/dist/index.js'
@@ -196,6 +198,27 @@ test('WebSocketTransport: disconnect() during connect detaches connect-phase lis
   )
 
   await transport.disconnect()
+})
+
+test('getWebSerialNavigator answers "no Web Serial" where there is no navigator at all', async () => {
+  // `navigator` is a bare global reference, so on a runtime without one
+  // (node 20, and any node with the global removed) reading it THROWS rather
+  // than yielding undefined — taking isSupported() and
+  // getAvailableWebSerialPorts() down with a ReferenceError instead of the
+  // negative answer both are written to return. Node 21+ ships a navigator,
+  // so this is the only way to reproduce it here.
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  delete globalThis.navigator
+  assert.equal(typeof navigator, 'undefined', 'precondition: no navigator global')
+  try {
+    assert.equal(getWebSerialNavigator(), undefined)
+    assert.equal(WebSerialTransport.isSupported(), false)
+    assert.deepEqual(await getAvailableWebSerialPorts(), [])
+  } finally {
+    if (saved) {
+      Object.defineProperty(globalThis, 'navigator', saved)
+    }
+  }
 })
 
 test('WebSerialTransport reports an error when the selected port fails to open', async () => {
