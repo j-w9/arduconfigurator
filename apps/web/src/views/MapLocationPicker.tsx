@@ -36,7 +36,11 @@ export function MapLocationPicker({
       zoom: 3,
       worldCopyJump: true
     })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // Served from this origin by functions/tiles, not fetched from OSM
+    // directly: cross-origin isolation (which the WebAssembly simulator needs)
+    // blocks subresources without a CORP header, and OSM's tile servers send
+    // none. The proxy also gives OSM the caching layer their policy asks for.
+    L.tileLayer('/tiles/{z}/{x}/{y}', {
       maxZoom: 19,
       attribution: '© OpenStreetMap contributors'
     }).addTo(map)

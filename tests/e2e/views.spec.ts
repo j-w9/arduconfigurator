@@ -668,7 +668,7 @@ test.describe('Parameters tab (expert-only)', () => {
 })
 
 test.describe('tab order', () => {
-  test('nav leads with Status & Info, the two guided tabs, then Config, Peripherals, Calibration', async ({ page }) => {
+  test('nav leads with Status & Info, the guided tabs and Simulator, then Config, Peripherals', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     // The first six nav buttons follow the canonical order (Status & Info,
@@ -687,9 +687,11 @@ test.describe('tab order', () => {
       'setup',
       'guided-setup',
       'amc-guided',
+      // ArduPilot compiled to WebAssembly. Sits with the guided tabs because
+      // it is the same kind of thing: somewhere to work with nothing plugged in.
+      'sitl',
       'config',
-      'peripherals',
-      'calibration'
+      'peripherals'
     ])
     // The Setup tab is now labelled "Status & Info".
     await expect(page.getByTestId('view-button-setup')).toContainText('Status & Info')

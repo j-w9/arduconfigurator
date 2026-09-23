@@ -101,14 +101,19 @@ describe('buildVisibleAppViews', () => {
     const result = ids(
       buildVisibleAppViews(baseInputs({ appViews: [view('modes'), view('setup'), view('mystery-view')] }))
     )
-    // setup leads, guided-setup second, then AMC Guided, then Peripherals and
-    // Calibration, modes before the tools cluster, unknown id last. (Config is
-    // absent from this input, so Peripherals lands fourth.)
+    // setup leads, guided-setup second, then AMC Guided, then the Simulator,
+    // then Peripherals and Calibration, modes before the tools cluster,
+    // unknown id last. (Config is absent from this input, so Peripherals
+    // lands fifth.)
+    //
+    // The Simulator sits with the two guided tabs because it is the same kind
+    // of thing: somewhere to work without a vehicle in front of you.
     expect(result[0]).toBe('setup')
     expect(result[1]).toBe('guided-setup')
     expect(result[2]).toBe('amc-guided')
-    expect(result[3]).toBe('peripherals')
-    expect(result[4]).toBe('calibration')
+    expect(result[3]).toBe('sitl')
+    expect(result[4]).toBe('peripherals')
+    expect(result[5]).toBe('calibration')
     expect(result.indexOf('modes')).toBeLessThan(result.indexOf('can'))
     expect(result[result.length - 1]).toBe('mystery-view')
   })

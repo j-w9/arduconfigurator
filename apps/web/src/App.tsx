@@ -374,6 +374,7 @@ import { buildRelayGroups } from './view-models/relay-groups'
 import { buildSetupFlowSections } from './view-models/setup-flow-sections'
 import { buildGuidedSetupOverview } from './view-models/guided-setup-overview'
 import { AmcGuidedView } from './views/AmcGuidedView'
+import { SitlSimView, type SitlPhase } from './views/SitlSimView'
 import { draftsFrom, sequenceForFirmware } from './view-models/amc-guided'
 import { deriveAmcProgressKey } from './amc-progress-storage'
 import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
@@ -565,6 +566,9 @@ function isOutputAdditionalExcludedParamId(parameterId: string): boolean {
   )
 }
 
+/** How much of SITL's console to keep. It is chatty and this is a diagnostic. */
+const SITL_OUTPUT_LIMIT = 400
+
 export function App() {
   const swUpdate = useServiceWorkerUpdate()
   const desktopBridge = getDesktopBridge()
@@ -624,6 +628,15 @@ export function App() {
   useEffect(() => {
     selectedSerialPortRef.current = selectedSerialPort
   }, [selectedSerialPort])
+
+  // The simulated vehicle. Held in a ref for the same reason the serial port
+  // is: the runtime is rebuilt when the transport MODE changes, and rebuilding
+  // it because the chosen frame changed would tear down a running vehicle.
+  const sitlLaunchRef = useRef<{ moduleUrl: string; args: readonly string[] } | undefined>(undefined)
+  const [sitlOutput, setSitlOutput] = useState<readonly string[]>([])
+  const [sitlPhase, setSitlPhase] = useState<SitlPhase>('idle')
+  const [sitlError, setSitlError] = useState<string | undefined>(undefined)
+
   const runtime = useMemo(
     () =>
       createRuntime(
@@ -635,11 +648,72 @@ export function App() {
         (port) => {
           rememberSelectedSerialPort(port)
         },
-        () => selectedUsbSerialDeviceRef.current
+        () => selectedUsbSerialDeviceRef.current,
+        undefined,
+        // Read through a ref rather than closed over: the Simulator tab sets
+        // the launch just before switching mode, and a runtime rebuilt on the
+        // launch itself would tear down the vehicle it just started.
+        {
+          moduleUrl: sitlLaunchRef.current?.moduleUrl ?? '',
+          args: sitlLaunchRef.current?.args ?? [],
+          onOutput: (line: string) => {
+            setSitlOutput((previous) => [...previous.slice(-SITL_OUTPUT_LIMIT), line])
+          }
+        }
       ),
     [transportMode, websocketUrl, udpTarget, tcpTarget, rememberSelectedSerialPort]
   )
   const snapshot = useRuntimeSnapshot(runtime)
+
+  /**
+   * Start the simulated vehicle.
+   *
+   * Two steps in a deliberate order: record the launch, then switch the
+   * transport mode. The mode change rebuilds the runtime, which reads the
+   * launch out of the ref -- so writing the ref second would build a runtime
+   * pointed at the previous vehicle.
+   */
+  const startSitl = useCallback(
+    async (_vehicle: string, args: readonly string[], moduleUrl: string) => {
+      setSitlError(undefined)
+      setSitlOutput([])
+      setSitlPhase('loading')
+      sitlLaunchRef.current = { moduleUrl, args }
+      setTransportMode('wasm-sitl')
+    },
+    [setTransportMode]
+  )
+
+  const stopSitl = useCallback(async () => {
+    setSitlPhase('idle')
+    sitlLaunchRef.current = undefined
+    try {
+      await runtime.disconnect()
+    } catch {
+      // Already down, which is the state being asked for.
+    }
+  }, [runtime])
+
+  // Connecting is left to the effect rather than done inside startSitl: the
+  // runtime that will carry the vehicle does not exist until the mode change
+  // has re-rendered, so connecting any earlier would connect the old one.
+  useEffect(() => {
+    if (transportMode !== 'wasm-sitl' || sitlPhase !== 'loading') return
+    let cancelled = false
+    runtime
+      .connect()
+      .then(() => {
+        if (!cancelled) setSitlPhase('running')
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setSitlPhase('error')
+        setSitlError(error instanceof Error ? error.message : String(error))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [transportMode, sitlPhase, runtime])
   // The catalog follows the connected vehicle. Pre-connect (or for an
   // unidentified vehicle) it stays on ArduCopter, which is also the runtime's
   // default bundle, so derived setup/category state is consistent on both
@@ -8314,7 +8388,10 @@ export function App() {
           ) : null}
 	      {showLanding ? (
             <DisconnectedLanding
-              transportMode={transportMode}
+              // The simulator is started from its own tab, not chosen here, so
+              // the landing picker never shows it. When one is running this
+              // falls back to the nearest thing it does offer.
+              transportMode={transportMode === 'wasm-sitl' ? 'tcp' : transportMode}
               onTransportModeChange={setTransportMode}
               webSerialSupported={webSerialSupported}
               webUsbSerialAvailable={webUsbSerialAvailable}
@@ -9839,6 +9916,20 @@ export function App() {
         onRemove={luaScripts.remove}
         onUpload={luaScripts.upload}
       />
+      ) : null}
+
+      {activeViewId === 'sitl' ? (
+        <SitlSimView
+          onStart={startSitl}
+          onStop={stopSitl}
+          phase={sitlPhase}
+          output={sitlOutput}
+          // Loaded is not alive: the module can be running and have said
+          // nothing. A heartbeat is the first thing that proves otherwise,
+          // and the runtime already tracks whether it has seen one.
+          heartbeat={snapshot.connection.kind === 'connected'}
+          {...(sitlError ? { error: sitlError } : {})}
+        />
       ) : null}
 
       {activeViewId === 'amc-guided' ? (

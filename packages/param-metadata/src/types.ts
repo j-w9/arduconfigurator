@@ -23,6 +23,10 @@ export type AppViewId =
   // beside 'guided-setup' rather than replacing it, so the two flows can be
   // compared on the same vehicle. Expert-only while it is being built out.
   | 'amc-guided'
+  // ArduPilot itself, compiled to WebAssembly and run in the tab. Needs no
+  // vehicle, no cable and nothing installed, which is why it is not gated on
+  // a connection like the tabs that configure real hardware.
+  | 'sitl'
   | 'ports'
   | 'vtx'
   | 'osd'

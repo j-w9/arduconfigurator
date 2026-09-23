@@ -27,6 +27,8 @@ import {
   WebSerialTransport,
   WebSocketTransport,
   WebUsbSerialTransport,
+  WasmSitlTransport,
+  type ArduPilotWasmFactory,
   type UsbSerialDeviceLike,
   type WebSerialPortLike
 } from '@arduconfig/transport'
@@ -91,9 +93,34 @@ export function createRuntime(
   // capture (only while recording is active). Keeping the hooks here — rather
   // than the recorder itself — preserves this factory's pure shape and lets the
   // App control recording lifecycle independently of runtime construction.
-  sessionHooks?: MavlinkSessionOptions
+  sessionHooks?: MavlinkSessionOptions,
+  /**
+   * How to start the WebAssembly vehicle, when that is the chosen mode.
+   *
+   * Passed in rather than built here because the module URL and the command
+   * line come from the Simulator tab's own pickers, and this factory has no
+   * business knowing what a frame is.
+   */
+  wasmSitl?: { moduleUrl: string; args: readonly string[]; onOutput?: (line: string) => void }
 ): ArduPilotConfiguratorRuntime {
   const transport = (() => {
+    if (mode === 'wasm-sitl') {
+      const launch = wasmSitl
+      return new WasmSitlTransport({
+        // Imported at connect time, not at module load: it is 3.4 MB of
+        // ArduPilot and nobody who never opens the tab should pay for it.
+        loadModule: async () => {
+          if (!launch) throw new Error('No simulator was configured.')
+          const loaded = (await import(/* @vite-ignore */ launch.moduleUrl)) as {
+            default: ArduPilotWasmFactory
+          }
+          return loaded.default
+        },
+        args: launch?.args ?? [],
+        ...(launch?.onOutput ? { onOutput: launch.onOutput } : {})
+      })
+    }
+
     if (mode === 'web-serial') {
       return new WebSerialTransport('browser-serial', {
         baudRate: 115200,

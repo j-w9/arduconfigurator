@@ -21,6 +21,10 @@ export type TransportMode =
   | 'websocket'
   | 'udp'
   | 'tcp'
+  // ArduPilot compiled to WebAssembly, running in this tab. Not a link to a
+  // vehicle somewhere else -- the vehicle IS here -- but it reaches the app the
+  // same way, as a stream of MAVLink, so it belongs in the same list.
+  | 'wasm-sitl'
 
 export const DEFAULT_WEBSOCKET_URL = 'ws://127.0.0.1:14550'
 // ":14550" → bind locally and learn the peer (ELRS / Mission-Planner UDP-listen).

@@ -147,6 +147,17 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     badge: 'experiment',
     tone: 'warning'
   }
+  // ArduPilot itself, compiled to WebAssembly and run in the tab. Always
+  // visible: it needs no vehicle, no cable and nothing installed, which makes
+  // it the one surface that works on a laptop with nothing plugged in.
+  const sitlDescriptor: AppViewDescriptor = {
+    id: 'sitl',
+    label: 'Simulator',
+    description:
+      'ArduPilot SITL compiled to WebAssembly, running in this tab. A simulated vehicle to configure and fly with nothing plugged in.',
+    badge: 'experiment',
+    tone: 'warning'
+  }
   // Dedicated Calibration surface — the accelerometer / level / compass
   // guided-action flow gathered into one tab (same actions as Setup).
   const calibrationDescriptor: AppViewDescriptor = {
@@ -217,7 +228,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   // follow a setup -> tuning -> tools flow. Views not listed fall to the
   // end in their original order.
   const CANONICAL_VIEW_ORDER = [
-    'setup', 'guided-setup', 'amc-guided', 'config', 'peripherals', 'calibration', 'ports', 'receiver', 'modes', 'motors',
+    'setup', 'guided-setup', 'amc-guided', 'sitl', 'config', 'peripherals', 'calibration', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'failsafe', 'osd', 'tuning', 'presets',
     'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'elrs-flash', 'rc-mixer',
     'mavlink-inspector', 'ai-assistant'
@@ -238,6 +249,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     ...relabelled,
     guidedSetupDescriptor,
     amcGuidedDescriptor,
+    sitlDescriptor,
     peripheralsDescriptor,
     calibrationDescriptor,
     canBusDescriptor,

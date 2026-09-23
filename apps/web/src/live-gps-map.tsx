@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 import { StatusBadge } from '@arduconfig/ui-kit'
@@ -34,25 +36,72 @@ function formatCoordinate(value: number | undefined, positiveLabel: string, nega
   return `${Math.abs(value).toFixed(5)}° ${hemisphere}`
 }
 
-function buildLongitudeDelta(latitudeDeg: number, latitudeDelta: number): number {
-  const cosine = Math.cos((latitudeDeg * Math.PI) / 180)
-  return latitudeDelta / Math.max(Math.abs(cosine), 0.35)
-}
+/**
+ * The live position, drawn on tiles from this origin.
+ *
+ * This replaced an <iframe> to openstreetmap.org. Cross-origin isolation --
+ * which the WebAssembly simulator needs, because ArduPilot's main loop runs on
+ * a worker and that needs SharedArrayBuffer -- blocks a cross-origin frame
+ * outright, and there is no header OSM could send that would help.
+ *
+ * Leaflet was already here for the calibration map picker, so this is one
+ * fewer third-party embed rather than a new dependency, and the map no longer
+ * reloads wholesale every time the position nudges.
+ */
+function LiveGpsLeafletMap({
+  latitude,
+  longitude,
+  zoom,
+  label
+}: {
+  latitude: number
+  longitude: number
+  zoom: number
+  label: string
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<L.Map | null>(null)
+  const markerRef = useRef<L.CircleMarker | null>(null)
 
-function buildMapBounds(latitudeDeg: number, longitudeDeg: number, compact: boolean): string {
-  const latitudeDelta = compact ? 0.0038 : 0.0026
-  const longitudeDelta = buildLongitudeDelta(latitudeDeg, latitudeDelta)
-  const minLongitude = longitudeDeg - longitudeDelta
-  const minLatitude = latitudeDeg - latitudeDelta
-  const maxLongitude = longitudeDeg + longitudeDelta
-  const maxLatitude = latitudeDeg + latitudeDelta
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return
+    const map = L.map(containerRef.current, {
+      center: [latitude, longitude],
+      zoom,
+      // A status display, not something to explore: dragging it away from the
+      // vehicle would leave it showing somewhere the vehicle is not.
+      zoomControl: false,
+      attributionControl: true,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      keyboard: false
+    })
+    L.tileLayer('/tiles/{z}/{x}/{y}', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map)
+    markerRef.current = L.circleMarker([latitude, longitude], {
+      radius: 7,
+      weight: 2
+    }).addTo(map)
+    mapRef.current = map
+    return () => {
+      map.remove()
+      mapRef.current = null
+      markerRef.current = null
+    }
+    // Set up once; the position is followed by the effect below rather than by
+    // rebuilding the map, which is what the iframe used to do.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  return [minLongitude, minLatitude, maxLongitude, maxLatitude].map((value) => value.toFixed(6)).join(',')
-}
+  useEffect(() => {
+    mapRef.current?.setView([latitude, longitude], zoom, { animate: false })
+    markerRef.current?.setLatLng([latitude, longitude])
+  }, [latitude, longitude, zoom])
 
-function buildOpenStreetMapEmbedUrl(latitudeDeg: number, longitudeDeg: number, compact: boolean): string {
-  const bbox = buildMapBounds(latitudeDeg, longitudeDeg, compact)
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${latitudeDeg.toFixed(6)},${longitudeDeg.toFixed(6)}`
+  return <div className="gps-map-card__leaflet" ref={containerRef} role="img" aria-label={label} />
 }
 
 function buildOpenStreetMapUrl(latitudeDeg: number, longitudeDeg: number, compact: boolean): string {
@@ -99,14 +148,6 @@ export function LiveGpsMapCard({ snapshot, title, subtitle, compact = false, tes
     ? stableFocus ?? { latitudeDeg, longitudeDeg }
     : undefined
 
-  const embedUrl = useMemo(() => {
-    if (!displayFocus) {
-      return undefined
-    }
-
-    return buildOpenStreetMapEmbedUrl(displayFocus.latitudeDeg, displayFocus.longitudeDeg, compact)
-  }, [compact, displayFocus])
-
   const externalUrl = useMemo(() => {
     if (!displayFocus) {
       return undefined
@@ -126,13 +167,12 @@ export function LiveGpsMapCard({ snapshot, title, subtitle, compact = false, tes
       </div>
 
       <div className="gps-map-card__frame">
-        {embedUrl ? (
-          <iframe
-            title={title}
-            src={embedUrl}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            aria-label={title}
+        {displayFocus ? (
+          <LiveGpsLeafletMap
+            latitude={displayFocus.latitudeDeg}
+            longitude={displayFocus.longitudeDeg}
+            zoom={compact ? 16 : 17}
+            label={title}
           />
         ) : (
           <div className="gps-map-card__placeholder">
