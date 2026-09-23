@@ -13,6 +13,6 @@
   "dependencies": {
     "@arduconfig/param-metadata": "1.1.1",
     "@arduconfig/protocol-mavlink": "1.1.1",
-    "@arduconfig/transport": "1.1.1"
+    "@arduconfig/transport": "1.2.0"
   }
 }

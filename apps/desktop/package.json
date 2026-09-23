@@ -25,9 +25,9 @@
     "runtime:sitl": "npm run build && node dist/runtime-sitl.js"
   },
   "dependencies": {
-    "@arduconfig/firmware-flash": "1.1.1",
+    "@arduconfig/firmware-flash": "1.2.0",
     "@arduconfig/sitl-harness": "1.1.1",
-    "@arduconfig/transport": "1.1.1",
+    "@arduconfig/transport": "1.2.0",
     "serialport": "^13.0.0"
   },
   "devDependencies": {
