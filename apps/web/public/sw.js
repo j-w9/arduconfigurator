@@ -212,6 +212,21 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
+  // The WebAssembly simulator is handled by the network, never by this worker.
+  //
+  // ArduPilot's module starts pthread workers whose script is this same
+  // arducopter.js. In a cross-origin-isolated page a worker script must carry
+  // COEP, and a response replayed from here does not satisfy that check — the
+  // request fails ERR_BLOCKED_BY_RESPONSE and the module waits forever on
+  // "loading-workers". It only showed up for RETURNING visitors, because a
+  // first visit has no service worker installed yet.
+  //
+  // Nothing is lost by skipping it: these are large, immutable, and already
+  // cached by the browser under their own far-future Cache-Control.
+  if (url.pathname.startsWith('/sitl/')) {
+    return
+  }
+
   if (request.mode === 'navigate') {
     event.respondWith(handleNavigation(request))
     return

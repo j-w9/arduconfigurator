@@ -202,3 +202,23 @@ describe('what the simulator is doing while it starts', () => {
     expect(loadingStatus([], true)).toBeUndefined()
   })
 })
+
+describe('a home picked on the map', () => {
+  it('wins over a named location left selected behind it', () => {
+    const args = launchArguments(
+      { vehicle: 'copter', frame: 'X', location: 'CMAC', customHome: { lat: 51.5, lon: -0.12 } },
+      options
+    )
+    expect(args[args.indexOf('--home') + 1]).toBe('51.5,-0.12,0,0')
+  })
+
+  it('sits at sea level facing north, because a point on a map has neither', () => {
+    const args = launchArguments({ vehicle: 'copter', frame: 'X', customHome: { lat: 0, lon: 0 } })
+    expect(args[args.indexOf('--home') + 1]).toBe('0,0,0,0')
+  })
+
+  it('falls back to the named location when nothing was picked', () => {
+    const args = launchArguments({ vehicle: 'copter', frame: 'X', location: 'CMAC' }, options)
+    expect(args[args.indexOf('--home') + 1]).toBe('-35.363261,149.16523,584,353')
+  })
+})

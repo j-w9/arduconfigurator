@@ -20243,3 +20243,14 @@ button.mavlink-inspector__sent-row {
     opacity: 0.5;
   }
 }
+
+/* Picking a home on the map. Reuses the calibration picker, which already
+   draws tiles from this origin. */
+.sitl-sim__map {
+  margin-top: 14px;
+}
+
+.sitl-sim__map-note {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+}

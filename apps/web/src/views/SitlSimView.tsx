@@ -13,7 +13,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { MapLocationPicker } from './MapLocationPicker'
 import {
+  CUSTOM_LOCATION,
   DEFAULT_LOCATION,
   type SimOptions,
   availableVehicles,
@@ -54,6 +56,7 @@ export function SitlSimView(props: SitlSimViewProps) {
   const [location, setLocation] = useState(DEFAULT_LOCATION)
   const [speedup, setSpeedup] = useState(1)
   const [wipe, setWipe] = useState(false)
+  const [customHome, setCustomHome] = useState<{ lat: number; lon: number } | undefined>(undefined)
 
   // The options file ships beside the binaries and is tiny, but it is fetched
   // rather than bundled: a site built without ever running the SITL build has
@@ -113,13 +116,14 @@ export function SitlSimView(props: SitlSimViewProps) {
           frame: chosenFrame,
           location,
           speedup,
-          wipe
+          wipe,
+          ...(location === CUSTOM_LOCATION && customHome ? { customHome } : {})
         },
         options
       ),
       moduleUrlFor(vehicle, base)
     )
-  }, [onStart, vehicle, chosenFrame, location, speedup, wipe, options, base])
+  }, [onStart, vehicle, chosenFrame, location, speedup, wipe, customHome, options, base])
 
   const running = phase === 'running'
   const busy = phase === 'loading'
@@ -142,9 +146,11 @@ export function SitlSimView(props: SitlSimViewProps) {
         ) : (
           <>
             <div className="sitl-sim__controls">
-              <label>
+              <label htmlFor="sitl-vehicle">
                 <span>Vehicle</span>
                 <select
+                  id="sitl-vehicle"
+                  name="sitl-vehicle"
                   value={vehicle}
                   disabled={running || busy}
                   onChange={(event) => setVehicle(event.target.value)}
@@ -157,9 +163,11 @@ export function SitlSimView(props: SitlSimViewProps) {
                 </select>
               </label>
 
-              <label>
+              <label htmlFor="sitl-frame">
                 <span>Frame</span>
                 <select
+                  id="sitl-frame"
+                  name="sitl-frame"
                   value={chosenFrame ?? ''}
                   disabled={running || busy}
                   onChange={(event) => setFrame(event.target.value)}
@@ -172,13 +180,17 @@ export function SitlSimView(props: SitlSimViewProps) {
                 </select>
               </label>
 
-              <label>
+              <label htmlFor="sitl-home">
                 <span>Home</span>
                 <select
+                  id="sitl-home"
+                  name="sitl-home"
                   value={location}
                   disabled={running || busy}
                   onChange={(event) => setLocation(event.target.value)}
                 >
+                  {/* SITL's own 117 named places, plus anywhere at all. */}
+                  <option value={CUSTOM_LOCATION}>{CUSTOM_LOCATION}</option>
                   {locations.map((entry) => (
                     <option key={entry} value={entry}>
                       {entry}
@@ -187,9 +199,11 @@ export function SitlSimView(props: SitlSimViewProps) {
                 </select>
               </label>
 
-              <label>
+              <label htmlFor="sitl-speed">
                 <span>Speed</span>
                 <select
+                  id="sitl-speed"
+                  name="sitl-speed"
                   value={speedup}
                   disabled={running || busy}
                   onChange={(event) => setSpeedup(Number(event.target.value))}
@@ -202,6 +216,22 @@ export function SitlSimView(props: SitlSimViewProps) {
                 </select>
               </label>
             </div>
+
+            {location === CUSTOM_LOCATION ? (
+              <div className="sitl-sim__map">
+                <MapLocationPicker
+                  latitude={customHome?.lat ?? options?.locations[DEFAULT_LOCATION]?.lat}
+                  longitude={customHome?.lon ?? options?.locations[DEFAULT_LOCATION]?.lon}
+                  onPick={(lat, lon) => setCustomHome({ lat, lon })}
+                  heightPx={260}
+                />
+                <p className="sitl-sim__map-note">
+                  {customHome
+                    ? `Home at ${customHome.lat.toFixed(6)}, ${customHome.lon.toFixed(6)} — sea level, facing north.`
+                    : 'Click anywhere to put the vehicle there.'}
+                </p>
+              </div>
+            ) : null}
 
             <label className="sitl-sim__wipe">
               <input
@@ -226,7 +256,13 @@ export function SitlSimView(props: SitlSimViewProps) {
               ) : (
                 <button
                   style={buttonStyle('primary')}
-                  disabled={busy || vehicles.length === 0 || !chosenFrame}
+                  disabled={
+                    busy ||
+                    vehicles.length === 0 ||
+                    !chosenFrame ||
+                    // Nothing to start at: the map is chosen but unclicked.
+                    (location === CUSTOM_LOCATION && !customHome)
+                  }
                   onClick={() => void start()}
                 >
                   {busy ? 'Loading ArduPilot…' : 'Start the simulator'}

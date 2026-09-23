@@ -77,11 +77,21 @@ export function locationNames(options: SimOptions | undefined): readonly string[
   return [DEFAULT_LOCATION, ...names.filter((name) => name !== DEFAULT_LOCATION)]
 }
 
+/** A home the operator picked off the map, rather than one SITL ships. */
+export const CUSTOM_LOCATION = 'Pick on the map'
+
 export interface SimLaunch {
   readonly vehicle: string
   readonly frame: string
   /** A name from `locations`, or undefined to let SITL pick its own home. */
   readonly location?: string
+  /**
+   * A home chosen on the map, which wins over `location`.
+   *
+   * Heading is not asked for: a point on a map has no facing, and SITL's own
+   * default of 0 is as good a guess as any number invented here.
+   */
+  readonly customHome?: { readonly lat: number; readonly lon: number }
   /** How much faster than real time. SITL's own default is 1. */
   readonly speedup?: number
   /** Start from the firmware's defaults rather than any stored parameters. */
@@ -102,7 +112,13 @@ export interface SimLaunch {
 export function launchArguments(launch: SimLaunch, options?: SimOptions): readonly string[] {
   const args = ['--model', launch.frame, '--serial1', 'none', '--serial2', 'none']
 
-  const home = launch.location ? options?.locations[launch.location] : undefined
+  // A point picked on the map is the most specific thing the operator said,
+  // so it wins over a named location left selected behind it.
+  const home = launch.customHome
+    ? { ...launch.customHome, alt: 0, heading: 0 }
+    : launch.location
+      ? options?.locations[launch.location]
+      : undefined
   if (home) {
     // SITL takes home as lat,lon,alt,heading -- the same four fields
     // locations.txt holds, in that order.
