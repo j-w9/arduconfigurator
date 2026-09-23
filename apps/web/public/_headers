@@ -14,6 +14,21 @@
 # https, a local Ollama over http://localhost). Consistent with the already-open
 # ws:/wss:. This app sends no analytics or usage data anywhere, so the only
 # outbound connections are ever to the user's own configured endpoints.
+# Cross-Origin-Opener-Policy and -Embedder-Policy make this page
+# cross-origin isolated, which is what gives it SharedArrayBuffer. The
+# WebAssembly simulator needs that: ArduPilot's build runs its main loop on a
+# worker (-sPROXY_TO_PTHREAD), because that loop blocks and would otherwise
+# freeze the tab.
+#
+# Isolation cannot be scoped to one tab -- it is a property of the whole
+# document, and an isolated iframe inside a non-isolated page gets nothing --
+# so it applies site-wide, and the two cross-origin things this app used had
+# to stop being cross-origin first:
+#   - map tiles now come from /tiles on this origin (functions/tiles)
+#   - the live GPS map draws with Leaflet instead of embedding openstreetmap.org
+# Both allowances are therefore gone from the CSP below. worker-src gains blob:
+# because Emscripten starts its pthread workers from a blob URL.
+#
 # The service worker must never be cached, so browsers pick up the
 # self-destructing sw.js on the next visit and un-stick users promptly.
 /sw.js
@@ -23,4 +38,6 @@
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-ySvT2PEZeueHGC1y2crNuNTfphBynFPP7i+U21fEgX0='; connect-src 'self' ws: wss: data: https: http://localhost:* http://127.0.0.1:*; img-src 'self' data: blob: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-ySvT2PEZeueHGC1y2crNuNTfphBynFPP7i+U21fEgX0='; connect-src 'self' ws: wss: data: https: http://localhost:* http://127.0.0.1:*; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
