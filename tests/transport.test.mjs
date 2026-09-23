@@ -7,6 +7,7 @@ import { MavlinkSession, MavlinkV2Codec, createArduCopterMockScenario } from '..
 import {
   MockTransport,
   ReplayTransport,
+  WebSerialByteSession,
   WebSerialTransport,
   WebSocketTransport,
   createRecordedSession,
@@ -1429,3 +1430,97 @@ function wait(durationMs) {
     setTimeout(resolve, durationMs)
   })
 }
+
+// -- WebSerialByteSession -------------------------------------------------
+
+function fakeSerialPort() {
+  let controller
+  const writes = []
+  const state = { openedWith: null, closes: 0 }
+  const port = {
+    readable: new ReadableStream({
+      start(c) {
+        controller = c
+      }
+    }),
+    writable: new WritableStream({
+      write(chunk) {
+        writes.push(Uint8Array.from(chunk))
+      }
+    }),
+    async open(options) {
+      state.openedWith = options
+    },
+    async close() {
+      state.closes += 1
+    },
+    getInfo() {
+      return {}
+    }
+  }
+  return { port, writes, state, push: (bytes) => controller.enqueue(Uint8Array.from(bytes)) }
+}
+
+test('WebSerialByteSession.read returns exactly n bytes, and a COPY of them', async () => {
+  const { port, push } = fakeSerialPort()
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  push([1, 2, 3, 4, 5])
+
+  const first = await session.read(2, 500)
+  assert.deepEqual([...first], [1, 2])
+  // Mutating what was handed back must not disturb the bytes still queued —
+  // a caller that reads a CRC then reads more before using it would otherwise
+  // see its own protocol bytes change underneath it.
+  first[0] = 0xff
+  assert.deepEqual([...(await session.read(3, 500))], [3, 4, 5])
+  await session.close()
+})
+
+test('WebSerialByteSession.read times out rather than hanging on a missing reply', async () => {
+  const { port, push } = fakeSerialPort()
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  push([0xaa])
+  await assert.rejects(() => session.read(4, 60), /timed out waiting for 4 bytes/)
+  await session.close()
+})
+
+test('WebSerialByteSession.flushInput drops bytes already in flight', async () => {
+  const { port, push } = fakeSerialPort()
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  push([0xde, 0xad])
+  // Clearing a buffer alone would leave these to shift the next fixed-width
+  // read; flushInput gives the pump a turn first, so they are actually gone.
+  await session.flushInput()
+  push([0x01])
+  assert.deepEqual([...(await session.read(1, 500))], [0x01])
+  await session.close()
+})
+
+test('WebSerialByteSession: an attached session hands the port back still open', async () => {
+  const { port, state } = fakeSerialPort()
+  // Two protocols sharing one port in turn — MSP, then the ESC 4-way
+  // interface across enterPassthrough — must not have the first one's
+  // session close the port out from under the second.
+  const session = await WebSerialByteSession.open(port, { attach: true })
+  assert.equal(state.openedWith, null, 'attaching never opens')
+  await session.close()
+  assert.equal(state.closes, 0, 'attaching never closes')
+
+  const owned = await WebSerialByteSession.open(fakeSerialPort().port, { baudRate: 115200 })
+  await owned.close()
+})
+
+test('WebSerialByteSession.open refuses to guess a baud', async () => {
+  const { port } = fakeSerialPort()
+  await assert.rejects(() => WebSerialByteSession.open(port), /baudRate is required/)
+})
+
+test('WebSerialByteSession.write reaches the port and releases the writer lock', async () => {
+  const { port, writes } = fakeSerialPort()
+  const session = await WebSerialByteSession.open(port, { baudRate: 420000 })
+  await session.write(Uint8Array.from([0x2f, 0x30]))
+  // A released lock is what lets the next write happen at all.
+  await session.write(Uint8Array.from([0x31]))
+  assert.deepEqual(writes.map((w) => [...w]), [[0x2f, 0x30], [0x31]])
+  await session.close()
+})
