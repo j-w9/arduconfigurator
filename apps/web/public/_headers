@@ -31,19 +31,6 @@
 #
 # The service worker must never be cached, so browsers pick up the
 # self-destructing sw.js on the next visit and un-stick users promptly.
-# The simulator's own files get these spelled out rather than inherited.
-#
-# ArduPilot's module starts its pthread workers from arducopter.js, and a
-# worker script loaded by a cross-origin-isolated page must itself carry COEP
-# or the load fails coep-frame-resource-needs-coep-header. The /* rule below
-# sets it, and curl sees it — but the browser was receiving the worker request
-# without it, so the simulator hung on "starting worker threads" forever.
-# Stating it on the path that needs it removes the question.
-/sitl/*
-  Cross-Origin-Embedder-Policy: require-corp
-  Cross-Origin-Resource-Policy: same-origin
-  Cross-Origin-Opener-Policy: same-origin
-
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
 
@@ -54,3 +41,19 @@
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
   Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-ySvT2PEZeueHGC1y2crNuNTfphBynFPP7i+U21fEgX0='; connect-src 'self' ws: wss: data: https: http://localhost:* http://127.0.0.1:*; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+
+# The simulator's own files, stated AFTER /* so they win it.
+#
+# Cloudflare applies every matching rule in file order and the later one takes
+# the header, so placing this above /* silently lost the CORP line -- the page
+# reported cross-origin-resource-policy: null while curl, which does not care
+# about ordering, showed it set.
+#
+# ArduPilot starts its pthread workers from arducopter.js, and a worker script
+# loaded by a cross-origin-isolated page must carry COEP itself or the load
+# fails coep-frame-resource-needs-coep-header, which is the "starting worker
+# threads" hang.
+/sitl/*
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Resource-Policy: same-origin
+  Cross-Origin-Opener-Policy: same-origin
