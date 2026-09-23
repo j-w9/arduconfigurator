@@ -1,11 +1,13 @@
 import type { ReactElement } from 'react'
 
+import { ProgressBar } from '@arduconfig/ui-kit'
+
 // The progress bar shown while a file streams off the flight controller over
 // MAVFTP. Shared by the Logs tab and the Files browser: a MAVFTP burst read of
 // a real log is minutes long, and without continuous movement a button that
 // reads "Downloading" is indistinguishable from one that has hung.
 //
-// Presentational only — the caller owns the transfer and feeds it bytes.
+// The bar itself is ui-kit's ProgressBar; this adds the MB byte counts.
 
 /** Compact MB label (one decimal, MiB base to match the size columns). */
 function formatMegabytes(bytes: number): string {
@@ -25,22 +27,6 @@ export interface DownloadProgressBarProps {
 
 export function DownloadProgressBar(props: DownloadProgressBarProps): ReactElement {
   const { percent, bytesReceived, totalBytes, spanRow = false, testId } = props
-  return (
-    <div
-      className={`download-bar${spanRow ? ' download-bar--span-row' : ''}`}
-      data-testid={testId}
-      role="progressbar"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={percent}
-    >
-      <div className="download-bar__track">
-        <div className="download-bar__fill" style={{ width: `${percent}%` }} />
-      </div>
-      <span className="download-bar__label">
-        {percent}%
-        {totalBytes ? ` · ${formatMegabytes(bytesReceived ?? 0)} / ${formatMegabytes(totalBytes)} MB` : ''}
-      </span>
-    </div>
-  )
+  const detail = totalBytes ? ` · ${formatMegabytes(bytesReceived ?? 0)} / ${formatMegabytes(totalBytes)} MB` : ''
+  return <ProgressBar percent={percent} detail={detail} spanRow={spanRow} testId={testId} />
 }
