@@ -22,3 +22,8 @@ wiki/parameters/group-*.rst
 wiki/parameters/letter-*.rst
 wiki/parameters/index.rst
 wiki/_static/parameter-index.json
+
+# Staged from the fork's sitl/ by scripts/stage-sitl.mjs before a build. The
+# WebAssembly SITL binaries are committed in the fork, not here: this repo is
+# source, and 7 MB of them per rebuild does not belong in its history.
+apps/web/public/sitl/
