@@ -678,10 +678,22 @@ export function App() {
       setSitlError(undefined)
       setSitlOutput([])
       setSitlPhase('loading')
+      // Put down whatever is already connected first.
+      //
+      // Changing the transport mode builds a NEW runtime and leaves the old
+      // one running -- a demo vehicle keeps pumping frames on its timers, and
+      // every frame re-renders the app. That starves Emscripten's worker
+      // startup badly enough that the module never finishes loading: fresh
+      // tab, a vehicle in 1.6 seconds; with the demo still running, never.
+      try {
+        await runtime.disconnect()
+      } catch {
+        // Already down, which is the state being asked for.
+      }
       sitlLaunchRef.current = { moduleUrl, args }
       setTransportMode('wasm-sitl')
     },
-    [setTransportMode]
+    [runtime, setTransportMode]
   )
 
   const stopSitl = useCallback(async () => {

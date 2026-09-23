@@ -125,6 +125,17 @@ export function moduleUrlFor(vehicleId: string, base = '/sitl'): string {
 }
 
 /**
+ * Emscripten's own progress chatter, which is not about the vehicle.
+ *
+ * While the worker pool starts, the runtime prints its dependency list every
+ * few hundred milliseconds -- "still waiting on run dependencies", the
+ * dependency itself, "(end of list)" -- so a console that shows everything
+ * fills with a repeating three-line stanza and reads as a hang. It is progress
+ * information, and belongs in a status line rather than a log.
+ */
+const RUNTIME_CHATTER = /^(still waiting on run dependencies|dependency:|\(end of list\))/
+
+/**
  * Whether a line of SITL's console output is worth showing.
  *
  * SITL is chatty on the way up and most of it is noise for someone who only
@@ -135,5 +146,33 @@ export function isInterestingOutput(line: string): boolean {
   const text = line.trim()
   if (text.length === 0) return false
   if (/^Skipping port/.test(text)) return false
+  if (RUNTIME_CHATTER.test(text)) return false
   return true
+}
+
+/**
+ * What the simulator is doing, for someone watching it start.
+ *
+ * Derived from the output rather than tracked as state, because the module is
+ * the only thing that knows where it has got to -- and the chatter that makes
+ * the console unreadable is exactly what says which stage it is in.
+ *
+ * `undefined` once there is nothing left to report, which is the caller's cue
+ * to stop showing a status and start showing the vehicle.
+ */
+export function loadingStatus(output: readonly string[], heartbeat: boolean): string | undefined {
+  if (heartbeat) return undefined
+
+  // Newest first: the last thing said is the stage it reached.
+  for (let i = output.length - 1; i >= 0; i -= 1) {
+    const text = (output[i] ?? '').trim()
+    if (/dependency: loading-workers/.test(text)) return 'Starting worker threads'
+    if (/^dependency:/.test(text)) return 'Preparing the runtime'
+    if (/Loaded defaults from/.test(text)) return 'Booting the vehicle'
+    if (/^Waiting for internal clock/.test(text)) return 'Waiting for the simulated clock'
+  }
+
+  // Output arrives only once the module is instantiating, so silence this
+  // early means the 3.4 MB is still on its way down.
+  return output.length === 0 ? 'Fetching ArduPilot' : 'Starting the vehicle'
 }

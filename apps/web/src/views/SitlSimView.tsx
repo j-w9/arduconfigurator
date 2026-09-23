@@ -20,6 +20,7 @@ import {
   framesFor,
   isInterestingOutput,
   launchArguments,
+  loadingStatus,
   locationNames,
   moduleUrlFor
 } from '../view-models/sitl-sim'
@@ -123,12 +124,15 @@ export function SitlSimView(props: SitlSimViewProps) {
   const running = phase === 'running'
   const busy = phase === 'loading'
   const visible = output.filter(isInterestingOutput).slice(-OUTPUT_LIMIT)
+  // Only while it is coming up: once there is a heartbeat the badge says so,
+  // and once it is stopped there is nothing to report.
+  const status = running || busy ? loadingStatus(output, heartbeat) : undefined
 
   return (
     <div className="sitl-sim">
       <Panel
         title="Simulated vehicle"
-        subtitle="ArduPilot itself, compiled to WebAssembly and running in this tab. Nothing is installed and nothing leaves the browser."
+        subtitle="ArduPilot compiled to WebAssembly, running in this tab. Nothing to install, and nothing leaves the browser."
       >
         {optionsError ? (
           <p className="sitl-sim__missing">
@@ -231,14 +235,20 @@ export function SitlSimView(props: SitlSimViewProps) {
 
               {running && heartbeat ? (
                 <StatusBadge tone="success">Vehicle is alive</StatusBadge>
-              ) : running ? (
+              ) : status ? (
                 // Loaded is not alive. Until a heartbeat arrives the module is
                 // running but has said nothing, and saying "connected" then
                 // would be a claim about a vehicle nobody has heard from.
-                <StatusBadge tone="warning">Waiting for the first heartbeat</StatusBadge>
+                //
+                // The stage comes from the module's own chatter, which is the
+                // only thing that knows where it has got to. Without it the
+                // start is a frozen button for ten seconds.
+                <span className="sitl-sim__status" role="status">
+                  <span className="sitl-sim__spinner" aria-hidden="true" />
+                  {status}…
+                </span>
               ) : null}
 
-              {busy ? <span className="sitl-sim__note">3.4 MB, fetched once and then cached.</span> : null}
             </div>
 
             {error ? <p className="sitl-sim__error">{error}</p> : null}
@@ -249,7 +259,7 @@ export function SitlSimView(props: SitlSimViewProps) {
       {visible.length > 0 ? (
         <Panel
           title="What the vehicle is saying"
-          subtitle="SITL's own console, which is where a simulation that will not start explains itself."
+          subtitle="Everything ArduPilot printed on the way up."
         >
           <pre className="sitl-sim__console" ref={consoleRef}>
             {visible.join('\n')}

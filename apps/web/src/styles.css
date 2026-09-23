@@ -20208,3 +20208,38 @@ button.mavlink-inspector__sent-row {
   min-height: 180px;
   border-radius: 6px;
 }
+
+/* What the simulator is doing while it starts. Emscripten reports its progress
+   as a repeating three-line stanza, which reads as a hang in a console; this
+   is that same information as one line that changes. */
+.sitl-sim__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.sitl-sim__spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: sitl-spin 0.8s linear infinite;
+}
+
+@keyframes sitl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Someone who asked for less motion gets a static mark rather than none: the
+   status text is still changing, so the absence of a spinner loses nothing. */
+@media (prefers-reduced-motion: reduce) {
+  .sitl-sim__spinner {
+    animation: none;
+    border-right-color: currentColor;
+    opacity: 0.5;
+  }
+}

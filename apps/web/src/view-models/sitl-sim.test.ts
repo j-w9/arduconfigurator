@@ -7,6 +7,7 @@ import {
   framesFor,
   isInterestingOutput,
   launchArguments,
+  loadingStatus,
   locationNames,
   moduleUrlFor,
   type SimOptions
@@ -147,5 +148,57 @@ describe('the vehicle table itself', () => {
       expect(vehicle.defaultFrame.length).toBeGreaterThan(0)
       expect(vehicle.label.length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('what the simulator is doing while it starts', () => {
+  // Emscripten reports progress by printing its dependency list every few
+  // hundred milliseconds. In a console that is a repeating three-line stanza
+  // that reads as a hang; as a status line it is exactly the information
+  // someone watching a 3.4 MB download actually wants.
+
+  it('keeps the runtime chatter out of the console', () => {
+    for (const line of [
+      'still waiting on run dependencies:',
+      'dependency: loading-workers',
+      '(end of list)'
+    ]) {
+      expect(isInterestingOutput(line)).toBe(false)
+    }
+  })
+
+  it('still shows what the vehicle itself says', () => {
+    expect(isInterestingOutput('Loaded defaults from @ROMFS/default_params/copter.parm')).toBe(true)
+    expect(isInterestingOutput('Waiting for internal clock bits to be set')).toBe(true)
+  })
+
+  it('names the stage from the module\'s own chatter', () => {
+    expect(loadingStatus(['dependency: loading-workers'], false)).toBe('Starting worker threads')
+    expect(loadingStatus(['Loaded defaults from @ROMFS/x.parm'], false)).toBe('Booting the vehicle')
+    expect(loadingStatus(['Waiting for internal clock bits to be set'], false)).toBe(
+      'Waiting for the simulated clock'
+    )
+  })
+
+  it('reads the newest line, because that is the stage it reached', () => {
+    const output = ['dependency: loading-workers', 'Loaded defaults from @ROMFS/x.parm']
+    expect(loadingStatus(output, false)).toBe('Booting the vehicle')
+  })
+
+  it('says it is fetching while the module has said nothing', () => {
+    // Output only starts once the module instantiates, so silence this early
+    // means the download is still in flight.
+    expect(loadingStatus([], false)).toBe('Fetching ArduPilot')
+  })
+
+  it('falls back to something true when the chatter is unfamiliar', () => {
+    expect(loadingStatus(['some line upstream added later'], false)).toBe('Starting the vehicle')
+  })
+
+  it('has nothing to say once the vehicle is alive', () => {
+    // The heartbeat badge takes over; two claims about the same thing is one
+    // too many.
+    expect(loadingStatus(['dependency: loading-workers'], true)).toBeUndefined()
+    expect(loadingStatus([], true)).toBeUndefined()
   })
 })
