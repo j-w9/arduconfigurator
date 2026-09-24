@@ -23,9 +23,16 @@ export interface HoverLearnCardProps {
   setDraft: (paramId: string, value: string) => void
 }
 
+// The mode is not a detail. Copter::update_throttle_hover returns early in any
+// manual-throttle mode (Stabilize, Acro, SystemID, Turtle) and in Drift, and
+// again whenever the climb/descent demand is non-zero — so a perfect hover
+// flown in Stabilize, or on a held throttle stick, learns exactly nothing and
+// is indistinguishable from never having flown.
 const FLIGHT_INSTRUCTIONS =
-  'Take off, climb to about 5 m, and let it hover with as little stick input as you can. ' +
-  'Give it a steady minute or so, then land and disarm — the value is saved on disarm.'
+  'Fly this one in AltHold or Loiter — a hover in Stabilize or Acro learns nothing, whatever it ' +
+  'looks like. Take off, climb to about 5 m, then centre the throttle stick and let it sit level ' +
+  'with as little input as you can. Give it a steady minute or so, then land and disarm — the ' +
+  'value is saved on disarm.'
 
 export function HoverLearnCard({
   snapshot,
@@ -64,7 +71,13 @@ export function HoverLearnCard({
       <div className="calibration-card__header">
         <strong>Hover learning (two flights)</strong>
         <StatusBadge tone={stage === 'complete' ? 'success' : 'warning'}>
-          {stage === 'complete' ? 'complete' : stage.startsWith('flight-1') ? 'flight 1' : 'flight 2'}
+          {stage === 'complete'
+            ? 'complete'
+            : stage === 'unknown'
+              ? 'not read'
+              : stage.startsWith('flight-1')
+                ? 'flight 1'
+                : 'flight 2'}
         </StatusBadge>
       </div>
       <p>
@@ -73,7 +86,7 @@ export function HoverLearnCard({
       </p>
 
       <div className="config-pills">
-        <span data-tone={stage === 'flight-1' ? 'neutral' : 'success'}>
+        <span data-tone={stage === 'flight-1' || stage === 'unknown' ? 'neutral' : 'success'}>
           MOT_THST_HOVER: {state.hoverThrottle !== undefined ? state.hoverThrottle.toFixed(3) : '—'}
         </span>
         <span data-tone={state.hoverLearnArmed ? 'success' : 'warning'}>
@@ -88,6 +101,20 @@ export function HoverLearnCard({
         <p className="switch-exercise-warning" data-testid="hover-learn-ekf-warning">
           Z-bias learning only works on EKF3 (AHRS_EKF_TYPE = 3); this vehicle reports {state.ekfType}.
           The second flight will not learn anything until that is changed.
+        </p>
+      ) : null}
+
+      {state.blindMode !== undefined ? (
+        <p className="switch-exercise-warning" data-testid="hover-learn-mode-warning">
+          This vehicle is flying in {state.blindMode}, which learns no hover throttle at all. Switch
+          to AltHold or Loiter before the hover or the flight records nothing.
+        </p>
+      ) : null}
+
+      {stage === 'unknown' ? (
+        <p data-testid="hover-learn-step">
+          <strong>MOT_THST_HOVER has not been read yet.</strong> Nothing can be said about flight 1
+          until it arrives — wait for the parameter sync to finish, or reconnect if it has stalled.
         </p>
       ) : null}
 

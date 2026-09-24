@@ -14,6 +14,13 @@
 // Both are saved by the firmware on disarm, which is also why this has to
 // survive a reconnect: the operator lands, plugs in, and the card must know
 // where they are without having been running while they flew.
+//
+// A flight can also learn NOTHING and look identical to no flight at all.
+// Copter::update_throttle_hover (ArduCopter/Attitude.cpp) returns early in any
+// manual-throttle mode -- Stabilize, Acro, SystemID, Turtle -- and in Drift,
+// which is exactly where an FPV pilot's first hover happens. That is a real
+// field report ("it doesn't seem to be picking up that we ran the first
+// hover"), so the mode is named in the instructions and flagged live.
 
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
@@ -27,7 +34,23 @@ export const ACC_ZBIAS_LEARN_USE = 1 << 1
 /** MOT_HOVER_LEARN = 2, the firmware default: learn and save. */
 export const MOT_HOVER_LEARN_AND_SAVE = 2
 
+/**
+ * Modes in which a hover throttle CANNOT be learned, however good the hover.
+ * `flightmode->has_manual_throttle()` (ArduCopter/mode.h) plus the explicit
+ * Drift exclusion in Copter::update_throttle_hover. Labels as
+ * ARDUCOPTER_FLIGHT_MODE_LABELS renders them.
+ */
+export const HOVER_LEARN_BLIND_MODES: readonly string[] = [
+  'Stabilize',
+  'Acro',
+  'Drift',
+  'SystemID',
+  'Turtle'
+]
+
 export type HoverLearnStage =
+  /** MOT_THST_HOVER has not been reported, so nothing can be said yet. */
+  | 'unknown'
   /** Nothing learned yet — go fly the first hover. */
   | 'flight-1'
   /** A hover throttle was learned. Was that flight any good? */
@@ -57,6 +80,13 @@ export interface HoverLearnState {
   biasParamIds: string[]
   biasLearned: boolean
   ekfType?: number
+  /**
+   * The mode the vehicle is flying RIGHT NOW when that mode can learn no
+   * hover throttle at all. Only set while armed: "you are in Stabilize" is
+   * meaningless on a bench, where every disarmed copter sits in whatever mode
+   * the switch happens to select.
+   */
+  blindMode?: string
 }
 
 function readValue(snapshot: ConfiguratorSnapshot, id: string): number | undefined {
@@ -90,7 +120,14 @@ export function deriveHoverLearnState(snapshot: ConfiguratorSnapshot): HoverLear
         ? 'flight-2'
         : hoverLearned
           ? 'flight-1-review'
-          : 'flight-1'
+          : // An UNREPORTED MOT_THST_HOVER used to read as "still at the
+            // default", i.e. as a vehicle that had never flown -- the card sent
+            // the operator up for a flight on the strength of a parameter it
+            // had never seen. Checked last so a vehicle already past flight one
+            // is never dragged back by it.
+            hoverThrottle !== undefined
+            ? 'flight-1'
+            : 'unknown'
 
   const hoverLearn = readValue(snapshot, 'MOT_HOVER_LEARN')
 
@@ -102,6 +139,10 @@ export function deriveHoverLearnState(snapshot: ConfiguratorSnapshot): HoverLear
     hoverThrottle,
     biasParamIds,
     biasLearned,
-    ekfType: readValue(snapshot, 'AHRS_EKF_TYPE')
+    ekfType: readValue(snapshot, 'AHRS_EKF_TYPE'),
+    blindMode:
+      snapshot.vehicle?.armed && HOVER_LEARN_BLIND_MODES.includes(snapshot.vehicle.flightMode)
+        ? snapshot.vehicle.flightMode
+        : undefined
   }
 }
