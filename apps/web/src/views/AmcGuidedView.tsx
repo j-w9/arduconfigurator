@@ -1082,12 +1082,16 @@ function StepCard({
               <span className="amc-step__stage-note">
                 Reviewed and written from the draft bar.
               </span>
-              {writeNotice ? (
-                <div className="amc-step__write-notice">
-                  <StatusBadge tone={writeNotice.tone}>{statusToneLabel(writeNotice.tone)}</StatusBadge>
-                  <p>{writeNotice.text}</p>
-                </div>
-              ) : null}
+            </div>
+          ) : null}
+
+          {/* Deliberately outside the staging row above: a write that
+              succeeds leaves nothing staged, so anything rendered in there
+              unmounts at exactly the moment it has something to report. */}
+          {writeNotice ? (
+            <div className="amc-step__write-notice">
+              <StatusBadge tone={writeNotice.tone}>{statusToneLabel(writeNotice.tone)}</StatusBadge>
+              <p>{writeNotice.text}</p>
             </div>
           ) : null}
 

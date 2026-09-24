@@ -19303,15 +19303,14 @@ button.mavlink-inspector__sent-row {
   font-size: 0.9em;
 }
 
-/* The verified-write result for this step. It takes the full width of the
-   action row so it lands under the button that caused it rather than being
-   squeezed in beside the badges. */
+/* The verified-write result for this step, under the staging row rather
+   than inside it: a successful write empties that row, so a notice living
+   in there would vanish just as it had something to say. */
 .amc-step__write-notice {
-  flex-basis: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 2px;
+  margin-top: 8px;
 }
 
 .amc-step__write-notice p {
