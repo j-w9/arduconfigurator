@@ -9,7 +9,14 @@
 //
 // What actually proves a flight happened is the value it left behind:
 //   flight 1 -> MOT_THST_HOVER moves off AP_MOTORS_THST_HOVER_DEFAULT (0.35)
-//   flight 2 -> some INS*_ACC_VRFB_Z becomes non-zero
+//   flight 3 -> some INS*_ACC_VRFB_Z becomes non-zero
+//
+// Flight 2 sits between them and is the operator's call: it flies the measured
+// hover throttle to see whether the aircraft holds altitude on it. Nothing the
+// firmware records distinguishes "flown and good" from "not flown yet", so the
+// transition out of it is a deliberate press, and that press is what arms
+// flight three (ACC_ZBIAS_LEARN) -- a sign-off that changes vehicle state
+// rather than one that only changes a screen.
 //
 // Both are saved by the firmware on disarm, which is also why this has to
 // survive a reconnect: the operator lands, plugs in, and the card must know
@@ -21,6 +28,10 @@
 // which is exactly where an FPV pilot's first hover happens. That is a real
 // field report ("it doesn't seem to be picking up that we ran the first
 // hover"), so the mode is named in the instructions and flagged live.
+//
+// The mode has to hold ALTITUDE, not be one specific mode: AltHold, Loiter,
+// PosHold and the fork's VALT (ModeVelAltHold, which derives from ModeAltHold
+// and so reports has_manual_throttle() == false) all qualify.
 
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
@@ -33,6 +44,17 @@ export const ACC_ZBIAS_LEARN_USE = 1 << 1
 
 /** MOT_HOVER_LEARN = 2, the firmware default: learn and save. */
 export const MOT_HOVER_LEARN_AND_SAVE = 2
+
+/**
+ * MOT_HOVER_LEARN = 0, HOVER_LEARN_DISABLED.
+ *
+ * Staged when the operator ACCEPTS flight one. Left at 2, the vehicle re-learns
+ * the hover throttle on every subsequent flight, so flight two -- flown to
+ * learn something else entirely -- would quietly overwrite the value the
+ * operator just signed off, and the card would then report a number nobody
+ * approved.
+ */
+export const MOT_HOVER_LEARN_DISABLED = 0
 
 /**
  * Modes in which a hover throttle CANNOT be learned, however good the hover.
@@ -51,14 +73,23 @@ export const HOVER_LEARN_BLIND_MODES: readonly string[] = [
 export type HoverLearnStage =
   /** MOT_THST_HOVER has not been reported, so nothing can be said yet. */
   | 'unknown'
-  /** Nothing learned yet — go fly the first hover. */
+  /** No hover throttle yet — fly the first hover and get one. */
   | 'flight-1'
-  /** A hover throttle was learned. Was that flight any good? */
-  | 'flight-1-review'
-  /** Z-bias learning is armed — go fly the second hover. */
+  /**
+   * A hover throttle exists. Fly it again with that value APPLIED and see
+   * whether the aircraft actually holds altitude on it.
+   *
+   * This is a flight of its own rather than a yes/no on flight one, because
+   * the number only proves itself in the air: the controller uses
+   * MOT_THST_HOVER as its feedforward, so a wrong one shows up as a climb or
+   * sag the moment the stick is centred — and flight three's bias learning
+   * runs on top of whatever this leaves behind.
+   */
   | 'flight-2'
+  /** Z-bias learning is armed — go fly the third hover. */
+  | 'flight-3'
   /** A bias was learned. Was that flight any good? */
-  | 'flight-2-review'
+  | 'flight-3-review'
   /** Learned and being applied. */
   | 'complete'
 
@@ -115,11 +146,11 @@ export function deriveHoverLearnState(snapshot: ConfiguratorSnapshot): HoverLear
   const stage: HoverLearnStage = zbiasApplied
     ? 'complete'
     : biasLearned && zbiasArmed
-      ? 'flight-2-review'
+      ? 'flight-3-review'
       : zbiasArmed
-        ? 'flight-2'
+        ? 'flight-3'
         : hoverLearned
-          ? 'flight-1-review'
+          ? 'flight-2'
           : // An UNREPORTED MOT_THST_HOVER used to read as "still at the
             // default", i.e. as a vehicle that had never flown -- the card sent
             // the operator up for a flight on the strength of a parameter it

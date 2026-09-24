@@ -17,10 +17,25 @@ function snapshot(
 const FRESH = { ACC_ZBIAS_LEARN: 0, MOT_HOVER_LEARN: 2, MOT_THST_HOVER: MOT_THST_HOVER_DEFAULT }
 
 describe('deriveHoverLearnState', () => {
-  it('reads a learned hover throttle as flight 1 done', () => {
-    expect(deriveHoverLearnState(snapshot({ ...FRESH, MOT_THST_HOVER: 0.42 })).stage).toBe(
-      'flight-1-review'
-    )
+  // Three flights: measure it, fly it and check the aircraft holds altitude on
+  // it, then learn the Z-bias. A hover throttle existing means flight 1 is
+  // done, not that the sequence is.
+  it('reads a learned hover throttle as ready for flight 2', () => {
+    expect(deriveHoverLearnState(snapshot({ ...FRESH, MOT_THST_HOVER: 0.42 })).stage).toBe('flight-2')
+  })
+
+  it('arming the Z-bias moves it to flight 3', () => {
+    expect(
+      deriveHoverLearnState(snapshot({ ...FRESH, MOT_THST_HOVER: 0.42, ACC_ZBIAS_LEARN: 1 })).stage
+    ).toBe('flight-3')
+  })
+
+  it('a learned bias asks whether flight 3 was any good', () => {
+    expect(
+      deriveHoverLearnState(
+        snapshot({ ...FRESH, MOT_THST_HOVER: 0.42, ACC_ZBIAS_LEARN: 1, INS_ACC_VRFB_Z: 0.08 })
+      ).stage
+    ).toBe('flight-3-review')
   })
 
   it('reads an untouched hover throttle as flight 1 still to fly', () => {
@@ -36,8 +51,8 @@ describe('deriveHoverLearnState', () => {
     expect(state.hoverThrottle).toBeUndefined()
   })
 
-  it('still reports flight 2 for a vehicle past flight 1 with no hover throttle reported', () => {
-    expect(deriveHoverLearnState(snapshot({ ACC_ZBIAS_LEARN: 1 })).stage).toBe('flight-2')
+  it('still reports flight 3 for a vehicle past flight 1 with no hover throttle reported', () => {
+    expect(deriveHoverLearnState(snapshot({ ACC_ZBIAS_LEARN: 1 })).stage).toBe('flight-3')
   })
 
   it('flags a mode that can learn no hover throttle, but only in the air', () => {

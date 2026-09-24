@@ -30,6 +30,16 @@ export {
 } from './notch-tuning-analysis.js'
 
 export {
+  analyzeHoverThrottleLog,
+  analyzeHoverThrottleBuffer,
+  THST_HOVER_MIN,
+  THST_HOVER_MAX,
+  THST_HOVER_DEFAULT,
+  type HoverThrottleResult,
+  type HoverThrottleWindow
+} from './hover-throttle-analysis.js'
+
+export {
   analyzeValtLog,
   analyzeValtBuffer,
   type ValtResult,
