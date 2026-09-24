@@ -2739,18 +2739,36 @@ test.describe('Config view', () => {
     await expect(apply).toContainText('Apply Frame (1)')
   })
 
-  test('Config sections pack into a multicolumn (masonry) layout', async ({ page }) => {
+  test('the Config grid does not balance its columns', async ({ page }) => {
+    // Field report: "when I click Advanced the section moves and at first I
+    // didn't know where the box went", on Board orientation and System
+    // identity. The grid was CSS multicolumn, which BALANCES -- any height
+    // change re-flows every column, so opening a disclosure teleported the card
+    // to another column (measured 395px right and 258px up) and shoved an
+    // unrelated card sideways with it.
+    //
+    // This asserts the MECHANISM, deliberately. The tempting test -- open a
+    // disclosure and assert no card moved -- is vacuous today: it passes under
+    // multicolumn too, because no shipping card with a disclosure currently has
+    // anything below it in its column to reflow. It would start passing for the
+    // wrong reason and hide a revert. A balancing container is the hazard
+    // itself, so that is what is pinned.
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'config')
     const grid = page.getByTestId('config-section-grid')
     await expect(grid).toBeVisible()
-    // Sections pack via CSS multicolumn so short cards tuck under tall ones
-    // instead of leaving a row of dead space (capped at 3 columns now that a
-    // category holds only a few cards).
-    const columnWidth = await grid.evaluate((el) => getComputedStyle(el).columnWidth)
-    expect(columnWidth).toBe('360px')
+
+    const layout = await grid.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return { display: cs.display, columnWidth: cs.columnWidth, columnCount: cs.columnCount }
+    })
+    expect(layout.display, 'the Config grid must be a grid, not a multicolumn block').toBe('grid')
+    // A multicolumn container reports a real column-width and/or column-count;
+    // a grid leaves both at their initial `auto`.
+    expect(layout.columnWidth, 'a column-width means multicolumn balancing is back').toBe('auto')
+    expect(layout.columnCount, 'a column-count means multicolumn balancing is back').toBe('auto')
   })
 
   test('Receiver & signal section mirrors RSSI / mode-channel / RC options into Config', async ({ page }) => {

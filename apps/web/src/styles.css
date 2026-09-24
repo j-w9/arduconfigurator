@@ -8289,7 +8289,7 @@ body.is-status-dash-dragging {
 /* A section hosting a whole panel spans the multicolumn flow instead of being
    crammed into one ~360px column. */
 .config-section--wide {
-  column-span: all;
+  grid-column: 1 / -1;
 }
 
 #setup-panel-power .scoped-editor-grid {
@@ -14480,14 +14480,32 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .config-grid {
-  /* Masonry packing via CSS multicolumn: short sections tuck under tall ones
-     instead of leaving dead space. With the category tabs, a group holds only a
-     few cards, so cap the width so 2-3 cards read as a calm flow rather than
+  /* Grid, NOT CSS multicolumn.
+     This was multicolumn for masonry packing — short sections tucking under
+     tall ones. The cost was that multicolumn BALANCES: any height change
+     re-flows every column, so opening a card's "Advanced" disclosure teleported
+     it to another column (measured: 395px right and 258px up) and shoved an
+     unrelated card sideways with it. A card moving out from under the cursor
+     you just clicked is worse than a little dead space.
+     A grid cell is fixed, so opening a disclosure grows that card in place and
+     nothing else moves. `align-items: start` stops a short card stretching to
+     its row's height. Still capped so 2-3 cards read as a calm flow rather than
      spreading thin across a wide screen. */
-  columns: 360px 3;
-  column-gap: var(--space-3);
+  display: grid;
+  /* `min(360px, 100%)` not a bare 360px: a bare minimum makes a track the
+     container cannot shrink below, so on a 390px phone the grid laid out two
+     360px tracks and ran 752px off-screen (caught by the 390px overflow gate).
+     The min() lets the track collapse to the container on narrow screens. */
+  grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
+  gap: var(--space-3);
+  align-items: start;
   padding-right: 6px;
-  max-width: 1180px;
+  /* `min(…, 100%)` and `min-width: 0`, not a bare max-width: the grid sits in a
+     container that does not constrain it, so with a bare `max-width: 1180px` it
+     sized to its own max-content (three 360px tracks = 1152px) and ran ~790px
+     off a 390px phone. Capping against the parent keeps auto-fill honest. */
+  min-width: 0;
+  max-width: min(1180px, 100%);
 }
 
 /* A group holding ONE card takes the full width and flows its fields into as
@@ -14497,7 +14515,7 @@ details.metadata-settings-section:not([open]) > summary::after {
    by ConfigView wherever a category resolves to one card — every Peripherals
    sub-tab, and RC and Arming on Config. */
 .config-grid--wide {
-  columns: auto;
+  grid-template-columns: minmax(0, 1fr);
   max-width: none;
 }
 
@@ -14589,9 +14607,9 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
   background: var(--surface-200);
-  /* Multicolumn item: keep a card whole and space it from the next one. */
-  break-inside: avoid;
-  margin-bottom: var(--space-3);
+  /* Was a multicolumn item needing break-inside + its own bottom margin; as a
+     grid item the cell keeps it whole and the grid `gap` does the spacing. */
+  min-width: 0;
 }
 
 .config-section--planned {
@@ -14599,13 +14617,15 @@ details.metadata-settings-section:not([open]) > summary::after {
   opacity: 0.85;
 }
 
-/* A section whose body is a bitmask checkbox grid (arming checks, log bitmask,
-   ESC reverse/bidir masks) gets a wider column so the options lay out 2–3 up
-   instead of one tall single-file column. Clamps to the available columns at
-   narrow widths. */
-.config-section:has(.scoped-editor-field--bitmask) {
-  grid-column: span 2;
-}
+/* A bitmask section (arming checks, log bitmask, ESC reverse/bidir masks) used
+   to claim `grid-column: span 2` here, to lay its options out 2-3 up. That rule
+   was DEAD for as long as it existed: `.config-grid` was CSS multicolumn, and
+   `grid-column` does nothing to a multicolumn item. Making the grid a real grid
+   revived it by accident, and it was actively harmful — on a one-column phone
+   grid a span of 2 forces a second implicit track, which ran the page 772px off
+   a 390px screen, and its auto-placement moved unrelated cards between columns.
+   Removed rather than left as a latent trap. If the wider bitmask card is still
+   wanted, it needs a deliberate design that survives a single-column layout. */
 
 .config-section__header {
   display: flex;
