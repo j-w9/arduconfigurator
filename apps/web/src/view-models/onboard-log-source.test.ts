@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { ConfiguratorSnapshot, MavftpDirectoryEntry } from '@arduconfig/ardupilot-core'
+import type { ConfiguratorSnapshot, MavftpDirectoryEntry, OnboardLogInfo } from '@arduconfig/ardupilot-core'
 
 import {
   mavftpEntriesToLogItems,
+  mergeOnboardLogSources,
   parseMavftpLogId,
   selectOnboardLogSource
 } from './onboard-log-source'
@@ -88,5 +89,35 @@ describe('mavftpEntriesToLogItems', () => {
     const ids = items.map((item) => item.log.id)
     expect(new Set(ids).size).toBe(ids.length)
     expect(ids).toEqual([1])
+  })
+})
+
+describe('mergeOnboardLogSources', () => {
+  const log = (id: number, sizeBytes = 1024): OnboardLogInfo => ({ id, sizeBytes, timeUtc: 0 })
+
+  it('keeps a log the LOG_* list knows about but MAVFTP did not report', () => {
+    // The reported field case: Mission Planner (LOG_*) listed three logs on the
+    // first connect while this tab showed two, because the MAVFTP directory had
+    // not caught up with the newest one yet.
+    const merged = mergeOnboardLogSources([log(1), log(2)], [log(1), log(2), log(3)])
+    expect(merged.map((entry) => entry.id)).toEqual([1, 2, 3])
+  })
+
+  it('prefers the MAVFTP entry where both sources know a log', () => {
+    const merged = mergeOnboardLogSources([log(1, 57_000_000)], [log(1, 0)])
+    expect(merged).toHaveLength(1)
+    expect(merged[0]!.sizeBytes).toBe(57_000_000)
+  })
+
+  it('drops LOG_*-only entries under mavftpOnly, so a stale count cannot survive an erase', () => {
+    // After an erase LASTLOG.TXT can still name logs that are gone; the files
+    // are the only honest answer to "what is left".
+    const merged = mergeOnboardLogSources([], [log(1), log(2)], { mavftpOnly: true })
+    expect(merged).toEqual([])
+  })
+
+  it('sorts by id so a late MAVFTP-missing log does not land at the end', () => {
+    const merged = mergeOnboardLogSources([log(3)], [log(1), log(2), log(3)])
+    expect(merged.map((entry) => entry.id)).toEqual([1, 2, 3])
   })
 })

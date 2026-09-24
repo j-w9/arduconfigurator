@@ -84,3 +84,32 @@ export function mavftpEntriesToLogItems(entries: readonly MavftpDirectoryEntry[]
   })
   return [...byPath.values()].sort((left, right) => left.log.id - right.log.id)
 }
+
+/**
+ * The onboard log list, taking BOTH sources into account.
+ *
+ * The two disagree because they measure different things. The LOG_* list is
+ * derived on the vehicle from LASTLOG.TXT; the MAVFTP list reads the `/APM/LOGS`
+ * directory. Each can be right when the other is wrong:
+ *
+ * - The directory can LAG a log the vehicle has already counted, so MAVFTP
+ *   comes back short. That is how this surface came to disagree with Mission
+ *   Planner — MP lists over LOG_* and had the full set on the first connect
+ *   while this tab was missing the newest log until a reconnect.
+ * - LASTLOG.TXT can be STALE after an erase, naming logs that are no longer on
+ *   the card, which is why the files are preferred wherever both know a log.
+ *
+ * So: union, with MAVFTP winning on shared ids (its name, path and size come
+ * from the file itself). `mavftpOnly` drops the LOG_*-only extras for the
+ * post-erase re-list, which is asking what actually SURVIVED and must not be
+ * answered from a stale count.
+ */
+export function mergeOnboardLogSources(
+  mavftpLogs: readonly OnboardLogInfo[],
+  logEntries: readonly OnboardLogInfo[],
+  options: { mavftpOnly?: boolean } = {}
+): OnboardLogInfo[] {
+  const mavftpIds = new Set(mavftpLogs.map((log) => log.id))
+  const extras = options.mavftpOnly ? [] : logEntries.filter((entry) => !mavftpIds.has(entry.id))
+  return [...mavftpLogs, ...extras].sort((left, right) => left.id - right.id)
+}

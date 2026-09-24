@@ -10,6 +10,7 @@ import { buildOnboardLogFilename } from '@arduconfig/ardupilot-core'
 import { downloadBinaryFile } from '../download-file'
 import {
   mavftpEntriesToLogItems,
+  mergeOnboardLogSources,
   selectOnboardLogSource,
   type MavftpLogItem,
   type OnboardLogSource
@@ -92,7 +93,10 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
   // used the LOG_* source. download() keys off this to pick the path.
   const mavftpItemsRef = useRef<Map<number, MavftpLogItem>>(new Map())
 
-  const list = useCallback(async () => {
+  // `mavftpOnly` exists for the post-erase re-list, where the FILES are the
+  // only honest answer to "what is left" — see erase() below. Normal listing
+  // takes the union of both sources.
+  const listInternal = useCallback(async (options: { mavftpOnly?: boolean } = {}) => {
     if (!runtime) return
     // The capability bit is a hint, not the answer.
     //
@@ -125,13 +129,30 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         // merge by log id. Best-effort: if it fails (or a log predates a GPS
         // time fix, time_utc = 0) that row simply stays "Unknown date".
         let timeUtcById = new Map<number, number>()
+        let logEntries: OnboardLogInfo[] = []
         try {
-          const entries = await runtime.listOnboardLogs()
-          timeUtcById = new Map(entries.map((entry) => [entry.id, entry.timeUtc]))
+          logEntries = await runtime.listOnboardLogs()
+          timeUtcById = new Map(logEntries.map((entry) => [entry.id, entry.timeUtc]))
         } catch {
-          // dates are optional — keep the MAVFTP list without them
+          // dates (and the union below) are optional — keep the MAVFTP list
         }
-        logs = items.map((item) => ({ ...item.log, timeUtc: timeUtcById.get(item.log.id) ?? item.log.timeUtc }))
+        const mavftpLogs = items.map((item) => ({
+          ...item.log,
+          timeUtc: timeUtcById.get(item.log.id) ?? item.log.timeUtc
+        }))
+        // A log the LOG_* list knows about but MAVFTP did not report is still a
+        // real log, and dropping it is how this surface came to disagree with
+        // Mission Planner: MP lists over LOG_* and had the full set on the
+        // first connect while this tab was missing the newest one until a
+        // reconnect. The two disagree because they measure different things —
+        // LOG_* is derived from LASTLOG.TXT, MAVFTP reads the directory — and
+        // the directory can lag a log the vehicle has already counted.
+        //
+        // So the normal listing is the UNION. MAVFTP still wins where both know
+        // a log (its name, path and size are the file's own), and the extras
+        // simply have no MAVFTP path, which download() already handles by
+        // falling back to downloadOnboardLog(id).
+        logs = mergeOnboardLogSources(mavftpLogs, logEntries, { mavftpOnly: options.mavftpOnly })
         logNamesById = new Map(items.map((item) => [item.log.id, item.name]))
         mavftpPathsById = new Map(items.map((item) => [item.log.id, item.path]))
       } else {
@@ -157,6 +178,10 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
     }
   }, [runtime])
 
+  const list = useCallback(() => {
+    void listInternal()
+  }, [listInternal])
+
   /**
    * Erase every log on the card.
    *
@@ -175,7 +200,9 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
       // report whatever is actually there.
       for (let attempt = 0; attempt < ERASE_RELIST_ATTEMPTS; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, ERASE_RELIST_DELAY_MS))
-        await list()
+        // Files only: a stale LASTLOG.TXT can still name logs that are gone,
+        // and this loop is asking what SURVIVED the erase.
+        await listInternal({ mavftpOnly: true })
         if (logsRef.current.length === 0) {
           break
         }
@@ -187,7 +214,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         message: error instanceof Error ? error.message : 'Erasing onboard logs failed.'
       }))
     }
-  }, [runtime, list])
+  }, [runtime, listInternal])
 
   const download = useCallback(
     async (id: number) => {
