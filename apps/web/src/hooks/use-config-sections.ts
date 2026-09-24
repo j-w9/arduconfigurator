@@ -70,7 +70,6 @@ const CATEGORY_BY_SECTION: Record<string, ConfigCategoryId> = {
 // logging + gyro-rate settings are visible because they are routinely changed
 // per-build rather than once at bring-up.
 const ADVANCED_FIELDS: Record<string, readonly string[]> = {
-  'board-orientation': ['AHRS_TRIM_X', 'AHRS_TRIM_Y', 'AHRS_TRIM_Z'],
   compass: ['COMPASS_AUTO_ROT', 'COMPASS_DISBLMSK'],
   'esc-dshot': ['SERVO_BLH_POLES', 'SERVO_BLH_BDMASK', 'SERVO_BLH_RVMASK'],
   // INS_GYRO_RATE moved out: it is a selectable per-build choice (and the
@@ -156,13 +155,17 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     {
       id: 'board-orientation',
       title: 'Board orientation',
-      description: 'AHRS_ORIENTATION dropdown + per-axis trims (radians). Pick the FC mounting orientation; trims fine-tune level after accel calibration.',
-      fields: [
-        { paramId: 'AHRS_ORIENTATION', label: 'Orientation', digits: 0 },
-        { paramId: 'AHRS_TRIM_X', label: 'Roll trim', unit: 'rad', digits: 4 },
-        { paramId: 'AHRS_TRIM_Y', label: 'Pitch trim', unit: 'rad', digits: 4 },
-        { paramId: 'AHRS_TRIM_Z', label: 'Yaw trim', unit: 'rad', digits: 4 }
-      ]
+      description: 'Which way the flight controller is mounted relative to the airframe.',
+      // The AHRS_TRIM_X/Y/Z trims used to sit here behind Advanced. They are
+      // OUTPUTS of level calibration, not settings: Calibration writes them, and
+      // an operator who wants a different value re-levels rather than typing
+      // radians. AHRS_TRIM_Z was never even that — ArduPilot documents it as
+      // "@Description: Not Used" (AP_AHRS.cpp) with no @User line at all.
+      // Offering three number fields invited hand-editing a calibration result,
+      // which is how a vehicle ends up flying with a trim nobody can explain.
+      // They remain reachable in the raw Parameters tab for anyone who needs
+      // them.
+      fields: [{ paramId: 'AHRS_ORIENTATION', label: 'Orientation', digits: 0 }]
     },
     ...(hasCompass
       ? [
