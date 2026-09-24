@@ -11,27 +11,87 @@ on:
 permissions:
   contents: read
 
+# The e2e suite is SHARDED across jobs (see the `e2e` job below), which is what
+# the previous single-job comment here said was the durable fix when the run
+# started brushing its ceiling. Measured on a green run before the split:
+#
+#   E2E                                19.5 min
+#   node tests / typecheck / build      1.4 min
+#   ----------------------------------------------
+#   total                              21.4 min
+#
+# So e2e was 91% of CI and nothing else was worth touching. Sharding it four
+# ways takes the wall clock to roughly 6 minutes.
+#
+# Both this file and the private mirror's copy are kept IDENTICAL so
+# cherry-picks between the two never conflict on them. The mirror runs a larger
+# suite, so it gains more from this than the public repo does.
 jobs:
+  # Everything that is not the browser suite. ~3 minutes, and it fails fast on
+  # a type error or a unit-test regression without waiting on any shard.
   validate:
     runs-on: ubuntu-latest
-    # 35, not 20. The private mirror's validate job reached 17.9 min on
-    # 2026-08-08 and then began exceeding 20 outright — GitHub reports that as
-    # "Error: The operation was canceled." partway through the e2e run, which
-    # reads like a flake or an infra failure rather than the budget being spent.
-    # It had been cancelling intermittently for days for the same reason.
-    #
-    # The downstream mirror runs a larger suite than this one, so it takes
-    # longer and hits the cap first. Both files are kept IDENTICAL so
-    # cherry-picks between the two never conflict on this.
-    #
-    # The real cost is the Playwright suite: ~280 tests at `workers: 1`
-    # (playwright.config.ts), which is deliberate — the preview server and the
-    # demo MAVLink bridge are on fixed --strictPort ports and share one vehicle
-    # session, so parallel workers would collide and interfere with each other's
-    # parameter writes. Sharding across JOBS (each with its own port pair) is the
-    # durable fix if this creeps up again; raising the ceiling is the honest
-    # short-term answer while the number is still a real signal.
-    timeout-minutes: 35
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Unit tests (web)
+        run: npm run test:unit --workspace @arduconfig/web
+
+      # The production rolldown build resolves workspace deps differently
+      # from the dev server / esbuild used by typecheck+test above, so a broken
+      # production build (e.g. a workspace package missing from the Vite
+      # source-alias map, #163) used to pass this gate and only fail afterwards
+      # in Web Deploy. Run the exact Pages build command here so it is a
+      # required merge check.
+      - name: Production build (web)
+        run: npm run build --workspace @arduconfig/web
+        env:
+          ARDUCONFIG_WEB_BASE: /ArduConfigurator/
+
+  # The Playwright suite, split four ways.
+  #
+  # Each shard is its own RUNNER, so the fixed preview/bridge ports
+  # (4173/14550, both --strictPort) cannot collide between shards -- no port
+  # plumbing is needed here, only in a second checkout on one machine, which is
+  # what ARDUCONFIG_E2E_PORT / ARDUCONFIG_E2E_BRIDGE_PORT are for.
+  #
+  # Sharding is by TEST, not by file, which needs `fullyParallel: true` in
+  # playwright.config.ts: views.spec.ts alone holds 290 of the ~388 tests, so a
+  # file-level split would leave one shard carrying almost the whole suite.
+  # `workers: 1` still stands, so tests run serially INSIDE a shard -- the
+  # preview server and the demo MAVLink bridge share one vehicle session, and
+  # parallel workers would interfere with each other's parameter writes.
+  #
+  # Verified before adopting: every shard passes standalone, including the
+  # middle ones, which is where a test that depended on a parameter an earlier
+  # test wrote would break.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # One shard failing must not cancel the others: which tests fail in the
+      # OTHER shards is exactly what you want to see on a red run.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     steps:
       - name: Check out repository
@@ -49,34 +109,19 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install chromium --with-deps
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Build
+        run: npm run build
 
-      - name: Test
-        run: npm run test
-
-      - name: Unit tests (web)
-        run: npm run test:unit --workspace @arduconfig/web
-
-      - name: E2E
-        run: npm run test:e2e
-
-      # The production rolldown build resolves workspace deps differently
-      # from the dev server / esbuild used by typecheck+test+e2e above, so a
-      # broken production build (e.g. a workspace package missing from the
-      # Vite source-alias map, #163) used to pass this gate and only fail
-      # afterwards in Web Deploy. Run the exact Pages build command here so
-      # it is a required merge check.
-      - name: Production build (web)
-        run: npm run build --workspace @arduconfig/web
-        env:
-          ARDUCONFIG_WEB_BASE: /ArduConfigurator/
+      # `npm run test:e2e` prepends its own `npm run build`; the build above is
+      # that build, so call Playwright directly rather than doing it twice.
+      - name: E2E (shard ${{ matrix.shard }}/4)
+        run: npx playwright test --shard=${{ matrix.shard }}/4
 
       - name: Upload Playwright artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v5
         with:
-          name: playwright-results
+          name: playwright-results-shard-${{ matrix.shard }}
           path: |
             test-results
             playwright-report
