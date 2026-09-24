@@ -570,6 +570,18 @@ const mockParameters: ParameterState = {
   INS_HNTCH_HMNCS: 3,
   INS_HNTCH_OPTS: 0,
   INS_HNTCH_FM_RAT: 1,
+  // The SECOND harmonic notch. ArduPilot ships two (harmonic_notches[0] and
+  // [1], AP_InertialSensor.cpp AP_SUBGROUPINFO "_HNTC2_") and a board reports
+  // both, so a demo vehicle carrying only the first is not shaped like any
+  // real copter -- and it made the Tuning ▸ Filters notch-2 group untestable.
+  INS_HNTC2_ENABLE: 0,
+  INS_HNTC2_MODE: 1,
+  INS_HNTC2_REF: 0,
+  INS_HNTC2_FREQ: 80,
+  INS_HNTC2_BW: 40,
+  INS_HNTC2_HMNCS: 3,
+  INS_HNTC2_OPTS: 0,
+  INS_HNTC2_FM_RAT: 1,
   MOT_THST_HOVER: 0.35,
   ATC_RAT_RLL_FLTT: 35,
   ATC_RAT_RLL_FLTE: 0,

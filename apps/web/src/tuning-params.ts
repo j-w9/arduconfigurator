@@ -97,6 +97,14 @@ export const TUNING_FILTER_PARAM_IDS = [
   'INS_HNTCH_HMNCS',
   'INS_HNTCH_OPTS',
   'INS_HNTCH_FM_RAT',
+  'INS_HNTC2_ENABLE',
+  'INS_HNTC2_MODE',
+  'INS_HNTC2_REF',
+  'INS_HNTC2_FREQ',
+  'INS_HNTC2_BW',
+  'INS_HNTC2_HMNCS',
+  'INS_HNTC2_OPTS',
+  'INS_HNTC2_FM_RAT',
   'ATC_RAT_RLL_FLTT',
   'ATC_RAT_RLL_FLTE',
   'ATC_RAT_RLL_FLTD',
@@ -170,6 +178,25 @@ export const TUNING_FILTER_AXIS_GROUPS = [
       'INS_HNTCH_HMNCS',
       'INS_HNTCH_OPTS',
       'INS_HNTCH_FM_RAT'
+    ] as const
+  },
+  {
+    // ArduPilot ships TWO harmonic notches (INS_HNTCH_* and INS_HNTC2_*,
+    // harmonic_notches[0] and [1]). Only the first was ever surfaced, so a
+    // vehicle needing two sources — ESC telemetry on one, a fixed frame mode on
+    // the other — had to go to the raw Parameters tab for half of its filter
+    // configuration. Its own group so the two sets never interleave.
+    id: 'notch2',
+    label: 'Harmonic notch 2',
+    paramIds: [
+      'INS_HNTC2_ENABLE',
+      'INS_HNTC2_MODE',
+      'INS_HNTC2_REF',
+      'INS_HNTC2_FREQ',
+      'INS_HNTC2_BW',
+      'INS_HNTC2_HMNCS',
+      'INS_HNTC2_OPTS',
+      'INS_HNTC2_FM_RAT'
     ] as const
   }
 ] as const

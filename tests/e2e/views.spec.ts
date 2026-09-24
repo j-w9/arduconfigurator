@@ -7484,6 +7484,23 @@ test.describe('Tuning ▸ Filters', () => {
     await expect(page.getByTestId('tuning-filter-group-roll')).toBeVisible()
   })
 
+  test('the second harmonic notch is configurable, not just the first', async ({ page }) => {
+    // ArduPilot ships TWO harmonic notches (INS_HNTCH_* and INS_HNTC2_*,
+    // harmonic_notches[0] and [1] — AP_InertialSensor.cpp AP_SUBGROUPINFO
+    // "_HNTC2_"). Only the first was surfaced, so a vehicle that needs two
+    // sources — ESC telemetry on one, a fixed frame mode on the other — had to
+    // configure half its filtering from the raw Parameters tab.
+    await openFilters(page)
+    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
+    await expect(page.getByTestId('tuning-filter-group-notch2')).toBeVisible()
+    // The enum and bitmask fields are the ones that are useless as raw numbers,
+    // so they are what proves the second notch got real metadata rather than
+    // just appearing in the list.
+    for (const id of ['INS_HNTC2_MODE', 'INS_HNTC2_OPTS', 'INS_HNTC2_HMNCS']) {
+      await expect(page.getByTestId(`metadata-field-info-${id}`), id).toBeVisible()
+    }
+  })
+
   test('every parameter carries an info bubble and a wiki link', async ({ page }) => {
     // Two renderers feed this grid -- the Tuning slider for the frequencies,
     // the shared metadata editor for the enums, bitmasks, and ratios -- and
