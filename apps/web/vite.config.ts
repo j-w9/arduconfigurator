@@ -51,6 +51,12 @@ const gitBranch = gitValue('git rev-parse --abbrev-ref HEAD', process.env.ARDUCO
 // ARDUCONFIG_WEB_BASE=/ArduConfigurator/ before invoking `vite build`.
 const base = process.env.ARDUCONFIG_WEB_BASE ?? '/'
 
+/** Kept beside the copy in public/_headers, which serves the built site. */
+const ISOLATION_HEADERS = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'require-corp'
+}
+
 export default defineConfig({
   base,
   define: {
@@ -79,11 +85,20 @@ export default defineConfig({
       '@amc/data': amcDataDir
     }
   },
+  // Cross-origin isolation, so `vite dev` and `vite preview` behave like the
+  // deployed site. The WebAssembly simulator needs SharedArrayBuffer, which
+  // browsers only expose to an isolated page -- without these it silently does
+  // not start locally, and production is the only place the feature works.
+  // Cloudflare sets the same pair from public/_headers.
   server: {
+    headers: ISOLATION_HEADERS,
     fs: {
       // The AMC packages and step data are outside this project root.
       allow: [fileURLToPath(root), fileURLToPath(amcRoot)]
     }
+  },
+  preview: {
+    headers: ISOLATION_HEADERS
   },
   build: {
     rollupOptions: {

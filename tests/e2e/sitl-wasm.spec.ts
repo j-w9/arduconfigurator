@@ -14,13 +14,20 @@ import { expect, test } from '@playwright/test'
 
 test.describe('WebAssembly SITL', () => {
   test('the artifacts are served, and as the right type', async ({ page }) => {
-    const response = await page.request.get('/sitl/sim-options.json')
-    test.skip(!response.ok(), 'no simulator in this build — run npm run sitl:build')
+    // The artifacts live under a content-hashed directory, so a CDN copy
+    // cached with the wrong headers can never be served in place of a current
+    // one. This small file is the only fixed URL and names the current build.
+    const pointer = await page.request.get('/sitl/build.json')
+    test.skip(!pointer.ok(), 'no simulator in this build — run npm run sitl:build')
+    const { build } = (await pointer.json()) as { build: string }
+    expect(build).toMatch(/^[0-9a-f]{12}$/)
 
+    const response = await page.request.get(`/sitl/${build}/sim-options.json`)
+    expect(response.ok()).toBe(true)
     const options = (await response.json()) as { frames: Record<string, string[]> }
     expect(Object.keys(options.frames).length).toBeGreaterThan(0)
 
-    const wasm = await page.request.get('/sitl/arducopter.wasm')
+    const wasm = await page.request.get(`/sitl/${build}/arducopter.wasm`)
     expect(wasm.ok()).toBe(true)
     // WebAssembly.instantiateStreaming refuses anything but application/wasm,
     // so a wrong content type here is a simulator that silently will not run.
@@ -28,7 +35,7 @@ test.describe('WebAssembly SITL', () => {
   })
 
   test('a vehicle boots in the browser and the app connects to it', async ({ page }) => {
-    const probe = await page.request.get('/sitl/sim-options.json')
+    const probe = await page.request.get('/sitl/build.json')
     test.skip(!probe.ok(), 'no simulator in this build — run npm run sitl:build')
 
     await page.goto('/')
@@ -51,7 +58,7 @@ test.describe('WebAssembly SITL', () => {
   })
 
   test("SITL's own console is shown, which is where a failed boot explains itself", async ({ page }) => {
-    const probe = await page.request.get('/sitl/sim-options.json')
+    const probe = await page.request.get('/sitl/build.json')
     test.skip(!probe.ok(), 'no simulator in this build — run npm run sitl:build')
 
     await page.goto('/')
