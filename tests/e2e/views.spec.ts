@@ -791,9 +791,35 @@ test.describe('Ports view', () => {
     await expect(moved).toBeVisible()
     // The residue only: anything a curated field already renders (GPS_TYPE on
     // this very sub-tab, CAM_TRIGG_TYPE on Config) must not appear twice.
-    await expect(moved.getByText('GPS_TYPE2', { exact: true })).toBeVisible()
+    // The param id is stamped in three places on a row (field hint, info
+    // bubble, section summary), so take the first rather than the set.
+    await expect(moved.getByText('GPS_TYPE2', { exact: true }).first()).toBeVisible()
     await expect(moved.getByText('GPS_TYPE', { exact: true })).toHaveCount(0)
     await expect(moved.getByText('CAM_TRIGG_TYPE', { exact: true })).toHaveCount(0)
+  })
+
+  test('the GPS cards and the board box left Ports too', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'ports')
+    // "One row per UART: role, baud rates, and options inline" restated the
+    // table directly beneath it.
+    await expect(page.getByText('One row per UART', { exact: false })).toHaveCount(0)
+    await expect(page.getByTestId('peripherals-gps-cards')).toHaveCount(0)
+    // The board-identity card (label, family, MAVFTP support, raw uarts.txt).
+    // Which board this is belongs to Status & Info, which already says it.
+    await expect(page.locator('.port-board-links')).toHaveCount(0)
+    await expect(page.locator('.port-board-debug')).toHaveCount(0)
+
+    await openView(page, 'peripherals')
+    await page.locator('.tab-strip__tab', { hasText: 'GPS' }).first().click()
+    const cards = page.getByTestId('peripherals-gps-cards')
+    await expect(cards).toBeVisible()
+    await expect(cards.getByText('Primary GPS', { exact: true })).toBeVisible()
+    // Status only. GPS_TYPE is a labelled field on this same sub-tab and
+    // GPS_TYPE2 sits in Additional GPS settings; a third editor for the pair is
+    // the duplication this whole move is undoing.
+    await expect(cards.locator('select')).toHaveCount(0)
   })
 })
 

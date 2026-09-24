@@ -5,13 +5,12 @@
 
 import type { ReactElement, ReactNode } from 'react'
 import type { ArduPilotConfiguratorRuntime, ConfiguratorSnapshot, ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
-import type { AppViewId, BoardCatalogEntry, BoardReferenceLink } from '@arduconfig/param-metadata'
+import type { AppViewId } from '@arduconfig/param-metadata'
 import {
   ARDUCOPTER_SERIAL_OPTION_BIT_LABELS,
   arducopterSerialBaudRate,
   arducopterSerialProtocolOptions,
   encodeArducopterSerialBaud,
-  formatArducopterGpsType,
   formatArducopterSerialProtocol,
   formatArducopterSerialRtscts
 } from '@arduconfig/param-metadata'
@@ -27,9 +26,8 @@ import { normalizeBitmaskValue } from '../parameter-format'
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import type { SerialPortViewModel } from '../serial-port-helpers'
 import { toneForScopedDraftReview } from '../tone-helpers'
-import type { AdditionalSettingsGroup, CanNodePeripheralViewModel, GpsPeripheralViewModel } from '../view-models/peripherals'
+import type { AdditionalSettingsGroup, CanNodePeripheralViewModel } from '../view-models/peripherals'
 import { pairedDraftsForSerialProtocol, pairingNoteForSerialProtocol } from '../view-models/port-protocol-pairings'
-import { ScopedSelectField } from '../views/ScopedField'
 
 export interface PortsSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -39,16 +37,10 @@ export interface PortsSectionProps {
   /** A pending reboot-required follow-up (serial-role changes need a reboot). */
   rebootRequired: boolean
   onReboot: () => void
-  // Board catalog data
-  boardCatalogEntry: BoardCatalogEntry | undefined
-  boardReferenceLinks: readonly BoardReferenceLink[]
   // Serial port models
   serialPortViewModels: readonly SerialPortViewModel[]
   visibleSerialPortViewModels: readonly SerialPortViewModel[]
-  gpsPeripheralViewModels: readonly GpsPeripheralViewModel[]
   canNodePeripheralViewModels: readonly CanNodePeripheralViewModel[]
-  uartsMappedPortCount: number
-  uartsStatusTone: 'success' | 'warning' | 'danger' | 'neutral'
   portVisibilitySummary: string
   // Drafts: this view's scope
   portsDraftEntries: readonly ParameterDraftEntry[]
@@ -122,14 +114,9 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     parameterNotice,
     rebootRequired,
     onReboot,
-    boardCatalogEntry,
-    boardReferenceLinks,
     serialPortViewModels,
     visibleSerialPortViewModels,
-    gpsPeripheralViewModels,
     canNodePeripheralViewModels,
-    uartsMappedPortCount,
-    uartsStatusTone,
     portVisibilitySummary,
     portsDraftEntries,
     portsStagedDrafts,
@@ -193,7 +180,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                       <div className="ports-surface__header">
                         <div>
                           <h3>Port matrix</h3>
-                          <p>One row per UART: role, baud rates, and options inline.</p>
                         </div>
                         <div className="ports-surface__header-actions">
                           <StatusBadge tone={toneForScopedDraftReview(portsStagedDrafts.length, portsInvalidDrafts.length)}>
@@ -633,133 +619,15 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 		              </div>
 		              <div className="ports-workspace__sidebar">
 
-                {snapshot.hardware.board || snapshot.hardware.uartsFile.status !== 'idle' ? (
-                  <article className="port-card">
-                    <div className="port-card__header">
-                      <div>
-                        <strong>{boardCatalogEntry?.label ?? (snapshot.hardware.board ? `Board ${snapshot.hardware.board.boardType}` : 'Board detection')}</strong>
-                        <small>
-                          {boardCatalogEntry?.familyLabel
-                            ?? (snapshot.hardware.board ? `APJ board ${snapshot.hardware.board.boardType}` : 'Waiting for AUTOPILOT_VERSION')}
-                        </small>
-                      </div>
-                      <StatusBadge tone={uartsStatusTone}>
-                        {snapshot.hardware.uartsFile.status === 'ready'
-                          ? 'uarts.txt ready'
-                          : snapshot.hardware.uartsFile.status === 'loading'
-                            ? 'loading'
-                            : snapshot.hardware.uartsFile.status === 'unsupported'
-                              ? 'FTP unavailable'
-                              : snapshot.hardware.uartsFile.status === 'missing'
-                                ? 'uarts missing'
-                                : snapshot.hardware.uartsFile.status === 'error'
-                                  ? 'FTP error'
-                                  : 'identifying'}
-                      </StatusBadge>
-                    </div>
+                {/* The board-identity card was here: board label, family, MAVFTP
+                 *  support and the raw @SYS/uarts.txt dump. Which board this is
+                 *  belongs to Status & Info, which already states it, and the
+                 *  one thing this card said that Ports needs -- that per-port
+                 *  activity is unavailable without uarts.txt -- is stated above
+                 *  the matrix it affects. */}
 
-                    <div className="config-pills">
-                      {snapshot.hardware.board ? <span>Board type {snapshot.hardware.board.boardType}</span> : null}
-                      {snapshot.hardware.board ? <span>{snapshot.hardware.board.ftpSupported ? 'MAVFTP supported' : 'MAVFTP unavailable'}</span> : null}
-                      {uartsMappedPortCount > 0 ? <span>{uartsMappedPortCount} mapped UARTs</span> : null}
-                    </div>
-
-                    <p>
-                      {snapshot.hardware.uartsFile.status === 'ready'
-                        ? 'Ports now use the controller-reported UART mapping instead of generic SERIAL labels.'
-                        : snapshot.hardware.uartsFile.status === 'unsupported'
-                          ? 'This controller did not advertise MAVFTP support, so Ports stays generic.'
-                          : snapshot.hardware.uartsFile.status === 'missing'
-                            ? 'Board identity is available, but this controller did not expose `@SYS/uarts.txt`.'
-                            : snapshot.hardware.uartsFile.status === 'error'
-                              ? `MAVFTP failed: ${snapshot.hardware.uartsFile.error ?? 'Unknown error.'}`
-                              : 'Waiting for board identity and UART mapping from the controller.'}
-                    </p>
-
-                    {boardCatalogEntry ? (
-                      <div className="port-board-links">
-                        <a href={boardCatalogEntry.wikiUrl} target="_blank" rel="noreferrer">
-                          ArduPilot Wiki
-                        </a>
-                        <a href={boardCatalogEntry.manufacturerUrl} target="_blank" rel="noreferrer">
-                          {boardCatalogEntry.manufacturerName}
-                        </a>
-                        {boardReferenceLinks.map((reference) => (
-                          <a key={reference.id} href={reference.url} target="_blank" rel="noreferrer">
-                            {reference.label}
-                          </a>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {snapshot.hardware.uartsFile.rawText ? (
-                      <details className="port-board-debug">
-                        <summary>Controller `uarts.txt`</summary>
-                        <pre>{snapshot.hardware.uartsFile.rawText}</pre>
-                      </details>
-                    ) : null}
-                  </article>
-                ) : null}
-
-		            {gpsPeripheralViewModels.length > 0 ? (
-	              <div className="port-card-grid">
-	                {gpsPeripheralViewModels.map((peripheral) => (
-	                  <article key={peripheral.label} className="port-card">
-	                    <div className="port-card__header">
-	                      <div>
-	                        <strong>{peripheral.label}</strong>
-	                        <small>Configured driver: {formatArducopterGpsType(peripheral.value)}</small>
-	                      </div>
-	                      <StatusBadge
-                          tone={
-                            peripheral.value === 0
-                              ? 'neutral'
-                              : peripheral.id === 'primary' && snapshot.liveVerification.globalPosition.verified
-                                ? 'success'
-                                : peripheral.id === 'primary' && !snapshot.liveVerification.gpsReceiver.detected
-                                  ? 'danger'
-                                  : 'warning'
-                          }
-                        >
-	                        {peripheral.value === 0
-                            ? 'disabled'
-                            : peripheral.id === 'primary' && snapshot.liveVerification.globalPosition.verified
-                              ? 'live position'
-                              // "configured" used to cover BOTH a working GPS
-                              // waiting on a fix and a GPS that was never wired
-                              // up — a driver selected in a parameter reads as
-                              // an accomplished setup. GPS_RAW_INT separates
-                              // them: no frames at all means nothing is talking.
-                              : peripheral.id !== 'primary'
-                                ? 'configured'
-                                : !snapshot.liveVerification.gpsReceiver.detected
-                                  ? 'not detected'
-                                  : `no fix · ${snapshot.liveVerification.gpsReceiver.satellitesVisible ?? 0} sats`}
-	                      </StatusBadge>
-	                    </div>
-	                    <p>
-                        {peripheral.id === 'primary' && snapshot.liveVerification.globalPosition.verified
-                          ? 'Live position is arriving. Keep the configured driver consistent with the actual hardware after reboot and reconnect.'
-                          : peripheral.id === 'primary' && !snapshot.liveVerification.gpsReceiver.detected
-                            ? 'A driver is selected but no GPS is reporting at all — not even an unfixed one. That points at wiring rather than sky view: check the module is on a UART with TX/RX the right way round (a GPS on I2C pins never reports), that the port protocol is GPS, and that the module has power.'
-                            : peripheral.id === 'primary'
-                              ? 'The GPS module is reporting but has no position fix yet. This is normal indoors — give it sky view.'
-                              : 'Choose the expected GPS/peripheral driver, then verify the live device after reboot and reconnect.'}
-                      </p>
-
-	                    {peripheral.parameter ? (
-	                      <ScopedSelectField
-	                        parameter={peripheral.parameter}
-	                        liveValue={peripheral.value}
-	                        editedValues={editedValues}
-	                        onChange={(paramId, value) => setDraft(paramId, value)}
-	                        draftStatusById={parameterDraftById}
-	                      />
-	                    ) : null}
-	                  </article>
-	                ))}
-	              </div>
-	            ) : null}
+                {/* The Primary / Secondary GPS cards moved to Peripherals > GPS,
+                 *  beside the driver settings they report on. */}
 
               {canNodePeripheralViewModels.length > 0 ? (
                 <section className="dronecan-peripherals" data-testid="ports-dronecan-section">

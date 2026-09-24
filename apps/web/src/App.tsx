@@ -295,6 +295,7 @@ import { CalibrationSection } from './sections/CalibrationSection'
 import { OsdSection } from './sections/OsdSection'
 import { OutputsSection } from './sections/OutputsSection'
 import { ParametersSection } from './sections/ParametersSection'
+import { GpsPeripheralCards } from './sections/GpsPeripheralCards'
 import { PortsSection } from './sections/PortsSection'
 import { PresetsSection } from './sections/PresetsSection'
 import { ReceiverSection } from './sections/ReceiverSection'
@@ -455,7 +456,7 @@ import {
   rcLogicUpdateLogicTermDrafts
 } from './view-models/rc-logic'
 import { armSwitchAssignmentDrafts, deriveArmSwitchAssignment } from './view-models/arm-switch'
-import { statusToneLabel, type StatusTone } from './status-tone'
+import { statusToneLabel } from './status-tone'
 import {
   createSavedSnapshot,
   type SavedParameterSnapshot,
@@ -2817,18 +2818,6 @@ export function App() {
     vtxLinkPorts,
     osdLinkPorts
   } = useSerialPortModels({ snapshot, boardCatalogEntry, portsDraftEntries, showAllSerialPorts })
-  const boardReferenceLinks = boardCatalogEntry?.referenceLinks ?? []
-  const uartsMappedPortCount = snapshot.hardware.uartsFile.mappings.length
-  const uartsStatusTone: StatusTone =
-    snapshot.hardware.uartsFile.status === 'ready'
-      ? 'success'
-      : snapshot.hardware.uartsFile.status === 'loading'
-        ? 'warning'
-        : snapshot.hardware.uartsFile.status === 'unsupported'
-          ? 'neutral'
-          : snapshot.hardware.uartsFile.status === 'missing' || snapshot.hardware.uartsFile.status === 'error'
-            ? 'warning'
-            : 'neutral'
   const rememberedSerialPortLabel = describeRememberedSerialPort(rememberedSerialPortInfo)
   const gpsPeripheralViewModels = useMemo(() => buildGpsPeripheralViewModels(snapshot), [snapshot])
   const canNodePeripheralViewModels = useMemo(() => buildCanNodePeripheralViewModels(snapshot), [snapshot.canNodes])
@@ -8929,14 +8918,9 @@ export function App() {
           parameterNotice={parameterNotice}
           rebootRequired={parameterFollowUp?.requiresReboot ?? false}
           onReboot={() => void handleGuidedAction('reboot-autopilot')}
-          boardCatalogEntry={boardCatalogEntry}
-          boardReferenceLinks={boardReferenceLinks}
           serialPortViewModels={serialPortViewModels}
           visibleSerialPortViewModels={visibleSerialPortViewModels}
-          gpsPeripheralViewModels={gpsPeripheralViewModels}
           canNodePeripheralViewModels={canNodePeripheralViewModels}
-          uartsMappedPortCount={uartsMappedPortCount}
-          uartsStatusTone={uartsStatusTone}
           portVisibilitySummary={portVisibilitySummary}
           portsDraftEntries={portsDraftEntries}
           portsStagedDrafts={portsStagedDrafts}
@@ -10187,6 +10171,12 @@ export function App() {
                     ...section,
                     footer: (
                       <>
+                        {/* Moved off Ports: whether a configured driver is
+                            actually talking is a GPS question, not a UART one. */}
+                        <GpsPeripheralCards
+                          snapshot={snapshot}
+                          gpsPeripheralViewModels={gpsPeripheralViewModels}
+                        />
                         <LiveGpsMapCard
                           snapshot={snapshot}
                           title="GPS map"
