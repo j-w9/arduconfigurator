@@ -17,6 +17,7 @@ import {
   TUNING_ADVANCED_PID_AXIS_GROUPS,
   TUNING_ADVANCED_PID_PARAM_IDS,
   TUNING_FILTER_AXIS_GROUPS,
+  TUNING_NOTCH_AXIS_GROUPS,
   TUNING_FILTER_PARAM_IDS,
   TUNING_FLIGHT_FEEL_PARAM_IDS,
   TUNING_PARAM_IDS,
@@ -45,6 +46,7 @@ export interface UseTuningCatalogResult {
   tuningFilterParameters: ParameterState[]
   tuningPidAxisGroups: TuningParameterAxisGroup[]
   tuningFilterAxisGroups: TuningParameterAxisGroup[]
+  tuningNotchAxisGroups: TuningParameterAxisGroup[]
   tuningAdvancedPidAxisGroups: TuningParameterAxisGroup[]
 }
 
@@ -129,6 +131,16 @@ export function useTuningCatalog(snapshot: ConfiguratorSnapshot): UseTuningCatal
       })),
     [tuningParameterById]
   )
+  const tuningNotchAxisGroups = useMemo(
+    () =>
+      TUNING_NOTCH_AXIS_GROUPS.map((group) => ({
+        ...group,
+        parameters: group.paramIds
+          .map((paramId) => tuningParameterById.get(paramId))
+          .filter((parameter): parameter is ParameterState => parameter !== undefined)
+      })),
+    [tuningParameterById]
+  )
   const tuningAdvancedPidAxisGroups = useMemo(
     () =>
       TUNING_ADVANCED_PID_AXIS_GROUPS.map((group) => ({
@@ -152,6 +164,7 @@ export function useTuningCatalog(snapshot: ConfiguratorSnapshot): UseTuningCatal
     tuningFilterParameters,
     tuningPidAxisGroups,
     tuningFilterAxisGroups,
+    tuningNotchAxisGroups,
     tuningAdvancedPidAxisGroups
   }
 }

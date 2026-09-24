@@ -165,7 +165,18 @@ export const TUNING_FILTER_AXIS_GROUPS = [
     id: 'yaw',
     label: 'Yaw',
     paramIds: ['ATC_RAT_YAW_FLTT', 'ATC_RAT_YAW_FLTE', 'ATC_RAT_YAW_FLTD'] as const
-  },
+  }
+] as const
+
+/**
+ * The harmonic notches, split out of TUNING_FILTER_AXIS_GROUPS.
+ *
+ * Smoothing and notching are different jobs: a low-pass cutoff is a
+ * feel-versus-noise judgement, a notch removes ONE measured frequency and is
+ * placed from a log FFT (which Log Tuning does). They shared a page, and with
+ * two notches on it that page carried more than thirty fields.
+ */
+export const TUNING_NOTCH_AXIS_GROUPS = [
   {
     id: 'notch',
     label: 'Harmonic notch',
@@ -200,6 +211,15 @@ export const TUNING_FILTER_AXIS_GROUPS = [
     ] as const
   }
 ] as const
+/**
+ * Every parameter on the Notches task. A SUBSET of TUNING_FILTER_PARAM_IDS:
+ * the two share one draft scope and one Apply, so splitting the pages never
+ * split a staged change in half.
+ */
+export const TUNING_NOTCH_PARAM_IDS: readonly string[] = TUNING_NOTCH_AXIS_GROUPS.flatMap(
+  (group) => group.paramIds as readonly string[]
+)
+
 export const TUNING_ADVANCED_PID_AXIS_GROUPS = [
   {
     id: 'roll',

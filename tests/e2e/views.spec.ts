@@ -7503,7 +7503,9 @@ test.describe('Tuning ▸ Filters', () => {
     await page.getByTestId('view-button-tuning').click()
     await page.getByTestId('tuning-tab-filters').click()
     await expect(page.getByTestId('tuning-filter-manual')).toBeVisible()
-    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
+    // The notch groups are on the Notches task now; the smoothing cards are
+    // what Expert adds back HERE.
+    await expect(page.getByTestId('tuning-filter-group-sensor')).toBeVisible()
 
     const derivedTop = await page.getByTestId('filters-from-gyro').evaluate((el) => el.getBoundingClientRect().top)
     const gridTop = await page.getByTestId('tuning-filter-manual').evaluate((el) => el.getBoundingClientRect().top)
@@ -7518,7 +7520,15 @@ test.describe('Tuning ▸ Filters', () => {
     await enableExpertMode(page)
     await page.getByTestId('view-button-tuning').click()
     await page.getByTestId('tuning-tab-filters').click()
-    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
+    await expect(page.getByTestId('tuning-filter-group-sensor')).toBeVisible()
+  }
+
+  // The notches split onto their own task: a low-pass cutoff is a
+  // feel-versus-noise judgement, a notch removes one measured frequency.
+  async function openNotches(page: Page): Promise<void> {
+    await openFilters(page)
+    await page.getByTestId('tuning-tab-notches').click()
+    await expect(page.getByTestId('tuning-notches-panel')).toBeVisible()
   }
 
   test('the retired Filter Editor tab is gone', async ({ page }) => {
@@ -7526,10 +7536,26 @@ test.describe('Tuning ▸ Filters', () => {
     await expect(page.getByTestId('tuning-tab-filters-from-gyro')).toHaveCount(0)
   })
 
-  test('sensor and notch parameters joined the rate filters', async ({ page }) => {
+  test('sensor parameters joined the rate filters', async ({ page }) => {
     await openFilters(page)
     await expect(page.getByTestId('tuning-filter-group-sensor')).toBeVisible()
     await expect(page.getByTestId('tuning-filter-group-roll')).toBeVisible()
+  })
+
+  test('the notches are their own task, not the tail of the filter page', async ({ page }) => {
+    // Filters carried a derived cutoff panel, a filter bank and six raw cards —
+    // more than thirty fields for two unrelated jobs. Smoothing stays here;
+    // the notches and the FILTn bank moved.
+    await openFilters(page)
+    await expect(page.getByTestId('tuning-filter-group-notch')).toHaveCount(0)
+    await expect(page.getByTestId('tuning-filter-group-notch2')).toHaveCount(0)
+
+    await openNotches(page)
+    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
+    await expect(page.getByTestId('tuning-filter-group-sensor')).toHaveCount(0)
+    // The evidence for a notch frequency is a log FFT, and that analysis is a
+    // task in this same strip — say so rather than leave it to be guessed.
+    await expect(page.getByTestId('tuning-notches-log-hint')).toContainText('Log Tuning')
   })
 
   test('the second harmonic notch is configurable, not just the first', async ({ page }) => {
@@ -7538,7 +7564,7 @@ test.describe('Tuning ▸ Filters', () => {
     // "_HNTC2_"). Only the first was surfaced, so a vehicle that needs two
     // sources — ESC telemetry on one, a fixed frame mode on the other — had to
     // configure half its filtering from the raw Parameters tab.
-    await openFilters(page)
+    await openNotches(page)
     await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
     await expect(page.getByTestId('tuning-filter-group-notch2')).toBeVisible()
     // The enum and bitmask fields are the ones that are useless as raw numbers,
@@ -7547,6 +7573,9 @@ test.describe('Tuning ▸ Filters', () => {
     for (const id of ['INS_HNTC2_MODE', 'INS_HNTC2_OPTS', 'INS_HNTC2_HMNCS']) {
       await expect(page.getByTestId(`metadata-field-info-${id}`), id).toBeVisible()
     }
+    // Same eight fields as the first notch, including two bitmasks, so it gets
+    // the same full-width card rather than a narrow column.
+    await expect(page.getByTestId('tuning-filter-group-notch2')).toHaveClass(/tuning-axis-card--wide/)
   })
 
   test('every parameter carries an info bubble and a wiki link', async ({ page }) => {
@@ -7555,10 +7584,13 @@ test.describe('Tuning ▸ Filters', () => {
     // each stamps its own bubble testid. Both must carry one, which is the
     // point of asserting across the pair rather than one prefix.
     await openFilters(page)
-    for (const id of ['INS_GYRO_FILTER', 'ATC_RAT_RLL_FLTD', 'INS_HNTCH_FREQ']) {
+    for (const id of ['INS_GYRO_FILTER', 'ATC_RAT_RLL_FLTD']) {
       await expect(page.getByTestId(`tuning-info-${id}`), id).toBeVisible()
       await expect(page.getByTestId(`param-wiki-${id}`), id).toHaveCount(1)
     }
+    await openNotches(page)
+    await expect(page.getByTestId('tuning-info-INS_HNTCH_FREQ')).toBeVisible()
+    await expect(page.getByTestId('param-wiki-INS_HNTCH_FREQ')).toHaveCount(1)
     for (const id of ['INS_HNTCH_MODE', 'INS_HNTCH_OPTS', 'INS_HNTCH_REF']) {
       await expect(page.getByTestId(`metadata-field-info-${id}`), id).toBeVisible()
       await expect(page.getByTestId(`param-wiki-${id}`), id).toHaveCount(1)
@@ -7566,8 +7598,13 @@ test.describe('Tuning ▸ Filters', () => {
   })
 
   test('the tracking mode is a named list, not a raw number', async ({ page }) => {
-    await openFilters(page)
-    const select = page.locator('label', { hasText: 'Notch tracking mode' }).getByRole('combobox')
+    await openNotches(page)
+    // Two notches on this page, so scope to the first — 'Notch tracking mode'
+    // is also a prefix of 'Notch tracking mode 2'.
+    const select = page
+      .getByTestId('tuning-filter-group-notch')
+      .locator('label', { hasText: 'Notch tracking mode' })
+      .getByRole('combobox')
     await expect(select).toBeVisible()
     await expect(select.locator('option', { hasText: 'ESC Telemetry' })).toHaveCount(1)
   })
@@ -7575,15 +7612,17 @@ test.describe('Tuning ▸ Filters', () => {
   test('the option bitmasks render as per-bit toggles', async ({ page }) => {
     // INS_HNTCH_OPTS has 7 bits and INS_HNTCH_HMNCS 8. Without bitmask
     // metadata these were one integer field each.
-    await openFilters(page)
-    await expect(page.getByTestId('tuning-filter-group-notch').locator('.scoped-bitmask-bit')).toHaveCount(15)
-    await expect(page.getByText('Multi-Source', { exact: true })).toBeVisible()
+    await openNotches(page)
+    const notch = page.getByTestId('tuning-filter-group-notch')
+    await expect(notch.locator('.scoped-bitmask-bit')).toHaveCount(15)
+    // Scoped: the second notch carries the same bit labels.
+    await expect(notch.getByText('Multi-Source', { exact: true })).toBeVisible()
   })
 
   test('the documented suggestions fill a field rather than applying themselves', async ({ page }) => {
     // ArduPilot: bandwidth is typically half the base frequency. Offered as a
     // button; nothing is derived on the operator's behalf.
-    await openFilters(page)
+    await openNotches(page)
     const fill = page.getByTestId('filter-planner-fill-bw')
     await expect(fill).toContainText('40')
     await fill.click()
@@ -7623,8 +7662,9 @@ test.describe('Tuning ▸ Filters', () => {
   test('shows the FILTn bank and names each slot in the axis lists', async ({ page }) => {
     // A filter configured on the vehicle used to appear nowhere on this page,
     // and ATC_RAT_*_NTF/_NEF were bare number boxes -- picking one meant
-    // remembering which slot held what.
-    await openFilters(page)
+    // remembering which slot held what. The bank is notching, so it travels
+    // with the notches rather than with the smoothing pass.
+    await openNotches(page)
 
     const bank = page.getByTestId('filter-bank')
     await bank.scrollIntoViewIfNeeded()

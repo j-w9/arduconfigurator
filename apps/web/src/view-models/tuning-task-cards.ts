@@ -19,6 +19,10 @@ export interface TuningTaskCardCounts {
   filterInvalidCount: number
   filterStagedCount: number
   filterCount: number
+  /** Parameters on the Notches task, which split off Filters. */
+  notchCount: number
+  notchStagedCount: number
+  notchInvalidCount: number
   autotuneInvalidCount: number
   autotuneStagedCount: number
   profileInvalidCount: number
@@ -47,13 +51,16 @@ export interface TuningTaskCardCounts {
  *  - profiles: a local library of saved tunes — useful once you HAVE tunes
  *    worth keeping, meaningless before that.
  *  - log-tuning: post-flight log analysis, and still beta.
+ *  - notches: the raw notch fields were already Expert-only inside Filters
+ *    (basic mode saw only the derived cutoff panel), so splitting them onto
+ *    their own task must not hand basic mode a page it never had.
  *
  * What remains is a complete path: Pilot (stick feel), Filters (noise),
  * Autotune (gains), Review (apply), Initial Tune (a starting point for a new
  * airframe). The relative order of those five is unchanged — in particular
  * Initial Tune stays last, for the reason given on its own card below.
  */
-export const ADVANCED_TUNING_TASK_IDS = ['pid-gains', 'profiles', 'log-tuning'] as const
+export const ADVANCED_TUNING_TASK_IDS = ['pid-gains', 'notches', 'profiles', 'log-tuning'] as const
 
 export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCard[] {
   const {
@@ -66,6 +73,9 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
     filterInvalidCount,
     filterStagedCount,
     filterCount,
+    notchCount,
+    notchStagedCount,
+    notchInvalidCount,
     autotuneInvalidCount,
     autotuneStagedCount,
     profileInvalidCount,
@@ -114,8 +124,25 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
             ? `${filterStagedCount} staged`
             : `${filterCount} filters`,
       detail:
-        'Gyro, rate-loop, and harmonic-notch filters stay together so noise-handling changes can be reviewed as one deliberate pass.',
+        'Gyro and rate-loop smoothing: how much noise the controller sees, against the latency a lower cutoff costs. The harmonic notches are their own task.',
       tone: filterInvalidCount > 0 ? 'danger' : filterStagedCount > 0 ? 'warning' : 'neutral'
+    },
+    {
+      // Split off Filters. A low-pass cutoff is a feel-versus-noise judgement;
+      // a notch removes one MEASURED frequency and is placed from a log FFT,
+      // which is the Log Tuning task in this same strip. Sharing one page put
+      // thirty-odd fields in front of an operator doing either job.
+      id: 'notches',
+      label: 'Notches',
+      value:
+        notchInvalidCount > 0
+          ? `${notchInvalidCount} invalid`
+          : notchStagedCount > 0
+            ? `${notchStagedCount} staged`
+            : `${notchCount} filters`,
+      detail:
+        'The two harmonic notches and the filter bank — where they sit, what tracks them, and which harmonics they cover. Placed from a flight log rather than by ear.',
+      tone: notchInvalidCount > 0 ? 'danger' : notchStagedCount > 0 ? 'warning' : 'neutral'
     },
     {
       id: 'autotune',

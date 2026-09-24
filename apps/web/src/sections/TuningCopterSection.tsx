@@ -42,6 +42,7 @@ export interface TuningCopterSectionDerived {
   tuningAdvancedPidAxisGroups: readonly TuningAxisGroup[]
   tuningFilterParameters: readonly ParameterState[]
   tuningFilterAxisGroups: readonly TuningAxisGroup[]
+  tuningNotchAxisGroups: readonly TuningAxisGroup[]
   tuningMasterPreviewEntries: readonly ParameterDraftEntry[]
   tuningMasterDefaultsActive: boolean
   tuningProfileSourceUsesStaged: boolean
@@ -112,6 +113,7 @@ export interface TuningCopterSectionProps {
   /** The FILTn bank, when the firmware has one. Expert-only: raw per-slot
    *  notch fields, rendered with the manual grid rather than before it. */
   filterBankSlot?: ReactNode
+  notchHelpSlot?: ReactNode
   /** Expert mode breaks out the raw per-parameter filter grid. See the Filters
    *  task body for why it is not the default surface. */
   isExpertMode: boolean
@@ -127,6 +129,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     initialTuneSlot,
     filterNotchSlot,
     filterBankSlot,
+    notchHelpSlot,
     isExpertMode,
     tuningWorkbench,
     forms,
@@ -177,6 +180,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     tuningAdvancedPidAxisGroups,
     tuningFilterParameters,
     tuningFilterAxisGroups,
+    tuningNotchAxisGroups,
     tuningMasterPreviewEntries,
     tuningMasterDefaultsActive,
     tuningProfileSourceUsesStaged,
@@ -578,14 +582,14 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                         <div className="switch-exercise-card__header">
                           <div>
                             <span className="tuning-card-title">
-                              <strong>Bandwidth, smoothing, and the notch</strong>
+                              <strong>Bandwidth and smoothing</strong>
                               <InfoDot label="About axis bandwidth and smoothing" testId="tuning-info-filters" wide wikiTopic="tuningFilters">
                                 <span className="info-dot-line">Higher filter frequencies preserve response but pass more noise. Lower values smooth noise at the cost of latency.</span>
                                 <span className="info-dot-line">Zero values are valid for some ArduPilot filter parameters and can intentionally disable a filter path.</span>
                                 <span className="info-dot-line">Change filters carefully and listen for noise or oscillation before moving on to more aggressive gain changes.</span>
                               </InfoDot>
                             </span>
-                            <p>Gyro and accelerometer filters, the rate-loop target/error/D-term frequencies, and the harmonic notch, as one grouped filter pass instead of a raw parameter list.</p>
+                            <p>Gyro and accelerometer filters and the rate-loop target/error/D-term frequencies, as one grouped pass instead of a raw parameter list. The harmonic notches have their own task.</p>
                           </div>
                           <StatusBadge tone={toneForScopedDraftReview(tuningFilterStagedDrafts.length, tuningFilterInvalidDrafts.length)}>
                             {tuningFilterParameters.length} filters
@@ -619,11 +623,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                           * documents, and a made-up one would be worse than a
                           * gate. */}
                         {filterNotchSlot}
-                        {/* The FILTn bank is raw per-slot fields —
-                          * FILT1_TYPE, _NOTCH_FREQ, _NOTCH_Q, _NOTCH_ATT — so
-                          * it belongs with the manual grid rather than in front
-                          * of an operator who just wants a filter set. */}
-                        {isExpertMode ? filterBankSlot : null}
 
                         {isExpertMode ? (
                           <div className="tuning-filter-manual" data-testid="tuning-filter-manual">
@@ -639,7 +638,15 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                               {tuningFilterAxisGroups.map((group) => (
                                 <article
                                   key={`tuning-filter-axis:${group.id}`}
-                                  className={group.id === 'sensor' || group.id === 'notch' ? 'tuning-axis-card tuning-axis-card--wide' : 'tuning-axis-card'}
+                                  // The notch groups carry eight fields each, including
+                                  // two bitmasks — they need the full width. The second
+                                  // notch is the same shape as the first, so it gets the
+                                  // same card.
+                                  className={
+                                    group.id === 'sensor' || group.id === 'notch' || group.id === 'notch2'
+                                      ? 'tuning-axis-card tuning-axis-card--wide'
+                                      : 'tuning-axis-card'
+                                  }
                                   data-testid={`tuning-filter-group-${group.id}`}
                                 >
                                   <div className="tuning-axis-card__header">
@@ -658,6 +665,74 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                             </div>
                           </div>
                         ) : null}
+                      </div>
+                    </section>
+                  </div>
+                ) : null}
+
+                {activeTuningTaskId === 'notches' ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-notches-panel">
+                    <section className="bf-gui-box">
+                      <div className="bf-gui-box__titlebar">
+                        <strong>Notches</strong>
+                      </div>
+                      <div className="bf-gui-box__body">
+                        <div className="switch-exercise-card__header">
+                          <div>
+                            <span className="tuning-card-title">
+                              <strong>Harmonic notches and the filter bank</strong>
+                              <InfoDot label="About harmonic notches" testId="tuning-info-notches" wide wikiTopic="tuningFilters">
+                                <span className="info-dot-line">A notch removes one narrow band — motor noise and its harmonics — without the latency a lower low-pass cutoff costs.</span>
+                                <span className="info-dot-line">ArduPilot carries two independent harmonic notches, so one can track ESC telemetry / FFT while the other sits at a fixed frequency.</span>
+                                <span className="info-dot-line">Place them from a log, not by ear: Log Tuning reads a .bin and recommends the frequency and bandwidth.</span>
+                              </InfoDot>
+                            </span>
+                            <p>
+                              Where the notches sit and what tracks them. Smoothing — the gyro cutoff and
+                              the rate-loop frequencies — is on the Filters task.
+                            </p>
+                          </div>
+                          <StatusBadge tone={toneForScopedDraftReview(tuningFilterStagedDrafts.length, tuningFilterInvalidDrafts.length)}>
+                            {tuningNotchAxisGroups.reduce((total, group) => total + group.parameters.length, 0)} filters
+                          </StatusBadge>
+                        </div>
+
+                        {/* The evidence for a notch frequency is a log FFT, and
+                          * that analysis is a task of its own in this same
+                          * strip. Say so here rather than leaving an operator to
+                          * guess a frequency by ear. */}
+                        <p className="bf-note" data-testid="tuning-notches-log-hint">
+                          Placing these from a flight log? Log Tuning reads a .bin and recommends the
+                          notch frequency, bandwidth and reference.
+                        </p>
+
+                        {notchHelpSlot}
+
+                        <div className="tuning-axis-grid tuning-axis-grid--filters">
+                          {tuningNotchAxisGroups.map((group) => (
+                            <article
+                              key={`tuning-notch-axis:${group.id}`}
+                              // Eight fields each, two of them bitmasks: both
+                              // notches take the full width.
+                              className="tuning-axis-card tuning-axis-card--wide"
+                              data-testid={`tuning-filter-group-${group.id}`}
+                            >
+                              <div className="tuning-axis-card__header">
+                                <strong>{group.label}</strong>
+                                <span>{group.parameters.length} filters</span>
+                              </div>
+                              <div className="tuning-control-grid tuning-control-grid--compact">
+                                {group.parameters.map((parameter) => renderFilterControl(parameter))}
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+
+                        {/* The FILTn bank is raw per-slot fields — FILT1_TYPE,
+                          * _NOTCH_FREQ, _NOTCH_Q, _NOTCH_ATT — and it is
+                          * notching, so it travels with the notches rather than
+                          * with the smoothing pass. */}
+                        {isExpertMode ? filterBankSlot : null}
                       </div>
                     </section>
                   </div>

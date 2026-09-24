@@ -104,6 +104,7 @@ import { GIT_HASH, GIT_BRANCH } from './build-info'
 import {
   TUNING_ALL_PID_PARAM_IDS,
   TUNING_FILTER_PARAM_IDS,
+  TUNING_NOTCH_PARAM_IDS,
   TUNING_PLANE_PARAM_IDS,
   TUNING_ROVER_PARAM_IDS,
   TUNING_SUB_PARAM_IDS,
@@ -545,6 +546,13 @@ const SERVO_ADDITIONAL_EXCLUDED_CATEGORY_IDS: ReadonlySet<string> = new Set([
   'rangefinder',
   'optical-flow'
 ])
+const TUNING_NOTCH_PARAM_ID_SET: ReadonlySet<string> = new Set(TUNING_NOTCH_PARAM_IDS)
+
+/** Whether a filter draft belongs to the Notches task rather than Filters. */
+function isTuningNotchParamId(parameterId: string): boolean {
+  return TUNING_NOTCH_PARAM_ID_SET.has(parameterId)
+}
+
 /** The Gimbal tab owns exactly this category. */
 const GIMBAL_CATEGORY_IDS: ReadonlySet<string> = new Set(['gimbal'])
 /**
@@ -2866,6 +2874,7 @@ export function App() {
     tuningFilterParameters,
     tuningPidAxisGroups,
     tuningFilterAxisGroups,
+    tuningNotchAxisGroups,
     tuningAdvancedPidAxisGroups
   } = useTuningCatalog(snapshot)
   const outputReviewParameters = useMemo(
@@ -5361,9 +5370,14 @@ export function App() {
         pidInvalidCount: tuningPidInvalidDrafts.length,
         pidStagedCount: tuningPidStagedDrafts.length,
         pidGainCount: TUNING_ALL_PID_PARAM_IDS.length,
-        filterInvalidCount: tuningFilterInvalidDrafts.length,
-        filterStagedCount: tuningFilterStagedDrafts.length,
-        filterCount: TUNING_FILTER_PARAM_IDS.length,
+        // Filters and Notches share one draft scope; the badges split it so
+        // each card counts what its own page shows.
+        filterInvalidCount: tuningFilterInvalidDrafts.filter((entry) => !isTuningNotchParamId(entry.id)).length,
+        filterStagedCount: tuningFilterStagedDrafts.filter((entry) => !isTuningNotchParamId(entry.id)).length,
+        filterCount: TUNING_FILTER_PARAM_IDS.length - TUNING_NOTCH_PARAM_IDS.length,
+        notchInvalidCount: tuningFilterInvalidDrafts.filter((entry) => isTuningNotchParamId(entry.id)).length,
+        notchStagedCount: tuningFilterStagedDrafts.filter((entry) => isTuningNotchParamId(entry.id)).length,
+        notchCount: TUNING_NOTCH_PARAM_IDS.length,
         autotuneInvalidCount: copterAutotuneInvalidDrafts.length,
         autotuneStagedCount: copterAutotuneStagedDrafts.length,
         profileInvalidCount: selectedTuningProfileInvalidEntries.length,
@@ -9509,6 +9523,7 @@ export function App() {
             tuningAdvancedPidAxisGroups,
             tuningFilterParameters,
             tuningFilterAxisGroups,
+            tuningNotchAxisGroups,
             tuningMasterPreviewEntries,
             tuningMasterDefaultsActive,
             tuningProfileSourceUsesStaged,
@@ -9582,13 +9597,18 @@ export function App() {
                 }}
                 disabled={busyAction !== undefined}
               />
-              <FilterNotchHelp
-                liveValues={filterLiveValues}
-                editedValues={editedValues}
-                onSetDraft={setDraft}
-                disabled={busyAction !== undefined}
-              />
             </>
+          }
+          /* The notch SUGGESTIONS (bandwidth from base frequency, a reference
+             that actually tracks) travel with the notch fields they fill in,
+             not with the gyro-cutoff panel they used to sit under. */
+          notchHelpSlot={
+            <FilterNotchHelp
+              liveValues={filterLiveValues}
+              editedValues={editedValues}
+              onSetDraft={setDraft}
+              disabled={busyAction !== undefined}
+            />
           }
           initialTuneSlot={
             /* Starting-point tuning. Reads live values to show what each

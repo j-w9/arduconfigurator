@@ -6,6 +6,10 @@ export type TuningStatusTone = 'neutral' | 'success' | 'warning' | 'danger'
 export type TuningTaskId =
   | 'rates'
   | 'pid-gains'
+  // Split off Filters: smoothing is a feel-versus-noise judgement, a notch
+  // kills one measured frequency. Different jobs, and the notch's evidence
+  // lives in Log Tuning.
+  | 'notches'
   | 'filters'
   | 'autotune'
   | 'profiles'

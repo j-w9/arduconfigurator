@@ -524,8 +524,11 @@ test.describe('browser configurator regression flows', () => {
       page.getByText(/Staged \d+ grouped tuning change\(s\) from the master sliders\./)
     ).toBeVisible()
 
-    await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Filters/i }).click()
-    await expect(page.getByText('Bandwidth, smoothing, and the notch', { exact: true })).toBeVisible()
+    // By testid, not by name: 'Notches' also matches /Filters/i via its detail
+    // text now that the notches have their own task.
+    await page.getByTestId('tuning-tab-filters').click()
+    // The notches split onto their own task, so this page is smoothing only.
+    await expect(page.getByText('Bandwidth and smoothing', { exact: true })).toBeVisible()
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Profiles/i }).click()
     await page.getByTestId('tuning-profile-label-input').fill('Bench Test Profile')
     await expect(page.getByTestId('create-tuning-profile-button')).toBeEnabled()
