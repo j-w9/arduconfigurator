@@ -682,7 +682,18 @@ describe('writing one step at a time', () => {
     // result. Without it here, a write the vehicle refused looks exactly
     // like a write that is still in flight: the table simply does not move.
     const notice = { tone: 'warning' as const, text: 'ABC_DEF did not confirm.' }
-    render(<AmcGuidedView {...base} connected parameters={live} onWriteStep={() => {}} parameterNotice={notice} />)
+    let staged: readonly { parameter: string; value: number }[] = []
+    const { rerender } = render(
+      <AmcGuidedView
+        {...base}
+        connected
+        parameters={live}
+        onWriteStep={(changes) => {
+          staged = changes
+        }}
+        parameterNotice={notice}
+      />
+    )
     await whenLoaded()
 
     const step = await screen.findByRole('button', { name: /Imu temperature calibration setup/i })
@@ -697,6 +708,18 @@ describe('writing one step at a time', () => {
       ;(await screen.findByRole('button', { name: /^Write this step$/ })).click()
     })
     expect(await screen.findByText(notice.text)).toBeTruthy()
+
+    // And it must survive the write succeeding. A write that lands makes the
+    // vehicle match the sequence, which leaves this step with nothing to
+    // stage and no staging row — the notice cannot live in there, or it
+    // unmounts at precisely the moment it has a result to report.
+    const settled = { ...live, ...Object.fromEntries(staged.map((c) => [c.parameter, c.value])) }
+    rerender(
+      <AmcGuidedView {...base} connected parameters={settled} onWriteStep={() => {}} parameterNotice={notice} />
+    )
+    await act(async () => {})
+    expect(screen.queryByRole('button', { name: /^Write this step$/ })).toBeNull()
+    expect(screen.getByText(notice.text)).toBeTruthy()
   })
 
   it('will not write without a vehicle to write to', async () => {
