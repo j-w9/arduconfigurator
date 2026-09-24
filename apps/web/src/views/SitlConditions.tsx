@@ -35,16 +35,24 @@ export function SitlConditions({ parameters, onSet, live }: SitlConditionsProps)
   const toClear = healthyWrites(groups, parameters)
   const [busy, setBusy] = useState(false)
 
-  // While a slider is under the pointer its position is local: writing on
-  // every animation frame of a drag would flood the link and fight the
-  // read-back for control of the handle. The write happens on release.
-  const [dragging, setDragging] = useState<Record<string, number>>({})
+  // A slider's position is local from the first movement until the vehicle
+  // confirms it. Two reasons: writing on every frame of a drag would flood
+  // the link, and a handle that springs back to the old value for the second
+  // it takes the write to land cannot be stepped with the arrow keys at all
+  // -- each press would start again from the value the vehicle still holds.
+  const [local, setLocal] = useState<Record<string, number>>({})
 
-  // A value that arrives from the vehicle while nothing is being dragged is
-  // the truth; drop any stale local position so the handle follows it.
+  // Let go of a local position once the vehicle agrees with it, and of all of
+  // them when the link drops. From then on the vehicle is the truth again.
   useEffect(() => {
-    if (!live) setDragging({})
-  }, [live])
+    setLocal((current) => {
+      if (!live) return Object.keys(current).length === 0 ? current : {}
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([parameter, value]) => parameters[parameter] !== value)
+      )
+      return Object.keys(next).length === Object.keys(current).length ? current : next
+    })
+  }, [live, parameters])
 
   if (!live || groups.length === 0) return null
 
@@ -58,8 +66,14 @@ export function SitlConditions({ parameters, onSet, live }: SitlConditionsProps)
     }
   }
 
+  const commit = (control: SimControl) => {
+    const next = local[control.parameter]
+    if (next === undefined || next === parameters[control.parameter]) return
+    void write([{ parameter: control.parameter, value: next }])
+  }
+
   const valueOf = (control: SimControl) =>
-    dragging[control.parameter] ?? parameters[control.parameter]
+    local[control.parameter] ?? parameters[control.parameter]
 
   const renderControl = (control: SimControl) => {
     const value = valueOf(control)
@@ -130,30 +144,13 @@ export function SitlConditions({ parameters, onSet, live }: SitlConditionsProps)
           value={value ?? control.min ?? 0}
           disabled={busy}
           onChange={(event) =>
-            setDragging((current) => ({ ...current, [control.parameter]: Number(event.target.value) }))
+            setLocal((current) => ({ ...current, [control.parameter]: Number(event.target.value) }))
           }
-          // Commit on release rather than on movement: one write per gesture,
-          // not one per frame.
-          onPointerUp={() => {
-            const next = dragging[control.parameter]
-            setDragging((current) => {
-              const { [control.parameter]: _done, ...rest } = current
-              return rest
-            })
-            if (next !== undefined && next !== parameters[control.parameter]) {
-              void write([{ parameter: control.parameter, value: next }])
-            }
-          }}
-          onKeyUp={() => {
-            const next = dragging[control.parameter]
-            setDragging((current) => {
-              const { [control.parameter]: _done, ...rest } = current
-              return rest
-            })
-            if (next !== undefined && next !== parameters[control.parameter]) {
-              void write([{ parameter: control.parameter, value: next }])
-            }
-          }}
+          // Commit when the gesture ends, not while it is happening: one
+          // write per drag or per keypress, never one per frame. The local
+          // position stays put until the vehicle confirms it.
+          onPointerUp={() => commit(control)}
+          onKeyUp={() => commit(control)}
         />
         <p className="sim-control__hint">{control.hint}</p>
       </div>

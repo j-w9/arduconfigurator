@@ -7,7 +7,7 @@
 // notice rendered in a block that unmounted at the moment it had something to
 // say. These cover the wiring: what renders, and what each control writes.
 
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { SitlConditions } from './SitlConditions'
@@ -105,5 +105,37 @@ describe('the conditions panel', () => {
     })
     // The wind is a condition, not damage, and must survive the clear.
     expect(onSet).toHaveBeenCalledWith([{ parameter: 'SIM_MAG1_FAIL', value: 0 }])
+  })
+
+  it('accumulates arrow-key steps instead of snapping back each press', () => {
+    // Each keypress commits, and the vehicle takes about a second to confirm.
+    // If the handle drops its local position at that moment it springs back
+    // to the value the vehicle still holds, so the next press starts from
+    // scratch and the slider can never get past one step.
+    const onSet = vi.fn().mockResolvedValue(undefined)
+    render(<SitlConditions parameters={healthy} onSet={onSet} live />)
+    const wind = screen.getByLabelText('Speed', { selector: '#sim-SIM_WIND_SPD' })
+
+    for (const value of [0.5, 1, 1.5, 2]) {
+      fireEvent.change(wind, { target: { value: String(value) } })
+      fireEvent.keyUp(wind)
+    }
+
+    expect((wind as HTMLInputElement).value).toBe('2')
+    expect(onSet).toHaveBeenLastCalledWith([{ parameter: 'SIM_WIND_SPD', value: 2 }])
+  })
+
+  it('hands the handle back to the vehicle once it confirms', () => {
+    const onSet = vi.fn().mockResolvedValue(undefined)
+    const { rerender } = render(<SitlConditions parameters={healthy} onSet={onSet} live />)
+    const wind = screen.getByLabelText('Speed', { selector: '#sim-SIM_WIND_SPD' })
+    fireEvent.change(wind, { target: { value: '6' } })
+    fireEvent.keyUp(wind)
+
+    // The vehicle confirms 6, then later reports 9 because something else
+    // moved it. The handle must follow, not sit on its own stale 6.
+    rerender(<SitlConditions parameters={{ ...healthy, SIM_WIND_SPD: 6 }} onSet={onSet} live />)
+    rerender(<SitlConditions parameters={{ ...healthy, SIM_WIND_SPD: 9 }} onSet={onSet} live />)
+    expect((screen.getByLabelText('Speed', { selector: '#sim-SIM_WIND_SPD' }) as HTMLInputElement).value).toBe('9')
   })
 })
