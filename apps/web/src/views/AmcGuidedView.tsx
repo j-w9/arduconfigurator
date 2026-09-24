@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { statusToneLabel, type StatusTone } from '../status-tone'
+
 import {
   AMC_VEHICLE_KINDS,
   type AppToolView,
@@ -181,6 +183,13 @@ export interface AmcGuidedViewProps {
    * vehicle has confirmed it.
    */
   onWriteStep?: (changes: readonly { parameter: string; value: number }[], label: string) => void
+  /**
+   * The app-wide result of the last parameter write, shown under the step
+   * that asked for it. This tab writes through the same path as every other
+   * view, and the other views all surface this; without it a refused or
+   * unconfirmed write is silent here.
+   */
+  parameterNotice?: { tone: StatusTone; text: string } | undefined
   /** Open one of the app's own tools, for the steps that are done with one. */
   onOpenTool?: (view: AppToolView) => void
   /**
@@ -553,6 +562,7 @@ function StepCard({
   bootDelay,
   onWriteStep,
   onStepWritten,
+  writeNotice,
   tempcal,
   defaultsRead,
   onOpenTool,
@@ -577,6 +587,12 @@ function StepCard({
   onRebootAndReconnect?: ((waitSeconds: number) => Promise<void>) | undefined
   bootDelay?: number | undefined
   onWriteStep?: ((changes: readonly { parameter: string; value: number }[], label: string) => void) | undefined
+  /**
+   * The result of this step's own verified write. Without it a write that
+   * the vehicle refused, or only partly confirmed, says nothing here: the
+   * table just fails to move, which reads the same as a slow vehicle.
+   */
+  writeNotice?: { tone: StatusTone; text: string } | undefined
   /** ArduPilot's documentation, for saying what a value means. */
   docs?: ParameterDocs | undefined
   onStepWritten?: ((filename: string) => void) | undefined
@@ -1039,8 +1055,8 @@ function StepCard({
                 >
                   {/* The method is step-by-step: write this one, let the
                       vehicle confirm it, reboot if it needs to, then move on.
-                      Goes through the app's own verified write, so the result
-                      and any reboot prompt appear in the usual place. */}
+                      Goes through the app's own verified write; its result
+                      lands under this step. */}
                   Write this step
                 </button>
               ) : null}
@@ -1066,6 +1082,12 @@ function StepCard({
               <span className="amc-step__stage-note">
                 Reviewed and written from the draft bar.
               </span>
+              {writeNotice ? (
+                <div className="amc-step__write-notice">
+                  <StatusBadge tone={writeNotice.tone}>{statusToneLabel(writeNotice.tone)}</StatusBadge>
+                  <p>{writeNotice.text}</p>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -1375,6 +1397,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     onDownloadLatestLog,
     onInstallFile,
     onWriteStep,
+    parameterNotice,
     onOpenTool,
     suggestedKind,
     vehicleFirmwareVersion,
@@ -3018,6 +3041,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                   bootDelay={parameters.BRD_BOOT_DELAY}
                   onWriteStep={onWriteStep}
                   onStepWritten={setLastWritten}
+                  writeNotice={row.filename === lastWritten ? parameterNotice : undefined}
                   tempcal={tempcal}
                   defaultsRead={defaultsRead}
                   onOpenTool={onOpenTool}

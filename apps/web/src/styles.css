@@ -19303,6 +19303,22 @@ button.mavlink-inspector__sent-row {
   font-size: 0.9em;
 }
 
+/* The verified-write result for this step. It takes the full width of the
+   action row so it lands under the button that caused it rather than being
+   squeezed in beside the badges. */
+.amc-step__write-notice {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.amc-step__write-notice p {
+  margin: 0;
+  font-size: 0.9em;
+}
+
 .amc-step__stage {
   display: flex;
   flex-wrap: wrap;

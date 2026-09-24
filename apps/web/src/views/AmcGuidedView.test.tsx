@@ -677,6 +677,28 @@ describe('writing one step at a time', () => {
     expect(writes[0]?.parameters.some((name) => /^(ATC_|MOT_|PSC_)/.test(name))).toBe(false)
   })
 
+  it('shows the write result under the step that asked for it', async () => {
+    // Every other view that writes parameters surfaces the verified-write
+    // result. Without it here, a write the vehicle refused looks exactly
+    // like a write that is still in flight: the table simply does not move.
+    const notice = { tone: 'warning' as const, text: 'ABC_DEF did not confirm.' }
+    render(<AmcGuidedView {...base} connected parameters={live} onWriteStep={() => {}} parameterNotice={notice} />)
+    await whenLoaded()
+
+    const step = await screen.findByRole('button', { name: /Imu temperature calibration setup/i })
+    await act(async () => {
+      step.click()
+    })
+    // Nothing yet: the notice belongs to whichever step was written, and no
+    // step has been written, so an unrelated notice must not attach itself.
+    expect(screen.queryByText(notice.text)).toBeNull()
+
+    await act(async () => {
+      ;(await screen.findByRole('button', { name: /^Write this step$/ })).click()
+    })
+    expect(await screen.findByText(notice.text)).toBeTruthy()
+  })
+
   it('will not write without a vehicle to write to', async () => {
     render(<AmcGuidedView {...base} parameters={live} onWriteStep={() => {}} />)
     await whenLoaded()
