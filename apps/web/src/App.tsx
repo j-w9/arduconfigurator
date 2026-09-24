@@ -190,7 +190,6 @@ import { useRcCalibrationDerivations } from './hooks/use-rc-calibration-derivati
 import { useRcMappingDerivations } from './hooks/use-rc-mapping-derivations'
 import { useRcRangeDerivations } from './hooks/use-rc-range-derivations'
 import { useAdditionalScope } from './hooks/use-additional-scope'
-import { useGpsCatalog } from './hooks/use-gps-catalog'
 import { useOsdCatalog } from './hooks/use-osd-catalog'
 import { useOutputNotificationCatalog } from './hooks/use-output-notification-catalog'
 import { usePowerReviewCatalog } from './hooks/use-power-review-catalog'
@@ -547,6 +546,16 @@ const SERVO_ADDITIONAL_EXCLUDED_CATEGORY_IDS: ReadonlySet<string> = new Set([
 ])
 /** The Gimbal tab owns exactly this category. */
 const GIMBAL_CATEGORY_IDS: ReadonlySet<string> = new Set(['gimbal'])
+/**
+ * The `peripherals` metadata category routes to the Ports view, where it used
+ * to render as rows under "Additional port settings". Ports configures a UART;
+ * what the thing on the far end of it is belongs on the Peripherals tab, so the
+ * category is excluded there and included here instead. What survives the
+ * peripheral/config section exclusions is the GPS residue (second-receiver
+ * driver and GNSS mask, antenna offsets, lag), which is why it lands on the GPS
+ * sub-tab rather than in a lump of its own.
+ */
+const PERIPHERALS_CATEGORY_IDS: ReadonlySet<string> = new Set(['peripherals'])
 /**
  * Flow & Lidar owns both, because they are a pair in practice: optical flow
  * needs a height reference and that is almost always the downward rangefinder.
@@ -1251,6 +1260,14 @@ export function App() {
     isConfigParamId,
     isPeripheralParamId
   } = useConfigSections(snapshot)
+  // Everything a curated section already renders, on either tab. The GPS
+  // "Additional settings" card is the residue of the `peripherals` category
+  // after both, so a parameter that has a labelled field somewhere never also
+  // appears as a raw row underneath it.
+  const isPeripheralOrConfigParamId = useCallback(
+    (paramId: string): boolean => isPeripheralParamId(paramId) || isConfigParamId(paramId),
+    [isConfigParamId, isPeripheralParamId]
+  )
   // Auto-enable bidirectional DShot when the operator picks a DShot MOT_PWM_TYPE.
   // Fires only on an actual change of the MOT_PWM_TYPE draft (ref-guarded so
   // other drafts / telemetry ticks don't retrigger it). If the firmware lacks
@@ -1333,10 +1350,6 @@ export function App() {
     rcAxisObservations,
     modeSwitchEstimate
   })
-  const gpsAutoConfig = readRoundedParameter(snapshot, 'GPS_AUTO_CONFIG')
-  const gpsAutoSwitch = readRoundedParameter(snapshot, 'GPS_AUTO_SWITCH')
-  const gpsPrimary = readRoundedParameter(snapshot, 'GPS_PRIMARY')
-  const gpsRateMs = readRoundedParameter(snapshot, 'GPS_RATE_MS')
   const osdType = readRoundedParameter(snapshot, 'OSD_TYPE')
   const osdChannel = readRoundedParameter(snapshot, 'OSD_CHAN')
   const osdSwitchMethod = readRoundedParameter(snapshot, 'OSD_SW_METHOD')
@@ -2820,12 +2833,6 @@ export function App() {
   const gpsPeripheralViewModels = useMemo(() => buildGpsPeripheralViewModels(snapshot), [snapshot])
   const canNodePeripheralViewModels = useMemo(() => buildCanNodePeripheralViewModels(snapshot), [snapshot.canNodes])
   const {
-    gpsAutoConfigParameter,
-    gpsAutoSwitchParameter,
-    gpsPrimaryParameter,
-    gpsRateParameter
-  } = useGpsCatalog(snapshot)
-  const {
     osdParameterById,
     osdTypeParameter,
     osdChannelParameter,
@@ -2986,6 +2993,7 @@ export function App() {
     metadataCatalog,
     viewId: 'ports',
     excludedParameterIds: isPortsReviewParamId,
+    excludedCategoryIds: PERIPHERALS_CATEGORY_IDS,
     parameterDraftEntries
   })
   const receiverAdditional = useReceiverAdditional({ snapshot, metadataCatalog, parameterDraftEntries })
@@ -3053,6 +3061,19 @@ export function App() {
     metadataCatalog,
     viewId: 'motors',
     includedCategoryIds: GIMBAL_CATEGORY_IDS,
+    parameterDraftEntries
+  })
+  const {
+    groups: gpsAdditionalGroups,
+    entries: gpsAdditionalDraftEntries,
+    staged: gpsAdditionalStagedDrafts,
+    invalid: gpsAdditionalInvalidDrafts
+  } = useAdditionalScope({
+    snapshot,
+    metadataCatalog,
+    viewId: 'ports',
+    includedCategoryIds: PERIPHERALS_CATEGORY_IDS,
+    excludedParameterIds: isPeripheralOrConfigParamId,
     parameterDraftEntries
   })
   const {
@@ -8945,14 +8966,6 @@ export function App() {
           osdSwitchMethodParameter={osdSwitchMethodParameter}
           mspOptionsParameter={mspOptionsParameter}
           mspOsdCellCountParameter={mspOsdCellCountParameter}
-          gpsAutoConfig={gpsAutoConfig}
-          gpsAutoSwitch={gpsAutoSwitch}
-          gpsPrimary={gpsPrimary}
-          gpsRateMs={gpsRateMs}
-          gpsAutoConfigParameter={gpsAutoConfigParameter}
-          gpsAutoSwitchParameter={gpsAutoSwitchParameter}
-          gpsPrimaryParameter={gpsPrimaryParameter}
-          gpsRateParameter={gpsRateParameter}
           editedValues={editedValues}
           parameterDraftById={parameterDraftById}
           setDraft={setDraft}
@@ -10164,7 +10177,41 @@ export function App() {
           // metadata-driven parameter groups — so they arrive as footer-only
           // sections, the way Flight Modes and Power already do on Config.
           sections={[
-            ...peripheralSections,
+            // The live GPS map moved here from Ports. Ports configures a UART;
+            // confirming the aircraft is actually where it says it is belongs
+            // with the GPS peripheral, next to the driver and rate settings
+            // that determine whether there is a fix at all.
+            ...peripheralSections.map((section) =>
+              section.id === 'gps'
+                ? {
+                    ...section,
+                    footer: (
+                      <>
+                        <LiveGpsMapCard
+                          snapshot={snapshot}
+                          title="GPS map"
+                          subtitle="Verify the live aircraft location once the GPS driver and serial link are configured."
+                          testId="ports-gps-map-widget"
+                        />
+                        {/* Moved off Ports ▸ Additional port settings. */}
+                        {gpsAdditionalGroups.length === 0
+                          ? null
+                          : renderAdditionalSettingsCard(
+                              'Additional GPS settings',
+                              'Second-receiver driver and GNSS mask, antenna offsets from the centre of gravity, and receiver lag.',
+                              gpsAdditionalGroups,
+                              gpsAdditionalDraftEntries,
+                              gpsAdditionalStagedDrafts,
+                              gpsAdditionalInvalidDrafts,
+                              'peripherals:gps-additional',
+                              'Apply GPS Changes',
+                              'GPS settings'
+                            )}
+                      </>
+                    )
+                  }
+                : section
+            ),
             {
               id: 'gimbal',
               title: 'Gimbal',

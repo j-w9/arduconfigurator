@@ -11,10 +11,6 @@ import {
   arducopterSerialBaudRate,
   arducopterSerialProtocolOptions,
   encodeArducopterSerialBaud,
-  formatArducopterGpsAutoConfig,
-  formatArducopterGpsAutoSwitch,
-  formatArducopterGpsPrimary,
-  formatArducopterGpsRateMs,
   formatArducopterGpsType,
   formatArducopterSerialProtocol,
   formatArducopterSerialRtscts
@@ -26,7 +22,6 @@ import { SERIAL_BAUD_PRESET_RATES, formatBaudRate, isPresetBaudRate, parseSerial
 import type { ParameterNotice } from '../hooks/use-parameter-feedback'
 import type { UsePortsViewResult } from '../hooks/use-ports-view'
 import { statusToneLabel } from '../status-tone'
-import { LiveGpsMapCard } from '../live-gps-map'
 import { MavlinkSigningPanel } from '../mavlink-signing-panel'
 import { normalizeBitmaskValue } from '../parameter-format'
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
@@ -34,7 +29,7 @@ import type { SerialPortViewModel } from '../serial-port-helpers'
 import { toneForScopedDraftReview } from '../tone-helpers'
 import type { AdditionalSettingsGroup, CanNodePeripheralViewModel, GpsPeripheralViewModel } from '../view-models/peripherals'
 import { pairedDraftsForSerialProtocol, pairingNoteForSerialProtocol } from '../view-models/port-protocol-pairings'
-import { ScopedField, ScopedSelectField } from '../views/ScopedField'
+import { ScopedSelectField } from '../views/ScopedField'
 
 export interface PortsSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -88,15 +83,6 @@ export interface PortsSectionProps {
   osdSwitchMethodParameter: ParameterState | undefined
   mspOptionsParameter: ParameterState | undefined
   mspOsdCellCountParameter: ParameterState | undefined
-  // GPS scalars + parameter objects (used by the embedded GPS card)
-  gpsAutoConfig: number | undefined
-  gpsAutoSwitch: number | undefined
-  gpsPrimary: number | undefined
-  gpsRateMs: number | undefined
-  gpsAutoConfigParameter: ParameterState | undefined
-  gpsAutoSwitchParameter: ParameterState | undefined
-  gpsPrimaryParameter: ParameterState | undefined
-  gpsRateParameter: ParameterState | undefined
   // Live draft / edit plumbing
   editedValues: Record<string, string>
   parameterDraftById: ReadonlyMap<string, ParameterDraftEntry>
@@ -152,14 +138,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     portsAdditionalDraftEntries,
     portsAdditionalStagedDrafts,
     portsAdditionalInvalidDrafts,
-    gpsAutoConfig,
-    gpsAutoSwitch,
-    gpsPrimary,
-    gpsRateMs,
-    gpsAutoConfigParameter,
-    gpsAutoSwitchParameter,
-    gpsPrimaryParameter,
-    gpsRateParameter,
     editedValues,
     parameterDraftById,
     setDraft,
@@ -205,8 +183,8 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 	      <section className="grid one-up">
 	        <div id="setup-panel-ports">
 	          <Panel
-	            title="Ports & Peripherals"
-	            subtitle="Assign serial roles, baud rates, GPS drivers, and hardware flow-control settings without dropping into the raw parameter table."
+	            title="Ports"
+	            subtitle="Assign serial roles, baud rates, and hardware flow-control settings without dropping into the raw parameter table."
 	          >
 		          <div className="telemetry-stack telemetry-stack--ports">
 		            <div className="ports-workspace">
@@ -243,24 +221,11 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                        *  operator's viewport, causing the page to visually
                        *  scroll down each time a write succeeded. */}
 
-                      <div className="telemetry-metric-grid">
-                        <article className="telemetry-metric-card">
-                          <span>Detected ports</span>
-                          <strong>{serialPortViewModels.length}</strong>
-                        </article>
-                        <article className="telemetry-metric-card">
-                          <span>Staged changes</span>
-                          <strong>{portsStagedDrafts.length}</strong>
-                        </article>
-                        <article className="telemetry-metric-card">
-                          <span>Primary GPS</span>
-                          <strong>{formatArducopterGpsType(gpsPeripheralViewModels.find((peripheral) => peripheral.id === 'primary')?.value)}</strong>
-                        </article>
-                        <article className="telemetry-metric-card">
-                          <span>Secondary GPS</span>
-                          <strong>{formatArducopterGpsType(gpsPeripheralViewModels.find((peripheral) => peripheral.id === 'secondary')?.value)}</strong>
-                        </article>
-                      </div>
+                      {/* No metric strip above the matrix. Detected-ports and
+                       *  staged-changes restated what the list and the draft
+                       *  bar already show, and the two GPS cards belonged with
+                       *  the GPS surface rather than above a table of UARTs.
+                       *  The label now leads straight into the list. */}
 
                       {serialPortViewModels.length > 0 ? (
                         <>
@@ -823,96 +788,14 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                 </section>
               ) : null}
 
-              {gpsPeripheralViewModels.length > 0 || snapshot.liveVerification.globalPosition.verified ? (
-                <LiveGpsMapCard
-                  snapshot={snapshot}
-                  title="GPS map"
-                  subtitle="Verify the live aircraft location once the GPS driver and serial link are configured."
-                  testId="ports-gps-map-widget"
-                />
-              ) : null}
+              {/* The "GPS behavior" card lived here and edited GPS_AUTO_CONFIG,
+               *  GPS_AUTO_SWITCH, GPS_PRIMARY and GPS_RATE_MS -- every one of
+               *  which Peripherals > GPS already owns, under the same heading,
+               *  alongside GPS_TYPE and the GNSS mode. Two editors for one set
+               *  of parameters is how they drift apart in an operator's head.
+               *  Ports configures the UART; what the GPS then does with it is a
+               *  peripheral concern. */}
 
-              {gpsAutoConfigParameter || gpsAutoSwitchParameter || gpsPrimaryParameter || gpsRateParameter ? (
-                <div className="scoped-review-card scoped-review-card--compact">
-                  <div className="switch-exercise-card__header">
-                    <div>
-                      <strong>GPS behavior</strong>
-                      <p>Keep GPS redundancy, auto-configuration, and update-rate settings local to this Ports workflow.</p>
-                    </div>
-                    <StatusBadge tone={toneForScopedDraftReview(portsStagedDrafts.length, portsInvalidDrafts.length)}>
-                      {portsInvalidDrafts.length > 0
-                        ? `${portsInvalidDrafts.length} invalid`
-                        : portsStagedDrafts.length > 0
-                          ? `${portsStagedDrafts.length} staged`
-                          : 'in sync'}
-                    </StatusBadge>
-                  </div>
-
-                  <div className="config-pills">
-                    {gpsAutoConfigParameter ? <span>Auto config: {formatArducopterGpsAutoConfig(gpsAutoConfig)}</span> : null}
-                    {gpsAutoSwitchParameter ? <span>Auto switch: {formatArducopterGpsAutoSwitch(gpsAutoSwitch)}</span> : null}
-                    {gpsPrimaryParameter ? <span>Preferred GPS: {formatArducopterGpsPrimary(gpsPrimary)}</span> : null}
-                    {gpsRateParameter ? <span>Update rate: {formatArducopterGpsRateMs(gpsRateMs)}</span> : null}
-                  </div>
-
-                  <div className="scoped-editor-grid">
-                    {gpsAutoConfigParameter ? (
-                      <ScopedSelectField
-                        parameter={gpsAutoConfigParameter}
-                        liveValue={gpsAutoConfig}
-                        editedValues={editedValues}
-                        onChange={(paramId, value) => setDraft(paramId, value)}
-                        draftStatusById={parameterDraftById}
-                      />
-                    ) : null}
-
-                    {gpsAutoSwitchParameter ? (
-                      <ScopedSelectField
-                        parameter={gpsAutoSwitchParameter}
-                        liveValue={gpsAutoSwitch}
-                        editedValues={editedValues}
-                        onChange={(paramId, value) => setDraft(paramId, value)}
-                        draftStatusById={parameterDraftById}
-                      />
-                    ) : null}
-
-                    {gpsPrimaryParameter ? (
-                      <ScopedSelectField
-                        parameter={gpsPrimaryParameter}
-                        liveValue={gpsPrimary}
-                        editedValues={editedValues}
-                        onChange={(paramId, value) => setDraft(paramId, value)}
-                        draftStatusById={parameterDraftById}
-                      />
-                    ) : null}
-
-                    {gpsRateParameter ? (
-                      (gpsRateParameter.definition?.options ?? []).length > 0 ? (
-                        <ScopedSelectField
-                          parameter={gpsRateParameter}
-                          liveValue={gpsRateMs}
-                          editedValues={editedValues}
-                          onChange={(paramId, value) => setDraft(paramId, value)}
-                          draftStatusById={parameterDraftById}
-                        />
-                      ) : (
-                        <ScopedField
-                          parameter={gpsRateParameter}
-                          liveValue={gpsRateMs}
-                          editedValues={editedValues}
-                          onChange={(paramId, value) => setDraft(paramId, value)}
-                          draftStatusById={parameterDraftById}
-                        />
-                      )
-                    ) : null}
-                  </div>
-
-                  <ul className="output-note-list">
-                    <li>Keep GPS redundancy features simple unless the aircraft actually has two usable GPS links.</li>
-                    <li>After GPS behavior changes, reboot, reconnect, and verify live lock/telemetry before flight.</li>
-                  </ul>
-                </div>
-              ) : null}
 
 	              {renderAdditionalSettingsCard(
 	                'Additional port settings',

@@ -773,6 +773,28 @@ test.describe('Ports view', () => {
     // A plain protocol (GPS on SERIAL3) carries no pairing note.
     await expect(notes.filter({ hasText: /GPS/i })).toHaveCount(0)
   })
+
+  test('the peripherals group left Ports for the GPS sub-tab', async ({ page }) => {
+    // Ports configures a UART; what is on the far end of it is a peripheral.
+    // The `peripherals` metadata category used to render as rows under Ports ▸
+    // Additional port settings, which put GPS_TYPE2 and the antenna offsets on
+    // a tab that has no other GPS setting on it.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await enableExpertMode(page)
+    await openView(page, 'ports')
+    await expect(page.getByTestId('metadata-settings-section-peripherals')).toHaveCount(0)
+
+    await openView(page, 'peripherals')
+    await page.locator('.tab-strip__tab', { hasText: 'GPS' }).first().click()
+    const moved = page.getByTestId('metadata-settings-section-peripherals')
+    await expect(moved).toBeVisible()
+    // The residue only: anything a curated field already renders (GPS_TYPE on
+    // this very sub-tab, CAM_TRIGG_TYPE on Config) must not appear twice.
+    await expect(moved.getByText('GPS_TYPE2', { exact: true })).toBeVisible()
+    await expect(moved.getByText('GPS_TYPE', { exact: true })).toHaveCount(0)
+    await expect(moved.getByText('CAM_TRIGG_TYPE', { exact: true })).toHaveCount(0)
+  })
 })
 
 test.describe('CAN bus enable prompt', () => {

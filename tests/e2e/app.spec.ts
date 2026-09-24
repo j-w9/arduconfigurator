@@ -643,7 +643,14 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('workspace-view-title')).toHaveText('Guided Setup')
 
     await openView(page, 'ports')
-    await expect(page.getByRole('heading', { name: 'Ports & Peripherals' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Ports', exact: true })).toBeVisible()
+    // The live GPS map moved to Peripherals ▸ GPS. Ports configures a UART;
+    // confirming the aircraft is where it says it is belongs with the GPS
+    // peripheral, beside the driver settings that decide whether there is a
+    // fix at all.
+    await expect(page.getByTestId('ports-gps-map-widget')).toHaveCount(0)
+    await openView(page, 'peripherals')
+    await page.locator('.tab-strip__tab', { hasText: 'GPS' }).first().click()
     await expect(page.getByTestId('ports-gps-map-widget')).toBeVisible()
     await openView(page, 'setup')
     await expect(page.getByTestId('workspace-view-title')).toHaveText('Status & Info')
@@ -847,7 +854,7 @@ test.describe('browser configurator regression flows', () => {
 
     await expect(page.getByText(`WebSocket · ${BRIDGE_URL}`, { exact: true })).toBeVisible()
     await openView(page, 'ports')
-    await expect(page.getByRole('heading', { name: 'Ports & Peripherals' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Ports', exact: true })).toBeVisible()
   })
 
   test('connection failures surface a clear session notice instead of leaving the UI idle and ambiguous', async ({ page }) => {
