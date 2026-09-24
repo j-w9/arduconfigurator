@@ -42,18 +42,9 @@
   Cross-Origin-Embedder-Policy: require-corp
   Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-ySvT2PEZeueHGC1y2crNuNTfphBynFPP7i+U21fEgX0='; connect-src 'self' ws: wss: data: https: http://localhost:* http://127.0.0.1:*; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
 
-# The simulator's own files, stated AFTER /* so they win it.
-#
-# Cloudflare applies every matching rule in file order and the later one takes
-# the header, so placing this above /* silently lost the CORP line -- the page
-# reported cross-origin-resource-policy: null while curl, which does not care
-# about ordering, showed it set.
-#
-# ArduPilot starts its pthread workers from arducopter.js, and a worker script
-# loaded by a cross-origin-isolated page must carry COEP itself or the load
-# fails coep-frame-resource-needs-coep-header, which is the "starting worker
-# threads" hang.
-/sitl/*
-  Cross-Origin-Embedder-Policy: require-corp
-  Cross-Origin-Resource-Policy: same-origin
-  Cross-Origin-Opener-Policy: same-origin
+# No per-path rule for /sitl/. Cloudflare APPENDS the headers of every matching
+# rule rather than replacing them, so a /sitl/* block on top of /* produced two
+# Cross-Origin-Embedder-Policy headers on the same response. fetch() is lenient
+# about that and reported require-corp, but the worker-script check parses COEP
+# strictly: a doubled value is not a valid one, so it counted as absent and the
+# pthread worker was blocked -- the "starting worker threads" hang.
