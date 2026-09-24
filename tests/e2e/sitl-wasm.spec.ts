@@ -41,32 +41,36 @@ test.describe('WebAssembly SITL', () => {
     await page.goto('/')
     await page.getByTestId('view-button-sitl').click()
 
-    await expect(page.getByRole('button', { name: /Start the simulator/i })).toBeVisible({
+    await expect(page.getByRole('button', { name: 'Fly', exact: true })).toBeVisible({
       timeout: 20_000
     })
-    await page.getByRole('button', { name: /Start the simulator/i }).click()
+    await page.getByRole('button', { name: 'Fly', exact: true }).click()
 
-    // Loading 3.4 MB and instantiating it is not instant, and the vehicle then
-    // has to boot far enough to say something.
-    await expect(page.getByRole('button', { name: /Stop the simulator/i })).toBeVisible({
+    // Loading the module and instantiating it is not instant, and the vehicle
+    // then has to boot far enough to say something.
+    await expect(page.getByRole('button', { name: 'Land', exact: true })).toBeVisible({
       timeout: 120_000
     })
 
     // The claim that matters: not that the module loaded, but that the app is
-    // talking to the vehicle inside it.
-    await expect(page.getByText(/Vehicle is alive/i)).toBeVisible({ timeout: 120_000 })
+    // talking to the vehicle inside it. The strip only reports a time in the
+    // air once MAVLink has actually arrived.
+    await expect(page.getByText(/airborne/i)).toBeVisible({ timeout: 120_000 })
   })
 
-  test("SITL's own console is shown, which is where a failed boot explains itself", async ({ page }) => {
+  test('the console shows what ArduPilot printed on the way up', async ({ page }) => {
     const probe = await page.request.get('/sitl/build.json')
     test.skip(!probe.ok(), 'no simulator in this build — run npm run sitl:build')
 
     await page.goto('/')
     await page.getByTestId('view-button-sitl').click()
-    await page.getByRole('button', { name: /Start the simulator/i }).click()
+    await page.getByRole('button', { name: 'Fly', exact: true }).click()
 
     // ArduPilot announces the parameter defaults it loaded from its embedded
     // ROMFS — proof the console is wired to the module and not to nothing.
+    // It is folded away by default, so open it first.
+    await expect(page.getByText(/printed on the way up/i)).toBeVisible({ timeout: 120_000 })
+    await page.getByText(/printed on the way up/i).click()
     await expect(page.getByText(/Loaded defaults from/i)).toBeVisible({ timeout: 120_000 })
   })
 })

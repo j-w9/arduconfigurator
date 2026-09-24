@@ -20139,66 +20139,9 @@ button.mavlink-inspector__sent-row {
   text-decoration: underline;
 }
 
-/* ArduPilot compiled to WebAssembly, running in the tab. The controls read as
-   one row of choices because that is what they are: pick a vehicle, pick where
-   it starts, press Start. */
-.sitl-sim__controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-end;
-}
-
-.sitl-sim__controls label {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sitl-sim__controls label > span {
-  font-size: 0.85em;
-  color: var(--text-muted);
-}
-
-.sitl-sim__wipe {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: 12px;
-  color: var(--text-muted);
-}
-
-.sitl-sim__actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-  flex-wrap: wrap;
-}
-
-.sitl-sim__note,
-.sitl-sim__missing {
-  color: var(--text-muted);
-}
-
-.sitl-sim__error {
-  color: var(--danger, #c53030);
-}
 
 /* SITL's own console. Monospace and scrolling: it is where a simulation that
    will not start explains itself, and the useful line is usually the last. */
-.sitl-sim__console {
-  max-height: 18rem;
-  overflow-y: auto;
-  margin: 0;
-  padding: 10px;
-  font-size: 0.85em;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: var(--surface-sunken, rgba(0, 0, 0, 0.04));
-  border-radius: 6px;
-}
 
 /* The live GPS map. Replaced an <iframe> to openstreetmap.org, which a
    cross-origin-isolated page cannot embed at all. */
@@ -20209,19 +20152,190 @@ button.mavlink-inspector__sent-row {
   border-radius: 6px;
 }
 
-/* What the simulator is doing while it starts. Emscripten reports its progress
-   as a repeating three-line stanza, which reads as a hang in a console; this
-   is that same information as one line that changes. */
-.sitl-sim__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+
+/* Someone who asked for less motion gets a static mark rather than none: the
+   status text is still changing, so the absence of a spinner loses nothing. */
+
+/* Picking a home on the map. Reuses the calibration picker, which already
+   draws tiles from this origin. */
+
+
+/* ═══ Simulator ═══════════════════════════════════════════════════════════
+   A flight progress strip: the compact row air traffic control keeps per
+   aircraft, carrying identity, route and status. It is a form while nothing
+   is flying and a readout once something is — the same object changing state,
+   which is the whole point of the feature. The aircraft is HERE.
+
+   Everything is deliberately quiet except that one transition. */
+.sitl {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 68rem;
+}
+
+.sitl__intro h2 {
+  margin: 0 0 4px;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sitl__intro p {
+  margin: 0;
+  max-width: 62ch;
   color: var(--text-muted);
 }
 
-.sitl-sim__spinner {
-  width: 12px;
-  height: 12px;
+/* The strip. Four cells divided by hairlines, the way a paper strip is ruled;
+   the action sits at the end where the eye finishes. */
+.strip {
+  display: grid;
+  grid-template-columns: minmax(11rem, 1.1fr) minmax(13rem, 1.4fr) auto auto;
+  align-items: center;
+  gap: 0;
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--border);
+  /* Square-ish: a flight strip is a printed form, not a card. The small
+     radius keeps it from fighting the rest of the app. */
+  border-radius: 4px;
+  overflow: hidden;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.strip > * {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 18px;
+  min-width: 0;
+  border-left: 1px solid var(--border-soft);
+}
+
+.strip > *:first-child {
+  border-left: none;
+}
+
+/* Alive. The single place this feature spends any colour: the strip stops
+   being a form and starts reporting. */
+.strip--live {
+  border-color: var(--border-accent);
+  background:
+    linear-gradient(90deg, var(--surface-warm-glow), transparent 38%),
+    var(--bg-panel-raised);
+}
+
+.strip--busy {
+  border-color: var(--border-strong);
+}
+
+.strip__ident {
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+/* What the cell is. Lower-case and quiet: these are captions, not headings,
+   and they stop mattering the moment you have read them once. */
+.strip__sub {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+/* Instrument readings — genuinely numeric, so genuinely monospaced. */
+.strip__coords,
+.strip__craft time {
+  font-family: var(--font-data);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.strip__craft {
+  position: relative;
+}
+
+.strip__picks {
+  display: flex;
+  gap: 8px;
+}
+
+/* Controls sized to what they hold, not stretched to fill the cell. A strip's
+   fields are written to fit; a select sprawling across the column made the
+   coordinates beneath it look ragged. */
+.strip select {
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+.strip__picks select {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+/* The frame list holds 'dotriaconta_octaquad_x'; it is allowed more room than
+   the vehicle beside it, but not the whole cell. */
+.strip__picks select:last-child {
+  flex: 1 1 7rem;
+  max-width: 11rem;
+}
+
+.strip__home select {
+  max-width: 15rem;
+}
+
+/* The heartbeat. One mark, pulsing at roughly a resting human rate, which is
+   the only motion on the page and only while something is actually alive. */
+.strip__mark {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--primary-500, rgb(var(--primary-rgb)));
+  animation: sitl-pulse 1.2s ease-in-out infinite;
+}
+
+.strip--live .strip__craft {
+  padding-left: 24px;
+}
+
+@keyframes sitl-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.82); }
+}
+
+.strip__act {
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.strip__act button {
+  min-width: 6.5rem;
+}
+
+/* A disabled action has to look disabled. The shared primary style keeps its
+   fill when disabled, so "Fly" read as ready while it was refusing clicks --
+   which is exactly the moment the map is open and nothing has been picked. */
+.strip__act button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.65);
+}
+
+.sitl__status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.sitl__spinner {
+  width: 11px;
+  height: 11px;
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
@@ -20229,28 +20343,113 @@ button.mavlink-inspector__sent-row {
 }
 
 @keyframes sitl-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
-/* Someone who asked for less motion gets a static mark rather than none: the
-   status text is still changing, so the absence of a spinner loses nothing. */
+/* A static mark still says "working", and the status text changes anyway. */
 @media (prefers-reduced-motion: reduce) {
-  .sitl-sim__spinner {
-    animation: none;
-    border-right-color: currentColor;
-    opacity: 0.5;
-  }
+  .sitl__spinner { animation: none; border-right-color: currentColor; opacity: 0.5; }
+  .strip__mark { animation: none; }
 }
 
-/* Picking a home on the map. Reuses the calibration picker, which already
-   draws tiles from this origin. */
-.sitl-sim__map {
-  margin-top: 14px;
+.sitl__error {
+  margin: 0;
+  color: var(--danger-500, rgb(var(--danger-rgb)));
 }
 
-.sitl-sim__map-note {
-  margin: 6px 0 0;
+.sitl__absent {
   color: var(--text-muted);
+  max-width: 62ch;
+}
+
+.sitl__map {
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* OSM ships one raster style and it is built for light backgrounds; dropped
+   into this app it is a white slab with a dark UI around it. Inverting and
+   rotating the hue turns it into a dark map while leaving the geography
+   legible -- land and water keep their relationship, they just stop glaring.
+   The marker is outside the filtered layer, so it stays the colour it was. */
+.sitl__map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9);
+}
+
+.sitl__map .leaflet-container {
+  background: var(--bg-panel-soft);
+}
+
+/* Attribution is required by OSM's terms, so it stays -- but it is inside the
+   inverted pane's stacking context and would come out glowing. */
+.sitl__map .leaflet-control-attribution {
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--text-dim);
+}
+
+.sitl__map .leaflet-control-attribution a {
+  color: var(--text-muted);
+}
+
+/* Leaflet's controls ship white-on-white. They sit outside the inverted tile
+   pane, so they need dressing for a dark surface directly. */
+.sitl__map .leaflet-control-zoom a {
+  background: var(--bg-panel-raised);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.sitl__map .leaflet-control-zoom a:hover {
+  background: var(--bg-surface-strong);
+}
+
+.sitl__wipe {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+/* Diagnostics, folded away. Open it when something did not start. */
+.sitl__log > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.sitl__log pre {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  max-height: 17rem;
+  overflow-y: auto;
+  font-family: var(--font-data);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg-panel-soft);
+  border-radius: 4px;
+}
+
+/* A strip is a row until there is no room for one, then it stacks and the
+   hairlines turn horizontal so the divisions still read. */
+@media (max-width: 860px) {
+  .strip {
+    grid-template-columns: 1fr;
+  }
+  .strip > * {
+    border-left: none;
+    border-top: 1px solid var(--border-soft);
+  }
+  .strip > *:first-child {
+    border-top: none;
+  }
+  .strip__act {
+    padding-top: 12px;
+    padding-bottom: 14px;
+  }
+  .strip__act button {
+    width: 100%;
+  }
 }
