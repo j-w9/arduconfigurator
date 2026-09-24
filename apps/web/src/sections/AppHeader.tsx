@@ -58,6 +58,13 @@ export interface AppHeaderProps {
   parameterFollowUp: ParameterFollowUp | undefined
   onGoToSetup: () => void
   onTransportModeChange: (mode: TransportMode) => void
+  /**
+   * Open the Simulator tab. The simulator is a transport like any other and
+   * belongs in this list, but it cannot be started from a picker: it needs a
+   * vehicle, a frame and a home first. Choosing it here goes to where those
+   * are chosen.
+   */
+  onOpenSimulator?: (() => void) | undefined
   onWebsocketUrlChange: (url: string) => void
   onProductModeChange: (mode: ProductMode) => void
   onConnect: () => void
@@ -92,6 +99,7 @@ export function AppHeader({
   parameterFollowUp,
   onGoToSetup,
   onTransportModeChange,
+  onOpenSimulator,
   onWebsocketUrlChange,
   onProductModeChange,
   onConnect,
@@ -191,7 +199,17 @@ export function AppHeader({
           data-testid="transport-mode-select"
           aria-label="Connection transport"
           value={transportMode}
-          onChange={(event) => onTransportModeChange(event.target.value as TransportMode)}
+          onChange={(event) => {
+            const next = event.target.value as TransportMode
+            // Picking the simulator is a request to set one up, not to
+            // connect to one that is not there yet -- the factory has no
+            // module to load and would only throw.
+            if (next === 'wasm-sitl' && onOpenSimulator) {
+              onOpenSimulator()
+              return
+            }
+            onTransportModeChange(next)
+          }}
           disabled={busyAction !== undefined || snapshot.connection.kind === 'connected'}
         >
           <option value="demo">Demo (Copter)</option>
@@ -215,6 +233,12 @@ export function AppHeader({
           <option value="websocket">WebSocket</option>
           {udpSupported ? <option value="udp">UDP (direct)</option> : null}
           {tcpSupported ? <option value="tcp">TCP (direct)</option> : null}
+          {/* Last because it is the odd one out: every other entry is a link
+              to a vehicle somewhere else, and this one IS the vehicle. It has
+              to be here all the same -- without an option to match, a running
+              simulator left the picker showing "Demo (Copter)", which is the
+              one thing it is not. */}
+          <option value="wasm-sitl">Simulator (in this tab)</option>
         </select>
         {transportMode === 'websocket' ? (
           <input

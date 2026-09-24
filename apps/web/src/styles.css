@@ -20468,3 +20468,137 @@ button.mavlink-inspector__sent-row {
     width: 100%;
   }
 }
+
+/* ---- Simulator conditions -------------------------------------------------
+   Continues the flight-strip language of the panel above it: the same square
+   corners, hairline rules and panel-raised ground, so the controls read as
+   more of the same form rather than a second design. Each group is a block of
+   that form, and the numeric readouts are monospaced because they are
+   instrument readings. */
+.sim-conditions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 12px;
+}
+
+.sim-group {
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px 16px 16px;
+}
+
+/* Faults span the full width: there are more of them, and a wall of
+   half-width switches is harder to scan than one honest list. */
+.sim-conditions .sim-group:last-child {
+  grid-column: 1 / -1;
+}
+
+.sim-group__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+.sim-group__head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+}
+
+/* Pushes the clear-faults button to the far edge. */
+.sim-group__head button {
+  margin-left: auto;
+}
+
+.sim-group__count {
+  font-family: var(--font-data);
+  font-size: 0.75rem;
+  color: var(--danger, #e06c6c);
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+
+.sim-group__blurb {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  max-width: 62ch;
+}
+
+.sim-group__controls {
+  display: grid;
+  gap: 14px;
+}
+
+/* The faults list is the one group wide enough to take two columns. */
+.sim-conditions .sim-group:last-child .sim-group__controls {
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+}
+
+.sim-control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.sim-control__label {
+  font-size: 0.9rem;
+}
+
+.sim-control__value {
+  font-family: var(--font-data);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.sim-control__hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.sim-control--slider input[type='range'] {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 4px 0 2px;
+  accent-color: var(--accent, #6ea8fe);
+}
+
+.sim-control--choice select {
+  grid-column: 1 / -1;
+  margin: 4px 0 2px;
+}
+
+/* A switch is a checkbox and its label side by side, with the hint tucked
+   under the text rather than under the box. */
+.sim-control--switch {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 4px 9px;
+}
+
+.sim-control--switch input {
+  margin: 2px 0 0;
+}
+
+.sim-control--switch label {
+  display: grid;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.sim-control--switch .sim-control__hint {
+  grid-column: 1;
+}
+
+.sim-control input:disabled,
+.sim-control select:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
