@@ -61,9 +61,31 @@ export function SitlSimView(props: SitlSimViewProps) {
   // The options file ships beside the binaries and is tiny, but it is fetched
   // rather than bundled: a site built without ever running the SITL build has
   // no sitl/ directory at all, and the tab should say so rather than fail.
+  // Which build's directory to load from. The artifacts live under a
+  // content-hashed path so a stale CDN copy -- headers and all -- can never be
+  // served in place of a current one; this tiny file is the only fixed URL.
+  const [buildPath, setBuildPath] = useState<string | undefined>(undefined)
   useEffect(() => {
     let cancelled = false
-    fetch(`${base ?? '/sitl'}/sim-options.json`)
+    fetch(`${base ?? '/sitl'}/build.json`)
+      .then((response) => (response.ok ? (response.json() as Promise<{ build: string }>) : undefined))
+      .then((info) => {
+        if (cancelled) return
+        setBuildPath(info?.build ? `${base ?? '/sitl'}/${info.build}` : (base ?? '/sitl'))
+      })
+      .catch(() => {
+        // An older layout, where the files sat directly in /sitl.
+        if (!cancelled) setBuildPath(base ?? '/sitl')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [base])
+
+  useEffect(() => {
+    if (!buildPath) return
+    let cancelled = false
+    fetch(`${buildPath}/sim-options.json`)
       .then((response) => {
         if (!response.ok) throw new Error(`${response.status}`)
         return response.json() as Promise<SimOptions>
@@ -79,7 +101,7 @@ export function SitlSimView(props: SitlSimViewProps) {
     return () => {
       cancelled = true
     }
-  }, [base])
+  }, [buildPath])
 
   const vehicles = useMemo(() => availableVehicles(options), [options])
   const frames = useMemo(() => framesFor(options, vehicle), [options, vehicle])
@@ -121,9 +143,9 @@ export function SitlSimView(props: SitlSimViewProps) {
         },
         options
       ),
-      moduleUrlFor(vehicle, base)
+      moduleUrlFor(vehicle, buildPath)
     )
-  }, [onStart, vehicle, chosenFrame, location, speedup, wipe, customHome, options, base])
+  }, [onStart, vehicle, chosenFrame, location, speedup, wipe, customHome, options, buildPath])
 
   const running = phase === 'running'
   const busy = phase === 'loading'
