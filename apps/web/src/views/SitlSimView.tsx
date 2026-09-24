@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { buttonStyle } from '@arduconfig/ui-kit'
 
 import { MapLocationPicker } from './MapLocationPicker'
+import { SitlConditions } from './SitlConditions'
 import {
   CUSTOM_LOCATION,
   DEFAULT_LOCATION,
@@ -34,6 +35,13 @@ import {
 export type SitlPhase = 'idle' | 'loading' | 'running' | 'error'
 
 export interface SitlSimViewProps {
+  /**
+   * The connected vehicle's live parameters, which for a simulator include
+   * the several hundred `SIM_*` ones the conditions panel drives.
+   */
+  parameters?: Readonly<Record<string, number>>
+  /** Write simulator parameters and wait for the vehicle to confirm them. */
+  onSetConditions?: (writes: readonly { parameter: string; value: number }[]) => Promise<void>
   onStart: (vehicle: string, args: readonly string[], moduleUrl: string) => Promise<void>
   onStop: () => Promise<void>
   phase: SitlPhase
@@ -48,7 +56,7 @@ export interface SitlSimViewProps {
 const OUTPUT_LIMIT = 200
 
 export function SitlSimView(props: SitlSimViewProps) {
-  const { onStart, onStop, phase, output, heartbeat, error, base } = props
+  const { onStart, onStop, phase, output, heartbeat, error, base, parameters, onSetConditions } = props
 
   const [options, setOptions] = useState<SimOptions | undefined>(undefined)
   const [optionsError, setOptionsError] = useState<string | undefined>(undefined)
@@ -335,6 +343,10 @@ export function SitlSimView(props: SitlSimViewProps) {
             Start from the firmware&apos;s own defaults, discarding anything set before
           </span>
         </label>
+      ) : null}
+
+      {parameters && onSetConditions ? (
+        <SitlConditions parameters={parameters} onSet={onSetConditions} live={heartbeat} />
       ) : null}
 
       {visible.length > 0 ? (

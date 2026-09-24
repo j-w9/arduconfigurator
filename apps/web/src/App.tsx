@@ -696,14 +696,38 @@ export function App() {
     [runtime, setTransportMode]
   )
 
+  /**
+   * Write simulator parameters. These are live knobs on a running vehicle --
+   * wind, time, a failed compass -- so unlike a configuration change they
+   * need no reboot and leave no follow-up behind. The write itself is the
+   * app's ordinary verified one, so the vehicle still confirms every value.
+   */
+  const setSimConditions = useCallback(
+    async (writes: readonly { parameter: string; value: number }[]) => {
+      if (writes.length === 0) return
+      await runtime.setParameters(
+        writes.map((entry) => ({ paramId: entry.parameter, paramValue: entry.value })),
+        UI_PARAMETER_WRITE_OPTIONS
+      )
+    },
+    [runtime]
+  )
+
   const stopSitl = useCallback(async () => {
     setSitlPhase('idle')
     sitlLaunchRef.current = undefined
+    // Landing the simulator is the operator closing the link, not the link
+    // failing, so it takes the same clean slate as the Disconnect button.
+    // Without this the vehicle it was carrying stays on screen under "Link
+    // lost - showing the last data received", which is both untrue and
+    // sticky: nothing clears it until the next connection.
+    intentionalDisconnectRef.current = true
     try {
       await runtime.disconnect()
     } catch {
       // Already down, which is the state being asked for.
     }
+    runtime.discardRetainedParameters()
   }, [runtime])
 
   // Connecting is left to the effect rather than done inside startSitl: the
@@ -7667,6 +7691,8 @@ export function App() {
       ? 'Demo transport (Copter)'
       : transportMode === 'demo-plane'
         ? 'Demo transport (Plane)'
+      : transportMode === 'wasm-sitl'
+        ? 'Simulator (in this tab)'
       : transportMode === 'web-serial'
         ? rememberedSerialPortLabel
           ? `Serial · ${rememberedSerialPortLabel}`
@@ -8289,6 +8315,7 @@ export function App() {
       <AppHeader
         snapshot={snapshot}
         transportMode={transportMode}
+        onOpenSimulator={() => setActiveViewId('sitl')}
         busyAction={busyAction}
         websocketUrl={websocketUrl}
         webSerialSupported={webSerialSupported}
@@ -9940,6 +9967,8 @@ export function App() {
           // nothing. A heartbeat is the first thing that proves otherwise,
           // and the runtime already tracks whether it has seen one.
           heartbeat={snapshot.connection.kind === 'connected'}
+          parameters={amcLiveParameters}
+          onSetConditions={setSimConditions}
           {...(sitlError ? { error: sitlError } : {})}
         />
       ) : null}
