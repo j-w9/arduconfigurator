@@ -252,6 +252,9 @@ export function createRuntime(
   })()
   const session = new MavlinkSession(transport, new MavlinkV2Codec(), undefined, sessionHooks)
   return new ArduPilotConfiguratorRuntime(session, arducopterMetadata, {
+    // The simulator's vehicle runs in this tab, so its live streams are not
+    // competing with anything and can be asked for at a useful rate.
+    localVehicle: mode === 'wasm-sitl',
     metadataByVehicle: {
       ArduCopter: arducopterMetadata,
       ArduPlane: arduplaneMetadata,

@@ -140,16 +140,22 @@ test('no alias map leaves the merge exactly as it was', () => {
 test('notch-filter index parameters are indices, not frequencies', () => {
   // ArduPilot declares NTF/NEF with no units and @Range 0 8 (AC_PID.cpp), and 0
   // -- the firmware default -- means "no notch attached". The generated
-  // upstream metadata carries a stray "Hz" on ATC_RAT_YAW_NTF and a minimum of
-  // 1 on all six, so the app mislabelled a filter index as a frequency and
-  // refused the value the firmware ships with.
+  // upstream metadata USED TO carry a stray "Hz" on ATC_RAT_YAW_NTF and a
+  // minimum of 1 on all six, so the app mislabelled a filter index as a
+  // frequency and refused the value the firmware ships with.
+  //
+  // That has since been fixed upstream, so the override is no longer the only
+  // thing standing between the app and the defect. It stays because what the
+  // app shows for these six is worth pinning either way, and this test now
+  // guards the outcome rather than the workaround.
   const upstream = JSON.parse(
     readFileSync(join(here, '../apps/web/src/generated/param-upstream/arducopter.json'), 'utf8')
   )
-  // Guard the premise: if the generated data is ever fixed upstream, this test
-  // should stop claiming to defend against something that is no longer there.
-  assert.equal(upstream.ATC_RAT_YAW_NTF.unit, 'Hz', 'the upstream defect this override exists for')
-  assert.equal(upstream.ATC_RAT_YAW_NTF.minimum, 1)
+  // The upstream data is clean now. Pinned so that a refresh which brings the
+  // defect back is reported here, where the comment above explains it, rather
+  // than only as a surprising unit on a tuning field.
+  assert.equal(upstream.ATC_RAT_YAW_NTF.unit, undefined, 'upstream regained the stray "Hz"')
+  assert.equal(upstream.ATC_RAT_YAW_NTF.minimum, 0, 'upstream regained the minimum of 1')
 
   const merged = mergeUpstreamParameters(arducopterMetadata.parameters, upstream)
   for (const axis of ['RLL', 'PIT', 'YAW']) {

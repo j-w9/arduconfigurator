@@ -138,4 +138,31 @@ describe('the conditions panel', () => {
     rerender(<SitlConditions parameters={{ ...healthy, SIM_WIND_SPD: 9 }} onSet={onSet} live />)
     expect((screen.getByLabelText('Speed', { selector: '#sim-SIM_WIND_SPD' }) as HTMLInputElement).value).toBe('9')
   })
+
+  it('stays usable while a write is in flight', () => {
+    // A verified write takes about a second. Disabling the controls for it
+    // meant every keypress in that second was dropped, so a slider could not
+    // be stepped with the arrow keys at all -- and one control's write froze
+    // every other control on the panel.
+    let release: (() => void) | undefined
+    const onSet = vi.fn().mockImplementation(
+      () => new Promise<void>((resolve) => { release = resolve })
+    )
+    render(<SitlConditions parameters={healthy} onSet={onSet} live />)
+
+    const wind = screen.getByLabelText('Speed', { selector: '#sim-SIM_WIND_SPD' })
+    fireEvent.change(wind, { target: { value: '0.5' } })
+    fireEvent.keyUp(wind)
+    expect(onSet).toHaveBeenCalledTimes(1)
+
+    // That write has not resolved yet.
+    expect((wind as HTMLInputElement).disabled).toBe(false)
+    expect((screen.getByLabelText(/Compass failed/) as HTMLInputElement).disabled).toBe(false)
+
+    fireEvent.change(wind, { target: { value: '1' } })
+    fireEvent.keyUp(wind)
+    expect(onSet).toHaveBeenCalledTimes(2)
+    expect((wind as HTMLInputElement).value).toBe('1')
+    release?.()
+  })
 })

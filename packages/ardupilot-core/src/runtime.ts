@@ -191,6 +191,17 @@ export interface WaitForParameterSyncOptions {
 }
 
 export interface ArduPilotConfiguratorRuntimeOptions {
+  /**
+   * The vehicle is in this tab, so telemetry costs nothing to ask for.
+   *
+   * The live stream rates below are chosen for a radio link, where every
+   * message is bandwidth someone else is not getting. The WebAssembly
+   * simulator has no link: the "radio" is a memcpy between a worker and the
+   * main thread. Position at 5 Hz is what makes a sped-up simulation look
+   * like it is teleporting -- at 5x the vehicle covers five times the ground
+   * between fixes -- and there is no reason to pay that here.
+   */
+  localVehicle?: boolean
   accelerometerInitialWarmupMs?: number
   accelerometerStepAdvanceMs?: number
   accelerometerCompletionFallbackMs?: number
@@ -401,8 +412,10 @@ const LIVE_TELEMETRY_REQUESTS = [
     messageId: MAVLINK_MESSAGE_IDS.GLOBAL_POSITION_INT,
     label: 'GLOBAL_POSITION_INT',
     // 5 Hz — smooth position updates for the Live GPS map without being
-    // wasteful over a telemetry link.
-    intervalUs: 200000
+    // wasteful over a telemetry link. Raised to 25 Hz for a vehicle running
+    // in this tab, which has no link to be wasteful with (see localVehicle).
+    intervalUs: 200000,
+    localIntervalUs: 40000
   },
   {
     messageId: MAVLINK_MESSAGE_IDS.ATTITUDE,
@@ -676,6 +689,8 @@ export class ArduPilotConfiguratorRuntime {
   private parameterSyncGapFillActive = false
   // Test-injectable per-instance override; defaults to the
   // module constant. Production callers never set this.
+  /** See ArduPilotConfiguratorRuntimeOptions.localVehicle. */
+  private readonly localVehicle: boolean
   private readonly parameterSyncStallRetryMs: number
   // Parameter count the retained table was captured against, while a resumed
   // download is still unproven. The first PARAM_VALUE of the new link settles
@@ -725,6 +740,7 @@ export class ArduPilotConfiguratorRuntime {
   ) {
     this.metadata = metadata
     this.defaultMetadata = metadata
+    this.localVehicle = options.localVehicle ?? false
     this.metadataByVehicle = options.metadataByVehicle ?? {}
     this.parameterSyncStallRetryMs = options.parameterSyncStallRetryMs ?? PARAMETER_SYNC_STALL_RETRY_MS
     this.preArmRefreshIntervalMs = options.preArmRefreshIntervalMs ?? PRE_ARM_REFRESH_INTERVAL_MS
@@ -2233,7 +2249,11 @@ export class ArduPilotConfiguratorRuntime {
     // processSetMessageIntervalAck), which is less specific and true.
     try {
       for (const request of LIVE_TELEMETRY_REQUESTS) {
-        await this.sendCommand(MAV_CMD.SET_MESSAGE_INTERVAL, [request.messageId, request.intervalUs, 0, 0, 0, 0, 0])
+        const intervalUs =
+          (this.localVehicle && 'localIntervalUs' in request
+            ? request.localIntervalUs
+            : undefined) ?? request.intervalUs
+        await this.sendCommand(MAV_CMD.SET_MESSAGE_INTERVAL, [request.messageId, intervalUs, 0, 0, 0, 0, 0])
       }
       this.appendStatusEntry(
         'info',
