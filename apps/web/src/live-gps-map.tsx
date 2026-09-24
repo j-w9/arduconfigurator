@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+
+import { shouldChaseVehicle } from './view-models/map-follow'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -18,14 +20,17 @@ interface StableMapFocus {
   longitudeDeg: number
 }
 
-// 6 m was 18 m. The original guard kept the OSM iframe from reloading on
-// sub-meter GPS drift, but with the new 5 Hz GLOBAL_POSITION_INT cadence
-// (see LIVE_TELEMETRY_REQUESTS) operators watching a Here3 said the map
-// looked "stuck" for too long when actually moving. 6 m is small enough
-// that walking-pace movement re-centers reasonably, large enough that
-// the iframe doesn't thrash on stationary GPS jitter (typical drift on a
-// good fix is well under that).
+// Applies to the settled position behind the coordinate readout and the
+// "open in OpenStreetMap" link, so neither churns on sub-metre GPS drift.
+// It deliberately does NOT gate the marker any more: the map follows every
+// fix, because a deadband there is a vehicle that advances in 6 m steps --
+// most visible with the simulator sped up, where each step is a jump.
 const MAP_RECENTER_THRESHOLD_METERS = 6
+
+
+/** How many past positions the track keeps. At 5 Hz this is about a minute. */
+const TRACK_POINTS = 300
+
 
 function formatCoordinate(value: number | undefined, positiveLabel: string, negativeLabel: string): string {
   if (value === undefined) {
@@ -62,6 +67,7 @@ function LiveGpsLeafletMap({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const markerRef = useRef<L.CircleMarker | null>(null)
+  const trackRef = useRef<L.Polyline | null>(null)
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -81,6 +87,8 @@ function LiveGpsLeafletMap({
       maxZoom: 19,
       attribution: '© OpenStreetMap contributors'
     }).addTo(map)
+    // Under the marker so the vehicle stays the thing you look at.
+    trackRef.current = L.polyline([], { weight: 2, opacity: 0.65 }).addTo(map)
     markerRef.current = L.circleMarker([latitude, longitude], {
       radius: 7,
       weight: 2
@@ -90,6 +98,7 @@ function LiveGpsLeafletMap({
       map.remove()
       mapRef.current = null
       markerRef.current = null
+      trackRef.current = null
     }
     // Set up once; the position is followed by the effect below rather than by
     // rebuilding the map, which is what the iframe used to do.
@@ -97,8 +106,47 @@ function LiveGpsLeafletMap({
   }, [])
 
   useEffect(() => {
-    mapRef.current?.setView([latitude, longitude], zoom, { animate: false })
-    markerRef.current?.setLatLng([latitude, longitude])
+    const map = mapRef.current
+    if (!map) return
+    const here = L.latLng(latitude, longitude)
+
+    // The marker follows every fix. It is one DOM node moving, so it costs
+    // almost nothing, and it is what makes the vehicle look like it is
+    // flying rather than teleporting.
+    markerRef.current?.setLatLng(here)
+
+    const track = trackRef.current
+    if (track) {
+      const points = track.getLatLngs() as L.LatLng[]
+      // Enough to show where the vehicle has been this leg without growing
+      // without bound over a long flight.
+      if (points.length >= TRACK_POINTS) points.shift()
+      track.setLatLngs([...points, here])
+    }
+
+    // The view is the expensive half: re-centring reprojects every tile, and
+    // doing it on each fix is what made a sped-up simulation stutter. So the
+    // vehicle is allowed to move around the middle of the map freely, and
+    // the view only chases it once it nears the edge -- then it does so
+    // smoothly, rather than snapping.
+    if (map.getZoom() !== zoom) {
+      map.setView(here, zoom, { animate: false })
+      return
+    }
+    const bounds = map.getBounds()
+    if (
+      shouldChaseVehicle(
+        {
+          south: bounds.getSouth(),
+          west: bounds.getWest(),
+          north: bounds.getNorth(),
+          east: bounds.getEast()
+        },
+        { latitudeDeg: latitude, longitudeDeg: longitude }
+      )
+    ) {
+      map.panTo(here, { animate: true, duration: 0.45, easeLinearity: 0.3 })
+    }
   }, [latitude, longitude, zoom])
 
   return <div className="gps-map-card__leaflet" ref={containerRef} role="img" aria-label={label} />
@@ -169,8 +217,12 @@ export function LiveGpsMapCard({ snapshot, title, subtitle, compact = false, tes
       <div className="gps-map-card__frame">
         {displayFocus ? (
           <LiveGpsLeafletMap
-            latitude={displayFocus.latitudeDeg}
-            longitude={displayFocus.longitudeDeg}
+            /* The raw fix, not the settled one. The deadband below exists so
+               the coordinate readout and the external link do not churn on
+               GPS jitter; feeding it to the map as well was what made the
+               vehicle advance in 6 m steps instead of flying. */
+            latitude={latitudeDeg ?? displayFocus.latitudeDeg}
+            longitude={longitudeDeg ?? displayFocus.longitudeDeg}
             zoom={compact ? 16 : 17}
             label={title}
           />

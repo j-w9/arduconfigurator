@@ -33,6 +33,11 @@ export function SitlConditions({ parameters, onSet, live }: SitlConditionsProps)
   const groups = availableGroups(parameters)
   const faults = activeFaultCount(groups, parameters)
   const toClear = healthyWrites(groups, parameters)
+  // Only the bulk "clear faults" action takes a busy state. The individual
+  // controls deliberately do NOT: a verified write takes about a second, and
+  // disabling them for it meant every keypress in that second was dropped --
+  // so a slider could not be stepped with the arrow keys at all, and a flag
+  // set by one control froze all the others.
   const [busy, setBusy] = useState(false)
 
   // A slider's position is local from the first movement until the vehicle
@@ -87,7 +92,6 @@ export function SitlConditions({ parameters, onSet, live }: SitlConditionsProps)
             id={id}
             type="checkbox"
             checked={on}
-            disabled={busy}
             onChange={(event) => {
               void write([
                 { parameter: control.parameter, value: switchValue(control, event.target.checked) }
@@ -111,7 +115,6 @@ export function SitlConditions({ parameters, onSet, live }: SitlConditionsProps)
           <select
             id={id}
             value={value ?? control.choices?.[0]?.value ?? 0}
-            disabled={busy}
             onChange={(event) => {
               void write([{ parameter: control.parameter, value: Number(event.target.value) }])
             }}
@@ -142,7 +145,6 @@ export function SitlConditions({ parameters, onSet, live }: SitlConditionsProps)
           max={control.max}
           step={control.step}
           value={value ?? control.min ?? 0}
-          disabled={busy}
           onChange={(event) =>
             setLocal((current) => ({ ...current, [control.parameter]: Number(event.target.value) }))
           }
