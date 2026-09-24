@@ -34,6 +34,12 @@
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
 
+# The pointer to the current simulator build must never be cached, or a
+# browser keeps loading a path that has been superseded -- which is exactly
+# what kept the old, badly-cached artifacts in play after they were replaced.
+/sitl/build.json
+  Cache-Control: no-cache, no-store, must-revalidate
+
 /*
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
