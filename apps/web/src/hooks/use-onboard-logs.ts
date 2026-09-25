@@ -115,6 +115,22 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
   // early-painted row can wait for the fast path instead of taking the slow
   // one. Cleared when the listing settles.
   const mavftpPendingRef = useRef<Promise<unknown> | undefined>(undefined)
+  /**
+   * Set once a MAVFTP directory read has failed or timed out on this link.
+   *
+   * Measured on a real board (ArduCopter, board type 5810, BRD_OPTIONS=1 so FTP
+   * is NOT disabled): AUTOPILOT_VERSION advertises ftpSupported=true, and every
+   * LIST_DIRECTORY -- @SYS, /, /APM, /APM/LOGS, /logs -- times out at 20 s.
+   * Meanwhile LOG_REQUEST_LIST returns 63 logs in 241 ms and LOG_* download
+   * runs at 627 KiB/s, which is why Mission Planner lists and downloads fine
+   * over plain MAVLink.
+   *
+   * The capability bit is therefore not evidence that the transport WORKS. One
+   * timeout is, so after it we stop paying that cost on every press: listings
+   * become immediate and downloads stop waiting for a path that will not come.
+   * A reconnect builds a new runtime and clears this.
+   */
+  const mavftpDeadRef = useRef(false)
 
   // `mavftpOnly` exists for the post-erase re-list, where the FILES are the
   // only honest answer to "what is left" — see erase() below. Normal listing
@@ -146,7 +162,11 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
     // immediately while this tab was still waiting.
     let mavftpTimer: ReturnType<typeof setTimeout> | undefined
     const mavftpPromise: Promise<MavftpDirectoryEntry[] | undefined | typeof MAVFTP_TIMED_OUT> =
-      Promise.race([
+      mavftpDeadRef.current
+      ? // Already proven not to answer on this link — do not spend 20 s finding
+        // out again. The LOG_* list is the whole answer here.
+        Promise.resolve(undefined)
+      : Promise.race([
         runtime.listMavftpLogs().then(
           (entries) => entries,
           () => undefined
@@ -204,6 +224,11 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
       }
       const timedOut = mavftpEntries === MAVFTP_TIMED_OUT
       const directory = timedOut ? undefined : mavftpEntries
+      if (directory === undefined && !options.mavftpOnly) {
+        // Timed out, or failed outright. Either way this link does not serve
+        // MAVFTP, whatever AUTOPILOT_VERSION said.
+        mavftpDeadRef.current = true
+      }
       let logs: OnboardLogInfo[]
       let logNamesById: ReadonlyMap<number, string>
       let mavftpPathsById: ReadonlyMap<number, string> = new Map()
@@ -246,13 +271,14 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         // An empty list after a timed-out directory read is NOT "no logs" — it
         // is "we never got an answer", and saying the former would be a lie
         // about the card.
-        message: timedOut
-          ? logs.length === 0
-            ? 'The card did not answer in time — no log list was read. Try again.'
-            : 'Showing the vehicle\u2019s own log list; the card did not answer in time, so filenames and sizes are missing.'
-          : logs.length === 0
-            ? 'No logs on the card.'
-            : undefined
+        message:
+          directory === undefined && logs.length > 0
+            ? 'This vehicle is not answering MAVFTP, so names and sizes come from its own log list. Downloads use the MAVLink log transport.'
+            : logs.length === 0
+              ? timedOut
+                ? 'The vehicle did not answer in time — no log list was read. Try again.'
+                : 'No logs on the card.'
+              : undefined
       })
     } catch (error) {
       mavftpPendingRef.current = undefined
@@ -320,7 +346,10 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
     if (known) {
       return known
     }
-    const pending = mavftpPendingRef.current
+    // Only worth waiting when MAVFTP might actually answer. On a link where it
+    // has already timed out, waiting buys nothing and costs the operator the
+    // whole deadline before a download that was always going to use LOG_*.
+    const pending = mavftpDeadRef.current ? undefined : mavftpPendingRef.current
     if (pending) {
       await pending.catch(() => undefined)
     }

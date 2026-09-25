@@ -562,6 +562,24 @@ export class ArduPilotConfiguratorRuntime {
   // per-frame rAF) so the heavy snapshot render can't starve inbound-frame
   // processing and crawl the batch on slow links/large apps.
   private batchEmitMode = false
+  /**
+   * Depth of in-flight BULK TRANSFERS (log download over MAVFTP burst or the
+   * LOG_* stream).
+   *
+   * Same problem the batch-write and parameter-sync coalescing solves, and the
+   * same fix. A burst read streams 239-byte packets as fast as the link
+   * allows; re-rendering the whole app on every animation frame while that
+   * arrives starves the Web Serial read loop, drops packets, and sends the
+   * transfer into gap-fill retries -- which reads as a download that stalls and
+   * a UI that hitches. The transfer's own progress is reported through
+   * onProgress, which does not go through the snapshot, so nothing the operator
+   * watches is lost by emitting ~4x/s instead of ~60x/s.
+   *
+   * A depth rather than a boolean: a background read can overlap an operator's
+   * download, and the first one to finish must not restore per-frame emits
+   * while the other is still streaming.
+   */
+  private bulkTransferDepth = 0
   private readonly subscriptions: Unsubscribe[]
   private readonly vehicleWaiters = new Set<VehicleWaiter>()
   private readonly parameterSyncWaiters = new ParameterSyncWaiterSet()
@@ -1417,7 +1435,9 @@ export class ArduPilotConfiguratorRuntime {
     path: string,
     onProgress?: (progress: LogDownloadProgress) => void
   ): Promise<Uint8Array> {
-    return this.mavftp.downloadRemoteFileBurst(path, { onProgress, maxBytes: MAX_MAVFTP_LOG_BYTES })
+    return this.withCoalescedEmits(() =>
+      this.mavftp.downloadRemoteFileBurst(path, { onProgress, maxBytes: MAX_MAVFTP_LOG_BYTES })
+    )
   }
 
   /**
@@ -1594,12 +1614,34 @@ export class ArduPilotConfiguratorRuntime {
   }
 
   /** Download one onboard log's bytes (`LOG_REQUEST_DATA`), reporting progress. */
+  /**
+   * Run a bulk transfer with snapshot emits coalesced to the timer interval.
+   *
+   * See `bulkTransferDepth`. The finally-block restores the previous cadence
+   * and pushes the terminal snapshot, so a failed transfer cannot leave the app
+   * rendering at 4/s forever.
+   */
+  private async withCoalescedEmits<T>(operation: () => Promise<T>): Promise<T> {
+    this.bulkTransferDepth += 1
+    try {
+      return await operation()
+    } finally {
+      this.bulkTransferDepth -= 1
+      if (this.bulkTransferDepth === 0) {
+        this.cancelScheduledEmit()
+        this.flushEmit()
+      }
+    }
+  }
+
   async downloadOnboardLog(
     id: number,
     sizeBytes: number,
     onProgress?: (progress: LogDownloadProgress) => void
   ): Promise<Uint8Array> {
-    const bytes = await this.logDownload.downloadLog(id, sizeBytes, onProgress)
+    const bytes = await this.withCoalescedEmits(() =>
+      this.logDownload.downloadLog(id, sizeBytes, onProgress)
+    )
     this.appendStatusEntry('info', `Downloaded onboard log ${id} (${bytes.length} bytes).`)
     this.emit()
     return bytes
@@ -1631,11 +1673,13 @@ export class ArduPilotConfiguratorRuntime {
     onProgress?: (progress: LogDownloadProgress) => void,
     options: { silent?: boolean; signal?: AbortSignal } = {}
   ): Promise<Uint8Array> {
-    const bytes = await this.mavftp.downloadRemoteFileBurst(path, {
-      onProgress,
-      maxBytes: MAX_MAVFTP_LOG_BYTES,
-      signal: options.signal
-    })
+    const bytes = await this.withCoalescedEmits(() =>
+      this.mavftp.downloadRemoteFileBurst(path, {
+        onProgress,
+        maxBytes: MAX_MAVFTP_LOG_BYTES,
+        signal: options.signal
+      })
+    )
     if (!options.silent) {
       this.appendStatusEntry('info', `Downloaded ${path} via MAVFTP (${bytes.length} bytes).`)
       this.emit()
@@ -1648,9 +1692,11 @@ export class ArduPilotConfiguratorRuntime {
   // default. Returns the raw bytes; the caller parses them (parseParamPck) to
   // derive the non-default set. Uses the same burst reader as log download.
   async downloadParamPack(): Promise<Uint8Array> {
-    const bytes = await this.mavftp.downloadRemoteFileBurst('@PARAM/param.pck?withdefaults=1', {
-      maxBytes: MAX_MAVFTP_LOG_BYTES
-    })
+    const bytes = await this.withCoalescedEmits(() =>
+      this.mavftp.downloadRemoteFileBurst('@PARAM/param.pck?withdefaults=1', {
+        maxBytes: MAX_MAVFTP_LOG_BYTES
+      })
+    )
     this.appendStatusEntry('info', `Fetched packed param defaults via MAVFTP (${bytes.length} bytes).`)
     this.emit()
     return bytes
@@ -3893,7 +3939,7 @@ export class ArduPilotConfiguratorRuntime {
     // triggering repeated gap-fill retries ("parameter stream keeps stalling").
     const syncingParameters =
       this.parameterSync.status === 'requesting' || this.parameterSync.status === 'streaming'
-    if (this.batchEmitMode || syncingParameters) {
+    if (this.batchEmitMode || syncingParameters || this.bulkTransferDepth > 0) {
       this.emitTimer = setTimeout(run, EMIT_COALESCE_MAX_MS)
       return
     }
