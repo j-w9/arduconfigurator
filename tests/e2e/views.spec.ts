@@ -4745,20 +4745,25 @@ test.describe('ArduPlane demo', () => {
     // Stock defaults: nothing learned, so flight 1 — and nothing to stage,
     // because ArduCopter already learns the hover throttle by default.
     await open('')
-    const card = page.getByTestId('calibration-card-hover-learn')
+    // Two flights, two cards, plus the new-airframe log measurement.
+    const card = page.getByTestId('calibration-card-hover-throttle')
+    const zbias = page.getByTestId('calibration-card-zbias')
     await expect(card).toBeVisible()
-    await expect(card).toContainText('Flight 1')
-    // Two flights. Measuring the hover throttle from a log is a NEW-AIRFRAME
-    // job and lives on its own card, not as a step in here.
-    await expect(card).toContainText('two flights')
-    await expect(card.getByTestId('hover-learn-log-file')).toHaveCount(0)
+    await expect(zbias).toBeVisible()
     await expect(page.getByTestId('calibration-card-hover-throttle-log')).toBeVisible()
+    // The Z-bias flight is not due until a hover throttle is accepted: learning
+    // a bias on a wrong vertical feedforward measures the feedforward's error.
+    await expect(zbias.getByTestId('zbias-prerequisite')).toBeVisible()
     await expect(card).toContainText('about 5 m')
     // The mode is not a detail: Copter::update_throttle_hover returns early in
     // every manual-throttle mode, so a hover flown in Stabilize or Acro learns
     // nothing and looks exactly like never having flown.
     await expect(card).toContainText('holds altitude')
     await expect(card).toContainText('Stabilize or Acro learns nothing')
+    // VALT is a FORK mode (MODE_VALT_ENABLED). The demo firmware reports no
+    // VALT_POS_EXPO, so it must not be offered as somewhere to fly.
+    await expect(card).toContainText('AltHold, Loiter or PosHold')
+    await expect(card).not.toContainText('VALT')
     // Flight 1 has a button. MOT_HOVER_LEARN defaults to 2, so on a stock
     // copter it confirms rather than changes — but it must exist, because the
     // vehicle that needs it most is the one where learning was turned OFF.
@@ -4790,7 +4795,8 @@ test.describe('ArduPlane demo', () => {
     await expect(page.locator('body')).toContainText('2 staged changes')
 
     await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:1')
-    await expect(card).toContainText('Flight 2')
+    await expect(zbias).toContainText('flight 2')
+    await expect(card).toContainText('Accepted')
     await expect(page.getByTestId('hover-learn-flight-2-frozen')).toContainText('cannot overwrite')
 
     await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08')
@@ -4846,8 +4852,9 @@ test.describe('ArduPlane demo', () => {
     // The measured hover throttle is NOT among them — it is still the value
     // the vehicle came with. (Assert the card's own pill rather than the
     // absence of the string: the pill NAMES the parameter either way.)
-    const card = page.getByTestId('calibration-card-hover-learn')
-    await expect(card).toContainText('MOT_THST_HOVER: 0.420')
+    await expect(page.getByTestId('calibration-card-hover-throttle')).toContainText(
+      'MOT_THST_HOVER: 0.420'
+    )
   })
 
   test('Calibration: the Baro Thrust (VALT) card follows the FIRMWARE, not a sign-in', async ({ page }) => {
@@ -4873,7 +4880,7 @@ test.describe('ArduPlane demo', () => {
     // the wrong reason. Uses an Expert-only card on the SAME tab — TCAL is
     // Expert-only too but lives under Sensors, so it would be absent here for
     // the wrong reason, and autotune is no longer Expert-gated at all.
-    await expect(page.getByTestId('calibration-card-hover-learn')).toBeVisible()
+    await expect(page.getByTestId('calibration-card-hover-throttle')).toBeVisible()
     // Present with NO log-server session — the firmware supports it.
     await expect(page.getByTestId('calibration-card-valt')).toBeVisible()
   })

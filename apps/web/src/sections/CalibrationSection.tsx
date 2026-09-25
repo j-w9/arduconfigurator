@@ -29,7 +29,8 @@ import { CalibrationLocationButton } from './CalibrationLocationCard'
 import { BoardOrientationResult } from '../views/BoardOrientationResult'
 import { TcalCalibrationCard } from './TcalCalibrationCard'
 import { ValtCalibrationCard, type ValtCalibrationCardProps } from './ValtCalibrationCard'
-import { HoverLearnCard } from './HoverLearnCard'
+import { HoverThrottleLearnCard } from './HoverThrottleLearnCard'
+import { AccelZBiasCard } from './AccelZBiasCard'
 import { HoverThrottleFromLogCard } from './HoverThrottleFromLogCard'
 import { AutotuneFlightCard } from './AutotuneFlightCard'
 import {
@@ -1616,8 +1617,19 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   setDraft={setDraft}
                 />
               ) : null}
+              {/* Two flights, two cards. They have different outcomes and the
+                  second has a real prerequisite; one card showed whichever half
+                  the vehicle happened to be on. */}
               {isExpertMode && calibrationTab === 'flight' ? (
-                <HoverLearnCard
+                <HoverThrottleLearnCard
+                  snapshot={snapshot}
+                  canApplyDraftParameters={canApplyDraftParameters}
+                  busyAction={busyAction}
+                  setDraft={setDraft}
+                />
+              ) : null}
+              {isExpertMode && calibrationTab === 'flight' ? (
+                <AccelZBiasCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
                   busyAction={busyAction}

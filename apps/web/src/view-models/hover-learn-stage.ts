@@ -95,6 +95,18 @@ export interface HoverLearnState {
   hoverLearnArmed: boolean
   /** Whether the firmware carries the fork's Z-bias learning at all. */
   supported: boolean
+  /**
+   * Whether this firmware has VALT mode compiled in.
+   *
+   * VALT_POS_EXPO sits inside `#if MODE_VALT_ENABLED` (ArduCopter/Parameters.cpp),
+   * so the parameter being reported at all IS the detection -- the same
+   * compile-time-feature gating used elsewhere in this app. It matters because
+   * naming VALT as a mode to fly in front of an operator whose firmware has no
+   * such mode sends them looking for a switch position that does not exist.
+   */
+  valtSupported: boolean
+  /** ACC_ZBIAS_LEARN as reported, for display. */
+  zbiasLearn?: number
   hoverThrottle?: number
   /** Ids of every reported INS*_ACC_VRFB_Z, so a reset can clear them all. */
   biasParamIds: string[]
@@ -162,6 +174,8 @@ export function deriveHoverLearnState(snapshot: ConfiguratorSnapshot): HoverLear
     hoverLearn,
     hoverLearnArmed: (hoverLearn ?? MOT_HOVER_LEARN_AND_SAVE) >= MOT_HOVER_LEARN_AND_SAVE,
     supported: zbias !== undefined,
+    valtSupported: snapshot.parameters.some((parameter) => parameter.id === 'VALT_POS_EXPO'),
+    zbiasLearn: zbias,
     hoverThrottle,
     biasParamIds,
     biasLearned,

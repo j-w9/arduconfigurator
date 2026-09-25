@@ -102,4 +102,12 @@ describe('deriveHoverLearnState', () => {
   it('hides itself on firmware without the fork Z-bias parameter', () => {
     expect(deriveHoverLearnState(snapshot({ MOT_THST_HOVER: 0.42 })).supported).toBe(false)
   })
+
+  // VALT_POS_EXPO sits inside `#if MODE_VALT_ENABLED`, so reporting it at all
+  // is the detection. Naming VALT to an operator whose firmware has no such
+  // mode sends them looking for a switch position that does not exist.
+  it('only claims VALT when the firmware reports a VALT parameter', () => {
+    expect(deriveHoverLearnState(snapshot(FRESH)).valtSupported).toBe(false)
+    expect(deriveHoverLearnState(snapshot({ ...FRESH, VALT_POS_EXPO: 0 })).valtSupported).toBe(true)
+  })
 })
