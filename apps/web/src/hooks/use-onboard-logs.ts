@@ -111,6 +111,10 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
   // Monotonic id for the in-flight list, so a slow source from an earlier
   // press can never paint over a newer one.
   const listRunRef = useRef(0)
+  // The in-flight MAVFTP directory read, so a download started from an
+  // early-painted row can wait for the fast path instead of taking the slow
+  // one. Cleared when the listing settles.
+  const mavftpPendingRef = useRef<Promise<unknown> | undefined>(undefined)
 
   // `mavftpOnly` exists for the post-erase re-list, where the FILES are the
   // only honest answer to "what is left" — see erase() below. Normal listing
@@ -158,6 +162,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
           clearTimeout(mavftpTimer)
         }
       })
+    mavftpPendingRef.current = mavftpPromise
     // Post-erase the FILES are the only honest answer to "what is left", so
     // that path does not ask the LOG_* list at all -- a stale LASTLOG.TXT
     // would report logs that are gone.
@@ -230,6 +235,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         logs = logEntries
         logNamesById = new Map()
       }
+      mavftpPendingRef.current = undefined
       logsRef.current = logs
       setState({
         status: 'ready',
@@ -249,6 +255,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
             : undefined
       })
     } catch (error) {
+      mavftpPendingRef.current = undefined
       if (listRunRef.current !== run) {
         return
       }
@@ -298,6 +305,28 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
     }
   }, [runtime, listInternal])
 
+  /**
+   * The MAVFTP item for a log, waiting on an in-flight directory read first.
+   *
+   * The LOG_* list now paints before MAVFTP answers, so a row can exist before
+   * its on-FC path is known. Choosing the transport on `mavftpItemsRef` alone
+   * would then silently take the SLOW path for anyone quick enough to click:
+   * LOG_DATA carries 90 bytes per message against a burst packet's 239, and the
+   * burst is server-streamed rather than request/response. Waiting here costs
+   * at most the listing's own bounded deadline.
+   */
+  const resolveMavftpItem = useCallback(async (id: number): Promise<MavftpLogItem | undefined> => {
+    const known = mavftpItemsRef.current.get(id)
+    if (known) {
+      return known
+    }
+    const pending = mavftpPendingRef.current
+    if (pending) {
+      await pending.catch(() => undefined)
+    }
+    return mavftpItemsRef.current.get(id)
+  }, [])
+
   const download = useCallback(
     async (id: number) => {
       if (!runtime) return
@@ -305,7 +334,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
       if (!log) {
         return
       }
-      const mavftpItem = mavftpItemsRef.current.get(id)
+      const mavftpItem = await resolveMavftpItem(id)
       setState((prev) => ({
         ...prev,
         activeDownloadId: id,
@@ -372,7 +401,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         }))
       }
     },
-    [runtime]
+    [runtime, resolveMavftpItem]
   )
 
   /**
@@ -388,12 +417,12 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
       if (!runtime) return undefined
       const log = logsRef.current.find((entry) => entry.id === id)
       if (!log) return undefined
-      const mavftpItem = mavftpItemsRef.current.get(id)
+      const mavftpItem = await resolveMavftpItem(id)
       return mavftpItem
         ? runtime.downloadMavftpLog(mavftpItem.path)
         : runtime.downloadOnboardLog(id, log.sizeBytes)
     },
-    [runtime]
+    [runtime, resolveMavftpItem]
   )
 
   return {
