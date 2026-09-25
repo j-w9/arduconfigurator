@@ -24,10 +24,27 @@ describe('deriveHoverLearnState', () => {
     expect(deriveHoverLearnState(snapshot({ ...FRESH, MOT_THST_HOVER: 0.42 })).stage).toBe('flight-2')
   })
 
-  it('arming the Z-bias moves it to flight 3', () => {
-    expect(
-      deriveHoverLearnState(snapshot({ ...FRESH, MOT_THST_HOVER: 0.42, ACC_ZBIAS_LEARN: 1 })).stage
-    ).toBe('flight-3')
+  // SAVE (1) and USE (2) are independent bits, not a progression: 3 is the
+  // learning flight (learn AND apply), 2 is finished (apply, stop learning).
+  it('arming the Z-bias moves it to flight 3, whether or not the correction is applied', () => {
+    for (const armed of [1, 3]) {
+      expect(
+        deriveHoverLearnState(snapshot({ ...FRESH, MOT_THST_HOVER: 0.42, ACC_ZBIAS_LEARN: armed })).stage,
+        `ACC_ZBIAS_LEARN=${armed}`
+      ).toBe('flight-3')
+    }
+  })
+
+  it('is only complete when it is applying and no longer learning', () => {
+    const at = (zbias: number): string =>
+      deriveHoverLearnState(
+        snapshot({ ...FRESH, MOT_THST_HOVER: 0.42, ACC_ZBIAS_LEARN: zbias, INS_ACC_VRFB_Z: 0.08 })
+      ).stage
+
+    // 3 = still learning, so a learned bias is a flight to review, not a finish.
+    expect(at(3)).toBe('flight-3-review')
+    // 2 = applying, learning off. Done.
+    expect(at(2)).toBe('complete')
   })
 
   it('a learned bias asks whether flight 3 was any good', () => {
@@ -36,6 +53,16 @@ describe('deriveHoverLearnState', () => {
         snapshot({ ...FRESH, MOT_THST_HOVER: 0.42, ACC_ZBIAS_LEARN: 1, INS_ACC_VRFB_Z: 0.08 })
       ).stage
     ).toBe('flight-3-review')
+  })
+
+  // The card no longer rewrites MOT_THST_HOVER to its default, so a vehicle
+  // whose bias was cleared lands on flight 2 holding its measured number.
+  it('a cleared Z-bias returns to flight 2, keeping the measured hover throttle', () => {
+    const state = deriveHoverLearnState(
+      snapshot({ ...FRESH, MOT_THST_HOVER: 0.118, ACC_ZBIAS_LEARN: 0 })
+    )
+    expect(state.stage).toBe('flight-2')
+    expect(state.hoverThrottle).toBe(0.118)
   })
 
   it('reads an untouched hover throttle as flight 1 still to fly', () => {

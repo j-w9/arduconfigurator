@@ -14,7 +14,6 @@ import {
   ACC_ZBIAS_LEARN_USE,
   MOT_HOVER_LEARN_AND_SAVE,
   MOT_HOVER_LEARN_DISABLED,
-  MOT_THST_HOVER_DEFAULT,
   deriveHoverLearnState
 } from '../view-models/hover-learn-stage'
 
@@ -79,12 +78,20 @@ export function HoverLearnCard({
   const { stage } = state
   const ekfWrong = state.ekfType !== undefined && state.ekfType !== 3
 
-  /** Put the vehicle back to "never calibrated" and start at flight 1. */
+  /**
+   * Clear the learned Z-BIAS and re-arm learning. Deliberately leaves
+   * MOT_THST_HOVER alone.
+   *
+   * It used to write the 0.35 default back, so the card would read the vehicle
+   * as never having flown and return to flight 1. That bought a tidy stage
+   * machine with a genuinely bad value on the aircraft: MOT_THST_HOVER is the
+   * vertical feedforward, so 0.35 on a light quad that hovers at 0.118 tells
+   * the controller to expect roughly three times the thrust it needs, and the
+   * next AltHold takeoff leaps. A hover throttle that was measured is worth
+   * more than a convenient starting stage, and the log measurement below can
+   * replace it deliberately at any point.
+   */
   const zeroize = (): void => {
-    // The LEARNED values, not just the enables — a vehicle arriving with a
-    // previous calibration is exactly the case this exists for, and leaving
-    // MOT_THST_HOVER or the bias in place would leave it reading as done.
-    setDraft('MOT_THST_HOVER', String(MOT_THST_HOVER_DEFAULT))
     for (const id of state.biasParamIds) {
       setDraft(id, '0')
     }
@@ -94,10 +101,93 @@ export function HoverLearnCard({
     setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))
   }
 
+  /**
+   * Measuring the hover throttle from a log, offered on BOTH flight 1 and
+   * flight 2. Flight 2 is where the card sits after the Z-bias is cleared, and
+   * where "No, that number was wrong" lands — re-measuring from there must not
+   * require a trip back through flight 1, which nothing rewinds to any more.
+   */
+  const logMeasureSurface = (
+    <>
+        {/* The firmware's learner is not the only route to this number, and
+            on a vehicle where a gate stayed shut it is not a route at all:
+            it leaves MOT_THST_HOVER at exactly its default, which reads as a
+            vehicle that never flew. The flight's own log carries the
+            throttle it actually hovered at (CTUN.ThO), so the same 20-second
+            hover answers either way. */}
+        <div className="log-tuning__upload">
+          <label className="log-tuning__file" style={buttonStyle()}>
+            {logBusy ? 'Reading…' : 'Measure from a flight log (.bin)'}
+            <input
+              type="file"
+              accept=".bin,application/octet-stream"
+              data-testid="hover-learn-log-file"
+              style={{ display: 'none' }}
+              disabled={logBusy}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) void handleLogFile(file)
+                event.target.value = ''
+              }}
+            />
+          </label>
+        </div>
+
+        {logError ? (
+          <p className="switch-exercise-warning" data-testid="hover-learn-log-error">
+            {logError}
+          </p>
+        ) : null}
+
+        {logResult ? (
+          <div className="bf-note" data-testid="hover-learn-log-result">
+            <strong>{logName}</strong>
+            {logResult.hoverThrottle === undefined ? (
+              <p>No steady hover in this log.</p>
+            ) : (
+              <>
+                <p>
+                  Measured hover throttle <strong>{logResult.hoverThrottle.toFixed(3)}</strong>
+                  {logResult.standardDeviation !== undefined
+                    ? ` (±${logResult.standardDeviation.toFixed(3)})`
+                    : ''}{' '}
+                  over {logResult.totalHoverS.toFixed(0)} s of steady hover in{' '}
+                  {logResult.windows.length} segment{logResult.windows.length === 1 ? '' : 's'}
+                  {logResult.hoverModes.length > 0 ? `, flown in ${logResult.hoverModes.join(' / ')}` : ''}.
+                  {logResult.source === 'RATE' ? ' Source: RATE.AOut.' : ''}
+                </p>
+                {logResult.firmwareLearnedLast !== undefined ? (
+                  <p data-testid="hover-learn-log-firmware">
+                    The firmware&apos;s own MOT_THST_HOVER ended this flight at{' '}
+                    {logResult.firmwareLearnedLast.toFixed(3)}
+                    {logResult.firmwareLearnerIdle ? ' — it never moved.' : '.'}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  style={buttonStyle('primary')}
+                  data-testid="hover-learn-log-stage"
+                  disabled={!canStage}
+                  onClick={() => setDraft('MOT_THST_HOVER', logResult.hoverThrottle!.toFixed(4))}
+                >
+                  Stage MOT_THST_HOVER = {logResult.hoverThrottle.toFixed(3)}
+                </button>
+              </>
+            )}
+            {logResult.warnings.map((warning) => (
+              <p key={warning} className="switch-exercise-warning">
+                {warning}
+              </p>
+            ))}
+          </div>
+        ) : null}
+    </>
+  )
+
   return (
     <article className="calibration-card" data-testid="calibration-card-hover-learn">
       <div className="calibration-card__header">
-        <strong>Hover learning (two flights)</strong>
+        <strong>Hover learning (three flights)</strong>
         <StatusBadge tone={stage === 'complete' ? 'success' : 'warning'}>
           {stage === 'complete'
             ? 'complete'
@@ -171,78 +261,7 @@ export function HoverLearnCard({
           >
             {state.hoverLearnArmed ? 'Confirm hover learning is on' : 'Stage Flight 1 (turn on hover learning)'}
           </button>
-          {/* The firmware's learner is not the only route to this number, and
-              on a vehicle where a gate stayed shut it is not a route at all:
-              it leaves MOT_THST_HOVER at exactly its default, which reads as a
-              vehicle that never flew. The flight's own log carries the
-              throttle it actually hovered at (CTUN.ThO), so the same 20-second
-              hover answers either way. */}
-          <div className="log-tuning__upload">
-            <label className="log-tuning__file" style={buttonStyle()}>
-              {logBusy ? 'Reading…' : 'Measure from a flight log (.bin)'}
-              <input
-                type="file"
-                accept=".bin,application/octet-stream"
-                data-testid="hover-learn-log-file"
-                style={{ display: 'none' }}
-                disabled={logBusy}
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  if (file) void handleLogFile(file)
-                  event.target.value = ''
-                }}
-              />
-            </label>
-          </div>
-
-          {logError ? (
-            <p className="switch-exercise-warning" data-testid="hover-learn-log-error">
-              {logError}
-            </p>
-          ) : null}
-
-          {logResult ? (
-            <div className="bf-note" data-testid="hover-learn-log-result">
-              <strong>{logName}</strong>
-              {logResult.hoverThrottle === undefined ? (
-                <p>No steady hover in this log.</p>
-              ) : (
-                <>
-                  <p>
-                    Measured hover throttle <strong>{logResult.hoverThrottle.toFixed(3)}</strong>
-                    {logResult.standardDeviation !== undefined
-                      ? ` (±${logResult.standardDeviation.toFixed(3)})`
-                      : ''}{' '}
-                    over {logResult.totalHoverS.toFixed(0)} s of steady hover in{' '}
-                    {logResult.windows.length} segment{logResult.windows.length === 1 ? '' : 's'}
-                    {logResult.hoverModes.length > 0 ? `, flown in ${logResult.hoverModes.join(' / ')}` : ''}.
-                    {logResult.source === 'RATE' ? ' Source: RATE.AOut.' : ''}
-                  </p>
-                  {logResult.firmwareLearnedLast !== undefined ? (
-                    <p data-testid="hover-learn-log-firmware">
-                      The firmware&apos;s own MOT_THST_HOVER ended this flight at{' '}
-                      {logResult.firmwareLearnedLast.toFixed(3)}
-                      {logResult.firmwareLearnerIdle ? ' — it never moved.' : '.'}
-                    </p>
-                  ) : null}
-                  <button
-                    type="button"
-                    style={buttonStyle('primary')}
-                    data-testid="hover-learn-log-stage"
-                    disabled={!canStage}
-                    onClick={() => setDraft('MOT_THST_HOVER', logResult.hoverThrottle!.toFixed(4))}
-                  >
-                    Stage MOT_THST_HOVER = {logResult.hoverThrottle.toFixed(3)}
-                  </button>
-                </>
-              )}
-              {logResult.warnings.map((warning) => (
-                <p key={warning} className="switch-exercise-warning">
-                  {warning}
-                </p>
-              ))}
-            </div>
-          ) : null}
+          {logMeasureSurface}
 
           <small data-testid="hover-learn-start-hint">
             {state.hoverLearnArmed
@@ -272,7 +291,11 @@ export function HoverLearnCard({
               // the hover throttle the operator signed off, and the card then
               // reports a value nobody approved. Zeroize puts it back to 2.
               onClick={() => {
-                setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE))
+                // 3 = learn AND apply. The correction is applied while it is
+                // being learned, which is what the firmware's own bias maths
+                // expects (update_hover_bias_learning adds the already-applied
+                // frozen correction back before filtering).
+                setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE))
                 setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_DISABLED))
               }}
             >
@@ -293,9 +316,9 @@ export function HoverLearnCard({
           </div>
           <small data-testid="hover-learn-flight-2-no-hint">
             Flying again simply overwrites it — the vehicle re-learns the hover throttle every flight
-            while MOT_HOVER_LEARN is 2. Or hand this flight&apos;s log back to Flight 1 and take the
-            number from what it actually flew.
+            while MOT_HOVER_LEARN is 2. Or measure it from a log here.
           </small>
+          {logMeasureSurface}
         </>
       ) : null}
 
@@ -326,11 +349,12 @@ export function HoverLearnCard({
               style={buttonStyle('primary')}
               data-testid="hover-learn-flight-3-yes"
               disabled={!canStage}
-              // Keep bit 0 set so later hovers keep refining it, and add bit 1
-              // so the learned bias is actually applied.
-              onClick={() =>
-                setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE))
-              }
+              // 2 = apply, stop learning. Clearing bit 0 FREEZES the accepted
+              // bias, the same reasoning as freezing MOT_HOVER_LEARN after
+              // flight 2: later hovers would otherwise keep moving a value the
+              // operator signed off, and the card would report a number nobody
+              // approved. Clear Z-Bias Cal re-arms it.
+              onClick={() => setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_USE))}
             >
               Yes — apply the learned bias
             </button>
@@ -345,7 +369,7 @@ export function HoverLearnCard({
                 for (const id of state.biasParamIds) {
                   setDraft(id, '0')
                 }
-                setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE))
+                setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE))
               }}
             >
               No — fly flight 3 again
@@ -369,9 +393,9 @@ export function HoverLearnCard({
           data-testid="hover-learn-zeroize"
           disabled={!canStage}
           onClick={zeroize}
-          title="Clears the learned hover throttle and Z-bias and returns to flight 1."
+          title="Clears the learned Z-bias and re-arms hover learning. The measured hover throttle is left alone."
         >
-          Zeroize Hover Cal
+          Clear Z-Bias Cal
         </button>
       </div>
 

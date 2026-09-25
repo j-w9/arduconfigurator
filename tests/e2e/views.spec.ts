@@ -4794,11 +4794,17 @@ test.describe('ArduPlane demo', () => {
     await expect(card).toContainText('Flight 3')
     await expect(page.getByTestId('hover-learn-flight-3-frozen')).toContainText('cannot overwrite')
 
-    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:1,INS_ACC_VRFB_Z:0.08')
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08')
     await expect(page.getByTestId('hover-learn-flight-3-yes')).toBeVisible()
     await expect(page.getByTestId('hover-learn-flight-3-no')).toBeVisible()
 
-    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08')
+    // SAVE and USE are independent bits. 3 is the learning flight (learn AND
+    // apply) and is NOT finished; 2 is applying with learning off, which is.
+    // Accepting stages exactly that transition, freezing the accepted bias.
+    await page.getByTestId('hover-learn-flight-3-yes').click()
+    await expect(page.locator('body')).toContainText('1 staged change')
+
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:2,INS_ACC_VRFB_Z:0.08')
     await expect(page.getByTestId('hover-learn-done')).toBeVisible()
 
     // EKF3 only — the correction is applied inside EKF3, so anything else
@@ -4807,11 +4813,17 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('hover-learn-ekf-warning')).toBeVisible()
   })
 
-  test('Calibration: zeroize clears a previous hover calibration', async ({ page }) => {
-    // The reported problem: a drone with a previous calibration arrives
-    // reading as already finished, with no way back to the start.
+  test('Calibration: clearing the Z-bias leaves the measured hover throttle alone', async ({ page }) => {
+    // A drone arriving with someone else's calibration reads as already
+    // finished, and this is the way back. It used to also write MOT_THST_HOVER
+    // back to 0.35 so the card would return to flight 1 — a tidy stage machine
+    // bought with a dangerous value, since that parameter is the vertical
+    // feedforward and 0.35 on a light quad that hovers at 0.118 makes the next
+    // AltHold takeoff leap.
     await page.goto(
-      `/?demoParamOverrides=${encodeURIComponent('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08')}`
+      // 2 = applying with learning off, i.e. a finished calibration — which is
+      // the "arrives already done" case this is the way back from.
+      `/?demoParamOverrides=${encodeURIComponent('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:2,INS_ACC_VRFB_Z:0.08')}`
     )
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -4828,11 +4840,15 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('hover-learn-zeroize').scrollIntoViewIfNeeded()
     await page.getByTestId('hover-learn-zeroize').click()
 
-    // Three real changes: the learned hover throttle back to its 0.35 default,
-    // the learned bias to zero, and the enable cleared. MOT_HOVER_LEARN and the
-    // second IMU's bias are already at their reset values, so they correctly do
-    // NOT become drafts — clearing the LEARNED values is the point.
-    await expect(page.locator('body')).toContainText('3 staged changes')
+    // Two real changes now: the learned bias to zero and the enable cleared.
+    // MOT_HOVER_LEARN and the second IMU's bias are already at their reset
+    // values, so they correctly do NOT become drafts.
+    await expect(page.locator('body')).toContainText('2 staged changes')
+    // The measured hover throttle is NOT among them — it is still the value
+    // the vehicle came with. (Assert the card's own pill rather than the
+    // absence of the string: the pill NAMES the parameter either way.)
+    const card = page.getByTestId('calibration-card-hover-learn')
+    await expect(card).toContainText('MOT_THST_HOVER: 0.420')
   })
 
   test('Calibration: the Baro Thrust (VALT) card follows the FIRMWARE, not a sign-in', async ({ page }) => {

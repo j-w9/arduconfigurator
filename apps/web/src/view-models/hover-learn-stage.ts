@@ -140,14 +140,20 @@ export function deriveHoverLearnState(snapshot: ConfiguratorSnapshot): HoverLear
 
   const hoverLearned =
     hoverThrottle !== undefined && Math.abs(hoverThrottle - MOT_THST_HOVER_DEFAULT) > 1e-6
-  const zbiasArmed = ((zbias ?? 0) & ACC_ZBIAS_LEARN_SAVE) !== 0
+  // SAVE (bit 0) learns and writes on disarm; USE (bit 1) applies what was
+  // written. ArduCopter/Attitude.cpp reads them independently, so they are two
+  // states, not a progression: 3 is "learning AND applying" (the flight), 2 is
+  // "applying, done learning" (finished). Finished therefore means USE set and
+  // SAVE CLEAR -- checking USE alone would call a vehicle mid-flight-3 done.
+  const zbiasLearning = ((zbias ?? 0) & ACC_ZBIAS_LEARN_SAVE) !== 0
   const zbiasApplied = ((zbias ?? 0) & ACC_ZBIAS_LEARN_USE) !== 0
+  const zbiasFinished = zbiasApplied && !zbiasLearning
 
-  const stage: HoverLearnStage = zbiasApplied
+  const stage: HoverLearnStage = zbiasFinished
     ? 'complete'
-    : biasLearned && zbiasArmed
+    : biasLearned && zbiasLearning
       ? 'flight-3-review'
-      : zbiasArmed
+      : zbiasLearning
         ? 'flight-3'
         : hoverLearned
           ? 'flight-2'
