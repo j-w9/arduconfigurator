@@ -30,6 +30,7 @@ import { BoardOrientationResult } from '../views/BoardOrientationResult'
 import { TcalCalibrationCard } from './TcalCalibrationCard'
 import { ValtCalibrationCard, type ValtCalibrationCardProps } from './ValtCalibrationCard'
 import { HoverLearnCard } from './HoverLearnCard'
+import { HoverThrottleFromLogCard } from './HoverThrottleFromLogCard'
 import { AutotuneFlightCard } from './AutotuneFlightCard'
 import {
   accelerometerPoseFromAction,
@@ -1617,6 +1618,18 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
               ) : null}
               {isExpertMode && calibrationTab === 'flight' ? (
                 <HoverLearnCard
+                  snapshot={snapshot}
+                  canApplyDraftParameters={canApplyDraftParameters}
+                  busyAction={busyAction}
+                  setDraft={setDraft}
+                />
+              ) : null}
+              {/* Its own card, not a step inside hover learning: measuring the
+                  hover throttle from a log is what you do ONCE when a new frame
+                  and powertrain first fly, and hover learning is the routine
+                  calibration that follows. */}
+              {isExpertMode && calibrationTab === 'flight' ? (
+                <HoverThrottleFromLogCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
                   busyAction={busyAction}

@@ -9,14 +9,12 @@
 //
 // What actually proves a flight happened is the value it left behind:
 //   flight 1 -> MOT_THST_HOVER moves off AP_MOTORS_THST_HOVER_DEFAULT (0.35)
-//   flight 3 -> some INS*_ACC_VRFB_Z becomes non-zero
+//   flight 2 -> some INS*_ACC_VRFB_Z becomes non-zero
 //
-// Flight 2 sits between them and is the operator's call: it flies the measured
-// hover throttle to see whether the aircraft holds altitude on it. Nothing the
-// firmware records distinguishes "flown and good" from "not flown yet", so the
-// transition out of it is a deliberate press, and that press is what arms
-// flight three (ACC_ZBIAS_LEARN) -- a sign-off that changes vehicle state
-// rather than one that only changes a screen.
+// Measuring the hover throttle from a log lives on its own card: it is what you
+// do ONCE, when a new frame and powertrain are first set up, and folding it in
+// here turned a two-flight calibration into a three-flight one for every
+// vehicle that did not need it.
 //
 // Both are saved by the firmware on disarm, which is also why this has to
 // survive a reconnect: the operator lands, plugs in, and the card must know
@@ -73,23 +71,14 @@ export const HOVER_LEARN_BLIND_MODES: readonly string[] = [
 export type HoverLearnStage =
   /** MOT_THST_HOVER has not been reported, so nothing can be said yet. */
   | 'unknown'
-  /** No hover throttle yet — fly the first hover and get one. */
+  /** Nothing learned yet — go fly the first hover. */
   | 'flight-1'
-  /**
-   * A hover throttle exists. Fly it again with that value APPLIED and see
-   * whether the aircraft actually holds altitude on it.
-   *
-   * This is a flight of its own rather than a yes/no on flight one, because
-   * the number only proves itself in the air: the controller uses
-   * MOT_THST_HOVER as its feedforward, so a wrong one shows up as a climb or
-   * sag the moment the stick is centred — and flight three's bias learning
-   * runs on top of whatever this leaves behind.
-   */
+  /** A hover throttle was learned. Was that flight any good? */
+  | 'flight-1-review'
+  /** Z-bias learning is armed — go fly the second hover. */
   | 'flight-2'
-  /** Z-bias learning is armed — go fly the third hover. */
-  | 'flight-3'
   /** A bias was learned. Was that flight any good? */
-  | 'flight-3-review'
+  | 'flight-2-review'
   /** Learned and being applied. */
   | 'complete'
 
@@ -144,7 +133,7 @@ export function deriveHoverLearnState(snapshot: ConfiguratorSnapshot): HoverLear
   // written. ArduCopter/Attitude.cpp reads them independently, so they are two
   // states, not a progression: 3 is "learning AND applying" (the flight), 2 is
   // "applying, done learning" (finished). Finished therefore means USE set and
-  // SAVE CLEAR -- checking USE alone would call a vehicle mid-flight-3 done.
+  // SAVE CLEAR -- checking USE alone would call a vehicle mid-flight-2 done.
   const zbiasLearning = ((zbias ?? 0) & ACC_ZBIAS_LEARN_SAVE) !== 0
   const zbiasApplied = ((zbias ?? 0) & ACC_ZBIAS_LEARN_USE) !== 0
   const zbiasFinished = zbiasApplied && !zbiasLearning
@@ -152,11 +141,11 @@ export function deriveHoverLearnState(snapshot: ConfiguratorSnapshot): HoverLear
   const stage: HoverLearnStage = zbiasFinished
     ? 'complete'
     : biasLearned && zbiasLearning
-      ? 'flight-3-review'
+      ? 'flight-2-review'
       : zbiasLearning
-        ? 'flight-3'
+        ? 'flight-2'
         : hoverLearned
-          ? 'flight-2'
+          ? 'flight-1-review'
           : // An UNREPORTED MOT_THST_HOVER used to read as "still at the
             // default", i.e. as a vehicle that had never flown -- the card sent
             // the operator up for a flight on the strength of a parameter it

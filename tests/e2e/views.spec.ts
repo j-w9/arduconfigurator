@@ -4748,12 +4748,11 @@ test.describe('ArduPlane demo', () => {
     const card = page.getByTestId('calibration-card-hover-learn')
     await expect(card).toBeVisible()
     await expect(card).toContainText('Flight 1')
-    // Three flights now: measure the hover throttle, fly it and confirm the
-    // aircraft holds altitude on it, then learn the Z-bias.
-    await expect(card).toContainText('Three hovers')
-    // The firmware's learner can decline to run and say nothing about it, so
-    // the flight's own log is a first-class route to the number.
-    await expect(page.getByTestId('hover-learn-log-file')).toHaveCount(1)
+    // Two flights. Measuring the hover throttle from a log is a NEW-AIRFRAME
+    // job and lives on its own card, not as a step in here.
+    await expect(card).toContainText('two flights')
+    await expect(card.getByTestId('hover-learn-log-file')).toHaveCount(0)
+    await expect(page.getByTestId('calibration-card-hover-throttle-log')).toBeVisible()
     await expect(card).toContainText('about 5 m')
     // The mode is not a detail: Copter::update_throttle_hover returns early in
     // every manual-throttle mode, so a hover flown in Stabilize or Acro learns
@@ -4776,32 +4775,32 @@ test.describe('ArduPlane demo', () => {
     // A learned hover throttle asks whether the flight was any good, and "no"
     // is a real answer — the vehicle re-learns every flight, so flying again
     // simply overwrites it.
-    // A hover throttle exists, so flight 2 flies it and asks whether the
-    // aircraft held altitude on it.
+    // A learned hover throttle asks whether the flight was any good, and "no"
+    // is a real answer — the vehicle re-learns every flight, so flying again
+    // simply overwrites it.
     await open('MOT_THST_HOVER:0.42')
-    await expect(card).toContainText('Flight 2')
-    await expect(page.getByTestId('hover-learn-flight-2-yes')).toBeVisible()
-    await expect(page.getByTestId('hover-learn-flight-2-no')).toBeVisible()
+    await expect(page.getByTestId('hover-learn-flight-1-yes')).toBeVisible()
+    await expect(page.getByTestId('hover-learn-flight-1-no')).toBeVisible()
     await expect(card).toContainText('0.420')
 
-    // Accepting flight 2 must also FREEZE what was accepted: left at
-    // Learn-and-Save, flight 3 re-learns the hover throttle and overwrites the
+    // Accepting flight 1 must also FREEZE what was accepted: left at
+    // Learn-and-Save, flight 2 re-learns the hover throttle and overwrites the
     // value the operator just signed off. Two staged changes, not one.
-    await page.getByTestId('hover-learn-flight-2-yes').click()
+    await page.getByTestId('hover-learn-flight-1-yes').click()
     await expect(page.locator('body')).toContainText('2 staged changes')
 
     await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:1')
-    await expect(card).toContainText('Flight 3')
-    await expect(page.getByTestId('hover-learn-flight-3-frozen')).toContainText('cannot overwrite')
+    await expect(card).toContainText('Flight 2')
+    await expect(page.getByTestId('hover-learn-flight-2-frozen')).toContainText('cannot overwrite')
 
     await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08')
-    await expect(page.getByTestId('hover-learn-flight-3-yes')).toBeVisible()
-    await expect(page.getByTestId('hover-learn-flight-3-no')).toBeVisible()
+    await expect(page.getByTestId('hover-learn-flight-2-yes')).toBeVisible()
+    await expect(page.getByTestId('hover-learn-flight-2-no')).toBeVisible()
 
     // SAVE and USE are independent bits. 3 is the learning flight (learn AND
     // apply) and is NOT finished; 2 is applying with learning off, which is.
     // Accepting stages exactly that transition, freezing the accepted bias.
-    await page.getByTestId('hover-learn-flight-3-yes').click()
+    await page.getByTestId('hover-learn-flight-2-yes').click()
     await expect(page.locator('body')).toContainText('1 staged change')
 
     await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:2,INS_ACC_VRFB_Z:0.08')
