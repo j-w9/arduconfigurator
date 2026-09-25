@@ -7,8 +7,12 @@ import { MavlinkSession, MavlinkV2Codec, createArduCopterMockScenario } from '..
 import {
   MockTransport,
   ReplayTransport,
+  DeadlineError,
+  MAX_BUFFERED,
   WebSerialByteSession,
   WebSerialTransport,
+  release,
+  withDeadline,
   WebSocketTransport,
   createRecordedSession,
   createRecordedSessionEvent,
@@ -1523,4 +1527,66 @@ test('WebSerialByteSession.write reaches the port and releases the writer lock',
   await session.write(Uint8Array.from([0x31]))
   assert.deepEqual(writes.map((w) => [...w]), [[0x2f, 0x30], [0x31]])
   await session.close()
+})
+
+// -- deadlines and caps -----------------------------------------------------
+
+test('withDeadline turns a wait that never ends into an answer', async () => {
+  const never = new Promise(() => {})
+  await assert.rejects(() => withDeadline(never, 20, 'reading'), DeadlineError)
+  await assert.rejects(() => withDeadline(never, 20, 'reading'), /reading did not finish within 20 ms/)
+  assert.equal(await withDeadline(Promise.resolve(7), 50, 'x'), 7, 'fast work is untouched')
+})
+
+test('release gives up on a cleanup that hangs, rather than hanging with it', async () => {
+  // A stuck reader.cancel() must not hang the cleanup.
+  const before = Date.now()
+  await release(() => new Promise(() => {}), 30)
+  assert.ok(Date.now() - before < 500, 'it returned')
+  await release(() => Promise.reject(new Error('boom')), 30)
+})
+
+test('WebSerialByteSession caps its buffer, dropping the OLDEST bytes', async () => {
+  const { port, push } = fakeSerialPort()
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  for (let i = 0; i < 20; i += 1) push(new Uint8Array(8 * 1024).fill(i))
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  // 160 KB in; the last 64 KB (chunks 12-19) remain.
+  const front = await session.read(16, 500)
+  assert.deepEqual([...front], new Array(16).fill(12), 'chunks 0-11 were dropped')
+
+  const rest = await session.read(MAX_BUFFERED - 16, 500)
+  assert.equal(rest.length, MAX_BUFFERED - 16)
+  assert.equal(rest[rest.length - 1], 19, 'the newest bytes are still at the end')
+  await session.close()
+})
+
+test('a write to a port that never accepts bytes times out instead of waiting', async () => {
+  let stall
+  const port = {
+    readable: new ReadableStream({ start() {} }),
+    writable: new WritableStream({ write: () => new Promise((r) => { stall = r }) }),
+    async open() {},
+    async close() {},
+    getInfo: () => ({})
+  }
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  await assert.rejects(() => session.write(Uint8Array.from([1, 2, 3])), /writing to the port/)
+  stall?.()
+  await session.close()
+})
+
+test('close returns even when the port will not close', async () => {
+  const port = {
+    readable: new ReadableStream({ start() {} }),
+    writable: new WritableStream({ write() {} }),
+    async open() {},
+    close: () => new Promise(() => {}),
+    getInfo: () => ({})
+  }
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  const before = Date.now()
+  await session.close()
+  assert.ok(Date.now() - before < 2000, 'it gave up rather than hanging')
 })

@@ -1,4 +1,5 @@
 export * from './byte-session.js'
+export * from './deadline.js'
 export * from './direct-sockets-tcp-transport.js'
 export * from './direct-sockets-udp-transport.js'
 export * from './mock-transport.js'

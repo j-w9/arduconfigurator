@@ -18,7 +18,14 @@
 // `@arduconfig/firmware-flash`: this package has no dependencies, and the
 // three-method shape is satisfied structurally.
 
+import { release, withDeadline } from './deadline.js'
 import type { WebSerialPortLike } from './web-serial-transport.js'
+
+/** Buffer cap; the oldest bytes are dropped, so an abandoned session stays bounded. */
+export const MAX_BUFFERED = 64 * 1024
+
+/** A write to a working port takes under a millisecond; a second is generous. */
+const WRITE_DEADLINE_MS = 1000
 
 export interface WebSerialByteSessionOptions {
   /** Open the port at this baud. Ignored when `attach` is true. */
@@ -97,7 +104,9 @@ export class WebSerialByteSession {
             const merged = new Uint8Array(this.buffer.length + value.length)
             merged.set(this.buffer)
             merged.set(value, this.buffer.length)
-            this.buffer = merged
+            // Keep only the newest MAX_BUFFERED bytes.
+            this.buffer =
+              merged.length > MAX_BUFFERED ? merged.slice(merged.length - MAX_BUFFERED) : merged
             this.wake()
           }
         }
@@ -110,13 +119,18 @@ export class WebSerialByteSession {
     })()
   }
 
+  /** Write with a deadline: a device that stops reading never accepts the bytes. */
   async write(data: Uint8Array): Promise<void> {
     if (!this.port.writable) throw new Error('serial port not writable')
     const writer = this.port.writable.getWriter()
     try {
-      await writer.write(data)
+      await withDeadline(writer.write(data), WRITE_DEADLINE_MS, 'writing to the port')
     } finally {
-      writer.releaseLock()
+      try {
+        writer.releaseLock()
+      } catch {
+        // A timed-out write still holds the lock: leak it rather than throw.
+      }
     }
   }
 
@@ -152,22 +166,26 @@ export class WebSerialByteSession {
   }
 
   /**
-   * Stop pumping and release the reader. The port itself is closed only if
-   * this session opened it — an attached session hands the port back to
-   * whoever opened it, still open.
+   * Stop pumping and release the reader, each step time-limited. The port is
+   * closed only if this session opened it.
    */
   async close(): Promise<void> {
     this.closed = true
     try {
       if (this.reader) {
-        await this.reader.cancel().catch(() => undefined)
-        this.reader.releaseLock()
+        const reader = this.reader
         this.reader = null
+        await release(() => reader.cancel())
+        try {
+          reader.releaseLock()
+        } catch {
+          // The cancel above may have timed out and still hold it.
+        }
       }
     } finally {
       this.wake()
       if (this.ownsPort) {
-        await this.port.close().catch(() => undefined)
+        await release(() => this.port.close())
       }
     }
   }
