@@ -82,14 +82,19 @@ const ERASE_RELIST_DELAY_MS = 2500
  * How long to wait on the MAVFTP directory read before settling with whatever
  * the LOG_* list gave us.
  *
- * The directory read paginates: one LIST_DIRECTORY round trip per chunk, each
- * with its own 20 s timeout and no ceiling on the whole listing, plus up to
- * 30 s queued behind another FTP operation. On a card with many logs, or a slow
- * link, "slow" becomes "never" from where the operator is sitting. MAVFTP only
- * ADDS filenames, paths and sizes to a list the LOG_* stream already has, so
- * waiting past this point buys detail at the cost of the whole surface.
+ * Deliberately short, because of what the log directory costs on a real board.
+ * ArduPilot's FTP ListDirectory takes an ENTRY OFFSET, and each paginated
+ * request re-opens the directory and skips forward to it -- so listing N files
+ * is O(N^2) SD reads. Measured on the reporter's vehicle: /APM/LOGS with 63
+ * logs timed out at every attempt (73 s, 0 entries), while @SYS -- 12 virtual
+ * entries, no SD card -- answered fine. So this is not a board without MAVFTP;
+ * it is a directory too expensive to list.
+ *
+ * Meanwhile LOG_REQUEST_LIST returns all 63 in 239 ms. MAVFTP only ADDS real
+ * filenames to a list we already have, so a healthy board answers well inside
+ * this and a struggling one stops costing the operator a minute per press.
  */
-const MAVFTP_LIST_DEADLINE_MS = 20_000
+const MAVFTP_LIST_DEADLINE_MS = 6_000
 
 /** A sentinel distinct from `undefined` (MAVFTP failed) and a real listing. */
 const MAVFTP_TIMED_OUT = Symbol('mavftp-timed-out')

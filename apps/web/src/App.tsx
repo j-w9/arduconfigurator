@@ -9969,6 +9969,7 @@ export function App() {
           busyAction={busyAction}
           downloadProgress={filesBrowser.downloadProgress}
           vehicleConnected={snapshot.connection.kind === 'connected'}
+          logTransferInFlight={onboardLogs.activeDownloadId !== undefined}
           onNavigate={filesBrowser.navigate}
           onRefresh={filesBrowser.refresh}
           onDownload={filesBrowser.download}

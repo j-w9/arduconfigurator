@@ -34,6 +34,17 @@ export interface FilesViewProps {
   /** Undefined unless a download is in flight. */
   downloadProgress?: FilesDownloadProgress
   vehicleConnected: boolean
+  /**
+   * A log download is in flight on the same link.
+   *
+   * There is one serial link and one FTP session. A log transfer saturates the
+   * link, and a MAVFTP burst holds the session exclusively by design (a
+   * background read barging in repointed session 0 and killed downloads
+   * mid-transfer). So browsing here during a download does not fail, it
+   * queues -- and then times out, which reads as a broken tab rather than a
+   * busy one. Say which it is.
+   */
+  logTransferInFlight?: boolean
   onNavigate: (path: string) => void
   onRefresh: () => void
   onDownload: (entry: MavftpDirectoryEntry) => void
@@ -73,6 +84,7 @@ export function FilesView(props: FilesViewProps) {
     busyAction,
     downloadProgress,
     vehicleConnected,
+    logTransferInFlight,
     onNavigate,
     onRefresh,
     onDownload,
@@ -97,6 +109,13 @@ export function FilesView(props: FilesViewProps) {
           </p>
         ) : (
           <div className="files-browser">
+            {logTransferInFlight ? (
+              <p className="bf-note" data-testid="files-log-transfer-busy">
+                A log download is using the link. Browsing will be slow or time out until it
+                finishes — the vehicle serves one MAVFTP session at a time, and the transfer is
+                using the whole link.
+              </p>
+            ) : null}
             <div className="files-toolbar">
               <div className="files-quick-paths" role="group" aria-label="Quick paths">
                 {MAVFTP_QUICK_PATHS.map((quick) => (
