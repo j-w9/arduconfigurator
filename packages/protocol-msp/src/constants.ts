@@ -28,7 +28,21 @@ export const MSP_COMMANDS = {
    */
   REBOOT: 68,
   /** `#define MSP_UID 160` — the MCU's unique id. */
-  UID: 160
+  UID: 160,
+  /**
+   * `#define MSP_SET_PASSTHROUGH 245`.
+   *
+   * Hands the serial link to a sub-device and stops interpreting MSP on it.
+   * With no payload Betaflight defaults to the ESC 4-way interface, and its
+   * reply carries ONE byte: the number of ESC outputs it will bridge to
+   * (src/main/msp/msp.c, `mspProcessInCommand` MSP_SET_PASSTHROUGH →
+   * `esc4wayInit()`, whose return value is that count).
+   *
+   * After the reply the port is NOT speaking MSP any more, so whatever drives
+   * the sub-device must own the raw bytes. Do not leave an MSP decoder
+   * subscribed to the link across this call.
+   */
+  SET_PASSTHROUGH: 245
 } as const
 
 /**
