@@ -45,6 +45,42 @@ export interface ParameterDraftGroup {
 
 const DEFAULT_STAGEABLE_STATUSES: ParameterDraftStatus[] = ['staged']
 
+/**
+ * Whether a parameter's `options` list is the set of legal values, or just
+ * named points on a continuous one.
+ *
+ * ArduPilot uses `@Values` for both. `GPS1_TYPE` lists every type there is and
+ * declares no range: the list IS the parameter. `Q_A_ACC_P_MAX` lists five
+ * named accelerations (Disabled/VerySlow/Slow/Medium/Fast) *and* declares
+ * `@Range 0 1800`: the list is a set of suggestions on a continuous axis, and
+ * AMC's sequence derives a value from propeller diameter that sits between
+ * two of them. Refusing that is refusing a correct value.
+ *
+ * The distinction is whether the options cover the range. INS_HNTCH_MODE is
+ * 0..5 with all six listed -- an enumeration that happens to state its bounds.
+ * Across ArduCopter and ArduPlane this keeps strict checking on the 7
+ * parameters where the options are exhaustive and lifts it from the 178 where
+ * they are presets.
+ */
+export function optionsAreExhaustive(definition: {
+  options?: readonly { value: number }[]
+  minimum?: number
+  maximum?: number
+}): boolean {
+  const { minimum, maximum, options } = definition
+  if (!options?.length) return false
+  // No stated range: the options are all there is.
+  if (minimum === undefined || maximum === undefined) return true
+  if (!Number.isInteger(minimum) || !Number.isInteger(maximum)) return false
+  // A range too wide to enumerate is a continuous one by construction.
+  if (maximum - minimum > 64) return false
+  const listed = new Set(options.map((option) => option.value))
+  for (let value = minimum; value <= maximum; value += 1) {
+    if (!listed.has(value)) return false
+  }
+  return true
+}
+
 export function deriveParameterDraftEntries(
   parameters: ParameterState[],
   draftValues: Record<string, string>,
@@ -221,7 +257,8 @@ function deriveParameterDraftEntry(
   if (
     parameter.definition?.options &&
     parameter.definition.options.length > 0 &&
-    !parameter.definition.bitmask
+    !parameter.definition.bitmask &&
+    optionsAreExhaustive(parameter.definition)
   ) {
     const matchesOption = parameter.definition.options.some((option) => Object.is(option.value, parsedValue))
     if (!matchesOption) {

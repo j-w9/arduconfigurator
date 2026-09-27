@@ -269,7 +269,7 @@ describe('field choices', () => {
       // without good reason.
       expect(isList && field.numeric, `${field.component} > ${field.label}`).toBe(false)
     }
-    // Thirteen of the fields are enumerations. The rest are measurements and
+    // Fourteen of the fields are enumerations. The rest are measurements and
     // one version string, which are typed, not chosen.
     //
     // It was nine until the connection a step's parameters belong to started
@@ -278,8 +278,13 @@ describe('field choices', () => {
     // also asks for as a choice. The thirteenth is the battery chemistry,
     // which no expression reads but the cell-voltage checks need: 2.5 V is a
     // flat Li-ion cell and a destroyed LiPo one.
+    //
+    // The fourteenth is the telemetry protocol, which arrived with AMC v4.4.5:
+    // its telemetry step gained SERIAL1..9_PROTOCOL derived parameters reading
+    // vehicle_components['Telemetry']['FC Connection']['Protocol'], so the
+    // sequence now consumes what was previously only recorded.
     const lists = documentedFields.filter((field) => field.documented ?? field.suggested)
-    expect(lists.length).toBe(13)
+    expect(lists.length).toBe(14)
   })
 
   it('leaves a version as free text, not a list of other people\'s versions', () => {

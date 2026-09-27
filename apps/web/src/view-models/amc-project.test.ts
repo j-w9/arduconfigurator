@@ -172,21 +172,20 @@ describe('reading the declaration off the vehicle', () => {
     expect(result.values['Battery/Specifications/Number of cells']).toBe('4')
     expect(result.values['Battery/Specifications/Capacity mAh']).toBe('5000')
     expect(result.values['RC Receiver/FC Connection/Protocol']).toBe('SBUS')
-    // Two derived fields have no box on this form, and that is correct: the
+    // One derived field has no box on this form, and that is correct: the
     // field list is built from what the SEQUENCE reads, and no ArduCopter
-    // expression reads the telemetry protocol or the ESC's connection type.
-    // Reported rather than dropped, so a derived value never disappears
-    // silently.
+    // expression reads the ESC's connection type. Reported rather than
+    // dropped, so a derived value never disappears silently.
     //
-    // The battery chemistry used to be a third. It is now asked for -- no
-    // expression reads it either, but the cell-voltage checks are meaningless
-    // without it -- so the value this derives from the pack voltage lands in
-    // the form instead of being reported as homeless.
+    // Two others used to be here. The battery chemistry is now asked for --
+    // no expression reads it either, but the cell-voltage checks are
+    // meaningless without it. The telemetry protocol left this list in AMC
+    // v4.4.5, which gave the telemetry step SERIAL1..9_PROTOCOL derived
+    // parameters that read it, so the sequence now has a use for it and the
+    // value lands in the form.
     expect(result.values['Battery/Specifications/Chemistry']).toBeTruthy()
-    expect([...result.unmapped].sort()).toEqual([
-      'ESC/FC->ESC Connection/Type',
-      'Telemetry/FC Connection/Protocol'
-    ])
+    expect([...result.unmapped].sort()).toEqual(['ESC/FC->ESC Connection/Type'])
+    expect(result.values['Telemetry/FC Connection/Protocol']).toBeTruthy()
   })
 
   it('says which answers it would replace', () => {
