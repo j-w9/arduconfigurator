@@ -60,6 +60,22 @@ test(
   { skip: existsSync(binary) ? false : `SITL binary not found at ${binary} (build it or set ARDUPILOT_REPO_PATH)` },
   async () => {
     const log = []
+
+    // Bind BEFORE spawning. The previous order spawned SITL first and bound
+    // second, with only the spawn's cleanup inside the try/finally below -- so
+    // a bind that failed threw past the kill and orphaned the SITL it had just
+    // started. That orphan then held this port, so the next run's bind failed
+    // and orphaned another: one flake left the suite hanging at this file
+    // forever after, on every machine with an ArduPilot build.
+    //
+    // Binding first also removes a race: SITL is a udpclient and starts
+    // sending immediately, so the socket should already be listening.
+    const sock = dgram.createSocket('udp4')
+    await new Promise((res, rej) => {
+      sock.once('error', rej)
+      sock.bind(UDP_PORT, '127.0.0.1', res)
+    })
+
     const sitl = spawn(
       binary,
       ['--model', 'quad', '--speedup', '1', '--defaults', params, '-I0', '--serial0', `udpclient:127.0.0.1:${UDP_PORT}`],
@@ -67,12 +83,6 @@ test(
     )
     sitl.stdout.on('data', (c) => log.push(String(c)))
     sitl.stderr.on('data', (c) => log.push(String(c)))
-
-    const sock = dgram.createSocket('udp4')
-    await new Promise((res, rej) => {
-      sock.once('error', rej)
-      sock.bind(UDP_PORT, '127.0.0.1', res)
-    })
 
     const transport = new DirectSocketsUdpTransport('sitl-udp', { localPort: UDP_PORT, socketFactory: adapterFor(sock) })
     const runtime = new ArduPilotConfiguratorRuntime(new MavlinkSession(transport, new MavlinkV2Codec()), arducopterMetadata)
@@ -100,6 +110,10 @@ test(
         sock.close()
       } catch {}
       sitl.kill('SIGTERM')
+      // SIGTERM is a request. Give it a moment, then insist -- an ArduPilot
+      // that ignores it keeps this port and breaks every later run.
+      await new Promise((resolve2) => setTimeout(resolve2, 500))
+      if (sitl.exitCode === null && sitl.signalCode === null) sitl.kill('SIGKILL')
     }
   }
 )
