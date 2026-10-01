@@ -349,7 +349,10 @@ describe('the configuration directory', () => {
     await whenLoaded()
     const download = screen.getByRole('button', { name: /Download the directory/i })
     expect((download as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByText(/Nothing is declared yet/i)).toBeTruthy()
+    // The reason rides on the control itself. It used to be a paragraph of
+    // its own, which meant every arrival at this tab read an explanation of
+    // why an empty form is empty.
+    expect(download.getAttribute('title')).toMatch(/Nothing is declared yet/i)
   })
 
   it('writes once the vehicle is declared, and says what it wrote', async () => {

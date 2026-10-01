@@ -2239,16 +2239,11 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     <div className="amc-guided">
       <Panel
         title="AMC guided mode"
-        subtitle="AMC's setup sequence, run against your vehicle. Changes are staged, not written."
+        subtitle="Staged, not written."
       >
         {/* The sequence, the reasoning and the tuning guides are AMC's work.
-            This tab evaluates their data; it does not replace their docs, and
-            an operator following a step should be able to reach the guide that
-            explains it. */}
-        <p className="amc-guided__credit">
-          The sequence below is ArduPilot Methodic Configurator&apos;s work. This tab runs it against
-          your vehicle; their docs are where the reasoning lives.
-        </p>
+            The credit used to be a paragraph of its own, saying what the
+            subtitle and these links already say between them. */}
         <p className="amc-guided__links">
           {[
             ['Project', 'https://github.com/ArduPilot/MethodicConfigurator'],
@@ -2275,11 +2270,11 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             </select>
           </label>
           {suggestedKind ? (
-            <StatusBadge tone="success">matched to the connected vehicle</StatusBadge>
+            <StatusBadge tone="success">matched to the vehicle</StatusBadge>
           ) : connected ? (
             <StatusBadge tone="warning">no AMC sequence for this firmware</StatusBadge>
           ) : (
-            <StatusBadge tone="neutral">not connected — showing the sequence only</StatusBadge>
+            <StatusBadge tone="neutral">not connected</StatusBadge>
           )}
           {docs === undefined && docsVehicle !== undefined ? (
             <StatusBadge tone="neutral">loading parameter documentation…</StatusBadge>
@@ -2339,29 +2334,55 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
       </Panel>
 
       <Panel
-        title="The vehicle's configuration directory"
-        subtitle="One file per step, each value carrying the reason it was set — the artefact this method exists to produce."
+        title="Declare the vehicle"
+        subtitle={`${declaredCount} of ${fields.length} fields — exactly what the sequence reads.`}
       >
-        <p className="amc-guided__project-blurb">
-          A configuration you cannot reopen later is one you have to redo from memory. Start from
-          something — a directory, a similar aircraft, the vehicle itself — and write the result
-          back out when you are done.
-        </p>
+        {/* What came back from opening a directory, and what AMC would refuse
+            in what is declared. These sat with the directory panel, which is
+            now folded away -- so the answer to "open a directory" was being
+            rendered somewhere nobody could see it. */}
+        {projectNotice ? (
+          <p className={`amc-guided__project-notice amc-guided__project-notice--${projectNotice.tone}`}>
+            {projectNotice.text}
+          </p>
+        ) : null}
+        {/* AMC refuses to write a declaration that fails these. This says so
+            and still allows it: the directory is the operator's record, and a
+            half-finished one they can reopen is more use than a refusal. What
+            it will not do is let the download look like it went well. */}
+        {legacyBatteryNotice ? (
+          <p className="amc-guided__project-notice amc-guided__project-notice--ok">
+            {legacyBatteryNotice}
+          </p>
+        ) : null}
+        {declarationErrors.size > 0 ? (
+          <div className="amc-guided__project-notice amc-guided__project-notice--warning">
+            <p>
+              {declarationErrors.size} declared value
+              {declarationErrors.size === 1 ? '' : 's'} AMC would reject. Everything the sequence
+              computes from {declarationErrors.size === 1 ? 'it' : 'them'} will be wrong.
+            </p>
+            <ul className="amc-guided__declaration-errors">
+              {[...declarationErrors.values()].map((error) => (
+                <li key={error.where}>
+                  <button onClick={() => focusField(error.path.join('/'))}>{error.where}</button>{' '}
+                  {error.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
-        {/* Everything that fills the declaration in. They belong together:
-            each one answers "where does this vehicle's description come
-            from?", and having them scattered down the page made the tab read
-            as one long form rather than a place you arrive with something.
-            Laid out as a grid so the controls share an edge and the
-            descriptions share another — as three loose rows they read as a
-            ragged list rather than three ways to do one thing. */}
+        {/* The four ways to answer this form, on the form itself. They used to
+            live in a panel above it, which read as a separate feature and left
+            the form looking like two dozen boxes to type by hand. */}
         <div className="amc-guided__sources">
           <h4>Fill it in from</h4>
         <p className="amc-guided__from-vehicle-row">
           {/* A vehicle much like one AMC already describes is most of this
               form answered by someone who owned that aircraft. Still a
               starting point, not a claim about their vehicle. */}
-          <label>
+          <label title="Fills the form in from AMC's own vehicles. Correct anything that differs.">
             Start from a similar vehicle
             <select
               data-testid="amc-template-select"
@@ -2379,7 +2400,6 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               ))}
             </select>
           </label>
-          <span>Fills the form in from AMC&apos;s own vehicles. Correct anything that differs.</span>
         </p>
         {connected ? (
           <p className="amc-guided__from-vehicle-row">
@@ -2387,10 +2407,14 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
                 already answered. Offered rather than applied: a parameter says
                 how the vehicle is CONFIGURED, which is not the same as how it
                 is wired, and only the operator can see the difference. */}
-            <button style={buttonStyle()} onClick={readFromVehicle} disabled={!steps}>
+            <button
+              style={buttonStyle()}
+              onClick={readFromVehicle}
+              disabled={!steps}
+              title="Fills in what the vehicle's parameters can settle. Nothing is written to the vehicle."
+            >
               Read what the vehicle already knows
             </button>
-            <span>Fills in what its parameters can settle. Nothing is written to the vehicle.</span>
           </p>
         ) : null}
         <p className="amc-guided__from-vehicle-row">
@@ -2398,7 +2422,11 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               log. The sequence names the messages each one depends on; this is
               what turns that list into an answer. Parsed here in the browser —
               nothing is uploaded anywhere. */}
-          <label className="amc-guided__import" style={buttonStyle()}>
+          <label
+            className="amc-guided__import"
+            style={buttonStyle()}
+            title="Marks the messages each step should have produced. Read in your browser; nothing is uploaded."
+          >
             {logState === 'reading' ? 'Reading the log…' : 'Check a flight log'}
             <input
               type="file"
@@ -2412,7 +2440,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
             />
           </label>
           <span>
-            {logNotice ?? 'Marks the messages each step should have produced. Read in your browser.'}
+            {logNotice}
             {onDownloadLatestLog && connected ? (
               <>
                 {' '}
@@ -2470,6 +2498,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               multiple
               disabled={!steps}
               data-testid="amc-open-project"
+              title="Picks up a directory you wrote before, at the step you stopped on."
               accept=".param,.json"
               onChange={(event) => {
                 void importProject(event.target.files)
@@ -2478,264 +2507,8 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               }}
             />
           </label>
-          <span>Picks up a directory you wrote before, at the step you stopped on.</span>
         </p>
         </div>
-
-        <div className="amc-guided__sources amc-guided__sources--out">
-          <h4>When you are done</h4>
-          <p className="amc-guided__from-vehicle-row">
-            <button style={buttonStyle('primary')} onClick={exportProject} disabled={declaredCount === 0}>
-              Download the directory
-            </button>
-            <span>
-              One file per step, plus what you declared and everything the sequence decided.
-            </span>
-          </p>
-          <label className="amc-guided__annotate">
-            <input
-              type="checkbox"
-              data-testid="amc-baseline-toggle"
-              checked={seedFromBaseline && baseline !== undefined}
-              disabled={baseline === undefined}
-              onChange={(event) => setSeedFromBaseline(event.target.checked)}
-            />
-            <span>
-              {/* AMC does not compute a directory from nothing: it copies a
-                  template and lets the sequence edit it. Which template is
-                  the whole question — a real aircraft's would assert its
-                  wiring and geometry as yours, so this is AMC's own empty
-                  one for this firmware, which is what AMC itself uses when
-                  it starts a project from a connected vehicle. */}
-              {baseline
-                ? `Start from ArduPilot's ${baseline.version} defaults, as AMC does (${baseline.count} values the sequence then edits)`
-                : 'No starting values — AMC ships no empty template for this vehicle and firmware, so the directory holds only what the sequence decides'}
-            </span>
-          </label>
-          <label className="amc-guided__annotate">
-            <input
-              type="checkbox"
-              data-testid="amc-annotate-toggle"
-              checked={annotate}
-              disabled={!docs}
-              onChange={(event) => setAnnotate(event.target.checked)}
-            />
-            <span>
-              {/* Worth an explicit choice: the files roughly triple in size,
-                  which suits a directory someone will read and not one that
-                  only gets fed back in. */}
-              Write ArduPilot&apos;s documentation into the files
-            </span>
-          </label>
-        </div>
-
-        {projectNotice ? (
-          <p className={`amc-guided__project-notice amc-guided__project-notice--${projectNotice.tone}`}>
-            {projectNotice.text}
-          </p>
-        ) : null}
-        {declaredCount === 0 ? (
-          <p className="amc-guided__project-empty">
-            Nothing is declared yet, so there is nothing to derive — an empty directory records no
-            decisions at all.
-          </p>
-        ) : null}
-        {/* AMC refuses to write a declaration that fails these. This says so
-            and still allows it: the directory is the operator's record, and a
-            half-finished one they can reopen is more use than a refusal. What
-            it will not do is let the download look like it went well. */}
-        {legacyBatteryNotice ? (
-          <p className="amc-guided__project-notice amc-guided__project-notice--ok">
-            {legacyBatteryNotice}
-          </p>
-        ) : null}
-        {declarationErrors.size > 0 ? (
-          <div className="amc-guided__project-notice amc-guided__project-notice--warning">
-            <p>
-              {declarationErrors.size} declared value
-              {declarationErrors.size === 1 ? '' : 's'} AMC would reject. Everything the sequence
-              computes from {declarationErrors.size === 1 ? 'it' : 'them'} will be wrong.
-            </p>
-            <ul className="amc-guided__declaration-errors">
-              {[...declarationErrors.values()].map((error) => (
-                <li key={error.where}>
-                  <button onClick={() => focusField(error.path.join('/'))}>{error.where}</button>{' '}
-                  {error.message}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </Panel>
-
-      {/* AMC's "compare and upload" window. Kept a panel of its own rather
-          than folded into the directory above, because the whole point of it
-          is that this file is NOT part of the directory: AMC runs the upload
-          with persist_project_state=False, so no step file is written and no
-          summary is regenerated. A tune off a forum post should not quietly
-          become part of the record of how this aircraft was configured. */}
-      <Panel
-        title="A parameter file from somewhere else"
-        subtitle="Compare any .param file against the vehicle and send the parts you choose. Nothing here is recorded in the directory."
-      >
-        <p className="amc-guided__external-row">
-          <label style={buttonStyle()} className="amc-guided__import">
-            Open a parameter file
-            <input
-              type="file"
-              data-testid="amc-open-external"
-              accept=".param,.parm"
-              onChange={(event) => {
-                void openExternalFile(event.target.files)
-                event.target.value = ''
-              }}
-            />
-          </label>
-          <span>
-            A tune from a forum post, a file saved off another aircraft, a vendor&apos;s settings.
-          </span>
-        </p>
-
-        {externalError ? (
-          <p className="amc-guided__project-notice amc-guided__project-notice--warning">
-            {externalError}
-          </p>
-        ) : null}
-
-        {external ? (
-          <>
-            <p className="amc-guided__external-summary">
-              <strong>{external.name}</strong> — {external.file.rows.length} parameter
-              {external.file.rows.length === 1 ? '' : 's'},{' '}
-              {connected
-                ? `${external.file.changedCount} the vehicle does not already have`
-                : 'nothing to compare against until a vehicle is connected'}
-              {external.file.absentCount > 0 ? (
-                <>
-                  {', '}
-                  {/* Worth naming rather than hiding. A file written for
-                      another firmware version is exactly the case where this
-                      number is the whole story. */}
-                  <span className="amc-guided__external-absent">
-                    {external.file.absentCount} this firmware does not have
-                  </span>
-                </>
-              ) : null}
-              .
-            </p>
-
-            <label className="amc-guided__annotate">
-              <input
-                type="checkbox"
-                data-testid="amc-external-only-changed"
-                checked={externalOnlyChanged}
-                onChange={(event) => setExternalOnlyChanged(event.target.checked)}
-              />
-              <span>Show only what differs</span>
-            </label>
-
-            <table className="amc-step__changes amc-guided__external-table">
-              <thead>
-                <tr>
-                  <th>Send</th>
-                  <th>Parameter</th>
-                  <th>On the vehicle</th>
-                  <th>In the file</th>
-                </tr>
-              </thead>
-              <tbody>
-                {externalRows.map((row) => (
-                  <tr key={row.parameter} className={row.status === 'same' ? 'is-satisfied' : undefined}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        aria-label={`Send ${row.parameter}`}
-                        checked={external.selected.has(row.parameter)}
-                        disabled={row.status === 'absent'}
-                        onChange={() => toggleExternal(row.parameter)}
-                      />
-                    </td>
-                    <td>
-                      <code>{row.parameter}</code>
-                      {row.manualOverride ? (
-                        <span
-                          className="amc-step__tag"
-                          title="The file records this as a value someone chose deliberately"
-                        >
-                          chosen
-                        </span>
-                      ) : null}
-                    </td>
-                    <td>
-                      {row.status === 'absent' ? (
-                        <span
-                          className="amc-step__disputed"
-                          title="This firmware has no such parameter, so it cannot be sent"
-                        >
-                          not on this firmware
-                        </span>
-                      ) : (
-                        row.current
-                      )}
-                    </td>
-                    <td>
-                      {row.value}
-                      {row.comment ? (
-                        <span className="amc-step__disputed-why">{row.comment}</span>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="amc-step__stage">
-              <button
-                style={buttonStyle()}
-                disabled={!connected || externalWrites.length === 0}
-                title="Stage these into the parameter drafts for review"
-                onClick={() => onStage(externalWrites)}
-              >
-                Stage {externalWrites.length} change{externalWrites.length === 1 ? '' : 's'}
-              </button>
-              {onWriteStep ? (
-                <button
-                  style={buttonStyle('primary')}
-                  disabled={!connected || externalWrites.length === 0}
-                  title="Write the checked parameters and let the vehicle confirm them"
-                  onClick={() => onWriteStep(externalWrites, external.name)}
-                >
-                  Write {externalWrites.length} to the vehicle
-                </button>
-              ) : null}
-              <button style={buttonStyle()} onClick={() => setExternal(undefined)}>
-                Close the file
-              </button>
-            </div>
-          </>
-        ) : null}
-
-        {/* AMC puts "reset all FC parameters to defaults" on this same window,
-            and it is the right place for it: it is the other thing you reach
-            for when a vehicle's parameters came from somewhere you no longer
-            trust. The app already does this, with its own confirmation and its
-            own armed check, so this points at that rather than becoming a
-            third destructive button with a third implementation. */}
-        {onOpenTool ? (
-          <p className="amc-guided__external-reset">
-            Starting the vehicle from nothing instead?{' '}
-            <button style={buttonStyle()} onClick={() => onOpenTool('flash')}>
-              Reset it to firmware defaults
-            </button>{' '}
-            — on the Firmware tab, which asks before it does it.
-          </p>
-        ) : null}
-      </Panel>
-
-      <Panel
-        title="Declare the vehicle"
-        subtitle={`${declaredCount} of ${fields.length} fields — exactly what the sequence reads, nothing more.`}
-      >
         {carryOver ? (
           <p className="amc-guided__carry-over">
             You declared a vehicle before connecting. Use it for this one?
@@ -2856,81 +2629,9 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         </div>
       </Panel>
 
-      {summary?.configuration ? (
-        <Panel
-          title="What this vehicle has"
-          subtitle="Everything that differs from the firmware's own defaults, sorted by who decided it."
-        >
-          <dl className="amc-guided__summary">
-            <div>
-              <dt>Changed</dt>
-              <dd>
-                {summary.configuration.changed.length}
-                <span> of {summary.configuration.compared}</span>
-              </dd>
-            </div>
-            {summary.configuration.categoriesAvailable ? (
-              <>
-                <div title="Produced by a calibration rather than chosen by anyone.">
-                  <dt>From calibration</dt>
-                  <dd>{summary.configuration.calibration.length}</dd>
-                </div>
-                <div title="Written by the firmware about itself; not an operator's decision.">
-                  <dt>Written by the vehicle</dt>
-                  <dd>{summary.configuration.readOnly.length}</dd>
-                </div>
-              </>
-            ) : null}
-            <div title="SYSID_THISMAV and friends — which aircraft this is, which matters when a configuration is shared.">
-              <dt>Identity</dt>
-              <dd>{summary.configuration.identity.length}</dd>
-            </div>
-            <div title="What is left once calibration, firmware-written and identity values are set aside.">
-              <dt>Decisions</dt>
-              <dd>{summary.configuration.chosen.length}</dd>
-            </div>
-          </dl>
-
-          {/* Without ArduPilot's @ReadOnly and @Calibration annotations every
-              changed value looks like a decision, which overstates how much was
-              actually decided. Better to say so than to show a confident
-              number that is wrong. */}
-          {!summary.configuration.categoriesAvailable ? (
-            <p className="amc-guided__summary-note">
-              Calibration results and firmware-written values cannot be separated out: the parameter
-              documentation in this build does not carry those flags, so they are counted as decisions.
-            </p>
-          ) : null}
-
-          <details className="amc-guided__summary-list">
-            <summary>The {summary.configuration.chosen.length} decisions</summary>
-            <table className="amc-step__table">
-              <thead>
-                <tr>
-                  <th>Parameter</th>
-                  <th>Default</th>
-                  <th>This vehicle</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.configuration.chosen.map((entry) => (
-                  <tr key={entry.parameter}>
-                    <td>
-                      <code>{entry.parameter}</code>
-                    </td>
-                    <td>{entry.defaultValue}</td>
-                    <td>{entry.value}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </details>
-        </Panel>
-      ) : null}
-
       <Panel
         title="The sequence"
-        subtitle="Each step, and what it would set on this vehicle."
+        subtitle="What each step would set on this vehicle."
       >
         {summary && connected && summary.totalPending > 0 ? (
           <div className="amc-guided__stage-all">
@@ -3079,6 +2780,321 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
           </p>
         ) : null}
       </Panel>
+
+      {/* The artefact the whole method exists to produce, at the end of the
+          sequence because that is when it is wanted. It spent a moment folded
+          away with the other secondary panels, which buried the one output of
+          the tab behind a disclosure. */}
+        <div className="amc-guided__sources amc-guided__sources--out">
+          <h4>When you are done</h4>
+          <p className="amc-guided__from-vehicle-row">
+            <button
+              style={buttonStyle('primary')}
+              onClick={exportProject}
+              disabled={declaredCount === 0}
+              title={
+                declaredCount === 0
+                  ? 'Nothing is declared yet, so the directory would record no decisions at all.'
+                  : 'One file per step, plus what you declared and everything the sequence decided.'
+              }
+            >
+              Download the directory
+            </button>
+          </p>
+          <label className="amc-guided__annotate">
+            <input
+              type="checkbox"
+              data-testid="amc-baseline-toggle"
+              checked={seedFromBaseline && baseline !== undefined}
+              disabled={baseline === undefined}
+              onChange={(event) => setSeedFromBaseline(event.target.checked)}
+            />
+            <span>
+              {/* AMC does not compute a directory from nothing: it copies a
+                  template and lets the sequence edit it. Which template is
+                  the whole question — a real aircraft's would assert its
+                  wiring and geometry as yours, so this is AMC's own empty
+                  one for this firmware, which is what AMC itself uses when
+                  it starts a project from a connected vehicle. */}
+              {baseline
+                ? `Start from ArduPilot's ${baseline.version} defaults, as AMC does (${baseline.count} values the sequence then edits)`
+                : 'No starting values — AMC ships no empty template for this vehicle and firmware, so the directory holds only what the sequence decides'}
+            </span>
+          </label>
+          <label className="amc-guided__annotate">
+            <input
+              type="checkbox"
+              data-testid="amc-annotate-toggle"
+              checked={annotate}
+              disabled={!docs}
+              onChange={(event) => setAnnotate(event.target.checked)}
+            />
+            <span>
+              {/* Worth an explicit choice: the files roughly triple in size,
+                  which suits a directory someone will read and not one that
+                  only gets fed back in. */}
+              Write ArduPilot&apos;s documentation into the files
+            </span>
+          </label>
+        </div>
+
+      {/* Everything that is not the form, the sequence or the directory it
+          produces, behind one disclosure. These are each used once or not at all -- seeding the
+          declaration, writing the directory out, comparing an outside file,
+          auditing what the vehicle already holds -- and as six stacked panels
+          they put roughly four hundred words between arriving at this tab and
+          the first thing anyone does on it. */}
+      <details className="amc-guided__more">
+        <summary>Directory, templates and files</summary>
+      <Panel
+        title="The vehicle's configuration directory"
+        subtitle="One file per step, each value carrying the reason it was set."
+      >
+        {/* Everything that fills the declaration in. They belong together:
+            each one answers "where does this vehicle's description come
+            from?", and having them scattered down the page made the tab read
+            as one long form rather than a place you arrive with something.
+            Laid out as a grid so the controls share an edge and the
+            descriptions share another — as three loose rows they read as a
+            ragged list rather than three ways to do one thing. */}
+
+
+      </Panel>
+
+      {/* AMC's "compare and upload" window. Kept a panel of its own rather
+          than folded into the directory above, because the whole point of it
+          is that this file is NOT part of the directory: AMC runs the upload
+          with persist_project_state=False, so no step file is written and no
+          summary is regenerated. A tune off a forum post should not quietly
+          become part of the record of how this aircraft was configured. */}
+      <Panel
+        title="A parameter file from somewhere else"
+        subtitle="Compared against the vehicle, not recorded in the directory."
+      >
+        <p className="amc-guided__external-row">
+          <label style={buttonStyle()} className="amc-guided__import">
+            Open a parameter file
+            <input
+              type="file"
+              data-testid="amc-open-external"
+              accept=".param,.parm"
+              onChange={(event) => {
+                void openExternalFile(event.target.files)
+                event.target.value = ''
+              }}
+            />
+          </label>
+        </p>
+
+        {externalError ? (
+          <p className="amc-guided__project-notice amc-guided__project-notice--warning">
+            {externalError}
+          </p>
+        ) : null}
+
+        {external ? (
+          <>
+            <p className="amc-guided__external-summary">
+              <strong>{external.name}</strong> — {external.file.rows.length} parameter
+              {external.file.rows.length === 1 ? '' : 's'},{' '}
+              {connected
+                ? `${external.file.changedCount} the vehicle does not already have`
+                : 'nothing to compare against until a vehicle is connected'}
+              {external.file.absentCount > 0 ? (
+                <>
+                  {', '}
+                  {/* Worth naming rather than hiding. A file written for
+                      another firmware version is exactly the case where this
+                      number is the whole story. */}
+                  <span className="amc-guided__external-absent">
+                    {external.file.absentCount} this firmware does not have
+                  </span>
+                </>
+              ) : null}
+              .
+            </p>
+
+            <label className="amc-guided__annotate">
+              <input
+                type="checkbox"
+                data-testid="amc-external-only-changed"
+                checked={externalOnlyChanged}
+                onChange={(event) => setExternalOnlyChanged(event.target.checked)}
+              />
+              <span>Show only what differs</span>
+            </label>
+
+            <table className="amc-step__changes amc-guided__external-table">
+              <thead>
+                <tr>
+                  <th>Send</th>
+                  <th>Parameter</th>
+                  <th>On the vehicle</th>
+                  <th>In the file</th>
+                </tr>
+              </thead>
+              <tbody>
+                {externalRows.map((row) => (
+                  <tr key={row.parameter} className={row.status === 'same' ? 'is-satisfied' : undefined}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`Send ${row.parameter}`}
+                        checked={external.selected.has(row.parameter)}
+                        disabled={row.status === 'absent'}
+                        onChange={() => toggleExternal(row.parameter)}
+                      />
+                    </td>
+                    <td>
+                      <code>{row.parameter}</code>
+                      {row.manualOverride ? (
+                        <span
+                          className="amc-step__tag"
+                          title="The file records this as a value someone chose deliberately"
+                        >
+                          chosen
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>
+                      {row.status === 'absent' ? (
+                        <span
+                          className="amc-step__disputed"
+                          title="This firmware has no such parameter, so it cannot be sent"
+                        >
+                          not on this firmware
+                        </span>
+                      ) : (
+                        row.current
+                      )}
+                    </td>
+                    <td>
+                      {row.value}
+                      {row.comment ? (
+                        <span className="amc-step__disputed-why">{row.comment}</span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="amc-step__stage">
+              <button
+                style={buttonStyle()}
+                disabled={!connected || externalWrites.length === 0}
+                title="Stage these into the parameter drafts for review"
+                onClick={() => onStage(externalWrites)}
+              >
+                Stage {externalWrites.length} change{externalWrites.length === 1 ? '' : 's'}
+              </button>
+              {onWriteStep ? (
+                <button
+                  style={buttonStyle('primary')}
+                  disabled={!connected || externalWrites.length === 0}
+                  title="Write the checked parameters and let the vehicle confirm them"
+                  onClick={() => onWriteStep(externalWrites, external.name)}
+                >
+                  Write {externalWrites.length} to the vehicle
+                </button>
+              ) : null}
+              <button style={buttonStyle()} onClick={() => setExternal(undefined)}>
+                Close the file
+              </button>
+            </div>
+          </>
+        ) : null}
+
+        {/* AMC puts "reset all FC parameters to defaults" on this same window,
+            and it is the right place for it: it is the other thing you reach
+            for when a vehicle's parameters came from somewhere you no longer
+            trust. The app already does this, with its own confirmation and its
+            own armed check, so this points at that rather than becoming a
+            third destructive button with a third implementation. */}
+        {onOpenTool ? (
+          <p className="amc-guided__external-reset">
+            Starting the vehicle from nothing instead?{' '}
+            <button style={buttonStyle()} onClick={() => onOpenTool('flash')}>
+              Reset it to firmware defaults
+            </button>{' '}
+            — on the Firmware tab, which asks before it does it.
+          </p>
+        ) : null}
+      </Panel>
+
+      {summary?.configuration ? (
+        <Panel
+          title="What this vehicle has"
+          subtitle="What differs from firmware defaults, by who decided it."
+        >
+          <dl className="amc-guided__summary">
+            <div>
+              <dt>Changed</dt>
+              <dd>
+                {summary.configuration.changed.length}
+                <span> of {summary.configuration.compared}</span>
+              </dd>
+            </div>
+            {summary.configuration.categoriesAvailable ? (
+              <>
+                <div title="Produced by a calibration rather than chosen by anyone.">
+                  <dt>From calibration</dt>
+                  <dd>{summary.configuration.calibration.length}</dd>
+                </div>
+                <div title="Written by the firmware about itself; not an operator's decision.">
+                  <dt>Written by the vehicle</dt>
+                  <dd>{summary.configuration.readOnly.length}</dd>
+                </div>
+              </>
+            ) : null}
+            <div title="SYSID_THISMAV and friends — which aircraft this is, which matters when a configuration is shared.">
+              <dt>Identity</dt>
+              <dd>{summary.configuration.identity.length}</dd>
+            </div>
+            <div title="What is left once calibration, firmware-written and identity values are set aside.">
+              <dt>Decisions</dt>
+              <dd>{summary.configuration.chosen.length}</dd>
+            </div>
+          </dl>
+
+          {/* Without ArduPilot's @ReadOnly and @Calibration annotations every
+              changed value looks like a decision, which overstates how much was
+              actually decided. Better to say so than to show a confident
+              number that is wrong. */}
+          {!summary.configuration.categoriesAvailable ? (
+            <p className="amc-guided__summary-note">
+              Calibration results and firmware-written values cannot be separated out: the parameter
+              documentation in this build does not carry those flags, so they are counted as decisions.
+            </p>
+          ) : null}
+
+          <details className="amc-guided__summary-list">
+            <summary>The {summary.configuration.chosen.length} decisions</summary>
+            <table className="amc-step__table">
+              <thead>
+                <tr>
+                  <th>Parameter</th>
+                  <th>Default</th>
+                  <th>This vehicle</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.configuration.chosen.map((entry) => (
+                  <tr key={entry.parameter}>
+                    <td>
+                      <code>{entry.parameter}</code>
+                    </td>
+                    <td>{entry.defaultValue}</td>
+                    <td>{entry.value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        </Panel>
+      ) : null}
+      </details>
+
     </div>
   )
 }

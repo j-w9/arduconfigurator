@@ -19899,11 +19899,15 @@ button.mavlink-inspector__sent-row {
    A grid rather than a stack of flex rows: every control shares a right edge
    and every description shares a left one, so the group reads as several ways
    to do one thing instead of a ragged list. */
+/* Four ways to answer the form, in one row above it. This was a two-column
+   grid when each control carried a sentence explaining it; with the labels
+   left to speak for themselves the second column had nothing in it and the
+   buttons stretched to fill the width. */
 .amc-guided__sources {
-  display: grid;
-  grid-template-columns: max-content 1fr;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px 14px;
+  gap: 8px 12px;
   margin: 0 0 16px;
   padding: 12px 14px;
   border: 1px solid var(--border);
@@ -19911,19 +19915,22 @@ button.mavlink-inspector__sent-row {
   background: var(--surface-200, var(--surface-300));
 }
 
+/* Sentence case, not a tracked-out all-caps eyebrow: it labels four controls,
+   it is not a section of its own. */
 .amc-guided__sources > h4 {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
   margin: 0 0 2px;
   font-size: 0.85em;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-weight: 500;
   color: var(--text-muted);
 }
 
-/* Each row hands its control to the first column and its explanation to the
-   second, which is what makes the edges line up. */
+/* Each control is its own item in the row, sized to its content. */
 .amc-guided__from-vehicle-row {
-  display: contents;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
 }
 
 .amc-guided__from-vehicle-row > span {
@@ -20882,4 +20889,23 @@ button.mavlink-inspector__sent-row {
 .sim-control select:disabled {
   opacity: 0.5;
   cursor: progress;
+}
+
+/* The secondary half of the AMC tab, behind one disclosure. Styled as a
+   section heading rather than a widget: it is a place to go, not a control. */
+.amc-guided__more > summary {
+  cursor: pointer;
+  padding: 10px 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+  border-top: 1px solid var(--border);
+}
+
+.amc-guided__more > summary:hover {
+  color: var(--text);
+}
+
+.amc-guided__more[open] > summary {
+  margin-bottom: 4px;
 }
