@@ -191,9 +191,9 @@ export function ConfigView(props: ConfigViewProps) {
   const {
     sections,
     title = 'Config',
-    // GPS and sensors left for Peripherals; the subtitle should not still
-    // offer them here.
-    subtitle = 'Airframe, RC, flight modes, arming, power and system settings — one area at a time.',
+    // No default subtitle: the page title is enough under the tab of the
+    // same name.
+    subtitle,
     panelId = 'setup-panel-config',
     requestedCategory,
     isExpertMode,
@@ -312,19 +312,12 @@ export function ConfigView(props: ConfigViewProps) {
           stepFallback={field.unit === 'rad' ? 0.001 : 1}
         />
       )
-    const description = parameter.definition?.description
+    // No sibling bubble: the Scoped* editor renders its own inline "i" (raw
+    // id, description, range) right after the label, and a second dot beside
+    // it read as two controls for one field.
     return (
       <div key={field.paramId} className="config-section__field-row">
         {editor}
-        {/* Unconditional now: the bubble also carries the raw parameter id and
-            the wiki deep link, both of which exist even for the params whose
-            metadata has no description. */}
-        <ParamInfoBubble
-          paramId={field.paramId}
-          label={parameter.definition?.label ?? field.label}
-          description={description}
-          testId={`config-field-info-${field.paramId}`}
-        />
       </div>
     )
   }

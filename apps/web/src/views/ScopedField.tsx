@@ -33,8 +33,11 @@ function fieldClassName(map: ScopedFieldDraftMap, paramId: string, compact: bool
  * doesn't tell an operator what to search the wiki or the raw Parameters tab
  * for. Skipped when there's no friendly label: in that case `parameter.id` IS
  * already the label text, so showing it again would be a plain duplicate.
+ *
+ * Exported for the few surfaces that hand-roll a field instead of using a
+ * Scoped* component (the Ports matrix), so their "i" is this same one.
  */
-function ParamIdHint({ parameter }: { parameter: ParameterState }): ReactElement | null {
+export function ParamIdHint({ parameter }: { parameter: ParameterState }): ReactElement | null {
   const definition = parameter.definition
   if (!definition) return null
 
@@ -43,6 +46,8 @@ function ParamIdHint({ parameter }: { parameter: ParameterState }): ReactElement
   const showParamId = Boolean(definition.label)
   const description = definition.description?.trim()
   if (!showParamId && !description) return null
+  // The raw name used to print on its own line under the label. It is the
+  // tip's first line now, so the field is one line of title plus the dot.
 
   // Range and unit, when the metadata carries them. This is the other half of
   // the question the dot is there to answer -- "what does it do" is only
@@ -62,12 +67,7 @@ function ParamIdHint({ parameter }: { parameter: ParameterState }): ReactElement
   // The dot sits outside that, since its tip IS content worth announcing.
   return (
     <span className="scoped-editor-field__meta">
-      {showParamId ? (
-        <small className="scoped-editor-field__param-id" aria-hidden="true">
-          {parameter.id}
-        </small>
-      ) : null}
-      {description ? (
+      {showParamId || description ? (
         <InfoDot
           // Deliberately generic, and it must stay that way. This dot lives
           // INSIDE the field's <label>, so any accessible name containing the
@@ -79,11 +79,12 @@ function ParamIdHint({ parameter }: { parameter: ParameterState }): ReactElement
           label="Parameter details"
           testId={`param-info-${parameter.id}`}
           wide
+          paramId={parameter.id}
         >
           <span className="info-dot-line">
             <strong>{parameter.id}</strong>
           </span>
-          <span className="info-dot-line">{description}</span>
+          {description ? <span className="info-dot-line">{description}</span> : null}
           {bounds ? <span className="info-dot-line">{bounds}</span> : null}
           {definition.rebootRequired ? (
             <span className="info-dot-line">Takes effect after a reboot.</span>
@@ -202,8 +203,7 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
     const fieldLabel = parameter.definition?.label ?? parameter.id
     return (
       <label className={fieldClassName(draftStatusById, parameter.id, compact)}>
-        <span>{fieldLabel}</span>
-        <ParamIdHint parameter={parameter} />
+        <span><span className="scoped-editor-field__title">{fieldLabel}</span><ParamIdHint parameter={parameter} /></span>
         <span className="scoped-select-with-custom">
           <select
             data-testid={`scoped-select-${parameter.id}`}
@@ -256,8 +256,7 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
   const fieldLabel = parameter.definition?.label ?? parameter.id
   return (
     <label className={fieldClassName(draftStatusById, parameter.id, compact)}>
-      <span>{fieldLabel}</span>
-      <ParamIdHint parameter={parameter} />
+      <span><span className="scoped-editor-field__title">{fieldLabel}</span><ParamIdHint parameter={parameter} /></span>
       <select aria-label={fieldLabel} value={currentValue} onChange={(event) => onChange(parameter.id, event.target.value)}>
         {renderedOptions.map((valueOption) => (
           <option key={`${parameter.id}:${valueOption.value}`} value={String(valueOption.value)}>
@@ -317,10 +316,15 @@ export function ScopedNumberField(props: ScopedNumberFieldProps) {
   return (
     <label className={fieldClassName(draftStatusById, parameter.id, compact)}>
       <span>
-        {fieldLabel}
-        {unit ? <small className="scoped-editor-field__unit"> ({unit})</small> : null}
+        {/* The title text in a span of its own, so the label an operator
+            reads (and a test matches exactly) is one element, with the dot's
+            tooltip text outside it. */}
+        <span className="scoped-editor-field__title">
+          {fieldLabel}
+          {unit ? <small className="scoped-editor-field__unit"> ({unit})</small> : null}
+        </span>
+        <ParamIdHint parameter={parameter} />
       </span>
-      <ParamIdHint parameter={parameter} />
       <input
         type="number"
         aria-label={fieldLabel}
@@ -380,8 +384,7 @@ export function ScopedBitmaskField(props: CommonScopedFieldProps) {
       className={`${fieldClassName(draftStatusById, parameter.id, compact)} scoped-editor-field--bitmask`}
       data-testid={`scoped-bitmask-${parameter.id}`}
     >
-      <span>{parameter.definition?.label ?? parameter.id}</span>
-      <ParamIdHint parameter={parameter} />
+      <span><span className="scoped-editor-field__title">{parameter.definition?.label ?? parameter.id}</span><ParamIdHint parameter={parameter} /></span>
       <div className="scoped-bitmask-bits">
         {options.map((option) => {
           const bit = option.value
@@ -441,8 +444,7 @@ export function ScopedOptionChipsField(props: CommonScopedFieldProps) {
       className={`${fieldClassName(draftStatusById, parameter.id, compact)} scoped-editor-field--chips`}
       data-testid={`scoped-chips-${parameter.id}`}
     >
-      <span>{parameter.definition?.label ?? parameter.id}</span>
-      <ParamIdHint parameter={parameter} />
+      <span><span className="scoped-editor-field__title">{parameter.definition?.label ?? parameter.id}</span><ParamIdHint parameter={parameter} /></span>
       <div className="scoped-option-chips" role="radiogroup">
         {options.map((option) => {
           const selected = String(option.value) === current

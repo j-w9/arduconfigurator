@@ -49,6 +49,7 @@ import { StickCraftPreview } from '../preview-components'
 import { formatRxRssi } from '../status-formatters'
 import { toneForModeSwitchExercise, toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
 import { InfoDot } from '../views/InfoDot'
+import { DraftReviewBadge } from '../views/DraftReviewBadge'
 import { ReceiverView } from '../views/Receiver'
 import { ScopedBitmaskField, ScopedField, ScopedSelectField } from '../views/ScopedField'
 
@@ -1087,13 +1088,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                             <strong>Receiver signal setup</strong>
                             <p>RSSI configuration and receiver-link interpretation stay available here without crowding the main setup path.</p>
                           </div>
-                          <StatusBadge tone={toneForScopedDraftReview(receiverStagedDrafts.length, receiverInvalidDrafts.length)}>
-                            {receiverInvalidDrafts.length > 0
-                              ? `${receiverInvalidDrafts.length} invalid`
-                              : receiverStagedDrafts.length > 0
-                                ? `${receiverStagedDrafts.length} staged`
-                                : 'in sync'}
-                          </StatusBadge>
+                          <DraftReviewBadge staged={receiverStagedDrafts.length} invalid={receiverInvalidDrafts.length} />
                         </div>
 
                         <div className="config-pills">
@@ -1179,13 +1174,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                             jumping to Parameters.
                           </p>
                         </div>
-                        <StatusBadge tone={toneForScopedDraftReview(receiverStagedDrafts.length, receiverInvalidDrafts.length)}>
-                          {receiverInvalidDrafts.length > 0
-                            ? `${receiverInvalidDrafts.length} invalid`
-                            : receiverStagedDrafts.length > 0
-                              ? `${receiverStagedDrafts.length} staged`
-                              : 'in sync'}
-                        </StatusBadge>
+                        <DraftReviewBadge staged={receiverStagedDrafts.length} invalid={receiverInvalidDrafts.length} />
                       </div>
 
                       {receiverDraftEntries.length > 0 ? (

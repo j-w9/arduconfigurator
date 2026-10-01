@@ -1,6 +1,8 @@
 import { useMemo, useState, type ReactElement } from 'react'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { InfoDot } from './InfoDot'
+
 import {
   buildFiltersFromGyro,
   exceedsDTermCeiling,
@@ -120,10 +122,19 @@ export function FiltersFromGyro(props: FiltersFromGyroProps): ReactElement | nul
                 return (
                   <div key={row.id} className="filters-from-gyro__row">
                     <div className="filters-from-gyro__name">
-                      <strong>{labelFor(row.id)}</strong>
-                      <small>
-                        {row.id} · {row.rule}
-                      </small>
+                      <strong>
+                        {labelFor(row.id)}
+                        {/* The raw name is the tip's first line, as on every
+                            editable field; the rule stays on the small line. */}
+                        <span className="scoped-editor-field__meta">
+                          <InfoDot label="Parameter details" testId={`param-info-${row.id}`} wide>
+                            <span className="info-dot-line">
+                              <strong>{row.id}</strong>
+                            </span>
+                          </InfoDot>
+                        </span>
+                      </strong>
+                      <small>{row.rule}</small>
                     </div>
                     <span className="filters-from-gyro__current">
                       {current === undefined ? '—' : `now ${current}`}

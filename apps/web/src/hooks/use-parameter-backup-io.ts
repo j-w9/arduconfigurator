@@ -57,8 +57,17 @@ export interface UseParameterBackupIoParams {
 
 /** An import that has been READ but not staged. */
 export interface PendingParameterImport {
-  /** Draft values the import would stage, keyed by param id. */
+  /** Draft values the import would stage, keyed by param id. Editable. */
   draftValues: ParameterDraftValues
+  /**
+   * What the FILE asked for, keyed by param id. Never edited.
+   *
+   * Kept apart from draftValues so editing a value before staging does not
+   * rewrite history: the staged row shows Current / Import / New, and "Import"
+   * means what the file said. Recording the edited number there would erase the
+   * one thing that display exists to preserve.
+   */
+  fileValues: ParameterDraftValues
   /** How many of those differ from the currently synced value. */
   changedCount: number
   /** Where it came from, for the prompt copy. */
@@ -88,6 +97,16 @@ export interface UseParameterBackupIoResult {
   stagePendingParameterImportSubset: (paramIds: readonly string[]) => void
   /** Drop rows from the pending import without staging them. */
   dropPendingParameterImportEntries: (paramIds: readonly string[]) => void
+  /**
+   * Change the value the import would stage for one parameter, before staging.
+   *
+   * A file is a starting point, not a verdict: an operator importing someone
+   * else's tune usually wants most of it and a different number in two places.
+   * Without this the only route was stage-then-edit, which means writing the
+   * file's value into the draft set first and correcting it afterwards — an
+   * extra round trip through a value you never wanted.
+   */
+  editPendingParameterImportValue: (paramId: string, rawValue: string) => void
   /** Throw the pending import away without staging anything. */
   dismissPendingParameterImport: () => void
   /**
@@ -208,6 +227,8 @@ export function useParameterBackupIo({
       // NOT staged yet — see pendingParameterImport.
       setPendingParameterImport({
         draftValues: restore.draftValues,
+        // The same values, kept unedited as the record of what the file said.
+        fileValues: { ...restore.draftValues },
         changedCount: restore.changedCount,
         fileName: file.name
       })
@@ -311,7 +332,16 @@ export function useParameterBackupIo({
       // mergeDrafts, not replaceDrafts: staging part of an import must not wipe
       // drafts the operator staged from anywhere else.
       mergeDrafts(taking)
-      setImportedDraftOrigins((current) => ({ ...current, ...taking }))
+      // Origins come from the FILE's values, not from what is being staged —
+      // an edited row still shows what the file asked for.
+      const origins: Record<string, string> = {}
+      for (const paramId of Object.keys(taking)) {
+        const fileValue = pendingParameterImport.fileValues[paramId]
+        if (fileValue !== undefined) {
+          origins[paramId] = fileValue
+        }
+      }
+      setImportedDraftOrigins((current) => ({ ...current, ...origins }))
       const remainingCount = Object.keys(remaining).length
       setPendingParameterImport(
         remainingCount === 0 ? undefined : { ...pendingParameterImport, draftValues: remaining, changedCount: remainingCount }
@@ -321,6 +351,16 @@ export function useParameterBackupIo({
         text: `Staged ${takenCount} value(s) from ${pendingParameterImport.fileName}.${
           remainingCount > 0 ? ` ${remainingCount} still pending.` : ''
         } Review the diff, then Apply All to write them.`
+      })
+    },
+    editPendingParameterImportValue: (paramId, rawValue) => {
+      setPendingParameterImport((current) => {
+        if (!current || current.draftValues[paramId] === undefined) {
+          return current
+        }
+        // changedCount counts entries still pending, not how many differ from
+        // live — editing one does not add or remove a row, so it is unchanged.
+        return { ...current, draftValues: { ...current.draftValues, [paramId]: rawValue } }
       })
     },
     dropPendingParameterImportEntries: (paramIds) => {
@@ -356,7 +396,7 @@ export function useParameterBackupIo({
       replaceDrafts(pendingParameterImport.draftValues)
       // replaceDrafts clears the draft set, so the origin map is replaced too
       // rather than merged — a stale origin would label an unrelated draft.
-      setImportedDraftOrigins({ ...pendingParameterImport.draftValues })
+      setImportedDraftOrigins({ ...pendingParameterImport.fileValues })
       setPendingParameterImport(undefined)
       setParameterNotice({
         tone: 'warning',

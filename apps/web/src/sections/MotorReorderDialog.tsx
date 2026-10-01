@@ -9,12 +9,14 @@
 // the call site, so this renders unconditionally. Behavior-preserving.
 
 import type { ReactElement } from 'react'
+import { InfoDot } from '../views/InfoDot'
+import { ParamIdHint } from '../views/ScopedField'
 
 import { buttonStyle } from '@arduconfig/ui-kit'
 import type { ConfiguratorSnapshot, ServoOutputAssignment } from '@arduconfig/ardupilot-core'
 
 import { normalizeBitmaskValue } from '../parameter-format'
-import { MOTORS_SAFETY_ACK_ID, OUTPUTS_MOTOR_CONFIRM_BUTTON_ID } from '../setup-flow-helpers'
+import { MOTORS_SAFETY_ACK_ID, OUTPUTS_MOTOR_CONFIRM_BUTTON_ID, OUTPUTS_MOTOR_START_BUTTON_ID } from '../setup-flow-helpers'
 import { hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
 import type { MotorPreviewNode } from '../view-models/motor-preview'
@@ -163,40 +165,25 @@ export function MotorReorderDialog({
           <p className="motor-reorder-status" role="status" data-testid="motor-reorder-status">{rebootStatus}</p>
         ) : (
           <>
-        {/* Safety acknowledgments — pinned at the top of the dialog so
-         *  the operator can't miss the props-off ack and doesn't have
-         *  to leave the popout to set it. Required for both the
-         *  Reorder identify and the Direction spin to enable. */}
-        <div
-          className="motor-reorder-lightbox__acks"
-          data-testid="motor-reorder-lightbox-acks"
-          id={MOTORS_SAFETY_ACK_ID}
-        >
-          {/* One combined safety ack — props off AND the craft restrained/clear
-           *  — driving both underlying acknowledgments together. */}
-          <label
-            className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged && testAreaAcknowledged ? ' is-acknowledged' : ''}`}
-            data-testid="motor-reorder-props-off-ack"
-          >
-            <input
-              type="checkbox"
-              checked={propsRemovedAcknowledged && testAreaAcknowledged}
-              onChange={(event) => {
-                onPropsRemovedChange(event.target.checked)
-                onTestAreaChange(event.target.checked)
-              }}
-              disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-            />
-            <span>Props are off and the vehicle is restrained with the test area clear.</span>
-          </label>
-        </div>
-
+        {/* Inline (the Motors tab): the Order/Direction buttons and the safety
+         *  ack share one row, ack directly after the buttons. The lightbox
+         *  keeps the ack above the strip. */}
+        {inline ? (
+          <div className="motor-reorder-lightbox__toprow" data-testid="motor-reorder-toprow">
         {/* BF-style tabs: Reorder | Direction. Reorder still spins
          *  motors during guided-identify (the same MOTOR_TEST command
          *  with a 6%/2.5s window); Direction tab gives the operator
          *  per-motor spin buttons plus the SERVO_BLH_RVMASK reverse
          *  toggles for DShot ESCs in one place. */}
-        <div className="tab-strip motor-reorder-lightbox__tabs" role="tablist" data-testid="motor-reorder-lightbox-tabs">
+        <div
+          className="tab-strip motor-reorder-lightbox__tabs"
+          role="tablist"
+          data-testid="motor-reorder-lightbox-tabs"
+          // The guided wizard's "Open Motor Verification" lands here: the
+          // order/direction work is the motor verification, and this strip is
+          // its first control. (Inline only; the lightbox has its own header.)
+          id={inline ? OUTPUTS_MOTOR_START_BUTTON_ID : undefined}
+        >
           <button
             type="button"
             role="tab"
@@ -222,6 +209,104 @@ export function MotorReorderDialog({
             2 · Direction
           </button>
         </div>
+        {/* Safety acknowledgments — pinned at the top of the dialog so
+         *  the operator can't miss the props-off ack and doesn't have
+         *  to leave the popout to set it. Required for both the
+         *  Reorder identify and the Direction spin to enable. */}
+        <div
+          className="motor-reorder-lightbox__acks"
+          data-testid="motor-reorder-lightbox-acks"
+          id={MOTORS_SAFETY_ACK_ID}
+        >
+          {/* One combined safety ack — props off AND the craft restrained/clear
+           *  — driving both underlying acknowledgments together. */}
+          <label
+            className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged && testAreaAcknowledged ? ' is-acknowledged' : ''}`}
+            data-testid="motor-reorder-props-off-ack"
+          >
+            <input
+              type="checkbox"
+              checked={propsRemovedAcknowledged && testAreaAcknowledged}
+              onChange={(event) => {
+                onPropsRemovedChange(event.target.checked)
+                onTestAreaChange(event.target.checked)
+              }}
+              disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+            />
+            <span>Props are off, the vehicle is restrained, and the test area is clear.</span>
+          </label>
+        </div>
+          </div>
+        ) : (
+          <>
+        {/* Safety acknowledgments — pinned at the top of the dialog so
+         *  the operator can't miss the props-off ack and doesn't have
+         *  to leave the popout to set it. Required for both the
+         *  Reorder identify and the Direction spin to enable. */}
+        <div
+          className="motor-reorder-lightbox__acks"
+          data-testid="motor-reorder-lightbox-acks"
+          id={MOTORS_SAFETY_ACK_ID}
+        >
+          {/* One combined safety ack — props off AND the craft restrained/clear
+           *  — driving both underlying acknowledgments together. */}
+          <label
+            className={`motor-test-acknowledgments__props-off${propsRemovedAcknowledged && testAreaAcknowledged ? ' is-acknowledged' : ''}`}
+            data-testid="motor-reorder-props-off-ack"
+          >
+            <input
+              type="checkbox"
+              checked={propsRemovedAcknowledged && testAreaAcknowledged}
+              onChange={(event) => {
+                onPropsRemovedChange(event.target.checked)
+                onTestAreaChange(event.target.checked)
+              }}
+              disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
+            />
+            <span>Props are off, the vehicle is restrained, and the test area is clear.</span>
+          </label>
+        </div>
+        {/* BF-style tabs: Reorder | Direction. Reorder still spins
+         *  motors during guided-identify (the same MOTOR_TEST command
+         *  with a 6%/2.5s window); Direction tab gives the operator
+         *  per-motor spin buttons plus the SERVO_BLH_RVMASK reverse
+         *  toggles for DShot ESCs in one place. */}
+        <div
+          className="tab-strip motor-reorder-lightbox__tabs"
+          role="tablist"
+          data-testid="motor-reorder-lightbox-tabs"
+          // The guided wizard's "Open Motor Verification" lands here: the
+          // order/direction work is the motor verification, and this strip is
+          // its first control. (Inline only; the lightbox has its own header.)
+          id={inline ? OUTPUTS_MOTOR_START_BUTTON_ID : undefined}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={motorDialogTab === 'reorder'}
+            className={`tab-strip__tab${motorDialogTab === 'reorder' ? ' is-active' : ''}`}
+            onClick={() => onTabChange('reorder')}
+            data-testid="motor-reorder-lightbox-tab-reorder"
+          >
+            1 · Order
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={motorDialogTab === 'direction'}
+            className={`tab-strip__tab${motorDialogTab === 'direction' ? ' is-active' : ''}`}
+            onClick={() => onTabChange('direction')}
+            data-testid="motor-reorder-lightbox-tab-direction"
+            // The guided wizard's "Open Confirm Motor Direction" scrolls here.
+            // Confirming which way each motor spins is this step, and until now
+            // the id it targeted was rendered nowhere.
+            id={OUTPUTS_MOTOR_CONFIRM_BUTTON_ID}
+          >
+            2 · Direction
+          </button>
+        </div>
+          </>
+        )}
 
         {motorDialogSpinError ? (
           <div className="bf-note bf-note--warning" data-testid="motor-reorder-spin-error">
@@ -232,9 +317,6 @@ export function MotorReorderDialog({
         {motorDialogTab === 'reorder' ? (
         <div className="motor-reorder-lightbox__grid">
           <section className="bf-gui-box">
-            <div className="bf-gui-box__titlebar">
-              <strong>Preview</strong>
-            </div>
             <div className="bf-gui-box__body">
               {motorPreviewNodes.length > 0 ? (
                 <div className="motor-mixer-preview motor-mixer-preview--dialog" data-testid="motor-order-diagram">
@@ -310,9 +392,6 @@ export function MotorReorderDialog({
           </section>
 
           <section className="bf-gui-box">
-            <div className="bf-gui-box__titlebar">
-              <strong>Assignments</strong>
-            </div>
             <div className="bf-gui-box__body">
               {guidedReorderActive ? (
                 <div className="bf-note bf-note--accent" data-testid="motor-reorder-guided-banner">
@@ -389,13 +468,13 @@ export function MotorReorderDialog({
               <details className="motor-reorder-manual" data-testid="motor-reorder-manual">
                 <summary>Manual output mapping (optional)</summary>
                 <p className="motor-reorder-manual__hint">
-                  Prefer “Identify motors interactively” above. Use this only if you already know each motor’s output.
+                  Only if you already know each motor’s output.
                 </p>
                 <div className="motor-reorder-table">
                 <div className="motor-reorder-table__row motor-reorder-table__row--header">
                   <span>Motor</span>
                   <span>Current</span>
-                  <span>Target Output</span>
+                  <span>Target</span>
                 </div>
                 {motorReorderRows.map((row) => (
                   <label key={`motor-reorder-row:${row.motorNumber}`} className="motor-reorder-table__row">
@@ -422,10 +501,13 @@ export function MotorReorderDialog({
                 </div>
               ) : null}
 
-              <ul className="output-note-list">
-                <li>This changes which output pin carries each motor function. It does not infer or change ESC spin direction.</li>
-                <li>After applying a new order, rerun the guarded direction check and confirm the correct motor spins.</li>
-              </ul>
+              <p className="bf-note motor-reorder__note">
+                Reorder changes output pins, not spin direction.{' '}
+                <InfoDot label="About reordering motors" testId="motor-reorder-info" wide>
+                  <span className="info-dot-line">This changes which output pin carries each motor function. It does not infer or change ESC spin direction.</span>
+                  <span className="info-dot-line">After applying a new order, rerun the guarded direction check and confirm the correct motor spins.</span>
+                </InfoDot>
+              </p>
 
               {guidedReorderCompleted && motorReorderChangedCount === 0 ? (
                 <div className="bf-note" data-testid="motor-reorder-no-changes">
@@ -621,7 +703,10 @@ export function MotorReorderDialog({
                         className={`motor-reverse-esctype${eligibility.escTypeConfigured ? '' : ' motor-reverse-esctype--warning'}`}
                         data-testid="motor-reorder-direction-esctype"
                       >
-                        <span>ESC type (SERVO_DSHOT_ESC)</span>
+                        <span>
+                          <span className="scoped-editor-field__title">ESC type</span>
+                          <ParamIdHint parameter={dshotEscParam} />
+                        </span>
                         <select
                           value={String(dshotEscType ?? 0)}
                           disabled={busyAction !== undefined}
@@ -673,12 +758,10 @@ export function MotorReorderDialog({
          *  drafts to the FC without closing the dialog, and Reboot lets the
          *  operator restart the controller so reboot-sensitive changes (e.g.
          *  reverse mask) take effect, all in one place. */}
+        {/* Only once something is staged. An always-on disabled bar with a
+         *  "stage something first" hint was a row of chrome for nothing. */}
+        {motorReorderStagedCount > 0 || busyAction === 'motor-reorder:apply' || busyAction === 'reboot-autopilot' ? (
         <div className="motor-reorder-lightbox__apply-bar" data-testid="motor-reorder-apply-bar">
-          <small>
-            {motorReorderStagedCount > 0
-              ? `${motorReorderStagedCount} staged change${motorReorderStagedCount === 1 ? '' : 's'} ready to write to the flight controller.`
-              : 'Stage a reorder or flip a reverse toggle, then apply.'}
-          </small>
           <div className="switch-exercise-controls">
             <button
               type="button"
@@ -702,6 +785,7 @@ export function MotorReorderDialog({
             </small>
           ) : null}
         </div>
+        ) : null}
           </>
         )}
     </>

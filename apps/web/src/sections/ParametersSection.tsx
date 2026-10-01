@@ -8,6 +8,7 @@ import type { Dispatch, ReactElement, ReactNode, RefObject, SetStateAction } fro
 import { parameterAlias } from '@arduconfig/ardupilot-core'
 import type { ConfiguratorSnapshot, ParameterDraftEntry, ParameterDraftGroup, ParameterDraftSummary, ParameterImportCategory, ParameterState } from '@arduconfig/ardupilot-core'
 import type { NormalizedFirmwareMetadataBundle } from '@arduconfig/param-metadata'
+import { categoryForParameterId } from '@arduconfig/param-metadata'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { PendingParameterImport } from '../hooks/use-parameter-backup-io'
 import { useDraftSelection } from '../hooks/use-draft-selection'
@@ -133,6 +134,8 @@ export interface ParametersSectionProps {
   importedDraftOrigins: Record<string, string>
   /** Drop rows from the pending import without staging them. */
   onDropPendingParameterImportEntries: (paramIds: readonly string[]) => void
+  /** Change what the import would stage for one parameter, before staging it. */
+  onEditPendingParameterImportValue: (paramId: string, rawValue: string) => void
   onDismissPendingParameterImport: () => void
   /** Params verified-written in the last few seconds — briefly flagged green. */
   recentlyWrittenParamIds: ReadonlySet<string>
@@ -203,6 +206,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
     onStagePendingParameterImport,
     onStagePendingParameterImportSubset,
     onDropPendingParameterImportEntries,
+    onEditPendingParameterImportValue,
     importedDraftOrigins,
     onDismissPendingParameterImport,
     recentlyWrittenParamIds,
@@ -316,7 +320,12 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
   // tree, label-sorted.
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const categoryOf = (parameter: ParameterState): string | undefined =>
-    metadataCatalog.parameters[parameter.id]?.category ?? parameter.definition?.category
+    metadataCatalog.parameters[parameter.id]?.category ??
+    parameter.definition?.category ??
+    // The curated bundle covers ~709 of ~5,690 parameters; the rest fall back
+    // to the family ArduPilot itself groups them under, so the category filter
+    // reaches them instead of leaving 4,900 rows unfilterable.
+    categoryForParameterId(parameter.id)
   const categoryOptions = useMemo(() => {
     const present = new Set<string>()
     for (const parameter of snapshot.parameters) {
@@ -637,7 +646,7 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
 
   return (
 
-      <Panel title="Parameter Editor" subtitle="Browse, stage, and write raw parameter values.">
+      <Panel title="Parameter Editor">
         <div className="parameter-follow-up parameter-follow-up--warning parameter-editor__expert-note">
           <StatusBadge tone="warning">expert</StatusBadge>
           <p>Raw parameter editing is an Expert surface. Use Setup, Ports, Receiver, Outputs, and Power for routine workflow changes first.</p>
@@ -984,10 +993,29 @@ export function ParametersSection(props: ParametersSectionProps): ReactElement {
                   {group.entries.map((draft) => (
                     <div key={draft.id} className="parameter-diff-item">
                       <ParameterDiffIdentity draft={draft} />
+                      {/* The imported value is EDITABLE here, before staging. A
+                        * file is a starting point, not a verdict — importing
+                        * someone else's tune usually means wanting most of it
+                        * and a different number in a couple of places. Editing
+                        * after staging works, but it writes the file's value
+                        * into the draft set first and corrects it afterwards,
+                        * which is a round trip through a value you never
+                        * wanted. */}
                       <span className="parameter-diff-values">
                         {formatParameterDraftValue(draft.definition, draft.currentValue)}
                         {' → '}
-                        {formatParameterDraftValue(draft.definition, draft.nextValue)}
+                        <input
+                          className="parameter-diff-value-input"
+                          type="text"
+                          inputMode="decimal"
+                          aria-label={`Value to import for ${draft.id}`}
+                          data-testid={`parameter-import-value-${draft.id}`}
+                          value={pendingParameterImport.draftValues[draft.id] ?? ''}
+                          disabled={busyAction !== undefined}
+                          onChange={(event) =>
+                            onEditPendingParameterImportValue(draft.id, event.target.value)
+                          }
+                        />
                       </span>
                       <span className="parameter-diff-delta">
                         {formatParameterDelta(draft.delta, draft.definition?.unit)}

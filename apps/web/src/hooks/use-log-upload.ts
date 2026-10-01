@@ -16,24 +16,34 @@ import {
 } from '../log-upload/session-storage'
 import { buildLogUploadFormModel, type LogUploadFormModel } from '../view-models/log-upload-form'
 
-/** The slice of the runtime needed to pull a log's bytes without saving a file. */
+/** The slice of the runtime the upload needs: vehicle identity for the form. */
 export interface LogUploadCapableRuntime {
-  downloadOnboardLog(
-    id: number,
-    sizeBytes: number,
-    onProgress?: (progress: LogDownloadProgress) => void
-  ): Promise<Uint8Array>
-  downloadMavftpLog(path: string, onProgress?: (progress: LogDownloadProgress) => void): Promise<Uint8Array>
   getSnapshot(): ConfiguratorSnapshot
 }
+
+/**
+ * How the upload gets a log's bytes. INJECTED rather than chosen here.
+ *
+ * This hook used to pick its own transport — MAVFTP burst if a path had been
+ * captured when the dialog opened, else the LOG_* stream — with no fallback.
+ * The Download button next to it went through the onboard-logs hook, which
+ * knows when MAVFTP has stopped answering on this link and routes around it.
+ * On a board with intermittent MAVFTP that meant Download worked and Upload
+ * stalled, for the same log, in the same session. The caller now supplies the
+ * one shared fetch, so the two cannot disagree. (A direct import is not an
+ * option: the log-upload feature is deliberately import-isolated, see
+ * tests/log-upload-isolation.test.mjs.)
+ */
+export type LogUploadFetchBytes = (
+  id: number,
+  onProgress?: (progress: LogDownloadProgress) => void
+) => Promise<Uint8Array | undefined>
 
 export interface LogUploadTarget {
   id: number
   nameLabel?: string
   dateLabel: string
   sizeBytes: number
-  /** Present when the log came from the MAVFTP listing. */
-  mavftpPath?: string
 }
 
 export type LogUploadPhase = 'idle' | 'reading' | 'sending' | 'done' | 'error'
@@ -67,7 +77,11 @@ export interface UseLogUploadResult {
  * file would work, but on a phone or tablet at a field site "save then find it
  * again" is exactly the step that does not happen.
  */
-export function useLogUpload(runtime: LogUploadCapableRuntime | undefined): UseLogUploadResult {
+export function useLogUpload(
+  runtime: LogUploadCapableRuntime | undefined,
+  options: { fetchBytes: LogUploadFetchBytes }
+): UseLogUploadResult {
+  const { fetchBytes } = options
   const [session, setSession] = useState<LogServerSession | undefined>(undefined)
   const [remembered, setRemembered] = useState<{ serverUrl: string; username: string }>({
     serverUrl: '',
@@ -162,9 +176,10 @@ export function useLogUpload(runtime: LogUploadCapableRuntime | undefined): UseL
           }
         }
 
-        const bytes = target.mavftpPath
-          ? await runtime.downloadMavftpLog(target.mavftpPath, onProgress)
-          : await runtime.downloadOnboardLog(target.id, target.sizeBytes, onProgress)
+        const bytes = await fetchBytes(target.id, onProgress)
+        if (bytes === undefined) {
+          throw new Error(`Log ${target.id} is no longer in the vehicle's list — refresh the list and try again.`)
+        }
 
         setPhase('sending')
         setProgressRatio(undefined)
@@ -188,7 +203,7 @@ export function useLogUpload(runtime: LogUploadCapableRuntime | undefined): UseL
         }
       }
     },
-    [pending, runtime, session]
+    [pending, runtime, session, fetchBytes]
   )
 
   return {

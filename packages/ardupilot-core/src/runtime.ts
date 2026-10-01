@@ -80,7 +80,15 @@ import {
 import { applyArducopter47Override } from './firmware-overrides.js'
 import { LEGACY_PARAM_ALIASES, MODERN_TO_LEGACY_ALIASES } from './parameter-aliases.js'
 import { listMavftpLogFiles } from './mavftp-log-directories.js'
-import { VTX_TABLE_FTP_PATH, parseVtxTable, serializeVtxTable, type VtxTable } from './vtx-table.js'
+import {
+  VTX_TABLE_FTP_PATH,
+  VtxTableStorageUnavailableError,
+  parseVtxTable,
+  serializeVtxTable,
+  type VtxTable
+} from './vtx-table.js'
+import { defaultVtxTable } from './vtx-table-defaults.js'
+import { MavftpUploadRejectedError } from './mavftp.js'
 import {
   OSD_SHORTHAND_FTP_PATH,
   parseOsdShorthand,
@@ -575,6 +583,24 @@ export class ArduPilotConfiguratorRuntime {
   // per-frame rAF) so the heavy snapshot render can't starve inbound-frame
   // processing and crawl the batch on slow links/large apps.
   private batchEmitMode = false
+  /**
+   * Depth of in-flight BULK TRANSFERS (log download over MAVFTP burst or the
+   * LOG_* stream).
+   *
+   * Same problem the batch-write and parameter-sync coalescing solves, and the
+   * same fix. A burst read streams 239-byte packets as fast as the link
+   * allows; re-rendering the whole app on every animation frame while that
+   * arrives starves the Web Serial read loop, drops packets, and sends the
+   * transfer into gap-fill retries -- which reads as a download that stalls and
+   * a UI that hitches. The transfer's own progress is reported through
+   * onProgress, which does not go through the snapshot, so nothing the operator
+   * watches is lost by emitting ~4x/s instead of ~60x/s.
+   *
+   * A depth rather than a boolean: a background read can overlap an operator's
+   * download, and the first one to finish must not restore per-frame emits
+   * while the other is still streaming.
+   */
+  private bulkTransferDepth = 0
   private readonly subscriptions: Unsubscribe[]
   private readonly vehicleWaiters = new Set<VehicleWaiter>()
   private readonly parameterSyncWaiters = new ParameterSyncWaiterSet()
@@ -1433,7 +1459,9 @@ export class ArduPilotConfiguratorRuntime {
     path: string,
     onProgress?: (progress: LogDownloadProgress) => void
   ): Promise<Uint8Array> {
-    return this.mavftp.downloadRemoteFileBurst(path, { onProgress, maxBytes: MAX_MAVFTP_LOG_BYTES })
+    return this.withCoalescedEmits(() =>
+      this.mavftp.downloadRemoteFileBurst(path, { onProgress, maxBytes: MAX_MAVFTP_LOG_BYTES })
+    )
   }
 
   /**
@@ -1549,8 +1577,33 @@ export class ArduPilotConfiguratorRuntime {
    *  existing @VTX/vtxtable.dat. The firmware re-validates (magic/version/CRC)
    *  and rejects a malformed blob, leaving its table unchanged. */
   async writeVtxTable(table: VtxTable): Promise<void> {
-    await this.mavftp.uploadRemoteFile(VTX_TABLE_FTP_PATH, serializeVtxTable(table), { overwrite: true })
+    try {
+      await this.mavftp.uploadRemoteFile(VTX_TABLE_FTP_PATH, serializeVtxTable(table), {
+        overwrite: true
+      })
+    } catch (error) {
+      // The firmware validates on close and exposes no capability flag for
+      // this, so a refused upload of a well-formed table means one thing in
+      // practice: the board has nowhere to put it. Only boards with 32 KB of
+      // parameter storage (most H7s) can store a table; most F405s cannot.
+      // Reads still work there and return the defaults.
+      //
+      // Serialization already guarantees the CRC and dimensions, so "the blob
+      // is malformed" is not a live possibility for a table WE built.
+      if (error instanceof MavftpUploadRejectedError) {
+        throw new VtxTableStorageUnavailableError()
+      }
+      throw error
+    }
     this.appendStatusEntry('info', `Uploaded VTX table over MAVFTP (${table.bands.length} bands).`)
+  }
+
+  /** Restore the firmware's standard 11 bands. There is no reset command in
+   *  the protocol — restoring the defaults means uploading them. */
+  async restoreDefaultVtxTable(): Promise<VtxTable> {
+    const table = defaultVtxTable()
+    await this.writeVtxTable(table)
+    return table
   }
 
   /** Read the OSD message shorthand table (@OSD/shorthand.dat), or undefined
@@ -1610,12 +1663,34 @@ export class ArduPilotConfiguratorRuntime {
   }
 
   /** Download one onboard log's bytes (`LOG_REQUEST_DATA`), reporting progress. */
+  /**
+   * Run a bulk transfer with snapshot emits coalesced to the timer interval.
+   *
+   * See `bulkTransferDepth`. The finally-block restores the previous cadence
+   * and pushes the terminal snapshot, so a failed transfer cannot leave the app
+   * rendering at 4/s forever.
+   */
+  private async withCoalescedEmits<T>(operation: () => Promise<T>): Promise<T> {
+    this.bulkTransferDepth += 1
+    try {
+      return await operation()
+    } finally {
+      this.bulkTransferDepth -= 1
+      if (this.bulkTransferDepth === 0) {
+        this.cancelScheduledEmit()
+        this.flushEmit()
+      }
+    }
+  }
+
   async downloadOnboardLog(
     id: number,
     sizeBytes: number,
     onProgress?: (progress: LogDownloadProgress) => void
   ): Promise<Uint8Array> {
-    const bytes = await this.logDownload.downloadLog(id, sizeBytes, onProgress)
+    const bytes = await this.withCoalescedEmits(() =>
+      this.logDownload.downloadLog(id, sizeBytes, onProgress)
+    )
     this.appendStatusEntry('info', `Downloaded onboard log ${id} (${bytes.length} bytes).`)
     this.emit()
     return bytes
@@ -1647,11 +1722,13 @@ export class ArduPilotConfiguratorRuntime {
     onProgress?: (progress: LogDownloadProgress) => void,
     options: { silent?: boolean; signal?: AbortSignal } = {}
   ): Promise<Uint8Array> {
-    const bytes = await this.mavftp.downloadRemoteFileBurst(path, {
-      onProgress,
-      maxBytes: MAX_MAVFTP_LOG_BYTES,
-      signal: options.signal
-    })
+    const bytes = await this.withCoalescedEmits(() =>
+      this.mavftp.downloadRemoteFileBurst(path, {
+        onProgress,
+        maxBytes: MAX_MAVFTP_LOG_BYTES,
+        signal: options.signal
+      })
+    )
     if (!options.silent) {
       this.appendStatusEntry('info', `Downloaded ${path} via MAVFTP (${bytes.length} bytes).`)
       this.emit()
@@ -1664,9 +1741,11 @@ export class ArduPilotConfiguratorRuntime {
   // default. Returns the raw bytes; the caller parses them (parseParamPck) to
   // derive the non-default set. Uses the same burst reader as log download.
   async downloadParamPack(): Promise<Uint8Array> {
-    const bytes = await this.mavftp.downloadRemoteFileBurst('@PARAM/param.pck?withdefaults=1', {
-      maxBytes: MAX_MAVFTP_LOG_BYTES
-    })
+    const bytes = await this.withCoalescedEmits(() =>
+      this.mavftp.downloadRemoteFileBurst('@PARAM/param.pck?withdefaults=1', {
+        maxBytes: MAX_MAVFTP_LOG_BYTES
+      })
+    )
     this.appendStatusEntry('info', `Fetched packed param defaults via MAVFTP (${bytes.length} bytes).`)
     this.emit()
     return bytes
@@ -3913,7 +3992,7 @@ export class ArduPilotConfiguratorRuntime {
     // triggering repeated gap-fill retries ("parameter stream keeps stalling").
     const syncingParameters =
       this.parameterSync.status === 'requesting' || this.parameterSync.status === 'streaming'
-    if (this.batchEmitMode || syncingParameters) {
+    if (this.batchEmitMode || syncingParameters || this.bulkTransferDepth > 0) {
       this.emitTimer = setTimeout(run, EMIT_COALESCE_MAX_MS)
       return
     }

@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
-import type { ParameterState } from '@arduconfig/ardupilot-core'
+import type { ParameterState, VtxPowerTable } from '@arduconfig/ardupilot-core'
 import {
+  defaultVtxPowerLabel,
+  defaultVtxTable,
   parseBetaflightVtxTable,
   serializeBetaflightVtxTable,
   VTX_TABLE_PRESETS,
-  VTX_POWER_PRESETS,
-  vtxPowerPresetLevels
+  VTX_POWER_PRESETS
 } from '@arduconfig/ardupilot-core'
 
 import type { UseVtxTableResult } from '../hooks/use-vtx-table'
@@ -24,7 +25,14 @@ export interface VtxField {
   liveValue: number | undefined
 }
 
-export interface VtxViewProps {
+interface VtxPowerTableProps {
+  powerTable: VtxPowerTable
+  onPowerSlotChange: (index: number, value: number | 'pit' | undefined) => void
+  onPowerEnabledChange: (enabled: boolean) => void
+  onPowerPreset: (presetId: string) => void
+}
+
+export interface VtxViewProps extends VtxPowerTableProps {
   /** The OSD/VTX switcher, rendered under the panel title like every other
    *  view's tab strip. */
   headerNav?: ReactNode
@@ -69,6 +77,10 @@ export function VtxView(props: VtxViewProps) {
     editedValues,
     onEditChange,
     draftStatusById,
+    powerTable,
+    onPowerSlotChange,
+    onPowerEnabledChange,
+    onPowerPreset,
     stagedCount,
     invalidCount,
     draftCount,
@@ -103,7 +115,6 @@ export function VtxView(props: VtxViewProps) {
     <section className="grid one-up">
       <Panel
         title="VTX"
-        subtitle="Use a dedicated VTX workflow while keeping the actual ArduPilot-backed controls visible and honest."
       >
         <div className="bf-tab-stack">
           {headerNav}
@@ -247,7 +258,14 @@ export function VtxView(props: VtxViewProps) {
                   ) : null}
 
                   {vtxTable.status === 'available' && vtxTable.table ? (
-                    <VtxTableEditor vtxTable={vtxTable} learned={tableLearned} />
+                    <VtxTableEditor
+                      vtxTable={vtxTable}
+                      learned={tableLearned}
+                      powerTable={powerTable}
+                      onPowerSlotChange={onPowerSlotChange}
+                      onPowerEnabledChange={onPowerEnabledChange}
+                      onPowerPreset={onPowerPreset}
+                    />
                   ) : vtxTable.status === 'unavailable' ? (
                     <div className="bf-vtx-callout" data-testid="vtx-table-unavailable">
                       <StatusBadge tone="warning">Table not available</StatusBadge>
@@ -303,7 +321,14 @@ export function VtxView(props: VtxViewProps) {
  * digital/MSP video system (`learned`) the goggles own the table (pushed over
  * MSP), so it renders read-only — no upload, import/export, or field editing.
  */
-function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; learned: boolean }) {
+function VtxTableEditor({
+  vtxTable,
+  learned,
+  powerTable,
+  onPowerSlotChange,
+  onPowerEnabledChange,
+  onPowerPreset
+}: { vtxTable: UseVtxTableResult; learned: boolean } & VtxPowerTableProps) {
   const [importOpen, setImportOpen] = useState(false)
   const [importText, setImportText] = useState('')
   const [importError, setImportError] = useState<string | undefined>(undefined)
@@ -317,7 +342,17 @@ function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; le
   }
   const applyImport = (text: string): void => {
     try {
-      vtxTable.loadTable(parseBetaflightVtxTable(text))
+      const imported = parseBetaflightVtxTable(text)
+      vtxTable.loadTable(imported.table)
+      // A Betaflight snippet still carries power levels, and they are the half
+      // an operator most expects to arrive. Stage them into the parameters that
+      // now hold them rather than dropping them on the floor.
+      if (imported.powerLevels.length > 0) {
+        onPowerPreset('')
+        imported.powerLevels.forEach((level, index) => {
+          onPowerSlotChange(index, level.value)
+        })
+      }
       setImportError(undefined)
       setImportOpen(false)
       setImportText('')
@@ -337,16 +372,6 @@ function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; le
       applyImport(preset.table)
     }
   }
-  const handlePowerPreset = (id: string): void => {
-    const preset = VTX_POWER_PRESETS.find((candidate) => candidate.id === id)
-    if (preset) {
-      // Swap only the power ladder, keeping the band/frequency map that's
-      // already loaded (from the FC or a full preset).
-      vtxTable.setPowerLevels(vtxPowerPresetLevels(preset))
-      setImportError(undefined)
-    }
-  }
-
   return (
     <div className="bf-vtx-table" data-testid="vtx-table-editor">
       {learned ? (
@@ -496,16 +521,21 @@ function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; le
         </table>
       </div>
 
+      {/* Power is PARAMETERS now, not part of the @VTX blob: VTX_PWRTBL_EN and
+          six slots VTX_PWRTBL1..6. They stage as ordinary drafts and apply
+          through the normal reviewed Apply, and -- unlike the band table --
+          they work on every board, including ones with no storage for a table.
+          A slot is -1 unused, 0 pit mode, or a power in mW. */}
       <div className="bf-vtx-table__power" data-testid="vtx-table-power">
         <div className="bf-vtx-table__power-head">
           <strong>Power levels</strong>
-          {learned ? null : (
+          {powerTable.supported && !learned ? (
             <select
               className="bf-vtx-table__preset-select"
               data-testid="vtx-table-power-preset-select"
               aria-label="Load a VTX power-table preset"
               value=""
-              onChange={(event) => handlePowerPreset(event.target.value)}
+              onChange={(event) => onPowerPreset(event.target.value)}
             >
               <option value="">Load a power preset…</option>
               {VTX_POWER_PRESETS.map((preset) => (
@@ -514,50 +544,97 @@ function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; le
                 </option>
               ))}
             </select>
-          )}
+          ) : null}
         </div>
-        <table className="bf-vtx-table__power-grid">
-          <thead>
-            <tr>
-              <th scope="col">#</th>
-              <th scope="col">Value</th>
-              <th scope="col">Label</th>
-            </tr>
-          </thead>
-          <tbody>
-            {table.powerLevels.map((level, index) => (
-              <tr key={index} data-testid={`vtx-table-power-${index}`}>
-                <th scope="row">{index + 1}</th>
-                <td>
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    data-testid={`vtx-table-power-value-${index}`}
-                    value={level.value}
-                    disabled={learned}
-                    onChange={(event) => vtxTable.setPowerValue(index, Number(event.target.value))}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="text"
-                    maxLength={3}
-                    data-testid={`vtx-table-power-label-${index}`}
-                    value={level.label}
-                    disabled={learned}
-                    onChange={(event) => vtxTable.setPowerLabel(index, event.target.value)}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <small>
-          Power in <strong>milliwatts (mW)</strong> plus a short display label. The firmware stores the table value as mW
-          for every protocol and derives the SmartAudio dBm / dac step from it, so enter mW here (e.g. 400, not 26 dBm).
-          The exact level is resolved by its position in this table.
-        </small>
+
+        {!powerTable.supported ? (
+          <p className="bf-note" data-testid="vtx-table-power-unsupported">
+            This firmware does not expose the user power table (VTX_PWRTBL_EN), so the VTX&apos;s own
+            power levels are in use.
+          </p>
+        ) : (
+          <>
+            <label className="bf-vtx-table__power-enable">
+              <input
+                type="checkbox"
+                data-testid="vtx-table-power-enable"
+                checked={powerTable.enabled}
+                disabled={learned}
+                onChange={(event) => onPowerEnabledChange(event.target.checked)}
+              />
+              <span>
+                Use this power table <code>(VTX_PWRTBL_EN)</code>
+              </span>
+            </label>
+
+            <table className="bf-vtx-table__power-grid">
+              <thead>
+                <tr>
+                  <th scope="col">Slot</th>
+                  <th scope="col">Use</th>
+                  <th scope="col">Power (mW)</th>
+                  <th scope="col">Shown as</th>
+                </tr>
+              </thead>
+              <tbody>
+                {powerTable.slots.map((slot) => (
+                  <tr key={slot.paramId} data-testid={`vtx-table-power-${slot.index}`}>
+                    <th scope="row" title={slot.paramId}>
+                      {slot.index + 1}
+                    </th>
+                    <td>
+                      <select
+                        data-testid={`vtx-table-power-kind-${slot.index}`}
+                        aria-label={`Slot ${slot.index + 1} use`}
+                        value={slot.kind}
+                        disabled={learned}
+                        onChange={(event) =>
+                          onPowerSlotChange(
+                            slot.index,
+                            event.target.value === 'unused'
+                              ? undefined
+                              : event.target.value === 'pit'
+                                ? 'pit'
+                                : (slot.milliwatts ?? 25)
+                          )
+                        }
+                      >
+                        <option value="unused">Unused</option>
+                        <option value="pit">Pit mode</option>
+                        <option value="power">Power</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        data-testid={`vtx-table-power-value-${slot.index}`}
+                        aria-label={`Slot ${slot.index + 1} power in milliwatts`}
+                        value={slot.milliwatts ?? ''}
+                        disabled={learned || slot.kind !== 'power'}
+                        onChange={(event) => onPowerSlotChange(slot.index, Number(event.target.value))}
+                      />
+                    </td>
+                    <td data-testid={`vtx-table-power-label-${slot.index}`}>
+                      {slot.kind === 'power' && slot.milliwatts !== undefined
+                        ? defaultVtxPowerLabel(slot.milliwatts)
+                        : slot.kind === 'pit'
+                          ? 'PIT'
+                          : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <small>
+              Power in <strong>milliwatts (mW)</strong>. The firmware stores mW for every protocol and
+              derives the SmartAudio dBm / dac step from it, so enter mW here (e.g. 400, not 26 dBm).
+              The switch position is the slot number, and there are no stored labels any more — the
+              text shown is derived from the value.
+            </small>
+          </>
+        )}
       </div>
 
       {vtxTable.error ? (
@@ -585,7 +662,21 @@ function VtxTableEditor({ vtxTable, learned }: { vtxTable: UseVtxTableResult; le
             onClick={vtxTable.reset}
             disabled={!vtxTable.dirty || vtxTable.saving}
           >
-            Reset
+            Discard edits
+          </button>
+          {/* There is no reset command in the protocol: restoring the standard
+              bands means UPLOADING them, which is why the ground station
+              carries a copy. Staged like any other edit so the operator sees
+              what it will do before Save sends it. */}
+          <button
+            type="button"
+            style={buttonStyle()}
+            data-testid="vtx-table-restore-defaults"
+            onClick={() => vtxTable.loadTable(defaultVtxTable())}
+            disabled={vtxTable.saving}
+            title="Load the firmware's standard 11 bands, ready to save"
+          >
+            Load default bands
           </button>
         </div>
       )}

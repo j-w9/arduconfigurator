@@ -32,7 +32,6 @@ export function SnapshotsView(props: SnapshotsViewProps) {
     <section className="grid one-up snapshots-page">
       <Panel
         title="Snapshots"
-        subtitle="Trusted baselines and provisioning profiles."
       >
         <div className="telemetry-stack snapshots-page__stack">
           {hiddenInputsSlot}

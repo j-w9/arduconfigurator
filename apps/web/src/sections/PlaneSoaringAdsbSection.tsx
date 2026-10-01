@@ -32,8 +32,9 @@ import {
   PLANE_SOARING_TRIGGER_PARAM_IDS
 } from '../plane-soaring-adsb-params'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
-import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
+import { toneForParameterDraftStatus } from '../tone-helpers'
 import { ScopedBitmaskField, ScopedField, ScopedSelectField } from '../views/ScopedField'
+import { DraftReviewBadge } from '../views/DraftReviewBadge'
 
 export interface PlaneSoaringAdsbSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -136,22 +137,13 @@ export function PlaneSoaringAdsbSection(props: PlaneSoaringAdsbSectionProps): Re
       </article>
     ) : null
 
-  const reviewTone = toneForScopedDraftReview(
-    planeSoaringAdsbStagedDrafts.length,
-    planeSoaringAdsbInvalidDrafts.length
-  )
-  const reviewLabel =
-    planeSoaringAdsbInvalidDrafts.length > 0
-      ? `${planeSoaringAdsbInvalidDrafts.length} invalid`
-      : planeSoaringAdsbStagedDrafts.length > 0
-        ? `${planeSoaringAdsbStagedDrafts.length} staged`
-        : 'in sync'
+  const reviewBadge = <DraftReviewBadge staged={planeSoaringAdsbStagedDrafts.length} invalid={planeSoaringAdsbInvalidDrafts.length} />
 
   return (
     <section className="bf-gui-box" data-testid="plane-soaring-adsb-section">
       <div className="bf-gui-box__titlebar">
         <strong>ArduPlane Soaring & ADS-B</strong>
-        <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+        {reviewBadge}
       </div>
       <div className="bf-gui-box__body">
         <p className="bf-note">
@@ -221,7 +213,7 @@ export function PlaneSoaringAdsbSection(props: PlaneSoaringAdsbSectionProps): Re
               <strong>Soaring / ADS-B changes in review</strong>
               <p>Staged soaring and ADS-B changes are collected here before they are written to the controller.</p>
             </div>
-            <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+            {reviewBadge}
           </div>
 
           {planeSoaringAdsbDraftEntries.length > 0 ? (

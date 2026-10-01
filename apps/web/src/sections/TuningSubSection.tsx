@@ -30,8 +30,9 @@ import {
   TUNING_SUB_RATE_GROUPS
 } from '../tuning-params'
 import { selectParameterById } from '../selectors/parameter-read'
-import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
+import { toneForParameterDraftStatus } from '../tone-helpers'
 import { ScopedField } from '../views/ScopedField'
+import { DraftReviewBadge } from '../views/DraftReviewBadge'
 
 export interface TuningSubSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -98,19 +99,13 @@ export function TuningSubSection(props: TuningSubSectionProps): ReactElement {
     />
   )
 
-  const reviewTone = toneForScopedDraftReview(subTuningStagedDrafts.length, subTuningInvalidDrafts.length)
-  const reviewLabel =
-    subTuningInvalidDrafts.length > 0
-      ? `${subTuningInvalidDrafts.length} invalid`
-      : subTuningStagedDrafts.length > 0
-        ? `${subTuningStagedDrafts.length} staged`
-        : 'in sync'
+  const reviewBadge = <DraftReviewBadge staged={subTuningStagedDrafts.length} invalid={subTuningInvalidDrafts.length} />
 
   return (
     <section className="bf-gui-box" data-testid="tuning-sub-section">
       <div className="bf-gui-box__titlebar">
         <strong>ArduSub Tuning</strong>
-        <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+        {reviewBadge}
       </div>
       <div className="bf-gui-box__body">
         <p className="bf-note">
@@ -224,7 +219,7 @@ export function TuningSubSection(props: TuningSubSectionProps): ReactElement {
               <strong>Tuning changes in review</strong>
               <p>Staged underwater-vehicle tuning changes are collected here before they are written to the controller.</p>
             </div>
-            <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+            {reviewBadge}
           </div>
 
           {subTuningDraftEntries.length > 0 ? (

@@ -33,8 +33,9 @@ import {
   TUNING_PLANE_TAILSITTER_PARAM_IDS
 } from '../tuning-params'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
-import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
+import { toneForParameterDraftStatus } from '../tone-helpers'
 import { ScopedField } from '../views/ScopedField'
+import { DraftReviewBadge } from '../views/DraftReviewBadge'
 
 export interface TuningPlaneSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -138,19 +139,13 @@ export function TuningPlaneSection(props: TuningPlaneSectionProps): ReactElement
     />
   )
 
-  const reviewTone = toneForScopedDraftReview(planeTuningStagedDrafts.length, planeTuningInvalidDrafts.length)
-  const reviewLabel =
-    planeTuningInvalidDrafts.length > 0
-      ? `${planeTuningInvalidDrafts.length} invalid`
-      : planeTuningStagedDrafts.length > 0
-        ? `${planeTuningStagedDrafts.length} staged`
-        : 'in sync'
+  const reviewBadge = <DraftReviewBadge staged={planeTuningStagedDrafts.length} invalid={planeTuningInvalidDrafts.length} />
 
   return (
     <section className="bf-gui-box" data-testid="tuning-plane-section">
       <div className="bf-gui-box__titlebar">
         <strong>ArduPlane Tuning</strong>
-        <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+        {reviewBadge}
       </div>
       <div className="bf-gui-box__body">
         <p className="bf-note">
@@ -400,7 +395,7 @@ export function TuningPlaneSection(props: TuningPlaneSectionProps): ReactElement
               <strong>Tuning changes in review</strong>
               <p>Staged fixed-wing tuning changes are collected here before they are written to the controller.</p>
             </div>
-            <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+            {reviewBadge}
           </div>
 
           {planeTuningDraftEntries.length > 0 ? (

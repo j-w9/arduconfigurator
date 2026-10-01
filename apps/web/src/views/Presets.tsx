@@ -224,7 +224,6 @@ export function PresetsView(props: PresetsViewProps) {
       {hiddenInputsSlot}
       <Panel
         title="Presets"
-        subtitle="Curated tuning bundles for common setups."
       >
         <div className="telemetry-stack">
           <div className="telemetry-header">

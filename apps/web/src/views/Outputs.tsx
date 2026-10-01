@@ -58,7 +58,7 @@ export function OutputsView(props: OutputsViewProps) {
     taskBodySlot,
     reviewDockSlot,
     title = 'Outputs',
-    subtitle = 'Review frame geometry, output assignments, and key motor/peripheral settings before any output testing.',
+    subtitle,
     singlePage = false,
     singleColumn = false
   } = props

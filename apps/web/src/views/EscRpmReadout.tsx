@@ -27,7 +27,7 @@ export function EscRpmReadout({ model, testId = 'esc-rpm-readout' }: EscRpmReado
       <div className="esc-rpm-readout__header">
         <strong>ESC RPM</strong>
       </div>
-      <p className="esc-rpm-readout__summary">{model.summary}</p>
+      {model.summary ? <p className="esc-rpm-readout__summary">{model.summary}</p> : null}
       {table}
     </div>
   )

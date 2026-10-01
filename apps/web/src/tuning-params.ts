@@ -97,6 +97,14 @@ export const TUNING_FILTER_PARAM_IDS = [
   'INS_HNTCH_HMNCS',
   'INS_HNTCH_OPTS',
   'INS_HNTCH_FM_RAT',
+  'INS_HNTC2_ENABLE',
+  'INS_HNTC2_MODE',
+  'INS_HNTC2_REF',
+  'INS_HNTC2_FREQ',
+  'INS_HNTC2_BW',
+  'INS_HNTC2_HMNCS',
+  'INS_HNTC2_OPTS',
+  'INS_HNTC2_FM_RAT',
   'ATC_RAT_RLL_FLTT',
   'ATC_RAT_RLL_FLTE',
   'ATC_RAT_RLL_FLTD',
@@ -157,7 +165,18 @@ export const TUNING_FILTER_AXIS_GROUPS = [
     id: 'yaw',
     label: 'Yaw',
     paramIds: ['ATC_RAT_YAW_FLTT', 'ATC_RAT_YAW_FLTE', 'ATC_RAT_YAW_FLTD'] as const
-  },
+  }
+] as const
+
+/**
+ * The harmonic notches, split out of TUNING_FILTER_AXIS_GROUPS.
+ *
+ * Smoothing and notching are different jobs: a low-pass cutoff is a
+ * feel-versus-noise judgement, a notch removes ONE measured frequency and is
+ * placed from a log FFT (which Log Tuning does). They shared a page, and with
+ * two notches on it that page carried more than thirty fields.
+ */
+export const TUNING_NOTCH_AXIS_GROUPS = [
   {
     id: 'notch',
     label: 'Harmonic notch',
@@ -171,8 +190,36 @@ export const TUNING_FILTER_AXIS_GROUPS = [
       'INS_HNTCH_OPTS',
       'INS_HNTCH_FM_RAT'
     ] as const
+  },
+  {
+    // ArduPilot ships TWO harmonic notches (INS_HNTCH_* and INS_HNTC2_*,
+    // harmonic_notches[0] and [1]). Only the first was ever surfaced, so a
+    // vehicle needing two sources — ESC telemetry on one, a fixed frame mode on
+    // the other — had to go to the raw Parameters tab for half of its filter
+    // configuration. Its own group so the two sets never interleave.
+    id: 'notch2',
+    label: 'Harmonic notch 2',
+    paramIds: [
+      'INS_HNTC2_ENABLE',
+      'INS_HNTC2_MODE',
+      'INS_HNTC2_REF',
+      'INS_HNTC2_FREQ',
+      'INS_HNTC2_BW',
+      'INS_HNTC2_HMNCS',
+      'INS_HNTC2_OPTS',
+      'INS_HNTC2_FM_RAT'
+    ] as const
   }
 ] as const
+/**
+ * Every parameter on the Notches task. A SUBSET of TUNING_FILTER_PARAM_IDS:
+ * the two share one draft scope and one Apply, so splitting the pages never
+ * split a staged change in half.
+ */
+export const TUNING_NOTCH_PARAM_IDS: readonly string[] = TUNING_NOTCH_AXIS_GROUPS.flatMap(
+  (group) => group.paramIds as readonly string[]
+)
+
 export const TUNING_ADVANCED_PID_AXIS_GROUPS = [
   {
     id: 'roll',

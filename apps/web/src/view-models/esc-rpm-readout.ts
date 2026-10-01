@@ -112,7 +112,8 @@ export function buildEscRpmReadoutViewModel({
   if (freshCount === 0) {
     return {
       status: 'stale',
-      summary: 'ESC telemetry has gone quiet. The last readings are shown; treat them as history, not live values.',
+      // No sentence: the dimmed rows are the stale signal.
+      summary: '',
       rows
     }
   }

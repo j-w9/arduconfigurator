@@ -23,11 +23,11 @@ test('every curated VTX preset parses into a firmware-valid table', () => {
     assert.ok(!seenIds.has(preset.id), `preset id ${preset.id} is unique`)
     seenIds.add(preset.id)
 
-    const table = parseBetaflightVtxTable(preset.table)
+    const { table, powerLevels } = parseBetaflightVtxTable(preset.table)
     assert.ok(table.bands.length >= 1 && table.bands.length <= VTX_TABLE_MAX_BANDS, `${preset.id} band count in range`)
     assert.ok(table.numChannels >= 1 && table.numChannels <= VTX_TABLE_MAX_CHANNELS, `${preset.id} channel count in range`)
     assert.ok(
-      table.powerLevels.length >= 1 && table.powerLevels.length <= VTX_TABLE_MAX_POWER_LEVELS,
+      powerLevels.length >= 1 && powerLevels.length <= VTX_TABLE_MAX_POWER_LEVELS,
       `${preset.id} power-level count in range`
     )
     // Band names must fit the fixed-width storage field.
@@ -36,16 +36,16 @@ test('every curated VTX preset parses into a firmware-valid table', () => {
     }
     // The parsed table must round-trip through the on-wire codec the firmware
     // consumes (the whole point: a preset the FC will actually accept).
+    // Bands only on the wire now: a preset's power levels go to VTX_PWRTBL1..6.
     const roundTripped = parseVtxTable(serializeVtxTable(table))
     assert.equal(roundTripped.bands.length, table.bands.length, `${preset.id} survives the wire codec`)
-    assert.equal(roundTripped.powerLevels.length, table.powerLevels.length)
   }
 })
 
 test('the standard 40CH preset carries the canonical Raceband row', () => {
   const standard = VTX_TABLE_PRESETS.find((preset) => preset.id === 'standard-40ch-25-600')
   assert.ok(standard, 'standard 40CH preset exists')
-  const table = parseBetaflightVtxTable(standard.table)
+  const { table } = parseBetaflightVtxTable(standard.table)
   const raceband = table.bands.find((band) => band.letter === 'R')
   assert.ok(raceband, 'Raceband present')
   // R1 and R8 are the well-known Raceband endpoints — a guard against a typo in
@@ -57,8 +57,8 @@ test('the standard 40CH preset carries the canonical Raceband row', () => {
 test('a 1600 mW (1.6 W) high-power preset ships and fits the 3-char label field', () => {
   const highPower = VTX_TABLE_PRESETS.find((preset) => preset.id === 'standard-40ch-25-1600')
   assert.ok(highPower, 'high-power 40CH preset exists')
-  const table = parseBetaflightVtxTable(highPower.table)
-  const top = table.powerLevels[table.powerLevels.length - 1]
+  const { table, powerLevels } = parseBetaflightVtxTable(highPower.table)
+  const top = powerLevels[powerLevels.length - 1]
   assert.equal(top.value, 1600, 'top power level is 1600 mW')
   assert.ok(top.label.length <= VTX_TABLE_POWER_LABEL_LEN, 'its label fits the fixed field')
   assert.equal(top.label, '1.6', 'labelled as 1.6 W, not a truncated "160"')

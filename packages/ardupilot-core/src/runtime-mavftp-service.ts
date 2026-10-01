@@ -11,7 +11,8 @@ import {
   normalizeMavftpPath,
   parseMavftpDirectoryEntries,
   type MavftpDirectoryEntry,
-  type MavftpPayload
+  type MavftpPayload,
+  MavftpUploadRejectedError
 } from './mavftp.js'
 import type { LogDownloadProgress } from './runtime-log-download-service.js'
 import { sortMavftpDirectoryEntries } from './runtime-helpers.js'
@@ -499,6 +500,7 @@ export class MavftpService {
     const session = createResponse.session
     let offset = 0
 
+    let writeError: unknown
     try {
       while (offset < bytes.length) {
         const chunk = bytes.slice(offset, offset + MAVFTP_TRANSFER_CHUNK_SIZE)
@@ -511,14 +513,34 @@ export class MavftpService {
         })
         offset += chunk.length
       }
+    } catch (error) {
+      writeError = error
+      throw error
     } finally {
-      await this.send({
+      // THE CLOSE IS PART OF THE UPLOAD, not cleanup.
+      //
+      // A server validates and commits on close -- ArduPilot's VTX table is
+      // checked for CRC, dimensions and available storage there -- so a failed
+      // TERMINATE_SESSION means the file was REJECTED and whatever was already
+      // stored is unchanged. This used to be `.catch(() => {})`, which reported
+      // a refused upload as a success: the operator was told their table was
+      // written while the vehicle kept the old one.
+      //
+      // Only surfaced when the writes themselves succeeded. If the body already
+      // threw, that error is the real one and this must not mask it.
+      const closeError = await this.send({
         session,
         opcode: MAV_FTP_OPCODE.TERMINATE_SESSION,
         size: 0,
         offset: 0,
         data: new Uint8Array(0)
-      }).catch(() => {})
+      }).then(
+        () => undefined,
+        (error: unknown) => error
+      )
+      if (writeError === undefined && closeError !== undefined) {
+        throw new MavftpUploadRejectedError(normalizedPath, closeError)
+      }
     }
   }
 

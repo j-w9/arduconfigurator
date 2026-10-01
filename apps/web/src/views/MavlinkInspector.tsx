@@ -526,7 +526,6 @@ export function MavlinkInspectorView({
     <section className="grid one-up" id="setup-panel-mavlink-inspector">
       <Panel
         title="MAVLink Inspector"
-        subtitle="Live decoded MAVLink stream — per-source rate, bandwidth, and last value per message. Read-only."
       >
         <div className="telemetry-stack" data-testid="mavlink-inspector">
           <div className="telemetry-header">

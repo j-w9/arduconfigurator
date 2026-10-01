@@ -16,7 +16,8 @@ jobs:
 - **Power** — **Battery voltage**, **Battery current**, and **ESC** throttle
   range.
 - **Flight** — the ones that need an actual flight and a return trip:
-  **Autotune flight**, **Hover learning**, and **Baro thrust (VALT)**.
+  **Autotune flight**, **Hover throttle learning**, **Hover throttle from a
+  log**, **Accelerometer Z-bias**, and **Baro thrust (VALT)**.
 
 The Flight cards all work the same way: you set something up, fly, land, plug
 back in, and the card tells you what the vehicle came back with. None of them
@@ -337,41 +338,87 @@ still, warming up.
 
 The correction applies to the **first barometer** only.
 
-Hover learning (two flights)
-----------------------------
+Hover calibration
+-----------------
 
-On **Calibration → Flight**, and only on firmware that carries the fork's
-``ACC_ZBIAS_LEARN``.
+On **Calibration → Flight**, as three cards: **Hover throttle learning**,
+**Hover throttle from a log**, and **Accelerometer Z-bias**. Only the Z-bias
+card needs the fork's ``ACC_ZBIAS_LEARN``; the hover throttle is stock
+ArduCopter and is offered on any copter.
 
-Two things are learned in the air and saved when you disarm, so each costs a
-flight:
+Two flights, in order — the second is meaningless until the first is right.
 
-#. **Hover throttle** (``MOT_THST_HOVER``), learned whenever
-   ``MOT_HOVER_LEARN`` is 2 — which is ArduCopter's default, so usually there is
-   nothing to stage. The card checks rather than assumes: if hover learning has
-   been turned *off* on this vehicle it says so, because a flight then records
-   nothing.
-#. **Accelerometer Z-bias** (``ACC_ZBIAS_LEARN``), which compensates the DC
-   offset motor vibration puts into AccZ. **EKF3 only** — the correction is
-   applied inside EKF3, and the card warns on any other estimator rather than
-   letting you waste a flight.
+Flight 1 — hover throttle
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Both flights are the same flying: climb to about **5 m** and hold a steady hover
-with as little stick input as you can for a minute or so, then land and disarm.
+``MOT_THST_HOVER`` is the controller's **vertical feedforward**: the throttle it
+expects to need to hold altitude. Nothing that holds altitude behaves properly
+until it is right.
 
-Plug back in afterwards and the card asks whether that was a good flight.
-Answering **no** to flight 1 changes nothing — the vehicle re-learns the hover
-throttle every flight, so simply flying again overwrites it. Answering no to
-flight 2 clears the learned bias first, so the retry starts from zero instead of
-refining a bad measurement.
+The firmware learns it in the air whenever ``MOT_HOVER_LEARN`` is 2 (its
+default), but only while every gate is open. ``Copter::update_throttle_hover``
+returns early in any **manual-throttle mode** — Stabilize, Acro, SystemID,
+Turtle — and in Drift, whenever a climb or descent is commanded, without a
+vertical-velocity estimate, or past 5° of tilt. **A perfect hover flown in
+Stabilize learns nothing**, and the result is indistinguishable from never
+having flown: ``MOT_THST_HOVER`` sits at exactly its 0.35 default.
+
+So fly this one in a mode that **holds altitude** — AltHold, Loiter, PosHold, or
+VALT on firmware that has it. Climb to about 5 m, **centre the throttle stick**,
+and let it sit level with as little input as you can. Twenty seconds of steady
+hover is enough; a minute is better. Land and disarm — the value is saved on
+disarm.
+
+Accepting that flight also stages ``MOT_HOVER_LEARN = 0``, freezing what you
+signed off. Left at 2, the Z-bias flight would re-learn and overwrite it, and
+the card would then be reporting a number nobody approved. **Re-learn on the
+next hover** puts it back.
+
+When the firmware will not learn it
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Hover throttle from a log** measures it instead, from a flight you have
+already flown. It is a once-per-airframe job — do it when a new frame and
+powertrain first fly, or when the firmware's own learner came back with nothing.
+
+Upload that flight's ``.bin``. It finds the steady-hover segments using the
+firmware's own gates, averages ``CTUN.ThO`` (the same quantity the learner
+filters), and stages ``MOT_THST_HOVER``. It also reports what the parameter
+alone cannot tell you: whether ``CTUN.ThH`` ever moved, and which mode the hover
+was actually flown in.
+
+.. note::
+
+   ``MOT_THST_HOVER`` clamps to a minimum of **0.125**
+   (``AP_MOTORS_THST_HOVER_MIN``). A light, overpowered build can genuinely
+   hover below that, and the parameter then records a floor rather than a
+   measurement. The card says so when it sees it.
+
+Flight 2 — accelerometer Z-bias
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``ACC_ZBIAS_LEARN`` compensates the DC offset motor vibration puts into AccZ.
+**EKF3 only** — the correction is applied inside EKF3, and the card warns on any
+other estimator rather than letting you waste a flight.
+
+Its two bits are read independently by the firmware, so they are states rather
+than a sequence: **3** is the learning flight (learn *and* apply) and **2** is
+finished (apply, learning off). Accepting the flight stages 2, which freezes the
+accepted bias for the same reason flight 1 freezes the hover throttle.
+
+Fly the same hover again. Answering **no** clears the learned bias first, so the
+retry starts from zero instead of refining a bad measurement.
 
 Progress is read from the **values the flights left behind**, not from the enable
 parameters, so it survives the unplug and is honest about a vehicle that arrives
 with somebody else's calibration.
 
-**Zeroize Hover Cal** puts it back to the start: hover throttle to its 0.35
-default, every learned Z-bias to zero, and the enables cleared. Use it on a
-vehicle that arrives already calibrated and reads as finished.
+**Clear Z-Bias Cal** starts the Z-bias over: every learned bias to zero, the
+enable cleared, and hover learning re-armed. It deliberately **leaves
+``MOT_THST_HOVER`` alone** — writing the 0.35 default back to a quad that hovers
+at 0.118 would tell the controller to expect roughly three times the thrust it
+needs, and the next AltHold takeoff would leap. Replace a measured hover
+throttle deliberately, from a log or another flight.
 
 Autotune flight
 ---------------

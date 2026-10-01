@@ -15,8 +15,9 @@ import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { AUTOTUNE_PLANE_PARAM_IDS, AUTOTUNE_QUADPLANE_PARAM_IDS } from '../autotune-params'
 import { formatParameterValue } from '../parameter-format'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
-import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
+import { toneForParameterDraftStatus } from '../tone-helpers'
 import { ScopedBitmaskField, ScopedField } from '../views/ScopedField'
+import { DraftReviewBadge } from '../views/DraftReviewBadge'
 
 export interface AutotunePlaneSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -81,22 +82,13 @@ export function AutotunePlaneSection(props: AutotunePlaneSectionProps): ReactEle
     return <ScopedField {...common} />
   }
 
-  const reviewTone = toneForScopedDraftReview(
-    planeAutotuneStagedDrafts.length,
-    planeAutotuneInvalidDrafts.length
-  )
-  const reviewLabel =
-    planeAutotuneInvalidDrafts.length > 0
-      ? `${planeAutotuneInvalidDrafts.length} invalid`
-      : planeAutotuneStagedDrafts.length > 0
-        ? `${planeAutotuneStagedDrafts.length} staged`
-        : 'in sync'
+  const reviewBadge = <DraftReviewBadge staged={planeAutotuneStagedDrafts.length} invalid={planeAutotuneInvalidDrafts.length} />
 
   return (
     <section className="bf-gui-box" data-testid="autotune-plane-section">
       <div className="bf-gui-box__titlebar">
         <strong>ArduPlane AutoTune</strong>
-        <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+        {reviewBadge}
       </div>
       <div className="bf-gui-box__body">
         <p className="bf-note">
@@ -174,7 +166,7 @@ export function AutotunePlaneSection(props: AutotunePlaneSectionProps): ReactEle
               <strong>AutoTune changes in review</strong>
               <p>Staged AutoTune configuration changes are collected here before they are written to the controller.</p>
             </div>
-            <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+            {reviewBadge}
           </div>
 
           {planeAutotuneDraftEntries.length > 0 ? (

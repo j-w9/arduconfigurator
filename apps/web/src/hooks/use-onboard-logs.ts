@@ -8,8 +8,10 @@ import type {
 import { buildOnboardLogFilename } from '@arduconfig/ardupilot-core'
 
 import { downloadBinaryFile } from '../download-file'
+import { fetchOnboardLogBytes } from '../view-models/onboard-log-bytes'
 import {
   mavftpEntriesToLogItems,
+  mergeOnboardLogSources,
   selectOnboardLogSource,
   type MavftpLogItem,
   type OnboardLogSource
@@ -64,7 +66,10 @@ export interface OnboardLogs extends OnboardLogsState {
   /** Download one log's bytes to a browser file, reporting progress. */
   download: (id: number) => void
   /** The log's bytes, for a caller that wants to analyse rather than save it. */
-  fetchBytes: (id: number) => Promise<Uint8Array | undefined>
+  fetchBytes: (
+    id: number,
+    onProgress?: (progress: LogDownloadProgress) => void
+  ) => Promise<Uint8Array | undefined>
   /** Erase every log on the card. Irreversible; the caller confirms first. */
   erase: () => void
 }
@@ -76,6 +81,27 @@ export interface OnboardLogs extends OnboardLogsState {
 /** Re-list this many times after an erase before reporting what is left. */
 const ERASE_RELIST_ATTEMPTS = 3
 const ERASE_RELIST_DELAY_MS = 2500
+
+/**
+ * How long to wait on the MAVFTP directory read before settling with whatever
+ * the LOG_* list gave us.
+ *
+ * Deliberately short, because of what the log directory costs on a real board.
+ * ArduPilot's FTP ListDirectory takes an ENTRY OFFSET, and each paginated
+ * request re-opens the directory and skips forward to it -- so listing N files
+ * is O(N^2) SD reads. Measured on the reporter's vehicle: /APM/LOGS with 63
+ * logs timed out at every attempt (73 s, 0 entries), while @SYS -- 12 virtual
+ * entries, no SD card -- answered fine. So this is not a board without MAVFTP;
+ * it is a directory too expensive to list.
+ *
+ * Meanwhile LOG_REQUEST_LIST returns all 63 in 239 ms. MAVFTP only ADDS real
+ * filenames to a list we already have, so a healthy board answers well inside
+ * this and a struggling one stops costing the operator a minute per press.
+ */
+const MAVFTP_LIST_DEADLINE_MS = 6_000
+
+/** A sentinel distinct from `undefined` (MAVFTP failed) and a real listing. */
+const MAVFTP_TIMED_OUT = Symbol('mavftp-timed-out')
 
 export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): OnboardLogs {
   const [state, setState] = useState<OnboardLogsState>({
@@ -91,8 +117,34 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
   // id → MAVFTP path/name for the current listing; empty when the last list
   // used the LOG_* source. download() keys off this to pick the path.
   const mavftpItemsRef = useRef<Map<number, MavftpLogItem>>(new Map())
+  // Monotonic id for the in-flight list, so a slow source from an earlier
+  // press can never paint over a newer one.
+  const listRunRef = useRef(0)
+  // The in-flight MAVFTP directory read, so a download started from an
+  // early-painted row can wait for the fast path instead of taking the slow
+  // one. Cleared when the listing settles.
+  const mavftpPendingRef = useRef<Promise<unknown> | undefined>(undefined)
+  /**
+   * Set once a MAVFTP directory read has failed or timed out on this link.
+   *
+   * Measured on a real board (ArduCopter, board type 5810, BRD_OPTIONS=1 so FTP
+   * is NOT disabled): AUTOPILOT_VERSION advertises ftpSupported=true, and every
+   * LIST_DIRECTORY -- @SYS, /, /APM, /APM/LOGS, /logs -- times out at 20 s.
+   * Meanwhile LOG_REQUEST_LIST returns 63 logs in 241 ms and LOG_* download
+   * runs at 627 KiB/s, which is why Mission Planner lists and downloads fine
+   * over plain MAVLink.
+   *
+   * The capability bit is therefore not evidence that the transport WORKS. One
+   * timeout is, so after it we stop paying that cost on every press: listings
+   * become immediate and downloads stop waiting for a path that will not come.
+   * A reconnect builds a new runtime and clears this.
+   */
+  const mavftpDeadRef = useRef(false)
 
-  const list = useCallback(async () => {
+  // `mavftpOnly` exists for the post-erase re-list, where the FILES are the
+  // only honest answer to "what is left" — see erase() below. Normal listing
+  // takes the union of both sources.
+  const listInternal = useCallback(async (options: { mavftpOnly?: boolean } = {}) => {
     if (!runtime) return
     // The capability bit is a hint, not the answer.
     //
@@ -105,40 +157,119 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
     // when MAVFTP genuinely cannot answer.
     const advertised = selectOnboardLogSource(runtime.getSnapshot())
     setState((prev) => ({ ...prev, status: 'listing', source: advertised, message: undefined }))
+    const run = listRunRef.current + 1
+    listRunRef.current = run
+
+    // BOTH sources start now, and neither waits on the other.
+    //
+    // They used to run in sequence -- the MAVFTP directory listing, then the
+    // LOG_* list for timestamps -- so the tab showed nothing until the slower
+    // one finished and the wait was their SUM. Worse, MAVFTP is strictly
+    // serialised (withExclusiveSession), so a log listing queues behind any
+    // other FTP work on the link and can sit there for a long time. The LOG_*
+    // list needs no FTP at all, which is why Mission Planner has the list
+    // immediately while this tab was still waiting.
+    let mavftpTimer: ReturnType<typeof setTimeout> | undefined
+    const mavftpPromise: Promise<MavftpDirectoryEntry[] | undefined | typeof MAVFTP_TIMED_OUT> =
+      mavftpDeadRef.current
+      ? // Already proven not to answer on this link — do not spend 20 s finding
+        // out again. The LOG_* list is the whole answer here.
+        Promise.resolve(undefined)
+      : Promise.race([
+        runtime.listMavftpLogs().then(
+          (entries) => entries,
+          () => undefined
+        ),
+        // Not a cancellation — the FTP request keeps running and simply stops
+        // being waited on. There is no safe way to abort a session the vehicle
+        // is mid-transfer on.
+        new Promise<typeof MAVFTP_TIMED_OUT>((resolve) => {
+          mavftpTimer = setTimeout(() => resolve(MAVFTP_TIMED_OUT), MAVFTP_LIST_DEADLINE_MS)
+        })
+      ]).finally(() => {
+        if (mavftpTimer !== undefined) {
+          clearTimeout(mavftpTimer)
+        }
+      })
+    mavftpPendingRef.current = mavftpPromise
+    // Post-erase the FILES are the only honest answer to "what is left", so
+    // that path does not ask the LOG_* list at all -- a stale LASTLOG.TXT
+    // would report logs that are gone.
+    const logEntriesPromise: Promise<OnboardLogInfo[]> = options.mavftpOnly
+      ? Promise.resolve([])
+      : runtime.listOnboardLogs().then(
+          (entries) => entries,
+          () => []
+        )
+
+    // Paint the LOG_* list the moment it lands rather than holding it back for
+    // the directory read. These rows carry no on-FC filename and no MAVFTP
+    // path, which download() already handles by falling back to
+    // downloadOnboardLog(id) -- so they are usable, not just decorative.
+    void logEntriesPromise.then((entries) => {
+      if (listRunRef.current !== run || entries.length === 0) {
+        return
+      }
+      setState((prev) => {
+        if (prev.status !== 'listing') {
+          return prev
+        }
+        logsRef.current = entries
+        return {
+          ...prev,
+          source: 'mavlink',
+          logs: entries,
+          logNamesById: new Map(),
+          mavftpPathsById: new Map(),
+          message: 'Reading the card for filenames and sizes…'
+        }
+      })
+    })
+
     try {
+      const [mavftpEntries, logEntries] = await Promise.all([mavftpPromise, logEntriesPromise])
+      if (listRunRef.current !== run) {
+        return
+      }
+      const timedOut = mavftpEntries === MAVFTP_TIMED_OUT
+      const directory = timedOut ? undefined : mavftpEntries
+      if (directory === undefined && !options.mavftpOnly) {
+        // Timed out, or failed outright. Either way this link does not serve
+        // MAVFTP, whatever AUTOPILOT_VERSION said.
+        mavftpDeadRef.current = true
+      }
       let logs: OnboardLogInfo[]
       let logNamesById: ReadonlyMap<number, string>
       let mavftpPathsById: ReadonlyMap<number, string> = new Map()
-      let mavftpEntries: MavftpDirectoryEntry[] | undefined
-      try {
-        mavftpEntries = await runtime.listMavftpLogs()
-      } catch {
-        // No MAVFTP (or it failed): the LOG_* list is all there is.
-        mavftpEntries = undefined
-      }
-      const source: OnboardLogSource = mavftpEntries === undefined ? 'mavlink' : 'mavftp'
-      if (mavftpEntries !== undefined) {
-        const items = mavftpEntriesToLogItems(mavftpEntries)
+      const source: OnboardLogSource = directory === undefined ? 'mavlink' : 'mavftp'
+      if (directory !== undefined) {
+        const items = mavftpEntriesToLogItems(directory)
         mavftpItemsRef.current = new Map(items.map((item) => [item.log.id, item]))
         // MAVFTP directory listings carry no timestamp, so the rows showed
-        // "Unknown date". The LOG_ENTRY list does carry time_utc — fetch it and
-        // merge by log id. Best-effort: if it fails (or a log predates a GPS
-        // time fix, time_utc = 0) that row simply stays "Unknown date".
-        let timeUtcById = new Map<number, number>()
-        try {
-          const entries = await runtime.listOnboardLogs()
-          timeUtcById = new Map(entries.map((entry) => [entry.id, entry.timeUtc]))
-        } catch {
-          // dates are optional — keep the MAVFTP list without them
-        }
-        logs = items.map((item) => ({ ...item.log, timeUtc: timeUtcById.get(item.log.id) ?? item.log.timeUtc }))
+        // "Unknown date". The LOG_ENTRY list does carry time_utc — merge it in
+        // by log id. If it failed (or a log predates a GPS time fix,
+        // time_utc = 0) that row simply stays "Unknown date".
+        const timeUtcById = new Map(logEntries.map((entry) => [entry.id, entry.timeUtc]))
+        const mavftpLogs = items.map((item) => ({
+          ...item.log,
+          timeUtc: timeUtcById.get(item.log.id) ?? item.log.timeUtc
+        }))
+        // A log the LOG_* list knows about but MAVFTP did not report is still a
+        // real log, and dropping it is how this surface came to disagree with
+        // Mission Planner: MP lists over LOG_* and had the full set on the
+        // first connect while this tab was missing the newest one until a
+        // reconnect. The two disagree because they measure different things —
+        // LOG_* is derived from LASTLOG.TXT, MAVFTP reads the directory — and
+        // the directory can lag a log the vehicle has already counted.
+        logs = mergeOnboardLogSources(mavftpLogs, logEntries, { mavftpOnly: options.mavftpOnly })
         logNamesById = new Map(items.map((item) => [item.log.id, item.name]))
         mavftpPathsById = new Map(items.map((item) => [item.log.id, item.path]))
       } else {
         mavftpItemsRef.current = new Map()
-        logs = await runtime.listOnboardLogs()
+        logs = logEntries
         logNamesById = new Map()
       }
+      mavftpPendingRef.current = undefined
       logsRef.current = logs
       setState({
         status: 'ready',
@@ -146,9 +277,23 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         logs,
         logNamesById,
         mavftpPathsById,
-        message: logs.length === 0 ? 'No logs on the card.' : undefined
+        // An empty list after a timed-out directory read is NOT "no logs" — it
+        // is "we never got an answer", and saying the former would be a lie
+        // about the card.
+        message:
+          directory === undefined && logs.length > 0
+            ? 'This vehicle is not answering MAVFTP, so names and sizes come from its own log list. Downloads use the MAVLink log transport.'
+            : logs.length === 0
+              ? timedOut
+                ? 'The vehicle did not answer in time — no log list was read. Try again.'
+                : 'No logs on the card.'
+              : undefined
       })
     } catch (error) {
+      mavftpPendingRef.current = undefined
+      if (listRunRef.current !== run) {
+        return
+      }
       setState((prev) => ({
         ...prev,
         status: 'error',
@@ -156,6 +301,10 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
       }))
     }
   }, [runtime])
+
+  const list = useCallback(() => {
+    void listInternal()
+  }, [listInternal])
 
   /**
    * Erase every log on the card.
@@ -175,7 +324,9 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
       // report whatever is actually there.
       for (let attempt = 0; attempt < ERASE_RELIST_ATTEMPTS; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, ERASE_RELIST_DELAY_MS))
-        await list()
+        // Files only: a stale LASTLOG.TXT can still name logs that are gone,
+        // and this loop is asking what SURVIVED the erase.
+        await listInternal({ mavftpOnly: true })
         if (logsRef.current.length === 0) {
           break
         }
@@ -187,7 +338,32 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         message: error instanceof Error ? error.message : 'Erasing onboard logs failed.'
       }))
     }
-  }, [runtime, list])
+  }, [runtime, listInternal])
+
+  /**
+   * The MAVFTP item for a log, waiting on an in-flight directory read first.
+   *
+   * The LOG_* list now paints before MAVFTP answers, so a row can exist before
+   * its on-FC path is known. Choosing the transport on `mavftpItemsRef` alone
+   * would then silently take the SLOW path for anyone quick enough to click:
+   * LOG_DATA carries 90 bytes per message against a burst packet's 239, and the
+   * burst is server-streamed rather than request/response. Waiting here costs
+   * at most the listing's own bounded deadline.
+   */
+  const resolveMavftpItem = useCallback(async (id: number): Promise<MavftpLogItem | undefined> => {
+    const known = mavftpItemsRef.current.get(id)
+    if (known) {
+      return known
+    }
+    // Only worth waiting when MAVFTP might actually answer. On a link where it
+    // has already timed out, waiting buys nothing and costs the operator the
+    // whole deadline before a download that was always going to use LOG_*.
+    const pending = mavftpDeadRef.current ? undefined : mavftpPendingRef.current
+    if (pending) {
+      await pending.catch(() => undefined)
+    }
+    return mavftpItemsRef.current.get(id)
+  }, [])
 
   const download = useCallback(
     async (id: number) => {
@@ -196,7 +372,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
       if (!log) {
         return
       }
-      const mavftpItem = mavftpItemsRef.current.get(id)
+      const mavftpItem = await resolveMavftpItem(id)
       setState((prev) => ({
         ...prev,
         activeDownloadId: id,
@@ -229,12 +405,15 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         )
       }
       try {
-        let bytes: Uint8Array
-        if (mavftpItem) {
-          bytes = await runtime.downloadMavftpLog(mavftpItem.path, onProgress)
-        } else {
-          bytes = await runtime.downloadOnboardLog(id, log.sizeBytes, onProgress)
-        }
+        // Shared with Upload to server and the calibration cards: one
+        // transport decision, with a LOG_* fallback when the burst fails.
+        const { bytes, mavftpError } = await fetchOnboardLogBytes({
+          runtime,
+          id,
+          sizeBytes: log.sizeBytes,
+          mavftpPath: mavftpItem?.path,
+          onProgress
+        })
         // Both sources use the descriptive <uid>_log<id>[_date].bin convention.
         // MAVFTP listings carry no timestamp (so no date part), but tagging with
         // the board uid + log number still beats the raw on-FC "00000042.BIN"
@@ -245,7 +424,10 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         setState((prev) => ({
           ...prev,
           status: 'ready',
-          message: `Downloaded ${filename} (${bytes.length} bytes).`,
+          message:
+            mavftpError === undefined
+              ? `Downloaded ${filename} (${bytes.length} bytes).`
+              : `Downloaded ${filename} (${bytes.length} bytes) over the MAVLink log stream — MAVFTP failed first (${mavftpError.message}).`,
           activeDownloadId: undefined,
           activeDownloadPercent: undefined,
           activeDownloadReceivedBytes: undefined,
@@ -263,7 +445,7 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
         }))
       }
     },
-    [runtime]
+    [runtime, resolveMavftpItem]
   )
 
   /**
@@ -275,16 +457,24 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
    * from download(), which saves and must keep doing so for the Logs tab.
    */
   const fetchBytes = useCallback(
-    async (id: number): Promise<Uint8Array | undefined> => {
+    async (
+      id: number,
+      onProgress?: (progress: LogDownloadProgress) => void
+    ): Promise<Uint8Array | undefined> => {
       if (!runtime) return undefined
       const log = logsRef.current.find((entry) => entry.id === id)
       if (!log) return undefined
-      const mavftpItem = mavftpItemsRef.current.get(id)
-      return mavftpItem
-        ? runtime.downloadMavftpLog(mavftpItem.path)
-        : runtime.downloadOnboardLog(id, log.sizeBytes)
+      const mavftpItem = await resolveMavftpItem(id)
+      const { bytes } = await fetchOnboardLogBytes({
+        runtime,
+        id,
+        sizeBytes: log.sizeBytes,
+        mavftpPath: mavftpItem?.path,
+        onProgress
+      })
+      return bytes
     },
-    [runtime]
+    [runtime, resolveMavftpItem]
   )
 
   return {

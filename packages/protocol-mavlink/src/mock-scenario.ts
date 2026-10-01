@@ -570,6 +570,27 @@ const mockParameters: ParameterState = {
   INS_HNTCH_HMNCS: 3,
   INS_HNTCH_OPTS: 0,
   INS_HNTCH_FM_RAT: 1,
+  // The SECOND harmonic notch. ArduPilot ships two (harmonic_notches[0] and
+  // [1], AP_InertialSensor.cpp AP_SUBGROUPINFO "_HNTC2_") and a board reports
+  // both, so a demo vehicle carrying only the first is not shaped like any
+  // real copter -- and it made the Tuning ▸ Filters notch-2 group untestable.
+  // The VTX user power table, which moved out of @VTX/vtxtable.dat into
+  // parameters: -1 unused, 0 pit mode, otherwise milliwatts.
+  VTX_PWRTBL_EN: 1,
+  VTX_PWRTBL1: 0,
+  VTX_PWRTBL2: 25,
+  VTX_PWRTBL3: 200,
+  VTX_PWRTBL4: 500,
+  VTX_PWRTBL5: 800,
+  VTX_PWRTBL6: -1,
+  INS_HNTC2_ENABLE: 0,
+  INS_HNTC2_MODE: 1,
+  INS_HNTC2_REF: 0,
+  INS_HNTC2_FREQ: 80,
+  INS_HNTC2_BW: 40,
+  INS_HNTC2_HMNCS: 3,
+  INS_HNTC2_OPTS: 0,
+  INS_HNTC2_FM_RAT: 1,
   MOT_THST_HOVER: 0.35,
   ATC_RAT_RLL_FLTT: 35,
   ATC_RAT_RLL_FLTE: 0,
@@ -3148,28 +3169,23 @@ function mockVtxCrc32(bytes: Uint8Array, length: number): number {
 
 function createMockVtxTableBytes(): Uint8Array {
   const NAME_LEN = 8
-  const LABEL_LEN = 3
   const numChannels = 8
   const bands = [
     { name: 'Boscam A', letter: 'A', factory: true, freq: [5865, 5845, 5825, 5805, 5785, 5765, 5745, 5725] },
     { name: 'Raceband', letter: 'R', factory: true, freq: [5658, 5695, 5732, 5769, 5806, 5843, 5880, 5917] },
     { name: 'Fatshark', letter: 'F', factory: true, freq: [5740, 5760, 5780, 5800, 5820, 5840, 5860, 5880] }
   ]
-  const powerLevels = [
-    { value: 25, label: '25' },
-    { value: 200, label: '200' },
-    { value: 500, label: '500' },
-    { value: 800, label: '1W' }
-  ]
-  const size = 6 + bands.length * (NAME_LEN + 2 + numChannels * 2) + powerLevels.length * (2 + LABEL_LEN) + 4
+  // VERSION 2: bands only. Power levels are parameters now (VTX_PWRTBL_EN /
+  // VTX_PWRTBL1..6), seeded in mockParameters — a demo blob that still carried
+  // a power section would not be the shape any real board reports.
+  const size = 5 + bands.length * (NAME_LEN + 2 + numChannels * 2) + 4
   const buf = new Uint8Array(size)
   let o = 0
   buf[o++] = 0x54 // magic 0x5654 LE ('VT')
   buf[o++] = 0x56
-  buf[o++] = 1 // version
+  buf[o++] = 2 // version
   buf[o++] = bands.length
   buf[o++] = numChannels
-  buf[o++] = powerLevels.length
   for (const band of bands) {
     for (let i = 0; i < NAME_LEN; i += 1) buf[o + i] = i < band.name.length ? band.name.charCodeAt(i) : 0
     o += NAME_LEN
@@ -3179,12 +3195,6 @@ function createMockVtxTableBytes(): Uint8Array {
       buf[o++] = band.freq[c] & 0xff
       buf[o++] = (band.freq[c] >> 8) & 0xff
     }
-  }
-  for (const level of powerLevels) {
-    buf[o++] = level.value & 0xff
-    buf[o++] = (level.value >> 8) & 0xff
-    for (let i = 0; i < LABEL_LEN; i += 1) buf[o + i] = i < level.label.length ? level.label.charCodeAt(i) : 0
-    o += LABEL_LEN
   }
   const crc = mockVtxCrc32(buf, o)
   buf[o++] = crc & 0xff

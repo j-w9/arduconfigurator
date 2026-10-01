@@ -12,11 +12,11 @@
 
 import type { ReactElement, ReactNode } from 'react'
 
-import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+import { buttonStyle } from '@arduconfig/ui-kit'
 import type { ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
 
-import { toneForScopedDraftReview } from '../tone-helpers'
 import type { AdditionalSettingsGroup } from '../view-models/peripherals'
+import { DraftReviewBadge } from '../views/DraftReviewBadge'
 
 export interface AdditionalSettingsCardProps {
   title: string
@@ -58,11 +58,9 @@ export function AdditionalSettingsCard({
       <div className="switch-exercise-card__header">
         <div>
           <strong>{title}</strong>
-          <p>{description}</p>
+          {description ? <p>{description}</p> : null}
         </div>
-        <StatusBadge tone={toneForScopedDraftReview(stagedDrafts.length, invalidDrafts.length)}>
-          {invalidDrafts.length > 0 ? `${invalidDrafts.length} invalid` : stagedDrafts.length > 0 ? `${stagedDrafts.length} staged` : 'in sync'}
-        </StatusBadge>
+        <DraftReviewBadge staged={stagedDrafts.length} invalid={invalidDrafts.length} />
       </div>
 
       {groups.map((group) => (

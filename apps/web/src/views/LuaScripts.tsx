@@ -277,7 +277,6 @@ export function LuaScriptsView(props: LuaScriptsViewProps) {
     <div id="setup-panel-lua" data-testid="lua-view">
       <Panel
         title="Lua Scripts"
-        subtitle="Install curated ArduPilot applets or upload your own Lua scripts to the flight controller’s SD card."
       >
         {!connected ? (
           <p className="lua-subtitle" data-testid="lua-disconnected">

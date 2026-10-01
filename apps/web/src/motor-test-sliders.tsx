@@ -1,4 +1,4 @@
-import { useCallback, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 
 interface MotorTestSlidersProps {
   targets: Array<{
@@ -29,6 +29,30 @@ interface MotorTestSlidersProps {
   /** Track height in px. The compact Motors column and a dialog with room to
    *  spare want different sizes. */
   trackHeight?: number
+  /** Measured RPM per output channel, printed under each column so the
+   *  commanded value and the measured one sit together. Omit on a vehicle
+   *  without ESC telemetry and no line renders. `status` lands on the wrapper
+   *  as data-status. */
+  rpm?: {
+    status: 'unavailable' | 'stale' | 'live'
+    byOutput: Record<number, { rpm?: number; temperatureC?: number; fresh: boolean }>
+  }
+  /** Test length in seconds, beside the percent field. */
+  durationSeconds?: number
+  maxDurationSeconds?: number
+  onDurationChange?: (seconds: number) => void
+  /** Show an "at once" switch while the ALL column is selected. Sequence is
+   *  the default; at-once is the simultaneous sentinel. */
+  simultaneousToggle?: boolean
+  /** Hooks for the guided wizard: its deep link scrolls to this id, and its
+   *  pulse class lands on the Test button. */
+  testButtonId?: string
+  testButtonClassName?: string
+  /** Vertical (default): short tall tracks side by side, the wizard's shape.
+   *  Horizontal: one row per motor -- label, a full-width track, the percent,
+   *  the measured RPM -- so the box reads as a table and the track is as long
+   *  as the box is wide. The Motors tab's column uses this. */
+  orientation?: 'vertical' | 'horizontal'
 }
 
 /* ── palette constants (mirrors :root tokens for inline styles) ── */
@@ -92,6 +116,13 @@ function percentFromY(trackEl: HTMLElement, clientY: number, fullScale: number):
   return Math.round((1 - yInTrack / rect.height) * fullScale)
 }
 
+function percentFromX(trackEl: HTMLElement, clientX: number, fullScale: number): number {
+  const rect = trackEl.getBoundingClientRect()
+  const xInTrack = clamp(clientX - rect.left, 0, rect.width)
+  // left of track = 0%, right = fullScale
+  return Math.round((xInTrack / rect.width) * fullScale)
+}
+
 /** Generates a vertical gradient string from warning (bottom) to danger (top). */
 function fillGradient(pct: number): string {
   if (pct <= 0) return 'transparent'
@@ -110,6 +141,8 @@ function SliderColumn({
   onCommit,
   fullScale,
   trackHeight,
+  rpm,
+  rpmTestId,
 }: {
   label: string
   percent: number
@@ -122,6 +155,9 @@ function SliderColumn({
    *  passes its own ceiling so the whole track covers the range it can use. */
   fullScale: number
   trackHeight: number
+  /** Measured RPM under the label; undefined = no telemetry line at all. */
+  rpm?: { rpm?: number; fresh: boolean }
+  rpmTestId?: string
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
@@ -257,6 +293,215 @@ function SliderColumn({
         <div style={handleStyle} />
       </div>
       <span style={labelStyle}>{label}</span>
+      {rpm ? (
+        <span
+          style={{
+            fontFamily: color.fontData,
+            fontSize: 10,
+            color: rpm.fresh ? color.textMuted : color.textDim,
+            opacity: rpm.fresh ? 1 : 0.6,
+            marginTop: -2,
+          }}
+          data-testid={rpmTestId}
+          title="Measured RPM from ESC telemetry"
+        >
+          {/* An em dash, not a zero: 0 is a real reading that means stopped. */}
+          {rpm.rpm === undefined ? '—' : rpm.rpm.toLocaleString()}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+/** One horizontal row: label | track | percent | trailing cell (RPM or a slot). */
+function SliderRow({
+  label,
+  percent,
+  selected,
+  onSelect,
+  onDrag,
+  onCommit,
+  fullScale,
+  rpm,
+  rpmTestId,
+  trailing,
+}: {
+  label: string
+  percent: number
+  selected: boolean
+  onSelect: () => void
+  onDrag: (pct: number) => void
+  onCommit?: (pct: number) => void
+  fullScale: number
+  rpm?: { rpm?: number; temperatureC?: number; fresh: boolean }
+  rpmTestId?: string
+  /** Replaces the RPM and temperature cells (the ALL row's "at once" switch). */
+  trailing?: ReactNode
+}) {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+
+  const handlePointerDown = useCallback(
+    (e: ReactPointerEvent) => {
+      e.preventDefault()
+      onSelect()
+      const track = trackRef.current
+      if (!track) return
+      dragging.current = true
+      try {
+        track.setPointerCapture(e.pointerId)
+      } catch {
+        // Pointer already released/invalid — capture is best-effort.
+      }
+      onDrag(percentFromX(track, e.clientX, fullScale))
+      const onMove = (ev: globalThis.PointerEvent) => {
+        if (!dragging.current || !trackRef.current) return
+        onDrag(percentFromX(trackRef.current, ev.clientX, fullScale))
+      }
+      const onUp = (ev: globalThis.PointerEvent) => {
+        if (!dragging.current) return
+        dragging.current = false
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onUp)
+        if (onCommit && trackRef.current) {
+          onCommit(percentFromX(trackRef.current, ev.clientX, fullScale))
+        }
+      }
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onUp)
+    },
+    [onSelect, onDrag, onCommit, fullScale],
+  )
+
+  const TRACK_H = 14
+  const fillPct = (Math.min(percent, fullScale) / fullScale) * 100
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '34px minmax(0, 1fr) 42px 52px 40px',
+        alignItems: 'center',
+        gap: 8,
+        cursor: 'pointer',
+        userSelect: 'none',
+      }}
+      onClick={onSelect}
+      data-testid={`motor-slider-row-${label}`}
+    >
+      <span
+        style={{
+          fontFamily: color.fontData,
+          fontSize: 10,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          color: selected ? color.accent : color.textDim,
+          transition: 'color 0.15s',
+        }}
+      >
+        {label}
+      </span>
+      <div
+        ref={trackRef}
+        onPointerDown={handlePointerDown}
+        data-testid={`motor-slider-track-${label}`}
+        style={{
+          position: 'relative',
+          height: TRACK_H,
+          background: color.bgPanelMuted,
+          borderRadius: TRACK_H / 2,
+          border: `2px solid ${selected ? color.accent : color.border}`,
+          boxShadow: selected
+            ? `0 0 8px ${color.borderAccent}, inset 0 2px 6px rgba(0,0,0,0.35)`
+            : 'inset 0 2px 6px rgba(0,0,0,0.35)',
+          overflow: 'hidden',
+          transition: 'border-color 0.15s, box-shadow 0.15s',
+          touchAction: 'none',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            bottom: 0,
+            left: 0,
+            width: `${fillPct}%`,
+            background: percent > 0 ? `linear-gradient(to right, ${color.warning} 0%, ${color.danger} 100%)` : 'transparent',
+            transition: dragging.current ? 'none' : 'width 0.08s ease-out',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            top: 1,
+            bottom: 1,
+            left: `calc(${fillPct}% - ${HANDLE_HEIGHT / 2}px)`,
+            width: HANDLE_HEIGHT,
+            borderRadius: HANDLE_HEIGHT / 2,
+            background: percent > 0 ? color.text : color.textMuted,
+            opacity: 0.9,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
+            transition: dragging.current ? 'none' : 'left 0.08s ease-out',
+            pointerEvents: 'none',
+          }}
+        />
+      </div>
+      {/* The ALL row hands its percent, RPM and temperature cells to the
+          mode pills: its percent is the typed field under the rows, and it
+          has no telemetry of its own. */}
+      {trailing !== undefined ? (
+        <span style={{ gridColumn: 'span 3', display: 'flex', justifyContent: 'flex-end' }}>{trailing}</span>
+      ) : (
+        <span
+          style={{
+            fontFamily: color.fontData,
+            fontSize: 11,
+            fontWeight: 700,
+            color: percent > 0 ? color.text : color.textDim,
+            textAlign: 'right',
+          }}
+          data-testid={`motor-slider-readout-${label}`}
+        >
+          {percent}%
+        </span>
+      )}
+      {trailing !== undefined ? null : rpm ? (
+        <>
+          <span
+            style={{
+              fontFamily: color.fontData,
+              fontSize: 11,
+              color: rpm.fresh ? color.textMuted : color.textDim,
+              opacity: rpm.fresh ? 1 : 0.6,
+              textAlign: 'right',
+            }}
+            data-testid={rpmTestId}
+            title="Measured RPM from ESC telemetry"
+          >
+            {rpm.rpm === undefined ? '—' : rpm.rpm.toLocaleString()}
+          </span>
+          {/* ESC temperature beside the RPM: the second thing a bench test
+              is watching for, and the ESC reports it in the same frame. */}
+          <span
+            style={{
+              fontFamily: color.fontData,
+              fontSize: 11,
+              color: rpm.fresh ? color.textMuted : color.textDim,
+              opacity: rpm.fresh ? 1 : 0.6,
+              textAlign: 'right',
+            }}
+            data-testid={rpmTestId ? rpmTestId.replace('esc-rpm-value', 'esc-temp-value') : undefined}
+            title="ESC temperature, °C"
+          >
+            {rpm.temperatureC === undefined ? '—' : `${Math.round(rpm.temperatureC)}°`}
+          </span>
+        </>
+      ) : (
+        <span style={{ gridColumn: 'span 2' }} />
+      )}
     </div>
   )
 }
@@ -278,8 +523,18 @@ export function MotorTestSliders({
   maxPercent = 100,
   onThrottleCommit,
   trackHeight = TRACK_HEIGHT,
+  rpm,
+  durationSeconds,
+  maxDurationSeconds,
+  onDurationChange,
+  simultaneousToggle = false,
+  testButtonId,
+  testButtonClassName,
+  orientation = 'vertical',
 }: MotorTestSlidersProps) {
-  const active = throttlePercent > 0
+  // The danger frame means motors are turning, not "a percent is typed in".
+  const active = stopEnabled
+  const allSelected = selectedOutput === MASTER_OUTPUT_VALUE || selectedOutput === SIMULTANEOUS_OUTPUT_VALUE
 
   // Sliders on the left, controls in a column beside them. Stacking the
   // buttons UNDER the sliders cost the tracks ~37px of height, which is
@@ -379,8 +634,162 @@ export function MotorTestSliders({
     transition: 'background 0.15s, border-color 0.15s, opacity 0.15s',
   }
 
+  const percentField = (
+    <label style={percentFieldStyle}>
+      <span style={percentLabelStyle}>%</span>
+      <input
+        type="number"
+        min={0}
+        max={maxPercent}
+        step={1}
+        value={throttlePercent}
+        data-testid={testId ? `${testId}-percent` : undefined}
+        onChange={(event) => {
+          const next = Number(event.target.value)
+          if (!Number.isFinite(next)) return
+          onThrottleChange(Math.min(Math.max(Math.round(next), 0), maxPercent))
+        }}
+        style={percentInputStyle}
+      />
+    </label>
+  )
+  const durationField = onDurationChange ? (
+    <label style={percentFieldStyle}>
+      <span style={percentLabelStyle}>s</span>
+      <input
+        type="number"
+        min={0.1}
+        max={maxDurationSeconds}
+        step={0.1}
+        value={durationSeconds}
+        data-testid={testId ? `${testId}-duration` : undefined}
+        onChange={(event) => {
+          const next = Number(event.target.value)
+          if (!Number.isFinite(next)) return
+          onDurationChange(next)
+        }}
+        style={percentInputStyle}
+        title="Test duration, seconds"
+      />
+    </label>
+  ) : null
+  const testButton = (
+    <button
+      id={testButtonId}
+      type="button"
+      className={testButtonClassName}
+      style={testBtnStyle}
+      disabled={testDisabled}
+      onClick={onTest}
+      data-testid={testId ? `${testId}-test` : undefined}
+    >
+      Test
+    </button>
+  )
+  const stopButton = (
+    <button
+      type="button"
+      style={stopBtnStyle}
+      disabled={!stopEnabled}
+      onClick={onStop}
+      data-testid={testId ? `${testId}-stop` : undefined}
+    >
+      Stop
+    </button>
+  )
+  // ALL row modes as two pills: "In order" spins each motor in turn (the
+  // sequence sentinel), "At once" spins them together. A checkbox said only
+  // one of the two by name.
+  const modePill = (label: string, value: number, testIdSuffix: string): ReactNode => {
+    const active = selectedOutput === value
+    return (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation()
+          onSelectOutput(value)
+        }}
+        data-testid={testId ? `${testId}-${testIdSuffix}` : undefined}
+        aria-pressed={active}
+        style={{
+          border: `1px solid ${active ? 'rgba(218, 178, 84, 0.6)' : color.border}`,
+          background: active ? 'rgba(218, 178, 84, 0.14)' : 'transparent',
+          color: active ? '#e8c968' : color.textDim,
+          padding: '1px 6px',
+          borderRadius: 4,
+          fontFamily: color.fontData,
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {label}
+      </button>
+    )
+  }
+  const atOnceToggle = simultaneousToggle ? (
+    <span style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+      {modePill('In order', MASTER_OUTPUT_VALUE, 'in-order')}
+      {modePill('At once', SIMULTANEOUS_OUTPUT_VALUE, 'at-once')}
+    </span>
+  ) : null
+
+  if (orientation === 'horizontal') {
+    return (
+      <div
+        style={{ ...wrapperStyle, flexDirection: 'column', alignItems: 'stretch', gap: 8 }}
+        data-testid={testId}
+        data-status={rpm?.status}
+      >
+        <div style={{ display: 'grid', gap: 6 }}>
+          {targets.map((target) => (
+            <SliderRow
+              key={target.value}
+              label={target.label}
+              percent={selectedOutput === target.value ? throttlePercent : 0}
+              selected={selectedOutput === target.value}
+              onSelect={() => onSelectOutput(target.value)}
+              onDrag={onThrottleChange}
+              onCommit={onThrottleCommit}
+              fullScale={maxPercent}
+              rpm={rpm && rpm.status !== 'unavailable' ? rpm.byOutput[target.value] ?? { fresh: false } : undefined}
+              rpmTestId={`esc-rpm-value-${target.value}`}
+            />
+          ))}
+          {masterEnabled ? (
+            <SliderRow
+              label="ALL"
+              percent={allSelected ? throttlePercent : 0}
+              selected={allSelected}
+              onSelect={() =>
+                onSelectOutput(selectedOutput === SIMULTANEOUS_OUTPUT_VALUE ? SIMULTANEOUS_OUTPUT_VALUE : MASTER_OUTPUT_VALUE)
+              }
+              onDrag={onThrottleChange}
+              onCommit={onThrottleCommit}
+              fullScale={maxPercent}
+              trailing={atOnceToggle ?? <span />}
+            />
+          ) : null}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {percentField}
+            {durationField}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {testButton}
+            {stopButton}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div style={wrapperStyle} data-testid={testId}>
+    <div style={wrapperStyle} data-testid={testId} data-status={rpm?.status}>
       <div style={slidersRowStyle}>
         {targets.map((target) => (
           <SliderColumn
@@ -393,6 +802,8 @@ export function MotorTestSliders({
             onCommit={onThrottleCommit}
             fullScale={maxPercent}
             trackHeight={trackHeight}
+            rpm={rpm && rpm.status !== 'unavailable' ? rpm.byOutput[target.value] ?? { fresh: false } : undefined}
+            rpmTestId={`esc-rpm-value-${target.value}`}
           />
         ))}
 
@@ -449,11 +860,34 @@ export function MotorTestSliders({
             style={percentInputStyle}
           />
         </label>
+        {onDurationChange ? (
+          <label style={percentFieldStyle}>
+            <span style={percentLabelStyle}>s</span>
+            <input
+              type="number"
+              min={0.1}
+              max={maxDurationSeconds}
+              step={0.1}
+              value={durationSeconds}
+              data-testid={testId ? `${testId}-duration` : undefined}
+              onChange={(event) => {
+                const next = Number(event.target.value)
+                if (!Number.isFinite(next)) return
+                onDurationChange(next)
+              }}
+              style={percentInputStyle}
+              title="Test duration, seconds"
+            />
+          </label>
+        ) : null}
         <button
+          id={testButtonId}
           type="button"
+          className={testButtonClassName}
           style={testBtnStyle}
           disabled={testDisabled}
           onClick={onTest}
+          data-testid={testId ? `${testId}-test` : undefined}
         >
           Test
         </button>
@@ -466,6 +900,30 @@ export function MotorTestSliders({
         >
           Stop
         </button>
+        {simultaneousToggle && allSelected ? (
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              fontFamily: color.fontData,
+              fontSize: 10,
+              color: color.textMuted,
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+            title="Spin every motor at the same time instead of one after another"
+          >
+            <input
+              type="checkbox"
+              checked={selectedOutput === SIMULTANEOUS_OUTPUT_VALUE}
+              onChange={(event) => onSelectOutput(event.target.checked ? SIMULTANEOUS_OUTPUT_VALUE : MASTER_OUTPUT_VALUE)}
+              data-testid={testId ? `${testId}-at-once` : undefined}
+            />
+            at once
+          </label>
+        ) : null}
       </div>
     </div>
   )

@@ -1273,22 +1273,33 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             at all. It had not, and could not have. Kept SHORT deliberately: the
             long version explained flash layout at someone who just wanted to
             know it was safe. */}
-        {onResetParameters && !resetParamsConfirmArmed ? (
-          <p className="bf-note" data-testid="firmware-flash-vs-params-note">
-            <strong>Flashing firmware does not reset your parameters.</strong> Use this button if you want a
-            clean slate.
-          </p>
-        ) : null}
         {/* Stated where the two buttons are, because the labels alone are how
             an operator ends up in the ArduPilot bootloader while looking for
-            DFU — the exact confusion that made this second button necessary. */}
-        {onEnterDfu && onEnterRomDfu && !dfuConfirmArmed && !romDfuConfirmArmed ? (
-          <p className="bf-note" data-testid="firmware-bootloader-vs-dfu-note">
-            <strong>Activate Bootloader</strong> is what &quot;Flash firmware&quot; talks to — use it almost
-            every time. <strong>Enter DFU (STM32 ROM)</strong> is deeper recovery, for replacing the ArduPilot
-            bootloader itself.
-          </p>
-        ) : null}
+            DFU — the exact confusion that made this second button necessary.
+            Both notes share ONE box, a line each: two boxes with paragraph
+            margins between them took more of the tab than the buttons did. */}
+        {(() => {
+          const paramsLine = onResetParameters && !resetParamsConfirmArmed
+          const dfuLine = onEnterDfu && onEnterRomDfu && !dfuConfirmArmed && !romDfuConfirmArmed
+          if (!paramsLine && !dfuLine) return null
+          return (
+            <div className="bf-note firmware-wizard__notes" data-testid="firmware-quick-action-notes">
+              {dfuLine ? (
+                <span data-testid="firmware-bootloader-vs-dfu-note">
+                  <strong>Activate Bootloader</strong> is what &quot;Flash firmware&quot; talks to — use it almost
+                  every time. <strong>Enter DFU (STM32 ROM)</strong> is deeper recovery, for replacing the ArduPilot
+                  bootloader itself.
+                </span>
+              ) : null}
+              {paramsLine ? (
+                <span data-testid="firmware-flash-vs-params-note">
+                  <strong>Flashing firmware does not reset your parameters.</strong> Use Reset Parameters to Defaults
+                  for a clean slate.
+                </span>
+              ) : null}
+            </div>
+          )
+        })()}
 
         {/* Installed vs incoming, shown as soon as there is anything to show:
             while armed (the read fires automatically), after Compare, and after

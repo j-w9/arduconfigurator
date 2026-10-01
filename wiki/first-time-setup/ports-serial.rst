@@ -159,10 +159,16 @@ Telemetry, GPS & other devices
 ------------------------------
 
 Set a telemetry radio's port to **MAVLink2** at the matching baud, and a GPS's
-port to **GPS** — the sidebar also exposes GPS behavior (``GPS_TYPE``,
-``GPS_AUTO_CONFIG``, ``GPS_AUTO_SWITCH``, ``GPS_PRIMARY``) and a live GPS map. The
-same matrix covers ESC telemetry, scripting, and OSD/VTX serial links (MSP,
-DisplayPort, SmartAudio), among ArduPilot's full set of serial protocols.
+port to **GPS**. The same matrix covers ESC telemetry, scripting, and OSD/VTX
+serial links (MSP, DisplayPort, SmartAudio), among ArduPilot's full set of
+serial protocols.
+
+This tab configures the **UART**. What is on the far end of it — the GPS driver
+and rate (``GPS_TYPE``, ``GPS_AUTO_CONFIG``, ``GPS_RATE_MS``), the multi-GPS
+behaviour (``GPS_AUTO_SWITCH``, ``GPS_PRIMARY``), the antenna offsets, and a
+live map to confirm the aircraft is where it says it is — lives on
+**Peripherals → GPS**, beside the settings that decide whether there is a fix at
+all.
 
 .. note::
 

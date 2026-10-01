@@ -99,17 +99,16 @@ export function PowerView(props: PowerViewProps) {
     <div id="setup-panel-power">
       <Panel
         title="Battery"
-        subtitle="Live battery telemetry plus monitor / capacity / arming setup. Loss-of-link and battery failsafe live on the Failsafe tab."
       >
         <div className="telemetry-stack">
           <div className="telemetry-header">
             <div>
               <h3>Battery monitor</h3>
-              <p>
-                {isBatteryVerified
-                  ? 'Live power telemetry is present, so the battery setup can move beyond parameter-only review.'
-                  : 'Battery monitor telemetry has not been verified yet. Keep the power train and battery sensing path active.'}
-              </p>
+              {/* Only the unverified state gets a sentence; verified is the
+                  normal case and the badge beside the title already says it. */}
+              {isBatteryVerified ? null : (
+                <p>Battery monitor telemetry has not been verified yet. Keep the power train and battery sensing path active.</p>
+              )}
             </div>
             <StatusBadge tone={batteryHealthTone}>{batteryHealthLabel}</StatusBadge>
           </div>
@@ -136,12 +135,10 @@ export function PowerView(props: PowerViewProps) {
             <div className="switch-exercise-card__header">
               <div>
                 <strong>Battery configuration</strong>
-                <p>
-                  Keep routine battery-monitor changes local to this view. Apply them here, then verify live telemetry and pre-arm state
-                  before first flight. Loss-of-link, throttle, and battery failsafe live on the Failsafe tab.
-                </p>
               </div>
-              <StatusBadge tone={scopedReviewTone}>{scopedReviewStatusLabel}</StatusBadge>
+              {stagedCount > 0 || invalidCount > 0 ? (
+                <StatusBadge tone={scopedReviewTone}>{scopedReviewStatusLabel}</StatusBadge>
+              ) : null}
             </div>
 
             <div className="scoped-editor-grid">

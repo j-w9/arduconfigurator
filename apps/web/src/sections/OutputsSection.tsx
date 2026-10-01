@@ -25,7 +25,7 @@ import type {
   deriveOutputMappingSummary,
   evaluateMotorTestEligibility
 } from '@arduconfig/ardupilot-core'
-import { MAX_MOTOR_TEST_THROTTLE_PERCENT } from '@arduconfig/ardupilot-core'
+import { evaluateMotorTestEligibility as evaluateMotorTestEligibilityFor } from '@arduconfig/ardupilot-core'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import type { useMotorManagement } from '../hooks/use-motor-management'
@@ -37,7 +37,8 @@ import type { ParameterDraftValues } from '../hooks/use-parameter-drafts'
 import type { buildVehicleOutputSummary } from '../view-models/vehicle-output-summary'
 import type { createMotorPreviewNodes } from '../view-models/motor-preview'
 import { outputKindLabel, toneForOutputKind } from '../device-display'
-import { ALL_MOTOR_TEST_OUTPUT, ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS } from '../motor-test-helpers'
+import { ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS, buildMotorTestRequest } from '../motor-test-helpers'
+import { InfoDot } from '../views/InfoDot'
 import { MotorTestSliders } from '../motor-test-sliders'
 import {
   type SpinWizardState,
@@ -62,20 +63,16 @@ import { readRoundedParameter, selectParameterById } from '../selectors/paramete
 import { QUADPLANE_ESC_PARAM_IDS } from '../param-groups'
 import { buildPlaneControlSurfaces } from '../view-models/plane-control-surfaces'
 import {
-  MOTORS_SAFETY_ACK_ID,
   OUTPUTS_BENCH_TARGET_ID,
-  OUTPUTS_MOTOR_START_BUTTON_ID,
   OUTPUTS_MOTOR_TEST_BUTTON_ID,
   escCalibrationInstructions,
   escCalibrationPathLabel
 } from '../setup-flow-helpers'
 import {
-  toneForMotorTestStatus,
   toneForParameterDraftStatus,
   toneForScopedDraftReview
 } from '../tone-helpers'
 import { OutputsView } from '../views/Outputs'
-import { EscRpmReadout } from '../views/EscRpmReadout'
 import { buildEscRpmReadoutViewModel } from '../view-models/esc-rpm-readout'
 import type { OutputsTaskId, OutputsViewProps } from '../views/Outputs'
 import { ScopedField, ScopedSelectField } from '../views/ScopedField'
@@ -303,8 +300,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     setPropsRemovedAcknowledged,
     testAreaAcknowledged,
     setTestAreaAcknowledged,
-    usbBenchAcknowledged,
-    setUsbBenchAcknowledged
+    usbBenchAcknowledged
   } = safetyAcks
 
   const {
@@ -382,6 +378,16 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
     !propsRemovedAcknowledged ||
     !testAreaAcknowledged ||
     (motorTestOverUsb && !usbBenchAcknowledged)
+  // The wizard's own eligibility, from the request IT sends (every motor at
+  // once, a low throttle, a short deadman). It used to borrow the page's
+  // motor-test eligibility, which is evaluated against whatever the Test box
+  // currently holds -- so a cleared output or a 0% throttle there left Start
+  // Measuring dead with no reason shown.
+  const spinWizardEligibility = evaluateMotorTestEligibilityFor(
+    snapshot,
+    buildMotorTestRequest(ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS, 1, 1),
+    { expertMode: isExpertMode }
+  )
   const [spinArmDraft, setSpinArmDraft] = useState<string>('')
   const [spinMinDraft, setSpinMinDraft] = useState<string>('')
   const spinThresholdProblem =
@@ -551,13 +557,10 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                 .filter((card): card is (typeof outputTaskCards)[number] => card !== undefined)
         }
         title={activeViewId === 'motors' ? 'Motors' : 'Servos'}
-        subtitle={
-          activeViewId === 'motors'
-            ? 'Frame class, output map, direction & test, ESC protocol, and verification review for propulsion motors.'
-            // Short on purpose: the table below says what it is, and the tab
-            // is called Servos. The long version restated the heading.
-            : 'Assign a function to each output and set its PWM range, trim and direction.'
-        }
+        // No subtitle on either tab: the tab name says what the page is and
+        // the first row of controls is in view. The line only pushed
+        // everything down.
+        subtitle=""
         activeTaskId={activeOutputTaskId}
         activeTask={activeOutputTask}
         onSelectTask={(taskId) => {
@@ -601,13 +604,13 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                                   plane-side equivalent of a multirotor&apos;s ESC setup.
                                 </p>
                               </div>
+                              {quadplaneEscInvalidDrafts.length > 0 || quadplaneEscStagedDrafts.length > 0 ? (
                               <StatusBadge tone={toneForScopedDraftReview(quadplaneEscStagedDrafts.length, quadplaneEscInvalidDrafts.length)}>
                                 {quadplaneEscInvalidDrafts.length > 0
                                   ? `${quadplaneEscInvalidDrafts.length} invalid`
-                                  : quadplaneEscStagedDrafts.length > 0
-                                    ? `${quadplaneEscStagedDrafts.length} staged`
-                                    : 'in sync'}
+                                  : `${quadplaneEscStagedDrafts.length} staged`}
                               </StatusBadge>
+                              ) : null}
                             </div>
 
                             <div className="scoped-editor-grid">
@@ -686,11 +689,16 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                         <div className="switch-exercise-card__header">
                           <div>
                             <strong>Frame</strong>
-                            <p>Airframe class + layout. Changing these restructures the motor outputs — reboot and re-verify motor order/spin afterwards.</p>
+                            <InfoDot label="About frame class and type" testId="outputs-info-frame" wide>
+                              <span className="info-dot-line">Airframe class and layout. Changing them restructures the motor outputs — reboot, then re-verify motor order and spin.</span>
+                            </InfoDot>
                           </div>
-                          <StatusBadge tone={toneForScopedDraftReview(frameStagedDrafts.length, 0)}>
-                            {frameStagedDrafts.length > 0 ? `${frameStagedDrafts.length} staged` : 'in sync'}
-                          </StatusBadge>
+                          {/* No badge while in sync: the absence of a count is the state. */}
+                          {frameStagedDrafts.length > 0 ? (
+                            <StatusBadge tone={toneForScopedDraftReview(frameStagedDrafts.length, 0)}>
+                              {`${frameStagedDrafts.length} staged`}
+                            </StatusBadge>
+                          ) : null}
                         </div>
                         <div className="scoped-editor-grid">
                           <ScopedSelectField
@@ -710,6 +718,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             />
                           ) : null}
                         </div>
+                        {frameStagedDrafts.length > 0 || busyAction === 'frame:apply' ? (
                         <div className="switch-exercise-controls">
                           <button
                             style={buttonStyle('primary')}
@@ -720,31 +729,34 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             {frameStagedDrafts.length > 0 ? `Apply Frame (${frameStagedDrafts.length})` : 'Apply Frame'}
                           </button>
                         </div>
+                        ) : null}
                       </div>
                     ) : null}
-                    <div className="switch-exercise-card__header">
-                      <div>
-                        <strong>ESC calibration & motor range</strong>
-                        <p>{escReviewSummary}</p>
-                      </div>
-                      <StatusBadge tone={escSetup.calibrationPath === 'manual-review' ? 'warning' : 'neutral'}>
-                        {escCalibrationPathLabel(escSetup.calibrationPath)}
-                      </StatusBadge>
-                    </div>
-
+                    {/* One header for the ESC card. "ESC calibration & motor
+                     *  range" used to sit above it as a second title with no
+                     *  controls of its own; its badge and sentence live here now. */}
                     <div className="scoped-review-card scoped-review-card--compact">
                       <div className="switch-exercise-card__header">
                         <div>
                           <strong>ESC & output settings</strong>
-                          <p>Adjust the key motor protocol and spin-threshold values directly from Outputs.</p>
+                          <InfoDot label="About ESC and output settings" testId="outputs-info-esc" wide>
+                            <span className="info-dot-line">Motor protocol and spin thresholds, edited here rather than from the raw parameter table.</span>
+                            <span className="info-dot-line">{escReviewSummary}</span>
+                          </InfoDot>
                         </div>
-                        <StatusBadge tone={toneForScopedDraftReview(outputReviewStagedDrafts.length, outputReviewInvalidDrafts.length)}>
-                          {outputReviewInvalidDrafts.length > 0
-                            ? `${outputReviewInvalidDrafts.length} invalid`
-                            : outputReviewStagedDrafts.length > 0
-                              ? `${outputReviewStagedDrafts.length} staged`
-                              : 'in sync'}
-                        </StatusBadge>
+                        {/* The calibration-path badge only when it is a warning
+                         *  (manual review). "Digital protocol review" on every
+                         *  DShot craft was a label for the normal case. */}
+                        {escSetup.calibrationPath === 'manual-review' ? (
+                          <StatusBadge tone="warning">{escCalibrationPathLabel(escSetup.calibrationPath)}</StatusBadge>
+                        ) : null}
+                        {outputReviewInvalidDrafts.length > 0 || outputReviewStagedDrafts.length > 0 ? (
+                          <StatusBadge tone={toneForScopedDraftReview(outputReviewStagedDrafts.length, outputReviewInvalidDrafts.length)}>
+                            {outputReviewInvalidDrafts.length > 0
+                              ? `${outputReviewInvalidDrafts.length} invalid`
+                              : `${outputReviewStagedDrafts.length} staged`}
+                          </StatusBadge>
+                        ) : null}
                       </div>
 
                       <div className="scoped-editor-grid">
@@ -785,6 +797,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                         <MotorPoleReference />
                       ) : null}
 
+                      {outputReviewDraftEntries.length > 0 || busyAction === 'outputs:apply' ? (
                       <div className="switch-exercise-controls">
                         <button
                           style={buttonStyle('primary')}
@@ -810,6 +823,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                           Discard Output Changes
                         </button>
                       </div>
+                      ) : null}
                     </div>
 
                     {escCalibrationInstructions(escSetup).length > 0 ? (
@@ -829,22 +843,19 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                   <div
                     className="outputs-task-panel outputs-task-panel--stack"
                     data-outputs-task="motor-setup"
-                    // The guided wizard's "Open Motor Verification" has always
-                    // scrolled to this id -- which nothing rendered, so it
-                    // silently landed the operator at the top of Motors. The
-                    // order/direction work IS the motor verification, so the
-                    // panel that holds it carries the anchor.
-                    id={OUTPUTS_MOTOR_START_BUTTON_ID}
+                    // The guided wizard's "Open Motor Verification" anchor
+                    // (OUTPUTS_MOTOR_START_BUTTON_ID) is on the Order/Direction
+                    // tab strip inside the inline reorder panel: on a wide
+                    // screen this wrapper is display: contents so the ack and
+                    // tab strip can span the page, and an element with no box
+                    // cannot be scrolled to.
                   >
                     {motorSetupSlot}
                     {isExpertMode ? (
                       <div className="spin-wizard-launcher" data-testid="spin-threshold-wizard-launcher">
                         <div>
                           <strong>Spin thresholds</strong>
-                          <p>
-                            Measure where your motors actually break away instead of trusting the library
-                            defaults, then stage <code>MOT_SPIN_ARM</code> and <code>MOT_SPIN_MIN</code> from it.
-                          </p>
+                          <InfoDot label="About spin thresholds" testId="outputs-info-spin-thresholds" wide><span className="info-dot-line">Measures where your motors actually break away instead of trusting library defaults, then stages <code>MOT_SPIN_ARM</code> and <code>MOT_SPIN_MIN</code> from it.</span></InfoDot>
                         </div>
                         <StatusBadge tone={spinWizard.status === 'ready' ? 'success' : spinWizard.status === 'failed' ? 'danger' : 'neutral'}>
                           {spinWizard.status === 'idle'
@@ -866,15 +877,20 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                           disabled={spinWizardAckMissing}
                           title={
                             spinWizardAckMissing
-                              ? motorTestOverUsb && !usbBenchAcknowledged && propsRemovedAcknowledged && testAreaAcknowledged
-                                ? 'Confirm the craft is on the bench (USB connection detected) before measuring.'
-                                : 'Confirm props are off and the vehicle is restrained before measuring.'
+                              ? 'Confirm props are off and the vehicle is restrained before measuring.'
                               : undefined
                           }
                           onClick={() => setSpinWizardOpen(true)}
                         >
                           Measure Spin Thresholds
                         </button>
+                        {/* Say why, in place: a greyed button with the reason
+                         *  only in a hover title reads as broken. */}
+                        {spinWizardAckMissing ? (
+                          <small className="spin-wizard-launcher__gate" data-testid="spin-wizard-gate">
+                            Tick the safety box first.
+                          </small>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -984,6 +1000,11 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                   <section className="bf-gui-box" id={OUTPUTS_BENCH_TARGET_ID}>
                     <div className="bf-gui-box__titlebar">
                       <strong>Test</strong>
+                      {/* The status word rides on the pill instead of a badge
+                       *  row of its own. Idle is the normal state and says nothing. */}
+                      {snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running' ? (
+                        <small data-testid="motor-test-status">{snapshot.motorTest.status}</small>
+                      ) : null}
                     </div>
                     <div className="bf-gui-box__body">
                       <div className="motor-test-acknowledgments">
@@ -1017,20 +1038,10 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             }}
                             disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
                           />
-                          <span>Props are off and the vehicle is restrained with the test area clear.</span>
+                          <span>Props are off, the vehicle is restrained, and the test area is clear.</span>
                         </label>
                         )}
-                        {motorTestOverUsb ? (
-                          <label className="motor-test-acknowledgments__usb" data-testid="motor-test-usb-ack">
-                            <input
-                              type="checkbox"
-                              checked={usbBenchAcknowledged}
-                              onChange={(event) => setUsbBenchAcknowledged(event.target.checked)}
-                              disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                            />
-                            <span>USB connection detected — I confirm the craft is on the bench and will not arm/spin a flight-ready aircraft.</span>
-                          </label>
-                        ) : null}
+                        {/* The USB-bench box lived here. It is the same acknowledgement now. */}
                       </div>
                       <div className="motor-direction-layout">
                         <div className="motor-direction-layout__sliders">
@@ -1042,11 +1053,52 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             onSelectOutput={(output) => setMotorTestOutput(output)}
                             onThrottleChange={(percent) => setMotorTestThrottlePercent(percent)}
                             onTest={() => void handleRunMotorTest()}
-                            testDisabled={busyAction !== undefined || !motorTestEligibility.allowed || motorTestOutput === undefined}
+                            // The one Test button now, so it carries the full gate
+                            // the Run Motor Test button used to: acks, eligibility,
+                            // an output chosen, nothing already in flight.
+                            testDisabled={
+                              !canRunMotorTest ||
+                              busyAction !== undefined ||
+                              !motorTestEligibility.allowed ||
+                              motorTestOutput === undefined ||
+                              snapshot.motorTest.status === 'requested' ||
+                              snapshot.motorTest.status === 'running'
+                            }
                             onStop={() => void handleStopMotorTest()}
                             stopEnabled={snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
                             masterEnabled
                             testId="motor-test-sliders"
+                            // Rows, not columns: the box sits in a column beside
+                            // the order/direction panel, so a full-width track per
+                            // motor is both longer and reads as a table with the
+                            // measured RPM in its own column.
+                            orientation="horizontal"
+                            rpm={(() => {
+                              const model = buildEscRpmReadoutViewModel({
+                                escTelemetry: snapshot.liveVerification.escTelemetry,
+                                motors: outputMapping.motorOutputs.map((output) => ({
+                                  channelNumber: output.channelNumber,
+                                  motorNumber: output.motorNumber
+                                })),
+                                nowMs: Date.now()
+                              })
+                              return {
+                                status: model.status,
+                                byOutput: Object.fromEntries(
+                                  model.rows.map((row) => [row.channelNumber, { rpm: row.rpm, temperatureC: row.temperatureC, fresh: row.fresh }])
+                                )
+                              }
+                            })()}
+                            durationSeconds={motorTestDurationSeconds}
+                            maxDurationSeconds={motorTestMaxDurationSeconds}
+                            onDurationChange={(seconds) => setMotorTestDurationSeconds(seconds)}
+                            simultaneousToggle
+                            testButtonId={OUTPUTS_MOTOR_TEST_BUTTON_ID}
+                            testButtonClassName={
+                              motorVerification.status === 'running' && !currentMotorTestSucceeded && canRunMotorTest
+                                ? 'guided-action-pulse'
+                                : undefined
+                            }
                           />
                           {/* Small read-only motor map beside the sliders so the
                               operator can see which OUTx/spin each Mn is — drawn
@@ -1075,135 +1127,37 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             </div>
                           )}
                          </div>
-                         {/* Whether the motor actually turned, and how fast.
-                             Without this the tab could only report what it had
-                             commanded, leaving the operator to judge by eye. */}
-                         <EscRpmReadout
-                           model={buildEscRpmReadoutViewModel({
-                             escTelemetry: snapshot.liveVerification.escTelemetry,
-                             motors: outputMapping.motorOutputs.map((output) => ({
-                               channelNumber: output.channelNumber,
-                               motorNumber: output.motorNumber
-                             })),
-                             nowMs: Date.now()
-                           })}
-                         />
                         </div>
 
-                        <div className="motor-test-card motor-test-card--embedded">
-                          <div className="switch-exercise-card__header">
-                            <div>
-                              <strong>Motor Test Guardrails</strong>
-                              <p>{snapshot.motorTest.summary}</p>
+                        {/* What the box has to say beyond the sliders: the live
+                         *  summary while a test runs (what was actually
+                         *  commanded), and the reasons it is blocked. On the
+                         *  one-page layout the two ack sentences are not printed:
+                         *  the red box at the top and the disabled Test button
+                         *  already say it. The second card with its own Output,
+                         *  Throttle, Duration and Run button is gone; the
+                         *  sliders are the test. */}
+                        {(() => {
+                          // Narrate a test only while it is in flight. The
+                          // after-the-fact lines ("stopped on request, abort
+                          // acknowledged") stayed on screen until the next
+                          // test and said nothing the operator had not done.
+                          const live = snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'
+                          const ackPending = showAllMotorTasks && !(propsRemovedAcknowledged && testAreaAcknowledged)
+                          const reasons = motorTestGuardReasons.length > 0 && !ackPending ? motorTestGuardReasons : []
+                          const instructions = motorTestGuardReasons.length === 0 && !showAllMotorTasks ? snapshot.motorTest.instructions : []
+                          if (!live && reasons.length === 0 && instructions.length === 0) return null
+                          return (
+                            <div className="motor-test-card motor-test-card--line" data-testid="motor-test-notes">
+                              {live ? <p>{snapshot.motorTest.summary}</p> : null}
+                              {reasons.length > 0 || instructions.length > 0 ? (
+                                <ul className="output-note-list">
+                                  {[...reasons, ...instructions].map((line) => <li key={line}>{line}</li>)}
+                                </ul>
+                              ) : null}
                             </div>
-                            <StatusBadge tone={toneForMotorTestStatus(snapshot.motorTest.status)}>{snapshot.motorTest.status}</StatusBadge>
-                          </div>
-
-                          <div className="motor-test-grid">
-                            <label>
-                              <span>Output</span>
-                              <select
-                                value={motorTestOutput ?? ''}
-                                onChange={(event) => setMotorTestOutput(event.target.value ? Number(event.target.value) : undefined)}
-                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                              >
-                                <option value="">Select output</option>
-                                <option value={ALL_MOTOR_TEST_OUTPUT}>All mapped motors (sequence)</option>
-                                <option value={ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS}>All mapped motors (at once)</option>
-                                {outputMapping.motorOutputs.map((output) => (
-                                  <option key={output.paramId} value={output.channelNumber}>
-                                    OUT{output.channelNumber}
-                                    {output.motorNumber !== undefined ? ` / M${output.motorNumber}` : ''} · {output.functionLabel}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-
-                            <label>
-                              <span>Throttle %</span>
-                              <input
-                                type="number"
-                                min={1}
-                                max={MAX_MOTOR_TEST_THROTTLE_PERCENT}
-                                step={1}
-                                value={motorTestThrottlePercent}
-                                onChange={(event) => setMotorTestThrottlePercent(Number(event.target.value))}
-                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                              />
-                            </label>
-
-                            <label>
-                              <span>Duration (s)</span>
-                              <input
-                                type="number"
-                                min={0.1}
-                                max={motorTestMaxDurationSeconds}
-                                step={0.1}
-                                value={motorTestDurationSeconds}
-                                onChange={(event) => setMotorTestDurationSeconds(Number(event.target.value))}
-                                disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                              />
-                            </label>
-                          </div>
-
-
-                          {/* Reasons the test is currently blocked always show --
-                           *  they are the only place the operator learns WHY the
-                           *  Run button will not fire. The generic standing
-                           *  instructions ("props removed", "vehicle restrained")
-                           *  are the same two sentences as the safety ack pinned
-                           *  at the top of the Motors page, so on that one-page
-                           *  layout they are dropped rather than printed twice.
-                           *  Anywhere the ack is not on screen, they stay. */}
-                          {motorTestGuardReasons.length > 0 ? (
-                            <>
-                            <ul className="output-note-list">
-                              {motorTestGuardReasons.map((reason) => <li key={reason}>{reason}</li>)}
-                            </ul>
-                            {/* The single safety ack lives at the top of the
-                             *  page now, and on a wide screen this panel is a
-                             *  sticky column beside it -- so the control that
-                             *  unblocks the button can be off-screen above the
-                             *  operator while they read why it is blocked.
-                             *  Take them to it rather than describing it. */}
-                            {showAllMotorTasks && (!propsRemovedAcknowledged || !testAreaAcknowledged) ? (
-                              <button
-                                type="button"
-                                style={buttonStyle()}
-                                data-testid="motor-test-goto-ack"
-                                onClick={() =>
-                                  document
-                                    .getElementById(MOTORS_SAFETY_ACK_ID)
-                                    ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-                                }
-                              >
-                                Go to the safety acknowledgement
-                              </button>
-                            ) : null}
-                            </>
-                          ) : showAllMotorTasks ? null : (
-                            <ul className="output-note-list">
-                              {snapshot.motorTest.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}
-                            </ul>
-                          )}
-
-                          <div className="switch-exercise-controls">
-                            <button
-                              id={OUTPUTS_MOTOR_TEST_BUTTON_ID}
-                              type="button"
-                              className={
-                                motorVerification.status === 'running' && !currentMotorTestSucceeded && canRunMotorTest
-                                  ? 'guided-action-pulse'
-                                  : undefined
-                              }
-                              style={buttonStyle('secondary')}
-                              onClick={() => void handleRunMotorTest()}
-                              disabled={!canRunMotorTest || busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                            >
-                              {busyAction === 'motor-test' ? 'Sending…' : 'Run Motor Test'}
-                            </button>
-                          </div>
-                        </div>
+                          )
+                        })()}
                       </div>
 
                     </div>
@@ -1258,15 +1212,15 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     <div className="switch-exercise-card__header">
                       <div>
                         <strong>Output changes in review</strong>
-                        <p>Keep motor mapping, ESC settings, and notification edits grouped here before you apply each scope to the controller.</p>
+                        <InfoDot label="About the output review" testId="outputs-info-review" wide><span className="info-dot-line">Motor mapping, ESC settings and notification edits stay grouped here; each scope applies to the controller on its own.</span></InfoDot>
                       </div>
+                      {totalOutputInvalidDrafts > 0 || totalOutputStagedDrafts > 0 ? (
                       <StatusBadge tone={toneForScopedDraftReview(totalOutputStagedDrafts, totalOutputInvalidDrafts)}>
                         {totalOutputInvalidDrafts > 0
                           ? `${totalOutputInvalidDrafts} invalid`
-                          : totalOutputStagedDrafts > 0
-                            ? `${totalOutputStagedDrafts} staged`
-                            : 'in sync'}
+                          : `${totalOutputStagedDrafts} staged`}
                       </StatusBadge>
+                      ) : null}
                     </div>
 
                     {outputReviewDraftSummaries.length > 0 ? (
@@ -1305,7 +1259,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     <div className="outputs-inline-toggle">
                       <div>
                         <strong>Motor setup drafts</strong>
-                        <p>Review or apply the staged SERVO function remap changes directly from the review deck, or jump back into Motor Setup.</p>
+                        <InfoDot label="About motor setup drafts" testId="outputs-info-motor-drafts" wide><span className="info-dot-line">Staged SERVO function remaps. Apply or discard them here, or go back into Motor Setup.</span></InfoDot>
                       </div>
                       <div className="outputs-inline-toggle__actions">
                         <button style={buttonStyle()} onClick={() => setOutputTaskOverride('motor-setup')}>
@@ -1342,7 +1296,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     <div className="outputs-inline-toggle">
                       <div>
                         <strong>ESC & protocol drafts</strong>
-                        <p>Motor protocol and spin-threshold changes remain grouped here so you can apply or discard them without leaving review.</p>
+                        <InfoDot label="About ESC & protocol drafts" testId="outputs-info-esc-drafts" wide><span className="info-dot-line">Motor protocol and spin-threshold changes, kept together so they apply or discard as one.</span></InfoDot>
                       </div>
                       <div className="outputs-inline-toggle__actions">
                         <button style={buttonStyle()} onClick={() => setOutputTaskOverride('esc-protocol')}>
@@ -1377,7 +1331,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                     <div className="outputs-inline-toggle">
                       <div>
                         <strong>Additional output settings</strong>
-                        <p>Metadata-backed output settings remain available here so no Outputs capability gets buried or dropped.</p>
+                        <InfoDot label="About additional output settings" testId="outputs-info-additional" wide><span className="info-dot-line">Every other output parameter the firmware reports, so nothing is buried or dropped.</span></InfoDot>
                       </div>
                       <div className="outputs-inline-toggle__actions">
                         <button style={buttonStyle()} onClick={() => setOutputTaskOverride('peripherals')}>
@@ -1471,12 +1425,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
             <div className="board-media-lightbox__header">
               <div>
                 <strong>Spin thresholds</strong>
-                <p>
-                  Every motor spins at a rising output until you say they are all turning.{' '}
-                  <code>MOT_SPIN_ARM</code> lands one margin above that and <code>MOT_SPIN_MIN</code>{' '}
-                  another above ARM, which is the order the firmware requires. Nothing is written
-                  until you stage the values.
-                </p>
+                <InfoDot label="How spin thresholds are measured" testId="outputs-info-spin-wizard" wide><span className="info-dot-line">Every motor spins at a rising output until you say they are all turning.</span><span className="info-dot-line"><code>MOT_SPIN_ARM</code> lands one margin above that and <code>MOT_SPIN_MIN</code> one above ARM — the order the firmware requires. Nothing is written until you stage the values.</span></InfoDot>
               </div>
               <StatusBadge tone={spinWizard.status === 'ready' ? 'success' : spinWizard.status === 'failed' ? 'danger' : 'neutral'}>
                 {spinWizard.status === 'idle'
@@ -1497,7 +1446,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                           <button
                             style={buttonStyle('primary')}
                             data-testid="spin-wizard-start"
-                            disabled={busyAction !== undefined || !motorTestEligibility.allowed || spinWizardAckMissing}
+                            disabled={busyAction !== undefined || !spinWizardEligibility.allowed || spinWizardAckMissing}
                             onClick={() => {
                               const next = startSpinWizard()
                               setSpinWizard(next)
@@ -1516,6 +1465,10 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                             {!propsRemovedAcknowledged || !testAreaAcknowledged
                               ? 'Confirm props are off and the vehicle is restrained — the checkbox at the top of the Motors tab — before measuring. This spins every motor.'
                               : 'Confirm the craft is on the bench — the USB acknowledgement at the top of the Motors tab — before measuring. This spins every motor.'}
+                          </p>
+                        ) : spinWizard.status === 'idle' && !spinWizardEligibility.allowed ? (
+                          <p className="switch-exercise-warning" data-testid="spin-wizard-blocked">
+                            {spinWizardEligibility.reasons[0] ?? 'The vehicle cannot run a motor test right now.'}
                           </p>
                         ) : null}
 
@@ -1544,7 +1497,7 @@ export function OutputsSection(props: OutputsSectionProps): ReactElement {
                                 runSpinWizardAt(next.currentValue)
                               }}
                               onTest={() => runSpinWizardAt(spinWizard.currentValue)}
-                              testDisabled={busyAction !== undefined || !motorTestEligibility.allowed}
+                              testDisabled={busyAction !== undefined || !spinWizardEligibility.allowed}
                               onStop={() => void handleStopMotorTest()}
                               stopEnabled={snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
                               masterEnabled

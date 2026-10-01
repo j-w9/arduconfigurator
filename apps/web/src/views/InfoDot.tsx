@@ -1,6 +1,6 @@
 import type { ReactElement, ReactNode } from 'react'
 
-import { wikiTopicUrl, type WikiTopic } from '../view-models/param-docs'
+import { WIKI_PARAMETER_FIRMWARE, parameterWikiUrl, wikiTopicUrl, type WikiTopic } from '../view-models/param-docs'
 
 export interface InfoDotProps {
   /** Accessible label naming what the tooltip documents (e.g. "About PID gains"). */
@@ -18,6 +18,12 @@ export interface InfoDotProps {
    * page/anchor assertions in tests/wiki-topic-links.test.mjs.
    */
   wikiTopic?: WikiTopic
+  /**
+   * Raw ArduPilot parameter id. When set, the tip ends with a link into the
+   * parameter reference for that id (test id `param-wiki-<ID>`), the way the
+   * old per-field bubble did. A plain external anchor, like the topic link.
+   */
+  paramId?: string
 }
 
 /**
@@ -30,7 +36,7 @@ export interface InfoDotProps {
  * `tabIndex={0}` makes the tip keyboard-reachable via the CSS `:focus-visible`
  * rule.
  */
-export function InfoDot({ label, children, testId, wide = false, wikiTopic }: InfoDotProps): ReactElement {
+export function InfoDot({ label, children, testId, wide = false, wikiTopic, paramId }: InfoDotProps): ReactElement {
   return (
     <span
       className="receiver-info-dot"
@@ -46,7 +52,7 @@ export function InfoDot({ label, children, testId, wide = false, wikiTopic }: In
           overlaps, and every text-only dot in the app must keep behaving
           exactly as it does today. */}
       <span
-        className={`receiver-info-tip${wide ? ' receiver-info-tip--wide' : ''}${wikiTopic ? ' receiver-info-tip--linked' : ''}`}
+        className={`receiver-info-tip${wide ? ' receiver-info-tip--wide' : ''}${wikiTopic || paramId ? ' receiver-info-tip--linked' : ''}`}
         role="tooltip"
       >
         {children}
@@ -62,6 +68,22 @@ export function InfoDot({ label, children, testId, wide = false, wikiTopic }: In
             data-testid={testId ? `${testId}-wiki` : undefined}
           >
             Read this in the wiki ↗
+          </a>
+        ) : null}
+        {paramId ? (
+          // The dot usually sits inside the field's <label>. A click on this
+          // anchor still opens the reference in a new tab; the label's own
+          // activation only focuses the field's control, which is harmless.
+          // Named for the documented firmware: the reference is generated from
+          // the pinned Copter metadata, and a 4.6 board can differ.
+          <a
+            className="receiver-info-wiki"
+            href={parameterWikiUrl(paramId)}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid={`param-wiki-${paramId}`}
+          >
+            Parameter reference ({WIKI_PARAMETER_FIRMWARE}) ↗
           </a>
         ) : null}
       </span>

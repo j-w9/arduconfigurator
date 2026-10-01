@@ -5,6 +5,7 @@ import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import type { UseOsdShorthandResult } from '../hooks/use-osd-shorthand'
 import type { OsdCatalogEntry } from '../view-models/osd-message-suggestions'
+import { InfoDot } from './InfoDot'
 import { OsdMessageCombobox } from './OsdMessageCombobox'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
@@ -472,14 +473,7 @@ export function OsdView(props: OsdViewProps) {
 
   return (
     <section className="grid one-up">
-      <Panel
-        title="OSD"
-        subtitle={
-          dragEnabled
-            ? 'FPV overlay configuration — BF-style. Drag elements on the preview to reposition them on the character grid for the selected video layout; toggle visibility from the categorized menu on the left.'
-            : 'FPV overlay configuration — BF-style. Pick a backend, route a display link in Ports, and toggle which elements appear on the live preview.'
-        }
-      >
+      <Panel title="OSD">
         <div className="bf-tab-stack">
           {/* The OSD/VTX switcher. It used to render above the page title while
            *  every other view puts its tab strip under the title — same widget,
@@ -851,7 +845,24 @@ export function OsdView(props: OsdViewProps) {
                                   }}
                                 >
                                   <strong>{row.label}</strong>
-                                  <small>{row.elementId}</small>
+                                  {/* The element key and the parameters it maps to live in
+                                      the "i" tip, not a caption. The dot sits inside the
+                                      clickable label, so its clicks/keys must not bubble
+                                      up and toggle the highlight. */}
+                                  <span
+                                    className="scoped-editor-field__meta"
+                                    onClick={(event) => event.stopPropagation()}
+                                    onKeyDown={(event) => event.stopPropagation()}
+                                  >
+                                    <InfoDot label="Element details" testId={`osd-element-info-${row.elementId}`} wide>
+                                      <span className="info-dot-line">
+                                        <strong>{row.elementId}</strong>
+                                      </span>
+                                      <span className="info-dot-line">
+                                        {`OSDn_${row.elementId}_EN per screen (n = ${row.cells.map((cell) => cell.screen).join(', ')})`}
+                                      </span>
+                                    </InfoDot>
+                                  </span>
                                 </span>
                                 {screenColumns.map((screen) => {
                                   const cell = row.cells.find((entry) => entry.screen === screen)

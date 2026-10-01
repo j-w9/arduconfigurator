@@ -70,12 +70,23 @@ test.describe('RC Mixer (AP_RC_Logic)', () => {
     await page.getByTestId('rc-mixer-high-rcl-3').fill('2000')
     await expect(page.getByTestId('rc-mixer-channel-8')).toContainText('VTX Power')
 
-    // VTX Power exposes a level selector listing the real @VTX power levels by mW
-    // (demo table 25/200/500/1W). Index i stores into OPT bits 5-7 — this is how a
-    // channel drives an exact VTX power level (selector mode). Defaults to plain.
+    // VTX Power exposes a level selector listing the vehicle's real power levels
+    // by mW. Those are PARAMETERS now (VTX_PWRTBL1..6), and the demo seeds
+    // pit / 25 / 200 / 500 / 800 / unused — so the selector lists the four slots
+    // that carry a power, with pit and unused dropped, exactly as the firmware's
+    // set_power_by_index walks them. Index i stores into OPT bits 5-7.
+    //
+    // The labels are DERIVED from mW now (no stored label any more), so 800 mW
+    // reads as "800" where the old blob's authored label said "1W".
     const level = page.getByTestId('rc-mixer-level-rcl-3')
     await expect(level).toHaveValue('plain', { timeout: 15000 })
-    await expect(level.locator('option')).toContainText(['Full power (on/off) — max', '25 mW', '200 mW', '500 mW', '1W'])
+    await expect(level.locator('option')).toContainText([
+      'Full power (on/off) — max',
+      '25 mW',
+      '200 mW',
+      '500 mW',
+      '800 mW'
+    ])
     await level.selectOption('2') // 500 mW
     await expect(level).toHaveValue('2')
     // The row band shows the resolved power at a glance, not just in the dropdown.

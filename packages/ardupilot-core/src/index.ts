@@ -29,6 +29,8 @@ export * from './setup-exercises.js'
 export * from './types.js'
 export * from './bootloader-images.js'
 export * from './vtx-table.js'
+export * from './vtx-table-defaults.js'
+export * from './vtx-power-table.js'
 export * from './osd-shorthand.js'
 export * from './vtx-presets.js'
 export {

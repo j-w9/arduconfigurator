@@ -5,17 +5,12 @@
 
 import type { ReactElement, ReactNode } from 'react'
 import type { ArduPilotConfiguratorRuntime, ConfiguratorSnapshot, ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
-import type { AppViewId, BoardCatalogEntry, BoardReferenceLink } from '@arduconfig/param-metadata'
+import type { AppViewId } from '@arduconfig/param-metadata'
 import {
   ARDUCOPTER_SERIAL_OPTION_BIT_LABELS,
   arducopterSerialBaudRate,
   arducopterSerialProtocolOptions,
   encodeArducopterSerialBaud,
-  formatArducopterGpsAutoConfig,
-  formatArducopterGpsAutoSwitch,
-  formatArducopterGpsPrimary,
-  formatArducopterGpsRateMs,
-  formatArducopterGpsType,
   formatArducopterSerialProtocol,
   formatArducopterSerialRtscts
 } from '@arduconfig/param-metadata'
@@ -26,15 +21,14 @@ import { SERIAL_BAUD_PRESET_RATES, formatBaudRate, isPresetBaudRate, parseSerial
 import type { ParameterNotice } from '../hooks/use-parameter-feedback'
 import type { UsePortsViewResult } from '../hooks/use-ports-view'
 import { statusToneLabel } from '../status-tone'
-import { LiveGpsMapCard } from '../live-gps-map'
 import { MavlinkSigningPanel } from '../mavlink-signing-panel'
+import { ParamIdHint } from '../views/ScopedField'
 import { normalizeBitmaskValue } from '../parameter-format'
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import type { SerialPortViewModel } from '../serial-port-helpers'
 import { toneForScopedDraftReview } from '../tone-helpers'
-import type { AdditionalSettingsGroup, CanNodePeripheralViewModel, GpsPeripheralViewModel } from '../view-models/peripherals'
+import type { AdditionalSettingsGroup, CanNodePeripheralViewModel } from '../view-models/peripherals'
 import { pairedDraftsForSerialProtocol, pairingNoteForSerialProtocol } from '../view-models/port-protocol-pairings'
-import { ScopedField, ScopedSelectField } from '../views/ScopedField'
 
 export interface PortsSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -44,16 +38,10 @@ export interface PortsSectionProps {
   /** A pending reboot-required follow-up (serial-role changes need a reboot). */
   rebootRequired: boolean
   onReboot: () => void
-  // Board catalog data
-  boardCatalogEntry: BoardCatalogEntry | undefined
-  boardReferenceLinks: readonly BoardReferenceLink[]
   // Serial port models
   serialPortViewModels: readonly SerialPortViewModel[]
   visibleSerialPortViewModels: readonly SerialPortViewModel[]
-  gpsPeripheralViewModels: readonly GpsPeripheralViewModel[]
   canNodePeripheralViewModels: readonly CanNodePeripheralViewModel[]
-  uartsMappedPortCount: number
-  uartsStatusTone: 'success' | 'warning' | 'danger' | 'neutral'
   portVisibilitySummary: string
   // Drafts: this view's scope
   portsDraftEntries: readonly ParameterDraftEntry[]
@@ -88,15 +76,6 @@ export interface PortsSectionProps {
   osdSwitchMethodParameter: ParameterState | undefined
   mspOptionsParameter: ParameterState | undefined
   mspOsdCellCountParameter: ParameterState | undefined
-  // GPS scalars + parameter objects (used by the embedded GPS card)
-  gpsAutoConfig: number | undefined
-  gpsAutoSwitch: number | undefined
-  gpsPrimary: number | undefined
-  gpsRateMs: number | undefined
-  gpsAutoConfigParameter: ParameterState | undefined
-  gpsAutoSwitchParameter: ParameterState | undefined
-  gpsPrimaryParameter: ParameterState | undefined
-  gpsRateParameter: ParameterState | undefined
   // Live draft / edit plumbing
   editedValues: Record<string, string>
   parameterDraftById: ReadonlyMap<string, ParameterDraftEntry>
@@ -136,14 +115,9 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     parameterNotice,
     rebootRequired,
     onReboot,
-    boardCatalogEntry,
-    boardReferenceLinks,
     serialPortViewModels,
     visibleSerialPortViewModels,
-    gpsPeripheralViewModels,
     canNodePeripheralViewModels,
-    uartsMappedPortCount,
-    uartsStatusTone,
     portVisibilitySummary,
     portsDraftEntries,
     portsStagedDrafts,
@@ -152,14 +126,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     portsAdditionalDraftEntries,
     portsAdditionalStagedDrafts,
     portsAdditionalInvalidDrafts,
-    gpsAutoConfig,
-    gpsAutoSwitch,
-    gpsPrimary,
-    gpsRateMs,
-    gpsAutoConfigParameter,
-    gpsAutoSwitchParameter,
-    gpsPrimaryParameter,
-    gpsRateParameter,
     editedValues,
     parameterDraftById,
     setDraft,
@@ -205,8 +171,7 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 	      <section className="grid one-up">
 	        <div id="setup-panel-ports">
 	          <Panel
-	            title="Ports & Peripherals"
-	            subtitle="Assign serial roles, baud rates, GPS drivers, and hardware flow-control settings without dropping into the raw parameter table."
+	            title="Ports"
 	          >
 		          <div className="telemetry-stack telemetry-stack--ports">
 		            <div className="ports-workspace">
@@ -215,16 +180,15 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                       <div className="ports-surface__header">
                         <div>
                           <h3>Port matrix</h3>
-                          <p>One row per UART: role, baud rates, and options inline.</p>
                         </div>
                         <div className="ports-surface__header-actions">
+                          {portsInvalidDrafts.length > 0 || portsStagedDrafts.length > 0 ? (
                           <StatusBadge tone={toneForScopedDraftReview(portsStagedDrafts.length, portsInvalidDrafts.length)}>
                             {portsInvalidDrafts.length > 0
                               ? `${portsInvalidDrafts.length} invalid`
-                              : portsStagedDrafts.length > 0
-                                ? `${portsStagedDrafts.length} staged`
-                                : 'in sync'}
+                              : `${portsStagedDrafts.length} staged`}
                           </StatusBadge>
+                          ) : null}
                           {serialPortViewModels.length > visibleSerialPortViewModels.length || showAllSerialPorts ? (
                             <button
                               style={buttonStyle()}
@@ -243,24 +207,11 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                        *  operator's viewport, causing the page to visually
                        *  scroll down each time a write succeeded. */}
 
-                      <div className="telemetry-metric-grid">
-                        <article className="telemetry-metric-card">
-                          <span>Detected ports</span>
-                          <strong>{serialPortViewModels.length}</strong>
-                        </article>
-                        <article className="telemetry-metric-card">
-                          <span>Staged changes</span>
-                          <strong>{portsStagedDrafts.length}</strong>
-                        </article>
-                        <article className="telemetry-metric-card">
-                          <span>Primary GPS</span>
-                          <strong>{formatArducopterGpsType(gpsPeripheralViewModels.find((peripheral) => peripheral.id === 'primary')?.value)}</strong>
-                        </article>
-                        <article className="telemetry-metric-card">
-                          <span>Secondary GPS</span>
-                          <strong>{formatArducopterGpsType(gpsPeripheralViewModels.find((peripheral) => peripheral.id === 'secondary')?.value)}</strong>
-                        </article>
-                      </div>
+                      {/* No metric strip above the matrix. Detected-ports and
+                       *  staged-changes restated what the list and the draft
+                       *  bar already show, and the two GPS cards belonged with
+                       *  the GPS surface rather than above a table of UARTs.
+                       *  The label now leads straight into the list. */}
 
                       {serialPortViewModels.length > 0 ? (
                         <>
@@ -488,16 +439,11 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                       {baudParameter ? (
                                         <div className="ports-matrix-row__baud">
                                           <label className="scoped-editor-field scoped-editor-field--compact">
-                                            <span>Baud</span>
                                             {/* The port matrix hand-rolls its fields instead of using the
-                                                Scoped* components, so it doesn't inherit their param-name
-                                                hint — add it here so Baud/Flow/Options aren't the only
-                                                editable knobs in the app with no visible raw param name.
-                                                aria-hidden for the same reason ScopedField does it: a
-                                                <label> folds all its text into the control's a11y name. */}
-                                            <small className="scoped-editor-field__param-id" aria-hidden="true">
-                                              {baudParameter.id}
-                                            </small>
+                                                Scoped* components, so it doesn't inherit their param "i"
+                                                — add it here so Baud/Flow/Options aren't the only
+                                                editable knobs in the app with no route to the raw name. */}
+                                            <span>Baud<ParamIdHint parameter={baudParameter} /></span>
                                             <select
                                               value={selectedBaudPresetValue(currentBaudRate)}
                                               onChange={(event) => {
@@ -564,10 +510,7 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                     <div className="ports-matrix-row__cell">
                                       {flowControlParameter ? (
                                         <label className="scoped-editor-field scoped-editor-field--compact">
-                                          <span>Flow</span>
-                                          <small className="scoped-editor-field__param-id" aria-hidden="true">
-                                            {flowControlParameter.id}
-                                          </small>
+                                          <span>Flow<ParamIdHint parameter={flowControlParameter} /></span>
                                           <select
                                             value={editedValues[flowControlParameter.id] ?? String(port.flowControlValue ?? '')}
                                             onChange={(event) =>
@@ -593,9 +536,7 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                         <div className="ports-matrix-row__options-header">
                                           <strong>
                                             Serial options
-                                            {optionsParameter ? (
-                                              <small className="scoped-editor-field__param-id">{optionsParameter.id}</small>
-                                            ) : null}
+                                            {optionsParameter ? <ParamIdHint parameter={optionsParameter} /> : null}
                                           </strong>
                                           {optionsParameter ? (
                                             <button
@@ -668,133 +609,15 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 		              </div>
 		              <div className="ports-workspace__sidebar">
 
-                {snapshot.hardware.board || snapshot.hardware.uartsFile.status !== 'idle' ? (
-                  <article className="port-card">
-                    <div className="port-card__header">
-                      <div>
-                        <strong>{boardCatalogEntry?.label ?? (snapshot.hardware.board ? `Board ${snapshot.hardware.board.boardType}` : 'Board detection')}</strong>
-                        <small>
-                          {boardCatalogEntry?.familyLabel
-                            ?? (snapshot.hardware.board ? `APJ board ${snapshot.hardware.board.boardType}` : 'Waiting for AUTOPILOT_VERSION')}
-                        </small>
-                      </div>
-                      <StatusBadge tone={uartsStatusTone}>
-                        {snapshot.hardware.uartsFile.status === 'ready'
-                          ? 'uarts.txt ready'
-                          : snapshot.hardware.uartsFile.status === 'loading'
-                            ? 'loading'
-                            : snapshot.hardware.uartsFile.status === 'unsupported'
-                              ? 'FTP unavailable'
-                              : snapshot.hardware.uartsFile.status === 'missing'
-                                ? 'uarts missing'
-                                : snapshot.hardware.uartsFile.status === 'error'
-                                  ? 'FTP error'
-                                  : 'identifying'}
-                      </StatusBadge>
-                    </div>
+                {/* The board-identity card was here: board label, family, MAVFTP
+                 *  support and the raw @SYS/uarts.txt dump. Which board this is
+                 *  belongs to Status & Info, which already states it, and the
+                 *  one thing this card said that Ports needs -- that per-port
+                 *  activity is unavailable without uarts.txt -- is stated above
+                 *  the matrix it affects. */}
 
-                    <div className="config-pills">
-                      {snapshot.hardware.board ? <span>Board type {snapshot.hardware.board.boardType}</span> : null}
-                      {snapshot.hardware.board ? <span>{snapshot.hardware.board.ftpSupported ? 'MAVFTP supported' : 'MAVFTP unavailable'}</span> : null}
-                      {uartsMappedPortCount > 0 ? <span>{uartsMappedPortCount} mapped UARTs</span> : null}
-                    </div>
-
-                    <p>
-                      {snapshot.hardware.uartsFile.status === 'ready'
-                        ? 'Ports now use the controller-reported UART mapping instead of generic SERIAL labels.'
-                        : snapshot.hardware.uartsFile.status === 'unsupported'
-                          ? 'This controller did not advertise MAVFTP support, so Ports stays generic.'
-                          : snapshot.hardware.uartsFile.status === 'missing'
-                            ? 'Board identity is available, but this controller did not expose `@SYS/uarts.txt`.'
-                            : snapshot.hardware.uartsFile.status === 'error'
-                              ? `MAVFTP failed: ${snapshot.hardware.uartsFile.error ?? 'Unknown error.'}`
-                              : 'Waiting for board identity and UART mapping from the controller.'}
-                    </p>
-
-                    {boardCatalogEntry ? (
-                      <div className="port-board-links">
-                        <a href={boardCatalogEntry.wikiUrl} target="_blank" rel="noreferrer">
-                          ArduPilot Wiki
-                        </a>
-                        <a href={boardCatalogEntry.manufacturerUrl} target="_blank" rel="noreferrer">
-                          {boardCatalogEntry.manufacturerName}
-                        </a>
-                        {boardReferenceLinks.map((reference) => (
-                          <a key={reference.id} href={reference.url} target="_blank" rel="noreferrer">
-                            {reference.label}
-                          </a>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {snapshot.hardware.uartsFile.rawText ? (
-                      <details className="port-board-debug">
-                        <summary>Controller `uarts.txt`</summary>
-                        <pre>{snapshot.hardware.uartsFile.rawText}</pre>
-                      </details>
-                    ) : null}
-                  </article>
-                ) : null}
-
-		            {gpsPeripheralViewModels.length > 0 ? (
-	              <div className="port-card-grid">
-	                {gpsPeripheralViewModels.map((peripheral) => (
-	                  <article key={peripheral.label} className="port-card">
-	                    <div className="port-card__header">
-	                      <div>
-	                        <strong>{peripheral.label}</strong>
-	                        <small>Configured driver: {formatArducopterGpsType(peripheral.value)}</small>
-	                      </div>
-	                      <StatusBadge
-                          tone={
-                            peripheral.value === 0
-                              ? 'neutral'
-                              : peripheral.id === 'primary' && snapshot.liveVerification.globalPosition.verified
-                                ? 'success'
-                                : peripheral.id === 'primary' && !snapshot.liveVerification.gpsReceiver.detected
-                                  ? 'danger'
-                                  : 'warning'
-                          }
-                        >
-	                        {peripheral.value === 0
-                            ? 'disabled'
-                            : peripheral.id === 'primary' && snapshot.liveVerification.globalPosition.verified
-                              ? 'live position'
-                              // "configured" used to cover BOTH a working GPS
-                              // waiting on a fix and a GPS that was never wired
-                              // up — a driver selected in a parameter reads as
-                              // an accomplished setup. GPS_RAW_INT separates
-                              // them: no frames at all means nothing is talking.
-                              : peripheral.id !== 'primary'
-                                ? 'configured'
-                                : !snapshot.liveVerification.gpsReceiver.detected
-                                  ? 'not detected'
-                                  : `no fix · ${snapshot.liveVerification.gpsReceiver.satellitesVisible ?? 0} sats`}
-	                      </StatusBadge>
-	                    </div>
-	                    <p>
-                        {peripheral.id === 'primary' && snapshot.liveVerification.globalPosition.verified
-                          ? 'Live position is arriving. Keep the configured driver consistent with the actual hardware after reboot and reconnect.'
-                          : peripheral.id === 'primary' && !snapshot.liveVerification.gpsReceiver.detected
-                            ? 'A driver is selected but no GPS is reporting at all — not even an unfixed one. That points at wiring rather than sky view: check the module is on a UART with TX/RX the right way round (a GPS on I2C pins never reports), that the port protocol is GPS, and that the module has power.'
-                            : peripheral.id === 'primary'
-                              ? 'The GPS module is reporting but has no position fix yet. This is normal indoors — give it sky view.'
-                              : 'Choose the expected GPS/peripheral driver, then verify the live device after reboot and reconnect.'}
-                      </p>
-
-	                    {peripheral.parameter ? (
-	                      <ScopedSelectField
-	                        parameter={peripheral.parameter}
-	                        liveValue={peripheral.value}
-	                        editedValues={editedValues}
-	                        onChange={(paramId, value) => setDraft(paramId, value)}
-	                        draftStatusById={parameterDraftById}
-	                      />
-	                    ) : null}
-	                  </article>
-	                ))}
-	              </div>
-	            ) : null}
+                {/* The Primary / Secondary GPS cards moved to Peripherals > GPS,
+                 *  beside the driver settings they report on. */}
 
               {canNodePeripheralViewModels.length > 0 ? (
                 <section className="dronecan-peripherals" data-testid="ports-dronecan-section">
@@ -823,96 +646,14 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                 </section>
               ) : null}
 
-              {gpsPeripheralViewModels.length > 0 || snapshot.liveVerification.globalPosition.verified ? (
-                <LiveGpsMapCard
-                  snapshot={snapshot}
-                  title="GPS map"
-                  subtitle="Verify the live aircraft location once the GPS driver and serial link are configured."
-                  testId="ports-gps-map-widget"
-                />
-              ) : null}
+              {/* The "GPS behavior" card lived here and edited GPS_AUTO_CONFIG,
+               *  GPS_AUTO_SWITCH, GPS_PRIMARY and GPS_RATE_MS -- every one of
+               *  which Peripherals > GPS already owns, under the same heading,
+               *  alongside GPS_TYPE and the GNSS mode. Two editors for one set
+               *  of parameters is how they drift apart in an operator's head.
+               *  Ports configures the UART; what the GPS then does with it is a
+               *  peripheral concern. */}
 
-              {gpsAutoConfigParameter || gpsAutoSwitchParameter || gpsPrimaryParameter || gpsRateParameter ? (
-                <div className="scoped-review-card scoped-review-card--compact">
-                  <div className="switch-exercise-card__header">
-                    <div>
-                      <strong>GPS behavior</strong>
-                      <p>Keep GPS redundancy, auto-configuration, and update-rate settings local to this Ports workflow.</p>
-                    </div>
-                    <StatusBadge tone={toneForScopedDraftReview(portsStagedDrafts.length, portsInvalidDrafts.length)}>
-                      {portsInvalidDrafts.length > 0
-                        ? `${portsInvalidDrafts.length} invalid`
-                        : portsStagedDrafts.length > 0
-                          ? `${portsStagedDrafts.length} staged`
-                          : 'in sync'}
-                    </StatusBadge>
-                  </div>
-
-                  <div className="config-pills">
-                    {gpsAutoConfigParameter ? <span>Auto config: {formatArducopterGpsAutoConfig(gpsAutoConfig)}</span> : null}
-                    {gpsAutoSwitchParameter ? <span>Auto switch: {formatArducopterGpsAutoSwitch(gpsAutoSwitch)}</span> : null}
-                    {gpsPrimaryParameter ? <span>Preferred GPS: {formatArducopterGpsPrimary(gpsPrimary)}</span> : null}
-                    {gpsRateParameter ? <span>Update rate: {formatArducopterGpsRateMs(gpsRateMs)}</span> : null}
-                  </div>
-
-                  <div className="scoped-editor-grid">
-                    {gpsAutoConfigParameter ? (
-                      <ScopedSelectField
-                        parameter={gpsAutoConfigParameter}
-                        liveValue={gpsAutoConfig}
-                        editedValues={editedValues}
-                        onChange={(paramId, value) => setDraft(paramId, value)}
-                        draftStatusById={parameterDraftById}
-                      />
-                    ) : null}
-
-                    {gpsAutoSwitchParameter ? (
-                      <ScopedSelectField
-                        parameter={gpsAutoSwitchParameter}
-                        liveValue={gpsAutoSwitch}
-                        editedValues={editedValues}
-                        onChange={(paramId, value) => setDraft(paramId, value)}
-                        draftStatusById={parameterDraftById}
-                      />
-                    ) : null}
-
-                    {gpsPrimaryParameter ? (
-                      <ScopedSelectField
-                        parameter={gpsPrimaryParameter}
-                        liveValue={gpsPrimary}
-                        editedValues={editedValues}
-                        onChange={(paramId, value) => setDraft(paramId, value)}
-                        draftStatusById={parameterDraftById}
-                      />
-                    ) : null}
-
-                    {gpsRateParameter ? (
-                      (gpsRateParameter.definition?.options ?? []).length > 0 ? (
-                        <ScopedSelectField
-                          parameter={gpsRateParameter}
-                          liveValue={gpsRateMs}
-                          editedValues={editedValues}
-                          onChange={(paramId, value) => setDraft(paramId, value)}
-                          draftStatusById={parameterDraftById}
-                        />
-                      ) : (
-                        <ScopedField
-                          parameter={gpsRateParameter}
-                          liveValue={gpsRateMs}
-                          editedValues={editedValues}
-                          onChange={(paramId, value) => setDraft(paramId, value)}
-                          draftStatusById={parameterDraftById}
-                        />
-                      )
-                    ) : null}
-                  </div>
-
-                  <ul className="output-note-list">
-                    <li>Keep GPS redundancy features simple unless the aircraft actually has two usable GPS links.</li>
-                    <li>After GPS behavior changes, reboot, reconnect, and verify live lock/telemetry before flight.</li>
-                  </ul>
-                </div>
-              ) : null}
 
 	              {renderAdditionalSettingsCard(
 	                'Additional port settings',

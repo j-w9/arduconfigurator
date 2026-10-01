@@ -44,9 +44,21 @@ export interface UseSafetyAcksResult {
 }
 
 export function useSafetyAcks(): UseSafetyAcksResult {
-  const [propsRemovedAcknowledged, setPropsRemovedAcknowledged] = useState(false)
-  const [testAreaAcknowledged, setTestAreaAcknowledged] = useState(false)
-  const [usbBenchAcknowledged, setUsbBenchAcknowledged] = useState(false)
+  // ONE acknowledgement for anything that spins motors. It used to be three
+  // booleans -- props removed, area clear, and a USB-bench extra when the link
+  // was Web Serial -- rendered as separate boxes, so an operator on a USB
+  // bench (which is where motor testing happens) ticked one box in the reorder
+  // panel and then found a second one further down holding the Run button.
+  // Two boxes do not make the hazard twice as acknowledged. The three names are
+  // kept so every gate and surface that reads them keeps reading one truth;
+  // each setter writes the same state.
+  const [motorSafetyAcknowledged, setMotorSafetyAcknowledged] = useState(false)
+  const propsRemovedAcknowledged = motorSafetyAcknowledged
+  const testAreaAcknowledged = motorSafetyAcknowledged
+  const usbBenchAcknowledged = motorSafetyAcknowledged
+  const setPropsRemovedAcknowledged = setMotorSafetyAcknowledged
+  const setTestAreaAcknowledged = setMotorSafetyAcknowledged
+  const setUsbBenchAcknowledged = setMotorSafetyAcknowledged
   const [snapshotRestoreAcknowledged, setSnapshotRestoreAcknowledged] = useState(false)
   // Operator opted to force-write the snapshot restore's blocked (out-of-doc-range
   // / outside-enum) values anyway — common on a cross-board restore where a value

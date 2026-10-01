@@ -1,33 +1,39 @@
-// VTX band/frequency + power table codec — the ground-station half of
-// ArduPilot's user-definable VTX table (AP_VideoTX_Table, Betaflight-style),
-// transported as a single binary blob over MAVLink FTP at @VTX/vtxtable.dat.
+// VTX band/frequency table codec — the ground-station half of ArduPilot's
+// user-definable VTX table (AP_VideoTX_Table), transported as a single binary
+// blob over MAVLink FTP at @VTX/vtxtable.dat.
 //
-// Wire format is byte-exact to AP_VideoTX_Table::serialize/deserialize on the
-// firmware branch that introduced it. Little-endian throughout:
+// VERSION 2, the form being upstreamed. Bands only. Little-endian, no padding:
 //
-//   [0..1] magic 0x5654 ('VT')     [2] version    [3] numBands
-//   [4] numChannels                [5] numPowerLevels
-//   per band  (numBands ×):  name[8]  letter[1]  isFactory[1]  freq[numChannels × u16]
-//   per power (numPowerLevels ×):  value[u16]  label[3]
-//   [tail] crc[u32]  = crc_crc32(0, buf, len-4)  over everything before it
+//   [0..1] magic 0x5654 ('VT')   [2] version = 2   [3] numBands   [4] numChannels
+//   per band (numBands ×):  name[8]  letter[1]  isFactory[1]  freq[numChannels × u16]
+//   [tail] crc[u32] = crc_crc32(0, buf, len-4) over everything before it
 //
-// `value` is power in mW for every protocol — the firmware stores it as mW and
-// derives the SmartAudio dBm/dac step from it (AP_VideoTX::load_power_levels_from_table),
-// so it is NOT a raw dBm/index even for SmartAudio/MSP — and `label` is the
-// authored display string. The firmware resolves an exact power level by the
-// position of a non-zero entry in this table (index i = the i-th non-zero level,
-// matching the RC Mixer's level selector), so power is authoritative, not read-only.
+// What changed from version 1: the header lost its numPowerLevels byte (6 -> 5)
+// and the power section after the bands is gone. POWER LEVELS ARE PARAMETERS
+// now -- VTX_PWRTBL_EN and VTX_PWRTBL1..6, see vtx-power-table.ts -- which also
+// means they work on every board, not only ones that can store a table.
+//
+// Version 1 blobs only ever came from the old SmallFastDrone fork firmware and
+// are REJECTED here, with a distinguishable error so the UI can say "firmware
+// too old" rather than "corrupt table". Reading one and writing v2 back would
+// silently discard its power section; refusing is the honest answer.
+//
+// The full specification is libraries/AP_VideoTX/README_VTX_TABLE.md.
 
 /** MAVLink-FTP path the firmware exposes the table blob at. */
 export const VTX_TABLE_FTP_PATH = '@VTX/vtxtable.dat'
 
 export const VTX_TABLE_MAGIC = 0x5654 // 'VT'
-export const VTX_TABLE_VERSION = 1
+export const VTX_TABLE_VERSION = 2
+/** The only other version that ever existed: the pre-upstream fork format. */
+export const VTX_TABLE_LEGACY_VERSION = 1
 export const VTX_TABLE_MAX_BANDS = 12
 export const VTX_TABLE_MAX_CHANNELS = 8
 export const VTX_TABLE_MAX_POWER_LEVELS = 8
 export const VTX_TABLE_BAND_NAME_LEN = 8
 export const VTX_TABLE_POWER_LABEL_LEN = 3
+/** magic(2) + version(1) + numBands(1) + numChannels(1). Was 6 in version 1. */
+export const VTX_TABLE_HEADER_LEN = 5
 
 export interface VtxTableBand {
   /** Human name (e.g. "Boscam A"); already trimmed of the storage padding. */
@@ -53,7 +59,6 @@ export interface VtxTable {
   version: number
   numChannels: number
   bands: VtxTableBand[]
-  powerLevels: VtxTablePowerLevel[]
 }
 
 // CRC-32 matching ArduPilot's crc_crc32(): standard reflected table (poly
@@ -107,13 +112,47 @@ function encodeFixedString(value: string, len: number): Uint8Array {
 export class VtxTableParseError extends Error {}
 
 /**
+ * The vehicle accepted every byte and then refused the table on close.
+ *
+ * The firmware exposes no capability flag for this, so the message says the
+ * likely cause rather than pretending to know: only boards with 32 KB of
+ * parameter storage can keep a custom table. Reads still work on the others and
+ * return the built-in bands, which is why the tab keeps showing a table.
+ */
+export class VtxTableStorageUnavailableError extends Error {
+  constructor() {
+    super(
+      'This autopilot cannot store a custom band table; the default bands are in use. (Only boards with 32 KB of parameter storage can keep one.)'
+    )
+    this.name = 'VtxTableStorageUnavailableError'
+  }
+}
+
+/**
+ * Thrown when the blob is a VERSION 1 table.
+ *
+ * Its own type because the UI answers it differently: not "this table is
+ * corrupt" but "this firmware predates the upstream VTX table". Nothing the
+ * operator can do to the table fixes it; they need a newer build.
+ */
+export class VtxTableLegacyVersionError extends VtxTableParseError {
+  constructor() {
+    super(
+      'This firmware uses the old (version 1) VTX table format, which this version cannot read or write. Update to a build with the upstream VTX table.'
+    )
+    this.name = 'VtxTableLegacyVersionError'
+  }
+}
+
+
+/**
  * Parse a @VTX/vtxtable.dat blob. Throws {@link VtxTableParseError} on a bad
  * magic / unsupported version / out-of-range counts / truncation / CRC
  * mismatch, so a detection caller can distinguish "not a VTX table" from a
  * transport failure.
  */
 export function parseVtxTable(bytes: Uint8Array): VtxTable {
-  if (bytes.length < 6) {
+  if (bytes.length < VTX_TABLE_HEADER_LEN) {
     throw new VtxTableParseError('VTX table blob too short for its header.')
   }
   const magic = bytes[0] | (bytes[1] << 8)
@@ -121,24 +160,25 @@ export function parseVtxTable(bytes: Uint8Array): VtxTable {
     throw new VtxTableParseError(`VTX table bad magic 0x${magic.toString(16)}.`)
   }
   const version = bytes[2]
+  if (version === VTX_TABLE_LEGACY_VERSION) {
+    throw new VtxTableLegacyVersionError()
+  }
   if (version !== VTX_TABLE_VERSION) {
     throw new VtxTableParseError(`Unsupported VTX table version ${version}.`)
   }
   const numBands = bytes[3]
   const numChannels = bytes[4]
-  const numPowerLevels = bytes[5]
-  if (
-    numBands > VTX_TABLE_MAX_BANDS ||
-    numChannels > VTX_TABLE_MAX_CHANNELS ||
-    numPowerLevels > VTX_TABLE_MAX_POWER_LEVELS
-  ) {
+  // At least one of each: the firmware rejects a table with either at zero, and
+  // a zero-band table would otherwise parse as a valid empty one and then be
+  // refused on upload with nothing useful to say.
+  if (numBands < 1 || numChannels < 1) {
+    throw new VtxTableParseError('VTX table must have at least one band and one channel.')
+  }
+  if (numBands > VTX_TABLE_MAX_BANDS || numChannels > VTX_TABLE_MAX_CHANNELS) {
     throw new VtxTableParseError('VTX table counts exceed the supported limits.')
   }
   const need =
-    6 +
-    numBands * (VTX_TABLE_BAND_NAME_LEN + 2 + numChannels * 2) +
-    numPowerLevels * (2 + VTX_TABLE_POWER_LABEL_LEN) +
-    4
+    VTX_TABLE_HEADER_LEN + numBands * (VTX_TABLE_BAND_NAME_LEN + 2 + numChannels * 2) + 4
   if (bytes.length < need) {
     throw new VtxTableParseError('VTX table blob truncated.')
   }
@@ -148,7 +188,7 @@ export function parseVtxTable(bytes: Uint8Array): VtxTable {
     throw new VtxTableParseError('VTX table CRC mismatch.')
   }
 
-  let o = 6
+  let o = VTX_TABLE_HEADER_LEN
   const bands: VtxTableBand[] = []
   for (let b = 0; b < numBands; b += 1) {
     const name = decodeFixedString(bytes.subarray(o, o + VTX_TABLE_BAND_NAME_LEN))
@@ -164,16 +204,8 @@ export function parseVtxTable(bytes: Uint8Array): VtxTable {
     }
     bands.push({ name, letter, isFactory, frequencies })
   }
-  const powerLevels: VtxTablePowerLevel[] = []
-  for (let i = 0; i < numPowerLevels; i += 1) {
-    const value = bytes[o] | (bytes[o + 1] << 8)
-    o += 2
-    const label = decodeFixedString(bytes.subarray(o, o + VTX_TABLE_POWER_LABEL_LEN))
-    o += VTX_TABLE_POWER_LABEL_LEN
-    powerLevels.push({ value, label })
-  }
 
-  return { version, numChannels, bands, powerLevels }
+  return { version, numChannels, bands }
 }
 
 /**
@@ -184,12 +216,8 @@ export function parseVtxTable(bytes: Uint8Array): VtxTable {
 export function serializeVtxTable(table: VtxTable): Uint8Array {
   const numBands = table.bands.length
   const numChannels = table.numChannels
-  const numPowerLevels = table.powerLevels.length
   const size =
-    6 +
-    numBands * (VTX_TABLE_BAND_NAME_LEN + 2 + numChannels * 2) +
-    numPowerLevels * (2 + VTX_TABLE_POWER_LABEL_LEN) +
-    4
+    VTX_TABLE_HEADER_LEN + numBands * (VTX_TABLE_BAND_NAME_LEN + 2 + numChannels * 2) + 4
   const buf = new Uint8Array(size)
   let o = 0
   buf[o++] = VTX_TABLE_MAGIC & 0xff
@@ -197,7 +225,6 @@ export function serializeVtxTable(table: VtxTable): Uint8Array {
   buf[o++] = VTX_TABLE_VERSION
   buf[o++] = numBands
   buf[o++] = numChannels
-  buf[o++] = numPowerLevels
   for (const band of table.bands) {
     buf.set(encodeFixedString(band.name, VTX_TABLE_BAND_NAME_LEN), o)
     o += VTX_TABLE_BAND_NAME_LEN
@@ -208,12 +235,6 @@ export function serializeVtxTable(table: VtxTable): Uint8Array {
       buf[o++] = freq & 0xff
       buf[o++] = (freq >> 8) & 0xff
     }
-  }
-  for (const level of table.powerLevels) {
-    buf[o++] = level.value & 0xff
-    buf[o++] = (level.value >> 8) & 0xff
-    buf.set(encodeFixedString(level.label, VTX_TABLE_POWER_LABEL_LEN), o)
-    o += VTX_TABLE_POWER_LABEL_LEN
   }
   const crc = vtxTableCrc32(buf.subarray(0, o))
   buf[o++] = crc & 0xff
@@ -256,7 +277,13 @@ function tokenizeCliLine(line: string): string[] {
  * internally inconsistent, or exceeds the firmware's limits (so the user gets
  * a clear reason rather than a silently-truncated table the FC can't hold).
  */
-export function parseBetaflightVtxTable(text: string): VtxTable {
+export interface BetaflightVtxTableImport {
+  table: VtxTable
+  /** From the snippet's powervalues/powerlabels rows; may be empty. */
+  powerLevels: VtxTablePowerLevel[]
+}
+
+export function parseBetaflightVtxTable(text: string): BetaflightVtxTableImport {
   let numChannels: number | undefined
   const bandByIndex = new Map<number, VtxTableBand>()
   let powerValues: number[] | undefined
@@ -341,12 +368,25 @@ export function parseBetaflightVtxTable(text: string): VtxTable {
     throw new VtxTableParseError(`Band name "${longName.name}" exceeds ${VTX_TABLE_BAND_NAME_LEN} characters.`)
   }
 
-  return { version: VTX_TABLE_VERSION, numChannels: resolvedChannels, bands, powerLevels }
+  return {
+    table: { version: VTX_TABLE_VERSION, numChannels: resolvedChannels, bands },
+    powerLevels
+  }
 }
 
-/** Render a VtxTable as a Betaflight `vtxtable` CLI snippet (the shareable
- *  format users paste into a configurator or save to a file). */
-export function serializeBetaflightVtxTable(table: VtxTable): string {
+/**
+ * Render a table as a Betaflight `vtxtable` CLI snippet (the shareable format
+ * users paste into a configurator or save to a file).
+ *
+ * Power is passed in separately because it no longer lives in the blob -- on
+ * this firmware it is VTX_PWRTBL1..6 -- but the Betaflight interchange format
+ * still carries it, and a snippet without power levels is not one another
+ * configurator will accept.
+ */
+export function serializeBetaflightVtxTable(
+  table: VtxTable,
+  powerLevels: readonly VtxTablePowerLevel[] = []
+): string {
   const quote = (name: string): string => (/\s/.test(name) ? `"${name}"` : name)
   const lines: string[] = []
   lines.push(`vtxtable bands ${table.bands.length}`)
@@ -357,8 +397,8 @@ export function serializeBetaflightVtxTable(table: VtxTable): string {
       `vtxtable band ${index + 1} ${quote(band.name)} ${band.letter || '?'} ${band.isFactory ? 'FACTORY' : 'CUSTOM'} ${freqs}`
     )
   })
-  lines.push(`vtxtable powerlevels ${table.powerLevels.length}`)
-  lines.push(`vtxtable powervalues ${table.powerLevels.map((level) => level.value).join(' ')}`)
-  lines.push(`vtxtable powerlabels ${table.powerLevels.map((level) => level.label || String(level.value)).join(' ')}`)
+  lines.push(`vtxtable powerlevels ${powerLevels.length}`)
+  lines.push(`vtxtable powervalues ${powerLevels.map((level) => level.value).join(' ')}`)
+  lines.push(`vtxtable powerlabels ${powerLevels.map((level) => level.label || String(level.value)).join(' ')}`)
   return lines.join('\n') + '\n'
 }

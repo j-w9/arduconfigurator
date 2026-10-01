@@ -26,6 +26,22 @@ connected firmware actually reports.
    :doc:`sensors-calibration`; the rest of this page covers the sections that
    are unique to this tab.
 
+The **GPS** sub-tab also carries what used to sit on :doc:`ports-serial`: the
+**Primary** and **Secondary GPS** cards, which report whether a configured
+driver is actually talking rather than merely selected, a **live map** to
+confirm the aircraft is where it says it is, and the second-receiver and
+antenna-offset settings (``GPS_TYPE2``, ``GPS_GNSS_MODE2``, ``GPS1_POS_*`` /
+``GPS2_POS_*``, ``GPS1_DELAY_MS``). Ports configures the UART; what is on the
+far end of it belongs here.
+
+.. note::
+
+   "Driver selected" and "receiver talking" are different states, and the cards
+   distinguish them: a driver set with no GPS reporting at all points at wiring
+   — check the module is on a UART with TX/RX the right way round, that the port
+   protocol is GPS, and that it has power — while a module that reports without
+   a fix just needs sky view.
+
 Rangefinder / LiDAR
 -------------------
 

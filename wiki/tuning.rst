@@ -13,10 +13,11 @@ The tab shows **five tasks** by default — **Pilot**, **Filters**, **Autotune**
 feel, handle noise, let the vehicle find its gains, apply, and get a starting
 point for a new airframe.
 
-**Expert mode** adds three more: **PID Gains** (27 raw P/I/D/FF controls),
-**Profiles** (a local library of saved tunes) and **Log Tuning** (post-flight log
-analysis). They are tools for someone who already has a tune rather than steps
-toward getting one.
+**Expert mode** adds four more: **PID Gains** (27 raw P/I/D/FF controls),
+**Notches** (the two harmonic notches and the ``FILTn`` bank), **Profiles** (a
+local library of saved tunes) and **Log Tuning** (post-flight log analysis).
+They are tools for someone who already has a tune rather than steps toward
+getting one.
 
 The workspace is full-width — each task fills it — and every control carries an
 **"i" info bubble** with the parameter's plain-text description, its label, and
@@ -146,15 +147,41 @@ Manual override (Expert)
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Expert mode adds the raw grid back below the derived panel, under **Manual
-override**: every filter parameter as its own field, grouped by axis, plus the
-harmonic notch and the ``FILTn`` filter bank.
+override**: every smoothing parameter as its own field, grouped by axis.
 
 Use it when you want a value the derived panel does not set, or one that
 deliberately departs from ArduPilot's ratios. A handful of parameters live only
 here, because there is no documented rule to derive them from —
-``INS_ACCEL_FILTER``, ``ATC_RAT_RLL_FLTE`` / ``ATC_RAT_PIT_FLTE``,
-``INS_HNTCH_HMNCS`` and ``INS_HNTCH_FM_RAT``. Inventing a ratio for them would
-be worse than leaving them to Expert mode.
+``INS_ACCEL_FILTER`` and ``ATC_RAT_RLL_FLTE`` / ``ATC_RAT_PIT_FLTE``. Inventing
+a ratio for them would be worse than leaving them to Expert mode.
+
+.. note::
+
+   The **harmonic notches** and the ``FILTn`` filter bank are their own task —
+   see :ref:`tuning-notches` below. Smoothing and notching are different jobs:
+   a low-pass cutoff trades noise against latency by judgement, while a notch
+   removes one *measured* frequency.
+
+.. _tuning-notches:
+
+Notches (Expert)
+----------------
+
+The two **harmonic notches** and the ``FILTn`` filter bank live on their own
+**Notches** task, alongside the notch suggestions that fill them in. It is
+Expert-only, as the raw notch fields always were.
+
+A notch removes a narrow band — motor noise and its harmonics — without the
+latency a lower low-pass cutoff costs. ArduPilot carries **two independent
+harmonic notches** (``INS_HNTCH_*`` and ``INS_HNTC2_*``,
+``harmonic_notches[0]`` and ``[1]``), so one can track ESC telemetry or the
+in-flight FFT while the other sits at a fixed frequency. Both are configurable
+here; only the first used to be, which meant a vehicle needing two sources had
+to set half its filtering from the raw Parameters tab.
+
+Place them from a log rather than by ear: **Log Tuning** reads a ``.bin`` and
+recommends the frequency, bandwidth and reference, and the Notches task points
+at it.
 
 Everything else is yours
 ~~~~~~~~~~~~~~~~~~~~~~~~

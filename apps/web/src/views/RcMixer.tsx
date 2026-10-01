@@ -304,11 +304,6 @@ export function RcMixerView(props: RcMixerViewProps) {
     <div id="setup-panel-rc-mixer">
       <Panel
         title="RC Option Mixer"
-        subtitle={
-          firmwareSupported
-            ? 'Activate ArduPilot AUX functions from RC channel PWM ranges (AP_RC_Logic). Edits stage as RCL_* parameter drafts.'
-            : 'Assign multiple ArduPilot AUX functions per RC channel with independent PWM activation ranges. Preview only — not yet wired to the vehicle.'
-        }
       >
         {firmwareSupported ? (
           <div className="rc-mixer-engine" data-testid="rc-mixer-engine-controls">

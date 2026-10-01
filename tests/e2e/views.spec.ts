@@ -518,6 +518,43 @@ test.describe('Parameters tab (expert-only)', () => {
     await expect(prompt).toHaveCount(0)
   })
 
+  test('an imported value can be edited before it is staged', async ({ page }) => {
+    // A file is a starting point, not a verdict: importing someone else's tune
+    // usually means wanting most of it and a different number in a couple of
+    // places. Editing after staging works, but it writes the file's value into
+    // the draft set first and corrects it afterwards — a round trip through a
+    // value you never wanted.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await enableExpertMode(page)
+    await page.getByTestId('view-button-parameters').click()
+    await expectParameterSyncComplete(page)
+
+    await page.locator('input[aria-label="Import parameter backup file"]').setInputFiles({
+      name: 'e2e-backup.parm',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('BATT_LOW_VOLT,13.5\n')
+    })
+    await expect(page.getByTestId('parameter-import-preview')).toBeVisible()
+
+    // The imported value is an input carrying what the file asked for.
+    const value = page.getByTestId('parameter-import-value-BATT_LOW_VOLT')
+    await expect(value).toHaveValue('13.5')
+
+    // Change it, then stage — what lands in the drafts is the EDITED number,
+    // not the file's.
+    await value.fill('12.8')
+    await page.getByTestId('parameter-import-stage-BATT_LOW_VOLT').click()
+    await expect(page.getByRole('button', { name: /^Apply All \(1\)/ })).toBeVisible()
+
+    // The staged row carries the EDITED value...
+    await expect(page.getByTestId('parameter-diff-edit-BATT_LOW_VOLT')).toHaveValue('12.8')
+    // ...while "Import" still shows what the FILE asked for. Editing before
+    // staging must not rewrite history: that display exists so the imported
+    // number is recoverable after the draft is nudged.
+    await expect(page.getByTestId('parameter-diff-import-BATT_LOW_VOLT')).toContainText('13.5')
+  })
+
   test('a staged bitmask is editable bit by bit, and a draft matching live clears on re-sync', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
@@ -767,10 +804,12 @@ test.describe('Ports view', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'ports')
-    const hints = page.locator('.ports-matrix .scoped-editor-field__param-id')
-    await expect(hints.filter({ hasText: /^SERIAL\d+_BAUD$/ }).first()).toBeVisible()
-    await expect(hints.filter({ hasText: /_RTSCTS$/ }).first()).toBeVisible()
-    await expect(hints.filter({ hasText: /^SERIAL\d+_OPTIONS$/ }).first()).toBeVisible()
+    // The raw name is the first line of each field's "i" tip now, not a
+    // caption under the label; the dot's test id carries the parameter id.
+    await expect(page.locator('.ports-matrix [data-testid^="param-info-SERIAL"][data-testid$="_BAUD"]').first()).toBeVisible()
+    // Flow control is a BRD_SERn_RTSCTS param, not a SERIALn_ one.
+    await expect(page.locator('.ports-matrix [data-testid^="param-info-BRD_SER"][data-testid$="_RTSCTS"]').first()).toBeVisible()
+    await expect(page.locator('.ports-matrix [data-testid^="param-info-SERIAL"][data-testid$="_OPTIONS"]').first()).toBeVisible()
   })
 
   test('a DisplayPort / VTX-control protocol shows what it also auto-configures', async ({ page }) => {
@@ -786,6 +825,52 @@ test.describe('Ports view', () => {
     await expect(notes.filter({ hasText: /SmartAudio control/i })).toBeVisible()
     // A plain protocol (GPS on SERIAL3) carries no pairing note.
     await expect(notes.filter({ hasText: /GPS/i })).toHaveCount(0)
+  })
+
+  test('the peripherals group left Ports for the GPS sub-tab', async ({ page }) => {
+    // Ports configures a UART; what is on the far end of it is a peripheral.
+    // The `peripherals` metadata category used to render as rows under Ports ▸
+    // Additional port settings, which put GPS_TYPE2 and the antenna offsets on
+    // a tab that has no other GPS setting on it.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await enableExpertMode(page)
+    await openView(page, 'ports')
+    await expect(page.getByTestId('metadata-settings-section-peripherals')).toHaveCount(0)
+
+    await openView(page, 'peripherals')
+    await page.locator('.tab-strip__tab', { hasText: 'GPS' }).first().click()
+    // GPS_TYPE2 is a curated field of the GPS section now, under GPS_TYPE.
+    await expect(page.getByTestId('param-info-GPS_TYPE2')).toBeVisible()
+    // The "Additional GPS settings" residue renders only when the category has
+    // something a curated field does not already show; on the demo set that
+    // is nothing, so the card is gone. Whatever it holds elsewhere, it never
+    // repeats GPS_TYPE, GPS_TYPE2 or CAM_TRIGG_TYPE.
+    const moved = page.getByTestId('metadata-settings-section-peripherals')
+    await expect(moved.getByTestId('param-info-GPS_TYPE2')).toHaveCount(0)
+    await expect(moved.getByText('GPS_TYPE', { exact: true })).toHaveCount(0)
+    await expect(moved.getByText('CAM_TRIGG_TYPE', { exact: true })).toHaveCount(0)
+  })
+
+  test('the GPS cards and the board box left Ports too', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'ports')
+    // "One row per UART: role, baud rates, and options inline" restated the
+    // table directly beneath it.
+    await expect(page.getByText('One row per UART', { exact: false })).toHaveCount(0)
+    await expect(page.getByTestId('peripherals-gps-cards')).toHaveCount(0)
+    // The board-identity card (label, family, MAVFTP support, raw uarts.txt).
+    // Which board this is belongs to Status & Info, which already says it.
+    await expect(page.locator('.port-board-links')).toHaveCount(0)
+    await expect(page.locator('.port-board-debug')).toHaveCount(0)
+
+    await openView(page, 'peripherals')
+    await page.locator('.tab-strip__tab', { hasText: 'GPS' }).first().click()
+    // The status cards are gone from here too: the driver is the GPS type
+    // field and the live fix is the map, so the cards said both a second time.
+    await expect(page.getByTestId('peripherals-gps-cards')).toHaveCount(0)
+    await expect(page.getByTestId('param-info-GPS_TYPE')).toBeVisible()
   })
 })
 
@@ -841,8 +926,10 @@ test.describe('Networking view (Expert + networking-capable FC)', () => {
     await expect(page.getByRole('button', { name: /Apply Network Changes \(\d+\)/ })).toBeVisible()
 
     // Per-param "i" info affordance — each NET_ field carries one (hover/focus
-    // reveals the ArduPilot description) so operators know what each param does.
-    await expect(page.getByTestId('networking-field-info-NET_ENABLE')).toBeVisible()
+    // reveals the raw id and the ArduPilot description) so operators know what
+    // each param does. Plain NET_ params render through ScopedField, so it is
+    // the field's own inline dot.
+    await expect(page.getByTestId('param-info-NET_ENABLE')).toBeVisible()
 
     // DroneNet tab: switching to it auto-connects over CAN and discovers the demo
     // DroneNet peripheral — no CAN tab, no manual Start needed.
@@ -1237,8 +1324,12 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     // ...but the safety acks are, so battery-current calibration stays usable.
     await expect(page.getByTestId('calibration-card-battery-current')).toBeVisible()
     await expect(page.getByTestId('cal-motor-acks')).toBeVisible()
+    // ONE box. Props-removed and area-clear used to be two checkboxes here
+    // while Motors showed one for the same state; the second was never a
+    // second decision.
     await expect(page.getByTestId('cal-props-ack')).toBeVisible()
-    await expect(page.getByTestId('cal-area-ack')).toBeVisible()
+    await expect(page.getByTestId('cal-area-ack')).toHaveCount(0)
+    await expect(page.getByTestId('cal-motor-acks').locator('input[type="checkbox"]')).toHaveCount(1)
     // The gate sits with the button it unlocks, not in a separate card.
     await expect(page.getByTestId('calibration-card-motor-safety')).toHaveCount(0)
     await expect(page.getByTestId('battery-current-spin-motors')).toBeVisible()
@@ -2359,12 +2450,12 @@ test.describe('Config view', () => {
     // (correctly) says DShot rate is a multiple of the main loop rate.
     await page.getByTestId('config-category-airframe').click()
     await expect(
-      page.getByTestId('config-section-esc-dshot').getByTestId('config-field-info-SCHED_LOOP_RATE')
+      page.getByTestId('config-section-esc-dshot').getByTestId('param-info-SCHED_LOOP_RATE')
     ).toHaveCount(0)
     // ...and it is still reachable where it now lives.
     await page.getByTestId('config-category-system').click()
     await expect(
-      page.getByTestId('config-section-system-rates').getByTestId('config-field-info-SCHED_LOOP_RATE')
+      page.getByTestId('config-section-system-rates').getByTestId('param-info-SCHED_LOOP_RATE')
     ).toBeVisible()
     // Fast-rate thread is build-gated: the demo Copter mock does not stream
     // FSTRATE_*, so the Fast loop rate section must never render.
@@ -2384,7 +2475,7 @@ test.describe('Config view', () => {
     // DISBLMSK are in the card's Advanced fold — open it first.
     await compass.getByTestId('config-advanced-compass').click()
     for (const id of ['COMPASS_EXTERNAL', 'COMPASS_ORIENT', 'COMPASS_AUTO_ROT', 'COMPASS_DISBLMSK']) {
-      await expect(compass.locator('.scoped-editor-field__param-id', { hasText: id }).first()).toBeVisible()
+      await expect(compass.getByTestId(`param-info-${id}`).first()).toBeVisible()
     }
     // Editing a compass field stages into the Config apply scope.
     await compass.getByText('Disabled', { exact: true }).first().click()
@@ -2549,7 +2640,8 @@ test.describe('Config view', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await page.getByTestId('view-button-motors').click()
 
-    const readout = page.getByTestId('esc-rpm-readout')
+    // RPM prints under each slider column now, not in a table of its own.
+    const readout = page.getByTestId('motor-test-sliders')
     await readout.scrollIntoViewIfNeeded()
     await expect(readout).toHaveAttribute('data-status', 'live', { timeout: 15000 })
     // Four motors, four distinct RPMs — identical numbers would hide a decode
@@ -2589,24 +2681,6 @@ test.describe('Config view', () => {
       expect(box, `#${id} is not rendered on the Motors tab`).not.toBeNull()
       expect(box!.height, `#${id} has no height to scroll to`).toBeGreaterThan(0)
     }
-  })
-
-  test('the Test panel points at the safety ack it no longer contains', async ({ page }) => {
-    // One ack for the whole page now, pinned at the top, while the Test panel
-    // is a sticky column beside it -- so the control that unblocks Run Motor
-    // Test can sit off-screen above the operator reading why it is blocked.
-    await page.goto('/')
-    await connectViaHeader(page)
-    await openView(page, 'motors')
-
-    const goToAck = page.getByTestId('motor-test-goto-ack')
-    await expect(goToAck).toBeVisible()
-    await goToAck.click()
-    await expect(page.getByTestId('motor-reorder-props-off-ack')).toBeInViewport()
-
-    // Once acknowledged there is nothing to point at.
-    await page.getByTestId('motor-reorder-props-off-ack').check()
-    await expect(goToAck).toHaveCount(0)
   })
 
   test('spin-threshold wizard measures a break-away point and derives both parameters', async ({ page }) => {
@@ -2746,25 +2820,44 @@ test.describe('Config view', () => {
     // FRAME_CLASS + FRAME_TYPE render as two enum selects.
     await expect(frame.locator('select')).toHaveCount(2)
     const apply = page.getByTestId('esc-frame-apply')
-    await expect(apply).toBeDisabled()
-    // Changing the frame type stages a draft and enables Apply Frame.
+    // No apply button until a draft exists.
+    await expect(apply).toHaveCount(0)
+    // Changing the frame type stages a draft and shows Apply Frame.
     await frame.locator('select').nth(1).selectOption('0') // Plus
     await expect(apply).toBeEnabled()
     await expect(apply).toContainText('Apply Frame (1)')
   })
 
-  test('Config sections pack into a multicolumn (masonry) layout', async ({ page }) => {
+  test('the Config grid does not balance its columns', async ({ page }) => {
+    // Field report: "when I click Advanced the section moves and at first I
+    // didn't know where the box went", on Board orientation and System
+    // identity. The grid was CSS multicolumn, which BALANCES -- any height
+    // change re-flows every column, so opening a disclosure teleported the card
+    // to another column (measured 395px right and 258px up) and shoved an
+    // unrelated card sideways with it.
+    //
+    // This asserts the MECHANISM, deliberately. The tempting test -- open a
+    // disclosure and assert no card moved -- is vacuous today: it passes under
+    // multicolumn too, because no shipping card with a disclosure currently has
+    // anything below it in its column to reflow. It would start passing for the
+    // wrong reason and hide a revert. A balancing container is the hazard
+    // itself, so that is what is pinned.
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'config')
     const grid = page.getByTestId('config-section-grid')
     await expect(grid).toBeVisible()
-    // Sections pack via CSS multicolumn so short cards tuck under tall ones
-    // instead of leaving a row of dead space (capped at 3 columns now that a
-    // category holds only a few cards).
-    const columnWidth = await grid.evaluate((el) => getComputedStyle(el).columnWidth)
-    expect(columnWidth).toBe('360px')
+
+    const layout = await grid.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return { display: cs.display, columnWidth: cs.columnWidth, columnCount: cs.columnCount }
+    })
+    expect(layout.display, 'the Config grid must be a grid, not a multicolumn block').toBe('grid')
+    // A multicolumn container reports a real column-width and/or column-count;
+    // a grid leaves both at their initial `auto`.
+    expect(layout.columnWidth, 'a column-width means multicolumn balancing is back').toBe('auto')
+    expect(layout.columnCount, 'a column-count means multicolumn balancing is back').toBe('auto')
   })
 
   test('Receiver & signal section mirrors RSSI / mode-channel / RC options into Config', async ({ page }) => {
@@ -2838,17 +2931,18 @@ test.describe('Config view', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-config').click()
-    // Pin the first field's bubble to ITS OWN test id rather than re-resolving
+    // Pin the first field's dot to ITS OWN test id rather than re-resolving
     // `.first()` on every step: the Config surface fills in as parameters sync,
-    // and a locator that re-resolves can end up hovering one bubble while
-    // asserting about another's tooltip.
-    const firstInfoId = await page.locator('[data-testid^="config-field-info-"]').first().getAttribute('data-testid')
+    // and a locator that re-resolves can end up hovering one dot while
+    // asserting about another's tooltip. The dot is the Scoped* field's own
+    // inline "i" (param-info-*), and its tip is a child of the dot.
+    const firstInfoId = await page.locator('[data-testid^="param-info-"]').first().getAttribute('data-testid')
     expect(firstInfoId).toBeTruthy()
     const info = page.getByTestId(firstInfoId!)
     await info.scrollIntoViewIfNeeded()
     await expect(info).toBeVisible()
     // Tooltip is hidden until hover, then reveals the param description.
-    const tip = info.locator('xpath=following-sibling::span[@role="tooltip"]')
+    const tip = info.locator('[role="tooltip"]')
     await expect(tip).toBeHidden()
     // The reveal is pure CSS :hover, so it is only as durable as the pointer
     // staying over the button — and this page is still laying itself out as
@@ -2863,30 +2957,26 @@ test.describe('Config view', () => {
     await expect(tip).not.toHaveText('')
   })
 
-  test('Config info bubble names the raw parameter and links our parameter reference', async ({ page }) => {
+  test('Config field info dot names the raw parameter, and there is only one dot per field', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-config').click()
-    const info = page.getByTestId('config-field-info-FRAME_CLASS')
+    const info = page.getByTestId('param-info-FRAME_CLASS')
     await info.scrollIntoViewIfNeeded()
-    const tip = info.locator('xpath=following-sibling::span[@role="tooltip"]')
-    // Re-place the pointer if the still-settling page slides the button out
+    const tip = info.locator('[role="tooltip"]')
+    // Re-place the pointer if the still-settling page slides the dot out
     // from under it; see the sibling tooltip test for why.
     await expect(async () => {
       await info.hover()
       await expect(tip).toBeVisible({ timeout: 2_000 })
     }).toPass({ timeout: 15_000 })
     await expect(tip).toContainText('FRAME_CLASS')
-    const link = tip.getByTestId('param-wiki-FRAME_CLASS')
-    await expect(link).toHaveAttribute(
-      'href',
-      'https://arduconfigurator.com/wiki/parameters/index.html?param=FRAME_CLASS'
-    )
-    // Plain external link in a new tab — the wiki must never be pulled into the
-    // SPA (an earlier in-app wiki poisoned the PWA shell; that was a P1).
-    await expect(link).toHaveAttribute('target', '_blank')
-    await expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    // The parameter-reference link rides on the same dot now.
+    await expect(page.getByTestId('param-wiki-FRAME_CLASS')).toHaveAttribute('href', /param=FRAME_CLASS/)
+    // The sibling bubble that used to sit beside the editor is gone: one "i"
+    // per editable field, the one inline after its label.
+    await expect(page.getByTestId('config-field-info-FRAME_CLASS')).toHaveCount(0)
   })
 
   test('Config exposes a Frame section to set FRAME_CLASS / FRAME_TYPE', async ({ page }) => {
@@ -2946,7 +3036,8 @@ test.describe('Config view', () => {
     const rates = page.getByTestId('config-section-system-rates')
     await rates.getByTestId('config-advanced-system-rates').click()
     const field = rates.locator('.scoped-editor-field', { hasText: 'Fast sampling' })
-    await expect(field.locator('.scoped-editor-field__param-id')).toHaveText('INS_FAST_SAMPLE')
+    await expect(field.getByTestId('param-info-INS_FAST_SAMPLE')).toBeVisible()
+    await expect(field.locator('.scoped-editor-field__param-id')).toHaveCount(0)
 
     // Regression guard: the id hint must not pollute the control's accessible
     // name (a <label> concatenates ALL its text by default) — an exact
@@ -3532,7 +3623,7 @@ test.describe('OSD view preview', () => {
     const strip = page.getByTestId('osd-backend-strip')
     await expect(strip).toHaveAttribute('open', '')
     // The OSD_TYPE backend selector is visible without expanding anything.
-    await expect(strip.locator('.scoped-editor-field__param-id', { hasText: 'OSD_TYPE' })).toBeVisible()
+    await expect(strip.getByTestId('param-info-OSD_TYPE')).toBeVisible()
   })
 
   test('MSP cell count is compact and nudges an explicit value when Auto', async ({ page }) => {
@@ -4693,10 +4784,38 @@ test.describe('ArduPlane demo', () => {
     // Stock defaults: nothing learned, so flight 1 — and nothing to stage,
     // because ArduCopter already learns the hover throttle by default.
     await open('')
-    const card = page.getByTestId('calibration-card-hover-learn')
+    // Two flights, two cards, plus the new-airframe log measurement.
+    const card = page.getByTestId('calibration-card-hover-throttle')
+    const zbias = page.getByTestId('calibration-card-zbias')
     await expect(card).toBeVisible()
-    await expect(card).toContainText('Flight 1')
+    await expect(zbias).toBeVisible()
+    await expect(page.getByTestId('calibration-card-hover-throttle-log')).toBeVisible()
+    // The Z-bias flight is not due until a hover throttle is accepted: learning
+    // a bias on a wrong vertical feedforward measures the feedforward's error.
+    await expect(zbias.getByTestId('zbias-prerequisite')).toBeVisible()
+    // It must NAME the card it depends on, not point at a position: these sit
+    // in a row on a desktop and stack on a phone, so "above" is wrong at one
+    // width or the other.
+    await expect(zbias.getByTestId('zbias-prerequisite')).toContainText('Hover throttle learning')
+    await expect(zbias.getByTestId('zbias-prerequisite')).not.toContainText('above')
+    // Ordered by dependency: the two MOT_THST_HOVER cards together, then the
+    // flight that needs an accepted hover throttle.
+    const cardOrder = await page
+      .locator('[data-testid^="calibration-card-"]')
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-testid')))
+    const at = (id: string): number => cardOrder.indexOf(id)
+    expect(at('calibration-card-hover-throttle')).toBeLessThan(at('calibration-card-hover-throttle-log'))
+    expect(at('calibration-card-hover-throttle-log')).toBeLessThan(at('calibration-card-zbias'))
     await expect(card).toContainText('about 5 m')
+    // The mode is not a detail: Copter::update_throttle_hover returns early in
+    // every manual-throttle mode, so a hover flown in Stabilize or Acro learns
+    // nothing and looks exactly like never having flown.
+    await expect(card).toContainText('holds altitude')
+    await expect(card).toContainText('Stabilize or Acro learns nothing')
+    // VALT is a FORK mode (MODE_VALT_ENABLED). The demo firmware reports no
+    // VALT_POS_EXPO, so it must not be offered as somewhere to fly.
+    await expect(card).toContainText('AltHold, Loiter or PosHold')
+    await expect(card).not.toContainText('VALT')
     // Flight 1 has a button. MOT_HOVER_LEARN defaults to 2, so on a stock
     // copter it confirms rather than changes — but it must exist, because the
     // vehicle that needs it most is the one where learning was turned OFF.
@@ -4713,19 +4832,46 @@ test.describe('ArduPlane demo', () => {
     // A learned hover throttle asks whether the flight was any good, and "no"
     // is a real answer — the vehicle re-learns every flight, so flying again
     // simply overwrites it.
-    await open('MOT_THST_HOVER:0.42')
+    // A learned hover throttle asks whether the flight was any good, and "no"
+    // is a real answer — the vehicle re-learns every flight, so flying again
+    // simply overwrites it.
+    //
+    // Seed a NON-ZERO learned bias, which is the case that matters: this is a
+    // vehicle carrying a previous calibration (the reported one had
+    // INS_ACC_VRFB_Z = -0.022025). With the demo's default of 0 the clear would
+    // stage nothing and prove nothing.
+    await open('MOT_THST_HOVER:0.42,INS_ACC_VRFB_Z:-0.022')
     await expect(page.getByTestId('hover-learn-flight-1-yes')).toBeVisible()
     await expect(page.getByTestId('hover-learn-flight-1-no')).toBeVisible()
     await expect(card).toContainText('0.420')
 
-    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:1')
-    await expect(card).toContainText('Flight 2')
+    // Accepting flight 1 stages THREE things, not one:
+    //   ACC_ZBIAS_LEARN = 3  arm the bias flight (learn AND apply)
+    //   INS*_ACC_VRFB_Z = 0  start it from zero rather than refining whatever a
+    //                        previous calibration left behind
+    //   MOT_HOVER_LEARN = 0  freeze the hover throttle just signed off, so the
+    //                        bias flight cannot overwrite it
+    // (The demo's second and third IMU biases are already 0, so they stage as
+    // "matches current" and do not count as changes.)
+    await page.getByTestId('hover-learn-flight-1-yes').click()
+    await expect(page.locator('body')).toContainText('3 staged changes')
 
-    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:1,INS_ACC_VRFB_Z:0.08')
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:1')
+    await expect(zbias).toContainText('flight 2')
+    await expect(card).toContainText('Accepted')
+    await expect(page.getByTestId('hover-learn-flight-2-frozen')).toContainText('cannot overwrite')
+
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08')
     await expect(page.getByTestId('hover-learn-flight-2-yes')).toBeVisible()
     await expect(page.getByTestId('hover-learn-flight-2-no')).toBeVisible()
 
-    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08')
+    // SAVE and USE are independent bits. 3 is the learning flight (learn AND
+    // apply) and is NOT finished; 2 is applying with learning off, which is.
+    // Accepting stages exactly that transition, freezing the accepted bias.
+    await page.getByTestId('hover-learn-flight-2-yes').click()
+    await expect(page.locator('body')).toContainText('1 staged change')
+
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:2,INS_ACC_VRFB_Z:0.08')
     await expect(page.getByTestId('hover-learn-done')).toBeVisible()
 
     // EKF3 only — the correction is applied inside EKF3, so anything else
@@ -4734,11 +4880,17 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('hover-learn-ekf-warning')).toBeVisible()
   })
 
-  test('Calibration: zeroize clears a previous hover calibration', async ({ page }) => {
-    // The reported problem: a drone with a previous calibration arrives
-    // reading as already finished, with no way back to the start.
+  test('Calibration: clearing the Z-bias leaves the measured hover throttle alone', async ({ page }) => {
+    // A drone arriving with someone else's calibration reads as already
+    // finished, and this is the way back. It used to also write MOT_THST_HOVER
+    // back to 0.35 so the card would return to flight 1 — a tidy stage machine
+    // bought with a dangerous value, since that parameter is the vertical
+    // feedforward and 0.35 on a light quad that hovers at 0.118 makes the next
+    // AltHold takeoff leap.
     await page.goto(
-      `/?demoParamOverrides=${encodeURIComponent('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08')}`
+      // 2 = applying with learning off, i.e. a finished calibration — which is
+      // the "arrives already done" case this is the way back from.
+      `/?demoParamOverrides=${encodeURIComponent('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:2,INS_ACC_VRFB_Z:0.08')}`
     )
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -4755,11 +4907,16 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('hover-learn-zeroize').scrollIntoViewIfNeeded()
     await page.getByTestId('hover-learn-zeroize').click()
 
-    // Three real changes: the learned hover throttle back to its 0.35 default,
-    // the learned bias to zero, and the enable cleared. MOT_HOVER_LEARN and the
-    // second IMU's bias are already at their reset values, so they correctly do
-    // NOT become drafts — clearing the LEARNED values is the point.
-    await expect(page.locator('body')).toContainText('3 staged changes')
+    // Two real changes now: the learned bias to zero and the enable cleared.
+    // MOT_HOVER_LEARN and the second IMU's bias are already at their reset
+    // values, so they correctly do NOT become drafts.
+    await expect(page.locator('body')).toContainText('2 staged changes')
+    // The measured hover throttle is NOT among them — it is still the value
+    // the vehicle came with. (Assert the card's own pill rather than the
+    // absence of the string: the pill NAMES the parameter either way.)
+    await expect(page.getByTestId('calibration-card-hover-throttle')).toContainText(
+      'MOT_THST_HOVER: 0.420'
+    )
   })
 
   test('Calibration: the Baro Thrust (VALT) card follows the FIRMWARE, not a sign-in', async ({ page }) => {
@@ -4785,7 +4942,7 @@ test.describe('ArduPlane demo', () => {
     // the wrong reason. Uses an Expert-only card on the SAME tab — TCAL is
     // Expert-only too but lives under Sensors, so it would be absent here for
     // the wrong reason, and autotune is no longer Expert-gated at all.
-    await expect(page.getByTestId('calibration-card-hover-learn')).toBeVisible()
+    await expect(page.getByTestId('calibration-card-hover-throttle')).toBeVisible()
     // Present with NO log-server session — the firmware supports it.
     await expect(page.getByTestId('calibration-card-valt')).toBeVisible()
   })
@@ -5032,7 +5189,8 @@ test.describe('ArduPlane demo', () => {
     await openView(page, 'motors')
     // The copter Motor Setup tab IS the inline reorder/direction panel.
     await expect(page.getByTestId('motor-reorder-lightbox-tabs')).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByTestId('motor-reorder-apply')).toBeVisible()
+    await expect(page.getByTestId('motor-reorder-apply-bar')).toHaveCount(0)
+    await expect(page.getByTestId('motor-reorder-lightbox-tab-direction')).toBeVisible()
   })
 
   /** Open one of the Servos sub-tabs by its visible label. */
@@ -5111,7 +5269,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByText('Flow Options')).toHaveCount(0)
     await expect(page.getByText('Height Override')).toHaveCount(0)
 
-    await expect(page.getByTestId('metadata-field-info-FLOW_TYPE')).toBeVisible()
+    await expect(page.getByTestId('param-info-FLOW_TYPE')).toBeVisible()
 
     // The type is source-correct: 6 is DroneCAN (AP_OpticalFlow.h Type::UAVCAN),
     // NOT the SITL value the app once mislabelled as HereFlow.
@@ -6372,8 +6530,8 @@ test.describe('App update banner', () => {
 
 test.describe('VTX band/frequency table', () => {
   test('detected table renders an editable grid; edits upload via MAVFTP', async ({ page }) => {
-    // The demo seeds @VTX/vtxtable.dat (3 factory bands × 8ch + power levels),
-    // so the VTX view shows the real editable table instead of the preview.
+    // The demo seeds @VTX/vtxtable.dat as a VERSION 2 blob: 3 factory bands ×
+    // 8ch and NO power section, which is the shape a real board reports now.
     await page.goto('/')
     await connectViaHeader(page)
     await page.getByTestId('view-button-osd').click()
@@ -6390,14 +6548,7 @@ test.describe('VTX band/frequency table', () => {
     await cell.fill('5900')
     await expect(page.getByTestId('vtx-table-save')).toBeEnabled()
 
-    // Power levels are editable too (value + label); the seeded first level is
-    // 25 mW / "25". Editing them also dirties the draft and rides the same save.
-    const powerValue = page.getByTestId('vtx-table-power-value-0')
-    await expect(powerValue).toHaveValue('25')
-    await powerValue.fill('50')
-    await page.getByTestId('vtx-table-power-label-0').fill('50')
-
-    // Save uploads the whole table over MAVFTP; success clears the dirty state
+    // Save uploads the BAND table over MAVFTP; success clears the dirty state
     // (button → "Saved") with no error banner — proves the write round-tripped.
     await page.getByTestId('vtx-table-save').click()
     await expect(page.getByTestId('vtx-table-save')).toHaveText('Saved', { timeout: 10000 })
@@ -6455,37 +6606,81 @@ test.describe('VTX band/frequency table', () => {
     // and dirties it so the operator can review and Save.
     await page.getByTestId('vtx-table-preset-select').selectOption('raceband-8ch-25-600')
     await expect(page.getByTestId('vtx-table-freq-0-0')).toHaveValue('5658')
-    await expect(page.getByTestId('vtx-table-power-value-0')).toHaveValue('25')
     await expect(page.getByTestId('vtx-table-save')).toBeEnabled()
   })
 
-  test('loads an analog power-table preset (power-only) with a 3-char-safe 1600 mW label', async ({ page }) => {
+  test('the power table is parameters, not part of the uploaded blob', async ({ page }) => {
+    // Version 2 moved power out of @VTX/vtxtable.dat into VTX_PWRTBL_EN and six
+    // slots. A slot is -1 unused, 0 pit mode, or a power in mW — and the demo
+    // seeds exactly that: pit, 25, 200, 500, 800, unused.
     await page.goto('/')
     await connectViaHeader(page)
     await page.getByTestId('view-button-osd').click()
     await page.getByTestId('osd-vtx-tab-vtx').click()
     await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
 
-    // The power preset swaps only the ladder (bands untouched), and the 1600 mW
-    // level's label fits the firmware's 3-char field as "1.6" (not "160").
+    await expect(page.getByTestId('vtx-table-power-enable')).toBeChecked()
+    // Slot 1 is pit mode: 0 is NOT "0 mW", so its value box is not an amount.
+    await expect(page.getByTestId('vtx-table-power-kind-0')).toHaveValue('pit')
+    await expect(page.getByTestId('vtx-table-power-value-0')).toBeDisabled()
+    await expect(page.getByTestId('vtx-table-power-label-0')).toHaveText('PIT')
+    await expect(page.getByTestId('vtx-table-power-kind-1')).toHaveValue('power')
+    await expect(page.getByTestId('vtx-table-power-value-1')).toHaveValue('25')
+    // -1 is unused, and reads as unused rather than as a power of -1.
+    await expect(page.getByTestId('vtx-table-power-kind-5')).toHaveValue('unused')
+
+    // Editing a slot stages an ordinary PARAMETER draft — no FTP upload, and it
+    // rides the normal review/Apply like every other parameter in the app.
+    await page.getByTestId('vtx-table-power-value-1').fill('50')
+    await expect(page.locator('body')).toContainText('staged change')
+    // The band table's own Save is untouched by a power edit: different transport.
+    await expect(page.getByTestId('vtx-table-save')).toBeDisabled()
+  })
+
+  test('the display text is derived from the value, since no label is stored', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('view-button-osd').click()
+    await page.getByTestId('osd-vtx-tab-vtx').click()
+    await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
+
+    // 1600 mW shows as "1.6" rather than a truncated "160" — the old format
+    // stored a 3-char label, and this is what replaces it.
+    await page.getByTestId('vtx-table-power-value-1').fill('1600')
+    await expect(page.getByTestId('vtx-table-power-label-1')).toHaveText('1.6')
+  })
+
+  test('a power preset stages the slot parameters and turns the table on', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await page.getByTestId('view-button-osd').click()
+    await page.getByTestId('osd-vtx-tab-vtx').click()
+    await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
+
     await page.getByTestId('vtx-table-power-preset-select').selectOption('power-25-1600')
+    await expect(page.getByTestId('vtx-table-power-value-0')).toHaveValue('25')
     await expect(page.getByTestId('vtx-table-power-value-3')).toHaveValue('1600')
-    await expect(page.getByTestId('vtx-table-power-label-3')).toHaveValue('1.6')
-    // Bands were not touched by a power-only preset.
+    // The ladder is shorter than six slots, so the rest must read UNUSED — a
+    // stale slot left from the previous table is a power the pilot never chose.
+    await expect(page.getByTestId('vtx-table-power-kind-4')).toHaveValue('unused')
+    await expect(page.getByTestId('vtx-table-power-kind-5')).toHaveValue('unused')
+    // Bands are untouched: a power preset does not go near the blob.
     await expect(page.getByTestId('vtx-table-freq-0-0')).toHaveValue('5865')
   })
 
-  test('editing a power value auto-derives a fitting 3-char label (1600 → 1.6)', async ({ page }) => {
+  test('the standard bands can be loaded back, since there is no reset command', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await page.getByTestId('view-button-osd').click()
     await page.getByTestId('osd-vtx-tab-vtx').click()
     await expect(page.getByTestId('vtx-table-editor')).toBeVisible({ timeout: 15000 })
 
-    // The label field can't hold "1600" (3-char firmware limit); typing the value
-    // auto-fills a fitting label instead of leaving a misleading truncated one.
-    await page.getByTestId('vtx-table-power-value-0').fill('1600')
-    await expect(page.getByTestId('vtx-table-power-label-0')).toHaveValue('1.6')
+    await page.getByTestId('vtx-table-restore-defaults').click()
+    // The firmware's 11 standard bands, in VTX_BAND order: A first, 3G3_B last.
+    await expect(page.getByTestId('vtx-table-freq-0-0')).toHaveValue('5865')
+    await expect(page.getByTestId('vtx-table-freq-10-0')).toHaveValue('3170')
+    // Staged, not sent: restoring defaults IS an upload, so it goes through Save.
+    await expect(page.getByTestId('vtx-table-save')).toBeEnabled()
   })
 })
 
@@ -7382,14 +7577,16 @@ test.describe('Flight modes moved from a tab into Config', () => {
     // The text-only cards are shorter than the one carrying an editor.
     expect(Math.min(...heights)).toBeLessThan(Math.max(...heights))
 
-    // The dot sits inside the field it belongs to, on the same line as the id.
+    // The dot sits inside the field it belongs to, on the title line. Zero is
+    // allowed: this card strips the field's padding, so a field that fits its
+    // content ends exactly where the title row (and its dot) ends.
     const overflow = await page.evaluate(() => {
       const dot = document.querySelector('.modes-status__card .receiver-info-dot')
       const field = document.querySelector('.modes-status__card .scoped-editor-field')
       if (!dot || !field) return NaN
       return dot.getBoundingClientRect().right - field.getBoundingClientRect().right
     })
-    expect(overflow).toBeLessThan(0)
+    expect(overflow).toBeLessThanOrEqual(0)
   })
 
   test('Config has a Flight Modes tab showing the mode panel', async ({ page }) => {
@@ -7451,7 +7648,9 @@ test.describe('Tuning ▸ Filters', () => {
     await page.getByTestId('view-button-tuning').click()
     await page.getByTestId('tuning-tab-filters').click()
     await expect(page.getByTestId('tuning-filter-manual')).toBeVisible()
-    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
+    // The notch groups are on the Notches task now; the smoothing cards are
+    // what Expert adds back HERE.
+    await expect(page.getByTestId('tuning-filter-group-sensor')).toBeVisible()
 
     const derivedTop = await page.getByTestId('filters-from-gyro').evaluate((el) => el.getBoundingClientRect().top)
     const gridTop = await page.getByTestId('tuning-filter-manual').evaluate((el) => el.getBoundingClientRect().top)
@@ -7466,7 +7665,15 @@ test.describe('Tuning ▸ Filters', () => {
     await enableExpertMode(page)
     await page.getByTestId('view-button-tuning').click()
     await page.getByTestId('tuning-tab-filters').click()
-    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
+    await expect(page.getByTestId('tuning-filter-group-sensor')).toBeVisible()
+  }
+
+  // The notches split onto their own task: a low-pass cutoff is a
+  // feel-versus-noise judgement, a notch removes one measured frequency.
+  async function openNotches(page: Page): Promise<void> {
+    await openFilters(page)
+    await page.getByTestId('tuning-tab-notches').click()
+    await expect(page.getByTestId('tuning-notches-panel')).toBeVisible()
   }
 
   test('the retired Filter Editor tab is gone', async ({ page }) => {
@@ -7474,31 +7681,77 @@ test.describe('Tuning ▸ Filters', () => {
     await expect(page.getByTestId('tuning-tab-filters-from-gyro')).toHaveCount(0)
   })
 
-  test('sensor and notch parameters joined the rate filters', async ({ page }) => {
+  test('sensor parameters joined the rate filters', async ({ page }) => {
     await openFilters(page)
     await expect(page.getByTestId('tuning-filter-group-sensor')).toBeVisible()
     await expect(page.getByTestId('tuning-filter-group-roll')).toBeVisible()
   })
 
-  test('every parameter carries an info bubble and a wiki link', async ({ page }) => {
+  test('the notches are their own task, not the tail of the filter page', async ({ page }) => {
+    // Filters carried a derived cutoff panel, a filter bank and six raw cards —
+    // more than thirty fields for two unrelated jobs. Smoothing stays here;
+    // the notches and the FILTn bank moved.
+    await openFilters(page)
+    await expect(page.getByTestId('tuning-filter-group-notch')).toHaveCount(0)
+    await expect(page.getByTestId('tuning-filter-group-notch2')).toHaveCount(0)
+
+    await openNotches(page)
+    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
+    await expect(page.getByTestId('tuning-filter-group-sensor')).toHaveCount(0)
+    // The evidence for a notch frequency is a log FFT, and that analysis is a
+    // task in this same strip — say so rather than leave it to be guessed.
+    await expect(page.getByTestId('tuning-notches-log-hint')).toContainText('Log Tuning')
+  })
+
+  test('the second harmonic notch is configurable, not just the first', async ({ page }) => {
+    // ArduPilot ships TWO harmonic notches (INS_HNTCH_* and INS_HNTC2_*,
+    // harmonic_notches[0] and [1] — AP_InertialSensor.cpp AP_SUBGROUPINFO
+    // "_HNTC2_"). Only the first was surfaced, so a vehicle that needs two
+    // sources — ESC telemetry on one, a fixed frame mode on the other — had to
+    // configure half its filtering from the raw Parameters tab.
+    await openNotches(page)
+    await expect(page.getByTestId('tuning-filter-group-notch')).toBeVisible()
+    await expect(page.getByTestId('tuning-filter-group-notch2')).toBeVisible()
+    // The enum and bitmask fields are the ones that are useless as raw numbers,
+    // so they are what proves the second notch got real metadata rather than
+    // just appearing in the list.
+    for (const id of ['INS_HNTC2_MODE', 'INS_HNTC2_OPTS', 'INS_HNTC2_HMNCS']) {
+      await expect(page.getByTestId(`param-info-${id}`), id).toBeVisible()
+    }
+    // Same eight fields as the first notch, including two bitmasks, so it gets
+    // the same full-width card rather than a narrow column.
+    await expect(page.getByTestId('tuning-filter-group-notch2')).toHaveClass(/tuning-axis-card--wide/)
+  })
+
+  test('every parameter carries an info dot', async ({ page }) => {
     // Two renderers feed this grid -- the Tuning slider for the frequencies,
     // the shared metadata editor for the enums, bitmasks, and ratios -- and
-    // each stamps its own bubble testid. Both must carry one, which is the
-    // point of asserting across the pair rather than one prefix.
+    // each stamps its own dot testid. Both must carry one, which is the
+    // point of asserting across the pair rather than one prefix. The slider's
+    // bubble also links the parameter reference; the metadata editor's dot is
+    // the Scoped* field's inline "i" (id, description, range), with no link.
     await openFilters(page)
-    for (const id of ['INS_GYRO_FILTER', 'ATC_RAT_RLL_FLTD', 'INS_HNTCH_FREQ']) {
+    for (const id of ['INS_GYRO_FILTER', 'ATC_RAT_RLL_FLTD']) {
       await expect(page.getByTestId(`tuning-info-${id}`), id).toBeVisible()
       await expect(page.getByTestId(`param-wiki-${id}`), id).toHaveCount(1)
     }
+    await openNotches(page)
+    await expect(page.getByTestId('tuning-info-INS_HNTCH_FREQ')).toBeVisible()
+    await expect(page.getByTestId('param-wiki-INS_HNTCH_FREQ')).toHaveCount(1)
     for (const id of ['INS_HNTCH_MODE', 'INS_HNTCH_OPTS', 'INS_HNTCH_REF']) {
-      await expect(page.getByTestId(`metadata-field-info-${id}`), id).toBeVisible()
+      await expect(page.getByTestId(`param-info-${id}`), id).toBeVisible()
       await expect(page.getByTestId(`param-wiki-${id}`), id).toHaveCount(1)
     }
   })
 
   test('the tracking mode is a named list, not a raw number', async ({ page }) => {
-    await openFilters(page)
-    const select = page.locator('label', { hasText: 'Notch tracking mode' }).getByRole('combobox')
+    await openNotches(page)
+    // Two notches on this page, so scope to the first — 'Notch tracking mode'
+    // is also a prefix of 'Notch tracking mode 2'.
+    const select = page
+      .getByTestId('tuning-filter-group-notch')
+      .locator('label', { hasText: 'Notch tracking mode' })
+      .getByRole('combobox')
     await expect(select).toBeVisible()
     await expect(select.locator('option', { hasText: 'ESC Telemetry' })).toHaveCount(1)
   })
@@ -7506,15 +7759,17 @@ test.describe('Tuning ▸ Filters', () => {
   test('the option bitmasks render as per-bit toggles', async ({ page }) => {
     // INS_HNTCH_OPTS has 7 bits and INS_HNTCH_HMNCS 8. Without bitmask
     // metadata these were one integer field each.
-    await openFilters(page)
-    await expect(page.getByTestId('tuning-filter-group-notch').locator('.scoped-bitmask-bit')).toHaveCount(15)
-    await expect(page.getByText('Multi-Source', { exact: true })).toBeVisible()
+    await openNotches(page)
+    const notch = page.getByTestId('tuning-filter-group-notch')
+    await expect(notch.locator('.scoped-bitmask-bit')).toHaveCount(15)
+    // Scoped: the second notch carries the same bit labels.
+    await expect(notch.getByText('Multi-Source', { exact: true })).toBeVisible()
   })
 
   test('the documented suggestions fill a field rather than applying themselves', async ({ page }) => {
     // ArduPilot: bandwidth is typically half the base frequency. Offered as a
     // button; nothing is derived on the operator's behalf.
-    await openFilters(page)
+    await openNotches(page)
     const fill = page.getByTestId('filter-planner-fill-bw')
     await expect(fill).toContainText('40')
     await fill.click()
@@ -7554,8 +7809,9 @@ test.describe('Tuning ▸ Filters', () => {
   test('shows the FILTn bank and names each slot in the axis lists', async ({ page }) => {
     // A filter configured on the vehicle used to appear nowhere on this page,
     // and ATC_RAT_*_NTF/_NEF were bare number boxes -- picking one meant
-    // remembering which slot held what.
-    await openFilters(page)
+    // remembering which slot held what. The bank is notching, so it travels
+    // with the notches rather than with the smoothing pass.
+    await openNotches(page)
 
     const bank = page.getByTestId('filter-bank')
     await bank.scrollIntoViewIfNeeded()

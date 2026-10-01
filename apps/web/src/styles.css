@@ -353,6 +353,31 @@
   box-sizing: border-box;
 }
 
+/* Type scale by viewport. Every text size in the stylesheet is one of the
+   --text-* / --font-title tokens, so stepping the tokens scales the app at
+   once. Two steps, not a continuous clamp: the base scale was tuned for a
+   laptop, and a 27-inch display at 2000px wide read as small everywhere. */
+@media (min-width: 1800px) {
+  :root {
+    --text-xs: 11px;
+    --text-sm: 12px;
+    --text-md: 13px;
+    --text-lg: 14px;
+    --text-xl: 15px;
+    --font-title: 20px;
+  }
+}
+@media (min-width: 2300px) {
+  :root {
+    --text-xs: 12px;
+    --text-sm: 13px;
+    --text-md: 14px;
+    --text-lg: 16px;
+    --text-xl: 17px;
+    --font-title: 22px;
+  }
+}
+
 html {
   min-height: 100%;
   /* `overflow-x: clip` suppresses horizontal scroll WITHOUT turning the
@@ -4290,15 +4315,15 @@ body.is-status-dash-dragging {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 180px;
-  padding: 24px;
+  min-height: 140px;
+  padding: 16px;
   text-align: center;
 }
 .motor-mixer-preview--empty p {
   margin: 0;
   max-width: 34ch;
   color: var(--text-muted);
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   line-height: 1.5;
 }
 
@@ -4362,7 +4387,7 @@ body.is-status-dash-dragging {
 .motor-mixer-preview__motor-number {
   fill: var(--text);
   font-family: var(--font-data);
-  font-size: var(--text-3xl);
+  font-size: var(--text-2xl);
   font-weight: 700;
 }
 
@@ -8289,7 +8314,7 @@ body.is-status-dash-dragging {
 /* A section hosting a whole panel spans the multicolumn flow instead of being
    crammed into one ~360px column. */
 .config-section--wide {
-  column-span: all;
+  grid-column: 1 / -1;
 }
 
 #setup-panel-power .scoped-editor-grid {
@@ -8482,31 +8507,39 @@ body.is-status-dash-dragging {
    is the only place the parameter's own description is reachable from a
    product surface -- without it an operator has to leave for the Parameters
    tab or the wiki to find out what a field does. */
-.scoped-editor-field__meta {
+/* The dot sits inline after the title text; the raw parameter name that used
+   to print under the title is the tip's first line. The title row wraps, so
+   in a narrow card the dot drops under a long title instead of poking past
+   the field's edge. */
+.scoped-editor-field > span:first-child,
+.motor-reverse-esctype > span {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 2px;
+}
+.scoped-editor-field__meta {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  vertical-align: middle;
 }
 .scoped-editor-field__meta .receiver-info-dot {
   flex: none;
 }
 /* The field's own label is uppercase with tracking; a paragraph of parameter
    documentation must not inherit that. */
-.scoped-editor-field__meta .receiver-info-tip {
+/* The tip and every line in it: the field's own label rules (uppercase,
+   tracking, data font) reach each nested span, not just the tip. */
+.scoped-editor-field .receiver-info-tip,
+.scoped-editor-field .receiver-info-tip span,
+.scoped-editor-field .receiver-info-tip a {
   text-transform: none;
   letter-spacing: normal;
-}
-
-.scoped-editor-field__param-id {
-  display: block;
-  margin-top: 1px;
-  color: var(--text-dim, var(--text-muted));
-  font-family: var(--font-data);
-  font-size: var(--text-xs);
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  text-transform: none;
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
 }
 
 .scoped-editor-field input,
@@ -10271,6 +10304,25 @@ details.metadata-settings-section:not([open]) > summary::after {
   background: rgba(var(--fill-rgb), 0.96);
 }
 
+/* Inline top row: the Order/Direction buttons with the safety ack directly
+   after them. The ack box shrinks to its sentence instead of filling the
+   page, and wraps under the buttons when the row is too narrow. */
+.motor-reorder-lightbox__toprow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.motor-reorder-lightbox__toprow .motor-reorder-lightbox__tabs,
+.motor-reorder-lightbox__toprow .motor-reorder-lightbox__acks {
+  margin: 0;
+  padding: 0;
+  border-bottom: none;
+}
+.motor-reorder-lightbox__toprow .motor-reorder-lightbox__acks {
+  flex: 0 1 auto;
+}
+
 /* Inline variant: the reorder/direction panel embedded as the Motor Setup tab
    (no lightbox chrome). Stacks the acks / tabs / panels / apply-bar. */
 .motor-reorder-inline {
@@ -10406,7 +10458,7 @@ details.metadata-settings-section:not([open]) > summary::after {
    is the recommended path; manual is an opt-in disclosure. */
 .motor-reorder-manual > summary {
   cursor: pointer;
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   color: var(--text-muted);
   padding: 4px 0;
   user-select: none;
@@ -10415,8 +10467,8 @@ details.metadata-settings-section:not([open]) > summary::after {
   color: var(--text);
 }
 .motor-reorder-manual__hint {
-  margin: 6px 0 10px;
-  font-size: var(--text-md);
+  margin: 2px 0 6px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -10443,10 +10495,10 @@ details.metadata-settings-section:not([open]) > summary::after {
 
 .motor-reorder-table__row {
   display: grid;
-  grid-template-columns: 88px 96px minmax(0, 1fr);
-  gap: var(--space-3);
+  grid-template-columns: 48px 64px minmax(0, 1fr);
+  gap: var(--space-2);
   align-items: center;
-  padding: 12px 14px;
+  padding: 4px 10px;
   background: rgba(var(--fill-rgb), 0.96);
 }
 
@@ -11551,6 +11603,26 @@ details.metadata-settings-section:not([open]) > summary::after {
 .snapshots-page .parameter-diff-values {
   color: rgba(var(--ink-rgb), 0.92);
 }
+
+/* The import diff's editable value. Sized to the number it holds rather than
+   the row, so it reads as part of the "current → new" sentence instead of a
+   form field bolted onto it. */
+.parameter-diff-value-input {
+  width: 8ch;
+  min-width: 0;
+  padding: 2px 6px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  background: var(--surface-raised, var(--surface-2, transparent));
+  border: 1px solid var(--border-subtle, currentColor);
+  border-radius: 4px;
+}
+
+.parameter-diff-value-input:disabled {
+  opacity: 0.6;
+}
+
 
 .snapshots-page .parameter-diff-delta {
   color: #e5c47c;
@@ -14480,14 +14552,32 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .config-grid {
-  /* Masonry packing via CSS multicolumn: short sections tuck under tall ones
-     instead of leaving dead space. With the category tabs, a group holds only a
-     few cards, so cap the width so 2-3 cards read as a calm flow rather than
+  /* Grid, NOT CSS multicolumn.
+     This was multicolumn for masonry packing — short sections tucking under
+     tall ones. The cost was that multicolumn BALANCES: any height change
+     re-flows every column, so opening a card's "Advanced" disclosure teleported
+     it to another column (measured: 395px right and 258px up) and shoved an
+     unrelated card sideways with it. A card moving out from under the cursor
+     you just clicked is worse than a little dead space.
+     A grid cell is fixed, so opening a disclosure grows that card in place and
+     nothing else moves. `align-items: start` stops a short card stretching to
+     its row's height. Still capped so 2-3 cards read as a calm flow rather than
      spreading thin across a wide screen. */
-  columns: 360px 3;
-  column-gap: var(--space-3);
+  display: grid;
+  /* `min(360px, 100%)` not a bare 360px: a bare minimum makes a track the
+     container cannot shrink below, so on a 390px phone the grid laid out two
+     360px tracks and ran 752px off-screen (caught by the 390px overflow gate).
+     The min() lets the track collapse to the container on narrow screens. */
+  grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
+  gap: var(--space-3);
+  align-items: start;
   padding-right: 6px;
-  max-width: 1180px;
+  /* `min(…, 100%)` and `min-width: 0`, not a bare max-width: the grid sits in a
+     container that does not constrain it, so with a bare `max-width: 1180px` it
+     sized to its own max-content (three 360px tracks = 1152px) and ran ~790px
+     off a 390px phone. Capping against the parent keeps auto-fill honest. */
+  min-width: 0;
+  max-width: min(1180px, 100%);
 }
 
 /* A group holding ONE card takes the full width and flows its fields into as
@@ -14497,7 +14587,7 @@ details.metadata-settings-section:not([open]) > summary::after {
    by ConfigView wherever a category resolves to one card — every Peripherals
    sub-tab, and RC and Arming on Config. */
 .config-grid--wide {
-  columns: auto;
+  grid-template-columns: minmax(0, 1fr);
   max-width: none;
 }
 
@@ -14589,9 +14679,9 @@ details.metadata-settings-section:not([open]) > summary::after {
   border-radius: var(--radius-md);
   border: 1px solid var(--surface-400);
   background: var(--surface-200);
-  /* Multicolumn item: keep a card whole and space it from the next one. */
-  break-inside: avoid;
-  margin-bottom: var(--space-3);
+  /* Was a multicolumn item needing break-inside + its own bottom margin; as a
+     grid item the cell keeps it whole and the grid `gap` does the spacing. */
+  min-width: 0;
 }
 
 .config-section--planned {
@@ -14599,13 +14689,15 @@ details.metadata-settings-section:not([open]) > summary::after {
   opacity: 0.85;
 }
 
-/* A section whose body is a bitmask checkbox grid (arming checks, log bitmask,
-   ESC reverse/bidir masks) gets a wider column so the options lay out 2–3 up
-   instead of one tall single-file column. Clamps to the available columns at
-   narrow widths. */
-.config-section:has(.scoped-editor-field--bitmask) {
-  grid-column: span 2;
-}
+/* A bitmask section (arming checks, log bitmask, ESC reverse/bidir masks) used
+   to claim `grid-column: span 2` here, to lay its options out 2-3 up. That rule
+   was DEAD for as long as it existed: `.config-grid` was CSS multicolumn, and
+   `grid-column` does nothing to a multicolumn item. Making the grid a real grid
+   revived it by accident, and it was actively harmful — on a one-column phone
+   grid a span of 2 forces a second implicit track, which ran the page 772px off
+   a 390px screen, and its auto-placement moved unrelated cards between columns.
+   Removed rather than left as a latent trap. If the wider bitmask card is still
+   wanted, it needs a deliberate design that survives a single-column layout. */
 
 .config-section__header {
   display: flex;
@@ -15111,6 +15203,17 @@ details.bf-gui-box:not([open]) > summary::after {
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
+}
+/* The notes under the buttons are <p>/<div> notes inside a flex row: no
+   paragraph margins (the row's gap is the spacing), full width, one line per
+   note. */
+.firmware-wizard__quick-actions .bf-note {
+  flex: 1 1 100%;
+  margin: 0;
+}
+.firmware-wizard__notes {
+  display: grid;
+  gap: 4px;
 }
 
 /* The Flash tab's quick-action row.
@@ -15907,22 +16010,21 @@ details.bf-gui-box:not([open]) > summary::after {
   border-radius: var(--radius-sm);
   padding: 2px 0;
 }
+/* Label text and its "i" on one line: the element key moved out of a caption
+   under the name and into the dot's tip. The dot stays OUTSIDE the ellipsised
+   <strong>, whose overflow clip would otherwise swallow the tip. */
 .osd-matrix__label {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   min-width: 0;
 }
 .osd-matrix__label strong {
+  min-width: 0;
   font-size: var(--text-sm);
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.osd-matrix__label small {
-  font-family: var(--font-data);
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
 }
 .osd-matrix__cell {
   display: flex;
@@ -16310,22 +16412,23 @@ details.bf-gui-box:not([open]) > summary::after {
   border-color: var(--accent, #61dafb);
   background: rgba(97, 218, 251, 0.08);
 }
+/* Title line (with its "i") over a full-width select, like every other
+   field: side by side, the title's nowrap left the select a sliver in the
+   Direction column. */
 .motor-reverse-esctype {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: grid;
+  gap: 4px;
   margin-top: 10px;
   padding: 8px 10px;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   font-size: var(--text-md);
 }
-.motor-reverse-esctype span {
+.motor-reverse-esctype > span {
   color: var(--text-muted);
-  white-space: nowrap;
 }
 .motor-reverse-esctype select {
-  flex: 1;
+  width: 100%;
   min-width: 0;
 }
 .motor-reverse-esctype--warning {
@@ -18632,6 +18735,15 @@ button.mavlink-inspector__sent-row {
 .spin-wizard-launcher button {
   flex: none;
 }
+.spin-wizard-launcher button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.spin-wizard-launcher__gate {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
 
 /* The wizard itself, in the shared lightbox chrome. Narrower than the motor
    setup popout: it is one slider and two numbers.
@@ -18651,6 +18763,17 @@ button.mavlink-inspector__sent-row {
   max-width: 640px;
   margin-top: 6vh;
   min-height: 470px;
+  /* The reserved height stays empty under the content; without this the
+     frame's grid gives it to the wizard box, whose only idle child is the
+     Start button, which then fills the dialog. */
+  align-content: start;
+}
+.spin-wizard-lightbox__frame .bf-gui-box {
+  align-content: start;
+}
+.spin-wizard-lightbox button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* The sliders box stretches to fill its row on the Motors page, where it holds
@@ -18737,6 +18860,52 @@ button.mavlink-inspector__sent-row {
 .outputs-tab-body--single-page .motor-reorder-lightbox__apply-bar {
   padding-block: 4px;
 }
+/* Top of the page: the ack box and the tab strip used to put ~60px of air
+   between the subtitle and the first control. */
+.outputs-tab-body--single-page .motor-reorder-lightbox__acks {
+  margin: 0 0 8px;
+}
+.outputs-tab-body--single-page .motor-test-acknowledgments__props-off {
+  padding: 6px 10px;
+}
+.outputs-tab-body--single-page .motor-reorder-lightbox__tabs {
+  margin-bottom: var(--space-2);
+  padding-bottom: 6px;
+}
+/* A card title's "i" sits on the title line, not on a line of its own. */
+.outputs-tab-body--single-page .switch-exercise-card__header strong:has(+ .receiver-info-dot) {
+  display: inline-block;
+  margin: 0 6px 0 0;
+  vertical-align: middle;
+}
+.outputs-tab-body--single-page .switch-exercise-card__header > div > .receiver-info-dot {
+  vertical-align: middle;
+}
+/* Two badges on the ESC header (calibration path + draft state). */
+.outputs-tab-body--single-page .switch-exercise-card__header {
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
+}
+.motor-test-card--line {
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+}
+.motor-test-card--line p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.motor-test-card--line .output-note-list {
+  margin: 0;
+}
+.bf-gui-box__titlebar small {
+  color: rgba(11, 17, 24, 0.75);
+  font-size: var(--text-xs);
+  font-family: var(--font-data);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
 .outputs-tab-body--single-page .switch-exercise-controls button,
 .outputs-tab-body--single-page .motor-reorder-lightbox__apply-bar button {
   padding-block: 6px;
@@ -18780,7 +18949,10 @@ button.mavlink-inspector__sent-row {
 
 @media (min-width: 1200px) {
   .outputs-tab-body--single-page {
-    grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.75fr);
+    /* Order/Direction work left, test box right, closer to even than before:
+       the test box is a five-row table with controls under it now, and the
+       assignment card beside it is three buttons and a note. */
+    grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
     grid-template-rows: auto auto;
     align-items: start;
   }
@@ -18792,25 +18964,134 @@ button.mavlink-inspector__sent-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* Mixer picture and the order/direction work first: that is the thing you
-     come to this tab to do. Settings under it, sliders alongside. */
-  .outputs-tab-body--single-page [data-outputs-task='motor-setup'] {
-    grid-column: 1;
-    grid-row: 1;
+  /* Two bands. Top: the spinning work -- order/direction with the test box
+     beside it, since the sliders exist for that work. Bottom: Frame and ESC
+     settings across the full width, two cards in one row. The test box used
+     to span both bands as a sticky column, which left it floating next to
+     the ESC fields with nothing to do and a column of air under it. */
+  /* The Motor Setup panel and the inline reorder root dissolve into the page
+     grid, so the safety ack and the Order/Direction strip span both columns
+     and the Test box lines up with the Preview/Assignments cards under them,
+     not with the ack. Scroll anchors that used to sit on these wrappers now
+     sit on children that still have a box. */
+  .outputs-tab-body--single-page [data-outputs-task='motor-setup'],
+  .outputs-tab-body--single-page .motor-reorder-inline {
+    display: contents;
   }
-
+  /* Every band gets an explicit row: the ESC panel comes FIRST in the DOM,
+     so auto-placement would put it on top. Rows, top to bottom: ack, tab
+     strip, order-or-direction work beside the test box, apply bar, spin
+     wizard launcher (Expert), then Frame + ESC. */
+  .outputs-tab-body--single-page .motor-reorder-status,
+  .outputs-tab-body--single-page [data-testid='motor-reorder-spin-error'],
+  .outputs-tab-body--single-page .motor-reorder-lightbox__apply-bar,
+  .outputs-tab-body--single-page .spin-wizard-launcher,
   .outputs-tab-body--single-page [data-outputs-task='esc-protocol'] {
-    grid-column: 1;
-    grid-row: 2;
+    grid-column: 1 / -1;
   }
-
-  /* The live column spans both rows and sticks, so the sliders stay in view
-     while the operator works down the settings -- the point of the split. */
+  /* `order`, not fixed row numbers: a fixed row for a band that is not
+     rendered (the apply bar with nothing staged, the launcher outside Expert
+     mode) leaves an empty track and its gap behind. Flow order leaves none. */
+  .outputs-tab-body--single-page .motor-reorder-lightbox__toprow {
+    grid-column: 1 / -1;
+    order: 1;
+  }
+  .outputs-tab-body--single-page .motor-reorder-lightbox__grid,
+  .outputs-tab-body--single-page .motor-reorder-lightbox__direction {
+    grid-column: 1;
+    order: 3;
+  }
   .outputs-tab-body--single-page [data-outputs-task='direction-test'] {
     grid-column: 2;
-    grid-row: 1 / span 2;
-    position: sticky;
-    top: var(--space-3);
+    order: 4;
+    /* Fill the row: the test box and the preview card used to stop short of
+       the assignment card beside them, leaving a band of nothing under each.
+       The box stretches and the motor rows spread to use the height. */
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] > .bf-gui-box,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .bf-gui-box__body,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-direction-layout,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-direction-layout__sliders,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-test-sliders-row,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] [data-testid='motor-test-sliders'] {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] > .bf-gui-box,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .bf-gui-box__body {
+    display: flex;
+    flex-direction: column;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-direction-layout,
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] .motor-direction-layout__sliders {
+    display: flex;
+    flex-direction: column;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='direction-test'] [data-testid='motor-test-sliders'] > div:first-child {
+    flex: 1 1 auto;
+    align-content: space-evenly;
+  }
+  /* Same for the preview card beside the assignments: stretch, and let the
+     frame picture take the height. */
+  .outputs-tab-body--single-page .motor-reorder-lightbox__grid {
+    align-items: stretch;
+  }
+  .outputs-tab-body--single-page .motor-reorder-lightbox__grid > .bf-gui-box {
+    display: flex;
+    flex-direction: column;
+  }
+  .outputs-tab-body--single-page .motor-reorder-lightbox__grid > .bf-gui-box > .bf-gui-box__body {
+    flex: 1 1 auto;
+  }
+  /* Only the preview card gives its spare height to its first child (the
+     frame picture). In the assignments card that child is a button. */
+  .outputs-tab-body--single-page .motor-reorder-lightbox__grid > .bf-gui-box:has([data-testid='motor-order-diagram']) > .bf-gui-box__body {
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  /* The assignments card keeps its rows at their natural height: spare row
+     height stays under the buttons instead of inflating the note. */
+  .outputs-tab-body--single-page .motor-reorder-lightbox__grid > .bf-gui-box:not(:has([data-testid='motor-order-diagram'])) > .bf-gui-box__body {
+    align-content: start;
+  }
+  .outputs-tab-body--single-page .motor-mixer-preview--dialog {
+    height: 100%;
+    min-height: 150px;
+  }
+  .outputs-tab-body--single-page .motor-mixer-preview--dialog svg {
+    width: min(100%, 240px);
+    max-height: 100%;
+  }
+  .outputs-tab-body--single-page [data-testid='motor-reorder-spin-error'] {
+    order: 5;
+  }
+  .outputs-tab-body--single-page .motor-reorder-lightbox__apply-bar {
+    order: 6;
+  }
+  .outputs-tab-body--single-page .spin-wizard-launcher {
+    order: 7;
+  }
+  .outputs-tab-body--single-page [data-outputs-task='esc-protocol'] {
+    order: 8;
+  }
+  .outputs-tab-body--single-page .motor-reorder-lightbox__apply-bar {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  /* Frame (two fields) beside ESC & output settings (eight): a third and two
+     thirds. Anything after those two cards (analog calibration steps) takes
+     the full row. Without a Frame card the ESC card takes the row itself. */
+  .outputs-tab-body--single-page .esc-review-card {
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr);
+    align-items: start;
+  }
+  .outputs-tab-body--single-page .esc-review-card > :nth-child(n + 3),
+  .outputs-tab-body--single-page .esc-review-card > :not([data-testid='esc-frame-card']):first-child {
+    grid-column: 1 / -1;
   }
 
   /* The test panel is a live readout, not a form: it does not need form-sized

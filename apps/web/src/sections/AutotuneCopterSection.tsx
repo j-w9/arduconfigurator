@@ -16,32 +16,17 @@ import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { AUTOTUNE_COPTER_PARAM_IDS } from '../autotune-params'
 import { formatParameterValue } from '../parameter-format'
 import { selectParameterById } from '../selectors/parameter-read'
-import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
+import { toneForParameterDraftStatus } from '../tone-helpers'
 import { InfoDot } from '../views/InfoDot'
-import { ParamInfoBubble } from '../views/ParamInfoBubble'
+import { DraftReviewBadge } from '../views/DraftReviewBadge'
 import { ScopedBitmaskField, ScopedField } from '../views/ScopedField'
 
-// Wrap a scoped Autotune field with the same per-field "i" info bubble used on
-// the Config / Networking tabs and the curated tuning controls — hover/focus
-// reveals the ArduPilot parameter description right next to the control, so the
-// always-on explanatory paragraph can be retired without losing the guidance.
-//
-// Now the SHARED ParamInfoBubble rather than a local copy of its markup. Two
-// things were wrong with the copy: it rendered only when the metadata carried a
-// description, so an Autotune knob whose description we don't ship showed a
-// friendly label with no route to its raw name at all; and it had no link to the
-// parameter reference. Both exist for every parameter, so the bubble is
-// unconditional and the description is the optional part.
+// The per-field "i" (raw id, description, range) is the Scoped* field's own
+// inline dot now; the sibling bubble this used to add made two dots per field.
 function withAutotuneFieldInfo(parameter: ParameterState, node: ReactNode): ReactNode {
   return (
     <div key={parameter.id} className="config-section__field-row">
       {node}
-      <ParamInfoBubble
-        paramId={parameter.id}
-        label={parameter.definition?.label ?? parameter.id}
-        description={parameter.definition?.description}
-        testId={`autotune-field-info-${parameter.id}`}
-      />
     </div>
   )
 }
@@ -105,16 +90,7 @@ export function AutotuneCopterSection(props: AutotuneCopterSectionProps): ReactE
     return withAutotuneFieldInfo(parameter, field)
   }
 
-  const reviewTone = toneForScopedDraftReview(
-    copterAutotuneStagedDrafts.length,
-    copterAutotuneInvalidDrafts.length
-  )
-  const reviewLabel =
-    copterAutotuneInvalidDrafts.length > 0
-      ? `${copterAutotuneInvalidDrafts.length} invalid`
-      : copterAutotuneStagedDrafts.length > 0
-        ? `${copterAutotuneStagedDrafts.length} staged`
-        : 'in sync'
+  const reviewBadge = <DraftReviewBadge staged={copterAutotuneStagedDrafts.length} invalid={copterAutotuneInvalidDrafts.length} />
 
   return (
     <section className="bf-gui-box" data-testid="autotune-copter-section">
@@ -127,7 +103,7 @@ export function AutotuneCopterSection(props: AutotuneCopterSectionProps): ReactE
             <span className="info-dot-line">These set up AutoTune; the tuning itself happens in the air.</span>
           </InfoDot>
         </span>
-        <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+        {reviewBadge}
       </div>
       <div className="bf-gui-box__body">
         <article className="tuning-axis-card" data-testid="autotune-copter-config-group">
@@ -175,7 +151,7 @@ export function AutotuneCopterSection(props: AutotuneCopterSectionProps): ReactE
               <strong>AutoTune changes in review</strong>
               <p>Staged AutoTune configuration changes are collected here before they are written to the controller.</p>
             </div>
-            <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+            {reviewBadge}
           </div>
 
           {copterAutotuneDraftEntries.length > 0 ? (

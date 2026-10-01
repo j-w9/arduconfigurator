@@ -1,4 +1,5 @@
 import type { ParameterDefinition } from '@arduconfig/param-metadata'
+import { categoryForParameterId } from '@arduconfig/param-metadata'
 
 import { approximatelyEqualParameterValue } from './runtime-helpers.js'
 import type { ParameterState } from './types.js'
@@ -153,7 +154,12 @@ function deriveParameterDraftEntry(
   enumOverride: boolean = false
 ): ParameterDraftEntry {
   const label = parameter?.definition?.label ?? paramId
-  const category = parameter?.definition?.category ?? 'uncategorized'
+  // Fall back to the family the parameter belongs to before giving up. Only
+  // ~709 of ArduCopter's ~5,690 parameters are hand-curated, so without this
+  // almost every staged change landed in one "Uncategorized" heap — which is
+  // also what made staging a GROUP useless, since there was only ever one.
+  const category =
+    parameter?.definition?.category ?? categoryForParameterId(paramId) ?? 'uncategorized'
   const trimmedValue = rawValue.trim()
 
   if (parameter === undefined) {

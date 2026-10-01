@@ -22,7 +22,7 @@ test.describe('DroneCAN inspector', () => {
     await page.getByTestId('view-button-can').click()
 
     // The inspector panel renders with its bus picker + start control.
-    await expect(page.getByText('Discover DroneCAN devices on the CAN bus', { exact: false })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'DroneCAN Bus' })).toBeVisible()
     await expect(page.getByTestId('can-bus-select')).toBeVisible()
     await expect(page.getByTestId('can-bus-start')).toBeEnabled()
     // Pre-scan intro explains the MAV_CMD_CAN_FORWARD flow.

@@ -13,6 +13,9 @@ function counts(overrides: Partial<TuningTaskCardCounts> = {}): TuningTaskCardCo
     filterInvalidCount: 0,
     filterStagedCount: 0,
     filterCount: 4,
+    notchCount: 16,
+    notchStagedCount: 0,
+    notchInvalidCount: 0,
     autotuneInvalidCount: 0,
     autotuneStagedCount: 0,
     profileInvalidCount: 0,
@@ -34,6 +37,7 @@ describe('buildTuningTaskCards', () => {
       'rates',
       'pid-gains',
       'filters',
+      'notches',
       'autotune',
       'profiles',
       'review',
@@ -98,6 +102,7 @@ describe('the Expert gate on the Tuning task strip', () => {
       'rates',
       'pid-gains',
       'filters',
+      'notches',
       'autotune',
       'profiles',
       'review',
@@ -117,6 +122,7 @@ describe('the Expert gate on the Tuning task strip', () => {
   it('leaves a complete tuning path in basic mode', () => {
     // Stick feel, noise, gains (via Autotune), apply, and a starting point for
     // a new airframe. Hiding tabs must not remove the ability to finish a tune.
+    // Notches is Expert-only for the same reason: its fields always were.
     expect(ids(false)).toEqual(['rates', 'filters', 'autotune', 'review', 'initial-tune'])
   })
 

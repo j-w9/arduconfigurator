@@ -325,7 +325,8 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('motor-reorder-lightbox-tabs')).toBeVisible()
     await expect(page.getByTestId('motor-reorder-lightbox-tab-reorder')).toBeVisible()
     await expect(page.getByTestId('motor-reorder-lightbox-tab-direction')).toBeVisible()
-    await expect(page.getByTestId('motor-reorder-apply')).toBeVisible()
+    // The apply bar renders only once something is staged.
+    await expect(page.getByTestId('motor-reorder-apply')).toHaveCount(0)
     await expect(page.getByRole('dialog')).toHaveCount(0)
   })
 
@@ -334,11 +335,10 @@ test.describe('browser configurator regression flows', () => {
     await openView(page, 'motors')
 
     const apply = page.getByTestId('motor-reorder-apply')
-    await expect(apply).toBeVisible()
-    // Single "Apply and reboot" button (no separate Reboot FC). Disabled until
-    // something is staged.
+    // Single "Apply and reboot" button (no separate Reboot FC). Not rendered
+    // at all until something is staged.
     await expect(page.getByTestId('motor-reorder-reboot')).toHaveCount(0)
-    await expect(apply).toBeDisabled()
+    await expect(apply).toHaveCount(0)
 
     // Stage a reverse-direction bit from the Direction sub-tab.
     await page.getByTestId('motor-reorder-lightbox-tab-direction').click()
@@ -445,11 +445,17 @@ test.describe('browser configurator regression flows', () => {
     // the throttle sliders in the live column beside it.
     await expect(page.getByTestId('motor-order-diagram')).toBeVisible()
     await page.getByTestId('motor-reorder-props-off-ack').check()
-    // The extra USB-bench acknowledgement is gated to a physical web-serial
-    // link, so it must NOT appear (or block the test) over the demo transport.
+    // ONE safety box, full stop. Motor testing used to need the props/area box
+    // AND, over a physical USB link, a second USB-bench box further down the
+    // page — two boxes do not make the hazard twice as acknowledged, and the
+    // second one was where the Run button quietly stayed disabled. The three
+    // acknowledgement names still exist in state but are one value now, so
+    // the USB box has no reason to render on any transport.
     await expect(page.getByTestId('motor-test-usb-ack')).toHaveCount(0)
+    await expect(page.locator('[data-testid$="-ack"] input[type="checkbox"]')).toHaveCount(1)
     await page.getByTestId('motor-test-sliders').getByText('ALL', { exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Run Motor Test' })).toBeEnabled()
+    // One Test button now; it carries the full gate the Run button used to.
+    await expect(page.getByTestId('motor-test-sliders-test')).toBeEnabled()
   })
 
   test('motor-test sliders are draggable by pointer (the finger-drag path on phones)', async ({ page }) => {
@@ -524,8 +530,11 @@ test.describe('browser configurator regression flows', () => {
       page.getByText(/Staged \d+ grouped tuning change\(s\) from the master sliders\./)
     ).toBeVisible()
 
-    await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Filters/i }).click()
-    await expect(page.getByText('Bandwidth, smoothing, and the notch', { exact: true })).toBeVisible()
+    // By testid, not by name: 'Notches' also matches /Filters/i via its detail
+    // text now that the notches have their own task.
+    await page.getByTestId('tuning-tab-filters').click()
+    // The notches split onto their own task, so this page is smoothing only.
+    await expect(page.getByText('Bandwidth and smoothing', { exact: true })).toBeVisible()
     await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Profiles/i }).click()
     await page.getByTestId('tuning-profile-label-input').fill('Bench Test Profile')
     await expect(page.getByTestId('create-tuning-profile-button')).toBeEnabled()
@@ -643,7 +652,14 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('workspace-view-title')).toHaveText('Guided Setup')
 
     await openView(page, 'ports')
-    await expect(page.getByRole('heading', { name: 'Ports & Peripherals' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Ports', exact: true })).toBeVisible()
+    // The live GPS map moved to Peripherals ▸ GPS. Ports configures a UART;
+    // confirming the aircraft is where it says it is belongs with the GPS
+    // peripheral, beside the driver settings that decide whether there is a
+    // fix at all.
+    await expect(page.getByTestId('ports-gps-map-widget')).toHaveCount(0)
+    await openView(page, 'peripherals')
+    await page.locator('.tab-strip__tab', { hasText: 'GPS' }).first().click()
     await expect(page.getByTestId('ports-gps-map-widget')).toBeVisible()
     await openView(page, 'setup')
     await expect(page.getByTestId('workspace-view-title')).toHaveText('Status & Info')
@@ -688,8 +704,8 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText('LED & buzzer notifications', { exact: true })).toBeVisible()
     await openView(page, 'motors')
     await page.getByTestId('motor-reorder-props-off-ack').check()
-    // Motor-test surface reachable (the Run control + sliders render).
-    await expect(page.getByRole('button', { name: 'Run Motor Test' })).toBeVisible()
+    // Motor-test surface reachable (the sliders with their Test button render).
+    await expect(page.getByTestId('motor-test-sliders-test')).toBeVisible()
     await expect(page.getByTestId('motor-test-sliders')).toBeVisible()
 
     // Power now lives under Config's Power category. The failsafe-shaped knobs
@@ -847,7 +863,7 @@ test.describe('browser configurator regression flows', () => {
 
     await expect(page.getByText(`WebSocket · ${BRIDGE_URL}`, { exact: true })).toBeVisible()
     await openView(page, 'ports')
-    await expect(page.getByRole('heading', { name: 'Ports & Peripherals' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Ports', exact: true })).toBeVisible()
   })
 
   test('connection failures surface a clear session notice instead of leaving the UI idle and ambiguous', async ({ page }) => {

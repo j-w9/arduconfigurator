@@ -32,8 +32,9 @@ import {
   TUNING_ROVER_WINDVANE_PARAM_IDS
 } from '../tuning-params'
 import { readRoundedParameter, selectParameterById } from '../selectors/parameter-read'
-import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
+import { toneForParameterDraftStatus } from '../tone-helpers'
 import { ScopedField } from '../views/ScopedField'
+import { DraftReviewBadge } from '../views/DraftReviewBadge'
 
 export interface TuningRoverSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -103,19 +104,13 @@ export function TuningRoverSection(props: TuningRoverSectionProps): ReactElement
     />
   )
 
-  const reviewTone = toneForScopedDraftReview(roverTuningStagedDrafts.length, roverTuningInvalidDrafts.length)
-  const reviewLabel =
-    roverTuningInvalidDrafts.length > 0
-      ? `${roverTuningInvalidDrafts.length} invalid`
-      : roverTuningStagedDrafts.length > 0
-        ? `${roverTuningStagedDrafts.length} staged`
-        : 'in sync'
+  const reviewBadge = <DraftReviewBadge staged={roverTuningStagedDrafts.length} invalid={roverTuningInvalidDrafts.length} />
 
   return (
     <section className="bf-gui-box" data-testid="tuning-rover-section">
       <div className="bf-gui-box__titlebar">
         <strong>ArduRover Tuning</strong>
-        <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+        {reviewBadge}
       </div>
       <div className="bf-gui-box__body">
         <p className="bf-note">
@@ -249,7 +244,7 @@ export function TuningRoverSection(props: TuningRoverSectionProps): ReactElement
               <strong>Tuning changes in review</strong>
               <p>Staged ground-vehicle tuning changes are collected here before they are written to the controller.</p>
             </div>
-            <StatusBadge tone={reviewTone}>{reviewLabel}</StatusBadge>
+            {reviewBadge}
           </div>
 
           {roverTuningDraftEntries.length > 0 ? (

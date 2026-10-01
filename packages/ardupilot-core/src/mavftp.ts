@@ -25,6 +25,27 @@ export interface MavftpDirectoryEntry {
   sizeBytes?: number
 }
 
+/**
+ * The server refused the file when it was CLOSED.
+ *
+ * Distinct from a transport failure: every byte was accepted, and then the
+ * server validated the whole file and declined it. Whatever was stored before
+ * is unchanged. ArduPilot validates the VTX table on close -- CRC, dimensions,
+ * and whether the board has the parameter storage to keep one at all -- so this
+ * is the difference between "the upload failed" and "the vehicle will not
+ * accept this table". What it means is file-specific, so the caller supplies
+ * the explanation; see ArduPilotConfiguratorRuntime.writeVtxTable.
+ */
+export class MavftpUploadRejectedError extends Error {
+  constructor(
+    readonly path: string,
+    override readonly cause: unknown
+  ) {
+    super(`The vehicle refused ${path} when it was closed; the previous contents are unchanged.`)
+    this.name = 'MavftpUploadRejectedError'
+  }
+}
+
 export class MavftpRequestError extends Error {
   readonly errorCode: number
   readonly errno?: number

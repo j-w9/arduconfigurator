@@ -13,36 +13,44 @@ import {
   formatArducopterNotificationLedBrightness,
   formatArducopterNotificationLedOverride
 } from '@arduconfig/param-metadata'
-import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+import { buttonStyle } from '@arduconfig/ui-kit'
 
 import type { deriveOutputMappingSummary } from '@arduconfig/ardupilot-core'
 
 import type { ParameterDraftValues } from '../hooks/use-parameter-drafts'
 import { ScopedField, ScopedSelectField } from '../views/ScopedField'
+import { DraftReviewBadge } from '../views/DraftReviewBadge'
 import { ParamInfoBubble } from '../views/ParamInfoBubble'
 import { normalizeBitmaskValue } from '../parameter-format'
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
-import { toneForScopedDraftReview } from '../tone-helpers'
 
 type ConfiguredOutput = ReturnType<typeof deriveOutputMappingSummary>['motorOutputs'][number]
 
-/** One editable row plus the shared "i" bubble for its parameter. */
+/**
+ * One editable row plus the shared "i" bubble for its parameter. Only the
+ * hand-written bitmask rows need it: a Scoped* field renders its own inline
+ * dot after the label, so those rows pass `plain` to avoid a second dot.
+ */
 function NotificationFieldRow({
   parameter,
+  plain = false,
   children
 }: {
   parameter: ParameterState
+  plain?: boolean
   children: ReactNode
 }): ReactElement {
   return (
     <div className="config-section__field-row">
       {children}
-      <ParamInfoBubble
-        paramId={parameter.id}
-        label={parameter.definition?.label ?? parameter.id}
-        description={parameter.definition?.description}
-        testId={`peripheral-field-info-${parameter.id}`}
-      />
+      {plain ? null : (
+        <ParamInfoBubble
+          paramId={parameter.id}
+          label={parameter.definition?.label ?? parameter.id}
+          description={parameter.definition?.description}
+          testId={`peripheral-field-info-${parameter.id}`}
+        />
+      )}
     </div>
   )
 }
@@ -119,13 +127,7 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
               <strong>LED & buzzer notifications</strong>
               <p>Notification LEDs and the buzzer, without dropping into raw parameters.</p>
             </div>
-            <StatusBadge tone={toneForScopedDraftReview(outputNotificationStagedDrafts.length, outputNotificationInvalidDrafts.length)}>
-              {outputNotificationInvalidDrafts.length > 0
-                ? `${outputNotificationInvalidDrafts.length} invalid`
-                : outputNotificationStagedDrafts.length > 0
-                  ? `${outputNotificationStagedDrafts.length} staged`
-                  : 'in sync'}
-            </StatusBadge>
+            <DraftReviewBadge staged={outputNotificationStagedDrafts.length} invalid={outputNotificationInvalidDrafts.length} />
           </div>
 
           <div className="config-pills">
@@ -183,7 +185,7 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
             ) : null}
 
             {notificationLedBrightnessParameter ? (
-              <NotificationFieldRow parameter={notificationLedBrightnessParameter}>
+              <NotificationFieldRow parameter={notificationLedBrightnessParameter} plain>
                 <ScopedSelectField
                   parameter={notificationLedBrightnessParameter}
                   liveValue={notificationLedBrightness}
@@ -195,7 +197,7 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
             ) : null}
 
             {notificationLedLengthParameter ? (
-              <NotificationFieldRow parameter={notificationLedLengthParameter}>
+              <NotificationFieldRow parameter={notificationLedLengthParameter} plain>
                 <ScopedField
                   parameter={notificationLedLengthParameter}
                   liveValue={notificationLedLength}
@@ -207,7 +209,7 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
             ) : null}
 
             {notificationLedOverrideParameter ? (
-              <NotificationFieldRow parameter={notificationLedOverrideParameter}>
+              <NotificationFieldRow parameter={notificationLedOverrideParameter} plain>
                 <ScopedSelectField
                   parameter={notificationLedOverrideParameter}
                   liveValue={notificationLedOverride}
@@ -260,7 +262,7 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
             ) : null}
 
             {notificationBuzzVolumeParameter ? (
-              <NotificationFieldRow parameter={notificationBuzzVolumeParameter}>
+              <NotificationFieldRow parameter={notificationBuzzVolumeParameter} plain>
                 <ScopedField
                   parameter={notificationBuzzVolumeParameter}
                   liveValue={notificationBuzzVolume}

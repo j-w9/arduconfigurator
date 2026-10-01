@@ -122,7 +122,6 @@ export function LogsView(props: LogsViewProps) {
     <div id="setup-panel-logs">
       <Panel
         title="Logs"
-        subtitle="Onboard log backend, retention, and replay configuration. Edits stage as drafts until you save."
       >
         <div className="modes-stack">
           {/* The read-only "current value" summary cards (Log backend /

@@ -190,7 +190,7 @@ export function FailsafeView(props: FailsafeViewProps) {
 
   return (
     <div id="setup-panel-failsafe">
-      <Panel title="Failsafe" subtitle="What the vehicle does when something goes wrong.">
+      <Panel title="Failsafe">
         <div className="modes-stack">
           {/* The three summary cards (RC failsafe / Battery low / Battery
               critical) used to sit here, restating an action and a threshold

@@ -78,12 +78,58 @@ The tab shows your requested **Selected Mode** alongside the VTX's reported
 **Actual State** (device ready, frequency, power, max power) so you can confirm
 the transmitter accepted the settings.
 
+Band table
+~~~~~~~~~~
+
+.. important::
+
+   **The band table only exists if your firmware has it.** It is a build-time
+   feature, not something every ArduPilot build carries, and there is no
+   parameter to turn it on. The tab feature-detects it: where the firmware does
+   not serve ``@VTX/vtxtable.dat`` you get a **"Table not available"** notice
+   instead of the grid, and ``VTX_FREQ`` — a frequency in MHz — is how you set
+   the channel. Everything in this section and the next applies only to builds
+   that carry the feature.
+
+Where the firmware does have it, it holds a band/channel map and the tab edits
+it as a grid — band name, its OSD letter, whether it is a factory band, and the
+frequency for each channel. It is transported as one blob over MAVLink FTP at
+``@VTX/vtxtable.dat``.
+
+A table can be imported or exported as a **Betaflight** ``vtxtable`` CLI
+snippet, so a map shared in that format drops straight in, and curated presets
+(Raceband and friends) load through the same path. **Load default bands**
+restores the firmware's standard 11 bands — there is no reset command in the
+protocol, so restoring them is itself an upload and goes through **Save**.
+
 .. note::
 
-   ArduPilot exposes the transmit **frequency in MHz** rather than a band/channel
-   table, so the app edits ``VTX_FREQ`` directly — there is no Raceband-style
-   band/channel picker here. Look up the frequency for the band and channel you
-   want.
+   Only boards with **32 KB of parameter storage** (most H7s) can store a custom
+   table; most F405s cannot. The firmware exposes no capability flag for this,
+   so a well-formed table that is refused when the upload closes means the board
+   has nowhere to put it — the app says so. Reading always works there and
+   returns the built-in bands.
+
+   On a digital/MSP video system the goggles own the table and push it to the
+   flight controller, so the tab shows it read-only.
+
+Power levels
+~~~~~~~~~~~~
+
+Power is **parameters** rather than part of the table blob — but the same
+caveat applies: they exist only where the firmware exposes them, and the tab
+says so rather than showing an editor for parameters that are not there.
+
+``VTX_PWRTBL_EN`` turns the user power table on, and six slots ``VTX_PWRTBL1``
+… ``VTX_PWRTBL6`` hold it in switch-position order. A slot is **unused**, **pit mode**, or a **power in
+milliwatts** — enter mW for every protocol, including SmartAudio, because the
+firmware stores mW and derives the dBm/dac step from it.
+
+Because these are ordinary parameters they stage and apply like any other edit,
+and on firmware that has them they work on **every board** — including one
+whose parameter storage is too small to keep a band table.
+There are no stored labels any more; the text shown is derived from the value
+(1600 mW reads as "1.6").
 
 .. warning::
 

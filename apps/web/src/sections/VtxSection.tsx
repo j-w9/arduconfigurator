@@ -21,7 +21,7 @@ import {
   type SerialPortViewModel
 } from '../serial-port-helpers'
 import type { UseVtxTableResult } from '../hooks/use-vtx-table'
-import { VtxView } from '../views/Vtx'
+import { VtxView, type VtxViewProps } from '../views/Vtx'
 
 export interface VtxSectionProps {
   /** The OSD/VTX switcher, rendered under the panel title like every other
@@ -42,6 +42,10 @@ export interface VtxSectionProps {
   ) => void | Promise<void>
   onDiscardScopedDrafts: (paramIds: readonly string[], scopeLabel: string) => void
   vtxTable: UseVtxTableResult
+  powerTable: VtxViewProps['powerTable']
+  onPowerSlotChange: VtxViewProps['onPowerSlotChange']
+  onPowerEnabledChange: VtxViewProps['onPowerEnabledChange']
+  onPowerPreset: VtxViewProps['onPowerPreset']
 }
 
 export function VtxSection(props: VtxSectionProps) {
@@ -57,7 +61,11 @@ export function VtxSection(props: VtxSectionProps) {
     busyAction,
     onApplyScopedDrafts,
     onDiscardScopedDrafts,
-    vtxTable
+    vtxTable,
+    powerTable,
+    onPowerSlotChange,
+    onPowerEnabledChange,
+    onPowerPreset
   } = props
 
   const { byId: vtxParameterById } = useMemo(
@@ -125,6 +133,10 @@ export function VtxSection(props: VtxSectionProps) {
       onApply={() => void onApplyScopedDrafts(vtxDraftEntries, 'vtx:apply', 'VTX')}
       onRevert={() => onDiscardScopedDrafts(vtxDraftEntries.map((entry) => entry.id), 'VTX')}
       vtxTable={vtxTable}
+      powerTable={powerTable}
+      onPowerSlotChange={onPowerSlotChange}
+      onPowerEnabledChange={onPowerEnabledChange}
+      onPowerPreset={onPowerPreset}
       tableLearned={vtxTableLearned}
     />
   )

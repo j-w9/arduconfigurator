@@ -45,6 +45,15 @@ import {
   type RcAxisId,
   type RcMappingCandidate,
   LEGACY_PARAM_ALIASES,
+  readVtxPowerTable,
+  defaultVtxPowerLabel,
+  vtxPowerTableWrites,
+  vtxPowerPresetLevels,
+  VTX_POWER_PRESETS,
+  VTX_POWER_SLOT_PIT,
+  VTX_POWER_SLOT_UNUSED,
+  VTX_POWER_TABLE_ENABLE_PARAM,
+  VTX_POWER_TABLE_SLOT_PARAMS,
 } from '@arduconfig/ardupilot-core'
 import {
   arducopterMetadata,
@@ -104,6 +113,7 @@ import { GIT_HASH, GIT_BRANCH } from './build-info'
 import {
   TUNING_ALL_PID_PARAM_IDS,
   TUNING_FILTER_PARAM_IDS,
+  TUNING_NOTCH_PARAM_IDS,
   TUNING_PLANE_PARAM_IDS,
   TUNING_ROVER_PARAM_IDS,
   TUNING_SUB_PARAM_IDS,
@@ -190,7 +200,6 @@ import { useRcCalibrationDerivations } from './hooks/use-rc-calibration-derivati
 import { useRcMappingDerivations } from './hooks/use-rc-mapping-derivations'
 import { useRcRangeDerivations } from './hooks/use-rc-range-derivations'
 import { useAdditionalScope } from './hooks/use-additional-scope'
-import { useGpsCatalog } from './hooks/use-gps-catalog'
 import { useOsdCatalog } from './hooks/use-osd-catalog'
 import { useOutputNotificationCatalog } from './hooks/use-output-notification-catalog'
 import { usePowerReviewCatalog } from './hooks/use-power-review-catalog'
@@ -460,7 +469,7 @@ import {
   rcLogicUpdateLogicTermDrafts
 } from './view-models/rc-logic'
 import { armSwitchAssignmentDrafts, deriveArmSwitchAssignment } from './view-models/arm-switch'
-import { statusToneLabel, type StatusTone } from './status-tone'
+import { statusToneLabel } from './status-tone'
 import {
   createSavedSnapshot,
   type SavedParameterSnapshot,
@@ -549,8 +558,25 @@ const SERVO_ADDITIONAL_EXCLUDED_CATEGORY_IDS: ReadonlySet<string> = new Set([
   'rangefinder',
   'optical-flow'
 ])
+const TUNING_NOTCH_PARAM_ID_SET: ReadonlySet<string> = new Set(TUNING_NOTCH_PARAM_IDS)
+
+/** Whether a filter draft belongs to the Notches task rather than Filters. */
+function isTuningNotchParamId(parameterId: string): boolean {
+  return TUNING_NOTCH_PARAM_ID_SET.has(parameterId)
+}
+
 /** The Gimbal tab owns exactly this category. */
 const GIMBAL_CATEGORY_IDS: ReadonlySet<string> = new Set(['gimbal'])
+/**
+ * The `peripherals` metadata category routes to the Ports view, where it used
+ * to render as rows under "Additional port settings". Ports configures a UART;
+ * what the thing on the far end of it is belongs on the Peripherals tab, so the
+ * category is excluded there and included here instead. What survives the
+ * peripheral/config section exclusions is the GPS residue (second-receiver
+ * driver and GNSS mask, antenna offsets, lag), which is why it lands on the GPS
+ * sub-tab rather than in a lump of its own.
+ */
+const PERIPHERALS_CATEGORY_IDS: ReadonlySet<string> = new Set(['peripherals'])
 /**
  * Flow & Lidar owns both, because they are a pair in practice: optical flow
  * needs a height reference and that is almost always the downward rangefinder.
@@ -987,7 +1013,7 @@ export function App() {
   // Upload-to-your-own-server for onboard logs. Entirely self-contained: its
   // own client, its own stored session, and no relationship to any other
   // network surface in this app.
-  const logUpload = useLogUpload(runtime)
+  const logUpload = useLogUpload(runtime, { fetchBytes: onboardLogs.fetchBytes })
   // Library-tab notices (snapshot / provisioning / tuning-profile / preset /
   // session ParameterNotice banners + the post-copy sticky flag) live in
   // their own hook — see use-library-notices.ts.
@@ -1279,6 +1305,7 @@ export function App() {
     stagePendingParameterImport,
     stagePendingParameterImportSubset,
     dropPendingParameterImportEntries,
+    editPendingParameterImportValue,
     importedDraftOrigins,
     dismissPendingParameterImport
   } = useParameterBackupIo({
@@ -1401,6 +1428,14 @@ export function App() {
     isConfigParamId,
     isPeripheralParamId
   } = useConfigSections(snapshot)
+  // Everything a curated section already renders, on either tab. The GPS
+  // "Additional settings" card is the residue of the `peripherals` category
+  // after both, so a parameter that has a labelled field somewhere never also
+  // appears as a raw row underneath it.
+  const isPeripheralOrConfigParamId = useCallback(
+    (paramId: string): boolean => isPeripheralParamId(paramId) || isConfigParamId(paramId),
+    [isConfigParamId, isPeripheralParamId]
+  )
   // Auto-enable bidirectional DShot when the operator picks a DShot MOT_PWM_TYPE.
   // Fires only on an actual change of the MOT_PWM_TYPE draft (ref-guarded so
   // other drafts / telemetry ticks don't retrigger it). If the firmware lacks
@@ -1483,10 +1518,6 @@ export function App() {
     rcAxisObservations,
     modeSwitchEstimate
   })
-  const gpsAutoConfig = readRoundedParameter(snapshot, 'GPS_AUTO_CONFIG')
-  const gpsAutoSwitch = readRoundedParameter(snapshot, 'GPS_AUTO_SWITCH')
-  const gpsPrimary = readRoundedParameter(snapshot, 'GPS_PRIMARY')
-  const gpsRateMs = readRoundedParameter(snapshot, 'GPS_RATE_MS')
   const osdType = readRoundedParameter(snapshot, 'OSD_TYPE')
   const osdChannel = readRoundedParameter(snapshot, 'OSD_CHAN')
   const osdSwitchMethod = readRoundedParameter(snapshot, 'OSD_SW_METHOD')
@@ -2965,27 +2996,9 @@ export function App() {
     vtxLinkPorts,
     osdLinkPorts
   } = useSerialPortModels({ snapshot, boardCatalogEntry, portsDraftEntries, showAllSerialPorts })
-  const boardReferenceLinks = boardCatalogEntry?.referenceLinks ?? []
-  const uartsMappedPortCount = snapshot.hardware.uartsFile.mappings.length
-  const uartsStatusTone: StatusTone =
-    snapshot.hardware.uartsFile.status === 'ready'
-      ? 'success'
-      : snapshot.hardware.uartsFile.status === 'loading'
-        ? 'warning'
-        : snapshot.hardware.uartsFile.status === 'unsupported'
-          ? 'neutral'
-          : snapshot.hardware.uartsFile.status === 'missing' || snapshot.hardware.uartsFile.status === 'error'
-            ? 'warning'
-            : 'neutral'
   const rememberedSerialPortLabel = describeRememberedSerialPort(rememberedSerialPortInfo)
   const gpsPeripheralViewModels = useMemo(() => buildGpsPeripheralViewModels(snapshot), [snapshot])
   const canNodePeripheralViewModels = useMemo(() => buildCanNodePeripheralViewModels(snapshot), [snapshot.canNodes])
-  const {
-    gpsAutoConfigParameter,
-    gpsAutoSwitchParameter,
-    gpsPrimaryParameter,
-    gpsRateParameter
-  } = useGpsCatalog(snapshot)
   const {
     osdParameterById,
     osdTypeParameter,
@@ -3031,6 +3044,7 @@ export function App() {
     tuningFilterParameters,
     tuningPidAxisGroups,
     tuningFilterAxisGroups,
+    tuningNotchAxisGroups,
     tuningAdvancedPidAxisGroups
   } = useTuningCatalog(snapshot)
   const outputReviewParameters = useMemo(
@@ -3147,6 +3161,7 @@ export function App() {
     metadataCatalog,
     viewId: 'ports',
     excludedParameterIds: isPortsReviewParamId,
+    excludedCategoryIds: PERIPHERALS_CATEGORY_IDS,
     parameterDraftEntries
   })
   const receiverAdditional = useReceiverAdditional({ snapshot, metadataCatalog, parameterDraftEntries })
@@ -3214,6 +3229,19 @@ export function App() {
     metadataCatalog,
     viewId: 'motors',
     includedCategoryIds: GIMBAL_CATEGORY_IDS,
+    parameterDraftEntries
+  })
+  const {
+    groups: gpsAdditionalGroups,
+    entries: gpsAdditionalDraftEntries,
+    staged: gpsAdditionalStagedDrafts,
+    invalid: gpsAdditionalInvalidDrafts
+  } = useAdditionalScope({
+    snapshot,
+    metadataCatalog,
+    viewId: 'ports',
+    includedCategoryIds: PERIPHERALS_CATEGORY_IDS,
+    excludedParameterIds: isPeripheralOrConfigParamId,
     parameterDraftEntries
   })
   const {
@@ -5527,9 +5555,14 @@ export function App() {
         pidInvalidCount: tuningPidInvalidDrafts.length,
         pidStagedCount: tuningPidStagedDrafts.length,
         pidGainCount: TUNING_ALL_PID_PARAM_IDS.length,
-        filterInvalidCount: tuningFilterInvalidDrafts.length,
-        filterStagedCount: tuningFilterStagedDrafts.length,
-        filterCount: TUNING_FILTER_PARAM_IDS.length,
+        // Filters and Notches share one draft scope; the badges split it so
+        // each card counts what its own page shows.
+        filterInvalidCount: tuningFilterInvalidDrafts.filter((entry) => !isTuningNotchParamId(entry.id)).length,
+        filterStagedCount: tuningFilterStagedDrafts.filter((entry) => !isTuningNotchParamId(entry.id)).length,
+        filterCount: TUNING_FILTER_PARAM_IDS.length - TUNING_NOTCH_PARAM_IDS.length,
+        notchInvalidCount: tuningFilterInvalidDrafts.filter((entry) => isTuningNotchParamId(entry.id)).length,
+        notchStagedCount: tuningFilterStagedDrafts.filter((entry) => isTuningNotchParamId(entry.id)).length,
+        notchCount: TUNING_NOTCH_PARAM_IDS.length,
         autotuneInvalidCount: copterAutotuneInvalidDrafts.length,
         autotuneStagedCount: copterAutotuneStagedDrafts.length,
         profileInvalidCount: selectedTuningProfileInvalidEntries.length,
@@ -6477,13 +6510,72 @@ export function App() {
     () => deriveRcLogicChannelClaims(rcLogicVisibleAssignments),
     [rcLogicVisibleAssignments]
   )
-  // Non-zero @VTX power levels in table order — a VTX_POWER RCL term's level
-  // selector stores the 0-based index here into OPT bits 5-7. Use the DETECTED
-  // (saved) table, not the editable draft: the RCL index resolves against what
-  // the FC actually has, so unsaved VTX-table edits must not shift it.
+  // Active power levels in slot order — a VTX_POWER RCL term's level selector
+  // stores the 0-based index here into OPT bits 5-7. Read from the LIVE
+  // parameters (VTX_PWRTBL1..6): the index resolves against what the FC
+  // actually has, so an unapplied draft must not shift it.
+  // Draft-first, like every other editable parameter surface: a staged slot
+  // must SHOW as staged. Reading only the live value meant typing a power left
+  // the box unchanged until Apply, which reads as an edit that did not take.
+  const vtxPowerTable = useMemo(
+    () =>
+      readVtxPowerTable((paramId) => {
+        const edited = editedValues[paramId]
+        if (edited !== undefined && edited !== '') {
+          const parsed = Number(edited)
+          if (Number.isFinite(parsed)) {
+            return Math.round(parsed)
+          }
+        }
+        return readRoundedParameter(snapshot, paramId)
+      }),
+    [snapshot, editedValues]
+  )
+  // Power slots stage as ordinary parameter drafts — same review + Apply as
+  // every other parameter, and no FTP upload involved.
+  const handleVtxPowerSlotChange = useCallback(
+    (index: number, value: number | 'pit' | undefined) => {
+      const paramId = VTX_POWER_TABLE_SLOT_PARAMS[index]
+      if (paramId === undefined) {
+        return
+      }
+      setDraft(
+        paramId,
+        String(
+          value === undefined
+            ? VTX_POWER_SLOT_UNUSED
+            : value === 'pit'
+              ? VTX_POWER_SLOT_PIT
+              : Math.max(0, Math.round(value))
+        )
+      )
+    },
+    [setDraft]
+  )
+  const handleVtxPowerEnabledChange = useCallback(
+    (enabled: boolean) => {
+      setDraft(VTX_POWER_TABLE_ENABLE_PARAM, enabled ? '1' : '0')
+    },
+    [setDraft]
+  )
+  const handleVtxPowerPreset = useCallback(
+    (presetId: string) => {
+      const preset = VTX_POWER_PRESETS.find((candidate) => candidate.id === presetId)
+      // An empty id clears the ladder — used by the Betaflight import before it
+      // stages the levels the snippet carried, so a shorter imported ladder
+      // cannot leave a stale slot behind.
+      const levels = preset ? vtxPowerPresetLevels(preset).map((level) => level.value) : []
+      // Turn the table on with it: staging six slots and leaving VTX_PWRTBL_EN
+      // at 0 writes a table the vehicle then ignores.
+      for (const write of vtxPowerTableWrites(levels, { enable: levels.length > 0 })) {
+        setDraft(write.paramId, String(write.value))
+      }
+    },
+    [setDraft]
+  )
   const rcMixerVtxPowerLevels = useMemo(
-    () => deriveVtxPowerLevels(vtxTable.detected?.powerLevels),
-    [vtxTable.detected]
+    () => (vtxPowerTable.supported ? deriveVtxPowerLevels(vtxPowerTable.slots, defaultVtxPowerLabel) : undefined),
+    [vtxPowerTable]
   )
   // A slot freed by a prior remove stays in rcLogicRemovedTerms even after the
   // disable is applied (the Set is never pruned). Reusing that slot for a new
@@ -6991,7 +7083,7 @@ export function App() {
     )
   }
 
-  function renderMetadataParameterField(parameter: ParameterState, infoTestIdPrefix = 'metadata-field-info') {
+  function renderMetadataParameterField(parameter: ParameterState) {
     // Shared metadata-driven editor used across Power additional
     // settings, Output additional settings, Tuning, and other generic
     // surfaces. The ScopedField dispatcher picks: bitmask -> per-bit
@@ -7015,10 +7107,8 @@ export function App() {
 
     // Every "Additional settings" card in the app (Servos ▸ Peripherals &
     // Alerts, Power, Failsafe, Ports, Receiver, guided Setup) funnels through
-    // this one renderer, so the per-parameter "i" is attached here rather than
-    // at each of those call sites. The bubble is a SIBLING of the editor, not a
-    // child: ScopedField wraps its control in a <label>, and an anchor (the
-    // wiki link) nested inside a <label> is both invalid and unclickable.
+    // this one renderer. The per-parameter "i" is ScopedField's own inline dot
+    // (raw id, description, range); a sibling bubble here made two per field.
     return (
       <div key={parameter.id} className="config-section__field-row">
         <ScopedField
@@ -7028,12 +7118,6 @@ export function App() {
           onChange={(paramId, value) => setDraft(paramId, value)}
           draftStatusById={parameterDraftById}
           stepFallback={parameter.definition?.step ?? 1}
-        />
-        <ParamInfoBubble
-          paramId={parameter.id}
-          label={parameter.definition?.label ?? parameter.id}
-          description={parameter.definition?.description}
-          testId={`${infoTestIdPrefix}-${parameter.id}`}
         />
       </div>
     )
@@ -7128,12 +7212,11 @@ export function App() {
     if (/^NET_(?:IPADDR|GWADDR|REMPPP_IP|P\d+_IP)[1-3]$/.test(parameter.id)) {
       return null
     }
-    // Plain NET_ params go through the generic renderer, which now attaches the
-    // "i" itself — wrapping again here would render two bubbles per field. Pass
-    // the networking test-id prefix through so `networking-field-info-*` hooks
-    // keep resolving. withNetworkingFieldInfo stays for the composed
-    // dotted-quad/MAC editors above, which the generic renderer never sees.
-    return renderMetadataParameterField(parameter, 'networking-field-info')
+    // Plain NET_ params go through the generic renderer, whose ScopedField
+    // carries the "i" itself — wrapping again here would render two dots per
+    // field. withNetworkingFieldInfo stays for the composed dotted-quad/MAC
+    // editors above, which hand-roll their label and have no dot of their own.
+    return renderMetadataParameterField(parameter)
   }
 
   function handleStageTuningParameterValue(parameter: ParameterState, nextValue: string): void {
@@ -8892,35 +8975,23 @@ export function App() {
                                 </div>
 
                                 <div className="motor-test-acknowledgments setup-wizard__task-acknowledgments">
-                                  <label>
+                                  {/* One acknowledgement. This step rendered three boxes —
+                                      props, area, and a USB-bench extra — for what is one
+                                      decision, and the Motors tab renders the same state as one
+                                      box; three here that tick together would read as a glitch. */}
+                                  <label data-testid="guided-motor-test-ack">
                                     <input
                                       type="checkbox"
-                                      checked={propsRemovedAcknowledged}
-                                      onChange={(event) => setPropsRemovedAcknowledged(event.target.checked)}
+                                      checked={propsRemovedAcknowledged && testAreaAcknowledged && (!motorTestOverUsb || usbBenchAcknowledged)}
+                                      onChange={(event) => {
+                                        setPropsRemovedAcknowledged(event.target.checked)
+                                        setTestAreaAcknowledged(event.target.checked)
+                                        setUsbBenchAcknowledged(event.target.checked)
+                                      }}
                                       disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
                                     />
-                                    <span>All propellers are removed.</span>
+                                    <span>Props are off, the vehicle is restrained, and the test area is clear.</span>
                                   </label>
-                                  <label>
-                                    <input
-                                      type="checkbox"
-                                      checked={testAreaAcknowledged}
-                                      onChange={(event) => setTestAreaAcknowledged(event.target.checked)}
-                                      disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                                    />
-                                    <span>The vehicle is restrained and the area is clear.</span>
-                                  </label>
-                                  {motorTestOverUsb ? (
-                                    <label className="motor-test-acknowledgments__usb" data-testid="guided-motor-test-usb-ack">
-                                      <input
-                                        type="checkbox"
-                                        checked={usbBenchAcknowledged}
-                                        onChange={(event) => setUsbBenchAcknowledged(event.target.checked)}
-                                        disabled={busyAction !== undefined || snapshot.motorTest.status === 'requested' || snapshot.motorTest.status === 'running'}
-                                      />
-                                      <span>USB connection detected — craft is on the bench, props off.</span>
-                                    </label>
-                                  ) : null}
                                 </div>
 
                                 <ul className="output-note-list">
@@ -9090,14 +9161,9 @@ export function App() {
           parameterNotice={parameterNotice}
           rebootRequired={parameterFollowUp?.requiresReboot ?? false}
           onReboot={() => void handleGuidedAction('reboot-autopilot')}
-          boardCatalogEntry={boardCatalogEntry}
-          boardReferenceLinks={boardReferenceLinks}
           serialPortViewModels={serialPortViewModels}
           visibleSerialPortViewModels={visibleSerialPortViewModels}
-          gpsPeripheralViewModels={gpsPeripheralViewModels}
           canNodePeripheralViewModels={canNodePeripheralViewModels}
-          uartsMappedPortCount={uartsMappedPortCount}
-          uartsStatusTone={uartsStatusTone}
           portVisibilitySummary={portVisibilitySummary}
           portsDraftEntries={portsDraftEntries}
           portsStagedDrafts={portsStagedDrafts}
@@ -9127,14 +9193,6 @@ export function App() {
           osdSwitchMethodParameter={osdSwitchMethodParameter}
           mspOptionsParameter={mspOptionsParameter}
           mspOsdCellCountParameter={mspOsdCellCountParameter}
-          gpsAutoConfig={gpsAutoConfig}
-          gpsAutoSwitch={gpsAutoSwitch}
-          gpsPrimary={gpsPrimary}
-          gpsRateMs={gpsRateMs}
-          gpsAutoConfigParameter={gpsAutoConfigParameter}
-          gpsAutoSwitchParameter={gpsAutoSwitchParameter}
-          gpsPrimaryParameter={gpsPrimaryParameter}
-          gpsRateParameter={gpsRateParameter}
           editedValues={editedValues}
           parameterDraftById={parameterDraftById}
           setDraft={setDraft}
@@ -9163,6 +9221,10 @@ export function App() {
             onApplyScopedDrafts={handleApplyScopedParameterDrafts}
             onDiscardScopedDrafts={handleDiscardScopedParameterDrafts}
             vtxTable={vtxTable}
+            powerTable={vtxPowerTable}
+            onPowerSlotChange={handleVtxPowerSlotChange}
+            onPowerEnabledChange={handleVtxPowerEnabledChange}
+            onPowerPreset={handleVtxPowerPreset}
           />
         ) : null}
 
@@ -9694,6 +9756,7 @@ export function App() {
             tuningAdvancedPidAxisGroups,
             tuningFilterParameters,
             tuningFilterAxisGroups,
+            tuningNotchAxisGroups,
             tuningMasterPreviewEntries,
             tuningMasterDefaultsActive,
             tuningProfileSourceUsesStaged,
@@ -9767,13 +9830,18 @@ export function App() {
                 }}
                 disabled={busyAction !== undefined}
               />
-              <FilterNotchHelp
-                liveValues={filterLiveValues}
-                editedValues={editedValues}
-                onSetDraft={setDraft}
-                disabled={busyAction !== undefined}
-              />
             </>
+          }
+          /* The notch SUGGESTIONS (bandwidth from base frequency, a reference
+             that actually tracks) travel with the notch fields they fill in,
+             not with the gyro-cutoff panel they used to sit under. */
+          notchHelpSlot={
+            <FilterNotchHelp
+              liveValues={filterLiveValues}
+              editedValues={editedValues}
+              onSetDraft={setDraft}
+              disabled={busyAction !== undefined}
+            />
           }
           initialTuneSlot={
             /* Starting-point tuning. Reads live values to show what each
@@ -9929,7 +9997,6 @@ export function App() {
             onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
             paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
             title="DroneNet peripherals"
-            subtitle="Configure a DroneCAN peripheral's network settings — its NET_ parameters, written over the CAN bus and saved to the node. Start the bus to discover nodes; no need to leave this tab."
           />
         }
       />
@@ -10228,6 +10295,7 @@ export function App() {
           busyAction={busyAction}
           downloadProgress={filesBrowser.downloadProgress}
           vehicleConnected={snapshot.connection.kind === 'connected'}
+          logTransferInFlight={onboardLogs.activeDownloadId !== undefined}
           onNavigate={filesBrowser.navigate}
           onRefresh={filesBrowser.refresh}
           onDownload={filesBrowser.download}
@@ -10440,7 +10508,44 @@ export function App() {
           // metadata-driven parameter groups — so they arrive as footer-only
           // sections, the way Flight Modes and Power already do on Config.
           sections={[
-            ...peripheralSections,
+            // The live GPS map moved here from Ports. Ports configures a UART;
+            // confirming the aircraft is actually where it says it is belongs
+            // with the GPS peripheral, next to the driver and rate settings
+            // that determine whether there is a fix at all.
+            ...peripheralSections.map((section) =>
+              section.id === 'gps'
+                ? {
+                    ...section,
+                    footer: (
+                      <>
+                        {/* The Primary / Secondary GPS status cards are gone:
+                            the driver is the GPS type field above and the live
+                            fix is the map below, so the cards said both twice. */}
+                        <LiveGpsMapCard
+                          snapshot={snapshot}
+                          title="GPS map"
+                          subtitle="Verify the live aircraft location once the GPS driver and serial link are configured."
+                          testId="ports-gps-map-widget"
+                        />
+                        {/* Moved off Ports ▸ Additional port settings. */}
+                        {gpsAdditionalGroups.length === 0
+                          ? null
+                          : renderAdditionalSettingsCard(
+                              'Additional GPS settings',
+                              'Second-receiver driver and GNSS mask, antenna offsets from the centre of gravity, and receiver lag.',
+                              gpsAdditionalGroups,
+                              gpsAdditionalDraftEntries,
+                              gpsAdditionalStagedDrafts,
+                              gpsAdditionalInvalidDrafts,
+                              'peripherals:gps-additional',
+                              'Apply GPS Changes',
+                              'GPS settings'
+                            )}
+                      </>
+                    )
+                  }
+                : section
+            ),
             {
               id: 'gimbal',
               title: 'Gimbal',
@@ -10534,8 +10639,7 @@ export function App() {
             {
               id: 'flow-lidar',
               title: 'Flow & Lidar',
-              description:
-                'Rangefinder/lidar driver and range limits, plus optical flow alignment and scaling.',
+              description: '',
               category: 'flow-lidar' as const,
               wide: true,
               fields: [],
@@ -10552,7 +10656,8 @@ export function App() {
                   ) : (
                     renderAdditionalSettingsCard(
                       'Flow & Lidar',
-                      'Rangefinder/lidar driver and range limits, plus optical flow alignment and scaling. Flow needs a height reference, which is almost always the downward rangefinder configured here.',
+                      // No blurb: the field labels say what the card holds.
+                      '',
                       flowLidarGroups,
                       flowLidarDraftEntries,
                       flowLidarStagedDrafts,
@@ -10658,6 +10763,7 @@ export function App() {
           onExportParameterBackupAsParams={handleExportParameterBackupAsParams}
           onImportParameterBackup={handleImportParameterBackup}
           pendingParameterImport={pendingParameterImport}
+          onEditPendingParameterImportValue={editPendingParameterImportValue}
           onStagePendingParameterImport={stagePendingParameterImport}
           onStagePendingParameterImportSubset={stagePendingParameterImportSubset}
           importedDraftOrigins={importedDraftOrigins}

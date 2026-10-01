@@ -380,7 +380,6 @@ export function AiAssistantView(props: AiAssistantViewProps) {
   return (
     <Panel
       title="AI Assistant"
-      subtitle="Bring your own model (Claude, GPT, or a local Ollama) to discuss your vehicle’s configuration and propose parameter changes — every write is yours to review and approve, and nothing is applied without your explicit confirmation."
     >
       <div data-testid="ai-assistant-view" className="ai-assistant">
         <details className="ai-assistant__settings-disclosure" open={!props.configReady}>

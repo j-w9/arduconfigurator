@@ -105,7 +105,7 @@ export function CanBusView(props: CanBusViewProps) {
     onApplyAndSave,
     paramMetadata,
     title = 'DroneCAN Bus',
-    subtitle = 'Discover DroneCAN devices on the CAN bus and read, edit, and save their parameters — without dropping your vehicle connection.',
+    subtitle,
     enablement,
     onEnableCanBus,
     enableBusy = false,

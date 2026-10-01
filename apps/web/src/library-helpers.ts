@@ -6,6 +6,7 @@
 import { sortParameterProvisioningProfiles, sortParameterSnapshots } from '@arduconfig/ardupilot-core'
 import type { ConfiguratorSnapshot, ParameterBackupEntry, ParameterDraftEntry } from '@arduconfig/ardupilot-core'
 import type { NormalizedPresetDefinition } from '@arduconfig/param-metadata'
+import { categoryForParameterId } from '@arduconfig/param-metadata'
 
 import { TUNING_ROLL_PITCH_LINK_MAP } from './tuning-params'
 import type { SavedParameterSnapshot } from './snapshot-library'
@@ -102,7 +103,7 @@ export function deriveProvisioningOverlayParametersFromDrafts(
     .map((entry) => ({
       id: entry.id,
       value: entry.nextValue,
-      category: entry.definition?.category,
+      category: entry.definition?.category ?? categoryForParameterId(entry.id),
       label: entry.definition?.label,
       unit: entry.definition?.unit
     }))

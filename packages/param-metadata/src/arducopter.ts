@@ -3709,6 +3709,133 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       // AP_Float 0.1-1.0 -- a ratio.
       step: 0.01
     },
+    // The SECOND harmonic notch (ArduPilot INS_HNTC2_*, harmonic_notches[1] —
+    // AP_InertialSensor.cpp AP_SUBGROUPINFO "_HNTC2_"). Same
+    // HarmonicNotchFilterParams group as the first, so every label, range and
+    // value list below is identical by construction rather than by retyping.
+    // A second notch is what you reach for when one source cannot cover the
+    // noise — e.g. tracking ESC telemetry on one and a fixed frame mode on the
+    // other.
+    INS_HNTC2_ENABLE: {
+      id: 'INS_HNTC2_ENABLE',
+      label: 'Harmonic notch 2',
+      description: 'Enable the harmonic notch filter. Takes effect on the next reboot.',
+      category: 'tuning',
+      rebootRequired: true,
+      options: [
+        { value: 0, label: 'Disabled' },
+        { value: 1, label: 'Enabled' }
+      ]
+    },
+    INS_HNTC2_MODE: {
+      id: 'INS_HNTC2_MODE',
+      label: 'Notch tracking mode 2',
+      description:
+        'How the notch follows motor frequency. Throttle infers it from throttle position; RPM sensor and ESC telemetry measure it; in-flight FFT computes it onboard and needs a capable (H7/F7) board.',
+      category: 'tuning',
+      // HarmonicNotchFilter.cpp @Values for MODE.
+      options: [
+        { value: 0, label: 'Fixed' },
+        { value: 1, label: 'Throttle' },
+        { value: 2, label: 'RPM Sensor' },
+        { value: 3, label: 'ESC Telemetry' },
+        { value: 4, label: 'Dynamic FFT' },
+        { value: 5, label: 'Second RPM Sensor' }
+      ]
+    },
+    INS_HNTC2_REF: {
+      id: 'INS_HNTC2_REF',
+      label: 'Notch reference 2',
+      description:
+        'Reference value for dynamic tracking. Zero DISABLES dynamic updates entirely. For throttle-based scaling this is the hover thrust; for RPM and ESC-telemetry tracking it is 1.',
+      category: 'tuning',
+      minimum: 0,
+      maximum: 1,
+      // AP_Float 0.0-1.0 -- a ratio, not a frequency.
+      step: 0.01
+    },
+    INS_HNTC2_FREQ: {
+      id: 'INS_HNTC2_FREQ',
+      // Named for what it does in every mode rather than only in Fixed mode.
+      // On a tracking source (ESC telemetry, RPM, in-flight FFT) this is a
+      // FLOOR, not a centre: HarmonicNotchFilter.cpp clamps the tracked
+      // frequency to it, so nothing below it is ever notched. Calling that a
+      // "centre frequency" reads as a promise to notch AT 40 Hz when the real
+      // behaviour is to notch nothing under 40 Hz.
+      label: 'Notch frequency floor 2',
+      description:
+        'Nothing below this frequency is notched: the tracked centre is clamped to it (HarmonicNotchFilter.cpp, "don\'t let the notch go below the min frequency"), and below it the attenuation fades out to nothing. In Fixed mode it is also the centre of the notch; in Throttle mode it is the centre at the reference thrust; with a measured source (RPM, ESC telemetry, in-flight FFT) the tracked centre rides above it. The floor is this value times INS_HNTC2_FM_RAT, so it is exactly this frequency at the default ratio of 1. Keep it below half the gyro backend rate.',
+      category: 'tuning',
+      unit: 'Hz',
+      minimum: 10,
+      maximum: 495,
+      // AP_Float, but nobody tunes a notch centre in hundredths of a Hz.
+      step: 1
+    },
+    INS_HNTC2_BW: {
+      id: 'INS_HNTC2_BW',
+      label: 'Notch bandwidth 2',
+      description:
+        'Notch width in Hz, typically set to half the base frequency. The ratio of frequency to bandwidth sets the notch quality factor and is fixed across harmonics.',
+      category: 'tuning',
+      unit: 'Hz',
+      minimum: 5,
+      maximum: 250,
+      // AP_Float; same reasoning as the centre frequency.
+      step: 1
+    },
+    INS_HNTC2_HMNCS: {
+      id: 'INS_HNTC2_HMNCS',
+      label: 'Notch harmonics 2',
+      description:
+        'Which harmonics of the base frequency to notch. The first harmonic is the base frequency itself. Zero disables the filter. Takes effect on the next reboot.',
+      category: 'tuning',
+      bitmask: true,
+      rebootRequired: true,
+      // BIT INDICES, not mask values: ScopedBitmaskField computes `1 << value`.
+      // Supplying masks here silently shifts every label onto the wrong bit.
+      options: [
+        { value: 0, label: '1st harmonic' },
+        { value: 1, label: '2nd harmonic' },
+        { value: 2, label: '3rd harmonic' },
+        { value: 3, label: '4th harmonic' },
+        { value: 4, label: '5th harmonic' },
+        { value: 5, label: '6th harmonic' },
+        { value: 6, label: '7th harmonic' },
+        { value: 7, label: '8th harmonic' }
+      ]
+    },
+    INS_HNTC2_OPTS: {
+      id: 'INS_HNTC2_OPTS',
+      label: 'Notch options 2',
+      description:
+        'Double and triple notches attenuate more deeply across a wider band with less latency, suited to larger aircraft. Multi-Source attaches a notch to each detected noise source rather than to multiples of the base frequency. If both double and triple are set, only double takes effect.',
+      category: 'tuning',
+      bitmask: true,
+      // BIT INDICES, matching HarmonicNotchFilter.cpp:134 @Bitmask exactly --
+      // ScopedBitmaskField computes `1 << value`, so masks here would put every
+      // label on the wrong bit.
+      options: [
+        { value: 0, label: 'Double notch' },
+        { value: 1, label: 'Multi-Source' },
+        { value: 2, label: 'Update at loop rate' },
+        { value: 3, label: 'Enable on all IMUs' },
+        { value: 4, label: 'Triple notch' },
+        { value: 5, label: 'Min freq on RPM failure' },
+        { value: 6, label: 'Quintuple notch' }
+      ]
+    },
+    INS_HNTC2_FM_RAT: {
+      id: 'INS_HNTC2_FM_RAT',
+      label: 'Notch min freq ratio 2',
+      description:
+        'Lowest fraction of the configured frequency a throttle-based notch will track down to below the reference throttle. 1.0 means it never goes below the configured frequency; 0.7 allows 30% below. Lower notches carry more phase lag.',
+      category: 'tuning',
+      minimum: 0.1,
+      maximum: 1,
+      // AP_Float 0.1-1.0 -- a ratio.
+      step: 0.01
+    },
     SERVO_DSHOT_RATE: {
       id: 'SERVO_DSHOT_RATE',
       label: 'DShot Rate',

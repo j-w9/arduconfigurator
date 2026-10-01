@@ -164,8 +164,7 @@ export function LogsSection(props: LogsSectionProps) {
                     log.timeUtc > 0
                       ? new Date(log.timeUtc * 1000).toISOString().replace('T', ' ').slice(0, 19)
                       : 'Unknown date',
-                  sizeBytes: log.sizeBytes,
-                  mavftpPath: onboardLogs.mavftpPathsById?.get(id)
+                  sizeBytes: log.sizeBytes
                 })
               }
             : undefined,

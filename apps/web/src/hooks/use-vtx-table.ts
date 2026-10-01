@@ -11,8 +11,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
-import type { VtxTable, VtxTablePowerLevel } from '@arduconfig/ardupilot-core'
-import { defaultVtxPowerLabel } from '@arduconfig/ardupilot-core'
+import type { VtxTable } from '@arduconfig/ardupilot-core'
 
 // Structural runtime slice — avoids importing the whole runtime class.
 export interface VtxTableRuntime {
@@ -34,11 +33,8 @@ export interface UseVtxTableResult {
   saving: boolean
   error: string | undefined
   setFrequency: (bandIndex: number, channelIndex: number, mhz: number) => void
-  setPowerValue: (index: number, value: number) => void
-  setPowerLabel: (index: number, label: string) => void
   /** Replace only the power ladder (keeps the band/frequency map) — used by the
    *  analog power-table presets. */
-  setPowerLevels: (levels: VtxTablePowerLevel[]) => void
   /** Replace the working draft wholesale (e.g. from a Betaflight import).
    *  Marks dirty; Save then uploads it. */
   loadTable: (table: VtxTable) => void
@@ -47,12 +43,16 @@ export interface UseVtxTableResult {
   reload: () => void
 }
 
+// Bands only. Power levels used to live in this draft because they lived in
+// the blob; on the upstream format they are VTX_PWRTBL_EN / VTX_PWRTBL1..6 and
+// are edited as ordinary parameter drafts like everything else in the app --
+// which also means they apply through the normal reviewed Apply rather than an
+// FTP upload, and work on boards that cannot store a band table at all.
 function cloneVtxTable(table: VtxTable): VtxTable {
   return {
     version: table.version,
     numChannels: table.numChannels,
-    bands: table.bands.map((band) => ({ ...band, frequencies: [...band.frequencies] })),
-    powerLevels: table.powerLevels.map((level) => ({ ...level }))
+    bands: table.bands.map((band) => ({ ...band, frequencies: [...band.frequencies] }))
   }
 }
 
@@ -118,53 +118,6 @@ export function useVtxTable(input: {
     setDirty(true)
   }, [])
 
-  const setPowerValue = useCallback((index: number, value: number) => {
-    setDraft((current) => {
-      if (!current) return current
-      const level = current.powerLevels[index]
-      if (!level) return current
-      const next = cloneVtxTable(current)
-      const nextValue = Number.isFinite(value) ? Math.max(0, Math.min(0xffff, Math.round(value))) : 0
-      next.powerLevels[index].value = nextValue
-      // Keep the 3-char label in step with the value unless the operator has
-      // given it a custom label. The firmware label is only 3 chars, so a high
-      // value can't hold its full mW as text (1600 → "1.6"); auto-deriving a
-      // fitting label beats silently truncating what the operator typed.
-      if (level.label === '' || level.label === defaultVtxPowerLabel(level.value)) {
-        next.powerLevels[index].label = defaultVtxPowerLabel(nextValue)
-      }
-      return next
-    })
-    setDirty(true)
-  }, [])
-
-  const setPowerLevels = useCallback((levels: VtxTablePowerLevel[]) => {
-    setDraft((current) => {
-      if (!current) return current
-      const next = cloneVtxTable(current)
-      // Swap only the power ladder, keeping the existing band/frequency map.
-      next.powerLevels = levels.map((level) => ({
-        value: Number.isFinite(level.value) ? Math.max(0, Math.min(0xffff, Math.round(level.value))) : 0,
-        label: level.label.slice(0, 3)
-      }))
-      return next
-    })
-    setDirty(true)
-  }, [])
-
-  const setPowerLabel = useCallback((index: number, label: string) => {
-    setDraft((current) => {
-      if (!current) return current
-      const level = current.powerLevels[index]
-      if (!level) return current
-      const next = cloneVtxTable(current)
-      // The firmware stores a 3-char fixed-width label; keep the edit within that.
-      next.powerLevels[index].label = label.slice(0, 3)
-      return next
-    })
-    setDirty(true)
-  }, [])
-
   const loadTable = useCallback((table: VtxTable) => {
     setDraft(cloneVtxTable(table))
     setDirty(true)
@@ -205,9 +158,6 @@ export function useVtxTable(input: {
     saving,
     error,
     setFrequency,
-    setPowerValue,
-    setPowerLabel,
-    setPowerLevels,
     loadTable,
     save,
     reset,
