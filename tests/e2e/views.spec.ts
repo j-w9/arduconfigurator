@@ -5407,9 +5407,12 @@ test.describe('ArduRover / ArduSub demo', () => {
     // not the Copter FLTMODE prefix. Mock seeds MODE1 = 0 -> "Manual".
     await openView(page, 'receiver')
     await page.getByTestId('receiver-tab-flight-modes').click()
-    await expect(page.getByTestId('param-info-FLTMODE1')).toHaveCount(0)
-    await expect(page.getByTestId('param-info-MODE1')).toBeVisible()
-    await expect(page.getByTestId('receiver-flight-modes-card')).toContainText('Manual')
+    // Scoped to the card: the Advanced disclosure's additional settings list
+    // MODE1 too on Rover, and the one-page tab has both in the DOM.
+    const modesCard = page.getByTestId('receiver-flight-modes-card')
+    await expect(modesCard.getByTestId('param-info-FLTMODE1')).toHaveCount(0)
+    await expect(modesCard.getByTestId('param-info-MODE1')).toBeVisible()
+    await expect(modesCard).toContainText('Manual')
   })
 
   test('Sub curated Tuning surface renders its groups, shows seeded values, and stages a draft', async ({ page }) => {
@@ -7775,14 +7778,18 @@ test.describe('Flight modes moved from a tab into Config', () => {
     expect(overflow, 'the Flight Modes panel must not widen the page').toBeLessThanOrEqual(2)
   })
 
-  test('Receiver keeps its own Flight Modes sub-tab', async ({ page }) => {
-    // The move must not have taken the receiver workflow's copy with it.
+  test('Receiver keeps its own Flight Modes band', async ({ page }) => {
+    // The move must not have taken the receiver workflow's copy with it. The
+    // Receiver is one page now: the band is on screen, and its jump link
+    // stands where the sub-tab button used to.
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
     await page.getByTestId('view-button-receiver').click()
-    await expect(page.locator('.tab-strip__tab', { hasText: 'Flight Modes' }).first()).toBeVisible()
+    await expect(page.getByTestId('receiver-tab-flight-modes')).toBeVisible()
+    await expect(page.getByTestId('receiver-flight-modes-card')).toBeVisible()
+    await expect(page.getByTestId('receiver-flight-modes-card')).toContainText('Flight modes')
   })
 })
 
