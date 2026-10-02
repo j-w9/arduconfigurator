@@ -486,18 +486,96 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     </StatusBadge>
   )
 
+  // The map is one line: title, the four picks, the buttons that apply when
+  // no capture is running, the status. A running capture adds its strips and
+  // its controls under that line, across the full width.
   const mapSlot = (
-    <div className="rc-mapping-card" id={receiverSectionElementId('mapping')} data-testid="receiver-mapping-card">
-      <div className="switch-exercise-card__header">
-        <div>
-          <strong>Map</strong>
-          <InfoDot label="About channel mapping" wide>
-            Which receiver channel carries roll, pitch, throttle and yaw (RCMAP_*). Pick each channel here, or run the
-            guided capture: move one stick at a time, the app locks onto the channel that moves alone and stages the
-            detected map. A channel the flight controller reads backwards gets its Reverse box ticked in the Channels
-            table; the direction check beside this finds those for you. RCMAP changes take effect after a reboot.
-          </InfoDot>
+    <div className="rc-mapping-card receiver-map" id={receiverSectionElementId('mapping')} data-testid="receiver-mapping-card">
+      <div className="receiver-map__line">
+        <div className="receiver-map__title switch-exercise-card__header">
+          <div>
+            <strong>Map</strong>
+            <InfoDot label="About channel mapping" wide>
+              Which receiver channel carries roll, pitch, throttle and yaw (RCMAP_*). Pick each channel here, or run
+              the guided capture: move one stick at a time, the app locks onto the channel that moves alone and stages
+              the detected map. A channel the flight controller reads backwards gets its Reverse box ticked in the
+              Channels table; the direction check under this finds those for you. RCMAP changes take effect after a
+              reboot.
+            </InfoDot>
+          </div>
         </div>
+
+        <div className="receiver-map-grid" data-testid="receiver-map-grid">
+          {RC_CALIBRATION_AXIS_ORDER.map((axisId) => {
+            const capture = rcMappingSession.captures[axisId]
+            const activeTarget = rcMappingSession.status === 'running' && rcMappingSession.currentTargetAxis === axisId
+            const detected = capture.detectedChannelNumber
+            const rcmap = rcmapParameters[axisId]
+            const channel = mappedChannel(axisId)
+            // Short, so the label column stays narrow and the pick keeps its
+            // width: the focus strip above carries the full instruction.
+            const detail = activeTarget
+              ? rcMappingCandidate
+                ? `Locking CH${rcMappingCandidate.channelNumber}`
+                : 'Move now'
+              : detected !== undefined
+                ? `Found CH${detected}`
+                : rcMappingSession.status === 'running'
+                  ? 'Pending'
+                  : ''
+            return (
+              <div
+                key={axisId}
+                className={`receiver-map-row${activeTarget ? ' receiver-map-row--target' : ''}${detected !== undefined ? ' receiver-map-row--complete' : ''}`}
+                data-testid={`receiver-map-${axisId}`}
+              >
+                <span className="receiver-map-row__axis">
+                  <strong>{formatRcAxisLabel(axisId)}</strong>
+                  {detail ? <small>{detail}</small> : null}
+                </span>
+                {rcmap ? (
+                  <ScopedSelectField
+                    parameter={rcmap}
+                    liveValue={currentRcAxisChannelMap[axisId]}
+                    editedValues={editedValues}
+                    onChange={(paramId, value) => setDraft(paramId, value)}
+                    draftStatusById={parameterDraftById}
+                  />
+                ) : (
+                  <span className="receiver-map-row__fixed">CH{channel}</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {rcMappingSession.status !== 'running' ? (
+          <div className="receiver-map__actions">
+            <button
+              style={buttonStyle('primary')}
+              data-testid="receiver-mapping-start"
+              onClick={handleStartRcMappingExercise}
+              disabled={!canRunRcMappingExercise}
+            >
+              {rcMappingSession.status === 'ready' ? 'Run Guided Mapping Again' : 'Begin Guided Mapping'}
+            </button>
+            {rcMappingSession.status === 'ready' && rcMappingStagedChangeCount > 0 ? (
+              <button
+                style={buttonStyle('secondary')}
+                data-testid="receiver-mapping-stage"
+                onClick={handleStageRcMappingDrafts}
+              >
+                {`Stage Detected Mapping (${rcMappingStagedChangeCount})`}
+              </button>
+            ) : null}
+            {rcMappingSession.status !== 'idle' ? (
+              <button style={buttonStyle()} onClick={handleResetRcMappingExercise}>
+                Start Over
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
         <StatusBadge tone={mappingTone}>{mappingStatusLabel}</StatusBadge>
       </div>
 
@@ -531,48 +609,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
       {rcMappingSession.status === 'failed' && rcMappingSession.failureReason ? (
         <p className="switch-exercise-warning">{rcMappingSession.failureReason}</p>
       ) : null}
-
-      <div className="receiver-map-grid" data-testid="receiver-map-grid">
-        {RC_CALIBRATION_AXIS_ORDER.map((axisId) => {
-          const capture = rcMappingSession.captures[axisId]
-          const activeTarget = rcMappingSession.status === 'running' && rcMappingSession.currentTargetAxis === axisId
-          const detected = capture.detectedChannelNumber
-          const rcmap = rcmapParameters[axisId]
-          const channel = mappedChannel(axisId)
-          const detail = activeTarget
-            ? rcMappingCandidate
-              ? `Locking onto CH${rcMappingCandidate.channelNumber}`
-              : 'Move this stick only'
-            : detected !== undefined
-              ? `Detected CH${detected}`
-              : rcMappingSession.status === 'running'
-                ? 'Pending'
-                : ''
-          return (
-            <div
-              key={axisId}
-              className={`receiver-map-row${activeTarget ? ' receiver-map-row--target' : ''}${detected !== undefined ? ' receiver-map-row--complete' : ''}`}
-              data-testid={`receiver-map-${axisId}`}
-            >
-              <span className="receiver-map-row__axis">
-                <strong>{formatRcAxisLabel(axisId)}</strong>
-                {detail ? <small>{detail}</small> : null}
-              </span>
-              {rcmap ? (
-                <ScopedSelectField
-                  parameter={rcmap}
-                  liveValue={currentRcAxisChannelMap[axisId]}
-                  editedValues={editedValues}
-                  onChange={(paramId, value) => setDraft(paramId, value)}
-                  draftStatusById={parameterDraftById}
-                />
-              ) : (
-                <span className="receiver-map-row__fixed">CH{channel}</span>
-              )}
-            </div>
-          )
-        })}
-      </div>
 
       {rcMappingCandidate ? (
         <div key={rcMappingAutoCaptureKey} className="rc-mapping-auto-capture">
@@ -625,18 +661,8 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
         </div>
       ) : null}
 
-      <div className="switch-exercise-controls">
-        {rcMappingSession.status !== 'running' ? (
-          <button
-            style={buttonStyle('primary')}
-            data-testid="receiver-mapping-start"
-            onClick={handleStartRcMappingExercise}
-            disabled={!canRunRcMappingExercise}
-          >
-            {rcMappingSession.status === 'ready' ? 'Run Guided Mapping Again' : 'Begin Guided Mapping'}
-          </button>
-        ) : null}
-        {rcMappingSession.status === 'running' ? (
+      {rcMappingSession.status === 'running' ? (
+      <div className="switch-exercise-controls receiver-map__controls">
           <button
             style={buttonStyle('secondary')}
             onClick={handleConfirmRcMappingCandidate}
@@ -646,35 +672,20 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
               ? `Capture CH${rcMappingCandidate.channelNumber} for ${formatRcAxisLabel(rcMappingSession.currentTargetAxis)}`
               : 'Capture Current Channel'}
           </button>
-        ) : null}
-        {rcMappingSession.status === 'running' ? (
           <button
             style={buttonStyle()}
             onClick={() => setShowReceiverMappingDiagnostics((existing) => !existing)}
           >
             {showReceiverMappingDiagnostics ? 'Hide Detection Details' : 'Show Detection Details'}
           </button>
-        ) : null}
-        {rcMappingSession.status === 'ready' && rcMappingStagedChangeCount > 0 ? (
-          <button
-            style={buttonStyle('secondary')}
-            data-testid="receiver-mapping-stage"
-            onClick={handleStageRcMappingDrafts}
-          >
-            {`Stage Detected Mapping (${rcMappingStagedChangeCount})`}
-          </button>
-        ) : null}
-        {rcMappingSession.status !== 'idle' ? (
           <button style={buttonStyle()} onClick={handleResetRcMappingExercise}>
             Start Over
           </button>
-        ) : null}
-        {rcMappingSession.status === 'running' ? (
           <button style={buttonStyle('secondary')} onClick={handleFailRcMappingExercise}>
             Can’t Isolate Axis
           </button>
-        ) : null}
       </div>
+      ) : null}
 
       {SHOW_RECEIVER_BIND_BUTTON ? (
         <div className="receiver-bind-action" data-testid="receiver-bind-action">
@@ -828,7 +839,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
             900<i>/</i>1500<i>/</i>2100
           </span>
           <span className="receiver-channel-head__value">µs</span>
-          <span>Reverse</span>
+          <span className="receiver-channel-head__reverse">Reverse</span>
           <span className="receiver-channel-head__endpoints">Endpoints</span>
         </div>
         <div className="receiver-channel-rows" data-testid="receiver-channel-bars">

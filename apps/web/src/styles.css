@@ -18031,38 +18031,70 @@ button.mavlink-inspector__sent-row {
   background: rgba(var(--edge-rgb), 0.05);
 }
 
-/* Top band: the map beside the direction check. One column below 1200px.
-   The two cards share a bottom edge: the band stretches them, and the map
-   card is a column whose buttons sit at its foot, so the shorter card does
-   not stop a few lines above the taller one. */
-.receiver-page__band--top {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3);
-  align-items: stretch;
-}
-.receiver-page__band--top .rc-mapping-card {
+/* Map strip: title, the four picks, the buttons, the status on one line; a
+   running capture adds its strips and controls under it. The picks keep a
+   narrow, fixed label column so the detail under an axis ("Found CH2") never
+   squeezes the dropdown beside it. */
+.receiver-map__line {
   display: flex;
-  flex-direction: column;
-  /* Header, picks, buttons spread over the card's height rather than
-     bunched at the top with the spare height under them. */
-  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
 }
-/* The craft box is as tall as the verdict rows beside it, and its inner
-   wrapper (shared with the old live monitor) carries no bottom margin here. */
-.receiver-page__band--top .rc-direction-body {
+.receiver-map__title {
+  flex: 0 0 auto;
+}
+.receiver-map__line > .receiver-map-grid {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.receiver-map__actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
-.receiver-page__band--top .rc-direction-craft {
+.receiver-map__actions button {
+  padding-block: 6px;
+}
+.receiver-map__line > .status-badge,
+.receiver-map__line > span:last-child {
+  margin-left: auto;
+}
+.receiver-map__controls > * {
+  flex: 0 1 auto;
+}
+
+/* Direction: a card like its neighbours, the craft beside the verdict rows
+   two by two (one line each), stacked on a phone. The craft's inner wrapper
+   (shared with the old live monitor) carries no bottom margin here. */
+.telemetry-stack--receiver .rc-direction-card {
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(var(--edge-rgb), 0.04);
+  background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.96), rgba(var(--fill-rgb), 0.98));
+}
+.telemetry-stack--receiver .rc-direction-body {
+  gap: var(--space-3);
+}
+.telemetry-stack--receiver .rc-direction-craft {
+  flex: 0 0 150px;
   align-self: stretch;
   display: flex;
   align-items: center;
 }
-.receiver-page__band--top .rc-direction-craft .receiver-stick-craft {
+.telemetry-stack--receiver .rc-direction-craft .receiver-stick-craft {
   margin: 0;
   width: 100%;
 }
-.receiver-page__band--top .rc-direction-row {
+.telemetry-stack--receiver .rc-direction-craft .flight-deck--mini .flight-deck__model-frame {
+  height: 104px;
+}
+.telemetry-stack--receiver .rc-direction-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-content: center;
+}
+.telemetry-stack--receiver .rc-direction-row {
   padding: 5px 10px;
 }
 
@@ -18071,16 +18103,16 @@ button.mavlink-inspector__sent-row {
    id, meaning) stays; the staged outline goes on the control, not the
    wrapper, which also holds the "i" and the "was X" line. */
 .receiver-map-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
 }
 .receiver-map-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: 68px 112px;
   gap: 8px;
   align-items: center;
-  padding: 4px 8px;
+  padding: 3px 8px;
   border-radius: var(--radius-md);
   background: rgba(var(--edge-rgb), 0.02);
 }
@@ -18098,8 +18130,11 @@ button.mavlink-inspector__sent-row {
 .receiver-map-row__axis small,
 .receiver-map-row__fixed {
   font-family: var(--font-data);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .receiver-map-row .scoped-editor-field,
 .receiver-channel-row__function .scoped-editor-field {
@@ -18188,6 +18223,9 @@ button.mavlink-inspector__sent-row {
 .receiver-channel-head__value {
   text-align: right;
   text-transform: none;
+}
+.receiver-channel-head__reverse {
+  text-align: center;
 }
 .receiver-channel-head__endpoints {
   text-align: right;
@@ -18341,12 +18379,16 @@ button.mavlink-inspector__sent-row {
   flex: 1 1 240px;
 }
 
-/* Flight modes: the mode channel and the six slots in one row, the arm
-   switch on the line under it. */
+/* Flight modes: the mode channel and the six slots in one row, seven across,
+   each its title over its dropdown (seven titles beside seven dropdowns do
+   not fit a line); the arm switch on the line under. */
 .receiver-modes__row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 6px;
+}
+.receiver-modes__row .scoped-editor-field {
+  padding: 4px 8px;
 }
 .receiver-arm-line {
   display: flex;
@@ -18425,8 +18467,8 @@ button.mavlink-inspector__sent-row {
 }
 
 @media (min-width: 1200px) {
-  .receiver-page__band--top {
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  .telemetry-stack--receiver .rc-mapping-candidate-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .receiver-advanced__body {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -18494,6 +18536,9 @@ button.mavlink-inspector__sent-row {
     display: flex;
   }
   .receiver-map-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .telemetry-stack--receiver .rc-direction-grid {
     grid-template-columns: minmax(0, 1fr);
   }
   .receiver-modes__row {

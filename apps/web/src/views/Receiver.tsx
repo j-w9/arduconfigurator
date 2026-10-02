@@ -38,9 +38,9 @@ export interface ReceiverViewProps {
   onSelectTask: (taskId: ReceiverTaskId) => void
   /** Live RC status badge, on the jump row's left. */
   statusSlot?: ReactNode
-  /** Top band, left: the RCMAP picks and the guided mapping. */
+  /** One line: the RCMAP picks and the guided mapping; grows while a capture runs. */
   mapSlot: ReactNode
-  /** Top band, right: the channel-direction check with its reacting craft. */
+  /** The channel-direction check: the reacting craft beside the four verdict rows. */
   directionSlot: ReactNode
   /** One row per reported channel: function, live bar, reverse, endpoints. */
   channelsSlot: ReactNode
@@ -86,10 +86,8 @@ export function ReceiverView(props: ReceiverViewProps) {
     <div id="setup-panel-rc">
       <Panel title="Receiver" actions={jumpRow}>
         <div className="telemetry-stack telemetry-stack--receiver receiver-page">
-          <div className="receiver-page__band receiver-page__band--top">
-            {mapSlot}
-            {directionSlot}
-          </div>
+          {mapSlot}
+          {directionSlot}
 
           {channelsSlot}
           {flightModesSlot}
