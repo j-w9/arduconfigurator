@@ -18080,6 +18080,7 @@ button.mavlink-inspector__sent-row {
   align-self: stretch;
   display: flex;
   align-items: center;
+  justify-content: center;
 }
 .telemetry-stack--receiver .rc-direction-craft .receiver-stick-craft {
   margin: 0;
