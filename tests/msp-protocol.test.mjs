@@ -10,6 +10,7 @@ import {
   decodeFcVariant,
   decodeSerialConfig,
   encodeMspV1Request,
+  enterPassthrough,
   mspV1Checksum
 } from '../packages/protocol-msp/dist/index.js'
 import { MockTransport } from '../packages/transport/dist/index.js'
@@ -266,4 +267,95 @@ test('a board that never shows a prompt is not sent the command', async () => {
   )
   assert.ok(!sent.some((line) => line.startsWith('diff')), 'never sent the command')
   assert.ok(sent.includes('exit noreboot\r\n'), 'still tried to leave the CLI')
+})
+
+// -- ESC 4-way passthrough ------------------------------------------------
+
+function errorReply(command) {
+  const frame = new Uint8Array(6)
+  frame.set([0x24, 0x4d, 0x21, 0, command], 0)
+  frame[5] = mspV1Checksum(command, new Uint8Array())
+  return frame
+}
+
+// A PassthroughSerial over a scripted inbound queue: read() serves the queue
+// and runs out rather than blocking, which is how a timeout is expressed here.
+class ScriptedSerial {
+  constructor(inbound = []) {
+    this.inbound = Uint8Array.from(inbound)
+    this.cursor = 0
+    this.writes = []
+    this.flushed = 0
+  }
+
+  async write(data) {
+    this.writes.push(Uint8Array.from(data))
+  }
+
+  async read(n, _timeoutMs) {
+    if (this.cursor + n > this.inbound.length) {
+      throw new Error(`serial read timed out waiting for ${n} bytes`)
+    }
+    const out = this.inbound.slice(this.cursor, this.cursor + n)
+    this.cursor += n
+    return out
+  }
+
+  flushInput() {
+    this.flushed += 1
+  }
+}
+
+test('enterPassthrough: API_VERSION first, then SET_PASSTHROUGH, and the reply byte is the ESC count', async () => {
+  const serial = new ScriptedSerial([...reply(MSP_COMMANDS.API_VERSION, [0, 1, 46]), ...reply(MSP_COMMANDS.SET_PASSTHROUGH, [4])])
+
+  assert.equal(await enterPassthrough(serial), 4, 'esc4wayInit() bridged four outputs')
+
+  assert.equal(serial.writes.length, 2)
+  assert.deepEqual([...serial.writes[0]], [0x24, 0x4d, 0x3c, 0x00, 0x01, 0x01], "'$','M','<', size 0, cmd 1, checksum")
+  assert.deepEqual(
+    [...serial.writes[1]],
+    [0x24, 0x4d, 0x3c, 0x00, 0xf5, 0xf5],
+    'MSP_SET_PASSTHROUGH = 245, no payload — Betaflight then defaults to the ESC 4-way interface'
+  )
+  // API_VERSION proves something speaks MSP on THIS port before the link
+  // stops being MSP. A board presents more than one USB serial port and only
+  // one of them carries it.
+  assert.ok(serial.flushed >= 2, 'discarded buffered bytes before each request')
+})
+
+test('enterPassthrough resynchronises past boot chatter rather than desyncing', async () => {
+  const noise = new TextEncoder().encode('ARMING DISABLED\r\n')
+  const serial = new ScriptedSerial([
+    ...noise,
+    ...reply(MSP_COMMANDS.API_VERSION, [0, 1, 46]),
+    ...reply(MSP_COMMANDS.SET_PASSTHROUGH, [8])
+  ])
+  assert.equal(await enterPassthrough(serial), 8)
+})
+
+test('enterPassthrough skips a stale reply that answers a different command', async () => {
+  const serial = new ScriptedSerial([
+    ...reply(MSP_COMMANDS.API_VERSION, [0, 1, 46]),
+    // a late FC_VARIANT from some earlier request, sitting in front of ours
+    ...reply(MSP_COMMANDS.FC_VARIANT, [66, 84, 70, 76]),
+    ...reply(MSP_COMMANDS.SET_PASSTHROUGH, [4])
+  ])
+  assert.equal(await enterPassthrough(serial), 4)
+})
+
+test('enterPassthrough: an FC that refuses says so instead of timing out', async () => {
+  const serial = new ScriptedSerial([...reply(MSP_COMMANDS.API_VERSION, [0, 1, 46]), ...errorReply(MSP_COMMANDS.SET_PASSTHROUGH)])
+  await assert.rejects(() => enterPassthrough(serial), /may not support ESC 4-way passthrough/)
+})
+
+test('enterPassthrough: passthrough with no outputs is refused, not returned as 0', async () => {
+  const serial = new ScriptedSerial([...reply(MSP_COMMANDS.API_VERSION, [0, 1, 46]), ...reply(MSP_COMMANDS.SET_PASSTHROUGH, [])])
+  await assert.rejects(() => enterPassthrough(serial), /reported no ESC outputs/)
+})
+
+test('enterPassthrough: silence on the wrong port fails at the handshake, before the link stops being MSP', async () => {
+  const serial = new ScriptedSerial([])
+  await assert.rejects(() => enterPassthrough(serial), /timed out|no MSP reply/)
+  assert.equal(serial.writes.length, 1, 'never sent SET_PASSTHROUGH')
 })

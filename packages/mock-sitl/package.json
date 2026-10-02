@@ -13,7 +13,7 @@
   "dependencies": {
     "@arduconfig/ardupilot-core": "1.1.1",
     "@arduconfig/param-metadata": "1.1.1",
-    "@arduconfig/protocol-mavlink": "1.1.1",
-    "@arduconfig/transport": "1.1.1"
+    "@arduconfig/protocol-mavlink": "1.2.0",
+    "@arduconfig/transport": "1.3.0"
   }
 }

@@ -5,6 +5,7 @@ import { App } from './App'
 import { ErrorBoundary } from './error-boundary'
 import { registerServiceWorker } from './sw-update'
 import { applyTheme, getStoredTheme } from './theme'
+import '@arduconfig/ui-kit/styles.css'
 import './styles.css'
 
 // Apply the persisted UI theme before React renders so there's no dark→light
