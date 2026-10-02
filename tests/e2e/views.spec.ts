@@ -3133,17 +3133,18 @@ test.describe('RC Mixer view', () => {
 // startReceiverBind path stays covered by tests/runtime.integration.test.mjs.
 
 test.describe('Receiver channel-direction check', () => {
-  test('lives under Endpoints (not Mapping) with a verdict row per primary axis', async ({ page }) => {
+  test('sits beside the map on the one-page tab with a verdict row per primary axis', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await openView(page, 'receiver')
 
-    // The old manual reverse box is gone from Mapping.
+    // The old manual reverse box is gone from the map.
     await page.getByTestId('receiver-tab-mapping').click()
     await expect(page.getByTestId('receiver-channel-direction')).toHaveCount(0)
 
-    // The guided direction check now lives in Endpoints, one row per axis.
+    // The guided direction check is on the same page, one row per axis; the
+    // former tab buttons are jump links, so the click is a scroll, not a route.
     await page.getByTestId('receiver-tab-endpoints').click()
     await expect(page.getByTestId('receiver-direction-check')).toBeVisible()
     for (const axis of ['roll', 'pitch', 'throttle', 'yaw']) {
@@ -3197,7 +3198,7 @@ test.describe('Receiver functions tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Functions' }).click()
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Channels' }).click()
 
     const panel = page.getByTestId('receiver-functions-panel')
     await expect(panel).toBeVisible()
@@ -3230,7 +3231,7 @@ test.describe('Receiver functions tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Functions' }).click()
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Channels' }).click()
 
     const select = page.getByTestId('receiver-function-5').locator('select')
     await expect(select).toBeVisible()
@@ -3267,7 +3268,7 @@ test.describe('Receiver stick-range bar', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Endpoints' }).click()
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Channels' }).click()
     const bar = page.getByTestId('rc-range-bar-throttle')
     await bar.scrollIntoViewIfNeeded()
     await expect(bar).toBeVisible()
@@ -3281,8 +3282,9 @@ test.describe('Receiver RC options', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    // RC options live under the receiver's Flight Modes task.
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Flight Modes' }).click()
+    // RC options live in the receiver's Advanced disclosure, closed by
+    // default; the jump link opens it.
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Advanced' }).click()
     const card = page.getByTestId('receiver-rc-options')
     await card.scrollIntoViewIfNeeded()
     await expect(card).toBeVisible()
@@ -3391,8 +3393,8 @@ test.describe('Receiver RSSI', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    // RX RSSI lives in the Signal Setup task now (removed from the main monitor).
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Signal Setup' }).click()
+    // RX RSSI lives in the Advanced disclosure (removed from the main monitor).
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Advanced' }).click()
     // Demo seeds RC_CHANNELS.rssi = 100 (raw 0-254), which is ~39%.
     await expect(page.getByText('Live RX RSSI: 39%')).toBeVisible()
   })
@@ -5528,7 +5530,7 @@ test.describe('Receiver scoped apply', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Flight Modes' }).click()
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Advanced' }).click()
 
     const field = page.getByTestId('scoped-bitmask-RC_OPTIONS')
     await field.scrollIntoViewIfNeeded()
@@ -5649,11 +5651,11 @@ test.describe('Receiver mapping', () => {
     await expect(reverse).not.toBeChecked()
   })
 
-  test('the Functions rows carry a reverse box only for channels the controller reports RCn_REVERSED on', async ({ page }) => {
+  test('the channel rows carry a reverse box only for channels the controller reports RCn_REVERSED on', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Functions' }).click()
+    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Channels' }).click()
     await expect(page.getByTestId('receiver-function-5')).toBeVisible()
     // The demo reports RC1..RC4_REVERSED only, so the AUX rows show none.
     await expect(page.getByTestId('receiver-reverse-5')).toHaveCount(0)
@@ -5705,7 +5707,9 @@ test.describe('Receiver endpoints on a CRSF link', () => {
     await expect(page.getByTestId('receiver-endpoints-crsf')).toHaveCount(0)
     await expect(page.getByTestId('receiver-set-crsf-limits')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Start Capture' })).toBeVisible()
-    await expect(page.getByTestId('receiver-endpoint-roll')).toContainText('CH1')
+    // The roll row's endpoint pills carry the stored RC1_MIN/TRIM/MAX.
+    await expect(page.getByTestId('receiver-endpoint-roll')).toContainText('Low 1000')
+    await expect(page.getByTestId('receiver-endpoint-roll')).toContainText('High 2000')
   })
 })
 

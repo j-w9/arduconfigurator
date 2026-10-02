@@ -51,6 +51,10 @@ export interface UseReceiverTasksResult {
   activeReceiverTaskId: ReceiverTaskId
   receiverTaskCards: ReceiverTaskCard[]
   activeReceiverTask: ReceiverTaskCard
+  /** The explicit route (a jump link, the wizard's deep link, the mapping
+   *  completion), as distinct from the recommendation above. The one-page
+   *  Receiver scrolls to a section only on this, never on the recommendation. */
+  receiverTaskOverride: ReceiverTaskId | undefined
 }
 
 /**
@@ -319,6 +323,7 @@ export function useReceiverTasks(input: {
     recommendedReceiverTaskId,
     activeReceiverTaskId,
     receiverTaskCards,
-    activeReceiverTask
+    activeReceiverTask,
+    receiverTaskOverride
   }
 }

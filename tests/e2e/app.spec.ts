@@ -696,7 +696,8 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText('editable · drag to reposition')).toBeVisible()
 
     await openView(page, 'receiver')
-    await expect(page.getByText('Live monitor')).toBeVisible()
+    // One page: the channel table is on screen with the jump row above it.
+    await expect(page.getByTestId('receiver-endpoints-card')).toBeVisible()
     await expect(page.getByTestId('receiver-task-nav')).toBeVisible()
 
     await openView(page, 'motors')
