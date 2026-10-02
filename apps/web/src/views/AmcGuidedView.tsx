@@ -2237,10 +2237,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
 
   return (
     <div className="amc-guided">
-      <Panel
-        title="AMC guided mode"
-        subtitle="Staged, not written."
-      >
+      <Panel title="AMC guided mode">
         {/* The sequence, the reasoning and the tuning guides are AMC's work.
             The credit used to be a paragraph of its own, saying what the
             subtitle and these links already say between them. */}
@@ -2335,7 +2332,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
 
       <Panel
         title="Declare the vehicle"
-        subtitle={`${declaredCount} of ${fields.length} fields — exactly what the sequence reads.`}
+        subtitle={`${declaredCount} of ${fields.length} fields`}
       >
         {/* What came back from opening a directory, and what AMC would refuse
             in what is declared. These sat with the directory panel, which is
