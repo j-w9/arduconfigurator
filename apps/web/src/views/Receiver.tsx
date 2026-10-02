@@ -61,27 +61,31 @@ export interface ReceiverViewProps {
 export function ReceiverView(props: ReceiverViewProps) {
   const { onSelectTask, statusSlot, mapSlot, directionSlot, channelsSlot, flightModesSlot, advancedSlot, helpDockSlot } = props
 
+  // The jump row shares the title line (the Panel's actions slot): the live
+  // status beside the title, the links at the right edge, no row of its own.
+  const jumpRow = (
+    <div className="receiver-jump" data-testid="receiver-task-nav">
+      <div className="receiver-jump__status">{statusSlot}</div>
+      <nav className="receiver-jump__links" aria-label="Receiver sections">
+        {RECEIVER_JUMP_LINKS.map((link) => (
+          <button
+            key={`task-nav:${link.id}`}
+            type="button"
+            className="receiver-jump__link"
+            data-testid={`receiver-tab-${link.id}`}
+            onClick={() => onSelectTask(link.id)}
+          >
+            {link.label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  )
+
   return (
     <div id="setup-panel-rc">
-      <Panel title="Receiver">
+      <Panel title="Receiver" actions={jumpRow}>
         <div className="telemetry-stack telemetry-stack--receiver receiver-page">
-          <div className="receiver-jump" data-testid="receiver-task-nav">
-            <div className="receiver-jump__status">{statusSlot}</div>
-            <nav className="receiver-jump__links" aria-label="Receiver sections">
-              {RECEIVER_JUMP_LINKS.map((link) => (
-                <button
-                  key={`task-nav:${link.id}`}
-                  type="button"
-                  className="receiver-jump__link"
-                  data-testid={`receiver-tab-${link.id}`}
-                  onClick={() => onSelectTask(link.id)}
-                >
-                  {link.label}
-                </button>
-              ))}
-            </nav>
-          </div>
-
           <div className="receiver-page__band receiver-page__band--top">
             {mapSlot}
             {directionSlot}

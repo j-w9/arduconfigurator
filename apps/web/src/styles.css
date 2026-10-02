@@ -17998,15 +17998,16 @@ button.mavlink-inspector__sent-row {
   min-width: 0;
 }
 
-/* The jump row: the live status on the left, four small links on the right.
+/* The jump row, on the title line: the live status, then four small links.
    On a desktop the page fits the screen and the links are moot; on a phone
    the page is long and they are the way down it. */
 .receiver-jump {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
 }
 .receiver-jump__links {
   display: flex;
@@ -18030,12 +18031,39 @@ button.mavlink-inspector__sent-row {
   background: rgba(var(--edge-rgb), 0.05);
 }
 
-/* Top band: the map beside the direction check. One column below 1200px. */
+/* Top band: the map beside the direction check. One column below 1200px.
+   The two cards share a bottom edge: the band stretches them, and the map
+   card is a column whose buttons sit at its foot, so the shorter card does
+   not stop a few lines above the taller one. */
 .receiver-page__band--top {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
-  align-items: start;
+  align-items: stretch;
+}
+.receiver-page__band--top .rc-mapping-card {
+  display: flex;
+  flex-direction: column;
+  /* Header, picks, buttons spread over the card's height rather than
+     bunched at the top with the spare height under them. */
+  justify-content: space-between;
+}
+/* The craft box is as tall as the verdict rows beside it, and its inner
+   wrapper (shared with the old live monitor) carries no bottom margin here. */
+.receiver-page__band--top .rc-direction-body {
+  gap: var(--space-2);
+}
+.receiver-page__band--top .rc-direction-craft {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+.receiver-page__band--top .rc-direction-craft .receiver-stick-craft {
+  margin: 0;
+  width: 100%;
+}
+.receiver-page__band--top .rc-direction-row {
+  padding: 5px 10px;
 }
 
 /* Map: the four picks in one row, each a label beside its dropdown. The row
@@ -18346,7 +18374,7 @@ button.mavlink-inspector__sent-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 8px 12px;
+  padding: 10px 12px;
   cursor: pointer;
   list-style: none;
 }
@@ -18374,6 +18402,9 @@ button.mavlink-inspector__sent-row {
   display: grid;
   gap: var(--space-3);
   padding: 0 12px 12px;
+}
+.receiver-advanced[open] > .receiver-advanced__summary {
+  padding-bottom: var(--space-2);
 }
 /* RSSI fields are title-left/control-right lines, two to a row. */
 .receiver-rssi-card .scoped-editor-grid {
@@ -18467,6 +18498,14 @@ button.mavlink-inspector__sent-row {
   }
   .receiver-modes__row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* The title line has no room for the status and four links side by side:
+     the status sits over the links, both at the right edge, the title at
+     the bottom left beside them. */
+  .receiver-jump {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
   }
 }
 
