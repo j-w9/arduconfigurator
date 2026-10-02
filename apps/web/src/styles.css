@@ -18535,8 +18535,17 @@ button.mavlink-inspector__sent-row {
   .receiver-channel-row.is-expanded .receiver-channel-row__endpoints {
     display: flex;
   }
-  .receiver-map-grid {
-    grid-template-columns: minmax(0, 1fr);
+  /* The strip wraps: title, then the picks two to a line across the width,
+     then the button with the status at the right. */
+  .receiver-map__line > .receiver-map-grid {
+    flex: 1 1 100%;
+  }
+  .receiver-map-row {
+    flex: 1 1 calc(50% - 5px);
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .receiver-map__actions {
+    flex: 1 1 auto;
   }
   .telemetry-stack--receiver .rc-direction-grid {
     grid-template-columns: minmax(0, 1fr);
