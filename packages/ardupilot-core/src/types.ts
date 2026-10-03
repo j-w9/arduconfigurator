@@ -41,6 +41,12 @@ export interface VehicleIdentity {
    */
   customMode: number
   /**
+   * HEARTBEAT.type, the MAV_TYPE. `vehicle` names the FIRMWARE, and a
+   * traditional helicopter runs Copter's -- so this is the only thing that
+   * tells a heli from a quad. AMC routes on it the same way.
+   */
+  mavType: number
+  /**
    * Decoded HEARTBEAT.system_status. Surfaces CRITICAL / EMERGENCY /
    * FLIGHT_TERMINATION states the operator must see, which require the
    * safety-critical half of the MAV_STATE enum to be decoded.

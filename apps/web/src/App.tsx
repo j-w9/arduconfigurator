@@ -10122,7 +10122,7 @@ export function App() {
             setAmcPendingWrite({ parameters: changes.map((change) => change.parameter), label })
           }}
           parameterNotice={parameterNotice}
-          suggestedKind={sequenceForFirmware(snapshot.vehicle?.vehicle)}
+          suggestedKind={sequenceForFirmware(snapshot.vehicle?.vehicle, snapshot.vehicle?.mavType)}
           vehicleFirmwareVersion={snapshot.hardware.board?.firmwareVersion}
           progressKey={deriveAmcProgressKey(snapshot)}
           docs={amcDocs ? (name) => amcDocs.params[name] : undefined}

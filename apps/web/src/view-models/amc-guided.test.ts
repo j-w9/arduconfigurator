@@ -38,6 +38,11 @@ const keyFor = (label: string): string => {
 describe('sequenceForFirmware', () => {
   it('maps the firmware names that have a sequence', () => {
     expect(sequenceForFirmware('ArduCopter')).toBe('ArduCopter')
+    expect(sequenceForFirmware('ArduCopter', 2)).toBe('ArduCopter')
+    // A traditional helicopter runs the same firmware and must still get the
+    // Heli sequence -- by MAV_TYPE, exactly as AMC classifies it.
+    expect(sequenceForFirmware('ArduCopter', 4)).toBe('Heli')
+    expect(sequenceForFirmware('ArduCopter', 3)).toBe('Heli')
     expect(sequenceForFirmware('ArduRover')).toBe('Rover')
   })
 

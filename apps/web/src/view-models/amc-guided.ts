@@ -74,10 +74,25 @@ export function metadataVehicleFor(kind: AmcVehicleKind): string {
 }
 
 /** Map the connected vehicle's firmware name onto a sequence, when there is one. */
-export function sequenceForFirmware(vehicle: string | undefined): AmcVehicleKind | undefined {
+/** MAV_TYPE_COAXIAL and MAV_TYPE_HELICOPTER, which AMC both files under Heli. */
+const HELI_MAV_TYPES: ReadonlySet<number> = new Set([3, 4])
+
+/**
+ * Which of AMC's sequences fits the connected vehicle.
+ *
+ * A traditional helicopter runs Copter's firmware and reports itself as
+ * ArduCopter, so the firmware name alone sent it to the multirotor sequence
+ * -- motor order, ESC calibration, and none of the rotor speed control,
+ * swashplate or collective it actually needs. The MAV_TYPE in its heartbeat
+ * is what separates them, and AMC's own classifier routes on it the same way.
+ */
+export function sequenceForFirmware(
+  vehicle: string | undefined,
+  mavType?: number
+): AmcVehicleKind | undefined {
   switch (vehicle) {
     case 'ArduCopter':
-      return 'ArduCopter'
+      return mavType !== undefined && HELI_MAV_TYPES.has(mavType) ? 'Heli' : 'ArduCopter'
     case 'ArduPlane':
       return 'ArduPlane'
     case 'ArduRover':

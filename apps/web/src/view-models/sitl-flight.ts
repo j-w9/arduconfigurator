@@ -42,14 +42,43 @@ export const FLIGHT_MODES: Readonly<Record<string, readonly FlightMode[]>> = {
     { value: 11, label: 'RTL' },
     { value: 12, label: 'Loiter' },
     { value: 15, label: 'Guided' }
+  ],
+  // A traditional helicopter IS ArduCopter -- same firmware, same mode
+  // numbers, built under a second program name. Listed separately all the
+  // same, because nothing here should assume two vehicles agree.
+  heli: [
+    { value: 0, label: 'Stabilize' },
+    { value: 2, label: 'Alt hold' },
+    { value: 4, label: 'Guided' },
+    { value: 5, label: 'Loiter' },
+    { value: 7, label: 'Circle' },
+    { value: 6, label: 'RTL' },
+    { value: 9, label: 'Land' }
+  ],
+  rover: [
+    { value: 0, label: 'Manual' },
+    { value: 3, label: 'Steering' },
+    { value: 4, label: 'Hold' },
+    { value: 10, label: 'Auto' },
+    { value: 11, label: 'RTL' },
+    { value: 15, label: 'Guided' }
   ]
 }
 
 /** GUIDED, which a takeoff has to be flown from. */
-export const GUIDED_MODE: Readonly<Record<string, number>> = { copter: 4, plane: 15 }
+export const GUIDED_MODE: Readonly<Record<string, number>> = { copter: 4, plane: 15, heli: 4, rover: 15 }
 
-/** LAND / RTL, for getting back down again. */
-export const DESCEND_MODE: Readonly<Record<string, number>> = { copter: 9, plane: 11 }
+/**
+ * The way back: Land where there is one, RTL otherwise.
+ *
+ * A rover has no "down" to go to, so Hold is the nearest thing -- it stops.
+ */
+export const DESCEND_MODE: Readonly<Record<string, number>> = {
+  copter: 9,
+  plane: 11,
+  heli: 9,
+  rover: 4
+}
 
 export function flightModesFor(vehicleId: string): readonly FlightMode[] {
   return FLIGHT_MODES[vehicleId] ?? []

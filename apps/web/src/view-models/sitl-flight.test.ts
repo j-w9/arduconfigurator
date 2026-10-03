@@ -38,7 +38,13 @@ describe('the modes on offer', () => {
   })
 
   it('has nothing for a vehicle it does not know', () => {
-    expect(flightModesFor('rover')).toEqual([])
+    expect(flightModesFor('submarine')).toEqual([])
+  })
+
+  it('gives a traditional helicopter Copter’s numbers, because it is Copter', () => {
+    // Same firmware, built under a second program name. If these ever drift
+    // apart it is a change in ArduPilot, not a tidy-up here.
+    expect(FLIGHT_MODES.heli.map((m) => m.value)).toEqual(FLIGHT_MODES.copter.map((m) => m.value))
   })
 })
 
@@ -60,9 +66,13 @@ describe('taking off', () => {
     expect(takeOffSequence('plane', 15)).toEqual([])
   })
 
-  it('is not offered for a vehicle with no modes at all', () => {
-    expect(canTakeOff('rover')).toBe(false)
-    expect(takeOffSequence('rover', 15)).toEqual([])
+  it('is not offered to anything that cannot climb', () => {
+    // A rover has nowhere to go; a vehicle with no modes has no Guided to
+    // fly the takeoff from.
+    for (const vehicle of ['rover', 'submarine']) {
+      expect(canTakeOff(vehicle), vehicle).toBe(false)
+      expect(takeOffSequence(vehicle, 15), vehicle).toEqual([])
+    }
   })
 
   it('climbs to a sensible height by default', () => {
