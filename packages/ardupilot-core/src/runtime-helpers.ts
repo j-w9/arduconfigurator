@@ -1012,6 +1012,7 @@ export function createVehicleIdentity(message: HeartbeatMessage, systemId: numbe
     componentId,
     armed: Boolean(message.baseMode & MAV_MODE_FLAG.SAFETY_ARMED),
     flightMode: formatArduPilotMode(message.customMode, vehicle),
+    customMode: message.customMode,
     systemStatus: vehicleSystemStatusFromCode(message.systemStatus)
   }
 }

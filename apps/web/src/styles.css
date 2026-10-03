@@ -20909,3 +20909,47 @@ button.mavlink-inspector__sent-row {
 .amc-guided__more[open] > summary {
   margin-bottom: 4px;
 }
+
+/* Arm, mode and takeoff for the simulated vehicle. One row, because it is
+   three controls and a readout, not a section. */
+.sitl-flight__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel-raised);
+}
+
+.sitl-flight__label {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.sitl-flight__row input[type='number'] {
+  width: 5rem;
+}
+
+.sitl-flight__unit,
+.sitl-flight__state {
+  font-family: var(--font-data);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Pushed to the far end: it reports, it is not something to reach for. */
+.sitl-flight__state {
+  margin-left: auto;
+}
+
+.sitl-flight__state--armed {
+  color: var(--danger, #e06c6c);
+}
+
+.sitl-flight__error {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: var(--danger, #e06c6c);
+}

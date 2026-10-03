@@ -742,6 +742,7 @@ export function App() {
   const stopSitl = useCallback(async () => {
     setSitlPhase('idle')
     sitlLaunchRef.current = undefined
+    runtime.stopSimulatedRadio()
     // Landing the simulator is the operator closing the link, not the link
     // failing, so it takes the same clean slate as the Disconnect button.
     // Without this the vehicle it was carrying stays on screen under "Link
@@ -10036,6 +10037,18 @@ export function App() {
           heartbeat={snapshot.connection.kind === 'connected'}
           parameters={amcLiveParameters}
           onSetConditions={setSimConditions}
+          armed={snapshot.vehicle?.armed ?? false}
+          {...(snapshot.vehicle?.customMode !== undefined
+            ? { customMode: snapshot.vehicle.customMode }
+            : {})}
+          onSetMode={(mode) => runtime.setSimulatedFlightMode(mode)}
+          onArm={async (arm) => {
+            // The sticks have to be arriving BEFORE the arm command, or
+            // ArduPilot is still refusing for want of a radio when it lands.
+            if (arm) await runtime.startSimulatedRadio()
+            await runtime.armSimulatedVehicle(arm)
+          }}
+          onTakeOff={(altitude) => runtime.takeOffSimulatedVehicle(altitude)}
           {...(sitlError ? { error: sitlError } : {})}
         />
       ) : null}

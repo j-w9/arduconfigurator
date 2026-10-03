@@ -21,6 +21,14 @@ export const MAVLINK_MESSAGE_IDS = {
   ATTITUDE_QUATERNION: 31,
   SCALED_IMU: 26,
   RC_CHANNELS: 65,
+  /**
+   * Sticks supplied by the ground station instead of a receiver.
+   *
+   * Needed to fly the in-tab simulator: SITL has no RC hardware and no UDP
+   * port to feed one, so without this ArduPilot refuses to arm with
+   * "PreArm: RC not found" -- correctly, because it genuinely has no radio.
+   */
+  RC_CHANNELS_OVERRIDE: 70,
   RC_CHANNELS_RAW: 35,
   SERVO_OUTPUT_RAW: 36,
   FILE_TRANSFER_PROTOCOL: 110,
@@ -94,6 +102,7 @@ export const MAVLINK_MESSAGE_CRCS: Record<number, number> = {
   // from the crc, as the spec requires.
   [MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW]: 222,
   [MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL]: 84,
+  [MAVLINK_MESSAGE_IDS.RC_CHANNELS_OVERRIDE]: 124,
   [MAVLINK_MESSAGE_IDS.COMMAND_ACK]: 143,
   [MAVLINK_MESSAGE_IDS.COMMAND_LONG]: 152,
   [MAVLINK_MESSAGE_IDS.AUTOPILOT_VERSION]: 178,
@@ -154,6 +163,7 @@ export const MAVLINK_PAYLOAD_LENGTHS: Record<number, number> = {
   [MAVLINK_MESSAGE_IDS.RC_CHANNELS_RAW]: 22,
   [MAVLINK_MESSAGE_IDS.SERVO_OUTPUT_RAW]: 37,
   [MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL]: 254,
+  [MAVLINK_MESSAGE_IDS.RC_CHANNELS_OVERRIDE]: 18,
   [MAVLINK_MESSAGE_IDS.COMMAND_ACK]: 10,
   [MAVLINK_MESSAGE_IDS.COMMAND_LONG]: 33,
   [MAVLINK_MESSAGE_IDS.AUTOPILOT_VERSION]: 78,
@@ -331,7 +341,14 @@ export const MAV_PARAM_TYPE = {
 } as const
 
 export const MAV_CMD = {
+  /**
+   * Take off to a given altitude. Copter requires the vehicle armed and in
+   * GUIDED first; param7 is the altitude above home in metres.
+   */
+  NAV_TAKEOFF: 22,
   DO_SET_MODE: 176,
+  /** param1: 1 to arm, 0 to disarm. param2: 21196 to force past the checks. */
+  COMPONENT_ARM_DISARM: 400,
   DO_MOTOR_TEST: 209,
   PREFLIGHT_CALIBRATION: 241,
   PREFLIGHT_STORAGE: 245,

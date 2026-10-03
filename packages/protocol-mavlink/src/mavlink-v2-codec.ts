@@ -21,6 +21,7 @@ import type {
   AttitudeQuaternionMessage,
   AutopilotVersionMessage,
   CommandAckMessage,
+  RcChannelsOverrideMessage,
   CommandLongMessage,
   GpsInputMessage,
   FileTransferProtocolMessage,
@@ -657,6 +658,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeFileTransferProtocolPayload(message)
     case 'COMMAND_ACK':
       return encodeCommandAckPayload(message)
+    case 'RC_CHANNELS_OVERRIDE':
+      return encodeRcChannelsOverridePayload(message)
     case 'COMMAND_LONG':
       return encodeCommandLongPayload(message)
     case 'GPS_INPUT':
@@ -815,6 +818,8 @@ function messageIdFor(message: MavlinkMessage): number {
       return MAVLINK_MESSAGE_IDS.FILE_TRANSFER_PROTOCOL
     case 'COMMAND_ACK':
       return MAVLINK_MESSAGE_IDS.COMMAND_ACK
+    case 'RC_CHANNELS_OVERRIDE':
+      return MAVLINK_MESSAGE_IDS.RC_CHANNELS_OVERRIDE
     case 'COMMAND_LONG':
       return MAVLINK_MESSAGE_IDS.COMMAND_LONG
     case 'GPS_INPUT':
@@ -1543,6 +1548,19 @@ function decodeCommandAckPayload(payload: Uint8Array): CommandAckMessage {
     targetSystem: payload.byteLength >= 9 ? view.getUint8(8) : 0,
     targetComponent: payload.byteLength >= 10 ? view.getUint8(9) : 0
   }
+}
+
+/**
+ * Wire order is by field size, largest first: the eight uint16 channels come
+ * before the two uint8 target fields, whatever order the XML lists them in.
+ */
+function encodeRcChannelsOverridePayload(message: RcChannelsOverrideMessage): Uint8Array {
+  const payload = new Uint8Array(MAVLINK_PAYLOAD_LENGTHS[MAVLINK_MESSAGE_IDS.RC_CHANNELS_OVERRIDE])
+  const view = new DataView(payload.buffer)
+  message.channels.forEach((value, index) => view.setUint16(index * 2, value, true))
+  view.setUint8(16, message.targetSystem)
+  view.setUint8(17, message.targetComponent)
+  return payload
 }
 
 function encodeCommandLongPayload(message: CommandLongMessage): Uint8Array {

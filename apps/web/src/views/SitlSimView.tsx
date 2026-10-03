@@ -19,6 +19,7 @@ import { buttonStyle } from '@arduconfig/ui-kit'
 
 import { MapLocationPicker } from './MapLocationPicker'
 import { SitlConditions } from './SitlConditions'
+import { SitlFlight } from './SitlFlight'
 import {
   CUSTOM_LOCATION,
   DEFAULT_LOCATION,
@@ -42,6 +43,13 @@ export interface SitlSimViewProps {
   parameters?: Readonly<Record<string, number>>
   /** Write simulator parameters and wait for the vehicle to confirm them. */
   onSetConditions?: (writes: readonly { parameter: string; value: number }[]) => Promise<void>
+  /** The simulated vehicle's armed state and mode, from its heartbeat. */
+  armed?: boolean
+  customMode?: number
+  /** Fly it. Refused by the runtime for anything but a vehicle in this tab. */
+  onSetMode?: (customMode: number) => Promise<void>
+  onArm?: (arm: boolean) => Promise<void>
+  onTakeOff?: (altitudeMetres: number) => Promise<void>
   onStart: (vehicle: string, args: readonly string[], moduleUrl: string) => Promise<void>
   onStop: () => Promise<void>
   phase: SitlPhase
@@ -56,7 +64,22 @@ export interface SitlSimViewProps {
 const OUTPUT_LIMIT = 200
 
 export function SitlSimView(props: SitlSimViewProps) {
-  const { onStart, onStop, phase, output, heartbeat, error, base, parameters, onSetConditions } = props
+  const {
+    onStart,
+    onStop,
+    phase,
+    output,
+    heartbeat,
+    error,
+    base,
+    parameters,
+    onSetConditions,
+    armed,
+    customMode,
+    onSetMode,
+    onArm,
+    onTakeOff
+  } = props
 
   const [options, setOptions] = useState<SimOptions | undefined>(undefined)
   const [optionsError, setOptionsError] = useState<string | undefined>(undefined)
@@ -343,6 +366,18 @@ export function SitlSimView(props: SitlSimViewProps) {
             Start from the firmware&apos;s own defaults, discarding anything set before
           </span>
         </label>
+      ) : null}
+
+      {onSetMode && onArm && onTakeOff ? (
+        <SitlFlight
+          vehicleId={vehicle}
+          live={heartbeat}
+          armed={armed ?? false}
+          {...(customMode !== undefined ? { customMode } : {})}
+          onSetMode={onSetMode}
+          onArm={onArm}
+          onTakeOff={onTakeOff}
+        />
       ) : null}
 
       {parameters && onSetConditions ? (

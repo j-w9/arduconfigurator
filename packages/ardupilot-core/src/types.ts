@@ -32,6 +32,15 @@ export interface VehicleIdentity {
   armed: boolean
   flightMode: string
   /**
+   * HEARTBEAT.custom_mode as the firmware sent it.
+   *
+   * `flightMode` above is this rendered for a person and is not reversible:
+   * mode 5 is "Loiter" on Copter and "FBWA" on Plane, and an unknown number
+   * formats as text. Anything that has to compare or set a mode needs the
+   * number.
+   */
+  customMode: number
+  /**
    * Decoded HEARTBEAT.system_status. Surfaces CRITICAL / EMERGENCY /
    * FLIGHT_TERMINATION states the operator must see, which require the
    * safety-critical half of the MAV_STATE enum to be decoded.

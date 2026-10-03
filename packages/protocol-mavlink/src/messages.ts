@@ -231,6 +231,21 @@ export interface CommandAckMessage {
   targetComponent: number
 }
 
+/**
+ * Stick positions supplied by the ground station in place of a receiver.
+ *
+ * 0 on a channel means "leave this one to the radio", and 65535 means
+ * "release the override" -- so a GCS flying a vehicle with no radio at all has
+ * to send real values on every channel it wants ArduPilot to see.
+ */
+export interface RcChannelsOverrideMessage {
+  type: 'RC_CHANNELS_OVERRIDE'
+  targetSystem: number
+  targetComponent: number
+  /** Channels 1-8, in microseconds. */
+  channels: [number, number, number, number, number, number, number, number]
+}
+
 export interface CommandLongMessage {
   type: 'COMMAND_LONG'
   command: number
@@ -656,6 +671,7 @@ export type MavlinkMessage =
   | ParamRequestListMessage
   | ParamSetMessage
   | CommandAckMessage
+  | RcChannelsOverrideMessage
   | CommandLongMessage
   | GpsInputMessage
   | AutopilotVersionMessage

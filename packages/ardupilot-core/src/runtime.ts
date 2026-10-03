@@ -1232,6 +1232,154 @@ export class ArduPilotConfiguratorRuntime {
    * the internal disconnect()s inside a reconnect attempt, which must leave the
    * retained table intact for the resume.
    */
+  /**
+   * Fly a vehicle that is running in this tab.
+   *
+   * This app configures aircraft; it does not fly them. Nothing else here
+   * arms a motor or changes a flight mode, and that is deliberate -- it has
+   * no mission screen, no map to click, and no business commanding an
+   * aircraft someone is standing next to.
+   *
+   * The simulator is the one exception, because its "aircraft" is a
+   * WebAssembly module in the same browser tab: nothing can be hurt by it and
+   * several steps of AMC's sequence cannot be reached without flying. So the
+   * guard is HERE, on the runtime, rather than in the view that draws the
+   * buttons. A control that is merely not rendered is not a safety property;
+   * a method that refuses unless the vehicle is local is.
+   */
+  private requireLocalVehicle(what: string): void {
+    if (!this.localVehicle) {
+      throw new Error(`${what} is only available for a simulated vehicle running in this tab.`)
+    }
+  }
+
+  /**
+   * Hold sticks on a simulated vehicle, so it believes it has a radio.
+   *
+   * SITL has no RC hardware and, in a browser, no UDP port to feed one -- so
+   * ArduPilot refuses to arm with "PreArm: RC not found". That refusal is
+   * correct: the vehicle genuinely has no radio. The honest answer is to give
+   * it one rather than to switch the check off, and RC_CHANNELS_OVERRIDE is
+   * how every ground station has always done that.
+   *
+   * ArduPilot drops an override that stops arriving, so this repeats until
+   * stopped. Throttle sits at the bottom and everything else centred, which
+   * is a transmitter sitting on the bench with the stick down.
+   */
+  private rcOverrideTimer?: ReturnType<typeof setInterval>
+
+  /**
+   * Starts the sticks and waits for ArduPilot to notice them.
+   *
+   * The arming check asks whether RC has ever been seen, so the first frames
+   * have to be in before arming is attempted -- otherwise the refusal is
+   * correct and the operator has to press the button twice.
+   */
+  async startSimulatedRadio(): Promise<void> {
+    this.requireLocalVehicle('Holding the sticks')
+    if (this.rcOverrideTimer !== undefined) return
+    const send = () => {
+      void this.session
+        .send({
+          type: 'RC_CHANNELS_OVERRIDE',
+          targetSystem: this.vehicle?.systemId ?? 1,
+          targetComponent: this.vehicle?.componentId ?? 1,
+          // Roll, pitch, throttle, yaw -- and nothing on 5 to 8.
+          //
+          // 0 means "no override on this channel". Parking them at 1000
+          // instead drove channel 5, which is FLTMODE_CH by default: the
+          // vehicle obediently switched to FLTMODE1 and sat there ignoring
+          // every mode this app asked for.
+          //
+          // Throttle sits at the bottom until the vehicle is armed and then
+          // moves to the middle, which is what a pilot's hand does. Arming
+          // wants the stick down; every altitude-holding mode reads a stick
+          // left down as "descend", so leaving it there flew the vehicle
+          // into the ground the moment it was taken out of Guided.
+          channels: [1500, 1500, this.vehicle?.armed ? 1500 : 1000, 1500, 0, 0, 0, 0]
+        })
+        .catch(() => {
+          // A link that has gone is not an error worth a status line every
+          // 100 ms; stopSimulatedRadio runs on disconnect anyway.
+        })
+    }
+    send()
+    this.rcOverrideTimer = setInterval(send, 100)
+
+    // Give the first frames a moment to land. Not enough on its own -- see
+    // the retry in armSimulatedVehicle, which is what actually makes one
+    // press of the button work.
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+
+  stopSimulatedRadio(): void {
+    if (this.rcOverrideTimer === undefined) return
+    clearInterval(this.rcOverrideTimer)
+    this.rcOverrideTimer = undefined
+  }
+
+  /**
+   * Arm or disarm a simulated vehicle.
+   *
+   * Arming retries, because a vehicle that has just been handed a radio does
+   * not believe in it yet: ArduPilot re-runs the arming checks at 1 Hz, and a
+   * request that arrives inside that window is refused for want of RC. One
+   * press worked on the second attempt and failed on the first, every time,
+   * which is a button that needs pressing twice -- so the second attempt
+   * happens here instead of in the operator's hands.
+   *
+   * Only for arming, and only a few times: a vehicle refusing to arm for a
+   * reason that is not going to clear should say so rather than be asked
+   * eleven times.
+   */
+  async armSimulatedVehicle(arm: boolean): Promise<void> {
+    this.requireLocalVehicle('Arming')
+    const attempts = arm ? 5 : 1
+    let lastError: unknown
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1200))
+      try {
+        await this.sendCommand(MAV_CMD.COMPONENT_ARM_DISARM, [arm ? 1 : 0, 0, 0, 0, 0, 0, 0], {
+          waitForAck: true
+        })
+        this.appendStatusEntry(
+          'info',
+          arm ? 'Armed the simulated vehicle.' : 'Disarmed the simulated vehicle.'
+        )
+        return
+      } catch (error) {
+        lastError = error
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('Could not arm the simulated vehicle.')
+  }
+
+  /**
+   * Put a simulated vehicle into a flight mode.
+   *
+   * param1 carries MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, which is what tells
+   * ArduPilot to read param2 as one of its own mode numbers rather than as a
+   * generic MAVLink mode.
+   */
+  async setSimulatedFlightMode(customMode: number): Promise<void> {
+    this.requireLocalVehicle('Changing flight mode')
+    await this.sendCommand(MAV_CMD.DO_SET_MODE, [1, customMode, 0, 0, 0, 0, 0], { waitForAck: true })
+  }
+
+  /**
+   * Take a simulated vehicle off to an altitude above home, in metres.
+   *
+   * Copter will only accept this armed and in GUIDED, so the caller sequences
+   * mode, arm, then this.
+   */
+  async takeOffSimulatedVehicle(altitudeMetres: number): Promise<void> {
+    this.requireLocalVehicle('Taking off')
+    await this.sendCommand(MAV_CMD.NAV_TAKEOFF, [0, 0, 0, 0, 0, 0, altitudeMetres], {
+      waitForAck: true
+    })
+    this.appendStatusEntry('info', `Told the simulated vehicle to climb to ${altitudeMetres} m.`)
+  }
+
   discardRetainedParameters(): void {
     if (!this.staleLink && this.parameters.size === 0) {
       return

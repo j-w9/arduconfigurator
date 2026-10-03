@@ -8,7 +8,7 @@ const vehicle = {
   systemId: 1,
   componentId: 1,
   armed: false,
-  flightMode: 'Stabilize',
+  flightMode: 'Stabilize', customMode: 0,
   systemStatus: 'standby' as const
 }
 
