@@ -4,6 +4,12 @@ import type {
 } from '@arduconfig/protocol-mavlink'
 import { MAV_FTP_ERR, MAV_FTP_OPCODE } from '@arduconfig/protocol-mavlink'
 
+// ArduPilot's crc_crc32() -- init 0, no final XOR, poly 0xEDB88320 -- which is
+// what its FTP server runs over a file for CALC_FILE_CRC32. It lives in the
+// OSD module because that is what needed it first; the function itself is not
+// OSD-specific.
+import { osdShorthandCrc32 as arduPilotCrc32 } from './osd-shorthand.js'
+
 import {
   decodeMavftpPayload,
   encodeMavftpPayload,
@@ -306,6 +312,52 @@ export class MavftpService {
     return this.withExclusiveSession(`delete ${path}`, () => this.deleteRemotePathUnlocked(path, kind))
   }
 
+  /**
+   * Upload a file and check the vehicle agrees it arrived.
+   *
+   * MAVFTP acks each write, which says the packet was received, not that the
+   * file on the far side is the file that was sent. Asking the vehicle to
+   * checksum what it now holds and comparing it with the bytes that went up
+   * is the difference between "the link did not complain" and "the firmware
+   * has what you meant to give it".
+   */
+  async uploadRemoteFileVerified(
+    path: string,
+    bytes: Uint8Array,
+    options: { overwrite?: boolean } = {}
+  ): Promise<void> {
+    await this.uploadRemoteFile(path, bytes, options)
+    const expected = arduPilotCrc32(bytes)
+    const actual = await this.remoteFileCrc32(path)
+    if (actual !== expected) {
+      throw new Error(
+        `${path} did not survive the upload: the vehicle checksums it as ` +
+          `${actual.toString(16)}, the bytes sent are ${expected.toString(16)}.`
+      )
+    }
+  }
+
+  /** Move or rename a path on the vehicle. */
+  renameRemotePath(from: string, to: string): Promise<void> {
+    return this.withExclusiveSession(`rename ${from}`, () => this.renameRemotePathUnlocked(from, to))
+  }
+
+  /** Create a directory on the vehicle. */
+  makeRemoteDirectory(path: string): Promise<void> {
+    return this.withExclusiveSession(`mkdir ${path}`, () => this.makeRemoteDirectoryUnlocked(path))
+  }
+
+  /**
+   * The CRC32 ArduPilot computes over a file on its own filesystem.
+   *
+   * The point of asking is to check an upload arrived intact: comparing this
+   * against the CRC of what was sent is the only way to know, short of reading
+   * the whole file back down a link that just carried it up.
+   */
+  remoteFileCrc32(path: string): Promise<number> {
+    return this.withExclusiveSession(`crc ${path}`, () => this.remoteFileCrc32Unlocked(path))
+  }
+
   readRemoteTextFile(path: string, options: { timeoutMs?: number } = {}): Promise<string> {
     return this.withExclusiveSession(`read ${path}`, () => this.readRemoteTextFileUnlocked(path, options))
   }
@@ -556,6 +608,55 @@ export class MavftpService {
       offset: 0,
       data: pathBytes
     })
+  }
+
+  /**
+   * RENAME carries both paths in one payload, NUL-separated.
+   *
+   * ArduPilot's AP_Filesystem FTP server splits on the first NUL and renames
+   * the first to the second, so the terminator is part of the message rather
+   * than C-string habit.
+   */
+  private async renameRemotePathUnlocked(from: string, to: string): Promise<void> {
+    await this.ensureSupport()
+    const encoder = new TextEncoder()
+    const fromBytes = encoder.encode(normalizeMavftpPath(from))
+    const toBytes = encoder.encode(normalizeMavftpPath(to))
+    const data = new Uint8Array(fromBytes.length + 1 + toBytes.length)
+    data.set(fromBytes, 0)
+    data[fromBytes.length] = 0
+    data.set(toBytes, fromBytes.length + 1)
+    await this.send({ session: 0, opcode: MAV_FTP_OPCODE.RENAME, size: data.length, offset: 0, data })
+  }
+
+  private async makeRemoteDirectoryUnlocked(path: string): Promise<void> {
+    await this.ensureSupport()
+    const pathBytes = new TextEncoder().encode(normalizeMavftpPath(path))
+    await this.send({
+      session: 0,
+      opcode: MAV_FTP_OPCODE.CREATE_DIRECTORY,
+      size: pathBytes.length,
+      offset: 0,
+      data: pathBytes
+    })
+  }
+
+  /** The reply's first four bytes are the CRC32, little-endian. */
+  private async remoteFileCrc32Unlocked(path: string): Promise<number> {
+    await this.ensureSupport()
+    const pathBytes = new TextEncoder().encode(normalizeMavftpPath(path))
+    const reply = await this.send({
+      session: 0,
+      opcode: MAV_FTP_OPCODE.CALC_FILE_CRC32,
+      size: pathBytes.length,
+      offset: 0,
+      data: pathBytes
+    })
+    const data = reply.data
+    if (data.length < 4) {
+      throw new Error(`The vehicle answered the CRC request with ${data.length} bytes, not 4.`)
+    }
+    return new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(0, true)
   }
 
   private async readRemoteTextFileUnlocked(path: string, options: { timeoutMs?: number } = {}): Promise<string> {
