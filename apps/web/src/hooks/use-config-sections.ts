@@ -58,50 +58,13 @@ const CATEGORY_BY_SECTION: Record<string, ConfigCategoryId> = {
   'camera-trigger': 'gimbal'
 }
 
-// Rarely-touched fields folded into each card's "Advanced" disclosure, so a card
-// leads with the knobs an operator actually reaches for. Everything not listed
-// stays in the always-visible common set.
-//
-// Field feedback: this was folding away far too much. The disclosure mechanism
-// is worth keeping — some of these genuinely are set-once-and-forget — but the
-// bar is now "an operator would have to go looking for this", not "it isn't one
-// of the first two knobs". Notably RC and Arming are fully visible (an operator
-// tuning a radio needs the protocol and options in front of them), and the
-// logging + gyro-rate settings are visible because they are routinely changed
-// per-build rather than once at bring-up.
-const ADVANCED_FIELDS: Record<string, readonly string[]> = {
-  compass: ['COMPASS_AUTO_ROT', 'COMPASS_DISBLMSK'],
-  'esc-dshot': ['SERVO_BLH_POLES', 'SERVO_BLH_BDMASK', 'SERVO_BLH_RVMASK'],
-  // INS_GYRO_RATE moved out: it is a selectable per-build choice (and the
-  // field report asked for it directly under Sensors).
-  'system-rates': ['INS_FAST_SAMPLE'],
-  'fast-loop-rate': ['FSTRATE_DIV'],
-  'active-imu': [],
-  gps: ['GPS_GNSS_MODE'],
-  // RC + Arming: everything visible, per the field report.
-  'receiver-signal': [],
-  arming: [],
-  identity: ['SYSID_MYGCS', 'BRD_BOOT_DELAY'],
-  // LOG_DISARMED / LOG_REPLAY are routinely set per-build (LOG_DISARMED=2 +
-  // LOG_REPLAY=1 is a common "full logs" pairing), so they lead the card.
-  logging: ['LOG_BITMASK'],
-  // Camera: everything visible, same call as RC and Arming above. Folding four
-  // of the five fields left the card showing only the trigger type — an
-  // operator wiring a shutter needs the pulse width and the servo endpoints in
-  // front of them, and the card is `wide`, so there is room to show them.
-  'camera-trigger': []
-}
-
-// Tag a built section with its category + which of its fields are advanced.
-// Centralised here so the section definitions below stay declarative.
+// Tag a built section with its category. Every field renders in the card's
+// grid: the per-card "Advanced" fold that used to hide a few of them is gone,
+// at the operator's request -- all fields shown, cleanly laid out.
 function categorize(section: ConfigSection): ConfigSection {
-  const advanced = ADVANCED_FIELDS[section.id]
   return {
     ...section,
-    category: CATEGORY_BY_SECTION[section.id] ?? 'system',
-    fields: advanced
-      ? section.fields.map((field) => (advanced.includes(field.paramId) ? { ...field, advanced: true } : field))
-      : section.fields
+    category: CATEGORY_BY_SECTION[section.id] ?? 'system'
   }
 }
 
@@ -173,7 +136,7 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
             id: 'compass',
             title: 'Compass',
             description:
-              'Which compasses to use for yaw, how the primary external compass is mounted, and (advanced) which driver types to block. ArduPilot auto-detects compasses — internal ones follow the board orientation; an external one uses its own orientation below.',
+              'Which compasses to use for yaw, how the primary external compass is mounted, and which driver types to block. ArduPilot auto-detects compasses — internal ones follow the board orientation; an external one uses its own orientation below.',
             fields: [
               { paramId: 'COMPASS_USE', label: 'Use compass 1', digits: 0 },
               ...(configParametersById.has('COMPASS_USE2')
@@ -196,7 +159,10 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     {
       id: 'esc-dshot',
       title: 'ESC & DShot',
-      description: 'Output protocol and DShot/BLHeli behavior — set this before motor testing. DShot rate is a multiple of the main loop rate (System ▸ System rates); the resulting output rate should never fall below 500 Hz. Bidirectional DShot needs a DShot protocol; check it on the first 4 outputs (some boards do 8) and enable BLHeli auto. ESC type must be set (not "None") for reverse/3D DShot commands to be sent at all. Reverse a motor here instead of swapping wires.',
+      // Full width under Frame and Board orientation, its fields in an even
+      // grid beside each other rather than one tall single-file card.
+      wide: true,
+      description: 'Output protocol and DShot/BLHeli behavior — set this before motor testing. DShot rate is a multiple of the main loop rate (System ▸ System rates); the resulting output rate should never fall below 500 Hz. Bidirectional DShot needs a DShot protocol; check it on the motor outputs (boards differ in how many outputs support it) and enable BLHeli auto. ESC type must be set (not "None") for reverse/3D DShot commands to be sent at all. Reverse a motor here (or on Motors ▸ Direction) instead of swapping wires.',
       fields: [
         { paramId: 'MOT_PWM_TYPE', label: 'ESC protocol', digits: 0 },
         // SCHED_LOOP_RATE used to be mirrored here, because DShot rate is a
@@ -264,8 +230,7 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
       description: 'GPS driver type + auto-config + update rate, plus multi-GPS behavior (which receiver is primary and how the FC switches between them).',
       // Display order packs the card: the four one-line fields (two selects,
       // the rate chips, the primary pick) share the first row, the two tall
-      // chip groups share the second, and the GNSS mask is in the advanced
-      // fold. Writes are keyed by id, unaffected by order.
+      // chip groups share the second, then the GNSS mask. Writes are keyed by id, unaffected by order.
       fields: [
         { paramId: 'GPS_TYPE', label: 'GPS type', digits: 0 },
         // The second receiver's driver is a GPS setting like the first one's,

@@ -740,6 +740,9 @@ test.describe('browser configurator regression flows', () => {
     // behavior.
     await openView(page, 'config')
     await page.getByTestId('config-category-power').click()
+    // One heading, "Battery", over the live readout and the battery fields.
+    await expect(page.getByTestId('config-section-power').locator('.config-section__header strong')).toHaveText('Battery')
+    await expect(page.getByTestId('power-live-metrics')).toBeVisible()
     await expect(page.getByTestId('power-fields')).toBeVisible()
 
     // Already Expert since the Guided Setup walk above; check() keeps it on.

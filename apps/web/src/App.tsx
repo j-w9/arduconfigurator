@@ -302,7 +302,10 @@ import { dronecanNodeBoardId, parseApj, decodeApjImage } from '@arduconfig/firmw
 import { inflateZlib } from './firmware/web-serial-bootloader'
 import { ParamInfoBubble } from './views/ParamInfoBubble'
 import { ScopedField, ScopedSelectField } from './views/ScopedField'
+import { InfoDot } from './views/InfoDot'
 import { ModesView } from './views/Modes'
+import { OutputMaskField } from './views/OutputMaskField'
+import { outputsFromServoFunctions } from './view-models/output-mask'
 import { FailsafeSection } from './sections/FailsafeSection'
 import { LogsSection } from './sections/LogsSection'
 import { useLogUpload } from './hooks/use-log-upload'
@@ -6973,6 +6976,37 @@ export function App() {
     )
   }
 
+  // The ESC card's per-output masks (bidirectional DShot, reverse): one small
+  // box per output the board has -- one per reported SERVOn_FUNCTION, motors
+  // tagged -- instead of the generic 32-output chip grid. Falls back to the
+  // generic editor when the vehicle reports no outputs, so neither mask is
+  // ever unreachable.
+  function renderEscDshotFieldEditors(): Record<string, ReactNode> {
+    const outputs = outputsFromServoFunctions(configParametersById.keys(), outputMapping.motorOutputs)
+    if (outputs.length === 0) {
+      return {}
+    }
+    const editors: Record<string, ReactNode> = {}
+    for (const [paramId, testIdPrefix] of [
+      ['SERVO_BLH_BDMASK', 'esc-bdshot-out'],
+      ['SERVO_BLH_RVMASK', 'esc-reverse-out']
+    ] as const) {
+      const parameter = configParametersById.get(paramId)
+      if (!parameter) continue
+      editors[paramId] = (
+        <OutputMaskField
+          parameter={parameter}
+          outputs={outputs}
+          editedValues={editedValues}
+          draftStatusById={parameterDraftById}
+          onChange={(id, value) => setDraft(id, value)}
+          testIdPrefix={testIdPrefix}
+        />
+      )
+    }
+    return editors
+  }
+
   function renderEscDshotFooter(): ReactNode {
     const motPwmType = Math.round(
       Number(editedValues.MOT_PWM_TYPE ?? readRoundedParameter(snapshot, 'MOT_PWM_TYPE') ?? 0)
@@ -7004,11 +7038,13 @@ export function App() {
             >
               Enable bidirectional DShot (first 4 outputs)
             </button>
-            <small>
-              {isDShot
-                ? 'Selecting a DShot protocol auto-stages bdshot on outputs 1-4 (BLHeli auto on). Most boards support bdshot on the first 4 outputs only — a few do 8; check your FC before enabling more.'
-                : 'Pick a DShot protocol above to enable bidirectional DShot (RPM telemetry).'}
-            </small>
+            {/* The explanation sits behind the "i"; only the state that blocks
+                the button stays on the line. */}
+            <InfoDot label="About bidirectional DShot" testId="esc-bdshot-info" wide>
+              Selecting a DShot protocol auto-stages bidirectional DShot on outputs 1-4 (BLHeli auto on). Most
+              boards support it on the first 4 outputs only — a few do 8; check your FC before enabling more.
+            </InfoDot>
+            {isDShot ? null : <small>Pick a DShot protocol first.</small>}
           </>
         )}
       </div>
@@ -10339,11 +10375,10 @@ export function App() {
 
       {activeViewId === 'config' ? (
         <ConfigView
-          isExpertMode={isExpertMode}
           requestedCategory={requestedConfigCategory}
           sections={configSections.map((section) => {
             if (section.id === 'esc-dshot') {
-              return { ...section, footer: renderEscDshotFooter() }
+              return { ...section, footer: renderEscDshotFooter(), fieldEditors: renderEscDshotFieldEditors() }
             }
             if (section.id === 'board-orientation') {
               return { ...section, footer: renderBoardOrientationFooter() }
@@ -10403,7 +10438,6 @@ export function App() {
           // restating them is a line to read past on every visit.
           subtitle=""
           panelId="setup-panel-peripherals"
-          isExpertMode={isExpertMode}
           // The same ConfigView over the peripheral half of the section list.
           // Gimbal and Flow & Lidar have no fixed field list — they are whole
           // metadata-driven parameter groups — so they arrive as footer-only

@@ -141,6 +141,19 @@ export function shouldRenderOptionChips(optionCount: number): boolean {
   return optionCount > 0 && optionCount <= SCOPED_CHIP_MAX_OPTIONS
 }
 
+/** Longest option label that still reads as a chip on one line. */
+export const SCOPED_CHIP_MAX_LABEL_LENGTH = 28
+
+/**
+ * Whether every option label is short enough to sit on one chip line. An enum
+ * with even one long label ("BLHeli32 / AM32 / KISS + Extended DShot
+ * Telemetry") turned into a stack of wrapped chips taller than the rest of the
+ * card; that enum reads better as a dropdown. Pure so it can be unit-tested.
+ */
+export function optionLabelsFitChips(options: readonly { label: string }[]): boolean {
+  return options.every((option) => option.label.length <= SCOPED_CHIP_MAX_LABEL_LENGTH)
+}
+
 /**
  * Whether a param's enumerated options are non-exhaustive HINTS rather than a
  * closed enum — true when they cover only a sparse fraction of a wide numeric
