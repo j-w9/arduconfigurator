@@ -3071,9 +3071,10 @@ test.describe('RC Mixer view', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-receiver').click()
-    const summary = page.getByTestId('receiver-rcl-summary')
-    await expect(summary).toContainText('CH5')
-    await expect(summary).toContainText('RC Mixer')
+    // The note that listed them under the channel table is gone (one page,
+    // no standing prose); the claim itself is still read into the view model.
+    await expect(page.getByTestId('receiver-rcl-summary')).toHaveCount(0)
+    await expect(page.getByTestId('receiver-channel-bars-ch5')).toBeVisible()
   })
 
   test('function picker only offers functions the connected vehicle firmware actually supports', async ({ page }) => {
@@ -3140,12 +3141,10 @@ test.describe('Receiver channel-direction check', () => {
     await openView(page, 'receiver')
 
     // The old manual reverse box is gone from the map.
-    await page.getByTestId('receiver-tab-mapping').click()
     await expect(page.getByTestId('receiver-channel-direction')).toHaveCount(0)
 
     // The guided direction check is on the same page, one row per axis; the
     // former tab buttons are jump links, so the click is a scroll, not a route.
-    await page.getByTestId('receiver-tab-endpoints').click()
     await expect(page.getByTestId('receiver-direction-check')).toBeVisible()
     for (const axis of ['roll', 'pitch', 'throttle', 'yaw']) {
       await expect(page.getByTestId(`receiver-direction-${axis}`)).toBeVisible()
@@ -3198,7 +3197,6 @@ test.describe('Receiver functions tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Channels' }).click()
 
     const panel = page.getByTestId('receiver-functions-panel')
     await expect(panel).toBeVisible()
@@ -3231,7 +3229,6 @@ test.describe('Receiver functions tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Channels' }).click()
 
     const select = page.getByTestId('receiver-function-5').locator('select')
     await expect(select).toBeVisible()
@@ -3268,7 +3265,6 @@ test.describe('Receiver stick-range bar', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Channels' }).click()
     const bar = page.getByTestId('rc-range-bar-throttle')
     await bar.scrollIntoViewIfNeeded()
     await expect(bar).toBeVisible()
@@ -3284,7 +3280,7 @@ test.describe('Receiver RC options', () => {
     await openView(page, 'receiver')
     // RC options live in the receiver's Advanced disclosure, closed by
     // default; the jump link opens it.
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Advanced' }).click()
+    await page.getByTestId('receiver-advanced').locator('summary').click()
     const card = page.getByTestId('receiver-rc-options')
     await card.scrollIntoViewIfNeeded()
     await expect(card).toBeVisible()
@@ -3302,7 +3298,6 @@ test.describe('Receiver arm switch', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Flight Modes' }).click()
     const card = page.getByTestId('receiver-arm-switch')
     await card.scrollIntoViewIfNeeded()
     await expect(card).toBeVisible()
@@ -3394,7 +3389,7 @@ test.describe('Receiver RSSI', () => {
     await connectViaHeader(page)
     await openView(page, 'receiver')
     // RX RSSI lives in the Advanced disclosure (removed from the main monitor).
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Advanced' }).click()
+    await page.getByTestId('receiver-advanced').locator('summary').click()
     // Demo seeds RC_CHANNELS.rssi = 100 (raw 0-254), which is ~39%.
     await expect(page.getByText('Live RX RSSI: 39%')).toBeVisible()
   })
@@ -5406,7 +5401,6 @@ test.describe('ArduRover / ArduSub demo', () => {
     // Receiver Flight-Mode fields bind the real Rover slot param (MODE1..6),
     // not the Copter FLTMODE prefix. Mock seeds MODE1 = 0 -> "Manual".
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-tab-flight-modes').click()
     // Scoped to the card: the Advanced disclosure's additional settings list
     // MODE1 too on Rover, and the one-page tab has both in the DOM.
     const modesCard = page.getByTestId('receiver-flight-modes-card')
@@ -5533,7 +5527,7 @@ test.describe('Receiver scoped apply', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Advanced' }).click()
+    await page.getByTestId('receiver-advanced').locator('summary').click()
 
     const field = page.getByTestId('scoped-bitmask-RC_OPTIONS')
     await field.scrollIntoViewIfNeeded()
@@ -5551,7 +5545,7 @@ test.describe('Receiver scoped apply', () => {
     await page.getByTestId('receiver-draft-show').click()
     await expect(page.getByTestId('receiver-draft-list')).toContainText('RC_OPTIONS')
     const dockTop = (await dock.boundingBox())?.y ?? 0
-    const bodyTop = (await page.getByTestId('receiver-task-nav').boundingBox())?.y ?? 0
+    const bodyTop = (await page.getByTestId('receiver-mapping-card').boundingBox())?.y ?? 0
     expect(dockTop).toBeGreaterThan(bodyTop)
 
     const applyButton = page.getByTestId('receiver-apply-button')
@@ -5585,7 +5579,6 @@ test.describe('Receiver mapping', () => {
     await connectViaHeader(page)
     await expectParameterSyncComplete(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-tab-mapping').click()
 
     const rollPick = page.getByTestId('receiver-map-roll').locator('select')
     const pitchPick = page.getByTestId('receiver-map-pitch').locator('select')
@@ -5625,7 +5618,6 @@ test.describe('Receiver mapping', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-tab-mapping').click()
 
     // Pitch is CH2 in the demo; its reverse box binds RC2_REVERSED.
     const reverse = page.getByTestId('receiver-reverse-2').locator('input')
@@ -5635,9 +5627,10 @@ test.describe('Receiver mapping', () => {
     await page.getByTestId('receiver-draft-show').click()
     await expect(dock).toContainText('RC2_REVERSED 0 → 1')
     await expect(page.getByTestId('receiver-reverse-2')).toHaveClass(/scoped-editor-field--staged/)
-    // Staging must not move the page: the bottom chip is fixed, and no note
-    // appears above the workspace (the Basic-mode "drafts hidden" note is gone).
-    await expect(page.getByTestId('global-draft-bar')).toBeVisible()
+    // The Receiver dock lists the same drafts, so the global bar steps aside
+    // while the dock is on the page instead of covering it; no note appears
+    // above the workspace (the Basic-mode "drafts hidden" note is gone).
+    await expect(page.getByTestId('global-draft-bar')).toBeHidden()
     await expect(page.getByText('Expert drafts hidden in Basic mode')).toHaveCount(0)
 
     // A manual pick stages RCMAP_* without the capture flow.
@@ -5658,7 +5651,6 @@ test.describe('Receiver mapping', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Channels' }).click()
     await expect(page.getByTestId('receiver-function-5')).toBeVisible()
     // The demo reports RC1..RC4_REVERSED only, so the AUX rows show none.
     await expect(page.getByTestId('receiver-reverse-5')).toHaveCount(0)
@@ -5673,7 +5665,6 @@ test.describe('Receiver endpoints on a CRSF link', () => {
     await connectViaHeader(page)
     await expectParameterSyncComplete(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-tab-endpoints').click()
 
     await expect(page.getByTestId('receiver-endpoints-crsf')).toContainText('987 to 2011')
     await expect(page.getByTestId('receiver-endpoints-stage')).toHaveCount(0)
@@ -5706,13 +5697,13 @@ test.describe('Receiver endpoints on a CRSF link', () => {
     await connectViaHeader(page)
     await expectParameterSyncComplete(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-tab-endpoints').click()
     await expect(page.getByTestId('receiver-endpoints-crsf')).toHaveCount(0)
     await expect(page.getByTestId('receiver-set-crsf-limits')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Start Capture' })).toBeVisible()
     // The roll row's endpoint pills carry the stored RC1_MIN/TRIM/MAX.
-    await expect(page.getByTestId('receiver-endpoint-roll')).toContainText('Low 1000')
-    await expect(page.getByTestId('receiver-endpoint-roll')).toContainText('High 2000')
+    // Low / trim / high are inputs on the roll row now, bound to RC1_MIN/TRIM/MAX.
+    await expect(page.getByTestId('receiver-endpoint-1-low').locator('input')).toHaveValue('1000')
+    await expect(page.getByTestId('receiver-endpoint-1-high').locator('input')).toHaveValue('2000')
   })
 })
 
@@ -7787,7 +7778,7 @@ test.describe('Flight modes moved from a tab into Config', () => {
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
     await page.getByTestId('view-button-receiver').click()
-    await expect(page.getByTestId('receiver-tab-flight-modes')).toBeVisible()
+    // No jump row any more: the band is simply on the page.
     await expect(page.getByTestId('receiver-flight-modes-card')).toBeVisible()
     await expect(page.getByTestId('receiver-flight-modes-card')).toContainText('Flight modes')
   })

@@ -1408,6 +1408,11 @@ textarea:focus {
  * at the bottom-right of the viewport so it never moves content; the
  * actions (Show changes / Write / Discard) are still one click away
  * but never compete with the tab the operator is editing. */
+/* The Receiver tab has its own apply dock listing the same drafts; while it
+   is on the page the global bar steps aside instead of covering it. */
+body:has(.receiver-review-dock) .parameter-draft-bar {
+  display: none;
+}
 .parameter-draft-bar {
   position: fixed;
   bottom: max(16px, env(safe-area-inset-bottom, 16px));
@@ -18060,6 +18065,24 @@ button.mavlink-inspector__sent-row {
 .receiver-map__line > span:last-child {
   margin-left: auto;
 }
+/* Second row of the map card: buttons, then the outcome sentence. */
+.receiver-map__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.receiver-map__footer:empty {
+  display: none;
+}
+.receiver-map__result {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.receiver-map__result strong {
+  color: var(--text);
+}
 .receiver-map__controls > * {
   flex: 0 1 auto;
 }
@@ -18138,6 +18161,7 @@ button.mavlink-inspector__sent-row {
   text-overflow: ellipsis;
 }
 .receiver-map-row .scoped-editor-field,
+.receiver-modes__row .scoped-editor-field,
 .receiver-channel-row__function .scoped-editor-field {
   display: flex;
   align-items: center;
@@ -18199,10 +18223,119 @@ button.mavlink-inspector__sent-row {
   /* The endpoints column is fixed, not auto: an auto column sized per row
      handed the rows without pills their width back, and the bars no longer
      lined up from one row to the next. */
-  grid-template-columns: 44px minmax(170px, 0.9fr) minmax(160px, 1.4fr) 44px 64px 236px;
+  grid-template-columns: 44px minmax(150px, 0.9fr) minmax(160px, 1.4fr) 44px 150px 84px 214px;
   align-items: center;
   gap: 8px;
-  padding: 2px 6px;
+  padding: 1px 6px;
+}
+.receiver-channel-head__direction {
+  text-align: center;
+}
+/* The direction verdict on a mapped channel's row: one short line, tinted
+   by the result (the row tint classes are shared with the old card). */
+.receiver-channel-row__direction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.receiver-direction-anchor {
+  display: block;
+  height: 1px;
+}
+/* One "i" for reverse, in the header; the per-row dot repeated it. */
+.receiver-channel-head__reverse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.receiver-channel-head__reverse .receiver-info-dot {
+  flex: 0 0 auto;
+}
+.receiver-channel-head__reverse .receiver-info-tip {
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+.receiver-channel-row__reverse .scoped-editor-field__meta {
+  display: none;
+}
+/* Low / trim / high as bare inputs. */
+.receiver-endpoint-input {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+.receiver-endpoint-input .scoped-editor-field {
+  padding: 0;
+  border: 0;
+  background: none;
+  gap: 0;
+}
+.receiver-channel-row__endpoints .receiver-endpoint-input .scoped-editor-field input {
+  width: 60px;
+  max-width: 60px;
+  min-width: 0;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  text-align: right;
+}
+.receiver-endpoint-input .scoped-editor-field--staged input {
+  outline: 2px solid rgba(183, 149, 93, 0.85);
+  outline-offset: 1px;
+}
+.receiver-endpoint-input .scoped-editor-field--staged,
+.receiver-endpoint-input .scoped-editor-field--invalid {
+  box-shadow: none;
+}
+.receiver-endpoint-input .scoped-editor-field__was {
+  display: none;
+}
+.receiver-endpoint-input.is-complete input {
+  border-color: rgba(92, 194, 138, 0.6);
+}
+.receiver-endpoint-input--empty {
+  width: 60px;
+}
+/* The map card: everything in a left column, the reacting craft a fixed
+   column on the right spanning the card's height. */
+/* The global draft chip is fixed bottom-right; leave room so the Receiver
+   dock at the end of the page is never under it. */
+.telemetry-stack--receiver.receiver-page {
+  padding-bottom: 64px;
+}
+.telemetry-stack--receiver .receiver-map {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  column-gap: var(--space-3);
+  align-items: start;
+}
+.telemetry-stack--receiver .receiver-map > :not(.receiver-map__craft) {
+  grid-column: 1;
+}
+.receiver-map__craft {
+  grid-column: 2;
+  grid-row: 1 / span 6;
+  align-self: center;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+.receiver-map__craft .receiver-stick-craft {
+  margin: 0;
+  width: 100%;
+}
+.receiver-map__craft .flight-deck--mini .flight-deck__model-frame {
+  height: 72px;
 }
 .receiver-channel-head {
   padding-bottom: 4px;
@@ -18236,14 +18369,22 @@ button.mavlink-inspector__sent-row {
   gap: 1px;
 }
 .receiver-channel-row {
-  min-height: 30px;
+  min-height: 26px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm, 3px);
   transition: border-color 120ms ease;
 }
-.receiver-channel-row--mode {
+/* The arm switch's channel: outlined so it is always findable; red (below)
+   while it is actually holding the craft armed. One outline per row: the
+   function pick inside it does not add its own staged ring (the dock lists
+   the draft). */
+.receiver-channel-row--arm {
   border-color: var(--warning, #dab254);
-  background: var(--warning-weak, rgba(218, 178, 84, 0.14));
+}
+.receiver-channel-row--arm .receiver-channel-row__function .scoped-editor-field--staged select,
+.receiver-channel-row--arm .receiver-channel-row__function .scoped-editor-field--staged {
+  outline: none;
+  box-shadow: none;
 }
 /* Arm-switch row while the vehicle is armed via that switch: a red box so it
    is unmistakable which channel is holding the craft armed. After the mode
@@ -18315,18 +18456,22 @@ button.mavlink-inspector__sent-row {
   outline: 2px solid rgba(183, 149, 93, 0.85);
   outline-offset: 1px;
 }
-.receiver-channel-row__reverse .scoped-editor-field__was {
+.receiver-channel-row__reverse .scoped-editor-field__was,
+.receiver-channel-row__function .scoped-editor-field__was {
   display: none;
 }
 .receiver-channel-row__expand {
   display: none;
 }
 .receiver-channel-row__endpoints {
+  display: flex;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  align-items: center;
   gap: 4px;
+  min-width: 0;
 }
-.telemetry-stack--receiver .receiver-channel-row__endpoints span {
-  padding: 1px 6px;
+.receiver-channel-row__seen {
   font-size: var(--text-xs);
   white-space: nowrap;
 }
@@ -18383,13 +18528,27 @@ button.mavlink-inspector__sent-row {
 /* Flight modes: the mode channel and the six slots in one row, seven across,
    each its title over its dropdown (seven titles beside seven dropdowns do
    not fit a line); the arm switch on the line under. */
+/* One line: "Channel [CH7]  1 [Stabilize]  2 [Loiter] ..." -- title beside
+   its dropdown (the map-row rule above), channel a little wider. */
 .receiver-modes__row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: 1.25fr repeat(6, minmax(0, 1fr));
   gap: 6px;
 }
 .receiver-modes__row .scoped-editor-field {
-  padding: 4px 8px;
+  padding: 2px 6px;
+}
+.receiver-modes__row .scoped-editor-field > span:first-child {
+  flex: 0 0 auto;
+}
+.receiver-modes__row .scoped-editor-field select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .receiver-modes__row {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
 }
 .receiver-arm-line {
   display: flex;

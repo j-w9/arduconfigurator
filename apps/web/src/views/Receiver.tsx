@@ -24,12 +24,6 @@ export function receiverSectionElementId(taskId: ReceiverTaskId): string {
 }
 
 /** Jump links, in page order. One per section that has a box of its own. */
-const RECEIVER_JUMP_LINKS: readonly { id: ReceiverTaskId; label: string }[] = [
-  { id: 'mapping', label: 'Map' },
-  { id: 'endpoints', label: 'Channels' },
-  { id: 'flight-modes', label: 'Flight modes' },
-  { id: 'advanced', label: 'Advanced' }
-]
 
 export interface ReceiverViewProps {
   taskCards: readonly ReceiverTaskCard[]
@@ -59,32 +53,14 @@ export interface ReceiverViewProps {
  * links already drive.
  */
 export function ReceiverView(props: ReceiverViewProps) {
-  const { onSelectTask, statusSlot, mapSlot, directionSlot, channelsSlot, flightModesSlot, advancedSlot, helpDockSlot } = props
+  const { mapSlot, directionSlot, channelsSlot, flightModesSlot, advancedSlot, helpDockSlot } = props
 
-  // The jump row shares the title line (the Panel's actions slot): the live
-  // status beside the title, the links at the right edge, no row of its own.
-  const jumpRow = (
-    <div className="receiver-jump" data-testid="receiver-task-nav">
-      <div className="receiver-jump__status">{statusSlot}</div>
-      <nav className="receiver-jump__links" aria-label="Receiver sections">
-        {RECEIVER_JUMP_LINKS.map((link) => (
-          <button
-            key={`task-nav:${link.id}`}
-            type="button"
-            className="receiver-jump__link"
-            data-testid={`receiver-tab-${link.id}`}
-            onClick={() => onSelectTask(link.id)}
-          >
-            {link.label}
-          </button>
-        ))}
-      </nav>
-    </div>
-  )
-
+  // No jump row and no status badge on the title line: every band is on the
+  // page, and the live channel count is the table itself. The wizard's deep
+  // links still land on the bands' ids through the section's scroll handler.
   return (
     <div id="setup-panel-rc">
-      <Panel title="Receiver" actions={jumpRow}>
+      <Panel title="Receiver">
         <div className="telemetry-stack telemetry-stack--receiver receiver-page">
           {mapSlot}
           {directionSlot}

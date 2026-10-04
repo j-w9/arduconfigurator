@@ -42,7 +42,6 @@ import type { useReceiverTasks } from '../hooks/use-receiver-tasks'
 import type { useSerialPortModels } from '../hooks/use-serial-port-models'
 import type { useSetupExercises } from '../hooks/use-setup-exercises'
 import { formatParameterValue } from '../parameter-format'
-import { formatModeAssignment } from '../modes-failsafe-helpers'
 import { RcChannelBarStyles, RcChannelTrack } from '../rc-channel-bars'
 import { selectParameterById } from '../selectors/parameter-read'
 import { RC_DIRECTION_PROMPTS, type RcDirectionResult } from '../view-models/receiver-direction-check'
@@ -61,7 +60,7 @@ import { formatRxRssi } from '../status-formatters'
 import { toneForModeSwitchExercise } from '../tone-helpers'
 import { InfoDot } from '../views/InfoDot'
 import { ReceiverView, receiverSectionElementId, type ReceiverTaskId } from '../views/Receiver'
-import { ScopedBitmaskField, ScopedCheckboxField, ScopedField, ScopedSelectField } from '../views/ScopedField'
+import { ScopedBitmaskField, ScopedCheckboxField, ScopedField, ScopedNumberField, ScopedSelectField } from '../views/ScopedField'
 
 const RCMAP_PARAM_IDS: Record<RcAxisId, string> = {
   roll: 'RCMAP_ROLL',
@@ -244,7 +243,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
   const {
     rcMappingCandidate,
     rcMappingLiveCandidates,
-    rcMappingCapturedCount,
     rcMappingTargetGuide,
     rcMappingCandidateConfidence,
     rcMappingRejectedReason,
@@ -288,9 +286,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     airframe,
     rcAxisObservations,
     currentRcAxisChannelMap,
-    modeSwitchEstimate,
     modeExerciseAssignments,
-    recentModeSwitchChange,
     configuredModeChannel,
     rssiType,
     rssiChannel,
@@ -443,15 +439,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     }
   }
 
-  const mappingStatusLabel =
-    rcMappingSession.status === 'ready'
-      ? 'complete'
-      : rcMappingSession.status === 'running'
-        ? `step ${Math.min(rcMappingCapturedCount + 1, RC_CALIBRATION_AXIS_ORDER.length)} of ${RC_CALIBRATION_AXIS_ORDER.length}`
-        : rcMappingSession.status
-  const mappingTone = toneForModeSwitchExercise(
-    rcMappingSession.status === 'ready' ? 'passed' : rcMappingSession.status === 'running' ? 'running' : rcMappingSession.status === 'failed' ? 'failed' : 'idle'
-  )
   const calibrationTone = toneForModeSwitchExercise(
     rcCalibrationSession.status === 'ready' ? 'passed' : rcCalibrationSession.status === 'capturing' ? 'running' : rcCalibrationSession.status === 'failed' ? 'failed' : 'idle'
   )
@@ -480,17 +467,35 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     })
   }
 
-  const liveStatusBadge = (
-    <StatusBadge tone={rcVerified ? 'success' : 'warning'}>
-      {rcVerified ? `${snapshot.liveVerification.rcInput.channelCount} channels live` : 'No RC telemetry'}
-    </StatusBadge>
+
+  // The direction check's craft. The verdicts themselves sit on the mapped
+  // channels' rows in the table (see the Direction column); the reacting
+  // craft keeps its place in the map line so the operator still sees the
+  // airframe answer the stick. Same observations, same verdict and stick-
+  // craft maths (a safety verdict with a documented history).
+  const directionCraft = (
+    <div className="rc-direction-craft receiver-map__craft" data-testid="receiver-direction-craft">
+      <div className="receiver-stick-craft" data-testid="receiver-stick-craft-card">
+        <StickCraftPreview
+          observations={rcAxisObservations}
+          snapshot={snapshot}
+          verified={rcVerified}
+          vehicleType={snapshot.vehicle?.vehicle}
+          frameClassLabel={airframe.frameClassLabel}
+          frameTypeLabel={airframe.frameTypeLabel}
+          mini
+        />
+      </div>
+    </div>
   )
+  const directionSlot = null
 
   // The map is one line: title, the four picks, the buttons that apply when
   // no capture is running, the status. A running capture adds its strips and
   // its controls under that line, across the full width.
   const mapSlot = (
     <div className="rc-mapping-card receiver-map" id={receiverSectionElementId('mapping')} data-testid="receiver-mapping-card">
+      {directionCraft}
       <div className="receiver-map__line">
         <div className="receiver-map__title switch-exercise-card__header">
           <div>
@@ -514,15 +519,18 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
             const channel = mappedChannel(axisId)
             // Short, so the label column stays narrow and the pick keeps its
             // width: the focus strip above carries the full instruction.
-            const detail = activeTarget
-              ? rcMappingCandidate
-                ? `Locking CH${rcMappingCandidate.channelNumber}`
-                : 'Move now'
-              : detected !== undefined
-                ? `Found CH${detected}`
-                : rcMappingSession.status === 'running'
-                  ? 'Pending'
-                  : ''
+            // Only while a capture runs: afterwards the pick itself shows the
+            // channel, and "Found CH2" under a pick that says CH2 said nothing.
+            const detail =
+              rcMappingSession.status !== 'running'
+                ? ''
+                : activeTarget
+                  ? rcMappingCandidate
+                    ? `Locking CH${rcMappingCandidate.channelNumber}`
+                    : 'Move now'
+                  : detected !== undefined
+                    ? `Found CH${detected}`
+                    : 'Pending'
             return (
               <div
                 key={axisId}
@@ -575,8 +583,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
             ) : null}
           </div>
         ) : null}
-
-        <StatusBadge tone={mappingTone}>{mappingStatusLabel}</StatusBadge>
       </div>
 
       {rcMappingSession.status === 'running' ? (
@@ -593,22 +599,20 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
         </div>
       ) : null}
 
-      {rcMappingSession.status === 'ready' ? (
-        <div className="rc-mapping-focus rc-mapping-focus--complete" data-testid="receiver-mapping-focus">
-          <div className="rc-mapping-focus__copy">
-            <strong>Roll, pitch, throttle and yaw identified.</strong>
-            <p>
-              {rcMappingStagedChangeCount > 0
-                ? `${rcMappingStagedChangeCount} RCMAP change${rcMappingStagedChangeCount === 1 ? '' : 's'} staged. Apply below, then reboot.`
-                : 'The current map already matches the sticks.'}
-            </p>
-          </div>
-        </div>
-      ) : null}
-
-      {rcMappingSession.status === 'failed' && rcMappingSession.failureReason ? (
-        <p className="switch-exercise-warning">{rcMappingSession.failureReason}</p>
-      ) : null}
+      {/* Second row: the buttons, then the outcome as one line. */}
+      <div className="receiver-map__footer">
+        {rcMappingSession.status === 'ready' ? (
+          <p className="receiver-map__result" data-testid="receiver-mapping-focus">
+            <strong>Roll, pitch, throttle and yaw identified.</strong>{' '}
+            {rcMappingStagedChangeCount > 0
+              ? `${rcMappingStagedChangeCount} RCMAP change${rcMappingStagedChangeCount === 1 ? '' : 's'} staged. Apply below, then reboot.`
+              : 'The current map already matches the sticks.'}
+          </p>
+        ) : null}
+        {rcMappingSession.status === 'failed' && rcMappingSession.failureReason ? (
+          <p className="switch-exercise-warning">{rcMappingSession.failureReason}</p>
+        ) : null}
+      </div>
 
       {rcMappingCandidate ? (
         <div key={rcMappingAutoCaptureKey} className="rc-mapping-auto-capture">
@@ -720,77 +724,26 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     </div>
   )
 
-  // The direction check, untouched: same observations, same verdicts, same
-  // stick-craft maths (a safety verdict with a documented history).
-  const directionSlot = (
-    <div className="rc-direction-card" data-testid="receiver-direction-check">
-      <div className="switch-exercise-card__header">
-        <div>
-          <strong>Channel direction</strong>
-          <InfoDot label="About the channel direction check" wide>
-            Move each stick the way it is labelled; the example craft reacts so you can confirm each axis at a
-            glance. An axis the flight controller reads backwards is flagged with a one-click reverse, staged like
-            every other Receiver edit.
-          </InfoDot>
-        </div>
-      </div>
-      <div className="rc-direction-body">
-        <div className="rc-direction-craft" data-testid="receiver-direction-craft">
-          <div className="receiver-stick-craft" data-testid="receiver-stick-craft-card">
-            <StickCraftPreview
-              observations={rcAxisObservations}
-              snapshot={snapshot}
-              verified={rcVerified}
-              vehicleType={snapshot.vehicle?.vehicle}
-              frameClassLabel={airframe.frameClassLabel}
-              frameTypeLabel={airframe.frameTypeLabel}
-              mini
-            />
-          </div>
-        </div>
-        <div className="rc-direction-grid">
-          {rcAxisObservations.map((observation) => {
-            const reversedParam = selectParameterById(snapshot, `RC${observation.channelNumber}_REVERSED`)
-            if (!reversedParam) {
-              return null
-            }
-            const result = rcDirectionResults[observation.axisId]
-            const liveReversed = (reversedParam.value ?? 0) !== 0
-            const staged = editedValues[reversedParam.id] !== undefined
-            const active = rcDirectionActiveAxis === observation.axisId
-            return (
-              <div
-                key={observation.axisId}
-                className={`rc-direction-row rc-direction-row--${result}${active ? ' rc-direction-row--active' : ''}`}
-                data-testid={`receiver-direction-${observation.axisId}`}
-              >
-                <span className="rc-direction-row__axis">{observation.label}</span>
-                <span className="rc-direction-row__prompt">{RC_DIRECTION_PROMPTS[observation.axisId].movement}</span>
-                <span
-                  className="rc-direction-row__verdict"
-                  data-testid={`receiver-direction-result-${observation.axisId}`}
-                >
-                  {result === 'correct' ? '✓ correct' : result === 'reversed' ? '⚠ backwards' : '— move to test'}
-                </span>
-                {result === 'reversed' ? (
-                  <button
-                    type="button"
-                    className="rc-direction-row__reverse"
-                    data-testid={`receiver-direction-reverse-${observation.axisId}`}
-                    style={buttonStyle()}
-                    disabled={staged}
-                    onClick={() => setDraft(reversedParam.id, liveReversed ? '0' : '1')}
-                  >
-                    {staged ? 'Reverse staged' : `Reverse ${observation.label}`}
-                  </button>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
+
+  const renderDirectionCell = (channelNumber: number): ReactNode => {
+    const observation = rcAxisObservations.find((entry) => entry.channelNumber === channelNumber)
+    if (!observation) {
+      return <span className="receiver-channel-row__direction" aria-hidden="true" />
+    }
+    const result = rcDirectionResults[observation.axisId]
+    const active = rcDirectionActiveAxis === observation.axisId
+    return (
+      <span
+        className={`receiver-channel-row__direction rc-direction-row--${result}${active ? ' rc-direction-row--active' : ''}`}
+        data-testid={`receiver-direction-${observation.axisId}`}
+        title={RC_DIRECTION_PROMPTS[observation.axisId].movement}
+      >
+        <span className="rc-direction-row__verdict" data-testid={`receiver-direction-result-${observation.axisId}`}>
+          {result === 'correct' ? '✓ correct' : result === 'reversed' ? '⚠ backwards, tick Reverse' : '— move to test'}
+        </span>
+      </span>
+    )
+  }
 
   // Per-axis CRSF calibration warnings: the stick fell short of the fixed
   // CRSF range, which the radio fixes, not these parameters.
@@ -831,6 +784,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
       </div>
 
       <div className="receiver-channel-table" data-testid="receiver-functions-panel">
+        <span data-testid="receiver-direction-check" className="receiver-direction-anchor" aria-hidden="true" />
         <RcChannelBarStyles />
         <div className="receiver-channel-head" aria-hidden="true">
           <span>CH</span>
@@ -839,8 +793,15 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
             900<i>/</i>1500<i>/</i>2100
           </span>
           <span className="receiver-channel-head__value">µs</span>
-          <span className="receiver-channel-head__reverse">Reverse</span>
-          <span className="receiver-channel-head__endpoints">Endpoints</span>
+          <span className="receiver-channel-head__direction">Direction</span>
+          <span className="receiver-channel-head__reverse">
+            Reverse
+            <InfoDot label="About reverse" wide>
+              RCn_REVERSED. Tick it when the flight controller reads the channel backwards; the direction column
+              says which. Staged like every other change.
+            </InfoDot>
+          </span>
+          <span className="receiver-channel-head__endpoints">Low · Trim · High (µs)</span>
         </div>
         <div className="receiver-channel-rows" data-testid="receiver-channel-bars">
           {channelDisplays.map((display) => {
@@ -868,10 +829,20 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
             return (
               <div
                 key={channelNumber}
-                className={`receiver-channel-row${display.isModeChannel ? ' receiver-channel-row--mode' : ''}${display.isModeChannel && recentModeSwitchChange ? ' receiver-channel-row--attention' : ''}${armHighlight ? ' receiver-channel-row--armed' : ''}${conflict ? ' receiver-channel-row--conflict' : ''}${expanded ? ' is-expanded' : ''}`}
+                // The arm switch's row is the one outlined (it is the channel
+                // that makes the craft dangerous), red while it is in the arm
+                // position. The mode channel is named in Flight modes and
+                // needs no marker here.
+                className={`receiver-channel-row${armSwitchAssignment.channel === channelNumber ? ' receiver-channel-row--arm' : ''}${armHighlight ? ' receiver-channel-row--armed' : ''}${conflict ? ' receiver-channel-row--conflict' : ''}${expanded ? ' is-expanded' : ''}`}
                 data-testid={`receiver-channel-bars-ch${channelNumber}`}
                 data-arm-switch-armed={armHighlight ? 'true' : undefined}
-                title={armHighlight ? `Armed — CH${channelNumber} is the arm switch and is in the arm position.` : undefined}
+                title={
+                  armHighlight
+                    ? `Armed — CH${channelNumber} is the arm switch and is in the arm position.`
+                    : captureActive && capture.observedMin !== undefined && capture.observedMax !== undefined
+                      ? `Seen ${Math.round(capture.observedMin)} to ${Math.round(capture.observedMax)} µs so far.`
+                      : undefined
+                }
               >
                 <span className="receiver-channel-row__ch">CH{channelNumber}</span>
                 <div className="receiver-channel-row__role">
@@ -891,13 +862,12 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                   ) : (
                     <span className="receiver-channel-row__plain">{display.role}</span>
                   )}
-                  {display.isModeChannel ? <span className="receiver-channel-row__tag">Mode switch</span> : null}
                   {armSwitchAssignment.channel === channelNumber ? <span className="receiver-channel-row__tag">Arm</span> : null}
                 </div>
                 <div className="receiver-channel-row__bar">
                   <RcChannelTrack
                     pwm={hasData ? display.pwm : undefined}
-                    isModeChannel={display.isModeChannel}
+                    isModeChannel={false}
                     minUs={minimum.shown}
                     trimUs={trim.shown}
                     maxUs={maximum.shown}
@@ -907,6 +877,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                   />
                 </div>
                 <span className={`rc-bar-value${hasData ? '' : ' rc-bar-value--empty'}`}>{hasData ? display.pwm : '—'}</span>
+                {renderDirectionCell(channelNumber)}
                 <div className="receiver-channel-row__reverse">{renderReverseField(channelNumber, `receiver-reverse-${channelNumber}`)}</div>
                 {hasEndpoints ? (
                   <button
@@ -921,25 +892,34 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                   <span className="receiver-channel-row__expand" aria-hidden="true" />
                 )}
                 <div
-                  className="receiver-channel-row__endpoints config-pills"
+                  className="receiver-channel-row__endpoints"
                   data-testid={axisId ? `receiver-endpoint-${axisId}` : undefined}
                 >
                   {hasEndpoints ? (
                     <>
-                      <span className={capture?.lowObserved ? 'is-complete' : minimum.staged ? 'is-pending' : undefined}>
-                        Low {minimum.shown !== undefined ? Math.round(minimum.shown) : '—'}
-                      </span>
-                      <span className={axisCapture?.centeredObserved ? 'is-complete' : trim.staged ? 'is-pending' : undefined}>
-                        Trim {trim.shown !== undefined ? Math.round(trim.shown) : '—'}
-                      </span>
-                      <span className={capture?.highObserved ? 'is-complete' : maximum.staged ? 'is-pending' : undefined}>
-                        High {maximum.shown !== undefined ? Math.round(maximum.shown) : '—'}
-                      </span>
-                      {captureActive && capture.observedMin !== undefined && capture.observedMax !== undefined ? (
-                        <span className="receiver-channel-row__seen">
-                          seen {Math.round(capture.observedMin)}–{Math.round(capture.observedMax)}
-                        </span>
-                      ) : null}
+                      {/* Low, trim and high are inputs, not pills: an operator
+                          sets a trim or an endpoint here, staged like any field. */}
+                      {([`RC${channelNumber}_MIN`, `RC${channelNumber}_TRIM`, `RC${channelNumber}_MAX`] as const).map((paramId, index) => {
+                        const parameter = selectParameterById(snapshot, paramId)
+                        if (!parameter) {
+                          return <span key={paramId} className="receiver-endpoint-input receiver-endpoint-input--empty" aria-hidden="true" />
+                        }
+                        const observed = index === 0 ? capture?.lowObserved : index === 1 ? axisCapture?.centeredObserved : capture?.highObserved
+                        return (
+                          <span key={paramId} className={`receiver-endpoint-input${observed ? ' is-complete' : ''}`}>
+                            <ScopedNumberField
+                              parameter={parameter}
+                              liveValue={parameter.value}
+                              editedValues={editedValues}
+                              onChange={(id, value) => setDraft(id, value)}
+                              draftStatusById={parameterDraftById}
+                              showTitle={false}
+                              ariaLabel={`CH${channelNumber} ${index === 0 ? 'low' : index === 1 ? 'trim' : 'high'}`}
+                              testId={`receiver-endpoint-${channelNumber}-${index === 0 ? 'low' : index === 1 ? 'trim' : 'high'}`}
+                            />
+                          </span>
+                        )
+                      })}
                     </>
                   ) : null}
                 </div>
@@ -1032,38 +1012,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
         ) : null}
       </div>
 
-      <div className="receiver-channels__status">
-        <div
-          className={`receiver-flight-mode-line${recentModeSwitchChange ? ' is-attention' : ''}`}
-          data-testid="receiver-flight-mode-line"
-        >
-          <strong>Flight mode</strong>
-          <span className="receiver-flight-mode-line__ch">
-            {modeSwitchEstimate.channelNumber !== undefined ? `CH${modeSwitchEstimate.channelNumber}` : 'Unset'}
-          </span>
-          <span className="receiver-flight-mode-line__state">
-            {modeSwitchEstimate.channelNumber === undefined
-              ? 'Mode channel not configured yet.'
-              : modeSwitchEstimate.estimatedSlot !== undefined
-                ? `Slot ${modeSwitchEstimate.estimatedSlot} · ${formatModeAssignment(modeSwitchEstimate.configuredValue, snapshot.vehicle?.vehicle)}`
-                : 'Waiting for the configured mode channel to move.'}
-          </span>
-          <span className="receiver-flight-mode-line__pwm">
-            {modeSwitchEstimate.pwm !== undefined ? `${modeSwitchEstimate.pwm} µs` : 'No data'}
-            {recentModeSwitchChange ? ' · moved' : ''}
-          </span>
-        </div>
-        {rcLogicChannelClaims && rcLogicChannelClaims.size > 0 ? (
-          <p className="receiver-rcl-summary" data-testid="receiver-rcl-summary">
-            ⚠ RC Mixer terms also drive:{' '}
-            {[...rcLogicChannelClaims.entries()]
-              .sort(([left], [right]) => left - right)
-              .map(([channel, labels]) => `CH${channel} (${labels.join(', ')})`)
-              .join(', ')}
-            . These channels carry both their normal input and an RC Mixer function.
-          </p>
-        ) : null}
-      </div>
     </div>
   )
 
@@ -1083,27 +1031,26 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
               AirMode keeps the stabilisation active at zero throttle. Changes apply below.
             </InfoDot>
           </div>
-          {modeAssignmentParameters.length > 0 ? (
-            <StatusBadge tone={modeExerciseAssignments.length >= 2 ? 'success' : 'warning'}>
-              {modeExerciseAssignments.length >= 2 ? `${modeExerciseAssignments.length} distinct positions` : 'Review needed'}
-            </StatusBadge>
+          {modeAssignmentParameters.length > 0 && modeExerciseAssignments.length < 2 ? (
+            <StatusBadge tone="warning">Review needed</StatusBadge>
           ) : null}
         </div>
 
         <div className="receiver-modes__row">
           {modeChannelParameter ? (
             <ScopedSelectField
-              parameter={modeChannelParameter}
+              // A copy with a one-word title; the copy never reaches the write path.
+              parameter={modeChannelParameter.definition ? { ...modeChannelParameter, definition: { ...modeChannelParameter.definition, label: 'Channel' } } : modeChannelParameter}
               liveValue={configuredModeChannel}
               editedValues={editedValues}
               onChange={(paramId, value) => setDraft(paramId, value)}
               draftStatusById={parameterDraftById}
             />
           ) : null}
-          {modeAssignmentParameters.map((parameter) => (
+          {modeAssignmentParameters.map((parameter, index) => (
             <ScopedSelectField
               key={parameter.id}
-              parameter={parameter}
+              parameter={parameter.definition ? { ...parameter, definition: { ...parameter.definition, label: String(index + 1) } } : parameter}
               liveValue={parameter.value}
               editedValues={editedValues}
               onChange={(paramId, value) => setDraft(paramId, value)}
@@ -1278,7 +1225,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
       activeTaskId={activeReceiverTaskId}
       activeTask={activeReceiverTask}
       onSelectTask={handleSelectTask}
-      statusSlot={liveStatusBadge}
       mapSlot={mapSlot}
       directionSlot={directionSlot}
       channelsSlot={channelsSlot}
