@@ -164,14 +164,17 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
       wide: true,
       description: 'Output protocol and DShot/BLHeli behavior — set this before motor testing. DShot rate is a multiple of the main loop rate (System ▸ System rates); the resulting output rate should never fall below 500 Hz. Bidirectional DShot needs a DShot protocol; check it on the motor outputs (boards differ in how many outputs support it) and enable BLHeli auto. ESC type must be set (not "None") for reverse/3D DShot commands to be sent at all. Reverse a motor here (or on Motors ▸ Direction) instead of swapping wires.',
       fields: [
+        // Row one is five one-line fields (protocol, DShot rate, ESC type,
+        // BLHeli auto, poles -- the two short enums are dropdowns so none
+        // wraps); row two is the two per-output masks side by side.
         { paramId: 'MOT_PWM_TYPE', label: 'ESC protocol', digits: 0 },
         // SCHED_LOOP_RATE used to be mirrored here, because DShot rate is a
         // MULTIPLE of it. Field report: it now lives on System (System rates)
         // and having it in two tabs was the confusing part, not the help. The
         // DShot rate row below names the relationship instead.
-        { paramId: 'SERVO_DSHOT_RATE', label: 'DShot rate', digits: 0 },
+        { paramId: 'SERVO_DSHOT_RATE', label: 'DShot rate', digits: 0, layout: 'select' },
         { paramId: 'SERVO_DSHOT_ESC', label: 'ESC type', digits: 0 },
-        { paramId: 'SERVO_BLH_AUTO', label: 'BLHeli auto', digits: 0 },
+        { paramId: 'SERVO_BLH_AUTO', label: 'BLHeli auto', digits: 0, layout: 'select' },
         { paramId: 'SERVO_BLH_POLES', label: 'Motor poles', digits: 0 },
         { paramId: 'SERVO_BLH_BDMASK', label: 'Bidirectional DShot outputs', digits: 0 },
         { paramId: 'SERVO_BLH_RVMASK', label: 'Reverse motor outputs', digits: 0 }

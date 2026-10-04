@@ -15882,11 +15882,27 @@ details.bf-gui-box:not([open]) > summary::after {
   }
 }
 
-/* Seven ESC fields as two even rows of four (protocol, rate, ESC type, BLHeli
-   auto; then poles and the two per-output masks side by side), fewer columns
-   on a narrower screen. */
+/* ESC & DShot: row one is five one-line fields (protocol, DShot rate, ESC
+   type, BLHeli auto, poles), row two the two per-output masks as equal halves.
+   Every row-one field is one line of control, so the boxes are as tall as
+   their content and stretch only to match a neighbour whose label wraps. A ten-track grid gives both: a field takes two tracks, a mask
+   five. Narrower, the fields flow at 180px and each mask takes the full row. */
 .config-section--id-esc-dshot .config-section__editors {
-  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+}
+.config-section--id-esc-dshot .config-section__field-row:has(.output-mask-field) {
+  grid-column: 1 / -1;
+}
+@media (min-width: 1100px) {
+  .config-section--id-esc-dshot .config-section__editors {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+  .config-section--id-esc-dshot .config-section__field-row {
+    grid-column: span 2;
+  }
+  .config-section--id-esc-dshot .config-section__field-row:has(.output-mask-field) {
+    grid-column: span 5;
+  }
 }
 
 /* Config ▸ System: the three short cards (rates, IMU, identity) side by side,
@@ -15928,25 +15944,74 @@ details.bf-gui-box:not([open]) > summary::after {
   zoom: 0.75;
 }
 
-/* A per-output mask as one row of small checkboxes, one per motor output. */
+/* A per-output mask: one line of fixed 40px cells, the checkbox over the
+   output number, a motor output tagged "M1" under it. The field is a size
+   container, so where one line does not fit it wraps into two, then four, equal
+   rows (counts come from the component) instead of a ragged last row. */
+.output-mask-field {
+  container-type: inline-size;
+  min-width: 0;
+}
+.output-mask-field__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+.output-mask-field__action {
+  margin-left: auto;
+}
 .output-mask-field__boxes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(5.2em, 1fr));
+  grid-template-columns: repeat(auto-fill, 38px);
   gap: 3px;
+  justify-content: start;
+}
+/* Up to 16 outputs (the usual board): one line while 16 cells fit (16 x 38px
+   + 15 x 3px = 653px), else two equal rows, else four. More than 16 just
+   fills the line, so a cell never overflows. */
+.output-mask-field__boxes--even {
+  grid-template-columns: repeat(var(--mask-count, 16), 38px);
+}
+@container (max-width: 652px) {
+  .output-mask-field__boxes--even {
+    grid-template-columns: repeat(var(--mask-half, 8), 38px);
+  }
+}
+/* A phone: two rows of narrower cells (8 x 33px + 7 x 2px = 278px). */
+@container (max-width: 325px) {
+  .output-mask-field__boxes--even {
+    grid-template-columns: repeat(var(--mask-half, 8), 33px);
+    gap: 2px;
+  }
+  .output-mask-field__boxes--even .output-mask-field__box {
+    width: 33px;
+  }
+}
+@container (max-width: 277px) {
+  .output-mask-field__boxes--even {
+    grid-template-columns: repeat(var(--mask-quarter, 4), 33px);
+  }
 }
 .output-mask-field__box {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 6px 1px 3px;
-  text-transform: none;
-  letter-spacing: normal;
+  box-sizing: border-box;
+  width: 38px;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  padding: 3px 0 2px;
   border: 1px solid var(--card-outline);
   border-radius: var(--radius-sm);
   font-family: var(--font-data);
-  font-size: var(--text-sm);
-  white-space: nowrap;
+  font-size: var(--text-xs);
+  line-height: 1.1;
+  text-transform: none;
+  letter-spacing: normal;
+  overflow: hidden;
   cursor: pointer;
+}
+.output-mask-field__box.is-motor {
+  border-color: rgba(var(--edge-rgb), 0.28);
 }
 .output-mask-field__box.is-set {
   border-color: var(--accent);
@@ -15957,6 +16022,40 @@ details.bf-gui-box:not([open]) > summary::after {
   width: 12px;
   height: 12px;
   margin: 0;
+}
+.output-mask-field__out {
+  color: var(--text);
+}
+.output-mask-field__motor {
+  min-height: 1.1em;
+  font-size: var(--text-2xs);
+  color: var(--accent-strong, var(--accent));
+}
+
+/* A small text button on a field's title line (the ESC card's "Enable on
+   outputs 1-4"), with its "i" beside it. */
+.esc-bdshot-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.text-action-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-strong, var(--accent));
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  text-transform: none;
+  letter-spacing: normal;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.text-action-button:disabled {
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: not-allowed;
 }
 
 /* A field's "i" opens under the FIELD, not centred on the dot. The grid now

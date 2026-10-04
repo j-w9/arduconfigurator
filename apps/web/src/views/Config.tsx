@@ -46,6 +46,8 @@ export interface ConfigSectionField {
    * fields sharing a group render as one cell instead.
    */
   group?: string
+  /** Force an enum's editor: a dropdown even when its options would fit as chips. */
+  layout?: 'select' | 'chips'
 }
 
 /** Config category ids — the top tab groups. */
@@ -326,7 +328,7 @@ export function ConfigView(props: ConfigViewProps) {
           draftStatusById={draftStatusById}
           // Chips only when every option fits on one line; a long-labelled
           // enum is a dropdown rather than a stack of wrapped chips.
-          layout={optionLabelsFitChips(options) ? 'chips' : 'select'}
+          layout={field.layout ?? (optionLabelsFitChips(options) ? 'chips' : 'select')}
         />
       ) : (
         <ScopedField

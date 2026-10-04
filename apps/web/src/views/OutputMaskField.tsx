@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { CSSProperties, ReactElement, ReactNode } from 'react'
 
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
@@ -15,6 +15,8 @@ export interface OutputMaskFieldProps {
   onChange: (paramId: string, value: string) => void
   /** Per-box test id prefix; the box for output n is `${testIdPrefix}-<n>`. */
   testIdPrefix: string
+  /** A small action on the field's title line, right side. */
+  headerAction?: ReactNode
 }
 
 /**
@@ -33,7 +35,8 @@ export function OutputMaskField({
   editedValues,
   draftStatusById,
   onChange,
-  testIdPrefix
+  testIdPrefix,
+  headerAction
 }: OutputMaskFieldProps): ReactElement {
   const status = draftStatusById.get(parameter.id)?.status ?? 'unchanged'
   const edited = editedValues[parameter.id]
@@ -47,7 +50,7 @@ export function OutputMaskField({
       className={`scoped-editor-field scoped-editor-field--compact scoped-editor-field--${status} output-mask-field`}
       data-testid={`output-mask-${parameter.id}`}
     >
-      <span>
+      <span className="output-mask-field__head">
         <span className="scoped-editor-field__title">{label}</span>
         <span className="scoped-editor-field__meta">
           <InfoDot label="Parameter details" testId={`param-info-${parameter.id}`} wide paramId={parameter.id}>
@@ -64,10 +67,26 @@ export function OutputMaskField({
             ) : null}
           </InfoDot>
         </span>
+        {headerAction ? <span className="output-mask-field__action">{headerAction}</span> : null}
       </span>
-      <span className="output-mask-field__boxes">
+      {/* One line of fixed cells; where the line does not fit it wraps into
+          two (then four) equal rows, so a row is never ragged. */}
+      <span
+        className={`output-mask-field__boxes${rows.length <= 16 ? ' output-mask-field__boxes--even' : ''}`}
+        style={
+          {
+            '--mask-count': rows.length,
+            '--mask-half': Math.ceil(rows.length / 2),
+            '--mask-quarter': Math.ceil(rows.length / 4)
+          } as CSSProperties
+        }
+      >
         {rows.map((row) => (
-          <label key={row.channelNumber} className={`output-mask-field__box${row.checked ? ' is-set' : ''}`}>
+          <label
+            key={row.channelNumber}
+            className={`output-mask-field__box${row.checked ? ' is-set' : ''}${row.motorNumber !== undefined ? ' is-motor' : ''}`}
+            title={row.label}
+          >
             <input
               type="checkbox"
               checked={row.checked}
@@ -77,7 +96,8 @@ export function OutputMaskField({
                 onChange(parameter.id, String(withOutputBit(mask, row.channelNumber, event.target.checked)))
               }
             />
-            {row.label}
+            <span className="output-mask-field__out">{row.channelNumber}</span>
+            <span className="output-mask-field__motor">{row.motorNumber !== undefined ? `M${row.motorNumber}` : ''}</span>
           </label>
         ))}
       </span>

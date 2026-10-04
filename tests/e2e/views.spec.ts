@@ -2917,7 +2917,10 @@ test.describe('Config view', () => {
       await expect(page.getByTestId(`output-mask-${id}`)).toBeVisible()
       await expect(page.getByTestId(`scoped-bitmask-${id}`)).toHaveCount(0)
     }
-    await expect(page.getByTestId('output-mask-SERVO_BLH_BDMASK').getByText('1 · M1')).toBeVisible()
+    // Output 1 is motor 1 in the demo quad: the cell carries the number and an "M1" tag.
+    const out1 = page.getByTestId('output-mask-SERVO_BLH_BDMASK').locator('.output-mask-field__box').first()
+    await expect(out1).toHaveAttribute('title', '1 · M1')
+    await expect(out1.locator('.output-mask-field__motor')).toHaveText('M1')
     await expect(page.getByTestId('esc-bdshot-out-1')).not.toBeChecked()
     await expect(page.getByTestId('esc-bdshot-out-32')).toHaveCount(0)
     await expect(esc.getByText('Output 1')).toHaveCount(0)

@@ -6982,7 +6982,7 @@ export function App() {
   // generic editor when the vehicle reports no outputs, so neither mask is
   // ever unreachable.
   function renderEscDshotFieldEditors(): Record<string, ReactNode> {
-    const outputs = outputsFromServoFunctions(configParametersById.keys(), outputMapping.motorOutputs)
+    const outputs = escMaskOutputs()
     if (outputs.length === 0) {
       return {}
     }
@@ -7001,55 +7001,77 @@ export function App() {
           draftStatusById={parameterDraftById}
           onChange={(id, value) => setDraft(id, value)}
           testIdPrefix={testIdPrefix}
+          headerAction={paramId === 'SERVO_BLH_BDMASK' ? renderBdshotAction() : undefined}
         />
       )
     }
     return editors
   }
 
-  function renderEscDshotFooter(): ReactNode {
+  function isEscDshotProtocol(): boolean {
     const motPwmType = Math.round(
       Number(editedValues.MOT_PWM_TYPE ?? readRoundedParameter(snapshot, 'MOT_PWM_TYPE') ?? 0)
     )
-    const isDShot = motPwmType >= 4 && motPwmType <= 7 // DShot150/300/600/1200
+    return motPwmType >= 4 && motPwmType <= 7 // DShot150/300/600/1200
+  }
+
+  // The one-click "enable bidirectional DShot" helper: stages it on outputs 1-4
+  // AND turns on BLHeli auto, since ArduPilot needs both. A small text button
+  // on the Bidirectional DShot field's title line, its explanation in the "i".
+  function renderBdshotAction(): ReactNode {
+    const isDShot = isEscDshotProtocol()
+    return (
+      <span className="esc-bdshot-action" data-testid="esc-dshot-footer">
+        <button
+          type="button"
+          className="text-action-button"
+          data-testid="esc-enable-bdshot"
+          disabled={!isDShot}
+          title={isDShot ? undefined : 'Pick a DShot protocol first.'}
+          onClick={() => {
+            setDraft('SERVO_BLH_BDMASK', '15')
+            setDraft('SERVO_BLH_AUTO', '1')
+          }}
+        >
+          Enable on outputs 1-4
+        </button>
+        <InfoDot label="About bidirectional DShot" testId="esc-bdshot-info" wide>
+          Stages bidirectional DShot on outputs 1-4 and turns BLHeli auto on. Selecting a DShot protocol does the
+          same. Most boards support it on the first 4 outputs only — some do 8 or more; check your FC before enabling
+          more.{isDShot ? '' : ' Pick a DShot protocol first.'}
+        </InfoDot>
+      </span>
+    )
+  }
+
+  // The ESC card's footer is only for what has no field to sit on: the
+  // firmware cannot do bidirectional DShot at all, or the vehicle reported no
+  // outputs (the mask then uses the generic editor, and the helper sits here).
+  function renderEscDshotFooter(): ReactNode {
     // BDShot is a compile-time / board feature: SERVO_BLH_BDMASK only exists in
     // the synced parameter tree when the firmware was built with it. Absent =>
     // this firmware/board can't do bidirectional DShot.
     const bdshotSupported = configParametersById.has('SERVO_BLH_BDMASK')
-    return (
-      <div className="esc-dshot-footer" data-testid="esc-dshot-footer">
-        {!bdshotSupported ? (
+    if (!bdshotSupported) {
+      return (
+        <div className="esc-dshot-footer" data-testid="esc-dshot-footer">
           <small className="esc-dshot-footer__warning" data-testid="esc-bdshot-unsupported">
             Your firmware build doesn’t support bidirectional DShot (no SERVO_BLH_BDMASK parameter). Flash a board/firmware
             built with BDShot to get RPM telemetry over the DShot signal wire.
           </small>
-        ) : (
-          <>
-            <button
-              type="button"
-              style={buttonStyle()}
-              data-testid="esc-enable-bdshot"
-              disabled={!isDShot}
-              title={isDShot ? undefined : 'Select a DShot ESC protocol first — bidirectional DShot requires DShot.'}
-              onClick={() => {
-                setDraft('SERVO_BLH_BDMASK', '15')
-                setDraft('SERVO_BLH_AUTO', '1')
-              }}
-            >
-              Enable bidirectional DShot (first 4 outputs)
-            </button>
-            {/* The explanation sits behind the "i"; only the state that blocks
-                the button stays on the line. */}
-            <InfoDot label="About bidirectional DShot" testId="esc-bdshot-info" wide>
-              Selecting a DShot protocol auto-stages bidirectional DShot on outputs 1-4 (BLHeli auto on). Most
-              boards support it on the first 4 outputs only — a few do 8; check your FC before enabling more.
-            </InfoDot>
-            {isDShot ? null : <small>Pick a DShot protocol first.</small>}
-          </>
-        )}
-      </div>
-    )
+        </div>
+      )
+    }
+    if (escMaskOutputs().length > 0) {
+      return null
+    }
+    return <div className="esc-dshot-footer">{renderBdshotAction()}</div>
   }
+
+  function escMaskOutputs() {
+    return outputsFromServoFunctions(configParametersById.keys(), outputMapping.motorOutputs)
+  }
+
 
   function renderMetadataParameterField(parameter: ParameterState) {
     // Shared metadata-driven editor used across Power additional
