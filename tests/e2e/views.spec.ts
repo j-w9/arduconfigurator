@@ -1219,17 +1219,8 @@ test.describe('Modes view', () => {
     ).toBe('7')
     await expect(page.getByTestId('modes-slot-4')).toHaveClass(/is-active/)
 
-    await expect(page.getByTestId('modes-go-to-flight-mode-task')).toBeVisible()
-  })
-
-  test('deep-link button navigates to Receiver flight-mode task', async ({ page }) => {
-    await page.goto('/')
-    await connectViaHeader(page)
-    await openFlightModes(page)
-
-    await page.getByTestId('modes-go-to-flight-mode-task').click()
-
-    await expect(page.getByTestId('workspace-view-title')).toHaveText('Receiver')
+    // Flight modes have one home now; no button sends the operator elsewhere.
+    await expect(page.getByTestId('modes-go-to-flight-mode-task')).toHaveCount(0)
   })
 })
 
@@ -3274,17 +3265,17 @@ test.describe('Receiver stick-range bar', () => {
 })
 
 test.describe('Receiver RC options', () => {
-  test('RC_OPTIONS renders as a bitmask chip grid in the receiver tab', async ({ page }) => {
+  test('RC_OPTIONS renders as a bitmask chip grid under Config ▸ RC', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
+    // The set-once receiver settings live under Config ▸ RC; the Receiver tab
+    // keeps the hands-on work and has no Advanced fold.
     await openView(page, 'receiver')
-    // RC options live in the receiver's Advanced disclosure, closed by
-    // default; the jump link opens it.
-    await page.getByTestId('receiver-advanced').locator('summary').click()
-    const card = page.getByTestId('receiver-rc-options')
-    await card.scrollIntoViewIfNeeded()
-    await expect(card).toBeVisible()
+    await expect(page.getByTestId('receiver-advanced')).toHaveCount(0)
+    await openView(page, 'config')
+    await page.getByTestId('config-category-rc').click()
     const field = page.getByTestId('scoped-bitmask-RC_OPTIONS')
+    await field.scrollIntoViewIfNeeded()
     const bits = field.locator('.scoped-bitmask-bit')
     await expect(bits.first()).toBeVisible()
     // Demo seeds RC_OPTIONS=0, so every option starts unset (no orange).
@@ -3387,9 +3378,10 @@ test.describe('Receiver RSSI', () => {
   test('shows RX RSSI as a percentage, not the raw 0-254 byte', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await openView(page, 'receiver')
-    // RX RSSI lives in the Advanced disclosure (removed from the main monitor).
-    await page.getByTestId('receiver-advanced').locator('summary').click()
+    // The live link readout sits under the receiver settings in Config ▸ RC.
+    await openView(page, 'config')
+    await page.getByTestId('config-category-rc').click()
+    await expect(page.getByTestId('config-receiver-link')).toBeVisible()
     // Demo seeds RC_CHANNELS.rssi = 100 (raw 0-254), which is ~39%.
     await expect(page.getByText('Live RX RSSI: 39%')).toBeVisible()
   })
@@ -5398,15 +5390,14 @@ test.describe('ArduRover / ArduSub demo', () => {
     await expect(page.getByTestId('failsafe-row-FS_EKF_ACTION')).toHaveCount(0)
     await expect(page.getByTestId('failsafe-row-FS_OPTIONS')).toHaveCount(0)
 
-    // Receiver Flight-Mode fields bind the real Rover slot param (MODE1..6),
-    // not the Copter FLTMODE prefix. Mock seeds MODE1 = 0 -> "Manual".
-    await openView(page, 'receiver')
-    // Scoped to the card: the Advanced disclosure's additional settings list
-    // MODE1 too on Rover, and the one-page tab has both in the DOM.
-    const modesCard = page.getByTestId('receiver-flight-modes-card')
-    await expect(modesCard.getByTestId('param-info-FLTMODE1')).toHaveCount(0)
-    await expect(modesCard.getByTestId('param-info-MODE1')).toBeVisible()
-    await expect(modesCard).toContainText('Manual')
+    // Flight-mode slots bind the real Rover slot param (MODE1..6), not the
+    // Copter FLTMODE prefix. Mock seeds MODE1 = 0 -> "Manual". They live under
+    // Config ▸ Flight Modes.
+    await openFlightModes(page)
+    const roverSlots = page.getByTestId('modes-slot-table')
+    await expect(roverSlots.getByTestId('param-info-FLTMODE1')).toHaveCount(0)
+    await expect(roverSlots.getByTestId('param-info-MODE1')).toBeVisible()
+    await expect(roverSlots).toContainText('Manual')
   })
 
   test('Sub curated Tuning surface renders its groups, shows seeded values, and stages a draft', async ({ page }) => {
@@ -5523,18 +5514,13 @@ test.describe('ArduRover / ArduSub demo', () => {
 })
 
 test.describe('Receiver scoped apply', () => {
-  test('staging an RC_OPTIONS change surfaces the review dock and applying clears it', async ({ page }) => {
+  test('staging a receiver change surfaces the review dock and applying clears it', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-advanced').locator('summary').click()
 
-    const field = page.getByTestId('scoped-bitmask-RC_OPTIONS')
-    await field.scrollIntoViewIfNeeded()
-    // Demo seeds RC_OPTIONS=0 (all options unset). Clicking the first option's
-    // chip toggles it (orange highlight) and stages a single receiver-scoped
-    // (workflow) draft.
-    await field.getByText('Ignore RC Receiver').click()
+    // Pitch is CH2 in the demo; its reverse box stages one receiver draft.
+    await page.getByTestId('receiver-reverse-2').locator('input').check()
 
     const dock = page.locator('.receiver-review-dock')
     await expect(dock).toBeVisible()
@@ -5543,7 +5529,7 @@ test.describe('Receiver scoped apply', () => {
     // the tab, under the task body, not above it.
     await expect(page.getByTestId('receiver-draft-list')).toHaveCount(0)
     await page.getByTestId('receiver-draft-show').click()
-    await expect(page.getByTestId('receiver-draft-list')).toContainText('RC_OPTIONS')
+    await expect(page.getByTestId('receiver-draft-list')).toContainText('RC2_REVERSED')
     const dockTop = (await dock.boundingBox())?.y ?? 0
     const bodyTop = (await page.getByTestId('receiver-mapping-card').boundingBox())?.y ?? 0
     expect(dockTop).toBeGreaterThan(bodyTop)
@@ -7813,18 +7799,17 @@ test.describe('Flight modes moved from a tab into Config', () => {
     expect(overflow, 'the Flight Modes panel must not widen the page').toBeLessThanOrEqual(2)
   })
 
-  test('Receiver keeps its own Flight Modes band', async ({ page }) => {
-    // The move must not have taken the receiver workflow's copy with it. The
-    // Receiver is one page now: the band is on screen, and its jump link
-    // stands where the sub-tab button used to.
+  test('Flight modes live only under Config; the Receiver keeps the arm switch', async ({ page }) => {
+    // One home per setting: the mode channel and slots are Config ▸ Flight
+    // Modes; the Receiver tab has no copy, but keeps the arm switch, which is
+    // a channel the radio drives.
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
     await page.getByTestId('view-button-receiver').click()
-    // No jump row any more: the band is simply on the page.
-    await expect(page.getByTestId('receiver-flight-modes-card')).toBeVisible()
-    await expect(page.getByTestId('receiver-flight-modes-card')).toContainText('Flight modes')
+    await expect(page.getByTestId('receiver-flight-modes-card')).toHaveCount(0)
+    await expect(page.getByTestId('receiver-arm-switch')).toBeVisible()
   })
 })
 

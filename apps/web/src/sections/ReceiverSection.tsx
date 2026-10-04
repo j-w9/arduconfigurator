@@ -25,7 +25,6 @@ import {
   deriveRcAxisObservations,
   formatRcAxisLabel
 } from '@arduconfig/ardupilot-core'
-import { formatArducopterRssiType } from '@arduconfig/param-metadata'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import { armSwitchChannelOptions, isArmSwitchHighlightActive, type ArmSwitchAssignment } from '../view-models/arm-switch'
@@ -56,11 +55,10 @@ import {
 } from '../view-models/receiver-channels'
 import { RC_CALIBRATION_AXIS_ORDER, rcCalibrationCaptureComplete } from '../setup-exercise-helpers'
 import { StickCraftPreview } from '../preview-components'
-import { formatRxRssi } from '../status-formatters'
 import { toneForModeSwitchExercise } from '../tone-helpers'
 import { InfoDot } from '../views/InfoDot'
 import { ReceiverView, receiverSectionElementId, type ReceiverTaskId } from '../views/Receiver'
-import { ScopedBitmaskField, ScopedCheckboxField, ScopedField, ScopedNumberField, ScopedSelectField } from '../views/ScopedField'
+import { ScopedCheckboxField, ScopedNumberField, ScopedSelectField } from '../views/ScopedField'
 
 const RCMAP_PARAM_IDS: Record<RcAxisId, string> = {
   roll: 'RCMAP_ROLL',
@@ -225,7 +223,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
   // Advanced (RSSI, RC options, protocols, input rate) is closed until the
   // operator opens it, the wizard routes to it, or a draft inside it is
   // invalid — an invalid draft blocks Apply and must not hide in a closed box.
-  const [advancedOpen, setAdvancedOpen] = useState(false)
   // Phone layout: a row's endpoint pills sit behind a per-row tap.
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<number>>(() => new Set())
   useEffect(() => {
@@ -256,19 +253,12 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
   const { activeReceiverTaskId, receiverTaskCards, activeReceiverTask, receiverTaskOverride } = receiverTasks
 
   const {
-    modeChannelParameter,
-    rssiTypeParameter,
-    rssiChannelParameter,
-    rssiChannelLowParameter,
-    rssiChannelHighParameter,
-    rcOptionsParameter,
     receiverSupportParameterById,
     rcFunctionRows,
     rcFunctionConflicts
   } = receiverSupportCatalog
 
   const {
-    receiverAdditionalGroups,
     receiverAdditionalDraftEntries,
     receiverAdditionalStagedDrafts,
     receiverAdditionalInvalidDrafts
@@ -285,21 +275,12 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     airframe,
     rcAxisObservations,
     currentRcAxisChannelMap,
-    modeExerciseAssignments,
-    configuredModeChannel,
-    rssiType,
-    rssiChannel,
-    rssiChannelLow,
-    rssiChannelHigh,
-    modeAssignmentParameters,
-    receiverLinkPorts,
     receiverDraftEntries,
     receiverStagedDrafts,
     receiverInvalidDrafts,
     canRunRcMappingExercise,
     canCaptureRcCalibration,
     receiverHasPendingReview,
-    receiverAdvancedInvalidCount,
     armSwitchAvailable,
     armSwitchAssignment,
     rcLogicChannelClaims
@@ -316,7 +297,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     handleStageRcCalibrationDrafts,
     handleApplyScopedParameterDrafts,
     handleDiscardScopedParameterDrafts,
-    renderAdditionalSettingsCard,
     setDraft,
     mergeDrafts,
     setReceiverTaskOverride,
@@ -330,23 +310,12 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     if (!receiverTaskOverride) {
       return
     }
-    if (receiverTaskOverride === 'advanced') {
-      setAdvancedOpen(true)
-    }
     const timer = window.setTimeout(() => scrollToReceiverSection(receiverTaskOverride, 'nearest'), 80)
     return () => window.clearTimeout(timer)
   }, [receiverTaskOverride])
-  useEffect(() => {
-    if (receiverAdvancedInvalidCount > 0) {
-      setAdvancedOpen(true)
-    }
-  }, [receiverAdvancedInvalidCount])
 
   const handleSelectTask = (taskId: ReceiverTaskId): void => {
     setReceiverTaskOverride(taskId)
-    if (taskId === 'advanced') {
-      setAdvancedOpen(true)
-    }
     scrollToReceiverSection(taskId, 'start')
   }
 
@@ -771,6 +740,54 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
       })
     : []
 
+  // The arm switch: a channel the radio drives, so it stays on the Receiver
+  // tab, at the foot of the table whose row it outlines. Flight modes (the
+  // mode channel and the six slots) are under Config ▸ Flight Modes.
+  const armLine = (
+    <>
+        {armSwitchAvailable ? (
+        <div className="receiver-arm-line" data-testid="receiver-arm-switch">
+          <label className="receiver-arm-switch__field">
+            <span>Arm switch</span>
+            <select
+              data-testid="receiver-arm-switch-channel"
+              value={String(armSwitchAssignment.channel ?? 0)}
+              onChange={(event) => handleSetArmSwitchChannel(Number(event.target.value), armSwitchAssignment.airmode)}
+            >
+              {armSwitchChannelOptions().map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <StatusBadge tone={armSwitchAssignment.channel !== undefined ? 'success' : 'neutral'}>
+            {armSwitchAssignment.channel !== undefined
+              ? `CH${armSwitchAssignment.channel}${armSwitchAssignment.airmode ? ' + AirMode' : ''}`
+              : 'not assigned'}
+          </StatusBadge>
+          <label className="receiver-arm-switch__checkbox">
+            <input
+              type="checkbox"
+              data-testid="receiver-arm-switch-airmode"
+              checked={armSwitchAssignment.airmode}
+              disabled={armSwitchAssignment.channel === undefined}
+              onChange={(event) => handleSetArmSwitchChannel(armSwitchAssignment.channel ?? 0, event.target.checked)}
+            />
+            <span>AirMode when armed by this switch</span>
+          </label>
+          {armSwitchAssignment.channel !== undefined && rcLogicChannelClaims?.get(armSwitchAssignment.channel)?.length ? (
+            <p className="switch-exercise-warning" data-testid="receiver-arm-switch-rcl-conflict">
+              ⚠ CH{armSwitchAssignment.channel} also drives an RC Mixer function
+              ({rcLogicChannelClaims.get(armSwitchAssignment.channel)!.join(', ')}) — the arm switch and the RC Mixer
+              term both act on this channel.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </>
+  )
+
   const channelsSlot = (
     <div className="rc-calibration-card receiver-channels" id={receiverSectionElementId('endpoints')} data-testid="receiver-endpoints-card">
       <div className="switch-exercise-card__header">
@@ -1034,213 +1051,15 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
           <p className="receiver-endpoints-line">{rcCalibrationSummary}</p>
         ) : null}
       </div>
+      {armLine}
 
     </div>
   )
 
-  const flightModesSlot =
-    modeChannelParameter || modeAssignmentParameters.length > 0 || armSwitchAvailable ? (
-      <div
-        className="scoped-review-card scoped-review-card--compact receiver-modes"
-        id={receiverSectionElementId('flight-modes')}
-        data-testid="receiver-flight-modes-card"
-      >
-        <div className="switch-exercise-card__header">
-          <div>
-            <strong>Flight modes</strong>
-            <InfoDot label="About flight modes" wide>
-              Which receiver channel selects the flight mode, and the mode for each of its six switch positions. The
-              arm switch is a channel that arms and disarms from a physical switch (RCn_OPTION, written directly);
-              AirMode keeps the stabilisation active at zero throttle. Changes apply below.
-            </InfoDot>
-          </div>
-          {modeAssignmentParameters.length > 0 && modeExerciseAssignments.length < 2 ? (
-            <StatusBadge tone="warning">Review needed</StatusBadge>
-          ) : null}
-        </div>
+  const flightModesSlot = null
 
-        <div className="receiver-modes__row">
-          {modeChannelParameter ? (
-            <ScopedSelectField
-              // A copy with a one-word title; the copy never reaches the write path.
-              parameter={modeChannelParameter.definition ? { ...modeChannelParameter, definition: { ...modeChannelParameter.definition, label: 'Channel' } } : modeChannelParameter}
-              liveValue={configuredModeChannel}
-              editedValues={editedValues}
-              onChange={(paramId, value) => setDraft(paramId, value)}
-              draftStatusById={parameterDraftById}
-            />
-          ) : null}
-          {modeAssignmentParameters.map((parameter, index) => (
-            <ScopedSelectField
-              key={parameter.id}
-              parameter={parameter.definition ? { ...parameter, definition: { ...parameter.definition, label: String(index + 1) } } : parameter}
-              liveValue={parameter.value}
-              editedValues={editedValues}
-              onChange={(paramId, value) => setDraft(paramId, value)}
-              draftStatusById={parameterDraftById}
-            />
-          ))}
-        </div>
-
-        {armSwitchAvailable ? (
-          <div className="receiver-arm-line" data-testid="receiver-arm-switch">
-            <label className="receiver-arm-switch__field">
-              <span>Arm switch</span>
-              <select
-                data-testid="receiver-arm-switch-channel"
-                value={String(armSwitchAssignment.channel ?? 0)}
-                onChange={(event) => handleSetArmSwitchChannel(Number(event.target.value), armSwitchAssignment.airmode)}
-              >
-                {armSwitchChannelOptions().map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <StatusBadge tone={armSwitchAssignment.channel !== undefined ? 'success' : 'neutral'}>
-              {armSwitchAssignment.channel !== undefined
-                ? `CH${armSwitchAssignment.channel}${armSwitchAssignment.airmode ? ' + AirMode' : ''}`
-                : 'not assigned'}
-            </StatusBadge>
-            <label className="receiver-arm-switch__checkbox">
-              <input
-                type="checkbox"
-                data-testid="receiver-arm-switch-airmode"
-                checked={armSwitchAssignment.airmode}
-                disabled={armSwitchAssignment.channel === undefined}
-                onChange={(event) => handleSetArmSwitchChannel(armSwitchAssignment.channel ?? 0, event.target.checked)}
-              />
-              <span>AirMode when armed by this switch</span>
-            </label>
-            {armSwitchAssignment.channel !== undefined && rcLogicChannelClaims?.get(armSwitchAssignment.channel)?.length ? (
-              <p className="switch-exercise-warning" data-testid="receiver-arm-switch-rcl-conflict">
-                ⚠ CH{armSwitchAssignment.channel} also drives an RC Mixer function
-                ({rcLogicChannelClaims.get(armSwitchAssignment.channel)!.join(', ')}) — the arm switch and the RC Mixer
-                term both act on this channel.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-    ) : null
-
-  const advancedSlot = (
-    <details
-      className="receiver-advanced"
-      id={receiverSectionElementId('advanced')}
-      data-testid="receiver-advanced"
-      open={advancedOpen}
-      onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
-    >
-      <summary className="receiver-advanced__summary" data-testid="receiver-advanced-toggle">
-        <strong>Advanced</strong>
-        <span>RSSI · RC options · protocols · input rate</span>
-        {receiverAdditionalInvalidDrafts.length > 0 ? (
-          <StatusBadge tone="danger">{`${receiverAdditionalInvalidDrafts.length} invalid`}</StatusBadge>
-        ) : null}
-      </summary>
-      <div className="receiver-advanced__body">
-        {rssiTypeParameter || rssiChannelParameter || rssiChannelLowParameter || rssiChannelHighParameter ? (
-          <div className="scoped-review-card scoped-review-card--compact receiver-rssi-card" data-testid="receiver-rssi-card">
-            <div className="switch-exercise-card__header">
-              <div>
-                <strong>RSSI</strong>
-                <InfoDot label="About RSSI" wide>
-                  Where the link-quality readout comes from. The receiver serial protocol itself is assigned from
-                  Ports; this card covers the receiver side of that link. After changing RSSI settings, rerun the RC
-                  checks before flight.
-                </InfoDot>
-              </div>
-            </div>
-
-            <div className="config-pills">
-              <span>RSSI source: {formatArducopterRssiType(rssiType)}</span>
-              <span>Live RX RSSI: {formatRxRssi(snapshot.liveVerification.rcInput.rssi)}</span>
-              {receiverLinkPorts.length > 0
-                ? receiverLinkPorts.map((port) => <span key={`receiver-link:${port.portNumber}`}>{port.label}: {port.protocolLabel}</span>)
-                : <span>No receiver serial link in the current port roles</span>}
-            </div>
-
-            <div className="scoped-editor-grid">
-              {rssiTypeParameter ? (
-                <ScopedSelectField
-                  parameter={rssiTypeParameter}
-                  liveValue={rssiType}
-                  editedValues={editedValues}
-                  onChange={(paramId, value) => setDraft(paramId, value)}
-                  draftStatusById={parameterDraftById}
-                />
-              ) : null}
-
-              {rssiChannelParameter ? (
-                <ScopedField
-                  parameter={rssiChannelParameter}
-                  liveValue={rssiChannel}
-                  editedValues={editedValues}
-                  onChange={(paramId, value) => setDraft(paramId, value)}
-                  draftStatusById={parameterDraftById}
-                />
-              ) : null}
-
-              {rssiChannelLowParameter ? (
-                <ScopedField
-                  parameter={rssiChannelLowParameter}
-                  liveValue={rssiChannelLow}
-                  editedValues={editedValues}
-                  onChange={(paramId, value) => setDraft(paramId, value)}
-                  draftStatusById={parameterDraftById}
-                />
-              ) : null}
-
-              {rssiChannelHighParameter ? (
-                <ScopedField
-                  parameter={rssiChannelHighParameter}
-                  liveValue={rssiChannelHigh}
-                  editedValues={editedValues}
-                  onChange={(paramId, value) => setDraft(paramId, value)}
-                  draftStatusById={parameterDraftById}
-                />
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
-        {rcOptionsParameter ? (
-          <div className="scoped-review-card scoped-review-card--compact" data-testid="receiver-rc-options">
-            <div className="switch-exercise-card__header">
-              <div>
-                <strong>RC options</strong>
-                <InfoDot label="About RC options">
-                  Advanced receiver behaviour (RC_OPTIONS). Leave these off unless a specific receiver or setup needs
-                  them.
-                </InfoDot>
-              </div>
-            </div>
-            <ScopedBitmaskField
-              parameter={rcOptionsParameter}
-              liveValue={rcOptionsParameter.value}
-              editedValues={editedValues}
-              onChange={(paramId, value) => setDraft(paramId, value)}
-              draftStatusById={parameterDraftById}
-            />
-          </div>
-        ) : null}
-
-        {renderAdditionalSettingsCard(
-          'Additional receiver settings',
-          '',
-          receiverAdditionalGroups,
-          receiverAdditionalDraftEntries,
-          receiverAdditionalStagedDrafts,
-          receiverAdditionalInvalidDrafts,
-          'receiver:additional',
-          'Apply Additional Receiver Changes',
-          'additional receiver settings'
-        )}
-      </div>
-    </details>
-  )
+  // RSSI, RC options, protocols and input rate are under Config ▸ RC.
+  const advancedSlot = null
 
   return (
     <ReceiverView

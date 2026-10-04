@@ -66,6 +66,7 @@ import {
   AHRS_ORIENTATION_OPTIONS,
   type AppViewId,
   type UpstreamParameterMap,
+  formatArducopterRssiType
 } from '@arduconfig/param-metadata'
 import { loadUpstreamParameters } from './generated/param-upstream'
 import {
@@ -127,7 +128,8 @@ import {
   formatParameterSync,
   formatRcLink,
   formatStatHours,
-  formatBatteryTelemetry
+  formatBatteryTelemetry,
+  formatRxRssi
 } from './status-formatters'
 import {
   formatParameterDraftValue,
@@ -6815,11 +6817,46 @@ export function App() {
           editedValues={editedValues}
           draftStatusById={parameterDraftById}
           onChangeSlot={(paramId, value) => setDraft(paramId, value)}
-          onOpenFlightModeTask={() => {
-            setActiveViewId('receiver')
-            setReceiverTaskOverride('flight-modes')
-          }}
         />
+    )
+  }
+
+  // Config ▸ RC: the live link readout under the receiver settings, and the
+  // receiver parameters no curated field covers. Both lived in the Receiver
+  // tab's Advanced fold; the Receiver tab keeps the hands-on work.
+  function renderReceiverSignalFooter(): ReactNode {
+    // The leftover receiver parameters, minus anything a curated Config field
+    // already shows (input rate, the RSSI range): one place per setting.
+    const residueGroups = receiverAdditional.receiverAdditionalGroups
+      .map((group) => ({ ...group, parameters: group.parameters.filter((parameter) => !isPeripheralOrConfigParamId(parameter.id)) }))
+      .filter((group) => group.parameters.length > 0)
+    return (
+      <>
+        <div className="config-pills" data-testid="config-receiver-link">
+          <span>RSSI source: {formatArducopterRssiType(readRoundedParameter(snapshot, 'RSSI_TYPE'))}</span>
+          <span>Live RX RSSI: {formatRxRssi(snapshot.liveVerification.rcInput.rssi)}</span>
+          {receiverLinkPorts.length > 0
+            ? receiverLinkPorts.map((port) => (
+                <span key={`receiver-link:${port.portNumber}`}>
+                  {port.label}: {port.protocolLabel}
+                </span>
+              ))
+            : <span>No receiver serial link in the current port roles</span>}
+        </div>
+        {residueGroups.length === 0
+          ? null
+          : renderAdditionalSettingsCard(
+              'Additional receiver settings',
+              '',
+              residueGroups,
+              receiverAdditional.receiverAdditionalDraftEntries,
+              receiverAdditional.receiverAdditionalStagedDrafts,
+              receiverAdditional.receiverAdditionalInvalidDrafts,
+              'receiver:additional',
+              'Apply Additional Receiver Changes',
+              'additional receiver settings'
+            )}
+      </>
     )
   }
 
@@ -7499,9 +7536,9 @@ export function App() {
       // header offset and the paint-aware retry are consistent with every other
       // guided nav, instead of a bare scrollIntoView that races the heavy view.
       case 'mode-switch-exercise':
+        // Flight modes live under Config ▸ Flight Modes.
         handleStartModeSwitchExercise()
-        setReceiverTaskOverride('flight-modes')
-        scrollToPanel('setup-panel-rc')
+        scrollToPanel('setup-panel-modes')
         return
       case 'rc-range-exercise':
         handleStartRcRangeExercise()
@@ -10208,6 +10245,9 @@ export function App() {
             }
             if (section.id === 'board-orientation') {
               return { ...section, footer: renderBoardOrientationFooter() }
+            }
+            if (section.id === 'receiver-signal') {
+              return { ...section, footer: renderReceiverSignalFooter() }
             }
             return section
           }).concat([
