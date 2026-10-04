@@ -3,12 +3,14 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { ImuMaskField } from './ImuMaskField'
 import { InfoDot } from './InfoDot'
 import { ParamInfoBubble } from './ParamInfoBubble'
 import {
   ScopedField,
   ScopedSelectField,
   ScopedBitmaskField,
+  ScopedCheckboxField,
   optionLabelsFitChips,
   type ScopedFieldDraftMap
 } from './ScopedField'
@@ -46,6 +48,13 @@ export interface ConfigSectionField {
    * fields sharing a group render as one cell instead.
    */
   group?: string
+  /**
+   * A purpose-built editor in place of the generic metadata dispatch:
+   * `checkbox` renders a 0/1 enum as one box captioned with `label` (Active
+   * IMU); `imu-mask` renders a per-IMU bitmask as one small box per IMU
+   * (INS_FAST_SAMPLE).
+   */
+  editor?: 'checkbox' | 'imu-mask'
   /** Force an enum's editor: a dropdown even when its options would fit as chips. */
   layout?: 'select' | 'chips'
 }
@@ -279,7 +288,17 @@ export function ConfigView(props: ConfigViewProps) {
 
   // One editable field row (or the "(not reported)" placeholder).
   function renderField(field: ConfigSectionField, fieldEditors?: Readonly<Record<string, ReactNode>>): ReactNode {
-    const parameter = parametersById.get(field.paramId)
+    const reported = parametersById.get(field.paramId)
+    // A parameter the catalog has no entry for (BRD_BOOT_DELAY) titled itself
+    // with its raw id and had no "i". The section's own label and unit stand
+    // in, so it reads like its neighbours and the "i" still names the id.
+    const parameter =
+      reported && !reported.definition
+        ? {
+            ...reported,
+            definition: { id: reported.id, label: field.label, description: '', category: 'config', unit: field.unit }
+          }
+        : reported
     const custom = parameter ? fieldEditors?.[field.paramId] : undefined
     if (custom !== undefined && custom !== null) {
       return (
@@ -311,7 +330,26 @@ export function ConfigView(props: ConfigViewProps) {
     const options = parameter.definition?.options ?? []
     const hasOptions = options.length > 0
     const editor =
-      parameter.definition?.bitmask && hasOptions ? (
+      field.editor === 'imu-mask' ? (
+        <ImuMaskField
+          parameter={parameter}
+          editedValues={editedValues}
+          onChange={onEditChange}
+          draftStatusById={draftStatusById}
+        />
+      ) : field.editor === 'checkbox' ? (
+        <ScopedCheckboxField
+          parameter={parameter}
+          liveValue={parameter.value}
+          editedValues={editedValues}
+          onChange={onEditChange}
+          draftStatusById={draftStatusById}
+          testId={`config-checkbox-${parameter.id}`}
+          // The card title names the setting; each box is just "IMU 1".
+          caption={field.label}
+          showTitle={false}
+        />
+      ) : parameter.definition?.bitmask && hasOptions ? (
         <ScopedBitmaskField
           parameter={parameter}
           liveValue={parameter.value}

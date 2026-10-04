@@ -3028,28 +3028,60 @@ test.describe('Config view', () => {
   test('an editable field shows the raw ArduPilot parameter name under its label', async ({ page }) => {
     // Reported gap: friendly labels alone don't tell the operator what to
     // search the wiki/Parameters tab for. Centralized in ScopedField's shared
-    // components, so any editable field is representative — Fast sampling
-    // (INS_FAST_SAMPLE) in the system-rates section. NOTE: not Main loop rate
+    // components, so any editable field is representative — MAVLink system ID
+    // (SYSID_THISMAV) in the identity section. NOTE: not Main loop rate
     // (SCHED_LOOP_RATE) — that one has <= 8 enum options and Config.tsx
     // renders it via the chip-grid layout (ScopedOptionChipsField), which is
     // a role="radiogroup" of buttons with no single labelled control for
-    // getByLabel to match. INS_FAST_SAMPLE has no enum options, so it goes
-    // through ScopedNumberField's plain aria-label'd <input> instead.
+    // getByLabel to match. Nor Fast sampling (INS_FAST_SAMPLE) any more: it is
+    // one box per IMU now. SYSID_THISMAV has no enum options, so it goes
+    // through ScopedNumberField's plain aria-label'd <input>.
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-config').click()
-    // system-rates is under System; Fast sampling is shown directly.
-    await openConfigSection(page, 'system-rates')
-    const rates = page.getByTestId('config-section-system-rates')
-    const field = rates.locator('.scoped-editor-field', { hasText: 'Fast sampling' })
-    await expect(field.getByTestId('param-info-INS_FAST_SAMPLE')).toBeVisible()
+    await openConfigSection(page, 'identity')
+    const identity = page.getByTestId('config-section-identity')
+    const field = identity.locator('.scoped-editor-field', { hasText: 'MAVLink System ID' })
+    await expect(field.getByTestId('param-info-SYSID_THISMAV')).toBeVisible()
     await expect(field.locator('.scoped-editor-field__param-id')).toHaveCount(0)
 
     // Regression guard: the id hint must not pollute the control's accessible
     // name (a <label> concatenates ALL its text by default) — an exact
     // getByLabel query on the friendly label alone must still resolve.
-    await expect(field.getByLabel('Fast sampling (IMU mask)', { exact: true })).toBeVisible()
+    await expect(field.getByLabel('MAVLink System ID', { exact: true })).toBeVisible()
+  })
+
+  test('System shows each IMU as a box and every field titled', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+    await openConfigSection(page, 'system-rates')
+
+    // Fast sampling is one box per IMU (demo INS_FAST_SAMPLE = 1: IMU 1 only),
+    // the raw value in its "i"; a box flips that IMU's bit and nothing else.
+    const fast = page.getByTestId('imu-mask-INS_FAST_SAMPLE')
+    await expect(fast.getByTestId('imu-mask-INS_FAST_SAMPLE-1')).toBeChecked()
+    await expect(fast.getByTestId('imu-mask-INS_FAST_SAMPLE-2')).not.toBeChecked()
+    await expect(fast.getByTestId('imu-mask-INS_FAST_SAMPLE-3')).not.toBeChecked()
+    await expect(fast.getByTestId('imu-mask-value-INS_FAST_SAMPLE')).toHaveText(/Value 1/)
+    await fast.getByTestId('imu-mask-INS_FAST_SAMPLE-3').check()
+    await expect(fast.getByTestId('imu-mask-value-INS_FAST_SAMPLE')).toHaveText(/Value 5 \(was 1\)/)
+    await expect(fast).toHaveClass(/scoped-editor-field--staged/)
+
+    // Active IMU: one box each, captioned by IMU.
+    const imus = page.getByTestId('config-section-active-imu')
+    await expect(imus.getByTestId('config-checkbox-INS_USE')).toContainText('IMU 1')
+    await expect(imus.getByTestId('config-checkbox-INS_USE3')).toContainText('IMU 3')
+
+    // The log backend is a dropdown; the boot delay is titled, not its raw id.
+    await expect(page.getByTestId('config-section-logging').locator('select').first()).toBeVisible()
+    await expect(
+      page.getByTestId('config-section-identity').locator('.scoped-editor-field__title', { hasText: /^Boot delay/ })
+    ).toBeVisible()
+    await expect(page.getByTestId('param-info-BRD_BOOT_DELAY')).toHaveCount(1)
+    await page.getByTestId('config-revert').click()
   })
 })
 
@@ -7042,8 +7074,8 @@ test.describe('Scoped write-progress bar', () => {
     await page.getByTestId('view-button-config').click()
     await openConfigSection(page, 'system-rates')
     const rates = page.getByTestId('config-section-system-rates')
-    // Stage a config edit (INS_FAST_SAMPLE) so config:apply has something to write.
-    await rates.locator('.scoped-editor-field', { hasText: 'Fast sampling' }).locator('input[type=number]').fill('3')
+    // Stage a config edit (INS_FAST_SAMPLE, IMU 2's box) so config:apply has something to write.
+    await rates.getByTestId('imu-mask-INS_FAST_SAMPLE-2').check()
 
     await page.getByTestId('config-apply').click()
     const banner = page.getByTestId('write-progress-banner')

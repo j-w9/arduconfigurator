@@ -187,7 +187,8 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
       fields: [
         { paramId: 'SCHED_LOOP_RATE', label: 'Main loop rate', unit: 'Hz', digits: 0 },
         { paramId: 'INS_GYRO_RATE', label: 'Gyro update rate', digits: 0 },
-        { paramId: 'INS_FAST_SAMPLE', label: 'Fast sampling (IMU mask)', digits: 0 }
+        // One box per IMU rather than a number to decode; raw value in the "i".
+        { paramId: 'INS_FAST_SAMPLE', label: 'Fast sampling (IMU mask)', digits: 0, editor: 'imu-mask' }
       ]
     },
     // Fast-rate thread is ArduCopter-only (FSTRATE_* is not exposed on
@@ -222,9 +223,11 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
       title: 'Active IMU',
       description: 'Which onboard IMUs the EKF/AHRS uses. Disable a noisy or failed IMU here; reboot required. At least one IMU must stay enabled.',
       fields: [
-        { paramId: 'INS_USE', label: 'Use IMU 1', digits: 0 },
-        { paramId: 'INS_USE2', label: 'Use IMU 2', digits: 0 },
-        { paramId: 'INS_USE3', label: 'Use IMU 3', digits: 0 }
+        // One box per IMU, three to a line, instead of three stacked chip pairs;
+        // the card title says what the box means.
+        { paramId: 'INS_USE', label: 'IMU 1', digits: 0, editor: 'checkbox' },
+        { paramId: 'INS_USE2', label: 'IMU 2', digits: 0, editor: 'checkbox' },
+        { paramId: 'INS_USE3', label: 'IMU 3', digits: 0, editor: 'checkbox' }
       ]
     },
     {
@@ -290,7 +293,8 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
       title: 'Logging',
       description: 'Where (and what) the autopilot writes to the dataflash log. LOG_DISARMED = 1 keeps logging while disarmed for bench debugging.',
       fields: [
-        { paramId: 'LOG_BACKEND_TYPE', label: 'Backend', digits: 0 },
+        // Five backends wrap to two chip lines in a quarter-width cell.
+        { paramId: 'LOG_BACKEND_TYPE', label: 'Backend', digits: 0, layout: 'select' },
         { paramId: 'LOG_BITMASK', label: 'Bitmask', digits: 0 },
         { paramId: 'LOG_DISARMED', label: 'Log while disarmed', digits: 0 },
         { paramId: 'LOG_REPLAY', label: 'Replay log', digits: 0 }

@@ -15905,18 +15905,93 @@ details.bf-gui-box:not([open]) > summary::after {
   }
 }
 
-/* Config ▸ System: the three short cards (rates, IMU, identity) side by side,
-   and Logging across two columns with its four fields two by two, so the row
-   is one even band instead of three short cards beside one tall one. */
-@media (min-width: 1400px) {
+/* Config ▸ System reads as two even bands: how hard the board runs (rates,
+   and the fast-rate thread when the build has it, beside the IMUs in use), then
+   who it is and what it logs (identity beside logging). Each card lays its
+   fields out in one row, top-aligned, so a box is only as tall as its content
+   and the row is one band instead of four columns of stacked fields. Narrower
+   screens get two columns; a phone, one. */
+.config-grid--cat-system .config-section__editors,
+.config-grid--cat-system .config-section__field-row {
+  align-items: start;
+}
+.config-grid--cat-system .config-section__editors {
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  column-gap: var(--space-2);
+}
+.config-grid--cat-system .config-section--id-active-imu .config-section__editors {
+  grid-template-columns: repeat(auto-fit, minmax(min(88px, 100%), 1fr));
+}
+/* An IMU box is one line: the box, "IMU n" and its "i". */
+.config-section--id-active-imu .scoped-checkbox {
+  flex-wrap: nowrap;
+}
+/* A box this narrow would squeeze its tip to the box's width, so an IMU's "i"
+   opens across the card instead. */
+@media (min-width: 641px) {
+  .config-grid .config-section--id-active-imu {
+    position: relative;
+  }
+  .config-grid .config-section--id-active-imu .scoped-editor-field {
+    position: static;
+  }
+  .config-grid .config-section--id-active-imu .scoped-editor-field .receiver-info-tip {
+    top: auto;
+    margin-top: 22px;
+  }
+}
+@media (min-width: 900px) {
   .config-grid--cat-system:not(.config-grid--wide) {
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* Two columns: the loop rate's chips get the card's width, gyro rate and fast
+   sampling share the line under it, and the IMU boxes stack beside them so
+   the two cards end level. */
+@media (min-width: 900px) and (max-width: 1499px) {
+  .config-grid--cat-system .config-section--id-system-rates .config-section__editors {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .config-grid--cat-system .config-section--id-system-rates .config-section__editors > :first-child {
+    grid-column: 1 / -1;
+  }
+  .config-grid--cat-system .config-section--id-active-imu .config-section__editors {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (min-width: 1500px) {
+  .config-grid--cat-system:not(.config-grid--wide) {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+  .config-grid--cat-system .config-section--id-system-rates {
+    grid-column: span 9;
+  }
+  .config-grid--cat-system .config-section--id-active-imu {
+    grid-column: span 3;
+  }
+  /* With the fast-rate thread the first band is three cards. */
+  .config-grid--cat-system:has(.config-section--id-fast-loop-rate) .config-section--id-system-rates {
+    grid-column: span 6;
+  }
+  .config-grid--cat-system .config-section--id-fast-loop-rate,
+  .config-grid--cat-system:has(.config-section--id-fast-loop-rate) .config-section--id-active-imu {
+    grid-column: span 3;
+  }
+  .config-grid--cat-system .config-section--id-identity {
+    grid-column: span 6;
   }
   .config-grid--cat-system .config-section--id-logging {
-    grid-column: span 2;
+    grid-column: span 6;
+  }
+  /* Content-sized tracks: each field gets its natural width (six loop-rate
+     chips on one line, a full title over a select) and the slack is shared,
+     so no title wraps while a neighbour has room to spare. */
+  .config-grid--cat-system .config-section--id-system-rates .config-section__editors,
+  .config-grid--cat-system .config-section--id-identity .config-section__editors {
+    grid-template-columns: repeat(3, auto);
   }
   .config-grid--cat-system .config-section--id-logging .config-section__editors {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, auto);
   }
 }
 
