@@ -18257,7 +18257,13 @@ button.mavlink-inspector__sent-row {
   white-space: nowrap;
 }
 .receiver-channel-head__reverse .receiver-info-dot {
-  flex: 0 0 auto;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1;
 }
 .receiver-channel-head__reverse .receiver-info-tip {
   text-transform: none;
@@ -18315,7 +18321,7 @@ button.mavlink-inspector__sent-row {
 }
 .telemetry-stack--receiver .receiver-map {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 110px;
+  grid-template-columns: minmax(0, 1fr) 280px;
   column-gap: var(--space-3);
   align-items: center;
 }
@@ -18329,7 +18335,7 @@ button.mavlink-inspector__sent-row {
      box and left a band of air under one line of picks. */
   grid-row: 1 / span 2;
   align-self: center;
-  width: 110px;
+  width: 280px;
   border: 0;
   background: none;
   padding: 0;
@@ -18337,18 +18343,24 @@ button.mavlink-inspector__sent-row {
 /* Shrink the whole reacting craft rather than clip it: zoom scales the
    WebGL canvas and the layout box together, so the card stays one line
    tall and the quad is still whole. */
-/* 200px at 0.55 is the 110px column. Scoped tighter than the shared
-   "craft fills its box" rule so the fixed width wins. */
+/* Fills its 280px column at its own scale (no zoom: zoom on the WebGL
+   canvas mis-sized the box and pushed it past the card's edge). */
 .telemetry-stack--receiver .receiver-map__craft .receiver-stick-craft {
-  width: 200px;
-  zoom: 0.55;
+  width: 100%;
 }
 .receiver-map__craft .receiver-stick-craft {
   margin: 0;
   width: 100%;
 }
-.receiver-map__craft .flight-deck--mini .flight-deck__model-frame {
-  height: 96px;
+/* Beats the older direction-card rule (.telemetry-stack--receiver
+   .rc-direction-craft ... 104px), which the craft still matches. */
+.telemetry-stack--receiver .rc-direction-craft.receiver-map__craft .flight-deck--mini .flight-deck__model-frame {
+  height: 140px;
+}
+@media (max-width: 640px) {
+  .telemetry-stack--receiver .rc-direction-craft.receiver-map__craft .flight-deck--mini .flight-deck__model-frame {
+    height: 110px;
+  }
 }
 .receiver-channel-head {
   padding-bottom: 4px;
@@ -18375,7 +18387,31 @@ button.mavlink-inspector__sent-row {
   text-align: center;
 }
 .receiver-channel-head__endpoints {
-  text-align: right;
+  justify-self: end;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.receiver-channel-head__endpoints:hover,
+.receiver-channel-head__endpoints:focus-visible {
+  color: var(--text);
+}
+/* Endpoints folded: the column shrinks to the toggle's width and the inputs
+   leave the rows, so the bar takes the room back. Above phone width only;
+   a phone has its own row layout and per-row Endpoints tap. */
+@media (min-width: 641px) {
+  .receiver-channel-table--endpoints-closed .receiver-channel-head,
+  .receiver-channel-table--endpoints-closed .receiver-channel-row {
+    grid-template-columns: 44px minmax(150px, 0.9fr) minmax(160px, 1.4fr) 44px 150px 84px 96px;
+  }
+  .receiver-channel-table--endpoints-closed .receiver-channel-row__endpoints {
+    visibility: hidden;
+  }
 }
 .receiver-channel-rows {
   display: grid;
@@ -18545,7 +18581,7 @@ button.mavlink-inspector__sent-row {
    its dropdown (the map-row rule above), channel a little wider. */
 .receiver-modes__row {
   display: grid;
-  grid-template-columns: 1.25fr repeat(6, minmax(0, 1fr));
+  grid-template-columns: minmax(190px, 1.3fr) repeat(6, minmax(0, 1fr));
   gap: 6px;
 }
 .receiver-modes__row .scoped-editor-field {
@@ -18744,9 +18780,7 @@ button.mavlink-inspector__sent-row {
   .receiver-map__craft {
     width: 160px;
   }
-  .telemetry-stack--receiver .receiver-map__craft .receiver-stick-craft {
-    zoom: 0.8;
-  }
+
   .receiver-map-row {
     flex: 1 1 100%;
     grid-template-columns: 72px minmax(0, 1fr);

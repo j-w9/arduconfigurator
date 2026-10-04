@@ -5647,13 +5647,56 @@ test.describe('Receiver mapping', () => {
     await expect(reverse).not.toBeChecked()
   })
 
-  test('the channel rows carry a reverse box only for channels the controller reports RCn_REVERSED on', async ({ page }) => {
+  test('every channel the controller reports gets reverse and low / trim / high; a missing parameter gets none', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
+    // Endpoints start folded below 1360px wide (the suite runs at 1280).
+    const endpointsToggle = page.getByTestId('receiver-endpoints-toggle')
+    if ((await endpointsToggle.getAttribute('aria-expanded')) !== 'true') await endpointsToggle.click()
+    // A real FC reports RCn_MIN/TRIM/MAX/REVERSED for all sixteen inputs, and
+    // so does the demo: an AUX channel is as editable as a stick.
     await expect(page.getByTestId('receiver-function-5')).toBeVisible()
-    // The demo reports RC1..RC4_REVERSED only, so the AUX rows show none.
+    await expect(page.getByTestId('receiver-reverse-5')).toBeVisible()
+    const trim5 = page.getByTestId('receiver-endpoint-5-trim').locator('input')
+    await expect(trim5).toHaveValue('1500')
+    await trim5.fill('1520')
+    await expect(page.getByTestId('receiver-review-dock')).toContainText('1 staged')
+  })
+
+  test('a channel whose RCn_REVERSED is not reported gets no reverse box', async ({ page }) => {
+    await page.goto('/?demoParamOverrides=RC5_REVERSED:null')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await expect(page.getByTestId('receiver-function-5')).toBeVisible()
     await expect(page.getByTestId('receiver-reverse-5')).toHaveCount(0)
+  })
+
+  test('low / trim / high fold behind one header toggle', async ({ page }) => {
+    // Open by default only where there is room: 1360px and wider.
+    await page.setViewportSize({ width: 1600, height: 1000 })
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    const toggle = page.getByTestId('receiver-endpoints-toggle')
+    const trim1 = page.getByTestId('receiver-endpoint-1-trim')
+    // Open by default at the suite's desktop width.
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(trim1).toBeVisible()
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(trim1).toBeHidden()
+    await toggle.click()
+    await expect(trim1).toBeVisible()
+  })
+
+  test('low / trim / high start folded on a narrower screen', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await expect(page.getByTestId('receiver-endpoints-toggle')).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('receiver-endpoint-1-trim')).toBeHidden()
   })
 })
 
@@ -5671,10 +5714,11 @@ test.describe('Receiver endpoints on a CRSF link', () => {
     await expect(page.getByRole('button', { name: 'Start Capture' })).toHaveCount(0)
 
     // One action stages the CRSF range for every channel with endpoints: the
-    // demo seeds RC1..4 at 1000/2000/1500, so MIN and MAX change, TRIM does not.
+    // demo seeds all sixteen at 1000/2000/1500, so each MIN and MAX changes
+    // (32 drafts) and no TRIM does.
     await page.getByTestId('receiver-set-crsf-limits').click()
     const dock = page.getByTestId('receiver-review-dock')
-    await expect(dock).toContainText('8 staged')
+    await expect(dock).toContainText('32 staged')
     await page.getByTestId('receiver-draft-show').click()
     await expect(dock).toContainText('RC1_MIN 1000 → 987')
     await expect(dock).toContainText('RC4_MAX 2000 → 2011')

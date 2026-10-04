@@ -264,7 +264,6 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     rcOptionsParameter,
     receiverSupportParameterById,
     rcFunctionRows,
-    rcFunctionAssigned,
     rcFunctionConflicts
   } = receiverSupportCatalog
 
@@ -404,6 +403,15 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
   )
   const allStagedCount = receiverStagedDrafts.length + receiverAdditionalStagedDrafts.length
   const allInvalidCount = receiverInvalidDrafts.length + receiverAdditionalInvalidDrafts.length
+
+  // Low / trim / high fold away on narrower screens: open by default where
+  // the table has room for them beside the bar, collapsed below that. One
+  // header toggle; a phone keeps its per-row Endpoints tap.
+  const [endpointsOpen, setEndpointsOpen] = useState<boolean>(() =>
+    typeof window === 'undefined' || typeof window.matchMedia !== 'function'
+      ? true
+      : window.matchMedia('(min-width: 1360px)').matches
+  )
 
   const renderReverseField = (channelNumber: number, testId: string): ReactNode => {
     const parameter = selectParameterById(snapshot, `RC${channelNumber}_REVERSED`)
@@ -778,12 +786,19 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
               : 'Start the capture with the sticks centred and throttle low, move roll, pitch, throttle and yaw through their full travel, and flick the CH5/CH6 switches low and high if you use them. Stage the captured values, then apply them below.'}
           </InfoDot>
         </div>
-        <StatusBadge tone={calibrationTone}>
-          {rcCalibrationSession.status === 'ready' ? 'endpoints complete' : rcCalibrationSession.status === 'idle' ? `${rcFunctionAssigned} functions assigned` : rcCalibrationSession.status}
-        </StatusBadge>
+        {/* Only while a capture is doing something; idle says nothing the
+            table does not already show. */}
+        {rcCalibrationSession.status !== 'idle' ? (
+          <StatusBadge tone={calibrationTone}>
+            {rcCalibrationSession.status === 'ready' ? 'endpoints complete' : rcCalibrationSession.status}
+          </StatusBadge>
+        ) : null}
       </div>
 
-      <div className="receiver-channel-table" data-testid="receiver-functions-panel">
+      <div
+        className={`receiver-channel-table${endpointsOpen ? '' : ' receiver-channel-table--endpoints-closed'}`}
+        data-testid="receiver-functions-panel"
+      >
         <span data-testid="receiver-direction-check" className="receiver-direction-anchor" aria-hidden="true" />
         <RcChannelBarStyles />
         <div className="receiver-channel-head" aria-hidden="true">
@@ -801,7 +816,15 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
               says which. Staged like every other change.
             </InfoDot>
           </span>
-          <span className="receiver-channel-head__endpoints">Low · Trim · High (µs)</span>
+          <button
+            type="button"
+            className="receiver-channel-head__endpoints"
+            data-testid="receiver-endpoints-toggle"
+            aria-expanded={endpointsOpen}
+            onClick={() => setEndpointsOpen((open) => !open)}
+          >
+            {endpointsOpen ? 'Low · Trim · High (µs) ▾' : 'Endpoints ▸'}
+          </button>
         </div>
         <div className="receiver-channel-rows" data-testid="receiver-channel-bars">
           {channelDisplays.map((display) => {
