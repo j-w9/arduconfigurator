@@ -18315,27 +18315,40 @@ button.mavlink-inspector__sent-row {
 }
 .telemetry-stack--receiver .receiver-map {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 150px;
+  grid-template-columns: minmax(0, 1fr) 110px;
   column-gap: var(--space-3);
-  align-items: start;
+  align-items: center;
 }
 .telemetry-stack--receiver .receiver-map > :not(.receiver-map__craft) {
   grid-column: 1;
 }
 .receiver-map__craft {
   grid-column: 2;
-  grid-row: 1 / span 6;
+  /* The picks' row (and the outcome line under it when there is one), not
+     six implicit rows: spanning those made the card as tall as the craft's
+     box and left a band of air under one line of picks. */
+  grid-row: 1 / span 2;
   align-self: center;
+  width: 110px;
   border: 0;
   background: none;
   padding: 0;
+}
+/* Shrink the whole reacting craft rather than clip it: zoom scales the
+   WebGL canvas and the layout box together, so the card stays one line
+   tall and the quad is still whole. */
+/* 200px at 0.55 is the 110px column. Scoped tighter than the shared
+   "craft fills its box" rule so the fixed width wins. */
+.telemetry-stack--receiver .receiver-map__craft .receiver-stick-craft {
+  width: 200px;
+  zoom: 0.55;
 }
 .receiver-map__craft .receiver-stick-craft {
   margin: 0;
   width: 100%;
 }
 .receiver-map__craft .flight-deck--mini .flight-deck__model-frame {
-  height: 72px;
+  height: 96px;
 }
 .receiver-channel-head {
   padding-bottom: 4px;
@@ -18713,13 +18726,37 @@ button.mavlink-inspector__sent-row {
   .receiver-modes__row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  /* The title line has no room for the status and four links side by side:
-     the status sits over the links, both at the right edge, the title at
-     the bottom left beside them. */
-  .receiver-jump {
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
+  /* The mode channel gets the full first line so "Channel 7" is readable. */
+  .receiver-modes__row > :first-child {
+    grid-column: 1 / -1;
+  }
+  /* Map on a phone: one column. The craft sits above the picks at a fixed
+     width instead of taking a column the picks need; each pick is its axis
+     label beside a dropdown that keeps the channel readable. */
+  .telemetry-stack--receiver .receiver-map {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .receiver-map__craft {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: center;
+  }
+  .receiver-map__craft {
+    width: 160px;
+  }
+  .telemetry-stack--receiver .receiver-map__craft .receiver-stick-craft {
+    zoom: 0.8;
+  }
+  .receiver-map-row {
+    flex: 1 1 100%;
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+  .receiver-map-row .scoped-editor-field {
+    min-width: 0;
+  }
+  .receiver-map-row .scoped-editor-field select {
+    min-width: 0;
+    width: 100%;
   }
 }
 
