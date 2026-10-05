@@ -49,9 +49,10 @@ import {
   CRSF_RC_MAX_US,
   CRSF_RC_MIN_US,
   assessTransmitterCalibration,
+  RCMAP_PARAM_IDS,
+  buildAxisAssignmentDrafts,
   buildCrsfEndpointDrafts,
-  detectRcLinkProtocol,
-  withRcChannelOptions
+  detectRcLinkProtocol
 } from '../view-models/receiver-channels'
 import { RC_CALIBRATION_AXIS_ORDER, rcCalibrationCaptureComplete } from '../setup-exercise-helpers'
 import { StickCraftPreview } from '../preview-components'
@@ -59,13 +60,6 @@ import { toneForModeSwitchExercise } from '../tone-helpers'
 import { InfoDot } from '../views/InfoDot'
 import { ReceiverView, receiverSectionElementId, type ReceiverTaskId } from '../views/Receiver'
 import { ScopedCheckboxField, ScopedNumberField, ScopedSelectField } from '../views/ScopedField'
-
-const RCMAP_PARAM_IDS: Record<RcAxisId, string> = {
-  roll: 'RCMAP_ROLL',
-  pitch: 'RCMAP_PITCH',
-  throttle: 'RCMAP_THROTTLE',
-  yaw: 'RCMAP_YAW'
-}
 
 export interface ReceiverSectionDerived {
   airframe: ReturnType<typeof deriveAirframe>
@@ -253,6 +247,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
   const { activeReceiverTaskId, receiverTaskCards, activeReceiverTask, receiverTaskOverride } = receiverTasks
 
   const {
+    modeChannelParameter,
     receiverSupportParameterById,
     rcFunctionRows,
     rcFunctionConflicts
@@ -275,6 +270,9 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     airframe,
     rcAxisObservations,
     currentRcAxisChannelMap,
+    modeSwitchEstimate,
+    configuredModeChannel,
+    modeAssignmentParameters,
     receiverDraftEntries,
     receiverStagedDrafts,
     receiverInvalidDrafts,
@@ -332,16 +330,10 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     armSwitchChannelPwm === undefined || armSwitchChannelPwm === 0xffff ? undefined : armSwitchChannelPwm
   )
 
-  // The four RCMAP_* pickers: a channel dropdown over the live parameter.
-  const rcmapParameters = useMemo(
-    () =>
-      Object.fromEntries(
-        RC_CALIBRATION_AXIS_ORDER.map((axisId) => {
-          const parameter = selectParameterById(snapshot, RCMAP_PARAM_IDS[axisId])
-          return [axisId, parameter ? withRcChannelOptions(parameter) : undefined]
-        })
-      ) as Record<RcAxisId, ParameterState | undefined>,
-    [snapshot]
+  // The axes are picked from the channel rows, and only where the controller
+  // reports all four RCMAP_* parameters; otherwise a row names its axis.
+  const axisPicksAvailable = RC_CALIBRATION_AXIS_ORDER.every(
+    (axisId) => selectParameterById(snapshot, RCMAP_PARAM_IDS[axisId]) !== undefined
   )
   // The channel an axis is mapped to as the operator sees it: a staged RCMAP
   // pick wins over the live map, so the channel row's role follows the pick.
@@ -351,6 +343,110 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     return Number.isInteger(editedNumber) && editedNumber >= 1 && editedNumber <= 16
       ? editedNumber
       : currentRcAxisChannelMap[axisId]
+  }
+
+  const shownAxisMap = Object.fromEntries(
+    RC_CALIBRATION_AXIS_ORDER.map((axisId) => [axisId, mappedChannel(axisId)])
+  ) as Record<RcAxisId, number>
+  // A channel's RCn_OPTION as the operator sees it (a staged pick wins).
+  const shownOption = (channelNumber: number): number | undefined => {
+    const paramId = `RC${channelNumber}_OPTION`
+    const parameter = selectParameterById(snapshot, paramId)
+    if (!parameter) {
+      return undefined
+    }
+    const edited = editedValues[paramId]
+    const editedNumber = edited !== undefined && edited !== '' ? Number(edited) : NaN
+    return Number.isFinite(editedNumber) ? editedNumber : parameter.value
+  }
+
+  // One dropdown per row: the four stick axes, then the channel's functions
+  // (RCn_OPTION, CH5 and up). An axis row offers the axes only -- an axis
+  // leaves a channel by being picked on another one, so all four stay mapped.
+  const renderFunctionCell = (
+    channelNumber: number,
+    axes: readonly RcAxisId[],
+    functionParameter: ParameterState | undefined,
+    plainRole: string
+  ): ReactNode => {
+    if (!axisPicksAvailable) {
+      if (axes.length > 0) {
+        return <strong className="receiver-channel-row__axis">{axes.map((axis) => formatRcAxisLabel(axis)).join(' / ')}</strong>
+      }
+      return functionParameter ? (
+        <div className="receiver-channel-row__function" data-testid={`receiver-function-${channelNumber}`}>
+          <ScopedSelectField
+            parameter={functionParameter}
+            liveValue={functionParameter.value}
+            editedValues={editedValues}
+            onChange={(paramId, value) => setDraft(paramId, value)}
+            draftStatusById={parameterDraftById}
+            compact
+          />
+        </div>
+      ) : (
+        <span className="receiver-channel-row__plain">{plainRole}</span>
+      )
+    }
+
+    const axisId = axes[0]
+    const option = functionParameter ? shownOption(channelNumber) : undefined
+    const functionOptions = functionParameter?.definition?.options ?? []
+    const value = axisId !== undefined ? `axis:${axisId}` : functionParameter ? `option:${option ?? 0}` : ''
+    // Outlined while a pick that touches this row is staged: an RCMAP draft
+    // that moves an axis onto or off it, or its own RCn_OPTION.
+    const statusFor = (paramId: string): string | undefined => parameterDraftById.get(paramId)?.status
+    const touching = RC_CALIBRATION_AXIS_ORDER.filter(
+      (axis) => shownAxisMap[axis] === channelNumber || currentRcAxisChannelMap[axis] === channelNumber
+    ).map((axis) => RCMAP_PARAM_IDS[axis])
+    const rowParamIds = functionParameter ? [...touching, functionParameter.id] : touching
+    const status = rowParamIds.some((paramId) => statusFor(paramId) === 'invalid')
+      ? 'invalid'
+      : rowParamIds.some((paramId) => statusFor(paramId) === 'staged')
+        ? 'staged'
+        : 'unchanged'
+
+    return (
+      <div className="receiver-channel-row__function" data-testid={`receiver-function-${channelNumber}`}>
+        <label className={`scoped-editor-field scoped-editor-field--compact scoped-editor-field--${status}`}>
+          <select
+            data-testid={`receiver-channel-function-${channelNumber}`}
+            aria-label={`CH${channelNumber} function`}
+            title={axisId !== undefined ? 'Pick another axis to swap. Pick this axis on another channel to free this one.' : undefined}
+            value={value}
+            onChange={(event) => {
+              const [kind, picked] = event.target.value.split(':')
+              if (kind === 'axis') {
+                mergeDrafts(buildAxisAssignmentDrafts(shownAxisMap, picked as RcAxisId, channelNumber, shownOption))
+              } else if (kind === 'option' && functionParameter) {
+                setDraft(functionParameter.id, picked)
+              }
+            }}
+          >
+            {value === '' ? <option value="">{plainRole}</option> : null}
+            <optgroup label="Stick">
+              {RC_CALIBRATION_AXIS_ORDER.map((axis) => (
+                <option key={axis} value={`axis:${axis}`}>
+                  {formatRcAxisLabel(axis)}
+                </option>
+              ))}
+            </optgroup>
+            {functionParameter && axisId === undefined ? (
+              <optgroup label="Function">
+                {functionOptions.some((entry) => entry.value === option) ? null : (
+                  <option value={`option:${option ?? 0}`}>{`${option ?? 0} (unlisted)`}</option>
+                )}
+                {functionOptions.map((entry) => (
+                  <option key={entry.value} value={`option:${entry.value}`}>
+                    {entry.label}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+          </select>
+        </label>
+      </div>
+    )
   }
 
   const rcLinkProtocol = detectRcLinkProtocol({
@@ -478,61 +574,48 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
           <div>
             <strong>Map</strong>
             <InfoDot label="About channel mapping" wide>
-              Which receiver channel carries roll, pitch, throttle and yaw (RCMAP_*). Pick each channel here, or run
-              the guided capture: move one stick at a time, the app locks onto the channel that moves alone and stages
-              the detected map. A channel the flight controller reads backwards gets its Reverse box ticked in the
-              Channels table; the direction check under this finds those for you. RCMAP changes take effect after a
-              reboot.
+              Which receiver channel carries roll, pitch, throttle and yaw (RCMAP_*). Pick an axis from a channel's
+              Function dropdown below, or run the guided capture: move one stick at a time, the app locks onto the
+              channel that moves alone and stages the detected map. Picking an axis that another channel has swaps
+              the two. A channel the flight controller reads backwards gets its Reverse box ticked in the Channels
+              table. RCMAP changes take effect after a reboot.
             </InfoDot>
           </div>
         </div>
 
-        <div className="receiver-map-grid" data-testid="receiver-map-grid">
-          {RC_CALIBRATION_AXIS_ORDER.map((axisId) => {
-            const capture = rcMappingSession.captures[axisId]
-            const activeTarget = rcMappingSession.status === 'running' && rcMappingSession.currentTargetAxis === axisId
-            const detected = capture.detectedChannelNumber
-            const rcmap = rcmapParameters[axisId]
-            const channel = mappedChannel(axisId)
-            // Short, so the label column stays narrow and the pick keeps its
-            // width: the focus strip above carries the full instruction.
-            // Only while a capture runs: afterwards the pick itself shows the
-            // channel, and "Found CH2" under a pick that says CH2 said nothing.
-            const detail =
-              rcMappingSession.status !== 'running'
-                ? ''
-                : activeTarget
-                  ? rcMappingCandidate
-                    ? `Locking CH${rcMappingCandidate.channelNumber}`
-                    : 'Move now'
-                  : detected !== undefined
-                    ? `Found CH${detected}`
-                    : 'Pending'
-            return (
-              <div
-                key={axisId}
-                className={`receiver-map-row${activeTarget ? ' receiver-map-row--target' : ''}${detected !== undefined ? ' receiver-map-row--complete' : ''}`}
-                data-testid={`receiver-map-${axisId}`}
-              >
-                <span className="receiver-map-row__axis">
-                  <strong>{formatRcAxisLabel(axisId)}</strong>
-                  {detail ? <small>{detail}</small> : null}
-                </span>
-                {rcmap ? (
-                  <ScopedSelectField
-                    parameter={rcmap}
-                    liveValue={currentRcAxisChannelMap[axisId]}
-                    editedValues={editedValues}
-                    onChange={(paramId, value) => setDraft(paramId, value)}
-                    draftStatusById={parameterDraftById}
-                  />
-                ) : (
-                  <span className="receiver-map-row__fixed">CH{channel}</span>
-                )}
-              </div>
-            )
-          })}
-        </div>
+        {rcMappingSession.status === 'idle' ? (
+          <p className="receiver-map__hint">Pick each stick from its channel&rsquo;s Function below, or let guided mapping find them.</p>
+        ) : null}
+        {/* The picks live on the channel rows below; while a guided capture
+            runs, this line shows its progress, one axis at a time. */}
+        {rcMappingSession.status === 'running' ? (
+          <div className="receiver-map-grid" data-testid="receiver-map-grid">
+            {RC_CALIBRATION_AXIS_ORDER.map((axisId) => {
+              const capture = rcMappingSession.captures[axisId]
+              const activeTarget = rcMappingSession.currentTargetAxis === axisId
+              const detected = capture.detectedChannelNumber
+              const detail = activeTarget
+                ? rcMappingCandidate
+                  ? `Locking CH${rcMappingCandidate.channelNumber}`
+                  : 'Move now'
+                : detected !== undefined
+                  ? `Found CH${detected}`
+                  : 'Pending'
+              return (
+                <div
+                  key={axisId}
+                  className={`receiver-map-row receiver-map-row--progress${activeTarget ? ' receiver-map-row--target' : ''}${detected !== undefined ? ' receiver-map-row--complete' : ''}`}
+                  data-testid={`receiver-map-${axisId}`}
+                >
+                  <span className="receiver-map-row__axis">
+                    <strong>{formatRcAxisLabel(axisId)}</strong>
+                    <small>{detail}</small>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
 
         {rcMappingSession.status !== 'running' ? (
           <div className="receiver-map__actions">
@@ -740,9 +823,58 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
       })
     : []
 
-  // The arm switch: a channel the radio drives, so it stays on the Receiver
-  // tab, at the foot of the table whose row it outlines. Flight modes (the
-  // mode channel and the six slots) are under Config ▸ Flight Modes.
+  // The arm switch and the flight modes: what the switches do, at the foot
+  // of the table whose rows show them moving. The slot the mode switch is in
+  // right now is lit, so flicking it through its positions confirms each
+  // mode. Config ▸ Flight Modes edits the same parameters (one draft pool).
+  const flightModesLine =
+    modeChannelParameter || modeAssignmentParameters.length > 0 ? (
+      <div className="receiver-modes" id={receiverSectionElementId('flight-modes')} data-testid="receiver-flight-modes-card">
+        <div className="receiver-modes__title">
+          <strong>Flight modes</strong>
+          <InfoDot label="About flight modes" wide>
+            The channel that selects the flight mode, and the mode for each of its six switch positions. The position
+            the switch is in now is outlined; flick it through every position to check each one.
+          </InfoDot>
+        </div>
+        <div className="receiver-modes__row">
+          {modeChannelParameter ? (
+            <ScopedSelectField
+              // A copy with a one-word title; the copy never reaches the write path.
+              parameter={
+                modeChannelParameter.definition
+                  ? { ...modeChannelParameter, definition: { ...modeChannelParameter.definition, label: 'Channel' } }
+                  : modeChannelParameter
+              }
+              liveValue={configuredModeChannel}
+              editedValues={editedValues}
+              onChange={(paramId, value) => setDraft(paramId, value)}
+              draftStatusById={parameterDraftById}
+            />
+          ) : null}
+          {modeAssignmentParameters.map((parameter, index) => {
+            const active = modeSwitchEstimate.estimatedSlot === index + 1
+            return (
+              <div
+                key={parameter.id}
+                className={`receiver-modes__slot${active ? ' is-active' : ''}`}
+                data-testid={`receiver-mode-slot-${index + 1}`}
+                data-active={active ? 'true' : undefined}
+              >
+                <ScopedSelectField
+                  parameter={parameter.definition ? { ...parameter, definition: { ...parameter.definition, label: String(index + 1) } } : parameter}
+                  liveValue={parameter.value}
+                  editedValues={editedValues}
+                  onChange={(paramId, value) => setDraft(paramId, value)}
+                  draftStatusById={parameterDraftById}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    ) : null
+
   const armLine = (
     <>
         {armSwitchAvailable ? (
@@ -886,22 +1018,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
               >
                 <span className="receiver-channel-row__ch">CH{channelNumber}</span>
                 <div className="receiver-channel-row__role">
-                  {axes.length > 0 ? (
-                    <strong className="receiver-channel-row__axis">{axes.map((axis) => formatRcAxisLabel(axis)).join(' / ')}</strong>
-                  ) : functionRow && functionParameter ? (
-                    <div className="receiver-channel-row__function" data-testid={`receiver-function-${channelNumber}`}>
-                      <ScopedSelectField
-                        parameter={functionParameter}
-                        liveValue={functionParameter.value}
-                        editedValues={editedValues}
-                        onChange={(paramId, value) => setDraft(paramId, value)}
-                        draftStatusById={parameterDraftById}
-                        compact
-                      />
-                    </div>
-                  ) : (
-                    <span className="receiver-channel-row__plain">{display.role}</span>
-                  )}
+                  {renderFunctionCell(channelNumber, axes, functionRow ? functionParameter : undefined, display.role)}
                   {armSwitchAssignment.channel === channelNumber ? <span className="receiver-channel-row__tag">Arm</span> : null}
                 </div>
                 <div className="receiver-channel-row__bar">
@@ -1052,6 +1169,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
         ) : null}
       </div>
       {armLine}
+      {flightModesLine}
 
     </div>
   )

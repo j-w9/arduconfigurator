@@ -7,6 +7,7 @@ import {
   RC_CALIBRATION_TOLERANCE_US,
   RC_CHANNEL_OPTIONS,
   assessTransmitterCalibration,
+  buildAxisAssignmentDrafts,
   buildCrsfEndpointDrafts,
   detectRcLinkProtocol,
   withRcChannelOptions
@@ -118,5 +119,29 @@ describe('assessTransmitterCalibration', () => {
     expect(assessTransmitterCalibration({ ...good, channelNumber: 3, centerPwm: undefined, observedMax: 1900 })).toBe(
       'CH3: 987..1900. Calibrate the radio.'
     )
+  })
+})
+
+describe('buildAxisAssignmentDrafts', () => {
+  const map = { roll: 1, pitch: 2, throttle: 3, yaw: 4 }
+  const noOptions = (): number | undefined => undefined
+
+  it('swaps two axes so all four stay on distinct channels', () => {
+    expect(buildAxisAssignmentDrafts(map, 'roll', 2, noOptions)).toEqual({ RCMAP_ROLL: '2', RCMAP_PITCH: '1' })
+  })
+
+  it('moves an axis onto a free channel and clears the function there', () => {
+    expect(buildAxisAssignmentDrafts(map, 'throttle', 6, (channel) => (channel === 6 ? 153 : 0))).toEqual({
+      RCMAP_THROTTLE: '6',
+      RC6_OPTION: '0'
+    })
+  })
+
+  it('leaves a channel with no function, or Do Nothing, alone', () => {
+    expect(buildAxisAssignmentDrafts(map, 'yaw', 7, () => 0)).toEqual({ RCMAP_YAW: '7' })
+  })
+
+  it('stages nothing when the axis is already there', () => {
+    expect(buildAxisAssignmentDrafts(map, 'pitch', 2, noOptions)).toEqual({})
   })
 })

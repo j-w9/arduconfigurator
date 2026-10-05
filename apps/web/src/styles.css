@@ -18599,6 +18599,43 @@ button.mavlink-inspector__sent-row {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
 }
+/* Flight modes at the foot of the channel table, under the arm switch: the
+   title, then the channel and the six slots in one row. The slot the mode
+   switch is in right now is outlined. */
+.receiver-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--space-2);
+}
+.receiver-modes__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.receiver-modes__slot {
+  min-width: 0;
+  border-radius: var(--radius-md);
+}
+.receiver-modes__slot .scoped-editor-field {
+  height: 100%;
+}
+.receiver-modes__slot.is-active {
+  box-shadow: inset 0 0 0 1px rgba(92, 194, 138, 0.75);
+  background: rgba(92, 194, 138, 0.08);
+}
+.receiver-map__hint {
+  order: 10;
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+/* A running guided capture's progress: the axis and its state, no pick. */
+.receiver-map-row--progress {
+  grid-template-columns: auto;
+  min-width: 96px;
+}
 .receiver-arm-line {
   display: flex;
   flex-wrap: wrap;
