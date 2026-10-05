@@ -583,8 +583,23 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
           </div>
         </div>
 
-        {rcMappingSession.status === 'idle' ? (
-          <p className="receiver-map__hint">Pick each stick from its channel&rsquo;s Function below, or let guided mapping find them.</p>
+        {/* Guided mapping is a quiet link in the hint, not a primary button:
+            most operators pick the axes from the rows below. */}
+        {rcMappingSession.status !== 'running' ? (
+          <p className="receiver-map__hint">
+            Pick each stick from its channel&rsquo;s Function below, or{' '}
+            <button
+              type="button"
+              className="receiver-map__guided"
+              data-testid="receiver-mapping-start"
+              onClick={handleStartRcMappingExercise}
+              disabled={!canRunRcMappingExercise}
+              title={canRunRcMappingExercise ? undefined : 'Needs live RC input.'}
+            >
+              {rcMappingSession.status === 'ready' ? 'run guided mapping again' : 'let guided mapping find them'}
+            </button>
+            .
+          </p>
         ) : null}
         {/* The picks live on the channel rows below; while a guided capture
             runs, this line shows its progress, one axis at a time. */}
@@ -617,16 +632,8 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
           </div>
         ) : null}
 
-        {rcMappingSession.status !== 'running' ? (
+        {rcMappingSession.status === 'ready' || rcMappingSession.status === 'failed' ? (
           <div className="receiver-map__actions">
-            <button
-              style={buttonStyle('primary')}
-              data-testid="receiver-mapping-start"
-              onClick={handleStartRcMappingExercise}
-              disabled={!canRunRcMappingExercise}
-            >
-              {rcMappingSession.status === 'ready' ? 'Run Guided Mapping Again' : 'Begin Guided Mapping'}
-            </button>
             {rcMappingSession.status === 'ready' && rcMappingStagedChangeCount > 0 ? (
               <button
                 style={buttonStyle('secondary')}
@@ -636,11 +643,9 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                 {`Stage Detected Mapping (${rcMappingStagedChangeCount})`}
               </button>
             ) : null}
-            {rcMappingSession.status !== 'idle' ? (
-              <button style={buttonStyle()} onClick={handleResetRcMappingExercise}>
-                Start Over
-              </button>
-            ) : null}
+            <button style={buttonStyle()} onClick={handleResetRcMappingExercise}>
+              Start Over
+            </button>
           </div>
         ) : null}
       </div>
