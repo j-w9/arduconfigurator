@@ -50,3 +50,21 @@ export function parameterApplyBlockedReason(snapshot: ConfiguratorSnapshot): str
   }
   return undefined
 }
+
+/**
+ * Why a flight-calibration card's buttons are greyed, said exactly. The cards
+ * used to say "Connect and finish parameter sync first." whatever the cause,
+ * so a greyed accept button on a connected, synced, disarmed vehicle (field
+ * report: "can't click confirm hover") came with a reason that was not true.
+ */
+export function flightCalibrationBlockedReason(
+  snapshot: ConfiguratorSnapshot,
+  busyAction: string | undefined
+): string {
+  return (
+    parameterApplyBlockedReason(snapshot) ??
+    (busyAction !== undefined
+      ? 'Another action is still running — wait for it to finish.'
+      : 'Changes cannot be staged right now.')
+  )
+}

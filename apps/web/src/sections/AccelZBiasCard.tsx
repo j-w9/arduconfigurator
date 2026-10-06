@@ -12,6 +12,8 @@
 import type { ReactElement } from 'react'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { flightCalibrationBlockedReason } from '../apply-gate'
+
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
 import {
@@ -184,7 +186,7 @@ export function AccelZBiasCard({
       <small>
         {canStage
           ? 'Staged like any other change — nothing is written until you apply it.'
-          : 'Connect and finish parameter sync first.'}
+          : flightCalibrationBlockedReason(snapshot, busyAction)}
       </small>
     </article>
   )
