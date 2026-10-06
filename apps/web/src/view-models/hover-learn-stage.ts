@@ -39,6 +39,22 @@ export const MOT_THST_HOVER_DEFAULT = 0.35
 /** ACC_ZBIAS_LEARN bits, from ArduCopter/Attitude.cpp. */
 export const ACC_ZBIAS_LEARN_SAVE = 1 << 0
 export const ACC_ZBIAS_LEARN_USE = 1 << 1
+/**
+ * Bit 2, "Disable Ground Learning": no EKF bias learning while disarmed. Not
+ * part of the two-flight sequence -- Attitude.cpp reads it on its own -- so a
+ * step of the sequence must leave it as the operator set it.
+ */
+export const ACC_ZBIAS_LEARN_INHIBIT_DISARMED = 1 << 2
+
+/**
+ * The ACC_ZBIAS_LEARN value for a step of the sequence: SAVE and USE as the
+ * step needs them, every other bit as reported. Writing a bare 3 or 2 used to
+ * clear Disable Ground Learning behind the operator's back.
+ */
+export function zbiasLearnValue(current: number | undefined, saveUse: number): string {
+  const sequenceBits = ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE
+  return String(((current ?? 0) & ~sequenceBits) | (saveUse & sequenceBits))
+}
 
 /** MOT_HOVER_LEARN = 2, the firmware default: learn and save. */
 export const MOT_HOVER_LEARN_AND_SAVE = 2

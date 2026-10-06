@@ -18,7 +18,8 @@ import {
   ACC_ZBIAS_LEARN_SAVE,
   ACC_ZBIAS_LEARN_USE,
   MOT_HOVER_LEARN_AND_SAVE,
-  deriveHoverLearnState
+  deriveHoverLearnState,
+  zbiasLearnValue
 } from '../view-models/hover-learn-stage'
 import { hoverFlightInstructions } from './HoverThrottleLearnCard'
 
@@ -62,7 +63,7 @@ export function AccelZBiasCard({
     for (const id of state.biasParamIds) {
       setDraft(id, '0')
     }
-    setDraft('ACC_ZBIAS_LEARN', '0')
+    setDraft('ACC_ZBIAS_LEARN', zbiasLearnValue(state.zbiasLearn, 0))
     // Back to the firmware default rather than 0: 2 is what a stock copter
     // ships with, and it is what makes the next hover learn at all.
     setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))
@@ -135,7 +136,7 @@ export function AccelZBiasCard({
               // bias, the same reasoning as freezing MOT_HOVER_LEARN after the
               // first flight: later hovers would otherwise keep moving a value
               // the operator signed off. Clear Z-Bias Cal re-arms it.
-              onClick={() => setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_USE))}
+              onClick={() => setDraft('ACC_ZBIAS_LEARN', zbiasLearnValue(state.zbiasLearn, ACC_ZBIAS_LEARN_USE))}
             >
               Yes — apply the learned bias
             </button>
@@ -150,7 +151,7 @@ export function AccelZBiasCard({
                 for (const id of state.biasParamIds) {
                   setDraft(id, '0')
                 }
-                setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE))
+                setDraft('ACC_ZBIAS_LEARN', zbiasLearnValue(state.zbiasLearn, ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE))
               }}
             >
               No — fly it again

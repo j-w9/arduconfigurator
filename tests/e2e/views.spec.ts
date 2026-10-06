@@ -4800,10 +4800,12 @@ test.describe('ArduPlane demo', () => {
     // VALT_POS_EXPO, so it must not be offered as somewhere to fly.
     await expect(card).toContainText('AltHold, Loiter or PosHold')
     await expect(card).not.toContainText('VALT')
-    // Flight 1 has a button. MOT_HOVER_LEARN defaults to 2, so on a stock
-    // copter it confirms rather than changes — but it must exist, because the
-    // vehicle that needs it most is the one where learning was turned OFF.
-    await expect(page.getByTestId('hover-learn-start')).toHaveText(/confirm hover learning/i)
+    // MOT_HOVER_LEARN defaults to 2, so on a stock copter there is nothing to
+    // press: a "Confirm hover learning is on" button that staged nothing read
+    // as the way to the Z-bias step and did nothing when clicked (field
+    // report). The card says learning is on and where the accept will appear.
+    await expect(page.getByTestId('hover-learn-start')).toHaveCount(0)
+    await expect(page.getByTestId('hover-learn-start-hint')).toContainText('Hover learning is on')
 
     // Learning disabled: a flight now would record nothing, and the card says
     // so instead of sending the operator up for a wasted one.
@@ -4839,6 +4841,10 @@ test.describe('ArduPlane demo', () => {
     // "matches current" and do not count as changes.)
     await page.getByTestId('hover-learn-flight-1-yes').click()
     await expect(page.locator('body')).toContainText('3 staged changes')
+    // The click shows: the stage only moves once the drafts are applied, so
+    // until then the button says what happened instead of looking unclicked.
+    await expect(page.getByTestId('hover-learn-flight-1-yes')).toHaveText('Accepted — apply to write it')
+    await expect(page.getByTestId('hover-learn-flight-1-yes')).toBeDisabled()
 
     await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:1')
     await expect(zbias).toContainText('flight 2')
