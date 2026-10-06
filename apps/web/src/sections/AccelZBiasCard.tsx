@@ -113,10 +113,20 @@ export function AccelZBiasCard({
           <p data-testid="hover-learn-step">
             <strong>Fly the same hover again.</strong> {hoverFlightInstructions(state.valtSupported)}
           </p>
-          <small data-testid="hover-learn-flight-2-frozen">
-            Hover learning is off (MOT_HOVER_LEARN = 0), so this flight cannot overwrite the hover
-            throttle you accepted.
-          </small>
+          {/* Read, not assumed: ACC_ZBIAS_LEARN can be armed without the hover
+              throttle ever being accepted, and this used to promise a frozen
+              MOT_HOVER_LEARN regardless. */}
+          {state.hoverLearnArmed ? (
+            <p className="switch-exercise-warning" data-testid="hover-learn-flight-2-unfrozen">
+              Hover learning is still on (MOT_HOVER_LEARN = 2), so this flight re-learns the hover
+              throttle too. Accept it on <strong>Hover throttle learning</strong> first.
+            </p>
+          ) : (
+            <small data-testid="hover-learn-flight-2-frozen">
+              Hover learning is off (MOT_HOVER_LEARN = 0), so this flight cannot overwrite the hover
+              throttle you accepted.
+            </small>
+          )}
           <small data-testid="hover-learn-flight-2-hint">
             Z-bias learning is staged and saves on disarm — go and fly it.
           </small>

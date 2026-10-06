@@ -71,15 +71,23 @@ export function HoverThrottleLearnCard({
     editedValues.ACC_ZBIAS_LEARN !== undefined &&
     (Number(editedValues.ACC_ZBIAS_LEARN) & ACC_ZBIAS_LEARN_SAVE) !== 0 &&
     editedValues.MOT_HOVER_LEARN === String(MOT_HOVER_LEARN_DISABLED)
-  // Past the hover-throttle flight: it was accepted and frozen.
-  const accepted = stage === 'flight-2' || stage === 'flight-2-review' || stage === 'complete'
+  // Past the hover-throttle flight by the Z-bias stage. The stage is read from
+  // ACC_ZBIAS_LEARN, which can be set without anyone accepting a hover (by
+  // hand, or from a loaded parameter file) -- field report: "once I did my
+  // hover, there was no button to confirm hover learned". So "past flight 1"
+  // is not "accepted": only a frozen MOT_HOVER_LEARN is, and an unfrozen one
+  // keeps its accept button.
+  const pastFlight1 = stage === 'flight-2' || stage === 'flight-2-review' || stage === 'complete'
+  const accepted = pastFlight1 && !state.hoverLearnArmed
+  const unlocked = pastFlight1 && state.hoverLearnArmed && state.hoverThrottle !== undefined
+  const lockStaged = editedValues.MOT_HOVER_LEARN === String(MOT_HOVER_LEARN_DISABLED)
 
   return (
     <article className="calibration-card" data-testid="calibration-card-hover-throttle">
       <div className="calibration-card__header">
         <strong>Hover throttle learning</strong>
         <StatusBadge tone={accepted ? 'success' : stage === 'unknown' ? 'neutral' : 'warning'}>
-          {accepted ? 'accepted' : stage === 'unknown' ? 'not read' : 'flight 1'}
+          {accepted ? 'accepted' : stage === 'unknown' ? 'not read' : unlocked ? 'not accepted' : 'flight 1'}
         </StatusBadge>
       </div>
       <p>
@@ -206,16 +214,34 @@ export function HoverThrottleLearnCard({
         </>
       ) : null}
 
+      {unlocked ? (
+        <>
+          {/* Say what MOT_HOVER_LEARN actually is: still learning, so every
+              altitude-holding flight -- the Z-bias flight included --
+              re-learns this value. Accepting freezes it, the same write the
+              flight-1 Yes makes, without touching the Z-bias flight already
+              under way. */}
+          <p data-testid="hover-learn-unlocked">
+            <strong>It learned {state.hoverThrottle?.toFixed(3)}.</strong> Hover learning is still on
+            (MOT_HOVER_LEARN = 2), so the next altitude-holding flight re-learns it, the Z-bias flight
+            included. Accept it to keep this value.
+          </p>
+          <button
+            type="button"
+            style={buttonStyle(lockStaged ? undefined : 'primary')}
+            data-testid="hover-learn-lock"
+            disabled={!canStage || lockStaged}
+            onClick={() => setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_DISABLED))}
+          >
+            {lockStaged ? 'Accepted — apply to write it' : `Accept ${state.hoverThrottle?.toFixed(3)}`}
+          </button>
+        </>
+      ) : null}
+
       {accepted ? (
         <>
-          {/* Say what MOT_HOVER_LEARN actually is. This used to read "hover
-              learning is off" regardless, next to a greyed re-learn button --
-              on a vehicle whose parameters were just loaded with the stock 2,
-              the operator saw "off", pressed the button, and nothing happened. */}
           <p className="success-copy" data-testid="hover-learn-accepted">
-            {state.hoverLearnArmed
-              ? 'Accepted. Hover learning is on (MOT_HOVER_LEARN = 2): the next altitude-holding flight re-learns it on disarm.'
-              : 'Accepted, and hover learning is off so nothing overwrites it.'}
+            Accepted, and hover learning is off so nothing overwrites it.
           </p>
           {/* Without this the card is a dead end once frozen: re-learning would
               mean clearing the Z-bias calibration, which is a different job. */}
