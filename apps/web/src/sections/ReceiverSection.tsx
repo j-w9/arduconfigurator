@@ -61,6 +61,20 @@ import { InfoDot } from '../views/InfoDot'
 import { ReceiverView, receiverSectionElementId, type ReceiverTaskId } from '../views/Receiver'
 import { ScopedCheckboxField, ScopedNumberField, ScopedSelectField } from '../views/ScopedField'
 
+// The flight-mode switch positions as ArduPilot reads them
+// (estimateFlightModeSlot / RC_Channel::read_6pos_switch: <=1230, <=1360,
+// <=1490, <=1620, <=1749, above), drawn on a 900..2100 µs track.
+const MODE_TRACK_MIN_US = 900
+const MODE_TRACK_MAX_US = 2100
+const MODE_SLOT_BANDS_US: ReadonlyArray<readonly [number, number]> = [
+  [MODE_TRACK_MIN_US, 1230],
+  [1230, 1360],
+  [1360, 1490],
+  [1490, 1620],
+  [1620, 1749],
+  [1749, MODE_TRACK_MAX_US]
+]
+
 export interface ReceiverSectionDerived {
   airframe: ReturnType<typeof deriveAirframe>
   rcAxisObservations: ReturnType<typeof deriveRcAxisObservations>
@@ -585,21 +599,24 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
 
         {/* Guided mapping is a quiet link in the hint, not a primary button:
             most operators pick the axes from the rows below. */}
+        {/* Guided mapping is a small button beside the hint: findable (an
+            inline link read as gone), but not the page's primary action --
+            most operators pick the axes from the rows below. */}
         {rcMappingSession.status !== 'running' ? (
-          <p className="receiver-map__hint">
-            Pick each stick from its channel&rsquo;s Function below, or{' '}
+          <div className="receiver-map__hint">
+            <span>Pick each stick from its channel&rsquo;s Function below, or let guided mapping find them.</span>
             <button
               type="button"
+              style={buttonStyle()}
               className="receiver-map__guided"
               data-testid="receiver-mapping-start"
               onClick={handleStartRcMappingExercise}
               disabled={!canRunRcMappingExercise}
               title={canRunRcMappingExercise ? undefined : 'Needs live RC input.'}
             >
-              {rcMappingSession.status === 'ready' ? 'run guided mapping again' : 'let guided mapping find them'}
+              {rcMappingSession.status === 'ready' ? 'Run Guided Mapping Again' : 'Guided Mapping'}
             </button>
-            .
-          </p>
+          </div>
         ) : null}
         {/* The picks live on the channel rows below; while a guided capture
             runs, this line shows its progress, one axis at a time. */}
@@ -877,6 +894,41 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
             )
           })}
         </div>
+        {modeSwitchEstimate.channelNumber !== undefined && modeAssignmentParameters.length > 0 ? (
+          <div className="receiver-modes__live" data-testid="receiver-modes-live">
+            <span className="receiver-modes__live-ch">
+              CH{modeSwitchEstimate.channelNumber}
+              <small>{modeSwitchEstimate.pwm !== undefined ? `${modeSwitchEstimate.pwm} µs` : 'no signal'}</small>
+            </span>
+            <div className="receiver-modes__live-track">
+              {MODE_SLOT_BANDS_US.map(([low, high], index) => {
+                const parameter = modeAssignmentParameters[index]
+                const shown = parameter ? (editedValues[parameter.id] ?? String(parameter.value ?? '')) : ''
+                const label =
+                  parameter?.definition?.options?.find((option) => String(option.value) === shown)?.label ?? shown
+                const active = modeSwitchEstimate.estimatedSlot === index + 1
+                return (
+                  <span
+                    key={index}
+                    className={`receiver-modes__live-band${active ? ' is-active' : ''}`}
+                    style={{ flexGrow: high - low }}
+                    data-testid={`receiver-modes-live-band-${index + 1}`}
+                    data-active={active ? 'true' : undefined}
+                  >
+                    <b>{index + 1}</b> {label}
+                  </span>
+                )
+              })}
+              {modeSwitchEstimate.pwm !== undefined ? (
+                <i
+                  className="receiver-modes__live-marker"
+                  aria-hidden="true"
+                  style={{ left: `${Math.max(0, Math.min(100, ((modeSwitchEstimate.pwm - MODE_TRACK_MIN_US) / (MODE_TRACK_MAX_US - MODE_TRACK_MIN_US)) * 100))}%` }}
+                />
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
     ) : null
 

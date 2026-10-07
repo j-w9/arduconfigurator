@@ -509,238 +509,6 @@ export function OsdView(props: OsdViewProps) {
             </button>
           </div>
 
-          {/* Backend strip above Screen Options — the FC-side backend selection
-           *  (analog / DisplayPort / MSP) is conceptually the parent of the
-           *  per-screen options below, and BF puts the backend selectors near
-           *  the top too. Open by default (operator request): the backend is
-           *  the first thing to confirm on the OSD tab, so it shouldn't be
-           *  hidden behind a collapsed summary. */}
-          <details className="bf-gui-box osd-backend-strip" data-testid="osd-backend-strip" open>
-            <summary className="bf-gui-box__titlebar">
-              <strong>Backend</strong>
-              <small>{previewToolbar.backendText} · {previewToolbar.switchingText} · {previewToolbar.cellsText}</small>
-            </summary>
-            <div className="bf-gui-box__body">
-              <div className="bf-compact-field-grid">
-                {typeField ? (
-                  <ScopedSelectField
-                    parameter={typeField.parameter}
-                    liveValue={typeField.liveValue}
-                    editedValues={editedValues}
-                    onChange={onEditChange}
-                    draftStatusById={draftStatusById}
-                    layout="chips"
-                  />
-                ) : null}
-                {channelField ? (
-                  <ScopedSelectField
-                    parameter={channelField.parameter}
-                    liveValue={channelField.liveValue}
-                    editedValues={editedValues}
-                    onChange={onEditChange}
-                    draftStatusById={draftStatusById}
-                    layout="chips"
-                  />
-                ) : null}
-                {switchMethodField ? (
-                  <ScopedSelectField
-                    parameter={switchMethodField.parameter}
-                    liveValue={switchMethodField.liveValue}
-                    editedValues={editedValues}
-                    onChange={onEditChange}
-                    draftStatusById={draftStatusById}
-                    layout="chips"
-                  />
-                ) : null}
-              </div>
-            </div>
-          </details>
-
-          {/* Fork-only MESSAGE-panel controls, gated on OSD_MSG_ABBR being
-              reported by the firmware. The per-screen severity filter
-              (OSDn_MSG_LVL) rides the Screen Options panel below. */}
-          {msgAbbrField || msgStyleField || msgCatField ? (
-            <details className="bf-gui-box osd-messages-strip" data-testid="osd-messages-strip" open>
-              <summary className="bf-gui-box__titlebar">
-                <strong>Messages</strong>
-                <small>MESSAGE panel cleanliness</small>
-              </summary>
-              <div className="bf-gui-box__body">
-                <div className="bf-compact-field-grid">
-                  {msgAbbrField ? (
-                    <ScopedSelectField
-                      parameter={msgAbbrField.parameter}
-                      liveValue={msgAbbrField.liveValue}
-                      editedValues={editedValues}
-                      onChange={onEditChange}
-                      draftStatusById={draftStatusById}
-                      layout="chips"
-                    />
-                  ) : null}
-                  {msgStyleField ? (
-                    <ScopedSelectField
-                      parameter={msgStyleField.parameter}
-                      liveValue={msgStyleField.liveValue}
-                      editedValues={editedValues}
-                      onChange={onEditChange}
-                      draftStatusById={draftStatusById}
-                      layout="chips"
-                    />
-                  ) : null}
-                </div>
-                {msgCatField ? (
-                  <div className="osd-messages-categories" data-testid="osd-message-categories">
-                    <ScopedBitmaskField
-                      parameter={msgCatField.parameter}
-                      liveValue={msgCatField.liveValue}
-                      editedValues={editedValues}
-                      onChange={onEditChange}
-                      draftStatusById={draftStatusById}
-                    />
-                    <p className="bf-note">
-                      Tick the categories to show; leave all unticked to show everything.{' '}
-                      <strong>Critical</strong> and above always show regardless. Classification is keyword-based
-                      (best-effort).
-                    </p>
-                  </div>
-                ) : null}
-                <p className="bf-note">
-                  Per-screen message severity (which messages each screen shows) is under each screen&apos;s{' '}
-                  <strong>Screen Options</strong> below.
-                </p>
-
-                {osdShorthand.status === 'available' ? (
-                  <div className="osd-shorthand" data-testid="osd-shorthand-editor">
-                    <div className="osd-shorthand__header">
-                      <strong>Custom abbreviations</strong>
-                      <span>
-                        {osdShorthand.entries.length}/{osdShorthand.maxEntries}
-                      </span>
-                    </div>
-                    {osdShorthand.entries.length === 0 ? (
-                      <p className="bf-note">No custom abbreviations yet — add a row to define your own.</p>
-                    ) : (
-                      osdShorthand.entries.map((entry, index) => (
-                        <div key={index} className="osd-shorthand__row">
-                          <OsdMessageCombobox
-                            testId={`osd-shorthand-from-${index}`}
-                            ariaLabel={`abbreviation ${index + 1} from`}
-                            value={entry.from}
-                            maxLength={osdShorthand.fromMax}
-                            disabled={osdShorthand.saving}
-                            suggestions={osdMessageSuggestions}
-                            onChange={(next) => osdShorthand.setEntry(index, { from: next })}
-                          />
-                          <span aria-hidden="true">→</span>
-                          <input
-                            aria-label={`abbreviation ${index + 1} to`}
-                            data-testid={`osd-shorthand-to-${index}`}
-                            type="text"
-                            placeholder="Short"
-                            maxLength={osdShorthand.toMax}
-                            value={entry.to}
-                            disabled={osdShorthand.saving}
-                            onChange={(event) => osdShorthand.setEntry(index, { to: event.target.value })}
-                          />
-                          <button
-                            type="button"
-                            style={buttonStyle()}
-                            data-testid={`osd-shorthand-remove-${index}`}
-                            disabled={osdShorthand.saving}
-                            onClick={() => osdShorthand.removeEntry(index)}
-                            aria-label={`remove abbreviation ${index + 1}`}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))
-                    )}
-                    {osdShorthand.error ? (
-                      <p className="switch-exercise-warning" data-testid="osd-shorthand-error">
-                        {osdShorthand.error}
-                      </p>
-                    ) : null}
-                    <div className="osd-shorthand__actions">
-                      <button
-                        type="button"
-                        style={buttonStyle()}
-                        data-testid="osd-shorthand-add"
-                        disabled={osdShorthand.saving || osdShorthand.entries.length >= osdShorthand.maxEntries}
-                        onClick={osdShorthand.addEntry}
-                      >
-                        Add row
-                      </button>
-                      <button
-                        type="button"
-                        style={buttonStyle('primary')}
-                        data-testid="osd-shorthand-save"
-                        disabled={!osdShorthand.dirty || osdShorthand.saving}
-                        onClick={osdShorthand.save}
-                      >
-                        {osdShorthand.saving ? 'Saving…' : 'Save to FC'}
-                      </button>
-                      <button
-                        type="button"
-                        style={buttonStyle()}
-                        data-testid="osd-shorthand-reset"
-                        disabled={!osdShorthand.dirty || osdShorthand.saving}
-                        onClick={osdShorthand.reset}
-                      >
-                        Reset
-                      </button>
-                    </div>
-                    <p className="bf-note">
-                      Your own from→to substitutions, applied to the MESSAGE panel on top of the built-in dictionary
-                      (from ≤{osdShorthand.fromMax} chars, to ≤{osdShorthand.toMax}). Matching is case-insensitive.
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            </details>
-          ) : null}
-
-          {screenOptionFields.length > 0 ? (
-            <details className="bf-gui-box osd-screen-options" data-testid="osd-screen-options" open>
-              <summary className="bf-gui-box__titlebar">
-                <strong>Screen {activeScreen} Options</strong>
-              </summary>
-              <div className="bf-gui-box__body">
-                <div className="scoped-editor-grid">
-                  {screenOptionFields.map((field) =>
-                    field.kind === 'select' ? (
-                      <ScopedSelectField
-                        key={field.parameter.id}
-                        parameter={field.parameter}
-                        liveValue={field.liveValue}
-                        editedValues={editedValues}
-                        draftStatusById={draftStatusById}
-                        onChange={onEditChange}
-                        layout="chips"
-                      />
-                    ) : (
-                      <ScopedField
-                        key={field.parameter.id}
-                        parameter={field.parameter}
-                        liveValue={field.liveValue}
-                        editedValues={editedValues}
-                        draftStatusById={draftStatusById}
-                        onChange={onEditChange}
-                        stepFallback={field.parameter.definition?.step ?? 1}
-                      />
-                    )
-                  )}
-                </div>
-              </div>
-            </details>
-          ) : null}
-
-          <div className="bf-note">
-            <p>
-              {linkPorts.length > 0
-                ? `Display link: ${linkPorts.map((port) => `${port.label} (${port.protocolLabel})`).join(', ')}`
-                : 'No MSP / DisplayPort OSD link is currently assigned in Ports. Configure that first — this tab can\'t drive the overlay until the display path is in place.'}
-            </p>
-          </div>
 
           {/* BF-style menu + preview split. Left column = categorized
             * element-toggle menu + MSP / DisplayPort card; right column
@@ -1175,6 +943,240 @@ export function OsdView(props: OsdViewProps) {
                 </div>
               </div>
             </article>
+          </div>
+
+          {/* Messages and screen options sit under the layout too: the
+           *  page opens on the elements and the preview it is used for. */}
+          {/* Fork-only MESSAGE-panel controls, gated on OSD_MSG_ABBR being
+              reported by the firmware. The per-screen severity filter
+              (OSDn_MSG_LVL) rides the Screen Options panel below. */}
+          {msgAbbrField || msgStyleField || msgCatField ? (
+            <details className="bf-gui-box osd-messages-strip" data-testid="osd-messages-strip" open>
+              <summary className="bf-gui-box__titlebar">
+                <strong>Messages</strong>
+                <small>MESSAGE panel cleanliness</small>
+              </summary>
+              <div className="bf-gui-box__body">
+                <div className="bf-compact-field-grid">
+                  {msgAbbrField ? (
+                    <ScopedSelectField
+                      parameter={msgAbbrField.parameter}
+                      liveValue={msgAbbrField.liveValue}
+                      editedValues={editedValues}
+                      onChange={onEditChange}
+                      draftStatusById={draftStatusById}
+                      layout="chips"
+                    />
+                  ) : null}
+                  {msgStyleField ? (
+                    <ScopedSelectField
+                      parameter={msgStyleField.parameter}
+                      liveValue={msgStyleField.liveValue}
+                      editedValues={editedValues}
+                      onChange={onEditChange}
+                      draftStatusById={draftStatusById}
+                      layout="chips"
+                    />
+                  ) : null}
+                </div>
+                {msgCatField ? (
+                  <div className="osd-messages-categories" data-testid="osd-message-categories">
+                    <ScopedBitmaskField
+                      parameter={msgCatField.parameter}
+                      liveValue={msgCatField.liveValue}
+                      editedValues={editedValues}
+                      onChange={onEditChange}
+                      draftStatusById={draftStatusById}
+                    />
+                    <p className="bf-note">
+                      Tick the categories to show; leave all unticked to show everything.{' '}
+                      <strong>Critical</strong> and above always show regardless. Classification is keyword-based
+                      (best-effort).
+                    </p>
+                  </div>
+                ) : null}
+                <p className="bf-note">
+                  Per-screen message severity (which messages each screen shows) is under each screen&apos;s{' '}
+                  <strong>Screen Options</strong> below.
+                </p>
+
+                {osdShorthand.status === 'available' ? (
+                  <div className="osd-shorthand" data-testid="osd-shorthand-editor">
+                    <div className="osd-shorthand__header">
+                      <strong>Custom abbreviations</strong>
+                      <span>
+                        {osdShorthand.entries.length}/{osdShorthand.maxEntries}
+                      </span>
+                    </div>
+                    {osdShorthand.entries.length === 0 ? (
+                      <p className="bf-note">No custom abbreviations yet — add a row to define your own.</p>
+                    ) : (
+                      osdShorthand.entries.map((entry, index) => (
+                        <div key={index} className="osd-shorthand__row">
+                          <OsdMessageCombobox
+                            testId={`osd-shorthand-from-${index}`}
+                            ariaLabel={`abbreviation ${index + 1} from`}
+                            value={entry.from}
+                            maxLength={osdShorthand.fromMax}
+                            disabled={osdShorthand.saving}
+                            suggestions={osdMessageSuggestions}
+                            onChange={(next) => osdShorthand.setEntry(index, { from: next })}
+                          />
+                          <span aria-hidden="true">→</span>
+                          <input
+                            aria-label={`abbreviation ${index + 1} to`}
+                            data-testid={`osd-shorthand-to-${index}`}
+                            type="text"
+                            placeholder="Short"
+                            maxLength={osdShorthand.toMax}
+                            value={entry.to}
+                            disabled={osdShorthand.saving}
+                            onChange={(event) => osdShorthand.setEntry(index, { to: event.target.value })}
+                          />
+                          <button
+                            type="button"
+                            style={buttonStyle()}
+                            data-testid={`osd-shorthand-remove-${index}`}
+                            disabled={osdShorthand.saving}
+                            onClick={() => osdShorthand.removeEntry(index)}
+                            aria-label={`remove abbreviation ${index + 1}`}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))
+                    )}
+                    {osdShorthand.error ? (
+                      <p className="switch-exercise-warning" data-testid="osd-shorthand-error">
+                        {osdShorthand.error}
+                      </p>
+                    ) : null}
+                    <div className="osd-shorthand__actions">
+                      <button
+                        type="button"
+                        style={buttonStyle()}
+                        data-testid="osd-shorthand-add"
+                        disabled={osdShorthand.saving || osdShorthand.entries.length >= osdShorthand.maxEntries}
+                        onClick={osdShorthand.addEntry}
+                      >
+                        Add row
+                      </button>
+                      <button
+                        type="button"
+                        style={buttonStyle('primary')}
+                        data-testid="osd-shorthand-save"
+                        disabled={!osdShorthand.dirty || osdShorthand.saving}
+                        onClick={osdShorthand.save}
+                      >
+                        {osdShorthand.saving ? 'Saving…' : 'Save to FC'}
+                      </button>
+                      <button
+                        type="button"
+                        style={buttonStyle()}
+                        data-testid="osd-shorthand-reset"
+                        disabled={!osdShorthand.dirty || osdShorthand.saving}
+                        onClick={osdShorthand.reset}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <p className="bf-note">
+                      Your own from→to substitutions, applied to the MESSAGE panel on top of the built-in dictionary
+                      (from ≤{osdShorthand.fromMax} chars, to ≤{osdShorthand.toMax}). Matching is case-insensitive.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </details>
+          ) : null}
+
+          {screenOptionFields.length > 0 ? (
+            <details className="bf-gui-box osd-screen-options" data-testid="osd-screen-options" open>
+              <summary className="bf-gui-box__titlebar">
+                <strong>Screen {activeScreen} Options</strong>
+              </summary>
+              <div className="bf-gui-box__body">
+                <div className="scoped-editor-grid">
+                  {screenOptionFields.map((field) =>
+                    field.kind === 'select' ? (
+                      <ScopedSelectField
+                        key={field.parameter.id}
+                        parameter={field.parameter}
+                        liveValue={field.liveValue}
+                        editedValues={editedValues}
+                        draftStatusById={draftStatusById}
+                        onChange={onEditChange}
+                        layout="chips"
+                      />
+                    ) : (
+                      <ScopedField
+                        key={field.parameter.id}
+                        parameter={field.parameter}
+                        liveValue={field.liveValue}
+                        editedValues={editedValues}
+                        draftStatusById={draftStatusById}
+                        onChange={onEditChange}
+                        stepFallback={field.parameter.definition?.step ?? 1}
+                      />
+                    )
+                  )}
+                </div>
+              </div>
+            </details>
+          ) : null}
+
+
+          {/* Backend strip and display link UNDER the preview and elements
+           *  (operator request): they are set once, while the layout is what
+           *  the tab is opened for. Still open by default, so the backend is
+           *  readable without a click. */}
+          <details className="bf-gui-box osd-backend-strip" data-testid="osd-backend-strip" open>
+            <summary className="bf-gui-box__titlebar">
+              <strong>Backend</strong>
+              <small>{previewToolbar.backendText} · {previewToolbar.switchingText} · {previewToolbar.cellsText}</small>
+            </summary>
+            <div className="bf-gui-box__body">
+              <div className="bf-compact-field-grid">
+                {typeField ? (
+                  <ScopedSelectField
+                    parameter={typeField.parameter}
+                    liveValue={typeField.liveValue}
+                    editedValues={editedValues}
+                    onChange={onEditChange}
+                    draftStatusById={draftStatusById}
+                    layout="chips"
+                  />
+                ) : null}
+                {channelField ? (
+                  <ScopedSelectField
+                    parameter={channelField.parameter}
+                    liveValue={channelField.liveValue}
+                    editedValues={editedValues}
+                    onChange={onEditChange}
+                    draftStatusById={draftStatusById}
+                    layout="chips"
+                  />
+                ) : null}
+                {switchMethodField ? (
+                  <ScopedSelectField
+                    parameter={switchMethodField.parameter}
+                    liveValue={switchMethodField.liveValue}
+                    editedValues={editedValues}
+                    onChange={onEditChange}
+                    draftStatusById={draftStatusById}
+                    layout="chips"
+                  />
+                ) : null}
+              </div>
+            </div>
+          </details>
+
+          <div className="bf-note">
+            <p>
+              {linkPorts.length > 0
+                ? `Display link: ${linkPorts.map((port) => `${port.label} (${port.protocolLabel})`).join(', ')}`
+                : 'No MSP / DisplayPort OSD link is currently assigned in Ports. Configure that first — this tab can\'t drive the overlay until the display path is in place.'}
+            </p>
           </div>
 
           <div className="bf-toolbar">

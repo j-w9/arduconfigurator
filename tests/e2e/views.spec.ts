@@ -7824,8 +7824,15 @@ test.describe('Flight modes moved from a tab into Config', () => {
     for (let slot = 1; slot <= 6; slot += 1) {
       await expect(page.getByTestId(`receiver-mode-slot-${slot}`)).toBeVisible()
     }
-    // The mode channel streams in the demo, so exactly one slot is lit.
-    await expect(modes.locator('[data-active="true"]')).toHaveCount(1, { timeout: 15_000 })
+    // The mode channel streams in the demo, so exactly one slot is lit, and
+    // the live strip under the slots lights the same position in yellow.
+    await expect(modes.locator('.receiver-modes__slot[data-active="true"]')).toHaveCount(1, { timeout: 15_000 })
+    const live = page.getByTestId('receiver-modes-live')
+    await expect(live).toBeVisible()
+    await expect(live.locator('[data-active="true"]')).toHaveCount(1)
+    const activeSlot = await modes.locator('.receiver-modes__slot[data-active="true"]').getAttribute('data-testid')
+    const activeBand = await live.locator('[data-active="true"]').getAttribute('data-testid')
+    expect(activeBand?.slice(-1)).toBe(activeSlot?.slice(-1))
   })
 })
 

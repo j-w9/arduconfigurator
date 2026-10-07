@@ -18621,29 +18621,82 @@ button.mavlink-inspector__sent-row {
   height: 100%;
 }
 .receiver-modes__slot.is-active {
-  box-shadow: inset 0 0 0 1px rgba(92, 194, 138, 0.75);
-  background: rgba(92, 194, 138, 0.08);
+  box-shadow: inset 0 0 0 2px var(--accent, #ffbb00);
+  background: rgba(255, 187, 0, 0.1);
 }
-.receiver-map__guided {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent, #ffbb00);
-  font: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
+/* Live mode switch: the six positions as bands sized to their PWM range,
+   each named with its mode; the band the switch is in is yellow. */
+.receiver-modes__live {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
-.receiver-map__guided:hover,
-.receiver-map__guided:focus-visible {
+.receiver-modes__live-ch {
+  display: flex;
+  flex-direction: column;
+  min-width: 64px;
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.receiver-modes__live-ch small {
   color: var(--text);
 }
-.receiver-map__guided:disabled {
+.receiver-modes__live-track {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  min-width: 0;
+  height: 30px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid rgba(var(--edge-rgb), 0.12);
+}
+.receiver-modes__live-band {
+  flex-basis: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 4px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
-  text-decoration: none;
-  cursor: not-allowed;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-right: 1px solid rgba(var(--edge-rgb), 0.12);
+}
+.receiver-modes__live-band:last-of-type {
+  border-right: 0;
+}
+.receiver-modes__live-band b {
+  font-family: var(--font-data);
+}
+.receiver-modes__live-band.is-active {
+  background: var(--accent, #ffbb00);
+  color: #10151c;
+  font-weight: 700;
+}
+.receiver-modes__live-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.receiver-map__guided {
+  flex: 0 0 auto;
+  padding-block: 4px;
 }
 .receiver-map__hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
   flex: 1 1 260px;
   margin: 0;
   color: var(--text-muted);
