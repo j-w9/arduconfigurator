@@ -696,8 +696,10 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText('editable · drag to reposition')).toBeVisible()
 
     await openView(page, 'receiver')
-    await expect(page.getByText('Live monitor')).toBeVisible()
-    await expect(page.getByTestId('receiver-task-nav')).toBeVisible()
+    // One page: the channel table is on screen with the jump row above it.
+    await expect(page.getByTestId('receiver-endpoints-card')).toBeVisible()
+    // One page, no tab strip or jump row on Receiver.
+    await expect(page.getByTestId('receiver-task-nav')).toHaveCount(0)
 
     await openView(page, 'motors')
     // Motors is one page and has no task strip; its reorder panel renders

@@ -3,7 +3,7 @@
 // endpoints, and the transmitter-calibration check that runs on a CRSF link
 // instead of the measured-endpoint capture.
 
-import type { ParameterState } from '@arduconfig/ardupilot-core'
+import type { ParameterState, RcAxisId } from '@arduconfig/ardupilot-core'
 
 export const RC_CHANNEL_COUNT = 16
 
@@ -33,6 +33,46 @@ export function withRcChannelOptions(parameter: ParameterState): ParameterState 
       options: RC_CHANNEL_OPTIONS
     }
   }
+}
+
+// --- Axis picks in the channel table ---------------------------------------
+
+export const RCMAP_PARAM_IDS: Record<RcAxisId, string> = {
+  roll: 'RCMAP_ROLL',
+  pitch: 'RCMAP_PITCH',
+  throttle: 'RCMAP_THROTTLE',
+  yaw: 'RCMAP_YAW'
+}
+
+/**
+ * The drafts that put a stick axis on a channel, picked from that channel's
+ * row. The four axes stay on four channels: an axis already on the target
+ * channel swaps onto the channel the picked axis leaves. A function
+ * (RCn_OPTION) on the target channel is cleared, or the stick would also fire
+ * it. `map` is the map as the operator sees it (staged picks included);
+ * `optionOn` reads a channel's shown RCn_OPTION, undefined where it has none.
+ */
+export function buildAxisAssignmentDrafts(
+  map: Readonly<Record<RcAxisId, number>>,
+  axisId: RcAxisId,
+  channelNumber: number,
+  optionOn: (channelNumber: number) => number | undefined
+): Record<string, string> {
+  const leaving = map[axisId]
+  if (leaving === channelNumber) {
+    return {}
+  }
+  const drafts: Record<string, string> = { [RCMAP_PARAM_IDS[axisId]]: String(channelNumber) }
+  for (const other of Object.keys(RCMAP_PARAM_IDS) as RcAxisId[]) {
+    if (other !== axisId && map[other] === channelNumber) {
+      drafts[RCMAP_PARAM_IDS[other]] = String(leaving)
+    }
+  }
+  const option = optionOn(channelNumber)
+  if (option !== undefined && option !== 0) {
+    drafts[`RC${channelNumber}_OPTION`] = '0'
+  }
+  return drafts
 }
 
 // --- CRSF ------------------------------------------------------------------

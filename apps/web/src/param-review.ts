@@ -38,6 +38,9 @@ export function isReceiverReviewParamId(paramId: string): boolean {
     // checkbox and the Channel Direction one-click reverse.
     /^RC\d+_(MIN|MAX|TRIM|OPTION|REVERSED)$/.test(paramId) ||
     /^FLTMODE\d+$/.test(paramId) ||
+    // Rover's slots (MODE1..6) -- the Receiver's flight-mode line edits them
+    // too. No such parameter on Copter, Plane or Sub.
+    /^MODE[1-6]$/.test(paramId) ||
     RECEIVER_SUPPORT_PARAM_IDS.includes(paramId as (typeof RECEIVER_SUPPORT_PARAM_IDS)[number])
   )
 }

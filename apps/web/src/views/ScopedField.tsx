@@ -276,6 +276,12 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
 interface ScopedNumberFieldProps extends CommonScopedFieldProps {
   stepFallback?: number
   caption?: ReactNode
+  /** Render the title (and its "i") — off for a bare input inside a table row. */
+  showTitle?: boolean
+  /** Accessible name when the title is off (defaults to the field label). */
+  ariaLabel?: string
+  /** Stable hook for tests; lands on the wrapping label. */
+  testId?: string
 }
 
 /**
@@ -301,7 +307,7 @@ function inferStep(
 }
 
 export function ScopedNumberField(props: ScopedNumberFieldProps) {
-  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, stepFallback = 1, caption } = props
+  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, stepFallback = 1, caption, showTitle = true, ariaLabel, testId } = props
   const status = statusModifier(draftStatusById, parameter.id)
   // Use the noise-stripping formatter for the editor's initial value so
   // the operator doesn't see the float32 mantissa tail (1.5 not
@@ -314,20 +320,22 @@ export function ScopedNumberField(props: ScopedNumberFieldProps) {
     inferStep(parameter.definition?.minimum, parameter.definition?.maximum, stepFallback)
   const fieldLabel = parameter.definition?.label ?? parameter.id
   return (
-    <label className={fieldClassName(draftStatusById, parameter.id, compact)}>
-      <span>
-        {/* The title text in a span of its own, so the label an operator
-            reads (and a test matches exactly) is one element, with the dot's
-            tooltip text outside it. */}
-        <span className="scoped-editor-field__title">
-          {fieldLabel}
-          {unit ? <small className="scoped-editor-field__unit"> ({unit})</small> : null}
+    <label className={fieldClassName(draftStatusById, parameter.id, compact)} data-testid={testId}>
+      {showTitle ? (
+        <span>
+          {/* The title text in a span of its own, so the label an operator
+              reads (and a test matches exactly) is one element, with the dot's
+              tooltip text outside it. */}
+          <span className="scoped-editor-field__title">
+            {fieldLabel}
+            {unit ? <small className="scoped-editor-field__unit"> ({unit})</small> : null}
+          </span>
+          <ParamIdHint parameter={parameter} />
         </span>
-        <ParamIdHint parameter={parameter} />
-      </span>
+      ) : null}
       <input
         type="number"
-        aria-label={fieldLabel}
+        aria-label={ariaLabel ?? fieldLabel}
         min={parameter.definition?.minimum}
         max={parameter.definition?.maximum}
         step={step}

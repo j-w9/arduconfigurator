@@ -1219,17 +1219,8 @@ test.describe('Modes view', () => {
     ).toBe('7')
     await expect(page.getByTestId('modes-slot-4')).toHaveClass(/is-active/)
 
-    await expect(page.getByTestId('modes-go-to-flight-mode-task')).toBeVisible()
-  })
-
-  test('deep-link button navigates to Receiver flight-mode task', async ({ page }) => {
-    await page.goto('/')
-    await connectViaHeader(page)
-    await openFlightModes(page)
-
-    await page.getByTestId('modes-go-to-flight-mode-task').click()
-
-    await expect(page.getByTestId('workspace-view-title')).toHaveText('Receiver')
+    // Flight modes have one home now; no button sends the operator elsewhere.
+    await expect(page.getByTestId('modes-go-to-flight-mode-task')).toHaveCount(0)
   })
 })
 
@@ -3071,9 +3062,10 @@ test.describe('RC Mixer view', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-receiver').click()
-    const summary = page.getByTestId('receiver-rcl-summary')
-    await expect(summary).toContainText('CH5')
-    await expect(summary).toContainText('RC Mixer')
+    // The note that listed them under the channel table is gone (one page,
+    // no standing prose); the claim itself is still read into the view model.
+    await expect(page.getByTestId('receiver-rcl-summary')).toHaveCount(0)
+    await expect(page.getByTestId('receiver-channel-bars-ch5')).toBeVisible()
   })
 
   test('function picker only offers functions the connected vehicle firmware actually supports', async ({ page }) => {
@@ -3133,18 +3125,17 @@ test.describe('RC Mixer view', () => {
 // startReceiverBind path stays covered by tests/runtime.integration.test.mjs.
 
 test.describe('Receiver channel-direction check', () => {
-  test('lives under Endpoints (not Mapping) with a verdict row per primary axis', async ({ page }) => {
+  test('sits beside the map on the one-page tab with a verdict row per primary axis', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await openView(page, 'receiver')
 
-    // The old manual reverse box is gone from Mapping.
-    await page.getByTestId('receiver-tab-mapping').click()
+    // The old manual reverse box is gone from the map.
     await expect(page.getByTestId('receiver-channel-direction')).toHaveCount(0)
 
-    // The guided direction check now lives in Endpoints, one row per axis.
-    await page.getByTestId('receiver-tab-endpoints').click()
+    // The guided direction check is on the same page, one row per axis; the
+    // former tab buttons are jump links, so the click is a scroll, not a route.
     await expect(page.getByTestId('receiver-direction-check')).toBeVisible()
     for (const axis of ['roll', 'pitch', 'throttle', 'yaw']) {
       await expect(page.getByTestId(`receiver-direction-${axis}`)).toBeVisible()
@@ -3197,27 +3188,28 @@ test.describe('Receiver functions tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Functions' }).click()
 
     const panel = page.getByTestId('receiver-functions-panel')
     await expect(panel).toBeVisible()
-    // Stick axes are not aux channels — the list starts at CH5.
+    // A stick channel's dropdown offers the axes only; functions start at CH5.
     await expect(page.getByTestId('receiver-function-5')).toBeVisible()
-    await expect(page.getByTestId('receiver-function-4')).toHaveCount(0)
+    const ch4 = page.getByTestId('receiver-function-4').locator('select')
+    await expect(ch4).toHaveValue('axis:yaw')
+    await expect(ch4.locator('optgroup[label="Function"]')).toHaveCount(0)
 
     // Assign RTL (4) to CH7 — staged as a draft on RC7_OPTION.
     const ch7 = page.getByTestId('receiver-function-7').locator('select')
-    await ch7.selectOption('4')
-    await expect(ch7).toHaveValue('4')
+    await ch7.selectOption('option:4')
+    await expect(ch7).toHaveValue('option:4')
 
     // The same function on a second channel is undefined behaviour in
     // ArduPilot, so it must be called out rather than silently accepted.
-    await page.getByTestId('receiver-function-8').locator('select').selectOption('4')
+    await page.getByTestId('receiver-function-8').locator('select').selectOption('option:4')
     await expect(page.getByTestId('receiver-functions-conflict')).toContainText('CH7')
     await expect(page.getByTestId('receiver-functions-conflict')).toContainText('CH8')
 
     // Clearing one side resolves it.
-    await page.getByTestId('receiver-function-8').locator('select').selectOption('0')
+    await page.getByTestId('receiver-function-8').locator('select').selectOption('option:0')
     await expect(page.getByTestId('receiver-functions-conflict')).toHaveCount(0)
   })
 
@@ -3230,11 +3222,13 @@ test.describe('Receiver functions tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Functions' }).click()
 
     const select = page.getByTestId('receiver-function-5').locator('select')
     await expect(select).toBeVisible()
-    const labels = await select.locator('option').allTextContents()
+    // The four stick axes lead the dropdown in their own group; the function
+    // list is the group after them.
+    await expect(select.locator('optgroup[label="Stick"] option')).toHaveText(['Roll', 'Pitch', 'Throttle', 'Yaw'])
+    const labels = await select.locator('optgroup[label="Function"] option').allTextContents()
 
     // "Do Nothing" (0) is pinned above both groups — the cleared state.
     expect(labels[0]).toBe('Do Nothing')
@@ -3258,7 +3252,7 @@ test.describe('Receiver functions tab', () => {
     expect(labels.length).toBeGreaterThan(100)
     // And a tail entry is still assignable, not merely listed.
     await select.selectOption({ label: 'Sprayer Enable' })
-    await expect(select).toHaveValue('15')
+    await expect(select).toHaveValue('option:15')
   })
 })
 
@@ -3267,7 +3261,6 @@ test.describe('Receiver stick-range bar', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Endpoints' }).click()
     const bar = page.getByTestId('rc-range-bar-throttle')
     await bar.scrollIntoViewIfNeeded()
     await expect(bar).toBeVisible()
@@ -3277,16 +3270,17 @@ test.describe('Receiver stick-range bar', () => {
 })
 
 test.describe('Receiver RC options', () => {
-  test('RC_OPTIONS renders as a bitmask chip grid in the receiver tab', async ({ page }) => {
+  test('RC_OPTIONS renders as a bitmask chip grid under Config ▸ RC', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
+    // The set-once receiver settings live under Config ▸ RC; the Receiver tab
+    // keeps the hands-on work and has no Advanced fold.
     await openView(page, 'receiver')
-    // RC options live under the receiver's Flight Modes task.
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Flight Modes' }).click()
-    const card = page.getByTestId('receiver-rc-options')
-    await card.scrollIntoViewIfNeeded()
-    await expect(card).toBeVisible()
+    await expect(page.getByTestId('receiver-advanced')).toHaveCount(0)
+    await openView(page, 'config')
+    await page.getByTestId('config-category-rc').click()
     const field = page.getByTestId('scoped-bitmask-RC_OPTIONS')
+    await field.scrollIntoViewIfNeeded()
     const bits = field.locator('.scoped-bitmask-bit')
     await expect(bits.first()).toBeVisible()
     // Demo seeds RC_OPTIONS=0, so every option starts unset (no orange).
@@ -3300,7 +3294,6 @@ test.describe('Receiver arm switch', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Flight Modes' }).click()
     const card = page.getByTestId('receiver-arm-switch')
     await card.scrollIntoViewIfNeeded()
     await expect(card).toBeVisible()
@@ -3390,9 +3383,10 @@ test.describe('Receiver RSSI', () => {
   test('shows RX RSSI as a percentage, not the raw 0-254 byte', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await openView(page, 'receiver')
-    // RX RSSI lives in the Signal Setup task now (removed from the main monitor).
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Signal Setup' }).click()
+    // The live link readout sits under the receiver settings in Config ▸ RC.
+    await openView(page, 'config')
+    await page.getByTestId('config-category-rc').click()
+    await expect(page.getByTestId('config-receiver-link')).toBeVisible()
     // Demo seeds RC_CHANNELS.rssi = 100 (raw 0-254), which is ~39%.
     await expect(page.getByText('Live RX RSSI: 39%')).toBeVisible()
   })
@@ -5401,13 +5395,16 @@ test.describe('ArduRover / ArduSub demo', () => {
     await expect(page.getByTestId('failsafe-row-FS_EKF_ACTION')).toHaveCount(0)
     await expect(page.getByTestId('failsafe-row-FS_OPTIONS')).toHaveCount(0)
 
-    // Receiver Flight-Mode fields bind the real Rover slot param (MODE1..6),
-    // not the Copter FLTMODE prefix. Mock seeds MODE1 = 0 -> "Manual".
-    await openView(page, 'receiver')
-    await page.getByTestId('receiver-tab-flight-modes').click()
-    await expect(page.getByTestId('param-info-FLTMODE1')).toHaveCount(0)
-    await expect(page.getByTestId('param-info-MODE1')).toBeVisible()
-    await expect(page.getByTestId('receiver-flight-modes-card')).toContainText('Manual')
+    // Flight-mode slots bind the real Rover slot param (MODE1..6), not the
+    // Copter FLTMODE prefix. Mock seeds MODE1 = 0 -> "Manual". They live under
+    // Config ▸ Flight Modes.
+    await openFlightModes(page)
+    const roverSlots = page.getByTestId('modes-slot-table')
+    await expect(roverSlots.getByTestId('param-info-FLTMODE1')).toHaveCount(0)
+    // Bound, not necessarily visible: this table keeps a slot's title (and
+    // its "i") out of view; the binding is what is under test.
+    await expect(roverSlots.getByTestId('param-info-MODE1')).toHaveCount(1)
+    await expect(roverSlots).toContainText('Manual')
   })
 
   test('Sub curated Tuning surface renders its groups, shows seeded values, and stages a draft', async ({ page }) => {
@@ -5524,18 +5521,13 @@ test.describe('ArduRover / ArduSub demo', () => {
 })
 
 test.describe('Receiver scoped apply', () => {
-  test('staging an RC_OPTIONS change surfaces the review dock and applying clears it', async ({ page }) => {
+  test('staging a receiver change surfaces the review dock and applying clears it', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Flight Modes' }).click()
 
-    const field = page.getByTestId('scoped-bitmask-RC_OPTIONS')
-    await field.scrollIntoViewIfNeeded()
-    // Demo seeds RC_OPTIONS=0 (all options unset). Clicking the first option's
-    // chip toggles it (orange highlight) and stages a single receiver-scoped
-    // (workflow) draft.
-    await field.getByText('Ignore RC Receiver').click()
+    // Pitch is CH2 in the demo; its reverse box stages one receiver draft.
+    await page.getByTestId('receiver-reverse-2').locator('input').check()
 
     const dock = page.locator('.receiver-review-dock')
     await expect(dock).toBeVisible()
@@ -5544,9 +5536,9 @@ test.describe('Receiver scoped apply', () => {
     // the tab, under the task body, not above it.
     await expect(page.getByTestId('receiver-draft-list')).toHaveCount(0)
     await page.getByTestId('receiver-draft-show').click()
-    await expect(page.getByTestId('receiver-draft-list')).toContainText('RC_OPTIONS')
+    await expect(page.getByTestId('receiver-draft-list')).toContainText('RC2_REVERSED')
     const dockTop = (await dock.boundingBox())?.y ?? 0
-    const bodyTop = (await page.getByTestId('receiver-task-nav').boundingBox())?.y ?? 0
+    const bodyTop = (await page.getByTestId('receiver-mapping-card').boundingBox())?.y ?? 0
     expect(dockTop).toBeGreaterThan(bodyTop)
 
     const applyButton = page.getByTestId('receiver-apply-button')
@@ -5580,12 +5572,12 @@ test.describe('Receiver mapping', () => {
     await connectViaHeader(page)
     await expectParameterSyncComplete(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-tab-mapping').click()
 
-    const rollPick = page.getByTestId('receiver-map-roll').locator('select')
-    const pitchPick = page.getByTestId('receiver-map-pitch').locator('select')
-    await expect(rollPick).toHaveValue('2')
-    await expect(pitchPick).toHaveValue('1')
+    // The axis picks are the channel rows' Function dropdowns.
+    const ch1Pick = page.getByTestId('receiver-function-1').locator('select')
+    const ch2Pick = page.getByTestId('receiver-function-2').locator('select')
+    await expect(ch1Pick).toHaveValue('axis:pitch')
+    await expect(ch2Pick).toHaveValue('axis:roll')
 
     await waitForStickRestAfterYaw(page)
     await page.getByTestId('receiver-mapping-start').click()
@@ -5600,10 +5592,9 @@ test.describe('Receiver mapping', () => {
     await expect(page.getByTestId('receiver-mapping-card')).toBeVisible()
     await expect(page.getByTestId('setup-wizard')).toHaveCount(0)
     // The detected map is staged in the picks and named in the apply dock.
-    await expect(rollPick).toHaveValue('1')
-    await expect(pitchPick).toHaveValue('2')
-    // The row holds the pick and the reverse box; the pick is the first field.
-    await expect(page.getByTestId('receiver-map-roll').locator('.scoped-editor-field').first()).toHaveClass(/scoped-editor-field--staged/)
+    await expect(ch1Pick).toHaveValue('axis:roll')
+    await expect(ch2Pick).toHaveValue('axis:pitch')
+    await expect(page.getByTestId('receiver-function-1').locator('.scoped-editor-field')).toHaveClass(/scoped-editor-field--staged/)
     const dock = page.getByTestId('receiver-review-dock')
     await expect(dock).toContainText(/\d staged/)
     await page.getByTestId('receiver-draft-show').click()
@@ -5620,7 +5611,6 @@ test.describe('Receiver mapping', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-tab-mapping').click()
 
     // Pitch is CH2 in the demo; its reverse box binds RC2_REVERSED.
     const reverse = page.getByTestId('receiver-reverse-2').locator('input')
@@ -5630,33 +5620,81 @@ test.describe('Receiver mapping', () => {
     await page.getByTestId('receiver-draft-show').click()
     await expect(dock).toContainText('RC2_REVERSED 0 → 1')
     await expect(page.getByTestId('receiver-reverse-2')).toHaveClass(/scoped-editor-field--staged/)
-    // Staging must not move the page: the bottom chip is fixed, and no note
-    // appears above the workspace (the Basic-mode "drafts hidden" note is gone).
-    await expect(page.getByTestId('global-draft-bar')).toBeVisible()
+    // The Receiver dock lists the same drafts, so the global bar steps aside
+    // while the dock is on the page instead of covering it; no note appears
+    // above the workspace (the Basic-mode "drafts hidden" note is gone).
+    await expect(page.getByTestId('global-draft-bar')).toBeHidden()
     await expect(page.getByText('Expert drafts hidden in Basic mode')).toHaveCount(0)
 
-    // A manual pick stages RCMAP_* without the capture flow.
-    const yawPick = page.getByTestId('receiver-map-yaw').locator('select')
-    await expect(yawPick).toHaveValue('4')
-    await yawPick.selectOption('8')
-    await expect(dock).toContainText('RCMAP_YAW 4 → 8')
-    await expect(dock).toContainText('2 staged')
+    // Picking an axis on another row swaps the two channels (RCMAP_*),
+    // without the capture flow; both rows follow the staged pick.
+    const ch3Pick = page.getByTestId('receiver-function-3').locator('select')
+    const ch4Pick = page.getByTestId('receiver-function-4').locator('select')
+    await expect(ch4Pick).toHaveValue('axis:yaw')
+    await ch3Pick.selectOption('axis:yaw')
+    await expect(dock).toContainText('RCMAP_YAW 4 → 3')
+    await expect(dock).toContainText('RCMAP_THROTTLE 3 → 4')
+    await expect(ch3Pick).toHaveValue('axis:yaw')
+    await expect(ch4Pick).toHaveValue('axis:throttle')
+    await expect(dock).toContainText('3 staged')
 
-    // Discard from the dock returns both to their live values.
+    // Discard from the dock returns all three to their live values.
     await page.getByTestId('receiver-discard-button').click()
     await expect(dock).toHaveCount(0)
-    await expect(yawPick).toHaveValue('4')
+    await expect(ch4Pick).toHaveValue('axis:yaw')
     await expect(reverse).not.toBeChecked()
   })
 
-  test('the Functions rows carry a reverse box only for channels the controller reports RCn_REVERSED on', async ({ page }) => {
+  test('every channel the controller reports gets reverse and low / trim / high; a missing parameter gets none', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Functions' }).click()
+    // Endpoints start folded below 1360px wide (the suite runs at 1280).
+    const endpointsToggle = page.getByTestId('receiver-endpoints-toggle')
+    if ((await endpointsToggle.getAttribute('aria-expanded')) !== 'true') await endpointsToggle.click()
+    // A real FC reports RCn_MIN/TRIM/MAX/REVERSED for all sixteen inputs, and
+    // so does the demo: an AUX channel is as editable as a stick.
     await expect(page.getByTestId('receiver-function-5')).toBeVisible()
-    // The demo reports RC1..RC4_REVERSED only, so the AUX rows show none.
+    await expect(page.getByTestId('receiver-reverse-5')).toBeVisible()
+    const trim5 = page.getByTestId('receiver-endpoint-5-trim').locator('input')
+    await expect(trim5).toHaveValue('1500')
+    await trim5.fill('1520')
+    await expect(page.getByTestId('receiver-review-dock')).toContainText('1 staged')
+  })
+
+  test('a channel whose RCn_REVERSED is not reported gets no reverse box', async ({ page }) => {
+    await page.goto('/?demoParamOverrides=RC5_REVERSED:null')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await expect(page.getByTestId('receiver-function-5')).toBeVisible()
     await expect(page.getByTestId('receiver-reverse-5')).toHaveCount(0)
+  })
+
+  test('low / trim / high fold behind one header toggle', async ({ page }) => {
+    // Open by default only where there is room: 1360px and wider.
+    await page.setViewportSize({ width: 1600, height: 1000 })
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    const toggle = page.getByTestId('receiver-endpoints-toggle')
+    const trim1 = page.getByTestId('receiver-endpoint-1-trim')
+    // Open by default at the suite's desktop width.
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(trim1).toBeVisible()
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(trim1).toBeHidden()
+    await toggle.click()
+    await expect(trim1).toBeVisible()
+  })
+
+  test('low / trim / high start folded on a narrower screen', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await expect(page.getByTestId('receiver-endpoints-toggle')).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('receiver-endpoint-1-trim')).toBeHidden()
   })
 })
 
@@ -5668,17 +5706,17 @@ test.describe('Receiver endpoints on a CRSF link', () => {
     await connectViaHeader(page)
     await expectParameterSyncComplete(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-tab-endpoints').click()
 
     await expect(page.getByTestId('receiver-endpoints-crsf')).toContainText('987 to 2011')
     await expect(page.getByTestId('receiver-endpoints-stage')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Start Capture' })).toHaveCount(0)
 
     // One action stages the CRSF range for every channel with endpoints: the
-    // demo seeds RC1..4 at 1000/2000/1500, so MIN and MAX change, TRIM does not.
+    // demo seeds all sixteen at 1000/2000/1500, so each MIN and MAX changes
+    // (32 drafts) and no TRIM does.
     await page.getByTestId('receiver-set-crsf-limits').click()
     const dock = page.getByTestId('receiver-review-dock')
-    await expect(dock).toContainText('8 staged')
+    await expect(dock).toContainText('32 staged')
     await page.getByTestId('receiver-draft-show').click()
     await expect(dock).toContainText('RC1_MIN 1000 → 987')
     await expect(dock).toContainText('RC4_MAX 2000 → 2011')
@@ -5701,11 +5739,13 @@ test.describe('Receiver endpoints on a CRSF link', () => {
     await connectViaHeader(page)
     await expectParameterSyncComplete(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-tab-endpoints').click()
     await expect(page.getByTestId('receiver-endpoints-crsf')).toHaveCount(0)
     await expect(page.getByTestId('receiver-set-crsf-limits')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Start Capture' })).toBeVisible()
-    await expect(page.getByTestId('receiver-endpoint-roll')).toContainText('CH1')
+    // The roll row's endpoint pills carry the stored RC1_MIN/TRIM/MAX.
+    // Low / trim / high are inputs on the roll row now, bound to RC1_MIN/TRIM/MAX.
+    await expect(page.getByTestId('receiver-endpoint-1-low').locator('input')).toHaveValue('1000')
+    await expect(page.getByTestId('receiver-endpoint-1-high').locator('input')).toHaveValue('2000')
   })
 })
 
@@ -7771,14 +7811,30 @@ test.describe('Flight modes moved from a tab into Config', () => {
     expect(overflow, 'the Flight Modes panel must not widen the page').toBeLessThanOrEqual(2)
   })
 
-  test('Receiver keeps its own Flight Modes sub-tab', async ({ page }) => {
-    // The move must not have taken the receiver workflow's copy with it.
+  test('the Receiver shows the flight modes beside the arm switch, the live slot lit', async ({ page }) => {
+    // Operator's call: switches are tested on the Receiver, so what each one
+    // does (arm, the six mode slots) is set and confirmed there too. Config ▸
+    // Flight Modes edits the same parameters.
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
     await page.getByTestId('view-button-receiver').click()
-    await expect(page.locator('.tab-strip__tab', { hasText: 'Flight Modes' }).first()).toBeVisible()
+    const modes = page.getByTestId('receiver-flight-modes-card')
+    await expect(modes).toBeVisible()
+    await expect(page.getByTestId('receiver-arm-switch')).toBeVisible()
+    for (let slot = 1; slot <= 6; slot += 1) {
+      await expect(page.getByTestId(`receiver-mode-slot-${slot}`)).toBeVisible()
+    }
+    // The mode channel streams in the demo, so exactly one slot is lit, and
+    // the live strip under the slots lights the same position in yellow.
+    await expect(modes.locator('.receiver-modes__slot[data-active="true"]')).toHaveCount(1, { timeout: 15_000 })
+    const live = page.getByTestId('receiver-modes-live')
+    await expect(live).toBeVisible()
+    await expect(live.locator('[data-active="true"]')).toHaveCount(1)
+    const activeSlot = await modes.locator('.receiver-modes__slot[data-active="true"]').getAttribute('data-testid')
+    const activeBand = await live.locator('[data-active="true"]').getAttribute('data-testid')
+    expect(activeBand?.slice(-1)).toBe(activeSlot?.slice(-1))
   })
 })
 
