@@ -12,13 +12,16 @@
 import type { ReactElement } from 'react'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { flightCalibrationBlockedReason } from '../apply-gate'
+
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
 import {
   ACC_ZBIAS_LEARN_SAVE,
   ACC_ZBIAS_LEARN_USE,
   MOT_HOVER_LEARN_AND_SAVE,
-  deriveHoverLearnState
+  deriveHoverLearnState,
+  zbiasLearnValue
 } from '../view-models/hover-learn-stage'
 import { hoverFlightInstructions } from './HoverThrottleLearnCard'
 
@@ -62,7 +65,7 @@ export function AccelZBiasCard({
     for (const id of state.biasParamIds) {
       setDraft(id, '0')
     }
-    setDraft('ACC_ZBIAS_LEARN', '0')
+    setDraft('ACC_ZBIAS_LEARN', zbiasLearnValue(state.zbiasLearn, 0))
     // Back to the firmware default rather than 0: 2 is what a stock copter
     // ships with, and it is what makes the next hover learn at all.
     setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))
@@ -110,10 +113,20 @@ export function AccelZBiasCard({
           <p data-testid="hover-learn-step">
             <strong>Fly the same hover again.</strong> {hoverFlightInstructions(state.valtSupported)}
           </p>
-          <small data-testid="hover-learn-flight-2-frozen">
-            Hover learning is off (MOT_HOVER_LEARN = 0), so this flight cannot overwrite the hover
-            throttle you accepted.
-          </small>
+          {/* Read, not assumed: ACC_ZBIAS_LEARN can be armed without the hover
+              throttle ever being accepted, and this used to promise a frozen
+              MOT_HOVER_LEARN regardless. */}
+          {state.hoverLearnArmed ? (
+            <p className="switch-exercise-warning" data-testid="hover-learn-flight-2-unfrozen">
+              Hover learning is still on (MOT_HOVER_LEARN = 2), so this flight re-learns the hover
+              throttle too. Accept it on <strong>Hover throttle learning</strong> first.
+            </p>
+          ) : (
+            <small data-testid="hover-learn-flight-2-frozen">
+              Hover learning is off (MOT_HOVER_LEARN = 0), so this flight cannot overwrite the hover
+              throttle you accepted.
+            </small>
+          )}
           <small data-testid="hover-learn-flight-2-hint">
             Z-bias learning is staged and saves on disarm — go and fly it.
           </small>
@@ -135,7 +148,7 @@ export function AccelZBiasCard({
               // bias, the same reasoning as freezing MOT_HOVER_LEARN after the
               // first flight: later hovers would otherwise keep moving a value
               // the operator signed off. Clear Z-Bias Cal re-arms it.
-              onClick={() => setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_USE))}
+              onClick={() => setDraft('ACC_ZBIAS_LEARN', zbiasLearnValue(state.zbiasLearn, ACC_ZBIAS_LEARN_USE))}
             >
               Yes — apply the learned bias
             </button>
@@ -150,7 +163,7 @@ export function AccelZBiasCard({
                 for (const id of state.biasParamIds) {
                   setDraft(id, '0')
                 }
-                setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE))
+                setDraft('ACC_ZBIAS_LEARN', zbiasLearnValue(state.zbiasLearn, ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE))
               }}
             >
               No — fly it again
@@ -183,7 +196,7 @@ export function AccelZBiasCard({
       <small>
         {canStage
           ? 'Staged like any other change — nothing is written until you apply it.'
-          : 'Connect and finish parameter sync first.'}
+          : flightCalibrationBlockedReason(snapshot, busyAction)}
       </small>
     </article>
   )
