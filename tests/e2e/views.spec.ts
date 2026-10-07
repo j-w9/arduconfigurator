@@ -5401,7 +5401,9 @@ test.describe('ArduRover / ArduSub demo', () => {
     await openFlightModes(page)
     const roverSlots = page.getByTestId('modes-slot-table')
     await expect(roverSlots.getByTestId('param-info-FLTMODE1')).toHaveCount(0)
-    await expect(roverSlots.getByTestId('param-info-MODE1')).toBeVisible()
+    // Bound, not necessarily visible: this table keeps a slot's title (and
+    // its "i") out of view; the binding is what is under test.
+    await expect(roverSlots.getByTestId('param-info-MODE1')).toHaveCount(1)
     await expect(roverSlots).toContainText('Manual')
   })
 
