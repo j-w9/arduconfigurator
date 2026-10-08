@@ -714,17 +714,21 @@ test.describe('Parameters tab (expert-only)', () => {
 })
 
 test.describe('tab order', () => {
-  test('nav leads with Status & Info, then Guided Setup, Config, Peripherals, Calibration', async ({ page }) => {
+  test('nav leads with Status & Info, Config, Peripherals, Calibration; Guided Setup is Expert-only and last', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    // The first five nav buttons follow the canonical order (Status & Info,
-    // then the Guided Setup wizard tab, then Config, Peripherals — attached
-    // hardware, next to the settings it used to be mixed into — and
-    // Calibration).
-    const navIds = await page.locator('[data-testid^="view-button-"]').evaluateAll((els) =>
-      els.map((el) => (el.getAttribute('data-testid') || '').replace('view-button-', ''))
-    )
-    expect(navIds.slice(0, 5)).toEqual(['setup', 'guided-setup', 'config', 'peripherals', 'calibration'])
+    // Canonical order: Status & Info, Config, Peripherals (attached hardware,
+    // next to the settings it used to be mixed into), Calibration. Guided
+    // Setup is hidden in Basic while it is reworked, and last in Expert.
+    const readNav = () =>
+      page.locator('[data-testid^="view-button-"]').evaluateAll((els) =>
+        els.map((el) => (el.getAttribute('data-testid') || '').replace('view-button-', ''))
+      )
+    const navIds = await readNav()
+    expect(navIds.slice(0, 4)).toEqual(['setup', 'config', 'peripherals', 'calibration'])
+    expect(navIds).not.toContain('guided-setup')
+    await enableExpertMode(page)
+    await expect.poll(async () => (await readNav()).at(-1)).toBe('guided-setup')
     // The Setup tab is now labelled "Status & Info".
     await expect(page.getByTestId('view-button-setup')).toContainText('Status & Info')
   })
@@ -4233,6 +4237,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('a Plane can confirm the Setup airframe step (not gated on Copter FRAME_CLASS)', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
     await page.getByTestId('connect-button').click()
@@ -4244,6 +4250,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('a Plane can confirm the Setup outputs step (not gated on Copter motor count)', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=outputs')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
     await page.getByTestId('connect-button').click()
@@ -4261,6 +4269,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('guided-setup evidence pills are allowed to wrap, so a long line cannot be clipped', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     // Field report: on the Ports step the right-hand column — primary action,
     // Previous/Continue, and the completion-criteria panel — was sliced off at
     // the right edge of the window.
@@ -4308,6 +4318,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('guided setup condenses long steps into disclosures and flags completion', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -4351,6 +4363,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('a guided step keeps its primary action and Continue on screen without scrolling', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     // Operator report: "i dont love the airframe tab, i dont think people
     // should need to be scrolling up and down". Airframe was the worst step
     // (1992px of document against a 900px viewport) but every step had the same
@@ -4387,6 +4401,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('the orientation waiver unblocks the Airframe step and unlocks the rest of the flow', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     // Airframe (step 2) required the physical orientation exercise to pass, and
     // every later step is locked behind it, so a vehicle that cannot be tilted
     // hard-stopped the whole wizard with no way forward.
@@ -7158,7 +7174,7 @@ test.describe('Status & Info dashboard layout', () => {
   // that Reset and Tidy do what they say, and that a stale saved arrangement
   // can never render a broken page.
 
-  const STORAGE_KEY = 'arduconfig.status-dashboard.v2'
+  const STORAGE_KEY = 'arduconfig.status-dashboard.v3'
 
   async function connectDemo(page: Page): Promise<void> {
     await page.goto('/')
@@ -7175,16 +7191,16 @@ test.describe('Status & Info dashboard layout', () => {
   }
 
   test('ships the familiar arrangement, with no Reset offered until something moves', async ({ page }) => {
-    // "Familiar" is the whole acceptance test: with nothing dragged the page has
-    // to be the page that shipped — the sensor row under the craft model, the
-    // two status columns below it, System Info leading the sidebar.
+    // With nothing dragged the page is the default (v3): the two status
+    // columns lead, the sensor row under them, System Info then the vehicle
+    // actions in the sidebar (Guided setup is Expert-only).
     await connectDemo(page)
     // Poll: the two advanced sensor cards appear only once RNGFND1_TYPE /
     // FLOW_TYPE have arrived, which is later than the unconditional cards.
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
     expect(await columnIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
     expect(await columnIds(page, 'noticecol')).toEqual(['notices'])
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
     // Reset only appears once there is something to reset — an always-on
     // "Reset Layout" on a page nobody has customised is just noise.
     await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
@@ -7220,20 +7236,22 @@ test.describe('Status & Info dashboard layout', () => {
     // Drag-only reordering is inaccessible, so the handle is a real button:
     // left/right walk the card between columns, up/down reorder within one.
     await connectDemo(page)
-    await page.getByTestId('status-dash-handle-guided-setup').focus()
+    // Left from the sidebar is the sensor shelf, the last main column in
+    // visual order (v3: status columns first, the shelf under them).
+    await page.getByTestId('status-dash-handle-bench-actions').focus()
     await page.keyboard.press('ArrowLeft')
-    await expect.poll(() => columnIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
+    await expect.poll(() => columnIds(page, 'sensors')).toContain('bench-actions')
     expect(await columnIds(page, 'sidebar')).toEqual(['system-info'])
 
     // The move is saved, so it survives a reload.
     await page.reload()
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
-    await expect(page.getByTestId('status-dash-card-guided-setup')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
-    expect(await columnIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
+    await expect(page.getByTestId('status-dash-card-bench-actions')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+    expect(await columnIds(page, 'sensors')).toContain('bench-actions')
 
     await page.getByTestId('status-dash-reset-layout').click()
-    await expect.poll(() => columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    await expect.poll(() => columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
     await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
     // Reset CLEARS the saved arrangement rather than saving a copy of today's
     // default, so a later default change still reaches the operator.
@@ -7263,9 +7281,10 @@ test.describe('Status & Info dashboard layout', () => {
     // arrangement routinely names cards that are not there.
     await connectDemo(page)
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
+    // Right from the sensor shelf is the sidebar (v3 visual order).
     await page.getByTestId('status-dash-handle-rangefinder').focus()
     await page.keyboard.press('ArrowRight')
-    await expect.poll(() => columnIds(page, 'midcol')).toContain('rangefinder')
+    await expect.poll(() => columnIds(page, 'sidebar')).toContain('rangefinder')
 
     await page.goto('/?demoParamOverrides=RNGFND1_TYPE:0,FLOW_TYPE:0')
     await page.getByTestId('connect-button').click()
@@ -7275,7 +7294,7 @@ test.describe('Status & Info dashboard layout', () => {
     // The absent cards are simply not placed; every card that IS present is.
     expect(await columnIds(page, 'sensors')).toEqual(['gps'])
     expect(await columnIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
   })
 
   test('a column can be widened, and the width is saved', async ({ page }) => {
@@ -7429,7 +7448,7 @@ test.describe('Status & Info dashboard layout', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
   })
 
   test('a layout saved by the zone model is dropped, not half-read', async ({ page }) => {
@@ -7448,7 +7467,7 @@ test.describe('Status & Info dashboard layout', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
     await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
   })
 
@@ -7478,7 +7497,7 @@ test.describe('Status & Info dashboard layout', () => {
     await expect(page.getByTestId('status-dash-toolbar')).toHaveCount(0)
     await expect(page.locator('.status-dash-card__handle')).toHaveCount(0)
     await expect(page.locator('.status-dash-col__width')).toHaveCount(0)
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
     // Every column is full width, so nothing sits beside anything else.
     const lefts = await page.$$eval('[data-status-dash-col-region="main"]', (nodes) =>
       nodes.map((node) => Math.round(node.getBoundingClientRect().left))

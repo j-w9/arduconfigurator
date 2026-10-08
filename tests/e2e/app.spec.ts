@@ -649,7 +649,8 @@ test.describe('browser configurator regression flows', () => {
     // is saved, so its appearance is the same proof that zeroing took effect.
     await expect(page.getByTestId('flight-deck-clear-heading-button')).toBeVisible()
     await expect(page.getByTestId('setup-gps-map-widget')).toBeVisible()
-    await expect(page.getByTestId('setup-start-guided-button')).toBeVisible()
+    // Guided Setup (and its Status card) is Expert-only while it is reworked.
+    await expect(page.getByTestId('setup-start-guided-button')).toHaveCount(0)
     await page.getByTestId('setup-start-guided-button').click()
     await expect(page.getByTestId('setup-wizard')).toBeVisible()
     await expect(page.getByTestId('wizard-orientation-task')).toBeVisible()

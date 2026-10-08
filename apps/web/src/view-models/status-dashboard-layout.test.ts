@@ -27,7 +27,8 @@ import {
   tidyStatusDashboardLayout,
   toggleStatusDashboardColumnFlow,
   type StatusDashboardCardSpec,
-  type StatusDashboardGeometry
+  type StatusDashboardGeometry,
+  type StatusDashboardLayout
 } from './status-dashboard-layout'
 
 /**
