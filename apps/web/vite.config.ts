@@ -59,6 +59,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@arduconfig/transport': fileURLToPath(new URL('packages/transport/src/index.ts', root)),
+      '@arduconfig/can-core': fileURLToPath(new URL('packages/can-core/src/index.ts', root)),
       '@arduconfig/firmware-flash': fileURLToPath(new URL('packages/firmware-flash/src/index.ts', root)),
       '@arduconfig/protocol-mavlink': fileURLToPath(new URL('packages/protocol-mavlink/src/index.ts', root)),
       '@arduconfig/protocol-msp': fileURLToPath(new URL('packages/protocol-msp/src/index.ts', root)),

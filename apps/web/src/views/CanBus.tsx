@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 import type {
   CanBusState,
@@ -74,6 +74,8 @@ export interface CanBusViewProps {
   expertActions?: CanDeviceExpertActions
   /** Pop-out wiring, supplied by App.tsx (the windows outlive this tab). Absent
    *  in the DroneNet embed, which has no pop-out affordance. */
+  /** The docked bus monitor (CAN tab only; the DroneNet embed has none). */
+  monitorSlot?: ReactNode
   popout?: {
     openNodeIds: number[]
     /** Called straight from the click handler — window.open needs the gesture. */
@@ -113,7 +115,8 @@ export function CanBusView(props: CanBusViewProps) {
     escTelemetry,
     busy = false,
     expertActions,
-    popout
+    popout,
+    monitorSlot
   } = props
 
   const rows = useMemo(() => buildCanBusNodeRows(state), [state])
@@ -516,6 +519,9 @@ export function CanBusView(props: CanBusViewProps) {
           </div>
         ) : null}
       </Panel>
+      {/* Docked at the foot of the tab (sticky to the bottom of the workspace),
+          so the bus traffic stays in view while the node list scrolls. */}
+      {monitorSlot}
     </div>
   )
 }

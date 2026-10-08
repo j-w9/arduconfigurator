@@ -42,6 +42,7 @@ import type {
   ParamSetMessage,
   ParamValueMessage,
   CanFrameMessage,
+  CanFdFrameMessage,
   OpticalFlowMessage,
   DistanceSensorMessage,
   EscTelemetryMessage,
@@ -693,6 +694,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeEscTelemetryPayload(message)
     case 'CAN_FRAME':
       return encodeCanFramePayload(message)
+    case 'CANFD_FRAME':
+      return encodeCanFdFramePayload(message)
     case 'SETUP_SIGNING':
       return encodeSetupSigningPayload(message)
     case 'SCALED_IMU':
@@ -778,6 +781,8 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
       return decodeAvailableModesMonitorPayload(payload)
     case MAVLINK_MESSAGE_IDS.CAN_FRAME:
       return decodeCanFramePayload(payload)
+    case MAVLINK_MESSAGE_IDS.CANFD_FRAME:
+      return decodeCanFdFramePayload(payload)
     default:
       return undefined
   }
@@ -858,6 +863,8 @@ function messageIdFor(message: MavlinkMessage): number {
           : MAVLINK_MESSAGE_IDS.ESC_TELEMETRY_1_TO_4
     case 'CAN_FRAME':
       return MAVLINK_MESSAGE_IDS.CAN_FRAME
+    case 'CANFD_FRAME':
+      return MAVLINK_MESSAGE_IDS.CANFD_FRAME
     case 'SETUP_SIGNING':
       return MAVLINK_MESSAGE_IDS.SETUP_SIGNING
     default:
@@ -1704,6 +1711,37 @@ function decodeAvailableModePayload(payload: Uint8Array): AvailableModeMessage |
 
 function decodeAvailableModesMonitorPayload(payload: Uint8Array): AvailableModesMonitorMessage {
   return { type: 'AVAILABLE_MODES_MONITOR', sequence: payload[0] ?? 0 }
+}
+
+// CANFD_FRAME (msgid 387). Same field order as CAN_FRAME with data[64]:
+// id (u32) at 0, target_system 4, target_component 5, bus 6, len 7,
+// data 8..71. Total 72 bytes. CRC_EXTRA = 4.
+function encodeCanFdFramePayload(message: CanFdFrameMessage): Uint8Array {
+  const payload = new Uint8Array(72)
+  const view = new DataView(payload.buffer)
+  view.setUint32(0, message.id, true)
+  view.setUint8(4, message.targetSystem)
+  view.setUint8(5, message.targetComponent)
+  view.setUint8(6, message.bus)
+  view.setUint8(7, message.len)
+  payload.set(copyFixedBytes(message.data, 64), 8)
+  return payload
+}
+
+function decodeCanFdFramePayload(payload: Uint8Array): CanFdFrameMessage {
+  // v2 truncates trailing zero bytes; pad back out before reading.
+  const bytes = new Uint8Array(72)
+  bytes.set(payload.subarray(0, Math.min(payload.length, 72)))
+  const view = new DataView(bytes.buffer)
+  return {
+    type: 'CANFD_FRAME',
+    id: view.getUint32(0, true),
+    targetSystem: bytes[4],
+    targetComponent: bytes[5],
+    bus: bytes[6],
+    len: Math.min(64, bytes[7]),
+    data: bytes.slice(8, 72)
+  }
 }
 
 function decodeCanFramePayload(payload: Uint8Array): CanFrameMessage {

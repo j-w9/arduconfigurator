@@ -293,6 +293,8 @@ import { intervalUsForRate } from './view-models/mavlink-inspector'
 import { MAX_MAVLINK_PLOTS, useMavlinkInspector } from './hooks/use-mavlink-inspector'
 import { CanDeviceInspectorView, type DronecanFirmwareOnlineSource } from './views/CanDeviceInspector'
 import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
+import { useCanBusMonitor } from './hooks/use-can-bus-monitor'
+import { CanBusMonitorView } from './views/CanBusMonitor'
 import { useCanDevicePopouts } from './hooks/use-can-device-popouts'
 import { usePopoutWindows } from './hooks/use-popout-windows'
 import { RecentNoticesFeed, recentNoticesBadge } from './views/RecentNoticesFeed'
@@ -2650,6 +2652,17 @@ export function App() {
     snapshot.canBus.framesReceived,
     snapshot.canBus.status === 'active'
   )
+  // The CAN tab's bus monitor: every raw frame on the forwarded bus (and the
+  // ones we send), captured outside the snapshot. Bitrate (CAN_Pn_BITRATE,
+  // bit/s) feeds the load estimate; ArduPilot's default is 1 Mbit/s.
+  const canBusMonitor = useCanBusMonitor({
+    source: runtime,
+    enabled: snapshot.canBus.status === 'active',
+    bitrate:
+      snapshot.canBus.bus !== undefined
+        ? readRoundedParameter(snapshot, `CAN_P${snapshot.canBus.bus}_BITRATE`) ?? 1_000_000
+        : undefined
+  })
   // Online firmware lookup for DroneCAN nodes (desktop-only). The browser can't
   // reach firmware.ardupilot.org (no CORS), so this is wired ONLY when the
   // Electron firmware bridge is present — same precedent as the FC flasher. In
@@ -10298,6 +10311,7 @@ export function App() {
         // --- folded-in DroneCAN inspector (was a separate expert-only tab) ---
         framesPerSec={dronecanFramesPerSec}
         escTelemetry={snapshot.canBus.escTelemetry}
+        monitorSlot={<CanBusMonitorView monitor={canBusMonitor} live={snapshot.canBus.status === 'active'} />}
         busy={busyAction !== undefined}
         // Restart + firmware update were expert-gated by living in the expert-only
         // inspector tab; the CAN tab is always visible, so the gate moves here

@@ -16,6 +16,7 @@
     "verbatimModuleSyntax": true,
     "paths": {
       "@arduconfig/transport": ["./packages/transport/src/index.ts"],
+      "@arduconfig/can-core": ["./packages/can-core/src/index.ts"],
       "@arduconfig/protocol-mavlink": ["./packages/protocol-mavlink/src/index.ts"],
       "@arduconfig/protocol-msp": ["./packages/protocol-msp/src/index.ts"],
       "@arduconfig/ardupilot-core": ["./packages/ardupilot-core/src/index.ts"],

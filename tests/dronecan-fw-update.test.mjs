@@ -289,7 +289,10 @@ test('a first file.Read past the end of the image is reported as a failure, not 
       service.processCanFrame({
         type: 'CAN_FRAME',
         bus: 1,
-        id: frame.canId,
+        // Extended flag set, as ArduPilot forwards every DroneCAN frame
+        // (AP_HAL::CANFrame::FlagEFF); a bare 29-bit id is a standard frame,
+        // which the DroneCAN decoder now (rightly) ignores.
+        id: (frame.canId | 0x80000000) >>> 0,
         len: frame.data.length,
         data: frame.data
       })

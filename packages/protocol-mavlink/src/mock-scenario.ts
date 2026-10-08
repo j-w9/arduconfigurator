@@ -2529,14 +2529,28 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
         }
       }, dynamicCadenceMs)
 
+      // Plain-CAN traffic sharing the demo bus, on its own fast timer: the
+      // dynamic tick above runs every few seconds, and a bus monitor fed in
+      // bursts that far apart shows nothing like a real bus. Silent until
+      // forwarding is active (plainTraffic returns nothing before that), and
+      // each stream keeps its own period (50 ms .. 2 s).
+      const canTrafficTimer = setInterval(() => {
+        for (const canFrame of dronecanSim.plainTraffic(Date.now())) {
+          emit(codec.encode(envelope(nextDynamicSequence(), canFrame)))
+        }
+      }, 25)
+
       // Allow the host process to exit even if the demo bridge is still
       // running — important for the desktop bridge entrypoint.
-      if (typeof (timer as { unref?: () => void }).unref === 'function') {
-        ;(timer as { unref?: () => void }).unref?.()
+      for (const handle of [timer, canTrafficTimer]) {
+        if (typeof (handle as { unref?: () => void }).unref === 'function') {
+          ;(handle as { unref?: () => void }).unref?.()
+        }
       }
 
       return () => {
         clearInterval(timer)
+        clearInterval(canTrafficTimer)
         stopMotion()
       }
     }

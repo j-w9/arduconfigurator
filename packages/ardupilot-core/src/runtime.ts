@@ -29,6 +29,7 @@ import type {
   UavcanNodeStatusMessage,
 } from '@arduconfig/protocol-mavlink'
 import type { MavlinkSignatureRejection } from '@arduconfig/protocol-mavlink'
+import type { CanFrame } from '@arduconfig/can-core'
 import {
   MAV_PROTOCOL_CAPABILITY,
   MAV_AUTOPILOT,
@@ -1857,6 +1858,16 @@ export class ArduPilotConfiguratorRuntime {
    *  CAN tab uses this to drive its discovery + parameter UI. MAVLink
    *  stays alive on the same channel — this is the same mechanism
    *  Mission Planner uses for its DroneCAN inspector. */
+  /**
+   * Every raw CAN frame on the forwarded bus, and every frame this runtime
+   * sends to it, as they happen -- for the bus monitor and recorder. Outside
+   * the snapshot on purpose: a busy bus is thousands of frames a second.
+   * Returns the unsubscribe.
+   */
+  onCanFrame(listener: (frame: CanFrame) => void): () => void {
+    return this.canBusService.onFrame(listener)
+  }
+
   async startCanBusForward(bus: number): Promise<void> {
     return this.canBusService.start(bus)
   }
@@ -2656,6 +2667,9 @@ export class ArduPilotConfiguratorRuntime {
         break
       case 'CAN_FRAME':
         this.canBusService.processCanFrame(envelope.message)
+        break
+      case 'CANFD_FRAME':
+        this.canBusService.processCanFdFrame(envelope.message)
         break
       case 'OPTICAL_FLOW':
         this.processOpticalFlow(envelope.message)

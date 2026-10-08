@@ -7,7 +7,7 @@
 // (tests/dronecan-decoders.test.mjs), so a simulated node populates the
 // inspector identically to a real one.
 
-import type { CanFrameMessage, MavlinkMessage } from './messages.js'
+import type { CanFdFrameMessage, CanFrameMessage, MavlinkMessage } from './messages.js'
 import {
   DRONECAN_ESC_STATUS_DT_ID,
   DRONECAN_ESC_STATUS_SIGNATURE,
@@ -171,7 +171,56 @@ export interface DronecanBusSimulator {
   /** Periodic NodeStatus broadcasts for every simulated node (empty until
    *  forwarding is active). */
   broadcasts: () => CanFrameMessage[]
+  /**
+   * Plain (non-DroneCAN) traffic sharing the bus, due at `nowMs`: standard-id
+   * classic frames at their own rates and a CAN FD frame, so the bus monitor,
+   * filters and recorder have a mixed bus to show. Empty until forwarding is
+   * active. Call it often; each stream keeps its own period.
+   */
+  plainTraffic: (nowMs: number) => (CanFrameMessage | CanFdFrameMessage)[]
 }
+
+/** The demo's plain-CAN streams: id, period, and a payload generator. */
+interface PlainCanStream {
+  id: number
+  periodMs: number
+  fd?: boolean
+  payload: (count: number, nowMs: number) => Uint8Array
+}
+
+const PLAIN_CAN_STREAMS: readonly PlainCanStream[] = [
+  // A counter and a slow sine: the classic "which byte moves" frame.
+  {
+    id: 0x123,
+    periodMs: 100,
+    payload: (count, nowMs) => {
+      const sine = Math.round(127 + 120 * Math.sin(nowMs / 1000))
+      return Uint8Array.from([count & 0xff, (count >> 8) & 0xff, sine, 0x00, 0xaa, 0x55, 0x00, 0x01])
+    }
+  },
+  // Four little-endian uint16 "wheel speeds", gently varying.
+  {
+    id: 0x2a0,
+    periodMs: 50,
+    payload: (_count, nowMs) => {
+      const out = new Uint8Array(8)
+      const view = new DataView(out.buffer)
+      for (let wheel = 0; wheel < 4; wheel += 1) {
+        view.setUint16(wheel * 2, 1000 + wheel * 25 + Math.round(40 * Math.sin(nowMs / 700 + wheel)), true)
+      }
+      return out
+    }
+  },
+  // An occasional diagnostic-style request, three bytes.
+  { id: 0x7df, periodMs: 2000, payload: () => Uint8Array.from([0x02, 0x01, 0x0c]) },
+  // A CAN FD frame with a 16-byte payload.
+  {
+    id: 0x321,
+    periodMs: 500,
+    fd: true,
+    payload: (count) => Uint8Array.from({ length: 16 }, (_unused, index) => (count + index) & 0xff)
+  }
+]
 
 /** Build a fresh simulator. State (active flag, transfer ids, param edits) is
  *  per-instance so each demo connection starts clean. */
@@ -218,6 +267,8 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
   })
 
   const uptimeSec = (): number => Math.max(1, Math.floor((Date.now() - bootMs) / 1000))
+  const plainLastMs: (number | undefined)[] = []
+  const plainCounts: number[] = []
 
   const nextStatusTransferId = (nodeId: number): number => {
     const next = (statusTransferId.get(nodeId) ?? 0) & 0x1f
@@ -538,6 +589,48 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
           return []
       }
     },
-    broadcasts: (): CanFrameMessage[] => [...emitNodeStatus(), ...emitEscStatus()]
+    broadcasts: (): CanFrameMessage[] => [...emitNodeStatus(), ...emitEscStatus()],
+    plainTraffic: (nowMs: number): (CanFrameMessage | CanFdFrameMessage)[] => {
+      if (!active) {
+        return []
+      }
+      const out: (CanFrameMessage | CanFdFrameMessage)[] = []
+      PLAIN_CAN_STREAMS.forEach((stream, index) => {
+        const last = plainLastMs[index]
+        if (last !== undefined && nowMs - last < stream.periodMs) {
+          return
+        }
+        plainLastMs[index] = nowMs
+        plainCounts[index] = (plainCounts[index] ?? 0) + 1
+        const data = stream.payload(plainCounts[index], nowMs)
+        if (stream.fd) {
+          const padded = new Uint8Array(64)
+          padded.set(data)
+          out.push({
+            type: 'CANFD_FRAME',
+            targetSystem: 0,
+            targetComponent: 0,
+            bus: wireBus,
+            len: data.length,
+            id: stream.id,
+            data: padded
+          })
+        } else {
+          const padded = new Uint8Array(8)
+          padded.set(data.subarray(0, 8))
+          out.push({
+            type: 'CAN_FRAME',
+            targetSystem: 0,
+            targetComponent: 0,
+            bus: wireBus,
+            len: Math.min(8, data.length),
+            // Standard 11-bit id: no EFF flag.
+            id: stream.id,
+            data: padded
+          })
+        }
+      })
+      return out
+    }
   }
 }

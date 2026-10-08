@@ -13,6 +13,7 @@
   "include": ["src"],
   "references": [
     { "path": "../transport" },
+    { "path": "../can-core" },
     { "path": "../protocol-mavlink" },
     { "path": "../param-metadata" }
   ]

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { worstViewportOverflow } from './support/overflow'
 
 // The DroneCAN inspector was the only main nav view without an e2e smoke test
 // (its decode + node-discovery logic is unit-covered by
@@ -154,5 +155,202 @@ test.describe('DroneCAN inspector', () => {
     await page.getByTestId('can-bus-node-popout-124').click()
     await expect(page.getByTestId('can-bus-node-popped-out-124')).toHaveCount(0)
     expect(popout.isClosed()).toBe(true)
+  })
+})
+
+test.describe('CAN bus monitor', () => {
+  async function openMonitor(page: Page): Promise<void> {
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-stop')).toBeVisible()
+  }
+
+  test('shows every frame on the bus: plain CAN beside DroneCAN, with live stats', async ({ page }) => {
+    await openMonitor(page)
+    const monitor = page.getByTestId('can-monitor')
+    await expect(monitor).toBeVisible()
+    // The demo bus carries standard-id plain CAN (0x123, 0x2A0), a CAN FD
+    // frame (0x321) and DroneCAN NodeStatus broadcasts.
+    await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('can-monitor-stats')).toContainText('f/s')
+
+    await page.getByTestId('can-monitor-view-by-id').click()
+    const byId = page.getByTestId('can-monitor-by-id')
+    await expect(byId.getByTestId('can-monitor-id-123')).toBeVisible()
+    await expect(byId.getByTestId('can-monitor-id-321')).toContainText('FD')
+    // NodeStatus from node 124, read off its 29-bit id.
+    await expect(byId).toContainText('NodeStatus ← 124', { timeout: 15_000 })
+  })
+
+  test('filters by id expression, says what is wrong with a bad one, and counts', async ({ page }) => {
+    await openMonitor(page)
+    await page.getByTestId('can-monitor-view-by-id').click()
+    await expect(page.getByTestId('can-monitor-id-2A0')).toBeVisible({ timeout: 15_000 })
+
+    await page.getByTestId('can-monitor-filter-ids').fill('123')
+    await expect(page.getByTestId('can-monitor-id-123')).toBeVisible()
+    await expect(page.getByTestId('can-monitor-id-2A0')).toHaveCount(0)
+    await expect(page.getByTestId('can-monitor-count')).toContainText('1 of')
+
+    // A half-typed expression is reported and ignored, never blanking the table.
+    await page.getByTestId('can-monitor-filter-ids').fill('12z')
+    await expect(page.getByTestId('can-monitor-filter-error')).toContainText('not a hex CAN id')
+    await expect(page.getByTestId('can-monitor-id-2A0')).toBeVisible()
+
+    // Kind chips: dropping STD leaves only the extended (DroneCAN) ids.
+    await page.getByTestId('can-monitor-filter-ids').fill('')
+    await page.getByTestId('can-monitor-kind-standard').click()
+    await expect(page.getByTestId('can-monitor-id-123')).toHaveCount(0)
+  })
+
+  test('pausing freezes the view but keeps capturing', async ({ page }) => {
+    await openMonitor(page)
+    await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId('can-monitor-pause').click()
+    await expect(page.getByTestId('can-monitor-pause')).toHaveText(/Resume \(\+\d[\d,]*\)/, { timeout: 10_000 })
+    await page.getByTestId('can-monitor-pause').click()
+    await expect(page.getByTestId('can-monitor-pause')).toHaveText('Pause')
+  })
+
+  test('a selected DroneCAN frame shows its header reading and its bytes', async ({ page }) => {
+    await openMonitor(page)
+    await page.getByTestId('can-monitor-view-by-id').click()
+    const status = page.getByTestId('can-monitor-by-id').locator('[data-testid^="can-monitor-id-"]', { hasText: 'NodeStatus ← 124' })
+    await status.first().click({ timeout: 15_000 })
+    const details = page.getByTestId('can-monitor-details')
+    await expect(details).toBeVisible()
+    await expect(page.getByTestId('can-monitor-dronecan')).toContainText('NodeStatus · 341')
+    await expect(page.getByTestId('can-monitor-dronecan')).toContainText('Node 124')
+    await expect(details.locator('table.can-monitor__bytes tbody tr')).toHaveCount(8)
+  })
+
+  test('records to a candump log and opens one back', async ({ page }) => {
+    await openMonitor(page)
+    await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId('can-monitor-record').click()
+    await expect(page.getByTestId('can-monitor-record')).toContainText('Stop', { timeout: 5_000 })
+    await page.waitForTimeout(1500)
+    await page.getByTestId('can-monitor-record').click()
+    await expect(page.getByTestId('can-monitor-save')).toBeVisible()
+
+    const downloadPromise = page.waitForEvent('download')
+    await page.getByTestId('can-monitor-save-candump').click()
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toMatch(/^can-capture-.*\.log$/)
+    const path = await download.path()
+    const { readFile } = await import('node:fs/promises')
+    const text = await readFile(path!, 'utf8')
+    // candump -L lines: "(seconds) can0 ID#DATA", bus 1 is can0.
+    expect(text).toMatch(/^\(\d+\.\d{6}\) can0 123#[0-9A-F]{16}$/m)
+
+    // Opening it again shows the log in place of the live stream.
+    await page.getByTestId('can-monitor-log-input').setInputFiles({
+      name: 'capture.log',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(text)
+    })
+    await expect(page.getByTestId('can-monitor-log-banner')).toContainText('capture.log')
+    await page.getByTestId('can-monitor-view-by-id').click()
+    await expect(page.getByTestId('can-monitor-id-123')).toBeVisible()
+    await page.getByTestId('can-monitor-close-log').click()
+    await expect(page.getByTestId('can-monitor-log-banner')).toHaveCount(0)
+  })
+})
+
+test.describe('CAN tab on a phone', () => {
+  test('the bus monitor, node cards and ESC table fit a 390px screen', async ({ page }) => {
+    // A content-sized app shell takes its width from the widest thing on the
+    // page: the ESC table and the node buttons pushed it to ~790px once the
+    // bus came up. Both tables now scroll in their own box.
+    await page.setViewportSize({ width: 390, height: 900 })
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('dronecan-esc-table')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 15_000 })
+    for (const mode of ['stream', 'by-id'] as const) {
+      await page.getByTestId(`can-monitor-view-${mode}`).click()
+      expect((await worstViewportOverflow(page)).worst, `${mode} view`).toBeLessThanOrEqual(2)
+    }
+  })
+})
+
+test.describe('CAN bus monitor: logs and saving', () => {
+  // Two ids, ten seconds: 0x100 every second, 0x200 once at the end.
+  const LOG = Array.from({ length: 10 }, (_unused, index) => `(${1000 + index}.000000) can0 100#${String(index).padStart(2, '0')}`)
+    .concat(['(1009.500000) can0 200#FF'])
+    .join('\n')
+
+  async function openLogFile(page: Page, name: string, text: string): Promise<void> {
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-monitor-log-input').setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(text) })
+    await expect(page.getByTestId('can-monitor-log-banner')).toContainText(name)
+  }
+
+  test('a log opens whole, then plays back against a clock and seeks', async ({ page }) => {
+    await openLogFile(page, 'bench.log', LOG)
+    await expect(page.getByTestId('can-monitor-log-banner')).toContainText('11 frames')
+    await expect(page.getByTestId('can-monitor-position')).toHaveText('whole log')
+    await page.getByTestId('can-monitor-view-by-id').click()
+    await expect(page.getByTestId('can-monitor-id-200')).toBeVisible()
+
+    // Play at 20x: the trace builds up from nothing, 0x200 only near the end.
+    await page.getByTestId('can-monitor-speed').selectOption('20')
+    await page.getByTestId('can-monitor-play').click()
+    await expect(page.getByTestId('can-monitor-play')).toContainText('Pause')
+    await expect(page.getByTestId('can-monitor-id-200')).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByTestId('can-monitor-play')).toContainText('Play', { timeout: 5_000 })
+    await expect(page.getByTestId('can-monitor-position')).toHaveText('9.50 / 9.50 s')
+    // Every frame played is kept (the view's buffer is sized for the whole log).
+    await page.getByTestId('can-monitor-view-stream').click()
+    await expect(page.getByTestId('can-monitor-count')).toHaveText('11 frames')
+    await page.getByTestId('can-monitor-view-by-id').click()
+
+    // Seek to 3 s: only 0x100 has been seen, four times.
+    await page.getByTestId('can-monitor-scrubber').fill('3000')
+    await expect(page.getByTestId('can-monitor-position')).toHaveText('3.00 / 9.50 s')
+    await expect(page.getByTestId('can-monitor-id-200')).toHaveCount(0)
+    await expect(page.getByTestId('can-monitor-id-100')).toContainText('4')
+
+    await page.getByTestId('can-monitor-show-all').click()
+    await expect(page.getByTestId('can-monitor-position')).toHaveText('whole log')
+    await expect(page.getByTestId('can-monitor-id-200')).toBeVisible()
+  })
+
+  test('a CSV saved here opens back', async ({ page }) => {
+    const csv = 'timestamp_s,bus,direction,id,extended,fd,remote,error,length,data\n1.000000,1,tx,123,0,0,0,0,2,01 02\n'
+    await openLogFile(page, 'capture.csv', csv)
+    await page.getByTestId('can-monitor-view-stream').click()
+    await expect(page.getByTestId('can-monitor-row')).toHaveCount(1)
+    await expect(page.getByTestId('can-monitor-row')).toContainText('TX')
+  })
+
+  test('Save… keeps the held frames without a recording, filtered on request', async ({ page }) => {
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId('can-monitor-filter-ids').fill('123')
+
+    await page.getByTestId('can-monitor-save-buffer').click()
+    await expect(page.getByTestId('can-monitor-save-popover')).toBeVisible()
+    await expect(page.getByTestId('can-monitor-save-filtered')).toBeChecked()
+    const downloadPromise = page.waitForEvent('download')
+    await page.getByTestId('can-monitor-save-buffer-candump').click()
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toMatch(/^can-buffer-.*\.log$/)
+    const { readFile } = await import('node:fs/promises')
+    const text = await readFile((await download.path())!, 'utf8')
+    const lines = text.trim().split('\n')
+    expect(lines.length).toBeGreaterThan(0)
+    // Filtered: only 0x123 frames.
+    expect(lines.every((line) => / can0 123#/.test(line))).toBe(true)
+    await expect(page.getByTestId('can-monitor-save-popover')).toHaveCount(0)
   })
 })

@@ -1,7 +1,9 @@
 import type {
+  CanFdFrameMessage,
   CanFrameMessage,
   MavlinkSession
 } from '@arduconfig/protocol-mavlink'
+import { canFrameFromRawId, type CanFrame } from '@arduconfig/can-core'
 import {
   DRONECAN_ESC_STATUS_DT_ID,
   DRONECAN_ESC_STATUS_SIGNATURE,
@@ -230,6 +232,13 @@ export class CanBusService {
   private error: string | undefined
   private framesReceived = 0
   private lastFrameAtMs: number | undefined
+  /**
+   * Raw-frame subscribers (the bus monitor, the recorder). Every forwarded
+   * frame -- DroneCAN or not, classic or FD -- and every frame this service
+   * sends goes to them, outside the snapshot: a busy bus is thousands of
+   * frames a second, far too many for the immutable-snapshot path.
+   */
+  private readonly frameListeners = new Set<(frame: CanFrame) => void>()
   private readonly nodes = new Map<number, MutableNode>()
   private readonly reassembler = new DronecanReassembler({
     getDataTypeSignature: (ctx) => {
@@ -452,6 +461,45 @@ export class CanBusService {
     this.reset()
   }
 
+  /** Subscribe to every raw frame seen or sent while forwarding. Returns the unsubscribe. */
+  onFrame(listener: (frame: CanFrame) => void): () => void {
+    this.frameListeners.add(listener)
+    return () => {
+      this.frameListeners.delete(listener)
+    }
+  }
+
+  private emitFrame(frame: CanFrame): void {
+    for (const listener of this.frameListeners) {
+      try {
+        listener(frame)
+      } catch {
+        // A broken subscriber must not stop the bus.
+      }
+    }
+  }
+
+  /** Feed one CANFD_FRAME envelope. FD frames are shown, not decoded as DroneCAN. */
+  processCanFdFrame(message: CanFdFrameMessage): void {
+    if (this.status !== 'active') {
+      return
+    }
+    this.framesReceived += 1
+    this.lastFrameAtMs = Date.now()
+    if (this.frameListeners.size > 0) {
+      this.emitFrame(
+        canFrameFromRawId({
+          timestampMs: this.lastFrameAtMs,
+          // CAN_FRAME / CANFD_FRAME carry the 0-based HAL bus; frames are 1-based.
+          bus: message.bus + 1,
+          rawId: message.id,
+          data: message.data.subarray(0, message.len),
+          fd: true
+        })
+      )
+    }
+  }
+
   /** Feed one CAN_FRAME envelope from the runtime's processEnvelope loop. */
   processCanFrame(message: CanFrameMessage): void {
     if (this.status !== 'active') {
@@ -459,6 +507,22 @@ export class CanBusService {
     }
     this.framesReceived += 1
     this.lastFrameAtMs = Date.now()
+    if (this.frameListeners.size > 0) {
+      this.emitFrame(
+        canFrameFromRawId({
+          timestampMs: this.lastFrameAtMs,
+          bus: message.bus + 1,
+          rawId: message.id,
+          data: message.data.subarray(0, message.len)
+        })
+      )
+    }
+    // DroneCAN is 29-bit only. ArduPilot forwards everything on the bus, so a
+    // standard-id, remote or error frame (plain CAN sharing the bus) is shown
+    // above and kept out of the DroneCAN decoder, where it was junk input.
+    if ((message.id & CAN_FRAME_FLAG_EFF) === 0 || (message.id & 0x60000000) !== 0) {
+      return
+    }
     const sourceNodeId = dronecanSourceNodeId(message.id)
     const isService = dronecanIsServiceFrame(message.id)
     const typeId = isService ? dronecanServiceTypeId(message.id) : dronecanMessageTypeId(message.id)
@@ -1334,6 +1398,7 @@ export class CanBusService {
     for (const frame of frames) {
       const data = new Uint8Array(8)
       data.set(frame.data.subarray(0, Math.min(frame.data.length, 8)), 0)
+      const rawId = (frame.canId | CAN_FRAME_FLAG_EFF) >>> 0
       try {
         await this.deps.session.send({
           type: 'CAN_FRAME',
@@ -1345,9 +1410,20 @@ export class CanBusService {
           len: frame.data.length,
           // Mark as 29-bit extended (see CAN_FRAME_FLAG_EFF); >>> 0 keeps the
           // high bit through JS signed-32 bitwise ops.
-          id: (frame.canId | CAN_FRAME_FLAG_EFF) >>> 0,
+          id: rawId,
           data
         })
+        if (this.frameListeners.size > 0) {
+          this.emitFrame(
+            canFrameFromRawId({
+              timestampMs: Date.now(),
+              bus: this.bus ?? 1,
+              rawId,
+              data: frame.data,
+              direction: 'tx'
+            })
+          )
+        }
       } catch {
         // Best-effort; the polling tick will retry.
         return
