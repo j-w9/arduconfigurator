@@ -85,6 +85,22 @@ export function TcalCalibrationCard({
   const baroExponent = readParameterValue(snapshot, 'TCAL_BARO_EXP')
   const baroTempMin = readParameterValue(snapshot, 'TCAL_TEMP_MIN')
   const baroTempMax = readParameterValue(snapshot, 'TCAL_TEMP_MAX')
+  // Folded by default (operator request): the full card -- range inputs,
+  // warnings, how-to, the baro section -- is the tallest on the page, and on
+  // a wide screen its height pushed the rest of the Sensors row out of view.
+  // Called before any early return so the hook order never changes.
+  const [expanded, setExpanded] = useState(false)
+  const expandToggle = (
+    <button
+      type="button"
+      className="calibration-card__expand"
+      data-testid="tcal-expand"
+      aria-expanded={expanded}
+      onClick={() => setExpanded((open) => !open)}
+    >
+      {expanded ? 'Hide thermal calibration ▾' : 'Set up thermal calibration ▸'}
+    </button>
+  )
   const hasBaroTcal = baroEnabled !== undefined
   const baroLearning = (baroEnabled ?? 0) >= 2
   const baroState = enableState(baroEnabled)
@@ -174,7 +190,8 @@ export function TcalCalibrationCard({
           This firmware doesn't expose per-IMU thermal-calibration parameters (<code>INS_TCALn_*</code>). Thermal
           cal is available on builds with per-IMU temperature compensation compiled in.
         </p>
-        {baroSection}
+        {baroSection ? expandToggle : null}
+        {expanded ? baroSection : null}
       </article>
     )
   }
@@ -275,6 +292,10 @@ export function TcalCalibrationCard({
         ) : null}
       </div>
 
+      {expandToggle}
+
+      {expanded ? (
+      <>
       {/* The temperature range the learn will run over.
         *
         * TMAX is the input that matters: it is what ends the learn. TMIN is
@@ -360,6 +381,8 @@ export function TcalCalibrationCard({
       </details>
 
       {baroSection}
+      </>
+      ) : null}
     </article>
   )
 }

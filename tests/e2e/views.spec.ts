@@ -4656,6 +4656,10 @@ test.describe('ArduPlane demo', () => {
     await expect(tcal).toContainText('Thermal calibration')
     // Per-IMU state reads "TCAL: off" (not "disabled", which read as IMU-off).
     await expect(tcal).toContainText('IMU1 TCAL: off')
+    // Folded by default so its height does not push the other Sensors cards
+    // out of view; the state pills stay visible, the setup is one click away.
+    await expect(page.getByTestId('tcal-start')).toHaveCount(0)
+    await page.getByTestId('tcal-expand').click()
     // The step-by-step is collapsed into a How-it-works disclosure (compact card).
     // .first(): the card now carries a second how-to for the baro procedure.
     await expect(tcal.locator('.calibration-card__howto summary').first()).toHaveText(
@@ -4702,6 +4706,7 @@ test.describe('ArduPlane demo', () => {
     await expectParameterSyncComplete(page)
     await openView(page, 'calibration')
     await openCalibrationSection(page, 'sensors')
+    await page.getByTestId('tcal-expand').click()
 
     const baro = page.getByTestId('tcal-baro')
     await expect(baro).toBeVisible()

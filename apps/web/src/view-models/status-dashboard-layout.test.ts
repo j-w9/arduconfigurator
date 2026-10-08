@@ -54,6 +54,26 @@ const specsWithoutSensors = specsWithSensors.filter(
   (spec) => spec.id !== 'rangefinder' && spec.id !== 'optical-flow'
 )
 
+/**
+ * A fixed starting arrangement for the TRANSFORM tests (move, open a column,
+ * resize, keyboard walks, tidy). They need a known layout to act on, not the
+ * shipped default: the default moved in v3 (sensor row under the status
+ * columns), and a test of "open a band and push the ones below down" should
+ * not change meaning when the shipped order does. This is the v2 order --
+ * sensor shelf first, the two status columns under it, then the sidebar.
+ */
+function layoutFixture(specs: readonly StatusDashboardCardSpec[]): StatusDashboardLayout {
+  return {
+    ...defaultStatusDashboardLayout(specs),
+    columns: [
+      { id: 'sensors', region: 'main', band: 0, span: 12, flow: 'shelf' },
+      { id: 'midcol', region: 'main', band: 1, span: 6, flow: 'stack' },
+      { id: 'noticecol', region: 'main', band: 1, span: 6, flow: 'stack' },
+      { id: 'sidebar', region: 'side', band: 0, span: 12, flow: 'stack' }
+    ]
+  }
+}
+
 describe('defaultStatusDashboardLayout', () => {
   it('describes the shipped arrangement, one placement per card', () => {
     const layout = defaultStatusDashboardLayout(specsWithSensors)
@@ -72,25 +92,26 @@ describe('defaultStatusDashboardLayout', () => {
     // replaced; the sidebar fills its own region.
     const layout = defaultStatusDashboardLayout(specsWithSensors)
     const main = regionBands(layout, 'main')
+    // v3: the two status columns lead, the full-width sensor shelf under them.
     expect(main.map((band) => band.columns.map((column) => column.id))).toEqual([
-      ['sensors'],
-      ['midcol', 'noticecol']
+      ['midcol', 'noticecol'],
+      ['sensors']
     ])
-    expect(main[0]!.columns[0]!.span).toBe(STATUS_DASHBOARD_GRID_COLUMNS)
-    expect(main[1]!.columns.map((column) => column.span)).toEqual([6, 6])
+    expect(main[0]!.columns.map((column) => column.span)).toEqual([6, 6])
+    expect(main[1]!.columns[0]!.span).toBe(STATUS_DASHBOARD_GRID_COLUMNS)
     // Explicit start lines, so a band that does not add up to 12 leaves its
     // free space at the right instead of the grid repacking the row.
-    expect(columnStartLine(main[1]!, 'midcol')).toBe(1)
-    expect(columnStartLine(main[1]!, 'noticecol')).toBe(7)
-    expect(bandFreeSpan(main[1]!)).toBe(0)
+    expect(columnStartLine(main[0]!, 'midcol')).toBe(1)
+    expect(columnStartLine(main[0]!, 'noticecol')).toBe(7)
+    expect(bandFreeSpan(main[0]!)).toBe(0)
 
     const side = regionBands(layout, 'side')
     expect(side.map((band) => band.columns.map((column) => column.id))).toEqual([['sidebar']])
 
     // The sensor shelf flows across, not down — that is why a sensor card that
     // appears mid-session lands BESIDE its neighbours.
-    expect(main[0]!.columns[0]!.flow).toBe('shelf')
-    expect(main[1]!.columns.every((column) => column.flow === 'stack')).toBe(true)
+    expect(main[1]!.columns[0]!.flow).toBe('shelf')
+    expect(main[0]!.columns.every((column) => column.flow === 'stack')).toBe(true)
   })
 })
 
@@ -148,7 +169,7 @@ describe('reconcileStatusDashboardLayout', () => {
   })
 
   it('drops placements for cards that are not on the page', () => {
-    const saved = defaultStatusDashboardLayout(specsWithSensors)
+    const saved = layoutFixture(specsWithSensors)
     const layout = reconcileStatusDashboardLayout(saved, specsWithoutSensors)
     expect(columnCardIds(layout, 'sensors')).toEqual(['gps'])
     expect(layout.cards).toHaveLength(specsWithoutSensors.length)
@@ -158,7 +179,7 @@ describe('reconcileStatusDashboardLayout', () => {
     // The conditional-card contract, and the case that actually bites: an
     // operator drags GPS somewhere, then plugs a rangefinder in.
     const moved = moveStatusDashboardCard(
-      defaultStatusDashboardLayout(specsWithoutSensors),
+      layoutFixture(specsWithoutSensors),
       'gps',
       'midcol',
       0
@@ -178,7 +199,7 @@ describe('reconcileStatusDashboardLayout', () => {
 
   it('keeps a column the operator emptied, so a returning card has its room', () => {
     const emptied = moveStatusDashboardCard(
-      defaultStatusDashboardLayout(specsWithSensors),
+      layoutFixture(specsWithSensors),
       'notices',
       'midcol',
       0
@@ -189,7 +210,7 @@ describe('reconcileStatusDashboardLayout', () => {
   })
 
   it('re-homes a card whose column the operator deleted', () => {
-    const saved = defaultStatusDashboardLayout(specsWithSensors)
+    const saved = layoutFixture(specsWithSensors)
     const withoutSidebar = {
       ...saved,
       columns: saved.columns.filter((column) => column.id !== 'sidebar')
@@ -215,7 +236,7 @@ describe('reconcileStatusDashboardLayout', () => {
 describe('moveStatusDashboardCard', () => {
   it('moves a card into another column at the requested index', () => {
     const layout = moveStatusDashboardCard(
-      defaultStatusDashboardLayout(specsWithSensors),
+      layoutFixture(specsWithSensors),
       'system-info',
       'midcol',
       1
@@ -226,7 +247,7 @@ describe('moveStatusDashboardCard', () => {
 
   it('clamps an out-of-range index instead of dropping the card', () => {
     const layout = moveStatusDashboardCard(
-      defaultStatusDashboardLayout(specsWithSensors),
+      layoutFixture(specsWithSensors),
       'gps',
       'sidebar',
       99
@@ -240,7 +261,7 @@ describe('moveStatusDashboardCard', () => {
   })
 
   it('returns the SAME object for a no-op, so nothing re-renders or is persisted', () => {
-    const before = defaultStatusDashboardLayout(specsWithSensors)
+    const before = layoutFixture(specsWithSensors)
     expect(moveStatusDashboardCard(before, 'prearm', 'midcol', 0)).toBe(before)
     expect(moveStatusDashboardCard(before, 'not-a-card', 'midcol', 0)).toBe(before)
     expect(moveStatusDashboardCard(before, 'prearm', 'not-a-column', 0)).toBe(before)
@@ -249,7 +270,7 @@ describe('moveStatusDashboardCard', () => {
 
 describe('columns: the freedom the zone model did not have', () => {
   it('opens a new column in a band, taking the free space when there is any', () => {
-    const start = resizeStatusDashboardColumn(defaultStatusDashboardLayout(specsWithSensors), 'midcol', 4)
+    const start = resizeStatusDashboardColumn(layoutFixture(specsWithSensors), 'midcol', 4)
     const band = regionBands(start, 'main').find((entry) => entry.band === 1)!
     expect(bandFreeSpan(band)).toBe(2)
 
@@ -266,7 +287,7 @@ describe('columns: the freedom the zone model did not have', () => {
 
   it('halves the widest neighbour when a band is already full', () => {
     const layout = splitStatusDashboardColumn(
-      defaultStatusDashboardLayout(specsWithSensors),
+      layoutFixture(specsWithSensors),
       'system-info',
       'main',
       1,
@@ -281,7 +302,7 @@ describe('columns: the freedom the zone model did not have', () => {
 
   it('opens a new band and pushes the bands below it down', () => {
     const layout = insertStatusDashboardBand(
-      defaultStatusDashboardLayout(specsWithSensors),
+      layoutFixture(specsWithSensors),
       'notices',
       'main',
       1
@@ -296,7 +317,7 @@ describe('columns: the freedom the zone model did not have', () => {
 
   it('resizes a column, taking from the next one along once the band is full', () => {
     const layout = resizeStatusDashboardColumn(
-      defaultStatusDashboardLayout(specsWithSensors),
+      layoutFixture(specsWithSensors),
       'midcol',
       9
     )
@@ -314,7 +335,7 @@ describe('columns: the freedom the zone model did not have', () => {
 
   it('never squeezes a neighbour out of existence', () => {
     const layout = resizeStatusDashboardColumn(
-      defaultStatusDashboardLayout(specsWithSensors),
+      layoutFixture(specsWithSensors),
       'midcol',
       STATUS_DASHBOARD_GRID_COLUMNS
     )
@@ -324,7 +345,7 @@ describe('columns: the freedom the zone model did not have', () => {
 
   it('lets a shrink leave a gap — a mess the operator made is allowed', () => {
     const layout = resizeStatusDashboardColumn(
-      defaultStatusDashboardLayout(specsWithSensors),
+      layoutFixture(specsWithSensors),
       'noticecol',
       2
     )
@@ -335,7 +356,7 @@ describe('columns: the freedom the zone model did not have', () => {
 
   it('flips a column between stacking and shelving', () => {
     const layout = toggleStatusDashboardColumnFlow(
-      defaultStatusDashboardLayout(specsWithSensors),
+      layoutFixture(specsWithSensors),
       'midcol'
     )
     expect(layout.columns.find((column) => column.id === 'midcol')?.flow).toBe('shelf')
@@ -344,7 +365,7 @@ describe('columns: the freedom the zone model did not have', () => {
 
 describe('applyStatusDashboardDrop', () => {
   it('routes each kind of drop target to the right transform', () => {
-    const start = defaultStatusDashboardLayout(specsWithSensors)
+    const start = layoutFixture(specsWithSensors)
 
     const moved = applyStatusDashboardDrop(start, 'gps', {
       kind: 'column',
@@ -368,12 +389,12 @@ describe('applyStatusDashboardDrop', () => {
 
 describe('keyboard transforms', () => {
   it('nudges a card inside its column', () => {
-    const layout = nudgeStatusDashboardCard(defaultStatusDashboardLayout(specsWithSensors), 'statistics', -1)
+    const layout = nudgeStatusDashboardCard(layoutFixture(specsWithSensors), 'statistics', -1)
     expect(columnCardIds(layout, 'midcol')).toEqual(['statistics', 'prearm'])
   })
 
   it('walks a card across every column in visual order, bands and sidebar included', () => {
-    const start = defaultStatusDashboardLayout(specsWithSensors)
+    const start = layoutFixture(specsWithSensors)
     // Visual order is sensors, midcol, noticecol, then the sidebar — so one
     // step right out of noticecol reaches the sidebar, which the zone model
     // could also do, and one step right out of sensors reaches midcol, which
@@ -391,14 +412,14 @@ describe('keyboard transforms', () => {
   })
 
   it('refuses to walk a card off either end', () => {
-    const start = defaultStatusDashboardLayout(specsWithSensors)
+    const start = layoutFixture(specsWithSensors)
     expect(shiftStatusDashboardCardColumn(start, 'gps', -1)).toBe(start)
     expect(shiftStatusDashboardCardColumn(start, 'guided-setup', 1)).toBe(start)
   })
 
   it('changes the width of the column a card sits in', () => {
     const layout = nudgeStatusDashboardCardWidth(
-      defaultStatusDashboardLayout(specsWithSensors),
+      layoutFixture(specsWithSensors),
       'prearm',
       1
     )
@@ -409,7 +430,7 @@ describe('keyboard transforms', () => {
 
 describe('resizeStatusDashboardCard', () => {
   it('snaps and clamps a height cap, and clears it with undefined', () => {
-    const start = defaultStatusDashboardLayout(specsWithSensors)
+    const start = layoutFixture(specsWithSensors)
     expect(resizeStatusDashboardCard(start, 'notices', 1).cards.find((card) => card.id === 'notices')?.heightRows).toBe(
       STATUS_DASHBOARD_MIN_ROWS
     )
@@ -432,7 +453,7 @@ describe('tidyStatusDashboardLayout', () => {
     // Build a genuine mess: notices dragged out of its column into a new band,
     // leaving noticecol empty and band 1 half used.
     const messy = insertStatusDashboardBand(
-      defaultStatusDashboardLayout(specsWithSensors),
+      layoutFixture(specsWithSensors),
       'notices',
       'main',
       2
@@ -455,7 +476,7 @@ describe('tidyStatusDashboardLayout', () => {
   })
 
   it('gives the remainder to the leftmost columns of a band', () => {
-    const start = defaultStatusDashboardLayout(specsWithSensors)
+    const start = layoutFixture(specsWithSensors)
     const three = splitStatusDashboardColumn(start, 'system-info', 'main', 1, 2)
     const tidy = tidyStatusDashboardLayout(three)
     const band = regionBands(tidy, 'main').find((entry) => entry.band === 1)!
@@ -463,7 +484,7 @@ describe('tidyStatusDashboardLayout', () => {
   })
 
   it('is a no-op on a layout that is already tidy', () => {
-    const start = defaultStatusDashboardLayout(specsWithSensors)
+    const start = layoutFixture(specsWithSensors)
     expect(tidyStatusDashboardLayout(start)).toBe(start)
   })
 })

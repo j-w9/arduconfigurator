@@ -20236,3 +20236,41 @@ button.mavlink-inspector__sent-row {
 .calibration-section > .calibration-grid {
   padding: 0 12px 12px;
 }
+
+/* A folded calibration card's toggle (TCAL): a quiet text button. */
+.calibration-card__expand {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent, #ffbb00);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.calibration-card__expand:hover,
+.calibration-card__expand:focus-visible {
+  color: var(--text);
+}
+
+/* The bench actions as a sidebar card (Status & Info): each action stacks --
+   its title and status on one line, the summary under, the button full
+   width -- instead of the wide three-column strip it was at the top. */
+.setup-gui-box--bench-actions .setup-bench-action {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'copy status'
+    'button button';
+  gap: 6px 10px;
+  align-items: start;
+  padding: 8px 0;
+}
+.setup-gui-box--bench-actions .setup-bench-action__copy {
+  grid-area: copy;
+}
+.setup-gui-box--bench-actions .setup-bench-action__status {
+  grid-area: status;
+}
+.setup-gui-box--bench-actions .setup-bench-action__button {
+  grid-area: button;
+}

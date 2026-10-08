@@ -259,6 +259,8 @@ test.describe('browser configurator regression flows', () => {
   })
 
   test('guided setup marks accelerometer complete after the in-app calibration succeeds', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     // This spec walks six sequential confirm clicks plus a wizard navigation.
     // Each click auto-waits for the next button to render, so the worst-case
     // budget is roughly six expect-timeouts plus the full connect + param
@@ -292,6 +294,8 @@ test.describe('browser configurator regression flows', () => {
   })
 
   test('guided setup marks compass complete after the in-app onboard mag calibration succeeds', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await connectToVehicle(page, 'demo')
 
     await completeCompassCalibrationFromSetup(page)
@@ -307,6 +311,8 @@ test.describe('browser configurator regression flows', () => {
   })
 
   test('local guided setup shortcut opens the requested step directly for faster iteration', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await connectToVehicle(page, 'demo', '/?guidedSetupStep=radio')
 
     await expect(page.getByTestId('setup-wizard')).toBeVisible()

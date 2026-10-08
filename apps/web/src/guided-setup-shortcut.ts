@@ -19,6 +19,9 @@ const GUIDED_SETUP_STEP_QUERY_KEY = 'guidedSetupStep'
 export function isExpertOnlyView(viewId: AppViewId): boolean {
   return (
     viewId === 'parameters' ||
+    // Guided Setup is Expert-only while its steps are reworked to follow the
+    // rebuilt pages (operator call): hidden, not broken, for everyone else.
+    viewId === 'guided-setup' ||
     viewId === 'rc-mixer' ||
     viewId === 'mavlink-inspector' ||
     viewId === 'networking' ||

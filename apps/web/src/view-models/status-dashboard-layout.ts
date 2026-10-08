@@ -86,8 +86,13 @@ export const STATUS_DASHBOARD_MAX_ROWS = 60
  * their column's span. A v1 layout has no columns at all, so it cannot be
  * migrated into something meaningful; it is dropped and the operator gets the
  * (unchanged) default back.
+ *
+ * v2 → v3: the default moved (operator request) -- Pre-arm / Statistics /
+ * Recent Notices lead and the sensor row sits under them, and the bench
+ * actions (Pull Parameters, Reboot) became a sidebar card. A stored v2
+ * layout would keep the old order, so it is dropped for the new default.
  */
-export const STATUS_DASHBOARD_LAYOUT_VERSION = 2
+export const STATUS_DASHBOARD_LAYOUT_VERSION = 3
 
 export const STATUS_DASHBOARD_STORAGE_KEY = `arduconfig.status-dashboard.v${STATUS_DASHBOARD_LAYOUT_VERSION}`
 
@@ -167,9 +172,9 @@ export function clampSpan(span: number): number {
  *  - `sidebar`  the full width of the page sidebar.
  */
 export const DEFAULT_STATUS_DASHBOARD_COLUMNS: readonly StatusDashboardColumn[] = [
-  { id: 'sensors', region: 'main', band: 0, span: 12, flow: 'shelf' },
-  { id: 'midcol', region: 'main', band: 1, span: 6, flow: 'stack' },
-  { id: 'noticecol', region: 'main', band: 1, span: 6, flow: 'stack' },
+  { id: 'midcol', region: 'main', band: 0, span: 6, flow: 'stack' },
+  { id: 'noticecol', region: 'main', band: 0, span: 6, flow: 'stack' },
+  { id: 'sensors', region: 'main', band: 1, span: 12, flow: 'shelf' },
   { id: 'sidebar', region: 'side', band: 0, span: 12, flow: 'stack' }
 ]
 
