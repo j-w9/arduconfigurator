@@ -3,7 +3,7 @@
 // actions + battery voltage / battery current / airspeed / ESC throttle
 // calibration cards. ~470 lines of inline JSX moved verbatim.
 
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { detectSfdBaroThrustCompensation } from '@arduconfig/ardupilot-core'
 import type { ConfiguratorSnapshot, AirframeSummary } from '@arduconfig/ardupilot-core'
 import type { ArduPilotConfiguratorRuntime, ParameterWriteOptions } from '@arduconfig/ardupilot-core'
@@ -50,6 +50,14 @@ import type { ParameterNotice } from '../hooks/use-parameter-feedback'
 import type { UseCalibrationNoticesResult } from '../hooks/use-calibration-notices'
 import type { UseSafetyAcksResult } from '../hooks/use-safety-acks'
 import { readParameterValue, readRoundedParameter } from '../selectors/parameter-read'
+
+type CalibrationSectionId = 'sensors' | 'power' | 'flight'
+
+const CALIBRATION_SECTIONS: ReadonlyArray<{ id: CalibrationSectionId; label: string; summary: string }> = [
+  { id: 'sensors', label: 'Sensors', summary: 'Accelerometer, level, compass, thermal' },
+  { id: 'power', label: 'Power', summary: 'Battery voltage; current and ESCs in Expert' },
+  { id: 'flight', label: 'Flight', summary: 'Autotune; hover and Z-bias in Expert' }
+]
 
 export interface CalibrationSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -336,7 +344,22 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
    *
    * Same shape as the Config tab's categories, so the two navigate alike.
    */
-  const [calibrationTab, setCalibrationTab] = useState<'sensors' | 'power' | 'flight'>('sensors')
+  // One page, three expandable sections (operator request: no tabs inside a
+  // tab). Sensors -- the first-setup work -- starts open.
+  const [openCalibrationSections, setOpenCalibrationSections] = useState<ReadonlySet<CalibrationSectionId>>(
+    () => new Set<CalibrationSectionId>(['sensors'])
+  )
+  const toggleCalibrationSection = (id: CalibrationSectionId): void => {
+    setOpenCalibrationSections((existing) => {
+      const next = new Set(existing)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
 
   // Baro thrust compensation is compiled out of stock ArduPilot, so the
   // parameter's presence is the only durable signal that this board supports
@@ -472,36 +495,13 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     [accelCalCaptureCount]
   )
 
-  return (
-
-        // Anchored so the guided setup can route here. The wizard reaches
-        // Calibration for accel/level/compass via the guided panel, but the ESC
-        // and battery calibration cards on this tab had no route from the flow at
-        // all -- the Power step pointed at Config's power category instead.
-        <section className="grid one-up" id="setup-panel-calibration">
-          <Panel
-            title="Calibration"
-          >
-            <div className="tab-strip" data-testid="calibration-tab-nav" role="tablist">
-              {([
-                { id: 'sensors', label: 'Sensors' },
-                { id: 'power', label: 'Power' },
-                { id: 'flight', label: 'Flight' }
-              ] as const).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={calibrationTab === tab.id}
-                  data-testid={`calibration-tab-${tab.id}`}
-                  className={`tab-strip__tab${calibrationTab === tab.id ? ' is-active' : ''}`}
-                  onClick={() => setCalibrationTab(tab.id)}
-                >
-                  <span className="tab-strip__tab-title">{tab.label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="calibration-grid" data-testid="calibration-grid">
+  // The cards for one section. Each card already filters on `calibrationTab`,
+  // so the section id is passed under that name and the cards are unchanged.
+  const renderCalibrationGrid = (calibrationTab: CalibrationSectionId): ReactNode => (
+            <div
+              className="calibration-grid"
+              data-testid={calibrationTab === 'sensors' ? 'calibration-grid' : `calibration-grid-${calibrationTab}`}
+            >
               {(calibrationTab === 'sensors' ? [
                 { actionId: 'calibrate-accelerometer' as const, title: 'Accelerometer', copy: 'Keep the aircraft flat, then step through the six pose prompts until the calibration completes.' },
                 { actionId: 'calibrate-level' as const, title: 'Level', copy: 'Set the aircraft level on the bench and run a quick level trim (AHRS_TRIM).' },
@@ -810,7 +810,9 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   // to set it up; this card belongs hidden until then.
                   return null
                 }
-                return calibrationTab !== 'power' ? null : (
+                // Expert only (operator request): a clamp-meter calibration of
+                // the current sensor, not a first-setup step.
+                return calibrationTab !== 'power' || !isExpertMode ? null : (
                   <article className="calibration-card" data-testid="calibration-card-battery-current">
                     <div className="calibration-card__header">
                       <strong>Battery current</strong>
@@ -1465,7 +1467,11 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                       * startCompassMotCalibration() in case a guided flow
                       * needs it later. */}
 
-                    {calibrationTab !== 'power' ? null : (
+                    {/* Expert only (operator request) -- except while
+                        ESC_CALIBRATION is armed for the next boot: that
+                        warning is a safety notice and shows in Basic too. */}
+                    {calibrationTab !== 'power' ||
+                    !(isExpertMode || (escCalPending !== undefined && escCalPending !== 0 && escCalPending !== 9)) ? null : (
                     <article className="calibration-card" data-testid="calibration-card-esc">
                       <div className="calibration-card__header">
                         <strong>ESC calibration</strong>
@@ -1688,6 +1694,41 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                 />
               ) : null}
             </div>
+  )
+
+  return (
+
+        // Anchored so the guided setup can route here. The wizard reaches
+        // Calibration for accel/level/compass via the guided panel, but the ESC
+        // and battery calibration cards on this tab had no route from the flow at
+        // all -- the Power step pointed at Config's power category instead.
+        <section className="grid one-up" id="setup-panel-calibration">
+          <Panel
+            title="Calibration"
+          >
+            {CALIBRATION_SECTIONS.map((section) => {
+              const open = openCalibrationSections.has(section.id)
+              return (
+                <div
+                  key={section.id}
+                  className={`calibration-section${open ? ' is-open' : ''}`}
+                  data-testid={`calibration-section-${section.id}`}
+                >
+                  <button
+                    type="button"
+                    className="calibration-section__bar"
+                    data-testid={`calibration-tab-${section.id}`}
+                    aria-expanded={open}
+                    onClick={() => toggleCalibrationSection(section.id)}
+                  >
+                    <span className="calibration-section__chevron" aria-hidden="true">▸</span>
+                    <strong>{section.label}</strong>
+                    <small>{section.summary}</small>
+                  </button>
+                  {open ? renderCalibrationGrid(section.id) : null}
+                </div>
+              )
+            })}
           </Panel>
         </section>
 
