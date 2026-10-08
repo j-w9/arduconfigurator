@@ -15285,6 +15285,40 @@ details.bf-gui-box:not([open]) > summary::after {
   cursor: pointer;
 }
 
+.files-format {
+  margin-top: var(--space-3);
+}
+.files-format__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+.files-format__confirm p {
+  margin: 0;
+}
+.files-format__word {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.files-format__word input {
+  width: 140px;
+  font-family: var(--font-data);
+}
+.files-format__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.files-sanitize-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .files-sanitize-button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--danger, var(--danger)) 28%, transparent);
 }

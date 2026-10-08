@@ -1976,6 +1976,53 @@ export class ArduPilotConfiguratorRuntime {
   }
 
   /**
+   * Format the flight controller's SD card (MAV_CMD_STORAGE_FORMAT, param1 = 1
+   * storage id, param2 = 1 confirm). Erases EVERYTHING on the card: logs,
+   * terrain, scripts, missions stored as files. Parameters are not on the card.
+   *
+   * GCS_Common.cpp handle_command_storage_format answers IN_PROGRESS and hands
+   * the work to AP_Filesystem, which formats on the IO thread ("Formatting
+   * SDCard" / "Format: OK" STATUSTEXTs), re-sends IN_PROGRESS while it runs and
+   * concludes ACCEPTED or FAILED. The card is remounted afterwards
+   * (sdcard_stop + sdcard_retry), so no reboot is needed. Each IN_PROGRESS
+   * re-arms the ack wait, so a large card's long format does not time out.
+   *
+   * ArduPilot does not refuse this while armed; the guard is ours, as for the
+   * other destructive storage commands.
+   *
+   * Resolves 'formatted' on the final ACCEPTED, or 'started' when IN_PROGRESS
+   * arrived but the final ACK did not within the wait (the format may still
+   * finish -- the STATUSTEXT says so). Throws a sentence for each refusal.
+   */
+  async formatStorage(): Promise<'formatted' | 'started'> {
+    this.assertNotArmed('Disarm the vehicle before formatting its SD card.')
+    const ack = await this.sendCommand(MAV_CMD.STORAGE_FORMAT, [1, 1, 0, 0, 0, 0, 0], {
+      waitForAck: true,
+      ackTimeoutMs: 15000,
+      rejectAckOnFailure: false
+    })
+    const result = ack && 'result' in ack ? ack.result : undefined
+    if (result === MAV_RESULT.ACCEPTED) {
+      return 'formatted'
+    }
+    if (result === MAV_RESULT.IN_PROGRESS) {
+      return 'started'
+    }
+    if (result === MAV_RESULT.UNSUPPORTED) {
+      throw new Error('This firmware cannot format its storage over MAVLink (built without it, or no SD card).')
+    }
+    if (result === MAV_RESULT.TEMPORARILY_REJECTED) {
+      throw new Error('The autopilot is busy with another long-running command. Try again in a moment.')
+    }
+    if (result === MAV_RESULT.FAILED) {
+      throw new Error('The format failed. Check the messages for "Format: Failed": the card may be missing, locked or faulty.')
+    }
+    throw new Error(
+      `The autopilot did not accept the format request${result === undefined ? ' (no acknowledgement)' : ` (result ${result})`}.`
+    )
+  }
+
+  /**
    * Restart onboard Lua scripting WITHOUT rebooting the autopilot
    * (MAV_CMD_SCRIPTING, param1 = SCRIPTING_CMD_STOP_AND_RESTART).
    *

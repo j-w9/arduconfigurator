@@ -8115,3 +8115,37 @@ test.describe('Tuning ▸ Filters', () => {
     expect(overflow).toBeLessThanOrEqual(2)
   })
 })
+
+test.describe('Files ▸ Format SD card', () => {
+  test('formats only after FORMAT is typed, and reports the result', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'files')
+
+    await page.getByTestId('files-format-open').click()
+    const confirm = page.getByTestId('files-format-confirm')
+    await expect(confirm).toContainText('Erase everything on the SD card?')
+    const run = page.getByTestId('files-format-run')
+    // A stray click cannot wipe a card: the button waits for the word.
+    await expect(run).toBeDisabled()
+    await page.getByTestId('files-format-word').fill('format')
+    await expect(run).toBeDisabled()
+    await page.getByTestId('files-format-word').fill('FORMAT')
+    await expect(run).toBeEnabled()
+    await run.click()
+
+    // The demo answers as ArduPilot does: IN_PROGRESS, then ACCEPTED.
+    await expect(page.getByTestId('files-error')).toHaveText('SD card formatted.', { timeout: COMMAND_ACK_TIMEOUT })
+    await expect(page.getByTestId('files-format-open')).toBeVisible()
+  })
+
+  test('cancel closes the confirmation without sending anything', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'files')
+    await page.getByTestId('files-format-open').click()
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(page.getByTestId('files-format-confirm')).toHaveCount(0)
+    await expect(page.getByTestId('files-error')).toHaveCount(0)
+  })
+})
