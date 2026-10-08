@@ -4881,6 +4881,24 @@ test.describe('ArduPlane demo', () => {
 
     await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:2,INS_ACC_VRFB_Z:0.08')
     await expect(page.getByTestId('hover-learn-done')).toBeVisible()
+    // Re-learn WITHOUT clearing (fleet request): arms learning again with the
+    // bias kept as the starting point -- ACC_ZBIAS_LEARN 2 -> 3 and nothing
+    // else, so the bias is refined rather than started from zero. Clear
+    // Z-Bias Cal stays for the start-from-zero case.
+    const zbiasRelearn = page.getByTestId('hover-learn-zbias-relearn')
+    await expect(zbiasRelearn).toHaveText('Re-learn on the next hover')
+    await expect(page.getByTestId('hover-learn-zeroize')).toBeVisible()
+    await zbiasRelearn.click()
+    await expect(page.locator('body')).toContainText('1 staged change')
+    await expect(zbiasRelearn).toHaveText('Re-learn staged — apply to write it')
+    await expect(zbiasRelearn).toBeDisabled()
+    // Once applied (learning on, bias kept) the card reads true before the
+    // flight as well as after it.
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08,MOT_HOVER_LEARN:0')
+    await expect(page.getByTestId('hover-learn-step').last()).toContainText('learning is on')
+    await expect(page.getByTestId('hover-learn-flight-2-yes')).toHaveText('Keep this bias — stop learning')
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:2,INS_ACC_VRFB_Z:0.08')
+    await expect(page.getByTestId('hover-learn-done')).toBeVisible()
     // Field report: parameters loaded from a flown vehicle carry the stock
     // MOT_HOVER_LEARN = 2, and the card said "hover learning is off" beside a
     // greyed "Re-learn" button -- it did nothing because learning was already
