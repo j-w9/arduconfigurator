@@ -5160,6 +5160,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('a Plane exposes an editable QuadPlane / tailsitter frame configuration', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
     await page.getByTestId('connect-button').click()
@@ -5177,6 +5179,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('switching a Plane to the Tailsitter frame class reveals the Tailsitter tuning group', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
     await page.getByTestId('connect-button').click()
@@ -5197,6 +5201,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('a Copter does not show the Plane frame configuration', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -7324,7 +7330,9 @@ test.describe('Status & Info dashboard layout', () => {
   test('a card dragged into a gutter opens a new column, and Tidy closes the mess up', async ({ page }) => {
     // The freedom the operator asked for: a card can go somewhere there was no
     // column at all. Tidy is the way back out without a full Reset.
-    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.setViewportSize({ width: 1440, height: 1600 })
+    // Tall enough that the status columns and the sensor row under them
+    // (v3 order) are both on screen for the drag.
     await connectDemo(page)
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
 
@@ -7375,7 +7383,9 @@ test.describe('Status & Info dashboard layout', () => {
     // a reflow the drag caused unwinds when the drag is cancelled, while the
     // feed's own growth stays put. Asserting the raw "nothing moved" is what
     // made this test fail on CI, where the feed is likelier to tick mid-drag.
-    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.setViewportSize({ width: 1440, height: 1600 })
+    // Tall enough that the status columns and the sensor row under them
+    // (v3 order) are both on screen for the drag.
     await connectDemo(page)
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
 

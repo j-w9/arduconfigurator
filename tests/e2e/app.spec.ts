@@ -649,8 +649,15 @@ test.describe('browser configurator regression flows', () => {
     // is saved, so its appearance is the same proof that zeroing took effect.
     await expect(page.getByTestId('flight-deck-clear-heading-button')).toBeVisible()
     await expect(page.getByTestId('setup-gps-map-widget')).toBeVisible()
-    // Guided Setup (and its Status card) is Expert-only while it is reworked.
+    // Guided Setup (and its Status card) is Expert-only while it is reworked:
+    // absent in Basic, and the rest of this walk runs in Expert.
     await expect(page.getByTestId('setup-start-guided-button')).toHaveCount(0)
+    const moreSheet = page.getByTestId('header-more-toggle')
+    if ((await moreSheet.isVisible()) && (await moreSheet.getAttribute('aria-expanded')) !== 'true') {
+      await moreSheet.click()
+    }
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-setup').click()
     await page.getByTestId('setup-start-guided-button').click()
     await expect(page.getByTestId('setup-wizard')).toBeVisible()
     await expect(page.getByTestId('wizard-orientation-task')).toBeVisible()
@@ -735,7 +742,8 @@ test.describe('browser configurator regression flows', () => {
     await page.getByTestId('config-category-power').click()
     await expect(page.getByText('Battery configuration')).toBeVisible()
 
-    await page.getByTestId('product-mode-expert').click()
+    // Already Expert since the Guided Setup walk above; check() keeps it on.
+    await page.getByTestId('product-mode-expert').check()
     await expect(page.getByTestId('view-button-parameters')).toBeVisible()
 
     // MAVFTP is now surfaced solely through the Files tab (the old developer
