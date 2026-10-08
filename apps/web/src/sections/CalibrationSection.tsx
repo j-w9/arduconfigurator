@@ -1671,6 +1671,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   canApplyDraftParameters={canApplyDraftParameters}
                   busyAction={busyAction}
                   setDraft={setDraft}
+                  editedValues={editedValues}
                 />
               ) : null}
               {isExpertMode && baroThrustSupported && calibrationTab === 'flight' ? (
