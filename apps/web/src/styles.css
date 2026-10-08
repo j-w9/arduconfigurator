@@ -20163,3 +20163,42 @@ button.mavlink-inspector__sent-row {
   }
 }
 
+/* Calibration: one page, three expandable full-width sections. */
+.calibration-section {
+  border: 1px solid rgba(var(--edge-rgb), 0.06);
+  border-radius: var(--radius-lg);
+  background: rgba(var(--fill-rgb), 0.6);
+}
+.calibration-section + .calibration-section {
+  margin-top: var(--space-2);
+}
+.calibration-section__bar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.calibration-section__bar strong {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.calibration-section__bar small {
+  color: var(--text-muted);
+}
+.calibration-section__chevron {
+  color: var(--text-muted);
+  transition: transform 120ms ease;
+}
+.calibration-section.is-open .calibration-section__chevron {
+  transform: rotate(90deg);
+}
+.calibration-section > .calibration-grid {
+  padding: 0 12px 12px;
+}

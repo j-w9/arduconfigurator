@@ -169,6 +169,15 @@ test.describe('Desktop firmware browse', () => {
  * the sheet has to be opened before the toggle can be reached. Above the phone
  * breakpoint the sheet button is display:none and this is a no-op, so the same
  * call is correct at every width. */
+/** Calibration is one page of expandable sections: open one (idempotent --
+ *  clicking an open section's bar closes it). */
+async function openCalibrationSection(page: Page, id: 'sensors' | 'power' | 'flight'): Promise<void> {
+  const bar = page.getByTestId(`calibration-tab-${id}`)
+  if ((await bar.getAttribute('aria-expanded')) !== 'true') {
+    await bar.click()
+  }
+}
+
 async function enableExpertMode(page: Page): Promise<void> {
   const sheet = page.getByTestId('header-more-toggle')
   // Idempotent: a test may call this more than once, and clicking an already
@@ -1289,8 +1298,11 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    // ESC and battery-current live on the Power tab now.
-    await page.getByTestId('calibration-tab-power').click()
+    // ESC and battery-current live on the Power tab, in Expert mode.
+    await openCalibrationSection(page, 'power')
+    await expect(page.getByTestId('calibration-card-esc')).toHaveCount(0)
+    await expect(page.getByTestId('calibration-card-battery-current')).toHaveCount(0)
+    await enableExpertMode(page)
     await expect(page.getByTestId('calibration-card-esc')).toBeVisible()
     await expect(page.getByTestId('calibration-card-compassmot')).toHaveCount(0)
     const unsupported = page.getByTestId('esc-cal-unsupported')
@@ -1319,7 +1331,8 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-power').click()
+    await enableExpertMode(page)
+    await openCalibrationSection(page, 'power')
 
     const card = page.getByTestId('calibration-card-battery-current')
     await expect(card).toBeVisible()
@@ -1359,7 +1372,8 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-power').click()
+    await enableExpertMode(page)
+    await openCalibrationSection(page, 'power')
     await expect(page.getByTestId('calibration-card-battery-current')).toBeVisible()
     const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
@@ -1408,7 +1422,7 @@ test.describe('Calibration tab — airspeed (plane)', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
     const card = page.getByTestId('calibration-card-airspeed')
     await expect(card).toBeVisible()
     await card.scrollIntoViewIfNeeded()
@@ -1421,7 +1435,7 @@ test.describe('Calibration tab — airspeed (plane)', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
     await expect(page.getByTestId('calibration-card-airspeed')).toHaveCount(0)
   })
 })
@@ -1431,7 +1445,7 @@ test.describe('Calibration tab — battery voltage', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-power').click()
+    await openCalibrationSection(page, 'power')
     const card = page.getByTestId('calibration-card-battery')
     await expect(card).toBeVisible()
     await card.scrollIntoViewIfNeeded()
@@ -1448,7 +1462,7 @@ test.describe('Calibration tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
 
     await expect(page.getByTestId('calibration-grid')).toBeVisible()
     await expect(page.getByTestId('calibration-card-calibrate-accelerometer')).toBeVisible()
@@ -1467,7 +1481,7 @@ test.describe('Calibration tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
 
     const card = page.getByTestId('calibration-card-calibrate-level')
     await expect(card).toBeVisible()
@@ -4633,7 +4647,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
     // Basic mode. Not an incidental default — it is the condition under test.
     await expect(page.getByTestId('product-mode-expert')).not.toBeChecked()
 
@@ -4687,7 +4701,7 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
 
     const baro = page.getByTestId('tcal-baro')
     await expect(baro).toBeVisible()
@@ -4718,7 +4732,7 @@ test.describe('ArduPlane demo', () => {
       // NOT Expert-gated: autotune is stock ArduCopter and is how an ordinary
       // operator gets a tuned aircraft.
       await openView(page, 'calibration')
-      await page.getByTestId('calibration-tab-flight').click()
+      await openCalibrationSection(page, 'flight')
     }
 
     await open('')
@@ -4762,7 +4776,7 @@ test.describe('ArduPlane demo', () => {
       })
       await enableExpertMode(page)
       await openView(page, 'calibration')
-      await page.getByTestId('calibration-tab-flight').click()
+      await openCalibrationSection(page, 'flight')
     }
 
     // Stock defaults: nothing learned, so flight 1 — and nothing to stage,
@@ -4942,7 +4956,7 @@ test.describe('ArduPlane demo', () => {
     await enableExpertMode(page)
     await openView(page, 'calibration')
     // Hover learning is on the Flight tab — it needs an actual flight.
-    await page.getByTestId('calibration-tab-flight').click()
+    await openCalibrationSection(page, 'flight')
 
     await expect(page.getByTestId('hover-learn-done')).toBeVisible()
 
@@ -4979,7 +4993,7 @@ test.describe('ArduPlane demo', () => {
 
     await enableExpertMode(page)
     // VALT is fitted from a flight log, so it lives on the Flight tab.
-    await page.getByTestId('calibration-tab-flight').click()
+    await openCalibrationSection(page, 'flight')
     // Guard the guard: Expert really did take effect, so this cannot pass for
     // the wrong reason. Uses an Expert-only card on the SAME tab — TCAL is
     // Expert-only too but lives under Sensors, so it would be absent here for
@@ -5011,7 +5025,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-flight').click()
+    await openCalibrationSection(page, 'flight')
     await enableExpertMode(page)
     const valt = page.getByTestId('calibration-card-valt')
     await valt.scrollIntoViewIfNeeded()
