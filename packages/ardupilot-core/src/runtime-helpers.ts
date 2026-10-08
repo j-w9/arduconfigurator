@@ -1072,6 +1072,8 @@ export function mavCommandLabel(command: number): string {
       return 'PREFLIGHT_CALIBRATION'
     case MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN:
       return 'PREFLIGHT_REBOOT_SHUTDOWN'
+    case MAV_CMD.STORAGE_FORMAT:
+      return 'STORAGE_FORMAT'
     case MAV_CMD.PREFLIGHT_STORAGE:
       return 'PREFLIGHT_STORAGE'
     case MAV_CMD.SET_MESSAGE_INTERVAL:

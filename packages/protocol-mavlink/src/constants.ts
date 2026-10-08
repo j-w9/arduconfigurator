@@ -356,6 +356,14 @@ export const MAV_CMD = {
   // frame to the RX, Spektrum pulses the satellite bind. Params are ignored
   // for CRSF.
   START_RX_PAIR: 500,
+  /**
+   * Format a storage device (common.xml MAV_CMD_STORAGE_FORMAT). ArduPilot's
+   * GCS_Common.cpp handle_command_storage_format accepts only param1 = 1
+   * (storage id) and param2 = 1 (confirm); anything else is UNSUPPORTED.
+   * It answers IN_PROGRESS, repeats it while the format runs, then concludes
+   * ACCEPTED or FAILED.
+   */
+  STORAGE_FORMAT: 526,
   SET_MESSAGE_INTERVAL: 511,
   REQUEST_MESSAGE: 512,
   /**

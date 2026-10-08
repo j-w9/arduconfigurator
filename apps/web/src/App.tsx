@@ -10091,6 +10091,11 @@ export function App() {
           onUpload={filesBrowser.upload}
           onDelete={filesBrowser.remove}
           onSanitize={filesBrowser.sanitize}
+          vehicleArmed={Boolean(snapshot.vehicle?.armed)}
+          onFormatStorage={filesBrowser.formatStorage}
+          rebootAdvised={filesBrowser.rebootAdvised}
+          onRequestReboot={() => void handleGuidedAction('reboot-autopilot')}
+          onDismissRebootAdvice={filesBrowser.dismissRebootAdvice}
         />
       ) : null}
 

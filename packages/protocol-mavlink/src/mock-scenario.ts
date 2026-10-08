@@ -2252,6 +2252,44 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
                 })
               )
             )
+          } else if (outbound.message.command === MAV_CMD.STORAGE_FORMAT) {
+            // GCS_Common.cpp handle_command_storage_format: only param1 = 1,
+            // param2 = 1 is accepted; then IN_PROGRESS, AP_Filesystem's
+            // STATUSTEXTs, and the concluding ACCEPTED.
+            const confirmed =
+              Math.round(outbound.message.params[0] ?? 0) === 1 && Math.round(outbound.message.params[1] ?? 0) === 1
+            const formatAck = (result: number) =>
+              codec.encode(
+                envelope(108, {
+                  type: 'COMMAND_ACK',
+                  command: MAV_CMD.STORAGE_FORMAT,
+                  result,
+                  progress: 0,
+                  resultParam2: 0,
+                  targetSystem: outbound.header.systemId,
+                  targetComponent: outbound.header.componentId
+                })
+              )
+            const formatText = (text: string) =>
+              codec.encode(
+                envelope(109, {
+                  type: 'STATUSTEXT',
+                  severity: MAV_SEVERITY.NOTICE,
+                  text,
+                  statusId: 0,
+                  chunkSequence: 0
+                })
+              )
+            if (confirmed) {
+              responses.push(
+                formatAck(MAV_RESULT.IN_PROGRESS),
+                formatText('Formatting SDCard'),
+                formatText('Format: OK'),
+                formatAck(MAV_RESULT.ACCEPTED)
+              )
+            } else {
+              responses.push(formatAck(MAV_RESULT.UNSUPPORTED))
+            }
           } else if (outbound.message.command === MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN) {
             responses.push(
               codec.encode(

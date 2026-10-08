@@ -1,4 +1,4 @@
-import { Fragment, useRef } from 'react'
+import { Fragment, useRef, useState } from 'react'
 import type { MavftpDirectoryEntry } from '@arduconfig/ardupilot-core'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
@@ -52,7 +52,18 @@ export interface FilesViewProps {
   onDelete: (entry: MavftpDirectoryEntry) => void
   /** Fast-delete all non-flight files (logs, terrain, crash dumps). */
   onSanitize: () => void
+  /** The vehicle is armed: formatting is refused. */
+  vehicleArmed?: boolean
+  /** Format the SD card (MAV_CMD_STORAGE_FORMAT). Called only after the typed confirmation. */
+  onFormatStorage: () => void
+  /** A format just ran; advise a reboot so ArduPilot recreates its folders. */
+  rebootAdvised?: boolean
+  onRequestReboot: () => void
+  onDismissRebootAdvice: () => void
 }
+
+/** What the operator types to confirm a format. */
+export const FORMAT_CONFIRM_WORD = 'FORMAT'
 
 function formatSize(sizeBytes: number | undefined): string {
   if (sizeBytes === undefined) return '—'
@@ -90,8 +101,17 @@ export function FilesView(props: FilesViewProps) {
     onDownload,
     onUpload,
     onDelete,
-    onSanitize
+    onSanitize,
+    vehicleArmed,
+    onFormatStorage,
+    rebootAdvised,
+    onRequestReboot,
+    onDismissRebootAdvice
   } = props
+  // The format confirmation is inline, not a browser dialog: it says what is
+  // erased and needs the word typed, so a stray click cannot wipe a card.
+  const [formatOpen, setFormatOpen] = useState(false)
+  const [formatWord, setFormatWord] = useState('')
 
   const uploadInputRef = useRef<HTMLInputElement | null>(null)
   const up = parentPath(path)
@@ -292,9 +312,88 @@ export function FilesView(props: FilesViewProps) {
             </table>
             </div>
 
-            {error ? (
-              <p className="switch-exercise-warning" data-testid="files-error">{error}</p>
+            {/* The message line renders once, above the listing (it used to
+                repeat here as well, so every notice showed twice). */}
+            {rebootAdvised ? (
+              <div className="calibration-card__reboot is-required" data-testid="files-format-reboot">
+                <p>
+                  <strong>Reboot the autopilot.</strong> The card is empty: ArduPilot creates its log, script
+                  and terrain folders at startup, so nothing is logged and no scripts run until it reboots.
+                </p>
+                <div className="calibration-card__reboot-actions">
+                  <button
+                    type="button"
+                    style={buttonStyle('primary')}
+                    data-testid="files-format-reboot-run"
+                    disabled={isBusy}
+                    onClick={() => {
+                      onDismissRebootAdvice()
+                      onRequestReboot()
+                    }}
+                  >
+                    Reboot now
+                  </button>
+                  <button type="button" style={buttonStyle()} onClick={onDismissRebootAdvice}>
+                    Later
+                  </button>
+                </div>
+                <p className="calibration-card__reboot-note">The link will drop; reconnect once the board comes back up.</p>
+              </div>
             ) : null}
+
+            <div className="files-format" data-testid="files-format">
+              {!formatOpen ? (
+                <button
+                  type="button"
+                  className="files-sanitize-button"
+                  data-testid="files-format-open"
+                  disabled={isBusy || vehicleArmed}
+                  title={vehicleArmed ? 'Disarm the vehicle first.' : undefined}
+                  onClick={() => {
+                    setFormatWord('')
+                    setFormatOpen(true)
+                  }}
+                >
+                  {busyAction === 'files:format' ? 'Formatting…' : 'Format SD card…'}
+                </button>
+              ) : (
+                <div className="files-format__confirm" data-testid="files-format-confirm">
+                  <p>
+                    <strong>Erase everything on the SD card?</strong> Logs, terrain, Lua scripts and any other
+                    files are deleted. Parameters are not on the card and are kept.
+                  </p>
+                  <label className="files-format__word">
+                    <span>Type {FORMAT_CONFIRM_WORD} to confirm</span>
+                    <input
+                      type="text"
+                      data-testid="files-format-word"
+                      value={formatWord}
+                      autoComplete="off"
+                      spellCheck={false}
+                      onChange={(event) => setFormatWord(event.target.value)}
+                    />
+                  </label>
+                  <div className="files-format__actions">
+                    <button
+                      type="button"
+                      className="files-sanitize-button"
+                      data-testid="files-format-run"
+                      disabled={formatWord.trim() !== FORMAT_CONFIRM_WORD || isBusy || vehicleArmed}
+                      onClick={() => {
+                        setFormatOpen(false)
+                        setFormatWord('')
+                        onFormatStorage()
+                      }}
+                    >
+                      Format SD card
+                    </button>
+                    <button type="button" style={buttonStyle()} onClick={() => setFormatOpen(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <ul className="output-note-list">
               <li>@SYS files are virtual status reports (read-only); /APM holds real SD-card files on boards that have one.</li>
