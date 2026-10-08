@@ -56,6 +56,10 @@ export interface FilesViewProps {
   vehicleArmed?: boolean
   /** Format the SD card (MAV_CMD_STORAGE_FORMAT). Called only after the typed confirmation. */
   onFormatStorage: () => void
+  /** A format just ran; advise a reboot so ArduPilot recreates its folders. */
+  rebootAdvised?: boolean
+  onRequestReboot: () => void
+  onDismissRebootAdvice: () => void
 }
 
 /** What the operator types to confirm a format. */
@@ -99,7 +103,10 @@ export function FilesView(props: FilesViewProps) {
     onDelete,
     onSanitize,
     vehicleArmed,
-    onFormatStorage
+    onFormatStorage,
+    rebootAdvised,
+    onRequestReboot,
+    onDismissRebootAdvice
   } = props
   // The format confirmation is inline, not a browser dialog: it says what is
   // erased and needs the word typed, so a stray click cannot wipe a card.
@@ -307,6 +314,33 @@ export function FilesView(props: FilesViewProps) {
 
             {/* The message line renders once, above the listing (it used to
                 repeat here as well, so every notice showed twice). */}
+            {rebootAdvised ? (
+              <div className="calibration-card__reboot is-required" data-testid="files-format-reboot">
+                <p>
+                  <strong>Reboot the autopilot.</strong> The card is empty: ArduPilot creates its log, script
+                  and terrain folders at startup, so nothing is logged and no scripts run until it reboots.
+                </p>
+                <div className="calibration-card__reboot-actions">
+                  <button
+                    type="button"
+                    style={buttonStyle('primary')}
+                    data-testid="files-format-reboot-run"
+                    disabled={isBusy}
+                    onClick={() => {
+                      onDismissRebootAdvice()
+                      onRequestReboot()
+                    }}
+                  >
+                    Reboot now
+                  </button>
+                  <button type="button" style={buttonStyle()} onClick={onDismissRebootAdvice}>
+                    Later
+                  </button>
+                </div>
+                <p className="calibration-card__reboot-note">The link will drop; reconnect once the board comes back up.</p>
+              </div>
+            ) : null}
+
             <div className="files-format" data-testid="files-format">
               {!formatOpen ? (
                 <button

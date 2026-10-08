@@ -53,6 +53,10 @@ export interface MavftpBrowser {
   sanitize: () => void
   /** Format the SD card. The view has already taken the typed confirmation. */
   formatStorage: () => void
+  /** A format just ran: the card is empty until ArduPilot recreates its
+   *  folders at startup, so a reboot is advised. */
+  rebootAdvised: boolean
+  dismissRebootAdvice: () => void
 }
 
 /**
@@ -279,10 +283,12 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
 
   // Format the whole SD card (MAV_CMD_STORAGE_FORMAT). The outcome is
   // reported through the same line as Free storage's.
+  const [rebootAdvised, setRebootAdvised] = useState(false)
   const formatStorage = useCallback(async () => {
     if (!runtime) return
     setBusyAction('files:format')
     setError(undefined)
+    setRebootAdvised(false)
     try {
       const outcome = await runtime.formatStorage()
       // Refresh FIRST: load() clears the message line. The card is remounted
@@ -294,6 +300,10 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
           ? 'SD card formatted.'
           : 'Format started; the vehicle is still working on it. The messages say "Format: OK" when it is done.'
       )
+      // ArduPilot creates APM/LOGS, scripts and terrain at startup, so a
+      // freshly formatted card has none of them until the next boot: logs
+      // and scripts have nowhere to go.
+      setRebootAdvised(true)
     } catch (err) {
       setError(err instanceof Error ? `Format failed: ${err.message}` : 'Format failed.')
     } finally {
@@ -316,6 +326,8 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
     upload: (file) => void upload(file),
     remove: (entry) => void remove(entry),
     sanitize: () => void sanitize(),
-    formatStorage: () => void formatStorage()
+    formatStorage: () => void formatStorage(),
+    rebootAdvised,
+    dismissRebootAdvice: () => setRebootAdvised(false)
   }
 }

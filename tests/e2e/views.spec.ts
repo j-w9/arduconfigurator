@@ -8137,6 +8137,13 @@ test.describe('Files ▸ Format SD card', () => {
     // The demo answers as ArduPilot does: IN_PROGRESS, then ACCEPTED.
     await expect(page.getByTestId('files-error')).toHaveText('SD card formatted.', { timeout: COMMAND_ACK_TIMEOUT })
     await expect(page.getByTestId('files-format-open')).toBeVisible()
+    // A formatted card has none of ArduPilot's folders until the next boot,
+    // so a reboot is advised; Later dismisses it.
+    const reboot = page.getByTestId('files-format-reboot')
+    await expect(reboot).toContainText('Reboot the autopilot.')
+    await expect(page.getByTestId('files-format-reboot-run')).toBeEnabled()
+    await reboot.getByRole('button', { name: 'Later' }).click()
+    await expect(reboot).toHaveCount(0)
   })
 
   test('cancel closes the confirmation without sending anything', async ({ page }) => {
