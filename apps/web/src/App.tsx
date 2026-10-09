@@ -8072,6 +8072,25 @@ export function App() {
               snapshot={snapshot}
               busyAction={busyAction}
               onAction={(actionId) => void handleGuidedAction(actionId)}
+              extra={
+                // A way to the Flash tab, which opens on its firmware (.apj) section.
+                <article className="setup-bench-action" data-testid="status-flash-firmware">
+                  <div className="setup-bench-action__button">
+                    <button
+                      type="button"
+                      style={buttonStyle('secondary')}
+                      onClick={() => setActiveViewId('flash')}
+                      data-testid="status-flash-firmware-button"
+                    >
+                      Flash firmware
+                    </button>
+                  </div>
+                  <div className="setup-bench-action__copy">
+                    <strong>Flash firmware</strong>
+                    <p>Open the Flash tab to load new ArduPilot firmware (.apj).</p>
+                  </div>
+                </article>
+              }
             />
           </div>
         </article>
