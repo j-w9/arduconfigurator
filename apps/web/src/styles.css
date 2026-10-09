@@ -16043,7 +16043,8 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 .osd-matrix__label strong {
   min-width: 0;
-  font-size: var(--text-sm);
+  /* At the size of the X / Y boxes beside it. */
+  font-size: var(--text-lg);
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -16088,23 +16089,29 @@ details.bf-gui-box:not([open]) > summary::after {
   border-bottom: 1px solid var(--surface-300);
   margin-bottom: 2px;
 }
+/* X / Y in a column of their own on the element's line (they used to wrap
+   onto a second line under the name). Fixed width, so every row's columns
+   still line up. */
+.osd-matrix--align .osd-matrix__row {
+  grid-template-columns: minmax(130px, 1.5fr) 132px repeat(4, 46px);
+}
 .osd-matrix__align {
   display: inline-flex;
-  gap: 6px;
-  padding-left: 8px;
-  font-size: var(--text-xs);
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   white-space: nowrap;
 }
 .osd-matrix__align label {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
 }
 .osd-matrix__align input {
-  width: 40px;
-  font-size: var(--text-xs);
-  padding: 1px 4px;
+  width: 46px;
+  font-size: var(--text-sm);
+  padding: 2px 4px;
 }
 
 .receiver-stick-craft {
@@ -20439,4 +20446,18 @@ button.mavlink-inspector__sent-row {
 }
 .setup-bench__status.is-complete {
   color: var(--success);
+}
+@media (max-width: 640px) {
+  /* No room for the X / Y column on a phone: they take their own line again. */
+  .osd-matrix--align .osd-matrix__row {
+    grid-template-columns: minmax(110px, 1fr) repeat(4, 40px);
+  }
+  .osd-matrix--align .osd-matrix__align {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .osd-matrix--align .osd-matrix__align:empty,
+  .osd-matrix--align .osd-matrix__align-head {
+    display: none;
+  }
 }

@@ -525,9 +525,10 @@ export function OsdView(props: OsdViewProps) {
                   {elementMatrix.length === 0 ? (
                     <p>No OSD element parameters reported by this autopilot. The matrix populates once the FC's OSD layout parameters arrive.</p>
                   ) : (
-                    <div className="osd-matrix" data-testid="osd-element-matrix">
+                    <div className={`osd-matrix${dragEnabled ? ' osd-matrix--align' : ''}`} data-testid="osd-element-matrix">
                       <div className="osd-matrix__row osd-matrix__row--head">
                         <span className="osd-matrix__label">Element</span>
+                        {dragEnabled ? <span className="osd-matrix__label osd-matrix__align-head">Position</span> : null}
                         {screenColumns.map((screen) => {
                           const enableEntry = screenEnableEntries.find((entry) => entry.screen === screen)
                           const enableParam = enableEntry?.parameter
@@ -632,26 +633,8 @@ export function OsdView(props: OsdViewProps) {
                                     </InfoDot>
                                   </span>
                                 </span>
-                                {screenColumns.map((screen) => {
-                                  const cell = row.cells.find((entry) => entry.screen === screen)
-                                  if (!cell) {
-                                    return <span key={screen} className="osd-matrix__cell osd-matrix__cell--na">·</span>
-                                  }
-                                  return (
-                                    <span
-                                      key={screen}
-                                      className={`osd-matrix__cell osd-matrix__cell--${fieldStatusClass(draftStatusById, cell.parameterId)}${screen === activeScreen ? ' is-preview' : ''}`}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        aria-label={`${row.label} on OSD${screen}`}
-                                        data-testid={`osd-cell-${row.elementId}-${screen}`}
-                                        checked={matrixCellChecked(cell)}
-                                        onChange={(event) => onEditChange(cell.parameterId, event.target.checked ? '1' : '0')}
-                                      />
-                                    </span>
-                                  )
-                                })}
+                                {/* X / Y sit on the element's own line, in a column of their
+                                    own between the name and the screens. */}
                                 {showAlign && placed ? (
                                   <span className="osd-matrix__align" data-testid={`osd-element-align-${row.elementId}`}>
                                     <label>
@@ -684,7 +667,29 @@ export function OsdView(props: OsdViewProps) {
                                       />
                                     </label>
                                   </span>
+                                ) : dragEnabled ? (
+                                  <span className="osd-matrix__align" aria-hidden="true" />
                                 ) : null}
+                                {screenColumns.map((screen) => {
+                                  const cell = row.cells.find((entry) => entry.screen === screen)
+                                  if (!cell) {
+                                    return <span key={screen} className="osd-matrix__cell osd-matrix__cell--na">·</span>
+                                  }
+                                  return (
+                                    <span
+                                      key={screen}
+                                      className={`osd-matrix__cell osd-matrix__cell--${fieldStatusClass(draftStatusById, cell.parameterId)}${screen === activeScreen ? ' is-preview' : ''}`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        aria-label={`${row.label} on OSD${screen}`}
+                                        data-testid={`osd-cell-${row.elementId}-${screen}`}
+                                        checked={matrixCellChecked(cell)}
+                                        onChange={(event) => onEditChange(cell.parameterId, event.target.checked ? '1' : '0')}
+                                      />
+                                    </span>
+                                  )
+                                })}
                               </div>
                             )
                           })}
