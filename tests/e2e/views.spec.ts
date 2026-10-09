@@ -8426,3 +8426,27 @@ test.describe('CAN tab node firmware on the website', () => {
     expect(asked[0]).toContain('sha=abc1234567890')
   })
 })
+
+test.describe('Sidebar width', () => {
+  for (const width of [1280, 1900, 2400]) {
+    test(`every nav label fits the slimmer sidebar at ${width}px (Expert, all tabs)`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1000 })
+      await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
+      await page.goto('/')
+      await page.getByTestId('transport-mode-select').selectOption('demo')
+      await page.getByTestId('connect-button').click()
+      await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+      const clipped = await page.evaluate(() =>
+        [...document.querySelectorAll('.workspace-nav__item strong')]
+          .filter((label) => {
+            const item = label.closest('.workspace-nav__item') as HTMLElement
+            return label.scrollWidth > label.clientWidth + 1 || item.scrollWidth > item.clientWidth + 1
+          })
+          .map((label) => label.textContent)
+      )
+      expect(clipped).toEqual([])
+      const sidebar = await page.locator('.workspace-sidebar').boundingBox()
+      expect(sidebar!.width).toBeLessThan(215)
+    })
+  }
+})
