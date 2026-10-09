@@ -137,7 +137,7 @@ export function WorkspaceNotes({
                 onClick={onPullParameters}
                 disabled={parameterFollowUp.requiresReboot || busyAction !== undefined || !canRunGuidedAction(snapshot, 'request-parameters')}
               >
-                Pull Parameters
+                Sync Parameters
               </button>
             </div>
           )}

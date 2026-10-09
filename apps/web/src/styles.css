@@ -20406,3 +20406,37 @@ button.mavlink-inspector__sent-row {
   font-size: var(--text-3xl);
   font-weight: 700;
 }
+
+/* Status & Info ▸ Vehicle actions: big buttons, no prose. */
+.setup-bench__buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.setup-bench__button-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.setup-bench__button {
+  width: 100%;
+  min-height: 44px;
+  font-size: var(--text-xl) !important;
+  font-weight: 700 !important;
+}
+.setup-bench__button.is-failed {
+  border-color: var(--danger) !important;
+}
+.setup-bench__failed {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+.setup-bench__status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+.setup-bench__status.is-complete {
+  color: var(--success);
+}

@@ -201,7 +201,7 @@ export function buildSetupFlowSections(inputs: SetupFlowSectionsInputs): SetupFl
           summary = parameterFollowUp
             ? parameterFollowUp.requiresReboot
               ? 'A reboot and fresh parameter pull are required before setup can continue.'
-              : 'Pull parameters again to confirm the controller state before moving on.'
+              : 'Sync parameters again to confirm the controller state before moving on.'
             : snapshot.connection.kind !== 'connected'
               ? 'Connect to the vehicle and request the first parameter snapshot.'
               : snapshot.parameterStats.status === 'complete'

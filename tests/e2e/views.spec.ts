@@ -8450,3 +8450,16 @@ test.describe('Sidebar width', () => {
     })
   }
 })
+
+test.describe('Status & Info: Vehicle actions', () => {
+  test('Vehicle actions: three big buttons, Complete under Sync Parameters', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    const card = page.getByTestId('status-bench-actions')
+    await expect(card.getByTestId('status-bench-request-parameters')).toHaveText('Sync Parameters', { timeout: 20_000 })
+    await expect(card.getByTestId('status-bench-reboot-autopilot')).toHaveText('Reboot')
+    await expect(card.getByTestId('status-flash-firmware-button')).toHaveText('Flash Firmware')
+    await expect(card.getByTestId('status-bench-sync-status')).toHaveText(/^Complete · \d+\/\d+ parameters$/, { timeout: 20_000 })
+  })
+})
