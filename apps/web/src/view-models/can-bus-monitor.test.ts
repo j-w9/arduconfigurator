@@ -6,6 +6,7 @@ import {
   DEFAULT_CAN_MONITOR_FILTER_FORM,
   buildCanMonitorFilter,
   canByteRows,
+  parseCanNameFilter,
   describeCanFrame,
   dronecanFrameHeader,
   formatCaptureTime
@@ -87,5 +88,27 @@ describe('formatting', () => {
       { index: 0, hex: '41', dec: '65', bin: '01000001', ascii: 'A' },
       { index: 1, hex: '00', dec: '0', bin: '00000000', ascii: '·' }
     ])
+  })
+})
+
+describe('the name filter', () => {
+  it('matches decoded names: wildcards on a dotted part, plain words anywhere, any term, any case', () => {
+    const mag = ['uavcan.equipment.ahrs.MagneticFieldStrength2']
+    const esc = ['uavcan.equipment.esc.Status']
+    expect(parseCanNameFilter('')).toBeUndefined()
+    expect(parseCanNameFilter('mag*')!(mag)).toBe(true)
+    expect(parseCanNameFilter('mag*')!(esc)).toBe(false)
+    expect(parseCanNameFilter('MAG')!(mag)).toBe(true)
+    expect(parseCanNameFilter('esc.*status')!(esc)).toBe(true)
+    expect(parseCanNameFilter('esc.Status')!(esc)).toBe(true)
+    expect(parseCanNameFilter('nodestatus, mag*')!(mag)).toBe(true)
+    expect(parseCanNameFilter('Magnetic?ieldStrength2')!(mag)).toBe(true)
+    // A frame with no decoded name (plain CAN, unknown type) never matches a name.
+    expect(parseCanNameFilter('mag*')!([])).toBe(false)
+  })
+
+  it('a typed name makes the filter active', () => {
+    expect(buildCanMonitorFilter({ ...DEFAULT_CAN_MONITOR_FILTER_FORM, nameText: 'mag*' }).active).toBe(true)
+    expect(buildCanMonitorFilter(DEFAULT_CAN_MONITOR_FILTER_FORM).active).toBe(false)
   })
 })

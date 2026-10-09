@@ -700,3 +700,22 @@ test.describe('CAN tab: frame grouping and plotting vectors', () => {
     await expect(fields.getByTestId('can-plot-field-magnetic_field_ga')).toHaveText('Plotted')
   })
 })
+
+test.describe('CAN bus monitor: name filter', () => {
+  test('mag* keeps only the magnetometer frames', async ({ page }) => {
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await page.getByTestId('can-subtab-frames').click()
+    await page.getByTestId('can-monitor-filter-name').fill('mag*')
+    const rows = page.getByTestId('can-monitor-row')
+    await expect(rows.first()).toBeVisible({ timeout: 15_000 })
+    await page.getByTestId('can-monitor-pause').click()
+    const count = await rows.count()
+    expect(count).toBeGreaterThan(0)
+    for (let index = 0; index < Math.min(count, 10); index += 1) {
+      await expect(rows.nth(index)).toContainText('MagneticFieldStrength2')
+    }
+  })
+})

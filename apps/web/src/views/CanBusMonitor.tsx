@@ -240,7 +240,11 @@ function StreamTable({ monitor }: { monitor: CanBusMonitorModel }): ReactNode {
                 role="row"
                 className={`can-monitor__row can-monitor__row--stream${frame.direction === 'tx' ? ' is-tx' : ''}${frame.seq === selectedSeq ? ' is-selected' : ''}${shade !== undefined ? ` is-multi can-monitor__row--shade-${shade}` : ''}${sibling ? ' is-sibling' : ''}`}
                 style={{ top: index * ROW_HEIGHT }}
-                onClick={() => selectFrame(frame.seq === selectedSeq ? undefined : frame.seq)}
+                // On press, not click: a live list moves between press and
+                // release, and a click needs both on the same row.
+                onMouseDown={(event) => {
+                  if (event.button === 0) selectFrame(frame.seq === selectedSeq ? undefined : frame.seq)
+                }}
                 data-testid="can-monitor-row"
                 data-transfer-part={shade !== undefined && transfer ? `${transfer.frameSeqs.indexOf(frame.seq) + 1}/${transfer.frameSeqs.length}` : undefined}
               >
@@ -301,7 +305,9 @@ function ByIdTable({ monitor }: { monitor: CanBusMonitorModel }): ReactNode {
               key={entry.key}
               role="row"
               className={`can-monitor__row can-monitor__row--by-id is-static${stale ? ' is-stale' : ''}${entry.last.seq === selectedSeq ? ' is-selected' : ''}`}
-              onClick={() => selectFrame(entry.last.seq === selectedSeq ? undefined : entry.last.seq)}
+              onMouseDown={(event) => {
+                if (event.button === 0) selectFrame(entry.last.seq === selectedSeq ? undefined : entry.last.seq)
+              }}
               data-testid={`can-monitor-id-${formatCanId(entry.id, entry.extended)}`}
             >
               <span className="can-monitor__mono can-monitor__id">{formatCanId(entry.id, entry.extended)}</span>
@@ -849,6 +855,19 @@ export function CanBusMonitorView({ monitor, live, layout = 'drawer' }: CanBusMo
                 onChange={(event) => setFilterForm({ ...filterForm, idText: event.target.value })}
                 aria-invalid={filterState.idError !== undefined}
                 data-testid="can-monitor-filter-ids"
+              />
+            </label>
+            <label className="can-monitor__field">
+              <span>Name</span>
+              <input
+                type="text"
+                spellCheck={false}
+                autoComplete="off"
+                placeholder="mag*, esc.Status"
+                title="Decoded DroneCAN message names. * and ? are wildcards; a plain word matches anywhere in the name."
+                value={filterForm.nameText}
+                onChange={(event) => setFilterForm({ ...filterForm, nameText: event.target.value })}
+                data-testid="can-monitor-filter-name"
               />
             </label>
             <label className={`can-monitor__field${filterState.dataError ? ' is-invalid' : ''}`}>

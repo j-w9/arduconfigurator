@@ -19,7 +19,6 @@ import {
   matchesCanFilter,
   parseCanLog,
   type CanFrame,
-  type CanFrameFilter,
   type CanIdTraceEntry,
   type CanLogTimeline
 } from '@arduconfig/can-core'
@@ -29,6 +28,7 @@ import { downloadTextFile } from '../download-file'
 import {
   DEFAULT_CAN_MONITOR_FILTER_FORM,
   buildCanMonitorFilter,
+  canFrameNames,
   type CanMonitorFilterForm,
   type CanMonitorFilterState
 } from '../view-models/can-bus-monitor'
@@ -230,12 +230,20 @@ function storeOf(frames: readonly CanFrame[]): CaptureStore {
   return store
 }
 
-function framesFor(source: Iterable<CanFrame>, filter: CanFrameFilter | undefined): CanFrame[] {
+function framesFor(source: Iterable<CanFrame>, passes: ((frame: CanFrame) => boolean) | undefined): CanFrame[] {
   const out: CanFrame[] = []
   for (const frame of source) {
-    if (!filter || matchesCanFilter(frame, filter)) out.push(frame)
+    if (!passes || passes(frame)) out.push(frame)
   }
   return out
+}
+
+/** The whole filter for one store: ids, kinds, payload, and the decoded name. */
+function filterPredicate(state: CanMonitorFilterState, store: CaptureStore): ((frame: CanFrame) => boolean) | undefined {
+  if (!state.active) return undefined
+  const { filter, matchesName } = state
+  return (frame) =>
+    matchesCanFilter(frame, filter) && (!matchesName || matchesName(canFrameNames(store.transfers.get(frame.seq))))
 }
 
 function downloadFrames(frames: readonly CanFrame[], format: CanRecordingFormat, stem: string, startedAtMs: number): void {
@@ -274,6 +282,8 @@ export function useCanBusMonitor(options: {
   const [filterForm, setFilterForm] = useState<CanMonitorFilterForm>(DEFAULT_CAN_MONITOR_FILTER_FORM)
   const [paused, setPaused] = useState(false)
   const pausedAtSeq = useRef(0)
+  /** The frames as they were at the pause. */
+  const pausedFrames = useRef<CanFrame[] | undefined>(undefined)
   const [selectedSeq, setSelectedSeq] = useState<number | undefined>(undefined)
   const [openedLog, setOpenedLog] = useState<CanOpenedLog | undefined>(undefined)
   const [logError, setLogError] = useState<string | undefined>(undefined)
@@ -331,22 +341,32 @@ export function useCanBusMonitor(options: {
   // scan of 50k frames against a parsed filter is a millisecond or two, which
   // keeps the logic simple and always exactly right (no incremental list to
   // drift out of step with the ring as old frames fall off the back).
+  //
+  // Paused, the list reads a copy taken at the pause, not the ring: a full
+  // ring keeps dropping its oldest frame, which moved every row up a place
+  // each repaint -- under the cursor, so a click (press and release on the
+  // same row) kept missing.
+  const frozen = paused && !viewingLog
   const frames = useMemo(() => {
     const out: CanFrame[] = []
-    const ceiling = paused && !viewingLog ? pausedAtSeq.current : Number.POSITIVE_INFINITY
-    const { filter, active } = filterState
+    const passes = filterPredicate(filterState, store)
+    if (frozen) {
+      for (const frame of pausedFrames.current ?? []) {
+        if (!passes || passes(frame)) out.push(frame)
+      }
+      return out
+    }
     store.buffer.forEach((frame) => {
-      if (frame.seq > ceiling) return
-      if (!active || matchesCanFilter(frame, filter)) out.push(frame)
+      if (!passes || passes(frame)) out.push(frame)
     })
     return out
-    // `version` is the repaint signal for the mutable ring.
+    // `version` is the repaint signal for the mutable ring (unused while frozen).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, filterState, paused, viewingLog, openedLog])
+  }, [frozen ? 0 : version, filterState, frozen, viewingLog, openedLog])
 
   const idRows = useMemo(() => {
-    const { filter, active } = filterState
-    return store.trace.list().filter((entry) => !active || matchesCanFilter(entry.last, filter))
+    const passes = filterPredicate(filterState, store)
+    return store.trace.list().filter((entry) => !passes || passes(entry.last))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, filterState, viewingLog, openedLog])
 
@@ -379,7 +399,12 @@ export function useCanBusMonitor(options: {
 
   const togglePause = useCallback(() => {
     setPaused((current) => {
-      if (!current) pausedAtSeq.current = live.current.buffer.lastSeq
+      if (!current) {
+        pausedAtSeq.current = live.current.buffer.lastSeq
+        pausedFrames.current = live.current.buffer.toArray()
+      } else {
+        pausedFrames.current = undefined
+      }
       return !current
     })
   }, [])
@@ -387,19 +412,22 @@ export function useCanBusMonitor(options: {
   const clear = useCallback(() => {
     live.current = newStore(CAN_MONITOR_CAPACITY)
     pausedAtSeq.current = 0
+    if (pausedFrames.current) pausedFrames.current = []
     setSelectedSeq(undefined)
     setVersion((value) => value + 1)
   }, [])
 
   const selectedFrame = useMemo(() => {
     if (selectedSeq === undefined) return undefined
-    let found: CanFrame | undefined
+    // The list first: paused, a selected frame may already have left the ring.
+    let found: CanFrame | undefined = frames.find((frame) => frame.seq === selectedSeq)
+    if (found) return found
     store.buffer.forEach((frame) => {
       if (frame.seq === selectedSeq) found = frame
     })
     return found
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSeq, version, openedLog])
+  }, [selectedSeq, version, openedLog, frames])
 
   const startRecording = useCallback(() => {
     recorder.current = { frames: [], active: true, startedAtMs: Date.now(), capped: false }
@@ -417,7 +445,7 @@ export function useCanBusMonitor(options: {
     ({ format, filteredOnly }: CanSaveOptions) => {
       const rec = recorder.current
       if (rec.frames.length === 0) return
-      const frames = framesFor(rec.frames, filteredOnly && filterState.active ? filterState.filter : undefined)
+      const frames = framesFor(rec.frames, filteredOnly ? filterPredicate(filterState, live.current) : undefined)
       downloadFrames(frames, format, 'can-capture', rec.startedAtMs ?? Date.now())
     },
     [filterState]
@@ -425,8 +453,8 @@ export function useCanBusMonitor(options: {
 
   const saveBuffer = useCallback(
     ({ format, filteredOnly }: CanSaveOptions) => {
-      const source = (offline.current ?? live.current).buffer.toArray()
-      const frames = framesFor(source, filteredOnly && filterState.active ? filterState.filter : undefined)
+      const target = offline.current ?? live.current
+      const frames = framesFor(target.buffer.toArray(), filteredOnly ? filterPredicate(filterState, target) : undefined)
       if (frames.length === 0) return
       downloadFrames(frames, format, offline.current ? 'can-log-excerpt' : 'can-buffer', frames[0].timestampMs)
     },

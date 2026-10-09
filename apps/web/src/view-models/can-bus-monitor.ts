@@ -20,7 +20,7 @@ import {
   dronecanServiceTypeId,
   dronecanSourceNodeId
 } from '@arduconfig/protocol-mavlink'
-import { dronecanCatalogue } from '@arduconfig/dronecan-dsdl'
+import { dronecanCatalogue, type DronecanTransfer } from '@arduconfig/dronecan-dsdl'
 
 /** The DSDL short name for a message / service id, from the bundled catalogue. */
 function messageName(typeId: number): string | undefined {
@@ -111,6 +111,8 @@ export function formatCaptureTime(timestampMs: number, originMs: number): string
 /** The filter form as typed; parsed by buildCanMonitorFilter. */
 export interface CanMonitorFilterForm {
   idText: string
+  /** Decoded message names: "mag*", "esc.Status, NodeStatus". */
+  nameText: string
   dataText: string
   kinds: CanFrameKinds
   direction: 'all' | CanFrameDirection
@@ -118,6 +120,7 @@ export interface CanMonitorFilterForm {
 
 export const DEFAULT_CAN_MONITOR_FILTER_FORM: CanMonitorFilterForm = {
   idText: '',
+  nameText: '',
   dataText: '',
   kinds: ALL_CAN_FRAME_KINDS,
   direction: 'all'
@@ -125,6 +128,8 @@ export const DEFAULT_CAN_MONITOR_FILTER_FORM: CanMonitorFilterForm = {
 
 export interface CanMonitorFilterState {
   filter: CanFrameFilter
+  /** Set when a name filter is typed: does a frame's decoded name match. */
+  matchesName?: (names: readonly string[]) => boolean
   idError?: string
   dataError?: string
   /** True when anything would hide a frame. */
@@ -148,14 +153,48 @@ export function buildCanMonitorFilter(form: CanMonitorFilterForm): CanMonitorFil
   const kindsActive = Object.values(form.kinds).some((on) => !on)
   return {
     filter,
+    matchesName: parseCanNameFilter(form.nameText),
     idError: ids.ok ? undefined : ids.error,
     dataError: data.ok ? undefined : data.error,
     active:
+      form.nameText.trim() !== '' ||
       (ids.ok && ids.value.length > 0) ||
       (data.ok && data.value !== undefined) ||
       kindsActive ||
       form.direction !== 'all'
   }
+}
+
+/**
+ * A name filter: comma-separated terms, any of which may match. `*` and `?`
+ * are wildcards ("mag*", "esc.*Status"); a term without one matches anywhere
+ * in the name ("mag" finds MagneticFieldStrength2). Case does not matter.
+ * Undefined when nothing is typed.
+ */
+export function parseCanNameFilter(text: string): ((names: readonly string[]) => boolean) | undefined {
+  const terms = text
+    .split(',')
+    .map((term) => term.trim().toLowerCase())
+    .filter((term) => term !== '')
+  if (terms.length === 0) return undefined
+  const patterns = terms.map((term) => {
+    if (!/[*?]/.test(term)) return (name: string) => name.includes(term)
+    const source = term.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')
+    // A wildcard term matches a whole dotted segment run: "mag*" finds
+    // "uavcan.equipment.ahrs.MagneticFieldStrength2" by its last part.
+    const regex = new RegExp(`(^|\\.)${source}$`)
+    return (name: string) => regex.test(name)
+  })
+  return (names) => names.some((name) => {
+    const lower = name.toLowerCase()
+    return patterns.some((pattern) => pattern(lower))
+  })
+}
+
+/** The names a frame answers to in the name filter: its decoded DroneCAN type's full name. */
+export function canFrameNames(transfer: DronecanTransfer | undefined): string[] {
+  const type = transfer?.type
+  return type ? [type.fullName] : []
 }
 
 /** Byte-by-byte views for the details pane. */
