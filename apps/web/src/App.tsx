@@ -284,6 +284,8 @@ import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
 import { relayFirmwareSource } from './firmware/firmware-index-source'
+import { loadPeriphIndex, relayPeriphFirmwareSource } from './firmware/periph-firmware-source'
+import type { FirmwareIndexRow } from './view-models/firmware-finder'
 import { ElrsFlasher, type ElrsFlasherNotice } from './firmware/ElrsFlasher'
 import { flashElrsReceiver, type ElrsFlashProgress } from './firmware/web-serial-esptool'
 import { patchElrsFirmwareOptions } from './view-models/elrs-firmware-options'
@@ -1195,6 +1197,14 @@ export function App() {
   // proven handleConnect path the Connect button uses — including its
   // stale-handle reacquire, which the first attempt at this feature was missing.
   const expectRebootReconnectRef = useRef(false)
+  // Bumped to (re)run the reboot reconnect when the link is already down --
+  // after a flash, the board reboots into its new firmware with nothing
+  // connected, so no connection change would wake the effect.
+  const [rebootReconnectNonce, setRebootReconnectNonce] = useState(0)
+  // After a flash, the reconnect lands on Status & Info: a fresh firmware is
+  // the moment to look at the vehicle as a whole (one of the few deliberate
+  // view changes the app makes on its own).
+  const showStatusAfterReconnectRef = useRef(false)
   const rebootReconnectingRef = useRef(false)
   // Owns the watchdog auto-resume loop (below): true while it is cycling
   // reconnects to finish a parameter download a resetting board keeps cutting
@@ -1624,6 +1634,10 @@ export function App() {
             const current = runtime.getSnapshot()
             if (current.connection.kind === 'connected' && current.vehicle !== undefined) {
               setSessionNotice({ tone: 'success', text: 'Reconnected after reboot.' })
+              if (showStatusAfterReconnectRef.current) {
+                showStatusAfterReconnectRef.current = false
+                setActiveViewId('setup')
+              }
               return
             }
           }
@@ -1639,7 +1653,7 @@ export function App() {
         rebootReconnectingRef.current = false
       }
     })()
-  }, [snapshot.connection.kind, transportMode, selectedSerialPort, runtime, rememberSelectedSerialPort])
+  }, [snapshot.connection.kind, transportMode, selectedSerialPort, runtime, rememberSelectedSerialPort, rebootReconnectNonce])
 
   // Auto-resume a parameter download that a resetting board keeps interrupting.
   // Field case: a watchdogging FC drops the USB link a few seconds into every
@@ -2610,6 +2624,19 @@ export function App() {
   // the web build it degrades to `available: false` (local .bin still works).
   // The node's bootloader flashes RAW bytes, so we decode the server's .apj
   // (zlib image) down to the raw image before handing it to the Phase-2 update.
+  // The website's AP_Periph index (the deploy's /fw/periph-index.json), loaded
+  // when the CAN tab first opens; a site without it keeps "desktop only".
+  const [periphIndexRows, setPeriphIndexRows] = useState<FirmwareIndexRow[] | undefined>(undefined)
+  const periphIndexRequested = useRef(false)
+  useEffect(() => {
+    if (activeViewId !== 'can' || periphIndexRequested.current) return
+    periphIndexRequested.current = true
+    loadPeriphIndex()
+      .then((rows) => {
+        if (rows.length > 0) setPeriphIndexRows(rows)
+      })
+      .catch(() => {})
+  }, [activeViewId])
   const dronecanFirmwareOnline = useMemo<DronecanFirmwareOnlineSource>(() => {
     const bridge =
       typeof window !== 'undefined'
@@ -2634,6 +2661,10 @@ export function App() {
             }
           ).arduconfigDesktop?.firmware
         : undefined
+    if ((!bridge?.listDronecanNode || !bridge.download) && periphIndexRows) {
+      // The website: the deploy's AP_Periph index and relay.
+      return relayPeriphFirmwareSource(periphIndexRows)
+    }
     if (!bridge?.listDronecanNode || !bridge.download) {
       const unavailable = async (): Promise<never> => {
         throw new Error(
@@ -2687,7 +2718,7 @@ export function App() {
         return { fileName, image }
       }
     }
-  }, [])
+  }, [periphIndexRows])
   // Human label for the current selection, used across preset notices/messages.
   const selectedPresetsLabel =
     selectedPresets.length === 0
@@ -10033,7 +10064,14 @@ export function App() {
             // MAVLink link — otherwise the flasher's wizard works fine
             // without it.
             runtime && snapshot.connection.kind === 'connected'
-              ? async () => { await runtime.rebootToBootloader() }
+              ? async () => {
+                  await runtime.rebootToBootloader()
+                  // The board is gone into its bootloader: let go of the port so
+                  // the flasher can open the bootloader's, and so no automatic
+                  // reconnect grabs it first (the same stand-down as Disconnect).
+                  intentionalDisconnectRef.current = true
+                  await runtime.disconnect().catch(() => {})
+                }
               : undefined
           }
           onEnterRomDfu={
@@ -10112,6 +10150,19 @@ export function App() {
                 : undefined
           }
           connectedVehicle={snapshot.vehicle?.vehicle}
+          // After a flash the board reboots into the new firmware: reconnect to
+          // it on the port it was on (the reboot reconnect, which tries every
+          // granted port with that VID/PID). Only when it came from a USB link.
+          onFlashComplete={
+            transportMode === 'web-serial' && selectedSerialPort
+              ? () => {
+                  intentionalDisconnectRef.current = false
+                  expectRebootReconnectRef.current = true
+                  showStatusAfterReconnectRef.current = true
+                  setRebootReconnectNonce((value) => value + 1)
+                }
+              : undefined
+          }
           firmwareIndex={relayFirmwareSource}
           connectedBoard={flashConnectedBoard}
         />

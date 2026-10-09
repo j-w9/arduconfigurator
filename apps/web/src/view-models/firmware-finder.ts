@@ -25,6 +25,8 @@ export interface FirmwareIndexRow {
   manufacturer: string
   /** Path under https://firmware.ardupilot.org/ */
   path: string
+  /** The build's commit (manifest git-sha); '' in an index from before it was listed. */
+  gitSha: string
 }
 
 /** What the finder offers in its Vehicle picker. Heli is Copter's heli build. */
@@ -56,6 +58,8 @@ export function parseFirmwareIndex(json: unknown): FirmwareIndexRow[] {
     path: at('path')
   }
   if (Object.values(columns).some((column) => column < 0)) throw new Error('The firmware index is missing columns.')
+  // Optional: indexes built before it was added have no gitSha column.
+  const gitShaColumn = at('gitSha')
   return index.rows
     .filter((row) => Array.isArray(row) && typeof row[columns.platform] === 'string' && typeof row[columns.path] === 'string')
     .map((row) => ({
@@ -67,7 +71,8 @@ export function parseFirmwareIndex(json: unknown): FirmwareIndexRow[] {
       version: String(row[columns.version] ?? ''),
       brand: String(row[columns.brand] ?? ''),
       manufacturer: String(row[columns.manufacturer] ?? ''),
-      path: String(row[columns.path])
+      path: String(row[columns.path]),
+      gitSha: gitShaColumn >= 0 ? String(row[gitShaColumn] ?? '') : ''
     }))
 }
 
@@ -96,6 +101,7 @@ export interface FirmwareTarget {
   manufacturer: string
   version: string
   path: string
+  gitSha: string
   /** The build running on the connected board (its banner names this target). */
   running: boolean
   /** Shares the connected board's id: a variant that will pass the board check. */
@@ -145,6 +151,7 @@ export function findFirmwareTargets(
       manufacturer: row.manufacturer,
       version: row.version,
       path: row.path,
+      gitSha: row.gitSha,
       running: isRunningTarget(row.platform, board?.boardName),
       sameBoard
     })
@@ -173,4 +180,27 @@ export function targetWarning(target: FirmwareTarget, board: ConnectedBoard | un
     return `A different variant from the one running (${board.boardName}). It fits this board, but its outputs or features may differ (bdshot, for one).`
   }
   return undefined
+}
+
+/**
+ * Is this downloaded .apj the build the index listed? Its git_identity (the
+ * short commit ArduPilot stamps in the file) must start the listed git-sha.
+ * Undefined when it is (or when either side does not say); otherwise why not.
+ */
+export function apjBuildMismatch(apjText: string, expectedGitSha: string): string | undefined {
+  if (!expectedGitSha) return undefined
+  let identity: unknown
+  try {
+    identity = (JSON.parse(apjText) as { git_identity?: unknown }).git_identity
+  } catch {
+    return 'The download is not an .apj file.'
+  }
+  if (typeof identity !== 'string' || identity === '') return undefined
+  if (expectedGitSha.toLowerCase().startsWith(identity.toLowerCase())) return undefined
+  return `The server sent build ${identity}, not the listed ${expectedGitSha.slice(0, 8)}. A new release may still be reaching it; try again in a few minutes.`
+}
+
+/** Identifies one build of one target: what "Downloaded" refers to. */
+export function firmwareBuildKey(target: Pick<FirmwareTarget, 'path' | 'gitSha'>): string {
+  return `${target.path}@${target.gitSha}`
 }

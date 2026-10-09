@@ -8,8 +8,8 @@ import { parseFirmwareIndex, type FirmwareIndexRow } from '../view-models/firmwa
 
 export interface FirmwareIndexSource {
   loadIndex(): Promise<FirmwareIndexRow[]>
-  /** One .apj, by its path under firmware.ardupilot.org. */
-  download(path: string): Promise<string>
+  /** One .apj, by its path under firmware.ardupilot.org, and its build commit when known. */
+  download(path: string, gitSha?: string): Promise<string>
 }
 
 export const relayFirmwareSource: FirmwareIndexSource = {
@@ -20,8 +20,9 @@ export const relayFirmwareSource: FirmwareIndexSource = {
     }
     return parseFirmwareIndex(await response.json())
   },
-  async download(path) {
-    const response = await fetch(`/fw/apj?path=${encodeURIComponent(path)}`)
+  async download(path, gitSha) {
+    // The commit in the URL gives each build its own cache entry, here and at the edge.
+    const response = await fetch(`/fw/apj?path=${encodeURIComponent(path)}${gitSha ? `&sha=${encodeURIComponent(gitSha)}` : ''}`)
     if (!response.ok) throw new Error((await response.text()) || `Download failed (HTTP ${response.status}).`)
     return response.text()
   }

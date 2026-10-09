@@ -673,7 +673,8 @@ test('selectFirmware never defaults to a heli build sharing the board id', () =>
 test('buildFirmwareIndex: current .apj builds as the finder\'s compact rows', () => {
   const index = buildFirmwareIndex(parseManifest(MANIFEST_FIXTURE))
   assert.equal(index.format, 1)
-  assert.deepEqual(index.columns, ['platform', 'boardId', 'vehicle', 'mavType', 'channel', 'version', 'brand', 'manufacturer', 'path'])
+  assert.deepEqual(index.columns, ['platform', 'boardId', 'vehicle', 'mavType', 'channel', 'version', 'brand', 'manufacturer', 'path', 'gitSha'])
+  assert.ok(index.rows.some((row) => row[0] === 'Pixhawk6X' && row[9] === 'aaa'), 'the build commit rides along')
   // apj only (the abin is out), current channels only, paths relative to the server.
   assert.ok(index.rows.every((row) => String(row[8]).endsWith('.apj') && !String(row[8]).startsWith('https://')))
   assert.ok(index.rows.some((row) => row[0] === 'Pixhawk6X' && row[4] === 'BETA' && row[8] === 'Copter/beta/Pixhawk6X/arducopter.apj'))

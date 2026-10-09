@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  apjBuildMismatch,
   autoSelectTarget,
+  firmwareBuildKey,
   defaultFinderVehicle,
   findFirmwareTargets,
   isRunningTarget,
@@ -98,5 +100,19 @@ describe('warnings', () => {
     expect(targetWarning(cube, board)).toMatch(/will refuse it/)
     expect(defaultFinderVehicle('ArduPlane')).toBe('Plane')
     expect(defaultFinderVehicle(undefined)).toBe('Copter')
+  })
+})
+
+describe('the downloaded build', () => {
+  it('reads the listed commit when the index has one, and checks the file against it', () => {
+    const withSha = parseFirmwareIndex({ format: 1, columns: [...columns, 'gitSha'], rows: [[...row('MatekH743', 1013), 'dbe792162d06cab66c3475fd5556bf7a120f119e']] })
+    expect(withSha[0].gitSha).toBe('dbe792162d06cab66c3475fd5556bf7a120f119e')
+    expect(rows[0].gitSha).toBe('') // an index from before the column
+    const apj = (identity: string) => JSON.stringify({ board_id: 1013, git_identity: identity, image: '' })
+    expect(apjBuildMismatch(apj('dbe79216'), withSha[0].gitSha)).toBeUndefined()
+    expect(apjBuildMismatch(apj('0a1b2c3d'), withSha[0].gitSha)).toMatch(/sent build 0a1b2c3d, not the listed dbe79216/)
+    expect(apjBuildMismatch(apj('0a1b2c3d'), '')).toBeUndefined()
+    expect(apjBuildMismatch('<!doctype html>', 'dbe79216')).toMatch(/not an \.apj/)
+    expect(firmwareBuildKey({ path: 'a/b.apj', gitSha: 'x' })).not.toBe(firmwareBuildKey({ path: 'a/b.apj', gitSha: 'y' }))
   })
 })
