@@ -104,7 +104,7 @@ test.describe('Phone layout', () => {
     // The rail is the rail: no drift summary, no vehicle caption, and no badge
     // on Snapshots — a count like "94 diff" is wider than the rail has room
     // for and lands on top of the label. Open Snapshots and it is all there.
-    await expect(page.getByTestId('view-button-snapshots')).toHaveText('SNPSnapshots')
+    await expect(page.getByTestId('view-button-snapshots')).toHaveText('Snapshots')
     await expect(page.getByTestId('view-button-snapshots').locator('.workspace-nav__badge')).toHaveCount(0)
   })
 })

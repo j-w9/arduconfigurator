@@ -301,6 +301,8 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   const [phase, setPhase] = useState<Phase>('idle')
   // True while a flash runs on a board we rebooted into its bootloader (no replug).
   const [autoRebootFlow, setAutoRebootFlow] = useState(false)
+  // A flash that wrote and verified (not one skipped as already on the board).
+  const [flashed, setFlashed] = useState(false)
   // ArduPilot's build index: the desktop shell's native fetch when it offers
   // one, else the site's relay. Undefined rows hide the finder.
   const indexSource = useMemo<FirmwareIndexSource | undefined>(
@@ -1048,6 +1050,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           { firmwareBoardId: loaded.boardId, connectedBoardId: board.boardId }
         )
         setProgress({ label: 'Done', ratio: 1 })
+        setFlashed(true)
         setPhase('done')
         // flash() rebooted the board into the new firmware, so the bootloader
         // port is gone. Invalidate the cached serial/identity so a second
@@ -1104,6 +1107,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       return
     }
     flashingRef.current = true
+    setFlashed(false)
     try {
       setError(null)
       let board = identity
@@ -1853,9 +1857,11 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           </div>
         ) : null}
 
-        {phase === 'done' ? (
-          <p className="bf-note" data-testid="firmware-done">
-            Firmware written and verified. The board is rebooting — reconnect to configure it.
+        {phase === 'done' && flashed ? (
+          // Written and verified; the board is booting the new firmware. The
+          // host reconnects to it when it can (a USB link it knows), so say so.
+          <p className="firmware-done" data-testid="firmware-done" role="status">
+            {props.onFlashComplete ? 'Flash complete — rebooting & reconnecting' : 'Flash complete — rebooting'}
           </p>
         ) : null}
 
