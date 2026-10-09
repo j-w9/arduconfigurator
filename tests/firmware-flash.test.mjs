@@ -4,6 +4,7 @@ import { deflateSync, inflateSync } from 'node:zlib'
 
 import {
   arduPilotCrc32,
+  crc16Xmodem,
   firmwareCrc,
   parseApj,
   decodeApjImage,
@@ -89,6 +90,30 @@ test('firmwareCrc: 4-align required; padding to flash size is deterministic', ()
   assert.equal(firmwareCrc(img, img.length), arduPilotCrc32(img, 0))
   assert.equal(firmwareCrc(img, 64), 0xdfae288c) // re-locked post polynomial fix
   assert.throws(() => firmwareCrc(new Uint8Array([1, 2, 3]), 64), /4-byte aligned/)
+})
+
+test('crc16Xmodem is XMODEM, not one of the CCITT variants it is confused with', () => {
+  const check = new TextEncoder().encode('123456789')
+  // The published check value for CRC-16/XMODEM. The two variants a 4-way
+  // implementation is most often written with by mistake are pinned against
+  // it: CCITT-FALSE inits to 0xFFFF, KERMIT reflects in and out. Either one
+  // produces a frame the ESC answers with silence, which looks on the wire
+  // like an absent ESC rather than a checksum fault.
+  assert.equal(crc16Xmodem(check), 0x31c3, 'CRC-16/XMODEM check value')
+  assert.notEqual(crc16Xmodem(check), 0x29b1, 'not CRC-16/CCITT-FALSE')
+  assert.notEqual(crc16Xmodem(check), 0x2189, 'not CRC-16/KERMIT')
+
+  assert.equal(crc16Xmodem(new Uint8Array()), 0, 'empty = init state 0')
+  assert.equal(crc16Xmodem(new Uint8Array([0x41])), 0x58e5)
+
+  // Streaming: a 4-way frame is accumulated header-then-payload, so chaining
+  // through `state` must equal the one-shot over the concatenation.
+  const head = check.slice(0, 4)
+  const tail = check.slice(4)
+  assert.equal(crc16Xmodem(tail, crc16Xmodem(head)), crc16Xmodem(check))
+
+  // A real 4-way request: 0x2F, cmd_InterfaceTestAlive, addr 0x0000, size 1, one param.
+  assert.equal(crc16Xmodem(new Uint8Array([0x2f, 0x30, 0x00, 0x00, 0x01, 0x00])), 0xcfd4)
 })
 
 test('parseApj validates and decodeApjImage round-trips + 4-aligns', async () => {

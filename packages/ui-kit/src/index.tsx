@@ -132,3 +132,21 @@ export function buttonStyle(kind: 'primary' | 'secondary' | 'hero' = 'secondary'
     cursor: 'pointer'
   }
 }
+
+export {
+  ConnectionBar,
+  ConnectionStatusPill,
+  type ConnectionBarProps,
+  type ConnectionState,
+  type ConnectionStatusPillProps
+} from './ConnectionBar.js'
+export {
+  LogConsole,
+  appendLogLines,
+  useLogLines,
+  type LogConsoleProps,
+  type LogLines
+} from './LogConsole.js'
+export { ProgressBar, type ProgressBarProps } from './ProgressBar.js'
+export { ThemeToggle } from './ThemeToggle.js'
+export { applyTheme, getStoredTheme, isTheme, useTheme, type Theme, type UseThemeResult } from './theme.js'
