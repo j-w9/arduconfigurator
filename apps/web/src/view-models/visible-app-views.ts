@@ -220,6 +220,10 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   // through. The tab is hidden until the flasher is reworked to chunk the write
   // (see the feature-elrs-passthrough-flash notes). Flip this to re-enable.
   const ELRS_FLASH_ENABLED = false
+  // RC Mixer is HIDDEN for everyone, Expert included (operator call,
+  // 2026-10-09): the tab stays in the build (the Receiver still reads its RCL
+  // labels) but is not in the list. Flip this to bring it back.
+  const RC_MIXER_ENABLED = false
   const combined = [
     ...relabelled,
     guidedSetupDescriptor,
@@ -237,7 +241,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     ...(ELRS_FLASH_ENABLED && isExpertMode && hasSerialPassthrough ? [elrsFlashDescriptor] : []),
     // Expert-only views — only surfaced when Expert mode is on.
     ...(isExpertMode
-      ? [rcMixerDescriptor, mavlinkInspectorDescriptor, aiAssistantDescriptor]
+      ? [...(RC_MIXER_ENABLED ? [rcMixerDescriptor] : []), mavlinkInspectorDescriptor, aiAssistantDescriptor]
       : [])
   ]
   const rankOf = (id: string): number => {

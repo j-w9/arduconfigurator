@@ -3042,6 +3042,8 @@ test.describe('Config view', () => {
 })
 
 test.describe('RC Mixer view', () => {
+  // Hidden from the list (RC_MIXER_ENABLED in visible-app-views.ts); these come back with it.
+  test.skip(true, 'RC Mixer is hidden from the list')
   test('hides the primary stick axes but shows AUX channels including the mode switch', async ({ page }) => {
     // Demo Copter: RCMAP_ROLL/PITCH/THROTTLE/YAW = 1/2/3/4, FLTMODE_CH = 7,
     // RCL_ENABLE = 1 with real range terms on ch5 (ArmDisarm) and ch6 (LAND).

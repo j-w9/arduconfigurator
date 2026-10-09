@@ -52,9 +52,9 @@ describe('buildVisibleAppViews', () => {
     expect(result[1]).toBe('guided-setup')
   })
 
-  it('gates the RC Mixer view behind Expert mode', () => {
+  it('hides the RC Mixer view for everyone, Expert included', () => {
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false })))).not.toContain('rc-mixer')
-    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true })))).toContain('rc-mixer')
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasRcLogicParams: true })))).not.toContain('rc-mixer')
   })
 
   it('hides the expert-only Parameters view outside Expert mode and shows it inside', () => {
