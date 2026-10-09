@@ -81,7 +81,7 @@ async function pullParameters(page: Page): Promise<void> {
   // "already pulled" — assert the summary is complete and return. If the
   // button IS still around (e.g. because the write required a reboot or
   // the auto-refresh hiccuped), click it as before.
-  const pullParametersButton = page.getByRole('button', { name: 'Pull Parameters' })
+  const pullParametersButton = page.getByRole('button', { name: 'Sync Parameters' })
   if ((await pullParametersButton.count()) > 0) {
     await pullParametersButton.click()
     await expect(pullParametersButton).toHaveCount(0)

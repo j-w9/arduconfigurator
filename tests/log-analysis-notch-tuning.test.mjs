@@ -166,3 +166,53 @@ test('IMU clipping produces a clipping-specific advisory', () => {
   assert.equal(r.vibe.verdict, 'bad')
   assert.match(r.advisories[0], /clipping/i)
 })
+
+// VIBE.Clip is a count since boot (AP_InertialSensor _accel_clip_count, only
+// ever incremented), so a knock at takeoff or a firm touchdown stays in every
+// later sample. Clipping is judged in the air: CTUN.Alt above 1 m, less 3 s at
+// each end.
+function flightWithClips({ takeoffClips = 0, airClips = 0, landingClips = 0, imus = [0] } = {}) {
+  const log = makeLog({ oscAmp: 0, hntchEnable: 1 })
+  // 0-5 s on the ground, 5-65 s in the air at 10 m, 65-70 s on the ground again.
+  const ctun = []
+  for (let s = 0; s <= 70; s += 0.5) ctun.push({ name: 'CTUN', TimeUS: s * 1e6, Alt: s >= 5 && s <= 65 ? 10 : 0, ThO: 0.4 })
+  log.messagesByType.set('CTUN', ctun)
+  const vibe = []
+  for (let s = 0; s <= 70; s += 0.5) {
+    let clip = 0
+    if (s >= 5) clip += takeoffClips // the takeoff knock, at 5 s
+    if (s >= 30) clip += airClips // a burst mid-flight
+    if (s >= 65) clip += landingClips // the touchdown
+    // On the ground the vibration is wild (props spooling, the landing thump); in the air it is calm.
+    const v = s < 8 || s > 62 ? 45 : 4
+    for (const imu of imus) vibe.push({ name: 'VIBE', TimeUS: s * 1e6, IMU: imu, VibeX: v, VibeY: v, VibeZ: v, Clip: clip })
+  }
+  log.messagesByType.set('VIBE', vibe)
+  return log
+}
+
+test('clips at takeoff and landing do not condemn a calm flight', () => {
+  const r = analyzeLogTuning(flightWithClips({ takeoffClips: 3, landingClips: 12 }))
+  assert.equal(r.vibe.verdict, 'good')
+  assert.deepEqual(r.vibe.clip, [0, 0, 0])
+  assert.equal(r.vibe.groundClip, 15)
+  assert.ok(r.vibe.max[0] < 10, 'the ground spikes are outside the window')
+  assert.ok(r.advisories.some((text) => /15 clip events at takeoff or landing only/.test(text)))
+  assert.ok(!r.advisories.some((text) => /clipping in the air/i.test(text)))
+})
+
+test('clips in the air still count, takeoff ones aside, per IMU', () => {
+  const r = analyzeLogTuning(flightWithClips({ takeoffClips: 3, airClips: 7, imus: [0, 1] }))
+  assert.equal(r.vibe.verdict, 'bad')
+  assert.deepEqual(r.vibe.clip, [7, 7, 0])
+  assert.equal(r.vibe.groundClip, 6)
+  assert.match(r.advisories[0], /clipping in the air \(7\)/i)
+})
+
+test('without CTUN altitude the whole log is judged, and the operator is told', () => {
+  const log = flightWithClips({ landingClips: 4 })
+  log.messagesByType.delete('CTUN')
+  const r = analyzeLogTuning(log)
+  assert.deepEqual(r.vibe.clip, [4, 0, 0])
+  assert.ok(r.gateWarnings.some((text) => /No altitude in this log/.test(text)))
+})

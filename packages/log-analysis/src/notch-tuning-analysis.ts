@@ -68,7 +68,18 @@ export interface LogTuningResult {
   /** Motor fundamental from ESC RPM (Hz), if ESC telemetry is present. */
   motorFundamentalHz?: number
   escRpm?: { minHz: number; meanHz: number; maxHz: number }
-  vibe?: { max: [number, number, number]; clip: [number, number, number]; verdict: 'good' | 'marginal' | 'bad' }
+  vibe?: {
+    /** Peak vibration (m/s²) per axis, in the air. */
+    max: [number, number, number]
+    /** Clip events per IMU, in the air. */
+    clip: [number, number, number]
+    verdict: 'good' | 'marginal' | 'bad'
+    /** Clip events outside the airborne window: a takeoff knock or a firm touchdown. Not judged. */
+    groundClip: number
+    /** The airborne window the figures are judged over (s since boot); absent when the log
+     *  has no altitude to find it, and the whole log was used. */
+    window?: { startS: number; endS: number }
+  }
   /** A sharp single-axis low-frequency peak that reads as a rate-loop limit cycle. */
   limitCycle?: { axis: Axis; freqHz: number }
   recommendations: TuningRecommendation[]
@@ -259,28 +270,96 @@ function escRpmSummary(log: ParsedDataflashLog): { minHz: number; meanHz: number
   return { minHz: Math.min(...rpms) / 60, meanHz: mean / 60, maxHz: Math.max(...rpms) / 60 }
 }
 
+/** Altitude (m, CTUN.Alt) above which the vehicle counts as off the ground. */
+const AIRBORNE_ALT_M = 1
+/** Trimmed off each end of the airborne span: the climb-out and the touchdown. */
+const AIRBORNE_MARGIN_S = 3
+
+/**
+ * The airborne part of the flight, from CTUN.Alt: first to last sample above
+ * AIRBORNE_ALT_M, less a margin at each end. Undefined without CTUN.Alt or
+ * when the margins leave nothing.
+ */
+export function airborneWindow(log: ParsedDataflashLog): { startS: number; endS: number } | undefined {
+  let first: number | undefined
+  let last: number | undefined
+  for (const m of log.messagesByType.get('CTUN') ?? []) {
+    const t = num(m, 'TimeUS')
+    const alt = num(m, 'Alt')
+    if (t === undefined || alt === undefined || alt < AIRBORNE_ALT_M) continue
+    first ??= t / 1e6
+    last = t / 1e6
+  }
+  if (first === undefined || last === undefined) return undefined
+  const startS = first + AIRBORNE_MARGIN_S
+  const endS = last - AIRBORNE_MARGIN_S
+  return endS > startS ? { startS, endS } : undefined
+}
+
+/**
+ * Vibration and accelerometer clipping, judged in the air. VIBE.Clip is the
+ * accelerometer's clip count since boot (AP_InertialSensor's
+ * _accel_clip_count, only ever incremented), so its maximum over a log counts
+ * every clip -- a knock at takeoff, a firm touchdown -- as if it happened in
+ * flight. Clips are taken as the rise across the airborne window, per IMU;
+ * those outside it are reported apart and not judged. The vibration peak is
+ * the window's too: ground contact spikes it.
+ */
 function vibeSummary(log: ParsedDataflashLog): LogTuningResult['vibe'] {
   const vibe = log.messagesByType.get('VIBE')
   if (!vibe || vibe.length === 0) {
     return undefined
   }
+  const window = airborneWindow(log)
+  const inWindow = (m: DataflashMessage) => {
+    if (!window) return true
+    const t = num(m, 'TimeUS')
+    return t !== undefined && t / 1e6 >= window.startS && t / 1e6 <= window.endS
+  }
   const max: [number, number, number] = [0, 0, 0]
-  const clip: [number, number, number] = [0, 0, 0]
+  // Per counter (an IMU on current firmware, a Clip0/1/2 column on old):
+  // the count when the window opened, its last value in the window, its last overall.
+  const counters = new Map<string, { slot: number; atStart: number; inWindowLast?: number; last: number }>()
+  const track = (key: string, slot: number, value: number, t: number | undefined, inside: boolean) => {
+    let counter = counters.get(key)
+    if (!counter) {
+      counter = { slot, atStart: 0, last: 0 }
+      counters.set(key, counter)
+    }
+    counter.last = Math.max(counter.last, value)
+    if (window && t !== undefined && t / 1e6 < window.startS) counter.atStart = Math.max(counter.atStart, value)
+    if (inside) counter.inWindowLast = Math.max(counter.inWindowLast ?? 0, value)
+  }
   for (const m of vibe) {
-    const x = num(m, 'VibeX') ?? 0
-    const y = num(m, 'VibeY') ?? 0
-    const z = num(m, 'VibeZ') ?? 0
-    max[0] = Math.max(max[0], x)
-    max[1] = Math.max(max[1], y)
-    max[2] = Math.max(max[2], z)
-    clip[0] = Math.max(clip[0], num(m, 'Clip0') ?? num(m, 'Clip') ?? 0)
-    clip[1] = Math.max(clip[1], num(m, 'Clip1') ?? 0)
-    clip[2] = Math.max(clip[2], num(m, 'Clip2') ?? 0)
+    const t = num(m, 'TimeUS')
+    const inside = inWindow(m)
+    if (inside) {
+      max[0] = Math.max(max[0], num(m, 'VibeX') ?? 0)
+      max[1] = Math.max(max[1], num(m, 'VibeY') ?? 0)
+      max[2] = Math.max(max[2], num(m, 'VibeZ') ?? 0)
+    }
+    const clip = num(m, 'Clip')
+    if (clip !== undefined) {
+      const imu = Math.min(2, Math.max(0, num(m, 'IMU') ?? 0))
+      track(`imu${imu}`, imu, clip, t, inside)
+    }
+    for (const slot of [0, 1, 2]) {
+      const value = num(m, `Clip${slot}`)
+      if (value !== undefined) track(`col${slot}`, slot, value, t, inside)
+    }
+  }
+  const clip: [number, number, number] = [0, 0, 0]
+  let total = 0
+  for (const counter of counters.values()) {
+    const flying = counter.inWindowLast === undefined ? 0 : Math.max(0, counter.inWindowLast - counter.atStart)
+    clip[counter.slot] = Math.max(clip[counter.slot], flying)
+    total += counter.last
   }
   const worst = Math.max(...max)
   const clipped = Math.max(...clip)
+  const groundClip = Math.max(0, total - clip.reduce((sum, value) => sum + value, 0))
   const verdict = clipped > 0 || worst > 30 ? 'bad' : worst > 15 ? 'marginal' : 'good'
-  return { max, clip, verdict }
+  return { max, clip, verdict, groundClip, window }
 }
 
 /**
@@ -449,7 +528,7 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
     const clip = Math.max(...vibe.clip)
     if (clip > 0) {
       advisories.push(
-        `IMU clipping detected (${clip}) — the accelerometer is saturating, which corrupts the state estimate and makes any tuning unreliable. Fix this mechanically first: balance or replace props, check motor bearings, and secure or re-damp the flight-controller mount.`
+        `IMU clipping in the air (${clip}) — the accelerometer is saturating, which corrupts the state estimate and makes any tuning unreliable. Fix this mechanically first: balance or replace props, check motor bearings, and secure or re-damp the flight-controller mount.`
       )
     } else if (vibe.verdict === 'bad') {
       advisories.push(
@@ -460,6 +539,17 @@ export function analyzeLogTuning(log: ParsedDataflashLog): LogTuningResult {
         `Moderate vibration (peak ${peak.toFixed(0)} m/s²) — not critical, but worth reducing (prop balance, mounts) for a cleaner tune and spectrum.`
       )
     }
+  }
+
+  if (vibe && vibe.groundClip > 0 && vibe.window) {
+    advisories.push(
+      `${vibe.groundClip} clip event${vibe.groundClip === 1 ? '' : 's'} at takeoff or landing only — a knock or a firm touchdown does that, and it is not counted against the vibration verdict.`
+    )
+  }
+  if (vibe && !vibe.window) {
+    gateWarnings.push(
+      'No altitude in this log (CTUN.Alt), so vibration and clipping are judged over the whole log — takeoff and landing included.'
+    )
   }
 
   // ---- Summary ----

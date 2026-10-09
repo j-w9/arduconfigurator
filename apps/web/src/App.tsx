@@ -3969,7 +3969,7 @@ export function App() {
         changedCount: 1,
         text: requiresReboot
           ? 'This applied change is marked as reboot-required. Request a reboot, then pull parameters again before continuing guided setup.'
-          : 'Pull parameters again if you want a freshly confirmed post-write snapshot.'
+          : 'Sync parameters again if you want a freshly confirmed post-write snapshot.'
       })
     } catch (error) {
       setParameterNotice({
@@ -4404,7 +4404,7 @@ export function App() {
         text:
           rebootRequiredCount > 0
             ? `${selectedPresetsLabel} changed reboot-sensitive settings. Request a reboot, then pull parameters again before flying.`
-            : `${selectedPresetsLabel} changed live tuning values. Pull parameters again if you want a clean post-write snapshot.`
+            : `${selectedPresetsLabel} changed live tuning values. Sync parameters again if you want a clean post-write snapshot.`
       })
     } catch (error) {
       setPresetNotice({
@@ -7608,7 +7608,7 @@ export function App() {
   const setupBenchActions = [
     {
       actionId: 'request-parameters',
-      title: 'Pull Parameters',
+      title: 'Sync Parameters',
       copy: parameterFollowUp?.text ?? 'Refresh the parameter snapshot after reboots, board changes, or any setup work that needs a fresh sync.'
     },
     {
@@ -8106,22 +8106,18 @@ export function App() {
               onAction={(actionId) => void handleGuidedAction(actionId)}
               extra={
                 // A way to the Flash tab, which opens on its firmware (.apj) section.
-                <article className="setup-bench-action" data-testid="status-flash-firmware">
-                  <div className="setup-bench-action__button">
-                    <button
-                      type="button"
-                      style={buttonStyle('secondary')}
-                      onClick={() => setActiveViewId('flash')}
-                      data-testid="status-flash-firmware-button"
-                    >
-                      Flash firmware
-                    </button>
-                  </div>
-                  <div className="setup-bench-action__copy">
-                    <strong>Flash firmware</strong>
-                    <p>Open the Flash tab to load new ArduPilot firmware (.apj).</p>
-                  </div>
-                </article>
+                <div className="setup-bench__button-cell">
+                  <button
+                    type="button"
+                    className="setup-bench__button"
+                    style={buttonStyle('secondary')}
+                    onClick={() => setActiveViewId('flash')}
+                    title="Open the Flash tab to load new ArduPilot firmware (.apj)."
+                    data-testid="status-flash-firmware-button"
+                  >
+                    Flash Firmware
+                  </button>
+                </div>
               }
             />
           </div>

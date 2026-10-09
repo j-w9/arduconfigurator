@@ -1,7 +1,7 @@
 // Guided-action labels + id type, extracted from App.tsx so types and helpers
 // that key off the guided-action set don't have to live next to the const.
 export const actionLabels = {
-  'request-parameters': 'Pull Parameters',
+  'request-parameters': 'Sync Parameters',
   'calibrate-accelerometer': 'Calibrate Accelerometer',
   'calibrate-level': 'Calibrate Level',
   'calibrate-compass': 'Calibrate Compass',
