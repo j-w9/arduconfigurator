@@ -48,3 +48,16 @@ export {
   canLogTimeline,
   type CanLogTimeline
 } from './playback.js'
+export {
+  SLCAN_BITRATES,
+  SlcanAdapter,
+  SlcanLineSplitter,
+  encodeSlcanFrame,
+  parseSlcanLine,
+  slcanBitrateCommand,
+  type CanAdapter,
+  type CanAdapterFrame,
+  type SlcanAdapterOptions,
+  type SlcanByteIo,
+  type SlcanLine
+} from './slcan.js'

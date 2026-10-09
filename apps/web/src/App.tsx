@@ -300,6 +300,8 @@ import { CanMessagesPage, canFieldSeriesLabel } from './views/CanMessagesPage'
 import { CanPlotView } from './views/CanPlot'
 import { CanSendView } from './views/CanSend'
 import { useCanSender } from './hooks/use-can-sender'
+import { useCanAdapter } from './hooks/use-can-adapter'
+import { SLCAN_BITRATES } from '@arduconfig/can-core'
 import { dronecanCatalogue } from '@arduconfig/dronecan-dsdl'
 import type { CanSubTab } from './views/CanBus'
 import { useCanDevicePopouts } from './hooks/use-can-device-popouts'
@@ -2654,10 +2656,17 @@ export function App() {
     downloadRecording: downloadMavlinkInspectorRecording,
     exportPlotCsv: exportMavlinkInspectorPlotCsv
   } = useMavlinkInspector(runtime, activeViewId === 'mavlink-inspector')
+  // The CAN tab's bus: a USB-CAN adapter (SLCAN) while one is open, else the
+  // autopilot's forwarding. Both drive the same CAN surface under the same
+  // method names; DroneNet (Networking) stays on the autopilot.
+  const canAdapter = useCanAdapter()
+  const canOnAdapter = canAdapter.state !== undefined
+  const canBus = canAdapter.state ?? snapshot.canBus
+  const canBackend = canOnAdapter ? canAdapter.bus : runtime
   // Live frames/sec for the DroneCAN inspector, sampled off the cumulative counter.
   const dronecanFramesPerSec = useDronecanBusStats(
-    snapshot.canBus.framesReceived,
-    snapshot.canBus.status === 'active'
+    canBus.framesReceived,
+    canBus.status === 'active'
   )
   // The CAN tab's bus monitor: every raw frame on the forwarded bus (and the
   // ones we send), captured outside the snapshot. Bitrate (CAN_Pn_BITRATE,
@@ -2665,25 +2674,26 @@ export function App() {
   // The CAN tab's sub-tab: Devices, Messages, Frames, Plot.
   const [canSubTab, setCanSubTab] = useState<CanSubTab>('devices')
   const canBusMonitor = useCanBusMonitor({
-    source: runtime,
-    enabled: snapshot.canBus.status === 'active',
-    bitrate:
-      snapshot.canBus.bus !== undefined
-        ? readRoundedParameter(snapshot, `CAN_P${snapshot.canBus.bus}_BITRATE`) ?? 1_000_000
+    source: canBackend,
+    enabled: canBus.status === 'active',
+    bitrate: canOnAdapter
+      ? canAdapter.bitrate
+      : canBus.bus !== undefined
+        ? readRoundedParameter(snapshot, `CAN_P${canBus.bus}_BITRATE`) ?? 1_000_000
         : undefined
   })
   // Send (Expert-only: it acts on the bus). Repeats stop themselves on arming,
   // on the bus going quiet, on leaving the page, or on the safety box unticked.
   const canSendVisible = activeViewId === 'can' && canSubTab === 'send' && productMode === 'expert'
   const canSender = useCanSender({
-    sink: runtime,
-    active: snapshot.canBus.status === 'active',
+    sink: canBackend,
+    active: canBus.status === 'active',
     armed: snapshot.vehicle?.armed ?? false,
     visible: canSendVisible,
     motionAcknowledged: propsRemovedAcknowledged && testAreaAcknowledged
   })
   const canNodeLabel = (nodeId: number): string | undefined =>
-    snapshot.canBus.nodes.find((node) => node.nodeId === nodeId)?.name ??
+    canBus.nodes.find((node) => node.nodeId === nodeId)?.name ??
     // This app's own node: responses come back addressed to it.
     (nodeId === GCS_DRONECAN_NODE_ID ? 'this app' : undefined)
   // Nodes seen only in RECEIVED traffic: this app's own requests (TX) come
@@ -2696,7 +2706,7 @@ export function App() {
         .map((topic) => topic.sourceNodeId)
     )
   ]
-  const canMessageNodes = [...new Set([...snapshot.canBus.nodes.map((node) => node.nodeId), ...canExtraNodeIds])]
+  const canMessageNodes = [...new Set([...canBus.nodes.map((node) => node.nodeId), ...canExtraNodeIds])]
     .sort((left, right) => left - right)
     .map((nodeId) => ({ nodeId, label: canNodeLabel(nodeId) ?? '' }))
   // Online firmware lookup for DroneCAN nodes (desktop-only). The browser can't
@@ -6851,23 +6861,23 @@ export function App() {
   // from the expert-only DroneCAN Inspector tab.
   const canDeviceExpertActions = useMemo(
     () => ({
-      firmwareUpdate: snapshot.canBus.firmwareUpdate,
-      onRestartNode: (nodeId: number) => { void runtime?.restartCanBusNode(nodeId) },
+      firmwareUpdate: canBus.firmwareUpdate,
+      onRestartNode: (nodeId: number) => { void canBackend?.restartCanBusNode(nodeId) },
       onStartFirmwareUpdate: (nodeId: number, fileName: string, image: Uint8Array) => {
-        void runtime?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image)
+        void canBackend?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image)
       },
-      onCancelFirmwareUpdate: () => { runtime?.cancelCanBusNodeFirmwareUpdate() },
+      onCancelFirmwareUpdate: () => { canBackend?.cancelCanBusNodeFirmwareUpdate() },
       firmwareOnline: dronecanFirmwareOnline
     }),
-    [snapshot.canBus.firmwareUpdate, runtime, dronecanFirmwareOnline]
+    [canBus.firmwareUpdate, canBackend, dronecanFirmwareOnline]
   )
   const baseVisibleAppViews = useMemo(
     () =>
       buildVisibleAppViews({
         appViews,
         isExpertMode,
-        canBusStatus: snapshot.canBus.status,
-        canBusBus: snapshot.canBus.bus,
+        canBusStatus: canBus.status,
+        canBusBus: canBus.bus,
         connectionKind: snapshot.connection.kind,
         hasNetworkingParams,
         hasRcLogicParams,
@@ -6877,8 +6887,8 @@ export function App() {
     [
       appViews,
       isExpertMode,
-      snapshot.canBus.status,
-      snapshot.canBus.bus,
+      canBus.status,
+      canBus.bus,
       snapshot.connection.kind,
       hasNetworkingParams,
       hasRcLogicParams,
@@ -10332,21 +10342,36 @@ export function App() {
 
       {activeViewId === 'can' ? (
       <CanBusView
-        state={snapshot.canBus}
+        state={canBus}
         vehicleConnected={snapshot.connection.kind === 'connected'}
         selfNodeIds={canSelfNodeIds}
         onStartForward={(bus) => { void runtime?.startCanBusForward(bus) }}
-        onStopForward={() => { void runtime?.stopCanBusForward() }}
-        onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
-        onFetchAllParameters={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
-        onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
+        onStopForward={() => { void (canOnAdapter ? canAdapter.disconnect() : runtime?.stopCanBusForward()) }}
+        onRefreshNode={(nodeId) => { canBackend?.refreshCanBusNode(nodeId) }}
+        onFetchAllParameters={(nodeId) => { canBackend?.fetchAllCanBusParameters(nodeId) }}
+        onApplyAndSave={(nodeId, writes) => { void canBackend?.applyAndSaveCanBusParameters(nodeId, writes) }}
         paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
         enablement={canEnablement.needsEnable ? { triggerLabels: canEnablement.triggerLabels } : undefined}
         onEnableCanBus={runtime ? () => { void handleEnableCanBus() } : undefined}
         enableBusy={busyAction === 'can:enable'}
         // --- folded-in DroneCAN inspector (was a separate expert-only tab) ---
         framesPerSec={dronecanFramesPerSec}
-        escTelemetry={snapshot.canBus.escTelemetry}
+        escTelemetry={canBus.escTelemetry}
+        // A USB-CAN adapter as the bus: offered while nothing else is (an
+        // adapter and the autopilot's forwarding never run at once).
+        adapter={
+          canAdapter.supported && (canOnAdapter || snapshot.canBus.status === 'idle')
+            ? {
+                active: canOnAdapter,
+                opening: canAdapter.opening,
+                error: canAdapter.error,
+                bitrate: canAdapter.bitrate,
+                bitrates: SLCAN_BITRATES.map((entry) => entry.bitrate),
+                onBitrate: canAdapter.setBitrate,
+                onConnect: () => { void canAdapter.connect() }
+              }
+            : undefined
+        }
         workspace={{
           extraNodeIds: canExtraNodeIds,
           // An opened log feeds Messages, Frames and Plot alike; say so above
@@ -10373,7 +10398,7 @@ export function App() {
                     topics={canBusMonitor.topics()}
                     nodes={canMessageNodes}
                     nodeLabel={canNodeLabel}
-                    live={snapshot.canBus.status === 'active' || canBusMonitor.openedLog !== undefined}
+                    live={canBus.status === 'active' || canBusMonitor.openedLog !== undefined}
                     onShowFrames={(topic) => {
                       canBusMonitor.showTopicFrames(topic)
                       setCanSubTab('frames')
@@ -10398,7 +10423,7 @@ export function App() {
                 frames: (
                   <CanBusMonitorView
                     monitor={canBusMonitor}
-                    live={snapshot.canBus.status === 'active'}
+                    live={canBus.status === 'active'}
                     layout="page"
                   />
                 ),
@@ -10417,15 +10442,23 @@ export function App() {
                   <CanSendView
                     catalogue={dronecanCatalogue()}
                     sourceNodeId={GCS_DRONECAN_NODE_ID}
-                    busLabel={snapshot.canBus.status === 'active' && snapshot.canBus.bus !== undefined ? `CAN${snapshot.canBus.bus}` : undefined}
-                    blockedReason={
-                      !runtime || snapshot.connection.kind !== 'connected'
-                        ? 'Connect to a vehicle to send.'
-                        : snapshot.vehicle?.armed
-                          ? 'Disarm the vehicle to send.'
-                          : snapshot.canBus.status !== 'active'
-                            ? 'Connect to the bus on Devices to send.'
+                    busLabel={
+                      canBus.status !== 'active'
+                        ? undefined
+                        : canOnAdapter
+                          ? 'the USB-CAN adapter'
+                          : canBus.bus !== undefined
+                            ? `CAN${canBus.bus}`
                             : undefined
+                    }
+                    blockedReason={
+                      snapshot.vehicle?.armed && snapshot.connection.kind === 'connected'
+                        ? 'Disarm the vehicle to send.'
+                        : canBus.status === 'active'
+                          ? undefined
+                          : canAdapter.supported
+                            ? 'Connect to the bus, or a USB-CAN adapter, on Devices to send.'
+                            : 'Connect to the bus on Devices to send.'
                     }
                     nodes={canMessageNodes}
                     nodeLabel={canNodeLabel}
@@ -10657,7 +10690,7 @@ export function App() {
           service owns the MAV_CMD_CAN_FORWARD keep-alive for as long as the bus
           is connected. */}
       {canDevicePopouts.windows.map(({ nodeId, handle }) => {
-        const node = snapshot.canBus.nodes.find((entry) => entry.nodeId === nodeId)
+        const node = canBus.nodes.find((entry) => entry.nodeId === nodeId)
         return createPortal(
           node ? (
             <CanDeviceInspectorView
@@ -10669,16 +10702,16 @@ export function App() {
               onDropDraft={canDevicePopouts.dropDraft}
               onDropAllDrafts={canDevicePopouts.dropAllDrafts}
               onApplyAndSave={(id, writes) => {
-                void runtime?.applyAndSaveCanBusParameters(id, writes)
+                void canBackend?.applyAndSaveCanBusParameters(id, writes)
                 canDevicePopouts.dropDrafts(id, writes.map((write) => write.name))
               }}
-              onRefreshNode={(id) => { runtime?.refreshCanBusNode(id) }}
-              onFetchAllParameters={(id) => { runtime?.fetchAllCanBusParameters(id) }}
+              onRefreshNode={(id) => { canBackend?.refreshCanBusNode(id) }}
+              onFetchAllParameters={(id) => { canBackend?.fetchAllCanBusParameters(id) }}
               busy={busyAction !== undefined}
               expertActions={isExpertMode ? canDeviceExpertActions : undefined}
               // Real filtering, not a label: this window only ever shows this
               // node's ESC telemetry out of the bus-wide stream.
-              escTelemetry={filterEscTelemetryForNode(snapshot.canBus.escTelemetry, nodeId)}
+              escTelemetry={filterEscTelemetryForNode(canBus.escTelemetry, nodeId)}
               heading={node.name && node.name.length > 0 ? node.name : `Node ${nodeId}`}
             />
           ) : (

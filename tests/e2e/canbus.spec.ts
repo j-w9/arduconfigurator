@@ -568,3 +568,35 @@ test.describe('CAN tab: Send', () => {
     expect((await worstViewportOverflow(page)).worst, 'send').toBeLessThanOrEqual(2)
   })
 })
+
+test.describe('CAN tab on a USB-CAN adapter (SLCAN)', () => {
+  // ?canAdapter=demo opens a simulated SLCAN adapter on the demo bus instead of a serial port.
+  test('with no vehicle, an adapter is the bus: nodes, parameters, messages, and sending', async ({ page }) => {
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
+    await page.goto('/?canAdapter=demo')
+    await page.getByTestId('view-button-can').click()
+    await expect(page.getByTestId('can-bus-start')).toBeDisabled()
+    await page.getByTestId('can-adapter-bitrate').selectOption('1000000')
+    await page.getByTestId('can-adapter-connect').click()
+
+    await expect(page.getByText('Connected · USB-CAN adapter')).toBeVisible()
+    const gps = page.getByTestId('can-bus-node-124')
+    await expect(gps).toContainText('Node 124', { timeout: 15_000 })
+    await expect(gps).toContainText('git 4a7c3f01')
+    await expect(page.getByTestId('can-bus-node-toggle-124')).toContainText(/Params \([1-9]/, { timeout: 15_000 })
+
+    await page.getByTestId('can-subtab-messages').click()
+    await expect(page.getByTestId('can-messages-bus').getByTestId('can-message-NodeStatus-124')).toBeVisible({ timeout: 15_000 })
+
+    await page.getByTestId('can-subtab-send').click()
+    await expect(page.getByTestId('can-send')).toContainText('On the USB-CAN adapter as node 127')
+    await page.getByTestId('can-send-type').fill('uavcan.protocol.GetNodeInfo')
+    await page.getByTestId('can-send-destination').fill('124')
+    await page.getByTestId('can-send-once').click()
+    await expect(page.getByTestId('can-send-history-status').first()).toHaveText('answered', { timeout: 10_000 })
+
+    await page.getByTestId('can-subtab-devices').click()
+    await page.getByTestId('can-bus-stop').click()
+    await expect(page.getByTestId('can-adapter-connect')).toBeVisible()
+  })
+})

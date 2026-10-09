@@ -105,6 +105,21 @@ export interface CanBusViewProps {
       send?: ReactNode
     }
   }
+  /**
+   * A USB-CAN adapter (SLCAN) as the bus instead of the autopilot's
+   * forwarding. Absent: the autopilot is the only way onto the bus.
+   */
+  adapter?: {
+    /** The bus shown is the adapter's. */
+    active: boolean
+    opening: boolean
+    error?: string
+    bitrate: number
+    bitrates: readonly number[]
+    onBitrate: (bitrate: number) => void
+    /** Opens the port picker; must run in the click. */
+    onConnect: () => void
+  }
   popout?: {
     openNodeIds: number[]
     /** Called straight from the click handler — window.open needs the gesture. */
@@ -128,6 +143,7 @@ export function CanBusView(props: CanBusViewProps) {
   const {
     state,
     vehicleConnected,
+    adapter,
     selfNodeIds,
     onStartForward,
     onStopForward,
@@ -288,8 +304,12 @@ export function CanBusView(props: CanBusViewProps) {
 
   const body = (
     <>
-        {!vehicleConnected ? (
-          <p className="can-bus-empty">Connect to a vehicle first. The CAN inspector talks to the autopilot over MAVLink.</p>
+        {!vehicleConnected && !isActive ? (
+          <p className="can-bus-empty">
+            {adapter
+              ? 'Connect to a vehicle to reach its CAN bus, or plug in a USB-CAN adapter (SLCAN) and choose Use a USB-CAN adapter.'
+              : 'Connect to a vehicle first. The CAN inspector talks to the autopilot over MAVLink.'}
+          </p>
         ) : !isActive ? (
           <div className="can-bus-intro">
             <p>
@@ -304,11 +324,18 @@ export function CanBusView(props: CanBusViewProps) {
             </ol>
           </div>
         ) : rows.length === 0 ? (
-          <p className="can-bus-empty">
-            Forwarding is active ({state.framesReceived} frames so far) but no <code>NodeStatus</code> broadcasts have
-            arrived yet. Verify <code>CAN_P{state.bus}_DRIVER</code> = 1 and <code>CAN_D{state.bus}_PROTOCOL</code> = 1 on
-            the autopilot; reboot if either was just changed.
-          </p>
+          adapter?.active ? (
+            <p className="can-bus-empty">
+              The adapter is open ({state.framesReceived} frames so far) but no <code>NodeStatus</code> broadcasts have
+              arrived yet. Check the bitrate matches the bus and the bus is terminated.
+            </p>
+          ) : (
+            <p className="can-bus-empty">
+              Forwarding is active ({state.framesReceived} frames so far) but no <code>NodeStatus</code> broadcasts have
+              arrived yet. Verify <code>CAN_P{state.bus}_DRIVER</code> = 1 and <code>CAN_D{state.bus}_PROTOCOL</code> = 1 on
+              the autopilot; reboot if either was just changed.
+            </p>
+          )
         ) : (
           <ul className="can-bus-nodes">
             {rowsShown.map((row) => {
@@ -512,7 +539,9 @@ export function CanBusView(props: CanBusViewProps) {
           <div className="can-bus-header__status">
             <StatusBadge tone={headerTone}>
               {state.status === 'active'
-                ? `Connected · CAN${state.bus}`
+                ? adapter?.active
+                  ? 'Connected · USB-CAN adapter'
+                  : `Connected · CAN${state.bus}`
                 : state.status === 'requesting'
                   ? 'Connecting…'
                   : state.status === 'stopping'
@@ -541,6 +570,11 @@ export function CanBusView(props: CanBusViewProps) {
               )
             ) : null}
             {state.error ? <small className="can-bus-header__error">{state.error}</small> : null}
+            {adapter?.error && !isActive ? (
+              <small className="can-bus-header__error" data-testid="can-adapter-error">
+                {adapter.error}
+              </small>
+            ) : null}
           </div>
 
           <div className="can-bus-header__controls">
@@ -570,13 +604,44 @@ export function CanBusView(props: CanBusViewProps) {
                 </label>
                 <button
                   type="button"
-                  style={buttonStyle('primary')}
+                  style={buttonStyle(vehicleConnected || !adapter ? 'primary' : 'secondary')}
                   onClick={() => onStartForward(busSelection)}
                   disabled={isBusy || !vehicleConnected}
                   data-testid="can-bus-start"
                 >
                   {isBusy ? 'Working…' : `Connect to CAN${busSelection}`}
                 </button>
+                {adapter ? (
+                  // The other way onto a bus: a USB-CAN adapter, no vehicle needed.
+                  <span className="can-bus-header__adapter" data-testid="can-adapter-controls">
+                    <span className="can-bus-header__or">or</span>
+                    <label className="can-bus-header__bus-select">
+                      <span>Bitrate</span>
+                      <select
+                        value={String(adapter.bitrate)}
+                        onChange={(event) => adapter.onBitrate(Number(event.target.value))}
+                        disabled={adapter.opening}
+                        data-testid="can-adapter-bitrate"
+                      >
+                        {adapter.bitrates.map((bitrate) => (
+                          <option key={bitrate} value={bitrate}>
+                            {bitrate >= 1_000_000 ? `${bitrate / 1_000_000} Mbit/s` : `${bitrate / 1000} kbit/s`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      style={buttonStyle(vehicleConnected ? 'secondary' : 'primary')}
+                      onClick={adapter.onConnect}
+                      disabled={adapter.opening}
+                      title="An SLCAN USB-CAN adapter, or the autopilot's own SLCAN port"
+                      data-testid="can-adapter-connect"
+                    >
+                      {adapter.opening ? 'Opening…' : 'Use a USB-CAN adapter'}
+                    </button>
+                  </span>
+                ) : null}
               </>
             )}
           </div>

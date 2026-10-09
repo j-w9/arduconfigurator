@@ -22591,3 +22591,19 @@ button.mavlink-inspector__sent-row {
     grid-column: 1;
   }
 }
+
+/* CAN header: the USB-CAN adapter, the other way onto a bus. */
+.can-bus-header__adapter {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.can-bus-header__or {
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+}
+.can-bus-header__controls:has(.can-bus-header__adapter) {
+  flex-wrap: wrap;
+}
