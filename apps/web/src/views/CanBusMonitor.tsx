@@ -15,6 +15,7 @@ import {
   type CanFrameKinds,
   type CanIdTraceEntry
 } from '@arduconfig/can-core'
+import { dronecanCatalogue, type DronecanTransfer } from '@arduconfig/dronecan-dsdl'
 import { buttonStyle } from '@arduconfig/ui-kit'
 
 import {
@@ -25,6 +26,7 @@ import {
   type CanMonitorFilterForm,
   type CanMonitorFilterState
 } from '../view-models/can-bus-monitor'
+import { buildDronecanFieldTree, summarizeDronecanValue, type DronecanFieldNode } from '../view-models/dronecan-field-tree'
 import { InfoDot } from './InfoDot'
 
 export type CanMonitorViewMode = 'stream' | 'by-id'
@@ -54,6 +56,8 @@ export interface CanBusMonitorModel {
   selectedSeq?: number
   selectFrame: (seq: number | undefined) => void
   selectedFrame?: CanFrame
+  transferFor: (seq: number) => DronecanTransfer | undefined
+  selectedTransfer?: DronecanTransfer
   recording: { active: boolean; frameCount: number; startedAtMs?: number; capped: boolean; pendingSave: boolean }
   startRecording: () => void
   stopRecording: () => void
@@ -132,6 +136,62 @@ function FlagBadges({ frame }: { frame: Pick<CanFrame, 'extended' | 'fd' | 'rtr'
       {frame.rtr ? <span className="can-monitor__flag can-monitor__flag--rtr">RTR</span> : null}
       {frame.error ? <span className="can-monitor__flag can-monitor__flag--err">ERR</span> : null}
     </span>
+  )
+}
+
+function sectionOf(transfer: DronecanTransfer): 'msg' | 'req' | 'res' {
+  return transfer.kind === 'request' ? 'req' : transfer.kind === 'response' ? 'res' : 'msg'
+}
+
+function fieldTreeOf(transfer: DronecanTransfer): DronecanFieldNode[] | undefined {
+  if (!transfer.type || !transfer.value) return undefined
+  try {
+    return buildDronecanFieldTree(dronecanCatalogue(), transfer.type.fullName, sectionOf(transfer), transfer.value)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The Decoded column: the DSDL type and a few fields once the frame's
+ * transfer has completed; the header reading (or plain-CAN note) until then.
+ */
+function decodedLabel(frame: CanFrame, transfer: DronecanTransfer | undefined): { text: string; title?: string } {
+  if (!transfer?.type) return { text: describeCanFrame(frame) }
+  const name = transfer.type.shortName
+  const route =
+    transfer.kind === 'message'
+      ? ` ← ${transfer.sourceNodeId}`
+      : ` ${transfer.kind === 'request' ? 'req' : 'resp'} ${transfer.sourceNodeId}→${transfer.destinationNodeId}`
+  if (transfer.problem) return { text: `${name}${route} · ⚠ ${transfer.problem.split(':')[0]}`, title: transfer.problem }
+  const tree = transfer.kind === 'message' ? fieldTreeOf(transfer) : undefined
+  const summary = tree ? summarizeDronecanValue(tree, 2) : ''
+  return { text: `${name}${route}${summary ? ` · ${summary}` : ''}`, title: transfer.type.fullName }
+}
+
+function FieldTree({ nodes, depth = 0 }: { nodes: readonly DronecanFieldNode[]; depth?: number }): ReactNode {
+  return (
+    <ul className="can-monitor__tree" role={depth === 0 ? 'tree' : 'group'}>
+      {nodes.map((entry, index) => (
+        <li key={`${entry.label}:${index}`} role="treeitem" aria-expanded={entry.children ? true : undefined}>
+          {entry.children && entry.children.length > 0 ? (
+            <details open={depth < 1}>
+              <summary>
+                <span className="can-monitor__tree-key" title={entry.typeLabel}>{entry.label}</span>
+                <span className="can-monitor__dim"> {entry.typeLabel.includes('.') ? entry.typeLabel.slice(entry.typeLabel.lastIndexOf('.') + 1) : `${entry.children.length} items`}</span>
+              </summary>
+              <FieldTree nodes={entry.children} depth={depth + 1} />
+            </details>
+          ) : (
+            <span className="can-monitor__tree-leaf">
+              <span className="can-monitor__tree-key" title={entry.typeLabel}>{entry.label}</span>
+              <span className="can-monitor__tree-value can-monitor__mono">{entry.text ?? ''}</span>
+              {entry.meaning ? <span className="can-monitor__tree-meaning">{entry.meaning}</span> : null}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -215,7 +275,14 @@ function StreamTable({ monitor }: { monitor: CanBusMonitorModel }): ReactNode {
                 <FlagBadges frame={frame} />
                 <span className="can-monitor__mono can-monitor__dim">{frame.data.length}</span>
                 <span className="can-monitor__mono can-monitor__data">{formatCanData(frame.data)}</span>
-                <span className="can-monitor__decoded">{describeCanFrame(frame)}</span>
+                {(() => {
+                  const label = decodedLabel(frame, monitor.transferFor(frame.seq))
+                  return (
+                    <span className="can-monitor__decoded" title={label.title}>
+                      {label.text}
+                    </span>
+                  )
+                })()}
               </div>
             )
           })}
@@ -273,7 +340,14 @@ function ByIdTable({ monitor }: { monitor: CanBusMonitorModel }): ReactNode {
                   </span>
                 ))}
               </span>
-              <span className="can-monitor__decoded">{describeCanFrame(entry.last)}</span>
+              {(() => {
+                const label = decodedLabel(entry.last, monitor.transferFor(entry.last.seq))
+                return (
+                  <span className="can-monitor__decoded" title={label.title}>
+                    {label.text}
+                  </span>
+                )
+              })()}
               <span className="can-monitor__dim">{stale ? `${Math.round((now - entry.lastSeenMs) / 1000)} s ago` : 'live'}</span>
             </div>
           )
@@ -283,8 +357,19 @@ function ByIdTable({ monitor }: { monitor: CanBusMonitorModel }): ReactNode {
   )
 }
 
-function FrameDetails({ frame, originMs, onClose }: { frame: CanFrame; originMs: number; onClose: () => void }): ReactNode {
+function FrameDetails({
+  frame,
+  transfer,
+  originMs,
+  onClose
+}: {
+  frame: CanFrame
+  transfer?: DronecanTransfer
+  originMs: number
+  onClose: () => void
+}): ReactNode {
   const header = dronecanFrameHeader(frame)
+  const tree = transfer ? fieldTreeOf(transfer) : undefined
   const [copied, setCopied] = useState(false)
   return (
     <aside className="can-monitor__details" data-testid="can-monitor-details" aria-label="Frame details">
@@ -307,13 +392,36 @@ function FrameDetails({ frame, originMs, onClose }: { frame: CanFrame; originMs:
         <dt>Length</dt>
         <dd>{frame.data.length} byte{frame.data.length === 1 ? '' : 's'}</dd>
       </dl>
+      {transfer ? (
+        <section className="can-monitor__details-section" data-testid="can-monitor-decoded">
+          <h4>
+            Decoded
+            <InfoDot label="About the decoded message">
+              The DroneCAN transfer this frame belongs to, reassembled from its frames, checked against the type's
+              CRC, and decoded with the DroneCAN DSDL bundled in this build.
+            </InfoDot>
+          </h4>
+          <p className="can-monitor__decoded-type" title={transfer.type?.fullName}>
+            <strong>{transfer.type?.fullName ?? `Type ${transfer.dataTypeId}`}</strong>
+            <span className="can-monitor__dim">
+              {' '}
+              · {transfer.kind} · {transfer.frameSeqs.length} frame{transfer.frameSeqs.length === 1 ? '' : 's'} ·{' '}
+              {transfer.payload.length} bytes
+            </span>
+          </p>
+          {transfer.problem ? (
+            <p className="can-monitor__problem" data-testid="can-monitor-decode-problem">⚠ {transfer.problem}</p>
+          ) : null}
+          {tree ? <FieldTree nodes={tree} /> : null}
+        </section>
+      ) : null}
       {header ? (
         <section className="can-monitor__details-section" data-testid="can-monitor-dronecan">
           <h4>
-            DroneCAN reading
+            Frame header
             <InfoDot label="About the DroneCAN reading">
               How this 29-bit id reads as a DroneCAN frame. The bus cannot say a frame IS DroneCAN, so a non-DroneCAN
-              extended frame is read this way too. Full message decoding arrives with the DSDL decoder.
+              extended frame is read this way too; its Decoded section, when there is one, is the proof.
             </InfoDot>
           </h4>
           <dl className="can-monitor__facts">
@@ -833,6 +941,7 @@ export function CanBusMonitorView({ monitor, live }: CanBusMonitorViewProps): Re
             {monitor.selectedFrame ? (
               <FrameDetails
                 frame={monitor.selectedFrame}
+                transfer={monitor.selectedTransfer}
                 originMs={monitor.originMs}
                 onClose={() => monitor.selectFrame(undefined)}
               />

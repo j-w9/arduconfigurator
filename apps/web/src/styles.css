@@ -21710,3 +21710,69 @@ button.mavlink-inspector__sent-row {
 .can-monitor__check input {
   accent-color: var(--accent);
 }
+
+/* Bus monitor: decoded DroneCAN message tree (Phase 3). */
+.can-monitor__decoded-type {
+  margin: 0 0 6px;
+  font-size: var(--text-xs);
+  word-break: break-word;
+}
+.can-monitor__problem {
+  margin: 0 0 6px;
+  color: var(--warning);
+  font-size: var(--text-xs);
+}
+.can-monitor__tree {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+}
+.can-monitor__tree .can-monitor__tree {
+  padding-left: 14px;
+  border-left: 1px solid var(--border-soft);
+  margin-left: 4px;
+}
+.can-monitor__tree li {
+  padding: 1px 0;
+}
+.can-monitor__tree summary {
+  cursor: pointer;
+  list-style: none;
+}
+.can-monitor__tree summary::-webkit-details-marker {
+  display: none;
+}
+.can-monitor__tree summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 12px;
+  color: var(--text-dim);
+  transition: transform 120ms ease;
+}
+.can-monitor__tree details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.can-monitor__tree-leaf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding-left: 12px;
+}
+.can-monitor__tree-key {
+  color: var(--text-muted);
+}
+.can-monitor__tree-value {
+  color: var(--text);
+  word-break: break-all;
+}
+.can-monitor__tree-meaning {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--accent-weak);
+  color: var(--accent);
+  font-family: var(--font-data);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}

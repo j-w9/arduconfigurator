@@ -1,0 +1,17 @@
+{
+  "name": "@arduconfig/dronecan-dsdl",
+  "version": "1.0.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "typecheck": "tsc -b tsconfig.json --pretty false",
+    "generate": "python3 tools/generate.py"
+  },
+  "dependencies": {
+    "@arduconfig/can-core": "1.0.0"
+  }
+}

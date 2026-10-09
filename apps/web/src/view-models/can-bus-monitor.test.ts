@@ -26,7 +26,7 @@ describe('dronecanFrameHeader', () => {
     const canId = dronecanEncodeServiceCanId(30, 11, true, 124, 127)
     expect(dronecanFrameHeader(frame(0x80000000 | canId, [1, 0x80]))).toMatchObject({
       kind: 'service',
-      typeName: 'param.GetSet',
+      typeName: 'GetSet',
       request: true,
       sourceNodeId: 127,
       destinationNodeId: 124
@@ -45,8 +45,12 @@ describe('describeCanFrame', () => {
   it('names known types, numbers unknown ones, and marks multi-frame parts', () => {
     const status = dronecanEncodeMessageCanId(24, 341, 50)
     expect(describeCanFrame(frame(0x80000000 | status, [0xc0]))).toBe('NodeStatus ← 50')
-    const unknown = dronecanEncodeMessageCanId(24, 1030, 10)
-    expect(describeCanFrame(frame(0x80000000 | unknown, [0x80]))).toBe('msg 1030 ← 10 (start)')
+    // Names come from the bundled DSDL: 1030 is uavcan.equipment.esc.RawCommand.
+    const rawCommand = dronecanEncodeMessageCanId(24, 1030, 10)
+    expect(describeCanFrame(frame(0x80000000 | rawCommand, [0x80]))).toBe('RawCommand ← 10 (start)')
+    // An id the DSDL does not define keeps its number.
+    const unknown = dronecanEncodeMessageCanId(24, 60000, 10)
+    expect(describeCanFrame(frame(0x80000000 | unknown, [0xc0]))).toBe('msg 60000 ← 10')
     expect(describeCanFrame(frame(0x123, [1]))).toBe('')
     expect(describeCanFrame(frame(0x321, [1], { fd: true }))).toBe('CAN FD')
     expect(describeCanFrame(frame(0x40000123, []))).toBe('Remote request')

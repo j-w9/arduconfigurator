@@ -12,14 +12,6 @@ import {
   type CanFrameKinds
 } from '@arduconfig/can-core'
 import {
-  DRONECAN_ESC_STATUS_DT_ID,
-  DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID,
-  DRONECAN_FILE_READ_SERVICE_ID,
-  DRONECAN_GET_NODE_INFO_SERVICE_ID,
-  DRONECAN_NODE_STATUS_DT_ID,
-  DRONECAN_PARAM_EXECUTE_OPCODE_SERVICE_ID,
-  DRONECAN_PARAM_GETSET_SERVICE_ID,
-  DRONECAN_RESTART_NODE_SERVICE_ID,
   dronecanIsServiceFrame,
   dronecanIsServiceRequest,
   dronecanMessageTypeId,
@@ -28,25 +20,15 @@ import {
   dronecanServiceTypeId,
   dronecanSourceNodeId
 } from '@arduconfig/protocol-mavlink'
+import { dronecanCatalogue } from '@arduconfig/dronecan-dsdl'
 
-/**
- * The DroneCAN types this app already decodes, by id. Only these are named
- * here, and every id is the one the codec uses; the full catalogue arrives
- * with the DSDL decoder, and until then an unknown type shows its number
- * rather than a guessed name.
- */
-const DRONECAN_MESSAGE_NAMES: ReadonlyMap<number, string> = new Map([
-  [DRONECAN_NODE_STATUS_DT_ID, 'NodeStatus'],
-  [DRONECAN_ESC_STATUS_DT_ID, 'esc.Status']
-])
-const DRONECAN_SERVICE_NAMES: ReadonlyMap<number, string> = new Map([
-  [DRONECAN_GET_NODE_INFO_SERVICE_ID, 'GetNodeInfo'],
-  [DRONECAN_RESTART_NODE_SERVICE_ID, 'RestartNode'],
-  [DRONECAN_PARAM_EXECUTE_OPCODE_SERVICE_ID, 'param.ExecuteOpcode'],
-  [DRONECAN_PARAM_GETSET_SERVICE_ID, 'param.GetSet'],
-  [DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID, 'file.BeginFirmwareUpdate'],
-  [DRONECAN_FILE_READ_SERVICE_ID, 'file.Read']
-])
+/** The DSDL short name for a message / service id, from the bundled catalogue. */
+function messageName(typeId: number): string | undefined {
+  return dronecanCatalogue().messageById(typeId)?.shortName
+}
+function serviceName(typeId: number): string | undefined {
+  return dronecanCatalogue().serviceById(typeId)?.shortName
+}
 
 export interface DronecanFrameHeader {
   /** 0 (highest) .. 31 (lowest). */
@@ -84,7 +66,7 @@ export function dronecanFrameHeader(frame: CanFrame): DronecanFrameHeader | unde
       priority,
       kind: 'service',
       typeId,
-      typeName: DRONECAN_SERVICE_NAMES.get(typeId),
+      typeName: serviceName(typeId),
       sourceNodeId,
       destinationNodeId: dronecanServiceDestinationNodeId(id),
       request: dronecanIsServiceRequest(id),
@@ -98,7 +80,7 @@ export function dronecanFrameHeader(frame: CanFrame): DronecanFrameHeader | unde
     priority,
     kind: anonymous ? 'anonymous' : 'message',
     typeId,
-    typeName: anonymous ? undefined : DRONECAN_MESSAGE_NAMES.get(typeId),
+    typeName: anonymous ? undefined : messageName(typeId),
     sourceNodeId,
     ...tail
   }

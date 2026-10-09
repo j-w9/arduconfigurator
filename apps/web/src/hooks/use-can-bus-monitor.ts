@@ -23,6 +23,7 @@ import {
   type CanIdTraceEntry,
   type CanLogTimeline
 } from '@arduconfig/can-core'
+import { DronecanTransferDecoder, dronecanCatalogue, type DronecanTransfer } from '@arduconfig/dronecan-dsdl'
 
 import { downloadTextFile } from '../download-file'
 import {
@@ -115,6 +116,9 @@ export interface UseCanBusMonitorResult {
   selectedSeq?: number
   selectFrame: (seq: number | undefined) => void
   selectedFrame?: CanFrame
+  /** The DroneCAN transfer a frame belongs to, once it has completed and decoded. */
+  transferFor: (seq: number) => DronecanTransfer | undefined
+  selectedTransfer?: DronecanTransfer
   recording: CanRecordingState
   startRecording: () => void
   stopRecording: () => void
@@ -140,16 +144,39 @@ interface CaptureStore {
   buffer: CanCaptureBuffer
   trace: CanIdTrace
   originMs: number | undefined
+  /** DroneCAN transfers reassembled from the frames, decoded via the DSDL catalogue. */
+  decoder: DronecanTransferDecoder
+  /** Completed transfers by the seq of EVERY frame in them, so any frame finds its message. */
+  transfers: Map<number, DronecanTransfer>
 }
 
 function newStore(capacity: number): CaptureStore {
-  return { buffer: new CanCaptureBuffer(capacity), trace: new CanIdTrace(), originMs: undefined }
+  return {
+    buffer: new CanCaptureBuffer(capacity),
+    trace: new CanIdTrace(),
+    originMs: undefined,
+    decoder: new DronecanTransferDecoder(dronecanCatalogue()),
+    transfers: new Map()
+  }
 }
 
 function ingest(store: CaptureStore, frame: CanFrame): CanFrame {
   const stored = store.buffer.push(frame)
   store.trace.add(stored)
   if (store.originMs === undefined) store.originMs = stored.timestampMs
+  const transfer = store.decoder.push(stored)
+  if (transfer) {
+    for (const seq of transfer.frameSeqs) store.transfers.set(seq, transfer)
+    // Keep the index no bigger than the ring: drop transfers whose frames
+    // have all fallen out of it.
+    if (store.transfers.size > store.buffer.capacity * 1.25) {
+      const oldest = store.buffer.at(0)?.seq ?? 0
+      for (const seq of store.transfers.keys()) {
+        if (seq >= oldest) break
+        store.transfers.delete(seq)
+      }
+    }
+  }
   return stored
 }
 
@@ -494,6 +521,8 @@ export function useCanBusMonitor(options: {
     selectedSeq,
     selectFrame: setSelectedSeq,
     selectedFrame,
+    transferFor: (seq: number) => store.transfers.get(seq),
+    selectedTransfer: selectedSeq !== undefined ? store.transfers.get(selectedSeq) : undefined,
     recording: {
       active: rec.active,
       frameCount: rec.frames.length,

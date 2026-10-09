@@ -224,6 +224,30 @@ test.describe('CAN bus monitor', () => {
     await expect(page.getByTestId('can-monitor-dronecan')).toContainText('NodeStatus · 341')
     await expect(page.getByTestId('can-monitor-dronecan')).toContainText('Node 124')
     await expect(details.locator('table.can-monitor__bytes tbody tr')).toHaveCount(8)
+    // Decoded through the bundled DSDL: every field, enum-like values named
+    // from the type's own constants.
+    const decoded = page.getByTestId('can-monitor-decoded')
+    await expect(decoded).toContainText('uavcan.protocol.NodeStatus')
+    await expect(decoded).toContainText('uptime_sec')
+    await expect(decoded).toContainText('health')
+    await expect(decoded).toContainText('OK')
+    await expect(decoded).toContainText('OPERATIONAL')
+  })
+
+  test('a multi-frame DroneCAN transfer decodes from all of its frames', async ({ page }) => {
+    await openMonitor(page)
+    await page.getByTestId('can-monitor-filter-ids').fill('1E0A3C00/00FFFF80, 0/0')
+    // esc.Status (type 1034) from node 50 is a multi-frame broadcast in the demo.
+    await page.getByTestId('can-monitor-filter-ids').fill('')
+    const row = page.getByTestId('can-monitor-row').filter({ hasText: 'esc.Status' }).or(
+      page.getByTestId('can-monitor-row').filter({ hasText: /Status ← 50 · error_count/ })
+    )
+    await row.first().click({ timeout: 20_000 })
+    const decoded = page.getByTestId('can-monitor-decoded')
+    await expect(decoded).toContainText('uavcan.equipment.esc.Status')
+    await expect(decoded).toContainText(/\d frames/)
+    await expect(decoded).toContainText('rpm')
+    await expect(page.getByTestId('can-monitor-decode-problem')).toHaveCount(0)
   })
 
   test('records to a candump log and opens one back', async ({ page }) => {
