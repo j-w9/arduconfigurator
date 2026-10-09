@@ -14,7 +14,7 @@
 // popout is a React portal into a child window, NOT a second runtime, so both
 // copies read the same snapshot and share the same draft map.
 
-import { useState, type ReactElement } from 'react'
+import { useEffect, useMemo, useState, type ReactElement } from 'react'
 
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type {
@@ -31,6 +31,8 @@ import {
   buildDronecanParamRows
 } from '../view-models/dronecan-inspector'
 import { buildCanBusStagedChanges, healthLabel, modeLabel } from '../view-models/can-bus'
+import { periphPickerOptions, periphPreselect } from '../view-models/dronecan-firmware-picker'
+import { dronecanNodeBoardId } from '@arduconfig/firmware-flash'
 import type { DronecanParamCatalogLookup } from '../view-models/dronecan-param-display'
 
 /**
@@ -90,6 +92,10 @@ export interface DronecanFirmwareOnlineSource {
    *  flashes (the same bytes a local .bin yields), plus a display name. The
    *  host handles the .apj→raw decode. Rejects with a human message on failure. */
   download: (candidate: DronecanFirmwareCandidate) => Promise<{ fileName: string; image: Uint8Array }>
+  /** Every AP_Periph build, when the source has the whole list (the website's
+   *  index): the panel then offers a picker over all of them instead of a
+   *  board-id lookup that can come back empty. */
+  allBuilds?: readonly DronecanFirmwareCandidate[]
 }
 
 /** The destructive per-device actions. Bundled behind one optional prop because
@@ -218,6 +224,107 @@ export interface CanDeviceInspectorViewProps {
 /** Per-node firmware-update affordance: file picker, prominent brick-risk
  *  confirmation, progress bar, and clear success/error. Only one update runs at
  *  a time — all the node's other actions are disabled while one is underway. */
+/**
+ * Every AP_Periph build in a dropdown (release, search), the node's own
+ * pre-selected when its name or board id tells it; Download stages the image
+ * for the same confirm + Update path as a local file.
+ */
+function PeriphFirmwarePicker(props: {
+  nodeId: number
+  node: DronecanInspectedNode
+  builds: readonly DronecanFirmwareCandidate[]
+  disabled: boolean
+  downloadingUrl: string | null
+  stagedUrl: string | null
+  error: string | null
+  onDownload: (candidate: DronecanFirmwareCandidate) => void
+}): ReactElement {
+  const { nodeId, node } = props
+  const [channel, setChannel] = useState('Stable')
+  const [query, setQuery] = useState('')
+  const identity = useMemo(() => ({ name: node.name, boardId: dronecanNodeBoardId(node.hwVersion) }), [node.name, node.hwVersion])
+  const options = useMemo(() => periphPickerOptions(props.builds, { channel, query, node: identity }), [props.builds, channel, query, identity])
+  const [selectedUrl, setSelectedUrl] = useState<string | undefined>(undefined)
+  const selected = options.find((option) => option.url === selectedUrl)
+  useEffect(() => {
+    if (selected) return
+    setSelectedUrl(periphPreselect(options)?.url)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options])
+  const matched = options.some((option) => option.match !== undefined)
+  return (
+    <div className="dronecan-inspector__fwupdate-online firmware-finder" data-testid={`dronecan-fwupdate-picker-${nodeId}`}>
+      <div className="firmware-finder__controls">
+        <label className="firmware-finder__search">
+          <span>Search</span>
+          <input
+            type="search"
+            value={query}
+            placeholder="Target or board id: MatekL431, ARK, 1062"
+            onChange={(event) => setQuery(event.target.value)}
+            spellCheck={false}
+            data-testid={`dronecan-fwupdate-picker-search-${nodeId}`}
+          />
+        </label>
+        <label>
+          <span>Release</span>
+          <select value={channel} onChange={(event) => setChannel(event.target.value)} data-testid={`dronecan-fwupdate-picker-channel-${nodeId}`}>
+            <option value="Stable">Stable</option>
+            <option value="Beta">Beta</option>
+            <option value="Dev">Latest (dev)</option>
+          </select>
+        </label>
+      </div>
+      <p className="firmware-finder__board">
+        {matched
+          ? `${node.name ?? `Node ${nodeId}`}: its builds are at the top of the list.`
+          : `${node.name ?? `Node ${nodeId}`} does not name an AP_Periph build; pick it from the list.`}
+      </p>
+      <label className="firmware-finder__board-pick">
+        <span>Build</span>
+        <select
+          value={selected?.url ?? ''}
+          onChange={(event) => setSelectedUrl(event.target.value || undefined)}
+          data-testid={`dronecan-fwupdate-picker-select-${nodeId}`}
+        >
+          <option value="">{`Choose a build (${options.length})…`}</option>
+          {options.map((option) => (
+            <option key={option.url} value={option.url}>
+              {option.platform} · {option.versionLabel}
+              {option.match === 'name' ? ' · this node' : option.match === 'board' ? ' · this board id' : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+      {selected ? (
+        props.stagedUrl === selected.url ? (
+          <button type="button" className="firmware-finder__done" disabled data-testid={`dronecan-fwupdate-picker-download-${nodeId}`}>
+            ✓ Downloaded {selected.platform} {selected.versionLabel}
+          </button>
+        ) : (
+          <button
+            type="button"
+            style={buttonStyle('primary')}
+            disabled={props.disabled || props.downloadingUrl !== null}
+            onClick={() => {
+              const candidate = props.builds.find((build) => build.url === selected.url)
+              if (candidate) props.onDownload(candidate)
+            }}
+            data-testid={`dronecan-fwupdate-picker-download-${nodeId}`}
+          >
+            {props.downloadingUrl === selected.url ? 'Downloading…' : `Download ${selected.platform} ${selected.versionLabel}`}
+          </button>
+        )
+      ) : null}
+      {props.error ? (
+        <p className="dronecan-inspector__fwupdate-error" data-testid={`dronecan-fwupdate-online-error-${nodeId}`}>
+          {props.error}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 function NodeFirmwareUpdate(props: {
   node: DronecanInspectedNode
   view: ReturnType<typeof buildDronecanFirmwareUpdateView>
@@ -287,6 +394,8 @@ function NodeFirmwareUpdate(props: {
   const [onlineError, setOnlineError] = useState<string | null>(null)
   const [onlineCandidates, setOnlineCandidates] = useState<DronecanFirmwareCandidate[] | null>(null)
   const [downloadingUrl, setDownloadingUrl] = useState<string | null>(null)
+  // The online build now staged as the image (shown as "✓ Downloaded").
+  const [stagedUrl, setStagedUrl] = useState<string | null>(null)
 
   // This node's own update (progress / result) takes over the section.
   if (view && view.nodeId === nodeId) {
@@ -389,13 +498,17 @@ function NodeFirmwareUpdate(props: {
     if (!online?.available) {
       return
     }
+    setStagedUrl(null)
     setOnlineError(null)
     setReadError(null)
     setAcknowledged(false)
     setDownloadingUrl(candidate.url)
     online
       .download(candidate)
-      .then(({ fileName, image }) => setFile({ name: fileName, bytes: image }))
+      .then(({ fileName, image }) => {
+        setFile({ name: fileName, bytes: image })
+        setStagedUrl(candidate.url)
+      })
       .catch((err) =>
         setOnlineError(err instanceof Error ? err.message : 'Could not download the firmware image.')
       )
@@ -423,7 +536,18 @@ function NodeFirmwareUpdate(props: {
 
       {/* ---- Find firmware online (desktop-only; matches the node to AP_Periph
               builds on firmware.ardupilot.org and stages the decoded image) ---- */}
-      {online ? (
+      {online?.available && online.allBuilds ? (
+        <PeriphFirmwarePicker
+          nodeId={nodeId}
+          node={node}
+          builds={online.allBuilds}
+          disabled={disabled}
+          downloadingUrl={downloadingUrl}
+          stagedUrl={file ? stagedUrl : null}
+          error={onlineError}
+          onDownload={useCandidate}
+        />
+      ) : online ? (
         online.available ? (
           <div className="dronecan-inspector__fwupdate-online" data-testid={`dronecan-fwupdate-online-${nodeId}`}>
             <button

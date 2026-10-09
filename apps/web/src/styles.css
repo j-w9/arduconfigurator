@@ -22863,3 +22863,178 @@ button.mavlink-inspector__sent-row {
   border-color: rgba(var(--danger-rgb, 229, 72, 77), 0.6);
   color: var(--danger);
 }
+@media (max-width: 640px) {
+  /* No room for the X / Y column on a phone: they take their own line again. */
+  .osd-matrix--align .osd-matrix__row {
+    grid-template-columns: minmax(110px, 1fr) repeat(4, 40px);
+  }
+  .osd-matrix--align .osd-matrix__align {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .osd-matrix--align .osd-matrix__align:empty,
+  .osd-matrix--align .osd-matrix__align-head {
+    display: none;
+  }
+}
+
+/* Flash ▸ Find firmware: search + Board dropdown over ArduPilot's builds. */
+.firmware-finder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 8px 0 12px;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel-raised);
+}
+.firmware-finder__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: flex-end;
+}
+.firmware-finder label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.firmware-finder__search {
+  flex: 1 1 280px;
+}
+.firmware-finder input,
+.firmware-finder select {
+  height: 32px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: var(--text-md);
+}
+.firmware-finder__board-pick select {
+  width: min(100%, 560px);
+}
+.firmware-finder__board,
+.firmware-finder__detail,
+.firmware-finder__empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.firmware-finder__board strong {
+  color: var(--text);
+}
+.firmware-finder__tag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: var(--text-xs);
+}
+.firmware-finder__tag--running {
+  border-color: var(--success);
+  color: var(--success);
+}
+.firmware-finder__pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.firmware-finder__warning {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--warning);
+  background: rgba(var(--warning-rgb, 255, 187, 0), 0.08);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.firmware-finder__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+.firmware-wizard__manual summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Status & Info ▸ Vehicle actions: big buttons, no prose. */
+.setup-bench__buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.setup-bench__button-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.setup-bench__button {
+  width: 100%;
+  min-height: 44px;
+  font-size: var(--text-xl) !important;
+  font-weight: 700 !important;
+}
+.setup-bench__button.is-failed {
+  border-color: var(--danger) !important;
+}
+.setup-bench__failed {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+.setup-bench__status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+.setup-bench__status.is-complete {
+  color: var(--success);
+}
+
+/* Flash ▸ finder: a loaded build stays visibly done; step 2's confirm box
+   asks to be ticked next. */
+.firmware-finder__done {
+  padding: 8px 14px;
+  border: 1px solid var(--success);
+  border-radius: 8px;
+  background: rgba(62, 207, 142, 0.14);
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: default;
+}
+.firmware-wizard__confirm.is-nudged {
+  padding: 6px 10px;
+  border-radius: var(--radius-md, 6px);
+  outline: 2px solid var(--primary-500, #ffbb00);
+  outline-offset: 2px;
+  animation: firmware-confirm-nudge 1.2s ease-in-out infinite;
+}
+@keyframes firmware-confirm-nudge {
+  0%, 100% { outline-color: rgba(255, 187, 0, 0.95); }
+  50% { outline-color: rgba(255, 187, 0, 0.3); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .firmware-wizard__confirm.is-nudged { animation: none; }
+}
+
+/* Flash: the one line that says it worked, big. */
+.firmware-done {
+  margin: 12px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--success);
+  border-radius: var(--radius-lg);
+  background: rgba(62, 207, 142, 0.12);
+  color: var(--success);
+  font-size: var(--text-3xl);
+  font-weight: 700;
+}
