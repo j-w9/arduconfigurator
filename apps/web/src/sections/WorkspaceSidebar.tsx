@@ -10,7 +10,6 @@ import type { AppViewId } from '@arduconfig/param-metadata'
 import { StatusBadge } from '@arduconfig/ui-kit'
 
 import type { AppViewDescriptor } from '../app-types'
-import { viewMonogram } from '../setup-format-helpers'
 
 export interface WorkspaceSidebarProps {
   visibleAppViews: readonly AppViewDescriptor[]
@@ -40,7 +39,8 @@ export function WorkspaceSidebar({ visibleAppViews, activeViewId, onSelectView }
               className={`workspace-nav__item workspace-nav__item--tab${view.id === activeViewId ? ' is-active' : ''}`}
               onClick={() => onSelectView(view.id)}
             >
-              <span className="workspace-nav__mark">{viewMonogram(view.id)}</span>
+              {/* No letter code before the label ("CFG Config"): nothing ever
+                  shows the codes without the labels, so they only repeated them. */}
               <span className="workspace-nav__item-copy">
                 <strong>{view.label}</strong>
               </span>
