@@ -150,7 +150,9 @@
   /* Wide enough that every nav label ("Status & Info", "Calibration")
    * renders in full next to its widest badge ("11 SECTIONS") — labels
    * must never be ellipsized (field feedback: no shortened words). */
-  --sidebar-width: 216px;
+  /* Labels only (the letter codes went): wide enough for the longest one,
+     "MAVLink Inspector", at each viewport's type step. */
+  --sidebar-width: 176px;
   background: var(--bg-app);
   color: var(--text);
 }
@@ -359,6 +361,7 @@
    laptop, and a 27-inch display at 2000px wide read as small everywhere. */
 @media (min-width: 1800px) {
   :root {
+    --sidebar-width: 188px;
     --text-xs: 11px;
     --text-sm: 12px;
     --text-md: 13px;
@@ -369,6 +372,7 @@
 }
 @media (min-width: 2300px) {
   :root {
+    --sidebar-width: 208px;
     --text-xs: 12px;
     --text-sm: 13px;
     --text-md: 14px;
