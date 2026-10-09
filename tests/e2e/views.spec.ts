@@ -3046,7 +3046,9 @@ test.describe('Config view', () => {
 })
 
 test.describe('RC Mixer view', () => {
-  test('hides the primary stick axes but shows AUX channels including the mode switch', async ({ page }) => {
+  // The tab is hidden from the list (RC_MIXER_ENABLED in visible-app-views.ts):
+  // the tests that open it are skipped until it comes back.
+  test.skip('hides the primary stick axes but shows AUX channels including the mode switch', async ({ page }) => {
     // Demo Copter: RCMAP_ROLL/PITCH/THROTTLE/YAW = 1/2/3/4, FLTMODE_CH = 7,
     // RCL_ENABLE = 1 with real range terms on ch5 (ArmDisarm) and ch6 (LAND).
     // Only channels 1-4 (the continuous stick axes) are skipped. The flight-mode
@@ -3086,7 +3088,7 @@ test.describe('RC Mixer view', () => {
     await expect(page.getByTestId('receiver-channel-bars-ch5')).toBeVisible()
   })
 
-  test('function picker only offers functions the connected vehicle firmware actually supports', async ({ page }) => {
+  test.skip('function picker only offers functions the connected vehicle firmware actually supports', async ({ page }) => {
     // Demo Plane doesn't report RCL_ENABLE, so the tab falls back to the
     // scaffold catalog — which should now exclude Copter/Rover-only entries
     // (Precision Loiter, Reverse throttle) while keeping Plane-applicable
@@ -3109,7 +3111,7 @@ test.describe('RC Mixer view', () => {
     expect(optionLabels.some((label) => label.startsWith('Do nothing'))).toBe(true)
   })
 
-  test('Remove on an already-applied assignment hides it immediately, and discarding the pending change restores it', async ({ page }) => {
+  test.skip('Remove on an already-applied assignment hides it immediately, and discarding the pending change restores it', async ({ page }) => {
     // Regression: Remove on a real (already-written) RCL term only staged a
     // FUNC=0 draft — readRcLogicModel still reported the term as "touched"
     // while that draft was pending, so the row stayed on screen and looked
