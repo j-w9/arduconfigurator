@@ -36,9 +36,15 @@ export function MapLocationPicker({
       zoom: 3,
       worldCopyJump: true
     })
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // OpenStreetMap's tile servers require a Referer from web apps
+    // (osm.wiki/Blocked): without one every tile is an "Access blocked" 403
+    // image. The site sends Referrer-Policy: no-referrer, so the tiles ask for
+    // their own -- the origin only, never the path. The a/b/c subdomains are
+    // deprecated; tile.openstreetmap.org is the one host.
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '© OpenStreetMap contributors'
+      attribution: '© OpenStreetMap contributors',
+      referrerPolicy: 'strict-origin-when-cross-origin'
     }).addTo(map)
     map.on('click', (event: L.LeafletMouseEvent) => {
       onPickRef.current(
