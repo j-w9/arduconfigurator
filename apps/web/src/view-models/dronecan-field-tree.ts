@@ -28,8 +28,10 @@ export interface DronecanFieldNode {
   typeLabel: string
   /** Keys from the message root to this field: ["value", "integer_value"], ["voltages", 2]. */
   path: (string | number)[]
-  /** A number (or bool) that can be plotted over time. */
+  /** A number (or bool), or a short numeric array (a vector), that can be plotted over time. */
   plottable: boolean
+  /** A short numeric array shown inline: its elements, each plottable on its own. */
+  elements?: DronecanFieldNode[]
   children?: DronecanFieldNode[]
 }
 
@@ -98,7 +100,20 @@ function node(
       return { ...base, text: hexBytes(bytes) }
     }
     if (items.length <= INLINE_ARRAY_LIMIT) {
-      return { ...base, text: `[${items.map((item) => formatDronecanNumber(item as number, element)).join(', ')}]` }
+      // A vector (magnetic field, a quaternion, cell voltages): one line, and
+      // plottable whole (a line per element) or element by element.
+      return {
+        ...base,
+        text: `[${items.map((item) => formatDronecanNumber(item as number, element)).join(', ')}]`,
+        plottable: items.length > 0,
+        elements: items.map((item, index) => ({
+          label: `[${index}]`,
+          typeLabel: typeLabel(element),
+          path: [...path, index],
+          plottable: true,
+          text: formatDronecanNumber(item as number, element)
+        }))
+      }
     }
   }
   return {
@@ -187,6 +202,23 @@ export function dronecanValueAt(value: DronecanValue | undefined, path: readonly
   if (typeof cursor === 'bigint') return Number(cursor)
   if (typeof cursor === 'boolean') return cursor ? 1 : 0
   return undefined
+}
+
+/**
+ * The numbers at `path`, for plotting: one for a number, one per element for
+ * a numeric array (a vector). Undefined when there is nothing numeric there.
+ */
+export function dronecanValuesAt(value: DronecanValue | undefined, path: readonly (string | number)[]): number[] | undefined {
+  const single = dronecanValueAt(value, path)
+  if (single !== undefined) return [single]
+  let cursor: DronecanValue | undefined = value
+  for (const key of path) {
+    if (cursor === undefined || cursor === null || typeof cursor !== 'object') return undefined
+    cursor = Array.isArray(cursor) ? cursor[key as number] : (cursor as Record<string, DronecanValue>)[key as string]
+  }
+  if (!Array.isArray(cursor) || cursor.length === 0) return undefined
+  const numbers = cursor.map((item) => (typeof item === 'number' ? item : typeof item === 'bigint' ? Number(item) : typeof item === 'boolean' ? (item ? 1 : 0) : Number.NaN))
+  return numbers.every((item) => Number.isNaN(item)) ? undefined : numbers
 }
 
 /** "voltages[2]", "value.integer_value": a path as one readable label. */

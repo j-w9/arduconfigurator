@@ -40,10 +40,29 @@ export function DronecanFieldTree({
                   className={`can-monitor__tree-plot${isPlotted?.(entry) ? ' is-plotted' : ''}`}
                   onClick={() => onPlot(entry)}
                   disabled={isPlotted?.(entry)}
+                  title={entry.elements ? 'Plot every element, a line each, on one chart' : undefined}
                   data-testid={`can-plot-field-${entry.path.join('.')}`}
                 >
                   {isPlotted?.(entry) ? 'Plotted' : 'Plot'}
                 </button>
+              ) : null}
+              {onPlot && entry.elements && entry.elements.length > 1 ? (
+                // Or one element on its own.
+                <span className="can-monitor__tree-elements">
+                  {entry.elements.map((element) => (
+                    <button
+                      key={element.label}
+                      type="button"
+                      className={`can-monitor__tree-plot${isPlotted?.(element) ? ' is-plotted' : ''}`}
+                      onClick={() => onPlot(element)}
+                      disabled={isPlotted?.(element)}
+                      title={`Plot ${entry.label}${element.label} on its own`}
+                      data-testid={`can-plot-field-${element.path.join('.')}`}
+                    >
+                      {element.label}
+                    </button>
+                  ))}
+                </span>
               ) : null}
             </span>
           )}

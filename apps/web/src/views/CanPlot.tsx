@@ -13,7 +13,10 @@ import { buttonStyle } from '@arduconfig/ui-kit'
 
 import { InfoDot } from './InfoDot'
 import { downloadTextFile } from '../download-file'
-import { canPlotWindow, type CanPlotSamples, type CanPlotSeries, type CanPlotSource } from '../view-models/can-plot'
+import { DronecanFieldTree } from './DronecanFieldTree'
+import { canPlotLaneColor, canPlotWindow, type CanPlotSamples, type CanPlotSeries, type CanPlotSource } from '../view-models/can-plot'
+import { formatCanTopicRate, type CanTopicEntry } from '../view-models/can-topics'
+import { dronecanDisplayName, transferFieldTree, type DronecanFieldNode } from '../view-models/dronecan-field-tree'
 
 export interface CanPlotViewProps {
   series: readonly CanPlotSeries[]
@@ -25,6 +28,11 @@ export interface CanPlotViewProps {
   onAddBytes: (label: string, source: Extract<CanPlotSource, { kind: 'bytes' }>) => void
   /** Go to Messages to pick fields. */
   onPickFields: () => void
+  /** Decoded streams, for picking a field right here: device, then message, then field. */
+  topics: readonly CanTopicEntry[]
+  nodeLabel: (nodeId: number) => string | undefined
+  onPlotField: (topic: CanTopicEntry, node: DronecanFieldNode) => void
+  isPlotted: (topic: CanTopicEntry, node: DronecanFieldNode) => boolean
 }
 
 const WINDOWS = [
@@ -47,17 +55,21 @@ function SeriesChart({ entry, data, windowMs, nowMs }: { entry: CanPlotSeries; d
   const hostRef = useRef<HTMLDivElement | null>(null)
   const plotRef = useRef<uPlot | null>(null)
 
-  // x in seconds relative to the window's end, so the axis reads "-30 .. 0".
+  // x in seconds relative to the window's end, so the axis reads "-30 .. 0";
+  // then one y array per lane (one for a number, three for a vector).
   const aligned = useMemo<uPlot.AlignedData>(
-    () => [data.t.map((t) => (t - nowMs) / 1000), data.v],
+    () => [data.t.map((t) => (t - nowMs) / 1000), ...(data.v.length > 0 ? data.v : [[]])],
     [data, nowMs]
   )
+  const lanes = Math.max(1, data.v.length)
 
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
     const axisColor = cssVar('--text-dim', '#7f8aa0')
     const gridColor = cssVar('--border-soft', '#222934')
+    // The axis labels follow the tab's type scale (canvas text cannot read a CSS variable).
+    const axisFont = `${getComputedStyle(host).getPropertyValue('--text-xs').trim() || '12px'} system-ui, sans-serif`
     const plot = new uPlot(
       {
         width: Math.max(200, host.clientWidth),
@@ -66,10 +78,13 @@ function SeriesChart({ entry, data, windowMs, nowMs }: { entry: CanPlotSeries; d
         cursor: { sync: { key: SYNC_KEY }, drag: { x: false, y: false } },
         scales: { x: { time: false, range: () => [-windowMs / 1000, 0] } },
         axes: [
-          { stroke: axisColor, grid: { stroke: gridColor, width: 1 }, ticks: { stroke: gridColor }, values: (_u, splits) => splits.map((value) => `${value}s`) },
-          { stroke: axisColor, grid: { stroke: gridColor, width: 1 }, ticks: { stroke: gridColor }, size: 56 }
+          { stroke: axisColor, font: axisFont, grid: { stroke: gridColor, width: 1 }, ticks: { stroke: gridColor }, values: (_u, splits) => splits.map((value) => `${value}s`) },
+          { stroke: axisColor, font: axisFont, grid: { stroke: gridColor, width: 1 }, ticks: { stroke: gridColor }, size: 64 }
         ],
-        series: [{}, { stroke: entry.color, width: 1.5, points: { show: false }, spanGaps: false }]
+        series: [
+          {},
+          ...Array.from({ length: lanes }, (_unused, lane) => ({ stroke: canPlotLaneColor(entry, lanes, lane), width: 1.5, points: { show: false }, spanGaps: false }))
+        ]
       },
       aligned,
       host
@@ -82,9 +97,9 @@ function SeriesChart({ entry, data, windowMs, nowMs }: { entry: CanPlotSeries; d
       plot.destroy()
       plotRef.current = null
     }
-    // Rebuilt when the window or colour changes; data flows through setData below.
+    // Rebuilt when the window, colour or lane count changes; data flows through setData below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry.color, windowMs])
+  }, [entry.color, windowMs, lanes])
 
   useEffect(() => {
     plotRef.current?.setData(aligned)
@@ -93,10 +108,14 @@ function SeriesChart({ entry, data, windowMs, nowMs }: { entry: CanPlotSeries; d
   return <div className="can-plot__chart" ref={hostRef} />
 }
 
-function lastValue(data: CanPlotSamples): string {
-  if (data.v.length === 0) return '—'
-  const value = data.v[data.v.length - 1]
+function formatPlotValue(value: number | undefined): string {
+  if (value === undefined || Number.isNaN(value)) return '—'
   return Number.isInteger(value) ? String(value) : Number.parseFloat(value.toPrecision(6)).toString()
+}
+
+/** The latest value of each lane. */
+function lastValues(data: CanPlotSamples): (number | undefined)[] {
+  return data.v.map((lane) => lane[lane.length - 1])
 }
 
 /** Plot any frame's bytes: the path for plain CAN, where there is no DSDL. */
@@ -168,6 +187,73 @@ function BytesForm({ onAdd }: { onAdd: CanPlotViewProps['onAddBytes'] }): ReactN
   )
 }
 
+/** Pick a field right here: a device, one of its messages, then any number (or vector) in it. */
+function FieldPicker(props: Pick<CanPlotViewProps, 'topics' | 'nodeLabel' | 'onPlotField' | 'isPlotted'>): ReactNode {
+  const { topics, nodeLabel } = props
+  const [device, setDevice] = useState<string>('all')
+  const [topicKey, setTopicKey] = useState<string>('')
+  // Only streams with decoded values have fields to plot.
+  const decoded = topics.filter((topic) => topic.last.value !== undefined && topic.last.type !== undefined)
+  const devices = [...new Set(decoded.map((topic) => topic.sourceNodeId))].sort((left, right) => left - right)
+  const streams = decoded
+    .filter((topic) => device === 'all' || topic.sourceNodeId === Number(device))
+    .map((topic) => {
+      const base = dronecanDisplayName(topic.last.type!.fullName)
+      const name = topic.index ? `${base} #${topic.index.value}` : base
+      return { topic, name }
+    })
+    .sort((left, right) => left.name.localeCompare(right.name) || left.topic.sourceNodeId - right.topic.sourceNodeId)
+  const selected = streams.find((entry) => entry.topic.key === topicKey)?.topic
+  const tree = selected ? transferFieldTree(selected.last) : undefined
+  const deviceName = (nodeId: number) => {
+    const label = nodeLabel(nodeId)
+    return label ? `${nodeId} ${label}` : `Node ${nodeId}`
+  }
+  return (
+    <section className="can-plot__picker" data-testid="can-plot-picker">
+      <strong>Add a field</strong>
+      <label>
+        <span>Device</span>
+        <select
+          value={device}
+          onChange={(event) => {
+            setDevice(event.target.value)
+            setTopicKey('')
+          }}
+          data-testid="can-plot-pick-device"
+        >
+          <option value="all">All devices</option>
+          {devices.map((nodeId) => (
+            <option key={nodeId} value={String(nodeId)}>
+              {deviceName(nodeId)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Message</span>
+        <select value={selected ? topicKey : ''} onChange={(event) => setTopicKey(event.target.value)} data-testid="can-plot-pick-message">
+          <option value="">{streams.length === 0 ? 'Nothing decoded yet' : 'Choose a message…'}</option>
+          {streams.map(({ topic, name }) => (
+            <option key={topic.key} value={topic.key}>
+              {name}
+              {device === 'all' ? ` ← ${topic.sourceNodeId}` : ''}
+              {topic.kind === 'message' ? ` · ${formatCanTopicRate(topic.rateHz)}` : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+      {selected && tree ? (
+        <div className="can-plot__picker-tree" data-testid="can-plot-pick-fields">
+          <DronecanFieldTree nodes={tree} onPlot={(node) => props.onPlotField(selected, node)} isPlotted={(node) => props.isPlotted(selected, node)} />
+        </div>
+      ) : (
+        <p className="can-monitor__dim">Choose a message to see its fields.</p>
+      )}
+    </section>
+  )
+}
+
 export function CanPlotView(props: CanPlotViewProps): ReactNode {
   const { series, samplesFor, nowMs, onRemove, onClear, onAddBytes, onPickFields } = props
   const [windowMs, setWindowMs] = useState<number>(30_000)
@@ -178,7 +264,12 @@ export function CanPlotView(props: CanPlotViewProps): ReactNode {
   const exportCsv = () => {
     const rows = ['series,time_s,value']
     for (const { entry, data } of windows) {
-      data.t.forEach((t, index) => rows.push(`"${entry.label.replace(/"/g, '""')}",${(t / 1000).toFixed(6)},${data.v[index]}`))
+      data.v.forEach((lane, laneIndex) => {
+        const label = data.v.length > 1 ? `${entry.label} [${laneIndex}]` : entry.label
+        data.t.forEach((t, index) => {
+          if (!Number.isNaN(lane[index])) rows.push(`"${label.replace(/"/g, '""')}",${(t / 1000).toFixed(6)},${lane[index]}`)
+        })
+      })
     }
     downloadTextFile(`can-plot-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`, `${rows.join('\n')}\n`, 'text/csv')
   }
@@ -189,9 +280,10 @@ export function CanPlotView(props: CanPlotViewProps): ReactNode {
         <h3>
           Plot
           <InfoDot label="About plotting" wide>
-            Live charts of decoded DroneCAN fields (choose Plot on any number in Messages) and of raw frame bytes (for
-            plain CAN, below). One chart per series, so different units stay readable; the cursor moves across all of
-            them together. Adding a series fills in what was already captured.
+            Live charts of decoded DroneCAN fields (pick a device, message and field under Add a field, or choose Plot
+            in Messages) and of raw frame bytes (for plain CAN). One chart per series, so different units stay
+            readable; a vector (magnetic field, say) draws its elements as lines on one chart. The cursor moves across
+            all of them together. Adding a series fills in what was already captured.
           </InfoDot>
         </h3>
         <div className="can-monitor__segmented" role="radiogroup" aria-label="Time window">
@@ -227,36 +319,54 @@ export function CanPlotView(props: CanPlotViewProps): ReactNode {
         </button>
       </header>
 
-      {series.length === 0 ? (
-        <div className="can-plot__empty" data-testid="can-plot-empty">
-          <p>Nothing plotted yet.</p>
-          <p>
-            Open a message in <button type="button" className="can-plot__link" onClick={onPickFields}>Messages</button> and
-            choose <strong>Plot</strong> beside any number, or plot a frame's bytes below.
-          </p>
+      <div className="can-plot__body">
+        <div className="can-plot__charts">
+          {series.length === 0 ? (
+            <div className="can-plot__empty" data-testid="can-plot-empty">
+              <p>Nothing plotted yet.</p>
+              <p>
+                Pick a device, a message and a field under <strong>Add a field</strong>, choose <strong>Plot</strong> beside any
+                number in <button type="button" className="can-plot__link" onClick={onPickFields}>Messages</button>, or plot a
+                frame's bytes.
+              </p>
+            </div>
+          ) : (
+            <div className="can-plot__list">
+              {windows.map(({ entry, data }) => (
+                <article key={entry.key} className="can-plot__series" data-testid="can-plot-series">
+                  <header className="can-plot__series-head">
+                    {data.v.length > 1 ? null : <span className="can-plot__swatch" style={{ background: entry.color }} aria-hidden="true" />}
+                    <strong title={entry.label}>{entry.label}</strong>
+                    {data.v.length > 1 ? (
+                      // A vector: each element's latest value in its line's colour.
+                      <span className="can-plot__lanes can-monitor__mono" data-testid="can-plot-lanes">
+                        {lastValues(data).map((value, lane) => (
+                          <span key={lane} style={{ color: canPlotLaneColor(entry, data.v.length, lane) }} data-testid="can-plot-lane">
+                            [{lane}] {formatPlotValue(value)}
+                          </span>
+                        ))}
+                      </span>
+                    ) : (
+                      <span className="can-plot__last can-monitor__mono" data-testid="can-plot-last">
+                        {formatPlotValue(lastValues(data)[0])}
+                      </span>
+                    )}
+                    <span className="can-monitor__dim can-monitor__mono">{data.t.length} pts</span>
+                    <button type="button" className="can-monitor__icon-button" onClick={() => onRemove(entry.key)} aria-label={`Remove ${entry.label}`}>
+                      ×
+                    </button>
+                  </header>
+                  <SeriesChart entry={entry} data={data} windowMs={windowMs} nowMs={endMs} />
+                </article>
+              ))}
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="can-plot__list">
-          {windows.map(({ entry, data }) => (
-            <article key={entry.key} className="can-plot__series" data-testid="can-plot-series">
-              <header className="can-plot__series-head">
-                <span className="can-plot__swatch" style={{ background: entry.color }} aria-hidden="true" />
-                <strong title={entry.label}>{entry.label}</strong>
-                <span className="can-plot__last can-monitor__mono" data-testid="can-plot-last">
-                  {lastValue(data)}
-                </span>
-                <span className="can-monitor__dim can-monitor__mono">{data.t.length} pts</span>
-                <button type="button" className="can-monitor__icon-button" onClick={() => onRemove(entry.key)} aria-label={`Remove ${entry.label}`}>
-                  ×
-                </button>
-              </header>
-              <SeriesChart entry={entry} data={data} windowMs={windowMs} nowMs={endMs} />
-            </article>
-          ))}
-        </div>
-      )}
-
-      <BytesForm onAdd={onAddBytes} />
+        <aside className="can-plot__side">
+          <FieldPicker topics={props.topics} nodeLabel={props.nodeLabel} onPlotField={props.onPlotField} isPlotted={props.isPlotted} />
+          <BytesForm onAdd={onAddBytes} />
+        </aside>
+      </div>
     </section>
   )
 }

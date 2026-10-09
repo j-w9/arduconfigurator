@@ -36,6 +36,7 @@ import {
   dronecanBuildBroadcastFrames,
   dronecanBuildServiceFrames,
   dronecanComposeTailByte,
+  dronecanEncodeFloat16,
   dronecanEncodeAnonymousCanId,
   dronecanIsServiceFrame,
   dronecanMessageTypeId,
@@ -58,6 +59,9 @@ import {
 } from './dronecan.js'
 
 const MAV_CMD_CAN_FORWARD = 32000
+/** uavcan.equipment.ahrs.MagneticFieldStrength2 (DSDL 1002). */
+const MAGNETIC_FIELD_STRENGTH2_DT_ID = 1002
+const MAGNETIC_FIELD_STRENGTH2_SIGNATURE = 0xb6ac0c442430297en
 const GCS_DRONECAN_NODE_ID = 127
 const CAN_FRAME_FLAG_EFF = 0x80000000
 
@@ -262,6 +266,8 @@ export function createDronecanBusSimulator(options: DronecanBusSimulatorOptions 
       ]
     })
   }
+  let magLastMs: number | undefined
+  let magTransferId = 0
   /** How much of its unique id the unallocated node has had echoed back. */
   let dnaOffset = 0
   let dnaTransferId = 0
@@ -684,6 +690,27 @@ export function createDronecanBusSimulator(options: DronecanBusSimulatorOptions 
         return []
       }
       const out: (CanFrameMessage | CanFdFrameMessage)[] = []
+      // A fast DroneCAN sensor stream rides the same timer: the GPS/compass
+      // node's magnetometer (ahrs.MagneticFieldStrength2) at 10 Hz, a vector
+      // that turns slowly, so Plot has x / y / z to draw.
+      const compass = nodes.find((node) => node.name === 'com.hex.here3' && node.nodeId !== 0)
+      if (compass && (magLastMs === undefined || nowMs - magLastMs >= 100)) {
+        magLastMs = nowMs
+        const heading = nowMs / 4000
+        const field = [0.22 * Math.cos(heading), 0.22 * Math.sin(heading), 0.43 + 0.01 * Math.sin(nowMs / 700)]
+        const payload = new Uint8Array(7)
+        payload[0] = 0 // sensor_id
+        field.forEach((value, index) => {
+          const half = dronecanEncodeFloat16(value)
+          payload[1 + index * 2] = half & 0xff
+          payload[2 + index * 2] = (half >> 8) & 0xff
+        })
+        const [frame] = dronecanBuildBroadcastFrames(
+          { messageTypeId: MAGNETIC_FIELD_STRENGTH2_DT_ID, signature: MAGNETIC_FIELD_STRENGTH2_SIGNATURE, sourceNodeId: compass.nodeId, transferId: (magTransferId = (magTransferId + 1) & 0x1f) },
+          payload
+        )
+        out.push(toCanFrame(frame.canId, frame.data))
+      }
       PLAIN_CAN_STREAMS.forEach((stream, index) => {
         const last = plainLastMs[index]
         if (last !== undefined && nowMs - last < stream.periodMs) {

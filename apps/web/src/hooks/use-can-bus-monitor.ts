@@ -127,6 +127,8 @@ export interface UseCanBusMonitorResult {
   selectedFrame?: CanFrame
   /** The DroneCAN transfer a frame belongs to, once it has completed and decoded. */
   transferFor: (seq: number) => DronecanTransfer | undefined
+  /** A multi-frame transfer's shade (0..CAN_TRANSFER_SHADES-1), so its frames read as one. */
+  transferShade: (transfer: DronecanTransfer) => number | undefined
   selectedTransfer?: DronecanTransfer
   /** DroneCAN message streams on the bus (or in the open log), optionally one node's. */
   topics: (nodeId?: number) => CanTopicEntry[]
@@ -173,6 +175,9 @@ interface CaptureStore {
   topics: CanTopicTable
   /** Samples per plot series, taken from this store's frames. */
   plotSamples: Map<string, CanPlotSamples>
+  /** A shade per multi-frame transfer, in completion order, so neighbours differ. */
+  shades: WeakMap<DronecanTransfer, number>
+  shadeCount: number
 }
 
 function newStore(capacity: number): CaptureStore {
@@ -183,9 +188,14 @@ function newStore(capacity: number): CaptureStore {
     decoder: new DronecanTransferDecoder(dronecanCatalogue()),
     transfers: new Map(),
     topics: new CanTopicTable(),
-    plotSamples: new Map()
+    plotSamples: new Map(),
+    shades: new WeakMap(),
+    shadeCount: 0
   }
 }
+
+/** How many shades multi-frame transfers cycle through in the frame list. */
+export const CAN_TRANSFER_SHADES = 4
 
 /** The plot series every store samples (set by the hook; module-level so ingest stays a plain function). */
 let activePlotSeries: readonly CanPlotSeries[] = []
@@ -199,6 +209,7 @@ function ingest(store: CaptureStore, frame: CanFrame): CanFrame {
   if (transfer) {
     store.topics.add(transfer)
     for (const seq of transfer.frameSeqs) store.transfers.set(seq, transfer)
+    if (transfer.frameSeqs.length > 1) store.shades.set(transfer, store.shadeCount++ % CAN_TRANSFER_SHADES)
     // Keep the index no bigger than the ring: drop transfers whose frames
     // have all fallen out of it.
     if (store.transfers.size > store.buffer.capacity * 1.25) {
@@ -604,6 +615,7 @@ export function useCanBusMonitor(options: {
     selectFrame: setSelectedSeq,
     selectedFrame,
     transferFor: (seq: number) => store.transfers.get(seq),
+    transferShade: (transfer: DronecanTransfer) => store.shades.get(transfer),
     topics: (nodeId?: number) => store.topics.list(nodeId),
     plotSeries,
     addPlotSeries,

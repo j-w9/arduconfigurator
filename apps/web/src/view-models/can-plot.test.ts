@@ -5,7 +5,9 @@ import type { DronecanTransfer } from '@arduconfig/dronecan-dsdl'
 import {
   CAN_PLOT_COLORS,
   CAN_PLOT_MAX_POINTS,
+  CAN_PLOT_LANE_COLORS,
   canPlotFrameValue,
+  canPlotLaneColor,
   canPlotSeriesKey,
   canPlotWindow,
   nextCanPlotColor,
@@ -48,19 +50,50 @@ describe('field series', () => {
     ]
     const samples = new Map<string, CanPlotSamples>()
     sampleCanPlot(series, samples, frame(0x80000001, [0]), transfer)
-    expect(samples.get('a')).toEqual({ t: [500], v: [4800] })
+    expect(samples.get('a')).toEqual({ t: [500], v: [[4800]] })
     expect(samples.has('b')).toBe(false)
+  })
+})
+
+describe('vector series', () => {
+  it('a numeric array plots as one series with a line per element, and an element on its own', () => {
+    const transfer = {
+      bus: 1,
+      kind: 'message',
+      dataTypeId: 1002,
+      sourceNodeId: 124,
+      timestampMs: 700,
+      value: { sensor_id: 0, magnetic_field_ga: [0.21, -0.04, 0.45] }
+    } as unknown as DronecanTransfer
+    const topicKey = canTopicKey(transfer)
+    const series: CanPlotSeries[] = [
+      { key: 'vec', label: 'mag', color: CAN_PLOT_COLORS[0], source: { kind: 'field', topicKey, path: ['magnetic_field_ga'] } },
+      { key: 'z', label: 'mag z', color: CAN_PLOT_COLORS[1], source: { kind: 'field', topicKey, path: ['magnetic_field_ga', 2] } }
+    ]
+    const samples = new Map<string, CanPlotSamples>()
+    sampleCanPlot(series, samples, frame(0x80000001, [0]), transfer)
+    expect(samples.get('vec')).toEqual({ t: [700], v: [[0.21], [-0.04], [0.45]] })
+    expect(samples.get('z')).toEqual({ t: [700], v: [[0.45]] })
+    expect(canPlotLaneColor(series[0], 3, 0)).toBe(CAN_PLOT_LANE_COLORS[0])
+    expect(canPlotLaneColor(series[1], 1, 0)).toBe(CAN_PLOT_COLORS[1])
+  })
+
+  it('a shorter array leaves a gap rather than shifting lanes', () => {
+    const samples: CanPlotSamples = { t: [], v: [] }
+    pushCanPlotSample(samples, 0, [1, 2, 3])
+    pushCanPlotSample(samples, 1, [4, 5])
+    expect(samples.v[2]).toEqual([3, Number.NaN])
   })
 })
 
 describe('the sample store', () => {
   it('stays bounded, windows by time, and hands out unused colours', () => {
     const samples: CanPlotSamples = { t: [], v: [] }
-    for (let index = 0; index < CAN_PLOT_MAX_POINTS + 5; index += 1) pushCanPlotSample(samples, index, index)
+    for (let index = 0; index < CAN_PLOT_MAX_POINTS + 5; index += 1) pushCanPlotSample(samples, index, [index])
     expect(samples.t.length).toBeLessThanOrEqual(CAN_PLOT_MAX_POINTS)
     expect(samples.t[samples.t.length - 1]).toBe(CAN_PLOT_MAX_POINTS + 4)
-    const windowed = canPlotWindow({ t: [0, 100, 200, 300], v: [1, 2, 3, 4] }, 300, 150)
-    expect(windowed).toEqual({ t: [200, 300], v: [3, 4] })
+    const windowed = canPlotWindow({ t: [0, 100, 200, 300], v: [[1, 2, 3, 4]] }, 300, 150)
+    expect(windowed).toEqual({ t: [200, 300], v: [[3, 4]] })
     expect(nextCanPlotColor([{ key: 'k', label: '', color: CAN_PLOT_COLORS[0], source: { kind: 'field', topicKey: '', path: [] } }])).toBe(CAN_PLOT_COLORS[1])
     expect(canPlotSeriesKey({ kind: 'field', topicKey: 't', path: ['value', 'integer_value'] })).toBe('field|t|value.integer_value')
   })

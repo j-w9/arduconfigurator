@@ -525,7 +525,10 @@ export function CanBusView(props: CanBusViewProps) {
   )
 
   return (
-    <div id="setup-panel-can">
+    // The CAN tab reads one size up from the app's dense default: it is a tool
+    // people read at length (frames, decoded fields, charts). Only the CAN tab --
+    // the DroneNet embed in Networking keeps the app's scale.
+    <div id="setup-panel-can" className={workspace ? 'can-tab' : undefined}>
       <Panel title={title} subtitle={subtitle}>
         {/* Extracted to CanEnablePrompt so the Servos ▸ Peripherals optical-flow
             section can raise the identical offer; the default test ids keep this

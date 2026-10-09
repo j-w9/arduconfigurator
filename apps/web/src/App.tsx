@@ -302,6 +302,8 @@ import { CanSendView } from './views/CanSend'
 import { useCanSender } from './hooks/use-can-sender'
 import { useCanAdapter } from './hooks/use-can-adapter'
 import { useCanAllocationTable } from './hooks/use-can-allocation-table'
+import type { CanTopicEntry } from './view-models/can-topics'
+import type { DronecanFieldNode } from './view-models/dronecan-field-tree'
 import { CanAllocatorView } from './views/CanAllocator'
 import { SLCAN_BITRATES } from '@arduconfig/can-core'
 import { dronecanCatalogue } from '@arduconfig/dronecan-dsdl'
@@ -2714,6 +2716,16 @@ export function App() {
   const canNodeAsking = canBusMonitor
     .topics()
     .some((topic) => topic.kind === 'anonymous' && topic.last.type?.shortName === 'Allocation' && Date.now() - topic.last.timestampMs < 3000)
+  // Plot a decoded field (a number, a vector, or one element of one), from
+  // Messages or from Plot's own picker.
+  const plotCanField = (topic: CanTopicEntry, field: DronecanFieldNode) => {
+    canBusMonitor.addPlotSeries(canFieldSeriesLabel(topic, field), { kind: 'field', topicKey: topic.key, path: field.path })
+  }
+  const isCanFieldPlotted = (topic: CanTopicEntry, field: DronecanFieldNode) =>
+    canBusMonitor.plotSeries.some(
+      (entry) =>
+        entry.source.kind === 'field' && entry.source.topicKey === topic.key && entry.source.path.join('.') === field.path.join('.')
+    )
   const canMessageNodes = [...new Set([...canBus.nodes.map((node) => node.nodeId), ...canExtraNodeIds])]
     .sort((left, right) => left - right)
     .map((nodeId) => ({ nodeId, label: canNodeLabel(nodeId) ?? '' }))
@@ -10430,21 +10442,8 @@ export function App() {
                       canBusMonitor.showTopicFrames(topic)
                       setCanSubTab('frames')
                     }}
-                    onPlotField={(topic, field) =>
-                      canBusMonitor.addPlotSeries(canFieldSeriesLabel(topic, field), {
-                        kind: 'field',
-                        topicKey: topic.key,
-                        path: field.path
-                      })
-                    }
-                    isPlotted={(topic, field) =>
-                      canBusMonitor.plotSeries.some(
-                        (entry) =>
-                          entry.source.kind === 'field' &&
-                          entry.source.topicKey === topic.key &&
-                          entry.source.path.join('.') === field.path.join('.')
-                      )
-                    }
+                    onPlotField={plotCanField}
+                    isPlotted={isCanFieldPlotted}
                   />
                 ),
                 frames: (
@@ -10463,6 +10462,10 @@ export function App() {
                     onClear={canBusMonitor.clearPlotSeries}
                     onAddBytes={(label, source) => canBusMonitor.addPlotSeries(label, source)}
                     onPickFields={() => setCanSubTab('messages')}
+                    topics={canBusMonitor.topics()}
+                    nodeLabel={canNodeLabel}
+                    onPlotField={plotCanField}
+                    isPlotted={isCanFieldPlotted}
                   />
                 ),
                 send: isExpertMode ? (

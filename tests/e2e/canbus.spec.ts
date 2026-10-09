@@ -210,10 +210,18 @@ test.describe('CAN bus monitor', () => {
   test('pausing freezes the view but keeps capturing', async ({ page }) => {
     await openMonitor(page)
     await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 15_000 })
-    await page.getByTestId('can-monitor-pause').click()
-    await expect(page.getByTestId('can-monitor-pause')).toHaveText(/Resume \(\+\d[\d,]*\)/, { timeout: 10_000 })
-    await page.getByTestId('can-monitor-pause').click()
-    await expect(page.getByTestId('can-monitor-pause')).toHaveText('Pause')
+    const pause = page.getByTestId('can-monitor-pause')
+    await expect(pause).toHaveClass(/can-monitor__tool--pause/)
+    await pause.click()
+    // Red Pause, green Resume; no frame count in the button.
+    await expect(pause).toHaveText('Resume')
+    await expect(pause).toHaveClass(/can-monitor__tool--resume/)
+    // Still capturing underneath: the held count keeps climbing.
+    const held = async () => Number((await page.getByTestId('can-monitor-stats').textContent())?.match(/([\d,]+) held/)?.[1].replace(/,/g, '') ?? 0)
+    const before = await held()
+    await expect.poll(held, { timeout: 10_000 }).toBeGreaterThan(before)
+    await pause.click()
+    await expect(pause).toHaveText('Pause')
   })
 
   test('a selected DroneCAN frame shows its header reading and its bytes', async ({ page }) => {
@@ -643,5 +651,52 @@ test.describe('CAN node tools: node ID allocation and ID changes', () => {
     await page.getByTestId('dronecan-node-id-apply-124').click()
     await expect(page.getByTestId('can-bus-node-100')).toContainText('Node 100', { timeout: 15_000 })
     await expect(page.getByTestId('can-bus-node-124')).toHaveCount(0)
+  })
+})
+
+test.describe('CAN tab: frame grouping and plotting vectors', () => {
+  async function openCanTab(page: Page): Promise<void> {
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-stop')).toBeVisible()
+  }
+
+  test('a multi-frame transfer\'s frames share a shade and a part tag; selecting one lights up the rest', async ({ page }) => {
+    await openCanTab(page)
+    await page.getByTestId('can-subtab-frames').click()
+    // esc.Status (1034 = 0x40A) from node 50: three frames per transfer.
+    await page.getByTestId('can-monitor-filter-ids').fill('00040A32/00FFFFFF')
+    const first = page.locator('[data-testid="can-monitor-row"][data-transfer-part="1/3"]').first()
+    await expect(first).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('[data-testid="can-monitor-row"][data-transfer-part="3/3"]').first()).toBeVisible()
+    await page.getByTestId('can-monitor-pause').click()
+    await first.click()
+    await expect(page.locator('[data-testid="can-monitor-row"].is-sibling')).toHaveCount(2)
+  })
+
+  test('Plot picks a device, a message and a field itself, and draws a vector as one chart', async ({ page }) => {
+    await openCanTab(page)
+    await page.getByTestId('can-subtab-plot').click()
+    const picker = page.getByTestId('can-plot-picker')
+    await expect(picker.getByTestId('can-plot-pick-device').locator('option', { hasText: '124' })).toHaveCount(1, { timeout: 15_000 })
+    await picker.getByTestId('can-plot-pick-device').selectOption('124')
+    const message = picker.getByTestId('can-plot-pick-message')
+    const magOption = message.locator('option', { hasText: 'MagneticFieldStrength2' })
+    await expect(magOption).toHaveCount(1, { timeout: 15_000 })
+    await message.selectOption({ value: (await magOption.getAttribute('value'))! })
+    const fields = picker.getByTestId('can-plot-pick-fields')
+    await fields.getByTestId('can-plot-field-magnetic_field_ga').click()
+    await fields.getByTestId('can-plot-field-magnetic_field_ga.2').click()
+
+    const series = page.getByTestId('can-plot-series')
+    await expect(series).toHaveCount(2)
+    await expect(series.nth(0)).toContainText('ahrs.MagneticFieldStrength2 #0 magnetic_field_ga ← 124')
+    // The vector: three lines on one chart, each element's latest value shown.
+    await expect(series.nth(0).getByTestId('can-plot-lane')).toHaveCount(3, { timeout: 10_000 })
+    await expect(series.nth(1)).toContainText('magnetic_field_ga[2] ← 124')
+    await expect.poll(async () => Number(await series.nth(1).getByTestId('can-plot-last').textContent()), { timeout: 10_000 }).toBeGreaterThan(0.4)
+    await expect(fields.getByTestId('can-plot-field-magnetic_field_ga')).toHaveText('Plotted')
   })
 })

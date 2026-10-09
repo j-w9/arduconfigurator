@@ -9,7 +9,7 @@ import type { CanFrame } from '@arduconfig/can-core'
 import type { DronecanTransfer } from '@arduconfig/dronecan-dsdl'
 
 import { canTopicKey } from './can-topics'
-import { dronecanValueAt } from './dronecan-field-tree'
+import { dronecanValuesAt } from './dronecan-field-tree'
 
 export type CanPlotSource =
   | {
@@ -37,9 +37,21 @@ export interface CanPlotSeries {
   source: CanPlotSource
 }
 
+/**
+ * A series' samples: shared timestamps, and one lane of values per line --
+ * one for a number, one per element for a vector (magnetic field x / y / z).
+ */
 export interface CanPlotSamples {
   t: number[]
-  v: number[]
+  v: number[][]
+}
+
+/** Lane colours for a vector: x / y / z read as red / green / blue, as everywhere else. */
+export const CAN_PLOT_LANE_COLORS = ['#e5484d', '#3ecf8e', '#4aa3ff', '#f2b400', '#b07cf7', '#ff8a3d', '#22c3c3', '#e86fb0'] as const
+
+/** The colour of lane `lane` of a series: its own colour when it has one line. */
+export function canPlotLaneColor(series: CanPlotSeries, lanes: number, lane: number): string {
+  return lanes <= 1 ? series.color : CAN_PLOT_LANE_COLORS[lane % CAN_PLOT_LANE_COLORS.length]
 }
 
 /** Points kept per series: minutes of a 50 Hz stream. */
@@ -72,20 +84,27 @@ export function canPlotFrameValue(source: Extract<CanPlotSource, { kind: 'bytes'
   }
 }
 
-/** The value a field series reads from a completed transfer, or undefined. */
-export function canPlotTransferValue(source: Extract<CanPlotSource, { kind: 'field' }>, transfer: DronecanTransfer): number | undefined {
+/** The values a field series reads from a completed transfer (one per lane), or undefined. */
+export function canPlotTransferValue(source: Extract<CanPlotSource, { kind: 'field' }>, transfer: DronecanTransfer): number[] | undefined {
   if (!transfer.value || canTopicKey(transfer) !== source.topicKey) return undefined
-  return dronecanValueAt(transfer.value, source.path)
+  return dronecanValuesAt(transfer.value, source.path)
 }
 
-export function pushCanPlotSample(samples: CanPlotSamples, t: number, v: number): void {
+/**
+ * One sample. The lane count is set by the first sample; a later one with
+ * fewer values (a dynamic array that came up short) leaves a gap (NaN).
+ */
+export function pushCanPlotSample(samples: CanPlotSamples, t: number, values: readonly number[]): void {
+  if (samples.v.length === 0) {
+    for (let lane = 0; lane < values.length; lane += 1) samples.v.push([])
+  }
   samples.t.push(t)
-  samples.v.push(v)
+  samples.v.forEach((lane, index) => lane.push(index < values.length && Number.isFinite(values[index]) ? values[index] : Number.NaN))
   if (samples.t.length > CAN_PLOT_MAX_POINTS) {
     // Drop in chunks so this is not a shift per sample.
     const excess = samples.t.length - Math.floor(CAN_PLOT_MAX_POINTS * 0.9)
     samples.t.splice(0, excess)
-    samples.v.splice(0, excess)
+    for (const lane of samples.v) lane.splice(0, excess)
   }
 }
 
@@ -100,19 +119,22 @@ export function sampleCanPlot(
   completed: DronecanTransfer | undefined
 ): void {
   for (const entry of series) {
-    const value =
+    const single = entry.source.kind === 'bytes' ? canPlotFrameValue(entry.source, frame) : undefined
+    const values =
       entry.source.kind === 'bytes'
-        ? canPlotFrameValue(entry.source, frame)
+        ? single !== undefined && Number.isFinite(single)
+          ? [single]
+          : undefined
         : completed
           ? canPlotTransferValue(entry.source, completed)
           : undefined
-    if (value === undefined || !Number.isFinite(value)) continue
+    if (!values || values.every((value) => !Number.isFinite(value))) continue
     let store = samples.get(entry.key)
     if (!store) {
       store = { t: [], v: [] }
       samples.set(entry.key, store)
     }
-    pushCanPlotSample(store, entry.source.kind === 'bytes' ? frame.timestampMs : (completed?.timestampMs ?? frame.timestampMs), value)
+    pushCanPlotSample(store, entry.source.kind === 'bytes' ? frame.timestampMs : (completed?.timestampMs ?? frame.timestampMs), values)
   }
 }
 
@@ -124,7 +146,7 @@ export function nextCanPlotColor(series: readonly CanPlotSeries[]): string {
 
 /** Samples inside the last `windowMs` before `nowMs` (both arrays sliced together). */
 export function canPlotWindow(samples: CanPlotSamples | undefined, nowMs: number, windowMs: number): CanPlotSamples {
-  if (!samples || samples.t.length === 0) return { t: [], v: [] }
+  if (!samples || samples.t.length === 0) return { t: [], v: samples?.v.map(() => []) ?? [] }
   const from = nowMs - windowMs
   let low = 0
   let high = samples.t.length
@@ -133,5 +155,5 @@ export function canPlotWindow(samples: CanPlotSamples | undefined, nowMs: number
     if (samples.t[middle] < from) low = middle + 1
     else high = middle
   }
-  return { t: samples.t.slice(low), v: samples.v.slice(low) }
+  return { t: samples.t.slice(low), v: samples.v.map((lane) => lane.slice(low)) }
 }

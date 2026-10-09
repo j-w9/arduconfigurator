@@ -58,6 +58,7 @@ export interface CanBusMonitorModel {
   selectFrame: (seq: number | undefined) => void
   selectedFrame?: CanFrame
   transferFor: (seq: number) => DronecanTransfer | undefined
+  transferShade: (transfer: DronecanTransfer) => number | undefined
   selectedTransfer?: DronecanTransfer
   recording: { active: boolean; frameCount: number; startedAtMs?: number; capped: boolean; pendingSave: boolean }
   startRecording: () => void
@@ -93,7 +94,7 @@ export interface CanBusMonitorViewProps {
   layout?: 'drawer' | 'page'
 }
 
-const ROW_HEIGHT = 24
+const ROW_HEIGHT = 26
 const OVERSCAN = 12
 const HEIGHT_STORAGE_KEY = 'arduconfig.can-monitor.height'
 const DEFAULT_HEIGHT = 340
@@ -226,14 +227,22 @@ function StreamTable({ monitor }: { monitor: CanBusMonitorModel }): ReactNode {
         <div style={{ height: frames.length * ROW_HEIGHT, position: 'relative' }}>
           {frames.slice(virtual.first, virtual.last).map((frame, offset) => {
             const index = virtual.first + offset
+            // A multi-frame transfer's frames share a shade (and a "2/3" part
+            // tag), and selecting one lights up the rest -- which frames came
+            // together, the way the DroneCAN GUI Tool shows it.
+            const transfer = monitor.transferFor(frame.seq)
+            const shade = transfer ? monitor.transferShade(transfer) : undefined
+            const sibling =
+              monitor.selectedTransfer !== undefined && monitor.selectedTransfer === transfer && frame.seq !== selectedSeq && shade !== undefined
             return (
               <div
                 key={frame.seq}
                 role="row"
-                className={`can-monitor__row can-monitor__row--stream${frame.direction === 'tx' ? ' is-tx' : ''}${frame.seq === selectedSeq ? ' is-selected' : ''}`}
+                className={`can-monitor__row can-monitor__row--stream${frame.direction === 'tx' ? ' is-tx' : ''}${frame.seq === selectedSeq ? ' is-selected' : ''}${shade !== undefined ? ` is-multi can-monitor__row--shade-${shade}` : ''}${sibling ? ' is-sibling' : ''}`}
                 style={{ top: index * ROW_HEIGHT }}
                 onClick={() => selectFrame(frame.seq === selectedSeq ? undefined : frame.seq)}
                 data-testid="can-monitor-row"
+                data-transfer-part={shade !== undefined && transfer ? `${transfer.frameSeqs.indexOf(frame.seq) + 1}/${transfer.frameSeqs.length}` : undefined}
               >
                 <span className="can-monitor__mono can-monitor__dim">{formatCaptureTime(frame.timestampMs, originMs)}</span>
                 <span className="can-monitor__dim">{frame.bus}</span>
@@ -243,9 +252,14 @@ function StreamTable({ monitor }: { monitor: CanBusMonitorModel }): ReactNode {
                 <span className="can-monitor__mono can-monitor__dim">{frame.data.length}</span>
                 <span className="can-monitor__mono can-monitor__data">{formatCanData(frame.data)}</span>
                 {(() => {
-                  const label = decodedLabel(frame, monitor.transferFor(frame.seq))
+                  const label = decodedLabel(frame, transfer)
                   return (
                     <span className="can-monitor__decoded" title={label.title}>
+                      {shade !== undefined && transfer ? (
+                        <span className="can-monitor__part" data-testid="can-monitor-part">
+                          {transfer.frameSeqs.indexOf(frame.seq) + 1}/{transfer.frameSeqs.length}
+                        </span>
+                      ) : null}
                       {label.text}
                     </span>
                   )
@@ -703,12 +717,13 @@ export function CanBusMonitorView({ monitor, live, layout = 'drawer' }: CanBusMo
           {!viewingLog ? (
             <button
               type="button"
-              className={`can-monitor__tool${monitor.paused ? ' is-on' : ''}`}
+              // Red to stop the view, green to let it run again.
+              className={`can-monitor__tool ${monitor.paused ? 'can-monitor__tool--resume' : 'can-monitor__tool--pause'}`}
               onClick={monitor.togglePause}
               data-testid="can-monitor-pause"
               aria-pressed={monitor.paused}
             >
-              {monitor.paused ? `Resume${monitor.newWhilePaused > 0 ? ` (+${number.format(monitor.newWhilePaused)})` : ''}` : 'Pause'}
+              {monitor.paused ? 'Resume' : 'Pause'}
             </button>
           ) : null}
           {!viewingLog ? (

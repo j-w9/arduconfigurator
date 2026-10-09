@@ -22155,7 +22155,7 @@ button.mavlink-inspector__sent-row {
   font: inherit;
   font-size: var(--text-2xs);
   font-weight: 700;
-  line-height: 15px;
+  line-height: 1.5;
   cursor: pointer;
 }
 .can-monitor__tree-plot:hover:not(:disabled) {
@@ -22701,4 +22701,158 @@ button.mavlink-inspector__sent-row {
 }
 .can-allocator > .can-monitor__tool {
   align-self: flex-start;
+}
+
+/* The CAN tab, one step up the type scale (operator: "fonts are super small").
+   Redefining the tokens on the tab's container scales everything in it at once,
+   and nothing outside it. Keeps the viewport steps of :root. */
+.can-tab {
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+}
+@media (min-width: 1800px) {
+  .can-tab {
+    --text-2xs: 12px;
+    --text-xs: 13px;
+    --text-sm: 14px;
+    --text-md: 15px;
+  }
+}
+@media (min-width: 2300px) {
+  .can-tab {
+    --text-2xs: 13px;
+    --text-xs: 14px;
+    --text-sm: 15px;
+    --text-md: 16px;
+  }
+}
+
+/* CAN ▸ Plot: charts beside an "Add" column (a field picker, frame bytes). */
+.can-plot__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: var(--space-3);
+  align-items: start;
+}
+.can-plot__charts {
+  min-width: 0;
+}
+.can-plot__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.can-plot__side .can-plot__bytes-form {
+  align-items: flex-start;
+}
+.can-plot__picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel-raised);
+  font-size: var(--text-xs);
+}
+.can-plot__picker > label {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+}
+.can-plot__picker select {
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+.can-plot__picker p {
+  margin: 0;
+}
+.can-plot__picker-tree {
+  max-height: 420px;
+  overflow: auto;
+}
+.can-plot__lanes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+.can-monitor__tree-elements {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 2px;
+}
+@media (max-width: 1000px) {
+  .can-plot__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* CAN ▸ Frames: the frames of one multi-frame transfer share a shade -- a
+   coloured edge and tint, cycling through four so neighbouring (or
+   interleaved) transfers stay apart -- and a "2/3" part tag. Selecting one
+   lights up its siblings. */
+.can-monitor__row.is-multi {
+  --transfer-shade: 74, 163, 255;
+  box-shadow: inset 3px 0 0 rgba(var(--transfer-shade), 0.85);
+  background: rgba(var(--transfer-shade), 0.07);
+}
+.can-monitor__row--shade-1 { --transfer-shade: 242, 180, 0; }
+.can-monitor__row--shade-2 { --transfer-shade: 176, 124, 247; }
+.can-monitor__row--shade-3 { --transfer-shade: 34, 195, 195; }
+.can-monitor__scroll .can-monitor__row.is-multi:nth-child(even) {
+  background: rgba(var(--transfer-shade), 0.07);
+}
+.can-monitor__scroll .can-monitor__row.is-multi:hover {
+  background: rgba(var(--transfer-shade), 0.14);
+}
+.can-monitor__row.is-multi.is-sibling,
+.can-monitor__scroll .can-monitor__row.is-multi.is-sibling:hover {
+  background: rgba(var(--transfer-shade), 0.22);
+  box-shadow: inset 3px 0 0 rgb(var(--transfer-shade));
+}
+.can-monitor__row.is-multi.is-selected,
+.can-monitor__scroll .can-monitor__row.is-multi.is-selected:hover {
+  background: rgba(var(--transfer-shade), 0.3);
+  box-shadow: inset 3px 0 0 rgb(var(--transfer-shade)), inset 0 0 0 1px rgba(var(--transfer-shade), 0.6);
+}
+.can-monitor__part {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(var(--transfer-shade, 74, 163, 255), 0.25);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+}
+
+/* CAN ▸ Frames: Pause is red (it stops the view), Resume green (it runs again). */
+.can-monitor__tool.can-monitor__tool--pause {
+  border-color: rgba(var(--danger-rgb, 229, 72, 77), 0.6);
+  color: var(--danger);
+}
+.can-monitor__tool.can-monitor__tool--pause:hover:not(:disabled) {
+  background: rgba(var(--danger-rgb, 229, 72, 77), 0.12);
+}
+.can-monitor__tool.can-monitor__tool--resume {
+  border-color: var(--success);
+  background: var(--success);
+  color: #0b1a10;
+  font-weight: 700;
+}
+.can-monitor__tool.can-monitor__tool--resume:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
