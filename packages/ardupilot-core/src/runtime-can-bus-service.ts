@@ -3,7 +3,7 @@ import type {
   CanFrameMessage,
   MavlinkSession
 } from '@arduconfig/protocol-mavlink'
-import { canFrameFromRawId, type CanFrame } from '@arduconfig/can-core'
+import { canFrameFromRawId, canFrameRawId, type CanFrame } from '@arduconfig/can-core'
 import {
   DRONECAN_ESC_STATUS_DT_ID,
   DRONECAN_ESC_STATUS_SIGNATURE,
@@ -1428,6 +1428,56 @@ export class CanBusService {
       } catch {
         // Best-effort; the polling tick will retry.
         return
+      }
+    }
+  }
+
+  /**
+   * Put raw frames on the forwarded bus (the CAN tab's Send). Each is sent
+   * as CAN_FRAME, or CANFD_FRAME for an FD frame, with ArduPilot's flag bits
+   * in the id and the 0-based HAL bus on the wire; AP_MAVLinkCAN writes it
+   * to the bus. Every frame sent is reported to the frame subscribers as TX.
+   * Refuses unless forwarding is active; the runtime adds the armed guard.
+   */
+  async sendFrames(
+    frames: readonly { id: number; extended: boolean; data: Uint8Array; fd?: boolean; rtr?: boolean }[]
+  ): Promise<void> {
+    if (this.status !== 'active') {
+      throw new Error('Connect to the CAN bus before sending.')
+    }
+    const bus = this.bus ?? 1
+    for (const frame of frames) {
+      const fd = frame.fd ?? false
+      const max = fd ? 64 : 8
+      if (frame.data.length > max) {
+        throw new Error(`A ${fd ? 'CAN FD' : 'classic CAN'} frame carries at most ${max} bytes.`)
+      }
+      const rawId = canFrameRawId({ id: frame.id, extended: frame.extended, rtr: frame.rtr ?? false, error: false })
+      const padded = new Uint8Array(max)
+      padded.set(frame.data)
+      await this.deps.session.send(
+        fd
+          ? {
+              type: 'CANFD_FRAME',
+              targetSystem: this.deps.getTargetSystem(),
+              targetComponent: this.deps.getTargetComponent(),
+              bus: bus - 1,
+              len: frame.data.length,
+              id: rawId,
+              data: padded
+            }
+          : {
+              type: 'CAN_FRAME',
+              targetSystem: this.deps.getTargetSystem(),
+              targetComponent: this.deps.getTargetComponent(),
+              bus: bus - 1,
+              len: frame.data.length,
+              id: rawId,
+              data: padded
+            }
+      )
+      if (this.frameListeners.size > 0) {
+        this.emitFrame(canFrameFromRawId({ timestampMs: Date.now(), bus, rawId, data: frame.data, fd, direction: 'tx' }))
       }
     }
   }

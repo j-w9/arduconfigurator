@@ -469,3 +469,102 @@ test.describe('CAN tab: Devices, Messages, Plot', () => {
     await expect(series.nth(0).locator('canvas').first()).toBeVisible()
   })
 })
+
+test.describe('CAN tab: Send', () => {
+  async function openSend(page: Page, { expert = true } = {}): Promise<void> {
+    if (expert) await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-stop')).toBeVisible()
+    if (expert) await page.getByTestId('can-subtab-send').click()
+  }
+
+  test('Send is an Expert tool: absent in Basic', async ({ page }) => {
+    await openSend(page, { expert: false })
+    await expect(page.getByTestId('can-subtab-plot')).toBeVisible()
+    await expect(page.getByTestId('can-subtab-send')).toHaveCount(0)
+  })
+
+  test('a service request is built from its DSDL and its reply lands under Sent', async ({ page }) => {
+    await openSend(page)
+    await page.getByTestId('can-send-type').fill('uavcan.protocol.GetNodeInfo')
+    await expect(page.getByTestId('can-send-form')).toContainText('No fields.')
+    await expect(page.getByTestId('can-send-once')).toBeDisabled()
+    await page.getByTestId('can-send-destination').fill('124')
+    // Request, service id 1, to node 124 from this app's node 127, priority 16.
+    await expect(page.getByTestId('can-send-preview')).toContainText('ID 1001FCFF')
+    await page.getByTestId('can-send-once').click()
+
+    const entry = page.getByTestId('can-send-history-entry').first()
+    await expect(entry).toContainText('GetNodeInfo → node 124')
+    await expect(entry.getByTestId('can-send-history-status')).toHaveText('answered', { timeout: 10_000 })
+    await entry.getByRole('button', { name: 'Reply' }).click()
+    await expect(entry.getByTestId('can-send-reply')).toContainText('com.hex.here3')
+  })
+
+  test('a message form takes its fields, with the type\'s constants as named values', async ({ page }) => {
+    await openSend(page)
+    await page.getByTestId('can-send-type').fill('uavcan.protocol.NodeStatus')
+    await page.getByTestId('can-send-field-uptime_sec').fill('258')
+    await page.getByRole('combobox', { name: 'health: named values' }).selectOption('HEALTH_WARNING')
+    await expect(page.getByTestId('can-send-field-health')).toHaveValue('1')
+    // uptime 258 = 02 01 00 00, then health 1 in the top two bits of the next byte.
+    await expect(page.getByTestId('can-send-preview')).toContainText('02 01 00 00 40')
+    await page.getByTestId('can-send-once').click()
+    await expect(page.getByTestId('can-send-history-status').first()).toHaveText('sent')
+  })
+
+  test('a raw frame waits for the safety box, shows as TX in Frames, and a repeat stops on leaving', async ({ page }) => {
+    await openSend(page)
+    await page.getByTestId('can-send-mode-raw').click()
+    await page.getByTestId('can-send-raw-id').fill('800')
+    await expect(page.getByTestId('can-send')).toContainText('A standard ID is at most 7FF')
+    await page.getByTestId('can-send-raw-id').fill('5A5')
+    await page.getByTestId('can-send-raw-data').fill('de ad be ef')
+    await expect(page.getByTestId('can-send-hazard-motion')).toBeVisible()
+    await expect(page.getByTestId('can-send-once')).toBeDisabled()
+    await page.getByTestId('can-send-props-ack').check()
+    await page.getByTestId('can-send-once').click()
+    await expect(page.getByTestId('can-send-history-entry').first()).toContainText('5A5 · DE AD BE EF')
+
+    await page.getByTestId('can-send-period').fill('50')
+    await page.getByTestId('can-send-repeat').click()
+    const repeat = page.getByTestId('can-send-history-entry').first()
+    await expect(repeat.getByTestId('can-send-history-status')).toContainText(/repeating every 50 ms · [1-9]/)
+
+    await page.getByTestId('can-subtab-frames').click()
+    await page.getByTestId('can-monitor-filter-ids').fill('5A5')
+    await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 10_000 })
+
+    await page.getByTestId('can-subtab-send').click()
+    await expect(repeat.getByTestId('can-send-history-status')).toContainText('stopped')
+    await expect(repeat).toContainText('Stopped: you left the Send page.')
+    // What was being composed is still there.
+    await expect(page.getByTestId('can-send-raw-id')).toHaveValue('5A5')
+  })
+
+  test('a node-changing request asks once more, and starts at the magic number', async ({ page }) => {
+    await openSend(page)
+    await page.getByTestId('can-send-type').fill('uavcan.protocol.RestartNode')
+    await page.getByTestId('can-send-destination').fill('124')
+    await expect(page.getByTestId('can-send-hazard-node')).toBeVisible()
+    await expect(page.getByTestId('can-send-field-magic_number')).toHaveValue(String(0xacce551b1e))
+    await page.getByTestId('can-send-once').click()
+    await expect(page.getByTestId('can-send-history-entry')).toHaveCount(0)
+    await page.getByTestId('can-send-confirm').click()
+    await expect(page.getByTestId('can-send-history-entry').first()).toContainText('RestartNode → node 124')
+  })
+
+  test('the Send composer and its history fit a 390px screen', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 900 })
+    await openSend(page)
+    await page.getByTestId('can-send-type').fill('uavcan.protocol.param.GetSet')
+    await page.getByTestId('can-send-destination').fill('124')
+    await page.getByTestId('can-send-field-name').fill('GPS_TYPE')
+    await page.getByTestId('can-send-once').click()
+    await expect(page.getByTestId('can-send-history-status').first()).toHaveText('answered', { timeout: 10_000 })
+    expect((await worstViewportOverflow(page)).worst, 'send').toBeLessThanOrEqual(2)
+  })
+})

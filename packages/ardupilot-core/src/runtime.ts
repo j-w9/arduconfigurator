@@ -1868,6 +1868,18 @@ export class ArduPilotConfiguratorRuntime {
     return this.canBusService.onFrame(listener)
   }
 
+  /**
+   * Put raw frames on the forwarded CAN bus (the CAN tab's Send). Refused
+   * while armed: a frame on the bus can command ESCs and servos, and an
+   * operator composing frames by hand must never be doing it in flight.
+   */
+  async sendCanFrames(
+    frames: readonly { id: number; extended: boolean; data: Uint8Array; fd?: boolean; rtr?: boolean }[]
+  ): Promise<void> {
+    this.assertNotArmed('Disarm the vehicle before sending CAN frames.')
+    await this.canBusService.sendFrames(frames)
+  }
+
   async startCanBusForward(bus: number): Promise<void> {
     return this.canBusService.start(bus)
   }

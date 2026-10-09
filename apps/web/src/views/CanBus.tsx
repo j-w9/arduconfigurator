@@ -29,13 +29,14 @@ import { CanEnablePrompt } from './CanEnablePrompt'
 // side, the way Mission Planner and the DroneCAN GUI do it.
 
 /** The CAN tab's sub-tabs. */
-export type CanSubTab = 'devices' | 'messages' | 'frames' | 'plot'
+export type CanSubTab = 'devices' | 'messages' | 'frames' | 'plot' | 'send'
 
 const CAN_SUB_TABS: { id: CanSubTab; label: string; title: string }[] = [
   { id: 'devices', label: 'Devices', title: 'The nodes on the bus and their configuration' },
   { id: 'messages', label: 'Messages', title: 'Every DroneCAN message stream, decoded and live' },
   { id: 'frames', label: 'Frames', title: 'Every raw frame on the bus: filter, record, open logs' },
-  { id: 'plot', label: 'Plot', title: 'Live charts of decoded fields and frame bytes' }
+  { id: 'plot', label: 'Plot', title: 'Live charts of decoded fields and frame bytes' },
+  { id: 'send', label: 'Send', title: 'Send DroneCAN messages, service requests and raw frames' }
 ]
 
 export interface CanBusViewProps {
@@ -100,6 +101,8 @@ export interface CanBusViewProps {
       messages: ReactNode
       frames: ReactNode
       plot: ReactNode
+      /** Send: Expert-only (it acts on the bus), so absent hides the sub-tab. */
+      send?: ReactNode
     }
   }
   popout?: {
@@ -587,7 +590,7 @@ export function CanBusView(props: CanBusViewProps) {
           <>
             {workspace.pages ? (
               <div className="tab-strip can-subtabs" role="tablist" aria-label="CAN views" data-testid="can-subtabs">
-                {CAN_SUB_TABS.map((tab) => (
+                {CAN_SUB_TABS.filter((tab) => tab.id !== 'send' || workspace.pages!.send !== undefined).map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
@@ -658,6 +661,8 @@ export function CanBusView(props: CanBusViewProps) {
               workspace.pages.messages
             ) : workspace.pages.page === 'frames' ? (
               workspace.pages.frames
+            ) : workspace.pages.page === 'send' && workspace.pages.send !== undefined ? (
+              workspace.pages.send
             ) : (
               workspace.pages.plot
             )}

@@ -298,6 +298,9 @@ import { useCanBusMonitor } from './hooks/use-can-bus-monitor'
 import { CanBusMonitorView } from './views/CanBusMonitor'
 import { CanMessagesPage, canFieldSeriesLabel } from './views/CanMessagesPage'
 import { CanPlotView } from './views/CanPlot'
+import { CanSendView } from './views/CanSend'
+import { useCanSender } from './hooks/use-can-sender'
+import { dronecanCatalogue } from '@arduconfig/dronecan-dsdl'
 import type { CanSubTab } from './views/CanBus'
 import { useCanDevicePopouts } from './hooks/use-can-device-popouts'
 import { usePopoutWindows } from './hooks/use-popout-windows'
@@ -2668,6 +2671,16 @@ export function App() {
       snapshot.canBus.bus !== undefined
         ? readRoundedParameter(snapshot, `CAN_P${snapshot.canBus.bus}_BITRATE`) ?? 1_000_000
         : undefined
+  })
+  // Send (Expert-only: it acts on the bus). Repeats stop themselves on arming,
+  // on the bus going quiet, on leaving the page, or on the safety box unticked.
+  const canSendVisible = activeViewId === 'can' && canSubTab === 'send' && productMode === 'expert'
+  const canSender = useCanSender({
+    sink: runtime,
+    active: snapshot.canBus.status === 'active',
+    armed: snapshot.vehicle?.armed ?? false,
+    visible: canSendVisible,
+    motionAcknowledged: propsRemovedAcknowledged && testAreaAcknowledged
   })
   const canNodeLabel = (nodeId: number): string | undefined =>
     snapshot.canBus.nodes.find((node) => node.nodeId === nodeId)?.name ??
@@ -10352,7 +10365,8 @@ export function App() {
           // Sub-tabs for everyone (operator call: the layout is clear enough
           // not to hide them). Restart / firmware stay Expert-only below.
           pages: {
-                page: canSubTab,
+                // Send hides when Expert mode is left; its page falls back to Devices.
+                page: canSubTab === 'send' && !isExpertMode ? 'devices' : canSubTab,
                 onPage: setCanSubTab,
                 messages: (
                   <CanMessagesPage
@@ -10398,7 +10412,36 @@ export function App() {
                     onAddBytes={(label, source) => canBusMonitor.addPlotSeries(label, source)}
                     onPickFields={() => setCanSubTab('messages')}
                   />
-                )
+                ),
+                send: isExpertMode ? (
+                  <CanSendView
+                    catalogue={dronecanCatalogue()}
+                    sourceNodeId={GCS_DRONECAN_NODE_ID}
+                    busLabel={snapshot.canBus.status === 'active' && snapshot.canBus.bus !== undefined ? `CAN${snapshot.canBus.bus}` : undefined}
+                    blockedReason={
+                      !runtime || snapshot.connection.kind !== 'connected'
+                        ? 'Connect to a vehicle to send.'
+                        : snapshot.vehicle?.armed
+                          ? 'Disarm the vehicle to send.'
+                          : snapshot.canBus.status !== 'active'
+                            ? 'Connect to the bus on Devices to send.'
+                            : undefined
+                    }
+                    nodes={canMessageNodes}
+                    nodeLabel={canNodeLabel}
+                    history={canSender.history}
+                    repeatingId={canSender.repeatingId}
+                    onSend={(job) => { void canSender.send(job) }}
+                    onStartRepeat={canSender.startRepeat}
+                    onStopRepeat={() => canSender.stopRepeat('Stopped.')}
+                    onClearHistory={canSender.clearHistory}
+                    motionAcknowledged={propsRemovedAcknowledged && testAreaAcknowledged}
+                    onMotionAcknowledged={(value) => {
+                      setPropsRemovedAcknowledged(value)
+                      setTestAreaAcknowledged(value)
+                    }}
+                  />
+                ) : undefined
               }
         }}
         busy={busyAction !== undefined}

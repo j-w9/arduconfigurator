@@ -22296,3 +22296,298 @@ button.mavlink-inspector__sent-row {
 .can-plot__bytes-form input[type='text'] {
   width: 110px;
 }
+
+/* ---- CAN ▸ Send ------------------------------------------------------ */
+.can-send {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  min-width: 0;
+}
+.can-send__blocked {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.can-send__composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel-raised);
+  font-size: var(--text-xs);
+}
+.can-send__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.can-send__row > label,
+.can-send__data {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-muted);
+}
+.can-send__composer input:not([type='checkbox']),
+.can-send__composer select {
+  height: 26px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+}
+.can-send__composer input[aria-invalid='true'] {
+  border-color: var(--warning);
+}
+.can-send__type {
+  flex: 1 1 280px;
+}
+.can-send__type input {
+  flex: 1;
+  width: 100%;
+  max-width: 420px;
+}
+.can-send__short {
+  width: 56px;
+}
+.can-send__id {
+  width: 110px;
+}
+.can-send__data input {
+  flex: 1;
+  max-width: 460px;
+}
+.can-send__form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.can-send__field {
+  display: grid;
+  grid-template-columns: minmax(120px, 200px) minmax(0, 1fr);
+  align-items: center;
+  gap: 4px var(--space-2);
+  min-width: 0;
+}
+.can-send__field > :nth-child(n + 3) {
+  grid-column: 2;
+  justify-self: start;
+}
+.can-send__field-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: var(--font-data);
+}
+.can-send__field-name small {
+  color: var(--text-dim);
+  font-size: var(--text-2xs);
+}
+.can-send__number,
+.can-send__bytes,
+.can-send__list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.can-send__number input {
+  width: 140px;
+}
+.can-send__bytes input,
+.can-send__list input {
+  width: min(320px, 100%);
+}
+.can-send__range {
+  color: var(--warning);
+}
+.can-send__toggle {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+.can-send__toggle[aria-pressed='true'] {
+  border-color: var(--primary-500, #ffbb00);
+  color: var(--text);
+}
+.can-send__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 10px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md, 6px);
+}
+.can-send__group legend {
+  padding: 0 4px;
+  color: var(--text);
+  font-family: var(--font-data);
+}
+.can-send__group legend small {
+  color: var(--text-dim);
+}
+.can-send__union {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.can-send__array-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.can-send__array-item > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.can-send__reset {
+  align-self: flex-start;
+}
+.can-send__no-fields {
+  margin: 0;
+}
+.can-send__preview {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+.can-send__hazard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: rgba(var(--warning-rgb, 255, 187, 0), 0.08);
+}
+.can-send__hazard--motion {
+  border-left-color: var(--danger);
+  background: rgba(var(--danger-rgb, 255, 80, 80), 0.08);
+}
+.can-send__hazard p {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.can-send__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.can-send__repeat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+.can-send__confirm {
+  color: var(--text);
+  font-weight: 600;
+}
+.can-send__history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.can-send__history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.can-send__history-head h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.can-send__history ol {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+}
+.can-send__sent {
+  padding: 6px 10px;
+  border-top: 1px solid var(--border-soft);
+  font-size: var(--text-xs);
+}
+.can-send__sent:first-child {
+  border-top: 0;
+}
+.can-send__sent-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--space-3);
+  min-width: 0;
+}
+.can-send__sent-frames {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.can-send__status {
+  color: var(--text-muted);
+}
+.can-send__sent--answered .can-send__status {
+  color: var(--success, #4ade80);
+}
+.can-send__sent--failed .can-send__status,
+.can-send__sent--no-answer .can-send__status {
+  color: var(--warning);
+}
+.can-send__sent--repeating .can-send__status {
+  color: var(--text);
+  font-weight: 600;
+}
+.can-send__note {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+}
+.can-send__reply {
+  margin-top: 6px;
+}
+.can-send__reply p {
+  margin: 0 0 4px;
+}
+@media (max-width: 640px) {
+  .can-send__field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .can-send__field > :nth-child(n + 3) {
+    grid-column: 1;
+  }
+}
