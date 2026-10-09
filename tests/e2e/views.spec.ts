@@ -3825,6 +3825,10 @@ test.describe('OSD view preview', () => {
     const align = page.getByTestId('osd-element-align-BAT_VOLT')
     await align.scrollIntoViewIfNeeded()
     await expect(align).toBeVisible()
+    // X / Y sit on the element's own line, not wrapped under its name.
+    const labelBox = await page.getByTestId('osd-element-row-label-BAT_VOLT').boundingBox()
+    const alignBox = await align.boundingBox()
+    expect(Math.abs((alignBox!.y + alignBox!.height / 2) - (labelBox!.y + labelBox!.height / 2))).toBeLessThan(6)
     // Type an exact column; the preview element snaps to that cell (col+1).
     // Addressed by test id rather than `input[type=number]).first()` — an
     // anonymous positional selector silently retargets the moment another
@@ -8190,5 +8194,18 @@ test.describe('Files ▸ Format SD card', () => {
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page.getByTestId('files-format-confirm')).toHaveCount(0)
     await expect(page.getByTestId('files-error')).toHaveCount(0)
+  })
+})
+
+test.describe('Status & Info: Flash firmware', () => {
+  test('the Vehicle actions card opens the Flash tab on its firmware (.apj) section', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+    const button = page.getByTestId('status-bench-actions').getByTestId('status-flash-firmware-button')
+    await button.scrollIntoViewIfNeeded()
+    await button.click()
+    await expect(page.getByTestId('flash-tab-firmware')).toHaveAttribute('aria-selected', 'true')
   })
 })

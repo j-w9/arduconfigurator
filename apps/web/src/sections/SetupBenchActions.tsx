@@ -6,7 +6,7 @@
 // setup view decomposition. Purely presentational: the action list, snapshot,
 // and busy state are passed in; dispatch is onAction. Behavior-preserving.
 
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
@@ -25,9 +25,11 @@ export interface SetupBenchActionsProps {
   snapshot: ConfiguratorSnapshot
   busyAction: string | undefined
   onAction: (actionId: GuidedActionId) => void
+  /** Rows after the guided actions (a link to another tab, say). */
+  extra?: ReactNode
 }
 
-export function SetupBenchActions({ actions, snapshot, busyAction, onAction }: SetupBenchActionsProps): ReactElement {
+export function SetupBenchActions({ actions, snapshot, busyAction, onAction, extra }: SetupBenchActionsProps): ReactElement {
   return (
     <div className="setup-bench__actions">
       {actions.map((action) => {
@@ -92,6 +94,7 @@ export function SetupBenchActions({ actions, snapshot, busyAction, onAction }: S
           </article>
         )
       })}
+      {extra}
     </div>
   )
 }
