@@ -22,7 +22,8 @@ import {
   type FinderVehicle,
   type FirmwareChannel,
   type FirmwareIndexRow,
-  type FirmwareTarget
+  type FirmwareTarget,
+  firmwareBuildKey
 } from '../view-models/firmware-finder'
 
 export interface FirmwareFinderProps {
@@ -33,10 +34,12 @@ export interface FirmwareFinderProps {
   connectedVehicle?: string
   /** Download the target and hand it to the flasher. */
   onLoad: (target: FirmwareTarget) => Promise<void>
+  /** The build now loaded in the flasher from here (firmwareBuildKey), if any. */
+  loadedBuild?: string
   disabled?: boolean
 }
 
-export function FirmwareFinder({ rows, board, connectedVehicle, onLoad, disabled }: FirmwareFinderProps): ReactNode {
+export function FirmwareFinder({ rows, board, connectedVehicle, onLoad, loadedBuild, disabled }: FirmwareFinderProps): ReactNode {
   const [vehicle, setVehicle] = useState<FinderVehicle>(() => defaultFinderVehicle(connectedVehicle))
   const [channel, setChannel] = useState<FirmwareChannel>('OFFICIAL')
   const [query, setQuery] = useState('')
@@ -144,25 +147,32 @@ export function FirmwareFinder({ rows, board, connectedVehicle, onLoad, disabled
               {warning}
             </p>
           ) : null}
-          <button
-            type="button"
-            style={buttonStyle('primary')}
-            disabled={disabled || busy}
-            onClick={async () => {
-              setBusy(true)
-              setError(undefined)
-              try {
-                await onLoad(target)
-              } catch (caught) {
-                setError(caught instanceof Error ? caught.message : String(caught))
-              } finally {
-                setBusy(false)
-              }
-            }}
-            data-testid="firmware-finder-load"
-          >
-            {busy ? 'Downloading…' : `Use ${target.platform} ${target.version}`}
-          </button>
+          {target && loadedBuild === firmwareBuildKey(target) ? (
+            // Loaded: nothing more to do here -- step 2 takes it from here.
+            <button type="button" className="firmware-finder__done" disabled data-testid="firmware-finder-load">
+              ✓ Downloaded {target.platform} {target.version}
+            </button>
+          ) : (
+            <button
+              type="button"
+              style={buttonStyle('primary')}
+              disabled={disabled || busy}
+              onClick={async () => {
+                setBusy(true)
+                setError(undefined)
+                try {
+                  await onLoad(target)
+                } catch (caught) {
+                  setError(caught instanceof Error ? caught.message : String(caught))
+                } finally {
+                  setBusy(false)
+                }
+              }}
+              data-testid="firmware-finder-load"
+            >
+              {busy ? 'Downloading…' : `Download ${target.platform} ${target.version}`}
+            </button>
+          )}
           {error ? (
             <p className="firmware-finder__error" data-testid="firmware-finder-error">
               {error}

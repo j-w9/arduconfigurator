@@ -8274,8 +8274,15 @@ test.describe('Flash: find firmware (the private deploy\'s index + relay)', () =
     await finder.getByTestId('firmware-finder-search').fill('matek')
     await expect(select.locator('option')).toHaveCount(3)
     await select.selectOption('MatekH743-bdshot')
+    await expect(finder.getByTestId('firmware-finder-load')).toHaveText('Download MatekH743-bdshot V4.7.1')
     await finder.getByTestId('firmware-finder-load').click()
     await expect(page.getByTestId('firmware-loaded')).toContainText('board id 1013', { timeout: COMMAND_ACK_TIMEOUT })
+    // Done stays done, and step 2's confirm box asks to be ticked next.
+    await expect(finder.getByTestId('firmware-finder-load')).toHaveText('✓ Downloaded MatekH743-bdshot V4.7.1')
+    await expect(finder.getByTestId('firmware-finder-load')).toBeDisabled()
+    await expect(page.getByTestId('firmware-confirm')).toHaveClass(/is-nudged/)
+    await page.getByTestId('firmware-confirm').locator('input').check()
+    await expect(page.getByTestId('firmware-confirm')).not.toHaveClass(/is-nudged/)
     expect(downloads).toEqual(['Copter/stable/MatekH743-bdshot/arducopter.apj'])
     // The manual routes are still there, folded under the finder.
     await expect(page.getByTestId('firmware-manual-download')).toBeVisible()
@@ -8321,7 +8328,26 @@ test.describe('Flash: find firmware (the private deploy\'s index + relay)', () =
     const finder = page.getByTestId('firmware-finder')
     await expect(finder.getByTestId('firmware-finder-board')).toContainText('board id 59')
     await expect(finder.getByTestId('firmware-finder-board-select')).toHaveValue('DemoBoard59')
-    await expect(finder.getByTestId('firmware-finder-load')).toHaveText('Use DemoBoard59 V4.7.1')
+    await expect(finder.getByTestId('firmware-finder-load')).toHaveText('Download DemoBoard59 V4.7.1')
+  })
+
+  test('a download whose build is not the listed one is refused, and says so', async ({ page }) => {
+    const shaIndex = { ...index, columns: [...columns, 'gitSha'], rows: [[...row('MatekH743', 1013), 'dbe792162d06cab66c3475fd5556bf7a120f119e']] }
+    const asked: string[] = []
+    await page.route('**/fw/index.json', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(shaIndex) }))
+    await page.route('**/fw/apj?*', (route) => {
+      asked.push(route.request().url())
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...JSON.parse(apj(1013)), git_identity: '0a1b2c3d' }) })
+    })
+    await page.goto('/')
+    await page.getByTestId('landing-flash-firmware-button').click()
+    const finder = page.getByTestId('firmware-finder')
+    await finder.getByTestId('firmware-finder-board-select').selectOption('MatekH743')
+    await finder.getByTestId('firmware-finder-load').click()
+    await expect(finder.getByTestId('firmware-finder-error')).toContainText('sent build 0a1b2c3d, not the listed dbe79216')
+    await expect(page.getByTestId('firmware-loaded')).toHaveCount(0)
+    // The request named the build, so no cache can answer it with an older one.
+    expect(asked[0]).toContain('sha=dbe792162d06cab66c3475fd5556bf7a120f119e')
   })
 
   test('a site without the index keeps the plain download link', async ({ page }) => {
@@ -8329,5 +8355,74 @@ test.describe('Flash: find firmware (the private deploy\'s index + relay)', () =
     await page.getByTestId('landing-flash-firmware-button').click()
     await expect(page.getByTestId('firmware-download-link')).toBeVisible()
     await expect(page.getByTestId('firmware-finder')).toHaveCount(0)
+  })
+})
+
+test.describe('Flash: a connected board goes to its bootloader by itself', () => {
+  const rawImage = Buffer.from([0xa3, 0x95, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05])
+  const apj = JSON.stringify({ board_id: 59, image_size: rawImage.length, image: deflateSync(rawImage).toString('base64') })
+
+  test('Flash reboots it into the bootloader, lets go of the link, and waits -- no unplug, no picker', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'flash')
+    await page.getByTestId('firmware-file').setInputFiles({ name: 'arducopter.apj', mimeType: 'application/json', buffer: Buffer.from(apj) })
+    await expect(page.getByTestId('firmware-loaded')).toContainText('board id 59', { timeout: COMMAND_ACK_TIMEOUT })
+    await page.getByTestId('firmware-confirm').locator('input').check()
+    await page.getByTestId('firmware-flash').click()
+
+    const waiting = page.getByTestId('firmware-await-bootloader')
+    await expect(waiting).toContainText('Waiting for the bootloader…', { timeout: COMMAND_ACK_TIMEOUT })
+    await expect(page.getByTestId('firmware-prompt-unplug')).toHaveCount(0)
+    await expect(page.getByTestId('firmware-flash')).toHaveText('Waiting for the bootloader…')
+    // The app let go of the vehicle so the bootloader's port is free.
+    await expect(page.getByTestId('session-vehicle-name')).toHaveCount(0, { timeout: COMMAND_ACK_TIMEOUT })
+    await expect(waiting.getByTestId('firmware-await-pick')).toBeEnabled()
+    await waiting.getByTestId('firmware-prompt-cancel').click()
+    await expect(waiting).toHaveCount(0)
+    await expect(page.getByTestId('firmware-flash')).toHaveText('Flash firmware')
+  })
+})
+
+test.describe('CAN tab node firmware on the website', () => {
+  // The offline service worker fetches /fw/* out of reach of page.route.
+  test.use({ serviceWorkers: 'block' })
+
+  test('CAN tab on the website: node firmware from the deploy\'s AP_Periph index and relay', async ({ page }) => {
+    const rawImage = Buffer.from(Array.from({ length: 700 }, (_, i) => (i * 37 + 11) & 0xff))
+    const apj = JSON.stringify({ board_id: 513, git_identity: 'abc12345', image_size: rawImage.length, image: deflateSync(rawImage).toString('base64') })
+    const periphIndex = {
+      format: 1,
+      columns: ['platform', 'boardId', 'vehicle', 'mavType', 'channel', 'version', 'brand', 'manufacturer', 'path', 'gitSha'],
+      rows: [
+        ['TestPeriph', 513, 'AP_Periph', '', 'OFFICIAL', '1.7.0', '', '', 'AP_Periph/stable/TestPeriph/AP_Periph.apj', 'abc1234567890'],
+        ['OtherPeriph', 999, 'AP_Periph', '', 'OFFICIAL', '1.7.0', '', '', 'AP_Periph/stable/OtherPeriph/AP_Periph.apj', 'def']
+      ]
+    }
+    const asked: string[] = []
+    await page.route('**/fw/periph-index.json', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(periphIndex) }))
+    await page.route('**/fw/apj?*', (route) => {
+      asked.push(route.request().url())
+      return route.fulfill({ status: 200, contentType: 'application/json', body: apj })
+    })
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await enableExpertMode(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-node-toggle-50')).toBeVisible({ timeout: 12000 })
+    await page.getByTestId('can-bus-node-actions-50').click()
+    await expect(page.getByTestId('can-bus-node-50')).toContainText('HW 2.1', { timeout: COMMAND_ACK_TIMEOUT })
+    await expect(page.getByTestId('dronecan-fwupdate-online-unavailable-50')).toHaveCount(0)
+    await page.getByTestId('dronecan-fwupdate-online-find-50').click()
+    const list = page.getByTestId('dronecan-fwupdate-online-list-50')
+    await expect(list).toContainText('TestPeriph')
+    await expect(list).not.toContainText('OtherPeriph')
+    await page.getByTestId('dronecan-fwupdate-online-use-50').first().click()
+    await page.getByTestId('dronecan-fwupdate-ack-50').check()
+    await expect(page.getByTestId('dronecan-fwupdate-start-50')).toBeEnabled()
+    expect(asked[0]).toContain('path=AP_Periph%2Fstable%2FTestPeriph%2FAP_Periph.apj')
+    expect(asked[0]).toContain('sha=abc1234567890')
   })
 })

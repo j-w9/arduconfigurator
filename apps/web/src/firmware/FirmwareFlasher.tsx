@@ -16,7 +16,7 @@ import { WebSerialBootloaderSerial, inflateZlib } from './web-serial-bootloader'
 import { DfuHexFlasher } from './DfuHexFlasher'
 import { FirmwareFinder } from './FirmwareFinder'
 import { desktopFirmwareSource, type FirmwareIndexSource } from './firmware-index-source'
-import type { ConnectedBoard, FirmwareIndexRow } from '../view-models/firmware-finder'
+import { apjBuildMismatch, firmwareBuildKey, type ConnectedBoard, type FirmwareIndexRow } from '../view-models/firmware-finder'
 import type { BootloaderHashPreview } from '../view-models/bootloader-hash-preview'
 
 /** Where ArduPilot publishes firmware. The only source now — the custom
@@ -147,6 +147,9 @@ export interface FirmwareFlasherProps {
   /** ArduPilot's published builds (the private deploy's index + relay). When
    *  it loads, step 1 leads with a search and in-app download. */
   firmwareIndex?: FirmwareIndexSource
+  /** Called once a flash has written and rebooted the board into the new
+   *  firmware, so the host can reconnect to it. */
+  onFlashComplete?: () => void
   /** The connected flight controller: its board id and banner name pick its build. */
   connectedBoard?: ConnectedBoard
 }
@@ -197,6 +200,8 @@ type Phase =
   | 'pre-scan'         // Checking whether a bootloader is ALREADY connected
   | 'prompt-unplug'   // "Unplug, then Continue" — Continue opens the picker
   | 'prompt-replug'   // Picker open, listening: "unplug, replug, pick the new port"
+  | 'rebooting'        // Connected: sending reboot-to-bootloader over MAVLink
+  | 'await-bootloader' // Rebooted: waiting for the bootloader's port (no replug)
   | 'detecting'        // Trying identify() on a candidate port
   | 'flashing'
   | 'done'
@@ -294,6 +299,8 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   )
 
   const [phase, setPhase] = useState<Phase>('idle')
+  // True while a flash runs on a board we rebooted into its bootloader (no replug).
+  const [autoRebootFlow, setAutoRebootFlow] = useState(false)
   // ArduPilot's build index: the desktop shell's native fetch when it offers
   // one, else the site's relay. Undefined rows hide the finder.
   const indexSource = useMemo<FirmwareIndexSource | undefined>(
@@ -327,6 +334,11 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   const [identity, setIdentity] = useState<BoardIdentity | null>(null)
   const [firmware, setFirmware] = useState<LoadedFirmware | null>(null)
   const [confirmed, setConfirmed] = useState(false)
+  // The finder build now loaded (firmwareBuildKey), and whether to steer the
+  // operator on to step 2: scroll there and light up the confirm box.
+  const [loadedBuild, setLoadedBuild] = useState<string | undefined>(undefined)
+  const [nudgeConfirm, setNudgeConfirm] = useState(false)
+  const flashStepRef = useRef<HTMLLIElement | null>(null)
   const [progress, setProgress] = useState<{ label: string; ratio: number } | null>(null)
   const [replugInfo, setReplugInfo] = useState<string | null>(null)
   const [vehicleDir, setVehicleDir] = useState<(typeof VEHICLE_DIRS)[number]>(
@@ -521,7 +533,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   // Shared .apj loader (used by the file drop and the desktop browse path).
   // Parses + decodes the image and stages it as the firmware to flash.
   const loadFirmwareApj = useCallback(
-    async (apjText: string, name: string) => {
+    async (apjText: string, name: string): Promise<boolean> => {
       setError(null)
       try {
         const parsed = parseApj(apjText)
@@ -544,9 +556,11 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
         if (phase === 'error' || phase === 'done') {
           setPhase('idle')
         }
+        return true
       } catch (e) {
         setFirmware(null)
         fail(e instanceof Error ? `Invalid firmware file: ${e.message}` : 'Invalid firmware file.')
+        return false
       }
     },
     [inflate, phase, fail]
@@ -554,7 +568,8 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
 
   const onFile = useCallback(
     async (file: File) => {
-      await loadFirmwareApj(await file.text(), file.name)
+      setLoadedBuild(undefined)
+      if (await loadFirmwareApj(await file.text(), file.name)) setNudgeConfirm(true)
     },
     [loadFirmwareApj]
   )
@@ -635,7 +650,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   // poll diff against the snapshot, and the manual picker (requestPort, the
   // only path that can authorize a new VID/PID — the ChibiOS bootloader
   // case, where the bootloader's USB device differs from the firmware's).
-  const catchBootloader = useCallback(async (): Promise<BoardIdentity | null> => {
+  const catchBootloader = useCallback(async (options: { afterReboot?: { baseline: ReadonlySet<WebSerialPortLike> } } = {}): Promise<BoardIdentity | null> => {
     // Each step logs a `[flash]` line at info level (visible without verbose
     // mode) so the console pinpoints which phase failed.
     const log = (msg: string, ...args: unknown[]): void => console.info('[flash]', msg, ...args)
@@ -653,12 +668,16 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     // that appears AFTER this is an auto-catch candidate for the poll
     // diff. Handle identity is stable across getPorts() calls per the
     // Web Serial spec, so Set/reference comparison is safe.
+    // After a reboot we sent, the baseline is the ports from BEFORE it: the
+    // bootloader's port is whatever appears since.
     let preExistingPorts: ReadonlySet<WebSerialPortLike>
     try {
-      preExistingPorts = new Set(await listPorts())
+      preExistingPorts = options.afterReboot?.baseline ?? new Set(await listPorts())
     } catch {
       preExistingPorts = new Set()
     }
+    // Where the listen loop waits: no replug after a reboot we sent.
+    const waitingPhase: Phase = options.afterReboot ? 'await-bootloader' : 'prompt-replug'
     log('baseline snapshot: %d authorized ports', preExistingPorts.size)
 
     // PRE-SCAN the baseline ports — the board may ALREADY be in
@@ -668,9 +687,9 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     // user's firmware/MAVLink ports fail fast. Deliberately NOT added
     // to triedPortsRef — the same physical board legitimately reappears
     // (as its bootloader) after a replug and must still get an attempt.
-    setPhase('pre-scan')
+    setPhase(options.afterReboot ? 'await-bootloader' : 'pre-scan')
     setReplugInfo(null)
-    for (const port of preExistingPorts) {
+    for (const port of options.afterReboot ? [] : preExistingPorts) {
       if (replugAbortRef.current) {
         log('aborted during pre-scan')
         return null
@@ -690,21 +709,27 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     // it. The picker opens on the Continue click — a fresh user gesture,
     // so requestPort() never races the original Flash click's activation
     // window.
-    setPhase('prompt-unplug')
-    log('prompt-unplug: waiting for Continue (opens the picker)')
-    await new Promise<void>((resolve) => {
-      unplugContinueResolveRef.current = resolve
-    })
-    unplugContinueResolveRef.current = null
-    if (replugAbortRef.current) {
-      log('aborted during prompt-unplug')
-      return null
+    // After a reboot we sent, the board is already in its bootloader and stays
+    // there: no unplug, and no picker up front (the browser cannot close its
+    // own dialog, so it would linger over a flash that caught the port by
+    // itself). The picker is one button away for a port never granted.
+    if (!options.afterReboot) {
+      setPhase('prompt-unplug')
+      log('prompt-unplug: waiting for Continue (opens the picker)')
+      await new Promise<void>((resolve) => {
+        unplugContinueResolveRef.current = resolve
+      })
+      unplugContinueResolveRef.current = null
+      if (replugAbortRef.current) {
+        log('aborted during prompt-unplug')
+        return null
+      }
     }
 
     // Catch phase: the picker is now on screen, the listeners run in
     // parallel. Replug catches granted-VID/PID bootloaders automatically;
     // everything else arrives via the picker.
-    setPhase('prompt-replug')
+    setPhase(waitingPhase)
     log('listening (picker + connect-event + 100ms poll)')
 
     // Subscribe to the 'connect' event — fires when a granted device shows
@@ -764,7 +789,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             error: result.errorMessage,
             ...info
           })
-          setPhase('prompt-replug')
+          setPhase(waitingPhase)
           // Promote the manual-picker CTA after the first failed identify —
           // a separate-VID/PID bootloader is only reachable via requestPort().
           if (triedPortCountRef.current >= 1) {
@@ -1030,6 +1055,8 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
         // handle.
         await serialRef.current?.close().catch(() => undefined)
         serialRef.current = null
+        // The board is booting the new firmware: the host can go looking for it.
+        props.onFlashComplete?.()
         setIdentity(null)
       } catch (e) {
         // Invalidate the connection so a retry re-runs catchBootloader and
@@ -1081,7 +1108,29 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       setError(null)
       let board = identity
       if (!serialRef.current || !board) {
-        board = await catchBootloader()
+        if (onEnterDfu && !enterDfuDisabledReason) {
+          // Connected: reboot it into the bootloader ourselves (it then stays
+          // there until power-off) instead of asking for an unplug and a
+          // race with the picker.
+          let baseline: ReadonlySet<WebSerialPortLike>
+          try {
+            baseline = new Set(await listPorts())
+          } catch {
+            baseline = new Set()
+          }
+          setAutoRebootFlow(true)
+          setPhase('rebooting')
+          try {
+            await onEnterDfu()
+          } catch (rebootError) {
+            fail(rebootError instanceof Error ? rebootError.message : 'The board did not accept the reboot to its bootloader.')
+            return
+          }
+          board = await catchBootloader({ afterReboot: { baseline } })
+        } else {
+          setAutoRebootFlow(false)
+          board = await catchBootloader()
+        }
         if (!board) {
           return
         }
@@ -1093,7 +1142,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     } finally {
       flashingRef.current = false
     }
-  }, [firmware, identity, catchBootloader, writeFirmware, fail])
+  }, [firmware, identity, catchBootloader, writeFirmware, fail, onEnterDfu, enterDfuDisabledReason, listPorts])
 
   const canFlash =
     !!firmware &&
@@ -1102,7 +1151,9 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     phase !== 'pre-scan' &&
     phase !== 'prompt-unplug' &&
     phase !== 'detecting' &&
-    phase !== 'prompt-replug'
+    phase !== 'prompt-replug' &&
+    phase !== 'rebooting' &&
+    phase !== 'await-bootloader'
 
   return (
     <section
@@ -1486,9 +1537,19 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                 board={props.connectedBoard ?? (identity ? { boardId: identity.boardId } : undefined)}
                 connectedVehicle={props.connectedVehicle}
                 disabled={phase === 'flashing'}
+                loadedBuild={firmware ? loadedBuild : undefined}
                 onLoad={async (target) => {
-                  const text = await indexSource.download(target.path)
-                  await loadFirmwareApj(text, target.path.split('/').slice(-2).join('/'))
+                  const text = await indexSource.download(target.path, target.gitSha)
+                  // A cache or a mid-release mirror can hand back another build
+                  // at the same path: the file's own commit must be the listed one.
+                  const mismatch = apjBuildMismatch(text, target.gitSha)
+                  if (mismatch) throw new Error(mismatch)
+                  if (await loadFirmwareApj(text, target.path.split('/').slice(-2).join('/'))) {
+                    setLoadedBuild(firmwareBuildKey(target))
+                    setNudgeConfirm(true)
+                    // On to step 2.
+                    window.requestAnimationFrame(() => flashStepRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+                  }
                 }}
               />
             ) : null}
@@ -1611,7 +1672,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             </li>
           )}
 
-          <li>
+          <li ref={flashStepRef}>
             <span className="firmware-wizard__step-title">{indexRows ? '2. Flash' : '3. Flash'}</span>
             {/* What is about to be written: the build, its board id and size. */}
             {firmware ? (
@@ -1636,8 +1697,18 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             {/* Hide the irreversibility checkbox in the error state so its
                 confirmation visual doesn't read as "OK" over a refusal. */}
             {phase === 'error' ? null : (
-              <label className="firmware-wizard__confirm" data-testid="firmware-confirm">
-                <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+              <label
+                className={`firmware-wizard__confirm${nudgeConfirm && !confirmed && firmware ? ' is-nudged' : ''}`}
+                data-testid="firmware-confirm"
+              >
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  onChange={(e) => {
+                    setConfirmed(e.target.checked)
+                    setNudgeConfirm(false)
+                  }}
+                />
                 <span>I understand flashing is irreversible and won&rsquo;t unplug until it completes.</span>
               </label>
             )}
@@ -1654,8 +1725,10 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                   ? 'Checking ports…'
                   : phase === 'prompt-unplug'
                     ? 'Waiting…'
-                    : phase === 'prompt-replug'
+                    : phase === 'prompt-replug' || phase === 'await-bootloader'
                       ? 'Waiting for the bootloader…'
+                      : phase === 'rebooting'
+                        ? 'Rebooting to the bootloader…'
                       : phase === 'detecting'
                         ? 'Detecting board…'
                         : 'Flash firmware'}
@@ -1685,6 +1758,29 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           </div>
         ) : null}
 
+        {phase === 'rebooting' || phase === 'await-bootloader' || (phase === 'detecting' && autoRebootFlow) ? (
+          <div className="firmware-replug-prompt" data-testid="firmware-await-bootloader" role="status">
+            <strong>{phase === 'rebooting' ? 'Rebooting into the bootloader…' : 'Waiting for the bootloader…'}</strong>
+            <p className="bf-note">
+              No need to unplug: the board stays in its bootloader. If nothing happens, your browser has not used this
+              board&apos;s bootloader port before; select it once.
+            </p>
+            <div className="firmware-replug-prompt__buttons">
+              <button
+                type="button"
+                onClick={() => void handleManualPick()}
+                disabled={phase === 'rebooting'}
+                data-testid="firmware-await-pick"
+              >
+                Select the bootloader port
+              </button>
+              <button type="button" onClick={handleReplugCancel} data-testid="firmware-prompt-cancel">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {phase === 'prompt-unplug' ? (
           <div className="firmware-replug-prompt" data-testid="firmware-prompt-unplug" role="alert">
             <strong>Unplug the flight controller.</strong>
@@ -1711,7 +1807,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           </div>
         ) : null}
 
-        {phase === 'prompt-replug' || phase === 'detecting' ? (
+        {phase === 'prompt-replug' || (phase === 'detecting' && !autoRebootFlow) ? (
           <div className="firmware-replug-prompt" data-testid="firmware-prompt-replug" role="alert">
             <strong>Plug it back in and select the new bootloader port.</strong>
             <p className="bf-note">

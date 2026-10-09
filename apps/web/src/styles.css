@@ -20363,3 +20363,30 @@ button.mavlink-inspector__sent-row {
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+
+/* Flash ▸ finder: a loaded build stays visibly done; step 2's confirm box
+   asks to be ticked next. */
+.firmware-finder__done {
+  padding: 8px 14px;
+  border: 1px solid var(--success);
+  border-radius: 8px;
+  background: rgba(62, 207, 142, 0.14);
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: default;
+}
+.firmware-wizard__confirm.is-nudged {
+  padding: 6px 10px;
+  border-radius: var(--radius-md, 6px);
+  outline: 2px solid var(--primary-500, #ffbb00);
+  outline-offset: 2px;
+  animation: firmware-confirm-nudge 1.2s ease-in-out infinite;
+}
+@keyframes firmware-confirm-nudge {
+  0%, 100% { outline-color: rgba(255, 187, 0, 0.95); }
+  50% { outline-color: rgba(255, 187, 0, 0.3); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .firmware-wizard__confirm.is-nudged { animation: none; }
+}

@@ -243,6 +243,8 @@ export function buildFirmwareIndex(manifest: FirmwareManifest): FirmwareIndex {
   const rows: (string | number)[][] = []
   for (const e of manifest.entries) {
     if (e.format !== 'apj' || !INDEX_CHANNELS.has(e.releaseType) || !e.url.startsWith(FIRMWARE_HOST)) continue
+    // Flight-controller builds only: AP_Periph (DroneCAN nodes) is the CAN tab's.
+    if (e.vehicletype === 'AP_Periph') continue
     rows.push([
       e.platform,
       e.boardId,
@@ -252,14 +254,15 @@ export function buildFirmwareIndex(manifest: FirmwareManifest): FirmwareIndex {
       e.versionStr,
       e.brandName ?? '',
       e.manufacturer ?? '',
-      e.url.slice(FIRMWARE_HOST.length)
+      e.url.slice(FIRMWARE_HOST.length),
+      e.gitSha ?? ''
     ])
   }
   rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])) || String(a[2]).localeCompare(String(b[2])))
   return {
     format: 1,
     generatedAt: new Date().toISOString(),
-    columns: ['platform', 'boardId', 'vehicle', 'mavType', 'channel', 'version', 'brand', 'manufacturer', 'path'],
+    columns: ['platform', 'boardId', 'vehicle', 'mavType', 'channel', 'version', 'brand', 'manufacturer', 'path', 'gitSha'],
     rows
   }
 }
