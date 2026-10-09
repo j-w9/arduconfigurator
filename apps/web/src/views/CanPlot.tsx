@@ -33,6 +33,7 @@ export interface CanPlotViewProps {
   nodeLabel: (nodeId: number) => string | undefined
   onPlotField: (topic: CanTopicEntry, node: DronecanFieldNode) => void
   isPlotted: (topic: CanTopicEntry, node: DronecanFieldNode) => boolean
+  onUnplotField: (topic: CanTopicEntry, node: DronecanFieldNode) => void
 }
 
 const WINDOWS = [
@@ -188,7 +189,7 @@ function BytesForm({ onAdd }: { onAdd: CanPlotViewProps['onAddBytes'] }): ReactN
 }
 
 /** Pick a field right here: a device, one of its messages, then any number (or vector) in it. */
-function FieldPicker(props: Pick<CanPlotViewProps, 'topics' | 'nodeLabel' | 'onPlotField' | 'isPlotted'>): ReactNode {
+function FieldPicker(props: Pick<CanPlotViewProps, 'topics' | 'nodeLabel' | 'onPlotField' | 'isPlotted' | 'onUnplotField'>): ReactNode {
   const { topics, nodeLabel } = props
   const [device, setDevice] = useState<string>('all')
   const [topicKey, setTopicKey] = useState<string>('')
@@ -245,7 +246,12 @@ function FieldPicker(props: Pick<CanPlotViewProps, 'topics' | 'nodeLabel' | 'onP
       </label>
       {selected && tree ? (
         <div className="can-plot__picker-tree" data-testid="can-plot-pick-fields">
-          <DronecanFieldTree nodes={tree} onPlot={(node) => props.onPlotField(selected, node)} isPlotted={(node) => props.isPlotted(selected, node)} />
+          <DronecanFieldTree
+            nodes={tree}
+            onPlot={(node) => props.onPlotField(selected, node)}
+            isPlotted={(node) => props.isPlotted(selected, node)}
+            onUnplot={(node) => props.onUnplotField(selected, node)}
+          />
         </div>
       ) : (
         <p className="can-monitor__dim">Choose a message to see its fields.</p>
@@ -303,13 +309,14 @@ export function CanPlotView(props: CanPlotViewProps): ReactNode {
         </div>
         <button
           type="button"
-          className={`can-monitor__tool${frozenAt !== undefined ? ' is-on' : ''}`}
+          // Same grammar as Frames: red Pause stops the charts, green Resume runs them again.
+          className={`can-monitor__tool ${frozenAt !== undefined ? 'can-monitor__tool--resume' : 'can-monitor__tool--pause'}`}
           onClick={() => setFrozenAt((current) => (current === undefined ? nowMs : undefined))}
           aria-pressed={frozenAt !== undefined}
           disabled={series.length === 0}
           data-testid="can-plot-freeze"
         >
-          {frozenAt !== undefined ? 'Resume' : 'Freeze'}
+          {frozenAt !== undefined ? 'Resume' : 'Pause'}
         </button>
         <button type="button" className="can-monitor__tool" onClick={exportCsv} disabled={series.length === 0} data-testid="can-plot-export">
           Export CSV
@@ -363,7 +370,13 @@ export function CanPlotView(props: CanPlotViewProps): ReactNode {
           )}
         </div>
         <aside className="can-plot__side">
-          <FieldPicker topics={props.topics} nodeLabel={props.nodeLabel} onPlotField={props.onPlotField} isPlotted={props.isPlotted} />
+          <FieldPicker
+            topics={props.topics}
+            nodeLabel={props.nodeLabel}
+            onPlotField={props.onPlotField}
+            isPlotted={props.isPlotted}
+            onUnplotField={props.onUnplotField}
+          />
           <BytesForm onAdd={onAddBytes} />
         </aside>
       </div>

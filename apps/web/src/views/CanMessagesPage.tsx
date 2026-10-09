@@ -22,10 +22,12 @@ export interface CanMessagesPageProps {
   onShowFrames: (topic: CanTopicEntry) => void
   onPlotField: (topic: CanTopicEntry, node: DronecanFieldNode) => void
   isPlotted: (topic: CanTopicEntry, node: DronecanFieldNode) => boolean
+  /** Take a plotted field off the plot. */
+  onUnplotField: (topic: CanTopicEntry, node: DronecanFieldNode) => void
 }
 
 export function CanMessagesPage(props: CanMessagesPageProps): ReactNode {
-  const { topics, nodes, nodeLabel, live, onShowFrames, onPlotField, isPlotted } = props
+  const { topics, nodes, nodeLabel, live, onShowFrames, onPlotField, isPlotted, onUnplotField } = props
   const [nodeFilter, setNodeFilter] = useState<number | 'all'>('all')
   const [search, setSearch] = useState('')
   const [selectedKey, setSelectedKey] = useState<string | undefined>(undefined)
@@ -112,6 +114,7 @@ export function CanMessagesPage(props: CanMessagesPageProps): ReactNode {
                 nodes={tree}
                 onPlot={(node) => onPlotField(selected, node)}
                 isPlotted={(node) => isPlotted(selected, node)}
+                onUnplot={(node) => onUnplotField(selected, node)}
               />
             ) : null}
             <button type="button" className="can-messages__frames" onClick={() => onShowFrames(selected)}>

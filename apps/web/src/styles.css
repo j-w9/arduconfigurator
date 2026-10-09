@@ -22856,3 +22856,10 @@ button.mavlink-inspector__sent-row {
 .can-monitor__tool.can-monitor__tool--resume:hover:not(:disabled) {
   filter: brightness(1.08);
 }
+.can-monitor__tree-plot.is-plotted:not(:disabled) {
+  cursor: pointer;
+}
+.can-monitor__tree-plot.is-plotted:hover:not(:disabled) {
+  border-color: rgba(var(--danger-rgb, 229, 72, 77), 0.6);
+  color: var(--danger);
+}

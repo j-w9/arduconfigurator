@@ -303,6 +303,7 @@ import { useCanSender } from './hooks/use-can-sender'
 import { useCanAdapter } from './hooks/use-can-adapter'
 import { useCanAllocationTable } from './hooks/use-can-allocation-table'
 import type { CanTopicEntry } from './view-models/can-topics'
+import { canPlotSeriesKey } from './view-models/can-plot'
 import type { DronecanFieldNode } from './view-models/dronecan-field-tree'
 import { CanAllocatorView } from './views/CanAllocator'
 import { SLCAN_BITRATES } from '@arduconfig/can-core'
@@ -2720,6 +2721,9 @@ export function App() {
   // Messages or from Plot's own picker.
   const plotCanField = (topic: CanTopicEntry, field: DronecanFieldNode) => {
     canBusMonitor.addPlotSeries(canFieldSeriesLabel(topic, field), { kind: 'field', topicKey: topic.key, path: field.path })
+  }
+  const unplotCanField = (topic: CanTopicEntry, field: DronecanFieldNode) => {
+    canBusMonitor.removePlotSeries(canPlotSeriesKey({ kind: 'field', topicKey: topic.key, path: field.path }))
   }
   const isCanFieldPlotted = (topic: CanTopicEntry, field: DronecanFieldNode) =>
     canBusMonitor.plotSeries.some(
@@ -10444,6 +10448,7 @@ export function App() {
                     }}
                     onPlotField={plotCanField}
                     isPlotted={isCanFieldPlotted}
+                    onUnplotField={unplotCanField}
                   />
                 ),
                 frames: (
@@ -10466,6 +10471,7 @@ export function App() {
                     nodeLabel={canNodeLabel}
                     onPlotField={plotCanField}
                     isPlotted={isCanFieldPlotted}
+                    onUnplotField={unplotCanField}
                   />
                 ),
                 send: isExpertMode ? (

@@ -461,6 +461,11 @@ test.describe('CAN tab: Devices, Messages, Plot', () => {
     await page.getByTestId('can-messages-bus').getByTestId('can-message-Status-50-1').locator('.can-messages__name').click({ timeout: 15_000 })
     await page.getByTestId('can-message-inspector').getByTestId('can-plot-field-rpm').click()
     await expect(page.getByTestId('can-message-inspector').getByTestId('can-plot-field-rpm')).toHaveText('Plotted')
+    // Deselect from Messages, then plot it again.
+    await page.getByTestId('can-message-inspector').getByTestId('can-plot-field-rpm').click()
+    await expect(page.getByTestId('can-message-inspector').getByTestId('can-plot-field-rpm')).toHaveText('Plot')
+    await page.getByTestId('can-message-inspector').getByTestId('can-plot-field-rpm').click()
+    await expect(page.getByTestId('can-message-inspector').getByTestId('can-plot-field-rpm')).toHaveText('Plotted')
 
     await page.getByTestId('can-subtab-plot').click()
     await page.getByTestId('can-plot-bytes-id').fill('2A0')
@@ -698,6 +703,20 @@ test.describe('CAN tab: frame grouping and plotting vectors', () => {
     await expect(series.nth(1)).toContainText('magnetic_field_ga[2] ← 124')
     await expect.poll(async () => Number(await series.nth(1).getByTestId('can-plot-last').textContent()), { timeout: 10_000 }).toBeGreaterThan(0.4)
     await expect(fields.getByTestId('can-plot-field-magnetic_field_ga')).toHaveText('Plotted')
+    // Pause (red) / Resume (green), as in Frames.
+    const pause = page.getByTestId('can-plot-freeze')
+    await expect(pause).toHaveText('Pause')
+    await expect(pause).toHaveClass(/can-monitor__tool--pause/)
+    await pause.click()
+    await expect(pause).toHaveText('Resume')
+    await expect(pause).toHaveClass(/can-monitor__tool--resume/)
+    await pause.click()
+    // Plotted is a toggle: click it and the series comes off.
+    await fields.getByTestId('can-plot-field-magnetic_field_ga.2').click()
+    await expect(series).toHaveCount(1)
+    await fields.getByTestId('can-plot-field-magnetic_field_ga').click()
+    await expect(page.getByTestId('can-plot-empty')).toBeVisible()
+    await expect(fields.getByTestId('can-plot-field-magnetic_field_ga')).toHaveText('Plot all')
   })
 })
 
