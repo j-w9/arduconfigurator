@@ -295,6 +295,7 @@ import { CanDeviceInspectorView, type DronecanFirmwareOnlineSource } from './vie
 import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
 import { useCanBusMonitor } from './hooks/use-can-bus-monitor'
 import { CanBusMonitorView } from './views/CanBusMonitor'
+import { CanMessagesView } from './views/CanMessages'
 import { useCanDevicePopouts } from './hooks/use-can-device-popouts'
 import { usePopoutWindows } from './hooks/use-popout-windows'
 import { RecentNoticesFeed, recentNoticesBadge } from './views/RecentNoticesFeed'
@@ -10312,6 +10313,27 @@ export function App() {
         framesPerSec={dronecanFramesPerSec}
         escTelemetry={snapshot.canBus.escTelemetry}
         monitorSlot={<CanBusMonitorView monitor={canBusMonitor} live={snapshot.canBus.status === 'active'} />}
+        workspace={{
+          renderMessages: (scope) => (
+            <CanMessagesView
+              topics={canBusMonitor.topics(scope === 'bus' ? undefined : scope)}
+              scope={scope}
+              nodeLabel={(nodeId) => snapshot.canBus.nodes.find((node) => node.nodeId === nodeId)?.name}
+              onShowFrames={canBusMonitor.showTopicFrames}
+              live={snapshot.canBus.status === 'active' || canBusMonitor.openedLog !== undefined}
+            />
+          ),
+          // Nodes seen only in RECEIVED traffic: this app's own requests (TX)
+          // come from its GCS node id, which is not a node on the bus.
+          extraNodeIds: [
+            ...new Set(
+              canBusMonitor
+                .topics()
+                .filter((topic) => topic.last.direction === 'rx' && topic.sourceNodeId !== 0)
+                .map((topic) => topic.sourceNodeId)
+            )
+          ]
+        }}
         busy={busyAction !== undefined}
         // Restart + firmware update were expert-gated by living in the expert-only
         // inspector tab; the CAN tab is always visible, so the gate moves here

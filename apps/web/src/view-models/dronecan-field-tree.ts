@@ -4,6 +4,10 @@
 // arrays inline, and unions showing their active field. Pure: the catalogue
 // supplies the type layout, nothing here touches React or the runtime.
 
+import {
+  dronecanCatalogue,
+  type DronecanTransfer
+} from '@arduconfig/dronecan-dsdl'
 import type {
   DronecanCatalogue,
   DronecanConstDesc,
@@ -128,4 +132,32 @@ export function summarizeDronecanValue(nodes: readonly DronecanFieldNode[], limi
     parts.push(`${entry.label} ${entry.meaning ?? entry.text}`)
   }
   return parts.join(' · ')
+}
+
+/** Which section of its type a transfer carries. */
+export function transferSection(transfer: Pick<DronecanTransfer, 'kind'>): DronecanSectionKind {
+  return transfer.kind === 'request' ? 'req' : transfer.kind === 'response' ? 'res' : 'msg'
+}
+
+/** The field tree for a decoded transfer, or undefined when it did not decode. */
+export function transferFieldTree(transfer: DronecanTransfer): DronecanFieldNode[] | undefined {
+  if (!transfer.type || !transfer.value) return undefined
+  try {
+    return buildDronecanFieldTree(dronecanCatalogue(), transfer.type.fullName, transferSection(transfer), transfer.value)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * A type's display name: the full name without the namespaces everyone
+ * knows (uavcan.protocol., uavcan.equipment., a vendor's .equipment.), so
+ * NodeStatus and esc.Status read apart where the bare short names ("Status")
+ * would collide.
+ */
+export function dronecanDisplayName(fullName: string): string {
+  if (fullName.startsWith('uavcan.protocol.')) return fullName.slice('uavcan.protocol.'.length)
+  if (fullName.startsWith('uavcan.equipment.')) return fullName.slice('uavcan.equipment.'.length)
+  if (fullName.startsWith('uavcan.')) return fullName.slice('uavcan.'.length)
+  return fullName.replace('.equipment.', '.')
 }

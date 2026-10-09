@@ -378,3 +378,58 @@ test.describe('CAN bus monitor: logs and saving', () => {
     await expect(page.getByTestId('can-monitor-save-popover')).toHaveCount(0)
   })
 })
+
+test.describe('CAN workspace: nodes rail and decoded messages', () => {
+  async function openWorkspace(page: Page): Promise<void> {
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-stop')).toBeVisible()
+  }
+
+  test('the whole bus lists every node and every decoded message stream', async ({ page }) => {
+    await openWorkspace(page)
+    const rail = page.getByTestId('can-node-rail')
+    await expect(rail.getByTestId('can-rail-bus')).toHaveAttribute('aria-pressed', 'true')
+    await expect(rail.getByTestId('can-rail-node-124')).toContainText('Node 124', { timeout: 15_000 })
+    await expect(rail.getByTestId('can-rail-node-50')).toBeVisible()
+    // Every node's card is on the whole-bus page.
+    await expect(page.getByTestId('can-bus-node-124')).toBeVisible()
+    await expect(page.getByTestId('can-bus-node-50')).toBeVisible()
+    const messages = page.getByTestId('can-messages-bus')
+    await expect(messages.getByTestId('can-message-NodeStatus-124')).toContainText('health OK', { timeout: 15_000 })
+    await expect(messages.getByTestId('can-message-Status-50')).toContainText('esc.Status')
+  })
+
+  test('selecting a node narrows the page to its card and its messages, and a row opens into fields', async ({ page }) => {
+    await openWorkspace(page)
+    await page.getByTestId('can-rail-node-50').click({ timeout: 15_000 })
+    await expect(page.getByTestId('can-bus-node-50')).toBeVisible()
+    await expect(page.getByTestId('can-bus-node-124')).toHaveCount(0)
+    const messages = page.getByTestId('can-messages-node-50')
+    const status = messages.getByTestId('can-message-NodeStatus-50')
+    await expect(status).toBeVisible({ timeout: 15_000 })
+    await expect(messages.getByTestId('can-message-NodeStatus-124')).toHaveCount(0)
+    await status.locator('.can-messages__name').click()
+    await expect(status).toContainText('uavcan.protocol.NodeStatus')
+    await expect(status.locator('.can-monitor__tree-meaning').first()).toHaveText('OK')
+
+    await page.getByTestId('can-rail-bus').click()
+    await expect(page.getByTestId('can-bus-node-124')).toBeVisible()
+  })
+
+  test('Frames points the bus monitor at exactly that stream', async ({ page }) => {
+    await openWorkspace(page)
+    const status = page.getByTestId('can-messages-bus').getByTestId('can-message-NodeStatus-124')
+    await status.getByTestId('can-message-show-frames').click({ timeout: 15_000 })
+    // id/mask with the priority bits masked off: type 341 (0x155) from node 124 (0x7C).
+    await expect(page.getByTestId('can-monitor-filter-ids')).toHaveValue('0001557C/00FFFFFF')
+    await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 10_000 })
+    const rows = page.getByTestId('can-monitor-row')
+    const count = await rows.count()
+    for (let index = 0; index < count; index += 1) {
+      await expect(rows.nth(index)).toContainText('NodeStatus ← 124')
+    }
+  })
+})

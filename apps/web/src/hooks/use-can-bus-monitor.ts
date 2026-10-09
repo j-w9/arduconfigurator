@@ -32,6 +32,7 @@ import {
   type CanMonitorFilterForm,
   type CanMonitorFilterState
 } from '../view-models/can-bus-monitor'
+import { CanTopicTable, canTopicIdFilter, type CanTopicEntry } from '../view-models/can-topics'
 
 /** The slice of the runtime the monitor needs. */
 export interface CanFrameSource {
@@ -119,6 +120,10 @@ export interface UseCanBusMonitorResult {
   /** The DroneCAN transfer a frame belongs to, once it has completed and decoded. */
   transferFor: (seq: number) => DronecanTransfer | undefined
   selectedTransfer?: DronecanTransfer
+  /** DroneCAN message streams on the bus (or in the open log), optionally one node's. */
+  topics: (nodeId?: number) => CanTopicEntry[]
+  /** Point the drawer at one stream's frames. */
+  showTopicFrames: (topic: CanTopicEntry) => void
   recording: CanRecordingState
   startRecording: () => void
   stopRecording: () => void
@@ -148,6 +153,8 @@ interface CaptureStore {
   decoder: DronecanTransferDecoder
   /** Completed transfers by the seq of EVERY frame in them, so any frame finds its message. */
   transfers: Map<number, DronecanTransfer>
+  /** One live row per DroneCAN message stream (Messages on the bus). */
+  topics: CanTopicTable
 }
 
 function newStore(capacity: number): CaptureStore {
@@ -156,7 +163,8 @@ function newStore(capacity: number): CaptureStore {
     trace: new CanIdTrace(),
     originMs: undefined,
     decoder: new DronecanTransferDecoder(dronecanCatalogue()),
-    transfers: new Map()
+    transfers: new Map(),
+    topics: new CanTopicTable()
   }
 }
 
@@ -166,6 +174,7 @@ function ingest(store: CaptureStore, frame: CanFrame): CanFrame {
   if (store.originMs === undefined) store.originMs = stored.timestampMs
   const transfer = store.decoder.push(stored)
   if (transfer) {
+    store.topics.add(transfer)
     for (const seq of transfer.frameSeqs) store.transfers.set(seq, transfer)
     // Keep the index no bigger than the ring: drop transfers whose frames
     // have all fallen out of it.
@@ -522,6 +531,11 @@ export function useCanBusMonitor(options: {
     selectFrame: setSelectedSeq,
     selectedFrame,
     transferFor: (seq: number) => store.transfers.get(seq),
+    topics: (nodeId?: number) => store.topics.list(nodeId),
+    showTopicFrames: (topic: CanTopicEntry) => {
+      setFilterForm({ ...DEFAULT_CAN_MONITOR_FILTER_FORM, idText: canTopicIdFilter(topic) })
+      setViewMode('stream')
+    },
     selectedTransfer: selectedSeq !== undefined ? store.transfers.get(selectedSeq) : undefined,
     recording: {
       active: rec.active,

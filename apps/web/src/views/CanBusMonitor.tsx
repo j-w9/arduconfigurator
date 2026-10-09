@@ -15,7 +15,7 @@ import {
   type CanFrameKinds,
   type CanIdTraceEntry
 } from '@arduconfig/can-core'
-import { dronecanCatalogue, type DronecanTransfer } from '@arduconfig/dronecan-dsdl'
+import type { DronecanTransfer } from '@arduconfig/dronecan-dsdl'
 import { buttonStyle } from '@arduconfig/ui-kit'
 
 import {
@@ -26,7 +26,8 @@ import {
   type CanMonitorFilterForm,
   type CanMonitorFilterState
 } from '../view-models/can-bus-monitor'
-import { buildDronecanFieldTree, summarizeDronecanValue, type DronecanFieldNode } from '../view-models/dronecan-field-tree'
+import { dronecanDisplayName, summarizeDronecanValue, transferFieldTree } from '../view-models/dronecan-field-tree'
+import { DronecanFieldTree } from './DronecanFieldTree'
 import { InfoDot } from './InfoDot'
 
 export type CanMonitorViewMode = 'stream' | 'by-id'
@@ -139,60 +140,21 @@ function FlagBadges({ frame }: { frame: Pick<CanFrame, 'extended' | 'fd' | 'rtr'
   )
 }
 
-function sectionOf(transfer: DronecanTransfer): 'msg' | 'req' | 'res' {
-  return transfer.kind === 'request' ? 'req' : transfer.kind === 'response' ? 'res' : 'msg'
-}
-
-function fieldTreeOf(transfer: DronecanTransfer): DronecanFieldNode[] | undefined {
-  if (!transfer.type || !transfer.value) return undefined
-  try {
-    return buildDronecanFieldTree(dronecanCatalogue(), transfer.type.fullName, sectionOf(transfer), transfer.value)
-  } catch {
-    return undefined
-  }
-}
-
 /**
  * The Decoded column: the DSDL type and a few fields once the frame's
  * transfer has completed; the header reading (or plain-CAN note) until then.
  */
 function decodedLabel(frame: CanFrame, transfer: DronecanTransfer | undefined): { text: string; title?: string } {
   if (!transfer?.type) return { text: describeCanFrame(frame) }
-  const name = transfer.type.shortName
+  const name = dronecanDisplayName(transfer.type.fullName)
   const route =
     transfer.kind === 'message'
       ? ` ← ${transfer.sourceNodeId}`
       : ` ${transfer.kind === 'request' ? 'req' : 'resp'} ${transfer.sourceNodeId}→${transfer.destinationNodeId}`
   if (transfer.problem) return { text: `${name}${route} · ⚠ ${transfer.problem.split(':')[0]}`, title: transfer.problem }
-  const tree = transfer.kind === 'message' ? fieldTreeOf(transfer) : undefined
+  const tree = transfer.kind === 'message' ? transferFieldTree(transfer) : undefined
   const summary = tree ? summarizeDronecanValue(tree, 2) : ''
   return { text: `${name}${route}${summary ? ` · ${summary}` : ''}`, title: transfer.type.fullName }
-}
-
-function FieldTree({ nodes, depth = 0 }: { nodes: readonly DronecanFieldNode[]; depth?: number }): ReactNode {
-  return (
-    <ul className="can-monitor__tree" role={depth === 0 ? 'tree' : 'group'}>
-      {nodes.map((entry, index) => (
-        <li key={`${entry.label}:${index}`} role="treeitem" aria-expanded={entry.children ? true : undefined}>
-          {entry.children && entry.children.length > 0 ? (
-            <details open={depth < 1}>
-              <summary>
-                <span className="can-monitor__tree-key" title={entry.typeLabel}>{entry.label}</span>
-                <span className="can-monitor__dim"> {entry.typeLabel.includes('.') ? entry.typeLabel.slice(entry.typeLabel.lastIndexOf('.') + 1) : `${entry.children.length} items`}</span>
-              </summary>
-              <FieldTree nodes={entry.children} depth={depth + 1} />
-            </details>
-          ) : (
-            <span className="can-monitor__tree-leaf">
-              <span className="can-monitor__tree-key" title={entry.typeLabel}>{entry.label}</span>
-              <span className="can-monitor__tree-value can-monitor__mono">{entry.text ?? ''}</span>
-              {entry.meaning ? <span className="can-monitor__tree-meaning">{entry.meaning}</span> : null}
-            </span>
-          )}
-        </li>
-      ))}
-    </ul>
-  )
 }
 
 /** A fixed-row virtual list: only the rows in view (plus a margin) are in the DOM. */
@@ -369,7 +331,7 @@ function FrameDetails({
   onClose: () => void
 }): ReactNode {
   const header = dronecanFrameHeader(frame)
-  const tree = transfer ? fieldTreeOf(transfer) : undefined
+  const tree = transfer ? transferFieldTree(transfer) : undefined
   const [copied, setCopied] = useState(false)
   return (
     <aside className="can-monitor__details" data-testid="can-monitor-details" aria-label="Frame details">
@@ -412,7 +374,7 @@ function FrameDetails({
           {transfer.problem ? (
             <p className="can-monitor__problem" data-testid="can-monitor-decode-problem">⚠ {transfer.problem}</p>
           ) : null}
-          {tree ? <FieldTree nodes={tree} /> : null}
+          {tree ? <DronecanFieldTree nodes={tree} /> : null}
         </section>
       ) : null}
       {header ? (

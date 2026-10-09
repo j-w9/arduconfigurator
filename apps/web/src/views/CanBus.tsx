@@ -76,6 +76,16 @@ export interface CanBusViewProps {
    *  in the DroneNet embed, which has no pop-out affordance. */
   /** The docked bus monitor (CAN tab only; the DroneNet embed has none). */
   monitorSlot?: ReactNode
+  /**
+   * The CAN tab's workspace (node rail + selection + message tables). The
+   * DroneNet embed omits it and keeps the plain node list.
+   */
+  workspace?: {
+    /** The message table for the whole bus or one node. */
+    renderMessages: (scope: 'bus' | number) => ReactNode
+    /** Nodes seen only in decoded traffic (e.g. an opened log), for the rail. */
+    extraNodeIds?: readonly number[]
+  }
   popout?: {
     openNodeIds: number[]
     /** Called straight from the click handler — window.open needs the gesture. */
@@ -116,10 +126,14 @@ export function CanBusView(props: CanBusViewProps) {
     busy = false,
     expertActions,
     popout,
-    monitorSlot
+    monitorSlot,
+    workspace
   } = props
 
   const rows = useMemo(() => buildCanBusNodeRows(state), [state])
+  // The rail's selection: the whole bus, or one node.
+  const [scope, setScope] = useState<'bus' | number>('bus')
+  const rowsShown = scope === 'bus' ? rows : rows.filter((row) => row.nodeId === scope)
   // Which device is open and WHICH of its surfaces. Previously one boolean per
   // device that opened everything at once; each feature now has its own button
   // so an operator opens the thing they came for — params, identity, live ESC
@@ -191,93 +205,71 @@ export function CanBusView(props: CanBusViewProps) {
     })
   }
 
-  return (
-    <div id="setup-panel-can">
-      <Panel title={title} subtitle={subtitle}>
-        {/* Extracted to CanEnablePrompt so the Servos ▸ Peripherals optical-flow
-            section can raise the identical offer; the default test ids keep this
-            instance byte-identical in the DOM. */}
-        {enablement && onEnableCanBus ? (
-          <CanEnablePrompt
-            triggerLabels={enablement.triggerLabels}
-            onEnable={onEnableCanBus}
-            busy={enableBusy}
-          />
-        ) : null}
-        <header className="can-bus-header">
-          <div className="can-bus-header__status">
-            <StatusBadge tone={headerTone}>
-              {state.status === 'active'
-                ? `Connected · CAN${state.bus}`
-                : state.status === 'requesting'
-                  ? 'Connecting…'
-                  : state.status === 'stopping'
-                    ? 'Disconnecting…'
-                    : state.status === 'error'
-                      ? 'Error'
-                      : 'Disconnected'}
-            </StatusBadge>
-            {state.status === 'active' ? (
-              framesPerSec !== undefined ? (
-                // Bus-traffic read-out inherited from the standalone inspector:
-                // node count, unhealthy count, live frame rate, session frames.
-                <small data-testid="can-bus-traffic-summary">
-                  {buildCanBusTrafficSummary({
-                    nodeCount: busSummary.nodeCount,
-                    unhealthyCount: busSummary.unhealthyCount,
-                    framesPerSec,
-                    framesReceived: state.framesReceived
-                  })}
-                </small>
-              ) : (
-                <small>
-                  {state.framesReceived} frames received · {state.nodes.length} node
-                  {state.nodes.length === 1 ? '' : 's'}
-                </small>
-              )
-            ) : null}
-            {state.error ? <small className="can-bus-header__error">{state.error}</small> : null}
-          </div>
+  // The rail: every node the runtime knows (named as in its card), then any
+  // seen only in decoded traffic (an opened log, a node that never sent a
+  // NodeStatus to this session).
+  const railNodes = (() => {
+    const known = rows.map((row) => {
+      const customName = getName(row.hwUniqueId ?? `node-${row.nodeId}`)
+      const isSelf = selfNodeIds.includes(row.nodeId)
+      const baseLabel = isSelf && row.label === `Node ${row.nodeId}` ? 'Autopilot (this FC)' : row.label
+      return {
+        nodeId: row.nodeId,
+        label: customName ?? baseLabel,
+        status: `${healthLabel(row.health)} · ${modeLabel(row.mode)}`,
+        tone: row.tone as string
+      }
+    })
+    const seen = new Set(known.map((entry) => entry.nodeId))
+    const extra = (workspace?.extraNodeIds ?? [])
+      .filter((nodeId) => !seen.has(nodeId))
+      .map((nodeId) => ({ nodeId, label: `Node ${nodeId}`, status: 'traffic only', tone: 'neutral' }))
+    return [...known, ...extra].sort((left, right) => left.nodeId - right.nodeId)
+  })()
 
-          <div className="can-bus-header__controls">
-            {isActive ? (
-              <button
-                type="button"
-                style={buttonStyle()}
-                onClick={onStopForward}
-                disabled={isBusy}
-                data-testid="can-bus-stop"
-              >
-                Disconnect
-              </button>
-            ) : (
-              <>
-                <label className="can-bus-header__bus-select">
-                  <span>Bus</span>
-                  <select
-                    value={String(busSelection)}
-                    onChange={(event) => setBusSelection(Number(event.target.value))}
-                    disabled={isBusy || !vehicleConnected}
-                    data-testid="can-bus-select"
-                  >
-                    <option value="1">CAN1</option>
-                    <option value="2">CAN2</option>
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  style={buttonStyle('primary')}
-                  onClick={() => onStartForward(busSelection)}
-                  disabled={isBusy || !vehicleConnected}
-                  data-testid="can-bus-start"
+  // Bus-wide ESC telemetry (observe-only). Under the node list in the plain
+  // layout; after the message table on the workspace's whole-bus page.
+  const escTable =
+    escRows.length > 0 ? (
+          <div className="dronecan-inspector__esc" data-testid="dronecan-esc-telemetry">
+            <h3>ESC telemetry</h3>
+            <p className="telemetry-note">Live uavcan.equipment.esc.Status per ESC index. Observe-only.</p>
+            <div className="mavlink-inspector__table" data-testid="dronecan-esc-table">
+              <div className="dronecan-inspector__esc-row dronecan-inspector__esc-row--head">
+                <span>ESC</span>
+                <span>RPM</span>
+                <span>Voltage</span>
+                <span>Current</span>
+                <span>Temp</span>
+                <span>Power</span>
+                <span>Errors</span>
+                <span>Last</span>
+              </div>
+              {escRows.map((row) => (
+                <div
+                  key={row.escIndex}
+                  className="dronecan-inspector__esc-row"
+                  data-testid={`dronecan-esc-${row.escIndex}`}
                 >
-                  {isBusy ? 'Working…' : `Connect to CAN${busSelection}`}
-                </button>
-              </>
-            )}
+                  <span>
+                    #{row.escIndex}
+                    <small className="dronecan-inspector__esc-node"> (node {row.nodeId})</small>
+                  </span>
+                  <span>{row.rpmLabel}</span>
+                  <span>{row.voltageLabel}</span>
+                  <span>{row.currentLabel}</span>
+                  <span>{row.temperatureLabel}</span>
+                  <span>{row.powerLabel}</span>
+                  <span>{row.errorCountLabel}</span>
+                  <span>{row.ageLabel}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </header>
+    ) : null
 
+  const body = (
+    <>
         {!vehicleConnected ? (
           <p className="can-bus-empty">Connect to a vehicle first. The CAN inspector talks to the autopilot over MAVLink.</p>
         ) : !isActive ? (
@@ -301,7 +293,7 @@ export function CanBusView(props: CanBusViewProps) {
           </p>
         ) : (
           <ul className="can-bus-nodes">
-            {rows.map((row) => {
+            {rowsShown.map((row) => {
               const node = state.nodes.find((n) => n.nodeId === row.nodeId)
               const isPoppedOut = popout?.openNodeIds.includes(row.nodeId) ?? false
               const isExpanded = expandedNode?.nodeId === row.nodeId
@@ -481,43 +473,157 @@ export function CanBusView(props: CanBusViewProps) {
         )}
 
         {/* ---- Bus-wide ESC telemetry (observe-only), from the merged inspector ---- */}
-        {escRows.length > 0 ? (
-          <div className="dronecan-inspector__esc" data-testid="dronecan-esc-telemetry">
-            <h3>ESC telemetry</h3>
-            <p className="telemetry-note">Live uavcan.equipment.esc.Status per ESC index. Observe-only.</p>
-            <div className="mavlink-inspector__table" data-testid="dronecan-esc-table">
-              <div className="dronecan-inspector__esc-row dronecan-inspector__esc-row--head">
-                <span>ESC</span>
-                <span>RPM</span>
-                <span>Voltage</span>
-                <span>Current</span>
-                <span>Temp</span>
-                <span>Power</span>
-                <span>Errors</span>
-                <span>Last</span>
-              </div>
-              {escRows.map((row) => (
-                <div
-                  key={row.escIndex}
-                  className="dronecan-inspector__esc-row"
-                  data-testid={`dronecan-esc-${row.escIndex}`}
+        {!workspace && scope === 'bus' ? escTable : null}
+    </>
+  )
+
+  return (
+    <div id="setup-panel-can">
+      <Panel title={title} subtitle={subtitle}>
+        {/* Extracted to CanEnablePrompt so the Servos ▸ Peripherals optical-flow
+            section can raise the identical offer; the default test ids keep this
+            instance byte-identical in the DOM. */}
+        {enablement && onEnableCanBus ? (
+          <CanEnablePrompt
+            triggerLabels={enablement.triggerLabels}
+            onEnable={onEnableCanBus}
+            busy={enableBusy}
+          />
+        ) : null}
+        <header className="can-bus-header">
+          <div className="can-bus-header__status">
+            <StatusBadge tone={headerTone}>
+              {state.status === 'active'
+                ? `Connected · CAN${state.bus}`
+                : state.status === 'requesting'
+                  ? 'Connecting…'
+                  : state.status === 'stopping'
+                    ? 'Disconnecting…'
+                    : state.status === 'error'
+                      ? 'Error'
+                      : 'Disconnected'}
+            </StatusBadge>
+            {state.status === 'active' ? (
+              framesPerSec !== undefined ? (
+                // Bus-traffic read-out inherited from the standalone inspector:
+                // node count, unhealthy count, live frame rate, session frames.
+                <small data-testid="can-bus-traffic-summary">
+                  {buildCanBusTrafficSummary({
+                    nodeCount: busSummary.nodeCount,
+                    unhealthyCount: busSummary.unhealthyCount,
+                    framesPerSec,
+                    framesReceived: state.framesReceived
+                  })}
+                </small>
+              ) : (
+                <small>
+                  {state.framesReceived} frames received · {state.nodes.length} node
+                  {state.nodes.length === 1 ? '' : 's'}
+                </small>
+              )
+            ) : null}
+            {state.error ? <small className="can-bus-header__error">{state.error}</small> : null}
+          </div>
+
+          <div className="can-bus-header__controls">
+            {isActive ? (
+              <button
+                type="button"
+                style={buttonStyle()}
+                onClick={onStopForward}
+                disabled={isBusy}
+                data-testid="can-bus-stop"
+              >
+                Disconnect
+              </button>
+            ) : (
+              <>
+                <label className="can-bus-header__bus-select">
+                  <span>Bus</span>
+                  <select
+                    value={String(busSelection)}
+                    onChange={(event) => setBusSelection(Number(event.target.value))}
+                    disabled={isBusy || !vehicleConnected}
+                    data-testid="can-bus-select"
+                  >
+                    <option value="1">CAN1</option>
+                    <option value="2">CAN2</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  style={buttonStyle('primary')}
+                  onClick={() => onStartForward(busSelection)}
+                  disabled={isBusy || !vehicleConnected}
+                  data-testid="can-bus-start"
                 >
-                  <span>
-                    #{row.escIndex}
-                    <small className="dronecan-inspector__esc-node"> (node {row.nodeId})</small>
+                  {isBusy ? 'Working…' : `Connect to CAN${busSelection}`}
+                </button>
+              </>
+            )}
+          </div>
+        </header>
+
+        {workspace ? (
+          // The CAN tab's workspace: a node rail on the left, the selection in
+          // the middle -- every node and every message stream for the whole
+          // bus, or one node's card and its messages -- and the bus monitor
+          // docked below. The DroneNet embed has no workspace and keeps the
+          // plain list.
+          <div className="can-workspace">
+            <nav className="can-workspace__rail" aria-label="CAN nodes" data-testid="can-node-rail">
+              <button
+                type="button"
+                className={`can-workspace__rail-item can-workspace__rail-item--bus${scope === 'bus' ? ' is-active' : ''}`}
+                aria-pressed={scope === 'bus'}
+                onClick={() => setScope('bus')}
+                data-testid="can-rail-bus"
+              >
+                <span className="can-workspace__rail-icon" aria-hidden="true">▣</span>
+                <span className="can-workspace__rail-text">
+                  <strong>Whole bus</strong>
+                  <small>
+                    {railNodes.length} node{railNodes.length === 1 ? '' : 's'}
+                  </small>
+                </span>
+              </button>
+              {railNodes.map((entry) => (
+                <button
+                  key={entry.nodeId}
+                  type="button"
+                  className={`can-workspace__rail-item${scope === entry.nodeId ? ' is-active' : ''}`}
+                  aria-pressed={scope === entry.nodeId}
+                  onClick={() => setScope(entry.nodeId)}
+                  data-testid={`can-rail-node-${entry.nodeId}`}
+                >
+                  <span className={`can-workspace__rail-dot can-workspace__rail-dot--${entry.tone}`} aria-hidden="true" />
+                  <span className="can-workspace__rail-text">
+                    <strong>{entry.label}</strong>
+                    <small>
+                      Node {entry.nodeId}
+                      {entry.status ? ` · ${entry.status}` : ''}
+                    </small>
                   </span>
-                  <span>{row.rpmLabel}</span>
-                  <span>{row.voltageLabel}</span>
-                  <span>{row.currentLabel}</span>
-                  <span>{row.temperatureLabel}</span>
-                  <span>{row.powerLabel}</span>
-                  <span>{row.errorCountLabel}</span>
-                  <span>{row.ageLabel}</span>
-                </div>
+                </button>
               ))}
+            </nav>
+            <div className="can-workspace__main">
+              {scope !== 'bus' && rowsShown.length === 0 ? (
+                <p className="can-bus-empty">
+                  Node {scope} is on the bus (its messages are below) but has not sent a NodeStatus to this session.
+                </p>
+              ) : (
+                body
+              )}
+              {workspace.renderMessages(scope)}
+              {/* ESC telemetry follows the messages on the whole-bus page
+                  (the same esc.Status streams, as a table per ESC). */}
+              {scope === 'bus' ? escTable : null}
             </div>
           </div>
-        ) : null}
+        ) : (
+          body
+        )}
       </Panel>
       {/* Docked at the foot of the tab (sticky to the bottom of the workspace),
           so the bus traffic stays in view while the node list scrolls. */}

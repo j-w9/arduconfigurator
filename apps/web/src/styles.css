@@ -21776,3 +21776,262 @@ button.mavlink-inspector__sent-row {
   font-size: var(--text-2xs);
   font-weight: 700;
 }
+
+/* ── CAN workspace: node rail + selection (+ the docked bus monitor) ───── */
+.can-workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  margin-top: var(--space-3);
+}
+.can-workspace__rail {
+  position: sticky;
+  top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel-raised);
+}
+.can-workspace__rail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.can-workspace__rail-item:hover {
+  background: rgba(var(--edge-rgb), 0.04);
+}
+.can-workspace__rail-item.is-active {
+  border-color: var(--border-accent);
+  background: var(--accent-weak);
+}
+.can-workspace__rail-item--bus {
+  margin-bottom: 4px;
+  border-bottom-color: var(--border-soft);
+}
+.can-workspace__rail-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.can-workspace__rail-text strong {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.can-workspace__rail-text small {
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+}
+.can-workspace__rail-icon {
+  width: 10px;
+  color: var(--text-muted);
+}
+.can-workspace__rail-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--surface-600);
+}
+.can-workspace__rail-dot--success { background: var(--success); }
+.can-workspace__rail-dot--warning { background: var(--warning); }
+.can-workspace__rail-dot--danger { background: var(--danger); }
+.can-workspace__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* Messages: one row per decoded DroneCAN stream. */
+.can-messages {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.can-messages__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-panel-raised);
+}
+.can-messages__head h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.can-messages__count {
+  color: var(--text-dim);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+}
+.can-messages__empty {
+  margin: 0;
+  padding: var(--space-3) 12px;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.can-messages__table {
+  overflow-x: auto;
+  contain: inline-size;
+}
+.can-messages__row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.1fr) 82px 70px minmax(200px, 2fr) 64px;
+  align-items: center;
+  gap: 10px;
+  min-width: 600px;
+  padding: 5px 12px;
+  font-size: var(--text-xs);
+}
+.can-messages__row.has-route {
+  grid-template-columns: minmax(150px, 1.1fr) minmax(110px, 0.8fr) 82px 70px minmax(200px, 2fr) 64px;
+  min-width: 740px;
+}
+.can-messages__row--head {
+  color: var(--text-dim);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border-soft);
+}
+.can-messages__item {
+  border-bottom: 1px solid rgba(var(--edge-rgb), 0.04);
+}
+.can-messages__item:last-child {
+  border-bottom: 0;
+}
+.can-messages__item.is-open {
+  background: rgba(var(--edge-rgb), 0.02);
+}
+.can-messages__item.is-stale {
+  opacity: 0.55;
+}
+.can-messages__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.can-messages__chevron {
+  color: var(--text-dim);
+  transition: transform 120ms ease;
+}
+.can-messages__item.is-open .can-messages__chevron {
+  transform: rotate(90deg);
+}
+.can-messages__route,
+.can-messages__rate {
+  color: var(--text-muted);
+  font-family: var(--font-data);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.can-messages__kind {
+  justify-self: start;
+  padding: 0 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+.can-messages__kind--request,
+.can-messages__kind--response {
+  border-color: rgba(120, 180, 255, 0.45);
+  color: rgb(140, 190, 255);
+}
+.can-messages__latest {
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-data);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.can-messages__frames {
+  justify-self: end;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  cursor: pointer;
+}
+.can-messages__frames:hover {
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+.can-messages__detail {
+  padding: 4px 12px 12px 30px;
+}
+.can-messages__detail-head {
+  margin: 0 0 6px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.can-messages__detail-head strong {
+  color: var(--text);
+}
+.can-messages__problem {
+  margin: 0 0 6px;
+  color: var(--warning);
+  font-size: var(--text-xs);
+}
+@media (max-width: 860px) {
+  .can-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .can-workspace__rail {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    contain: inline-size;
+  }
+  .can-workspace__rail-item {
+    flex: 0 0 auto;
+    width: auto;
+  }
+  .can-workspace__rail-item--bus {
+    margin-bottom: 0;
+  }
+}
