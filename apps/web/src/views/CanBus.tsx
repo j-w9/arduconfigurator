@@ -96,6 +96,8 @@ export interface CanBusViewProps {
     notice?: ReactNode
     /** Shown under All devices: node ID allocation. */
     allocator?: ReactNode
+    /** Node messages, for the rail's scope: the whole bus, or one node. */
+    nodeMessages?: (scope: 'bus' | number) => ReactNode
     /** The sub-tabs: Devices (this view's rail and node cards), Messages, Frames, Plot. */
     pages?: {
       page: CanSubTab
@@ -724,6 +726,7 @@ export function CanBusView(props: CanBusViewProps) {
                   ) : (
                     body
                   )}
+                  {workspace.nodeMessages ? workspace.nodeMessages(scope) : null}
                   {scope === 'bus' ? workspace.allocator : null}
                   {scope === 'bus' ? escTable : null}
                 </div>

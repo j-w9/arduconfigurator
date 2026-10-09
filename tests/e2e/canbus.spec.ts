@@ -738,3 +738,39 @@ test.describe('CAN bus monitor: name filter', () => {
     }
   })
 })
+
+test.describe('CAN tab: node messages and bootloader flashing', () => {
+  async function openCan(page: Page): Promise<void> {
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-stop')).toBeVisible()
+  }
+
+  test('Node messages lists what nodes log, warnings first, folded, per node', async ({ page }) => {
+    await openCan(page)
+    const messages = page.getByTestId('can-node-messages')
+    // The demo ESC node logs a warning every few seconds.
+    await expect(messages.getByTestId('can-node-message').first()).toContainText('ESC 2 temperature high', { timeout: 20_000 })
+    await expect(messages.getByTestId('can-node-message').first()).toContainText('warning')
+    await expect(messages.getByTestId('can-node-message').first()).toContainText('50 org.ardupilot.ap_periph')
+    // Narrowed to another node, it is not there.
+    await page.getByTestId('can-rail-node-124').click()
+    await expect(page.getByTestId('can-node-messages-empty')).toBeVisible()
+  })
+
+  test('Flash bootloader asks twice, writes FLASH_BOOTLOADER, and reports what the node says', async ({ page }) => {
+    await openCan(page)
+    await expect(page.getByTestId('can-bus-node-toggle-50')).toContainText(/Params \([1-9]/, { timeout: 15_000 })
+    await page.getByTestId('can-bus-node-actions-50').click()
+    await page.getByTestId('dronecan-bootloader-start-50').click()
+    await page.getByTestId('dronecan-bootloader-confirm-50').click()
+    await expect(page.getByTestId('dronecan-bootloader-50')).toContainText('Keep the node powered')
+    await page.getByTestId('dronecan-bootloader-confirm2-50').click()
+    await expect(page.getByTestId('dronecan-bootloader-status-50')).toHaveText('Bootloader flashed.', { timeout: 15_000 })
+    // The node's answer is in Node messages too.
+    await expect(page.getByTestId('can-node-messages')).toContainText('Flash bootloader OK')
+  })
+})

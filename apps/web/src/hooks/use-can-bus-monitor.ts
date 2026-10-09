@@ -33,6 +33,7 @@ import {
   type CanMonitorFilterState
 } from '../view-models/can-bus-monitor'
 import { CanTopicTable, canTopicIdFilter, type CanTopicEntry } from '../view-models/can-topics'
+import { canLogEntryFromValue, type CanNodeLogEntry } from '../view-models/can-node-messages'
 import {
   canPlotSeriesKey,
   nextCanPlotColor,
@@ -129,6 +130,9 @@ export interface UseCanBusMonitorResult {
   transferFor: (seq: number) => DronecanTransfer | undefined
   /** A multi-frame transfer's shade (0..CAN_TRANSFER_SHADES-1), so its frames read as one. */
   transferShade: (transfer: DronecanTransfer) => number | undefined
+  /** What the nodes logged (live, or in the open log), oldest first. */
+  nodeLogs: () => readonly CanNodeLogEntry[]
+  clearNodeLogs: () => void
   selectedTransfer?: DronecanTransfer
   /** DroneCAN message streams on the bus (or in the open log), optionally one node's. */
   topics: (nodeId?: number) => CanTopicEntry[]
@@ -178,6 +182,8 @@ interface CaptureStore {
   /** A shade per multi-frame transfer, in completion order, so neighbours differ. */
   shades: WeakMap<DronecanTransfer, number>
   shadeCount: number
+  /** What the nodes logged (uavcan.protocol.debug.LogMessage), oldest first. */
+  logs: CanNodeLogEntry[]
 }
 
 function newStore(capacity: number): CaptureStore {
@@ -190,9 +196,13 @@ function newStore(capacity: number): CaptureStore {
     topics: new CanTopicTable(),
     plotSamples: new Map(),
     shades: new WeakMap(),
-    shadeCount: 0
+    shadeCount: 0,
+    logs: []
   }
 }
+
+/** Node messages kept (per store). */
+const NODE_LOG_LIMIT = 1000
 
 /** How many shades multi-frame transfers cycle through in the frame list. */
 export const CAN_TRANSFER_SHADES = 4
@@ -210,6 +220,13 @@ function ingest(store: CaptureStore, frame: CanFrame): CanFrame {
     store.topics.add(transfer)
     for (const seq of transfer.frameSeqs) store.transfers.set(seq, transfer)
     if (transfer.frameSeqs.length > 1) store.shades.set(transfer, store.shadeCount++ % CAN_TRANSFER_SHADES)
+    if (transfer.type?.fullName === 'uavcan.protocol.debug.LogMessage' && transfer.direction === 'rx') {
+      const entry = canLogEntryFromValue(transfer.value, transfer.sourceNodeId, transfer.timestampMs)
+      if (entry) {
+        store.logs.push(entry)
+        if (store.logs.length > NODE_LOG_LIMIT) store.logs.splice(0, store.logs.length - NODE_LOG_LIMIT)
+      }
+    }
     // Keep the index no bigger than the ring: drop transfers whose frames
     // have all fallen out of it.
     if (store.transfers.size > store.buffer.capacity * 1.25) {
@@ -644,6 +661,11 @@ export function useCanBusMonitor(options: {
     selectedFrame,
     transferFor: (seq: number) => store.transfers.get(seq),
     transferShade: (transfer: DronecanTransfer) => store.shades.get(transfer),
+    nodeLogs: () => store.logs,
+    clearNodeLogs: () => {
+      store.logs.length = 0
+      setVersion((value) => value + 1)
+    },
     topics: (nodeId?: number) => store.topics.list(nodeId),
     plotSeries,
     addPlotSeries,

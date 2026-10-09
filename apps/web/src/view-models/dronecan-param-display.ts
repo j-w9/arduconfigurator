@@ -19,6 +19,17 @@ export interface DronecanParamCatalogDef {
   maximum?: number
   unit?: string
   options?: ReadonlyArray<{ value: number; label: string }>
+  /** Bitmask bit labels (bit index -> meaning). Kept apart from `options`,
+   *  which is a single-select enum and would mislabel a bitmask value. (Not
+   *  named `bitmask`: the FC catalog's ParameterDefinition, which is passed
+   *  through this type too, uses `bitmask: boolean`.) */
+  bits?: ReadonlyArray<{ bit: number; label: string }>
+  /** Suggested edit step (ArduPilot @Increment; same name as the FC catalog). */
+  step?: number
+  /** A change only takes effect after the node reboots. */
+  rebootRequired?: boolean
+  /** Documented read-only (statistics etc.). */
+  readOnly?: boolean
 }
 
 export type DronecanParamCatalogLookup = (name: string) => DronecanParamCatalogDef | undefined

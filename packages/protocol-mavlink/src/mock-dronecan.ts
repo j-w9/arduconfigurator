@@ -59,6 +59,9 @@ import {
 } from './dronecan.js'
 
 const MAV_CMD_CAN_FORWARD = 32000
+/** uavcan.protocol.debug.LogMessage (DSDL 16383). */
+const LOG_MESSAGE_DT_ID = 16383
+const LOG_MESSAGE_SIGNATURE = 0xd654a48e0c049d75n
 /** uavcan.equipment.ahrs.MagneticFieldStrength2 (DSDL 1002). */
 const MAGNETIC_FIELD_STRENGTH2_DT_ID = 1002
 const MAGNETIC_FIELD_STRENGTH2_SIGNATURE = 0xb6ac0c442430297en
@@ -132,7 +135,8 @@ const NODES: MockDronecanNode[] = [
     params: [
       { name: 'CAN_NODE', value: int(50), default: int(0), min: int(0), max: int(127) },
       { name: 'BATT_MONITOR', value: int(4), default: int(0), min: int(0), max: int(20) },
-      { name: 'BATT_CAPACITY', value: real(5200), default: real(0), min: real(0), max: real(64000) }
+      { name: 'BATT_CAPACITY', value: real(5200), default: real(0), min: real(0), max: real(64000) },
+      { name: 'FLASH_BOOTLOADER', value: int(0), default: int(0), min: int(0), max: int(1) }
     ]
   },
   {
@@ -268,6 +272,20 @@ export function createDronecanBusSimulator(options: DronecanBusSimulatorOptions 
   }
   let magLastMs: number | undefined
   let magTransferId = 0
+  // Node log messages (uavcan.protocol.debug.LogMessage), as AP_Periph's
+  // can_printf sends them: level (DEBUG 0 .. ERROR 3), source, text.
+  let logTransferId = 0
+  let broadcastTick = 0
+  const logMessageFrames = (node: MockDronecanNode, level: number, text: string): CanFrameMessage[] => {
+    const bytes = new TextEncoder().encode(text).subarray(0, 90)
+    const payload = new Uint8Array(1 + bytes.length)
+    payload[0] = (level & 0x7) << 5 // no source: its length (low 5 bits) is 0
+    payload.set(bytes, 1)
+    return dronecanBuildBroadcastFrames(
+      { messageTypeId: LOG_MESSAGE_DT_ID, signature: LOG_MESSAGE_SIGNATURE, sourceNodeId: node.nodeId, transferId: (logTransferId = (logTransferId + 1) & 0x1f) },
+      payload
+    ).map((frame) => toCanFrame(frame.canId, frame.data))
+  }
   /** How much of its unique id the unallocated node has had echoed back. */
   let dnaOffset = 0
   let dnaTransferId = 0
@@ -635,14 +653,23 @@ export function createDronecanBusSimulator(options: DronecanBusSimulatorOptions 
       switch (serviceTypeId) {
         case DRONECAN_GET_NODE_INFO_SERVICE_ID:
           return serviceResponseFrames(node, DRONECAN_GET_NODE_INFO_SERVICE_ID, DRONECAN_GET_NODE_INFO_SIGNATURE, nodeInfoResponse(node), tail.transferId)
-        case DRONECAN_PARAM_GETSET_SERVICE_ID:
-          return serviceResponseFrames(
+        case DRONECAN_PARAM_GETSET_SERVICE_ID: {
+          const response = serviceResponseFrames(
             node,
             DRONECAN_PARAM_GETSET_SERVICE_ID,
             DRONECAN_PARAM_GETSET_SIGNATURE,
             encodeDronecanGetSetResponse(handleGetSet(node, finished.payload)),
             tail.transferId
           )
+          // AP_Periph acts on FLASH_BOOTLOADER = 1 at once: it puts it back to 0,
+          // copies its embedded bootloader, and logs the outcome.
+          const trigger = node.params.find((param) => param.name === 'FLASH_BOOTLOADER')
+          if (trigger?.value.tag === 'int64' && trigger.value.int64 === 1n) {
+            trigger.value = int(0)
+            return [...response, ...logMessageFrames(node, 1, 'Flash bootloader OK')]
+          }
+          return response
+        }
         case DRONECAN_PARAM_EXECUTE_OPCODE_SERVICE_ID:
           return serviceResponseFrames(node, DRONECAN_PARAM_EXECUTE_OPCODE_SERVICE_ID, DRONECAN_PARAM_EXECUTE_OPCODE_SIGNATURE, encodeDronecanExecuteOpcodeResponse(0n, true), tail.transferId)
         case DRONECAN_RESTART_NODE_SERVICE_ID:
@@ -683,7 +710,11 @@ export function createDronecanBusSimulator(options: DronecanBusSimulatorOptions 
       const waiting = active ? nodes.find((node) => node.nodeId === 0) : undefined
       // No answer since the last request: start over, as AP_Periph does.
       if (waiting) dnaOffset = 0
-      return [...emitNodeStatus(), ...emitEscStatus(), ...(waiting ? [allocationRequest(waiting)] : [])]
+      // Now and then the ESC node has something to say.
+      broadcastTick += 1
+      const periph = active && broadcastTick % 5 === 1 ? nodes.find((node) => node.nodeId === 50) : undefined
+      const logs = periph ? logMessageFrames(periph, 2, 'ESC 2 temperature high') : []
+      return [...emitNodeStatus(), ...emitEscStatus(), ...(waiting ? [allocationRequest(waiting)] : []), ...logs]
     },
     plainTraffic: (nowMs: number): (CanFrameMessage | CanFdFrameMessage)[] => {
       if (!active) {

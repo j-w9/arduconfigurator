@@ -119,6 +119,76 @@ export interface CanDeviceExpertActions {
   onChangeNodeId?: (nodeId: number, newNodeId: number) => void
   /** Node IDs already on the bus, so a clash is caught before sending. */
   takenNodeIds?: readonly number[]
+  /** Flash a node's bootloader from its firmware (FLASH_BOOTLOADER = 1). Omit to hide. */
+  onFlashBootloader?: (nodeId: number) => void
+  /** The bootloader flash in progress or just finished, if any. */
+  bootloaderFlash?: { nodeId: number; status: 'flashing' | 'ok' | 'failed' | 'timeout'; message: string }
+}
+
+/** AP_Periph's bootloader-update trigger (Tools/AP_Periph/Parameters.cpp). */
+const FLASH_BOOTLOADER_PARAM = 'FLASH_BOOTLOADER'
+
+/**
+ * Flash the node's bootloader from the copy embedded in its firmware. Asks
+ * twice -- a node whose bootloader write fails mid-way may not boot -- then
+ * shows what the node reports.
+ */
+function BootloaderFlash(props: {
+  nodeId: number
+  disabled: boolean
+  state: CanDeviceExpertActions['bootloaderFlash']
+  onFlash: (nodeId: number) => void
+}): ReactElement {
+  const { nodeId } = props
+  const [step, setStep] = useState<0 | 1 | 2>(0)
+  const mine = props.state?.nodeId === nodeId ? props.state : undefined
+  const flashing = mine?.status === 'flashing'
+  return (
+    <div className="dronecan-inspector__bootloader" data-testid={`dronecan-bootloader-${nodeId}`}>
+      {step === 0 ? (
+        <button type="button" style={buttonStyle()} disabled={props.disabled || flashing} onClick={() => setStep(1)} data-testid={`dronecan-bootloader-start-${nodeId}`}>
+          {flashing ? 'Flashing bootloader…' : 'Flash bootloader'}
+        </button>
+      ) : step === 1 ? (
+        <span className="dronecan-inspector__node-id">
+          <span className="dronecan-inspector__confirm-text">
+            Rewrite node #{nodeId}&apos;s bootloader from the copy in its firmware?
+          </span>
+          <button type="button" style={buttonStyle('primary')} onClick={() => setStep(2)} data-testid={`dronecan-bootloader-confirm-${nodeId}`}>
+            Continue
+          </button>
+          <button type="button" style={buttonStyle()} onClick={() => setStep(0)}>
+            Cancel
+          </button>
+        </span>
+      ) : (
+        <span className="dronecan-inspector__node-id">
+          <span className="dronecan-inspector__confirm-text dronecan-inspector__danger-text">
+            Sure? Keep the node powered until it reports — a bootloader cut off mid-write may not boot.
+          </span>
+          <button
+            type="button"
+            style={buttonStyle('primary')}
+            onClick={() => {
+              setStep(0)
+              props.onFlash(nodeId)
+            }}
+            data-testid={`dronecan-bootloader-confirm2-${nodeId}`}
+          >
+            Flash bootloader now
+          </button>
+          <button type="button" style={buttonStyle()} onClick={() => setStep(0)}>
+            Cancel
+          </button>
+        </span>
+      )}
+      {mine ? (
+        <p className={`dronecan-inspector__bootloader-status is-${mine.status}`} data-testid={`dronecan-bootloader-status-${nodeId}`}>
+          {mine.message}
+        </p>
+      ) : null}
+    </div>
+  )
 }
 
 /** AP_Periph's node ID parameter (Tools/AP_Periph/Parameters.cpp). */
@@ -731,9 +801,9 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 onClick={applyAndSaveDrafts}
                 disabled={validChanges.length === 0 || updateInProgress}
                 data-testid={`can-bus-apply-all-${nodeId}`}
-                title="Write every staged value to the node, persist it to flash (survives a power cycle), then re-fetch."
+                title="Write every staged value to the node and save it there (DroneCAN keeps a value only once saved), then re-fetch."
               >
-                Apply &amp; Save ({validChanges.length})
+                Apply All ({validChanges.length})
               </button>
               <button
                 type="button"
@@ -741,7 +811,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 onClick={() => onDropAllDrafts(nodeId)}
                 data-testid={`can-bus-drop-all-${nodeId}`}
               >
-                Drop all
+                Discard All
               </button>
             </div>
           </header>
@@ -753,13 +823,26 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                   {change.currentLabel} → {change.nextLabel}
                   {change.parsed === undefined ? <em> (invalid)</em> : null}
                 </span>
+                {/* One change on its own, as the Parameters page's per-row Apply. */}
+                <button
+                  type="button"
+                  style={buttonStyle('primary')}
+                  onClick={() => {
+                    if (change.parsed === undefined) return
+                    onApplyAndSave(nodeId, [{ name: change.name, value: change.parsed }])
+                  }}
+                  disabled={change.parsed === undefined || updateInProgress}
+                  data-testid={`can-bus-staged-apply-${nodeId}-${change.name}`}
+                >
+                  Apply
+                </button>
                 <button
                   type="button"
                   style={buttonStyle()}
                   onClick={() => onDropDraft(nodeId, change.name)}
                   data-testid={`can-bus-staged-drop-${nodeId}-${change.name}`}
                 >
-                  Drop
+                  Discard
                 </button>
               </li>
             ))}
@@ -957,6 +1040,14 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 Restart node
               </button>
             )}
+            {expertActions.onFlashBootloader && node.parameters.some((entry) => entry.name === FLASH_BOOTLOADER_PARAM) && !confirmRestart ? (
+              <BootloaderFlash
+                nodeId={nodeId}
+                disabled={busy || updateInProgress}
+                state={expertActions.bootloaderFlash}
+                onFlash={expertActions.onFlashBootloader}
+              />
+            ) : null}
             {expertActions.onChangeNodeId && node.parameters.some((entry) => entry.name === CAN_NODE_PARAM) && !confirmRestart ? (
               <NodeIdChange
                 nodeId={nodeId}
