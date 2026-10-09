@@ -301,6 +301,8 @@ import { CanPlotView } from './views/CanPlot'
 import { CanSendView } from './views/CanSend'
 import { useCanSender } from './hooks/use-can-sender'
 import { useCanAdapter } from './hooks/use-can-adapter'
+import { useCanAllocationTable } from './hooks/use-can-allocation-table'
+import { CanAllocatorView } from './views/CanAllocator'
 import { SLCAN_BITRATES } from '@arduconfig/can-core'
 import { dronecanCatalogue } from '@arduconfig/dronecan-dsdl'
 import type { CanSubTab } from './views/CanBus'
@@ -2706,6 +2708,12 @@ export function App() {
         .map((topic) => topic.sourceNodeId)
     )
   ]
+  // Node ID allocation: the table this browser remembers, and whether a node
+  // without an ID has been asking (its anonymous Allocation requests).
+  const canAllocationTable = useCanAllocationTable({ backend: canBackend, allocator: canBus.allocator })
+  const canNodeAsking = canBusMonitor
+    .topics()
+    .some((topic) => topic.kind === 'anonymous' && topic.last.type?.shortName === 'Allocation' && Date.now() - topic.last.timestampMs < 3000)
   const canMessageNodes = [...new Set([...canBus.nodes.map((node) => node.nodeId), ...canExtraNodeIds])]
     .sort((left, right) => left - right)
     .map((nodeId) => ({ nodeId, label: canNodeLabel(nodeId) ?? '' }))
@@ -6867,9 +6875,11 @@ export function App() {
         void canBackend?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image)
       },
       onCancelFirmwareUpdate: () => { canBackend?.cancelCanBusNodeFirmwareUpdate() },
-      firmwareOnline: dronecanFirmwareOnline
+      firmwareOnline: dronecanFirmwareOnline,
+      onChangeNodeId: (nodeId: number, newNodeId: number) => { void canBackend?.changeCanBusNodeId(nodeId, newNodeId) },
+      takenNodeIds: canBus.nodes.map((node) => node.nodeId)
     }),
-    [canBus.firmwareUpdate, canBackend, dronecanFirmwareOnline]
+    [canBus.firmwareUpdate, canBus.nodes, canBackend, dronecanFirmwareOnline]
   )
   const baseVisibleAppViews = useMemo(
     () =>
@@ -10374,6 +10384,23 @@ export function App() {
         }
         workspace={{
           extraNodeIds: canExtraNodeIds,
+          // Node ID allocation (Expert: it acts on the bus). The autopilot runs
+          // its own allocator on its buses, so this is offered on an adapter.
+          allocator:
+            isExpertMode && canBus.status === 'active' ? (
+              <CanAllocatorView
+                state={canBus.allocator}
+                unavailableReason={
+                  canOnAdapter
+                    ? undefined
+                    : 'The autopilot hands out node IDs on its own buses. This is for a bench bus on a USB-CAN adapter.'
+                }
+                nodeAsking={canNodeAsking}
+                onToggle={canAllocationTable.toggle}
+                onForget={canAllocationTable.forget}
+                nodeLabel={canNodeLabel}
+              />
+            ) : undefined,
           // An opened log feeds Messages, Frames and Plot alike; say so above
           // every sub-tab, with the way back.
           notice:

@@ -22607,3 +22607,98 @@ button.mavlink-inspector__sent-row {
 .can-bus-header__controls:has(.can-bus-header__adapter) {
   flex-wrap: wrap;
 }
+
+/* CAN node card: change node ID. */
+.dronecan-inspector__node-id {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.dronecan-inspector__node-id label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.dronecan-inspector__node-id input {
+  width: 64px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-family: var(--font-data);
+}
+.dronecan-inspector__node-id input[aria-invalid='true'] {
+  border-color: var(--warning);
+}
+.dronecan-inspector__node-id small {
+  flex-basis: 100%;
+  color: var(--text-muted);
+}
+.dronecan-inspector__node-id small.dronecan-inspector__node-id-problem {
+  color: var(--warning);
+}
+
+/* CAN ▸ Devices: node ID allocation. */
+.can-allocator {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--space-3);
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel-raised);
+  font-size: var(--text-sm);
+}
+.can-allocator__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.can-allocator__head h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.can-allocator__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.can-allocator__status {
+  margin: 0;
+  color: var(--text-muted);
+}
+.can-allocator__status.is-asking {
+  color: var(--warning);
+}
+.can-allocator__table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.can-allocator__table li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-3);
+  min-width: 0;
+}
+.can-allocator > .can-monitor__tool {
+  align-self: flex-start;
+}

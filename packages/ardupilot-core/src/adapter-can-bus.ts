@@ -111,6 +111,15 @@ export class AdapterCanBus {
   cancelCanBusNodeFirmwareUpdate(): void {
     this.service.cancelFirmwareUpdate()
   }
+  async changeCanBusNodeId(nodeId: number, newNodeId: number): Promise<void> {
+    return this.service.changeNodeId(nodeId, newNodeId)
+  }
+  setCanNodeAllocator(enabled: boolean, seed?: readonly { nodeId: number; uniqueId: string }[]): void {
+    this.service.setAllocatorEnabled(enabled, seed)
+  }
+  forgetCanNodeAllocations(): void {
+    this.service.forgetAllocations()
+  }
 
   private notify(): void {
     this.snapshot = this.service.getSnapshot()

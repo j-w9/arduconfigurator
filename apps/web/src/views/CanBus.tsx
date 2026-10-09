@@ -94,6 +94,8 @@ export interface CanBusViewProps {
     extraNodeIds?: readonly number[]
     /** A notice shown above every sub-tab (an opened log, say). */
     notice?: ReactNode
+    /** Shown under All devices: node ID allocation. */
+    allocator?: ReactNode
     /** The sub-tabs: Devices (this view's rail and node cards), Messages, Frames, Plot. */
     pages?: {
       page: CanSubTab
@@ -719,6 +721,7 @@ export function CanBusView(props: CanBusViewProps) {
                   ) : (
                     body
                   )}
+                  {scope === 'bus' ? workspace.allocator : null}
                   {scope === 'bus' ? escTable : null}
                 </div>
               </div>

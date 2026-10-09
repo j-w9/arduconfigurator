@@ -819,6 +819,27 @@ export interface CanBusState {
   nodes: DronecanInspectedNode[]
   /** Latest ESC telemetry per esc_index (uavcan.equipment.esc.Status). */
   escTelemetry: DronecanEscTelemetry[]
+  /** Dynamic node ID allocation, once it has been switched on (or another allocator was seen). */
+  allocator?: DronecanAllocatorState
+}
+
+/** One node ID the allocator knows: one it handed out, or a node already on the bus. */
+export interface DronecanAllocationEntry {
+  nodeId: number
+  /** 16-byte unique id, hex. */
+  uniqueId: string
+  source: 'allocated' | 'seen'
+  atMs?: number
+}
+
+export interface DronecanAllocatorState {
+  enabled: boolean
+  /** Newest first. */
+  entries: DronecanAllocationEntry[]
+  /** Another allocator answering on this bus (the autopilot's own), by node id. */
+  otherAllocatorNodeId?: number
+  /** A node part-way through asking (its unique id so far, hex). */
+  pending?: { uniqueId: string; atMs: number }
 }
 
 /**

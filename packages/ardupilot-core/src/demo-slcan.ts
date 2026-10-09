@@ -11,7 +11,7 @@ const encoder = new TextEncoder()
 const MAV_CMD_CAN_FORWARD = 32000
 
 export function createDemoSlcanIo(): SlcanByteIo {
-  const sim = createDronecanBusSimulator()
+  const sim = createDronecanBusSimulator({ unallocatedNode: true })
   const dataListeners = new Set<(bytes: Uint8Array) => void>()
   const statusListeners = new Set<(status: { kind: string }) => void>()
   const decoder = new TextDecoder()

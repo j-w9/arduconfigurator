@@ -1266,3 +1266,48 @@ export function encodeDronecanExecuteOpcodeResponse(argument: bigint, ok: boolea
   out[6] = ok ? 1 : 0
   return out
 }
+
+// ---------------------------------------------------------------------------
+// uavcan.protocol.dynamic_node_id.Allocation (message 1): dynamic node ID
+// allocation. A node without an ID sends its unique ID ANONYMOUSLY (source 0)
+// in up to three parts (6 + 6 + 4 bytes); the allocator echoes what it has so
+// far, then answers the last part with the node ID.
+// Layout: node_id uint7 | first_part_of_unique_id bool | unique_id uint8[<=16]
+// (the array is last, so on classic CAN it has no length prefix).
+
+export const DRONECAN_ALLOCATION_DT_ID = 1
+export const DRONECAN_ALLOCATION_SIGNATURE = 0x0b2a812620a11d40n
+/** The allocator forgets a half-finished request after this (FOLLOWUP_TIMEOUT_MS). */
+export const DRONECAN_ALLOCATION_FOLLOWUP_TIMEOUT_MS = 500
+
+export interface DronecanAllocation {
+  nodeId: number
+  firstPartOfUniqueId: boolean
+  uniqueId: Uint8Array
+}
+
+export function decodeDronecanAllocation(payload: Uint8Array): DronecanAllocation | undefined {
+  if (payload.length < 1 || payload.length > 17) return undefined
+  return {
+    nodeId: payload[0] >> 1,
+    firstPartOfUniqueId: (payload[0] & 1) === 1,
+    uniqueId: payload.slice(1)
+  }
+}
+
+export function encodeDronecanAllocation(allocation: DronecanAllocation): Uint8Array {
+  const out = new Uint8Array(1 + Math.min(16, allocation.uniqueId.length))
+  out[0] = ((allocation.nodeId & 0x7f) << 1) | (allocation.firstPartOfUniqueId ? 1 : 0)
+  out.set(allocation.uniqueId.subarray(0, 16), 1)
+  return out
+}
+
+/** An anonymous (source 0) message frame whose type id ends in Allocation's low two bits. */
+export function dronecanIsAnonymousAllocationFrame(canId: number): boolean {
+  return (canId & 0x7f) === 0 && ((canId >>> 7) & 1) === 0 && ((canId >>> 8) & 0x3) === (DRONECAN_ALLOCATION_DT_ID & 0x3)
+}
+
+/** An anonymous message's CAN id: a random 14-bit discriminator in place of the type id's upper bits. */
+export function dronecanEncodeAnonymousCanId(priority: number, messageTypeId: number, discriminator: number): number {
+  return (((priority & 0x1f) << 24) | ((discriminator & 0x3fff) << 10) | ((messageTypeId & 0x3) << 8)) >>> 0
+}

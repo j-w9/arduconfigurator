@@ -14,7 +14,7 @@
 // popout is a React portal into a child window, NOT a second runtime, so both
 // copies read the same snapshot and share the same draft map.
 
-import { useState } from 'react'
+import { useState, type ReactElement } from 'react'
 
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type {
@@ -109,6 +109,82 @@ export interface CanDeviceExpertActions {
   /** Online firmware lookup (desktop-only). Omit to hide the online affordance
    *  entirely; pass `available: false` to show the degrade note. */
   firmwareOnline?: DronecanFirmwareOnlineSource
+  /** Give a node a new ID (CAN_NODE, save, restart). Omit to hide. */
+  onChangeNodeId?: (nodeId: number, newNodeId: number) => void
+  /** Node IDs already on the bus, so a clash is caught before sending. */
+  takenNodeIds?: readonly number[]
+}
+
+/** AP_Periph's node ID parameter (Tools/AP_Periph/Parameters.cpp). */
+const CAN_NODE_PARAM = 'CAN_NODE'
+
+/**
+ * Change a node's ID: writes CAN_NODE, saves, and restarts the node, which
+ * comes back under the new ID. 0 hands the choice to an allocator. Only for
+ * nodes that have CAN_NODE (AP_Periph firmware).
+ */
+function NodeIdChange(props: {
+  nodeId: number
+  takenNodeIds: readonly number[]
+  disabled: boolean
+  onChange: (nodeId: number, newNodeId: number) => void
+}): ReactElement {
+  const { nodeId } = props
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const value = Number(text)
+  const problem =
+    text.trim() === ''
+      ? undefined
+      : !Number.isInteger(value) || value < 0 || value > 125
+        ? '1 to 125, or 0 to let an allocator choose.'
+        : value === nodeId
+          ? 'That is its ID now.'
+          : value !== 0 && props.takenNodeIds.includes(value)
+            ? `Node ${value} is already on the bus.`
+            : undefined
+  if (!open) {
+    return (
+      <button type="button" style={buttonStyle()} onClick={() => setOpen(true)} disabled={props.disabled} data-testid={`dronecan-node-id-${nodeId}`}>
+        Change node ID
+      </button>
+    )
+  }
+  return (
+    <span className="dronecan-inspector__node-id" data-testid={`dronecan-node-id-form-${nodeId}`}>
+      <label>
+        <span>New ID</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={text}
+          onChange={(event) => setText(event.target.value.trim())}
+          aria-invalid={problem !== undefined}
+          placeholder="1–125"
+          data-testid={`dronecan-node-id-input-${nodeId}`}
+        />
+      </label>
+      <button
+        type="button"
+        style={buttonStyle('primary')}
+        onClick={() => {
+          props.onChange(nodeId, value)
+          setOpen(false)
+          setText('')
+        }}
+        disabled={props.disabled || text.trim() === '' || problem !== undefined}
+        data-testid={`dronecan-node-id-apply-${nodeId}`}
+      >
+        Save and restart
+      </button>
+      <button type="button" style={buttonStyle()} onClick={() => setOpen(false)}>
+        Cancel
+      </button>
+      <small className={problem ? 'dronecan-inspector__node-id-problem' : undefined}>
+        {problem ?? 'Writes CAN_NODE, saves, and restarts the node under its new ID.'}
+      </small>
+    </span>
+  )
 }
 
 export interface CanDeviceInspectorViewProps {
@@ -757,6 +833,14 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 Restart node
               </button>
             )}
+            {expertActions.onChangeNodeId && node.parameters.some((entry) => entry.name === CAN_NODE_PARAM) && !confirmRestart ? (
+              <NodeIdChange
+                nodeId={nodeId}
+                takenNodeIds={expertActions.takenNodeIds ?? []}
+                disabled={busy || updateInProgress}
+                onChange={expertActions.onChangeNodeId}
+              />
+            ) : null}
           </div>
 
           <NodeFirmwareUpdate

@@ -7,6 +7,13 @@ import { canFrameFromRawId, canFrameRawId, type CanFrame } from '@arduconfig/can
 import {
   DRONECAN_ESC_STATUS_DT_ID,
   DRONECAN_ESC_STATUS_SIGNATURE,
+  DRONECAN_ALLOCATION_DT_ID,
+  DRONECAN_ALLOCATION_FOLLOWUP_TIMEOUT_MS,
+  DRONECAN_ALLOCATION_SIGNATURE,
+  decodeDronecanAllocation,
+  dronecanBuildBroadcastFrames,
+  dronecanIsAnonymousAllocationFrame,
+  encodeDronecanAllocation,
   DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID,
   DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SIGNATURE,
   DRONECAN_FILE_BFU_ERROR_IN_PROGRESS,
@@ -54,6 +61,8 @@ import type {
   CanBusState,
   CanNodeHealth,
   CanNodeMode,
+  DronecanAllocationEntry,
+  DronecanAllocatorState,
   DronecanEscTelemetry,
   DronecanFirmwareUpdateState,
   DronecanInspectedNode,
@@ -69,6 +78,14 @@ const MAV_CMD_CAN_FORWARD = 32000
  *  100-126 for peripherals). */
 /** The DroneCAN node id this app uses on the bus (its requests come from it). */
 export const GCS_DRONECAN_NODE_ID = 127
+/** AP_Periph's node ID parameter (Tools/AP_Periph/Parameters.cpp): 0 asks a DNA server. */
+const CAN_NODE_PARAM = 'CAN_NODE'
+/** pydronecan's default dynamic range is 1..125 (126/127 stay for GCS tools). */
+const ALLOCATION_MAX_NODE_ID = 125
+
+function hexBytes(bytes: readonly number[]): string {
+  return bytes.map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
 
 /** AP_HAL::CANIface::FlagEFF — bit 31 of the MAVLink CAN_FRAME `id` field
  *  marking a 29-bit extended frame. DroneCAN is extended-only, so every
@@ -308,11 +325,23 @@ export class CanBusService {
   private readonly refetchAfterSave = new Set<number>()
   /** The one in-flight (or just-finished) node firmware update, if any. */
   private firmwareUpdate: FirmwareUpdateSession | undefined
+  /** Nodes to restart once their Apply & Save SAVE is acknowledged (a node ID
+   *  change only takes effect on reboot). */
+  private readonly restartAfterSave = new Map<number, number>()
+  // Dynamic node ID allocation (off unless switched on from the CAN tab).
+  private allocatorEnabled = false
+  /** Unique id (hex) -> the node id handed out, this session or seeded. */
+  private readonly allocations = new Map<string, { nodeId: number; atMs?: number }>()
+  private allocationQuery: { bytes: number[]; atMs: number } | undefined
+  private otherAllocatorNodeId: number | undefined
+  private allocatorTransferId = 0
 
   constructor(private readonly deps: CanBusServiceDeps) {}
 
   getSnapshot(): CanBusState {
+    const allocator = this.allocatorSnapshot()
     return {
+      ...(allocator ? { allocator } : {}),
       status: this.status,
       bus: this.bus,
       error: this.error,
@@ -526,6 +555,20 @@ export class CanBusService {
     }
     const sourceNodeId = dronecanSourceNodeId(message.id)
     const isService = dronecanIsServiceFrame(message.id)
+    // An anonymous message (source 0) carries a random discriminator where the
+    // type id's upper bits go, so it is never a NodeStatus or an esc.Status: it
+    // is a node without an ID asking for one.
+    if (!isService && sourceNodeId === 0) {
+      if (this.allocatorEnabled && dronecanIsAnonymousAllocationFrame(message.id)) {
+        this.handleAllocationRequest(message.data.subarray(0, message.len))
+      }
+      return
+    }
+    // An Allocation from a named node is another allocator answering.
+    if (!isService && dronecanMessageTypeId(message.id) === DRONECAN_ALLOCATION_DT_ID && sourceNodeId !== GCS_DRONECAN_NODE_ID) {
+      this.noteOtherAllocator(sourceNodeId)
+      return
+    }
     const typeId = isService ? dronecanServiceTypeId(message.id) : dronecanMessageTypeId(message.id)
     const isRequest = isService ? dronecanIsServiceRequest(message.id) : undefined
     const destNodeId = isService ? dronecanServiceDestinationNodeId(message.id) : undefined
@@ -698,6 +741,151 @@ export class CanBusService {
     for (const write of encoded) {
       await this.sendWrite(nodeId, write.name, write.value)
     }
+  }
+
+  /**
+   * Give a node a new ID: write CAN_NODE (AP_Periph's node ID parameter; 0
+   * asks the allocator for one), save, then restart it once the save is
+   * acknowledged -- the ID only changes on reboot. Refused for a node without
+   * CAN_NODE, an ID out of range, or one already on the bus.
+   */
+  async changeNodeId(nodeId: number, newNodeId: number): Promise<void> {
+    const node = this.nodes.get(nodeId)
+    const reason = !node
+      ? `No DroneCAN node ${nodeId}`
+      : !node.parameters.some((entry) => entry.name === CAN_NODE_PARAM)
+        ? `Node ${nodeId} has no ${CAN_NODE_PARAM} parameter; fetch its parameters first.`
+        : !Number.isInteger(newNodeId) || newNodeId < 0 || newNodeId > 125
+          ? 'A node ID is 1 to 125 (or 0 to ask the allocator).'
+          : newNodeId !== 0 && newNodeId !== nodeId && (this.nodes.has(newNodeId) || newNodeId === GCS_DRONECAN_NODE_ID)
+            ? `Node ID ${newNodeId} is already on the bus.`
+            : undefined
+    if (reason) {
+      this.error = reason
+      this.deps.emit()
+      return
+    }
+    this.restartAfterSave.set(nodeId, newNodeId)
+    await this.applyAndSave(nodeId, [{ name: CAN_NODE_PARAM, value: { tag: 'int64', int64: String(newNodeId) } }])
+  }
+
+  /**
+   * Turn the dynamic node ID allocator on or off. `seed` is what an earlier
+   * session handed out (unique id -> node id), so a node gets the same ID back.
+   */
+  setAllocatorEnabled(enabled: boolean, seed: readonly { nodeId: number; uniqueId: string }[] = []): void {
+    this.allocatorEnabled = enabled
+    this.allocationQuery = undefined
+    if (enabled) {
+      for (const entry of seed) {
+        if (!this.allocations.has(entry.uniqueId)) this.allocations.set(entry.uniqueId, { nodeId: entry.nodeId })
+      }
+    }
+    this.deps.emit()
+  }
+
+  /** Drop every ID the allocator has handed out or been seeded with. */
+  forgetAllocations(): void {
+    this.allocations.clear()
+    this.deps.emit()
+  }
+
+  private allocatorSnapshot(): DronecanAllocatorState | undefined {
+    if (!this.allocatorEnabled && this.allocations.size === 0 && this.otherAllocatorNodeId === undefined) return undefined
+    const entries: DronecanAllocationEntry[] = [...this.allocations]
+      .map(([uniqueId, entry]) => ({ nodeId: entry.nodeId, uniqueId, source: 'allocated' as const, atMs: entry.atMs }))
+      .sort((left, right) => (right.atMs ?? 0) - (left.atMs ?? 0))
+    for (const node of this.nodes.values()) {
+      if (node.hwUniqueId && !this.allocations.has(node.hwUniqueId)) {
+        entries.push({ nodeId: node.nodeId, uniqueId: node.hwUniqueId, source: 'seen' })
+      }
+    }
+    return {
+      enabled: this.allocatorEnabled,
+      entries,
+      otherAllocatorNodeId: this.otherAllocatorNodeId,
+      pending: this.allocationQuery
+        ? { uniqueId: hexBytes(this.allocationQuery.bytes), atMs: this.allocationQuery.atMs }
+        : undefined
+    }
+  }
+
+  private noteOtherAllocator(nodeId: number): void {
+    if (this.otherAllocatorNodeId === nodeId && !this.allocatorEnabled) return
+    this.otherAllocatorNodeId = nodeId
+    // Two allocators answering the same request hand out clashing IDs: step aside.
+    if (this.allocatorEnabled) {
+      this.allocatorEnabled = false
+      this.allocationQuery = undefined
+      this.deps.appendStatusEntry('warning', `CAN: node ${nodeId} already allocates node IDs on this bus; this app's allocator stopped.`)
+    }
+    this.deps.emit()
+  }
+
+  /** One anonymous Allocation frame (pydronecan's CentralizedServer, stage by stage). */
+  private handleAllocationRequest(frameData: Uint8Array): void {
+    if (frameData.length < 2) return
+    const tail = frameData[frameData.length - 1]
+    // Anonymous transfers are single-frame.
+    if ((tail & 0xc0) !== 0xc0) return
+    const request = decodeDronecanAllocation(frameData.subarray(0, frameData.length - 1))
+    if (!request) return
+    const now = Date.now()
+    if (this.allocationQuery && now - this.allocationQuery.atMs > DRONECAN_ALLOCATION_FOLLOWUP_TIMEOUT_MS) {
+      this.allocationQuery = undefined
+    }
+    const part = Array.from(request.uniqueId)
+    if (request.firstPartOfUniqueId) {
+      this.allocationQuery = { bytes: part, atMs: now }
+    } else if (this.allocationQuery && part.length === 6 && this.allocationQuery.bytes.length === 6) {
+      this.allocationQuery = { bytes: [...this.allocationQuery.bytes, ...part], atMs: now }
+    } else if (this.allocationQuery && part.length === 4 && this.allocationQuery.bytes.length === 12) {
+      const uniqueBytes = [...this.allocationQuery.bytes, ...part]
+      const uniqueId = hexBytes(uniqueBytes)
+      const nodeId = this.allocateNodeId(uniqueId, request.nodeId)
+      this.allocationQuery = undefined
+      if (nodeId === undefined) {
+        this.deps.appendStatusEntry('warning', 'CAN: no free node ID left to allocate.')
+        this.deps.emit()
+        return
+      }
+      this.allocations.set(uniqueId, { nodeId, atMs: now })
+      this.sendAllocation(nodeId, uniqueBytes)
+      this.deps.appendStatusEntry('info', `CAN: allocated node ID ${nodeId}.`)
+      this.deps.emit()
+      return
+    } else {
+      return
+    }
+    this.sendAllocation(0, this.allocationQuery.bytes)
+    this.deps.emit()
+  }
+
+  /** The node id for a unique id: the one it had, else its preference if free, else the highest free. */
+  private allocateNodeId(uniqueId: string, preferred: number): number | undefined {
+    const known = this.allocations.get(uniqueId)?.nodeId ?? [...this.nodes.values()].find((node) => node.hwUniqueId === uniqueId)?.nodeId
+    if (known !== undefined) return known
+    const taken = new Set<number>([GCS_DRONECAN_NODE_ID, ...this.nodes.keys(), ...[...this.allocations.values()].map((entry) => entry.nodeId)])
+    if (this.otherAllocatorNodeId !== undefined) taken.add(this.otherAllocatorNodeId)
+    const free = (id: number) => !taken.has(id)
+    if (preferred > 0) {
+      for (let id = preferred; id <= ALLOCATION_MAX_NODE_ID; id += 1) if (free(id)) return id
+    }
+    for (let id = ALLOCATION_MAX_NODE_ID; id >= 1; id -= 1) if (free(id)) return id
+    return undefined
+  }
+
+  private sendAllocation(nodeId: number, uniqueBytes: readonly number[]): void {
+    const frames = dronecanBuildBroadcastFrames(
+      {
+        messageTypeId: DRONECAN_ALLOCATION_DT_ID,
+        signature: DRONECAN_ALLOCATION_SIGNATURE,
+        sourceNodeId: GCS_DRONECAN_NODE_ID,
+        transferId: (this.allocatorTransferId = (this.allocatorTransferId + 1) & 0x1f)
+      },
+      encodeDronecanAllocation({ nodeId, firstPartOfUniqueId: false, uniqueId: Uint8Array.from(uniqueBytes) })
+    )
+    void this.sendFrames(frames.map((frame) => ({ id: frame.canId, extended: true, data: frame.data }))).catch(() => {})
   }
 
   // -------------------------------------------------------------------------
@@ -1303,7 +1491,20 @@ export class CanBusService {
       )
       // Apply & Save: re-fetch so the UI shows fresh values without a manual
       // Re-fetch (only on a successful save).
-      if (this.refetchAfterSave.delete(sourceNodeId) && response.ok) {
+      const newNodeId = this.restartAfterSave.get(sourceNodeId)
+      this.restartAfterSave.delete(sourceNodeId)
+      if (newNodeId !== undefined && response.ok) {
+        // A node ID change: the saved ID takes effect on reboot. The node
+        // comes back under its new ID (or asks the allocator for one), so its
+        // old entry goes rather than lingering as a silent ghost.
+        this.refetchAfterSave.delete(sourceNodeId)
+        void this.restartNode(sourceNodeId).then(() => {
+          if (newNodeId !== sourceNodeId) {
+            this.nodes.delete(sourceNodeId)
+            this.deps.emit()
+          }
+        })
+      } else if (this.refetchAfterSave.delete(sourceNodeId) && response.ok) {
         this.fetchAllParameters(sourceNodeId)
       }
     }

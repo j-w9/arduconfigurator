@@ -27,16 +27,24 @@ import {
   DRONECAN_PARAM_GETSET_SIGNATURE,
   DRONECAN_RESTART_NODE_SERVICE_ID,
   DRONECAN_RESTART_NODE_SIGNATURE,
+  DRONECAN_ALLOCATION_DT_ID,
+  DRONECAN_ALLOCATION_SIGNATURE,
   DronecanReassembler,
+  decodeDronecanAllocation,
   decodeDronecanBeginFirmwareUpdateRequest,
   decodeDronecanFileReadResponse,
   dronecanBuildBroadcastFrames,
   dronecanBuildServiceFrames,
+  dronecanComposeTailByte,
+  dronecanEncodeAnonymousCanId,
   dronecanIsServiceFrame,
+  dronecanMessageTypeId,
+  dronecanSourceNodeId,
   dronecanIsServiceRequest,
   dronecanParseTailByte,
   dronecanServiceDestinationNodeId,
   dronecanServiceTypeId,
+  encodeDronecanAllocation,
   encodeDronecanBeginFirmwareUpdateResponse,
   encodeDronecanEscStatus,
   encodeDronecanExecuteOpcodeResponse,
@@ -100,7 +108,7 @@ const NODES: MockDronecanNode[] = [
     health: 0,
     mode: 0,
     params: [
-      { name: 'NODEID', value: int(124), default: int(0), min: int(0), max: int(127) },
+      { name: 'CAN_NODE', value: int(124), default: int(0), min: int(0), max: int(127) },
       { name: 'GPS_TYPE', value: int(1), default: int(0), min: int(0), max: int(26) },
       { name: 'MAG_ENABLE', value: int(1), default: int(1), min: int(0), max: int(1) },
       { name: 'NTF_LED_OVERRIDE', value: int(0), default: int(0), min: int(0), max: int(1) }
@@ -118,7 +126,7 @@ const NODES: MockDronecanNode[] = [
     health: 0,
     mode: 0,
     params: [
-      { name: 'NODEID', value: int(50), default: int(0), min: int(0), max: int(127) },
+      { name: 'CAN_NODE', value: int(50), default: int(0), min: int(0), max: int(127) },
       { name: 'BATT_MONITOR', value: int(4), default: int(0), min: int(0), max: int(20) },
       { name: 'BATT_CAPACITY', value: real(5200), default: real(0), min: real(0), max: real(64000) }
     ]
@@ -138,7 +146,7 @@ const NODES: MockDronecanNode[] = [
     health: 0,
     mode: 0,
     params: [
-      { name: 'NODEID', value: int(71), default: int(0), min: int(0), max: int(127) },
+      { name: 'CAN_NODE', value: int(71), default: int(0), min: int(0), max: int(127) },
       { name: 'NET_ENABLE', value: int(1), default: int(0), min: int(0), max: int(1) },
       { name: 'NET_DHCP', value: int(1), default: int(1), min: int(0), max: int(1) },
       { name: 'NET_IPADDR0', value: int(192), default: int(192), min: int(0), max: int(255) },
@@ -224,7 +232,48 @@ const PLAIN_CAN_STREAMS: readonly PlainCanStream[] = [
 
 /** Build a fresh simulator. State (active flag, transfer ids, param edits) is
  *  per-instance so each demo connection starts clean. */
-export function createDronecanBusSimulator(): DronecanBusSimulator {
+export interface DronecanBusSimulatorOptions {
+  /**
+   * Add a node with no ID (CAN_NODE = 0) that asks for one by dynamic node ID
+   * allocation, the way AP_Periph does, until an allocator answers.
+   */
+  unallocatedNode?: boolean
+}
+
+export function createDronecanBusSimulator(options: DronecanBusSimulatorOptions = {}): DronecanBusSimulator {
+  // Each simulator owns its nodes: a node ID change or a parameter write in one
+  // session must not leak into the next (the demo bridge serves many).
+  const nodes: MockDronecanNode[] = NODES.map((node) => ({ ...node, params: node.params.map((param) => ({ ...param })) }))
+  if (options.unallocatedNode) {
+    nodes.push({
+      nodeId: 0,
+      name: 'org.ardupilot.ap_periph',
+      swMajor: 1,
+      swMinor: 7,
+      vcsCommit: 0x51d0a7e2,
+      hwMajor: 1,
+      hwMinor: 0,
+      uniqueId: uid(77),
+      health: 0,
+      mode: 0,
+      params: [
+        { name: 'CAN_NODE', value: int(0), default: int(0), min: int(0), max: int(127) },
+        { name: 'RNGFND1_TYPE', value: int(0), default: int(0), min: int(0), max: int(40) }
+      ]
+    })
+  }
+  /** How much of its unique id the unallocated node has had echoed back. */
+  let dnaOffset = 0
+  let dnaTransferId = 0
+  const allocationRequest = (node: MockDronecanNode): CanFrameMessage => {
+    const part = node.uniqueId.subarray(dnaOffset, Math.min(16, dnaOffset + 6))
+    const payload = encodeDronecanAllocation({ nodeId: 0, firstPartOfUniqueId: dnaOffset === 0, uniqueId: part })
+    const data = new Uint8Array(payload.length + 1)
+    data.set(payload)
+    data[payload.length] = dronecanComposeTailByte({ sot: true, eot: true, toggle: false, transferId: (dnaTransferId = (dnaTransferId + 1) & 0x1f) })
+    // CANARD_TRANSFER_PRIORITY_LOW, a random discriminator.
+    return toCanFrame(dronecanEncodeAnonymousCanId(24, DRONECAN_ALLOCATION_DT_ID, Math.floor(Math.random() * 0x3fff)), data)
+  }
   let active = false
   let wireBus = 0
   let bootMs = Date.now()
@@ -246,7 +295,7 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
   // reassemble GCS→node service transfers before acting on them.
   const reassembler = new DronecanReassembler({
     getDataTypeSignature: (ctx) => {
-      if (!ctx.isService) return undefined
+      if (!ctx.isService) return ctx.typeId === DRONECAN_ALLOCATION_DT_ID ? DRONECAN_ALLOCATION_SIGNATURE : undefined
       switch (ctx.typeId) {
         case DRONECAN_GET_NODE_INFO_SERVICE_ID:
           return DRONECAN_GET_NODE_INFO_SIGNATURE
@@ -409,7 +458,7 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
     if (!active) {
       return []
     }
-    return NODES.map((node) => {
+    return nodes.filter((node) => node.nodeId !== 0).map((node) => {
       const frames = dronecanBuildBroadcastFrames(
         { messageTypeId: DRONECAN_NODE_STATUS_DT_ID, signature: DRONECAN_NODE_STATUS_SIGNATURE, sourceNodeId: node.nodeId, transferId: nextStatusTransferId(node.nodeId) },
         encodeDronecanNodeStatus({ uptimeSec: uptimeSec(), health: node.health, mode: node.mode, subMode: 0, vendorSpecificStatusCode: 0 })
@@ -494,7 +543,32 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
       }
       const canId = message.id >>> 0
       if (!dronecanIsServiceFrame(canId)) {
-        return []
+        // An allocator's answer to the unallocated node.
+        const waiting = nodes.find((node) => node.nodeId === 0)
+        if (!waiting || dronecanMessageTypeId(canId) !== DRONECAN_ALLOCATION_DT_ID) {
+          return []
+        }
+        const frame = message.data.subarray(0, message.len)
+        const finished = reassembler.push(
+          { sourceNodeId: dronecanSourceNodeId(canId), isService: false, typeId: DRONECAN_ALLOCATION_DT_ID, transferId: dronecanParseTailByte(frame[frame.length - 1]).transferId },
+          frame
+        )
+        const allocation = finished ? decodeDronecanAllocation(finished.payload) : undefined
+        if (!allocation) {
+          return []
+        }
+        const ours = allocation.uniqueId.every((byte, index) => waiting.uniqueId[index] === byte)
+        if (!ours) {
+          return []
+        }
+        if (allocation.nodeId !== 0) {
+          waiting.nodeId = allocation.nodeId
+          dnaOffset = 0
+          return emitNodeStatus()
+        }
+        // Echo of what it has so far: send the next part straight away.
+        dnaOffset = allocation.uniqueId.length
+        return dnaOffset < 16 ? [allocationRequest(waiting)] : []
       }
       const destinationNodeId = dronecanServiceDestinationNodeId(canId)
       const serviceTypeId = dronecanServiceTypeId(canId)
@@ -539,7 +613,7 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
       if (!dronecanIsServiceRequest(canId)) {
         return []
       }
-      const node = NODES.find((n) => n.nodeId === destinationNodeId)
+      const node = nodes.find((n) => n.nodeId !== 0 && n.nodeId === destinationNodeId)
       if (!node) {
         return []
       }
@@ -568,7 +642,17 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
         case DRONECAN_RESTART_NODE_SERVICE_ID:
           // Acknowledge the restart (bool ok = true). A real node would reboot
           // and re-announce; the mock just keeps broadcasting NodeStatus.
-          return serviceResponseFrames(node, DRONECAN_RESTART_NODE_SERVICE_ID, DRONECAN_RESTART_NODE_SIGNATURE, encodeDronecanRestartNodeResponse(true), tail.transferId)
+        {
+          const ack = serviceResponseFrames(node, DRONECAN_RESTART_NODE_SERVICE_ID, DRONECAN_RESTART_NODE_SIGNATURE, encodeDronecanRestartNodeResponse(true), tail.transferId)
+          // A saved CAN_NODE takes effect on reboot: a fixed ID, or 0 to ask an allocator.
+          const configured = node.params.find((param) => param.name === 'CAN_NODE')?.value
+          const nextId = configured?.tag === 'int64' ? Number(configured.int64) : undefined
+          if (nextId !== undefined && nextId !== node.nodeId && !nodes.some((other) => other !== node && other.nodeId === nextId && nextId !== 0)) {
+            node.nodeId = nextId
+            dnaOffset = 0
+          }
+          return ack
+        }
         case DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID: {
           // Accept the update (ERROR_OK) and immediately begin pulling the image
           // from the GCS: respond, then emit the first file.Read request. The
@@ -589,7 +673,12 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
           return []
       }
     },
-    broadcasts: (): CanFrameMessage[] => [...emitNodeStatus(), ...emitEscStatus()],
+    broadcasts: (): CanFrameMessage[] => {
+      const waiting = active ? nodes.find((node) => node.nodeId === 0) : undefined
+      // No answer since the last request: start over, as AP_Periph does.
+      if (waiting) dnaOffset = 0
+      return [...emitNodeStatus(), ...emitEscStatus(), ...(waiting ? [allocationRequest(waiting)] : [])]
+    },
     plainTraffic: (nowMs: number): (CanFrameMessage | CanFdFrameMessage)[] => {
       if (!active) {
         return []

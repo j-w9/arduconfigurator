@@ -600,3 +600,48 @@ test.describe('CAN tab on a USB-CAN adapter (SLCAN)', () => {
     await expect(page.getByTestId('can-adapter-connect')).toBeVisible()
   })
 })
+
+test.describe('CAN node tools: node ID allocation and ID changes', () => {
+  test('on an adapter bus, the allocator hands an asking node an ID and it joins the rail', async ({ page }) => {
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
+    await page.goto('/?canAdapter=demo')
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-adapter-connect').click()
+    const allocator = page.getByTestId('can-allocator')
+    // The demo bus has an AP_Periph node with CAN_NODE = 0, asking every second.
+    await expect(allocator.getByTestId('can-allocator-status')).toHaveText('A node without an ID is asking for one.', { timeout: 10_000 })
+    await allocator.getByTestId('can-allocator-toggle').check()
+    await expect(allocator.getByTestId('can-allocator-table')).toContainText('Node 125', { timeout: 10_000 })
+    await expect(page.getByTestId('can-rail-node-125')).toBeVisible({ timeout: 10_000 })
+  })
+
+  test('over the autopilot, the allocator is not offered: the autopilot allocates', async ({ page }) => {
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    const allocator = page.getByTestId('can-allocator')
+    await expect(allocator.getByTestId('can-allocator-toggle')).toBeDisabled()
+    await expect(allocator.getByTestId('can-allocator-status')).toContainText('The autopilot hands out node IDs')
+  })
+
+  test('a node\'s ID changes: CAN_NODE written, saved, restarted, and it comes back under the new ID', async ({ page }) => {
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-node-toggle-124')).toContainText(/Params \([1-9]/, { timeout: 15_000 })
+    await page.getByTestId('can-bus-node-actions-124').click()
+    await page.getByTestId('dronecan-node-id-124').click()
+    const input = page.getByTestId('dronecan-node-id-input-124')
+    await input.fill('50')
+    await expect(page.getByTestId('dronecan-node-id-form-124')).toContainText('Node 50 is already on the bus.')
+    await expect(page.getByTestId('dronecan-node-id-apply-124')).toBeDisabled()
+    await input.fill('100')
+    await page.getByTestId('dronecan-node-id-apply-124').click()
+    await expect(page.getByTestId('can-bus-node-100')).toContainText('Node 100', { timeout: 15_000 })
+    await expect(page.getByTestId('can-bus-node-124')).toHaveCount(0)
+  })
+})

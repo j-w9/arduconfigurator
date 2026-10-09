@@ -2255,6 +2255,23 @@ export class ArduPilotConfiguratorRuntime {
     this.canBusService.cancelFirmwareUpdate()
   }
 
+  /** Give a DroneCAN node a new ID (CAN_NODE, save, restart). Refused while
+   *  armed: the node reboots, and a GPS or ESC rebooting in flight is a crash. */
+  async changeCanBusNodeId(nodeId: number, newNodeId: number): Promise<void> {
+    this.assertNotArmed('Disarm the vehicle before changing a node ID.')
+    return this.canBusService.changeNodeId(nodeId, newNodeId)
+  }
+
+  /** Switch this app's dynamic node ID allocator on or off for the forwarded bus. */
+  setCanNodeAllocator(enabled: boolean, seed?: readonly { nodeId: number; uniqueId: string }[]): void {
+    this.canBusService.setAllocatorEnabled(enabled, seed)
+  }
+
+  /** Forget the node IDs the allocator handed out or was seeded with. */
+  forgetCanNodeAllocations(): void {
+    this.canBusService.forgetAllocations()
+  }
+
   /**
    * Operator-triggered SET_MESSAGE_INTERVAL (MAV_CMD 511) for the MAVLink
    * inspector. `intervalUs` is the raw command interval: > 0 streams the

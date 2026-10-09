@@ -41,6 +41,9 @@ export interface DronecanTransfer {
   problem?: string
 }
 
+/** uavcan.protocol.dynamic_node_id.Allocation, the message nodes send anonymously. */
+const ALLOCATION_TYPE_ID = 1
+
 /** DroneCAN's transfer timeout: a transfer not finished within this is dropped. */
 const TRANSFER_TIMEOUT_MS = 2000
 
@@ -155,12 +158,19 @@ export class DronecanTransferDecoder {
       direction: last.direction,
       payload
     }
-    if (header.kind === 'anonymous') {
+    // An anonymous message carries only its type id's low two bits. In practice
+    // the one message sent anonymously is dynamic_node_id.Allocation (id 1): a
+    // node without an ID asking for one. Anything else stays unnamed.
+    if (header.kind === 'anonymous' && header.dataTypeId !== (ALLOCATION_TYPE_ID & 0x3)) {
       transfer.problem = 'Anonymous message: the full type id is not in the frame.'
       return transfer
     }
     const type =
-      header.kind === 'message' ? this.catalogue.messageById(header.dataTypeId) : this.catalogue.serviceById(header.dataTypeId)
+      header.kind === 'anonymous'
+        ? this.catalogue.messageById(ALLOCATION_TYPE_ID)
+        : header.kind === 'message'
+          ? this.catalogue.messageById(header.dataTypeId)
+          : this.catalogue.serviceById(header.dataTypeId)
     if (!type) {
       transfer.problem = `Type ${header.dataTypeId} is not in this build's DSDL.`
       return transfer
@@ -171,7 +181,7 @@ export class DronecanTransferDecoder {
       return transfer
     }
     try {
-      const section = header.kind === 'message' ? 'msg' : header.kind === 'request' ? 'req' : 'res'
+      const section = header.kind === 'message' || header.kind === 'anonymous' ? 'msg' : header.kind === 'request' ? 'req' : 'res'
       // TAO is used on classic CAN and not on CAN FD.
       transfer.value = this.catalogue.decode(type.fullName, section, payload, { tao: !last.fd })
     } catch (error) {
