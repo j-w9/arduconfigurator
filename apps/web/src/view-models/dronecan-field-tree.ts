@@ -26,6 +26,10 @@ export interface DronecanFieldNode {
   meaning?: string
   /** Type, for the tooltip: "uint2", "float16", "uavcan.protocol.HardwareVersion". */
   typeLabel: string
+  /** Keys from the message root to this field: ["value", "integer_value"], ["voltages", 2]. */
+  path: (string | number)[]
+  /** A number (or bool) that can be plotted over time. */
+  plottable: boolean
   children?: DronecanFieldNode[]
 }
 
@@ -69,9 +73,10 @@ function node(
   desc: DronecanTypeDesc,
   value: DronecanValue | undefined,
   catalogue: DronecanCatalogue,
-  consts: readonly DronecanConstDesc[]
+  consts: readonly DronecanConstDesc[],
+  path: (string | number)[]
 ): DronecanFieldNode {
-  const base = { label, typeLabel: typeLabel(desc) }
+  const base = { label, typeLabel: typeLabel(desc), path, plottable: 'p' in desc }
   if ('p' in desc) {
     const leaf = value === undefined ? '—' : formatDronecanNumber(value as number | bigint | boolean, desc)
     const meaning = value === undefined ? undefined : constantMeaning(consts, label, value)
@@ -79,7 +84,7 @@ function node(
   }
   if ('r' in desc) {
     const section = catalogue.section(desc.r, 'msg')
-    return { ...base, children: sectionNodes(section, value, catalogue) }
+    return { ...base, children: sectionNodes(section, value, catalogue, path) }
   }
   if ('v' in desc) return { ...base, text: '' }
   const items = Array.isArray(value) ? value : []
@@ -99,18 +104,23 @@ function node(
   return {
     ...base,
     text: items.length === 0 ? '[]' : undefined,
-    children: items.map((item, index) => node(`[${index}]`, element, item, catalogue, []))
+    children: items.map((item, index) => node(`[${index}]`, element, item, catalogue, [], [...path, index]))
   }
 }
 
-function sectionNodes(section: DronecanSectionDesc, value: DronecanValue | undefined, catalogue: DronecanCatalogue): DronecanFieldNode[] {
+function sectionNodes(
+  section: DronecanSectionDesc,
+  value: DronecanValue | undefined,
+  catalogue: DronecanCatalogue,
+  path: (string | number)[] = []
+): DronecanFieldNode[] {
   const record = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, DronecanValue>) : {}
   const fields = section.fields.filter((field) => field.n !== null)
   if (section.union) {
     const active = fields.find((field) => field.n! in record)
-    return active ? [node(active.n!, active.t, record[active.n!], catalogue, section.consts)] : []
+    return active ? [node(active.n!, active.t, record[active.n!], catalogue, section.consts, [...path, active.n!])] : []
   }
-  return fields.map((field) => node(field.n!, field.t, record[field.n!], catalogue, section.consts))
+  return fields.map((field) => node(field.n!, field.t, record[field.n!], catalogue, section.consts, [...path, field.n!]))
 }
 
 /** The field tree for a decoded transfer. */
@@ -160,4 +170,26 @@ export function dronecanDisplayName(fullName: string): string {
   if (fullName.startsWith('uavcan.equipment.')) return fullName.slice('uavcan.equipment.'.length)
   if (fullName.startsWith('uavcan.')) return fullName.slice('uavcan.'.length)
   return fullName.replace('.equipment.', '.')
+}
+
+/**
+ * The number at `path` in a decoded value, for plotting: numbers as they
+ * are, bigints as numbers, bools as 0 / 1. Undefined when the path is not
+ * there -- a union with another field active, an array shorter this time.
+ */
+export function dronecanValueAt(value: DronecanValue | undefined, path: readonly (string | number)[]): number | undefined {
+  let cursor: DronecanValue | undefined = value
+  for (const key of path) {
+    if (cursor === undefined || cursor === null || typeof cursor !== 'object') return undefined
+    cursor = Array.isArray(cursor) ? cursor[key as number] : (cursor as Record<string, DronecanValue>)[key as string]
+  }
+  if (typeof cursor === 'number') return cursor
+  if (typeof cursor === 'bigint') return Number(cursor)
+  if (typeof cursor === 'boolean') return cursor ? 1 : 0
+  return undefined
+}
+
+/** "voltages[2]", "value.integer_value": a path as one readable label. */
+export function dronecanPathLabel(path: readonly (string | number)[]): string {
+  return path.reduce<string>((label, key) => (typeof key === 'number' ? `${label}[${key}]` : label ? `${label}.${key}` : key), '')
 }

@@ -33,6 +33,14 @@ import {
   type CanMonitorFilterState
 } from '../view-models/can-bus-monitor'
 import { CanTopicTable, canTopicIdFilter, type CanTopicEntry } from '../view-models/can-topics'
+import {
+  canPlotSeriesKey,
+  nextCanPlotColor,
+  sampleCanPlot,
+  type CanPlotSamples,
+  type CanPlotSeries,
+  type CanPlotSource
+} from '../view-models/can-plot'
 
 /** The slice of the runtime the monitor needs. */
 export interface CanFrameSource {
@@ -124,6 +132,14 @@ export interface UseCanBusMonitorResult {
   topics: (nodeId?: number) => CanTopicEntry[]
   /** Point the drawer at one stream's frames. */
   showTopicFrames: (topic: CanTopicEntry) => void
+  plotSeries: readonly CanPlotSeries[]
+  /** Add a series (backfilled from what is already captured); returns its key. */
+  addPlotSeries: (label: string, source: CanPlotSource) => string
+  removePlotSeries: (key: string) => void
+  clearPlotSeries: () => void
+  plotSamplesFor: (key: string) => CanPlotSamples | undefined
+  /** "Now" for the plot's time window: the clock live, the play position in a log. */
+  plotNowMs: number
   recording: CanRecordingState
   startRecording: () => void
   stopRecording: () => void
@@ -155,6 +171,8 @@ interface CaptureStore {
   transfers: Map<number, DronecanTransfer>
   /** One live row per DroneCAN message stream (Messages on the bus). */
   topics: CanTopicTable
+  /** Samples per plot series, taken from this store's frames. */
+  plotSamples: Map<string, CanPlotSamples>
 }
 
 function newStore(capacity: number): CaptureStore {
@@ -164,15 +182,20 @@ function newStore(capacity: number): CaptureStore {
     originMs: undefined,
     decoder: new DronecanTransferDecoder(dronecanCatalogue()),
     transfers: new Map(),
-    topics: new CanTopicTable()
+    topics: new CanTopicTable(),
+    plotSamples: new Map()
   }
 }
+
+/** The plot series every store samples (set by the hook; module-level so ingest stays a plain function). */
+let activePlotSeries: readonly CanPlotSeries[] = []
 
 function ingest(store: CaptureStore, frame: CanFrame): CanFrame {
   const stored = store.buffer.push(frame)
   store.trace.add(stored)
   if (store.originMs === undefined) store.originMs = stored.timestampMs
   const transfer = store.decoder.push(stored)
+  if (activePlotSeries.length > 0) sampleCanPlot(activePlotSeries, store.plotSamples, stored, transfer)
   if (transfer) {
     store.topics.add(transfer)
     for (const seq of transfer.frameSeqs) store.transfers.set(seq, transfer)
@@ -248,6 +271,13 @@ export function useCanBusMonitor(options: {
   // (offline.current) is either all of it or the part played so far.
   const logRef = useRef<{ frames: CanFrame[]; timeline: CanLogTimeline } | undefined>(undefined)
   const [playback, setPlayback] = useState<CanLogPlayback>({ mode: 'all', positionMs: 0, speed: 1 })
+  const [plotSeries, setPlotSeries] = useState<readonly CanPlotSeries[]>([])
+  useEffect(() => {
+    activePlotSeries = plotSeries
+    return () => {
+      activePlotSeries = []
+    }
+  }, [plotSeries])
   const playbackRef = useRef(playback)
   playbackRef.current = playback
 
@@ -512,6 +542,49 @@ export function useCanBusMonitor(options: {
     return () => window.clearInterval(timer)
   }, [playback.mode])
 
+  const addPlotSeries = useCallback((label: string, source: CanPlotSource): string => {
+    const key = canPlotSeriesKey(source)
+    setPlotSeries((current) => {
+      if (current.some((entry) => entry.key === key)) return current
+      const series: CanPlotSeries = { key, label, color: nextCanPlotColor(current), source }
+      // Backfill from what is already captured, live and in an open log, so a
+      // series added after the fact still shows the past.
+      for (const target of [live.current, offline.current]) {
+        if (!target) continue
+        target.buffer.forEach((frame) => {
+          const transfer = target.transfers.get(frame.seq)
+          const completed = transfer && transfer.frameSeqs[transfer.frameSeqs.length - 1] === frame.seq ? transfer : undefined
+          sampleCanPlot([series], target.plotSamples, frame, completed)
+        })
+      }
+      const next = [...current, series]
+      activePlotSeries = next
+      return next
+    })
+    setVersion((value) => value + 1)
+    return key
+  }, [])
+
+  const removePlotSeries = useCallback((key: string) => {
+    setPlotSeries((current) => current.filter((entry) => entry.key !== key))
+    live.current.plotSamples.delete(key)
+    offline.current?.plotSamples.delete(key)
+  }, [])
+
+  const clearPlotSeries = useCallback(() => {
+    setPlotSeries([])
+    live.current.plotSamples.clear()
+    offline.current?.plotSamples.clear()
+  }, [])
+
+  const plotNowMs = (() => {
+    const log = logRef.current
+    if (offline.current && log) {
+      return playback.mode === 'all' ? log.timeline.endMs : log.timeline.startMs + playback.positionMs
+    }
+    return Date.now()
+  })()
+
   const rec = recorder.current
   return {
     frames,
@@ -532,6 +605,12 @@ export function useCanBusMonitor(options: {
     selectedFrame,
     transferFor: (seq: number) => store.transfers.get(seq),
     topics: (nodeId?: number) => store.topics.list(nodeId),
+    plotSeries,
+    addPlotSeries,
+    removePlotSeries,
+    clearPlotSeries,
+    plotSamplesFor: (key: string) => store.plotSamples.get(key),
+    plotNowMs,
     showTopicFrames: (topic: CanTopicEntry) => {
       setFilterForm({ ...DEFAULT_CAN_MONITOR_FILTER_FORM, idText: canTopicIdFilter(topic) })
       setViewMode('stream')

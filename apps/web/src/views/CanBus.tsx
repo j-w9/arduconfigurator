@@ -28,6 +28,16 @@ import { CanEnablePrompt } from './CanEnablePrompt'
 // window (see use-can-device-popouts) so several devices are watchable side by
 // side, the way Mission Planner and the DroneCAN GUI do it.
 
+/** The CAN tab's sub-tabs. */
+export type CanSubTab = 'devices' | 'messages' | 'frames' | 'plot'
+
+const CAN_SUB_TABS: { id: CanSubTab; label: string; title: string }[] = [
+  { id: 'devices', label: 'Devices', title: 'The nodes on the bus and their configuration' },
+  { id: 'messages', label: 'Messages', title: 'Every DroneCAN message stream, decoded and live' },
+  { id: 'frames', label: 'Frames', title: 'Every raw frame on the bus: filter, record, open logs' },
+  { id: 'plot', label: 'Plot', title: 'Live charts of decoded fields and frame bytes' }
+]
+
 export interface CanBusViewProps {
   state: CanBusState
   vehicleConnected: boolean
@@ -74,17 +84,23 @@ export interface CanBusViewProps {
   expertActions?: CanDeviceExpertActions
   /** Pop-out wiring, supplied by App.tsx (the windows outlive this tab). Absent
    *  in the DroneNet embed, which has no pop-out affordance. */
-  /** The docked bus monitor (CAN tab only; the DroneNet embed has none). */
-  monitorSlot?: ReactNode
   /**
    * The CAN tab's workspace (node rail + selection + message tables). The
    * DroneNet embed omits it and keeps the plain node list.
    */
   workspace?: {
-    /** The message table for the whole bus or one node. */
-    renderMessages: (scope: 'bus' | number) => ReactNode
     /** Nodes seen only in decoded traffic (e.g. an opened log), for the rail. */
     extraNodeIds?: readonly number[]
+    /** A notice shown above every sub-tab (an opened log, say). */
+    notice?: ReactNode
+    /** The sub-tabs: Devices (this view's rail and node cards), Messages, Frames, Plot. */
+    pages?: {
+      page: CanSubTab
+      onPage: (page: CanSubTab) => void
+      messages: ReactNode
+      frames: ReactNode
+      plot: ReactNode
+    }
   }
   popout?: {
     openNodeIds: number[]
@@ -126,7 +142,6 @@ export function CanBusView(props: CanBusViewProps) {
     busy = false,
     expertActions,
     popout,
-    monitorSlot,
     workspace
   } = props
 
@@ -565,69 +580,92 @@ export function CanBusView(props: CanBusViewProps) {
         </header>
 
         {workspace ? (
-          // The CAN tab's workspace: a node rail on the left, the selection in
-          // the middle -- every node and every message stream for the whole
-          // bus, or one node's card and its messages -- and the bus monitor
-          // docked below. The DroneNet embed has no workspace and keeps the
-          // plain list.
-          <div className="can-workspace">
-            <nav className="can-workspace__rail" aria-label="CAN nodes" data-testid="can-node-rail">
-              <button
-                type="button"
-                className={`can-workspace__rail-item can-workspace__rail-item--bus${scope === 'bus' ? ' is-active' : ''}`}
-                aria-pressed={scope === 'bus'}
-                onClick={() => setScope('bus')}
-                data-testid="can-rail-bus"
-              >
-                <span className="can-workspace__rail-icon" aria-hidden="true">▣</span>
-                <span className="can-workspace__rail-text">
-                  <strong>Whole bus</strong>
-                  <small>
-                    {railNodes.length} node{railNodes.length === 1 ? '' : 's'}
-                  </small>
-                </span>
-              </button>
-              {railNodes.map((entry) => (
-                <button
-                  key={entry.nodeId}
-                  type="button"
-                  className={`can-workspace__rail-item${scope === entry.nodeId ? ' is-active' : ''}`}
-                  aria-pressed={scope === entry.nodeId}
-                  onClick={() => setScope(entry.nodeId)}
-                  data-testid={`can-rail-node-${entry.nodeId}`}
-                >
-                  <span className={`can-workspace__rail-dot can-workspace__rail-dot--${entry.tone}`} aria-hidden="true" />
-                  <span className="can-workspace__rail-text">
-                    <strong>{entry.label}</strong>
-                    <small>
-                      Node {entry.nodeId}
-                      {entry.status ? ` · ${entry.status}` : ''}
-                    </small>
-                  </span>
-                </button>
-              ))}
-            </nav>
-            <div className="can-workspace__main">
-              {scope !== 'bus' && rowsShown.length === 0 ? (
-                <p className="can-bus-empty">
-                  Node {scope} is on the bus (its messages are below) but has not sent a NodeStatus to this session.
-                </p>
-              ) : (
-                body
-              )}
-              {workspace.renderMessages(scope)}
-              {/* ESC telemetry follows the messages on the whole-bus page
-                  (the same esc.Status streams, as a table per ESC). */}
-              {scope === 'bus' ? escTable : null}
-            </div>
-          </div>
+          // The CAN tab: Devices (a node rail and each node's configuration --
+          // where someone setting up a GPS lives), Messages (decoded streams),
+          // Frames (raw traffic, recording, logs) and Plot. Devices is first
+          // and the default, so the deeper tools never get in the way.
+          <>
+            {workspace.pages ? (
+              <div className="tab-strip can-subtabs" role="tablist" aria-label="CAN views" data-testid="can-subtabs">
+                {CAN_SUB_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={workspace.pages!.page === tab.id}
+                    className={`tab-strip__tab${workspace.pages!.page === tab.id ? ' is-active' : ''}`}
+                    title={tab.title}
+                    onClick={() => workspace.pages!.onPage(tab.id)}
+                    data-testid={`can-subtab-${tab.id}`}
+                  >
+                    <span className="tab-strip__tab-title">{tab.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {workspace.notice}
+            {!workspace.pages || workspace.pages.page === 'devices' ? (
+              <div className="can-workspace">
+                <nav className="can-workspace__rail" aria-label="CAN nodes" data-testid="can-node-rail">
+                  <button
+                    type="button"
+                    className={`can-workspace__rail-item can-workspace__rail-item--bus${scope === 'bus' ? ' is-active' : ''}`}
+                    aria-pressed={scope === 'bus'}
+                    onClick={() => setScope('bus')}
+                    data-testid="can-rail-bus"
+                  >
+                    <span className="can-workspace__rail-icon" aria-hidden="true">▣</span>
+                    <span className="can-workspace__rail-text">
+                      <strong>All devices</strong>
+                      <small>
+                        {railNodes.length} node{railNodes.length === 1 ? '' : 's'}
+                      </small>
+                    </span>
+                  </button>
+                  {railNodes.map((entry) => (
+                    <button
+                      key={entry.nodeId}
+                      type="button"
+                      className={`can-workspace__rail-item${scope === entry.nodeId ? ' is-active' : ''}`}
+                      aria-pressed={scope === entry.nodeId}
+                      onClick={() => setScope(entry.nodeId)}
+                      data-testid={`can-rail-node-${entry.nodeId}`}
+                    >
+                      <span className={`can-workspace__rail-dot can-workspace__rail-dot--${entry.tone}`} aria-hidden="true" />
+                      <span className="can-workspace__rail-text">
+                        <strong>{entry.label}</strong>
+                        <small>
+                          Node {entry.nodeId}
+                          {entry.status ? ` · ${entry.status}` : ''}
+                        </small>
+                      </span>
+                    </button>
+                  ))}
+                </nav>
+                <div className="can-workspace__main">
+                  {scope !== 'bus' && rowsShown.length === 0 ? (
+                    <p className="can-bus-empty">
+                      Node {scope} has been seen on the bus but has not sent a NodeStatus to this session, so there is
+                      nothing to configure here.
+                    </p>
+                  ) : (
+                    body
+                  )}
+                  {scope === 'bus' ? escTable : null}
+                </div>
+              </div>
+            ) : workspace.pages.page === 'messages' ? (
+              workspace.pages.messages
+            ) : workspace.pages.page === 'frames' ? (
+              workspace.pages.frames
+            ) : (
+              workspace.pages.plot
+            )}
+          </>
         ) : (
           body
         )}
       </Panel>
-      {/* Docked at the foot of the tab (sticky to the bottom of the workspace),
-          so the bus traffic stays in view while the node list scrolls. */}
-      {monitorSlot}
     </div>
   )
 }

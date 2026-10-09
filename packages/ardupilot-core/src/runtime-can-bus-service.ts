@@ -67,7 +67,8 @@ const MAV_CMD_CAN_FORWARD = 32000
 /** GCS-side DroneCAN source node id. 127 = top of 7-bit range, low
  *  collision risk against typical ArduPilot bus inhabitants (10 for AP,
  *  100-126 for peripherals). */
-const GCS_DRONECAN_NODE_ID = 127
+/** The DroneCAN node id this app uses on the bus (its requests come from it). */
+export const GCS_DRONECAN_NODE_ID = 127
 
 /** AP_HAL::CANIface::FlagEFF — bit 31 of the MAVLink CAN_FRAME `id` field
  *  marking a 29-bit extended frame. DroneCAN is extended-only, so every

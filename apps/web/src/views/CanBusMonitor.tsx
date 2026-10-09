@@ -86,6 +86,11 @@ export interface CanBusMonitorViewProps {
   monitor: CanBusMonitorModel
   /** The bus is being forwarded (frames can arrive). */
   live: boolean
+  /**
+   * 'drawer' docks at the foot of a page (resizable, collapsible); 'page'
+   * fills a tab of its own (Expert ▸ Frames).
+   */
+  layout?: 'drawer' | 'page'
 }
 
 const ROW_HEIGHT = 24
@@ -583,7 +588,8 @@ function LogPlayer({ monitor }: { monitor: CanBusMonitorModel }): ReactNode {
   )
 }
 
-export function CanBusMonitorView({ monitor, live }: CanBusMonitorViewProps): ReactNode {
+export function CanBusMonitorView({ monitor, live, layout = 'drawer' }: CanBusMonitorViewProps): ReactNode {
+  const isPage = layout === 'page'
   const [height, setHeight] = useState(readStoredHeight)
   const [collapsed, setCollapsed] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
@@ -611,13 +617,13 @@ export function CanBusMonitorView({ monitor, live }: CanBusMonitorViewProps): Re
 
   return (
     <section
-      className={`can-monitor${collapsed ? ' is-collapsed' : ''}`}
-      style={collapsed ? undefined : { height }}
+      className={`can-monitor${isPage ? ' can-monitor--page' : ''}${collapsed && !isPage ? ' is-collapsed' : ''}`}
+      style={isPage || collapsed ? undefined : { height }}
       aria-label="CAN bus monitor"
       data-testid="can-monitor"
     >
       {/* The drawer's top edge is its resize handle, as in a browser's devtools. */}
-      {!collapsed ? (
+      {!collapsed && !isPage ? (
         <div
           className="can-monitor__resize"
           role="separator"
@@ -758,6 +764,7 @@ export function CanBusMonitorView({ monitor, live }: CanBusMonitorViewProps): Re
               event.target.value = ''
             }}
           />
+          {isPage ? null : (
           <button
             type="button"
             className="can-monitor__icon-button"
@@ -768,10 +775,11 @@ export function CanBusMonitorView({ monitor, live }: CanBusMonitorViewProps): Re
           >
             {collapsed ? '▴' : '▾'}
           </button>
+          )}
         </div>
       </header>
 
-      {!collapsed ? (
+      {!collapsed || isPage ? (
         <>
           {viewingLog ? <LogPlayer monitor={monitor} /> : null}
           {monitor.logError ? <div className="can-monitor__banner can-monitor__banner--error">{monitor.logError}</div> : null}

@@ -54,6 +54,7 @@ import {
   VTX_POWER_SLOT_UNUSED,
   VTX_POWER_TABLE_ENABLE_PARAM,
   VTX_POWER_TABLE_SLOT_PARAMS,
+  GCS_DRONECAN_NODE_ID,
 } from '@arduconfig/ardupilot-core'
 import {
   arducopterMetadata,
@@ -295,7 +296,9 @@ import { CanDeviceInspectorView, type DronecanFirmwareOnlineSource } from './vie
 import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
 import { useCanBusMonitor } from './hooks/use-can-bus-monitor'
 import { CanBusMonitorView } from './views/CanBusMonitor'
-import { CanMessagesView } from './views/CanMessages'
+import { CanMessagesPage, canFieldSeriesLabel } from './views/CanMessagesPage'
+import { CanPlotView } from './views/CanPlot'
+import type { CanSubTab } from './views/CanBus'
 import { useCanDevicePopouts } from './hooks/use-can-device-popouts'
 import { usePopoutWindows } from './hooks/use-popout-windows'
 import { RecentNoticesFeed, recentNoticesBadge } from './views/RecentNoticesFeed'
@@ -2656,6 +2659,8 @@ export function App() {
   // The CAN tab's bus monitor: every raw frame on the forwarded bus (and the
   // ones we send), captured outside the snapshot. Bitrate (CAN_Pn_BITRATE,
   // bit/s) feeds the load estimate; ArduPilot's default is 1 Mbit/s.
+  // The CAN tab's sub-tab: Devices, Messages, Frames, Plot.
+  const [canSubTab, setCanSubTab] = useState<CanSubTab>('devices')
   const canBusMonitor = useCanBusMonitor({
     source: runtime,
     enabled: snapshot.canBus.status === 'active',
@@ -2664,6 +2669,23 @@ export function App() {
         ? readRoundedParameter(snapshot, `CAN_P${snapshot.canBus.bus}_BITRATE`) ?? 1_000_000
         : undefined
   })
+  const canNodeLabel = (nodeId: number): string | undefined =>
+    snapshot.canBus.nodes.find((node) => node.nodeId === nodeId)?.name ??
+    // This app's own node: responses come back addressed to it.
+    (nodeId === GCS_DRONECAN_NODE_ID ? 'this app' : undefined)
+  // Nodes seen only in RECEIVED traffic: this app's own requests (TX) come
+  // from its GCS node id, which is not a node on the bus.
+  const canExtraNodeIds = [
+    ...new Set(
+      canBusMonitor
+        .topics()
+        .filter((topic) => topic.last.direction === 'rx' && topic.sourceNodeId !== 0)
+        .map((topic) => topic.sourceNodeId)
+    )
+  ]
+  const canMessageNodes = [...new Set([...snapshot.canBus.nodes.map((node) => node.nodeId), ...canExtraNodeIds])]
+    .sort((left, right) => left - right)
+    .map((nodeId) => ({ nodeId, label: canNodeLabel(nodeId) ?? '' }))
   // Online firmware lookup for DroneCAN nodes (desktop-only). The browser can't
   // reach firmware.ardupilot.org (no CORS), so this is wired ONLY when the
   // Electron firmware bridge is present — same precedent as the FC flasher. In
@@ -10312,27 +10334,72 @@ export function App() {
         // --- folded-in DroneCAN inspector (was a separate expert-only tab) ---
         framesPerSec={dronecanFramesPerSec}
         escTelemetry={snapshot.canBus.escTelemetry}
-        monitorSlot={<CanBusMonitorView monitor={canBusMonitor} live={snapshot.canBus.status === 'active'} />}
         workspace={{
-          renderMessages: (scope) => (
-            <CanMessagesView
-              topics={canBusMonitor.topics(scope === 'bus' ? undefined : scope)}
-              scope={scope}
-              nodeLabel={(nodeId) => snapshot.canBus.nodes.find((node) => node.nodeId === nodeId)?.name}
-              onShowFrames={canBusMonitor.showTopicFrames}
-              live={snapshot.canBus.status === 'active' || canBusMonitor.openedLog !== undefined}
-            />
-          ),
-          // Nodes seen only in RECEIVED traffic: this app's own requests (TX)
-          // come from its GCS node id, which is not a node on the bus.
-          extraNodeIds: [
-            ...new Set(
-              canBusMonitor
-                .topics()
-                .filter((topic) => topic.last.direction === 'rx' && topic.sourceNodeId !== 0)
-                .map((topic) => topic.sourceNodeId)
-            )
-          ]
+          extraNodeIds: canExtraNodeIds,
+          // An opened log feeds Messages, Frames and Plot alike; say so above
+          // every sub-tab, with the way back.
+          notice:
+            canBusMonitor.openedLog ? (
+              <div className="can-log-notice" data-testid="can-log-notice">
+                <span>
+                  Showing the log <strong>{canBusMonitor.openedLog.name}</strong> in Messages, Frames and Plot.
+                </span>
+                <button type="button" style={buttonStyle()} onClick={canBusMonitor.closeLog}>
+                  Back to live
+                </button>
+              </div>
+            ) : undefined,
+          // Sub-tabs for everyone (operator call: the layout is clear enough
+          // not to hide them). Restart / firmware stay Expert-only below.
+          pages: {
+                page: canSubTab,
+                onPage: setCanSubTab,
+                messages: (
+                  <CanMessagesPage
+                    topics={canBusMonitor.topics()}
+                    nodes={canMessageNodes}
+                    nodeLabel={canNodeLabel}
+                    live={snapshot.canBus.status === 'active' || canBusMonitor.openedLog !== undefined}
+                    onShowFrames={(topic) => {
+                      canBusMonitor.showTopicFrames(topic)
+                      setCanSubTab('frames')
+                    }}
+                    onPlotField={(topic, field) =>
+                      canBusMonitor.addPlotSeries(canFieldSeriesLabel(topic, field), {
+                        kind: 'field',
+                        topicKey: topic.key,
+                        path: field.path
+                      })
+                    }
+                    isPlotted={(topic, field) =>
+                      canBusMonitor.plotSeries.some(
+                        (entry) =>
+                          entry.source.kind === 'field' &&
+                          entry.source.topicKey === topic.key &&
+                          entry.source.path.join('.') === field.path.join('.')
+                      )
+                    }
+                  />
+                ),
+                frames: (
+                  <CanBusMonitorView
+                    monitor={canBusMonitor}
+                    live={snapshot.canBus.status === 'active'}
+                    layout="page"
+                  />
+                ),
+                plot: (
+                  <CanPlotView
+                    series={canBusMonitor.plotSeries}
+                    samplesFor={canBusMonitor.plotSamplesFor}
+                    nowMs={canBusMonitor.plotNowMs}
+                    onRemove={canBusMonitor.removePlotSeries}
+                    onClear={canBusMonitor.clearPlotSeries}
+                    onAddBytes={(label, source) => canBusMonitor.addPlotSeries(label, source)}
+                    onPickFields={() => setCanSubTab('messages')}
+                  />
+                )
+              }
         }}
         busy={busyAction !== undefined}
         // Restart + firmware update were expert-gated by living in the expert-only

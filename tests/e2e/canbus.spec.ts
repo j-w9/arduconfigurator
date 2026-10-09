@@ -165,6 +165,8 @@ test.describe('CAN bus monitor', () => {
     await page.getByTestId('view-button-can').click()
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('can-bus-stop')).toBeVisible()
+    // The bus monitor is the Frames sub-tab.
+    await page.getByTestId('can-subtab-frames').click()
   }
 
   test('shows every frame on the bus: plain CAN beside DroneCAN, with live stats', async ({ page }) => {
@@ -294,6 +296,8 @@ test.describe('CAN tab on a phone', () => {
     await page.getByTestId('view-button-can').click()
     await page.getByTestId('can-bus-start').click()
     await expect(page.getByTestId('dronecan-esc-table')).toBeVisible({ timeout: 15_000 })
+    expect((await worstViewportOverflow(page)).worst, 'devices').toBeLessThanOrEqual(2)
+    await page.getByTestId('can-subtab-frames').click()
     await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 15_000 })
     for (const mode of ['stream', 'by-id'] as const) {
       await page.getByTestId(`can-monitor-view-${mode}`).click()
@@ -312,6 +316,7 @@ test.describe('CAN bus monitor: logs and saving', () => {
     await page.goto('/')
     await connectDemo(page)
     await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-subtab-frames').click()
     await page.getByTestId('can-monitor-log-input').setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(text) })
     await expect(page.getByTestId('can-monitor-log-banner')).toContainText(name)
   }
@@ -359,6 +364,7 @@ test.describe('CAN bus monitor: logs and saving', () => {
     await connectDemo(page)
     await page.getByTestId('view-button-can').click()
     await page.getByTestId('can-bus-start').click()
+    await page.getByTestId('can-subtab-frames').click()
     await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 15_000 })
     await page.getByTestId('can-monitor-filter-ids').fill('123')
 
@@ -379,8 +385,8 @@ test.describe('CAN bus monitor: logs and saving', () => {
   })
 })
 
-test.describe('CAN workspace: nodes rail and decoded messages', () => {
-  async function openWorkspace(page: Page): Promise<void> {
+test.describe('CAN tab: Devices, Messages, Plot', () => {
+  async function openCan(page: Page): Promise<void> {
     await page.goto('/')
     await connectDemo(page)
     await page.getByTestId('view-button-can').click()
@@ -388,41 +394,46 @@ test.describe('CAN workspace: nodes rail and decoded messages', () => {
     await expect(page.getByTestId('can-bus-stop')).toBeVisible()
   }
 
-  test('the whole bus lists every node and every decoded message stream', async ({ page }) => {
-    await openWorkspace(page)
+  test('Devices is the default: a node rail, every node card, and selecting one narrows to it', async ({ page }) => {
+    await openCan(page)
+    await expect(page.getByTestId('can-subtab-devices')).toHaveAttribute('aria-selected', 'true')
     const rail = page.getByTestId('can-node-rail')
     await expect(rail.getByTestId('can-rail-bus')).toHaveAttribute('aria-pressed', 'true')
     await expect(rail.getByTestId('can-rail-node-124')).toContainText('Node 124', { timeout: 15_000 })
-    await expect(rail.getByTestId('can-rail-node-50')).toBeVisible()
-    // Every node's card is on the whole-bus page.
     await expect(page.getByTestId('can-bus-node-124')).toBeVisible()
     await expect(page.getByTestId('can-bus-node-50')).toBeVisible()
-    const messages = page.getByTestId('can-messages-bus')
-    await expect(messages.getByTestId('can-message-NodeStatus-124')).toContainText('health OK', { timeout: 15_000 })
-    await expect(messages.getByTestId('can-message-Status-50')).toContainText('esc.Status')
-  })
-
-  test('selecting a node narrows the page to its card and its messages, and a row opens into fields', async ({ page }) => {
-    await openWorkspace(page)
-    await page.getByTestId('can-rail-node-50').click({ timeout: 15_000 })
+    await rail.getByTestId('can-rail-node-50').click()
     await expect(page.getByTestId('can-bus-node-50')).toBeVisible()
     await expect(page.getByTestId('can-bus-node-124')).toHaveCount(0)
-    const messages = page.getByTestId('can-messages-node-50')
-    const status = messages.getByTestId('can-message-NodeStatus-50')
-    await expect(status).toBeVisible({ timeout: 15_000 })
-    await expect(messages.getByTestId('can-message-NodeStatus-124')).toHaveCount(0)
-    await status.locator('.can-messages__name').click()
-    await expect(status).toContainText('uavcan.protocol.NodeStatus')
-    await expect(status.locator('.can-monitor__tree-meaning').first()).toHaveText('OK')
-
-    await page.getByTestId('can-rail-bus').click()
+    await rail.getByTestId('can-rail-bus').click()
     await expect(page.getByTestId('can-bus-node-124')).toBeVisible()
   })
 
-  test('Frames points the bus monitor at exactly that stream', async ({ page }) => {
-    await openWorkspace(page)
+  test('Messages lists every decoded stream, split per ESC, and inspects the selected one', async ({ page }) => {
+    await openCan(page)
+    await page.getByTestId('can-subtab-messages').click()
+    const messages = page.getByTestId('can-messages-bus')
+    await expect(messages.getByTestId('can-message-NodeStatus-124')).toContainText('health OK', { timeout: 15_000 })
+    // node 50 sends esc.Status for four ESCs: one stream each, not one mixed stream.
+    await expect(messages.getByTestId('can-message-Status-50-0')).toContainText('esc.Status #0')
+    await expect(messages.getByTestId('can-message-Status-50-3')).toContainText('esc.Status #3')
+
+    await page.getByTestId('can-messages-node-124').click()
+    await expect(messages.getByTestId('can-message-Status-50-0')).toHaveCount(0)
+    await page.getByTestId('can-messages-node-all').click()
+
+    await messages.getByTestId('can-message-NodeStatus-124').locator('.can-messages__name').click()
+    const inspector = page.getByTestId('can-message-inspector')
+    await expect(inspector).toContainText('uavcan.protocol.NodeStatus')
+    await expect(inspector.locator('.can-monitor__tree-meaning').first()).toHaveText('OK')
+  })
+
+  test('Frames from a message points the bus monitor at exactly that stream', async ({ page }) => {
+    await openCan(page)
+    await page.getByTestId('can-subtab-messages').click()
     const status = page.getByTestId('can-messages-bus').getByTestId('can-message-NodeStatus-124')
     await status.getByTestId('can-message-show-frames').click({ timeout: 15_000 })
+    await expect(page.getByTestId('can-subtab-frames')).toHaveAttribute('aria-selected', 'true')
     // id/mask with the priority bits masked off: type 341 (0x155) from node 124 (0x7C).
     await expect(page.getByTestId('can-monitor-filter-ids')).toHaveValue('0001557C/00FFFFFF')
     await expect(page.getByTestId('can-monitor-row').first()).toBeVisible({ timeout: 10_000 })
@@ -431,5 +442,30 @@ test.describe('CAN workspace: nodes rail and decoded messages', () => {
     for (let index = 0; index < count; index += 1) {
       await expect(rows.nth(index)).toContainText('NodeStatus ← 124')
     }
+  })
+
+  test('Plot charts a decoded field and a plain-CAN frame value', async ({ page }) => {
+    await openCan(page)
+    await page.getByTestId('can-subtab-plot').click()
+    await expect(page.getByTestId('can-plot-empty')).toBeVisible()
+
+    await page.getByTestId('can-subtab-messages').click()
+    await page.getByTestId('can-messages-bus').getByTestId('can-message-Status-50-1').locator('.can-messages__name').click({ timeout: 15_000 })
+    await page.getByTestId('can-message-inspector').getByTestId('can-plot-field-rpm').click()
+    await expect(page.getByTestId('can-message-inspector').getByTestId('can-plot-field-rpm')).toHaveText('Plotted')
+
+    await page.getByTestId('can-subtab-plot').click()
+    await page.getByTestId('can-plot-bytes-id').fill('2A0')
+    await page.getByTestId('can-plot-bytes-width').selectOption('2')
+    await page.getByTestId('can-plot-bytes-add').click()
+
+    const series = page.getByTestId('can-plot-series')
+    await expect(series).toHaveCount(2)
+    await expect(series.nth(0)).toContainText('esc.Status #1 rpm ← 50')
+    await expect(series.nth(1)).toContainText('2A0 byte 0..1 uint16 LE')
+    // ESC 1 alone: a steady ~5000 rpm (the demo's 5030 + jitter), not four ESCs mixed.
+    await expect.poll(async () => Number(await series.nth(0).getByTestId('can-plot-last').textContent()), { timeout: 15_000 }).toBeGreaterThan(4900)
+    await expect.poll(async () => Number(await series.nth(1).getByTestId('can-plot-last').textContent()), { timeout: 15_000 }).toBeGreaterThan(900)
+    await expect(series.nth(0).locator('canvas').first()).toBeVisible()
   })
 })

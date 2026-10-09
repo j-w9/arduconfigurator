@@ -20,6 +20,12 @@ export interface CanMessagesViewProps {
   onShowFrames: (topic: CanTopicEntry) => void
   /** Frames are flowing (forwarding active, or a log open). */
   live: boolean
+  /**
+   * With a selection handler, a row is selected (and shown in an inspector
+   * beside the table) instead of opening inline.
+   */
+  selectedKey?: string
+  onSelect?: (topic: CanTopicEntry) => void
 }
 
 function kindLabel(topic: CanTopicEntry): string {
@@ -31,13 +37,14 @@ function route(topic: CanTopicEntry, nodeLabel: (nodeId: number) => string | und
     // A frame this app sent came from its own (GCS) node, not a bus node.
     if (id === topic.sourceNodeId && topic.last.direction === 'tx') return 'this app'
     const label = nodeLabel(id)
+    if (label === 'this app') return label
     return label ? `${id} ${label}` : String(id)
   }
   if (topic.destinationNodeId !== undefined) return `${name(topic.sourceNodeId)} → ${name(topic.destinationNodeId)}`
   return name(topic.sourceNodeId)
 }
 
-export function CanMessagesView({ topics, scope, nodeLabel, onShowFrames, live }: CanMessagesViewProps): ReactNode {
+export function CanMessagesView({ topics, scope, nodeLabel, onShowFrames, live, selectedKey, onSelect }: CanMessagesViewProps): ReactNode {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
   const now = Date.now()
   const toggle = (key: string) =>
@@ -82,28 +89,31 @@ export function CanMessagesView({ topics, scope, nodeLabel, onShowFrames, live }
             <span role="columnheader" aria-label="Actions" />
           </div>
           {topics.map((topic) => {
-            const open = expanded.has(topic.key)
+            const open = !onSelect && expanded.has(topic.key)
+            const selected = onSelect !== undefined && topic.key === selectedKey
             const tree = transferFieldTree(topic.last)
             // Services are one-shot exchanges, not streams: a count, never "stale".
             const isService = topic.kind === 'request' || topic.kind === 'response'
             const stale = !isService && isCanTopicStale(topic, now)
-            const name = topic.last.type
+            const baseName = topic.last.type
               ? dronecanDisplayName(topic.last.type.fullName)
               : topic.kind === 'anonymous'
                 ? 'Anonymous'
                 : `Type ${topic.dataTypeId}`
+            const name = topic.index ? `${baseName} #${topic.index.value}` : baseName
             return (
               <div
                 key={topic.key}
-                className={`can-messages__item${open ? ' is-open' : ''}${stale ? ' is-stale' : ''}`}
-                data-testid={`can-message-${topic.last.type?.shortName ?? topic.dataTypeId}-${topic.sourceNodeId}`}
+                className={`can-messages__item${open ? ' is-open' : ''}${selected ? ' is-selected' : ''}${stale ? ' is-stale' : ''}`}
+                data-testid={`can-message-${topic.last.type?.shortName ?? topic.dataTypeId}-${topic.sourceNodeId}${topic.index ? `-${topic.index.value}` : ''}`}
               >
                 <div className={`can-messages__row${scope === 'bus' ? ' has-route' : ''}`} role="row">
                   <button
                     type="button"
                     className="can-messages__name"
-                    onClick={() => toggle(topic.key)}
-                    aria-expanded={open}
+                    onClick={() => (onSelect ? onSelect(topic) : toggle(topic.key))}
+                    aria-expanded={onSelect ? undefined : open}
+                    aria-pressed={onSelect ? selected : undefined}
                     title={topic.last.type?.fullName}
                   >
                     <span className="can-messages__chevron" aria-hidden="true">

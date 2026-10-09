@@ -7,6 +7,8 @@ import type { DronecanTransfer, DronecanTransferKind } from '@arduconfig/droneca
 
 export interface CanTopicEntry {
   key: string
+  /** The device index this stream is split on (esc_index 2, say), when its type multiplexes devices. */
+  index?: { field: string; value: number }
   bus: number
   kind: DronecanTransferKind
   dataTypeId: number
@@ -20,8 +22,30 @@ export interface CanTopicEntry {
   last: DronecanTransfer
 }
 
-export function canTopicKey(transfer: Pick<DronecanTransfer, 'bus' | 'kind' | 'dataTypeId' | 'sourceNodeId' | 'destinationNodeId'>): string {
-  return `${transfer.bus}:${transfer.kind}:${transfer.dataTypeId}:${transfer.sourceNodeId}:${transfer.destinationNodeId ?? '-'}`
+/**
+ * Index fields that multiplex several devices through one message stream:
+ * an ESC node sends esc.Status for each of its ESCs, told apart only by
+ * esc_index; likewise actuators, batteries, sensors. A stream is split on
+ * them, so each ESC gets its own row and its own plot (one row for all four
+ * plotted a sawtooth).
+ */
+const DEVICE_INDEX_FIELDS = ['esc_index', 'actuator_id', 'battery_id', 'sensor_id', 'circuit_id', 'hardpoint_id'] as const
+
+/** The device index a message carries, if its type multiplexes devices. */
+export function canTopicIndex(transfer: Pick<DronecanTransfer, 'kind' | 'value'>): { field: string; value: number } | undefined {
+  if (transfer.kind !== 'message' || !transfer.value) return undefined
+  for (const field of DEVICE_INDEX_FIELDS) {
+    const value = transfer.value[field]
+    if (typeof value === 'number') return { field, value }
+  }
+  return undefined
+}
+
+export function canTopicKey(
+  transfer: Pick<DronecanTransfer, 'bus' | 'kind' | 'dataTypeId' | 'sourceNodeId' | 'destinationNodeId' | 'value'>
+): string {
+  const index = canTopicIndex(transfer)
+  return `${transfer.bus}:${transfer.kind}:${transfer.dataTypeId}:${transfer.sourceNodeId}:${transfer.destinationNodeId ?? '-'}${index ? `#${index.value}` : ''}`
 }
 
 export class CanTopicTable {
@@ -33,6 +57,7 @@ export class CanTopicTable {
     if (!existing) {
       this.entries.set(key, {
         key,
+        index: canTopicIndex(transfer),
         bus: transfer.bus,
         kind: transfer.kind,
         dataTypeId: transfer.dataTypeId,
