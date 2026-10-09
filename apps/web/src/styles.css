@@ -20274,3 +20274,92 @@ button.mavlink-inspector__sent-row {
 .setup-gui-box--bench-actions .setup-bench-action__button {
   grid-area: button;
 }
+
+
+/* Flash ▸ Find firmware: search + Board dropdown over ArduPilot's builds. */
+.firmware-finder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 8px 0 12px;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel-raised);
+}
+.firmware-finder__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: flex-end;
+}
+.firmware-finder label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.firmware-finder__search {
+  flex: 1 1 280px;
+}
+.firmware-finder input,
+.firmware-finder select {
+  height: 32px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: var(--text-md);
+}
+.firmware-finder__board-pick select {
+  width: min(100%, 560px);
+}
+.firmware-finder__board,
+.firmware-finder__detail,
+.firmware-finder__empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.firmware-finder__board strong {
+  color: var(--text);
+}
+.firmware-finder__tag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: var(--text-xs);
+}
+.firmware-finder__tag--running {
+  border-color: var(--success);
+  color: var(--success);
+}
+.firmware-finder__pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.firmware-finder__warning {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--warning);
+  background: rgba(var(--warning-rgb, 255, 187, 0), 0.08);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.firmware-finder__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+.firmware-wizard__manual summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

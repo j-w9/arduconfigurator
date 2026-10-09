@@ -283,6 +283,7 @@ import { planGuidedIdentifyAdvance } from './view-models/guided-identify-advance
 import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
+import { relayFirmwareSource } from './firmware/firmware-index-source'
 import { ElrsFlasher, type ElrsFlasherNotice } from './firmware/ElrsFlasher'
 import { flashElrsReceiver, type ElrsFlashProgress } from './firmware/web-serial-esptool'
 import { patchElrsFirmwareOptions } from './view-models/elrs-firmware-options'
@@ -8274,6 +8275,15 @@ export function App() {
     }
   ] as const
 
+  // The board the Flash tab's finder pre-selects for: its board id (from
+  // AUTOPILOT_VERSION) and the banner's board name, which is the exact build
+  // target (MatekH743 vs MatekH743-bdshot share an id).
+  const flashBoardId = snapshot.connection.kind === 'connected' ? snapshot.hardware.board?.boardType : undefined
+  const flashBoardName = snapshot.connection.kind === 'connected' ? snapshot.hardware.board?.reportedBoardName : undefined
+  const flashConnectedBoard = useMemo(
+    () => (flashBoardId ? { boardId: flashBoardId, boardName: flashBoardName } : undefined),
+    [flashBoardId, flashBoardName]
+  )
   const showLanding = (activeViewId === 'setup' || activeViewId === 'guided-setup') && snapshot.connection.kind !== 'connected'
 
   // The OSD/VTX switcher, handed to whichever section is showing instead of
@@ -10102,6 +10112,8 @@ export function App() {
                 : undefined
           }
           connectedVehicle={snapshot.vehicle?.vehicle}
+          firmwareIndex={relayFirmwareSource}
+          connectedBoard={flashConnectedBoard}
         />
       ) : null}
 

@@ -14,6 +14,9 @@ import type { WebSerialPortLike } from '@arduconfig/transport'
 
 import { WebSerialBootloaderSerial, inflateZlib } from './web-serial-bootloader'
 import { DfuHexFlasher } from './DfuHexFlasher'
+import { FirmwareFinder } from './FirmwareFinder'
+import type { FirmwareIndexSource } from './firmware-index-source'
+import type { ConnectedBoard, FirmwareIndexRow } from '../view-models/firmware-finder'
 import type { BootloaderHashPreview } from '../view-models/bootloader-hash-preview'
 
 /** Where ArduPilot publishes firmware. The only source now — the custom
@@ -34,6 +37,17 @@ export interface FirmwareBrowseEntry {
 export interface DesktopFirmwareBridge {
   list(boardId: number, vehicletype?: string): Promise<{ releaseTypes: string[]; entries: FirmwareBrowseEntry[] }>
   download(url: string): Promise<Uint8Array>
+}
+
+/** The manual download (Vehicle / Release / link), folded under the finder when there is one. */
+function ManualDownload({ folded, children }: { folded: boolean; children: ReactNode }): ReactNode {
+  if (!folded) return <>{children}</>
+  return (
+    <details className="firmware-wizard__manual" data-testid="firmware-manual-download">
+      <summary>Or download it yourself</summary>
+      {children}
+    </details>
+  )
 }
 
 export interface FirmwareFlasherProps {
@@ -112,6 +126,11 @@ export interface FirmwareFlasherProps {
   /** The currently-connected vehicle (e.g. "ArduCopter"), used to pre-select
    *  the firmware Vehicle dropdown so it matches what's plugged in. */
   connectedVehicle?: string
+  /** ArduPilot's published builds (the private deploy's index + relay). When
+   *  it loads, step 1 leads with a search and in-app download. */
+  firmwareIndex?: FirmwareIndexSource
+  /** The connected flight controller: its board id and banner name pick its build. */
+  connectedBoard?: ConnectedBoard
 }
 
 // A no-DFU board's serial bootloader (Cube etc.) only runs for a few
@@ -257,6 +276,23 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   )
 
   const [phase, setPhase] = useState<Phase>('idle')
+  // ArduPilot's build index, when this site serves one; undefined hides the finder.
+  const [indexRows, setIndexRows] = useState<FirmwareIndexRow[] | undefined>(undefined)
+  useEffect(() => {
+    if (!props.firmwareIndex) return
+    let cancelled = false
+    props.firmwareIndex
+      .loadIndex()
+      .then((rows) => {
+        if (!cancelled && rows.length > 0) setIndexRows(rows)
+      })
+      .catch(() => {
+        // No index here (public build, desktop bundle): the download link stays.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [props.firmwareIndex])
   // Flash view sub-tabs: the firmware-server/.apj flow (default, common path) vs
   // the WebUSB DFU .hex flasher. Matches the app-wide .tab-strip pattern.
   const [flashTab, setFlashTab] = useState<'firmware' | 'dfu-hex' | 'betaflight'>('firmware')
@@ -1402,6 +1438,19 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
         <ol className="firmware-wizard__steps">
           <li>
             <span className="firmware-wizard__step-title">1. Pick the firmware</span>
+            {indexRows && props.firmwareIndex ? (
+              <FirmwareFinder
+                rows={indexRows}
+                board={props.connectedBoard}
+                connectedVehicle={props.connectedVehicle}
+                disabled={phase === 'flashing'}
+                onLoad={async (target) => {
+                  const text = await props.firmwareIndex!.download(target.path)
+                  await loadFirmwareApj(text, target.path.split('/').slice(-2).join('/'))
+                }}
+              />
+            ) : null}
+            <ManualDownload folded={indexRows !== undefined}>
             <div className="firmware-wizard__row">
               <label className="scoped-editor-field">
                 <span>Vehicle</span>
@@ -1445,6 +1494,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
               Opens firmware.ardupilot.org. Find your exact board’s folder and download its{' '}
               <code>.apj</code> (your browser downloads it directly — no proxy).
             </p>
+            </ManualDownload>
 
             {firmwareBridge ? (
               <div className="firmware-wizard__browse" data-testid="firmware-browse">
@@ -1511,7 +1561,9 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           </li>
 
           <li>
-            <span className="firmware-wizard__step-title">2. Drop the file you downloaded</span>
+            <span className="firmware-wizard__step-title">
+              {indexRows ? '2. Or drop an .apj file' : '2. Drop the file you downloaded'}
+            </span>
             <label className="scoped-editor-field">
               <span>Firmware (.apj)</span>
               <input
