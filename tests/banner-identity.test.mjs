@@ -51,6 +51,15 @@ test('a board this app has never catalogued still reports its own name', () => {
   )
 })
 
+test('mixed-case board names (the hwdef directory) are read too, variants and all', () => {
+  // The name is the hwdef directory, which is the firmware server's target name:
+  // it is what tells MatekH743 from MatekH743-bdshot (same board id).
+  assert.equal(parseBoardNameFromBanner('MatekH743-bdshot 00360029 3133510A 38333639'), 'MatekH743-bdshot')
+  assert.equal(parseBoardNameFromBanner('CubeOrange 0034003A 3239510D 38383535'), 'CubeOrange')
+  assert.equal(parseBoardNameFromBanner('KakuteH7v2 0021004B 3132510A 33383933'), 'KakuteH7v2')
+  assert.equal(parseBoardNameFromBanner('PreArm: Compass not calibrated'), undefined)
+})
+
 test('other vehicle firmwares are recognised too', () => {
   assert.equal(parseFirmwareStringFromBanner('ArduPlane V4.6.0 (abc123)'), 'ArduPlane V4.6.0')
   assert.equal(parseFirmwareStringFromBanner('ArduRover V4.5.7-dev'), 'ArduRover V4.5.7-dev')

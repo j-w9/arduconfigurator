@@ -8231,3 +8231,103 @@ test.describe('Calibration location map (OpenStreetMap tiles)', () => {
     expect(referers.every((referer) => referer !== undefined && referer.length > 0)).toBe(true)
   })
 })
+
+test.describe('Flash: find firmware (the private deploy\'s index + relay)', () => {
+  // The app's offline service worker fetches /fw/* on the page's behalf, out of
+  // reach of page.route; block it so the stubbed index and relay are served.
+  test.use({ serviceWorkers: 'block' })
+  // A minimal valid .apj for board 1013 (board_id + zlib-deflated image).
+  const rawImage = Buffer.from([0xa3, 0x95, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05])
+  const apj = (boardId: number) => JSON.stringify({ board_id: boardId, image_size: rawImage.length, image: deflateSync(rawImage).toString('base64') })
+  const columns = ['platform', 'boardId', 'vehicle', 'mavType', 'channel', 'version', 'brand', 'manufacturer', 'path']
+  const row = (platform: string, boardId: number, mavType = 'Copter') => [
+    platform, boardId, 'Copter', mavType, 'OFFICIAL', 'V4.7.1', '', platform.startsWith('Matek') ? 'Matek' : 'Other',
+    `Copter/stable/${platform}${mavType === 'HELICOPTER' ? '-heli' : ''}/arducopter.apj`
+  ]
+  const index = {
+    format: 1,
+    columns,
+    rows: [row('MatekH743', 1013), row('MatekH743-bdshot', 1013), row('MatekH743', 1013, 'HELICOPTER'), row('KakuteH7', 1048), row('DemoBoard59', 59)]
+  }
+
+  async function serveIndex(page: import('@playwright/test').Page): Promise<string[]> {
+    const downloads: string[] = []
+    await page.route('**/fw/index.json', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(index) }))
+    await page.route('**/fw/apj?*', (route) => {
+      const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+      downloads.push(path)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: apj(path.includes('DemoBoard59') ? 59 : 1013) })
+    })
+    return downloads
+  }
+
+  test('with no board connected: search, pick from the dropdown, download and load', async ({ page }) => {
+    const downloads = await serveIndex(page)
+    await page.goto('/')
+    await page.getByTestId('landing-flash-firmware-button').click()
+    const finder = page.getByTestId('firmware-finder')
+    await expect(finder).toBeVisible()
+    // Every board is in the dropdown before anything is typed (plus the
+    // "Choose…" prompt); heli builds stay under Heli.
+    const select = finder.getByTestId('firmware-finder-board-select')
+    await expect(select.locator('option')).toHaveCount(5)
+    await finder.getByTestId('firmware-finder-search').fill('matek')
+    await expect(select.locator('option')).toHaveCount(3)
+    await select.selectOption('MatekH743-bdshot')
+    await finder.getByTestId('firmware-finder-load').click()
+    await expect(page.getByTestId('firmware-loaded')).toContainText('board id 1013', { timeout: COMMAND_ACK_TIMEOUT })
+    expect(downloads).toEqual(['Copter/stable/MatekH743-bdshot/arducopter.apj'])
+    // The manual routes are still there, folded under the finder.
+    await expect(page.getByTestId('firmware-manual-download')).toBeVisible()
+    await expect(page.getByTestId('firmware-file-drop')).toBeVisible()
+    await expect(page.getByTestId('firmware-file')).toBeAttached()
+  })
+
+  test('on the desktop shell the finder runs on its native fetch, replacing the old fetch panel', async ({ page }) => {
+    const apjText = apj(1013)
+    await page.addInitScript(({ indexJson, apjBody }) => {
+      ;(window as unknown as { arduconfigDesktop: unknown }).arduconfigDesktop = {
+        platform: 'electron',
+        firmware: {
+          list: async () => ({ releaseTypes: [], entries: [] }),
+          index: async () => JSON.parse(indexJson),
+          download: async (url: string) => {
+            ;(window as unknown as { downloaded: string }).downloaded = url
+            return new TextEncoder().encode(apjBody)
+          }
+        }
+      }
+    }, { indexJson: JSON.stringify(index), apjBody: apjText })
+    await page.goto('/')
+    await page.getByTestId('landing-flash-firmware-button').click()
+    const finder = page.getByTestId('firmware-finder')
+    await expect(finder).toBeVisible()
+    await expect(page.getByTestId('firmware-browse')).toHaveCount(0)
+    await finder.getByTestId('firmware-finder-board-select').selectOption('MatekH743')
+    await finder.getByTestId('firmware-finder-load').click()
+    await expect(page.getByTestId('firmware-loaded')).toContainText('board id 1013', { timeout: COMMAND_ACK_TIMEOUT })
+    expect(await page.evaluate(() => (window as unknown as { downloaded: string }).downloaded)).toBe(
+      'https://firmware.ardupilot.org/Copter/stable/MatekH743/arducopter.apj'
+    )
+  })
+
+  test('connected: the board\'s build is listed first and pre-selected', async ({ page }) => {
+    await serveIndex(page)
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+    await page.getByTestId('view-button-flash').click()
+    const finder = page.getByTestId('firmware-finder')
+    await expect(finder.getByTestId('firmware-finder-board')).toContainText('board id 59')
+    await expect(finder.getByTestId('firmware-finder-board-select')).toHaveValue('DemoBoard59')
+    await expect(finder.getByTestId('firmware-finder-load')).toHaveText('Use DemoBoard59 V4.7.1')
+  })
+
+  test('a site without the index keeps the plain download link', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('landing-flash-firmware-button').click()
+    await expect(page.getByTestId('firmware-download-link')).toBeVisible()
+    await expect(page.getByTestId('firmware-finder')).toHaveCount(0)
+  })
+})

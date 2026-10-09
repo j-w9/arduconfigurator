@@ -471,7 +471,11 @@ export function parsePwmOutputCountFromBanner(text: string): number | undefined 
  * ("ChibiOS: ...", "IMU0: ...", "Frame: QUAD/X") do not have that shape.
  */
 export function parseBoardNameFromBanner(text: string): string | undefined {
-  const match = /^\s*([A-Z][A-Z0-9_\-]{2,})\s+((?:[0-9A-F]{8}\s*){2,})$/.exec(text.trim())
+  // The hwdef directory name, mixed case and all ("MatekH743-bdshot",
+  // "CubeOrange"), up to 23 characters (AP_HAL_ChibiOS/Util.cpp), then the
+  // UDID in 8-digit hex groups. The all-uppercase pattern this replaced missed
+  // most boards. No colon in the name, so "ChibiOS: 4f34e217" never matches.
+  const match = /^\s*([A-Za-z0-9][A-Za-z0-9_.\-]{1,22})\s+((?:[0-9A-Fa-f]{8}\s*){2,})$/.exec(text.trim())
   return match ? match[1] : undefined
 }
 

@@ -5,7 +5,8 @@ import {
   listBoardFirmware,
   listDronecanNodeFirmware,
   downloadFirmwareApj,
-  resetFirmwareManifestCache
+  resetFirmwareManifestCache,
+  firmwareIndex
 } from '../apps/desktop/dist/firmware-fetch.js'
 
 const MANIFEST = JSON.stringify({
@@ -99,4 +100,13 @@ test('listDronecanNodeFirmware matches AP_Periph apj by node board id', async ()
     fakeFetch({ 'https://firmware.ardupilot.org/manifest.json.gz': okGzManifest(PERIPH_MANIFEST_GZ) })
   )
   assert.equal(none.entries.length, 0)
+})
+
+test('firmwareIndex hands the finder the current .apj builds as compact rows', async () => {
+  resetFirmwareManifestCache()
+  const index = await firmwareIndex(fakeFetch({ 'https://firmware.ardupilot.org/manifest.json.gz': okGzManifest(MANIFEST_GZ) }))
+  assert.equal(index.format, 1)
+  assert.equal(index.columns[0], 'platform')
+  assert.ok(index.rows.length > 0)
+  assert.ok(index.rows.every((row) => String(row[8]).endsWith('.apj')))
 })

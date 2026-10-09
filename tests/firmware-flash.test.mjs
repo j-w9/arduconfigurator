@@ -19,6 +19,7 @@ import {
   firmwaresForBoard,
   availableReleaseTypes,
   selectFirmware,
+  buildFirmwareIndex,
   firmwaresForDronecanNode,
   dronecanNodeReleaseTypes,
   dronecanNodeBoardId
@@ -650,6 +651,33 @@ test('firmwaresForBoard / availableReleaseTypes / selectFirmware', () => {
   // No match → undefined (unknown board, and DEV not present for 53).
   assert.equal(selectFirmware(m, { boardId: 99 }), undefined)
   assert.equal(selectFirmware(m, { boardId: 53, vehicletype: 'Copter', releaseType: 'DEV' }), undefined)
+})
+
+test('selectFirmware never defaults to a heli build sharing the board id', () => {
+  const m = parseManifest(JSON.stringify({
+    'format-version': '1.0.0',
+    firmware: [
+      // Heli first, as the real manifest can order it; neither stable entry is `latest`.
+      { vehicletype: 'Copter', platform: 'MatekH743', board_id: 1013, format: 'apj', 'mav-type': 'HELICOPTER',
+        url: 'https://firmware.ardupilot.org/Copter/stable/MatekH743-heli/arducopter-heli.apj',
+        'mav-firmware-version-type': 'OFFICIAL', 'mav-firmware-version-str': 'V4.7.1', latest: 0 },
+      { vehicletype: 'Copter', platform: 'MatekH743', board_id: 1013, format: 'apj', 'mav-type': 'Copter',
+        url: 'https://firmware.ardupilot.org/Copter/stable/MatekH743/arducopter.apj',
+        'mav-firmware-version-type': 'OFFICIAL', 'mav-firmware-version-str': 'V4.7.1', latest: 0 }
+    ]
+  }))
+  assert.equal(m.entries[0].mavType, 'HELICOPTER')
+  assert.equal(selectFirmware(m, { boardId: 1013, vehicletype: 'Copter' }).url.endsWith('/MatekH743/arducopter.apj'), true)
+})
+
+test('buildFirmwareIndex: current .apj builds as the finder\'s compact rows', () => {
+  const index = buildFirmwareIndex(parseManifest(MANIFEST_FIXTURE))
+  assert.equal(index.format, 1)
+  assert.deepEqual(index.columns, ['platform', 'boardId', 'vehicle', 'mavType', 'channel', 'version', 'brand', 'manufacturer', 'path'])
+  // apj only (the abin is out), current channels only, paths relative to the server.
+  assert.ok(index.rows.every((row) => String(row[8]).endsWith('.apj') && !String(row[8]).startsWith('https://')))
+  assert.ok(index.rows.some((row) => row[0] === 'Pixhawk6X' && row[4] === 'BETA' && row[8] === 'Copter/beta/Pixhawk6X/arducopter.apj'))
+  assert.ok(index.rows.some((row) => row[0] === 'CubeOrange' && row[1] === 140))
 })
 
 // AP_Periph DroneCAN node firmware matching. board_id 1137 (AP_HW_FlywooF405Pro
