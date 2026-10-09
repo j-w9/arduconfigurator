@@ -23,4 +23,4 @@
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-ySvT2PEZeueHGC1y2crNuNTfphBynFPP7i+U21fEgX0='; connect-src 'self' ws: wss: data: https: http://localhost:* http://127.0.0.1:*; img-src 'self' data: blob: https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-ySvT2PEZeueHGC1y2crNuNTfphBynFPP7i+U21fEgX0='; connect-src 'self' ws: wss: data: https: http://localhost:* http://127.0.0.1:*; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self'; manifest-src 'self'; frame-src https://www.openstreetmap.org; object-src 'none'; base-uri 'self'; frame-ancestors 'none'

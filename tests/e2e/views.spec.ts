@@ -8205,3 +8205,29 @@ test.describe('Status & Info: Flash firmware', () => {
     await expect(page.getByTestId('flash-tab-firmware')).toHaveAttribute('aria-selected', 'true')
   })
 })
+
+test.describe('Calibration location map (OpenStreetMap tiles)', () => {
+  test('tiles come from tile.openstreetmap.org and carry a Referer, which OSM requires', async ({ page }) => {
+    // Without a Referer OSM serves an "Access blocked" 403 image for every tile
+    // (osm.wiki/Blocked). The site sends Referrer-Policy: no-referrer, so the
+    // tiles must ask for their own.
+    const referers: (string | undefined)[] = []
+    await page.route('https://tile.openstreetmap.org/**', (route) => {
+      referers.push(route.request().headers()['referer'])
+      return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64') })
+    })
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+    await page.getByTestId('view-button-calibration').click()
+    const open = page.getByTestId('cal-location-open').first()
+    await open.scrollIntoViewIfNeeded()
+    await open.click()
+    const tile = page.getByTestId('cal-location-map').locator('img.leaflet-tile').first()
+    await expect(tile).toHaveAttribute('referrerpolicy', 'strict-origin-when-cross-origin')
+    await expect(tile).toHaveAttribute('src', /^https:\/\/tile\.openstreetmap\.org\//)
+    await expect.poll(() => referers.length, { timeout: 10_000 }).toBeGreaterThan(0)
+    expect(referers.every((referer) => referer !== undefined && referer.length > 0)).toBe(true)
+  })
+})
