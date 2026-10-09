@@ -15,7 +15,7 @@ import type { WebSerialPortLike } from '@arduconfig/transport'
 import { WebSerialBootloaderSerial, inflateZlib } from './web-serial-bootloader'
 import { DfuHexFlasher } from './DfuHexFlasher'
 import { FirmwareFinder } from './FirmwareFinder'
-import type { FirmwareIndexSource } from './firmware-index-source'
+import { desktopFirmwareSource, type FirmwareIndexSource } from './firmware-index-source'
 import type { ConnectedBoard, FirmwareIndexRow } from '../view-models/firmware-finder'
 import type { BootloaderHashPreview } from '../view-models/bootloader-hash-preview'
 
@@ -26,10 +26,15 @@ const DEFAULT_AP_SERVER = 'https://firmware.ardupilot.org'
 export interface FirmwareBrowseEntry {
   boardId: number
   vehicletype: string
+  /** The build target ("MatekH743-bdshot"): variants share a board id. */
+  platform?: string
   releaseType: string
-  version: string
+  /** The bridge sends versionStr (firmware-flash FirmwareEntry). */
+  versionStr?: string
+  version?: string
   url: string
   latest: boolean
+  mavType?: string
 }
 
 /** Desktop main-process firmware fetch bridge (window.arduconfigDesktop.firmware) —
@@ -37,6 +42,8 @@ export interface FirmwareBrowseEntry {
 export interface DesktopFirmwareBridge {
   list(boardId: number, vehicletype?: string): Promise<{ releaseTypes: string[]; entries: FirmwareBrowseEntry[] }>
   download(url: string): Promise<Uint8Array>
+  /** Every current .apj build, compact rows (the finder's index). Newer shells only. */
+  index?(): Promise<unknown>
 }
 
 /** The manual download (Vehicle / Release / link), folded under the finder when there is one. */
@@ -45,6 +52,17 @@ function ManualDownload({ folded, children }: { folded: boolean; children: React
   return (
     <details className="firmware-wizard__manual" data-testid="firmware-manual-download">
       <summary>Or download it yourself</summary>
+      {children}
+    </details>
+  )
+}
+
+/** Dropping a local .apj, folded under the finder when there is one. */
+function FileDrop({ folded, children }: { folded: boolean; children: ReactNode }): ReactNode {
+  if (!folded) return <>{children}</>
+  return (
+    <details className="firmware-wizard__manual" data-testid="firmware-file-drop">
+      <summary>Or drop an .apj file</summary>
       {children}
     </details>
   )
@@ -276,12 +294,17 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   )
 
   const [phase, setPhase] = useState<Phase>('idle')
-  // ArduPilot's build index, when this site serves one; undefined hides the finder.
+  // ArduPilot's build index: the desktop shell's native fetch when it offers
+  // one, else the site's relay. Undefined rows hide the finder.
+  const indexSource = useMemo<FirmwareIndexSource | undefined>(
+    () => (firmwareBridge?.index ? desktopFirmwareSource(firmwareBridge) : props.firmwareIndex),
+    [firmwareBridge, props.firmwareIndex]
+  )
   const [indexRows, setIndexRows] = useState<FirmwareIndexRow[] | undefined>(undefined)
   useEffect(() => {
-    if (!props.firmwareIndex) return
+    if (!indexSource) return
     let cancelled = false
-    props.firmwareIndex
+    indexSource
       .loadIndex()
       .then((rows) => {
         if (!cancelled && rows.length > 0) setIndexRows(rows)
@@ -292,7 +315,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     return () => {
       cancelled = true
     }
-  }, [props.firmwareIndex])
+  }, [indexSource])
   // Flash view sub-tabs: the firmware-server/.apj flow (default, common path) vs
   // the WebUSB DFU .hex flasher. Matches the app-wide .tab-strip pattern.
   const [flashTab, setFlashTab] = useState<'firmware' | 'dfu-hex' | 'betaflight'>('firmware')
@@ -538,6 +561,21 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
 
   // Desktop browse: fetch the board's firmware list via the main-process
   // bridge (no CORS) for the selected vehicle, filtered to the chosen release.
+  // The local .apj picker: step 2 without the finder, a fold under step 1 with it.
+  const fileDrop = (
+    <label className="scoped-editor-field">
+      <span>Firmware (.apj)</span>
+      <input
+        type="file"
+        accept=".apj,application/json"
+        data-testid="firmware-file"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) void onFile(file)
+        }}
+      />
+    </label>
+  )
   const releaseTypeForDir = useCallback((dir: string): string => {
     if (dir === 'stable') return 'OFFICIAL'
     if (dir === 'beta') return 'BETA'
@@ -561,7 +599,10 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       const result = await firmwareBridge.list(boardId, vehicleDir)
       const wanted = releaseTypeForDir(releaseDir)
       const filtered = result.entries.filter((entry) => entry.releaseType === wanted)
-      setBrowseEntries(filtered.length > 0 ? filtered : result.entries)
+      // Heli builds share the board id and Copter folder: list them last, marked.
+      const heliLast = (entries: FirmwareBrowseEntry[]) =>
+        [...entries].sort((left, right) => Number(left.mavType === 'HELICOPTER') - Number(right.mavType === 'HELICOPTER'))
+      setBrowseEntries(heliLast(filtered.length > 0 ? filtered : result.entries))
     } catch (e) {
       setBrowseError(e instanceof Error ? e.message : 'Failed to fetch firmware list.')
     } finally {
@@ -1438,14 +1479,15 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
         <ol className="firmware-wizard__steps">
           <li>
             <span className="firmware-wizard__step-title">1. Pick the firmware</span>
-            {indexRows && props.firmwareIndex ? (
+            {indexRows && indexSource ? (
               <FirmwareFinder
                 rows={indexRows}
-                board={props.connectedBoard}
+                // The connected vehicle's board, else one caught in its bootloader.
+                board={props.connectedBoard ?? (identity ? { boardId: identity.boardId } : undefined)}
                 connectedVehicle={props.connectedVehicle}
                 disabled={phase === 'flashing'}
                 onLoad={async (target) => {
-                  const text = await props.firmwareIndex!.download(target.path)
+                  const text = await indexSource.download(target.path)
                   await loadFirmwareApj(text, target.path.split('/').slice(-2).join('/'))
                 }}
               />
@@ -1495,8 +1537,9 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
               <code>.apj</code> (your browser downloads it directly — no proxy).
             </p>
             </ManualDownload>
+            {indexRows ? <FileDrop folded>{fileDrop}</FileDrop> : null}
 
-            {firmwareBridge ? (
+            {firmwareBridge && !indexRows ? (
               <div className="firmware-wizard__browse" data-testid="firmware-browse">
                 <div className="firmware-wizard__browse-header">
                   <strong>Or fetch in-app (desktop)</strong>
@@ -1540,7 +1583,8 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                       {browseEntries.slice(0, 12).map((entry) => (
                         <li key={entry.url}>
                           <span>
-                            {entry.vehicletype} {entry.version}
+                            <strong>{entry.platform || entry.vehicletype}</strong> {entry.versionStr ?? entry.version}
+                            {entry.mavType === 'HELICOPTER' ? ' (heli)' : ''}
                             {entry.latest ? ' (latest)' : ''} · {entry.releaseType}
                           </span>
                           <button
@@ -1560,22 +1604,16 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             ) : null}
           </li>
 
+          {indexRows ? null : (
+            <li>
+              <span className="firmware-wizard__step-title">2. Drop the file you downloaded</span>
+              {fileDrop}
+            </li>
+          )}
+
           <li>
-            <span className="firmware-wizard__step-title">
-              {indexRows ? '2. Or drop an .apj file' : '2. Drop the file you downloaded'}
-            </span>
-            <label className="scoped-editor-field">
-              <span>Firmware (.apj)</span>
-              <input
-                type="file"
-                accept=".apj,application/json"
-                data-testid="firmware-file"
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  if (file) void onFile(file)
-                }}
-              />
-            </label>
+            <span className="firmware-wizard__step-title">{indexRows ? '2. Flash' : '3. Flash'}</span>
+            {/* What is about to be written: the build, its board id and size. */}
             {firmware ? (
               <div className="config-pills" data-testid="firmware-loaded">
                 <span>{firmware.name}</span>
@@ -1591,10 +1629,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                 ) : null}
               </div>
             ) : null}
-          </li>
 
-          <li>
-            <span className="firmware-wizard__step-title">3. Flash</span>
             <p className="firmware-wizard__hint">
               Click Flash and follow the prompts. <strong>Do not unplug while it is flashing.</strong>
             </p>

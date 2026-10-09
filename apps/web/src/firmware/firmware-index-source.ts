@@ -26,3 +26,19 @@ export const relayFirmwareSource: FirmwareIndexSource = {
     return response.text()
   }
 }
+
+/** The desktop shell's source: its main process reaches firmware.ardupilot.org directly. */
+export function desktopFirmwareSource(bridge: {
+  index?(): Promise<unknown>
+  download(url: string): Promise<Uint8Array>
+}): FirmwareIndexSource {
+  return {
+    async loadIndex() {
+      if (!bridge.index) throw new Error('This desktop app cannot list firmware.')
+      return parseFirmwareIndex(await bridge.index())
+    },
+    async download(path) {
+      return new TextDecoder().decode(await bridge.download(`https://firmware.ardupilot.org/${path}`))
+    }
+  }
+}

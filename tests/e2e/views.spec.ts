@@ -8277,9 +8277,38 @@ test.describe('Flash: find firmware (the private deploy\'s index + relay)', () =
     await finder.getByTestId('firmware-finder-load').click()
     await expect(page.getByTestId('firmware-loaded')).toContainText('board id 1013', { timeout: COMMAND_ACK_TIMEOUT })
     expect(downloads).toEqual(['Copter/stable/MatekH743-bdshot/arducopter.apj'])
-    // The manual route is still there, folded under the finder.
+    // The manual routes are still there, folded under the finder.
     await expect(page.getByTestId('firmware-manual-download')).toBeVisible()
+    await expect(page.getByTestId('firmware-file-drop')).toBeVisible()
     await expect(page.getByTestId('firmware-file')).toBeAttached()
+  })
+
+  test('on the desktop shell the finder runs on its native fetch, replacing the old fetch panel', async ({ page }) => {
+    const apjText = apj(1013)
+    await page.addInitScript(({ indexJson, apjBody }) => {
+      ;(window as unknown as { arduconfigDesktop: unknown }).arduconfigDesktop = {
+        platform: 'electron',
+        firmware: {
+          list: async () => ({ releaseTypes: [], entries: [] }),
+          index: async () => JSON.parse(indexJson),
+          download: async (url: string) => {
+            ;(window as unknown as { downloaded: string }).downloaded = url
+            return new TextEncoder().encode(apjBody)
+          }
+        }
+      }
+    }, { indexJson: JSON.stringify(index), apjBody: apjText })
+    await page.goto('/')
+    await page.getByTestId('landing-flash-firmware-button').click()
+    const finder = page.getByTestId('firmware-finder')
+    await expect(finder).toBeVisible()
+    await expect(page.getByTestId('firmware-browse')).toHaveCount(0)
+    await finder.getByTestId('firmware-finder-board-select').selectOption('MatekH743')
+    await finder.getByTestId('firmware-finder-load').click()
+    await expect(page.getByTestId('firmware-loaded')).toContainText('board id 1013', { timeout: COMMAND_ACK_TIMEOUT })
+    expect(await page.evaluate(() => (window as unknown as { downloaded: string }).downloaded)).toBe(
+      'https://firmware.ardupilot.org/Copter/stable/MatekH743/arducopter.apj'
+    )
   })
 
   test('connected: the board\'s build is listed first and pre-selected', async ({ page }) => {

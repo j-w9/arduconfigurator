@@ -36,6 +36,8 @@ export interface FirmwareEntry {
   manufacturer?: string
   imageSize?: number
   gitSha?: string
+  /** MAVLink type: "HELICOPTER" marks a heli build in the Copter folder. */
+  mavType?: string
 }
 
 export interface FirmwareManifest {
@@ -148,7 +150,8 @@ export function parseManifest(text: string): FirmwareManifest {
       brandName: typeof e.brand_name === 'string' ? e.brand_name : undefined,
       manufacturer: typeof e.manufacturer === 'string' ? e.manufacturer : undefined,
       imageSize: typeof e.image_size === 'number' ? e.image_size : undefined,
-      gitSha: typeof e['git-sha'] === 'string' ? (e['git-sha'] as string) : undefined
+      gitSha: typeof e['git-sha'] === 'string' ? (e['git-sha'] as string) : undefined,
+      mavType: typeof e['mav-type'] === 'string' ? (e['mav-type'] as string) : undefined
     })
   }
   return {
@@ -211,8 +214,54 @@ export function selectFirmware(
     (e) => e.releaseType === releaseType
   )
   if (candidates.length === 0) return undefined
-  const flagged = candidates.find((e) => e.latest)
-  return flagged ?? candidates[0]
+  // A heli build shares its board id and Copter folder with the multirotor
+  // one; never default to it (only `latest` DEV entries carry the flag, so
+  // the old fallback to candidates[0] could land on heli for stable).
+  const preferred = candidates.filter((e) => e.mavType !== 'HELICOPTER')
+  const pool = preferred.length > 0 ? preferred : candidates
+  const flagged = pool.find((e) => e.latest)
+  return flagged ?? pool[0]
+}
+
+/**
+ * The Flash tab's firmware index: the current .apj builds (stable / beta /
+ * dev), one compact row each. The same shape the private deploy serves at
+ * /fw/index.json (scripts/build-firmware-index.mjs), so the desktop shell's
+ * native fetch and the web relay feed one finder.
+ */
+export interface FirmwareIndex {
+  format: 1
+  generatedAt: string
+  columns: string[]
+  rows: (string | number)[][]
+}
+
+const INDEX_CHANNELS: ReadonlySet<ReleaseType> = new Set(['OFFICIAL', 'BETA', 'DEV'])
+const FIRMWARE_HOST = 'https://firmware.ardupilot.org/'
+
+export function buildFirmwareIndex(manifest: FirmwareManifest): FirmwareIndex {
+  const rows: (string | number)[][] = []
+  for (const e of manifest.entries) {
+    if (e.format !== 'apj' || !INDEX_CHANNELS.has(e.releaseType) || !e.url.startsWith(FIRMWARE_HOST)) continue
+    rows.push([
+      e.platform,
+      e.boardId,
+      e.vehicletype,
+      e.mavType ?? '',
+      e.releaseType,
+      e.versionStr,
+      e.brandName ?? '',
+      e.manufacturer ?? '',
+      e.url.slice(FIRMWARE_HOST.length)
+    ])
+  }
+  rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])) || String(a[2]).localeCompare(String(b[2])))
+  return {
+    format: 1,
+    generatedAt: new Date().toISOString(),
+    columns: ['platform', 'boardId', 'vehicle', 'mavType', 'channel', 'version', 'brand', 'manufacturer', 'path'],
+    rows
+  }
 }
 
 // --- DroneCAN peripheral (AP_Periph) node firmware matching --------------
