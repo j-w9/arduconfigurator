@@ -85,6 +85,22 @@ export function TcalCalibrationCard({
   const baroExponent = readParameterValue(snapshot, 'TCAL_BARO_EXP')
   const baroTempMin = readParameterValue(snapshot, 'TCAL_TEMP_MIN')
   const baroTempMax = readParameterValue(snapshot, 'TCAL_TEMP_MAX')
+  // Folded by default (operator request): the full card -- range inputs,
+  // warnings, how-to, the baro section -- is the tallest on the page, and on
+  // a wide screen its height pushed the rest of the Sensors row out of view.
+  // Called before any early return so the hook order never changes.
+  const [expanded, setExpanded] = useState(false)
+  const expandToggle = (
+    <button
+      type="button"
+      className="calibration-card__expand"
+      data-testid="tcal-expand"
+      aria-expanded={expanded}
+      onClick={() => setExpanded((open) => !open)}
+    >
+      {expanded ? 'Hide thermal calibration ▾' : 'Set up thermal calibration ▸'}
+    </button>
+  )
   const hasBaroTcal = baroEnabled !== undefined
   const baroLearning = (baroEnabled ?? 0) >= 2
   const baroState = enableState(baroEnabled)
@@ -163,26 +179,12 @@ export function TcalCalibrationCard({
     </section>
   ) : null
 
-  if (imus.length === 0) {
-    return (
-      <article className="calibration-card" data-testid="calibration-card-tcal">
-        <div className="calibration-card__header">
-          <strong>Thermal calibration (TCAL)</strong>
-          <StatusBadge tone="neutral">n/a</StatusBadge>
-        </div>
-        <p>
-          This firmware doesn't expose per-IMU thermal-calibration parameters (<code>INS_TCALn_*</code>). Thermal
-          cal is available on builds with per-IMU temperature compensation compiled in.
-        </p>
-        {baroSection}
-      </article>
-    )
-  }
-
-  const anyLearning = imus.some((imu) => (imu.enable ?? 0) >= 2)
-  const connected = snapshot.connection.kind === 'connected'
-  const canStartBase = connected && canApplyDraftParameters && busyAction === undefined && !anyLearning
-
+  // EVERY hook sits above the early return below. The temperature state and
+  // its seeding effect used to come after it; harmless only while the card
+  // called no hook before that return -- the fold state made it one, and a
+  // board whose INS_TCALn_* parameters arrived mid-session then crashed the
+  // page (React #310, more hooks than the previous render). The values the
+  // effect reads are safe to compute with no IMUs (they come out undefined).
   // Live IMU temperature (from SCALED_IMU) + warm-up progress toward the target.
   const imuTempC = snapshot.liveVerification.imuTemperatureC
   const tmaxValues = imus.map((imu) => imu.tmax ?? 0).filter((t) => t > 0)
@@ -213,6 +215,27 @@ export function TcalCalibrationCard({
     if (targetTmax !== undefined) setTmaxText(String(Math.round(targetTmax)))
     if (baseTmin !== undefined) setTminText(String(Math.round(baseTmin)))
   }, [targetTmax, baseTmin, touched])
+
+  if (imus.length === 0) {
+    return (
+      <article className="calibration-card" data-testid="calibration-card-tcal">
+        <div className="calibration-card__header">
+          <strong>Thermal calibration (TCAL)</strong>
+          <StatusBadge tone="neutral">n/a</StatusBadge>
+        </div>
+        <p>
+          This firmware doesn't expose per-IMU thermal-calibration parameters (<code>INS_TCALn_*</code>). Thermal
+          cal is available on builds with per-IMU temperature compensation compiled in.
+        </p>
+        {baroSection ? expandToggle : null}
+        {expanded ? baroSection : null}
+      </article>
+    )
+  }
+
+  const anyLearning = imus.some((imu) => (imu.enable ?? 0) >= 2)
+  const connected = snapshot.connection.kind === 'connected'
+  const canStartBase = connected && canApplyDraftParameters && busyAction === undefined && !anyLearning
 
   const tmaxValue = Number.parseFloat(tmaxText)
   const tminValue = Number.parseFloat(tminText)
@@ -275,6 +298,10 @@ export function TcalCalibrationCard({
         ) : null}
       </div>
 
+      {expandToggle}
+
+      {expanded ? (
+      <>
       {/* The temperature range the learn will run over.
         *
         * TMAX is the input that matters: it is what ends the learn. TMIN is
@@ -360,6 +387,8 @@ export function TcalCalibrationCard({
       </details>
 
       {baroSection}
+      </>
+      ) : null}
     </article>
   )
 }

@@ -46,10 +46,13 @@ describe('buildVisibleAppViews', () => {
     }
   })
 
-  it('places the Guided Setup tab immediately after Status & Info', () => {
-    const result = ids(buildVisibleAppViews(baseInputs({ appViews: [view('setup')] })))
-    expect(result[0]).toBe('setup')
-    expect(result[1]).toBe('guided-setup')
+  it('puts Guided Setup last, and only in Expert mode, while it is reworked', () => {
+    const expert = ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, appViews: [view('setup')] })))
+    expect(expert[0]).toBe('setup')
+    expect(expert[expert.length - 1]).toBe('guided-setup')
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false, appViews: [view('setup')] })))).not.toContain(
+      'guided-setup'
+    )
   })
 
   it('gates the RC Mixer view behind Expert mode', () => {
@@ -101,13 +104,12 @@ describe('buildVisibleAppViews', () => {
     const result = ids(
       buildVisibleAppViews(baseInputs({ appViews: [view('modes'), view('setup'), view('mystery-view')] }))
     )
-    // setup leads, guided-setup second, then Peripherals and Calibration,
-    // modes before the tools cluster, unknown id last. (Config is absent from
-    // this input, so Peripherals lands third.)
+    // setup leads, then Peripherals and Calibration, modes before the tools
+    // cluster, Guided Setup after every listed tab, unknown id last. (Config
+    // is absent from this input, so Peripherals lands second.)
     expect(result[0]).toBe('setup')
-    expect(result[1]).toBe('guided-setup')
-    expect(result[2]).toBe('peripherals')
-    expect(result[3]).toBe('calibration')
+    expect(result[1]).toBe('peripherals')
+    expect(result[2]).toBe('calibration')
     expect(result.indexOf('modes')).toBeLessThan(result.indexOf('can'))
     expect(result[result.length - 1]).toBe('mystery-view')
   })

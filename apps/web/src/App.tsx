@@ -8057,6 +8057,27 @@ export function App() {
       )
     },
     {
+      // Pull Parameters / Reboot, at the foot of the sidebar where the Guided
+      // setup card used to sit: used rarely from this page, so not on top.
+      id: 'bench-actions',
+      label: 'Vehicle actions',
+      node: (
+        <article className="setup-gui-box setup-gui-box--bench-actions" data-testid="status-bench-actions">
+          <div className="setup-gui-box__titlebar">
+            <strong>Vehicle actions</strong>
+          </div>
+          <div className="setup-gui-box__body">
+            <SetupBenchActions
+              actions={setupBenchActions}
+              snapshot={snapshot}
+              busyAction={busyAction}
+              onAction={(actionId) => void handleGuidedAction(actionId)}
+            />
+          </div>
+        </article>
+      )
+    },
+    {
       id: 'guided-setup',
       label: 'Guided setup',
       node: (
@@ -8115,14 +8136,20 @@ export function App() {
   //
   // A stored layout is reconciled against this list every render, which is how
   // a sensor card appearing or disappearing mid-session stays graceful.
+  //
+  // Moved (operator request): Pre-arm / Statistics / Recent Notices lead and
+  // the sensor row sits under them (DEFAULT_STATUS_DASHBOARD_COLUMNS orders the
+  // bands); the bench actions are a sidebar card; the Guided setup card is
+  // Expert-only while the wizard is reworked.
   const statusDashboardSpecs: StatusDashboardCardSpec[] = [
-    { id: 'gps', label: 'GPS', column: 'sensors' },
-    ...advancedSensorCards.map((card) => ({ id: card.id, label: card.title, column: 'sensors' })),
     { id: 'prearm', label: 'Pre-arm', column: 'midcol' },
     { id: 'statistics', label: 'Statistics', column: 'midcol' },
     { id: 'notices', label: 'Recent Notices', column: 'noticecol' },
+    { id: 'gps', label: 'GPS', column: 'sensors' },
+    ...advancedSensorCards.map((card) => ({ id: card.id, label: card.title, column: 'sensors' })),
     { id: 'system-info', label: 'System Info', column: 'sidebar' },
-    { id: 'guided-setup', label: 'Guided setup', column: 'sidebar' }
+    { id: 'bench-actions', label: 'Vehicle actions', column: 'sidebar' },
+    ...(isExpertMode ? [{ id: 'guided-setup', label: 'Guided setup', column: 'sidebar' }] : [])
   ]
   const statusDashboard = useStatusDashboardLayout(statusDashboardSpecs)
 
@@ -8439,12 +8466,10 @@ export function App() {
               overviewSlot={
                 <>
   	              <div id="setup-panel-link" className="setup-bench">
-                    <SetupBenchActions
-                      actions={setupBenchActions}
-                      snapshot={snapshot}
-                      busyAction={busyAction}
-                      onAction={(actionId) => void handleGuidedAction(actionId)}
-                    />
+                    {/* Pull Parameters / Reboot moved out of the top of the
+                     *  page into the 'bench-actions' sidebar card (operator
+                     *  request: rarely used from here, so not the first thing
+                     *  on the page). */}
 
                     {/* "Enter DFU / bootloader mode" used to sit here, as a
                      *  two-step armed confirm directly above the craft view.

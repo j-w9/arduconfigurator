@@ -203,10 +203,13 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   // follow a setup -> tuning -> tools flow. Views not listed fall to the
   // end in their original order.
   const CANONICAL_VIEW_ORDER = [
-    'setup', 'guided-setup', 'config', 'peripherals', 'calibration', 'ports', 'receiver', 'modes', 'motors',
+    'setup', 'config', 'peripherals', 'calibration', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'failsafe', 'osd', 'tuning', 'presets',
     'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'elrs-flash', 'rc-mixer',
-    'mavlink-inspector', 'ai-assistant'
+    'mavlink-inspector', 'ai-assistant',
+    // Last, and Expert-only, while its steps are reworked to follow the
+    // rebuilt pages (operator call).
+    'guided-setup'
   ]
   const relabelled = base.map((view) =>
     view.id === 'setup'
@@ -222,7 +225,7 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   const ELRS_FLASH_ENABLED = false
   const combined = [
     ...relabelled,
-    guidedSetupDescriptor,
+    ...(isExpertMode ? [guidedSetupDescriptor] : []),
     peripheralsDescriptor,
     calibrationDescriptor,
     canBusDescriptor,

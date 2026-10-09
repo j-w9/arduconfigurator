@@ -259,6 +259,8 @@ test.describe('browser configurator regression flows', () => {
   })
 
   test('guided setup marks accelerometer complete after the in-app calibration succeeds', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     // This spec walks six sequential confirm clicks plus a wizard navigation.
     // Each click auto-waits for the next button to render, so the worst-case
     // budget is roughly six expect-timeouts plus the full connect + param
@@ -292,6 +294,8 @@ test.describe('browser configurator regression flows', () => {
   })
 
   test('guided setup marks compass complete after the in-app onboard mag calibration succeeds', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await connectToVehicle(page, 'demo')
 
     await completeCompassCalibrationFromSetup(page)
@@ -307,6 +311,8 @@ test.describe('browser configurator regression flows', () => {
   })
 
   test('local guided setup shortcut opens the requested step directly for faster iteration', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await connectToVehicle(page, 'demo', '/?guidedSetupStep=radio')
 
     await expect(page.getByTestId('setup-wizard')).toBeVisible()
@@ -643,7 +649,15 @@ test.describe('browser configurator regression flows', () => {
     // is saved, so its appearance is the same proof that zeroing took effect.
     await expect(page.getByTestId('flight-deck-clear-heading-button')).toBeVisible()
     await expect(page.getByTestId('setup-gps-map-widget')).toBeVisible()
-    await expect(page.getByTestId('setup-start-guided-button')).toBeVisible()
+    // Guided Setup (and its Status card) is Expert-only while it is reworked:
+    // absent in Basic, and the rest of this walk runs in Expert.
+    await expect(page.getByTestId('setup-start-guided-button')).toHaveCount(0)
+    const moreSheet = page.getByTestId('header-more-toggle')
+    if ((await moreSheet.isVisible()) && (await moreSheet.getAttribute('aria-expanded')) !== 'true') {
+      await moreSheet.click()
+    }
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-setup').click()
     await page.getByTestId('setup-start-guided-button').click()
     await expect(page.getByTestId('setup-wizard')).toBeVisible()
     await expect(page.getByTestId('wizard-orientation-task')).toBeVisible()
@@ -728,7 +742,8 @@ test.describe('browser configurator regression flows', () => {
     await page.getByTestId('config-category-power').click()
     await expect(page.getByText('Battery configuration')).toBeVisible()
 
-    await page.getByTestId('product-mode-expert').click()
+    // Already Expert since the Guided Setup walk above; check() keeps it on.
+    await page.getByTestId('product-mode-expert').check()
     await expect(page.getByTestId('view-button-parameters')).toBeVisible()
 
     // MAVFTP is now surfaced solely through the Files tab (the old developer
