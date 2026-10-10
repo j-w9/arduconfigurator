@@ -20467,11 +20467,17 @@ button.mavlink-inspector__sent-row {
 .workspace-nav--flat {
   gap: 0;
 }
+/* Room for the longest label ("MAVLink Inspector") on one line in the
+   widest common fallback font (DejaVu Sans on Linux): the right padding and
+   the icon gap give it up, the label keeps its indent. */
 .workspace-nav--flat .workspace-nav__item {
-  gap: 10px;
+  gap: 8px;
   min-height: 36px;
-  padding: 6px 12px;
+  padding: 6px 4px 6px 12px;
   border-radius: var(--radius-md, 6px);
+}
+.workspace-sidebar__shell:has(.workspace-nav--flat) {
+  padding-right: 6px;
 }
 .workspace-nav--flat .workspace-nav__item + .workspace-nav__item {
   margin-top: 4px;
