@@ -414,7 +414,14 @@ export function CanBusView(props: CanBusViewProps) {
                       <small>
                         {customName ? `${row.label} · ` : ''}Node {row.nodeId}
                         {row.uptimeSec !== undefined ? ` · up ${row.uptimeSec}s` : ''}
-                        {node ? ` · seen ${lastSeenLabel(node.lastSeenAtMs)}` : ''}
+                        {/* Its own fixed-width slot: the ticking age must not change
+                            the line's width (it pushed the buttons onto a new line). */}
+                        {node ? (
+                          <>
+                            {' · seen '}
+                            <span className="can-bus-node__seen">{lastSeenLabel(node.lastSeenAtMs)}</span>
+                          </>
+                        ) : null}
                         {row.hwVersion ? ` · HW ${row.hwVersion}` : ''}
                         {row.swVersion ? ` · SW ${row.swVersion}` : ''}
                         {row.gitHash ? ` · git ${row.gitHash}` : ''}

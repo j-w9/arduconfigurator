@@ -23173,3 +23173,34 @@ button.mavlink-inspector__sent-row {
 .workspace-nav--flat .workspace-nav__item {
   padding-left: 18px;
 }
+
+/* CAN ▸ a node card's header: the name block takes what is left and wraps its
+   own text; the badge + buttons keep their place. The ticking "seen …" age
+   used to widen the name block every second and push the buttons onto a new
+   line and back. Narrow screens still stack. */
+.can-bus-node__header {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+.can-bus-node__label {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.can-bus-node__header > .can-bus-node__status {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+.can-bus-node__seen {
+  display: inline-block;
+  min-width: 6.5ch;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 900px) {
+  .can-bus-node__header {
+    flex-wrap: wrap;
+  }
+  .can-bus-node__header > .can-bus-node__status {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+}
