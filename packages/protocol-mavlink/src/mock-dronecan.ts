@@ -286,6 +286,8 @@ export function createDronecanBusSimulator(options: DronecanBusSimulatorOptions 
       payload
     ).map((frame) => toCanFrame(frame.canId, frame.data))
   }
+  /** Nodes whose bootloader the mock has "flashed": the next run is unchanged. */
+  const bootloaderFlashed = new Set<number>()
   /** How much of its unique id the unallocated node has had echoed back. */
   let dnaOffset = 0
   let dnaTransferId = 0
@@ -664,9 +666,12 @@ export function createDronecanBusSimulator(options: DronecanBusSimulatorOptions 
           // AP_Periph acts on FLASH_BOOTLOADER = 1 at once: it puts it back to 0,
           // copies its embedded bootloader, and logs the outcome.
           const trigger = node.params.find((param) => param.name === 'FLASH_BOOTLOADER')
+          // can_printf logs at DEBUG; a second run finds the bootloader current.
           if (trigger?.value.tag === 'int64' && trigger.value.int64 === 1n) {
             trigger.value = int(0)
-            return [...response, ...logMessageFrames(node, 1, 'Flash bootloader OK')]
+            const text = bootloaderFlashed.has(node.nodeId) ? 'Bootloader unchanged' : 'Flash bootloader OK'
+            bootloaderFlashed.add(node.nodeId)
+            return [...response, ...logMessageFrames(node, 0, text)]
           }
           return response
         }

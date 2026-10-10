@@ -125,6 +125,32 @@ export interface CanDeviceExpertActions {
   bootloaderFlash?: { nodeId: number; status: 'flashing' | 'ok' | 'failed' | 'timeout'; message: string }
 }
 
+/** The param names a node has reported, kept across re-fetches (per node id). */
+const stickyParamNames = new Map<number, Set<string>>()
+function useStickyParamNames(nodeId: number, parameters: readonly { name: string }[]): ReadonlySet<string> {
+  let known = stickyParamNames.get(nodeId)
+  if (!known) {
+    known = new Set()
+    stickyParamNames.set(nodeId, known)
+  }
+  for (const entry of parameters) known.add(entry.name)
+  return known
+}
+
+/** The node's params whose change needs a reboot. */
+function paramRowsForReboot(node: DronecanInspectedNode, lookup: DronecanParamCatalogLookup | undefined): string[] {
+  return node.parameters.filter((entry) => lookup?.(entry.name)?.rebootRequired).map((entry) => entry.name)
+}
+
+/** "CAN bitrate" for CAN_BAUDRATE, "Debug" for DEBUG: a display name that only
+ *  rewords the param name says nothing the name does not. */
+function labelEchoesName(label: string, name: string): boolean {
+  const words = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean)
+  const nameWords = new Set(words(name))
+  const labelWords = words(label)
+  return labelWords.length > 0 && labelWords.filter((word) => nameWords.has(word)).length / labelWords.length >= 0.5
+}
+
 /** AP_Periph's bootloader-update trigger (Tools/AP_Periph/Parameters.cpp). */
 const FLASH_BOOTLOADER_PARAM = 'FLASH_BOOTLOADER'
 
@@ -278,6 +304,8 @@ export interface CanDeviceInspectorViewProps {
   onApplyAndSave: (nodeId: number, writes: Array<{ name: string; value: DronecanParamValueState }>) => void
   onRefreshNode: (nodeId: number) => void
   onFetchAllParameters: (nodeId: number) => void
+  /** Reboot the node (offered after applying a change that needs one). */
+  onRebootNode?: (nodeId: number) => void
   /** Something else is mid-write; the destructive actions gate on it. */
   busy?: boolean
   /** Expert-only actions (restart, firmware update). Omit outside Expert mode. */
@@ -741,6 +769,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
     onApplyAndSave,
     onRefreshNode,
     onFetchAllParameters,
+    onRebootNode,
     busy = false,
     expertActions,
     sections = ALL_CAN_DEVICE_SECTIONS,
@@ -760,7 +789,20 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
   const validChanges = stagedChanges.filter((change) => change.parsed !== undefined)
   const escRows = escTelemetry ? buildDronecanEscRows(escTelemetry) : []
 
+  // Params a node has shown stay "known" through a re-fetch: the walk empties
+  // the list and refills it, and gating the Flash bootloader / Change node ID
+  // buttons on the live list made them blink in and out, the row shifting.
+  const knownParams = useStickyParamNames(nodeId, node.parameters)
+
+  // A change that only takes effect after a reboot: once applied, offer one.
+  const rebootRequiredNames = new Set(paramRowsForReboot(node, paramMetadata))
+  const [rebootOffered, setRebootOffered] = useState(false)
+  const noteReboot = (names: readonly string[]) => {
+    if (names.some((name) => rebootRequiredNames.has(name))) setRebootOffered(true)
+  }
+
   function applyAndSaveDrafts(): void {
+    noteReboot(validChanges.map((change) => change.name))
     const writes = validChanges.map((change) => ({
       name: change.name,
       value: change.parsed as DronecanParamValueState
@@ -786,6 +828,28 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
             {healthLabel(node.health)} · {modeLabel(node.mode)}
           </StatusBadge>
         </header>
+      ) : null}
+
+      {shows('params') && rebootOffered ? (
+        <div className="can-bus-reboot-offer" data-testid={`can-bus-reboot-offer-${nodeId}`} role="status">
+          <span>Some of these changes take effect after the node reboots.</span>
+          {onRebootNode ? (
+            <button
+              type="button"
+              style={buttonStyle('primary')}
+              onClick={() => {
+                onRebootNode(nodeId)
+                setRebootOffered(false)
+              }}
+              data-testid={`can-bus-reboot-offer-button-${nodeId}`}
+            >
+              Reboot node
+            </button>
+          ) : null}
+          <button type="button" style={buttonStyle()} onClick={() => setRebootOffered(false)}>
+            Later
+          </button>
+        </div>
       ) : null}
 
       {shows('params') && stagedChanges.length > 0 ? (
@@ -829,6 +893,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                   style={buttonStyle('primary')}
                   onClick={() => {
                     if (change.parsed === undefined) return
+                    noteReboot([change.name])
                     onApplyAndSave(nodeId, [{ name: change.name, value: change.parsed }])
                   }}
                   disabled={change.parsed === undefined || updateInProgress}
@@ -920,7 +985,16 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 <tr key={row.name} data-testid={`can-bus-param-${nodeId}-${row.name}`}>
                   <td title={row.description}>
                     <code>{row.name}</code>
-                    {row.label !== row.name ? <small className="can-bus-params__label">{row.label}</small> : null}
+                    {/* The description says what it does; the short display name
+                        mostly repeats the param name, so it shows only when it does not. */}
+                    {row.label !== row.name && !labelEchoesName(row.label, row.name) ? (
+                      <small className="can-bus-params__label">{row.label}</small>
+                    ) : null}
+                    {row.description ? (
+                      <small className="can-bus-params__description" title={row.description}>
+                        {row.description}
+                      </small>
+                    ) : null}
                     {row.rebootRequired || row.readOnly ? (
                       <span className="can-bus-params__tags">
                         {row.rebootRequired ? (
@@ -933,7 +1007,25 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                     ) : null}
                   </td>
                   <td>
-                    {row.editable ? (
+                    {row.editable && row.options ? (
+                      // Named values, as on the Parameters page: pick one.
+                      <select
+                        value={displayed}
+                        disabled={updateInProgress}
+                        onChange={(event) => onDraftChange(nodeId, row.name, event.target.value)}
+                        className={draftInvalid ? 'can-bus-params__input--invalid' : undefined}
+                        data-testid={`can-bus-param-select-${nodeId}-${row.name}`}
+                      >
+                        {row.options.some((option) => String(option.value) === displayed) ? null : (
+                          <option value={displayed}>Other: {displayed}</option>
+                        )}
+                        {row.options.map((option) => (
+                          <option key={option.value} value={String(option.value)}>
+                            {option.label} ({option.value})
+                          </option>
+                        ))}
+                      </select>
+                    ) : row.editable ? (
                       <input
                         type="text"
                         value={displayed}
@@ -946,7 +1038,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                     ) : (
                       <span>{displayed}</span>
                     )}
-                    {row.enumLabel && draft === undefined ? (
+                    {row.enumLabel && draft === undefined && !row.options ? (
                       <small className="can-bus-params__enum">{row.enumLabel}</small>
                     ) : null}
                     {/* A bitmask: which bits the value sets, by name. */}
@@ -1023,7 +1115,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
             {confirmRestart ? (
               <>
                 <span className="dronecan-inspector__confirm-text">
-                  Restart node #{nodeId}? It will reboot and drop off the bus briefly.
+                  Reboot node #{nodeId}? It drops off the bus for a moment.
                 </span>
                 <button
                   type="button"
@@ -1035,7 +1127,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                   disabled={busy || updateInProgress}
                   data-testid={`dronecan-restart-confirm-${nodeId}`}
                 >
-                  Confirm restart
+                  Confirm reboot
                 </button>
                 <button
                   type="button"
@@ -1054,10 +1146,10 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 disabled={busy || updateInProgress}
                 data-testid={`dronecan-restart-${nodeId}`}
               >
-                Restart node
+                Reboot node
               </button>
             )}
-            {expertActions.onFlashBootloader && node.parameters.some((entry) => entry.name === FLASH_BOOTLOADER_PARAM) && !confirmRestart ? (
+            {expertActions.onFlashBootloader && knownParams.has(FLASH_BOOTLOADER_PARAM) && !confirmRestart ? (
               <BootloaderFlash
                 nodeId={nodeId}
                 disabled={busy || updateInProgress}
@@ -1065,7 +1157,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 onFlash={expertActions.onFlashBootloader}
               />
             ) : null}
-            {expertActions.onChangeNodeId && node.parameters.some((entry) => entry.name === CAN_NODE_PARAM) && !confirmRestart ? (
+            {expertActions.onChangeNodeId && knownParams.has(CAN_NODE_PARAM) && !confirmRestart ? (
               <NodeIdChange
                 nodeId={nodeId}
                 takenNodeIds={expertActions.takenNodeIds ?? []}

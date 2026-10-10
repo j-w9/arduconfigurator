@@ -139,6 +139,8 @@ export interface DronecanParamRow {
   rebootRequired?: boolean
   /** Documented read-only. */
   readOnly?: boolean
+  /** Named values of a single-choice param: the editor is a dropdown. */
+  options?: ReadonlyArray<{ value: number; label: string }>
 }
 
 /** Build the editable parameter grid rows for one node, sorted by index
@@ -169,7 +171,8 @@ export function buildDronecanParamRows(
       bitsLabel: meta.bitsLabel,
       step: meta.step,
       rebootRequired: meta.rebootRequired,
-      readOnly: meta.readOnly
+      readOnly: meta.readOnly,
+      options: type === 'int64' ? meta.options : undefined
     }
   })
 }

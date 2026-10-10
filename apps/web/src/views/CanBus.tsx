@@ -50,6 +50,8 @@ export interface CanBusViewProps {
   onStopForward: () => void
   onRefreshNode: (nodeId: number) => void
   onFetchAllParameters: (nodeId: number) => void
+  /** Reboot a node (offered after a change that needs one). */
+  onRebootNode?: (nodeId: number) => void
   /** Write the staged params to the node, then persist to flash once acked. */
   onApplyAndSave: (nodeId: number, writes: Array<{ name: string; value: DronecanParamValueState }>) => void
   /** Curated-catalog lookup (by param name) used to enrich a node's params with
@@ -153,6 +155,7 @@ export function CanBusView(props: CanBusViewProps) {
     onStopForward,
     onRefreshNode,
     onFetchAllParameters,
+    onRebootNode,
     onApplyAndSave,
     paramMetadata,
     title = 'DroneCAN Bus',
@@ -517,6 +520,7 @@ export function CanBusView(props: CanBusViewProps) {
                       onApplyAndSave={applyAndSave}
                       onRefreshNode={onRefreshNode}
                       onFetchAllParameters={onFetchAllParameters}
+                      onRebootNode={onRebootNode}
                       busy={busy}
                       expertActions={expertActions}
                       sections={expandedNode ? [expandedNode.section] : undefined}

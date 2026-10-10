@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { bootloaderFlashOutcome, buildCanNodeMessages, canLogEntryFromValue, type CanNodeLogEntry } from './can-node-messages'
+import {
+  bootloaderFlashOutcome,
+  buildCanNodeMessages,
+  canLogEntriesFromStatusTexts,
+  canLogEntryFromValue,
+  mergeCanNodeLogs,
+  type CanNodeLogEntry
+} from './can-node-messages'
 
 const text = (s: string) => Array.from(new TextEncoder().encode(s))
 
@@ -41,5 +48,24 @@ describe('node messages', () => {
     expect(bootloaderFlashOutcome('Flash bootloader FAILED')).toMatchObject({ ok: false })
     expect(bootloaderFlashOutcome('Bootloader not signed')).toMatchObject({ ok: false })
     expect(bootloaderFlashOutcome('GPS: u-blox 1')).toBeUndefined()
+  })
+})
+
+describe('lines the autopilot relays', () => {
+  it('reads "CAN[n] text" status texts as node lines, once when the bus delivered them too', () => {
+    const relayed = canLogEntriesFromStatusTexts([
+      { severity: 'info', text: 'CAN[50] Bootloader unchanged', receivedAtMs: 2000 },
+      { severity: 'warning', text: 'PreArm: Compass not calibrated', receivedAtMs: 2100 },
+      { severity: 'info', text: 'CAN[124] GPS ok', receivedAtMs: 1000 }
+    ])
+    expect(relayed).toEqual([
+      { atMs: 2000, nodeId: 50, level: 'info', source: '', text: 'Bootloader unchanged' },
+      { atMs: 1000, nodeId: 124, level: 'info', source: '', text: 'GPS ok' }
+    ])
+    const fromBus = [{ atMs: 1100, nodeId: 124, level: 'debug' as const, source: '', text: 'GPS ok' }]
+    const merged = mergeCanNodeLogs(fromBus, relayed)
+    expect(merged.map((entry) => entry.text)).toEqual(['GPS ok', 'Bootloader unchanged'])
+    expect(mergeCanNodeLogs(fromBus, relayed, 5000)).toBe(fromBus)
+    expect(bootloaderFlashOutcome(merged[1].text)?.message).toMatch(/^Bootloader unchanged/)
   })
 })

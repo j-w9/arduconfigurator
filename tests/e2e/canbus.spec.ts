@@ -68,9 +68,10 @@ test.describe('DroneCAN inspector', () => {
 
     // Editing a value stages it — nothing is written yet; the staged
     // panel shows the current → new comparison.
-    const input = page.getByTestId('can-bus-param-input-124-GPS_TYPE')
+    // GPS_TYPE has named values (AP_Periph metadata): a dropdown, as on the Parameters page.
+    const input = page.getByTestId('can-bus-param-select-124-GPS_TYPE')
     const before = await input.inputValue()
-    await input.fill('9')
+    await input.selectOption('9')
     const staged = page.getByTestId('can-bus-staged-124')
     await expect(staged).toBeVisible()
     await expect(page.getByTestId('can-bus-staged-row-124-GPS_TYPE')).toContainText(`${before} → 9`)
@@ -82,7 +83,7 @@ test.describe('DroneCAN inspector', () => {
     await expect(input).toHaveValue('9')
 
     // Dropping a staged edit un-stages without writing.
-    await input.fill('3')
+    await input.selectOption('1')
     await expect(page.getByTestId('can-bus-staged-124')).toBeVisible()
     await page.getByTestId('can-bus-staged-drop-124-GPS_TYPE').click()
     await expect(page.getByTestId('can-bus-staged-124')).toHaveCount(0)
@@ -133,7 +134,7 @@ test.describe('DroneCAN inspector', () => {
     // The window is scoped to node 124 and to nothing else on the bus.
     await expect(popout.getByTestId('can-device-inspector-124')).toBeVisible()
     await expect(popout.getByTestId('can-device-inspector-50')).toHaveCount(0)
-    await expect(popout.getByTestId('can-bus-param-input-124-GPS_TYPE')).toBeVisible({ timeout: 12000 })
+    await expect(popout.getByTestId('can-bus-param-select-124-GPS_TYPE')).toBeVisible({ timeout: 12000 })
     // Expert device actions came along with it.
     await expect(popout.getByTestId('dronecan-restart-124')).toBeVisible()
 
@@ -147,7 +148,7 @@ test.describe('DroneCAN inspector', () => {
     // runtime (and re-armed by it), so the popout is still live well past
     // ArduPilot's 5s CAN_FORWARD timeout.
     await page.waitForTimeout(7000)
-    await expect(popout.getByTestId('can-bus-param-input-124-GPS_TYPE')).toBeVisible()
+    await expect(popout.getByTestId('can-bus-param-select-124-GPS_TYPE')).toBeVisible()
     await expect(page.getByTestId('can-bus-stop')).toBeVisible()
 
     // The row says where the device went, and closing the window brings it back.
@@ -775,5 +776,12 @@ test.describe('CAN tab: node messages and bootloader flashing', () => {
     // The params are pulled again: FLASH_BOOTLOADER reads 0.
     await page.getByTestId('can-bus-node-toggle-50').click()
     await expect(page.getByTestId('can-bus-param-input-50-FLASH_BOOTLOADER')).toHaveValue('0', { timeout: 15_000 })
+    // A second run finds it current: the node says "Bootloader unchanged", and so does the card.
+    await page.getByTestId('can-bus-node-actions-50').click()
+    await page.getByTestId('dronecan-bootloader-start-50').click()
+    await page.getByTestId('dronecan-bootloader-confirm-50').click()
+    await page.getByTestId('dronecan-bootloader-confirm2-50').click()
+    await expect(page.getByTestId('dronecan-bootloader-status-50')).toHaveText('Bootloader unchanged: it is already up to date.', { timeout: 15_000 })
+    await expect(page.getByTestId('can-node-messages')).toContainText('Bootloader unchanged')
   })
 })

@@ -23204,3 +23204,39 @@ button.mavlink-inspector__sent-row {
     justify-content: flex-start;
   }
 }
+.can-bus-params__description {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 46ch;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+.can-bus-reboot-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 12px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md, 6px);
+  background: rgba(var(--warning-rgb, 255, 187, 0), 0.08);
+  font-size: var(--text-sm);
+}
+.can-bus-reboot-offer span {
+  margin-right: auto;
+}
+
+/* Field trees: the live value sits in a fixed column of even-width digits,
+   so its changing width no longer shoves the Plot / Plotted buttons about
+   (they kept trading places with the number as it ticked). */
+.can-monitor__tree-value {
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+  min-width: 12ch;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}

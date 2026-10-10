@@ -308,7 +308,7 @@ import { canPlotSeriesKey } from './view-models/can-plot'
 import type { DronecanFieldNode } from './view-models/dronecan-field-tree'
 import { CanAllocatorView } from './views/CanAllocator'
 import { CanNodeMessagesView } from './views/CanNodeMessages'
-import { bootloaderFlashOutcome, buildCanNodeMessages } from './view-models/can-node-messages'
+import { bootloaderFlashOutcome, buildCanNodeMessages, canLogEntriesFromStatusTexts, mergeCanNodeLogs } from './view-models/can-node-messages'
 import { SLCAN_BITRATES } from '@arduconfig/can-core'
 import { dronecanCatalogue } from '@arduconfig/dronecan-dsdl'
 import type { CanSubTab } from './views/CanBus'
@@ -2722,8 +2722,17 @@ export function App() {
     .some((topic) => topic.kind === 'anonymous' && topic.last.type?.shortName === 'Allocation' && Date.now() - topic.last.timestampMs < 3000)
   // Node messages (DroneCAN LogMessage) -- the CAN tab's Recent Notices.
   const [canLogFilter, setCanLogFilter] = useState('')
-  const [canLogDebug, setCanLogDebug] = useState(false)
-  const canNodeLogs = canBusMonitor.nodeLogs()
+  // Debug shown by default: AP_Periph's can_printf -- most of what a node says,
+  // the bootloader-flash result included -- logs at DEBUG.
+  const [canLogDebug, setCanLogDebug] = useState(true)
+  // Plus the lines the autopilot relays as "CAN[n] ..." status texts (CAN_LOGLEVEL on):
+  // a second route when the bus frames are lost in forwarding.
+  const [canLogsClearedAtMs, setCanLogsClearedAtMs] = useState(0)
+  const canNodeLogs = mergeCanNodeLogs(
+    canBusMonitor.nodeLogs(),
+    canOnAdapter ? [] : canLogEntriesFromStatusTexts(snapshot.statusTexts),
+    canLogsClearedAtMs
+  )
   // Flash a node's bootloader: AP_Periph acts on FLASH_BOOTLOADER = 1 at once
   // (no restart), copies its embedded bootloader, and logs the outcome.
   const [bootloaderFlash, setBootloaderFlash] = useState<
@@ -2736,18 +2745,22 @@ export function App() {
       refetched?: boolean
       /** The node ran it: FLASH_BOOTLOADER read back as 0 (it resets it only when it acts). */
       acted?: boolean
+      /** The node's own result line has arrived (it overrides a timeout or a write error). */
+      answered?: boolean
     }
     | undefined
   >(undefined)
   useEffect(() => {
-    if (bootloaderFlash?.status !== 'flashing') return
+    // Still listening after a timeout or a write error: the node's line, when
+    // it does come, is the real answer.
+    if (!bootloaderFlash || bootloaderFlash.answered) return
     for (let index = canNodeLogs.length - 1; index >= 0; index -= 1) {
       const entry = canNodeLogs[index]
       if (entry.atMs < bootloaderFlash.startedAtMs) break
       if (entry.nodeId !== bootloaderFlash.nodeId) continue
       const outcome = bootloaderFlashOutcome(entry.text)
       if (outcome) {
-        setBootloaderFlash({ ...bootloaderFlash, status: outcome.ok ? 'ok' : 'failed', message: outcome.message })
+        setBootloaderFlash({ ...bootloaderFlash, status: outcome.ok ? 'ok' : 'failed', message: outcome.message, answered: true })
         // Re-pull the node's params: FLASH_BOOTLOADER is back to 0.
         canBackend?.fetchAllCanBusParameters(bootloaderFlash.nodeId)
         return
@@ -2821,11 +2834,17 @@ export function App() {
     return () => window.clearTimeout(timer)
   }, [bootloaderFlash?.status, bootloaderFlash?.startedAtMs])
   const flashCanBootloader = (nodeId: number) => {
-    setBootloaderFlash({ nodeId, startedAtMs: Date.now() - 500, status: 'flashing', message: 'Flashing the bootloader… do not power the node off.' })
+    // No slack before the click: lines are stamped on arrival, and a slack
+    // let a previous run's answer pass for this one's.
+    setBootloaderFlash({ nodeId, startedAtMs: Date.now(), status: 'flashing', message: 'Flashing the bootloader… do not power the node off.' })
     void canBackend
       ?.writeCanBusParameter(nodeId, 'FLASH_BOOTLOADER', { tag: 'int64', int64: '1' })
       .catch((error: unknown) =>
-        setBootloaderFlash({ nodeId, startedAtMs: Date.now(), status: 'failed', message: error instanceof Error ? error.message : String(error) })
+        setBootloaderFlash((current) =>
+          current?.nodeId === nodeId && !current.answered
+            ? { ...current, status: 'failed', message: error instanceof Error ? error.message : String(error) }
+            : current
+        )
       )
   }
   // Plot a decoded field (a number, a vector, or one element of one), from
@@ -10500,6 +10519,7 @@ export function App() {
         onStopForward={() => { void (canOnAdapter ? canAdapter.disconnect() : runtime?.stopCanBusForward()) }}
         onRefreshNode={(nodeId) => { canBackend?.refreshCanBusNode(nodeId) }}
         onFetchAllParameters={(nodeId) => { canBackend?.fetchAllCanBusParameters(nodeId) }}
+        onRebootNode={(nodeId) => { void canBackend?.restartCanBusNode(nodeId) }}
         onApplyAndSave={(nodeId, writes) => { void canBackend?.applyAndSaveCanBusParameters(nodeId, writes) }}
         paramMetadata={dronecanParamMetadata}
         enablement={canEnablement.needsEnable ? { triggerLabels: canEnablement.triggerLabels } : undefined}
@@ -10535,7 +10555,10 @@ export function App() {
               onFilter={setCanLogFilter}
               showDebug={canLogDebug}
               onShowDebug={setCanLogDebug}
-              onClear={canBusMonitor.clearNodeLogs}
+              onClear={() => {
+                canBusMonitor.clearNodeLogs()
+                setCanLogsClearedAtMs(Date.now())
+              }}
               hasEntries={canNodeLogs.length > 0}
             />
           ),
@@ -10882,6 +10905,7 @@ export function App() {
               }}
               onRefreshNode={(id) => { canBackend?.refreshCanBusNode(id) }}
               onFetchAllParameters={(id) => { canBackend?.fetchAllCanBusParameters(id) }}
+              onRebootNode={(id) => { void canBackend?.restartCanBusNode(id) }}
               busy={busyAction !== undefined}
               expertActions={isExpertMode ? canDeviceExpertActions : undefined}
               // Real filtering, not a label: this window only ever shows this

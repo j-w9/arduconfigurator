@@ -91,8 +91,44 @@ export function buildCanNodeMessages(
 export function bootloaderFlashOutcome(text: string): { ok: boolean; message: string } | undefined {
   const line = text.trim()
   if (/^Flash bootloader OK/i.test(line)) return { ok: true, message: 'Bootloader flashed.' }
-  if (/^Bootloader unchanged/i.test(line)) return { ok: true, message: 'Bootloader already up to date (unchanged).' }
+  if (/^Bootloader unchanged/i.test(line)) return { ok: true, message: 'Bootloader unchanged: it is already up to date.' }
   if (/^Bootloader not signed/i.test(line)) return { ok: false, message: 'Refused: the embedded bootloader is not signed.' }
   if (/^Flash bootloader FAILED/i.test(line)) return { ok: false, message: 'Bootloader flash FAILED. Do not power the node off; try again.' }
   return undefined
+}
+
+/**
+ * The same node lines as relayed by the autopilot: with CAN_LOGLEVEL on, the
+ * FC re-sends each LogMessage it hears as a STATUSTEXT "CAN[<node>] <text>"
+ * (AP_DroneCAN::handle_debug). A second route for a line whose frames did
+ * not make it through forwarding -- the bootloader result among them.
+ */
+export function canLogEntriesFromStatusTexts(
+  statusTexts: readonly { severity: 'info' | 'warning' | 'error'; text: string; receivedAtMs?: number }[]
+): CanNodeLogEntry[] {
+  const entries: CanNodeLogEntry[] = []
+  for (const status of statusTexts) {
+    const match = /^CAN\[(\d+)\]\s+(.+)$/s.exec(status.text.trim())
+    if (!match || status.receivedAtMs === undefined) continue
+    entries.push({ atMs: status.receivedAtMs, nodeId: Number(match[1]), level: status.severity, source: '', text: match[2].trim() })
+  }
+  return entries
+}
+
+/**
+ * The bus's own lines plus the FC-relayed ones, oldest first; a relayed line
+ * the bus also delivered (same node and text, within a few seconds) once.
+ */
+export function mergeCanNodeLogs(
+  fromBus: readonly CanNodeLogEntry[],
+  relayed: readonly CanNodeLogEntry[],
+  sinceMs = 0
+): readonly CanNodeLogEntry[] {
+  const extra = relayed.filter(
+    (entry) =>
+      entry.atMs >= sinceMs &&
+      !fromBus.some((own) => own.nodeId === entry.nodeId && own.text === entry.text && Math.abs(own.atMs - entry.atMs) < 5000)
+  )
+  if (extra.length === 0) return fromBus
+  return [...fromBus, ...extra].sort((a, b) => a.atMs - b.atMs)
 }

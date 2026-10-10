@@ -59,6 +59,8 @@ export interface DronecanParamDisplay {
   step?: number
   rebootRequired?: boolean
   readOnly?: boolean
+  /** A single-choice param's named values (never a bitmask's), for a dropdown editor. */
+  options?: ReadonlyArray<{ value: number; label: string }>
 }
 
 /** A def's bit labels: its own, or the FC catalog's bitmask `options` (bit indexes). */
@@ -126,6 +128,7 @@ export function describeDronecanParam(
     bitsLabel,
     step: def?.step,
     rebootRequired: def?.rebootRequired,
-    readOnly: def?.readOnly
+    readOnly: def?.readOnly,
+    options: !bits && def?.options && def.options.length > 0 ? def.options : undefined
   }
 }

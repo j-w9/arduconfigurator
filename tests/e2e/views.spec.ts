@@ -6696,14 +6696,15 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(toggle).toContainText(/Params \([1-9]/, { timeout: 12000 })
     await toggle.click()
     await expect(page.getByTestId('can-device-inspector-50')).toBeVisible()
-    const battInput = page.getByTestId('can-bus-param-input-50-BATT_MONITOR')
+    const battInput = page.getByTestId('can-bus-param-select-50-BATT_MONITOR')
     await expect(battInput).toBeVisible({ timeout: 12000 })
     // The node reports no labels/enums, so the grid enriches from the curated
-    // FC catalog by name: BATT_MONITOR=4 shows its enum label.
-    await expect(page.getByTestId('can-bus-param-50-BATT_MONITOR')).toContainText('Analog Voltage and Current')
+    // FC catalog by name: BATT_MONITOR is a dropdown of its named values, on 4.
+    await expect(battInput).toHaveValue('4')
+    await expect(battInput.locator('option:checked')).toContainText('Analog Voltage and Current')
 
     // Editing a parameter stages a change and reveals Apply & Save.
-    await battInput.fill('3')
+    await battInput.selectOption('3')
     const apply = page.getByTestId('can-bus-apply-all-50')
     await expect(apply).toBeVisible()
     await apply.click()
