@@ -56,8 +56,8 @@ const FLUSH_INTERVAL_MS = 500
 const HISTORY_SAMPLES = 40
 
 /** Trailing window of field samples kept per live plot. */
-const PLOT_WINDOW_MS = 20_000
-const PLOT_MAX_SAMPLES = 600
+const PLOT_WINDOW_MS = 60_000
+const PLOT_MAX_SAMPLES = 1800
 /** Cap on simultaneous live plots. */
 export const MAX_MAVLINK_PLOTS = 6
 

@@ -6595,7 +6595,10 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(streamingRow).toBeVisible({ timeout: 8000 })
     await streamingRow.getByRole('button').first().click()
     await streamingRow.locator('[data-testid^="mavlink-field-graph-"]').first().click()
-    await expect(page.getByTestId('mavlink-plots')).toBeVisible()
+    // The plot is on the Plot sub-tab, which counts it.
+    await expect(page.getByTestId('mavlink-subtab-plot')).toHaveText('Plot (1)')
+    await page.getByTestId('mavlink-subtab-plot').click()
+    await expect(page.getByTestId('mavlink-chart-pane')).toHaveCount(1)
     // The plot buffer fills as SYS_STATUS arrives; the demo emitter ticks at
     // ~7s, so allow more than one cadence for the first sample.
     const csvButton = page.locator('[data-testid^="mavlink-plot-csv-"]').first()
@@ -6671,28 +6674,31 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(graph).toBeVisible()
     await graph.click()
 
-    // A live plot renders with its read-outs.
-    await expect(page.getByTestId('mavlink-plots')).toBeVisible()
+    // A live plot renders on the Plot sub-tab with its value.
+    await page.getByTestId('mavlink-subtab-plot').click()
+    await expect(page.getByTestId('mavlink-chart-pane')).toHaveCount(1)
     const plot = page.locator('[data-testid^="mavlink-plot-"]').first()
     await expect(plot).toBeVisible()
-    await expect(plot).toContainText('now')
+    await expect(page.locator('[data-testid^="mavlink-plot-current-"]').first()).toHaveText(/\d/)
 
     // Removing the plot tears it down.
-    page.locator('[data-testid^="mavlink-plot-remove-"]').first().click()
-    await expect(page.getByTestId('mavlink-plots')).toHaveCount(0)
+    await page.locator('[data-testid^="mavlink-plot-remove-"]').first().click()
+    await expect(page.getByTestId('mavlink-chart-pane')).toHaveCount(0)
+    await expect(page.getByTestId('mavlink-chart-empty')).toBeVisible()
   })
 
-  test('MAVLink Inspector draws a predefined graph live and overlays a field plot on it', async ({ page }) => {
+  test('MAVLink Inspector Plot: a predefined graph live, a field from the side panel, overlay and split', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await enableExpertMode(page)
     await page.getByTestId('view-button-mavlink-inspector').click()
     await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
+    await page.getByTestId('mavlink-subtab-plot').click()
+    await expect(page.getByTestId('mavlink-chart-empty')).toBeVisible()
 
     // MAVExplorer's library: the demo carries ATTITUDE, so Roll and Pitch can draw.
-    const graphs = page.getByTestId('mavlink-graphs')
-    await graphs.locator('summary').click()
+    await page.getByTestId('mavlink-chart-side-graphs').click()
     await page.getByTestId('mavlink-graphs-search').fill('roll pitch')
     const open = page.getByTestId('mavlink-graph-open-Attitude/Roll and Pitch')
     await expect(open).toBeEnabled({ timeout: 10_000 })
@@ -6701,21 +6707,32 @@ test.describe('Inspectors (expert-only)', () => {
 
     // One chart, two lines (roll and pitch in degrees), values arriving.
     const lines = page.getByTestId('mavlink-graph-line')
-    await expect(lines).toHaveCount(2)
-    await expect(page.getByTestId('mavlink-chart-pane')).toHaveCount(1)
-    await expect.poll(async () => (await lines.first().textContent()) ?? '', { timeout: 10_000 }).toMatch(/degrees\(ATTITUDE\.roll\)\s*-?\d/)
-    await expect(page.getByTestId('mavlink-chart-pane').first().locator('canvas').first()).toBeVisible()
-
-    // A field plot starts on its own chart; dragged onto the graph's, it overlays there.
-    const mavTable = page.getByTestId('mavlink-inspector-table')
-    await mavTable.locator('[data-testid^="mavlink-row-"]').first().getByRole('button').first().click()
-    await page.locator('[data-testid^="mavlink-field-graph-"]').first().click()
     const panes = page.getByTestId('mavlink-chart-pane')
-    await expect(panes).toHaveCount(2)
-    await page.locator('.mavlink-plot-row[data-testid^="mavlink-plot-"]').first().dragTo(panes.nth(1))
+    await expect(lines).toHaveCount(2)
     await expect(panes).toHaveCount(1)
+    await expect.poll(async () => (await lines.first().textContent()) ?? '', { timeout: 10_000 }).toMatch(/degrees\(ATTITUDE\.roll\)\s*-?\d/)
+    await expect(panes.first().locator('canvas').first()).toBeVisible()
+
+    // A field from the side panel starts on its own chart.
+    await page.getByTestId('mavlink-chart-side-fields').click()
+    await page.getByTestId('mavlink-fields-search').fill('SYS_STATUS')
+    await page.locator('[data-testid^="mavlink-field-add-1:1:SYS_STATUS:"]').first().click()
+    await expect(panes).toHaveCount(2)
+    // Its chart menu puts it with the graph; Split all and Overlay all regroup everything.
+    const fieldRow = page.locator('[data-testid^="mavlink-plot-1:1:SYS_STATUS"]').first()
+    await fieldRow.getByTestId('mavlink-chart-chart-menu').selectOption({ label: 'With degrees(ATTITUDE.roll) +1' })
+    await expect(panes).toHaveCount(1)
+    await page.getByTestId('mavlink-chart-split-all').click()
+    await expect(panes).toHaveCount(3)
+    await page.getByTestId('mavlink-chart-overlay-all').click()
+    await expect(panes).toHaveCount(1)
+    // And the grip drags a series back out onto a chart of its own.
+    await fieldRow.getByTestId('mavlink-chart-grip').dragTo(page.getByTestId('mavlink-chart-new-pane'))
+    await expect(panes).toHaveCount(2)
+    await expect(page.getByTestId('mavlink-subtab-plot')).toHaveText('Plot (3)')
 
     // Closing the graph takes its lines away.
+    await page.getByTestId('mavlink-chart-side-graphs').click()
     await page.getByTestId('mavlink-graph-close-Attitude/Roll and Pitch').click()
     await expect(lines).toHaveCount(0)
   })

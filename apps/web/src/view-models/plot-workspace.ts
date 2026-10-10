@@ -3,9 +3,16 @@
 // starts on its own pane and can be dragged onto another to overlay), saved
 // layouts, and thinning many points for drawing. Pure.
 
-export type PlotPaneHeight = 's' | 'm' | 'l'
+/** A chart's height in pixels: set by dragging its bottom edge. */
+export type PlotPaneHeight = number
 
-export const PLOT_PANE_PIXELS: Record<PlotPaneHeight, number> = { s: 90, m: 120, l: 220 }
+export const PLOT_PANE_DEFAULT_HEIGHT = 140
+export const PLOT_PANE_MIN_HEIGHT = 70
+export const PLOT_PANE_MAX_HEIGHT = 640
+
+export function clampPaneHeight(height: number): number {
+  return Math.round(Math.min(PLOT_PANE_MAX_HEIGHT, Math.max(PLOT_PANE_MIN_HEIGHT, height)))
+}
 
 /** What the drag of a series (or a field to plot) carries. */
 export const PLOT_DRAG_TYPE = 'application/x-arduconfig-plot'
@@ -53,6 +60,11 @@ export function assignPane(paneOf: ReadonlyMap<string, string>, key: string, pan
   return next
 }
 
+/** Every series onto the first one's chart. */
+export function overlayAll(keys: readonly string[]): Map<string, string> {
+  return new Map(keys.slice(1).map((key) => [key, keys[0]]))
+}
+
 /** Forget series that are gone. */
 export function prunePanes(paneOf: ReadonlyMap<string, string>, keys: ReadonlySet<string>): Map<string, string> {
   return new Map([...paneOf.entries()].filter(([key]) => keys.has(key)))
@@ -82,7 +94,7 @@ export function parseSavedLayouts<T>(json: string | null | undefined, isSeries: 
         if (!pane || !Array.isArray(pane.series)) return []
         const series = pane.series.filter(isSeries)
         if (series.length === 0) return []
-        const height: PlotPaneHeight = pane.height === 's' || pane.height === 'l' ? pane.height : 'm'
+        const height = typeof pane.height === 'number' && Number.isFinite(pane.height) ? clampPaneHeight(pane.height) : PLOT_PANE_DEFAULT_HEIGHT
         return [{ height, series }]
       })
       return [{ name: layout.name, panes }]

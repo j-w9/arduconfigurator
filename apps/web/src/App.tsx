@@ -10886,9 +10886,13 @@ export function App() {
           onRemovePlot={removeMavlinkInspectorPlot}
           onExportPlotCsv={exportMavlinkInspectorPlotCsv}
           maxPlots={MAX_MAVLINK_PLOTS}
+          plotCount={mavlinkInspectorPlots.length + mavlinkPlotWorkspace.open.reduce((total, graph) => total + graph.series.length, 0)}
           plotWorkspace={
             <MavlinkPlotWorkspace
+              stats={mavlinkInspectorStats}
               plots={mavlinkInspectorPlots}
+              maxPlots={MAX_MAVLINK_PLOTS}
+              onAddPlot={addMavlinkInspectorPlot}
               onRemovePlot={removeMavlinkInspectorPlot}
               onExportPlotCsv={exportMavlinkInspectorPlotCsv}
               graphs={mavlinkPlotWorkspace.graphs}
@@ -10900,7 +10904,7 @@ export function App() {
               paneHeights={mavlinkPlotWorkspace.paneHeights}
               onMoveSeries={mavlinkPlotWorkspace.moveSeries}
               onPaneHeight={mavlinkPlotWorkspace.setPaneHeight}
-              windowSeconds={LIVE_GRAPH_WINDOW_S}
+              bufferSeconds={LIVE_GRAPH_WINDOW_S}
             />
           }
         />

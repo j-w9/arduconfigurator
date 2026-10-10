@@ -469,6 +469,7 @@ test.describe('CAN tab: Devices, Messages, Plot', () => {
     await expect(page.getByTestId('can-message-inspector').getByTestId('can-plot-field-rpm')).toHaveText('Plotted')
 
     await page.getByTestId('can-subtab-plot').click()
+    await page.getByTestId('can-plot-side-bytes').click()
     await page.getByTestId('can-plot-bytes-id').fill('2A0')
     await page.getByTestId('can-plot-bytes-width').selectOption('2')
     await page.getByTestId('can-plot-bytes-add').click()
@@ -485,15 +486,20 @@ test.describe('CAN tab: Devices, Messages, Plot', () => {
     await expect(panes.nth(0).locator('canvas').first()).toBeVisible()
 
     // Drag the bytes series onto the rpm chart: one chart, both lines.
-    await series.nth(1).dragTo(panes.nth(0))
+    await series.nth(1).getByTestId('can-plot-grip').dragTo(panes.nth(0))
     await expect(panes).toHaveCount(1)
     await expect(panes.nth(0).getByTestId('can-plot-series')).toHaveCount(2)
-    // And back out onto a chart of its own.
-    await panes.nth(0).getByTestId('can-plot-series').nth(1).dragTo(page.getByTestId('can-plot-new-pane'))
+    // And back out onto a chart of its own, by its chart menu this time.
+    await panes.nth(0).getByTestId('can-plot-series').nth(1).getByTestId('can-plot-chart-menu').selectOption({ label: 'Own chart' })
+    await expect(panes).toHaveCount(2)
+    // Overlay all / Split all.
+    await page.getByTestId('can-plot-overlay-all').click()
+    await expect(panes).toHaveCount(1)
+    await page.getByTestId('can-plot-split-all').click()
     await expect(panes).toHaveCount(2)
 
     // A saved layout brings the series and their grouping back.
-    await series.nth(1).dragTo(panes.nth(0))
+    await series.nth(1).getByTestId('can-plot-grip').dragTo(panes.nth(0))
     await page.getByTestId('can-plot-layout-name').fill('ESC check')
     await page.getByTestId('can-plot-layout-save').click()
     await page.getByRole('button', { name: 'Clear all' }).click()

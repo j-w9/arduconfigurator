@@ -10,16 +10,18 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { buttonStyle } from '@arduconfig/ui-kit'
 
 import { type PlotLane } from '../plot/PlotChart'
-import { PlotPanes, plotDragProps, type PlotPaneModel } from '../plot/PlotPanes'
+import { type PlotPaneModel, type PlotSeriesRow } from '../plot/PlotPanes'
+import { PlotWorkspace } from '../plot/PlotWorkspace'
 import {
+  PLOT_PANE_DEFAULT_HEIGHT,
   groupIntoPanes,
   parseSavedLayouts,
   serializeSavedLayouts,
   upsertLayout,
+  valueAt,
   type PlotPaneHeight,
   type SavedPlotLayout
 } from '../view-models/plot-workspace'
-import { InfoDot } from './InfoDot'
 import { downloadTextFile } from '../download-file'
 import { DronecanFieldTree } from './DronecanFieldTree'
 import { canPlotLaneColor, canPlotSeriesKey, canPlotWindow, type CanPlotSamples, type CanPlotSeries, type CanPlotSource } from '../view-models/can-plot'
@@ -52,10 +54,10 @@ export interface CanPlotViewProps {
 }
 
 const WINDOWS = [
-  { ms: 10_000, label: '10 s' },
-  { ms: 30_000, label: '30 s' },
-  { ms: 60_000, label: '1 min' },
-  { ms: 300_000, label: '5 min' }
+  { seconds: 10, label: '10 s' },
+  { seconds: 30, label: '30 s' },
+  { seconds: 60, label: '1 min' },
+  { seconds: 300, label: '5 min' }
 ] as const
 
 const SYNC_KEY = 'arduconfig-can-plot'
@@ -72,32 +74,46 @@ function seriesLanes(entry: CanPlotSeries, data: CanPlotSamples, endMs: number):
   }))
 }
 
-/** One series over its chart: name, latest value(s), points, remove. Drag it onto another chart. */
-function SeriesRow({ entry, data, onRemove }: { entry: CanPlotSeries; data: CanPlotSamples; onRemove: (key: string) => void }): ReactNode {
-  return (
-    <div className="can-plot__series can-plot__series-head" {...plotDragProps(JSON.stringify({ kind: 'series', key: entry.key }))} title="Drag onto another chart to overlay" data-testid="can-plot-series">
-      {data.v.length > 1 ? null : <span className="can-plot__swatch" style={{ background: entry.color }} aria-hidden="true" />}
-      <strong title={entry.label}>{entry.label}</strong>
-      {data.v.length > 1 ? (
-        // A vector: each element's latest value in its line's colour.
-        <span className="can-plot__lanes can-monitor__mono" data-testid="can-plot-lanes">
-          {lastValues(data).map((value, lane) => (
-            <span key={lane} style={{ color: canPlotLaneColor(entry, data.v.length, lane) }} data-testid="can-plot-lane">
-              [{lane}] {formatPlotValue(value)}
+/** One series' row over its chart: name, value (at the cursor, else the latest), points, remove. */
+function seriesRow(entry: CanPlotSeries, data: CanPlotSamples, endMs: number, onRemove: (key: string) => void): PlotSeriesRow {
+  const vector = data.v.length > 1
+  return {
+    key: entry.key,
+    label: entry.label,
+    color: vector ? canPlotLaneColor(entry, data.v.length, 0) : entry.color,
+    testId: 'can-plot-series',
+    content: (cursorX) => {
+      const at = cursorX === undefined ? undefined : endMs + cursorX * 1000
+      const values = data.v.map((lane) => (at === undefined ? lane[lane.length - 1] : valueAt(data.t, lane, at)))
+      return (
+        <>
+          <span className="plot-series__name" title={entry.label}>
+            {entry.label}
+          </span>
+          {vector ? (
+            // A vector: each element's value in its line's colour.
+            <span className="can-plot__lanes can-monitor__mono" data-testid="can-plot-lanes">
+              {values.map((value, lane) => (
+                <span key={lane} style={{ color: canPlotLaneColor(entry, data.v.length, lane) }} data-testid="can-plot-lane">
+                  [{lane}] {formatPlotValue(value)}
+                </span>
+              ))}
             </span>
-          ))}
-        </span>
-      ) : (
-        <span className="can-plot__last can-monitor__mono" data-testid="can-plot-last">
-          {formatPlotValue(lastValues(data)[0])}
-        </span>
-      )}
-      <span className="can-monitor__dim can-monitor__mono">{data.t.length} pts</span>
-      <button type="button" className="can-monitor__icon-button" onClick={() => onRemove(entry.key)} aria-label={`Remove ${entry.label}`}>
-        ×
-      </button>
-    </div>
-  )
+          ) : (
+            <span className={`plot-series__value${at !== undefined ? ' is-cursor' : ''}`} data-testid="can-plot-last">
+              {formatPlotValue(values[0])}
+            </span>
+          )}
+          <span className="plot-series__actions">
+            <span className="plot-series__meta">{data.t.length} pts</span>
+            <button type="button" className="can-monitor__icon-button" onClick={() => onRemove(entry.key)} aria-label={`Remove ${entry.label}`}>
+              ×
+            </button>
+          </span>
+        </>
+      )
+    }
+  }
 }
 
 /** The field at a path in a decoded tree (elements of a vector included). */
@@ -145,10 +161,6 @@ function formatPlotValue(value: number | undefined): string {
   return Number.isInteger(value) ? String(value) : Number.parseFloat(value.toPrecision(6)).toString()
 }
 
-/** The latest value of each lane. */
-function lastValues(data: CanPlotSamples): (number | undefined)[] {
-  return data.v.map((lane) => lane[lane.length - 1])
-}
 
 /** Plot any frame's bytes: the path for plain CAN, where there is no DSDL. */
 function BytesForm({ onAdd }: { onAdd: CanPlotViewProps['onAddBytes'] }): ReactNode {
@@ -294,66 +306,53 @@ function FieldPicker(props: Pick<CanPlotViewProps, 'topics' | 'nodeLabel' | 'onP
 
 export function CanPlotView(props: CanPlotViewProps): ReactNode {
   const { series, samplesFor, nowMs, onRemove, onClear, onAddBytes, onPickFields } = props
-  const [windowMs, setWindowMs] = useState<number>(30_000)
+  const [windowSeconds, setWindowSeconds] = useState<number>(30)
   const [frozenAt, setFrozenAt] = useState<number | undefined>(undefined)
-  const endMs = frozenAt ?? nowMs
-  const windows = series.map((entry) => ({ entry, data: canPlotWindow(samplesFor(entry.key), endMs, windowMs) }))
   // Paused, a drag across any chart zooms them all (double-click: the whole window).
   const [zoom, setZoom] = useState<readonly [number, number] | undefined>(undefined)
-  const xRange = useMemo(() => zoom ?? ([-windowMs / 1000, 0] as const), [zoom, windowMs])
+  const endMs = frozenAt ?? nowMs
+  const windowMs = windowSeconds * 1000
+  const windows = series.map((entry) => ({ entry, data: canPlotWindow(samplesFor(entry.key), endMs, windowMs) }))
   const dataByKey = new Map(windows.map((entry) => [entry.entry.key, entry.data]))
+  const xRange = useMemo(() => zoom ?? ([-windowSeconds, 0] as const), [zoom, windowSeconds])
+  const groups = groupIntoPanes(series, (entry) => entry.key, props.paneOf)
 
-  const panes: PlotPaneModel[] = groupIntoPanes(series, (entry) => entry.key, props.paneOf).map((pane) => ({
+  const panes: PlotPaneModel[] = groups.map((pane) => ({
     id: pane.id,
-    height: props.paneHeights.get(pane.id) ?? 'm',
-    rows: pane.series.map((entry) => <SeriesRow key={entry.key} entry={entry} data={dataByKey.get(entry.key)!} onRemove={onRemove} />),
+    height: props.paneHeights.get(pane.id) ?? PLOT_PANE_DEFAULT_HEIGHT,
+    rows: pane.series.map((entry) => seriesRow(entry, dataByKey.get(entry.key)!, endMs, onRemove)),
     lanes: pane.series.flatMap((entry) => seriesLanes(entry, dataByKey.get(entry.key)!, endMs))
   }))
 
-  // A series row dropped on another chart overlays there; a field from the picker joins it.
-  const onDrop = (paneId: string | undefined, payload: string) => {
-    let drop: { kind?: string; key?: string; topicKey?: string; path?: (string | number)[] }
-    try {
-      drop = JSON.parse(payload)
-    } catch {
-      return
-    }
-    if (drop.kind === 'series' && drop.key) {
-      props.onMoveSeries(drop.key, paneId)
-      return
-    }
-    if (drop.kind === 'field' && drop.topicKey && drop.path) {
-      const topic = props.topics.find((entry) => entry.key === drop.topicKey)
-      const tree = topic ? transferFieldTree(topic.last) : undefined
-      const node = tree ? findFieldNode(tree, drop.path) : undefined
-      if (!topic || !node) return
-      const key = canPlotSeriesKey({ kind: 'field', topicKey: topic.key, path: node.path })
-      if (!series.some((entry) => entry.key === key)) props.onPlotField(topic, node)
-      props.onMoveSeries(key, paneId)
-    }
+  // A field dragged in from the side panel lands on the chart it is dropped on.
+  const onDropPayload = (paneId: string | undefined, drop: { kind?: string; topicKey?: unknown; path?: unknown }) => {
+    if (drop.kind !== 'field' || typeof drop.topicKey !== 'string' || !Array.isArray(drop.path)) return
+    const topic = props.topics.find((entry) => entry.key === drop.topicKey)
+    const tree = topic ? transferFieldTree(topic.last) : undefined
+    const node = tree ? findFieldNode(tree, drop.path as (string | number)[]) : undefined
+    if (!topic || !node) return
+    const key = canPlotSeriesKey({ kind: 'field', topicKey: topic.key, path: node.path })
+    if (!series.some((entry) => entry.key === key)) props.onPlotField(topic, node)
+    props.onMoveSeries(key, paneId)
   }
 
-  // Saved layouts: the series (by source) and how they are grouped.
+  // Saved layouts: the series (by source), their charts and heights.
   const [layouts, setLayouts] = useState<SavedPlotLayout<CanPlotLayoutSeries>[]>(() => readCanPlotLayouts())
-  const [layoutName, setLayoutName] = useState('')
-  const saveLayout = () => {
-    const name = layoutName.trim()
-    if (!name) return
-    const layout: SavedPlotLayout<CanPlotLayoutSeries> = {
-      name,
-      panes: panes.map((pane) => ({
-        height: pane.height,
-        series: groupIntoPanes(series, (entry) => entry.key, props.paneOf)
-          .find((group) => group.id === pane.id)!
-          .series.map((entry) => ({ label: entry.label, source: entry.source }))
-      }))
-    }
-    const next = upsertLayout(layouts, layout)
+  const storeLayouts = (next: SavedPlotLayout<CanPlotLayoutSeries>[]) => {
     setLayouts(next)
     writeCanPlotLayouts(next)
-    setLayoutName('')
   }
-  const loadLayout = (name: string) => {
+  const saveLayout = (name: string) =>
+    storeLayouts(
+      upsertLayout(layouts, {
+        name,
+        panes: groups.map((group) => ({
+          height: props.paneHeights.get(group.id) ?? PLOT_PANE_DEFAULT_HEIGHT,
+          series: group.series.map((entry) => ({ label: entry.label, source: entry.source }))
+        }))
+      })
+    )
+  const openLayout = (name: string) => {
     const layout = layouts.find((entry) => entry.name === name)
     if (!layout) return
     onClear()
@@ -362,11 +361,6 @@ export function CanPlotView(props: CanPlotViewProps): ReactNode {
       keys.slice(1).forEach((key) => props.onMoveSeries(key, keys[0]))
       if (keys[0]) props.onPaneHeight(keys[0], pane.height)
     }
-  }
-  const deleteLayout = (name: string) => {
-    const next = layouts.filter((entry) => entry.name !== name)
-    setLayouts(next)
-    writeCanPlotLayouts(next)
   }
 
   const exportCsv = () => {
@@ -383,134 +377,69 @@ export function CanPlotView(props: CanPlotViewProps): ReactNode {
   }
 
   return (
-    <section className="can-plot" data-testid="can-plot">
-      <header className="can-plot__bar">
-        <h3>
-          Plot
-          <InfoDot label="About plotting" wide>
-            Live charts of decoded DroneCAN fields (pick a device, message and field under Add a field, or choose Plot
-            in Messages) and of raw frame bytes (for plain CAN). Each series starts on its own chart, so different
-            units stay readable; drag a series onto another chart to overlay them, or a field from Add a field straight
-            onto a chart. A vector (magnetic field, say) draws its elements as lines on one chart. The cursor moves
-            across all charts together; paused, drag across one to zoom them all (double-click for the whole window).
-            Save layout keeps the series and their charts for next time. Adding a series fills in what was already
-            captured.
-          </InfoDot>
-        </h3>
-        <div className="can-monitor__segmented" role="radiogroup" aria-label="Time window">
-          {WINDOWS.map((option) => (
-            <button
-              key={option.ms}
-              type="button"
-              role="radio"
-              aria-checked={windowMs === option.ms}
-              className={windowMs === option.ms ? 'is-active' : undefined}
-              onClick={() => setWindowMs(option.ms)}
-              data-testid={`can-plot-window-${option.ms}`}
-            >
-              {option.label}
+    <PlotWorkspace
+      title="Plot"
+      info={
+        <>
+          Live charts of decoded DroneCAN fields and of raw frame bytes (for plain CAN). Add from the panel on the right
+          (or Plot beside any number in Messages): each series starts on a chart of its own, so different units stay
+          readable. Drag a series by its ⋮⋮ grip onto another chart to overlay them, or use its chart menu; a field can
+          be dragged straight from the panel onto a chart. The cursor moves across every chart and the values follow it.
+          Pause, then drag across a chart to zoom them all (double-click for the whole window). Drag a chart's bottom
+          edge to resize it. A saved layout brings the series and their charts back.
+        </>
+      }
+      windows={WINDOWS}
+      windowSeconds={windowSeconds}
+      onWindow={(seconds) => {
+        setWindowSeconds(seconds)
+        setZoom(undefined)
+      }}
+      paused={frozenAt !== undefined}
+      onTogglePause={() => {
+        setFrozenAt((current) => (current === undefined ? nowMs : undefined))
+        setZoom(undefined)
+      }}
+      seriesKeys={series.map((entry) => entry.key)}
+      onOverlayAll={() => series.slice(1).forEach((entry) => props.onMoveSeries(entry.key, series[0].key))}
+      onSplitAll={() => series.forEach((entry) => props.onMoveSeries(entry.key, undefined))}
+      layouts={layouts.map((layout) => layout.name)}
+      onSaveLayout={saveLayout}
+      onOpenLayout={openLayout}
+      onDeleteLayout={(name) => storeLayouts(layouts.filter((entry) => entry.name !== name))}
+      onExportCsv={exportCsv}
+      onClear={onClear}
+      panes={panes}
+      syncKey={SYNC_KEY}
+      xRange={xRange}
+      onXRangeChange={frozenAt !== undefined ? setZoom : undefined}
+      xFormat={(value) => `${Number.parseFloat(value.toFixed(2))}s`}
+      onMoveSeries={props.onMoveSeries}
+      onPaneHeight={props.onPaneHeight}
+      onDropPayload={onDropPayload}
+      side={[
+        {
+          id: 'fields',
+          label: 'Fields',
+          content: (
+            <FieldPicker topics={props.topics} nodeLabel={props.nodeLabel} onPlotField={props.onPlotField} isPlotted={props.isPlotted} onUnplotField={props.onUnplotField} />
+          )
+        },
+        { id: 'bytes', label: 'Frame bytes', content: <BytesForm onAdd={onAddBytes} /> }
+      ]}
+      empty={
+        <>
+          <p>Nothing plotted yet.</p>
+          <p>
+            Pick a device, a message and a field on the right, choose <strong>Plot</strong> beside any number in{' '}
+            <button type="button" className="can-plot__link" onClick={onPickFields}>
+              Messages
             </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          // Same grammar as Frames: red Pause stops the charts, green Resume runs them again.
-          className={`can-monitor__tool ${frozenAt !== undefined ? 'can-monitor__tool--resume' : 'can-monitor__tool--pause'}`}
-          onClick={() => {
-            setFrozenAt((current) => (current === undefined ? nowMs : undefined))
-            setZoom(undefined)
-          }}
-          aria-pressed={frozenAt !== undefined}
-          disabled={series.length === 0}
-          data-testid="can-plot-freeze"
-        >
-          {frozenAt !== undefined ? 'Resume' : 'Pause'}
-        </button>
-        <form
-          className="can-plot__layout"
-          onSubmit={(event) => {
-            event.preventDefault()
-            saveLayout()
-          }}
-        >
-          <input value={layoutName} onChange={(event) => setLayoutName(event.target.value)} placeholder="Layout name" aria-label="Layout name" data-testid="can-plot-layout-name" />
-          <button type="submit" className="can-monitor__tool" disabled={!layoutName.trim() || series.length === 0} data-testid="can-plot-layout-save">
-            Save layout
-          </button>
-        </form>
-        {layouts.length > 0 ? (
-          <select
-            className="can-plot__layouts"
-            value=""
-            onChange={(event) => {
-              const value = event.target.value
-              if (value.startsWith('open:')) loadLayout(value.slice(5))
-              if (value.startsWith('delete:')) deleteLayout(value.slice(7))
-            }}
-            aria-label="Saved layouts"
-            data-testid="can-plot-layouts"
-          >
-            <option value="">Layouts…</option>
-            <optgroup label="Open">
-              {layouts.map((layout) => (
-                <option key={layout.name} value={`open:${layout.name}`}>
-                  {layout.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="Delete">
-              {layouts.map((layout) => (
-                <option key={layout.name} value={`delete:${layout.name}`}>
-                  Delete {layout.name}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-        ) : null}
-        <button type="button" className="can-monitor__tool" onClick={exportCsv} disabled={series.length === 0} data-testid="can-plot-export">
-          Export CSV
-        </button>
-        <button type="button" className="can-monitor__tool" onClick={onClear} disabled={series.length === 0}>
-          Clear all
-        </button>
-      </header>
-
-      <div className="can-plot__body">
-        <div className="can-plot__charts">
-          {series.length === 0 ? (
-            <div className="can-plot__empty" data-testid="can-plot-empty">
-              <p>Nothing plotted yet.</p>
-              <p>
-                Pick a device, a message and a field under <strong>Add a field</strong>, choose <strong>Plot</strong> beside any
-                number in <button type="button" className="can-plot__link" onClick={onPickFields}>Messages</button>, or plot a
-                frame's bytes.
-              </p>
-            </div>
-          ) : (
-            <PlotPanes
-              className="can-plot__list"
-              panes={panes}
-              syncKey={SYNC_KEY}
-              xRange={xRange}
-              onXRangeChange={frozenAt !== undefined ? setZoom : undefined}
-              xFormat={(value) => `${Number.parseFloat(value.toFixed(2))}s`}
-              onPaneHeight={props.onPaneHeight}
-              onDrop={onDrop}
-              testIdPrefix="can-plot"
-            />
-          )}
-        </div>
-        <aside className="can-plot__side">
-          <FieldPicker
-            topics={props.topics}
-            nodeLabel={props.nodeLabel}
-            onPlotField={props.onPlotField}
-            isPlotted={props.isPlotted}
-            onUnplotField={props.onUnplotField}
-          />
-          <BytesForm onAdd={onAddBytes} />
-        </aside>
-      </div>
-    </section>
+            , or plot a frame's bytes.
+          </p>
+        </>
+      }
+      testIdPrefix="can-plot"
+    />
   )
 }

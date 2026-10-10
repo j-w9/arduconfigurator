@@ -4,6 +4,7 @@ import {
   assignPane,
   decimateMinMax,
   groupIntoPanes,
+  overlayAll,
   parseSavedLayouts,
   prunePanes,
   serializeSavedLayouts,
@@ -32,16 +33,20 @@ describe('panes', () => {
     expect(groupIntoPanes(['a', 'b', 'c'], key, paneOf).map((pane) => pane.series)).toEqual([['a'], ['b', 'c']])
     expect([...prunePanes(paneOf, new Set(['b'])).keys()]).toEqual([])
   })
+
+  it('overlays every series on the first chart', () => {
+    expect(groupIntoPanes(['a', 'b', 'c'], key, overlayAll(['a', 'b', 'c'])).map((pane) => pane.series)).toEqual([['a', 'b', 'c']])
+  })
 })
 
 describe('saved layouts', () => {
   const isName = (value: unknown): value is string => typeof value === 'string'
   it('round-trip, replace by name, and drop what does not parse', () => {
-    const layouts = upsertLayout<string>([], { name: 'ESCs', panes: [{ height: 'l', series: ['rpm', 'temp'] }] })
+    const layouts = upsertLayout<string>([], { name: 'ESCs', panes: [{ height: 220, series: ['rpm', 'temp'] }] })
     expect(parseSavedLayouts(serializeSavedLayouts(layouts), isName)).toEqual(layouts)
     expect(upsertLayout(layouts, { name: 'ESCs', panes: [] })).toEqual([{ name: 'ESCs', panes: [] }])
-    const junk = JSON.stringify({ format: 1, layouts: [{ name: 'x', panes: [{ series: [1, 'ok'] }, { series: [2] }] }, { nope: true }] })
-    expect(parseSavedLayouts(junk, isName)).toEqual([{ name: 'x', panes: [{ height: 'm', series: ['ok'] }] }])
+    const junk = JSON.stringify({ format: 1, layouts: [{ name: 'x', panes: [{ series: [1, 'ok'], height: 9999 }, { series: [2] }] }, { nope: true }] })
+    expect(parseSavedLayouts(junk, isName)).toEqual([{ name: 'x', panes: [{ height: 640, series: ['ok'] }] }])
     expect(parseSavedLayouts('not json', isName)).toEqual([])
     expect(parseSavedLayouts(JSON.stringify({ format: 9, layouts: [] }), isName)).toEqual([])
   })

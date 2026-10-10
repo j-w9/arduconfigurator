@@ -12,8 +12,8 @@ import { LiveFieldIndex, graphSeriesKey, liveGraphEntries, type LiveGraphEntry }
 import { mavlinkRecordForPlot } from '../view-models/plot-live-mavlink'
 import { assignPane, type PlotPaneHeight } from '../view-models/plot-workspace'
 
-/** Seconds of graph points kept: the same window as the field plots. */
-export const LIVE_GRAPH_WINDOW_S = 20
+/** Seconds of graph points kept: the same window as the field plots (the longest the Plot tab shows). */
+export const LIVE_GRAPH_WINDOW_S = 60
 const FLUSH_MS = 250
 export const MAX_LIVE_GRAPHS = 6
 
