@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { MAVGRAPHS, createGraphEvaluator } from '@arduconfig/plot-core'
 
-import { LiveFieldIndex, filterLiveGraphs, graphSeriesKey, liveGraphEntries } from './mavlink-live-graphs'
+import { LiveFieldIndex, filterLiveGraphs, graphSeriesKey, liveGraphEntries, missingMessages } from './mavlink-live-graphs'
 import { mavlinkRecordForPlot } from './plot-live-mavlink'
 
 describe('live graphs', () => {
@@ -32,5 +32,15 @@ describe('live graphs', () => {
     expect(filterLiveGraphs(entries, 'roll pitch', false)).toEqual([])
     expect(filterLiveGraphs(entries, 'roll pitch', true).length).toBeGreaterThan(0)
     expect(graphSeriesKey('Attitude/Roll and Pitch', 1)).toBe('graph|Attitude/Roll and Pitch|1')
+  })
+
+  it('says which messages a graph still waits for', () => {
+    const index = new LiveFieldIndex()
+    const attitude = mavlinkRecordForPlot({ type: 'ATTITUDE', timeBootMs: 1, rollRad: 0, pitchRad: 0, yawRad: 0, rollSpeedRadS: 0, pitchSpeedRadS: 0, yawSpeedRadS: 0 })!
+    index.record(attitude.name, attitude.record)
+    const graph = { name: 'X/Speed', path: ['X', 'Speed'], description: '', expressions: ['GPS.Spd', 'VFR_HUD.groundspeed VFR_HUD.airspeed', 'VFR_HUD.groundspeed ATTITUDE.roll'] }
+    expect(missingMessages(graph, index.availability())).toEqual(['GPS'])
+    const vfrOnly = { ...graph, expressions: ['VFR_HUD.groundspeed ATTITUDE.nope', 'VFR_HUD.groundspeed'] }
+    expect(missingMessages(vfrOnly, index.availability())).toEqual(['VFR_HUD'])
   })
 })

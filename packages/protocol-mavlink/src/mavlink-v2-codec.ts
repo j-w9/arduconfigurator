@@ -11,6 +11,12 @@ import {
   MAVLINK_V2_STX,
 } from './constants.js'
 import { sha256 } from './sha256.js'
+import {
+  decodeGenericPayload,
+  encodeGenericPayload,
+  MAVLINK_GENERIC_ID_BY_NAME,
+  mavlinkGenericCrcExtra
+} from './mavlink-generic.js'
 import type { StreamingCodec } from './json-lines-codec.js'
 import type {
   AttitudeMessage,
@@ -65,6 +71,14 @@ const textDecoder = new TextDecoder()
 // is lossless for valid traffic since older bytes can't start a real frame.
 const MAX_BUFFER_BYTES = 4096
 const RETAINED_TAIL_BYTES = 512
+
+// crc_extra for a message id: the hand-entered table first (unchanged for
+// every id it lists — a test pins that the generated table agrees), then the
+// table generated from ArduPilot's dialect, so a frame of any id the dialect
+// knows passes its CRC instead of being taken for junk.
+function crcExtraFor(messageId: number): number | undefined {
+  return MAVLINK_MESSAGE_CRCS[messageId] ?? mavlinkGenericCrcExtra(messageId)
+}
 
 // --- MAVLink v2 message signing (spec: https://mavlink.io/en/guide/message_signing.html) ---
 
@@ -368,7 +382,7 @@ export class MavlinkV2Codec implements StreamingCodec<MavlinkEnvelope> {
     frame[9] = (messageId >> 16) & 0xff
     frame.set(payload, MAVLINK_V2_HEADER_LENGTH)
 
-    const checksum = crcMessage(frame.subarray(1, MAVLINK_V2_HEADER_LENGTH + payloadLength), MAVLINK_MESSAGE_CRCS[messageId])
+    const checksum = crcMessage(frame.subarray(1, MAVLINK_V2_HEADER_LENGTH + payloadLength), crcExtraFor(messageId)!)
     frame[MAVLINK_V2_HEADER_LENGTH + payloadLength] = checksum & 0xff
     frame[MAVLINK_V2_HEADER_LENGTH + payloadLength + 1] = (checksum >> 8) & 0xff
 
@@ -435,7 +449,7 @@ export class MavlinkV2Codec implements StreamingCodec<MavlinkEnvelope> {
       const frame = this.buffer.subarray(0, frameLength)
 
       const messageId = frame[7] | (frame[8] << 8) | (frame[9] << 16)
-      const crcExtra = MAVLINK_MESSAGE_CRCS[messageId]
+      const crcExtra = crcExtraFor(messageId)
 
       const expectedChecksum =
         crcExtra !== undefined
@@ -572,7 +586,7 @@ export function truncateMavlinkV2Frame(frame: Uint8Array): Uint8Array {
     return frame
   }
   const messageId = frame[7] | (frame[8] << 8) | (frame[9] << 16)
-  const crcExtra = MAVLINK_MESSAGE_CRCS[messageId]
+  const crcExtra = crcExtraFor(messageId)
   if (crcExtra === undefined) {
     // Unknown message id — refuse to truncate, otherwise the receiver's
     // crc_extra lookup would mismatch and the frame would be dropped.
@@ -605,7 +619,7 @@ function frameIsCompleteAndValid(buffer: Uint8Array, offset: number): boolean {
     return false
   }
   const messageId = buffer[offset + 7] | (buffer[offset + 8] << 8) | (buffer[offset + 9] << 16)
-  const crcExtra = MAVLINK_MESSAGE_CRCS[messageId]
+  const crcExtra = crcExtraFor(messageId)
   if (crcExtra === undefined) {
     return false
   }
@@ -700,6 +714,8 @@ function encodePayload(message: MavlinkMessage): Uint8Array {
       return encodeSetupSigningPayload(message)
     case 'SCALED_IMU':
       return encodeScaledImuPayload(message)
+    case 'GENERIC':
+      return encodeGenericPayload(message.name, message.fields)
     default:
       throw new Error('Unsupported MAVLink message for encoding.')
   }
@@ -784,7 +800,10 @@ function decodePayload(messageId: number, payload: Uint8Array): MavlinkMessage |
     case MAVLINK_MESSAGE_IDS.CANFD_FRAME:
       return decodeCanFdFramePayload(payload)
     default:
-      return undefined
+      // Ids the hand-entered table lists but nothing decodes (GPS_INPUT,
+      // SETUP_SIGNING — GCS-to-vehicle only) stay dropped exactly as before;
+      // anything else the dialect knows comes through generically.
+      return MAVLINK_MESSAGE_CRCS[messageId] === undefined ? decodeGenericPayload(messageId, payload) : undefined
   }
 }
 
@@ -867,6 +886,14 @@ function messageIdFor(message: MavlinkMessage): number {
       return MAVLINK_MESSAGE_IDS.CANFD_FRAME
     case 'SETUP_SIGNING':
       return MAVLINK_MESSAGE_IDS.SETUP_SIGNING
+    case 'GENERIC': {
+      // The name is what the payload is encoded from, so it decides the id.
+      const id = Object.hasOwn(MAVLINK_GENERIC_ID_BY_NAME, message.name) ? MAVLINK_GENERIC_ID_BY_NAME[message.name] : undefined
+      if (id === undefined) {
+        throw new Error(`Unknown MAVLink message ${message.name}.`)
+      }
+      return id
+    }
     default:
       throw new Error('Unsupported MAVLink message.')
   }

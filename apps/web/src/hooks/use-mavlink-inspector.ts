@@ -172,7 +172,13 @@ export function useMavlinkInspector(
       return
     }
     const unsubscribe = runtime.onMessage((envelope) => {
-      const message = envelope.message as unknown as Record<string, unknown> & { type?: string }
+      // A message decoded only generically (from ArduPilot's dialect) reads as
+      // itself: its own name, its fields at the top level, like the typed ones.
+      const raw = envelope.message as unknown as Record<string, unknown> & { type?: string }
+      const message =
+        raw.type === 'GENERIC'
+          ? ({ type: String(raw.name), ...(raw.fields as Record<string, unknown>) } as Record<string, unknown> & { type?: string })
+          : raw
       const type = typeof message.type === 'string' ? message.type : 'UNKNOWN'
       const systemId = envelope.header.systemId
       const componentId = envelope.header.componentId

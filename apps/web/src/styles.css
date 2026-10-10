@@ -23115,11 +23115,6 @@ button.mavlink-inspector__sent-row {
 .dronecan-inspector__bootloader-status.is-ok { color: var(--success); }
 .dronecan-inspector__bootloader-status.is-failed,
 .dronecan-inspector__bootloader-status.is-timeout { color: var(--danger); }
-.can-bus-params__tags {
-  display: inline-flex;
-  gap: 4px;
-  margin-left: 6px;
-}
 .can-bus-params__tag {
   padding: 0 5px;
   border: 1px solid var(--border);
@@ -23165,16 +23160,21 @@ button.mavlink-inspector__sent-row {
     justify-content: flex-start;
   }
 }
-.can-bus-params__description {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.can-bus-params__name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.can-bus-params__summary {
+  display: block;
+  max-width: 44ch;
+  margin-top: 1px;
   overflow: hidden;
-  max-width: 46ch;
-  margin-top: 2px;
   color: var(--text-muted);
   font-size: var(--text-xs);
-  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .can-bus-reboot-offer {
   display: flex;

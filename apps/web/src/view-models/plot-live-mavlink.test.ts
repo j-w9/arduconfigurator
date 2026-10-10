@@ -32,4 +32,11 @@ describe('live MAVLink for plotting', () => {
     expect(mavlinkRecordForPlot({ type: 'PARAM_VALUE', paramValue: 1 })).toBeUndefined()
     expect(mavlinkRecordForPlot({ type: 'STATUSTEXT', text: 'x' })).toBeUndefined()
   })
+
+  it('takes generically decoded messages as they come, arrays kept for indexing', () => {
+    expect(
+      mavlinkRecordForPlot({ type: 'GENERIC', name: 'BATTERY_STATUS', messageId: 147, fields: { voltages: [4100, 4090], current_battery: 750, battery_function: 0, name_text: 'x' } })
+    ).toEqual({ name: 'BATTERY_STATUS', record: { voltages: [4100, 4090], current_battery: 750, battery_function: 0 } })
+    expect(mavlinkRecordForPlot({ type: 'GENERIC', name: 'STATUSTEXT', messageId: 253, fields: { severity: 1 } })).toBeUndefined()
+  })
 })

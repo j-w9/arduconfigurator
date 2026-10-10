@@ -38,6 +38,10 @@ export interface MavlinkPlotWorkspaceProps {
   openGraphs: readonly OpenLiveGraph[]
   maxGraphs: number
   onOpenGraph: (name: string) => void
+  /** Message names the FC can be asked to stream (undefined: not connected). */
+  canRequest?: (name: string) => boolean
+  /** Ask the FC to stream these messages. */
+  onRequestMessages?: (names: readonly string[]) => void
   /** Plot a typed expression; a reason when it cannot. */
   onOpenExpression: (text: string) => string | undefined
   onCloseGraph: (name: string) => void
@@ -198,7 +202,10 @@ function ExpressionTab({ stats, onOpen }: { stats: readonly MavlinkMessageStat[]
 }
 
 /** MAVExplorer's graph library against what the link carries. */
-function GraphsTab(props: Pick<MavlinkPlotWorkspaceProps, 'graphs' | 'openGraphs' | 'maxGraphs' | 'onOpenGraph' | 'onCloseGraph'>): ReactNode {
+function GraphsTab(
+  props: Pick<MavlinkPlotWorkspaceProps, 'graphs' | 'openGraphs' | 'maxGraphs' | 'onOpenGraph' | 'onCloseGraph' | 'canRequest' | 'onRequestMessages'>
+): ReactNode {
+  const [requested, setRequested] = useState<ReadonlySet<string>>(new Set())
   const [query, setQuery] = useState('')
   const [showAll, setShowAll] = useState(false)
   const [about, setAbout] = useState<string | undefined>(undefined)
@@ -225,7 +232,10 @@ function GraphsTab(props: Pick<MavlinkPlotWorkspaceProps, 'graphs' | 'openGraphs
           {picked.unavailable ? <p className="plot-side-note">{picked.unavailable}</p> : null}
         </div>
       ) : (
-        <p className="plot-side-note">MAVExplorer's graphs (MAVProxy, GPLv3). Click a name to read what it shows.</p>
+        <p className="plot-side-note">
+          MAVExplorer's graphs (MAVProxy, GPLv3). Click a name to read what it shows. Under Show all, Request asks the FC to
+          stream what a graph is missing.
+        </p>
       )}
       {[...categories.entries()].map(([category, entries]) => (
         <div key={category}>
@@ -235,7 +245,26 @@ function GraphsTab(props: Pick<MavlinkPlotWorkspaceProps, 'graphs' | 'openGraphs
               <button type="button" className="plot-side-list__name" onClick={() => setAbout(about === entry.name ? undefined : entry.name)} title={entry.unavailable ?? entry.description}>
                 {entry.title}
               </button>
-              {openNames.has(entry.name) ? (
+              {entry.unavailable && entry.missing && props.canRequest && props.onRequestMessages && entry.missing.every(props.canRequest) ? (
+                entry.missing.every((name) => requested.has(name)) ? (
+                  <span className="plot-side-note" title={`Asked the FC for ${entry.missing.join(', ')}; the graph can draw once they arrive`}>
+                    Requested
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="plot-side-list__add"
+                    onClick={() => {
+                      props.onRequestMessages!(entry.missing!)
+                      setRequested((current) => new Set([...current, ...entry.missing!]))
+                    }}
+                    title={`Ask the FC to send ${entry.missing.join(', ')} at 4 Hz`}
+                    data-testid={`mavlink-graph-request-${entry.name}`}
+                  >
+                    Request
+                  </button>
+                )
+              ) : openNames.has(entry.name) ? (
                 <button type="button" className="plot-side-list__add is-on" onClick={() => props.onCloseGraph(entry.name)} title="On a chart; click to take it off" data-testid={`mavlink-graph-close-${entry.name}`}>
                   Plotted
                 </button>
@@ -469,7 +498,17 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
         {
           id: 'graphs',
           label: 'Graphs',
-          content: <GraphsTab graphs={props.graphs} openGraphs={openGraphs} maxGraphs={props.maxGraphs} onOpenGraph={props.onOpenGraph} onCloseGraph={props.onCloseGraph} />
+          content: (
+            <GraphsTab
+              graphs={props.graphs}
+              openGraphs={openGraphs}
+              maxGraphs={props.maxGraphs}
+              onOpenGraph={props.onOpenGraph}
+              onCloseGraph={props.onCloseGraph}
+              canRequest={props.canRequest}
+              onRequestMessages={props.onRequestMessages}
+            />
+          )
         }
       ]}
       empty={

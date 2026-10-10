@@ -106,12 +106,27 @@ const NOT_TELEMETRY = new Set([
 
 const snake = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
 
+/** A plottable record: numbers, and numeric arrays (BATTERY_STATUS.voltages) that expressions index. */
+export type PlotRecord = Record<string, number | number[]>
+
 /** A decoded message as MAVLink names it, or undefined when it is not plottable telemetry. */
-export function mavlinkRecordForPlot(message: Decoded): { name: string; record: Record<string, number> } | undefined {
+export function mavlinkRecordForPlot(message: Decoded): { name: string; record: PlotRecord } | undefined {
+  // Decoded generically from ArduPilot's dialect: already MAVLink's names.
+  if (message.type === 'GENERIC') {
+    const name = typeof message.name === 'string' ? message.name : undefined
+    const fields = message.fields as Record<string, unknown> | undefined
+    if (!name || !fields || NOT_TELEMETRY.has(name)) return undefined
+    const record: PlotRecord = {}
+    for (const [key, value] of Object.entries(fields)) {
+      if (num(value) !== undefined) record[key] = value as number
+      else if (Array.isArray(value) && value.every((entry) => typeof entry === 'number')) record[key] = value as number[]
+    }
+    return Object.keys(record).length > 0 ? { name, record } : undefined
+  }
   const name = typeof message.type === 'string' ? message.type : undefined
   if (!name || NOT_TELEMETRY.has(name)) return undefined
   const renames = RENAMES[name]
-  const record: Record<string, number> = {}
+  const record: PlotRecord = {}
   for (const [key, value] of Object.entries(message)) {
     if (key === 'type') continue
     if (Array.isArray(value)) {

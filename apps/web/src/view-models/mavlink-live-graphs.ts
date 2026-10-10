@@ -4,7 +4,16 @@
 // Pure; the hook feeds it decoded messages put back under MAVLink names
 // (plot-live-mavlink).
 
-import { resolveGraph, type DataAvailability, type GraphDefinition, type Term } from '@arduconfig/plot-core'
+import {
+  SUPPORTED_FUNCTIONS,
+  parseExpression,
+  resolveGraph,
+  termFunctions,
+  termReferences,
+  type DataAvailability,
+  type GraphDefinition,
+  type Term
+} from '@arduconfig/plot-core'
 
 /** Fields seen per message type on the link so far. */
 export class LiveFieldIndex {
@@ -12,7 +21,7 @@ export class LiveFieldIndex {
   private size = 0
 
   /** Note a message; true when it brought a message type or field not seen before. */
-  record(name: string, record: Readonly<Record<string, number>>): boolean {
+  record(name: string, record: Readonly<Record<string, unknown>>): boolean {
     let known = this.fields.get(name)
     if (!known) {
       known = new Set()
@@ -53,6 +62,8 @@ export interface LiveGraphEntry {
   unavailable?: string
   /** The expression's terms when it can draw. */
   terms?: readonly Term[]
+  /** Messages it is waiting for: the link has not carried them (yet). Asking the FC for them may let it draw. */
+  missing?: readonly string[]
 }
 
 /** Each graph against the live link, the ones that can draw first, then by name. */
@@ -63,10 +74,36 @@ export function liveGraphEntries(graphs: readonly GraphDefinition[], available: 
       const category = graph.path.length > 1 ? graph.path[0] : 'Other'
       const title = graph.path.length > 1 ? graph.path.slice(1).join(' / ') : graph.name
       return 'unavailable' in resolved
-        ? { name: graph.name, category, title, description: graph.description, unavailable: resolved.unavailable }
+        ? { name: graph.name, category, title, description: graph.description, unavailable: resolved.unavailable, missing: missingMessages(graph, available) }
         : { name: graph.name, category, title, description: graph.description, terms: resolved.terms }
     })
     .sort((a, b) => Number(a.unavailable !== undefined) - Number(b.unavailable !== undefined) || a.name.localeCompare(b.name))
+}
+
+/**
+ * The fewest messages a graph still needs: over its expressions that parse
+ * and use only supported functions, the one missing the fewest message types
+ * (fields of a message that has arrived do not count -- asking for it again
+ * would not help).
+ */
+export function missingMessages(graph: GraphDefinition, available: DataAvailability): string[] | undefined {
+  let best: string[] | undefined
+  for (const expression of graph.expressions) {
+    const { terms, errors } = parseExpression(expression)
+    if (errors.length > 0 || terms.length === 0) continue
+    if (terms.some((term) => termFunctions(term).some((fn) => !SUPPORTED_FUNCTIONS.has(fn)))) continue
+    const messages = [...new Set(terms.flatMap((term) => termReferences(term).map((reference) => reference.message)))]
+    if (messages.some((message) => available.hasMessage(message) && !messagesFieldsPresent(terms, message, available))) continue
+    const missing = messages.filter((message) => !available.hasMessage(message))
+    if (missing.length > 0 && (!best || missing.length < best.length)) best = missing
+  }
+  return best
+}
+
+function messagesFieldsPresent(terms: readonly Term[], message: string, available: DataAvailability): boolean {
+  return terms.every((term) =>
+    termReferences(term).every((reference) => reference.message !== message || reference.field === undefined || available.hasField(message, reference.field))
+  )
 }
 
 /** Graphs whose name, category or description holds every word of the query. */

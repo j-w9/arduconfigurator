@@ -13,6 +13,7 @@ import {
 } from './constants.js'
 import { decodeSingleV2Envelope, MavlinkV2Codec, TruncatingMavlinkV2Codec } from './mavlink-v2-codec.js'
 import { createDronecanBusSimulator } from './mock-dronecan.js'
+import { MAVLINK_GENERIC_ID_BY_NAME, type GenericMavlinkMessage } from './mavlink-generic.js'
 import type {
   AutopilotVersionMessage,
   CommandAckMessage,
@@ -1172,6 +1173,145 @@ function servoOutputRawMessage(timeUsec: number, tick: number): MavlinkMessage {
     port: 0,
     servos: mockServoOutputsForTick(tick)
   }
+}
+
+/** Deterministic noise in [-1, 1] — no RNG, so a replayed stream is identical. */
+function mockNoise(tick: number, salt: number): number {
+  const value = Math.sin(tick * 12.9898 + salt * 78.233) * 43758.5453
+  return (value - Math.floor(value)) * 2 - 1
+}
+
+function genericMessage(name: string, fields: GenericMavlinkMessage['fields']): GenericMavlinkMessage {
+  return { type: 'GENERIC', name, messageId: MAVLINK_GENERIC_ID_BY_NAME[name], fields }
+}
+
+/**
+ * The extra telemetry a real ArduPilot streams that the configurator has no
+ * typed decoder for — decoded generically, it is what the MAVLink Inspector's
+ * Plot tab draws. One call per guided-motion tick (250 ms in the demo):
+ * VFR_HUD and AHRS2 every tick (4 Hz); RAW_IMU, VIBRATION and
+ * NAV_CONTROLLER_OUTPUT every 2nd (2 Hz); SCALED_PRESSURE, EKF_STATUS_REPORT,
+ * BATTERY_STATUS, POWER_STATUS and LOCAL_POSITION_NED every 4th (1 Hz). A
+ * disarmed vehicle on the bench, kept consistent with the typed demo streams:
+ * attitude follows mockAttitudeForTick, position/altitude match
+ * GLOBAL_POSITION_INT, the battery matches SYS_STATUS.
+ */
+export function mockExtraTelemetryForTick(
+  tick: number,
+  timeBootMs: number,
+  battery: { voltageV: number; remainingPercent: number } = { voltageV: 16.42, remainingPercent: 72 }
+): GenericMavlinkMessage[] {
+  const seconds = tick * 0.25
+  const { rollDeg, pitchDeg } = mockAttitudeForTick(tick)
+  const roll = (rollDeg * Math.PI) / 180
+  const pitch = (pitchDeg * Math.PI) / 180
+  const altitudeM = 18.42 + 0.3 * Math.sin(seconds / 11)
+  const messages: GenericMavlinkMessage[] = [
+    genericMessage('VFR_HUD', {
+      airspeed: 0.4 + 0.2 * Math.sin(seconds / 5),
+      groundspeed: 0.3 + 0.2 * Math.sin(seconds / 7),
+      heading: (Math.round(3 * Math.sin(seconds / 13)) + 360) % 360,
+      throttle: 0,
+      alt: altitudeM,
+      climb: (0.3 / 11) * Math.cos(seconds / 11)
+    }),
+    genericMessage('AHRS2', {
+      roll: roll + 0.004,
+      pitch: pitch - 0.003,
+      yaw: 0.01 * Math.sin(seconds / 13),
+      altitude: altitudeM,
+      lat: 377749300,
+      lng: -1224194200
+    })
+  ]
+  if (tick % 2 === 0) {
+    messages.push(
+      genericMessage('RAW_IMU', {
+        time_usec: timeBootMs * 1000,
+        // Specific force for the current attitude, in mg, plus sensor noise.
+        xacc: Math.round(1000 * Math.sin(pitch) + 3 * mockNoise(tick, 1)),
+        yacc: Math.round(-1000 * Math.sin(roll) * Math.cos(pitch) + 3 * mockNoise(tick, 2)),
+        zacc: Math.round(-1000 * Math.cos(roll) * Math.cos(pitch) + 3 * mockNoise(tick, 3)),
+        xgyro: Math.round(4 * mockNoise(tick, 4)),
+        ygyro: Math.round(4 * mockNoise(tick, 5)),
+        zgyro: Math.round(4 * mockNoise(tick, 6)),
+        xmag: Math.round(212 + 5 * mockNoise(tick, 7)),
+        ymag: Math.round(-48 + 5 * mockNoise(tick, 8)),
+        zmag: Math.round(405 + 5 * mockNoise(tick, 9)),
+        temperature: 3562
+      }),
+      genericMessage('VIBRATION', {
+        time_usec: timeBootMs * 1000,
+        vibration_x: 0.9 + 0.3 * mockNoise(tick, 10),
+        vibration_y: 0.8 + 0.3 * mockNoise(tick, 11),
+        vibration_z: 1.4 + 0.4 * mockNoise(tick, 12),
+        clipping_0: Math.floor(tick / 400),
+        clipping_1: 0,
+        clipping_2: 0
+      }),
+      genericMessage('NAV_CONTROLLER_OUTPUT', {
+        nav_roll: rollDeg + 0.2 * mockNoise(tick, 13),
+        nav_pitch: pitchDeg + 0.2 * mockNoise(tick, 14),
+        nav_bearing: 0,
+        target_bearing: 0,
+        wp_dist: 0,
+        alt_error: 0.05 * mockNoise(tick, 15),
+        aspd_error: 0,
+        xtrack_error: 0
+      })
+    )
+  }
+  if (tick % 4 === 0) {
+    const voltageMv = Math.round(battery.voltageV * 1000)
+    messages.push(
+      genericMessage('SCALED_PRESSURE', {
+        time_boot_ms: timeBootMs,
+        // ~0.12 hPa per metre near sea level.
+        press_abs: 1013.25 - (altitudeM - 18.42) * 0.12 + 0.02 * mockNoise(tick, 16),
+        press_diff: 0,
+        temperature: 3120
+      }),
+      genericMessage('EKF_STATUS_REPORT', {
+        // ATTITUDE | VELOCITY_HORIZ/VERT | POS_HORIZ_REL/ABS | POS_VERT_ABS |
+        // PRED_POS_HORIZ_REL/ABS: a healthy, position-holding EKF.
+        flags: 831,
+        velocity_variance: 0.05 + 0.01 * mockNoise(tick, 17),
+        pos_horiz_variance: 0.03 + 0.01 * mockNoise(tick, 18),
+        pos_vert_variance: 0.04 + 0.01 * mockNoise(tick, 19),
+        compass_variance: 0.02 + 0.005 * mockNoise(tick, 20),
+        terrain_alt_variance: 0
+      }),
+      genericMessage('BATTERY_STATUS', {
+        id: 0,
+        battery_function: 1,
+        type: 1,
+        temperature: 32767,
+        // No per-cell readings: ArduPilot puts the pack voltage in [0] and
+        // marks the rest unused.
+        voltages: [voltageMv, ...Array.from({ length: 9 }, () => 65535)],
+        current_battery: 120,
+        current_consumed: Math.round(seconds * 0.33),
+        energy_consumed: -1,
+        battery_remaining: battery.remainingPercent
+      }),
+      genericMessage('POWER_STATUS', {
+        Vcc: Math.round(5010 + 15 * mockNoise(tick, 21)),
+        Vservo: 0,
+        // BRICK_VALID | USB_CONNECTED: a bench board on USB.
+        flags: 5
+      }),
+      genericMessage('LOCAL_POSITION_NED', {
+        time_boot_ms: timeBootMs,
+        x: 0.5 * Math.sin(seconds / 8),
+        y: 0.3 * Math.sin(seconds / 9),
+        z: -1.24 - (altitudeM - 18.42),
+        vx: (0.5 / 8) * Math.cos(seconds / 8),
+        vy: (0.3 / 9) * Math.cos(seconds / 9),
+        vz: -(0.3 / 11) * Math.cos(seconds / 11)
+      })
+    )
+  }
+  return messages
 }
 
 /** A healthy GPS with a 3D fix — the demo's happy path. */
@@ -2590,6 +2730,7 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
       // this stream would immediately paper over the zero-channel frame the
       // state machine emits and the link loss would never register.
       if (dynamicState.rcLinkStage === 'dropping') {
+        emitExtraTelemetry(motionTick, timeBootMs)
         return
       }
 
@@ -2618,7 +2759,24 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
           )
         )
       }
+
+      emitExtraTelemetry(motionTick, timeBootMs)
     }, guidedMotionCadenceMs)
+
+    // The generically-decoded streams (VFR_HUD, VIBRATION, RAW_IMU, ...) that
+    // feed the MAVLink Inspector's plots, after everything above so the typed
+    // streams keep their order. The runtime never asks for these by id — a
+    // real FC sends them on its SRx_* stream rates — so they ride the ATTITUDE
+    // request: nothing streams before the runtime has started live telemetry.
+    function emitExtraTelemetry(tick: number, timeBootMs: number): void {
+      if (!dynamicState.requestedMessageIds.has(MAVLINK_MESSAGE_IDS.ATTITUDE)) {
+        return
+      }
+      const battery = { voltageV: dynamicState.batteryVoltageV, remainingPercent: dynamicState.batteryRemainingPercent }
+      for (const message of mockExtraTelemetryForTick(tick, timeBootMs, battery)) {
+        emit(codec.encode(envelope(nextDynamicSequence(), message)))
+      }
+    }
 
     if (typeof (motionTimer as { unref?: () => void }).unref === 'function') {
       ;(motionTimer as { unref?: () => void }).unref?.()

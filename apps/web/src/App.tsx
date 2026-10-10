@@ -10901,6 +10901,17 @@ export function App() {
               maxGraphs={MAX_LIVE_GRAPHS}
               onOpenGraph={mavlinkPlotWorkspace.openGraph}
               onOpenExpression={mavlinkPlotWorkspace.openExpression}
+              canRequest={
+                runtime && snapshot.connection.kind === 'connected'
+                  ? (name) => mavlinkPlotWorkspace.messageIdOf(name) !== undefined
+                  : undefined
+              }
+              onRequestMessages={(names) => {
+                for (const name of names) {
+                  const id = mavlinkPlotWorkspace.messageIdOf(name)
+                  if (id !== undefined) void runtime?.requestMessageInterval(id, intervalUsForRate(4))
+                }
+              }}
               onCloseGraph={mavlinkPlotWorkspace.closeGraph}
               paneOf={mavlinkPlotWorkspace.paneOf}
               paneHeights={mavlinkPlotWorkspace.paneHeights}

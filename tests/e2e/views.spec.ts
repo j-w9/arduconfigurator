@@ -6705,6 +6705,17 @@ test.describe('Inspectors (expert-only)', () => {
     await open.click()
     await expect(page.getByTestId('mavlink-graph-close-Attitude/Roll and Pitch')).toHaveText('Plotted')
 
+    // Messages decoded from ArduPilot's dialect draw too: vibration from VIBRATION.
+    await page.getByTestId('mavlink-graphs-search').fill('vibration')
+    const vibration = page.getByTestId('mavlink-graph-open-Sensors/Accelerometer/Vibration')
+    await expect(vibration).toBeEnabled({ timeout: 10_000 })
+    await vibration.click()
+    // Its three axes, one line each.
+    const vibrationLines = page.getByTestId('mavlink-graph-line').locator('.plot-series__name', { hasText: /^VIBRATION\./ })
+    await expect(vibrationLines).toHaveCount(3)
+    await expect(vibrationLines.first()).toHaveText('VIBRATION.vibration_x')
+    await page.getByTestId('mavlink-graph-close-Sensors/Accelerometer/Vibration').click()
+
     // One chart, two lines (roll and pitch in degrees), values arriving.
     const lines = page.getByTestId('mavlink-graph-line')
     const panes = page.getByTestId('mavlink-chart-pane')

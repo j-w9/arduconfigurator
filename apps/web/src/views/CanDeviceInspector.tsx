@@ -144,6 +144,13 @@ function paramRowsForReboot(node: DronecanInspectedNode, lookup: DronecanParamCa
 
 /** "CAN bitrate" for CAN_BAUDRATE, "Debug" for DEBUG: a display name that only
  *  rewords the param name says nothing the name does not. */
+/** The one line under a param's name, or undefined when there is nothing to add. */
+function paramSummary(row: { name: string; label: string; description?: string }): string | undefined {
+  if (row.label && row.label !== row.name && !labelEchoesName(row.label, row.name)) return row.label
+  const sentence = row.description?.split(/(?<=[.!?])\s/)[0]?.replace(/\.$/, '')
+  return sentence && !labelEchoesName(sentence, row.name) ? sentence : undefined
+}
+
 function labelEchoesName(label: string, name: string): boolean {
   const words = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean)
   const nameWords = new Set(words(name))
@@ -984,27 +991,19 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
               return (
                 <tr key={row.name} data-testid={`can-bus-param-${nodeId}-${row.name}`}>
                   <td title={row.description}>
-                    <code>{row.name}</code>
-                    {/* The description says what it does; the short display name
-                        mostly repeats the param name, so it shows only when it does not. */}
-                    {row.label !== row.name && !labelEchoesName(row.label, row.name) ? (
-                      <small className="can-bus-params__label">{row.label}</small>
-                    ) : null}
-                    {row.description ? (
-                      <small className="can-bus-params__description" title={row.description}>
-                        {row.description}
-                      </small>
-                    ) : null}
-                    {row.rebootRequired || row.readOnly ? (
-                      <span className="can-bus-params__tags">
-                        {row.rebootRequired ? (
-                          <span className="can-bus-params__tag" title="Takes effect after the node reboots" data-testid={`can-bus-param-reboot-${nodeId}-${row.name}`}>
-                            reboot
-                          </span>
-                        ) : null}
-                        {row.readOnly ? <span className="can-bus-params__tag">read-only</span> : null}
-                      </span>
-                    ) : null}
+                    <span className="can-bus-params__name">
+                      <code>{row.name}</code>
+                      {row.rebootRequired ? (
+                        <span className="can-bus-params__tag" title="Takes effect after the node reboots" data-testid={`can-bus-param-reboot-${nodeId}-${row.name}`}>
+                          reboot
+                        </span>
+                      ) : null}
+                      {row.readOnly ? <span className="can-bus-params__tag">read-only</span> : null}
+                    </span>
+                    {/* One quiet line: the short display name where it says more than
+                        the param name, else the description's first sentence. The
+                        whole description is on hover. */}
+                    {paramSummary(row) ? <small className="can-bus-params__summary">{paramSummary(row)}</small> : null}
                   </td>
                   <td>
                     {row.editable && row.options ? (

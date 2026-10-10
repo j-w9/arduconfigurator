@@ -826,8 +826,11 @@ export class ArduPilotConfiguratorRuntime {
         // throughput to ~130x slower than a headless client. Skip the per-packet
         // emit for those two high-rate types; any status/state change they make
         // flushes on the next telemetry message, and completion emits explicitly.
+        // GENERIC (a message decoded only for the inspector) touches no
+        // snapshot state either, so it never emits — before the generic path
+        // those frames were dropped by the codec and emitted nothing.
         const messageType = envelope.message.type
-        if (messageType !== 'FILE_TRANSFER_PROTOCOL' && messageType !== 'LOG_DATA') {
+        if (messageType !== 'FILE_TRANSFER_PROTOCOL' && messageType !== 'LOG_DATA' && messageType !== 'GENERIC') {
           this.emit()
         }
       })

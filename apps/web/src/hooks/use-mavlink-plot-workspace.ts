@@ -15,6 +15,7 @@ import {
 } from '@arduconfig/plot-core'
 
 import type { ArduPilotConfiguratorRuntime } from '@arduconfig/ardupilot-core'
+import { MAVLINK_GENERIC_ID_BY_NAME } from '@arduconfig/protocol-mavlink'
 
 import { LiveFieldIndex, graphSeriesKey, liveGraphEntries, type LiveGraphEntry } from '../view-models/mavlink-live-graphs'
 import { mavlinkRecordForPlot } from '../view-models/plot-live-mavlink'
@@ -41,6 +42,8 @@ export interface MavlinkPlotWorkspace {
   graphs: readonly LiveGraphEntry[]
   open: readonly OpenLiveGraph[]
   openGraph: (name: string) => void
+  /** A message's id by its MAVLink name (from ArduPilot's dialect), to ask the FC to stream it. */
+  messageIdOf: (name: string) => number | undefined
   /** Plot a typed expression ("degrees(ATTITUDE.roll)", or several terms); a reason when it cannot. */
   openExpression: (text: string) => string | undefined
   closeGraph: (name: string) => void
@@ -49,6 +52,9 @@ export interface MavlinkPlotWorkspace {
   paneHeights: ReadonlyMap<string, PlotPaneHeight>
   setPaneHeight: (paneId: string, height: PlotPaneHeight) => void
 }
+
+const messageIdOf = (name: string): number | undefined =>
+  Object.hasOwn(MAVLINK_GENERIC_ID_BY_NAME, name) ? MAVLINK_GENERIC_ID_BY_NAME[name] : undefined
 
 export function useMavlinkPlotWorkspace(runtime: ArduPilotConfiguratorRuntime | undefined, active: boolean): MavlinkPlotWorkspace {
   const index = useRef(new LiveFieldIndex())
@@ -157,6 +163,7 @@ export function useMavlinkPlotWorkspace(runtime: ArduPilotConfiguratorRuntime | 
     graphs,
     open: open.filter((entry) => openNames.includes(entry.name)),
     openGraph,
+    messageIdOf,
     openExpression,
     closeGraph,
     paneOf,

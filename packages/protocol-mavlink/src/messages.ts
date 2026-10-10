@@ -1,3 +1,5 @@
+import type { GenericMavlinkMessage } from './mavlink-generic.js'
+
 export interface HeartbeatMessage {
   type: 'HEARTBEAT'
   autopilot: number
@@ -689,6 +691,9 @@ export type MavlinkMessage =
   | UavcanNodeStatusMessage
   | UavcanNodeInfoMessage
   | SetupSigningMessage
+  // Any other message in ArduPilot's dialect, decoded off the generated table
+  // (mavlink-generic.ts). Typed handlers never see it; it is for the inspector.
+  | GenericMavlinkMessage
 
 export interface MavlinkEnvelope {
   header: {
