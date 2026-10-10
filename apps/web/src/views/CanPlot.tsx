@@ -83,8 +83,10 @@ function seriesRow(entry: CanPlotSeries, data: CanPlotSamples, endMs: number, on
     color: vector ? canPlotLaneColor(entry, data.v.length, 0) : entry.color,
     testId: 'can-plot-series',
     content: (cursorX) => {
+      // At the cursor; where the cursor is off this series' data, its latest value (dimmed).
       const at = cursorX === undefined ? undefined : endMs + cursorX * 1000
-      const values = data.v.map((lane) => (at === undefined ? lane[lane.length - 1] : valueAt(data.t, lane, at)))
+      const onData = at !== undefined && data.t.length > 0 && at >= data.t[0]
+      const values = data.v.map((lane) => (onData ? valueAt(data.t, lane, at) : lane[lane.length - 1]))
       return (
         <>
           <span className="plot-series__name" title={entry.label}>
@@ -100,7 +102,7 @@ function seriesRow(entry: CanPlotSeries, data: CanPlotSamples, endMs: number, on
               ))}
             </span>
           ) : (
-            <span className={`plot-series__value${at !== undefined ? ' is-cursor' : ''}`} data-testid="can-plot-last">
+            <span className={`plot-series__value${onData ? ' is-cursor' : at !== undefined ? ' is-latest' : ''}`} data-testid="can-plot-last">
               {formatPlotValue(values[0])}
             </span>
           )}

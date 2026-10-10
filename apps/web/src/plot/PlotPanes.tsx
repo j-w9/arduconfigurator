@@ -132,7 +132,8 @@ export function PlotPanes(props: PlotPanesProps): ReactNode {
                     title="Which chart this series is on"
                     data-testid={`${testIdPrefix}-chart-menu`}
                   >
-                    <option value={pane.id}>{pane.rows.length > 1 ? 'Shared chart' : 'Own chart'}</option>
+                    {/* The current choice reads as a short "Chart" button; the list says where it can go. */}
+                    <option value={pane.id}>Chart</option>
                     {pane.rows.length > 1 ? <option value="">Own chart</option> : null}
                     {panes
                       .filter((other) => other.id !== pane.id)

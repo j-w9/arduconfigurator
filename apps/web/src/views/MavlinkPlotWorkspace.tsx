@@ -231,7 +231,9 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
       color: line.color,
       testId: line.kind === 'field' ? `mavlink-plot-${line.plot.key}` : 'mavlink-graph-line',
       content: (cursorX) => {
-        const value = cursorX === undefined ? v[v.length - 1] : valueAt(t, v, cursorX)
+        // At the cursor; where the cursor is off this series' data, its latest value (dimmed).
+        const onData = cursorX !== undefined && t.length > 0 && cursorX >= t[0]
+        const value = onData ? valueAt(t, v, cursorX) : v[v.length - 1]
         return (
           <>
             <span className="plot-series__name">
@@ -240,7 +242,7 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
               {line.kind === 'graph' && line.series.axis === 2 ? ' (right axis)' : ''}
             </span>
             <span
-              className={`plot-series__value${cursorX !== undefined ? ' is-cursor' : ''}`}
+              className={`plot-series__value${onData ? ' is-cursor' : cursorX !== undefined ? ' is-latest' : ''}`}
               data-testid={line.kind === 'field' ? `mavlink-plot-current-${line.plot.key}` : undefined}
             >
               {value === undefined ? '—' : formatPlotValue(value)}
