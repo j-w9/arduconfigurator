@@ -5,6 +5,8 @@ import {
   decimateMinMax,
   groupIntoPanes,
   overlayAll,
+  rangeStats,
+  thinLane,
   parseSavedLayouts,
   prunePanes,
   serializeSavedLayouts,
@@ -73,5 +75,25 @@ describe('drawing many points', () => {
     expect(valueAt([1, 2, 3], [10, 20, 30], 2)).toBe(20)
     expect(valueAt([1, 2, 3], [10, 20, 30], 2.5)).toBe(20)
     expect(valueAt([1, 2, 3], [10, 20, 30], 0.5)).toBeUndefined()
+  })
+})
+
+describe('range stats and thinning', () => {
+  it('summarise only the points in range, skipping gaps', () => {
+    const t = [0, 1, 2, 3, 4]
+    const v = [5, Number.NaN, 1, 9, 100]
+    expect(rangeStats(t, v, 0, 3)).toEqual({ min: 1, max: 9, mean: 5, count: 3, rateHz: 2 / 3 })
+    expect(rangeStats(t, v, 10, 20)).toBeUndefined()
+  })
+
+  it('leaves a short lane alone and thins a long one, keeping its extremes', () => {
+    const short = { t: [0, 1], v: [1, 2], label: 'a' }
+    expect(thinLane(short, undefined, undefined)).toBe(short)
+    const n = 50_000
+    const long = { t: Array.from({ length: n }, (_u, i) => i), v: Array.from({ length: n }, (_u, i) => (i === 777 ? -50 : i % 7)), label: 'b' }
+    const thin = thinLane(long, 0, n)
+    expect(thin.t.length).toBeLessThan(n / 5)
+    expect(Math.min(...thin.v)).toBe(-50)
+    expect(thin.label).toBe('b')
   })
 })

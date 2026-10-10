@@ -295,6 +295,26 @@ test.describe('CAN bus monitor', () => {
 })
 
 test.describe('CAN tab on a phone', () => {
+  test('Plot fits a 390px screen: charts, rows, toolbar and the side panel', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 900 })
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await page.getByTestId('can-subtab-plot').click()
+    await page.getByTestId('can-plot-side-expression').click()
+    await expect(page.getByTestId('can-plot-expression').locator('summary', { hasText: 'esc_Status[0]' })).toHaveCount(1, { timeout: 15_000 })
+    await page.getByTestId('can-plot-expression-input').fill('esc_Status[0].current*esc_Status[0].voltage')
+    await page.getByTestId('can-plot-expression-add').click()
+    await page.getByTestId('can-plot-expression-input').fill('esc_Status[1].rpm')
+    await page.getByTestId('can-plot-expression-add').click()
+    await expect(page.getByTestId('can-plot-pane')).toHaveCount(2)
+    await page.getByTestId('can-plot-stats').click()
+    expect((await worstViewportOverflow(page)).worst, 'plot').toBeLessThanOrEqual(2)
+    await page.getByTestId('can-plot-pane').nth(0).getByTestId('can-plot-chart-menu').selectOption({ index: 1 })
+    expect((await worstViewportOverflow(page)).worst, 'plot, overlaid').toBeLessThanOrEqual(2)
+  })
+
   test('the bus monitor, node cards and ESC table fit a 390px screen', async ({ page }) => {
     // A content-sized app shell takes its width from the widest thing on the
     // page: the ESC table and the node buttons pushed it to ~790px once the
@@ -706,6 +726,48 @@ test.describe('CAN tab: frame grouping and plotting vectors', () => {
     await page.getByTestId('can-monitor-pause').click()
     await first.click()
     await expect(page.locator('[data-testid="can-monitor-row"].is-sibling')).toHaveCount(2)
+  })
+
+  test('Plot: an expression over ESC fields, XY of a vector, stats, and node-message markers', async ({ page }) => {
+    await openCanTab(page)
+    await page.getByTestId('can-subtab-plot').click()
+
+    // ESC 0's power, as an expression over its current and voltage.
+    await page.getByTestId('can-plot-side-expression').click()
+    await expect(page.getByTestId('can-plot-expression').locator('summary', { hasText: 'esc_Status[0]' })).toHaveCount(1, { timeout: 15_000 })
+    await page.getByTestId('can-plot-expression-input').fill('esc_Status[0].current*')
+    await page.getByTestId('can-plot-expression-add').click()
+    await expect(page.getByTestId('can-plot-expression-error')).toBeVisible()
+    await page.getByTestId('can-plot-expression-input').fill('esc_Status[0].current*esc_Status[0].voltage')
+    await page.getByTestId('can-plot-expression-add').click()
+    const series = page.getByTestId('can-plot-series')
+    await expect(series).toHaveCount(1)
+    await expect(series.first()).toContainText('esc_Status[0].current*esc_Status[0].voltage')
+    await expect.poll(async () => Number(await series.first().getByTestId('can-plot-last').textContent()), { timeout: 15_000 }).toBeGreaterThan(50)
+
+    // The magnetometer vector as XY: x against y.
+    await page.getByTestId('can-plot-side-fields').click()
+    const picker = page.getByTestId('can-plot-picker')
+    await picker.getByTestId('can-plot-pick-device').selectOption('124')
+    const message = picker.getByTestId('can-plot-pick-message')
+    const magOption = message.locator('option', { hasText: 'MagneticFieldStrength2' })
+    await expect(magOption).toHaveCount(1, { timeout: 15_000 })
+    await message.selectOption({ value: (await magOption.getAttribute('value'))! })
+    await picker.getByTestId('can-plot-pick-fields').getByTestId('can-plot-field-magnetic_field_ga').click()
+    const magPane = page.getByTestId('can-plot-pane').nth(1)
+    await magPane.getByTestId('can-plot-xy').click()
+    await expect(magPane.getByTestId('can-plot-xy-chart').locator('canvas')).toBeVisible()
+    await expect(magPane.getByTestId('can-plot-xy-y')).toHaveValue('1')
+
+    // Stats over what is in view: a row per line (1 for the power, 3 for the vector).
+    await page.getByTestId('can-plot-stats').click()
+    await expect(page.getByTestId('plot-pane-stats').locator('tbody tr')).toHaveCount(4)
+
+    // Node messages are marked by default; the toggle turns them off.
+    const markers = page.getByTestId('can-plot-node-messages')
+    await expect(markers).toHaveAttribute('aria-pressed', 'true')
+    await markers.click()
+    await expect(markers).toHaveAttribute('aria-pressed', 'false')
   })
 
   test('Plot picks a device, a message and a field itself, and draws a vector as one chart', async ({ page }) => {

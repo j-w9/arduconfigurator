@@ -23,8 +23,16 @@ export interface PlotLane {
   axis?: 1 | 2
 }
 
+/** A moment to mark on the time axis: a vertical line with a short tag (a node's log line, say). */
+export interface PlotMarker {
+  x: number
+  label: string
+  color: string
+}
+
 export interface PlotChartProps {
   lanes: readonly PlotLane[]
+  markers?: readonly PlotMarker[]
   height?: number
   /** Charts with the same key share the cursor. */
   syncKey?: string
@@ -71,11 +79,11 @@ export function alignPlotLanes(lanes: readonly PlotLane[]): uPlot.AlignedData {
 }
 
 export function PlotChart(props: PlotChartProps): ReactNode {
-  const { lanes, height = 160, syncKey, xRange, onXRangeChange, xFormat = defaultXFormat, onCursor, testId, className } = props
+  const { lanes, markers, height = 160, syncKey, xRange, onXRangeChange, xFormat = defaultXFormat, onCursor, testId, className } = props
   const hostRef = useRef<HTMLDivElement | null>(null)
   const plotRef = useRef<uPlot | null>(null)
-  const callbacks = useRef({ onXRangeChange, onCursor, xRange })
-  callbacks.current = { onXRangeChange, onCursor, xRange }
+  const callbacks = useRef({ onXRangeChange, onCursor, xRange, markers })
+  callbacks.current = { onXRangeChange, onCursor, xRange, markers }
 
   const aligned = useMemo(() => alignPlotLanes(lanes), [lanes])
   // The chart is rebuilt when its shape changes; data and range flow in below.
@@ -136,6 +144,42 @@ export function PlotChart(props: PlotChartProps): ReactNode {
           }))
         ],
         hooks: {
+          draw: [
+            (u) => {
+              const list = callbacks.current.markers
+              if (!list || list.length === 0) return
+              const ctx = u.ctx
+              const ratio = window.devicePixelRatio || 1
+              const top = u.bbox.top
+              const bottom = u.bbox.top + u.bbox.height
+              ctx.save()
+              ctx.font = `${10 * ratio}px system-ui, sans-serif`
+              ctx.textBaseline = 'top'
+              let lastLabelEnd = Number.NEGATIVE_INFINITY
+              for (const marker of list) {
+                const x = Math.round(u.valToPos(marker.x, 'x', true))
+                if (x < u.bbox.left || x > u.bbox.left + u.bbox.width) continue
+                ctx.strokeStyle = marker.color
+                ctx.globalAlpha = 0.75
+                ctx.setLineDash([3 * ratio, 3 * ratio])
+                ctx.lineWidth = ratio
+                ctx.beginPath()
+                ctx.moveTo(x, top)
+                ctx.lineTo(x, bottom)
+                ctx.stroke()
+                // A tag at the top, skipped where it would overlap the previous one.
+                const text = marker.label.length > 28 ? `${marker.label.slice(0, 27)}…` : marker.label
+                const width = ctx.measureText(text).width
+                if (x + 3 * ratio > lastLabelEnd) {
+                  ctx.globalAlpha = 1
+                  ctx.fillStyle = marker.color
+                  ctx.fillText(text, x + 3 * ratio, top + 2 * ratio)
+                  lastLabelEnd = x + 3 * ratio + width + 6 * ratio
+                }
+              }
+              ctx.restore()
+            }
+          ],
           setSelect: [
             (u) => {
               if (!callbacks.current.onXRangeChange || u.select.width < 4) return
@@ -182,6 +226,12 @@ export function PlotChart(props: PlotChartProps): ReactNode {
     if (!plot) return
     plot.setData(aligned)
   }, [aligned])
+
+  // New markers alone (no new data) still need a redraw.
+  const markerKey = markers?.map((marker) => `${marker.x}:${marker.label}`).join('|') ?? ''
+  useEffect(() => {
+    plotRef.current?.redraw(false)
+  }, [markerKey])
 
   // A new fixed range without new data (zoom on a static log): rescale.
   const rangeKey = xRange ? `${xRange[0]}:${xRange[1]}` : ''

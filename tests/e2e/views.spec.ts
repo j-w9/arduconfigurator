@@ -6735,6 +6735,16 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('mavlink-chart-side-graphs').click()
     await page.getByTestId('mavlink-graph-close-Attitude/Roll and Pitch').click()
     await expect(lines).toHaveCount(0)
+
+    // A typed expression: a bad one says why; a good one draws.
+    await page.getByTestId('mavlink-chart-side-expression').click()
+    await page.getByTestId('mavlink-expression-input').fill('degrees(ATTITUDE.pitch')
+    await page.getByTestId('mavlink-expression-add').click()
+    await expect(page.getByTestId('mavlink-expression-error')).toBeVisible()
+    await page.getByTestId('mavlink-expression-input').fill('degrees(ATTITUDE.pitch)')
+    await page.getByTestId('mavlink-expression-add').click()
+    await expect(lines).toHaveCount(1)
+    await expect(lines.first()).toContainText('expression')
   })
 
   test('CAN tab manages a device: param grid, restart, ESC telemetry', async ({ page }) => {

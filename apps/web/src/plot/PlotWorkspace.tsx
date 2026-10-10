@@ -34,6 +34,8 @@ export interface PlotWorkspaceProps extends Omit<PlotPanesProps, 'testIdPrefix'>
   onExportCsv: () => void
   onClear: () => void
   side: readonly PlotSideTab[]
+  /** Surface-specific toolbar controls (CAN: node-message markers). */
+  tools?: ReactNode
   /** Shown instead of the charts when nothing is plotted. */
   empty: ReactNode
   testIdPrefix: string
@@ -43,6 +45,7 @@ export function PlotWorkspace(props: PlotWorkspaceProps): ReactNode {
   const { testIdPrefix: id, panes, seriesKeys } = props
   const [sideTab, setSideTab] = useState(props.side[0]?.id)
   const [layoutName, setLayoutName] = useState('')
+  const [showStats, setShowStats] = useState(false)
   const activeSide = props.side.find((tab) => tab.id === sideTab) ?? props.side[0]
   const nothing = seriesKeys.length === 0
 
@@ -89,6 +92,18 @@ export function PlotWorkspace(props: PlotWorkspaceProps): ReactNode {
         <button type="button" className="can-monitor__tool" onClick={props.onSplitAll} disabled={panes.length === seriesKeys.length} title="A chart per series" data-testid={`${id}-split-all`}>
           Split all
         </button>
+        <button
+          type="button"
+          className={`can-monitor__tool${showStats ? ' is-active' : ''}`}
+          onClick={() => setShowStats((current) => !current)}
+          aria-pressed={showStats}
+          disabled={nothing}
+          title="Min, max, mean and rate of each line over what is in view (the window, or the zoom)"
+          data-testid={`${id}-stats`}
+        >
+          Stats
+        </button>
+        {props.tools}
         <span className="plot-workspace__spacer" />
         <form
           className="plot-workspace__layout"
@@ -156,6 +171,8 @@ export function PlotWorkspace(props: PlotWorkspaceProps): ReactNode {
               onMoveSeries={props.onMoveSeries}
               onPaneHeight={props.onPaneHeight}
               onDropPayload={props.onDropPayload}
+              markers={props.markers}
+              showStats={showStats}
               testIdPrefix={id}
             />
           )}

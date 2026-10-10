@@ -15,6 +15,7 @@ import type { LiveGraphSeries, OpenLiveGraph } from '../hooks/use-mavlink-plot-w
 import { downloadTextFile } from '../download-file'
 import { buildMavlinkFieldRows, formatPlotValue } from '../view-models/mavlink-inspector'
 import { filterLiveGraphs, type LiveGraphEntry } from '../view-models/mavlink-live-graphs'
+import { mavlinkRecordForPlot } from '../view-models/plot-live-mavlink'
 import {
   PLOT_PANE_DEFAULT_HEIGHT,
   groupIntoPanes,
@@ -37,6 +38,8 @@ export interface MavlinkPlotWorkspaceProps {
   openGraphs: readonly OpenLiveGraph[]
   maxGraphs: number
   onOpenGraph: (name: string) => void
+  /** Plot a typed expression; a reason when it cannot. */
+  onOpenExpression: (text: string) => string | undefined
   onCloseGraph: (name: string) => void
   paneOf: ReadonlyMap<string, string>
   paneHeights: ReadonlyMap<string, PlotPaneHeight>
@@ -54,13 +57,14 @@ type Line =
   | { kind: 'graph'; key: string; graph: string; series: LiveGraphSeries; color: string }
 
 /** A layout's series: a field plot, or a whole predefined graph. */
-type LayoutSeries = { kind: 'field'; spec: MavlinkPlotSpec } | { kind: 'graph'; name: string }
+type LayoutSeries = { kind: 'field'; spec: MavlinkPlotSpec } | { kind: 'graph'; name: string } | { kind: 'expression'; text: string }
 
 const LAYOUTS_KEY = 'arduconfig-mavlink-plot-layouts'
 
 function isLayoutSeries(value: unknown): value is LayoutSeries {
   const entry = value as { kind?: unknown; name?: unknown; spec?: { key?: unknown; type?: unknown; field?: unknown } } | null
   if (entry?.kind === 'graph') return typeof entry.name === 'string'
+  if (entry?.kind === 'expression') return typeof (entry as { text?: unknown }).text === 'string'
   return entry?.kind === 'field' && typeof entry.spec?.key === 'string' && typeof entry.spec.type === 'string' && typeof entry.spec.field === 'string'
 }
 
@@ -128,6 +132,67 @@ function FieldsTab(props: Pick<MavlinkPlotWorkspaceProps, 'stats' | 'plots' | 'm
         )
       })}
       {messages.length === 0 ? <p className="plot-side-note">{props.stats.length === 0 ? 'Nothing received yet.' : 'No field matches.'}</p> : null}
+    </div>
+  )
+}
+
+/** Plot a typed expression over MAVLink fields, with the names one click away. */
+function ExpressionTab({ stats, onOpen }: { stats: readonly MavlinkMessageStat[]; onOpen: (text: string) => string | undefined }): ReactNode {
+  const [text, setText] = useState('')
+  const [error, setError] = useState<string | undefined>(undefined)
+  const messages = new Map<string, string[]>()
+  for (const stat of [...stats].sort((a, b) => a.type.localeCompare(b.type))) {
+    const plot = mavlinkRecordForPlot({ ...stat.lastMessage, type: stat.type })
+    if (plot && !messages.has(plot.name)) messages.set(plot.name, Object.keys(plot.record))
+  }
+  return (
+    <div className="plot-side-list" data-testid="mavlink-expression">
+      <form
+        className="can-plot__expression-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          const problem = onOpen(text)
+          if (problem) setError(problem)
+          else setText('')
+        }}
+      >
+        <textarea
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value)
+            setError(undefined)
+          }}
+          rows={2}
+          spellCheck={false}
+          placeholder="degrees(ATTITUDE.roll) degrees(ATTITUDE.pitch)"
+          aria-label="Expression"
+          data-testid="mavlink-expression-input"
+        />
+        <button type="submit" className="can-monitor__tool" disabled={!text.trim()} data-testid="mavlink-expression-add">
+          Plot
+        </button>
+      </form>
+      {error ? (
+        <p className="plot-side-note can-plot__expression-error" data-testid="mavlink-expression-error">
+          {error}
+        </p>
+      ) : null}
+      <p className="plot-side-note">
+        MAVExplorer's expression language: <code>MESSAGE.field</code> with MAVLink's own names, math, and functions like
+        degrees(), sqrt(), lowpass(). Several terms separated by spaces draw as lines on one chart; <code>:2</code> after
+        a term puts it on the right axis. Click a name below to insert it.
+      </p>
+      {[...messages.entries()].map(([name, fields]) => (
+        <details key={name}>
+          <summary>{name}</summary>
+          {fields.map((field) => (
+            <button key={field} type="button" className="plot-side-list__item plot-side-list__insert" onClick={() => setText((current) => `${current}${name}.${field}`)}>
+              <span className="plot-side-list__name plot-side-list__name--data">.{field}</span>
+            </button>
+          ))}
+        </details>
+      ))}
+      {messages.size === 0 ? <p className="plot-side-note">Nothing received yet.</p> : null}
     </div>
   )
 }
@@ -248,7 +313,7 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
               {value === undefined ? '—' : formatPlotValue(value)}
             </span>
             <span className="plot-series__actions">
-              {line.kind === 'graph' ? <span className="plot-series__meta">{line.graph}</span> : null}
+              {line.kind === 'graph' ? <span className="plot-series__meta">{customNames.has(line.graph) ? 'expression' : line.graph}</span> : null}
               {line.kind === 'field' && props.onExportPlotCsv ? (
                 <button type="button" className="mavlink-inspector__field-copy" onClick={() => props.onExportPlotCsv?.(line.plot.key)} disabled={line.plot.samples.length === 0} data-testid={`mavlink-plot-csv-${line.plot.key}`}>
                   CSV
@@ -278,6 +343,7 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
     ...series(line)
   })
 
+  const customNames = new Set(openGraphs.filter((graph) => graph.custom).map((graph) => graph.name))
   const groups = groupIntoPanes(lines, (line) => line.key, props.paneOf)
   const panes: PlotPaneModel[] = groups.map((pane) => ({
     id: pane.id,
@@ -303,7 +369,7 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
             if (line.kind === 'field') entries.push({ kind: 'field', spec: { key: line.plot.key, systemId: line.plot.systemId, componentId: line.plot.componentId, type: line.plot.type, field: line.plot.field } })
             else if (!seen.has(line.graph)) {
               seen.add(line.graph)
-              entries.push({ kind: 'graph', name: line.graph })
+              entries.push(customNames.has(line.graph) ? { kind: 'expression', text: line.graph } : { kind: 'graph', name: line.graph })
             }
           }
           return { height: props.paneHeights.get(group.id) ?? PLOT_PANE_DEFAULT_HEIGHT, series: entries }
@@ -324,6 +390,9 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
         if (entry.kind === 'field') {
           props.onAddPlot(entry.spec)
           keys.push(entry.spec.key)
+        } else if (entry.kind === 'expression') {
+          props.onOpenExpression(entry.text)
+          keys.push(`graph|${entry.text}|0`)
         } else {
           props.onOpenGraph(entry.name)
           keys.push(`graph|${entry.name}|0`)
@@ -396,6 +465,7 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
       }}
       side={[
         { id: 'fields', label: 'Fields', content: <FieldsTab stats={props.stats} plots={plots} maxPlots={props.maxPlots} onAddPlot={props.onAddPlot} onRemovePlot={props.onRemovePlot} /> },
+        { id: 'expression', label: 'Expression', content: <ExpressionTab stats={props.stats} onOpen={props.onOpenExpression} /> },
         {
           id: 'graphs',
           label: 'Graphs',

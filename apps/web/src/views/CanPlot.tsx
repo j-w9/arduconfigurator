@@ -9,7 +9,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { buttonStyle } from '@arduconfig/ui-kit'
 
-import { type PlotLane } from '../plot/PlotChart'
+import { type PlotLane, type PlotMarker } from '../plot/PlotChart'
+import type { CanNodeLogEntry } from '../view-models/can-node-messages'
 import { type PlotPaneModel, type PlotSeriesRow } from '../plot/PlotPanes'
 import { PlotWorkspace } from '../plot/PlotWorkspace'
 import {
@@ -24,7 +25,7 @@ import {
 } from '../view-models/plot-workspace'
 import { downloadTextFile } from '../download-file'
 import { DronecanFieldTree } from './DronecanFieldTree'
-import { canPlotLaneColor, canPlotSeriesKey, canPlotWindow, type CanPlotSamples, type CanPlotSeries, type CanPlotSource } from '../view-models/can-plot'
+import { canExpressionProblem, canExpressionStream, canPlotLaneColor, canPlotSeriesKey, canPlotWindow, type CanPlotSamples, type CanPlotSeries, type CanPlotSource } from '../view-models/can-plot'
 import { formatCanTopicRate, type CanTopicEntry } from '../view-models/can-topics'
 import { dronecanDisplayName, transferFieldTree, type DronecanFieldNode } from '../view-models/dronecan-field-tree'
 
@@ -51,6 +52,8 @@ export interface CanPlotViewProps {
   paneHeights: ReadonlyMap<string, PlotPaneHeight>
   onMoveSeries: (key: string, paneId: string | undefined) => void
   onPaneHeight: (paneId: string, height: PlotPaneHeight) => void
+  /** What the nodes logged, drawn as markers on the time axis. */
+  nodeLogs?: readonly CanNodeLogEntry[]
 }
 
 const WINDOWS = [
@@ -61,6 +64,14 @@ const WINDOWS = [
 ] as const
 
 const SYNC_KEY = 'arduconfig-can-plot'
+
+/** Marker colours by DroneCAN log level (a canvas cannot read the theme tokens). */
+const NODE_MESSAGE_COLORS: Record<CanNodeLogEntry['level'], string> = {
+  error: '#e5484d',
+  warning: '#f2b400',
+  info: '#7f8aa0',
+  debug: '#5c6678'
+}
 
 /** A series' lines for its pane's chart: x in seconds before the window's end. */
 function seriesLanes(entry: CanPlotSeries, data: CanPlotSamples, endMs: number): PlotLane[] {
@@ -139,7 +150,7 @@ const LAYOUTS_KEY = 'arduconfig-can-plot-layouts'
 
 function isLayoutSeries(value: unknown): value is CanPlotLayoutSeries {
   const entry = value as { label?: unknown; source?: { kind?: unknown } } | null
-  return typeof entry?.label === 'string' && (entry.source?.kind === 'field' || entry.source?.kind === 'bytes')
+  return typeof entry?.label === 'string' && (entry.source?.kind === 'field' || entry.source?.kind === 'bytes' || entry.source?.kind === 'expression')
 }
 
 function readCanPlotLayouts(): SavedPlotLayout<CanPlotLayoutSeries>[] {
@@ -233,6 +244,81 @@ function BytesForm({ onAdd }: { onAdd: CanPlotViewProps['onAddBytes'] }): ReactN
   )
 }
 
+/** Plot an expression over decoded streams, with the names it can use one click away. */
+function ExpressionTab({ topics, onAdd }: { topics: readonly CanTopicEntry[]; onAdd: (text: string) => void }): ReactNode {
+  const [text, setText] = useState('')
+  const [error, setError] = useState<string | undefined>(undefined)
+  // Each decoded stream once, with its number fields (vectors index: field[0]).
+  const streams = new Map<string, string[]>()
+  for (const topic of topics) {
+    const name = canExpressionStream(topic.last)
+    const tree = name ? transferFieldTree(topic.last) : undefined
+    if (!name || !tree || streams.has(name)) continue
+    const fields = tree.filter((node) => node.plottable && node.path.length === 1).map((node) => String(node.path[0]))
+    if (fields.length > 0) streams.set(name, fields)
+  }
+  const insert = (snippet: string) => {
+    setText((current) => `${current}${snippet}`)
+    setError(undefined)
+  }
+  return (
+    <div className="plot-side-list" data-testid="can-plot-expression">
+      <form
+        className="can-plot__expression-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          const trimmed = text.trim()
+          if (!trimmed) return
+          const problem = canExpressionProblem(trimmed)
+          if (problem) {
+            setError(problem)
+            return
+          }
+          onAdd(trimmed)
+          setText('')
+        }}
+      >
+        <textarea
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value)
+            setError(undefined)
+          }}
+          rows={2}
+          spellCheck={false}
+          placeholder="esc_Status[0].current*esc_Status[0].voltage"
+          aria-label="Expression"
+          data-testid="can-plot-expression-input"
+        />
+        <button type="submit" className="can-monitor__tool" disabled={!text.trim()} data-testid="can-plot-expression-add">
+          Plot
+        </button>
+      </form>
+      {error ? (
+        <p className="plot-side-note can-plot__expression-error" data-testid="can-plot-expression-error">
+          {error}
+        </p>
+      ) : null}
+      <p className="plot-side-note">
+        Math over decoded fields: + − × ÷, ** for powers, abs(), sqrt(), min(), max(), degrees() and more. A stream is its
+        type with dots as underscores; an indexed one (an ESC, a sensor) takes its index: <code>esc_Status[2].rpm</code>.
+        Click a name below to insert it.
+      </p>
+      {[...streams.entries()].map(([name, fields]) => (
+        <details key={name}>
+          <summary>{name}</summary>
+          {fields.map((field) => (
+            <button key={field} type="button" className="plot-side-list__item plot-side-list__insert" onClick={() => insert(`${name}.${field}`)}>
+              <span className="plot-side-list__name plot-side-list__name--data">.{field}</span>
+            </button>
+          ))}
+        </details>
+      ))}
+      {streams.size === 0 ? <p className="plot-side-note">Nothing decoded yet.</p> : null}
+    </div>
+  )
+}
+
 /** Pick a field right here: a device, one of its messages, then any number (or vector) in it. */
 function FieldPicker(props: Pick<CanPlotViewProps, 'topics' | 'nodeLabel' | 'onPlotField' | 'isPlotted' | 'onUnplotField'>): ReactNode {
   const { topics, nodeLabel } = props
@@ -318,6 +404,17 @@ export function CanPlotView(props: CanPlotViewProps): ReactNode {
   const dataByKey = new Map(windows.map((entry) => [entry.entry.key, entry.data]))
   const xRange = useMemo(() => zoom ?? ([-windowSeconds, 0] as const), [zoom, windowSeconds])
   const groups = groupIntoPanes(series, (entry) => entry.key, props.paneOf)
+
+  // Node messages as markers: when a node said "ESC 2 temperature high", it shows on every chart.
+  const [showNodeMessages, setShowNodeMessages] = useState(true)
+  const markers = useMemo<PlotMarker[]>(() => {
+    if (!showNodeMessages || !props.nodeLogs) return []
+    const from = endMs - windowMs
+    return props.nodeLogs
+      .filter((entry) => entry.level !== 'debug' && entry.atMs >= from && entry.atMs <= endMs)
+      .slice(-40)
+      .map((entry) => ({ x: (entry.atMs - endMs) / 1000, label: `#${entry.nodeId} ${entry.text}`, color: NODE_MESSAGE_COLORS[entry.level] }))
+  }, [showNodeMessages, props.nodeLogs, props.nodeLogs?.length, endMs, windowMs])
 
   const panes: PlotPaneModel[] = groups.map((pane) => ({
     id: pane.id,
@@ -419,6 +516,19 @@ export function CanPlotView(props: CanPlotViewProps): ReactNode {
       onMoveSeries={props.onMoveSeries}
       onPaneHeight={props.onPaneHeight}
       onDropPayload={onDropPayload}
+      markers={markers}
+      tools={
+        <button
+          type="button"
+          className={`can-monitor__tool${showNodeMessages ? ' is-active' : ''}`}
+          onClick={() => setShowNodeMessages((current) => !current)}
+          aria-pressed={showNodeMessages}
+          title="Mark what nodes logged (info, warnings, errors) on the time axis"
+          data-testid="can-plot-node-messages"
+        >
+          Node messages
+        </button>
+      }
       side={[
         {
           id: 'fields',
@@ -427,6 +537,7 @@ export function CanPlotView(props: CanPlotViewProps): ReactNode {
             <FieldPicker topics={props.topics} nodeLabel={props.nodeLabel} onPlotField={props.onPlotField} isPlotted={props.isPlotted} onUnplotField={props.onUnplotField} />
           )
         },
+        { id: 'expression', label: 'Expression', content: <ExpressionTab topics={props.topics} onAdd={(text) => props.onAddSeries(text, { kind: 'expression', text })} /> },
         { id: 'bytes', label: 'Frame bytes', content: <BytesForm onAdd={onAddBytes} /> }
       ]}
       empty={

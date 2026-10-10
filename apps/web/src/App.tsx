@@ -10643,6 +10643,7 @@ export function App() {
                     paneHeights={canBusMonitor.plotPaneHeights}
                     onMoveSeries={canBusMonitor.movePlotSeries}
                     onPaneHeight={canBusMonitor.setPlotPaneHeight}
+                    nodeLogs={canNodeLogs}
                   />
                 ),
                 send: isExpertMode ? (
@@ -10899,6 +10900,7 @@ export function App() {
               openGraphs={mavlinkPlotWorkspace.open}
               maxGraphs={MAX_LIVE_GRAPHS}
               onOpenGraph={mavlinkPlotWorkspace.openGraph}
+              onOpenExpression={mavlinkPlotWorkspace.openExpression}
               onCloseGraph={mavlinkPlotWorkspace.closeGraph}
               paneOf={mavlinkPlotWorkspace.paneOf}
               paneHeights={mavlinkPlotWorkspace.paneHeights}

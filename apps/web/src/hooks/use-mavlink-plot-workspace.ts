@@ -4,7 +4,15 @@
 // graphs keep a rolling window of points.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MAVGRAPHS, createGraphEvaluator, type GraphEvaluator, type Series } from '@arduconfig/plot-core'
+import {
+  MAVGRAPHS,
+  SUPPORTED_FUNCTIONS,
+  createGraphEvaluator,
+  parseExpression,
+  termFunctions,
+  type GraphEvaluator,
+  type Series
+} from '@arduconfig/plot-core'
 
 import type { ArduPilotConfiguratorRuntime } from '@arduconfig/ardupilot-core'
 
@@ -24,6 +32,8 @@ export interface LiveGraphSeries extends Series {
 export interface OpenLiveGraph {
   name: string
   series: LiveGraphSeries[]
+  /** Typed by the operator (the name is the expression), not from the library. */
+  custom?: boolean
 }
 
 export interface MavlinkPlotWorkspace {
@@ -31,6 +41,8 @@ export interface MavlinkPlotWorkspace {
   graphs: readonly LiveGraphEntry[]
   open: readonly OpenLiveGraph[]
   openGraph: (name: string) => void
+  /** Plot a typed expression ("degrees(ATTITUDE.roll)", or several terms); a reason when it cannot. */
+  openExpression: (text: string) => string | undefined
   closeGraph: (name: string) => void
   paneOf: ReadonlyMap<string, string>
   moveSeries: (key: string, paneId: string | undefined) => void
@@ -43,6 +55,7 @@ export function useMavlinkPlotWorkspace(runtime: ArduPilotConfiguratorRuntime | 
   const evaluators = useRef(new Map<string, GraphEvaluator>())
   const [fieldsVersion, setFieldsVersion] = useState(0)
   const [openNames, setOpenNames] = useState<readonly string[]>([])
+  const custom = useRef(new Set<string>())
   const [open, setOpen] = useState<readonly OpenLiveGraph[]>([])
   const [paneOf, setPaneOf] = useState<ReadonlyMap<string, string>>(new Map())
   const [paneHeights, setPaneHeights] = useState<ReadonlyMap<string, PlotPaneHeight>>(new Map())
@@ -77,6 +90,7 @@ export function useMavlinkPlotWorkspace(runtime: ArduPilotConfiguratorRuntime | 
         next.push({
           name,
           // Copies: the evaluator keeps appending to its own arrays.
+          custom: custom.current.has(name),
           series: evaluator.series().map((series, termIndex) => ({ ...series, t: series.t.slice(), v: series.v.slice(), key: graphSeriesKey(name, termIndex) }))
         })
       }
@@ -110,7 +124,30 @@ export function useMavlinkPlotWorkspace(runtime: ArduPilotConfiguratorRuntime | 
     [graphs]
   )
 
+  const openExpression = useCallback((text: string): string | undefined => {
+    const name = text.trim()
+    if (!name) return 'Type an expression.'
+    if (evaluators.current.has(name)) return undefined
+    if (evaluators.current.size >= MAX_LIVE_GRAPHS) return `At most ${MAX_LIVE_GRAPHS} graphs and expressions at once.`
+    const { terms, errors } = parseExpression(name)
+    if (errors.length > 0) return errors[0].message
+    if (terms.length === 0) return 'Type an expression.'
+    const unsupported = terms.flatMap((term) => termFunctions(term)).find((fn) => !SUPPORTED_FUNCTIONS.has(fn))
+    if (unsupported) return `${unsupported}() is not supported.`
+    custom.current.add(name)
+    evaluators.current.set(name, createGraphEvaluator(terms))
+    setOpenNames((current) => [...current, name])
+    setOpen((current) => [...current, { name, custom: true, series: terms.map((term, termIndex) => ({ label: term.label, axis: term.axis, t: [], v: [], key: graphSeriesKey(name, termIndex) })) }])
+    setPaneOf((current) => {
+      let next = new Map(current)
+      for (let termIndex = 1; termIndex < terms.length; termIndex += 1) next = assignPane(next, graphSeriesKey(name, termIndex), graphSeriesKey(name, 0))
+      return next
+    })
+    return undefined
+  }, [])
+
   const closeGraph = useCallback((name: string) => {
+    custom.current.delete(name)
     evaluators.current.delete(name)
     setOpenNames((current) => current.filter((entry) => entry !== name))
     setOpen((current) => current.filter((entry) => entry.name !== name))
@@ -120,6 +157,7 @@ export function useMavlinkPlotWorkspace(runtime: ArduPilotConfiguratorRuntime | 
     graphs,
     open: open.filter((entry) => openNames.includes(entry.name)),
     openGraph,
+    openExpression,
     closeGraph,
     paneOf,
     moveSeries: useCallback((key: string, paneId: string | undefined) => setPaneOf((current) => assignPane(current, key, paneId)), []),

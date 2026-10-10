@@ -36,6 +36,7 @@ import { CanTopicTable, canTopicIdFilter, type CanTopicEntry } from '../view-mod
 import { canLogEntryFromValue, type CanNodeLogEntry } from '../view-models/can-node-messages'
 import { assignPane, type PlotPaneHeight } from '../view-models/plot-workspace'
 import {
+  dropCanExpression,
   canPlotSeriesKey,
   nextCanPlotColor,
   sampleCanPlot,
@@ -635,6 +636,8 @@ export function useCanBusMonitor(options: {
     setPlotPaneOf((current) => assignPane(current, key, undefined))
     live.current.plotSamples.delete(key)
     offline.current?.plotSamples.delete(key)
+    dropCanExpression(live.current.plotSamples, key)
+    if (offline.current) dropCanExpression(offline.current.plotSamples, key)
   }, [])
 
   const clearPlotSeries = useCallback(() => {
@@ -643,6 +646,8 @@ export function useCanBusMonitor(options: {
     setPlotPaneHeights(new Map())
     live.current.plotSamples.clear()
     offline.current?.plotSamples.clear()
+    dropCanExpression(live.current.plotSamples)
+    if (offline.current) dropCanExpression(offline.current.plotSamples)
   }, [])
 
   const plotNowMs = (() => {

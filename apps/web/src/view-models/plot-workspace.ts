@@ -183,3 +183,49 @@ export function valueAt(t: ArrayLike<number>, v: ArrayLike<number>, x: number): 
   if (index < t.length && t[index] === x) return v[index]
   return index > 0 ? v[index - 1] : undefined
 }
+
+export interface RangeStats {
+  min: number
+  max: number
+  mean: number
+  count: number
+  /** Points per second over the span they cover. */
+  rateHz: number
+}
+
+/** Min, max, mean and rate of the points inside [from, to] (NaN gaps skipped). */
+export function rangeStats(t: ArrayLike<number>, v: ArrayLike<number>, from: number, to: number): RangeStats | undefined {
+  let min = Number.POSITIVE_INFINITY
+  let max = Number.NEGATIVE_INFINITY
+  let sum = 0
+  let count = 0
+  let first: number | undefined
+  let last: number | undefined
+  for (let index = lowerBound(t, from); index < t.length && t[index] <= to; index += 1) {
+    const value = v[index]
+    if (!Number.isFinite(value)) continue
+    if (value < min) min = value
+    if (value > max) max = value
+    sum += value
+    count += 1
+    first ??= t[index]
+    last = t[index]
+  }
+  if (count === 0) return undefined
+  const span = last! - first!
+  return { min, max, mean: sum / count, count, rateHz: span > 0 ? (count - 1) / span : 0 }
+}
+
+/** Above this many points in view, a lane is thinned before drawing. */
+export const PLOT_THIN_ABOVE = 6000
+const PLOT_THIN_BUCKETS = 1500
+
+/** A lane ready to draw: thinned to its pixel buckets when long, untouched otherwise. */
+export function thinLane<L extends { t: ArrayLike<number>; v: ArrayLike<number> }>(lane: L, from: number | undefined, to: number | undefined): L {
+  const n = lane.t.length
+  if (n <= PLOT_THIN_ABOVE) return lane
+  const start = from ?? lane.t[0]
+  const end = to ?? lane.t[n - 1]
+  const thinned = decimateMinMax(lane.t, lane.v, start, end, PLOT_THIN_BUCKETS)
+  return { ...lane, t: thinned.t, v: thinned.v }
+}

@@ -8,8 +8,10 @@
 import type { CanFrame } from '@arduconfig/can-core'
 import type { DronecanTransfer } from '@arduconfig/dronecan-dsdl'
 
-import { canTopicKey } from './can-topics'
-import { dronecanValuesAt } from './dronecan-field-tree'
+import { createGraphEvaluator, parseTerm, type GraphEvaluator } from '@arduconfig/plot-core'
+
+import { canTopicIndex, canTopicKey } from './can-topics'
+import { dronecanDisplayName, dronecanValuesAt } from './dronecan-field-tree'
 
 export type CanPlotSource =
   | {
@@ -17,6 +19,11 @@ export type CanPlotSource =
       /** canTopicKey of the stream: bus, kind, type, source, destination. */
       topicKey: string
       path: (string | number)[]
+    }
+  | {
+      /** A MAVExplorer-style expression over decoded streams: esc_Status[2].current*esc_Status[2].voltage. */
+      kind: 'expression'
+      text: string
     }
   | {
       kind: 'bytes'
@@ -64,6 +71,7 @@ export const CAN_PLOT_MAX_POINTS = 20_000
 export const CAN_PLOT_COLORS = ['#f2b400', '#4aa3ff', '#e5484d', '#3ecf8e', '#b07cf7', '#ff8a3d', '#22c3c3', '#e86fb0'] as const
 
 export function canPlotSeriesKey(source: CanPlotSource): string {
+  if (source.kind === 'expression') return `expression|${source.text}`
   return source.kind === 'field'
     ? `field|${source.topicKey}|${source.path.join('.')}`
     : `bytes|${source.bus}|${source.extended ? 'x' : 's'}${source.id}|${source.offset}|${source.width}|${source.signed ? 's' : 'u'}|${source.littleEndian ? 'le' : 'be'}`
@@ -119,6 +127,10 @@ export function sampleCanPlot(
   completed: DronecanTransfer | undefined
 ): void {
   for (const entry of series) {
+    if (entry.source.kind === 'expression') {
+      if (completed) sampleCanExpression(entry, samples, completed)
+      continue
+    }
     const single = entry.source.kind === 'bytes' ? canPlotFrameValue(entry.source, frame) : undefined
     const values =
       entry.source.kind === 'bytes'
@@ -156,4 +168,88 @@ export function canPlotWindow(samples: CanPlotSamples | undefined, nowMs: number
     else high = middle
   }
   return { t: samples.t.slice(low), v: samples.v.map((lane) => lane.slice(low)) }
+}
+
+// ---- Expressions -----------------------------------------------------------
+//
+// A stream goes by its type's display name with dots as underscores
+// (esc.Status -> esc_Status, ahrs.MagneticFieldStrength2 ->
+// ahrs_MagneticFieldStrength2), and an indexed stream by its index as the
+// instance: esc_Status[2] is ESC 2, whichever node sends it. Fields are the
+// DSDL names; an array field indexes: magnetic_field_ga[1].
+
+/** The name a decoded stream goes by in expressions. */
+export function canExpressionName(fullName: string): string {
+  return dronecanDisplayName(fullName).replace(/\./g, '_')
+}
+
+/** How to write a stream in an expression: esc_Status[2], or NodeStatus. */
+export function canExpressionStream(transfer: Pick<DronecanTransfer, 'kind' | 'value' | 'type'>): string | undefined {
+  if (!transfer.type) return undefined
+  const index = canTopicIndex(transfer)
+  return `${canExpressionName(transfer.type.fullName)}${index ? `[${index.value}]` : ''}`
+}
+
+/** A decoded value as plain numbers (bigints as numbers, bools as 0 / 1), for the expression engine. */
+export function plainCanValue(value: unknown): unknown {
+  if (typeof value === 'bigint') return Number(value)
+  if (typeof value === 'boolean') return value ? 1 : 0
+  if (Array.isArray(value)) return value.map(plainCanValue)
+  if (ArrayBuffer.isView(value)) return Array.from(value as unknown as ArrayLike<number>)
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [key, entry] of Object.entries(value)) out[key] = plainCanValue(entry)
+    return out
+  }
+  return value
+}
+
+/** Why an expression cannot be plotted, or undefined when it parses. */
+export function canExpressionProblem(text: string): string | undefined {
+  const parsed = parseTerm(text.trim())
+  return parsed.ok ? undefined : parsed.error.message
+}
+
+// One evaluator per series per capture store (live, an open log): it keeps
+// the latest record of each stream the expression reads.
+const expressionEvaluators = new WeakMap<Map<string, CanPlotSamples>, Map<string, { evaluator: GraphEvaluator; taken: number }>>()
+
+/** Forget a series' evaluator (it was removed, or the plot was cleared). */
+export function dropCanExpression(samples: Map<string, CanPlotSamples>, key?: string): void {
+  const store = expressionEvaluators.get(samples)
+  if (!store) return
+  if (key === undefined) store.clear()
+  else store.delete(key)
+}
+
+function sampleCanExpression(entry: CanPlotSeries, samples: Map<string, CanPlotSamples>, transfer: DronecanTransfer): void {
+  if (entry.source.kind !== 'expression' || !transfer.type || transfer.value === undefined) return
+  let store = expressionEvaluators.get(samples)
+  if (!store) {
+    store = new Map()
+    expressionEvaluators.set(samples, store)
+  }
+  let slot = store.get(entry.key)
+  if (!slot) {
+    const parsed = parseTerm(entry.source.text)
+    if (!parsed.ok) return
+    slot = { evaluator: createGraphEvaluator([parsed.term]), taken: 0 }
+    store.set(entry.key, slot)
+  }
+  const index = canTopicIndex(transfer)
+  slot.evaluator.push(canExpressionName(transfer.type.fullName), plainCanValue(transfer.value) as Record<string, unknown>, transfer.timestampMs / 1000, index?.value)
+  const result = slot.evaluator.series()[0]
+  // Take the points it added; keep its own arrays short.
+  for (; slot.taken < result.t.length; slot.taken += 1) {
+    let points = samples.get(entry.key)
+    if (!points) {
+      points = { t: [], v: [] }
+      samples.set(entry.key, points)
+    }
+    pushCanPlotSample(points, result.t[slot.taken] * 1000, [result.v[slot.taken]])
+  }
+  if (result.t.length > 256) {
+    slot.evaluator.trimBefore(result.t[result.t.length - 1])
+    slot.taken = slot.evaluator.series()[0].t.length
+  }
 }

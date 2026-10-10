@@ -6,7 +6,12 @@ import {
   CAN_PLOT_COLORS,
   CAN_PLOT_MAX_POINTS,
   CAN_PLOT_LANE_COLORS,
+  canExpressionName,
+  canExpressionProblem,
+  canExpressionStream,
   canPlotFrameValue,
+  dropCanExpression,
+  plainCanValue,
   canPlotLaneColor,
   canPlotSeriesKey,
   canPlotWindow,
@@ -96,5 +101,38 @@ describe('the sample store', () => {
     expect(windowed).toEqual({ t: [200, 300], v: [[3, 4]] })
     expect(nextCanPlotColor([{ key: 'k', label: '', color: CAN_PLOT_COLORS[0], source: { kind: 'field', topicKey: '', path: [] } }])).toBe(CAN_PLOT_COLORS[1])
     expect(canPlotSeriesKey({ kind: 'field', topicKey: 't', path: ['value', 'integer_value'] })).toBe('field|t|value.integer_value')
+  })
+})
+
+describe('expression series', () => {
+  const esc = (escIndex: number, current: number, voltage: number, timestampMs: number) =>
+    ({
+      bus: 1,
+      kind: 'message',
+      dataTypeId: 1034,
+      sourceNodeId: 50,
+      timestampMs,
+      type: { fullName: 'uavcan.equipment.esc.Status' },
+      value: { esc_index: escIndex, current, voltage, rpm: 4800n }
+    }) as unknown as DronecanTransfer
+
+  it('names streams by type and index, and plots math over their fields', () => {
+    expect(canExpressionName('uavcan.equipment.esc.Status')).toBe('esc_Status')
+    expect(canExpressionName('uavcan.equipment.ahrs.MagneticFieldStrength2')).toBe('ahrs_MagneticFieldStrength2')
+    expect(canExpressionStream(esc(2, 1, 1, 0))).toBe('esc_Status[2]')
+    expect(canExpressionProblem('esc_Status[2].current*')).toBeDefined()
+    expect(canExpressionProblem('esc_Status[2].current*esc_Status[2].voltage')).toBeUndefined()
+
+    const text = 'esc_Status[1].current*esc_Status[1].voltage'
+    const series: CanPlotSeries[] = [{ key: canPlotSeriesKey({ kind: 'expression', text }), label: text, color: CAN_PLOT_COLORS[0], source: { kind: 'expression', text } }]
+    const samples = new Map<string, CanPlotSamples>()
+    // ESC 0 is not ESC 1: only ESC 1's power plots.
+    sampleCanPlot(series, samples, frame(0x80000001, [0]), esc(0, 3, 16, 100))
+    sampleCanPlot(series, samples, frame(0x80000001, [0]), esc(1, 2, 16, 200))
+    sampleCanPlot(series, samples, frame(0x80000001, [0]), esc(1, 2.5, 16, 300))
+    expect(samples.get(series[0].key)).toEqual({ t: [200, 300], v: [[32, 40]] })
+    // Bigints read as numbers.
+    expect(plainCanValue({ a: 5n, b: [true, 2n] })).toEqual({ a: 5, b: [1, 2] })
+    dropCanExpression(samples, series[0].key)
   })
 })
