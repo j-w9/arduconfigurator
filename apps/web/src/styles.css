@@ -23992,3 +23992,10 @@ button.plot-side-list__name {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* A pop-out window makes no sense on a phone. */
+@media (max-width: 640px) {
+  .can-bus-node__popout {
+    display: none !important;
+  }
+}

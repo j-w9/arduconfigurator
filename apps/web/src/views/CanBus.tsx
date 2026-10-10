@@ -271,11 +271,13 @@ export function CanBusView(props: CanBusViewProps) {
 
   // Bus-wide ESC telemetry (observe-only). Under the node list in the plain
   // layout; after the message table on the workspace's whole-bus page.
+  const escSingleNode = escRows.length > 0 && escRows.every((row) => row.nodeId === escRows[0].nodeId) ? escRows[0].nodeId : undefined
   const escTable =
     escRows.length > 0 ? (
           <div className="dronecan-inspector__esc" data-testid="dronecan-esc-telemetry">
             <h4 className="dronecan-inspector__esc-title">
               ESC telemetry
+              {escSingleNode !== undefined ? <small className="dronecan-inspector__esc-node">node {escSingleNode}</small> : null}
               <InfoDot label="About ESC telemetry">
                 Live uavcan.equipment.esc.Status, one row per ESC index. Read-only.
               </InfoDot>
@@ -299,7 +301,8 @@ export function CanBusView(props: CanBusViewProps) {
                 >
                   <span>
                     #{row.escIndex}
-                    <small className="dronecan-inspector__esc-node"> (node {row.nodeId})</small>
+                    {/* Which node, only where the ESCs come from more than one. */}
+                    {escSingleNode === undefined ? <small className="dronecan-inspector__esc-node"> (node {row.nodeId})</small> : null}
                   </span>
                   <span>{row.rpmLabel}</span>
                   <span>{row.voltageLabel}</span>

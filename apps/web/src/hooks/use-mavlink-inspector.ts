@@ -31,6 +31,17 @@ import {
   type PlotSample
 } from '../view-models/mavlink-inspector'
 
+/**
+ * A generically decoded message as a flat record named by its message. Some
+ * messages carry a field called `type` (BATTERY_STATUS, ...); it would
+ * shadow the name, so it is kept as `type (field)` -- BATTERY_STATUS once
+ * showed up as an "UNKNOWN" row because of it.
+ */
+export function flattenGenericMessage(raw: Record<string, unknown>): Record<string, unknown> & { type: string } {
+  const { type: typeField, ...fields } = (raw.fields ?? {}) as Record<string, unknown>
+  return { ...fields, ...(typeField !== undefined ? { 'type (field)': typeField } : {}), type: String(raw.name) }
+}
+
 export interface MavlinkMessageStat {
   /** Stable identity for React keys: `${systemId}:${componentId}:${type}`. */
   key: string
@@ -175,10 +186,7 @@ export function useMavlinkInspector(
       // A message decoded only generically (from ArduPilot's dialect) reads as
       // itself: its own name, its fields at the top level, like the typed ones.
       const raw = envelope.message as unknown as Record<string, unknown> & { type?: string }
-      const message =
-        raw.type === 'GENERIC'
-          ? ({ type: String(raw.name), ...(raw.fields as Record<string, unknown>) } as Record<string, unknown> & { type?: string })
-          : raw
+      const message = raw.type === 'GENERIC' ? flattenGenericMessage(raw) : raw
       const type = typeof message.type === 'string' ? message.type : 'UNKNOWN'
       const systemId = envelope.header.systemId
       const componentId = envelope.header.componentId

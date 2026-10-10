@@ -464,21 +464,6 @@ export function MavlinkInspectorView({
         title="MAVLink Inspector"
       >
         <div className="telemetry-stack" data-testid="mavlink-inspector">
-          <div className="telemetry-header">
-            <div>
-              <h3>Live messages</h3>
-              <p data-testid="mavlink-inspector-summary">
-                {summary.sourceCount} source{summary.sourceCount === 1 ? '' : 's'} ·{' '}
-                {summary.typeCount} row{summary.typeCount === 1 ? '' : 's'} ·{' '}
-                {summary.totalRateHz.toFixed(0)} msg/s · {formatBytesPerSec(summary.totalBytesPerSec)} ·{' '}
-                {summary.totalCount} total
-              </p>
-            </div>
-            <StatusBadge tone={paused ? 'warning' : connected ? 'success' : 'neutral'}>
-              {paused ? 'paused' : connected ? 'live' : 'no link'}
-            </StatusBadge>
-          </div>
-
           {plotWorkspace ? (
             // Messages (the live table) and Plot (charts of fields and predefined graphs), as on the CAN tab.
             <div className="tab-strip can-subtabs" role="tablist" aria-label="Inspector views" data-testid="mavlink-subtabs">
@@ -499,6 +484,27 @@ export function MavlinkInspectorView({
               ))}
             </div>
           ) : null}
+
+          {/* The live summary belongs to Messages; Plot has its own toolbar. */}
+          {!plotWorkspace || page === 'messages' ? (
+            <>
+              <div className="telemetry-header">
+                <div>
+                  <h3>Live messages</h3>
+                  <p data-testid="mavlink-inspector-summary">
+                    {summary.sourceCount} source{summary.sourceCount === 1 ? '' : 's'} ·{' '}
+                    {summary.typeCount} row{summary.typeCount === 1 ? '' : 's'} ·{' '}
+                    {summary.totalRateHz.toFixed(0)} msg/s · {formatBytesPerSec(summary.totalBytesPerSec)} ·{' '}
+                    {summary.totalCount} total
+                  </p>
+                </div>
+                <StatusBadge tone={paused ? 'warning' : connected ? 'success' : 'neutral'}>
+                  {paused ? 'paused' : connected ? 'live' : 'no link'}
+                </StatusBadge>
+              </div>
+            </>
+          ) : null}
+
 
           {plotWorkspace && page === 'plot' ? (
             plotWorkspace
