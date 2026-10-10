@@ -772,5 +772,8 @@ test.describe('CAN tab: node messages and bootloader flashing', () => {
     await expect(page.getByTestId('dronecan-bootloader-status-50')).toHaveText('Bootloader flashed.', { timeout: 15_000 })
     // The node's answer is in Node messages too.
     await expect(page.getByTestId('can-node-messages')).toContainText('Flash bootloader OK')
+    // The params are pulled again: FLASH_BOOTLOADER reads 0.
+    await page.getByTestId('can-bus-node-toggle-50').click()
+    await expect(page.getByTestId('can-bus-param-input-50-FLASH_BOOTLOADER')).toHaveValue('0', { timeout: 15_000 })
   })
 })

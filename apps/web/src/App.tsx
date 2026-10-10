@@ -2727,7 +2727,17 @@ export function App() {
   // Flash a node's bootloader: AP_Periph acts on FLASH_BOOTLOADER = 1 at once
   // (no restart), copies its embedded bootloader, and logs the outcome.
   const [bootloaderFlash, setBootloaderFlash] = useState<
-    { nodeId: number; startedAtMs: number; status: 'flashing' | 'ok' | 'failed' | 'timeout'; message: string } | undefined
+    {
+      nodeId: number
+      startedAtMs: number
+      status: 'flashing' | 'ok' | 'failed' | 'timeout'
+      message: string
+      /** A re-fetch of the node's params has been asked for (to see FLASH_BOOTLOADER go back to 0). */
+      refetched?: boolean
+      /** The node ran it: FLASH_BOOTLOADER read back as 0 (it resets it only when it acts). */
+      acted?: boolean
+    }
+    | undefined
   >(undefined)
   useEffect(() => {
     if (bootloaderFlash?.status !== 'flashing') return
@@ -2738,17 +2748,72 @@ export function App() {
       const outcome = bootloaderFlashOutcome(entry.text)
       if (outcome) {
         setBootloaderFlash({ ...bootloaderFlash, status: outcome.ok ? 'ok' : 'failed', message: outcome.message })
+        // Re-pull the node's params: FLASH_BOOTLOADER is back to 0.
+        canBackend?.fetchAllCanBusParameters(bootloaderFlash.nodeId)
         return
       }
     }
   }, [canNodeLogs.length, canNodeLogs, bootloaderFlash])
+  // After a node firmware update the node reboots into the new firmware, whose
+  // parameter set can be a different one entirely (a rangefinder build's 14 vs
+  // a full AP_Periph's ~500). Once it is back -- seen again with an uptime that
+  // started after the update finished -- pull its parameters again.
+  const refetchAfterUpdateRef = useRef<{ nodeId: number; completedAtMs: number } | undefined>(undefined)
+  useEffect(() => {
+    const update = canBus.firmwareUpdate
+    if (update?.status === 'completed' && refetchAfterUpdateRef.current?.nodeId !== update.nodeId) {
+      refetchAfterUpdateRef.current = { nodeId: update.nodeId, completedAtMs: Date.now() }
+    }
+  }, [canBus.firmwareUpdate])
+  useEffect(() => {
+    const pending = refetchAfterUpdateRef.current
+    if (!pending) return
+    const node = canBus.nodes.find((entry) => entry.nodeId === pending.nodeId)
+    if (!node || node.uptimeSec === undefined) return
+    const sinceUpdateSec = (Date.now() - pending.completedAtMs) / 1000
+    // Rebooted: its uptime is younger than the time since the update finished.
+    if (node.lastSeenAtMs > pending.completedAtMs && node.uptimeSec <= sinceUpdateSec + 2) {
+      refetchAfterUpdateRef.current = undefined
+      canBackend?.fetchAllCanBusParameters(pending.nodeId)
+    } else if (sinceUpdateSec > 120) {
+      refetchAfterUpdateRef.current = undefined
+    }
+  }, [canBus.nodes, canBackend])
+  // The node's own result message can be lost on the way (a busy forwarded
+  // link drops frames), so also read FLASH_BOOTLOADER back: AP_Periph puts it
+  // to 0 only when it runs the update.
+  useEffect(() => {
+    if (bootloaderFlash?.status !== 'flashing' || bootloaderFlash.refetched) return
+    const timer = window.setTimeout(() => {
+      canBackend?.fetchAllCanBusParameters(bootloaderFlash.nodeId)
+      setBootloaderFlash((current) => (current?.status === 'flashing' ? { ...current, refetched: true } : current))
+    }, 6_000)
+    return () => window.clearTimeout(timer)
+    // canBackend is stable for the flash's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootloaderFlash?.status, bootloaderFlash?.refetched, bootloaderFlash?.nodeId])
+  const bootloaderTrigger = bootloaderFlash
+    ? canBus.nodes.find((node) => node.nodeId === bootloaderFlash.nodeId)?.parameters.find((entry) => entry.name === 'FLASH_BOOTLOADER')?.value
+    : undefined
+  useEffect(() => {
+    if (bootloaderFlash?.status !== 'flashing' || !bootloaderFlash.refetched || bootloaderFlash.acted) return
+    if (bootloaderTrigger?.tag === 'int64' && bootloaderTrigger.int64 === '0') {
+      setBootloaderFlash({ ...bootloaderFlash, acted: true, message: 'The node ran the update (FLASH_BOOTLOADER is back to 0); waiting for its result… keep it powered.' })
+    }
+  }, [bootloaderFlash, bootloaderTrigger])
   useEffect(() => {
     if (bootloaderFlash?.status !== 'flashing') return
     const timer = window.setTimeout(
       () =>
         setBootloaderFlash((current) =>
           current?.status === 'flashing'
-            ? { ...current, status: 'timeout', message: 'No answer from the node yet. Check Node messages; do not power it off until it reports.' }
+            ? {
+                ...current,
+                status: 'timeout',
+                message: current.acted
+                  ? 'The node ran the bootloader update, but its result never arrived (lost on the way). Run it again: an up-to-date bootloader answers "Bootloader unchanged".'
+                  : 'The node did not act on it (FLASH_BOOTLOADER still reads 1, or its params did not come back). Check the link, then try again.'
+              }
             : current
         ),
       30_000
