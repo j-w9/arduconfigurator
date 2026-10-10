@@ -34,6 +34,7 @@ import {
 } from '../view-models/can-bus-monitor'
 import { CanTopicTable, canTopicIdFilter, type CanTopicEntry } from '../view-models/can-topics'
 import { canLogEntryFromValue, type CanNodeLogEntry } from '../view-models/can-node-messages'
+import { assignPane, type PlotPaneHeight } from '../view-models/plot-workspace'
 import {
   canPlotSeriesKey,
   nextCanPlotColor,
@@ -143,6 +144,12 @@ export interface UseCanBusMonitorResult {
   addPlotSeries: (label: string, source: CanPlotSource) => string
   removePlotSeries: (key: string) => void
   clearPlotSeries: () => void
+  /** Which pane each series sits on (a series absent from it has a pane of its own). */
+  plotPaneOf: ReadonlyMap<string, string>
+  /** Move a series onto a pane, or (undefined) onto one of its own. */
+  movePlotSeries: (key: string, paneId: string | undefined) => void
+  plotPaneHeights: ReadonlyMap<string, PlotPaneHeight>
+  setPlotPaneHeight: (paneId: string, height: PlotPaneHeight) => void
   plotSamplesFor: (key: string) => CanPlotSamples | undefined
   /** "Now" for the plot's time window: the clock live, the play position in a log. */
   plotNowMs: number
@@ -310,6 +317,8 @@ export function useCanBusMonitor(options: {
   const logRef = useRef<{ frames: CanFrame[]; timeline: CanLogTimeline } | undefined>(undefined)
   const [playback, setPlayback] = useState<CanLogPlayback>({ mode: 'all', positionMs: 0, speed: 1 })
   const [plotSeries, setPlotSeries] = useState<readonly CanPlotSeries[]>([])
+  const [plotPaneOf, setPlotPaneOf] = useState<ReadonlyMap<string, string>>(new Map())
+  const [plotPaneHeights, setPlotPaneHeights] = useState<ReadonlyMap<string, PlotPaneHeight>>(new Map())
   useEffect(() => {
     activePlotSeries = plotSeries
     return () => {
@@ -623,12 +632,15 @@ export function useCanBusMonitor(options: {
 
   const removePlotSeries = useCallback((key: string) => {
     setPlotSeries((current) => current.filter((entry) => entry.key !== key))
+    setPlotPaneOf((current) => assignPane(current, key, undefined))
     live.current.plotSamples.delete(key)
     offline.current?.plotSamples.delete(key)
   }, [])
 
   const clearPlotSeries = useCallback(() => {
     setPlotSeries([])
+    setPlotPaneOf(new Map())
+    setPlotPaneHeights(new Map())
     live.current.plotSamples.clear()
     offline.current?.plotSamples.clear()
   }, [])
@@ -671,6 +683,11 @@ export function useCanBusMonitor(options: {
     addPlotSeries,
     removePlotSeries,
     clearPlotSeries,
+    plotPaneOf,
+    movePlotSeries: (key: string, paneId: string | undefined) => setPlotPaneOf((current) => assignPane(current, key, paneId)),
+    plotPaneHeights,
+    setPlotPaneHeight: (paneId: string, height: PlotPaneHeight) =>
+      setPlotPaneHeights((current) => new Map(current).set(paneId, height)),
     plotSamplesFor: (key: string) => store.plotSamples.get(key),
     plotNowMs,
     showTopicFrames: (topic: CanTopicEntry) => {

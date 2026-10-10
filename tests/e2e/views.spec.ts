@@ -6682,6 +6682,44 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(page.getByTestId('mavlink-plots')).toHaveCount(0)
   })
 
+  test('MAVLink Inspector draws a predefined graph live and overlays a field plot on it', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await enableExpertMode(page)
+    await page.getByTestId('view-button-mavlink-inspector').click()
+    await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
+
+    // MAVExplorer's library: the demo carries ATTITUDE, so Roll and Pitch can draw.
+    const graphs = page.getByTestId('mavlink-graphs')
+    await graphs.locator('summary').click()
+    await page.getByTestId('mavlink-graphs-search').fill('roll pitch')
+    const open = page.getByTestId('mavlink-graph-open-Attitude/Roll and Pitch')
+    await expect(open).toBeEnabled({ timeout: 10_000 })
+    await open.click()
+    await expect(page.getByTestId('mavlink-graph-close-Attitude/Roll and Pitch')).toHaveText('Plotted')
+
+    // One chart, two lines (roll and pitch in degrees), values arriving.
+    const lines = page.getByTestId('mavlink-graph-line')
+    await expect(lines).toHaveCount(2)
+    await expect(page.getByTestId('mavlink-chart-pane')).toHaveCount(1)
+    await expect.poll(async () => (await lines.first().textContent()) ?? '', { timeout: 10_000 }).toMatch(/degrees\(ATTITUDE\.roll\)\s*-?\d/)
+    await expect(page.getByTestId('mavlink-chart-pane').first().locator('canvas').first()).toBeVisible()
+
+    // A field plot starts on its own chart; dragged onto the graph's, it overlays there.
+    const mavTable = page.getByTestId('mavlink-inspector-table')
+    await mavTable.locator('[data-testid^="mavlink-row-"]').first().getByRole('button').first().click()
+    await page.locator('[data-testid^="mavlink-field-graph-"]').first().click()
+    const panes = page.getByTestId('mavlink-chart-pane')
+    await expect(panes).toHaveCount(2)
+    await page.locator('.mavlink-plot-row[data-testid^="mavlink-plot-"]').first().dragTo(panes.nth(1))
+    await expect(panes).toHaveCount(1)
+
+    // Closing the graph takes its lines away.
+    await page.getByTestId('mavlink-graph-close-Attitude/Roll and Pitch').click()
+    await expect(lines).toHaveCount(0)
+  })
+
   test('CAN tab manages a device: param grid, restart, ESC telemetry', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')

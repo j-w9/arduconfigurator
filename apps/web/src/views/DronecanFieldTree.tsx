@@ -3,6 +3,8 @@
 
 import type { ReactNode } from 'react'
 
+import { plotDragProps } from '../plot/PlotPanes'
+
 import type { DronecanFieldNode } from '../view-models/dronecan-field-tree'
 
 export function DronecanFieldTree({
@@ -10,7 +12,8 @@ export function DronecanFieldTree({
   depth = 0,
   onPlot,
   isPlotted,
-  onUnplot
+  onUnplot,
+  dragPayload
 }: {
   nodes: readonly DronecanFieldNode[]
   depth?: number
@@ -19,10 +22,16 @@ export function DronecanFieldTree({
   isPlotted?: (node: DronecanFieldNode) => boolean
   /** Take a plotted field off the plot again (its button reads "Plotted"). */
   onUnplot?: (node: DronecanFieldNode) => void
+  /** Let a plottable field be dragged onto a plot pane, carrying this. */
+  dragPayload?: (node: DronecanFieldNode) => string | undefined
 }): ReactNode {
   // Plot, or (once plotted) take it off again.
   const toggle = (node: DronecanFieldNode) => (isPlotted?.(node) ? onUnplot?.(node) : onPlot?.(node))
   const plotted = (node: DronecanFieldNode) => isPlotted?.(node) ?? false
+  const leafDrag = (node: DronecanFieldNode) => {
+    const payload = node.plottable ? dragPayload?.(node) : undefined
+    return payload ? { ...plotDragProps(payload), title: 'Drag onto a chart' } : {}
+  }
   return (
     <ul className="can-monitor__tree" role={depth === 0 ? 'tree' : 'group'}>
       {nodes.map((entry, index) => (
@@ -33,10 +42,10 @@ export function DronecanFieldTree({
                 <span className="can-monitor__tree-key" title={entry.typeLabel}>{entry.label}</span>
                 <span className="can-monitor__dim"> {entry.typeLabel.includes('.') ? entry.typeLabel.slice(entry.typeLabel.lastIndexOf('.') + 1) : `${entry.children.length} items`}</span>
               </summary>
-              <DronecanFieldTree nodes={entry.children} depth={depth + 1} onPlot={onPlot} isPlotted={isPlotted} onUnplot={onUnplot} />
+              <DronecanFieldTree nodes={entry.children} depth={depth + 1} onPlot={onPlot} isPlotted={isPlotted} onUnplot={onUnplot} dragPayload={dragPayload} />
             </details>
           ) : (
-            <span className="can-monitor__tree-leaf">
+            <span className="can-monitor__tree-leaf" {...leafDrag(entry)}>
               <span className="can-monitor__tree-key" title={entry.typeLabel}>{entry.label}</span>
               <span className="can-monitor__tree-value can-monitor__mono">{entry.text ?? ''}</span>
               {entry.meaning ? <span className="can-monitor__tree-meaning">{entry.meaning}</span> : null}

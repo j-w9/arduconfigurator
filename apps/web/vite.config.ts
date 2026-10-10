@@ -67,6 +67,7 @@ export default defineConfig({
       '@arduconfig/ardupilot-core': fileURLToPath(new URL('packages/ardupilot-core/src/index.ts', root)),
       '@arduconfig/param-metadata': fileURLToPath(new URL('packages/param-metadata/src/index.ts', root)),
       '@arduconfig/log-analysis': fileURLToPath(new URL('packages/log-analysis/src/index.ts', root)),
+      '@arduconfig/plot-core': fileURLToPath(new URL('packages/plot-core/src/index.ts', root)),
       '@arduconfig/ui-kit': fileURLToPath(new URL('packages/ui-kit/src/index.tsx', root))
     }
   },

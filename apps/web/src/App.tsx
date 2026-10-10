@@ -291,6 +291,8 @@ import { ElrsFlasher, type ElrsFlasherNotice } from './firmware/ElrsFlasher'
 import { flashElrsReceiver, type ElrsFlashProgress } from './firmware/web-serial-esptool'
 import { patchElrsFirmwareOptions } from './view-models/elrs-firmware-options'
 import { MavlinkInspectorView } from './views/MavlinkInspector'
+import { MavlinkPlotWorkspace } from './views/MavlinkPlotWorkspace'
+import { LIVE_GRAPH_WINDOW_S, MAX_LIVE_GRAPHS, useMavlinkPlotWorkspace } from './hooks/use-mavlink-plot-workspace'
 import { intervalUsForRate } from './view-models/mavlink-inspector'
 import { MAX_MAVLINK_PLOTS, useMavlinkInspector } from './hooks/use-mavlink-inspector'
 import { CanDeviceInspectorView, type DronecanFirmwareOnlineSource } from './views/CanDeviceInspector'
@@ -2664,6 +2666,8 @@ export function App() {
     downloadRecording: downloadMavlinkInspectorRecording,
     exportPlotCsv: exportMavlinkInspectorPlotCsv
   } = useMavlinkInspector(runtime, activeViewId === 'mavlink-inspector')
+  // The Inspector's plots: MAVExplorer graphs over the live link, and how its charts group.
+  const mavlinkPlotWorkspace = useMavlinkPlotWorkspace(runtime, activeViewId === 'mavlink-inspector')
   // The CAN tab's bus: a USB-CAN adapter (SLCAN) while one is open, else the
   // autopilot's forwarding. Both drive the same CAN surface under the same
   // method names; DroneNet (Networking) stays on the autopilot.
@@ -10634,6 +10638,11 @@ export function App() {
                     onPlotField={plotCanField}
                     isPlotted={isCanFieldPlotted}
                     onUnplotField={unplotCanField}
+                    onAddSeries={canBusMonitor.addPlotSeries}
+                    paneOf={canBusMonitor.plotPaneOf}
+                    paneHeights={canBusMonitor.plotPaneHeights}
+                    onMoveSeries={canBusMonitor.movePlotSeries}
+                    onPaneHeight={canBusMonitor.setPlotPaneHeight}
                   />
                 ),
                 send: isExpertMode ? (
@@ -10877,6 +10886,23 @@ export function App() {
           onRemovePlot={removeMavlinkInspectorPlot}
           onExportPlotCsv={exportMavlinkInspectorPlotCsv}
           maxPlots={MAX_MAVLINK_PLOTS}
+          plotWorkspace={
+            <MavlinkPlotWorkspace
+              plots={mavlinkInspectorPlots}
+              onRemovePlot={removeMavlinkInspectorPlot}
+              onExportPlotCsv={exportMavlinkInspectorPlotCsv}
+              graphs={mavlinkPlotWorkspace.graphs}
+              openGraphs={mavlinkPlotWorkspace.open}
+              maxGraphs={MAX_LIVE_GRAPHS}
+              onOpenGraph={mavlinkPlotWorkspace.openGraph}
+              onCloseGraph={mavlinkPlotWorkspace.closeGraph}
+              paneOf={mavlinkPlotWorkspace.paneOf}
+              paneHeights={mavlinkPlotWorkspace.paneHeights}
+              onMoveSeries={mavlinkPlotWorkspace.moveSeries}
+              onPaneHeight={mavlinkPlotWorkspace.setPaneHeight}
+              windowSeconds={LIVE_GRAPH_WINDOW_S}
+            />
+          }
         />
       ) : null}
 

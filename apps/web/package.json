@@ -20,6 +20,7 @@
     "@arduconfig/firmware-flash": "1.1.1",
     "@arduconfig/log-analysis": "0.1.0",
     "@arduconfig/param-metadata": "1.1.1",
+    "@arduconfig/plot-core": "0.1.0",
     "@arduconfig/protocol-mavlink": "1.1.1",
     "@arduconfig/protocol-msp": "1.0.0",
     "@arduconfig/transport": "1.1.1",

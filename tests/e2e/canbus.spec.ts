@@ -480,7 +480,27 @@ test.describe('CAN tab: Devices, Messages, Plot', () => {
     // ESC 1 alone: a steady ~5000 rpm (the demo's 5030 + jitter), not four ESCs mixed.
     await expect.poll(async () => Number(await series.nth(0).getByTestId('can-plot-last').textContent()), { timeout: 15_000 }).toBeGreaterThan(4900)
     await expect.poll(async () => Number(await series.nth(1).getByTestId('can-plot-last').textContent()), { timeout: 15_000 }).toBeGreaterThan(900)
-    await expect(series.nth(0).locator('canvas').first()).toBeVisible()
+    const panes = page.getByTestId('can-plot-pane')
+    await expect(panes).toHaveCount(2)
+    await expect(panes.nth(0).locator('canvas').first()).toBeVisible()
+
+    // Drag the bytes series onto the rpm chart: one chart, both lines.
+    await series.nth(1).dragTo(panes.nth(0))
+    await expect(panes).toHaveCount(1)
+    await expect(panes.nth(0).getByTestId('can-plot-series')).toHaveCount(2)
+    // And back out onto a chart of its own.
+    await panes.nth(0).getByTestId('can-plot-series').nth(1).dragTo(page.getByTestId('can-plot-new-pane'))
+    await expect(panes).toHaveCount(2)
+
+    // A saved layout brings the series and their grouping back.
+    await series.nth(1).dragTo(panes.nth(0))
+    await page.getByTestId('can-plot-layout-name').fill('ESC check')
+    await page.getByTestId('can-plot-layout-save').click()
+    await page.getByRole('button', { name: 'Clear all' }).click()
+    await expect(page.getByTestId('can-plot-empty')).toBeVisible()
+    await page.getByTestId('can-plot-layouts').selectOption('open:ESC check')
+    await expect(series).toHaveCount(2)
+    await expect(panes).toHaveCount(1)
   })
 })
 

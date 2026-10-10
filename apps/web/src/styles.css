@@ -17232,10 +17232,6 @@ details.bf-gui-box:not([open]) > summary::after {
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
-.mavlink-inspector__plot-actions {
-  display: inline-flex;
-  gap: 6px;
-}
 .mavlink-inspector__request-id {
   width: 84px;
 }
@@ -17481,45 +17477,6 @@ button.mavlink-inspector__sent-row {
   opacity: 1;
   border-color: var(--accent, var(--primary-500));
   color: var(--accent, var(--primary-500));
-}
-.mavlink-inspector__plots {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 10px;
-}
-.mavlink-inspector__plot {
-  border: 1px solid var(--surface-300);
-  border-radius: var(--radius-md);
-  padding: 8px 10px;
-  background: var(--surface-100, rgba(var(--edge-rgb), 0.02));
-}
-.mavlink-inspector__plot-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: 4px;
-}
-.mavlink-inspector__plot-title {
-  font-family: var(--font-data);
-  font-size: var(--text-sm);
-  color: var(--accent, var(--primary-500));
-  word-break: break-word;
-}
-.mavlink-inspector__plot-svg {
-  width: 100%;
-  height: 60px;
-  color: var(--accent, var(--primary-500));
-  display: block;
-}
-.mavlink-inspector__plot-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 4px;
-  font-family: var(--font-data);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 @keyframes mavlink-field-flash {
   from {
@@ -22225,10 +22182,14 @@ button.mavlink-inspector__sent-row {
   gap: var(--space-2);
 }
 .can-plot__series {
-  padding: 8px 10px 4px;
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-lg);
-  background: var(--bg-panel);
+  padding: 2px 0;
+}
+.can-plot__layout {
+  display: flex;
+  gap: 4px;
+}
+.can-plot__layout input {
+  width: 120px;
 }
 .can-plot__series-head {
   display: flex;
@@ -23239,4 +23200,222 @@ button.mavlink-inspector__sent-row {
   min-width: 12ch;
   word-break: normal;
   overflow-wrap: anywhere;
+}
+
+/* ---- Plot panes (plot/PlotPanes.tsx): CAN ▸ Plot and the MAVLink Inspector ---- */
+.plot-panes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.plot-panes__pane {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+}
+.plot-panes__pane.is-drop,
+.plot-panes__new.is-drop {
+  border-color: var(--border-accent);
+  background: var(--bg-panel-soft);
+}
+.plot-panes__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.plot-panes__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.plot-panes__rows > [draggable='true'] {
+  cursor: grab;
+}
+.plot-panes__heights {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.plot-panes__heights button {
+  padding: 1px 7px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.plot-panes__heights button.is-active {
+  background: var(--bg-panel-soft);
+  color: var(--text);
+}
+.plot-panes__chart {
+  width: 100%;
+  min-width: 0;
+}
+.plot-panes__chart .u-wrap {
+  max-width: 100%;
+}
+.plot-panes__new {
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-dim);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+/* ---- MAVLink Inspector plots (views/MavlinkPlotWorkspace.tsx) ---- */
+.mavlink-plot-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.mavlink-plot-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: var(--text-xs);
+}
+.mavlink-plot-row__swatch {
+  flex: none;
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+}
+.mavlink-plot-row__name {
+  min-width: 0;
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.mavlink-plot-row__value {
+  display: inline-block;
+  min-width: 11ch;
+  color: var(--text);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+.mavlink-plot-row__meta {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-muted);
+  font-family: var(--font-data);
+}
+.mavlink-graphs {
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+}
+.mavlink-graphs > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.mavlink-graphs__count {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+.mavlink-graphs__note {
+  margin: 6px 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.mavlink-graphs__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.mavlink-graphs__controls input[type='search'] {
+  flex: 1;
+  min-width: 0;
+  max-width: 320px;
+}
+.mavlink-graphs__controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+}
+.mavlink-graphs__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px 16px;
+  max-height: 320px;
+  margin-top: 8px;
+  overflow: auto;
+}
+.mavlink-graphs__group > strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.mavlink-graphs__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mavlink-graphs__name {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.mavlink-graphs__item.is-unavailable .mavlink-graphs__name {
+  color: var(--text-dim);
+}
+.mavlink-graphs__toggle {
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.mavlink-graphs__toggle.is-open {
+  border-color: var(--success, #3ecf8e);
+  color: var(--success, #3ecf8e);
+}
+.mavlink-graphs__toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.mavlink-graphs__about {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+  font-size: var(--text-sm);
+}
+.mavlink-graphs__about p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  line-height: 1.4;
 }

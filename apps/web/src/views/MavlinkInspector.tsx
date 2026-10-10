@@ -8,14 +8,13 @@
 // moment. Presentational — stats come from useMavlinkInspector via App; all
 // shaping lives in the mavlink-inspector view-model.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import type { MavlinkMessageStat, MavlinkPlot, MavlinkPlotSpec } from '../hooks/use-mavlink-inspector'
 import {
   buildMavlinkFieldRows,
-  buildPlotGeometry,
   buildSparklinePoints,
   classifyRowHealth,
   describeMessageRequestOutcome,
@@ -24,7 +23,6 @@ import {
   filterMavlinkStats,
   filterMavlinkStatsBySource,
   formatBytesPerSec,
-  formatPlotValue,
   groupMavlinkStatsBySource,
   isRowStale,
   listMavlinkSources,
@@ -79,6 +77,8 @@ export interface MavlinkInspectorViewProps {
   onExportPlotCsv?: (key: string) => void
   /** Cap on simultaneous plots, surfaced when the limit is reached. */
   maxPlots?: number
+  /** The plots themselves -- field plots and predefined graphs on shared charts: a slot. */
+  plotWorkspace?: ReactNode
 }
 
 function ageLabel(lastSeenMs: number): string {
@@ -384,75 +384,6 @@ function MavlinkRequestControl({
   )
 }
 
-const PLOT_WIDTH = 240
-const PLOT_HEIGHT = 60
-
-/** One live field plot: an autoscaling inline-SVG line chart + read-outs. */
-function MavlinkPlotChart({
-  plot,
-  onRemove,
-  onExportCsv
-}: {
-  plot: MavlinkPlot
-  onRemove?: (key: string) => void
-  onExportCsv?: (key: string) => void
-}) {
-  const geometry = buildPlotGeometry(plot.samples, PLOT_WIDTH, PLOT_HEIGHT)
-  return (
-    <div className="mavlink-inspector__plot" data-testid={`mavlink-plot-${plot.key}`}>
-      <div className="mavlink-inspector__plot-head">
-        <span className="mavlink-inspector__plot-title">
-          {plot.systemId}:{plot.componentId} · {plot.type}.{plot.field}
-        </span>
-        <span className="mavlink-inspector__plot-actions">
-          {onExportCsv ? (
-            <button
-              type="button"
-              className="mavlink-inspector__field-copy"
-              onClick={() => onExportCsv(plot.key)}
-              disabled={plot.samples.length === 0}
-              data-testid={`mavlink-plot-csv-${plot.key}`}
-            >
-              CSV
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="mavlink-inspector__field-copy"
-            onClick={() => onRemove?.(plot.key)}
-            data-testid={`mavlink-plot-remove-${plot.key}`}
-          >
-            remove
-          </button>
-        </span>
-      </div>
-      <svg
-        className="mavlink-inspector__plot-svg"
-        viewBox={`0 0 ${PLOT_WIDTH} ${PLOT_HEIGHT}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={`${plot.type}.${plot.field} over time`}
-      >
-        {geometry.points ? (
-          <polyline
-            points={geometry.points}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            vectorEffect="non-scaling-stroke"
-          />
-        ) : null}
-      </svg>
-      <div className="mavlink-inspector__plot-meta">
-        <span data-testid={`mavlink-plot-current-${plot.key}`}>now {formatPlotValue(geometry.current)}</span>
-        <span>min {formatPlotValue(geometry.min)}</span>
-        <span>max {formatPlotValue(geometry.max)}</span>
-        <span>{geometry.sampleCount} pts</span>
-      </div>
-    </div>
-  )
-}
-
 export function MavlinkInspectorView({
   stats,
   sentStats = [],
@@ -473,7 +404,7 @@ export function MavlinkInspectorView({
   plots = [],
   onAddPlot,
   onRemovePlot,
-  onExportPlotCsv,
+  plotWorkspace,
   maxPlots
 }: MavlinkInspectorViewProps) {
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -643,18 +574,7 @@ export function MavlinkInspectorView({
             <MavlinkRequestControl connected={connected} onRequestMessage={onRequestMessage} />
           ) : null}
 
-          {plots.length > 0 ? (
-            <div className="mavlink-inspector__plots" data-testid="mavlink-plots">
-              {plots.map((plot) => (
-                <MavlinkPlotChart
-                  key={plot.key}
-                  plot={plot}
-                  onRemove={onRemovePlot}
-                  onExportCsv={onExportPlotCsv}
-                />
-              ))}
-            </div>
-          ) : null}
+          {plotWorkspace}
 
           {!connected && stats.length === 0 ? (
             <p className="telemetry-note">Connect to a vehicle to see the live MAVLink message stream.</p>
