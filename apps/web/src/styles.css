@@ -23154,3 +23154,22 @@ button.mavlink-inspector__sent-row {
 .dronecan-inspector__bootloader-status.is-ok { color: var(--success); }
 .dronecan-inspector__bootloader-status.is-failed,
 .dronecan-inspector__bootloader-status.is-timeout { color: var(--danger); }
+.can-bus-params__tags {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 6px;
+}
+.can-bus-params__tag {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+/* Sidebar: the labels sit a little in from the edge (same sidebar width). */
+.workspace-nav--flat .workspace-nav__item {
+  padding-left: 18px;
+}

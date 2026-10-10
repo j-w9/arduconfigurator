@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest'
 
-import { AP_PERIPH_PARAM_METADATA } from './ap-periph-param-metadata'
+import { AP_PERIPH_CURATED_METADATA, loadApPeriphParamMetadata } from './ap-periph-param-metadata'
 import { AP_PERIPH_GENERATED_PARAMS, AP_PERIPH_PARAMS_ARDUPILOT_COMMIT } from './generated/ap-periph-params'
 
 const optionLabel = (name: string, value: number) =>
   AP_PERIPH_PARAM_METADATA[name]?.options?.find((option) => option.value === value)?.label
 
-describe('AP_PERIPH_PARAM_METADATA (generated from ArduPilot + curated overlay)', () => {
+const AP_PERIPH_PARAM_METADATA = await loadApPeriphParamMetadata()
+
+describe('AP_Periph metadata (generated from ArduPilot + curated overlay, loaded on first use)', () => {
+  it('the curated entries are there without loading, and win over the generated ones', () => {
+    expect(AP_PERIPH_CURATED_METADATA.CAN_NODE?.label).toBe('DroneCAN node ID')
+    expect(AP_PERIPH_PARAM_METADATA.CAN_NODE?.label).toBe('DroneCAN node ID')
+  })
+
   it('records the pinned ArduPilot commit and covers the whole AP_Periph param set', () => {
     expect(AP_PERIPH_PARAMS_ARDUPILOT_COMMIT).toMatch(/^[0-9a-f]{40}$/)
     expect(Object.keys(AP_PERIPH_GENERATED_PARAMS).length).toBeGreaterThan(2000)

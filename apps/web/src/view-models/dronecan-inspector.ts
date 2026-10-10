@@ -131,6 +131,14 @@ export interface DronecanParamRow {
   defaultLabel?: string
   /** Catalog description, for a tooltip. */
   description?: string
+  /** A bitmask's set bits by name. */
+  bitsLabel?: string
+  /** Suggested step for the value. */
+  step?: number
+  /** Takes effect only after the node reboots. */
+  rebootRequired?: boolean
+  /** Documented read-only. */
+  readOnly?: boolean
 }
 
 /** Build the editable parameter grid rows for one node, sorted by index
@@ -157,7 +165,11 @@ export function buildDronecanParamRows(
       editable: type !== 'empty',
       rangeLabel: meta.rangeLabel,
       defaultLabel: meta.defaultLabel,
-      description: meta.description
+      description: meta.description,
+      bitsLabel: meta.bitsLabel,
+      step: meta.step,
+      rebootRequired: meta.rebootRequired,
+      readOnly: meta.readOnly
     }
   })
 }

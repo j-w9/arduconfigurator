@@ -266,7 +266,8 @@ import type {
   SetupFlowSectionDescriptor,
   SetupFlowFollowUpDescriptor
 } from './app-types'
-import { AP_PERIPH_PARAM_METADATA } from './view-models/ap-periph-param-metadata'
+import { AP_PERIPH_CURATED_METADATA, loadApPeriphParamMetadata } from './view-models/ap-periph-param-metadata'
+import type { DronecanParamCatalogDef } from './view-models/dronecan-param-display'
 import { parseParamPck } from './view-models/param-pck'
 import { overridableInvalidParamIds, stageableDraftValues } from './view-models/parameter-diff-actions'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
@@ -2784,6 +2785,16 @@ export function App() {
   // the web build it degrades to `available: false` (local .bin still works).
   // The node's bootloader flashes RAW bytes, so we decode the server's .apj
   // (zlib image) down to the raw image before handing it to the Phase-2 update.
+  // A DroneCAN node's parameter metadata: AP_Periph's (generated from
+  // ArduPilot, loaded the first time a CAN surface opens), the curated entries
+  // until then, and ArduCopter's for anything AP_Periph does not document.
+  const [apPeriphMetadata, setApPeriphMetadata] = useState<Record<string, DronecanParamCatalogDef> | undefined>(undefined)
+  useEffect(() => {
+    if (apPeriphMetadata || (activeViewId !== 'can' && activeViewId !== 'networking')) return
+    void loadApPeriphParamMetadata().then(setApPeriphMetadata).catch(() => {})
+  }, [activeViewId, apPeriphMetadata])
+  const dronecanParamMetadata = (name: string) =>
+    apPeriphMetadata?.[name] ?? AP_PERIPH_CURATED_METADATA[name] ?? metadataCatalog.parameters[name]
   // The website's AP_Periph index (the deploy's /fw/periph-index.json), loaded
   // when the CAN tab first opens; a site without it keeps "desktop only".
   const [periphIndexRows, setPeriphIndexRows] = useState<FirmwareIndexRow[] | undefined>(undefined)
@@ -10353,7 +10364,7 @@ export function App() {
             onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
             onFetchAllParameters={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
             onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
-            paramMetadata={(name) => AP_PERIPH_PARAM_METADATA[name] ?? metadataCatalog.parameters[name]}
+            paramMetadata={dronecanParamMetadata}
             title="DroneNet peripherals"
           />
         }
@@ -10425,7 +10436,7 @@ export function App() {
         onRefreshNode={(nodeId) => { canBackend?.refreshCanBusNode(nodeId) }}
         onFetchAllParameters={(nodeId) => { canBackend?.fetchAllCanBusParameters(nodeId) }}
         onApplyAndSave={(nodeId, writes) => { void canBackend?.applyAndSaveCanBusParameters(nodeId, writes) }}
-        paramMetadata={(name) => AP_PERIPH_PARAM_METADATA[name] ?? metadataCatalog.parameters[name]}
+        paramMetadata={dronecanParamMetadata}
         enablement={canEnablement.needsEnable ? { triggerLabels: canEnablement.triggerLabels } : undefined}
         onEnableCanBus={runtime ? () => { void handleEnableCanBus() } : undefined}
         enableBusy={busyAction === 'can:enable'}
@@ -10795,7 +10806,7 @@ export function App() {
             <CanDeviceInspectorView
               node={node}
               isSelf={canSelfNodeIds.includes(nodeId)}
-              paramMetadata={(name) => AP_PERIPH_PARAM_METADATA[name] ?? metadataCatalog.parameters[name]}
+              paramMetadata={dronecanParamMetadata}
               draftValues={canDevicePopouts.draftValues}
               onDraftChange={canDevicePopouts.setDraft}
               onDropDraft={canDevicePopouts.dropDraft}

@@ -921,6 +921,16 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                   <td title={row.description}>
                     <code>{row.name}</code>
                     {row.label !== row.name ? <small className="can-bus-params__label">{row.label}</small> : null}
+                    {row.rebootRequired || row.readOnly ? (
+                      <span className="can-bus-params__tags">
+                        {row.rebootRequired ? (
+                          <span className="can-bus-params__tag" title="Takes effect after the node reboots" data-testid={`can-bus-param-reboot-${nodeId}-${row.name}`}>
+                            reboot
+                          </span>
+                        ) : null}
+                        {row.readOnly ? <span className="can-bus-params__tag">read-only</span> : null}
+                      </span>
+                    ) : null}
                   </td>
                   <td>
                     {row.editable ? (
@@ -929,6 +939,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                         value={displayed}
                         disabled={updateInProgress}
                         onChange={(event) => onDraftChange(nodeId, row.name, event.target.value)}
+                        title={row.step !== undefined ? `Step ${row.step}` : undefined}
                         className={draftInvalid ? 'can-bus-params__input--invalid' : undefined}
                         data-testid={`can-bus-param-input-${nodeId}-${row.name}`}
                       />
@@ -937,6 +948,12 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                     )}
                     {row.enumLabel && draft === undefined ? (
                       <small className="can-bus-params__enum">{row.enumLabel}</small>
+                    ) : null}
+                    {/* A bitmask: which bits the value sets, by name. */}
+                    {row.bitsLabel && draft === undefined ? (
+                      <small className="can-bus-params__enum" data-testid={`can-bus-param-bits-${nodeId}-${row.name}`}>
+                        {row.bitsLabel}
+                      </small>
                     ) : null}
                   </td>
                   <td>{row.type}</td>

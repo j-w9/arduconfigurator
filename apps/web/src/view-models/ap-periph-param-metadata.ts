@@ -1,5 +1,4 @@
 import type { DronecanParamCatalogDef } from './dronecan-param-display'
-import { AP_PERIPH_GENERATED_PARAMS } from './generated/ap-periph-params'
 
 // AP_Periph (DroneCAN peripheral) parameter metadata for the CAN/DroneCAN param
 // grids, used as a fallback after the FC catalog.
@@ -108,12 +107,29 @@ const CURATED_OVERLAY: Record<string, DronecanParamCatalogDef> = {
   }
 }
 
-function mergeAll(): Record<string, DronecanParamCatalogDef> {
-  const merged: Record<string, DronecanParamCatalogDef> = { ...AP_PERIPH_GENERATED_PARAMS }
+/** The hand-curated entries alone: in the main bundle, so a node's grid has
+ *  its best-known labels at once while the generated table loads. */
+export const AP_PERIPH_CURATED_METADATA: Readonly<Record<string, DronecanParamCatalogDef>> = CURATED_OVERLAY
+
+/** The generated table with the curated overlay on top, field by field. */
+export function mergeApPeriphMetadata(
+  generated: Readonly<Record<string, DronecanParamCatalogDef>>
+): Record<string, DronecanParamCatalogDef> {
+  const merged: Record<string, DronecanParamCatalogDef> = { ...generated }
   for (const [name, curated] of Object.entries(CURATED_OVERLAY)) {
-    merged[name] = { ...AP_PERIPH_GENERATED_PARAMS[name], ...curated }
+    merged[name] = { ...generated[name], ...curated }
   }
   return merged
 }
 
-export const AP_PERIPH_PARAM_METADATA: Record<string, DronecanParamCatalogDef> = mergeAll()
+let loading: Promise<Record<string, DronecanParamCatalogDef>> | undefined
+
+/**
+ * Every AP_Periph param (generated + curated), loaded on first use: the
+ * generated table is ~46 KB gzipped and only the CAN surfaces need it, so it
+ * is its own chunk rather than part of the app's first load.
+ */
+export function loadApPeriphParamMetadata(): Promise<Record<string, DronecanParamCatalogDef>> {
+  loading ??= import('./generated/ap-periph-params').then((module) => mergeApPeriphMetadata(module.AP_PERIPH_GENERATED_PARAMS))
+  return loading
+}
