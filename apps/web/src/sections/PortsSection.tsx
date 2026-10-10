@@ -10,9 +10,7 @@ import {
   ARDUCOPTER_SERIAL_OPTION_BIT_LABELS,
   arducopterSerialBaudRate,
   arducopterSerialProtocolOptions,
-  encodeArducopterSerialBaud,
-  formatArducopterSerialProtocol,
-  formatArducopterSerialRtscts
+  encodeArducopterSerialBaud
 } from '@arduconfig/param-metadata'
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import { derivePortLiveness } from '../view-models/port-liveness'
@@ -418,7 +416,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                               </option>
                                             ))}
                                           </select>
-                                          <small>{protocolParameter ? formatArducopterSerialProtocol(Number(editedValues[protocolParameter.id] ?? port.protocolValue)) : port.protocolLabel}</small>
                                           {(() => {
                                             const note = pairingNoteForSerialProtocol(
                                               Number(editedValues[protocolParameter.id] ?? port.protocolValue)
@@ -524,7 +521,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
                                               </option>
                                             ))}
                                           </select>
-                                          <small>{formatArducopterSerialRtscts(Number(editedValues[flowControlParameter.id] ?? port.flowControlValue))}</small>
                                         </label>
                                       ) : (
                                         <div className="ports-matrix-row__readout">{port.flowControlLabel ?? 'N/A'}</div>
