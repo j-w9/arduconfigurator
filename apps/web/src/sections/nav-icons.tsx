@@ -8,10 +8,19 @@
 //   permission notice appear in all copies. THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR
 //   DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE.
 // Copied as markup (not a dependency) for the few icons the sidebar uses.
+// propeller, servo, goggles and transmitter are drawn for this app (GPL-3.0,
+// like the rest of it) on Lucide's 24-unit grid and stroke; Lucide has none.
 
 import type { ReactElement } from 'react'
 
 const ICON_MARKUP: Record<string, string> = {
+  'propeller': '<circle cx="12" cy="12" r="1.8" /> <path d="M13.3 10.4C13.6 6.6 16.4 3 19.4 3c1.6 0 1.8 1.4 1.3 3-1 3.1-3.9 4.9-7.4 4.4z" /> <path d="M10.7 13.6c-.3 3.8-3.1 7.4-6.1 7.4-1.6 0-1.8-1.4-1.3-3 1-3.1 3.9-4.9 7.4-4.4z" />',
+  'servo': '<rect x="5" y="10" width="14" height="10" rx="1.5" /> <path d="M2 14h3" /> <path d="M19 14h3" /> <circle cx="9" cy="10" r="2" /> <path d="m10.7 9 4.8-4.5" />',
+  'goggles': '<path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-4l-2-2h-2l-2 2H5a2 2 0 0 1-2-2z" /> <path d="M1 11.5h2" /> <path d="M21 11.5h2" />',
+  'transmitter': '<rect x="2" y="9" width="20" height="12" rx="3" /> <circle cx="7.5" cy="15" r="2.5" /> <circle cx="16.5" cy="15" r="2.5" /> <path d="M7.5 15h.01" /> <path d="M16.5 15h.01" /> <path d="M5 9V3" /> <path d="M10.5 9V7" /> <path d="M13.5 9V7" />',
+  'history': '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /> <path d="M3 3v5h5" /> <path d="M12 7v5l4 2" />',
+  'house': '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /> <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />',
+  'settings': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /> <circle cx="12" cy="12" r="3" />',
   'activity': '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />',
   'battery-charging': '<path d="M15 7h1a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-2" /> <path d="M6 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h1" /> <path d="m11 7-3 5h4l-3 5" /> <line x1="22" x2="22" y1="11" y2="13" />',
   'bookmark': '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />',
@@ -41,23 +50,23 @@ const ICON_MARKUP: Record<string, string> = {
 }
 
 const VIEW_ICON: Record<string, string> = {
-  'setup': 'activity',
+  'setup': 'house',
   'guided-setup': 'compass',
-  'config': 'sliders-horizontal',
+  'config': 'settings',
   'peripherals': 'plug',
   'calibration': 'crosshair',
   'ports': 'cable',
-  'receiver': 'radio',
+  'receiver': 'transmitter',
   'modes': 'toggle-right',
-  'motors': 'fan',
-  'servos': 'rotate-cw',
+  'motors': 'propeller',
+  'servos': 'servo',
   'power': 'battery-charging',
   'failsafe': 'shield-alert',
-  'osd': 'monitor',
-  'vtx': 'monitor',
-  'tuning': 'gauge',
+  'osd': 'goggles',
+  'vtx': 'goggles',
+  'tuning': 'sliders-horizontal',
   'presets': 'bookmark',
-  'snapshots': 'camera',
+  'snapshots': 'history',
   'logs': 'file-text',
   'parameters': 'list',
   'can': 'network',
