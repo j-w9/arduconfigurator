@@ -119,7 +119,8 @@ export function CanMessagesView({ topics, scope, nodeLabel, onShowFrames, live, 
                     <span className="can-messages__chevron" aria-hidden="true">
                       ▸
                     </span>
-                    {name}
+                    {/* Its own box, so a long name ends in an ellipsis instead of being cut. */}
+                    <span className="can-messages__name-text">{name}</span>
                   </button>
                   {scope === 'bus' ? <span className="can-messages__route">{route(topic, nodeLabel)}</span> : null}
                   <span className={`can-messages__kind can-messages__kind--${topic.kind}`}>{kindLabel(topic)}</span>

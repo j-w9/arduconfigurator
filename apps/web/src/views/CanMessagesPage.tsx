@@ -76,7 +76,7 @@ export function CanMessagesPage(props: CanMessagesPageProps): ReactNode {
           <input
             type="search"
             value={search}
-            placeholder="type name, e.g. esc"
+            placeholder="Message name"
             onChange={(event) => setSearch(event.target.value)}
             data-testid="can-messages-search"
           />

@@ -34,6 +34,7 @@ import { buildCanBusStagedChanges, healthLabel, modeLabel } from '../view-models
 import { periphPickerOptions, periphPreselect } from '../view-models/dronecan-firmware-picker'
 import { dronecanNodeBoardId } from '@arduconfig/firmware-flash'
 import type { DronecanParamCatalogLookup } from '../view-models/dronecan-param-display'
+import { InfoDot } from './InfoDot'
 
 /**
  * Which parts of a device's inspector to render.
@@ -628,16 +629,6 @@ function NodeFirmwareUpdate(props: {
       {anotherUpdateActive ? (
         <p className="telemetry-note">Another node is updating — wait for it to finish.</p>
       ) : null}
-      <label className="dronecan-inspector__fwupdate-file">
-        <span>Image (.bin)</span>
-        <input
-          type="file"
-          accept=".bin,application/octet-stream"
-          disabled={disabled}
-          onChange={(event) => pickFile(event.target.files?.[0])}
-          data-testid={`dronecan-fwupdate-file-${nodeId}`}
-        />
-      </label>
 
       {/* ---- Find firmware online (desktop-only; matches the node to AP_Periph
               builds on firmware.ardupilot.org and stages the decoded image) ---- */}
@@ -727,6 +718,18 @@ function NodeFirmwareUpdate(props: {
           </div>
         )
       ) : null}
+
+      {/* After the lookup and its notes, which point down at it ("load it below"). */}
+      <label className="dronecan-inspector__fwupdate-file">
+        <span>Image (.bin)</span>
+        <input
+          type="file"
+          accept=".bin,application/octet-stream"
+          disabled={disabled}
+          onChange={(event) => pickFile(event.target.files?.[0])}
+          data-testid={`dronecan-fwupdate-file-${nodeId}`}
+        />
+      </label>
 
       {readError ? <p className="dronecan-inspector__fwupdate-error">{readError}</p> : null}
       {file ? (
@@ -822,6 +825,17 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
     // parent's job so an inline view and its popout clear together.
     onApplyAndSave(nodeId, writes)
   }
+
+  const detailList = (
+    <dl className="mavlink-inspector__fields can-device-inspector__detail" data-testid={`dronecan-node-detail-${nodeId}`}>
+      {buildDronecanNodeDetailRows(node).map((row) => (
+        <div key={row.label} className="mavlink-inspector__field-row">
+          <dt>{row.label}</dt>
+          <dd>{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
 
   return (
     <div className="can-bus-node__body" data-testid={`can-device-inspector-${nodeId}`}>
@@ -925,14 +939,13 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
       {shows('params') ? (
       <div className="can-bus-node__toolbar">
         <small>
-          Param fetch:{' '}
           {node.paramFetch.status === 'fetching'
-            ? `walking index ${node.paramFetch.nextIndex}…`
+            ? `Reading parameters… index ${node.paramFetch.nextIndex}`
             : node.paramFetch.status === 'complete'
-              ? `${node.parameters.length} parameters loaded`
+              ? `${node.parameters.length} parameter${node.parameters.length === 1 ? '' : 's'}`
               : node.paramFetch.status === 'stalled'
-                ? 'stalled — retry?'
-                : 'idle'}
+                ? 'Parameter read stalled. Re-fetch to retry.'
+                : 'Parameters not read yet'}
         </small>
         <div className="can-bus-node__toolbar-buttons">
           <button
@@ -990,7 +1003,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                 stagedChanges.some((change) => change.name === row.name && change.parsed === undefined)
               return (
                 <tr key={row.name} data-testid={`can-bus-param-${nodeId}-${row.name}`}>
-                  <td title={row.description}>
+                  <td className="can-bus-params__name-cell" title={row.description}>
                     <span className="can-bus-params__name">
                       <code>{row.name}</code>
                       {row.rebootRequired ? (
@@ -1005,7 +1018,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                         whole description is on hover. */}
                     {paramSummary(row) ? <small className="can-bus-params__summary">{paramSummary(row)}</small> : null}
                   </td>
-                  <td>
+                  <td className="can-bus-params__value">
                     {row.editable && row.options ? (
                       // Named values, as on the Parameters page: pick one.
                       <select
@@ -1047,9 +1060,9 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                       </small>
                     ) : null}
                   </td>
-                  <td>{row.type}</td>
-                  <td>{row.defaultLabel ?? '—'}</td>
-                  <td>{row.rangeLabel ?? '—'}</td>
+                  <td className="can-bus-params__meta" data-label="Type">{row.type}</td>
+                  <td className="can-bus-params__meta" data-label="Default">{row.defaultLabel ?? '—'}</td>
+                  <td className="can-bus-params__meta" data-label="Range">{row.rangeLabel ?? '—'}</td>
                 </tr>
               )
             })}
@@ -1061,25 +1074,25 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
 
       {/* ---- Identity detail ---- */}
       {shows('detail') ? (
-      <details className="can-device-inspector__detail-block" open={sections.length === 1}>
-        <summary data-testid={`can-device-detail-toggle-${nodeId}`}>Device detail</summary>
-        <dl className="mavlink-inspector__fields" data-testid={`dronecan-node-detail-${nodeId}`}>
-          {buildDronecanNodeDetailRows(node).map((row) => (
-            <div key={row.label} className="mavlink-inspector__field-row">
-              <dt>{row.label}</dt>
-              <dd>{row.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </details>
+        sections.length === 1 ? (
+          // Opened from its own Details button: no second disclosure to click.
+          detailList
+        ) : (
+          <details className="can-device-inspector__detail-block">
+            <summary data-testid={`can-device-detail-toggle-${nodeId}`}>Device detail</summary>
+            {detailList}
+          </details>
+        )
       ) : null}
 
       {/* ---- ESC telemetry for THIS device (popout only; the CAN tab shows one
               bus-wide table under the device list) ---- */}
       {shows('esc') && escTelemetry && escRows.length > 0 ? (
         <div className="dronecan-inspector__esc" data-testid={`can-device-esc-${nodeId}`}>
-          <h3>ESC telemetry</h3>
-          <p className="telemetry-note">Live uavcan.equipment.esc.Status from this node. Observe-only.</p>
+          <h4 className="dronecan-inspector__esc-title">
+            ESC telemetry
+            <InfoDot label="About ESC telemetry">Live uavcan.equipment.esc.Status from this node. Read-only.</InfoDot>
+          </h4>
           <div className="mavlink-inspector__table">
             <div className="dronecan-inspector__esc-row dronecan-inspector__esc-row--head">
               <span>ESC</span>

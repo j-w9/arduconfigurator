@@ -8,6 +8,7 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 
 import { PlotWorkspace } from '../plot/PlotWorkspace'
+import { InfoDot } from './InfoDot'
 import { plotDragProps, type PlotPaneModel, type PlotSeriesRow } from '../plot/PlotPanes'
 import type { PlotLane } from '../plot/PlotChart'
 import type { MavlinkMessageStat, MavlinkPlot, MavlinkPlotSpec } from '../hooks/use-mavlink-inspector'
@@ -232,9 +233,12 @@ function GraphsTab(
           {picked.unavailable ? <p className="plot-side-note">{picked.unavailable}</p> : null}
         </div>
       ) : (
+        // The provenance stays on screen; the how-to is a tap away.
         <p className="plot-side-note">
-          MAVExplorer's graphs (MAVProxy, GPLv3). Click a name to read what it shows. Under Show all, Request asks the FC to
-          stream what a graph is missing.
+          MAVExplorer's graphs (MAVProxy, GPLv3).{' '}
+          <InfoDot label="About the graph library" wide>
+            Click a name to read what it shows. Under Show all, Request asks the FC to stream what a graph is missing.
+          </InfoDot>
         </p>
       )}
       {[...categories.entries()].map(([category, entries]) => (

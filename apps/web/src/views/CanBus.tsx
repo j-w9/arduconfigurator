@@ -14,6 +14,7 @@ import type { DronecanParamCatalogLookup } from '../view-models/dronecan-param-d
 import { useCanNodeNames } from '../hooks/use-can-node-names'
 import { CanDeviceInspectorView, type CanDeviceSection, type CanDeviceExpertActions } from './CanDeviceInspector'
 import { CanEnablePrompt } from './CanEnablePrompt'
+import { InfoDot } from './InfoDot'
 
 // The single CAN surface. Mission Planner-equivalent DroneCAN workflow: connect
 // via MAV_CMD_CAN_FORWARD (so MAVLink stays alive on the same channel), discover
@@ -273,8 +274,12 @@ export function CanBusView(props: CanBusViewProps) {
   const escTable =
     escRows.length > 0 ? (
           <div className="dronecan-inspector__esc" data-testid="dronecan-esc-telemetry">
-            <h3>ESC telemetry</h3>
-            <p className="telemetry-note">Live uavcan.equipment.esc.Status per ESC index. Observe-only.</p>
+            <h4 className="dronecan-inspector__esc-title">
+              ESC telemetry
+              <InfoDot label="About ESC telemetry">
+                Live uavcan.equipment.esc.Status, one row per ESC index. Read-only.
+              </InfoDot>
+            </h4>
             <div className="mavlink-inspector__table" data-testid="dronecan-esc-table">
               <div className="dronecan-inspector__esc-row dronecan-inspector__esc-row--head">
                 <span>ESC</span>
@@ -320,15 +325,19 @@ export function CanBusView(props: CanBusViewProps) {
         ) : !isActive ? (
           <div className="can-bus-intro">
             <p>
-              Mission Planner-style DroneCAN inspector. Click <strong>Connect</strong> above and the configurator will:
+              Connect to a bus to find its DroneCAN nodes, then read and edit each node&rsquo;s parameters. The
+              autopilot forwards the bus over MAVLink with <code>MAV_CMD_CAN_FORWARD</code>.
             </p>
-            <ol>
-              <li>Send <code>MAV_CMD_CAN_FORWARD</code> to start forwarding the chosen bus.</li>
-              <li>Listen passively for <code>uavcan.protocol.NodeStatus</code> broadcasts from every node.</li>
-              <li>Issue <code>uavcan.protocol.GetNodeInfo</code> to populate name + HW/SW versions.</li>
-              <li>Walk each node's parameter table via <code>uavcan.protocol.param.GetSet</code>.</li>
-              <li>Let you edit values + persist with <code>uavcan.protocol.param.ExecuteOpcode</code>.</li>
-            </ol>
+            {/* The protocol walk-through is for the curious; it stays a click away. */}
+            <details>
+              <summary>How it works</summary>
+              <ol>
+                <li>Listen for <code>uavcan.protocol.NodeStatus</code> broadcasts from every node.</li>
+                <li>Ask each with <code>uavcan.protocol.GetNodeInfo</code> for its name and HW/SW versions.</li>
+                <li>Walk its parameter table with <code>uavcan.protocol.param.GetSet</code>.</li>
+                <li>Save edits on the node with <code>uavcan.protocol.param.ExecuteOpcode</code>.</li>
+              </ol>
+            </details>
           </div>
         ) : rows.length === 0 ? (
           adapter?.active ? (
@@ -418,86 +427,95 @@ export function CanBusView(props: CanBusViewProps) {
                         {customName ? `${row.label} · ` : ''}Node {row.nodeId}
                         {row.uptimeSec !== undefined ? ` · up ${row.uptimeSec}s` : ''}
                         {/* Its own fixed-width slot: the ticking age must not change
-                            the line's width (it pushed the buttons onto a new line). */}
+                            the line's width. */}
                         {node ? (
                           <>
                             {' · seen '}
                             <span className="can-bus-node__seen">{lastSeenLabel(node.lastSeenAtMs)}</span>
                           </>
                         ) : null}
-                        {row.hwVersion ? ` · HW ${row.hwVersion}` : ''}
-                        {row.swVersion ? ` · SW ${row.swVersion}` : ''}
-                        {row.gitHash ? ` · git ${row.gitHash}` : ''}
-                        {row.vendorStatusCode !== undefined ? ` · vss ${row.vendorStatusCode}` : ''}
                       </small>
-                      {row.hwUniqueId ? (
-                        <small className="can-bus-node__uid" data-testid={`can-bus-node-uid-${row.nodeId}`}>
-                          UID <code>{row.hwUniqueId}</code>
+                      {/* Versions + UID on a quieter data line of their own; each
+                          segment stays whole when the line wraps (the git hash was
+                          splitting from its label). The vendor status code lives
+                          in Details. */}
+                      {row.hwVersion || row.swVersion || row.gitHash || row.hwUniqueId ? (
+                        <small className="can-bus-node__ids">
+                          {row.hwVersion ? <span>HW {row.hwVersion}</span> : null}
+                          {row.swVersion ? <span>SW {row.swVersion}</span> : null}
+                          {row.gitHash ? <span>git {row.gitHash}</span> : null}
+                          {row.hwUniqueId ? (
+                            <span className="can-bus-node__uid" data-testid={`can-bus-node-uid-${row.nodeId}`}>
+                              UID <code>{row.hwUniqueId}</code>
+                            </span>
+                          ) : null}
                         </small>
                       ) : null}
                     </div>
-                    <div className="can-bus-node__status">
-                      <StatusBadge tone={row.tone}>
-                        {healthLabel(row.health)} · {modeLabel(row.mode)}
-                      </StatusBadge>
-                      {/* One button per surface. Each toggles its own box below
-                          the row, so the device's features are discoverable
-                          without opening a wall of panels. */}
-                      {(
-                        [
-                          { section: 'params' as const, label: `Params (${row.paramCount})`, testId: 'toggle' },
-                          { section: 'detail' as const, label: 'Details', testId: 'detail' },
-                          { section: 'esc' as const, label: 'Messages', testId: 'messages' },
-                          { section: 'actions' as const, label: 'Actions', testId: 'actions' }
-                        ] as const
-                      )
-                        // Restart/firmware is Expert-only upstream; without
-                        // those handlers the button would open an empty box.
-                        .filter((entry) => entry.section !== 'actions' || expertActions !== undefined)
-                        .map((entry) => {
-                          const isOpen = isExpanded && expandedNode?.section === entry.section
-                          return (
-                            <button
-                              key={entry.section}
-                              type="button"
-                              style={buttonStyle(isOpen ? 'primary' : undefined)}
-                              onClick={() =>
-                                setExpandedNode(
-                                  isOpen ? undefined : { nodeId: row.nodeId, section: entry.section }
-                                )
-                              }
-                              disabled={isPoppedOut}
-                              title={isPoppedOut ? 'This device is open in its own window.' : undefined}
-                              data-testid={`can-bus-node-${entry.testId}-${row.nodeId}`}
-                            >
-                              {entry.label}
-                            </button>
-                          )
-                        })}
-                      {popout ? (
-                        // window.open is called straight out of this click: a
-                        // popout opened from an effect (or any async hop) is
-                        // killed by the browser's popup blocker.
-                        <button
-                          type="button"
-                          style={buttonStyle()}
-                          onClick={() =>
-                            isPoppedOut
-                              ? popout.onClose(row.nodeId)
-                              : popout.onOpen(row.nodeId, customName ?? baseLabel)
-                          }
-                          title={
-                            isPoppedOut
-                              ? 'Close this device’s inspector window'
-                              : 'Open this device’s inspector in its own window'
-                          }
-                          data-testid={`can-bus-node-popout-${row.nodeId}`}
-                        >
-                          {isPoppedOut ? 'Close window' : 'Pop out'}
-                        </button>
-                      ) : null}
-                    </div>
+                    <StatusBadge tone={row.tone}>
+                      {healthLabel(row.health)} · {modeLabel(row.mode)}
+                    </StatusBadge>
                   </header>
+                  {/* One toggle per surface, on a row of their own under the
+                      identity so the name and versions get the card's full width.
+                      Each opens its own box below; Pop out sits apart at the end. */}
+                  <div className="can-bus-node__status" role="group" aria-label={`${customName ?? baseLabel} sections`}>
+                    {(
+                      [
+                        { section: 'params' as const, label: `Params (${row.paramCount})`, testId: 'toggle' },
+                        { section: 'detail' as const, label: 'Details', testId: 'detail' },
+                        { section: 'esc' as const, label: 'Messages', testId: 'messages' },
+                        { section: 'actions' as const, label: 'Actions', testId: 'actions' }
+                      ] as const
+                    )
+                      // Restart/firmware is Expert-only upstream; without
+                      // those handlers the button would open an empty box.
+                      .filter((entry) => entry.section !== 'actions' || expertActions !== undefined)
+                      .map((entry) => {
+                        const isOpen = isExpanded && expandedNode?.section === entry.section
+                        return (
+                          <button
+                            key={entry.section}
+                            type="button"
+                            style={buttonStyle(isOpen ? 'primary' : undefined)}
+                            aria-pressed={isOpen}
+                            onClick={() =>
+                              setExpandedNode(
+                                isOpen ? undefined : { nodeId: row.nodeId, section: entry.section }
+                              )
+                            }
+                            disabled={isPoppedOut}
+                            title={isPoppedOut ? 'This device is open in its own window.' : undefined}
+                            data-testid={`can-bus-node-${entry.testId}-${row.nodeId}`}
+                          >
+                            {entry.label}
+                          </button>
+                        )
+                      })}
+                    {popout ? (
+                      // window.open is called straight out of this click: a
+                      // popout opened from an effect (or any async hop) is
+                      // killed by the browser's popup blocker.
+                      <button
+                        type="button"
+                        className="can-bus-node__popout"
+                        style={buttonStyle()}
+                        onClick={() =>
+                          isPoppedOut
+                            ? popout.onClose(row.nodeId)
+                            : popout.onOpen(row.nodeId, customName ?? baseLabel)
+                        }
+                        title={
+                          isPoppedOut
+                            ? 'Close this device’s inspector window'
+                            : 'Open this device’s inspector in its own window'
+                        }
+                        data-testid={`can-bus-node-popout-${row.nodeId}`}
+                      >
+                        {isPoppedOut ? 'Close window' : 'Pop out'}
+                      </button>
+                    ) : null}
+                  </div>
                   {isPoppedOut ? (
                     <p className="can-bus-node__popped-out" data-testid={`can-bus-node-popped-out-${row.nodeId}`}>
                       Inspecting this device in its own window. Close that window to bring it back inline.

@@ -459,7 +459,7 @@ export function MavlinkInspectorView({
   const [page, setPage] = useState<'messages' | 'plot'>('messages')
 
   return (
-    <section className="grid one-up" id="setup-panel-mavlink-inspector">
+    <section className="grid one-up mavlink-inspector-tab" id="setup-panel-mavlink-inspector">
       <Panel
         title="MAVLink Inspector"
       >
@@ -541,64 +541,68 @@ export function MavlinkInspectorView({
                   <option value="recent">Last seen</option>
                 </select>
               </label>
+              {/* The same toolbar grammar as CAN ▸ Frames: red Pause, green Resume,
+                  a red-dot Record. Recording and export sit on this row too, so
+                  the table is not pushed down by a strip of three buttons. */}
               <button
                 type="button"
-                style={buttonStyle(paused ? 'primary' : 'secondary')}
+                className={`can-monitor__tool ${paused ? 'can-monitor__tool--resume' : 'can-monitor__tool--pause'}`}
                 onClick={onTogglePause}
                 aria-pressed={paused}
                 data-testid="mavlink-inspector-pause"
               >
                 {paused ? 'Resume' : 'Pause'}
               </button>
-              <button type="button" style={buttonStyle()} onClick={onClear} data-testid="mavlink-inspector-clear">
+              <button type="button" className="can-monitor__tool" onClick={onClear} data-testid="mavlink-inspector-clear">
                 Clear
               </button>
-            </div>
-
-            {onExportSnapshot || onStartRecording ? (
-              <div className="mavlink-inspector__export" data-testid="mavlink-inspector-export">
-                <span className="mavlink-inspector__export-title">Record &amp; export</span>
-                {onExportSnapshot ? (
-                  <button
-                    type="button"
-                    style={buttonStyle()}
-                    onClick={onExportSnapshot}
-                    disabled={stats.length === 0}
-                    data-testid="mavlink-export-snapshot"
-                  >
-                    Export JSON
-                  </button>
-                ) : null}
-                {onStartRecording && onStopRecording ? (
-                  <button
-                    type="button"
-                    style={buttonStyle(recording ? 'primary' : 'secondary')}
-                    onClick={recording ? onStopRecording : onStartRecording}
-                    aria-pressed={recording}
-                    data-testid="mavlink-record-toggle"
-                  >
-                    {recording ? 'Stop recording' : 'Record stream'}
-                  </button>
-                ) : null}
-                {onDownloadRecording ? (
-                  <button
-                    type="button"
-                    style={buttonStyle()}
-                    onClick={onDownloadRecording}
-                    disabled={recording || recordedCount === 0}
-                    data-testid="mavlink-record-download"
-                  >
-                    Download capture
-                  </button>
-                ) : null}
-                <span className="mavlink-inspector__record-meta" data-testid="mavlink-record-status" role="status">
-                  {recording ? '● recording · ' : ''}
-                  {recordedCount} msg
-                  {typeof recordingMax === 'number' ? ` (cap ${recordingMax})` : ''}
-                  {recordingCapped ? ' · capped' : ''}
+              {onExportSnapshot || onStartRecording ? (
+                <span className="mavlink-inspector__export" data-testid="mavlink-inspector-export">
+                  <span className="plot-workspace__divider" aria-hidden="true" />
+                  {onStartRecording && onStopRecording ? (
+                    <button
+                      type="button"
+                      className={`can-monitor__tool can-monitor__tool--record${recording ? ' is-recording' : ''}`}
+                      onClick={recording ? onStopRecording : onStartRecording}
+                      aria-pressed={recording}
+                      data-testid="mavlink-record-toggle"
+                    >
+                      <span className="can-monitor__rec-dot" aria-hidden="true" />
+                      {recording ? 'Stop recording' : 'Record stream'}
+                    </button>
+                  ) : null}
+                  {onDownloadRecording ? (
+                    <button
+                      type="button"
+                      className="can-monitor__tool"
+                      onClick={onDownloadRecording}
+                      disabled={recording || recordedCount === 0}
+                      data-testid="mavlink-record-download"
+                    >
+                      Download capture
+                    </button>
+                  ) : null}
+                  {onExportSnapshot ? (
+                    <button
+                      type="button"
+                      className="can-monitor__tool"
+                      onClick={onExportSnapshot}
+                      disabled={stats.length === 0}
+                      title="The sources, message types, rates and loss as they stand, as JSON"
+                      data-testid="mavlink-export-snapshot"
+                    >
+                      Export JSON
+                    </button>
+                  ) : null}
+                  <span className="mavlink-inspector__record-meta" data-testid="mavlink-record-status" role="status">
+                    {recording ? 'recording · ' : ''}
+                    {recording || recordedCount > 0 ? `${recordedCount} msg` : ''}
+                    {recording && typeof recordingMax === 'number' ? ` of ${recordingMax}` : ''}
+                    {recordingCapped ? ' · capped' : ''}
+                  </span>
                 </span>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
 
             {onRequestMessage ? (
               <MavlinkRequestControl connected={connected} onRequestMessage={onRequestMessage} />
@@ -699,7 +703,7 @@ export function MavlinkInspectorView({
                 <div className="mavlink-inspector__sent-head">
                   <span className="mavlink-inspector__sent-title">Sent (outbound)</span>
                   <span className="mavlink-inspector__sent-meta">
-                    {sentStats.length} message type(s) this app has sent
+                    {sentStats.length} type{sentStats.length === 1 ? '' : 's'}
                   </span>
                 </div>
                 <div className="mavlink-inspector__sent-row mavlink-inspector__sent-row--head">
