@@ -8444,13 +8444,21 @@ test.describe('Sidebar width', () => {
         [...document.querySelectorAll('.workspace-nav__item strong')]
           .filter((label) => {
             const item = label.closest('.workspace-nav__item') as HTMLElement
-            return label.scrollWidth > label.clientWidth + 1 || item.scrollWidth > item.clientWidth + 1
+            // Cut off, or wrapped onto a second line.
+            const lines = (label as HTMLElement).getClientRects().length
+            const range = document.createRange()
+            range.selectNodeContents(label)
+            // A row that also carries a badge (Guided Setup's "beta") may wrap
+            // rather than hide it.
+            const hasBadge = item.querySelector('.workspace-nav__badge') !== null
+            const wrapped = !hasBadge && range.getClientRects().length > 1 && lines >= 1
+            return label.scrollWidth > label.clientWidth + 1 || item.scrollWidth > item.clientWidth + 1 || wrapped
           })
           .map((label) => label.textContent)
       )
       expect(clipped).toEqual([])
       const sidebar = await page.locator('.workspace-sidebar').boundingBox()
-      expect(sidebar!.width).toBeLessThan(215)
+      expect(sidebar!.width).toBeLessThan(250)
     })
   }
 })

@@ -150,9 +150,9 @@
   /* Wide enough that every nav label ("Status & Info", "Calibration")
    * renders in full next to its widest badge ("11 SECTIONS") — labels
    * must never be ellipsized (field feedback: no shortened words). */
-  /* Labels only (the letter codes went): wide enough for the longest one,
+  /* An icon and a label: wide enough for the longest one on one line,
      "MAVLink Inspector", at each viewport's type step. */
-  --sidebar-width: 176px;
+  --sidebar-width: 216px;
   background: var(--bg-app);
   color: var(--text);
 }
@@ -361,7 +361,7 @@
    laptop, and a 27-inch display at 2000px wide read as small everywhere. */
 @media (min-width: 1800px) {
   :root {
-    --sidebar-width: 188px;
+    --sidebar-width: 226px;
     --text-xs: 11px;
     --text-sm: 12px;
     --text-md: 13px;
@@ -372,7 +372,7 @@
 }
 @media (min-width: 2300px) {
   :root {
-    --sidebar-width: 208px;
+    --sidebar-width: 248px;
     --text-xs: 12px;
     --text-sm: 13px;
     --text-md: 14px;
@@ -20460,4 +20460,33 @@ button.mavlink-inspector__sent-row {
   .osd-matrix--align .osd-matrix__align-head {
     display: none;
   }
+}
+
+/* Sidebar: an icon per tab, more room between rows, a faint line between
+   them, and the hover / active highlight filling the row. */
+.workspace-nav--flat {
+  gap: 0;
+}
+.workspace-nav--flat .workspace-nav__item {
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md, 6px);
+}
+.workspace-nav--flat .workspace-nav__item + .workspace-nav__item {
+  margin-top: 4px;
+  box-shadow: 0 -3px 0 -2px var(--border-soft);
+}
+.workspace-nav--flat .workspace-nav__item:hover {
+  background: var(--primary-transparent-1);
+}
+.workspace-nav__icon {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+}
+.workspace-nav__item:hover .workspace-nav__icon {
+  color: var(--accent);
+}
+.workspace-nav__item.is-active .workspace-nav__icon {
+  color: var(--primary-400);
 }
