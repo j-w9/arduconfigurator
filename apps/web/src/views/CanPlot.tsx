@@ -80,6 +80,7 @@ function seriesLanes(entry: CanPlotSeries, data: CanPlotSamples, endMs: number):
   return Array.from({ length: count }, (_unused, lane) => ({
     label: count > 1 ? `${entry.label} [${lane}]` : entry.label,
     color: canPlotLaneColor(entry, count, lane),
+    key: entry.key,
     t,
     v: data.v[lane] ?? []
   }))

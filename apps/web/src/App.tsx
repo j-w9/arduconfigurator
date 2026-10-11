@@ -10918,6 +10918,8 @@ export function App() {
               onMoveSeries={mavlinkPlotWorkspace.moveSeries}
               onPaneHeight={mavlinkPlotWorkspace.setPaneHeight}
               bufferSeconds={LIVE_GRAPH_WINDOW_S}
+              modeSpans={mavlinkPlotWorkspace.modeSpans}
+              statusTexts={snapshot.statusTexts}
             />
           }
         />

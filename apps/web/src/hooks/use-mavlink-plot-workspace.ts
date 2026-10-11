@@ -37,7 +37,28 @@ export interface OpenLiveGraph {
   custom?: boolean
 }
 
+/** A stretch of time in one flight mode (seconds since the epoch), for shading the charts. */
+export interface FlightModeSpan {
+  from: number
+  to: number
+  mode: string
+  armed: boolean
+}
+
+/** Mode / armed changes into spans over the window, the last one running to now. */
+export function flightModeSpans(changes: readonly { t: number; mode: string; armed: boolean }[], now: number, windowStart: number): FlightModeSpan[] {
+  const spans: FlightModeSpan[] = []
+  changes.forEach((change, index) => {
+    const to = index + 1 < changes.length ? changes[index + 1].t : now
+    if (to < windowStart) return
+    spans.push({ from: Math.max(change.t, windowStart), to, mode: change.mode, armed: change.armed })
+  })
+  return spans
+}
+
 export interface MavlinkPlotWorkspace {
+  /** Flight mode (and armed) over the buffered window, from the heartbeat. */
+  modeSpans: readonly FlightModeSpan[]
   /** Every predefined graph against what the link has carried so far. */
   graphs: readonly LiveGraphEntry[]
   open: readonly OpenLiveGraph[]
@@ -63,12 +84,15 @@ export function useMavlinkPlotWorkspace(runtime: ArduPilotConfiguratorRuntime | 
   const [openNames, setOpenNames] = useState<readonly string[]>([])
   const custom = useRef(new Set<string>())
   const [open, setOpen] = useState<readonly OpenLiveGraph[]>([])
+  const modeChanges = useRef<{ t: number; mode: string; armed: boolean }[]>([])
+  const [modeSpans, setModeSpans] = useState<readonly FlightModeSpan[]>([])
   const [paneOf, setPaneOf] = useState<ReadonlyMap<string, string>>(new Map())
   const [paneHeights, setPaneHeights] = useState<ReadonlyMap<string, PlotPaneHeight>>(new Map())
 
   // A new link (or none) starts from nothing: other vehicle, other fields.
   useEffect(() => {
     index.current.clear()
+    modeChanges.current = []
     for (const evaluator of evaluators.current.values()) evaluator.reset()
     setFieldsVersion((value) => value + 1)
   }, [runtime])
@@ -83,13 +107,30 @@ export function useMavlinkPlotWorkspace(runtime: ArduPilotConfiguratorRuntime | 
       const now = Date.now() / 1000
       for (const evaluator of evaluators.current.values()) evaluator.push(plot.name, plot.record, now)
     })
+    // Flight-mode (and armed) changes, for MAVExplorer-style bands: from the
+    // runtime's vehicle state, which every heartbeat path feeds.
+    const noteMode = () => {
+      const vehicle = runtime.getSnapshot().vehicle
+      const last = modeChanges.current[modeChanges.current.length - 1]
+      if (vehicle?.flightMode && (!last || last.mode !== vehicle.flightMode || last.armed !== vehicle.armed)) {
+        modeChanges.current.push({ t: Date.now() / 1000, mode: vehicle.flightMode, armed: vehicle.armed })
+      }
+    }
+    noteMode()
+    const unsubscribeSnapshot = runtime.subscribe(noteMode)
     const timer = window.setInterval(() => {
       if (grew) {
         grew = false
         setFieldsVersion((value) => value + 1)
       }
+      const now = Date.now() / 1000
+      // Keep the change in force at the window's start, drop older ones.
+      while (modeChanges.current.length > 1 && modeChanges.current[1].t < now - LIVE_GRAPH_WINDOW_S) modeChanges.current.shift()
+      const spans = flightModeSpans(modeChanges.current, now, now - LIVE_GRAPH_WINDOW_S)
+      // The last span runs to now, so it moves every flush; skip the re-render while there is nothing to shade.
+      setModeSpans((current) => (current.length === 0 && spans.length === 0 ? current : spans))
       if (evaluators.current.size === 0) return
-      const cutoff = Date.now() / 1000 - LIVE_GRAPH_WINDOW_S
+      const cutoff = now - LIVE_GRAPH_WINDOW_S
       const next: OpenLiveGraph[] = []
       for (const [name, evaluator] of evaluators.current) {
         evaluator.trimBefore(cutoff)
@@ -104,6 +145,7 @@ export function useMavlinkPlotWorkspace(runtime: ArduPilotConfiguratorRuntime | 
     }, FLUSH_MS)
     return () => {
       unsubscribe()
+      unsubscribeSnapshot()
       window.clearInterval(timer)
     }
   }, [runtime, active])
@@ -160,6 +202,7 @@ export function useMavlinkPlotWorkspace(runtime: ArduPilotConfiguratorRuntime | 
   }, [])
 
   return {
+    modeSpans,
     graphs,
     open: open.filter((entry) => openNames.includes(entry.name)),
     openGraph,

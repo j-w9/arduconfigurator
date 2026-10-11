@@ -52,7 +52,20 @@ export interface MavlinkPlotWorkspaceProps {
   onPaneHeight: (paneId: string, height: PlotPaneHeight) => void
   /** Seconds the buffers hold: the longest window offered. */
   bufferSeconds: number
+  /** Flight mode over time (seconds since the epoch), shaded behind the charts. */
+  modeSpans?: readonly { from: number; to: number; mode: string; armed: boolean }[]
+  /** What the autopilot said (STATUSTEXT), marked on the time axis. */
+  statusTexts?: readonly { severity: 'info' | 'warning' | 'error'; text: string; receivedAtMs?: number }[]
 }
+
+/** Band colours by flight mode, the same mode keeping its colour (MAVExplorer does the same). */
+const MODE_COLORS = ['#4aa3ff', '#3ecf8e', '#f2b400', '#b07cf7', '#ff8a3d', '#22c3c3', '#e86fb0', '#9aa5b8']
+function modeColor(mode: string): string {
+  let hash = 0
+  for (const character of mode) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  return MODE_COLORS[hash % MODE_COLORS.length]
+}
+const STATUS_COLORS = { error: '#e5484d', warning: '#f2b400', info: '#7f8aa0' } as const
 
 const COLORS = ['#4aa3ff', '#f2b400', '#3ecf8e', '#e5484d', '#b07cf7', '#ff8a3d', '#22c3c3', '#e86fb0']
 const SYNC_KEY = 'arduconfig-mavlink-plot'
@@ -298,6 +311,8 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
   const [windowSeconds, setWindowSeconds] = useState(20)
   const [paused, setPaused] = useState(false)
   const [zoom, setZoom] = useState<readonly [number, number] | undefined>(undefined)
+  const [showModes, setShowModes] = useState(true)
+  const [showMessages, setShowMessages] = useState(true)
   // Paused, the charts hold what they showed: the buffers keep moving underneath.
   const frozen = useRef<{ nowMs: number; plots: readonly MavlinkPlot[]; graphs: readonly OpenLiveGraph[] } | undefined>(undefined)
   if (paused && !frozen.current) frozen.current = { nowMs: Date.now(), plots, graphs: openGraphs }
@@ -370,6 +385,7 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
   }
 
   const lane = (line: Line): PlotLane => ({
+    key: line.key,
     label: line.kind === 'field' ? `${line.plot.type}.${line.plot.field}` : line.series.label,
     color: line.color,
     axis: line.kind === 'graph' ? line.series.axis : 1,
@@ -446,6 +462,22 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
     downloadTextFile(`mavlink-plot-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`, `${out.join('\n')}\n`, 'text/csv')
   }
 
+  // Flight modes shaded behind every chart, autopilot messages marked on them; seconds before now.
+  const bands = showModes
+    ? (props.modeSpans ?? []).map((span) => ({
+        from: span.from - nowS,
+        to: span.to - nowS,
+        label: span.armed ? `${span.mode} · armed` : span.mode,
+        color: modeColor(span.mode)
+      }))
+    : []
+  const markers = showMessages
+    ? (props.statusTexts ?? [])
+        .filter((entry) => entry.receivedAtMs !== undefined && entry.receivedAtMs / 1000 >= nowS - props.bufferSeconds)
+        .slice(0, 40)
+        .map((entry) => ({ x: entry.receivedAtMs! / 1000 - nowS, label: entry.text, color: STATUS_COLORS[entry.severity] }))
+    : []
+
   const keys = lines.map((line) => line.key)
   return (
     <PlotWorkspace
@@ -494,6 +526,32 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
       xFormat={(value) => `${Number.parseFloat(value.toFixed(1))}s`}
       onMoveSeries={props.onMoveSeries}
       onPaneHeight={props.onPaneHeight}
+      bands={bands}
+      markers={markers}
+      tools={
+        <>
+          <button
+            type="button"
+            className={`can-monitor__tool${showModes ? ' is-active' : ''}`}
+            onClick={() => setShowModes((current) => !current)}
+            aria-pressed={showModes}
+            title="Shade the charts by flight mode (and say when armed), as MAVExplorer does"
+            data-testid="mavlink-plot-modes"
+          >
+            Flight modes
+          </button>
+          <button
+            type="button"
+            className={`can-monitor__tool${showMessages ? ' is-active' : ''}`}
+            onClick={() => setShowMessages((current) => !current)}
+            aria-pressed={showMessages}
+            title="Mark what the autopilot said (status text) on the time axis"
+            data-testid="mavlink-plot-messages"
+          >
+            Messages
+          </button>
+        </>
+      }
       onDropPayload={(paneId, drop) => {
         const spec = drop.spec as MavlinkPlotSpec | undefined
         if (drop.kind !== 'mavlink-field' || !spec || typeof spec.key !== 'string') return

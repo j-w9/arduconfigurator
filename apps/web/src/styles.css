@@ -24056,3 +24056,44 @@ button.plot-side-list__name {
 .plot-panes__chart.is-panning .u-over {
   cursor: grab;
 }
+
+/* Click a line's swatch to hide it from its chart (it stays listed, dimmed). */
+.plot-panes__swatch-button {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+.plot-panes__swatch-button:hover {
+  border-color: var(--border-soft);
+}
+.plot-panes__swatch-button.is-hidden .plot-panes__swatch {
+  opacity: 0.3;
+}
+.plot-panes__row.is-hidden .plot-panes__content {
+  opacity: 0.45;
+}
+.plot-panes__fft-peaks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+}
+.plot-panes__fft-rate {
+  color: var(--text-dim);
+}
+.plot-panes__fft-empty {
+  margin: 0;
+  padding: 24px 8px;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  text-align: center;
+}

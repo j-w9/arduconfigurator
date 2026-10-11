@@ -23,6 +23,8 @@ export interface PlotLane {
   v: ArrayLike<number>
   /** 2: drawn against the right-hand axis. */
   axis?: 1 | 2
+  /** The series it belongs to (a vector's elements share one), for hiding it from the legend. */
+  key?: string
 }
 
 /** A moment to mark on the time axis: a vertical line with a short tag (a node's log line, say). */
@@ -42,8 +44,18 @@ export interface PlotChartApi {
 
 export type PlotDragMode = 'zoom' | 'pan'
 
+/** A stretch of time to shade behind the lines: a flight mode, armed. */
+export interface PlotBand {
+  from: number
+  to: number
+  label: string
+  color: string
+}
+
 export interface PlotChartProps {
   lanes: readonly PlotLane[]
+  /** Shaded behind the lines, MAVExplorer-style (flight modes). */
+  bands?: readonly PlotBand[]
   /** A fixed value range for the left axis; otherwise it fits the data. */
   yRange?: readonly [number, number]
   /** A drag (or pan) set a value range; undefined asks for the fit back. */
@@ -109,8 +121,9 @@ export function PlotChart(props: PlotChartProps): ReactNode {
   const { yRange, onYRangeChange, dragMode = 'zoom', api, separateScales = false } = props
   const hostRef = useRef<HTMLDivElement | null>(null)
   const plotRef = useRef<uPlot | null>(null)
-  const callbacks = useRef({ onXRangeChange, onYRangeChange, onCursor, xRange, yRange, markers, dragMode })
-  callbacks.current = { onXRangeChange, onYRangeChange, onCursor, xRange, yRange, markers, dragMode }
+  const bands = props.bands
+  const callbacks = useRef({ onXRangeChange, onYRangeChange, onCursor, xRange, yRange, markers, dragMode, bands })
+  callbacks.current = { onXRangeChange, onYRangeChange, onCursor, xRange, yRange, markers, dragMode, bands }
 
   const aligned = useMemo(() => alignPlotLanes(lanes), [lanes])
   // The chart is rebuilt when its shape changes; data and range flow in below.
@@ -200,6 +213,37 @@ export function PlotChart(props: PlotChartProps): ReactNode {
           }))
         ],
         hooks: {
+          // Bands go under the grid and lines: drawn as the canvas is cleared.
+          drawClear: [
+            (u) => {
+              const list = callbacks.current.bands
+              if (!list || list.length === 0) return
+              const ctx = u.ctx
+              const ratio = window.devicePixelRatio || 1
+              const left = u.bbox.left
+              const right = u.bbox.left + u.bbox.width
+              ctx.save()
+              ctx.font = `${10 * ratio}px system-ui, sans-serif`
+              ctx.textBaseline = 'bottom'
+              // uPlot leaves the alignment as its axes last set it.
+              ctx.textAlign = 'left'
+              for (const band of list) {
+                const x0 = Math.max(left, u.valToPos(band.from, 'x', true))
+                const x1 = Math.min(right, u.valToPos(band.to, 'x', true))
+                if (x1 <= x0) continue
+                ctx.globalAlpha = 0.12
+                ctx.fillStyle = band.color
+                ctx.fillRect(x0, u.bbox.top, x1 - x0, u.bbox.height)
+                // The name at the bottom left of its band, where it fits.
+                const width = ctx.measureText(band.label).width
+                if (x1 - x0 > width + 8 * ratio) {
+                  ctx.globalAlpha = 0.9
+                  ctx.fillText(band.label, x0 + 4 * ratio, u.bbox.top + u.bbox.height - 3 * ratio)
+                }
+              }
+              ctx.restore()
+            }
+          ],
           draw: [
             (u) => {
               const list = callbacks.current.markers
@@ -211,6 +255,7 @@ export function PlotChart(props: PlotChartProps): ReactNode {
               ctx.save()
               ctx.font = `${10 * ratio}px system-ui, sans-serif`
               ctx.textBaseline = 'top'
+              ctx.textAlign = 'left'
               let lastLabelEnd = Number.NEGATIVE_INFINITY
               for (const marker of list) {
                 const x = Math.round(u.valToPos(marker.x, 'x', true))
@@ -337,8 +382,8 @@ export function PlotChart(props: PlotChartProps): ReactNode {
     plot.setData(aligned)
   }, [aligned])
 
-  // New markers alone (no new data) still need a redraw.
-  const markerKey = markers?.map((marker) => `${marker.x}:${marker.label}`).join('|') ?? ''
+  // New markers or bands alone (no new data) still need a redraw.
+  const markerKey = `${markers?.map((marker) => `${marker.x}:${marker.label}`).join('|') ?? ''}#${bands?.map((band) => `${band.from}:${band.to}:${band.label}`).join('|') ?? ''}`
   useEffect(() => {
     plotRef.current?.redraw(false)
   }, [markerKey])

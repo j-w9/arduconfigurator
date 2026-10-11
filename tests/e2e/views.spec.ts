@@ -6742,6 +6742,19 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(panes).toHaveCount(2)
     await expect(page.getByTestId('mavlink-subtab-plot')).toHaveText('Plot (3)')
 
+    // Flight modes shade the charts and autopilot messages are marked, both on by default.
+    await expect(page.getByTestId('mavlink-plot-modes')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('mavlink-plot-messages')).toHaveAttribute('aria-pressed', 'true')
+    // A line hides from its chart by its swatch and comes back the same way.
+    const swatch = panes.first().getByTestId('mavlink-chart-visibility').first()
+    await swatch.click()
+    await expect(swatch).toHaveAttribute('aria-pressed', 'false')
+    await swatch.click()
+    await expect(swatch).toHaveAttribute('aria-pressed', 'true')
+    // FFT: the chart as a frequency spectrum, its peak named.
+    await panes.first().getByTestId('mavlink-chart-fft').click()
+    await expect(panes.first().getByTestId('mavlink-chart-fft-chart')).toBeVisible()
+
     // Closing the graph takes its lines away.
     await page.getByTestId('mavlink-chart-side-graphs').click()
     await page.getByTestId('mavlink-graph-close-Attitude/Roll and Pitch').click()

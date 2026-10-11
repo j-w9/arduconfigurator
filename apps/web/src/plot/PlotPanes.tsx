@@ -6,7 +6,8 @@
 
 import { useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 
-import { PlotChart, type PlotChartApi, type PlotDragMode, type PlotLane, type PlotMarker } from './PlotChart'
+import { PlotChart, type PlotBand, type PlotChartApi, type PlotDragMode, type PlotLane, type PlotMarker } from './PlotChart'
+import { spectrum, spectrumPeak } from '../view-models/plot-spectrum'
 import { PlotXYChart } from './PlotXYChart'
 import { PLOT_DRAG_TYPE, clampPaneHeight, lanesAreDisparate, rangeStats, thinLane, valueAt } from '../view-models/plot-workspace'
 
@@ -39,6 +40,8 @@ export interface PlotPanesProps {
   onPaneHeight: (paneId: string, height: number) => void
   /** Moments to mark on every chart's time axis. */
   markers?: readonly PlotMarker[]
+  /** Stretches of time shaded on every chart (flight modes). */
+  bands?: readonly PlotBand[]
   /** Show min / max / mean / rate of each line over what is in view. */
   showStats?: boolean
   /** Something other than a series row dropped (a field from the side panel). */
@@ -93,6 +96,7 @@ function PaneChart(props: {
   lanes: readonly PlotLane[]
   name: string
   markers?: readonly PlotMarker[]
+  bands?: readonly PlotBand[]
   height: number
   syncKey: string
   xRange?: readonly [number, number]
@@ -167,6 +171,7 @@ function PaneChart(props: {
         className="plot-panes__chart"
         lanes={props.lanes}
         markers={props.markers}
+        bands={props.bands}
         height={props.height}
         syncKey={props.syncKey}
         xRange={xRange}
@@ -178,6 +183,46 @@ function PaneChart(props: {
         api={api}
         xFormat={props.xFormat}
         onCursor={(cursor) => props.onCursor(cursor?.x)}
+      />
+    </div>
+  )
+}
+
+/**
+ * The chart's lines as frequency spectra over what is in view (FFT view),
+ * with the strongest frequency named. Its own zoom: frequency, not time.
+ */
+function FftOf(props: { lanes: readonly PlotLane[]; xRange?: readonly [number, number]; height: number; name: string; testIdPrefix: string }): ReactNode {
+  const [zoom, setZoom] = useState<readonly [number, number] | undefined>(undefined)
+  const spectra = props.lanes.map((lane) => ({ lane, result: spectrum(lane.t, lane.v, props.xRange?.[0], props.xRange?.[1]) }))
+  const shown = spectra.filter((entry): entry is { lane: PlotLane; result: NonNullable<typeof entry.result> } => entry.result !== undefined)
+  if (shown.length === 0) {
+    return (
+      <p className="plot-panes__fft-empty" data-testid={`${props.testIdPrefix}-fft-chart`}>
+        Too few points in view for a spectrum. Widen the window, or wait for more samples.
+      </p>
+    )
+  }
+  return (
+    <div data-testid={`${props.testIdPrefix}-fft-chart`}>
+      <p className="plot-panes__fft-peaks">
+        {shown.map(({ lane, result }) => {
+          const peak = spectrumPeak(result)
+          return (
+            <span key={lane.key ?? lane.label} style={{ color: lane.color }}>
+              {lane.label}: peak {peak ? `${peak.hz.toFixed(peak.hz < 10 ? 2 : 1)} Hz` : '—'}
+              <span className="plot-panes__fft-rate"> · {result.sampleRateHz.toFixed(1)} Hz sampling</span>
+            </span>
+          )
+        })}
+      </p>
+      <PlotChart
+        className="plot-panes__chart"
+        lanes={shown.map(({ lane, result }) => ({ label: lane.label, color: lane.color, key: lane.key, t: result.hz, v: result.amplitude }))}
+        height={props.height}
+        xRange={zoom}
+        onXRangeChange={setZoom}
+        xFormat={(value) => `${Number.parseFloat(value.toPrecision(3))} Hz`}
       />
     </div>
   )
@@ -253,6 +298,16 @@ export function PlotPanes(props: PlotPanesProps): ReactNode {
   const resizing = useRef<{ paneId: string; startY: number; startHeight: number } | undefined>(undefined)
   // Charts drawn as XY (lane indexes for x and y), by pane.
   const [xy, setXy] = useState<ReadonlyMap<string, { x: number; y: number }>>(new Map())
+  const [fft, setFft] = useState<ReadonlySet<string>>(new Set())
+  // Lines hidden by clicking their swatch (series key, or label for a keyless lane).
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
+  const toggleHidden = (key: string) =>
+    setHidden((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   const setPaneXy = (paneId: string, value: { x: number; y: number } | undefined) =>
     setXy((current) => {
       const next = new Map(current)
@@ -314,7 +369,7 @@ export function PlotPanes(props: PlotPanesProps): ReactNode {
         <article key={pane.id} className={`plot-panes__pane${dropTarget === pane.id ? ' is-drop' : ''}`} {...dropProps(pane.id)} data-testid={`${testIdPrefix}-pane`}>
           <ul className="plot-panes__rows">
             {pane.rows.map((row) => (
-              <li key={row.key} className="plot-panes__row" data-testid={row.testId}>
+              <li key={row.key} className={`plot-panes__row${hidden.has(row.key) ? ' is-hidden' : ''}`} data-testid={row.testId}>
                 <span
                   className="plot-panes__grip"
                   {...plotDragProps(JSON.stringify({ kind: 'series', key: row.key }))}
@@ -324,7 +379,17 @@ export function PlotPanes(props: PlotPanesProps): ReactNode {
                 >
                   ⋮⋮
                 </span>
-                <span className="plot-panes__swatch" style={{ background: row.color }} aria-hidden="true" />
+                <button
+                  type="button"
+                  className={`plot-panes__swatch-button${hidden.has(row.key) ? ' is-hidden' : ''}`}
+                  onClick={() => toggleHidden(row.key)}
+                  aria-pressed={!hidden.has(row.key)}
+                  aria-label={hidden.has(row.key) ? `Show ${row.label}` : `Hide ${row.label}`}
+                  title={hidden.has(row.key) ? 'Show this line' : 'Hide this line'}
+                  data-testid={`${testIdPrefix}-visibility`}
+                >
+                  <span className="plot-panes__swatch" style={{ background: row.color }} aria-hidden="true" />
+                </button>
                 <div className="plot-panes__content">{row.content(cursorX)}</div>
                 {panes.length > 1 || pane.rows.length > 1 ? (
                   <select
@@ -350,64 +415,96 @@ export function PlotPanes(props: PlotPanesProps): ReactNode {
               </li>
             ))}
           </ul>
-          {pane.lanes.length >= 2 ? (
-            <div className="plot-panes__mode">
-              <div className="plot-panes__mode-switch" role="radiogroup" aria-label="Chart kind">
-                <button type="button" role="radio" aria-checked={!xy.has(pane.id)} className={!xy.has(pane.id) ? 'is-active' : undefined} onClick={() => setPaneXy(pane.id, undefined)}>
-                  Time
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={xy.has(pane.id)}
-                  className={xy.has(pane.id) ? 'is-active' : undefined}
-                  onClick={() => setPaneXy(pane.id, { x: 0, y: 1 })}
-                  title="One line against another: x against y of a magnetometer traces a circle as the craft turns"
-                  data-testid={`${testIdPrefix}-xy`}
-                >
-                  XY
-                </button>
-              </div>
-              {xy.has(pane.id) ? (
-                <>
-                  {(['x', 'y'] as const).map((axis) => (
-                    <label key={axis} className="plot-panes__mode-pick">
-                      <span>{axis.toUpperCase()}</span>
-                      <select
-                        value={xy.get(pane.id)![axis]}
-                        onChange={(event) => setPaneXy(pane.id, { ...xy.get(pane.id)!, [axis]: Number(event.target.value) })}
-                        data-testid={`${testIdPrefix}-xy-${axis}`}
+          {(() => {
+            // Lines hidden from the legend stay listed (dimmed) but leave the chart.
+            const lanes = pane.lanes.filter((lane) => !hidden.has(lane.key ?? lane.label))
+            const kind = fft.has(pane.id) ? 'fft' : xy.has(pane.id) && lanes.length >= 2 ? 'xy' : 'time'
+            const setKind = (next: 'time' | 'xy' | 'fft') => {
+              setPaneXy(pane.id, next === 'xy' ? xy.get(pane.id) ?? { x: 0, y: 1 } : undefined)
+              setFft((current) => {
+                const copy = new Set(current)
+                if (next === 'fft') copy.add(pane.id)
+                else copy.delete(pane.id)
+                return copy
+              })
+            }
+            return (
+              <>
+                <div className="plot-panes__mode">
+                  <div className="plot-panes__mode-switch" role="radiogroup" aria-label="Chart kind">
+                    <button type="button" role="radio" aria-checked={kind === 'time'} className={kind === 'time' ? 'is-active' : undefined} onClick={() => setKind('time')}>
+                      Time
+                    </button>
+                    {lanes.length >= 2 ? (
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={kind === 'xy'}
+                        className={kind === 'xy' ? 'is-active' : undefined}
+                        onClick={() => setKind('xy')}
+                        title="One line against another: x against y of a magnetometer traces a circle as the craft turns"
+                        data-testid={`${testIdPrefix}-xy`}
                       >
-                        {pane.lanes.map((lane, index) => (
-                          <option key={index} value={index}>
-                            {lane.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  ))}
-                </>
-              ) : null}
-            </div>
-          ) : null}
-          {props.showStats ? <PaneStats lanes={pane.lanes} xRange={xRange} /> : null}
-          {xy.has(pane.id) ? (
-            <XYOf pane={pane} pick={xy.get(pane.id)!} xRange={xRange} testId={`${testIdPrefix}-xy-chart`} />
-          ) : (
-            <PaneChart
-              // Long lines are thinned to their pixels (spikes kept) before drawing.
-              lanes={pane.lanes.map((lane) => thinLane(lane, xRange?.[0], xRange?.[1]))}
-              name={paneName(pane)}
-              markers={props.markers}
-              height={pane.height}
-              syncKey={syncKey}
-              xRange={xRange}
-              onXRangeChange={onXRangeChange}
-              xFormat={xFormat}
-              onCursor={setCursorX}
-              testIdPrefix={testIdPrefix}
-            />
-          )}
+                        XY
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={kind === 'fft'}
+                      className={kind === 'fft' ? 'is-active' : undefined}
+                      onClick={() => setKind('fft')}
+                      title="Frequency spectrum of what is in view: which frequencies a vibration or an rpm wobble holds"
+                      data-testid={`${testIdPrefix}-fft`}
+                    >
+                      FFT
+                    </button>
+                  </div>
+                  {kind === 'xy' ? (
+                    <>
+                      {(['x', 'y'] as const).map((axis) => (
+                        <label key={axis} className="plot-panes__mode-pick">
+                          <span>{axis.toUpperCase()}</span>
+                          <select
+                            value={xy.get(pane.id)![axis]}
+                            onChange={(event) => setPaneXy(pane.id, { ...xy.get(pane.id)!, [axis]: Number(event.target.value) })}
+                            data-testid={`${testIdPrefix}-xy-${axis}`}
+                          >
+                            {lanes.map((lane, index) => (
+                              <option key={index} value={index}>
+                                {lane.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ))}
+                    </>
+                  ) : null}
+                </div>
+                {props.showStats ? <PaneStats lanes={lanes} xRange={xRange} /> : null}
+                {kind === 'xy' ? (
+                  <XYOf pane={{ ...pane, lanes }} pick={xy.get(pane.id)!} xRange={xRange} testId={`${testIdPrefix}-xy-chart`} />
+                ) : kind === 'fft' ? (
+                  <FftOf lanes={lanes} xRange={xRange} height={pane.height} name={paneName(pane)} testIdPrefix={testIdPrefix} />
+                ) : (
+                  <PaneChart
+                    // Long lines are thinned to their pixels (spikes kept) before drawing.
+                    lanes={lanes.map((lane) => thinLane(lane, xRange?.[0], xRange?.[1]))}
+                    name={paneName(pane)}
+                    markers={props.markers}
+                    bands={props.bands}
+                    height={pane.height}
+                    syncKey={syncKey}
+                    xRange={xRange}
+                    onXRangeChange={onXRangeChange}
+                    xFormat={xFormat}
+                    onCursor={setCursorX}
+                    testIdPrefix={testIdPrefix}
+                  />
+                )}
+              </>
+            )
+          })()}
           <div
             className="plot-panes__resize"
             onPointerDown={startResize(pane)}

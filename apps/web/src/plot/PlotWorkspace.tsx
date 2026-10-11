@@ -172,6 +172,7 @@ export function PlotWorkspace(props: PlotWorkspaceProps): ReactNode {
               onPaneHeight={props.onPaneHeight}
               onDropPayload={props.onDropPayload}
               markers={props.markers}
+              bands={props.bands}
               showStats={showStats}
               testIdPrefix={id}
             />
