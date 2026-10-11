@@ -486,7 +486,11 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
       panes={panes}
       syncKey={SYNC_KEY}
       xRange={xRange}
-      onXRangeChange={paused ? setZoom : undefined}
+      // Zooming or panning a live chart pauses it first, as the web plotting tools do.
+      onXRangeChange={(range) => {
+        setPaused(true)
+        setZoom(range)
+      }}
       xFormat={(value) => `${Number.parseFloat(value.toFixed(1))}s`}
       onMoveSeries={props.onMoveSeries}
       onPaneHeight={props.onPaneHeight}

@@ -763,6 +763,34 @@ test.describe('CAN tab: frame grouping and plotting vectors', () => {
     await page.getByTestId('can-plot-stats').click()
     await expect(page.getByTestId('plot-pane-stats').locator('tbody tr')).toHaveCount(4)
 
+    // Each chart's toolbar: zoom in pauses a live chart and zooms; reset gives the view back;
+    // pan is a mode; the chart saves as a PNG.
+    const powerPane = page.getByTestId('can-plot-pane').first()
+    await powerPane.hover()
+    await powerPane.getByTestId('can-plot-tool-zoom-in').click()
+    await expect(page.getByTestId('can-plot-freeze')).toHaveText('Resume')
+    await expect(powerPane.getByTestId('can-plot-tool-reset')).toBeEnabled()
+    await powerPane.getByTestId('can-plot-tool-pan').click()
+    await expect(powerPane.getByTestId('can-plot-tool-pan')).toHaveAttribute('aria-pressed', 'true')
+    const png = page.waitForEvent('download')
+    await powerPane.getByTestId('can-plot-tool-png').click()
+    expect((await png).suggestedFilename()).toMatch(/\.png$/)
+    await powerPane.getByTestId('can-plot-tool-reset').click()
+    await page.getByTestId('can-plot-freeze').click()
+
+    // Power (watts) and ESC 1's rpm on one chart: thousands beside a hundred-odd, so each
+    // gets its own axis automatically; the toolbar switches back to one shared axis.
+    await page.getByTestId('can-plot-side-expression').click()
+    await page.getByTestId('can-plot-expression-input').fill('esc_Status[1].rpm*100')
+    await page.getByTestId('can-plot-expression-add').click()
+    await page.getByTestId('can-plot-series').nth(2).getByTestId('can-plot-chart-menu').selectOption({ index: 1 })
+    await expect(powerPane.getByTestId('can-plot-series')).toHaveCount(2)
+    await powerPane.hover()
+    const scales = powerPane.getByTestId('can-plot-tool-scales')
+    await expect(scales).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 })
+    await scales.click()
+    await expect(scales).toHaveAttribute('aria-pressed', 'false')
+
     // Node messages are marked by default; the toggle turns them off.
     const markers = page.getByTestId('can-plot-node-messages')
     await expect(markers).toHaveAttribute('aria-pressed', 'true')

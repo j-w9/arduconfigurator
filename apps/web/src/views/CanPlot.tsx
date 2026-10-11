@@ -511,7 +511,11 @@ export function CanPlotView(props: CanPlotViewProps): ReactNode {
       panes={panes}
       syncKey={SYNC_KEY}
       xRange={xRange}
-      onXRangeChange={frozenAt !== undefined ? setZoom : undefined}
+      // Zooming or panning a live chart pauses it first, as the web plotting tools do.
+      onXRangeChange={(range) => {
+        setFrozenAt((current) => current ?? nowMs)
+        setZoom(range)
+      }}
       xFormat={(value) => `${Number.parseFloat(value.toFixed(2))}s`}
       onMoveSeries={props.onMoveSeries}
       onPaneHeight={props.onPaneHeight}

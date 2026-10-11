@@ -5,10 +5,12 @@
 // Each lane brings its own timestamps (streams and log messages do not tick
 // together); lanes that share one time array are drawn as they are, others
 // are joined onto one x axis with gaps bridged. Charts that share a syncKey
-// move one cursor together; a drag selects an x range (onXRangeChange), and
-// a double-click asks for the full range back.
+// move one cursor together. A drag zooms -- across for time, up or down for
+// values, diagonally for both -- or, in pan mode, moves the view; a
+// double-click asks for the full range back. The toolbar over each chart
+// (PlotPanes) drives the same ranges through `api`.
 
-import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, type MutableRefObject, type ReactNode } from 'react'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 
@@ -30,8 +32,32 @@ export interface PlotMarker {
   color: string
 }
 
+/** What a chart's toolbar needs from it. */
+export interface PlotChartApi {
+  /** The x and (left) y ranges on screen now. */
+  scales: () => { x: [number, number]; y: [number, number] } | undefined
+  /** The chart as a PNG data URL, on the given background. */
+  png: (background: string) => string | undefined
+}
+
+export type PlotDragMode = 'zoom' | 'pan'
+
 export interface PlotChartProps {
   lanes: readonly PlotLane[]
+  /** A fixed value range for the left axis; otherwise it fits the data. */
+  yRange?: readonly [number, number]
+  /** A drag (or pan) set a value range; undefined asks for the fit back. */
+  onYRangeChange?: (range: readonly [number, number] | undefined) => void
+  /** What a drag on the chart does (default zoom). */
+  dragMode?: PlotDragMode
+  /**
+   * Every line on its own value axis (coloured like it, left and right in
+   * turn), so lines of very different size -- 100000 and a 0/1 state -- all
+   * read. The time zoom still applies; value zoom and pan are off.
+   */
+  separateScales?: boolean
+  /** Filled in with the chart's toolbar hooks. */
+  api?: MutableRefObject<PlotChartApi | null>
   markers?: readonly PlotMarker[]
   height?: number
   /** Charts with the same key share the cursor. */
@@ -80,19 +106,21 @@ export function alignPlotLanes(lanes: readonly PlotLane[]): uPlot.AlignedData {
 
 export function PlotChart(props: PlotChartProps): ReactNode {
   const { lanes, markers, height = 160, syncKey, xRange, onXRangeChange, xFormat = defaultXFormat, onCursor, testId, className } = props
+  const { yRange, onYRangeChange, dragMode = 'zoom', api, separateScales = false } = props
   const hostRef = useRef<HTMLDivElement | null>(null)
   const plotRef = useRef<uPlot | null>(null)
-  const callbacks = useRef({ onXRangeChange, onCursor, xRange, markers })
-  callbacks.current = { onXRangeChange, onCursor, xRange, markers }
+  const callbacks = useRef({ onXRangeChange, onYRangeChange, onCursor, xRange, yRange, markers, dragMode })
+  callbacks.current = { onXRangeChange, onYRangeChange, onCursor, xRange, yRange, markers, dragMode }
 
   const aligned = useMemo(() => alignPlotLanes(lanes), [lanes])
   // The chart is rebuilt when its shape changes; data and range flow in below.
-  const shape = lanes.map((lane) => `${lane.color}|${lane.axis ?? 1}|${lane.label}`).join('\n')
+  const shape = `${separateScales ? 'separate' : 'shared'}\n${lanes.map((lane) => `${lane.color}|${lane.axis ?? 1}|${lane.label}`).join('\n')}`
   const hasRight = lanes.some((lane) => lane.axis === 2)
   // Joined lanes are null wherever another lane ticked: bridge those. On one
   // clock a null is a real gap, and stays one.
   const joined = lanes.length > 0 && !sharesClock(lanes)
   const zoomable = onXRangeChange !== undefined
+  const panning = dragMode === 'pan'
 
   useEffect(() => {
     const host = hostRef.current
@@ -101,6 +129,16 @@ export function PlotChart(props: PlotChartProps): ReactNode {
     const gridColor = cssVar('--border-soft', '#222934')
     // Canvas text cannot read a CSS variable: take the tab's type scale once.
     const axisFont = `${getComputedStyle(host).getPropertyValue('--text-xs').trim() || '12px'} system-ui, sans-serif`
+    // A value axis as wide as its longest label ("490,000" must not lose a digit).
+    const fontPx = Number.parseFloat(axisFont) || 12
+    // It only grows, so the plot does not shift sideways as live labels change length.
+    const axisWidths = new Map<number, number>()
+    const valueAxisSize: uPlot.Axis.Size = (_u, values, axisIndex) => {
+      const wanted = Math.max(40, Math.ceil(Math.max(0, ...(values ?? []).map((value) => String(value).length)) * fontPx * 0.62) + 18)
+      const width = Math.max(wanted, axisWidths.get(axisIndex) ?? 0)
+      axisWidths.set(axisIndex, width)
+      return width
+    }
     const axis = (extra: Partial<uPlot.Axis>): uPlot.Axis => ({
       stroke: axisColor,
       font: axisFont,
@@ -115,7 +153,8 @@ export function PlotChart(props: PlotChartProps): ReactNode {
         legend: { show: false },
         cursor: {
           sync: syncKey ? { key: syncKey } : undefined,
-          drag: { x: zoomable, y: false, setScale: false }
+          // A box: mostly across zooms time, mostly up or down zooms values (uni).
+          drag: { x: zoomable && !panning, y: !panning && !separateScales && onYRangeChange !== undefined, setScale: false, uni: 30 }
         },
         scales: {
           x: {
@@ -125,20 +164,37 @@ export function PlotChart(props: PlotChartProps): ReactNode {
               return fixed ? [fixed[0], fixed[1]] : [min, max]
             }
           },
-          ...(hasRight ? { y2: {} } : {})
+          y: {
+            range: (_u, min, max) => {
+              const fixed = callbacks.current.yRange
+              return fixed ? [fixed[0], fixed[1]] : uPlot.rangeNum(min, max, 0.1, true)
+            }
+          },
+          ...(hasRight ? { y2: {} } : {}),
+          ...(separateScales ? Object.fromEntries(lanes.map((_lane, index) => [`s${index}`, { range: (_u: uPlot, min: number, max: number) => uPlot.rangeNum(min, max, 0.1, true) }])) : {})
         },
         axes: [
           axis({ values: (_u, splits) => splits.map((value) => xFormat(value)) }),
-          axis({ size: 64 }),
-          ...(hasRight ? [axis({ scale: 'y2', side: 1, size: 64, grid: { show: false } })] : [])
+          ...(separateScales
+            ? // One axis per line, in its colour; the first keeps the grid.
+              lanes.map((lane, index) =>
+                axis({
+                  scale: `s${index}`,
+                  side: index % 2 === 0 ? 3 : 1,
+                  size: valueAxisSize,
+                  stroke: resolveColor(lane.color, host),
+                  grid: { show: index === 0, stroke: gridColor, width: 1 }
+                })
+              )
+            : [axis({ size: valueAxisSize }), ...(hasRight ? [axis({ scale: 'y2', side: 1, size: valueAxisSize, grid: { show: false } })] : [])])
         ],
         series: [
           {},
-          ...lanes.map((lane) => ({
+          ...lanes.map((lane, index) => ({
             label: lane.label,
             stroke: resolveColor(lane.color, host),
             width: 1.5,
-            scale: lane.axis === 2 ? 'y2' : 'y',
+            scale: separateScales ? `s${index}` : lane.axis === 2 ? 'y2' : 'y',
             points: { show: false },
             spanGaps: joined
           }))
@@ -182,11 +238,14 @@ export function PlotChart(props: PlotChartProps): ReactNode {
           ],
           setSelect: [
             (u) => {
-              if (!callbacks.current.onXRangeChange || u.select.width < 4) return
-              const from = u.posToVal(u.select.left, 'x')
-              const to = u.posToVal(u.select.left + u.select.width, 'x')
+              const { left, top, width, height: tall } = u.select
+              if (width < 4 && tall < 4) return
               u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false)
-              callbacks.current.onXRangeChange([from, to])
+              const plotWidth = u.over.clientWidth
+              const plotHeight = u.over.clientHeight
+              // A selection spanning the whole height is a time zoom; the whole width, a value zoom.
+              if (width >= 4 && width < plotWidth - 1) callbacks.current.onXRangeChange?.([u.posToVal(left, 'x'), u.posToVal(left + width, 'x')])
+              if (tall >= 4 && tall < plotHeight - 1) callbacks.current.onYRangeChange?.([u.posToVal(top + tall, 'y'), u.posToVal(top, 'y')])
             }
           ],
           setCursor: [
@@ -208,18 +267,69 @@ export function PlotChart(props: PlotChartProps): ReactNode {
       host
     )
     plotRef.current = plot
-    const onDoubleClick = () => callbacks.current.onXRangeChange?.(undefined)
+    const onDoubleClick = () => {
+      callbacks.current.onXRangeChange?.(undefined)
+      callbacks.current.onYRangeChange?.(undefined)
+    }
     host.addEventListener('dblclick', onDoubleClick)
+    // Pan: drag moves the view by what is under the pointer.
+    let pan: { x: number; y: number; xs: [number, number]; ys: [number, number] } | undefined
+    const onPointerDown = (event: PointerEvent) => {
+      if (callbacks.current.dragMode !== 'pan' || event.button !== 0) return
+      const xs: [number, number] = [plot.scales.x.min ?? 0, plot.scales.x.max ?? 1]
+      const ys: [number, number] = [plot.scales.y.min ?? 0, plot.scales.y.max ?? 1]
+      pan = { x: event.clientX, y: event.clientY, xs, ys }
+      plot.over.setPointerCapture(event.pointerId)
+    }
+    const onPointerMove = (event: PointerEvent) => {
+      if (!pan) return
+      const perPxX = (pan.xs[1] - pan.xs[0]) / Math.max(1, plot.over.clientWidth)
+      const perPxY = (pan.ys[1] - pan.ys[0]) / Math.max(1, plot.over.clientHeight)
+      const dx = (event.clientX - pan.x) * perPxX
+      const dy = (event.clientY - pan.y) * perPxY
+      callbacks.current.onXRangeChange?.([pan.xs[0] - dx, pan.xs[1] - dx])
+      if (!separateScales) callbacks.current.onYRangeChange?.([pan.ys[0] + dy, pan.ys[1] + dy])
+    }
+    const onPointerUp = () => {
+      pan = undefined
+    }
+    plot.over.addEventListener('pointerdown', onPointerDown)
+    plot.over.addEventListener('pointermove', onPointerMove)
+    plot.over.addEventListener('pointerup', onPointerUp)
+    plot.over.addEventListener('pointercancel', onPointerUp)
+    if (api) {
+      api.current = {
+        scales: () => {
+          const y = separateScales ? plot.scales.s0 : plot.scales.y
+          return plot.scales.x.min === undefined || y?.min === undefined
+            ? undefined
+            : { x: [plot.scales.x.min, plot.scales.x.max!], y: [y.min, y.max!] }
+        },
+        png: (background) => {
+          const source = plot.ctx.canvas
+          const copy = document.createElement('canvas')
+          copy.width = source.width
+          copy.height = source.height
+          const context = copy.getContext('2d')
+          if (!context) return undefined
+          context.fillStyle = background
+          context.fillRect(0, 0, copy.width, copy.height)
+          context.drawImage(source, 0, 0)
+          return copy.toDataURL('image/png')
+        }
+      }
+    }
     const observer = new ResizeObserver(() => plot.setSize({ width: Math.max(200, host.clientWidth), height }))
     observer.observe(host)
     return () => {
+      if (api) api.current = null
       host.removeEventListener('dblclick', onDoubleClick)
       observer.disconnect()
       plot.destroy()
       plotRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shape, height, syncKey, hasRight, zoomable, joined])
+  }, [shape, height, syncKey, hasRight, zoomable, joined, panning, onYRangeChange !== undefined, separateScales])
 
   useEffect(() => {
     const plot = plotRef.current
@@ -244,5 +354,14 @@ export function PlotChart(props: PlotChartProps): ReactNode {
     plot.setScale('x', { min, max })
   }, [rangeKey])
 
-  return <div className={className ?? 'plot-chart'} ref={hostRef} data-testid={testId} />
+  // A value range set, or given back to the data's fit.
+  const yKey = yRange ? `${yRange[0]}:${yRange[1]}` : ''
+  useEffect(() => {
+    const plot = plotRef.current
+    if (!plot) return
+    if (yRange && !separateScales) plot.setScale('y', { min: yRange[0], max: yRange[1] })
+    else plot.setData(plot.data)
+  }, [yKey])
+
+  return <div className={`${className ?? 'plot-chart'}${dragMode === 'pan' ? ' is-panning' : ''}`} ref={hostRef} data-testid={testId} />
 }

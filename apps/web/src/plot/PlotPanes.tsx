@@ -6,9 +6,9 @@
 
 import { useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 
-import { PlotChart, type PlotLane, type PlotMarker } from './PlotChart'
+import { PlotChart, type PlotChartApi, type PlotDragMode, type PlotLane, type PlotMarker } from './PlotChart'
 import { PlotXYChart } from './PlotXYChart'
-import { PLOT_DRAG_TYPE, clampPaneHeight, rangeStats, thinLane, valueAt } from '../view-models/plot-workspace'
+import { PLOT_DRAG_TYPE, clampPaneHeight, lanesAreDisparate, rangeStats, thinLane, valueAt } from '../view-models/plot-workspace'
 
 export interface PlotSeriesRow {
   key: string
@@ -44,6 +44,143 @@ export interface PlotPanesProps {
   /** Something other than a series row dropped (a field from the side panel). */
   onDropPayload?: (paneId: string | undefined, payload: { kind?: string; [key: string]: unknown }) => void
   testIdPrefix: string
+}
+
+const TOOL_ICONS = {
+  // Lucide (ISC) paths, as in the nav.
+  zoom: '<path d="M5 3a2 2 0 0 0-2 2" /><path d="M19 3a2 2 0 0 1 2 2" /><path d="M21 19a2 2 0 0 1-2 2" /><path d="M5 21a2 2 0 0 1-2-2" /><path d="M9 3h1" /><path d="M9 21h1" /><path d="M14 3h1" /><path d="M14 21h1" /><path d="M3 9v1" /><path d="M21 9v1" /><path d="M3 14v1" /><path d="M21 14v1" />',
+  pan: '<path d="M12 2v20" /><path d="m15 19-3 3-3-3" /><path d="m19 9 3 3-3 3" /><path d="M2 12h20" /><path d="m5 9-3 3 3 3" /><path d="m9 5 3-3 3 3" />',
+  zoomIn: '<circle cx="11" cy="11" r="8" /><line x1="21" x2="16.65" y1="21" y2="16.65" /><line x1="11" x2="11" y1="8" y2="14" /><line x1="8" x2="14" y1="11" y2="11" />',
+  zoomOut: '<circle cx="11" cy="11" r="8" /><line x1="21" x2="16.65" y1="21" y2="16.65" /><line x1="8" x2="14" y1="11" y2="11" />',
+  autoscale: '<path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" />',
+  home: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />',
+  axes: '<path d="M3 3v18h18" /><path d="M7 3v18" /><path d="M21 3v18" />',
+  png: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" />'
+} as const
+
+function ToolIcon({ name }: { name: keyof typeof TOOL_ICONS }): ReactNode {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      // Static path data from the table above -- never user input.
+      dangerouslySetInnerHTML={{ __html: TOOL_ICONS[name] }}
+    />
+  )
+}
+
+/** Scale a range about its middle: 0.5 zooms in, 2 zooms out. */
+function scaleRange([from, to]: readonly [number, number], factor: number): [number, number] {
+  const middle = (from + to) / 2
+  const half = ((to - from) / 2) * factor
+  return [middle - half, middle + half]
+}
+
+/**
+ * One time chart with its toolbar, as the web plotting tools have it: box
+ * zoom or pan for a drag, zoom in / out about the middle, reset, and save as
+ * PNG. Time is shared by every chart (the workspace's range); the value
+ * range is this chart's own.
+ */
+function PaneChart(props: {
+  lanes: readonly PlotLane[]
+  name: string
+  markers?: readonly PlotMarker[]
+  height: number
+  syncKey: string
+  xRange?: readonly [number, number]
+  onXRangeChange?: (range: readonly [number, number] | undefined) => void
+  xFormat: (value: number) => string
+  onCursor: (x: number | undefined) => void
+  testIdPrefix: string
+}): ReactNode {
+  const { xRange, onXRangeChange, testIdPrefix } = props
+  const api = useRef<PlotChartApi | null>(null)
+  const [dragMode, setDragMode] = useState<PlotDragMode>('zoom')
+  const [yRange, setYRange] = useState<readonly [number, number] | undefined>(undefined)
+  // Separate value axes: on by default when the lines differ wildly in size; the toolbar overrides.
+  const [scaleChoice, setScaleChoice] = useState<'auto' | 'shared' | 'separate'>('auto')
+  const disparate = props.lanes.length >= 2 && lanesAreDisparate(props.lanes, xRange?.[0], xRange?.[1])
+  const separate = props.lanes.length >= 2 && (scaleChoice === 'separate' || (scaleChoice === 'auto' && disparate))
+  const zoomBy = (factor: number) => {
+    const scales = api.current?.scales()
+    if (!scales) return
+    onXRangeChange?.(scaleRange(scales.x, factor))
+    setYRange(scaleRange(scales.y, factor))
+  }
+  const savePng = () => {
+    const background = getComputedStyle(document.documentElement).getPropertyValue('--bg-panel').trim() || '#11151c'
+    const url = api.current?.png(background)
+    if (!url) return
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${props.name.replace(/[^\w.-]+/g, '_').slice(0, 60) || 'chart'}.png`
+    link.click()
+  }
+  const tool = (label: string, icon: keyof typeof TOOL_ICONS, onClick: () => void, extra: { pressed?: boolean; disabled?: boolean; id: string }) => (
+    <button
+      type="button"
+      className={`plot-panes__tool${extra.pressed ? ' is-active' : ''}`}
+      onClick={onClick}
+      disabled={extra.disabled}
+      aria-pressed={extra.pressed}
+      aria-label={label}
+      title={label}
+      data-testid={`${testIdPrefix}-tool-${extra.id}`}
+    >
+      <ToolIcon name={icon} />
+    </button>
+  )
+  const zoomable = onXRangeChange !== undefined
+  return (
+    <div className="plot-panes__chart-wrap">
+      <div className="plot-panes__toolbar" role="toolbar" aria-label="Chart tools">
+        {tool('Save as PNG', 'png', savePng, { id: 'png' })}
+        {tool('Box zoom: drag across for time, up or down for values, diagonally for both', 'zoom', () => setDragMode('zoom'), { pressed: dragMode === 'zoom', disabled: !zoomable, id: 'zoom' })}
+        {tool('Pan: drag to move the view', 'pan', () => setDragMode('pan'), { pressed: dragMode === 'pan', disabled: !zoomable, id: 'pan' })}
+        {tool('Zoom in', 'zoomIn', () => zoomBy(0.5), { disabled: !zoomable, id: 'zoom-in' })}
+        {tool('Zoom out', 'zoomOut', () => zoomBy(2), { disabled: !zoomable, id: 'zoom-out' })}
+        {tool('Autoscale: fit the values to what is in view', 'autoscale', () => setYRange(undefined), { disabled: yRange === undefined, id: 'autoscale' })}
+        {tool('Reset axes (or double-click the chart)', 'home', () => {
+          onXRangeChange?.(undefined)
+          setYRange(undefined)
+        }, { disabled: !zoomable, id: 'reset' })}
+        {props.lanes.length >= 2
+          ? tool(
+              separate
+                ? 'Separate scales (on): each line its own axis. Click for one shared axis'
+                : 'Separate scales: each line its own axis, so 100000 and a 0/1 state both read',
+              'axes',
+              () => setScaleChoice(separate ? 'shared' : 'separate'),
+              { pressed: separate, id: 'scales' }
+            )
+          : null}
+      </div>
+      <PlotChart
+        className="plot-panes__chart"
+        lanes={props.lanes}
+        markers={props.markers}
+        height={props.height}
+        syncKey={props.syncKey}
+        xRange={xRange}
+        onXRangeChange={onXRangeChange}
+        yRange={yRange}
+        onYRangeChange={zoomable ? setYRange : undefined}
+        dragMode={dragMode}
+        separateScales={separate}
+        api={api}
+        xFormat={props.xFormat}
+        onCursor={(cursor) => props.onCursor(cursor?.x)}
+      />
+    </div>
+  )
 }
 
 function formatStat(value: number): string {
@@ -257,17 +394,18 @@ export function PlotPanes(props: PlotPanesProps): ReactNode {
           {xy.has(pane.id) ? (
             <XYOf pane={pane} pick={xy.get(pane.id)!} xRange={xRange} testId={`${testIdPrefix}-xy-chart`} />
           ) : (
-            <PlotChart
-              className="plot-panes__chart"
+            <PaneChart
               // Long lines are thinned to their pixels (spikes kept) before drawing.
               lanes={pane.lanes.map((lane) => thinLane(lane, xRange?.[0], xRange?.[1]))}
+              name={paneName(pane)}
               markers={props.markers}
               height={pane.height}
               syncKey={syncKey}
               xRange={xRange}
               onXRangeChange={onXRangeChange}
               xFormat={xFormat}
-              onCursor={(cursor) => setCursorX(cursor?.x)}
+              onCursor={setCursorX}
+              testIdPrefix={testIdPrefix}
             />
           )}
           <div

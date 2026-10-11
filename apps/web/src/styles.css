@@ -23999,3 +23999,60 @@ button.plot-side-list__name {
     display: none !important;
   }
 }
+
+/* Each chart's toolbar (plot/PlotPanes.tsx PaneChart): top right, on hover
+   or focus, always on touch screens. */
+.plot-panes__chart-wrap {
+  position: relative;
+  min-width: 0;
+}
+.plot-panes__toolbar {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  z-index: 2;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md, 6px);
+  background: var(--bg-panel);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.plot-panes__pane:hover .plot-panes__toolbar,
+.plot-panes__toolbar:focus-within {
+  opacity: 1;
+}
+@media (hover: none) {
+  .plot-panes__toolbar {
+    opacity: 1;
+  }
+}
+.plot-panes__tool {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.plot-panes__tool:hover:not(:disabled) {
+  background: var(--bg-panel-soft);
+  color: var(--text);
+}
+.plot-panes__tool.is-active {
+  background: var(--bg-panel-soft);
+  color: var(--accent, var(--primary-500));
+}
+.plot-panes__tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.plot-panes__chart.is-panning .u-over {
+  cursor: grab;
+}

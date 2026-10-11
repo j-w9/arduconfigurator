@@ -4,6 +4,7 @@ import {
   assignPane,
   decimateMinMax,
   groupIntoPanes,
+  lanesAreDisparate,
   overlayAll,
   rangeStats,
   thinLane,
@@ -95,5 +96,16 @@ describe('range stats and thinning', () => {
     expect(thin.t.length).toBeLessThan(n / 5)
     expect(Math.min(...thin.v)).toBe(-50)
     expect(thin.label).toBe('b')
+  })
+})
+
+describe('disparate lines', () => {
+  it('get their own axes when one would flatten the other', () => {
+    const t = [0, 1, 2]
+    expect(lanesAreDisparate([{ t, v: [100000, 100500, 99000] }, { t, v: [0, 1, 0] }])).toBe(true)
+    expect(lanesAreDisparate([{ t, v: [10, 12, 11] }, { t, v: [0, 5, 2] }])).toBe(false)
+    expect(lanesAreDisparate([{ t, v: [1, 2, 3] }])).toBe(false)
+    // Only what is in view counts.
+    expect(lanesAreDisparate([{ t, v: [100000, 1, 2] }, { t, v: [0, 1, 0] }], 1, 2)).toBe(false)
   })
 })

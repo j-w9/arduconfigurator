@@ -229,3 +229,23 @@ export function thinLane<L extends { t: ArrayLike<number>; v: ArrayLike<number> 
   const thinned = decimateMinMax(lane.t, lane.v, start, end, PLOT_THIN_BUCKETS)
   return { ...lane, t: thinned.t, v: thinned.v }
 }
+
+/** How far apart lines' sizes must be before each gets its own axis by default. */
+export const DISPARATE_RATIO = 50
+
+/**
+ * Do these lines differ so much in size that one shared value axis would
+ * flatten some of them (100000 beside a 0/1 state)? Compares each line's
+ * extent over what is in view: its span, or its magnitude when flat.
+ */
+export function lanesAreDisparate(lanes: readonly { t: ArrayLike<number>; v: ArrayLike<number> }[], from = Number.NEGATIVE_INFINITY, to = Number.POSITIVE_INFINITY): boolean {
+  const sizes: number[] = []
+  for (const lane of lanes) {
+    const stats = rangeStats(lane.t, lane.v, from, to)
+    if (!stats) continue
+    const size = Math.max(stats.max - stats.min, Math.abs(stats.max), Math.abs(stats.min))
+    if (size > 0) sizes.push(size)
+  }
+  if (sizes.length < 2) return false
+  return Math.max(...sizes) / Math.min(...sizes) > DISPARATE_RATIO
+}
