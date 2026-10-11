@@ -68,6 +68,8 @@ export interface PlotChartProps {
    * read. The time zoom still applies; value zoom and pan are off.
    */
   separateScales?: boolean
+  /** Draw as bars (a histogram) rather than lines. */
+  bars?: boolean
   /** Filled in with the chart's toolbar hooks. */
   api?: MutableRefObject<PlotChartApi | null>
   markers?: readonly PlotMarker[]
@@ -118,7 +120,7 @@ export function alignPlotLanes(lanes: readonly PlotLane[]): uPlot.AlignedData {
 
 export function PlotChart(props: PlotChartProps): ReactNode {
   const { lanes, markers, height = 160, syncKey, xRange, onXRangeChange, xFormat = defaultXFormat, onCursor, testId, className } = props
-  const { yRange, onYRangeChange, dragMode = 'zoom', api, separateScales = false } = props
+  const { yRange, onYRangeChange, dragMode = 'zoom', api, separateScales = false, bars = false } = props
   const hostRef = useRef<HTMLDivElement | null>(null)
   const plotRef = useRef<uPlot | null>(null)
   const bands = props.bands
@@ -209,7 +211,8 @@ export function PlotChart(props: PlotChartProps): ReactNode {
             width: 1.5,
             scale: separateScales ? `s${index}` : lane.axis === 2 ? 'y2' : 'y',
             points: { show: false },
-            spanGaps: joined
+            spanGaps: joined,
+            ...(bars ? { paths: uPlot.paths.bars!({ size: [0.9 / Math.max(1, lanes.length), 100] }), fill: `${resolveColor(lane.color, host)}88` } : {})
           }))
         ],
         hooks: {
@@ -374,7 +377,7 @@ export function PlotChart(props: PlotChartProps): ReactNode {
       plotRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shape, height, syncKey, hasRight, zoomable, joined, panning, onYRangeChange !== undefined, separateScales])
+  }, [shape, height, syncKey, hasRight, zoomable, joined, panning, onYRangeChange !== undefined, separateScales, bars])
 
   useEffect(() => {
     const plot = plotRef.current

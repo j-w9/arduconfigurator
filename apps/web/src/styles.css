@@ -23747,8 +23747,15 @@ button.plot-side-list__name {
 }
 .can-plot__expression-form {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 6px;
+}
+.can-plot__expression-condition {
+  flex: 1 1 100%;
+  min-width: 0;
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
 }
 .can-plot__expression-form textarea {
   flex: 1;
@@ -24096,4 +24103,66 @@ button.plot-side-list__name {
   color: var(--text-dim);
   font-size: var(--text-sm);
   text-align: center;
+}
+
+/* Per-line transform (ƒ) menu and its readout. */
+.plot-panes__transform {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+}
+.plot-panes__transform-menu {
+  width: 44px;
+  padding: 1px 2px;
+  font-size: var(--text-xs);
+}
+.plot-panes__transform-menu.is-active {
+  width: auto;
+  max-width: 150px;
+  border-color: var(--border-accent);
+}
+.plot-panes__transform input {
+  width: 64px;
+  padding: 1px 4px;
+  font-size: var(--text-xs);
+}
+.plot-panes__transformed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.plot-panes__transform-tag {
+  padding: 0 5px;
+  border: 1px solid var(--border-accent);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: var(--font-data);
+  font-size: var(--text-2xs);
+}
+.plot-panes__range-form {
+  position: absolute;
+  top: 30px;
+  right: 4px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md, 6px);
+  background: var(--bg-panel);
+  font-size: var(--text-xs);
+}
+.plot-panes__range-form label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+}
+.plot-panes__range-form input {
+  width: 80px;
+  padding: 1px 4px;
+  font-size: var(--text-xs);
 }

@@ -20,6 +20,7 @@ import {
   serializeSavedLayouts,
   upsertLayout,
   valueAt,
+  withCondition,
   type PlotPaneHeight,
   type SavedPlotLayout
 } from '../view-models/plot-workspace'
@@ -248,6 +249,7 @@ function BytesForm({ onAdd }: { onAdd: CanPlotViewProps['onAddBytes'] }): ReactN
 /** Plot an expression over decoded streams, with the names it can use one click away. */
 function ExpressionTab({ topics, onAdd }: { topics: readonly CanTopicEntry[]; onAdd: (text: string) => void }): ReactNode {
   const [text, setText] = useState('')
+  const [condition, setCondition] = useState('')
   const [error, setError] = useState<string | undefined>(undefined)
   // Each decoded stream once, with its number fields (vectors index: field[0]).
   const streams = new Map<string, string[]>()
@@ -268,7 +270,7 @@ function ExpressionTab({ topics, onAdd }: { topics: readonly CanTopicEntry[]; on
         className="can-plot__expression-form"
         onSubmit={(event) => {
           event.preventDefault()
-          const trimmed = text.trim()
+          const trimmed = condition.trim() ? withCondition(text.replace(/\s+/g, ''), condition) : text.trim()
           if (!trimmed) return
           const problem = canExpressionProblem(trimmed)
           if (problem) {
@@ -294,6 +296,18 @@ function ExpressionTab({ topics, onAdd }: { topics: readonly CanTopicEntry[]; on
         <button type="submit" className="can-monitor__tool" disabled={!text.trim()} data-testid="can-plot-expression-add">
           Plot
         </button>
+        <input
+          className="can-plot__expression-condition"
+          value={condition}
+          onChange={(event) => {
+            setCondition(event.target.value)
+            setError(undefined)
+          }}
+          spellCheck={false}
+          placeholder="Only when (optional): esc_Status[0].rpm > 1000"
+          aria-label="Only when"
+          data-testid="can-plot-expression-condition"
+        />
       </form>
       {error ? (
         <p className="plot-side-note can-plot__expression-error" data-testid="can-plot-expression-error">

@@ -9,7 +9,20 @@ import { useRef, useState, type DragEvent, type PointerEvent as ReactPointerEven
 import { PlotChart, type PlotBand, type PlotChartApi, type PlotDragMode, type PlotLane, type PlotMarker } from './PlotChart'
 import { spectrum, spectrumPeak } from '../view-models/plot-spectrum'
 import { PlotXYChart } from './PlotXYChart'
-import { PLOT_DRAG_TYPE, clampPaneHeight, lanesAreDisparate, rangeStats, thinLane, valueAt } from '../view-models/plot-workspace'
+import {
+  PLOT_DRAG_TYPE,
+  PLOT_TRANSFORM_LABELS,
+  clampPaneHeight,
+  histogram,
+  lanesAreDisparate,
+  rangeStats,
+  thinLane,
+  transformTag,
+  transformValues,
+  valueAt,
+  type PlotTransform,
+  type PlotTransformKind
+} from '../view-models/plot-workspace'
 
 export interface PlotSeriesRow {
   key: string
@@ -58,6 +71,7 @@ const TOOL_ICONS = {
   autoscale: '<path d="M15 3h6v6" /><path d="M9 21H3v-6" /><path d="M21 3l-7 7" /><path d="M3 21l7-7" />',
   home: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />',
   axes: '<path d="M3 3v18h18" /><path d="M7 3v18" /><path d="M21 3v18" />',
+  range: '<path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" /><path d="M7 12h10" />',
   png: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" />'
 } as const
 
@@ -111,6 +125,12 @@ function PaneChart(props: {
   const [yRange, setYRange] = useState<readonly [number, number] | undefined>(undefined)
   // Separate value axes: on by default when the lines differ wildly in size; the toolbar overrides.
   const [scaleChoice, setScaleChoice] = useState<'auto' | 'shared' | 'separate'>('auto')
+  // Typing a value range (PlotJuggler's "edit range").
+  const [rangeForm, setRangeForm] = useState<{ min: string; max: string } | undefined>(undefined)
+  const openRangeForm = () => {
+    const current = yRange ?? api.current?.scales()?.y
+    setRangeForm(rangeForm ? undefined : { min: current ? String(Number.parseFloat(current[0].toPrecision(6))) : '', max: current ? String(Number.parseFloat(current[1].toPrecision(6))) : '' })
+  }
   const disparate = props.lanes.length >= 2 && lanesAreDisparate(props.lanes, xRange?.[0], xRange?.[1])
   const separate = props.lanes.length >= 2 && (scaleChoice === 'separate' || (scaleChoice === 'auto' && disparate))
   const zoomBy = (factor: number) => {
@@ -156,6 +176,7 @@ function PaneChart(props: {
           onXRangeChange?.(undefined)
           setYRange(undefined)
         }, { disabled: !zoomable, id: 'reset' })}
+        {tool('Set the value range', 'range', openRangeForm, { pressed: rangeForm !== undefined, disabled: separate, id: 'range' })}
         {props.lanes.length >= 2
           ? tool(
               separate
@@ -167,6 +188,36 @@ function PaneChart(props: {
             )
           : null}
       </div>
+      {rangeForm ? (
+        <form
+          className="plot-panes__range-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const min = Number(rangeForm.min)
+            const max = Number(rangeForm.max)
+            if (Number.isFinite(min) && Number.isFinite(max) && max > min) {
+              setYRange([min, max])
+              setRangeForm(undefined)
+            }
+          }}
+          data-testid={`${testIdPrefix}-range-form`}
+        >
+          <label>
+            Min
+            <input type="number" step="any" value={rangeForm.min} onChange={(event) => setRangeForm({ ...rangeForm, min: event.target.value })} data-testid={`${testIdPrefix}-range-min`} />
+          </label>
+          <label>
+            Max
+            <input type="number" step="any" value={rangeForm.max} onChange={(event) => setRangeForm({ ...rangeForm, max: event.target.value })} data-testid={`${testIdPrefix}-range-max`} />
+          </label>
+          <button type="submit" className="can-monitor__tool" disabled={!(Number(rangeForm.max) > Number(rangeForm.min))} data-testid={`${testIdPrefix}-range-set`}>
+            Set
+          </button>
+          <button type="button" className="can-monitor__tool" onClick={() => setRangeForm(undefined)}>
+            Cancel
+          </button>
+        </form>
+      ) : null}
       <PlotChart
         className="plot-panes__chart"
         lanes={props.lanes}
@@ -223,6 +274,98 @@ function FftOf(props: { lanes: readonly PlotLane[]; xRange?: readonly [number, n
         xRange={zoom}
         onXRangeChange={setZoom}
         xFormat={(value) => `${Number.parseFloat(value.toPrecision(3))} Hz`}
+      />
+    </div>
+  )
+}
+
+/** A transformed line's tag and value (at the cursor, else the latest) beside its own. */
+function TransformedValue(props: { row: PlotSeriesRow; lanes: readonly PlotLane[]; transform?: PlotTransform; cursorX?: number }): ReactNode {
+  const tag = transformTag(props.transform)
+  if (!tag) return null
+  const own = props.lanes.filter((lane) => (lane.key ?? lane.label) === props.row.key)
+  // A vector's elements each transform; one value only reads for a single line.
+  const lane = own.length === 1 ? own[0] : undefined
+  const values = lane ? transformValues(lane.t, lane.v, props.transform) : undefined
+  const value =
+    lane && values ? (props.cursorX !== undefined && lane.t.length > 0 && props.cursorX >= lane.t[0] ? valueAt(lane.t, values, props.cursorX) : values[values.length - 1]) : undefined
+  return (
+    <span className="plot-panes__transformed" data-testid="plot-transformed">
+      <span className="plot-panes__transform-tag">{tag}</span>
+      {value !== undefined && Number.isFinite(value) ? <span className="plot-series__value">{formatStat(value)}</span> : null}
+    </span>
+  )
+}
+
+/** The ƒ menu on a line: how its values are transformed before drawing. */
+function TransformMenu(props: { transform?: PlotTransform; onChange: (transform: PlotTransform) => void; label: string; testId: string }): ReactNode {
+  const transform = props.transform ?? { kind: 'none' as const }
+  return (
+    <span className="plot-panes__transform">
+      <select
+        className={`plot-panes__transform-menu${transform.kind !== 'none' ? ' is-active' : ''}`}
+        value={transform.kind}
+        onChange={(event) => {
+          const kind = event.target.value as PlotTransformKind
+          props.onChange(kind === 'scale' ? { kind, factor: transform.factor ?? 1, offset: transform.offset ?? 0 } : kind === 'smooth' ? { kind, windowS: transform.windowS ?? 0.5 } : { kind })
+        }}
+        aria-label={`Transform ${props.label}`}
+        title="Transform this line: rate of change, integral, smoothed, absolute, scale & offset"
+        data-testid={props.testId}
+      >
+        {(Object.keys(PLOT_TRANSFORM_LABELS) as PlotTransformKind[]).map((kind) => (
+          <option key={kind} value={kind}>
+            {kind === 'none' ? 'ƒ' : PLOT_TRANSFORM_LABELS[kind]}
+          </option>
+        ))}
+      </select>
+      {transform.kind === 'scale' ? (
+        <>
+          <label>
+            ×
+            <input type="number" step="any" value={transform.factor ?? 1} onChange={(event) => props.onChange({ ...transform, factor: Number(event.target.value) || 0 })} aria-label="Factor" />
+          </label>
+          <label>
+            +
+            <input type="number" step="any" value={transform.offset ?? 0} onChange={(event) => props.onChange({ ...transform, offset: Number(event.target.value) || 0 })} aria-label="Offset" />
+          </label>
+        </>
+      ) : null}
+      {transform.kind === 'smooth' ? (
+        <label>
+          <input
+            type="number"
+            step="0.1"
+            min="0.05"
+            value={transform.windowS ?? 0.5}
+            onChange={(event) => props.onChange({ ...transform, windowS: Math.max(0.05, Number(event.target.value) || 0.5) })}
+            aria-label="Window, seconds"
+          />
+          s
+        </label>
+      ) : null}
+    </span>
+  )
+}
+
+/** The values in view as a histogram: where each line spends its time. */
+function HistogramOf(props: { lanes: readonly PlotLane[]; xRange?: readonly [number, number]; height: number; testIdPrefix: string }): ReactNode {
+  const result = histogram(props.lanes, props.xRange?.[0], props.xRange?.[1])
+  if (!result) {
+    return (
+      <p className="plot-panes__fft-empty" data-testid={`${props.testIdPrefix}-hist-chart`}>
+        No values in view.
+      </p>
+    )
+  }
+  return (
+    <div data-testid={`${props.testIdPrefix}-hist-chart`}>
+      <PlotChart
+        className="plot-panes__chart"
+        lanes={props.lanes.map((lane, index) => ({ label: lane.label, color: lane.color, key: lane.key, t: result.centers, v: result.counts[index] }))}
+        height={props.height}
+        bars
+        xFormat={(value) => formatStat(value)}
       />
     </div>
   )
@@ -299,6 +442,20 @@ export function PlotPanes(props: PlotPanesProps): ReactNode {
   // Charts drawn as XY (lane indexes for x and y), by pane.
   const [xy, setXy] = useState<ReadonlyMap<string, { x: number; y: number }>>(new Map())
   const [fft, setFft] = useState<ReadonlySet<string>>(new Set())
+  const [hist, setHist] = useState<ReadonlySet<string>>(new Set())
+  // Per-line transforms (PlotJuggler's curve functions), by series key.
+  const [transforms, setTransforms] = useState<ReadonlyMap<string, PlotTransform>>(new Map())
+  const setTransform = (key: string, transform: PlotTransform) =>
+    setTransforms((current) => {
+      const next = new Map(current)
+      if (transform.kind === 'none') next.delete(key)
+      else next.set(key, transform)
+      return next
+    })
+  const transformLane = (lane: PlotLane): PlotLane => {
+    const transform = transforms.get(lane.key ?? lane.label)
+    return transform ? { ...lane, v: transformValues(lane.t, lane.v, transform) } : lane
+  }
   // Lines hidden by clicking their swatch (series key, or label for a keyless lane).
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
   const toggleHidden = (key: string) =>
@@ -390,7 +547,16 @@ export function PlotPanes(props: PlotPanesProps): ReactNode {
                 >
                   <span className="plot-panes__swatch" style={{ background: row.color }} aria-hidden="true" />
                 </button>
-                <div className="plot-panes__content">{row.content(cursorX)}</div>
+                <div className="plot-panes__content">
+                  {row.content(cursorX)}
+                  <TransformedValue row={row} lanes={pane.lanes} transform={transforms.get(row.key)} cursorX={cursorX} />
+                </div>
+                <TransformMenu
+                  transform={transforms.get(row.key)}
+                  onChange={(transform) => setTransform(row.key, transform)}
+                  label={row.label}
+                  testId={`${testIdPrefix}-transform`}
+                />
                 {panes.length > 1 || pane.rows.length > 1 ? (
                   <select
                     className="plot-panes__chart-menu"
@@ -417,16 +583,18 @@ export function PlotPanes(props: PlotPanesProps): ReactNode {
           </ul>
           {(() => {
             // Lines hidden from the legend stay listed (dimmed) but leave the chart.
-            const lanes = pane.lanes.filter((lane) => !hidden.has(lane.key ?? lane.label))
-            const kind = fft.has(pane.id) ? 'fft' : xy.has(pane.id) && lanes.length >= 2 ? 'xy' : 'time'
-            const setKind = (next: 'time' | 'xy' | 'fft') => {
+            const lanes = pane.lanes.filter((lane) => !hidden.has(lane.key ?? lane.label)).map(transformLane)
+            const kind = fft.has(pane.id) ? 'fft' : hist.has(pane.id) ? 'hist' : xy.has(pane.id) && lanes.length >= 2 ? 'xy' : 'time'
+            const setKind = (next: 'time' | 'xy' | 'fft' | 'hist') => {
               setPaneXy(pane.id, next === 'xy' ? xy.get(pane.id) ?? { x: 0, y: 1 } : undefined)
-              setFft((current) => {
+              const toggle = (kindName: 'fft' | 'hist') => (current: ReadonlySet<string>) => {
                 const copy = new Set(current)
-                if (next === 'fft') copy.add(pane.id)
+                if (next === kindName) copy.add(pane.id)
                 else copy.delete(pane.id)
                 return copy
-              })
+              }
+              setFft(toggle('fft'))
+              setHist(toggle('hist'))
             }
             return (
               <>
@@ -459,6 +627,17 @@ export function PlotPanes(props: PlotPanesProps): ReactNode {
                     >
                       FFT
                     </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={kind === 'hist'}
+                      className={kind === 'hist' ? 'is-active' : undefined}
+                      onClick={() => setKind('hist')}
+                      title="How the values in view are spread: where a line spends its time"
+                      data-testid={`${testIdPrefix}-hist`}
+                    >
+                      Histogram
+                    </button>
                   </div>
                   {kind === 'xy' ? (
                     <>
@@ -486,6 +665,8 @@ export function PlotPanes(props: PlotPanesProps): ReactNode {
                   <XYOf pane={{ ...pane, lanes }} pick={xy.get(pane.id)!} xRange={xRange} testId={`${testIdPrefix}-xy-chart`} />
                 ) : kind === 'fft' ? (
                   <FftOf lanes={lanes} xRange={xRange} height={pane.height} name={paneName(pane)} testIdPrefix={testIdPrefix} />
+                ) : kind === 'hist' ? (
+                  <HistogramOf lanes={lanes} xRange={xRange} height={pane.height} testIdPrefix={testIdPrefix} />
                 ) : (
                   <PaneChart
                     // Long lines are thinned to their pixels (spikes kept) before drawing.

@@ -4,6 +4,9 @@ import {
   assignPane,
   decimateMinMax,
   groupIntoPanes,
+  histogram,
+  transformTag,
+  transformValues,
   lanesAreDisparate,
   overlayAll,
   rangeStats,
@@ -12,6 +15,7 @@ import {
   prunePanes,
   serializeSavedLayouts,
   upsertLayout,
+  withCondition,
   valueAt
 } from './plot-workspace'
 
@@ -107,5 +111,42 @@ describe('disparate lines', () => {
     expect(lanesAreDisparate([{ t, v: [1, 2, 3] }])).toBe(false)
     // Only what is in view counts.
     expect(lanesAreDisparate([{ t, v: [100000, 1, 2] }, { t, v: [0, 1, 0] }], 1, 2)).toBe(false)
+  })
+})
+
+describe('transforms', () => {
+  const t = [0, 1, 2, 3, 4]
+  const v = [0, 2, 4, 4, -2]
+  it('rate of change per second, integral, abs, scale', () => {
+    expect(Array.from(transformValues(t, v, { kind: 'rate' }))).toEqual([Number.NaN, 2, 2, 0, -6])
+    expect(Array.from(transformValues(t, v, { kind: 'integral' }))).toEqual([0, 1, 4, 8, 9])
+    expect(Array.from(transformValues(t, v, { kind: 'abs' }))).toEqual([0, 2, 4, 4, 2])
+    expect(Array.from(transformValues(t, v, { kind: 'scale', factor: 10, offset: -1 }))).toEqual([-1, 19, 39, 39, -21])
+    expect(transformValues(t, v, { kind: 'none' })).toBe(v)
+  })
+
+  it('smooths over a trailing window, and tags each kind', () => {
+    expect(Array.from(transformValues(t, v, { kind: 'smooth', windowS: 1 }))).toEqual([0, 1, 3, 4, 1])
+    expect(transformTag({ kind: 'rate' })).toBe('d/dt')
+    expect(transformTag({ kind: 'scale', factor: 0.01, offset: 0 })).toBe('×0.01+0')
+    expect(transformTag({ kind: 'none' })).toBeUndefined()
+  })
+})
+
+describe('histogram', () => {
+  it('counts every line over shared bins, only what is in view', () => {
+    const t = [0, 1, 2, 3]
+    const result = histogram([{ t, v: [0, 0, 10, 10] }, { t, v: [5, 5, 5, 5] }], undefined, undefined, 2)!
+    expect(result.centers).toEqual([2.5, 7.5])
+    expect(result.counts).toEqual([[2, 2], [0, 4]])
+    expect(histogram([{ t, v: [1, 1, 1, 1] }], 0, 3, 4)!.counts[0].reduce((a, b) => a + b)).toBe(4)
+    expect(histogram([{ t, v: [1, 2, 3, 4] }], 10, 20)).toBeUndefined()
+  })
+})
+
+describe('conditions', () => {
+  it('go on every term, before a right-axis suffix', () => {
+    expect(withCondition('ATTITUDE.roll ATTITUDE.pitch:2', 'VFR_HUD.throttle > 10')).toBe('ATTITUDE.roll{VFR_HUD.throttle>10} ATTITUDE.pitch{VFR_HUD.throttle>10}:2')
+    expect(withCondition(' A.x ', '  ')).toBe('A.x')
   })
 })

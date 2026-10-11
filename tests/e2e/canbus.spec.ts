@@ -791,6 +791,30 @@ test.describe('CAN tab: frame grouping and plotting vectors', () => {
     await scales.click()
     await expect(scales).toHaveAttribute('aria-pressed', 'false')
 
+    // Transforms: ESC power's rate of change, tagged d/dt beside it.
+    await powerPane.getByTestId('can-plot-transform').first().selectOption('rate')
+    await expect(powerPane.getByTestId('plot-transformed').first()).toContainText('d/dt')
+    await powerPane.getByTestId('can-plot-transform').first().selectOption('none')
+    // Histogram view, and a typed value range.
+    await powerPane.getByTestId('can-plot-hist').click()
+    await expect(powerPane.getByTestId('can-plot-hist-chart')).toBeVisible()
+    await powerPane.getByRole('radio', { name: 'Time' }).click()
+    await powerPane.hover()
+    await powerPane.getByTestId('can-plot-tool-scales').click()
+    await expect(powerPane.getByTestId('can-plot-tool-scales')).toHaveAttribute('aria-pressed', 'false')
+    await powerPane.getByTestId('can-plot-tool-range').click()
+    await powerPane.getByTestId('can-plot-range-min').fill('0')
+    await powerPane.getByTestId('can-plot-range-max').fill('1000000')
+    await powerPane.getByTestId('can-plot-range-set').click()
+    await expect(powerPane.getByTestId('can-plot-range-form')).toHaveCount(0)
+    await expect(powerPane.getByTestId('can-plot-tool-autoscale')).toBeEnabled()
+    // Only when: a condition on an expression.
+    await page.getByTestId('can-plot-side-expression').click()
+    await page.getByTestId('can-plot-expression-input').fill('esc_Status[2].rpm')
+    await page.getByTestId('can-plot-expression-condition').fill('esc_Status[2].rpm > 1000')
+    await page.getByTestId('can-plot-expression-add').click()
+    await expect(page.getByTestId('can-plot-series').locator('.plot-series__name', { hasText: 'esc_Status[2].rpm{esc_Status[2].rpm>1000}' })).toHaveCount(1)
+
     // Node messages are marked by default; the toggle turns them off.
     const markers = page.getByTestId('can-plot-node-messages')
     await expect(markers).toHaveAttribute('aria-pressed', 'true')

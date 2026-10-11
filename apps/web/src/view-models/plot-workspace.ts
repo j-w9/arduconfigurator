@@ -249,3 +249,150 @@ export function lanesAreDisparate(lanes: readonly { t: ArrayLike<number>; v: Arr
   if (sizes.length < 2) return false
   return Math.max(...sizes) / Math.min(...sizes) > DISPARATE_RATIO
 }
+
+// ---- Transforms (PlotJuggler's per-curve functions) -------------------------
+
+export type PlotTransformKind = 'none' | 'rate' | 'integral' | 'smooth' | 'abs' | 'scale'
+
+export interface PlotTransform {
+  kind: PlotTransformKind
+  /** For 'scale': value × factor + offset. */
+  factor?: number
+  offset?: number
+  /** For 'smooth': the moving-average window, seconds. */
+  windowS?: number
+}
+
+export const PLOT_TRANSFORM_LABELS: Record<PlotTransformKind, string> = {
+  none: 'As is',
+  rate: 'Rate of change (/s)',
+  integral: 'Integral (×s)',
+  smooth: 'Smoothed',
+  abs: 'Absolute',
+  scale: 'Scale & offset'
+}
+
+/** The short tag a transformed line wears beside its name. */
+export function transformTag(transform: PlotTransform | undefined): string | undefined {
+  if (!transform || transform.kind === 'none') return undefined
+  switch (transform.kind) {
+    case 'rate':
+      return 'd/dt'
+    case 'integral':
+      return '∫dt'
+    case 'smooth':
+      return `avg ${transform.windowS ?? 0.5}s`
+    case 'abs':
+      return '|x|'
+    case 'scale':
+      return `×${transform.factor ?? 1}${(transform.offset ?? 0) >= 0 ? '+' : ''}${transform.offset ?? 0}`
+  }
+}
+
+/** A line's values through a transform (time in seconds); gaps (NaN) stay gaps. */
+export function transformValues(t: ArrayLike<number>, v: ArrayLike<number>, transform: PlotTransform | undefined): ArrayLike<number> {
+  if (!transform || transform.kind === 'none') return v
+  const n = v.length
+  const out = new Array<number>(n)
+  switch (transform.kind) {
+    case 'abs':
+      for (let i = 0; i < n; i += 1) out[i] = Math.abs(v[i])
+      return out
+    case 'scale': {
+      const factor = transform.factor ?? 1
+      const offset = transform.offset ?? 0
+      for (let i = 0; i < n; i += 1) out[i] = v[i] * factor + offset
+      return out
+    }
+    case 'rate':
+      // Backward difference per second; the first point has none.
+      for (let i = 0; i < n; i += 1) {
+        const dt = i > 0 ? t[i] - t[i - 1] : 0
+        out[i] = dt > 0 ? (v[i] - v[i - 1]) / dt : Number.NaN
+      }
+      return out
+    case 'integral': {
+      // Trapezoids, skipping over gaps.
+      let sum = 0
+      for (let i = 0; i < n; i += 1) {
+        if (i > 0 && Number.isFinite(v[i]) && Number.isFinite(v[i - 1])) sum += ((v[i] + v[i - 1]) / 2) * (t[i] - t[i - 1])
+        out[i] = sum
+      }
+      return out
+    }
+    case 'smooth': {
+      // A trailing moving average over windowS seconds.
+      const window = transform.windowS ?? 0.5
+      let start = 0
+      let sum = 0
+      let count = 0
+      for (let i = 0; i < n; i += 1) {
+        if (Number.isFinite(v[i])) {
+          sum += v[i]
+          count += 1
+        }
+        while (t[i] - t[start] > window) {
+          if (Number.isFinite(v[start])) {
+            sum -= v[start]
+            count -= 1
+          }
+          start += 1
+        }
+        out[i] = count > 0 ? sum / count : Number.NaN
+      }
+      return out
+    }
+  }
+}
+
+// ---- Histogram ---------------------------------------------------------------
+
+/** Counts of each line's values in view over shared bins, for a chart's histogram view. */
+export function histogram(
+  lanes: readonly { t: ArrayLike<number>; v: ArrayLike<number> }[],
+  from = Number.NEGATIVE_INFINITY,
+  to = Number.POSITIVE_INFINITY,
+  binCount = 40
+): { centers: number[]; counts: number[][] } | undefined {
+  let min = Number.POSITIVE_INFINITY
+  let max = Number.NEGATIVE_INFINITY
+  for (const lane of lanes) {
+    for (let i = 0; i < lane.t.length; i += 1) {
+      if (lane.t[i] < from || lane.t[i] > to || !Number.isFinite(lane.v[i])) continue
+      if (lane.v[i] < min) min = lane.v[i]
+      if (lane.v[i] > max) max = lane.v[i]
+    }
+  }
+  if (!Number.isFinite(min)) return undefined
+  // A flat line still gets one visible bar.
+  if (max === min) {
+    min -= 0.5
+    max += 0.5
+  }
+  const width = (max - min) / binCount
+  const centers = Array.from({ length: binCount }, (_u, index) => min + width * (index + 0.5))
+  const counts = lanes.map((lane) => {
+    const bins = new Array<number>(binCount).fill(0)
+    for (let i = 0; i < lane.t.length; i += 1) {
+      if (lane.t[i] < from || lane.t[i] > to || !Number.isFinite(lane.v[i])) continue
+      bins[Math.min(binCount - 1, Math.floor((lane.v[i] - min) / width))] += 1
+    }
+    return bins
+  })
+  return { centers, counts }
+}
+
+/**
+ * MAVExplorer's conditions: each term of an expression gets `{condition}`
+ * (before a `:2` axis suffix), so it plots only while the condition holds.
+ * Spaces are dropped from the condition -- a space separates terms.
+ */
+export function withCondition(expression: string, condition: string): string {
+  const cond = condition.replace(/\s+/g, '')
+  if (!cond) return expression.trim()
+  return expression
+    .trim()
+    .split(/\s+/)
+    .map((term) => term.replace(/(:2)?$/, `{${cond}}$1`))
+    .join(' ')
+}

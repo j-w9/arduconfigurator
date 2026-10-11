@@ -24,6 +24,7 @@ import {
   serializeSavedLayouts,
   upsertLayout,
   valueAt,
+  withCondition,
   type PlotPaneHeight,
   type SavedPlotLayout
 } from '../view-models/plot-workspace'
@@ -54,6 +55,8 @@ export interface MavlinkPlotWorkspaceProps {
   bufferSeconds: number
   /** Flight mode over time (seconds since the epoch), shaded behind the charts. */
   modeSpans?: readonly { from: number; to: number; mode: string; armed: boolean }[]
+  /** Parameter changes (seconds since the epoch), marked on the time axis. */
+  paramChanges?: readonly { t: number; name: string; from: number; to: number }[]
   /** What the autopilot said (STATUSTEXT), marked on the time axis. */
   statusTexts?: readonly { severity: 'info' | 'warning' | 'error'; text: string; receivedAtMs?: number }[]
 }
@@ -157,6 +160,7 @@ function FieldsTab(props: Pick<MavlinkPlotWorkspaceProps, 'stats' | 'plots' | 'm
 /** Plot a typed expression over MAVLink fields, with the names one click away. */
 function ExpressionTab({ stats, onOpen }: { stats: readonly MavlinkMessageStat[]; onOpen: (text: string) => string | undefined }): ReactNode {
   const [text, setText] = useState('')
+  const [condition, setCondition] = useState('')
   const [error, setError] = useState<string | undefined>(undefined)
   const messages = new Map<string, string[]>()
   for (const stat of [...stats].sort((a, b) => a.type.localeCompare(b.type))) {
@@ -169,7 +173,7 @@ function ExpressionTab({ stats, onOpen }: { stats: readonly MavlinkMessageStat[]
         className="can-plot__expression-form"
         onSubmit={(event) => {
           event.preventDefault()
-          const problem = onOpen(text)
+          const problem = onOpen(withCondition(text, condition))
           if (problem) setError(problem)
           else setText('')
         }}
@@ -189,6 +193,18 @@ function ExpressionTab({ stats, onOpen }: { stats: readonly MavlinkMessageStat[]
         <button type="submit" className="can-monitor__tool" disabled={!text.trim()} data-testid="mavlink-expression-add">
           Plot
         </button>
+        <input
+          className="can-plot__expression-condition"
+          value={condition}
+          onChange={(event) => {
+            setCondition(event.target.value)
+            setError(undefined)
+          }}
+          spellCheck={false}
+          placeholder="Only when (optional): VFR_HUD.throttle > 10"
+          aria-label="Only when"
+          data-testid="mavlink-expression-condition"
+        />
       </form>
       {error ? (
         <p className="plot-side-note can-plot__expression-error" data-testid="mavlink-expression-error">
@@ -313,6 +329,7 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
   const [zoom, setZoom] = useState<readonly [number, number] | undefined>(undefined)
   const [showModes, setShowModes] = useState(true)
   const [showMessages, setShowMessages] = useState(true)
+  const [showParams, setShowParams] = useState(true)
   // Paused, the charts hold what they showed: the buffers keep moving underneath.
   const frozen = useRef<{ nowMs: number; plots: readonly MavlinkPlot[]; graphs: readonly OpenLiveGraph[] } | undefined>(undefined)
   if (paused && !frozen.current) frozen.current = { nowMs: Date.now(), plots, graphs: openGraphs }
@@ -471,12 +488,17 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
         color: modeColor(span.mode)
       }))
     : []
-  const markers = showMessages
+  const markers: { x: number; label: string; color: string }[] = showMessages
     ? (props.statusTexts ?? [])
         .filter((entry) => entry.receivedAtMs !== undefined && entry.receivedAtMs / 1000 >= nowS - props.bufferSeconds)
         .slice(0, 40)
         .map((entry) => ({ x: entry.receivedAtMs! / 1000 - nowS, label: entry.text, color: STATUS_COLORS[entry.severity] }))
     : []
+  if (showParams) {
+    for (const change of props.paramChanges ?? []) {
+      markers.push({ x: change.t - nowS, label: `${change.name} ${formatPlotValue(change.from)}→${formatPlotValue(change.to)}`, color: '#b07cf7' })
+    }
+  }
 
   const keys = lines.map((line) => line.key)
   return (
@@ -549,6 +571,16 @@ export function MavlinkPlotWorkspace(props: MavlinkPlotWorkspaceProps): ReactNod
             data-testid="mavlink-plot-messages"
           >
             Messages
+          </button>
+          <button
+            type="button"
+            className={`can-monitor__tool${showParams ? ' is-active' : ''}`}
+            onClick={() => setShowParams((current) => !current)}
+            aria-pressed={showParams}
+            title="Mark parameter changes on the time axis (yours, or another ground station's)"
+            data-testid="mavlink-plot-params"
+          >
+            Param changes
           </button>
         </>
       }

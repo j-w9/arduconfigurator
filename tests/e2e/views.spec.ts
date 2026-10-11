@@ -6745,6 +6745,7 @@ test.describe('Inspectors (expert-only)', () => {
     // Flight modes shade the charts and autopilot messages are marked, both on by default.
     await expect(page.getByTestId('mavlink-plot-modes')).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByTestId('mavlink-plot-messages')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('mavlink-plot-params')).toHaveAttribute('aria-pressed', 'true')
     // A line hides from its chart by its swatch and comes back the same way.
     const swatch = panes.first().getByTestId('mavlink-chart-visibility').first()
     await swatch.click()
@@ -6766,8 +6767,10 @@ test.describe('Inspectors (expert-only)', () => {
     await page.getByTestId('mavlink-expression-add').click()
     await expect(page.getByTestId('mavlink-expression-error')).toBeVisible()
     await page.getByTestId('mavlink-expression-input').fill('degrees(ATTITUDE.pitch)')
+    await page.getByTestId('mavlink-expression-condition').fill('VFR_HUD.groundspeed >= 0')
     await page.getByTestId('mavlink-expression-add').click()
     await expect(lines).toHaveCount(1)
+    await expect(lines.first()).toContainText('{VFR_HUD.groundspeed>=0}')
     await expect(lines.first()).toContainText('expression')
   })
 
