@@ -5,7 +5,7 @@ import { worstViewportOverflow } from './support/overflow'
 // (its decode + node-discovery logic is unit-covered by
 // runtime.dronecan-nodes.test.mjs / dronecan-decoders.test.mjs, but the view
 // itself was never opened in a browser test). These pin:
-//   - the tab is reachable after connect and renders the inspector intro,
+//   - the tab is reachable after connect and shows its bus controls,
 //   - starting CAN forwarding transitions to the active scanning state.
 // The demo emits no CAN nodes, so the active state shows the "no NodeStatus
 // broadcasts yet" empty message rather than a populated node list.
@@ -17,7 +17,7 @@ async function connectDemo(page: Page): Promise<void> {
 }
 
 test.describe('DroneCAN inspector', () => {
-  test('CAN tab is reachable and renders the inspector intro', async ({ page }) => {
+  test('CAN tab is reachable and shows its bus controls, no intro text', async ({ page }) => {
     await page.goto('/')
     await connectDemo(page)
     await page.getByTestId('view-button-can').click()
@@ -26,8 +26,8 @@ test.describe('DroneCAN inspector', () => {
     await expect(page.getByRole('heading', { name: 'DroneCAN Bus' })).toBeVisible()
     await expect(page.getByTestId('can-bus-select')).toBeVisible()
     await expect(page.getByTestId('can-bus-start')).toBeEnabled()
-    // Pre-scan intro explains the MAV_CMD_CAN_FORWARD flow.
-    await expect(page.getByText('MAV_CMD_CAN_FORWARD').first()).toBeVisible()
+    // No protocol walk-through before connecting: just the controls.
+    await expect(page.getByText('How it works')).toHaveCount(0)
   })
 
   test('starting forwarding discovers the simulated DroneCAN nodes + params', async ({ page }) => {

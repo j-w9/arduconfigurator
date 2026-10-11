@@ -10106,28 +10106,9 @@ details.metadata-settings-section:not([open]) > summary::after {
   color: var(--text);
 }
 
-.can-bus-intro {
-  padding: 14px 16px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--bg-panel);
-  line-height: 1.55;
-}
 
-.can-bus-intro p {
-  margin: 0 0 8px 0;
-}
 
-.can-bus-intro ol {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text-muted);
-}
 
-.can-bus-intro code {
-  font-family: var(--font-data);
-  color: var(--text);
-}
 
 .can-bus-nodes {
   list-style: none;
@@ -23829,20 +23810,6 @@ button.plot-side-list__name {
 }
 
 /* CAN ▸ the pre-connect intro: the protocol steps behind "How it works". */
-.can-bus-intro p {
-  margin: 0;
-}
-.can-bus-intro details {
-  margin-top: var(--space-2);
-}
-.can-bus-intro summary {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-.can-bus-intro details[open] > summary {
-  margin-bottom: var(--space-1);
-}
 
 /* Field trees: Plot buttons line up at the right edge instead of trailing each
    value at a different x; the hovered row ties a name to its button. */

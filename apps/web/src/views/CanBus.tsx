@@ -325,24 +325,7 @@ export function CanBusView(props: CanBusViewProps) {
               ? 'Connect to a vehicle to reach its CAN bus, or plug in a USB-CAN adapter (SLCAN) and choose Use a USB-CAN adapter.'
               : 'Connect to a vehicle first. The CAN inspector talks to the autopilot over MAVLink.'}
           </p>
-        ) : !isActive ? (
-          <div className="can-bus-intro">
-            <p>
-              Connect to a bus to find its DroneCAN nodes, then read and edit each node&rsquo;s parameters. The
-              autopilot forwards the bus over MAVLink with <code>MAV_CMD_CAN_FORWARD</code>.
-            </p>
-            {/* The protocol walk-through is for the curious; it stays a click away. */}
-            <details>
-              <summary>How it works</summary>
-              <ol>
-                <li>Listen for <code>uavcan.protocol.NodeStatus</code> broadcasts from every node.</li>
-                <li>Ask each with <code>uavcan.protocol.GetNodeInfo</code> for its name and HW/SW versions.</li>
-                <li>Walk its parameter table with <code>uavcan.protocol.param.GetSet</code>.</li>
-                <li>Save edits on the node with <code>uavcan.protocol.param.ExecuteOpcode</code>.</li>
-              </ol>
-            </details>
-          </div>
-        ) : rows.length === 0 ? (
+        ) : !isActive ? null : rows.length === 0 ? (
           adapter?.active ? (
             <p className="can-bus-empty">
               The adapter is open ({state.framesReceived} frames so far) but no <code>NodeStatus</code> broadcasts have
