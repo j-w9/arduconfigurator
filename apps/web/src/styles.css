@@ -18622,6 +18622,17 @@ button.mavlink-inspector__sent-row {
 /* Flight modes: the mode channel and the six slots in one row, seven across,
    each its title over its dropdown (seven titles beside seven dropdowns do
    not fit a line); the arm switch on the line under. */
+/* Acro's trainer and options, under the modes once a position is Acro. */
+.receiver-modes__acro {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.receiver-modes__acro > * {
+  flex: 1 1 260px;
+  min-width: 0;
+}
 /* One line: "Channel [CH7]  1 [Stabilize]  2 [Loiter] ..." -- title beside
    its dropdown (the map-row rule above), channel a little wider. */
 .receiver-modes__row {

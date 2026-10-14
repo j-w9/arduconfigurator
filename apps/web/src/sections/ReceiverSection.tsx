@@ -59,7 +59,8 @@ import { StickCraftPreview } from '../preview-components'
 import { toneForModeSwitchExercise } from '../tone-helpers'
 import { InfoDot } from '../views/InfoDot'
 import { ReceiverView, receiverSectionElementId, type ReceiverTaskId } from '../views/Receiver'
-import { ScopedCheckboxField, ScopedNumberField, ScopedSelectField } from '../views/ScopedField'
+import { ScopedBitmaskField, ScopedCheckboxField, ScopedNumberField, ScopedSelectField } from '../views/ScopedField'
+import { COPTER_ACRO_MODE, functionPickDrafts, modeChannelPickDrafts } from '../view-models/mode-channel'
 
 // The flight-mode switch positions as ArduPilot reads them
 // (estimateFlightModeSlot / RC_Channel::read_6pos_switch: <=1230, <=1360,
@@ -374,6 +375,17 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     return Number.isFinite(editedNumber) ? editedNumber : parameter.value
   }
 
+  // The flight-mode channel as the operator sees it (a staged pick wins).
+  const modeParamId = modeChannelParameter?.id
+  const shownModeChannel = ((): number | undefined => {
+    const edited = modeParamId !== undefined ? editedValues[modeParamId] : undefined
+    const editedNumber = edited !== undefined && edited !== '' ? Number(edited) : NaN
+    return Number.isInteger(editedNumber) ? editedNumber : configuredModeChannel
+  })()
+  const optionLabel = (channelNumber: number, option: number): string =>
+    selectParameterById(snapshot, `RC${channelNumber}_OPTION`)?.definition?.options?.find((entry) => entry.value === option)
+      ?.label ?? String(option)
+
   // One dropdown per row: the four stick axes, then the channel's functions
   // (RCn_OPTION, CH5 and up). An axis row offers the axes only -- an axis
   // leaves a channel by being picked on another one, so all four stay mapped.
@@ -406,14 +418,20 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     const axisId = axes[0]
     const option = functionParameter ? shownOption(channelNumber) : undefined
     const functionOptions = functionParameter?.definition?.options ?? []
-    const value = axisId !== undefined ? `axis:${axisId}` : functionParameter ? `option:${option ?? 0}` : ''
+    // The flight-mode switch is offered beside the functions: one job per channel.
+    const offersModeSwitch = modeParamId !== undefined && functionParameter !== undefined && axisId === undefined
+    const isModeRow = offersModeSwitch && shownModeChannel === channelNumber
+    const value =
+      axisId !== undefined ? `axis:${axisId}` : isModeRow ? 'mode:' : functionParameter ? `option:${option ?? 0}` : ''
     // Outlined while a pick that touches this row is staged: an RCMAP draft
     // that moves an axis onto or off it, or its own RCn_OPTION.
     const statusFor = (paramId: string): string | undefined => parameterDraftById.get(paramId)?.status
     const touching = RC_CALIBRATION_AXIS_ORDER.filter(
       (axis) => shownAxisMap[axis] === channelNumber || currentRcAxisChannelMap[axis] === channelNumber
     ).map((axis) => RCMAP_PARAM_IDS[axis])
-    const rowParamIds = functionParameter ? [...touching, functionParameter.id] : touching
+    const modeTouching =
+      offersModeSwitch && (shownModeChannel === channelNumber || configuredModeChannel === channelNumber) ? [modeParamId!] : []
+    const rowParamIds = functionParameter ? [...touching, ...modeTouching, functionParameter.id] : touching
     const status = rowParamIds.some((paramId) => statusFor(paramId) === 'invalid')
       ? 'invalid'
       : rowParamIds.some((paramId) => statusFor(paramId) === 'staged')
@@ -432,8 +450,10 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
               const [kind, picked] = event.target.value.split(':')
               if (kind === 'axis') {
                 mergeDrafts(buildAxisAssignmentDrafts(shownAxisMap, picked as RcAxisId, channelNumber, shownOption))
+              } else if (kind === 'mode' && modeParamId) {
+                mergeDrafts(modeChannelPickDrafts(modeParamId, channelNumber, shownOption))
               } else if (kind === 'option' && functionParameter) {
-                setDraft(functionParameter.id, picked)
+                mergeDrafts(functionPickDrafts(modeParamId, shownModeChannel, channelNumber, Number(picked)))
               }
             }}
           >
@@ -450,11 +470,17 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                 {functionOptions.some((entry) => entry.value === option) ? null : (
                   <option value={`option:${option ?? 0}`}>{`${option ?? 0} (unlisted)`}</option>
                 )}
-                {functionOptions.map((entry) => (
+                {functionOptions.map((entry) => [
                   <option key={entry.value} value={`option:${entry.value}`}>
                     {entry.label}
-                  </option>
-                ))}
+                  </option>,
+                  // Right under "Do Nothing": the mode switch is the other plain job for a channel.
+                  entry.value === 0 && offersModeSwitch ? (
+                    <option key="mode" value="mode:">
+                      Flight modes
+                    </option>
+                  ) : null
+                ])}
               </optgroup>
             ) : null}
           </select>
@@ -849,6 +875,44 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
   // of the table whose rows show them moving. The slot the mode switch is in
   // right now is lit, so flicking it through its positions confirms each
   // mode. Config ▸ Flight Modes edits the same parameters (one draft pool).
+  const modeChannelConflict = ((): number | undefined => {
+    if (shownModeChannel === undefined || shownModeChannel < 1) {
+      return undefined
+    }
+    const option = shownOption(shownModeChannel)
+    return option !== undefined && option !== 0 ? option : undefined
+  })()
+  // Acro's trainer and options, once a switch position is Acro (Copter; the
+  // parameters exist only on builds with Acro).
+  const acroTrainerParameter = selectParameterById(snapshot, 'ACRO_TRAINER')
+  const acroOptionsParameter = selectParameterById(snapshot, 'ACRO_OPTIONS')
+  const acroInUse =
+    modeParamId === 'FLTMODE_CH' &&
+    modeAssignmentParameters.some((parameter) => Number(editedValues[parameter.id] ?? parameter.value) === COPTER_ACRO_MODE)
+  const acroSettings =
+    acroInUse && (acroTrainerParameter || acroOptionsParameter) ? (
+      <div className="receiver-modes__acro" data-testid="receiver-acro-settings">
+        {acroTrainerParameter ? (
+          <ScopedSelectField
+            parameter={acroTrainerParameter}
+            liveValue={acroTrainerParameter.value}
+            editedValues={editedValues}
+            onChange={(paramId, value) => setDraft(paramId, value)}
+            draftStatusById={parameterDraftById}
+          />
+        ) : null}
+        {acroOptionsParameter ? (
+          <ScopedBitmaskField
+            parameter={acroOptionsParameter}
+            liveValue={acroOptionsParameter.value}
+            editedValues={editedValues}
+            onChange={(paramId, value) => setDraft(paramId, value)}
+            draftStatusById={parameterDraftById}
+          />
+        ) : null}
+      </div>
+    ) : null
+
   const flightModesLine =
     modeChannelParameter || modeAssignmentParameters.length > 0 ? (
       <div className="receiver-modes" id={receiverSectionElementId('flight-modes')} data-testid="receiver-flight-modes-card">
@@ -870,7 +934,11 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
               }
               liveValue={configuredModeChannel}
               editedValues={editedValues}
-              onChange={(paramId, value) => setDraft(paramId, value)}
+              onChange={(paramId, value) =>
+                Number.isInteger(Number(value)) && value !== ''
+                  ? mergeDrafts(modeChannelPickDrafts(paramId, Number(value), shownOption))
+                  : setDraft(paramId, value)
+              }
               draftStatusById={parameterDraftById}
             />
           ) : null}
@@ -894,6 +962,13 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
             )
           })}
         </div>
+        {modeChannelConflict !== undefined ? (
+          <p className="switch-exercise-warning" data-testid="receiver-mode-channel-conflict">
+            ⚠ CH{shownModeChannel} is the flight-mode channel and also runs {optionLabel(shownModeChannel!, modeChannelConflict)}.
+            Give it one job in its row above.
+          </p>
+        ) : null}
+        {acroSettings}
         {modeSwitchEstimate.channelNumber !== undefined && modeAssignmentParameters.length > 0 ? (
           <div className="receiver-modes__live" data-testid="receiver-modes-live">
             <span className="receiver-modes__live-ch">
@@ -943,11 +1018,15 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
               value={String(armSwitchAssignment.channel ?? 0)}
               onChange={(event) => handleSetArmSwitchChannel(Number(event.target.value), armSwitchAssignment.airmode)}
             >
-              {armSwitchChannelOptions().map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+              {armSwitchChannelOptions().map((option) => {
+                // The flight-mode channel is taken: one job per channel.
+                const modeTaken = option.value > 0 && option.value === shownModeChannel
+                return (
+                  <option key={option.value} value={option.value} disabled={modeTaken && option.value !== armSwitchAssignment.channel}>
+                    {modeTaken ? `${option.label} (flight modes)` : option.label}
+                  </option>
+                )
+              })}
             </select>
           </label>
           <StatusBadge tone={armSwitchAssignment.channel !== undefined ? 'success' : 'neutral'}>

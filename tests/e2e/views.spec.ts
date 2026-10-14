@@ -3252,17 +3252,19 @@ test.describe('Receiver functions tab', () => {
 
     // "Do Nothing" (0) is pinned above both groups — the cleared state.
     expect(labels[0]).toBe('Do Nothing')
+    // The flight-mode switch (FLTMODE_CH, not an RCn_OPTION) right under it.
+    expect(labels[1]).toBe('Flight modes')
 
     // The common group leads, alphabetically: ACRO Mode is its first entry and
     // the flight-mode/arming staples sit inside it.
-    const common = labels.slice(1, 1 + AUX_COMMON_FUNCTION_COUNT)
+    const common = labels.slice(2, 2 + AUX_COMMON_FUNCTION_COUNT)
     expect(common[0]).toBe('ACRO Mode')
     for (const label of ['ALTHOLD Mode', 'Motor Emergency Stop', 'RTL', 'VTX Power']) {
       expect(common).toContain(label)
     }
 
     // The long tail follows, also alphabetical, and holds the niche entries.
-    const tail = labels.slice(1 + AUX_COMMON_FUNCTION_COUNT)
+    const tail = labels.slice(2 + AUX_COMMON_FUNCTION_COUNT)
     for (const label of ['Gripper', 'KillIMU1', 'Sprayer Enable', 'Winch Enable']) {
       expect(tail).toContain(label)
     }
@@ -3346,6 +3348,46 @@ test.describe('Receiver arm switch', () => {
     await channelSelect.selectOption('0')
     await expect(card).toContainText('not assigned')
     await expect(airmodeCheckbox).toBeDisabled()
+  })
+})
+
+test.describe('Receiver: one job per channel', () => {
+  test('the flight-mode switch is picked in a channel row, and takes the channel from a function', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    // Demo: FLTMODE_CH=7, every RCn_OPTION 0.
+    await expect(page.getByTestId('receiver-channel-function-7')).toHaveValue('mode:')
+    const armSelect = page.getByTestId('receiver-arm-switch-channel')
+    await expect(armSelect.locator('option[value="7"]')).toHaveJSProperty('disabled', true)
+    await expect(armSelect.locator('option[value="7"]')).toHaveText('Channel 7 (flight modes)')
+
+    // Arm on CH6, then make CH6 the mode channel: the arm switch comes off it.
+    await armSelect.selectOption('6')
+    await expect(page.getByTestId('receiver-arm-switch')).toContainText('CH6')
+    await page.getByTestId('receiver-channel-function-6').selectOption('mode:')
+    await expect(page.getByTestId('receiver-channel-function-6')).toHaveValue('mode:')
+    await expect(page.getByTestId('receiver-channel-function-7')).toHaveValue('option:0')
+    await expect(page.getByTestId('receiver-arm-switch')).toContainText('not assigned')
+    await expect(page.getByTestId('receiver-mode-channel-conflict')).toHaveCount(0)
+
+    // A function picked on the mode channel takes the mode switch off it.
+    await page.getByTestId('receiver-channel-function-6').selectOption('option:153')
+    await expect(page.getByTestId('receiver-arm-switch')).toContainText('CH6')
+    await expect(page.getByTestId('receiver-channel-function-7')).toHaveValue('option:0')
+    await expect(page.getByTestId('receiver-channel-function-6')).toHaveValue('option:153')
+  })
+
+  test('Acro in a switch position shows its trainer and options', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await expect(page.getByTestId('receiver-acro-settings')).toHaveCount(0)
+    await page.getByTestId('receiver-mode-slot-1').locator('select').selectOption('1')
+    const acro = page.getByTestId('receiver-acro-settings')
+    await expect(acro).toBeVisible()
+    await expect(acro.locator('select')).toHaveValue('2')
+    await expect(page.getByTestId('scoped-bitmask-ACRO_OPTIONS')).toContainText('Air-mode')
   })
 })
 

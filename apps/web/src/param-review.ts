@@ -41,6 +41,9 @@ export function isReceiverReviewParamId(paramId: string): boolean {
     // Rover's slots (MODE1..6) -- the Receiver's flight-mode line edits them
     // too. No such parameter on Copter, Plane or Sub.
     /^MODE[1-6]$/.test(paramId) ||
+    // Acro's trainer and options, shown under the flight modes when a slot is Acro.
+    paramId === 'ACRO_TRAINER' ||
+    paramId === 'ACRO_OPTIONS' ||
     RECEIVER_SUPPORT_PARAM_IDS.includes(paramId as (typeof RECEIVER_SUPPORT_PARAM_IDS)[number])
   )
 }

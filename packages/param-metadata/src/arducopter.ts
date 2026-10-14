@@ -2488,6 +2488,35 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       notes: modeChannelNotes,
       options: enumOptions(ARDUCOPTER_FLTMODE_CHANNEL_LABELS)
     },
+    // From ArduCopter/Parameters.cpp (MODE_ACRO_ENABLED builds only).
+    ACRO_TRAINER: {
+      id: 'ACRO_TRAINER',
+      label: 'Acro Trainer',
+      description:
+        'Training help in Acro. Leveling returns the craft to level when the sticks are centred; Limited also caps the lean angle at ANGLE_MAX.',
+      category: 'modes',
+      minimum: 0,
+      maximum: 2,
+      options: [
+        { value: 0, label: 'Disabled' },
+        { value: 1, label: 'Leveling' },
+        { value: 2, label: 'Leveling and Limited' }
+      ]
+    },
+    ACRO_OPTIONS: {
+      id: 'ACRO_OPTIONS',
+      label: 'Acro Options',
+      description:
+        'Air-mode keeps full attitude control at zero throttle in Acro (ATC_THR_MIX_MAN at all times; no effect on helicopters). Rate Loop Only flies on rate control alone, without angle stabilization.',
+      category: 'modes',
+      minimum: 0,
+      maximum: 3,
+      bitmask: true,
+      options: [
+        { value: 0, label: 'Air-mode' },
+        { value: 1, label: 'Rate Loop Only' }
+      ]
+    },
     MODE_CH: {
       id: 'MODE_CH',
       label: 'Legacy Mode Channel',

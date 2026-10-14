@@ -412,6 +412,9 @@ const mockParameters: ParameterState = {
   ATC_ACCEL_P_MAX: 140900,
   ATC_ACCEL_Y_MAX: 29300,
   FLTMODE_CH: 7,
+  // ArduCopter defaults (Parameters.cpp): trainer Leveling and Limited, no options.
+  ACRO_TRAINER: 2,
+  ACRO_OPTIONS: 0,
   FLTMODE1: 0,
   FLTMODE2: 5,
   FLTMODE3: 6,
