@@ -29,6 +29,7 @@ class FakeResponse {
     this.ok = status >= 200 && status < 300
     this.type = type
     this.contentType = contentType
+    this.headers = new Headers({ 'content-type': contentType })
   }
   clone() {
     return new FakeResponse(this.body, { status: this.status, type: this.type, contentType: this.contentType })
@@ -62,6 +63,9 @@ class FakeCache {
   }
   async match(key) {
     return this.entries.get(typeof key === 'string' ? key : key.url)
+  }
+  async delete(key) {
+    return this.entries.delete(typeof key === 'string' ? key : key.url)
   }
 }
 
@@ -324,4 +328,44 @@ test('an opaque cross-origin response is never persisted', async () => {
   await dispatch('fetch', scriptRequest('/assets/x-hash.js'))
   const cached = await caches.match(`${ORIGIN}/assets/x-hash.js`)
   assert.equal(cached, undefined, 'only inspectable basic responses may be cached')
+})
+
+// 2026-10: Cloudflare answers a missing file with the SPA shell and a 200. The
+// worker stored that under the script's hashed URL, cache-first, and the site
+// was a blank page on every visit until a hard refresh.
+test('the SPA shell answered for a hashed script is passed on but never cached', async () => {
+  let shellAnswers = 1
+  const { dispatch, caches } = loadWorker({
+    network: async () => (shellAnswers-- > 0 ? html() : js())
+  })
+  const path = '/assets/param-metadata-CFfb5sc8.js'
+  const first = await dispatch('fetch', scriptRequest(path))
+  assert.equal(first.contentType, 'text/html', 'the bad answer itself is not rewritten')
+  assert.equal(await caches.match({ url: `${ORIGIN}${path}` }), undefined, 'and is not stored')
+  const second = await dispatch('fetch', scriptRequest(path))
+  assert.equal(second.contentType, 'text/javascript', 'the next load gets the real script')
+})
+
+test('a shell an older worker cached under a script URL is dropped, not served', async () => {
+  const { dispatch, caches } = loadWorker({ network: async () => js() })
+  const path = '/assets/index-abc123.js'
+  const poisoned = await caches.open('arduconfig-assets-v3')
+  await poisoned.put(`${ORIGIN}${path}`, html())
+  const response = await dispatch('fetch', scriptRequest(path))
+  assert.equal(response.contentType, 'text/javascript')
+  assert.equal((await caches.match({ url: `${ORIGIN}${path}` })).contentType, 'text/javascript')
+})
+
+test('a non-hashed file answered with the shell is not cached either', async () => {
+  const { dispatch, caches } = loadWorker({ network: async () => html() })
+  await dispatch('fetch', { url: `${ORIGIN}/models/quad_x.gltf`, method: 'GET', mode: 'cors', destination: '', headers: new Headers() })
+  assert.equal(await caches.match({ url: `${ORIGIN}/models/quad_x.gltf` }), undefined)
+})
+
+test('install does not precache the shell under an entry-bundle URL', async () => {
+  const shell = new FakeResponse('<script type="module" src="/assets/index-new.js"></script>', { contentType: 'text/html' })
+  const { dispatch, caches } = loadWorker({ network: async (url) => (url.endsWith('/index.html') ? shell : html()) })
+  await dispatch('install', undefined)
+  assert.equal(await caches.match({ url: `${ORIGIN}/assets/index-new.js` }), undefined)
+  assert.equal(await caches.match('/assets/index-new.js'), undefined)
 })

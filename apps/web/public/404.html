@@ -1,0 +1,24 @@
+<!doctype html>
+<!--
+  Cloudflare Pages serves this, with status 404, for any path with no file.
+  Its presence turns off Pages' single-page-app fallback, which answered a
+  missing /assets/*.js with index.html and a 200: a script the browser rejects
+  ("Expected a JavaScript module, got text/html") and caches -- a blank page
+  until a hard refresh (2026-10). _redirects cannot do this: Pages accepts no
+  404 status there. The app has no path routes, so a stray link is sent home.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="0; url=/" />
+    <title>Not found · ArduConfigurator</title>
+    <style>
+      body { margin: 0; padding: 48px 16px; font: 16px/1.5 system-ui, sans-serif; background: #10141c; color: #e6e9ef; text-align: center; }
+      a { color: #f5c542; }
+    </style>
+  </head>
+  <body>
+    <p>Nothing here. <a href="/">Open ArduConfigurator</a></p>
+  </body>
+</html>

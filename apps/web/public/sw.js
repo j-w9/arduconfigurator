@@ -24,11 +24,19 @@
 //      cannot be stale — a changed file is a different URL. Everything else is
 //      network-first.
 //
+//   4. NOTHING BUT A NAVIGATION IS EVER CACHED AS HTML. Cloudflare answers a
+//      missing file with the SPA shell and a 200, so "response.ok" alone let
+//      that shell be stored under a hashed script URL -- cache-first, forever:
+//      a blank page on every visit, cured only for the one load a hard refresh
+//      bypasses the worker (2026-10). An HTML answer to anything that is not a
+//      navigation is passed on uncached, and one already cached is dropped.
+//
 // Stale entries under dead hashes are inert: nothing requests them again, and
 // the browser evicts them under quota pressure. They cannot be served in place
 // of anything current, because the hash IS the identity.
 
-const VERSION = 'v2'
+// v3: drops v2's caches, which may hold the SPA shell under script URLs (guard 4).
+const VERSION = 'v3'
 const SHELL_CACHE = `arduconfig-shell-${VERSION}`
 const ASSET_CACHE = `arduconfig-assets-${VERSION}`
 const CURRENT_CACHES = new Set([SHELL_CACHE, ASSET_CACHE])
@@ -94,7 +102,7 @@ self.addEventListener('install', (event) => {
             [...assetUrlsFrom(html), ...MODEL_URLS].map(async (url) => {
               try {
                 const asset = await fetch(new Request(url, { cache: 'reload' }))
-                if (isCacheableResponse(asset)) {
+                if (isCacheableAsset(asset)) {
                   await assets.put(url, asset)
                 }
               } catch {
@@ -138,6 +146,15 @@ function isCacheableResponse(response) {
   return Boolean(response) && response.ok && response.type === 'basic'
 }
 
+function isHtml(response) {
+  return /^text\/html\b/i.test(response?.headers?.get('content-type') ?? '')
+}
+
+/** Guard 4: what may be cached for a request that is not a navigation. */
+function isCacheableAsset(response) {
+  return isCacheableResponse(response) && !isHtml(response)
+}
+
 async function handleNavigation(request) {
   try {
     const response = await fetch(request)
@@ -160,11 +177,16 @@ async function handleNavigation(request) {
 
 async function handleImmutableAsset(request) {
   const cached = await caches.match(request)
-  if (cached) {
+  if (cached && !isHtml(cached)) {
     return cached
   }
+  if (cached) {
+    // The shell, stored under an asset URL by an older worker: never serve it.
+    const cache = await caches.open(ASSET_CACHE)
+    await cache.delete(request)
+  }
   const response = await fetch(request)
-  if (isCacheableResponse(response)) {
+  if (isCacheableAsset(response)) {
     const cache = await caches.open(ASSET_CACHE)
     await cache.put(request, response.clone())
   }
@@ -174,7 +196,7 @@ async function handleImmutableAsset(request) {
 async function handleOther(request) {
   try {
     const response = await fetch(request)
-    if (isCacheableResponse(response)) {
+    if (isCacheableAsset(response)) {
       const cache = await caches.open(ASSET_CACHE)
       await cache.put(request, response.clone())
     }
