@@ -69,6 +69,22 @@ const POPOUT_FEATURES =
  */
 function copyDocumentStyles(source: Document, target: Document): void {
   for (const node of Array.from(source.querySelectorAll('style, link[rel="stylesheet"]'))) {
+    // A cloned <link> makes the popout fetch the stylesheet again, and it is
+    // unstyled until that lands. Usually instantly from cache -- but on a
+    // cross-origin-isolated page under load it lost the race often enough to
+    // paint the window blank first, and to fail the e2e that checks for
+    // exactly that. The opener has already parsed the sheet, so its rules go
+    // across as text and the window is styled the moment it opens. A sheet
+    // whose rules cannot be read falls back to the clone.
+    if (node instanceof HTMLLinkElement) {
+      const rules = readableRules(node.sheet)
+      if (rules !== undefined) {
+        const style = target.createElement('style')
+        style.textContent = rules
+        target.head.appendChild(style)
+        continue
+      }
+    }
     target.head.appendChild(node.cloneNode(true))
   }
   const sourceAdopted = (source as Document & { adoptedStyleSheets?: unknown }).adoptedStyleSheets
@@ -79,6 +95,17 @@ function copyDocumentStyles(source: Document, target: Document): void {
       // Cross-document adoption is not allowed everywhere; the cloned <style>
       // nodes above already carry the app's own CSS, so this is a bonus only.
     }
+  }
+}
+
+/** A stylesheet's rules as CSS text, or undefined when they cannot be read. */
+function readableRules(sheet: CSSStyleSheet | null): string | undefined {
+  if (!sheet) return undefined
+  try {
+    return Array.from(sheet.cssRules, (rule) => rule.cssText).join('\n')
+  } catch {
+    // A cross-origin sheet without CORS throws on cssRules.
+    return undefined
   }
 }
 

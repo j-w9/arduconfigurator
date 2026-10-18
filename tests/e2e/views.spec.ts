@@ -8254,14 +8254,28 @@ test.describe('Status & Info: Flash firmware', () => {
 })
 
 test.describe('Calibration location map (OpenStreetMap tiles)', () => {
-  test('tiles come from tile.openstreetmap.org and carry a Referer, which OSM requires', async ({ page }) => {
-    // Without a Referer OSM serves an "Access blocked" 403 image for every tile
-    // (osm.wiki/Blocked). The site sends Referrer-Policy: no-referrer, so the
-    // tiles must ask for their own.
-    const referers: (string | undefined)[] = []
-    await page.route('https://tile.openstreetmap.org/**', (route) => {
-      referers.push(route.request().headers()['referer'])
+  // Same-origin now, so the app's offline service worker fetches /tiles on the
+  // page's behalf, out of reach of page.route -- the same reason the Flash
+  // tests below block it.
+  test.use({ serviceWorkers: 'block' })
+  test('tiles come through this origin\'s /tiles proxy, never straight from OSM', async ({ page }) => {
+    // Upstream fetches tiles from tile.openstreetmap.org with a Referer, because
+    // OSM answers a web request without one with an "Access blocked" image.
+    // This branch cannot: the WebAssembly simulator needs the page
+    // cross-origin isolated, and OSM's tiles carry no CORP header, so fetched
+    // directly they are blocked outright. They go through /tiles instead, a
+    // same-origin proxy that identifies the site to OSM itself (pinned by the
+    // fork's tile-proxy test). What matters here is that the browser uses it,
+    // and never reaches for OSM on its own.
+    const proxied: string[] = []
+    const direct: string[] = []
+    await page.route('**/tiles/**', (route) => {
+      proxied.push(new URL(route.request().url()).pathname)
       return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64') })
+    })
+    await page.route('https://*.openstreetmap.org/**', (route) => {
+      direct.push(route.request().url())
+      return route.abort()
     })
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
@@ -8272,10 +8286,9 @@ test.describe('Calibration location map (OpenStreetMap tiles)', () => {
     await open.scrollIntoViewIfNeeded()
     await open.click()
     const tile = page.getByTestId('cal-location-map').locator('img.leaflet-tile').first()
-    await expect(tile).toHaveAttribute('referrerpolicy', 'strict-origin-when-cross-origin')
-    await expect(tile).toHaveAttribute('src', /^https:\/\/tile\.openstreetmap\.org\//)
-    await expect.poll(() => referers.length, { timeout: 10_000 }).toBeGreaterThan(0)
-    expect(referers.every((referer) => referer !== undefined && referer.length > 0)).toBe(true)
+    await expect(tile).toHaveAttribute('src', /^\/tiles\/\d+\/\d+\/\d+$/)
+    await expect.poll(() => proxied.length, { timeout: 10_000 }).toBeGreaterThan(0)
+    expect(direct).toEqual([])
   })
 })
 
