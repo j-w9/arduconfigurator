@@ -15,6 +15,7 @@ import observedComponentValues from '@amc/data/component-values.json'
 
 import type { ConfigurationStepFile, ConfigurationSummary } from '@arduconfig/amc-steps'
 import {
+  stepFiles,
   type ComponentRequirement,
   type Diagnosis,
   type ParameterDocs,
@@ -44,13 +45,21 @@ import {
  * `ahrs_orientation` are Config categories here, while the motor tools have
  * their own tab, and Power stopped being a tab of its own some time ago.
  */
-export type AppToolView = 'config' | 'motors' | 'calibration' | 'flash'
+export type AppToolView = 'config' | 'motors' | 'calibration' | 'flash' | 'receiver' | 'tuning' | 'mavlink-inspector'
 
-const STEP_TOOLS: Readonly<Record<string, { label: string; view: AppToolView }>> = {
+export const STEP_TOOLS: Readonly<Record<string, { label: string; view: AppToolView }>> = {
   ahrs_orientation: { label: 'Board orientation', view: 'config' },
   battery_monitor: { label: 'Battery monitor', view: 'config' },
   esc_rpm_scale: { label: 'ESC telemetry', view: 'motors' },
-  motor_test: { label: 'Motor test', view: 'motors' }
+  motor_test: { label: 'Motor test', view: 'motors' },
+  // AMC v4.5.x. Every plugin a step names should land somewhere: a name
+  // missing from this table gets no link at all, silently, which is how
+  // these four went unoffered until the audit of what a step DOES was done
+  // by hand rather than by checking which keys are read.
+  rc_receiver: { label: 'Receiver', view: 'receiver' },
+  rc_calibration: { label: 'RC calibration', view: 'receiver' },
+  autotune_gain_backoff: { label: 'Tuning', view: 'tuning' },
+  data_telemetry: { label: 'Link telemetry', view: 'mavlink-inspector' }
 }
 
 /** The four sequences AMC ships. Sub is not among them. */
@@ -485,14 +494,15 @@ export interface StepRow {
    */
   readonly logSatisfied?: boolean
   /**
-   * A file the step needs on the flight controller.
+   * Files the step needs on the flight controller -- a list, because since
+   * AMC v4.5.x one step can install several (in-flight magfit needs two).
    *
-   * `name` is what it must be called, which is not always the last segment of
-   * the URL, and `destination` is where it goes. The fetch and the upload are
-   * separate acts here: the applet can be downloaded and read before anything
-   * is put on an aircraft.
+   * `name` is what each must be called, which is not always the last segment
+   * of the URL, and `destination` is where it goes. The fetch and the upload
+   * are separate acts here: an applet can be downloaded and read before
+   * anything is put on an aircraft.
    */
-  readonly file?: { readonly url: string; readonly name: string; readonly destination: string }
+  readonly files?: readonly { readonly url: string; readonly name: string; readonly destination: string }[]
   /**
    * A tool the sequence places beside the step, and where this app keeps it.
    *
@@ -874,7 +884,9 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
       ...(nonEmpty(step.component) ? { component: step.component } : {}),
       ...(nonEmpty(step.auto_changed_by) ? { autoChangedBy: step.auto_changed_by } : {}),
       ...(step.instructions_popup ? { popup: step.instructions_popup } : {}),
-      ...(step.plugin && STEP_TOOLS[step.plugin.name]
+      // pluginApplies: a plugin can carry an `if` (autotune_gain_backoff is
+      // for firmware before 4.7), and AMC offers the tool only when it holds.
+      ...(step.plugin && outcome.pluginApplies && STEP_TOOLS[step.plugin.name]
         ? {
             tool: {
               name: step.plugin.name,
@@ -883,15 +895,15 @@ export function runSequence(inputs: RunInputs): SequenceSummary {
             }
           }
         : {}),
-      ...(step.download_file && step.upload_file
-        ? {
-            file: {
-              url: step.download_file.source_url,
-              name: step.upload_file.source_local,
-              destination: step.upload_file.dest_on_fc
-            }
-          }
-        : {}),
+      // stepFiles, never the raw fields: since AMC v4.5.x they can be lists,
+      // and reading .source_url off one gave `undefined` with nothing to say
+      // so. Only files with a source are offered -- the install fetches it.
+      ...((() => {
+        const files = stepFiles(step).flatMap((file) =>
+          file.url === undefined ? [] : [{ url: file.url, name: file.name, destination: file.destination }]
+        )
+        return files.length > 0 ? { files } : {}
+      })()),
       ...(step.wiki_url === undefined ? {} : { wikiUrl: step.wiki_url })
     })
   }

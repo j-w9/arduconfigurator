@@ -6,7 +6,8 @@ import {
   fieldsFor,
   loadSequence,
   runSequence,
-  sequenceForFirmware
+  sequenceForFirmware,
+  STEP_TOOLS
 } from './amc-guided'
 
 // The sequence and the evaluator are proven against CPython and against AMC's
@@ -553,18 +554,28 @@ describe('what the sequence says about a step', () => {
     }
   })
 
-  it('names the file a step needs, what it is called, and where it goes', () => {
-    const withFile = summary.rows.filter((r) => r.file)
-    expect(withFile.length).toBeGreaterThan(0)
-    for (const row of withFile) {
-      expect(row.file?.url).toMatch(/^https?:/)
-      expect(row.file?.destination).toMatch(/^\//)
-      // The name is taken from what the step says to upload, not from the end
-      // of the URL -- those are not always the same, and the flight controller
-      // cares which one it gets.
-      expect(row.file?.name.length).toBeGreaterThan(0)
-      expect(row.file?.destination.endsWith(row.file.name)).toBe(true)
+  it('names the files a step needs, what each is called, and where it goes', () => {
+    const withFiles = summary.rows.filter((r) => (r.files?.length ?? 0) > 0)
+    expect(withFiles.length).toBeGreaterThan(0)
+    for (const row of withFiles) {
+      for (const file of row.files ?? []) {
+        expect(file.url).toMatch(/^https?:/)
+        expect(file.destination).toMatch(/^\//)
+        // The name is taken from what the step says to upload, not from the
+        // end of the URL -- those are not always the same, and the flight
+        // controller cares which one it gets.
+        expect(file.name.length).toBeGreaterThan(0)
+        expect(file.destination.endsWith(file.name)).toBe(true)
+      }
     }
+  })
+
+  it('offers every script a step installs, not just the first', () => {
+    // AMC v4.5.x moved these to lists, and in-flight magfit needs two
+    // scripts. Read as a single object, the list came back as `undefined`
+    // and neither was offered.
+    const magfit = summary.rows.find((r) => r.filename === '31_inflight_magnetometer_fit_setup.param')
+    expect(magfit?.files?.map((f) => f.name)).toEqual(['copter-magfit-helper.lua', 'advance-wp.lua'])
   })
 
   it('points a step at the tool this app already has for it', () => {
@@ -579,8 +590,23 @@ describe('what the sequence says about a step', () => {
     const tools = summary.rows.filter((r) => r.tool)
     expect(tools.length).toBeGreaterThan(0)
     for (const row of tools) {
-      expect(['config', 'motors', 'calibration']).toContain(row.tool?.view)
+      expect(['config', 'motors', 'calibration', 'receiver', 'tuning', 'mavlink-inspector']).toContain(row.tool?.view)
     }
+  })
+
+  it('has somewhere to send every tool AMC names, on every vehicle', async () => {
+    // A plugin name missing from STEP_TOOLS gets no link, with nothing to say
+    // so. Four did after AMC v4.5.x, autotune_gain_backoff alone on nineteen
+    // steps -- and the attribute audit passed throughout, because it checks
+    // that the KEY `plugin` is read, not that every value of it lands.
+    const named = new Set<string>()
+    for (const kind of ['ArduCopter', 'ArduPlane', 'Heli', 'Rover'] as const) {
+      for (const { step } of (await loadSequence(kind)).steps) {
+        if (step.plugin) named.add(step.plugin.name)
+      }
+    }
+    const unmapped = [...named].filter((name) => !(name in STEP_TOOLS)).sort()
+    expect(unmapped).toEqual([])
   })
 
   it('does not invent content the sequence left empty', () => {

@@ -1312,32 +1312,35 @@ function StepCard({
             </details>
           ) : null}
 
-          {row.file ? (
-            <p className="amc-step__file">
-              This step needs <code>{row.file.name}</code> at <code>{row.file.destination}</code> on the
+          {(row.files ?? []).map((file) => (
+            // One line per file. A step can install several since AMC
+            // v4.5.x -- in-flight magfit needs two scripts -- and each is
+            // fetched, written and reported on its own.
+            <p className="amc-step__file" key={file.destination}>
+              This step needs <code>{file.name}</code> at <code>{file.destination}</code> on the
               flight controller.{' '}
               {/* The download stays, and not only as a fallback: putting a
                   script on an aircraft is worth being able to read first. */}
-              <a href={row.file.url} download={row.file.name} target="_blank" rel="noreferrer">
+              <a href={file.url} download={file.name} target="_blank" rel="noreferrer">
                 Download it
               </a>
               {onInstallFile ? (
                 <>
                   {' or '}
                   <button
-                    onClick={() => void installFile(row.file!)}
-                    disabled={!connected || installing === row.file.destination}
+                    onClick={() => void installFile(file)}
+                    disabled={!connected || installing === file.destination}
                     title={
                       connected
                         ? 'Fetch it and write it to the flight controller'
                         : 'Connect a vehicle first'
                     }
                   >
-                    {installing === row.file.destination ? 'Installing…' : 'put it on the vehicle'}
+                    {installing === file.destination ? 'Installing…' : 'put it on the vehicle'}
                   </button>
                 </>
               ) : null}
-              {installNotice?.destination === row.file.destination ? (
+              {installNotice?.destination === file.destination ? (
                 <span
                   className={`amc-step__file-notice amc-step__file-notice--${installNotice.tone}`}
                 >
@@ -1345,7 +1348,7 @@ function StepCard({
                 </span>
               ) : null}
             </p>
-          ) : null}
+          ))}
 
           {row.tool && onOpenTool ? (
             <p className="amc-step__tool">
