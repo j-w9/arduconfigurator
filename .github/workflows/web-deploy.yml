@@ -31,7 +31,7 @@ jobs:
         run: npm ci
 
       # base defaults to '/' for the root-domain Cloudflare deploy; the
-      # public/_headers and public/_redirects files are copied into dist.
+      # public/_headers and public/404.html are copied into dist.
       - name: Build web bundle
         run: npm run build --workspace @arduconfig/web
 

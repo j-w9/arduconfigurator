@@ -164,6 +164,38 @@ const STYLE_BLOCK = `
   transition: left 80ms ease;
 }
 
+/* Endpoint ticks (RCn_MIN / RCn_MAX) on the absolute 900..2100 track: the
+   stick should reach both. Drawn as short vertical lines the fill passes
+   under, so a stick that falls short leaves its tick uncovered. */
+.rc-bar-tick {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text-muted, #8ea0b0);
+  opacity: 0.9;
+  pointer-events: none;
+  transition: left 80ms ease;
+}
+.rc-bar-tick--staged {
+  background: var(--warning, #dab254);
+}
+
+/* The leading edge of the fill, drawn as its own line so a test or an eye can
+   find "where the stick is" without reading the fill width. */
+.rc-bar-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text, #e4eaf0);
+  opacity: 0.9;
+  pointer-events: none;
+  transition: left 80ms ease;
+}
+
 /* PWM value column */
 .rc-bar-value {
   font-family: var(--font-data, "IBM Plex Mono", "SFMono-Regular", "SF Mono", Consolas, monospace);
@@ -215,17 +247,62 @@ function clampFillPct(pct: number): number {
   return Math.max(0, Math.min(100, pct))
 }
 
+/** Position of an absolute PWM value on the 900..2100 track, in percent. */
+export function rcBarPercent(pwm: number): number {
+  return clampFillPct(((pwm - PWM_MIN) / PWM_RANGE) * 100)
+}
+
+/** The bar styles, injected once per mount point. RcChannelBars renders it
+ *  itself; a surface that lays the track out in its own rows (the Receiver
+ *  channel table) renders it once beside them. */
+export function RcChannelBarStyles() {
+  const styleId = useId()
+  return <style key={styleId}>{STYLE_BLOCK}</style>
+}
+
+interface RcChannelTrackProps {
+  /** Live PWM, or undefined when the channel has no data. */
+  pwm: number | undefined
+  isModeChannel?: boolean
+  /** RCn_MIN / RCn_TRIM / RCn_MAX as the operator sees them (a staged value
+   *  wins over the live one). Undefined ticks are not drawn. */
+  minUs?: number
+  trimUs?: number
+  maxUs?: number
+  /** True when the matching endpoint is a staged draft, which tints its tick. */
+  minStaged?: boolean
+  maxStaged?: boolean
+  testId?: string
+}
+
+/** One channel's track on the absolute 900..2100 scale: the fill to the live
+ *  value, the 1500 centre line, the endpoint ticks and the trim triangle. The
+ *  scale is absolute (not RCn_MIN..MAX) so the ticks mean something: the fill
+ *  reaching a tick is the stick reaching that endpoint. */
+export function RcChannelTrack({ pwm, isModeChannel = false, minUs, trimUs, maxUs, minStaged, maxStaged, testId }: RcChannelTrackProps) {
+  const hasData = pwm !== undefined
+  const pct = hasData ? rcBarPercent(pwm) : 0
+  const color = hasData ? fillColor(pwm, isModeChannel) : 'transparent'
+  return (
+    <div className="rc-bar-track" data-testid={testId} aria-hidden="true">
+      <div className="rc-bar-fill" style={{ width: `${pct}%`, backgroundColor: color, opacity: hasData ? 0.82 : 0 }} />
+      <div className="rc-bar-center" style={{ left: `${CENTER_PCT}%` }} />
+      {minUs !== undefined ? <div className={`rc-bar-tick${minStaged ? ' rc-bar-tick--staged' : ''}`} style={{ left: `${rcBarPercent(minUs)}%` }} /> : null}
+      {maxUs !== undefined ? <div className={`rc-bar-tick${maxStaged ? ' rc-bar-tick--staged' : ''}`} style={{ left: `${rcBarPercent(maxUs)}%` }} /> : null}
+      {trimUs !== undefined ? <div className="rc-bar-trim" style={{ left: `${rcBarPercent(trimUs)}%` }} /> : null}
+      {hasData ? <div className="rc-bar-marker rc-range-axis-card__marker" style={{ left: `${pct}%` }} /> : null}
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
 export function RcChannelBars({ channels, verified, testId, armSwitchChannel, armSwitchActive }: RcChannelBarsProps) {
-  const styleId = useId()
-
   return (
     <div data-testid={testId} className="rc-bars-container">
-      {/* Scoped style block — uses id to avoid duplicates in StrictMode */}
-      <style key={styleId}>{STYLE_BLOCK}</style>
+      <RcChannelBarStyles />
 
       {/* Column headers */}
       <div className="rc-bars-header">

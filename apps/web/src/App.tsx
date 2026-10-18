@@ -66,6 +66,7 @@ import {
   AHRS_ORIENTATION_OPTIONS,
   type AppViewId,
   type UpstreamParameterMap,
+  formatArducopterRssiType
 } from '@arduconfig/param-metadata'
 import { loadUpstreamParameters } from './generated/param-upstream'
 import {
@@ -127,7 +128,8 @@ import {
   formatParameterSync,
   formatRcLink,
   formatStatHours,
-  formatBatteryTelemetry
+  formatBatteryTelemetry,
+  formatRxRssi
 } from './status-formatters'
 import {
   formatParameterDraftValue,
@@ -281,6 +283,9 @@ import { planGuidedIdentifyAdvance } from './view-models/guided-identify-advance
 import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
+import { relayFirmwareSource } from './firmware/firmware-index-source'
+import { loadPeriphIndex, relayPeriphFirmwareSource } from './firmware/periph-firmware-source'
+import type { FirmwareIndexRow } from './view-models/firmware-finder'
 import { ElrsFlasher, type ElrsFlasherNotice } from './firmware/ElrsFlasher'
 import { flashElrsReceiver, type ElrsFlashProgress } from './firmware/web-serial-esptool'
 import { patchElrsFirmwareOptions } from './view-models/elrs-firmware-options'
@@ -1343,6 +1348,14 @@ export function App() {
   // proven handleConnect path the Connect button uses — including its
   // stale-handle reacquire, which the first attempt at this feature was missing.
   const expectRebootReconnectRef = useRef(false)
+  // Bumped to (re)run the reboot reconnect when the link is already down --
+  // after a flash, the board reboots into its new firmware with nothing
+  // connected, so no connection change would wake the effect.
+  const [rebootReconnectNonce, setRebootReconnectNonce] = useState(0)
+  // After a flash, the reconnect lands on Status & Info: a fresh firmware is
+  // the moment to look at the vehicle as a whole (one of the few deliberate
+  // view changes the app makes on its own).
+  const showStatusAfterReconnectRef = useRef(false)
   const rebootReconnectingRef = useRef(false)
   // Owns the watchdog auto-resume loop (below): true while it is cycling
   // reconnects to finish a parameter download a resetting board keeps cutting
@@ -1772,6 +1785,10 @@ export function App() {
             const current = runtime.getSnapshot()
             if (current.connection.kind === 'connected' && current.vehicle !== undefined) {
               setSessionNotice({ tone: 'success', text: 'Reconnected after reboot.' })
+              if (showStatusAfterReconnectRef.current) {
+                showStatusAfterReconnectRef.current = false
+                setActiveViewId('setup')
+              }
               return
             }
           }
@@ -1787,7 +1804,7 @@ export function App() {
         rebootReconnectingRef.current = false
       }
     })()
-  }, [snapshot.connection.kind, transportMode, selectedSerialPort, runtime, rememberSelectedSerialPort])
+  }, [snapshot.connection.kind, transportMode, selectedSerialPort, runtime, rememberSelectedSerialPort, rebootReconnectNonce])
 
   // Auto-resume a parameter download that a resetting board keeps interrupting.
   // Field case: a watchdogging FC drops the USB link a few seconds into every
@@ -2173,23 +2190,13 @@ export function App() {
     setShowReceiverMappingDiagnostics(false)
   }, [activeViewId])
 
-  // When a guided RC exercise finishes on the Receiver view, return to the Setup
-  // wizard so the step's completion cue + Continue are visible — otherwise the
-  // operator is stranded on Receiver with no next step. Only fires on the
-  // edge into a passing state (ref starts true so a restored/already-passed
-  // exercise on load doesn't yank the view).
-  const returnedFromExerciseRef = useRef(true)
-  useEffect(() => {
-    const exercisePassed =
-      rcRangeExercise.status === 'passed' ||
-      modeSwitchExercise.status === 'passed' ||
-      rcMappingSession.status === 'ready'
-    if (exercisePassed && !returnedFromExerciseRef.current && activeViewId === 'receiver') {
-      setActiveViewId('guided-setup')
-      setSetupMode('wizard')
-    }
-    returnedFromExerciseRef.current = exercisePassed
-  }, [rcRangeExercise.status, modeSwitchExercise.status, rcMappingSession.status, activeViewId])
+  // An RC exercise that finishes on the Receiver tab used to send the view to
+  // the Setup wizard unconditionally — even when the operator had opened the
+  // tab on their own — so the final capture of the mapping flow looked like a
+  // button that threw them to Guided Setup with nothing staged. The wizard
+  // return now lives only in the setupMode-gated effect further down (which
+  // fires solely while the guided flow is active), and the mapping flow stages
+  // its RCMAP_* drafts the moment the last axis captures.
 
   useEffect(() => {
     if (outputMapping.motorOutputs.length === 0) {
@@ -2206,7 +2213,10 @@ export function App() {
         return current
       }
 
-      return outputMapping.motorOutputs[0]?.channelNumber
+      // Before the first sync there are no motor outputs and the selection is
+      // cleared; when they arrive, land on the default (every motor in order),
+      // not on M1.
+      return ALL_MOTOR_TEST_OUTPUT
     })
   }, [outputMapping.motorOutputs])
 
@@ -2776,6 +2786,19 @@ export function App() {
   // the web build it degrades to `available: false` (local .bin still works).
   // The node's bootloader flashes RAW bytes, so we decode the server's .apj
   // (zlib image) down to the raw image before handing it to the Phase-2 update.
+  // The website's AP_Periph index (the deploy's /fw/periph-index.json), loaded
+  // when the CAN tab first opens; a site without it keeps "desktop only".
+  const [periphIndexRows, setPeriphIndexRows] = useState<FirmwareIndexRow[] | undefined>(undefined)
+  const periphIndexRequested = useRef(false)
+  useEffect(() => {
+    if (activeViewId !== 'can' || periphIndexRequested.current) return
+    periphIndexRequested.current = true
+    loadPeriphIndex()
+      .then((rows) => {
+        if (rows.length > 0) setPeriphIndexRows(rows)
+      })
+      .catch(() => {})
+  }, [activeViewId])
   const dronecanFirmwareOnline = useMemo<DronecanFirmwareOnlineSource>(() => {
     const bridge =
       typeof window !== 'undefined'
@@ -2800,6 +2823,10 @@ export function App() {
             }
           ).arduconfigDesktop?.firmware
         : undefined
+    if ((!bridge?.listDronecanNode || !bridge.download) && periphIndexRows) {
+      // The website: the deploy's AP_Periph index and relay.
+      return relayPeriphFirmwareSource(periphIndexRows)
+    }
     if (!bridge?.listDronecanNode || !bridge.download) {
       const unavailable = async (): Promise<never> => {
         throw new Error(
@@ -2853,7 +2880,7 @@ export function App() {
         return { fileName, image }
       }
     }
-  }, [])
+  }, [periphIndexRows])
   // Human label for the current selection, used across preset notices/messages.
   const selectedPresetsLabel =
     selectedPresets.length === 0
@@ -4119,7 +4146,7 @@ export function App() {
         changedCount: 1,
         text: requiresReboot
           ? 'This applied change is marked as reboot-required. Request a reboot, then pull parameters again before continuing guided setup.'
-          : 'Pull parameters again if you want a freshly confirmed post-write snapshot.'
+          : 'Sync parameters again if you want a freshly confirmed post-write snapshot.'
       })
     } catch (error) {
       setParameterNotice({
@@ -4554,7 +4581,7 @@ export function App() {
         text:
           rebootRequiredCount > 0
             ? `${selectedPresetsLabel} changed reboot-sensitive settings. Request a reboot, then pull parameters again before flying.`
-            : `${selectedPresetsLabel} changed live tuning values. Pull parameters again if you want a clean post-write snapshot.`
+            : `${selectedPresetsLabel} changed live tuning values. Sync parameters again if you want a clean post-write snapshot.`
       })
     } catch (error) {
       setPresetNotice({
@@ -4775,7 +4802,6 @@ export function App() {
   function captureRcMappingCandidate(candidate: RcMappingCandidate, source: 'manual' | 'auto' = 'manual'): void {
     let nextNotice: ParameterNotice | undefined
     let shouldClearRadioConfirmation = false
-    let mappingCompleted = false
 
     setRcMappingSession((current) => {
       if (current.status !== 'running' || current.currentTargetAxis === undefined) {
@@ -4803,7 +4829,6 @@ export function App() {
               } ${formatRcAxisLabel(capturedAxis)} on CH${candidate.channelNumber}. Next: ${rcMappingTargetPrompt(nextTargetAxis).title.toLowerCase()}.`
       }
       shouldClearRadioConfirmation = true
-      mappingCompleted = nextTargetAxis === undefined
 
       return nextTargetAxis === undefined
         ? {
@@ -4824,19 +4849,47 @@ export function App() {
     if (shouldClearRadioConfirmation) {
       clearSetupSectionConfirmation('radio')
     }
-    if (mappingCompleted) {
-      // Release any operator-pinned Receiver sub-task so the view's
-      // auto-routing advances to Endpoints. A pin set by clicking the
-      // Mapping card used to stick here, leaving the flow with no visible
-      // next step after the final axis captured.
-      setReceiverTaskOverride(undefined)
-    }
     if (nextNotice) {
       setParameterNotice(nextNotice)
     }
   }
 
   captureRcMappingCandidateRef.current = captureRcMappingCandidate
+
+  // The detected map becomes RCMAP_* drafts the moment the session goes
+  // running → ready, through the same draft pool every Receiver field writes
+  // to, so the apply dock shows them on the tab the operator is looking at.
+  // An effect on the edge, not code after the setState above: the auto-capture
+  // tick often has another update pending, which defers the updater past any
+  // "did it complete?" flag set inside it — the drafts then never staged, and
+  // the last capture looked like a button that did nothing. A session restored
+  // from storage arrives idle → ready and is left alone. The Stage button
+  // remains for a map that was discarded and wanted back.
+  const previousRcMappingStatusRef = useRef(rcMappingSession.status)
+  useEffect(() => {
+    const previousStatus = previousRcMappingStatusRef.current
+    previousRcMappingStatusRef.current = rcMappingSession.status
+    if (previousStatus !== 'running' || rcMappingSession.status !== 'ready') {
+      return
+    }
+    const detectedChannelMap = Object.fromEntries(
+      RC_CALIBRATION_AXIS_ORDER.map((axisId) => [axisId, rcMappingSession.captures[axisId].detectedChannelNumber])
+    ) as Partial<Record<RcAxisId, number>>
+    const nextDrafts = deriveRcMapDraftValues(detectedChannelMap, currentRcAxisChannelMap)
+    const draftIds = Object.keys(nextDrafts)
+    if (draftIds.length > 0) {
+      mergeDrafts(nextDrafts)
+      setParameterNotice({
+        tone: 'warning',
+        text: `Captured roll, pitch, throttle, and yaw. Staged ${draftIds.length} RCMAP_* change(s) — apply them from the Receiver tab, then reboot and refresh parameters before capturing endpoints.`
+      })
+    }
+    // Stay on Mapping: the staged picks and the Continue to Endpoints button
+    // are the next step. Auto-routing would have moved to Endpoints and
+    // hidden the map that was just staged.
+    setReceiverTaskOverride('mapping')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on the status edge only
+  }, [rcMappingSession.status])
 
   function handleConfirmRcMappingCandidate(): void {
     if (rcMappingSession.status !== 'running' || rcMappingSession.currentTargetAxis === undefined) {
@@ -5273,6 +5326,16 @@ export function App() {
       // Unlocks the Stage button's primary emphasis and the
       // "no changes needed" note when the order already matches.
       setGuidedReorderCompleted(true)
+      // Order already matches: nothing to stage here, so go straight to
+      // the Direction step. With changes pending, stay -- the Stage button
+      // is on this tab and the next-step note says so.
+      const orderUnchanged = Object.entries(plan.nextMapping).every(
+        ([channel, position]) =>
+          outputMapping.motorOutputs.find((output) => output.channelNumber === Number(channel))?.motorNumber === Number(position)
+      )
+      if (orderUnchanged) {
+        setMotorDialogTab('direction')
+      }
     } else {
       setGuidedReorderStep(plan.nextStep)
       setGuidedReorderAwaitingSpin(true)
@@ -6963,11 +7026,46 @@ export function App() {
           editedValues={editedValues}
           draftStatusById={parameterDraftById}
           onChangeSlot={(paramId, value) => setDraft(paramId, value)}
-          onOpenFlightModeTask={() => {
-            setActiveViewId('receiver')
-            setReceiverTaskOverride('flight-modes')
-          }}
         />
+    )
+  }
+
+  // Config ▸ RC: the live link readout under the receiver settings, and the
+  // receiver parameters no curated field covers. Both lived in the Receiver
+  // tab's Advanced fold; the Receiver tab keeps the hands-on work.
+  function renderReceiverSignalFooter(): ReactNode {
+    // The leftover receiver parameters, minus anything a curated Config field
+    // already shows (input rate, the RSSI range): one place per setting.
+    const residueGroups = receiverAdditional.receiverAdditionalGroups
+      .map((group) => ({ ...group, parameters: group.parameters.filter((parameter) => !isPeripheralOrConfigParamId(parameter.id)) }))
+      .filter((group) => group.parameters.length > 0)
+    return (
+      <>
+        <div className="config-pills" data-testid="config-receiver-link">
+          <span>RSSI source: {formatArducopterRssiType(readRoundedParameter(snapshot, 'RSSI_TYPE'))}</span>
+          <span>Live RX RSSI: {formatRxRssi(snapshot.liveVerification.rcInput.rssi)}</span>
+          {receiverLinkPorts.length > 0
+            ? receiverLinkPorts.map((port) => (
+                <span key={`receiver-link:${port.portNumber}`}>
+                  {port.label}: {port.protocolLabel}
+                </span>
+              ))
+            : <span>No receiver serial link in the current port roles</span>}
+        </div>
+        {residueGroups.length === 0
+          ? null
+          : renderAdditionalSettingsCard(
+              'Additional receiver settings',
+              '',
+              residueGroups,
+              receiverAdditional.receiverAdditionalDraftEntries,
+              receiverAdditional.receiverAdditionalStagedDrafts,
+              receiverAdditional.receiverAdditionalInvalidDrafts,
+              'receiver:additional',
+              'Apply Additional Receiver Changes',
+              'additional receiver settings'
+            )}
+      </>
     )
   }
 
@@ -7647,9 +7745,9 @@ export function App() {
       // header offset and the paint-aware retry are consistent with every other
       // guided nav, instead of a bare scrollIntoView that races the heavy view.
       case 'mode-switch-exercise':
+        // Flight modes live under Config ▸ Flight Modes.
         handleStartModeSwitchExercise()
-        setReceiverTaskOverride('flight-modes')
-        scrollToPanel('setup-panel-rc')
+        scrollToPanel('setup-panel-modes')
         return
       case 'rc-range-exercise':
         handleStartRcRangeExercise()
@@ -7687,7 +7785,7 @@ export function App() {
   const setupBenchActions = [
     {
       actionId: 'request-parameters',
-      title: 'Pull Parameters',
+      title: 'Sync Parameters',
       copy: parameterFollowUp?.text ?? 'Refresh the parameter snapshot after reboots, board changes, or any setup work that needs a fresh sync.'
     },
     {
@@ -8170,6 +8268,42 @@ export function App() {
       )
     },
     {
+      // Pull Parameters / Reboot, at the foot of the sidebar where the Guided
+      // setup card used to sit: used rarely from this page, so not on top.
+      id: 'bench-actions',
+      label: 'Vehicle actions',
+      node: (
+        <article className="setup-gui-box setup-gui-box--bench-actions" data-testid="status-bench-actions">
+          <div className="setup-gui-box__titlebar">
+            <strong>Vehicle actions</strong>
+          </div>
+          <div className="setup-gui-box__body">
+            <SetupBenchActions
+              actions={setupBenchActions}
+              snapshot={snapshot}
+              busyAction={busyAction}
+              onAction={(actionId) => void handleGuidedAction(actionId)}
+              extra={
+                // A way to the Flash tab, which opens on its firmware (.apj) section.
+                <div className="setup-bench__button-cell">
+                  <button
+                    type="button"
+                    className="setup-bench__button"
+                    style={buttonStyle('secondary')}
+                    onClick={() => setActiveViewId('flash')}
+                    title="Open the Flash tab to load new ArduPilot firmware (.apj)."
+                    data-testid="status-flash-firmware-button"
+                  >
+                    Flash Firmware
+                  </button>
+                </div>
+              }
+            />
+          </div>
+        </article>
+      )
+    },
+    {
       id: 'guided-setup',
       label: 'Guided setup',
       node: (
@@ -8228,14 +8362,20 @@ export function App() {
   //
   // A stored layout is reconciled against this list every render, which is how
   // a sensor card appearing or disappearing mid-session stays graceful.
+  //
+  // Moved (operator request): Pre-arm / Statistics / Recent Notices lead and
+  // the sensor row sits under them (DEFAULT_STATUS_DASHBOARD_COLUMNS orders the
+  // bands); the bench actions are a sidebar card; the Guided setup card is
+  // Expert-only while the wizard is reworked.
   const statusDashboardSpecs: StatusDashboardCardSpec[] = [
-    { id: 'gps', label: 'GPS', column: 'sensors' },
-    ...advancedSensorCards.map((card) => ({ id: card.id, label: card.title, column: 'sensors' })),
     { id: 'prearm', label: 'Pre-arm', column: 'midcol' },
     { id: 'statistics', label: 'Statistics', column: 'midcol' },
     { id: 'notices', label: 'Recent Notices', column: 'noticecol' },
+    { id: 'gps', label: 'GPS', column: 'sensors' },
+    ...advancedSensorCards.map((card) => ({ id: card.id, label: card.title, column: 'sensors' })),
     { id: 'system-info', label: 'System Info', column: 'sidebar' },
-    { id: 'guided-setup', label: 'Guided setup', column: 'sidebar' }
+    { id: 'bench-actions', label: 'Vehicle actions', column: 'sidebar' },
+    ...(isExpertMode ? [{ id: 'guided-setup', label: 'Guided setup', column: 'sidebar' }] : [])
   ]
   const statusDashboard = useStatusDashboardLayout(statusDashboardSpecs)
 
@@ -8341,6 +8481,15 @@ export function App() {
     }
   ] as const
 
+  // The board the Flash tab's finder pre-selects for: its board id (from
+  // AUTOPILOT_VERSION) and the banner's board name, which is the exact build
+  // target (MatekH743 vs MatekH743-bdshot share an id).
+  const flashBoardId = snapshot.connection.kind === 'connected' ? snapshot.hardware.board?.boardType : undefined
+  const flashBoardName = snapshot.connection.kind === 'connected' ? snapshot.hardware.board?.reportedBoardName : undefined
+  const flashConnectedBoard = useMemo(
+    () => (flashBoardId ? { boardId: flashBoardId, boardName: flashBoardName } : undefined),
+    [flashBoardId, flashBoardName]
+  )
   const showLanding = (activeViewId === 'setup' || activeViewId === 'guided-setup') && snapshot.connection.kind !== 'connected'
 
   // The OSD/VTX switcher, handed to whichever section is showing instead of
@@ -8491,8 +8640,6 @@ export function App() {
             sessionNotice={sessionNotice}
             onReconnect={() => void handleConnect()}
             parameterFollowUp={parameterFollowUp}
-            isExpertMode={isExpertMode}
-            stagedParameterDraftCount={stagedParameterDrafts.length}
             busyAction={busyAction}
             onRebootAutopilot={() => void handleGuidedAction('reboot-autopilot')}
             onPullParameters={() => void handleGuidedAction('request-parameters')}
@@ -8558,12 +8705,10 @@ export function App() {
               overviewSlot={
                 <>
   	              <div id="setup-panel-link" className="setup-bench">
-                    <SetupBenchActions
-                      actions={setupBenchActions}
-                      snapshot={snapshot}
-                      busyAction={busyAction}
-                      onAction={(actionId) => void handleGuidedAction(actionId)}
-                    />
+                    {/* Pull Parameters / Reboot moved out of the top of the
+                     *  page into the 'bench-actions' sidebar card (operator
+                     *  request: rarely used from here, so not the first thing
+                     *  on the page). */}
 
                     {/* "Enter DFU / bootloader mode" used to sit here, as a
                      *  two-step armed confirm directly above the craft view.
@@ -9322,6 +9467,7 @@ export function App() {
             handleDiscardScopedParameterDrafts,
             renderAdditionalSettingsCard,
             setDraft,
+            mergeDrafts,
             setReceiverTaskOverride,
             handleSetArmSwitchChannel
           }}
@@ -10203,7 +10349,14 @@ export function App() {
             // MAVLink link — otherwise the flasher's wizard works fine
             // without it.
             runtime && snapshot.connection.kind === 'connected'
-              ? async () => { await runtime.rebootToBootloader() }
+              ? async () => {
+                  await runtime.rebootToBootloader()
+                  // The board is gone into its bootloader: let go of the port so
+                  // the flasher can open the bootloader's, and so no automatic
+                  // reconnect grabs it first (the same stand-down as Disconnect).
+                  intentionalDisconnectRef.current = true
+                  await runtime.disconnect().catch(() => {})
+                }
               : undefined
           }
           onEnterRomDfu={
@@ -10282,6 +10435,21 @@ export function App() {
                 : undefined
           }
           connectedVehicle={snapshot.vehicle?.vehicle}
+          // After a flash the board reboots into the new firmware: reconnect to
+          // it on the port it was on (the reboot reconnect, which tries every
+          // granted port with that VID/PID). Only when it came from a USB link.
+          onFlashComplete={
+            transportMode === 'web-serial' && selectedSerialPort
+              ? () => {
+                  intentionalDisconnectRef.current = false
+                  expectRebootReconnectRef.current = true
+                  showStatusAfterReconnectRef.current = true
+                  setRebootReconnectNonce((value) => value + 1)
+                }
+              : undefined
+          }
+          firmwareIndex={relayFirmwareSource}
+          connectedBoard={flashConnectedBoard}
         />
       ) : null}
 
@@ -10315,6 +10483,11 @@ export function App() {
           onUpload={filesBrowser.upload}
           onDelete={filesBrowser.remove}
           onSanitize={filesBrowser.sanitize}
+          vehicleArmed={Boolean(snapshot.vehicle?.armed)}
+          onFormatStorage={filesBrowser.formatStorage}
+          rebootAdvised={filesBrowser.rebootAdvised}
+          onRequestReboot={() => void handleGuidedAction('reboot-autopilot')}
+          onDismissRebootAdvice={filesBrowser.dismissRebootAdvice}
         />
       ) : null}
 
@@ -10469,6 +10642,9 @@ export function App() {
             }
             if (section.id === 'board-orientation') {
               return { ...section, footer: renderBoardOrientationFooter() }
+            }
+            if (section.id === 'receiver-signal') {
+              return { ...section, footer: renderReceiverSignalFooter() }
             }
             return section
           }).concat([

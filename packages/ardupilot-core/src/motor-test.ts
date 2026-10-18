@@ -233,8 +233,8 @@ export function motorTestInstructions(
     return [
       'Remove all propellers before running any motor test.',
       'Keep the vehicle restrained and the test area clear of people, tools, and loose objects.',
-      `This request spins all ${selectedOutputs.length} mapped motors in sequence at ${request.throttlePercent}% for ${request.durationSeconds.toFixed(1)} seconds per motor.`,
-      'ArduPilot runs the ALL test one motor at a time in sequence, not all motors simultaneously.',
+      `This request spins all ${selectedOutputs.length} mapped motors one at a time, M1 upward, at ${request.throttlePercent}% for ${request.durationSeconds.toFixed(1)} seconds per motor.`,
+      'Motors run in the order the list shows, never together.',
     ]
   }
 

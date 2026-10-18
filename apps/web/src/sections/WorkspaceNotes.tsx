@@ -21,8 +21,6 @@ export interface WorkspaceNotesProps {
   /** Reconnect action for the stale-link banner. */
   onReconnect?: () => void
   parameterFollowUp: ParameterFollowUp | undefined
-  isExpertMode: boolean
-  stagedParameterDraftCount: number
   busyAction: string | undefined
   onRebootAutopilot: () => void
   onPullParameters: () => void
@@ -33,8 +31,6 @@ export function WorkspaceNotes({
   sessionNotice,
   onReconnect,
   parameterFollowUp,
-  isExpertMode,
-  stagedParameterDraftCount,
   busyAction,
   onRebootAutopilot,
   onPullParameters,
@@ -48,13 +44,10 @@ export function WorkspaceNotes({
   // firmware over what was usually a cabling or port-selection mistake.
   // Betaflight is reached deliberately, from Flash ▸ Betaflight.
 
-  if (
-    !staleLink &&
-    !unsupportedAutopilot &&
-    !sessionNotice &&
-    !parameterFollowUp &&
-    !(!isExpertMode && stagedParameterDraftCount > 0)
-  ) {
+  // No "drafts hidden in Basic mode" note here any more: it appeared above the
+  // workspace the moment any field was staged and pushed the whole tab down
+  // under the pointer. The bottom chip is the one staged-changes surface.
+  if (!staleLink && !unsupportedAutopilot && !sessionNotice && !parameterFollowUp) {
     return null
   }
 
@@ -144,16 +137,10 @@ export function WorkspaceNotes({
                 onClick={onPullParameters}
                 disabled={parameterFollowUp.requiresReboot || busyAction !== undefined || !canRunGuidedAction(snapshot, 'request-parameters')}
               >
-                Pull Parameters
+                Sync Parameters
               </button>
             </div>
           )}
-        </div>
-      ) : null}
-      {!isExpertMode && stagedParameterDraftCount > 0 ? (
-        <div className="workspace-note">
-          <strong>Expert drafts hidden in Basic mode</strong>
-          <p>Switch to Expert if you need to review or apply staged advanced parameter changes.</p>
         </div>
       ) : null}
     </div>

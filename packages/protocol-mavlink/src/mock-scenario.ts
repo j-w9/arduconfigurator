@@ -412,6 +412,9 @@ const mockParameters: ParameterState = {
   ATC_ACCEL_P_MAX: 140900,
   ATC_ACCEL_Y_MAX: 29300,
   FLTMODE_CH: 7,
+  // ArduCopter defaults (Parameters.cpp): trainer Leveling and Limited, no options.
+  ACRO_TRAINER: 2,
+  ACRO_OPTIONS: 0,
   FLTMODE1: 0,
   FLTMODE2: 5,
   FLTMODE3: 6,
@@ -496,6 +499,57 @@ const mockParameters: ParameterState = {
   RC4_MAX: 2000,
   RC4_TRIM: 1500,
   RC4_REVERSED: 0,
+  // A real ArduPilot reports MIN/MAX/TRIM/REVERSED for all sixteen input
+  // channels, so the demo does too: every Receiver channel row carries its
+  // reverse box and endpoints, not only the four sticks.
+  RC5_MIN: 1000,
+  RC5_MAX: 2000,
+  RC5_TRIM: 1500,
+  RC5_REVERSED: 0,
+  RC6_MIN: 1000,
+  RC6_MAX: 2000,
+  RC6_TRIM: 1500,
+  RC6_REVERSED: 0,
+  RC7_MIN: 1000,
+  RC7_MAX: 2000,
+  RC7_TRIM: 1500,
+  RC7_REVERSED: 0,
+  RC8_MIN: 1000,
+  RC8_MAX: 2000,
+  RC8_TRIM: 1500,
+  RC8_REVERSED: 0,
+  RC9_MIN: 1000,
+  RC9_MAX: 2000,
+  RC9_TRIM: 1500,
+  RC9_REVERSED: 0,
+  RC10_MIN: 1000,
+  RC10_MAX: 2000,
+  RC10_TRIM: 1500,
+  RC10_REVERSED: 0,
+  RC11_MIN: 1000,
+  RC11_MAX: 2000,
+  RC11_TRIM: 1500,
+  RC11_REVERSED: 0,
+  RC12_MIN: 1000,
+  RC12_MAX: 2000,
+  RC12_TRIM: 1500,
+  RC12_REVERSED: 0,
+  RC13_MIN: 1000,
+  RC13_MAX: 2000,
+  RC13_TRIM: 1500,
+  RC13_REVERSED: 0,
+  RC14_MIN: 1000,
+  RC14_MAX: 2000,
+  RC14_TRIM: 1500,
+  RC14_REVERSED: 0,
+  RC15_MIN: 1000,
+  RC15_MAX: 2000,
+  RC15_TRIM: 1500,
+  RC15_REVERSED: 0,
+  RC16_MIN: 1000,
+  RC16_MAX: 2000,
+  RC16_TRIM: 1500,
+  RC16_REVERSED: 0,
   ACRO_RP_RATE: 360,
   ACRO_Y_RATE: 240,
   ACRO_RP_EXPO: 0.35,
@@ -897,8 +951,8 @@ function rcChannelsMessage(timeBootMs: number): MavlinkMessage {
   return {
     type: 'RC_CHANNELS',
     timeBootMs,
-    channelCount: 8,
-    channels: [1500, 1500, 1100, 1500, 1000, 1500, 1500, 1500],
+    channelCount: 16,
+    channels: [1500, 1500, 1100, 1500, 1000, 1500, 1500, 1500, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900],
     rssi: 100
   }
 }
@@ -2201,6 +2255,44 @@ function buildMockScenario(profile: MockVehicleProfile, options: MockScenarioOpt
                 })
               )
             )
+          } else if (outbound.message.command === MAV_CMD.STORAGE_FORMAT) {
+            // GCS_Common.cpp handle_command_storage_format: only param1 = 1,
+            // param2 = 1 is accepted; then IN_PROGRESS, AP_Filesystem's
+            // STATUSTEXTs, and the concluding ACCEPTED.
+            const confirmed =
+              Math.round(outbound.message.params[0] ?? 0) === 1 && Math.round(outbound.message.params[1] ?? 0) === 1
+            const formatAck = (result: number) =>
+              codec.encode(
+                envelope(108, {
+                  type: 'COMMAND_ACK',
+                  command: MAV_CMD.STORAGE_FORMAT,
+                  result,
+                  progress: 0,
+                  resultParam2: 0,
+                  targetSystem: outbound.header.systemId,
+                  targetComponent: outbound.header.componentId
+                })
+              )
+            const formatText = (text: string) =>
+              codec.encode(
+                envelope(109, {
+                  type: 'STATUSTEXT',
+                  severity: MAV_SEVERITY.NOTICE,
+                  text,
+                  statusId: 0,
+                  chunkSequence: 0
+                })
+              )
+            if (confirmed) {
+              responses.push(
+                formatAck(MAV_RESULT.IN_PROGRESS),
+                formatText('Formatting SDCard'),
+                formatText('Format: OK'),
+                formatAck(MAV_RESULT.ACCEPTED)
+              )
+            } else {
+              responses.push(formatAck(MAV_RESULT.UNSUPPORTED))
+            }
           } else if (outbound.message.command === MAV_CMD.PREFLIGHT_REBOOT_SHUTDOWN) {
             responses.push(
               codec.encode(
@@ -2599,7 +2691,10 @@ export function mockRcChannelsForTick(tick: number): number[] {
     tick % 40 < 20 ? 1000 : 2000,
     tick % 60 < 30 ? 1000 : 2000,
     1500,
-    1500
+    1500,
+    // CH9..CH16: a 16-channel link, as most CRSF/ELRS receivers are. Spread
+    // across the range so each row's bar is visibly its own channel.
+    1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900
   ]
 
   let offset = 0

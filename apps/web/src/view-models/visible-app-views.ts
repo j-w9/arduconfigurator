@@ -228,10 +228,16 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   // follow a setup -> tuning -> tools flow. Views not listed fall to the
   // end in their original order.
   const CANONICAL_VIEW_ORDER = [
-    'setup', 'guided-setup', 'amc-guided', 'sitl', 'config', 'peripherals', 'calibration', 'ports', 'receiver', 'modes', 'motors',
+    // AMC Guided and the Simulator straight after Status. Guided Setup is NOT
+    // listed here: mainline moved it to the end (below), and a second entry
+    // would let indexOf rank it early again and undo that.
+    'setup', 'amc-guided', 'sitl', 'config', 'peripherals', 'calibration', 'ports', 'receiver', 'modes', 'motors',
     'servos', 'failsafe', 'osd', 'tuning', 'presets',
     'snapshots', 'logs', 'parameters', 'can', 'networking', 'files', 'lua', 'flash', 'elrs-flash', 'rc-mixer',
-    'mavlink-inspector', 'ai-assistant'
+    'mavlink-inspector', 'ai-assistant',
+    // Last, and Expert-only, while its steps are reworked to follow the
+    // rebuilt pages (operator call).
+    'guided-setup'
   ]
   const relabelled = base.map((view) =>
     view.id === 'setup'
@@ -245,9 +251,13 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
   // through. The tab is hidden until the flasher is reworked to chunk the write
   // (see the feature-elrs-passthrough-flash notes). Flip this to re-enable.
   const ELRS_FLASH_ENABLED = false
+  // RC Mixer is HIDDEN for everyone, Expert included (operator call,
+  // 2026-10-09): the tab stays in the build (the Receiver still reads its RCL
+  // labels) but is not in the list. Flip this to bring it back.
+  const RC_MIXER_ENABLED = false
   const combined = [
     ...relabelled,
-    guidedSetupDescriptor,
+    ...(isExpertMode ? [guidedSetupDescriptor] : []),
     amcGuidedDescriptor,
     sitlDescriptor,
     peripheralsDescriptor,
@@ -263,7 +273,9 @@ export function buildVisibleAppViews(inputs: VisibleAppViewsInputs): AppViewDesc
     // bridge. Gated OFF via ELRS_FLASH_ENABLED above until the chunked flasher lands.
     ...(ELRS_FLASH_ENABLED && isExpertMode && hasSerialPassthrough ? [elrsFlashDescriptor] : []),
     // Expert-only views — only surfaced when Expert mode is on.
-    ...(isExpertMode ? [rcMixerDescriptor, mavlinkInspectorDescriptor, aiAssistantDescriptor] : [])
+    ...(isExpertMode
+      ? [...(RC_MIXER_ENABLED ? [rcMixerDescriptor] : []), mavlinkInspectorDescriptor, aiAssistantDescriptor]
+      : [])
   ]
   const rankOf = (id: string): number => {
     const index = CANONICAL_VIEW_ORDER.indexOf(id)

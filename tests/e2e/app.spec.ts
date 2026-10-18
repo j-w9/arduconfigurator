@@ -81,7 +81,7 @@ async function pullParameters(page: Page): Promise<void> {
   // "already pulled" — assert the summary is complete and return. If the
   // button IS still around (e.g. because the write required a reboot or
   // the auto-refresh hiccuped), click it as before.
-  const pullParametersButton = page.getByRole('button', { name: 'Pull Parameters' })
+  const pullParametersButton = page.getByRole('button', { name: 'Sync Parameters' })
   if ((await pullParametersButton.count()) > 0) {
     await pullParametersButton.click()
     await expect(pullParametersButton).toHaveCount(0)
@@ -259,6 +259,8 @@ test.describe('browser configurator regression flows', () => {
   })
 
   test('guided setup marks accelerometer complete after the in-app calibration succeeds', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     // This spec walks six sequential confirm clicks plus a wizard navigation.
     // Each click auto-waits for the next button to render, so the worst-case
     // budget is roughly six expect-timeouts plus the full connect + param
@@ -292,6 +294,8 @@ test.describe('browser configurator regression flows', () => {
   })
 
   test('guided setup marks compass complete after the in-app onboard mag calibration succeeds', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await connectToVehicle(page, 'demo')
 
     await completeCompassCalibrationFromSetup(page)
@@ -307,6 +311,8 @@ test.describe('browser configurator regression flows', () => {
   })
 
   test('local guided setup shortcut opens the requested step directly for faster iteration', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await connectToVehicle(page, 'demo', '/?guidedSetupStep=radio')
 
     await expect(page.getByTestId('setup-wizard')).toBeVisible()
@@ -410,11 +416,16 @@ test.describe('browser configurator regression flows', () => {
     await expect(banner).toContainText(/OUT\d+ spun/, { timeout: COMMAND_ACK_TIMEOUT })
     await page.getByTestId('motor-reorder-pick-4').click()
     await expect(banner).toHaveCount(0)
-    await expect(page.getByTestId('motor-reorder-next-direction')).toBeVisible()
-    await expect(page.getByTestId('motor-reorder-guided-start')).toBeVisible()
+    // The demo's order already matches, so there is nothing to stage and the
+    // panel moves to Direction by itself. With changes pending it stays on
+    // Order, where the Stage button is, and offers the hand-off instead.
+    await expect(page.getByTestId('motor-reorder-lightbox-tab-direction')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('motor-reorder-lightbox-direction')).toBeVisible()
 
     // Re-open a run so the remaining mid-sequence assertions below still have
     // one in progress.
+    await page.getByTestId('motor-reorder-lightbox-tab-reorder').click()
+    await expect(page.getByTestId('motor-reorder-guided-start')).toBeVisible()
     await page.getByTestId('motor-reorder-guided-start').click()
     await expect(banner).toBeVisible()
     await expect(banner).toContainText('1 / 4')
@@ -453,7 +464,12 @@ test.describe('browser configurator regression flows', () => {
     // the USB box has no reason to render on any transport.
     await expect(page.getByTestId('motor-test-usb-ack')).toHaveCount(0)
     await expect(page.locator('[data-testid$="-ack"] input[type="checkbox"]')).toHaveCount(1)
-    await page.getByTestId('motor-test-sliders').getByText('ALL', { exact: true }).click()
+    // Default request: every motor in order, 5 s (long enough to feel each
+    // motor's direction; also the non-expert ceiling). ALL is already the
+    // selected row and "In order" the lit mode, so Test is live as soon as the
+    // box is ticked.
+    await expect(page.getByTestId('motor-test-sliders-in-order')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('motor-test-sliders-duration')).toHaveValue('5')
     // One Test button now; it carries the full gate the Run button used to.
     await expect(page.getByTestId('motor-test-sliders-test')).toBeEnabled()
   })
@@ -633,7 +649,15 @@ test.describe('browser configurator regression flows', () => {
     // is saved, so its appearance is the same proof that zeroing took effect.
     await expect(page.getByTestId('flight-deck-clear-heading-button')).toBeVisible()
     await expect(page.getByTestId('setup-gps-map-widget')).toBeVisible()
-    await expect(page.getByTestId('setup-start-guided-button')).toBeVisible()
+    // Guided Setup (and its Status card) is Expert-only while it is reworked:
+    // absent in Basic, and the rest of this walk runs in Expert.
+    await expect(page.getByTestId('setup-start-guided-button')).toHaveCount(0)
+    const moreSheet = page.getByTestId('header-more-toggle')
+    if ((await moreSheet.isVisible()) && (await moreSheet.getAttribute('aria-expanded')) !== 'true') {
+      await moreSheet.click()
+    }
+    await page.getByTestId('product-mode-expert').check()
+    await page.getByTestId('view-button-setup').click()
     await page.getByTestId('setup-start-guided-button').click()
     await expect(page.getByTestId('setup-wizard')).toBeVisible()
     await expect(page.getByTestId('wizard-orientation-task')).toBeVisible()
@@ -686,8 +710,10 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByText('editable · drag to reposition')).toBeVisible()
 
     await openView(page, 'receiver')
-    await expect(page.getByText('Live monitor')).toBeVisible()
-    await expect(page.getByTestId('receiver-task-nav')).toBeVisible()
+    // One page: the channel table is on screen with the jump row above it.
+    await expect(page.getByTestId('receiver-endpoints-card')).toBeVisible()
+    // One page, no tab strip or jump row on Receiver.
+    await expect(page.getByTestId('receiver-task-nav')).toHaveCount(0)
 
     await openView(page, 'motors')
     // Motors is one page and has no task strip; its reorder panel renders
@@ -716,7 +742,8 @@ test.describe('browser configurator regression flows', () => {
     await page.getByTestId('config-category-power').click()
     await expect(page.getByText('Battery configuration')).toBeVisible()
 
-    await page.getByTestId('product-mode-expert').click()
+    // Already Expert since the Guided Setup walk above; check() keeps it on.
+    await page.getByTestId('product-mode-expert').check()
     await expect(page.getByTestId('view-button-parameters')).toBeVisible()
 
     // MAVFTP is now surfaced solely through the Files tab (the old developer

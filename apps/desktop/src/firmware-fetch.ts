@@ -13,9 +13,11 @@ import {
   parseManifest,
   firmwaresForBoard,
   availableReleaseTypes,
+  buildFirmwareIndex,
   firmwaresForDronecanNode,
   dronecanNodeReleaseTypes,
   type FirmwareEntry,
+  type FirmwareIndex,
   type FirmwareManifest,
   type VehicleType
 } from '@arduconfig/firmware-flash'
@@ -78,6 +80,12 @@ export async function listBoardFirmware(
     releaseTypes: availableReleaseTypes(manifest, boardId, vehicletype),
     entries: firmwaresForBoard(manifest, boardId, vehicletype)
   }
+}
+
+/** The Flash tab finder's index (current .apj builds, compact rows) -- the
+ *  same shape the web build reads from the private deploy's /fw/index.json. */
+export async function firmwareIndex(fetchImpl?: FetchLike): Promise<FirmwareIndex> {
+  return buildFirmwareIndex(await loadFirmwareManifest(fetchImpl))
 }
 
 /** AP_Periph firmware list (+ release channels) for a detected DroneCAN node,

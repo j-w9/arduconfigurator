@@ -61,6 +61,8 @@ export interface DronecanFirmwareCandidate {
   boardId: number
   /** True for the channel's newest build. */
   latest: boolean
+  /** The build's commit, when the source knows it (the downloaded file must match). */
+  gitSha?: string
 }
 
 /** Whether a node can be matched against the firmware server yet. A node row

@@ -150,7 +150,7 @@ export function useProvisioningProfiles({
         text:
           sourceMode === 'selected-snapshot'
             ? 'Select or capture a snapshot before creating a provisioning profile from it.'
-            : 'Pull parameters before creating a provisioning profile from the live controller.'
+            : 'Sync parameters before creating a provisioning profile from the live controller.'
       })
       return
     }

@@ -18,6 +18,7 @@ export interface MavftpCapableRuntime {
   ): Promise<Uint8Array>
   uploadRemoteFile(path: string, bytes: Uint8Array, options?: { overwrite?: boolean }): Promise<void>
   deleteRemotePath(path: string, kind: 'file' | 'directory'): Promise<void>
+  formatStorage(): Promise<'formatted' | 'started'>
 }
 
 export interface UseMavftpBrowserOptions {
@@ -50,6 +51,12 @@ export interface MavftpBrowser {
   remove: (entry: MavftpDirectoryEntry) => void
   /** Fast-delete all non-flight files (logs, terrain, crash dumps). */
   sanitize: () => void
+  /** Format the SD card. The view has already taken the typed confirmation. */
+  formatStorage: () => void
+  /** A format just ran: the card is empty until ArduPilot recreates its
+   *  folders at startup, so a reboot is advised. */
+  rebootAdvised: boolean
+  dismissRebootAdvice: () => void
 }
 
 /**
@@ -274,6 +281,36 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
     }
   }, [runtime, path, load, setBusyAction])
 
+  // Format the whole SD card (MAV_CMD_STORAGE_FORMAT). The outcome is
+  // reported through the same line as Free storage's.
+  const [rebootAdvised, setRebootAdvised] = useState(false)
+  const formatStorage = useCallback(async () => {
+    if (!runtime) return
+    setBusyAction('files:format')
+    setError(undefined)
+    setRebootAdvised(false)
+    try {
+      const outcome = await runtime.formatStorage()
+      // Refresh FIRST: load() clears the message line. The card is remounted
+      // after the format, so a listing can briefly fail while it comes back,
+      // which is not worth reporting over the result.
+      await load(path).catch(() => {})
+      setError(
+        outcome === 'formatted'
+          ? 'SD card formatted.'
+          : 'Format started; the vehicle is still working on it. The messages say "Format: OK" when it is done.'
+      )
+      // ArduPilot creates APM/LOGS, scripts and terrain at startup, so a
+      // freshly formatted card has none of them until the next boot: logs
+      // and scripts have nowhere to go.
+      setRebootAdvised(true)
+    } catch (err) {
+      setError(err instanceof Error ? `Format failed: ${err.message}` : 'Format failed.')
+    } finally {
+      setBusyAction(undefined)
+    }
+  }, [runtime, path, load, setBusyAction])
+
   const navigate = useCallback((target: string) => void load(target), [load])
   const refresh = useCallback(() => void load(path), [load, path])
 
@@ -288,6 +325,9 @@ export function useMavftpBrowser(options: UseMavftpBrowserOptions): MavftpBrowse
     download: (entry) => void download(entry),
     upload: (file) => void upload(file),
     remove: (entry) => void remove(entry),
-    sanitize: () => void sanitize()
+    sanitize: () => void sanitize(),
+    formatStorage: () => void formatStorage(),
+    rebootAdvised,
+    dismissRebootAdvice: () => setRebootAdvised(false)
   }
 }

@@ -46,15 +46,18 @@ describe('buildVisibleAppViews', () => {
     }
   })
 
-  it('places the Guided Setup tab immediately after Status & Info', () => {
-    const result = ids(buildVisibleAppViews(baseInputs({ appViews: [view('setup')] })))
-    expect(result[0]).toBe('setup')
-    expect(result[1]).toBe('guided-setup')
+  it('puts Guided Setup last, and only in Expert mode, while it is reworked', () => {
+    const expert = ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, appViews: [view('setup')] })))
+    expect(expert[0]).toBe('setup')
+    expect(expert[expert.length - 1]).toBe('guided-setup')
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false, appViews: [view('setup')] })))).not.toContain(
+      'guided-setup'
+    )
   })
 
-  it('gates the RC Mixer view behind Expert mode', () => {
+  it('hides the RC Mixer view for everyone, Expert included', () => {
     expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: false })))).not.toContain('rc-mixer')
-    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true })))).toContain('rc-mixer')
+    expect(ids(buildVisibleAppViews(baseInputs({ isExpertMode: true, hasRcLogicParams: true })))).not.toContain('rc-mixer')
   })
 
   it('hides the expert-only Parameters view outside Expert mode and shows it inside', () => {
@@ -101,19 +104,20 @@ describe('buildVisibleAppViews', () => {
     const result = ids(
       buildVisibleAppViews(baseInputs({ appViews: [view('modes'), view('setup'), view('mystery-view')] }))
     )
-    // setup leads, guided-setup second, then AMC Guided, then the Simulator,
-    // then Peripherals and Calibration, modes before the tools cluster,
-    // unknown id last. (Config is absent from this input, so Peripherals
-    // lands fifth.)
+    // setup leads, then AMC Guided and the Simulator, then Peripherals and
+    // Calibration, modes before the tools cluster, unknown id last. (Config is
+    // absent from this input, so Peripherals lands fourth.)
     //
-    // The Simulator sits with the two guided tabs because it is the same kind
-    // of thing: somewhere to work without a vehicle in front of you.
+    // The Simulator sits beside AMC Guided because it is the same kind of
+    // thing: somewhere to work without a vehicle in front of you. Guided Setup
+    // is Expert-only and goes after every listed tab now (a mainline call);
+    // this input has Expert on, so it is here, just ahead of the unknown id.
     expect(result[0]).toBe('setup')
-    expect(result[1]).toBe('guided-setup')
-    expect(result[2]).toBe('amc-guided')
-    expect(result[3]).toBe('sitl')
-    expect(result[4]).toBe('peripherals')
-    expect(result[5]).toBe('calibration')
+    expect(result[1]).toBe('amc-guided')
+    expect(result[2]).toBe('sitl')
+    expect(result[3]).toBe('peripherals')
+    expect(result[4]).toBe('calibration')
+    expect(result[result.length - 2]).toBe('guided-setup')
     expect(result.indexOf('modes')).toBeLessThan(result.indexOf('can'))
     expect(result[result.length - 1]).toBe('mystery-view')
   })

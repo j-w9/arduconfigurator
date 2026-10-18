@@ -48,9 +48,10 @@ The **Motor Setup** panel carries the reorder work inline, with an Order tab and
 a Direction tab (both gated behind the props-off acknowledgement — one
 acknowledgement at the top of the page covers everything on it):
 
-- **Order** — *Identify motors interactively* spins each output briefly (about
-  2.5 s at 6%) and you click the position on the schematic that moved, which
-  stages the ``SERVOn_FUNCTION`` mapping. Apply stages a reboot.
+- **Order** — *Run motor wizard* spins each output briefly (about 2.5 s at 6%)
+  and you click the position on the schematic that moved, which stages the
+  ``SERVOn_FUNCTION`` mapping. Apply stages a reboot. When the order already
+  matches, the panel moves on to Direction by itself.
 - **Direction** — click a motor to spin it and compare against the arrows
   (top-view CW/CCW); a per-motor **Reverse** toggle flips its spin via
   ``SERVO_BLH_RVMASK``. Reverse toggles are only available on a **DShot**

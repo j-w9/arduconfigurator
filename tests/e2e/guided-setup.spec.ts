@@ -28,6 +28,12 @@ const SECTIONS = [
   'level', 'compass', 'radio', 'modes', 'power', 'failsafe'
 ] as const
 
+// Guided Setup is Expert-only while it is reworked, so every test here starts
+// in Expert mode (product mode is read from sessionStorage at load).
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
+})
+
 async function openGuidedSetup(page: Page, shortcutSection?: string): Promise<void> {
   await page.goto(shortcutSection ? `/?guidedSetupStep=${shortcutSection}` : '/')
   await page.getByTestId('transport-mode-select').selectOption('demo')

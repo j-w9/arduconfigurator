@@ -42,7 +42,8 @@ export function MapLocationPicker({
     // none. The proxy also gives OSM the caching layer their policy asks for.
     L.tileLayer('/tiles/{z}/{x}/{y}', {
       maxZoom: 19,
-      attribution: '© OpenStreetMap contributors'
+      attribution: '© OpenStreetMap contributors',
+      referrerPolicy: 'strict-origin-when-cross-origin'
     }).addTo(map)
     map.on('click', (event: L.LeafletMouseEvent) => {
       onPickRef.current(

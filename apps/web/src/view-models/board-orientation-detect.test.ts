@@ -52,6 +52,9 @@ describe('detectBoardOrientation', () => {
     // it again. Catches a transposed matrix or a flipped convention across the
     // whole table rather than at one spot-checked value.
     for (const rotation of BOARD_ROTATIONS) {
+      // PITCH_7 (41) is not a candidate: it is inside the match limit of None,
+      // and the picker does not offer it. Covered by its own test below.
+      if (rotation.value === 41) continue
       const samples = [
         publishedSample('level', rotation.value, 0),
         publishedSample('nose-down', rotation.value, 0)
@@ -62,6 +65,38 @@ describe('detectBoardOrientation', () => {
       // accept any that reproduces the same measurements exactly.
       expect(result.best!.residualDeg).toBeLessThan(1)
     }
+  })
+
+  it('keeps the current setting when the poses fit it, even if a neighbour scores a hair better', () => {
+    // Field report: a correctly mounted board, calibrated on a bench a few
+    // degrees off level, "measured as PITCH_7" and the card offered to stage
+    // AHRS_ORIENTATION = 41 -- which the picker then refused, because 41 is
+    // not one of its options. A few degrees is hand-held noise, not a mounting.
+    const tilt = (4 * Math.PI) / 180
+    const tiltAboutY = (v: Vector3): Vector3 => [
+      v[0] * Math.cos(tilt) + v[2] * Math.sin(tilt),
+      v[1],
+      -v[0] * Math.sin(tilt) + v[2] * Math.cos(tilt)
+    ]
+    const samples: OrientationSample[] = (['level', 'nose-down', 'left'] as const).map((pose) => ({
+      pose,
+      accel: tiltAboutY(POSE_EXPECTED_ACCEL[pose]).map((c) => c * GRAVITY) as unknown as Vector3
+    }))
+    const result = detectBoardOrientation(samples, 0)
+    expect(result.status).toBe('detected')
+    expect(result.alreadySet).toBe(true)
+    expect(result.best!.rotation.value).toBe(0)
+    expect(orientationRecommendation(samples, 0)).toEqual({ kind: 'silent' })
+  })
+
+  it('never proposes a rotation the orientation picker cannot apply', () => {
+    // A board genuinely at PITCH_7 reads within the match limit of None, so
+    // with None set it is "already set"; 41 is never the answer.
+    const samples = [publishedSample('level', 41, 0), publishedSample('nose-down', 41, 0)]
+    const result = detectBoardOrientation(samples, 0)
+    expect(result.status).toBe('detected')
+    expect(result.alreadySet).toBe(true)
+    expect(result.best!.rotation.value).not.toBe(41)
   })
 
   it('composes with a non-zero AHRS_ORIENTATION already set', () => {

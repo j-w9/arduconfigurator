@@ -17,6 +17,15 @@ import type {
 } from './types.js'
 
 const MOTOR_TEST_COMPLETION_BUFFER_MS = 250
+/**
+ * Pause between motors on the in-order sweep, so each one is felt stopping
+ * before the next starts. The sweep is driven from here, not by ArduPilot's
+ * own SEQUENCE mode: that mode walks the frame's test-order table (quad X:
+ * front-right, rear-right, rear-left, front-left), which is not the M1..Mn
+ * order the Motors tab shows, and the operator saw "2-1-3-4" against a list
+ * that read 1-2-3-4.
+ */
+export const MOTOR_TEST_SWEEP_GAP_MS = 500
 
 export interface MotorTestHost {
   getSnapshot(): ConfiguratorSnapshot
@@ -48,6 +57,8 @@ export class MotorTestService {
    * stopped. The battery-current calibration uses exactly this mode.
    */
   private activeSimultaneousSequences: number[] = []
+  /** Bumped by run()/stop()/reset(); an in-order sweep stops when it changes. */
+  private sweepToken = 0
 
   constructor(private readonly host: MotorTestHost) {}
 
@@ -58,6 +69,7 @@ export class MotorTestService {
   reset(): void {
     this.state = createIdleMotorTestState()
     this.clearCompletionTimer()
+    this.sweepToken += 1
     // Otherwise a stop after a reconnect would fire aborts for the PREVIOUS
     // session's motors.
     this.activeSimultaneousSequences = []
@@ -158,15 +170,44 @@ export class MotorTestService {
             `Motor test: FRAME_CLASS/FRAME_TYPE ${frameClass ?? '?'} / ${frameType ?? '?'} has no known test-order table — sent raw motor numbers for M${unmappedMotors.join(', M')}. Verify which motors actually spin.`
           )
         }
+      } else if (runningSequential) {
+        // One motor at a time, M1 upward -- the order the Motors tab lists
+        // them -- each as its own single-motor DO_MOTOR_TEST. The first goes
+        // now; the rest follow from a timer (see continueSweep), each after
+        // the previous one's window plus a short gap.
+        this.sweepToken += 1
+        const token = this.sweepToken
+        const ordered = [...selectedOutputs].sort(
+          (a, b) => (a.motorNumber ?? Number.MAX_SAFE_INTEGER) - (b.motorNumber ?? Number.MAX_SAFE_INTEGER) || a.channelNumber - b.channelNumber
+        )
+        const unmappedMotors: number[] = []
+        const sequences = ordered.map((output) => {
+          const perMotor = output.motorNumber !== undefined
+            ? motorTestSequenceForMotor(frameClass, frameType, output.motorNumber)
+            : undefined
+          if (perMotor?.mapped === false && output.motorNumber !== undefined) {
+            unmappedMotors.push(output.motorNumber)
+          }
+          return perMotor?.sequence ?? output.motorNumber ?? 1
+        })
+        if (unmappedMotors.length > 0) {
+          this.host.appendStatusEntry(
+            'warning',
+            `Motor test: FRAME_CLASS/FRAME_TYPE ${frameClass ?? '?'} / ${frameType ?? '?'} has no known test-order table — sending raw motor numbers for M${unmappedMotors.join(', M')}. Verify which motors actually spin.`
+          )
+        }
+        this.activeSimultaneousSequences = [sequences[0]]
+        await this.host.sendCommand(
+          MAV_CMD.DO_MOTOR_TEST,
+          [sequences[0], MOTOR_TEST_THROTTLE_TYPE.PERCENT, request.throttlePercent, request.durationSeconds, 1, MOTOR_TEST_ORDER.DEFAULT, 0],
+          { waitForAck: true }
+        )
+        void this.continueSweep(token, ordered, sequences, request)
       } else {
         this.activeSimultaneousSequences = []
-        // param6 is SEQUENCE on the all-outputs sweep (Copter iterates count
-        // motors from param1 in test order) and DEFAULT(0) on single-motor.
-        const commandParams: number[] = runningSequential
-          ? [1, MOTOR_TEST_THROTTLE_TYPE.PERCENT, request.throttlePercent, request.durationSeconds, selectedOutputCount, MOTOR_TEST_ORDER.SEQUENCE, 0]
-          : [singleMotorSequence ?? 1, MOTOR_TEST_THROTTLE_TYPE.PERCENT, request.throttlePercent, request.durationSeconds, 1, MOTOR_TEST_ORDER.DEFAULT, 0]
+        const commandParams: number[] = [singleMotorSequence ?? 1, MOTOR_TEST_THROTTLE_TYPE.PERCENT, request.throttlePercent, request.durationSeconds, 1, MOTOR_TEST_ORDER.DEFAULT, 0]
 
-        if (!runningSequential && selectedOutput?.motorNumber !== undefined && sequenceMapping?.mapped === false) {
+        if (selectedOutput?.motorNumber !== undefined && sequenceMapping?.mapped === false) {
           this.host.appendStatusEntry(
             'warning',
             `Motor test: FRAME_CLASS/FRAME_TYPE ${frameClass ?? '?'} / ${frameType ?? '?'} has no known test-order table — sending the raw motor number ${selectedOutput.motorNumber}. Verify which motor actually spins.`
@@ -220,6 +261,59 @@ export class MotorTestService {
   }
 
   /**
+   * The rest of an in-order sweep: motor i+1 starts after motor i's window
+   * plus the gap. Stops silently when the token changes (stop, reset, or a
+   * new run) or the state has left 'running'. A send that fails ends the
+   * sweep and says so; the FC's per-motor timeout has already stopped the
+   * previous motor by then.
+   */
+  private async continueSweep(
+    token: number,
+    ordered: readonly { channelNumber: number; motorNumber?: number }[],
+    sequences: readonly number[],
+    request: MotorTestRequest
+  ): Promise<void> {
+    const stepMs = Math.max(request.durationSeconds * 1000, 0) + MOTOR_TEST_SWEEP_GAP_MS
+    for (let index = 1; index < ordered.length; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, stepMs))
+      if (token !== this.sweepToken || this.state.status !== 'running') {
+        return
+      }
+      const output = ordered[index]
+      const sequence = sequences[index]
+      this.activeSimultaneousSequences = [sequence]
+      try {
+        await this.host.sendCommand(
+          MAV_CMD.DO_MOTOR_TEST,
+          [sequence, MOTOR_TEST_THROTTLE_TYPE.PERCENT, request.throttlePercent, request.durationSeconds, 1, MOTOR_TEST_ORDER.DEFAULT, 0],
+          { waitForAck: true }
+        )
+      } catch (error) {
+        if (token !== this.sweepToken) return
+        const message = error instanceof Error ? error.message : 'Unknown motor test error.'
+        this.clearCompletionTimer()
+        this.state = {
+          ...this.state,
+          status: 'failed',
+          summary: `Motor test sweep stopped at M${output.motorNumber ?? '?'}: ${message}`,
+          updatedAtMs: Date.now(),
+          completedAtMs: Date.now()
+        }
+        this.host.appendStatusEntry('error', `Motor test sweep stopped at M${output.motorNumber ?? '?'}: ${message}`)
+        this.host.emit()
+        return
+      }
+      if (token !== this.sweepToken) return
+      this.state = {
+        ...this.state,
+        summary: `Motor test running on OUT${output.channelNumber}${output.motorNumber !== undefined ? ` / M${output.motorNumber}` : ''} (${index + 1} of ${ordered.length}) at ${request.throttlePercent}% for ${request.durationSeconds.toFixed(1)} seconds per motor.`,
+        updatedAtMs: Date.now()
+      }
+      this.host.emit()
+    }
+  }
+
+  /**
    * Operator-initiated early abort via a zero-throttle DO_MOTOR_TEST (the
    * FC's per-motor timeout remains the hard safety net). Best-effort: a
    * failed abort is surfaced rather than thrown.
@@ -237,6 +331,8 @@ export class MotorTestService {
       return { sent: false, acknowledged: true }
     }
     this.clearCompletionTimer()
+    // Ends an in-order sweep before its next motor fires.
+    this.sweepToken += 1
     let acknowledged = true
     // A simultaneous run started every motor individually, so stopping it has
     // to stop every motor individually. One abort zeroed motor 1 and left the
@@ -281,13 +377,12 @@ export class MotorTestService {
     const motorCount = Math.max(this.state.selectedOutputCount ?? 1, 1)
     const durationMs = Math.max((this.state.durationSeconds ?? 0) * 1000, 0)
     // Window length per mode: simultaneous shares one timeout (total ==
-    // duration); the sequential sweep is per-motor plus an inter-motor pause
-    // estimate (the 0.5× factor — only used to leave the 'running' UI state,
-    // not a measured value); single is exactly the one window.
+    // duration); the in-order sweep is per-motor plus the gap this service
+    // itself leaves between motors; single is exactly the one window.
     const totalDurationMs = this.state.simultaneousOutputs
       ? durationMs
       : this.state.allOutputsSelected
-        ? durationMs * motorCount + durationMs * 0.5 * Math.max(motorCount - 1, 0)
+        ? durationMs * motorCount + MOTOR_TEST_SWEEP_GAP_MS * Math.max(motorCount - 1, 0)
         : durationMs
     this.completionTimer = setTimeout(() => {
       if (this.state.status !== 'running') {

@@ -104,7 +104,7 @@ test.describe('Phone layout', () => {
     // The rail is the rail: no drift summary, no vehicle caption, and no badge
     // on Snapshots — a count like "94 diff" is wider than the rail has room
     // for and lands on top of the label. Open Snapshots and it is all there.
-    await expect(page.getByTestId('view-button-snapshots')).toHaveText('SNPSnapshots')
+    await expect(page.getByTestId('view-button-snapshots')).toHaveText('Snapshots')
     await expect(page.getByTestId('view-button-snapshots').locator('.workspace-nav__badge')).toHaveCount(0)
   })
 })
@@ -169,6 +169,15 @@ test.describe('Desktop firmware browse', () => {
  * the sheet has to be opened before the toggle can be reached. Above the phone
  * breakpoint the sheet button is display:none and this is a no-op, so the same
  * call is correct at every width. */
+/** Calibration is one page of expandable sections: open one (idempotent --
+ *  clicking an open section's bar closes it). */
+async function openCalibrationSection(page: Page, id: 'sensors' | 'power' | 'flight'): Promise<void> {
+  const bar = page.getByTestId(`calibration-tab-${id}`)
+  if ((await bar.getAttribute('aria-expanded')) !== 'true') {
+    await bar.click()
+  }
+}
+
 async function enableExpertMode(page: Page): Promise<void> {
   const sheet = page.getByTestId('header-more-toggle')
   // Idempotent: a test may call this more than once, and clicking an already
@@ -705,31 +714,22 @@ test.describe('Parameters tab (expert-only)', () => {
 })
 
 test.describe('tab order', () => {
-  test('nav leads with Status & Info, the guided tabs and Simulator, then Config, Peripherals', async ({ page }) => {
+  test('nav leads with Status & Info, AMC Guided and the Simulator, then Config; Guided Setup is Expert-only and last', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    // The first six nav buttons follow the canonical order (Status & Info,
-    // then the two guided tabs — the native wizard and the AMC sequence,
-    // beside each other so they can be compared on the same vehicle — then
-    // Config, Peripherals (attached hardware, next to the settings it used to
-    // be mixed into) and Calibration).
-    //
-    // AMC Guided joined this list when it stopped being Expert-gated. It is
-    // the gentlest surface in the app: it shows what each step would set and
-    // why before anything is written.
-    const navIds = await page.locator('[data-testid^="view-button-"]').evaluateAll((els) =>
-      els.map((el) => (el.getAttribute('data-testid') || '').replace('view-button-', ''))
-    )
-    expect(navIds.slice(0, 6)).toEqual([
-      'setup',
-      'guided-setup',
-      'amc-guided',
-      // ArduPilot compiled to WebAssembly. Sits with the guided tabs because
-      // it is the same kind of thing: somewhere to work with nothing plugged in.
-      'sitl',
-      'config',
-      'peripherals'
-    ])
+    // Status & Info, then AMC Guided and the Simulator -- the two places to
+    // work with nothing plugged in -- then Config, Peripherals and
+    // Calibration. Guided Setup is hidden in Basic while it is reworked, and
+    // last in Expert (a mainline call this branch keeps).
+    const readNav = () =>
+      page.locator('[data-testid^="view-button-"]').evaluateAll((els) =>
+        els.map((el) => (el.getAttribute('data-testid') || '').replace('view-button-', ''))
+      )
+    const navIds = await readNav()
+    expect(navIds.slice(0, 6)).toEqual(['setup', 'amc-guided', 'sitl', 'config', 'peripherals', 'calibration'])
+    expect(navIds).not.toContain('guided-setup')
+    await enableExpertMode(page)
+    await expect.poll(async () => (await readNav()).at(-1)).toBe('guided-setup')
     // The Setup tab is now labelled "Status & Info".
     await expect(page.getByTestId('view-button-setup')).toContainText('Status & Info')
   })
@@ -1233,17 +1233,8 @@ test.describe('Modes view', () => {
     ).toBe('7')
     await expect(page.getByTestId('modes-slot-4')).toHaveClass(/is-active/)
 
-    await expect(page.getByTestId('modes-go-to-flight-mode-task')).toBeVisible()
-  })
-
-  test('deep-link button navigates to Receiver flight-mode task', async ({ page }) => {
-    await page.goto('/')
-    await connectViaHeader(page)
-    await openFlightModes(page)
-
-    await page.getByTestId('modes-go-to-flight-mode-task').click()
-
-    await expect(page.getByTestId('workspace-view-title')).toHaveText('Receiver')
+    // Flight modes have one home now; no button sends the operator elsewhere.
+    await expect(page.getByTestId('modes-go-to-flight-mode-task')).toHaveCount(0)
   })
 })
 
@@ -1312,8 +1303,11 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    // ESC and battery-current live on the Power tab now.
-    await page.getByTestId('calibration-tab-power').click()
+    // ESC and battery-current live on the Power tab, in Expert mode.
+    await openCalibrationSection(page, 'power')
+    await expect(page.getByTestId('calibration-card-esc')).toHaveCount(0)
+    await expect(page.getByTestId('calibration-card-battery-current')).toHaveCount(0)
+    await enableExpertMode(page)
     await expect(page.getByTestId('calibration-card-esc')).toBeVisible()
     await expect(page.getByTestId('calibration-card-compassmot')).toHaveCount(0)
     const unsupported = page.getByTestId('esc-cal-unsupported')
@@ -1342,7 +1336,8 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-power').click()
+    await enableExpertMode(page)
+    await openCalibrationSection(page, 'power')
 
     const card = page.getByTestId('calibration-card-battery-current')
     await expect(card).toBeVisible()
@@ -1382,7 +1377,8 @@ test.describe('Calibration tab — motor-spin (ESC)', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-power').click()
+    await enableExpertMode(page)
+    await openCalibrationSection(page, 'power')
     await expect(page.getByTestId('calibration-card-battery-current')).toBeVisible()
     const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
@@ -1431,7 +1427,7 @@ test.describe('Calibration tab — airspeed (plane)', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduPlane', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
     const card = page.getByTestId('calibration-card-airspeed')
     await expect(card).toBeVisible()
     await card.scrollIntoViewIfNeeded()
@@ -1444,7 +1440,7 @@ test.describe('Calibration tab — airspeed (plane)', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
     await expect(page.getByTestId('calibration-card-airspeed')).toHaveCount(0)
   })
 })
@@ -1454,7 +1450,7 @@ test.describe('Calibration tab — battery voltage', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-power').click()
+    await openCalibrationSection(page, 'power')
     const card = page.getByTestId('calibration-card-battery')
     await expect(card).toBeVisible()
     await card.scrollIntoViewIfNeeded()
@@ -1471,7 +1467,7 @@ test.describe('Calibration tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
 
     await expect(page.getByTestId('calibration-grid')).toBeVisible()
     await expect(page.getByTestId('calibration-card-calibrate-accelerometer')).toBeVisible()
@@ -1490,12 +1486,16 @@ test.describe('Calibration tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
 
     const card = page.getByTestId('calibration-card-calibrate-level')
     await expect(card).toBeVisible()
+    // The demo's AHRS_TRIM is 0/0 -- never levelled -- so the card is plain.
+    await expect(card).not.toHaveAttribute('data-good', 'true')
     await page.getByTestId('calibration-run-calibrate-level').click()
     await expect(card.getByText('succeeded', { exact: true })).toBeVisible({ timeout: COMMAND_ACK_TIMEOUT })
+    // A good value turns the card green, not only the badge.
+    await expect(card).toHaveAttribute('data-good', 'true')
   })
 
   test('a finished calibration offers a reboot, and only claims one is required when ArduPilot needs it', async ({ page }) => {
@@ -3047,7 +3047,9 @@ test.describe('Config view', () => {
 })
 
 test.describe('RC Mixer view', () => {
-  test('hides the primary stick axes but shows AUX channels including the mode switch', async ({ page }) => {
+  // The tab is hidden from the list (RC_MIXER_ENABLED in visible-app-views.ts):
+  // the tests that open it are skipped until it comes back.
+  test.skip('hides the primary stick axes but shows AUX channels including the mode switch', async ({ page }) => {
     // Demo Copter: RCMAP_ROLL/PITCH/THROTTLE/YAW = 1/2/3/4, FLTMODE_CH = 7,
     // RCL_ENABLE = 1 with real range terms on ch5 (ArmDisarm) and ch6 (LAND).
     // Only channels 1-4 (the continuous stick axes) are skipped. The flight-mode
@@ -3081,12 +3083,13 @@ test.describe('RC Mixer view', () => {
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-receiver').click()
-    const summary = page.getByTestId('receiver-rcl-summary')
-    await expect(summary).toContainText('CH5')
-    await expect(summary).toContainText('RC Mixer')
+    // The note that listed them under the channel table is gone (one page,
+    // no standing prose); the claim itself is still read into the view model.
+    await expect(page.getByTestId('receiver-rcl-summary')).toHaveCount(0)
+    await expect(page.getByTestId('receiver-channel-bars-ch5')).toBeVisible()
   })
 
-  test('function picker only offers functions the connected vehicle firmware actually supports', async ({ page }) => {
+  test.skip('function picker only offers functions the connected vehicle firmware actually supports', async ({ page }) => {
     // Demo Plane doesn't report RCL_ENABLE, so the tab falls back to the
     // scaffold catalog — which should now exclude Copter/Rover-only entries
     // (Precision Loiter, Reverse throttle) while keeping Plane-applicable
@@ -3109,7 +3112,7 @@ test.describe('RC Mixer view', () => {
     expect(optionLabels.some((label) => label.startsWith('Do nothing'))).toBe(true)
   })
 
-  test('Remove on an already-applied assignment hides it immediately, and discarding the pending change restores it', async ({ page }) => {
+  test.skip('Remove on an already-applied assignment hides it immediately, and discarding the pending change restores it', async ({ page }) => {
     // Regression: Remove on a real (already-written) RCL term only staged a
     // FUNC=0 draft — readRcLogicModel still reported the term as "touched"
     // while that draft was pending, so the row stayed on screen and looked
@@ -3143,18 +3146,17 @@ test.describe('RC Mixer view', () => {
 // startReceiverBind path stays covered by tests/runtime.integration.test.mjs.
 
 test.describe('Receiver channel-direction check', () => {
-  test('lives under Endpoints (not Mapping) with a verdict row per primary axis', async ({ page }) => {
+  test('sits beside the map on the one-page tab with a verdict row per primary axis', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await openView(page, 'receiver')
 
-    // The old manual reverse box is gone from Mapping.
-    await page.getByTestId('receiver-tab-mapping').click()
+    // The old manual reverse box is gone from the map.
     await expect(page.getByTestId('receiver-channel-direction')).toHaveCount(0)
 
-    // The guided direction check now lives in Endpoints, one row per axis.
-    await page.getByTestId('receiver-tab-endpoints').click()
+    // The guided direction check is on the same page, one row per axis; the
+    // former tab buttons are jump links, so the click is a scroll, not a route.
     await expect(page.getByTestId('receiver-direction-check')).toBeVisible()
     for (const axis of ['roll', 'pitch', 'throttle', 'yaw']) {
       await expect(page.getByTestId(`receiver-direction-${axis}`)).toBeVisible()
@@ -3207,27 +3209,28 @@ test.describe('Receiver functions tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Functions' }).click()
 
     const panel = page.getByTestId('receiver-functions-panel')
     await expect(panel).toBeVisible()
-    // Stick axes are not aux channels — the list starts at CH5.
+    // A stick channel's dropdown offers the axes only; functions start at CH5.
     await expect(page.getByTestId('receiver-function-5')).toBeVisible()
-    await expect(page.getByTestId('receiver-function-4')).toHaveCount(0)
+    const ch4 = page.getByTestId('receiver-function-4').locator('select')
+    await expect(ch4).toHaveValue('axis:yaw')
+    await expect(ch4.locator('optgroup[label="Function"]')).toHaveCount(0)
 
     // Assign RTL (4) to CH7 — staged as a draft on RC7_OPTION.
     const ch7 = page.getByTestId('receiver-function-7').locator('select')
-    await ch7.selectOption('4')
-    await expect(ch7).toHaveValue('4')
+    await ch7.selectOption('option:4')
+    await expect(ch7).toHaveValue('option:4')
 
     // The same function on a second channel is undefined behaviour in
     // ArduPilot, so it must be called out rather than silently accepted.
-    await page.getByTestId('receiver-function-8').locator('select').selectOption('4')
+    await page.getByTestId('receiver-function-8').locator('select').selectOption('option:4')
     await expect(page.getByTestId('receiver-functions-conflict')).toContainText('CH7')
     await expect(page.getByTestId('receiver-functions-conflict')).toContainText('CH8')
 
     // Clearing one side resolves it.
-    await page.getByTestId('receiver-function-8').locator('select').selectOption('0')
+    await page.getByTestId('receiver-function-8').locator('select').selectOption('option:0')
     await expect(page.getByTestId('receiver-functions-conflict')).toHaveCount(0)
   })
 
@@ -3240,25 +3243,29 @@ test.describe('Receiver functions tab', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Functions' }).click()
 
     const select = page.getByTestId('receiver-function-5').locator('select')
     await expect(select).toBeVisible()
-    const labels = await select.locator('option').allTextContents()
+    // The four stick axes lead the dropdown in their own group; the function
+    // list is the group after them.
+    await expect(select.locator('optgroup[label="Stick"] option')).toHaveText(['Roll', 'Pitch', 'Throttle', 'Yaw'])
+    const labels = await select.locator('optgroup[label="Function"] option').allTextContents()
 
     // "Do Nothing" (0) is pinned above both groups — the cleared state.
     expect(labels[0]).toBe('Do Nothing')
+    // The flight-mode switch (FLTMODE_CH, not an RCn_OPTION) right under it.
+    expect(labels[1]).toBe('Flight modes')
 
     // The common group leads, alphabetically: ACRO Mode is its first entry and
     // the flight-mode/arming staples sit inside it.
-    const common = labels.slice(1, 1 + AUX_COMMON_FUNCTION_COUNT)
+    const common = labels.slice(2, 2 + AUX_COMMON_FUNCTION_COUNT)
     expect(common[0]).toBe('ACRO Mode')
     for (const label of ['ALTHOLD Mode', 'Motor Emergency Stop', 'RTL', 'VTX Power']) {
       expect(common).toContain(label)
     }
 
     // The long tail follows, also alphabetical, and holds the niche entries.
-    const tail = labels.slice(1 + AUX_COMMON_FUNCTION_COUNT)
+    const tail = labels.slice(2 + AUX_COMMON_FUNCTION_COUNT)
     for (const label of ['Gripper', 'KillIMU1', 'Sprayer Enable', 'Winch Enable']) {
       expect(tail).toContain(label)
     }
@@ -3268,7 +3275,7 @@ test.describe('Receiver functions tab', () => {
     expect(labels.length).toBeGreaterThan(100)
     // And a tail entry is still assignable, not merely listed.
     await select.selectOption({ label: 'Sprayer Enable' })
-    await expect(select).toHaveValue('15')
+    await expect(select).toHaveValue('option:15')
   })
 })
 
@@ -3277,7 +3284,6 @@ test.describe('Receiver stick-range bar', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Endpoints' }).click()
     const bar = page.getByTestId('rc-range-bar-throttle')
     await bar.scrollIntoViewIfNeeded()
     await expect(bar).toBeVisible()
@@ -3287,16 +3293,17 @@ test.describe('Receiver stick-range bar', () => {
 })
 
 test.describe('Receiver RC options', () => {
-  test('RC_OPTIONS renders as a bitmask chip grid in the receiver tab', async ({ page }) => {
+  test('RC_OPTIONS renders as a bitmask chip grid under Config ▸ RC', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
+    // The set-once receiver settings live under Config ▸ RC; the Receiver tab
+    // keeps the hands-on work and has no Advanced fold.
     await openView(page, 'receiver')
-    // RC options live under the receiver's Flight Modes task.
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Flight Modes' }).click()
-    const card = page.getByTestId('receiver-rc-options')
-    await card.scrollIntoViewIfNeeded()
-    await expect(card).toBeVisible()
+    await expect(page.getByTestId('receiver-advanced')).toHaveCount(0)
+    await openView(page, 'config')
+    await page.getByTestId('config-category-rc').click()
     const field = page.getByTestId('scoped-bitmask-RC_OPTIONS')
+    await field.scrollIntoViewIfNeeded()
     const bits = field.locator('.scoped-bitmask-bit')
     await expect(bits.first()).toBeVisible()
     // Demo seeds RC_OPTIONS=0, so every option starts unset (no orange).
@@ -3310,7 +3317,6 @@ test.describe('Receiver arm switch', () => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Flight Modes' }).click()
     const card = page.getByTestId('receiver-arm-switch')
     await card.scrollIntoViewIfNeeded()
     await expect(card).toBeVisible()
@@ -3343,6 +3349,46 @@ test.describe('Receiver arm switch', () => {
     await channelSelect.selectOption('0')
     await expect(card).toContainText('not assigned')
     await expect(airmodeCheckbox).toBeDisabled()
+  })
+})
+
+test.describe('Receiver: one job per channel', () => {
+  test('the flight-mode switch is picked in a channel row, and takes the channel from a function', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    // Demo: FLTMODE_CH=7, every RCn_OPTION 0.
+    await expect(page.getByTestId('receiver-channel-function-7')).toHaveValue('mode:')
+    const armSelect = page.getByTestId('receiver-arm-switch-channel')
+    await expect(armSelect.locator('option[value="7"]')).toHaveJSProperty('disabled', true)
+    await expect(armSelect.locator('option[value="7"]')).toHaveText('Channel 7 (flight modes)')
+
+    // Arm on CH6, then make CH6 the mode channel: the arm switch comes off it.
+    await armSelect.selectOption('6')
+    await expect(page.getByTestId('receiver-arm-switch')).toContainText('CH6')
+    await page.getByTestId('receiver-channel-function-6').selectOption('mode:')
+    await expect(page.getByTestId('receiver-channel-function-6')).toHaveValue('mode:')
+    await expect(page.getByTestId('receiver-channel-function-7')).toHaveValue('option:0')
+    await expect(page.getByTestId('receiver-arm-switch')).toContainText('not assigned')
+    await expect(page.getByTestId('receiver-mode-channel-conflict')).toHaveCount(0)
+
+    // A function picked on the mode channel takes the mode switch off it.
+    await page.getByTestId('receiver-channel-function-6').selectOption('option:153')
+    await expect(page.getByTestId('receiver-arm-switch')).toContainText('CH6')
+    await expect(page.getByTestId('receiver-channel-function-7')).toHaveValue('option:0')
+    await expect(page.getByTestId('receiver-channel-function-6')).toHaveValue('option:153')
+  })
+
+  test('Acro in a switch position shows its trainer and options', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await expect(page.getByTestId('receiver-acro-settings')).toHaveCount(0)
+    await page.getByTestId('receiver-mode-slot-1').locator('select').selectOption('1')
+    const acro = page.getByTestId('receiver-acro-settings')
+    await expect(acro).toBeVisible()
+    await expect(acro.locator('select')).toHaveValue('2')
+    await expect(page.getByTestId('scoped-bitmask-ACRO_OPTIONS')).toContainText('Air-mode')
   })
 })
 
@@ -3400,9 +3446,10 @@ test.describe('Receiver RSSI', () => {
   test('shows RX RSSI as a percentage, not the raw 0-254 byte', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
-    await openView(page, 'receiver')
-    // RX RSSI lives in the Signal Setup task now (removed from the main monitor).
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Signal Setup' }).click()
+    // The live link readout sits under the receiver settings in Config ▸ RC.
+    await openView(page, 'config')
+    await page.getByTestId('config-category-rc').click()
+    await expect(page.getByTestId('config-receiver-link')).toBeVisible()
     // Demo seeds RC_CHANNELS.rssi = 100 (raw 0-254), which is ~39%.
     await expect(page.getByText('Live RX RSSI: 39%')).toBeVisible()
   })
@@ -3821,6 +3868,10 @@ test.describe('OSD view preview', () => {
     const align = page.getByTestId('osd-element-align-BAT_VOLT')
     await align.scrollIntoViewIfNeeded()
     await expect(align).toBeVisible()
+    // X / Y sit on the element's own line, not wrapped under its name.
+    const labelBox = await page.getByTestId('osd-element-row-label-BAT_VOLT').boundingBox()
+    const alignBox = await align.boundingBox()
+    expect(Math.abs((alignBox!.y + alignBox!.height / 2) - (labelBox!.y + labelBox!.height / 2))).toBeLessThan(6)
     // Type an exact column; the preview element snaps to that cell (col+1).
     // Addressed by test id rather than `input[type=number]).first()` — an
     // anonymous positional selector silently retargets the moment another
@@ -4235,6 +4286,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('a Plane can confirm the Setup airframe step (not gated on Copter FRAME_CLASS)', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
     await page.getByTestId('connect-button').click()
@@ -4246,6 +4299,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('a Plane can confirm the Setup outputs step (not gated on Copter motor count)', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=outputs')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
     await page.getByTestId('connect-button').click()
@@ -4263,6 +4318,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('guided-setup evidence pills are allowed to wrap, so a long line cannot be clipped', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     // Field report: on the Ports step the right-hand column — primary action,
     // Previous/Continue, and the completion-criteria panel — was sliced off at
     // the right edge of the window.
@@ -4310,6 +4367,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('guided setup condenses long steps into disclosures and flags completion', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -4353,6 +4412,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('a guided step keeps its primary action and Continue on screen without scrolling', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     // Operator report: "i dont love the airframe tab, i dont think people
     // should need to be scrolling up and down". Airframe was the worst step
     // (1992px of document against a 900px viewport) but every step had the same
@@ -4389,6 +4450,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('the orientation waiver unblocks the Airframe step and unlocks the rest of the flow', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     // Airframe (step 2) required the physical orientation exercise to pass, and
     // every later step is locked behind it, so a vehicle that cannot be tilted
     // hard-stopped the whole wizard with no way forward.
@@ -4649,7 +4712,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
     // Basic mode. Not an incidental default — it is the condition under test.
     await expect(page.getByTestId('product-mode-expert')).not.toBeChecked()
 
@@ -4658,6 +4721,10 @@ test.describe('ArduPlane demo', () => {
     await expect(tcal).toContainText('Thermal calibration')
     // Per-IMU state reads "TCAL: off" (not "disabled", which read as IMU-off).
     await expect(tcal).toContainText('IMU1 TCAL: off')
+    // Folded by default so its height does not push the other Sensors cards
+    // out of view; the state pills stay visible, the setup is one click away.
+    await expect(page.getByTestId('tcal-start')).toHaveCount(0)
+    await page.getByTestId('tcal-expand').click()
     // The step-by-step is collapsed into a How-it-works disclosure (compact card).
     // .first(): the card now carries a second how-to for the baro procedure.
     await expect(tcal.locator('.calibration-card__howto summary').first()).toHaveText(
@@ -4703,7 +4770,8 @@ test.describe('ArduPlane demo', () => {
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-sensors').click()
+    await openCalibrationSection(page, 'sensors')
+    await page.getByTestId('tcal-expand').click()
 
     const baro = page.getByTestId('tcal-baro')
     await expect(baro).toBeVisible()
@@ -4734,7 +4802,7 @@ test.describe('ArduPlane demo', () => {
       // NOT Expert-gated: autotune is stock ArduCopter and is how an ordinary
       // operator gets a tuned aircraft.
       await openView(page, 'calibration')
-      await page.getByTestId('calibration-tab-flight').click()
+      await openCalibrationSection(page, 'flight')
     }
 
     await open('')
@@ -4778,7 +4846,7 @@ test.describe('ArduPlane demo', () => {
       })
       await enableExpertMode(page)
       await openView(page, 'calibration')
-      await page.getByTestId('calibration-tab-flight').click()
+      await openCalibrationSection(page, 'flight')
     }
 
     // Stock defaults: nothing learned, so flight 1 — and nothing to stage,
@@ -4816,10 +4884,12 @@ test.describe('ArduPlane demo', () => {
     // VALT_POS_EXPO, so it must not be offered as somewhere to fly.
     await expect(card).toContainText('AltHold, Loiter or PosHold')
     await expect(card).not.toContainText('VALT')
-    // Flight 1 has a button. MOT_HOVER_LEARN defaults to 2, so on a stock
-    // copter it confirms rather than changes — but it must exist, because the
-    // vehicle that needs it most is the one where learning was turned OFF.
-    await expect(page.getByTestId('hover-learn-start')).toHaveText(/confirm hover learning/i)
+    // MOT_HOVER_LEARN defaults to 2, so on a stock copter there is nothing to
+    // press: a "Confirm hover learning is on" button that staged nothing read
+    // as the way to the Z-bias step and did nothing when clicked (field
+    // report). The card says learning is on and where the accept will appear.
+    await expect(page.getByTestId('hover-learn-start')).toHaveCount(0)
+    await expect(page.getByTestId('hover-learn-start-hint')).toContainText('Hover learning is on')
 
     // Learning disabled: a flight now would record nothing, and the card says
     // so instead of sending the operator up for a wasted one.
@@ -4855,9 +4925,31 @@ test.describe('ArduPlane demo', () => {
     // "matches current" and do not count as changes.)
     await page.getByTestId('hover-learn-flight-1-yes').click()
     await expect(page.locator('body')).toContainText('3 staged changes')
+    // The click shows: the stage only moves once the drafts are applied, so
+    // until then the button says what happened instead of looking unclicked.
+    await expect(page.getByTestId('hover-learn-flight-1-yes')).toHaveText('Accepted — apply to write it')
+    await expect(page.getByTestId('hover-learn-flight-1-yes')).toBeDisabled()
 
+    // Field report: "once I did my hover, there was no button to confirm
+    // hover learned". ACC_ZBIAS_LEARN already had its learn bit (set by hand),
+    // so the card called the hover accepted -- with MOT_HOVER_LEARN still 2,
+    // which the Z-bias card then claimed was 0. An unfrozen hover throttle
+    // keeps its accept button, and the Z-bias card says it is not frozen.
     await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:1')
     await expect(zbias).toContainText('flight 2')
+    await expect(card).not.toContainText('Accepted,')
+    await expect(page.getByTestId('hover-learn-unlocked')).toContainText('0.420')
+    await expect(page.getByTestId('hover-learn-flight-2-unfrozen')).toContainText('re-learns the hover throttle')
+    await expect(page.getByTestId('hover-learn-flight-2-frozen')).toHaveCount(0)
+    const lock = page.getByTestId('hover-learn-lock')
+    await expect(lock).toHaveText('Accept 0.420')
+    await lock.click()
+    await expect(page.locator('body')).toContainText('1 staged change')
+    await expect(lock).toHaveText('Accepted — apply to write it')
+    await expect(lock).toBeDisabled()
+
+    // Frozen, the hover card is accepted and the Z-bias card says so.
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:1,MOT_HOVER_LEARN:0')
     await expect(card).toContainText('Accepted')
     await expect(page.getByTestId('hover-learn-flight-2-frozen')).toContainText('cannot overwrite')
 
@@ -4873,6 +4965,40 @@ test.describe('ArduPlane demo', () => {
 
     await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:2,INS_ACC_VRFB_Z:0.08')
     await expect(page.getByTestId('hover-learn-done')).toBeVisible()
+    // Re-learn WITHOUT clearing (fleet request): arms learning again with the
+    // bias kept as the starting point -- ACC_ZBIAS_LEARN 2 -> 3 and nothing
+    // else, so the bias is refined rather than started from zero. Clear
+    // Z-Bias Cal stays for the start-from-zero case.
+    const zbiasRelearn = page.getByTestId('hover-learn-zbias-relearn')
+    await expect(zbiasRelearn).toHaveText('Re-learn on the next hover')
+    await expect(page.getByTestId('hover-learn-zeroize')).toBeVisible()
+    await zbiasRelearn.click()
+    await expect(page.locator('body')).toContainText('1 staged change')
+    await expect(zbiasRelearn).toHaveText('Re-learn staged — apply to write it')
+    await expect(zbiasRelearn).toBeDisabled()
+    // Once applied (learning on, bias kept) the card reads true before the
+    // flight as well as after it.
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:3,INS_ACC_VRFB_Z:0.08,MOT_HOVER_LEARN:0')
+    await expect(page.getByTestId('hover-learn-step').last()).toContainText('learning is on')
+    await expect(page.getByTestId('hover-learn-flight-2-yes')).toHaveText('Keep this bias — stop learning')
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:2,INS_ACC_VRFB_Z:0.08')
+    await expect(page.getByTestId('hover-learn-done')).toBeVisible()
+    // Field report: parameters loaded from a flown vehicle carry the stock
+    // MOT_HOVER_LEARN = 2, and the card said "hover learning is off" beside a
+    // greyed "Re-learn" button -- it did nothing because learning was already
+    // on. The card now says learning is on and offers to accept the value;
+    // Re-learn is only offered when learning is off.
+    await expect(page.getByTestId('hover-learn-unlocked')).toContainText('Hover learning is still on')
+    await expect(page.getByTestId('hover-learn-rearm')).toHaveCount(0)
+    await open('MOT_THST_HOVER:0.42,ACC_ZBIAS_LEARN:2,INS_ACC_VRFB_Z:0.08,MOT_HOVER_LEARN:0')
+    await expect(page.getByTestId('hover-learn-accepted')).toContainText('hover learning is off')
+    const rearm = page.getByTestId('hover-learn-rearm')
+    await expect(rearm).toBeEnabled()
+    await rearm.click()
+    // The click shows on the card itself, not only in a counter elsewhere.
+    await expect(rearm).toHaveText(/staged/i)
+    await expect(rearm).toBeDisabled()
+    await expect(page.locator('body')).toContainText('1 staged change')
 
     // EKF3 only — the correction is applied inside EKF3, so anything else
     // learns nothing and the card says so rather than wasting a flight.
@@ -4900,7 +5026,7 @@ test.describe('ArduPlane demo', () => {
     await enableExpertMode(page)
     await openView(page, 'calibration')
     // Hover learning is on the Flight tab — it needs an actual flight.
-    await page.getByTestId('calibration-tab-flight').click()
+    await openCalibrationSection(page, 'flight')
 
     await expect(page.getByTestId('hover-learn-done')).toBeVisible()
 
@@ -4937,7 +5063,7 @@ test.describe('ArduPlane demo', () => {
 
     await enableExpertMode(page)
     // VALT is fitted from a flight log, so it lives on the Flight tab.
-    await page.getByTestId('calibration-tab-flight').click()
+    await openCalibrationSection(page, 'flight')
     // Guard the guard: Expert really did take effect, so this cannot pass for
     // the wrong reason. Uses an Expert-only card on the SAME tab — TCAL is
     // Expert-only too but lives under Sensors, so it would be absent here for
@@ -4969,7 +5095,7 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'calibration')
-    await page.getByTestId('calibration-tab-flight').click()
+    await openCalibrationSection(page, 'flight')
     await enableExpertMode(page)
     const valt = page.getByTestId('calibration-card-valt')
     await valt.scrollIntoViewIfNeeded()
@@ -5083,6 +5209,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('a Plane exposes an editable QuadPlane / tailsitter frame configuration', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
     await page.getByTestId('connect-button').click()
@@ -5100,6 +5228,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('switching a Plane to the Tailsitter frame class reveals the Tailsitter tuning group', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo-plane')
     await page.getByTestId('connect-button').click()
@@ -5120,6 +5250,8 @@ test.describe('ArduPlane demo', () => {
   })
 
   test('a Copter does not show the Plane frame configuration', async ({ page }) => {
+    // Guided Setup is Expert-only while it is reworked.
+    await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
     await page.goto('/?guidedSetupStep=airframe')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -5396,12 +5528,16 @@ test.describe('ArduRover / ArduSub demo', () => {
     await expect(page.getByTestId('failsafe-row-FS_EKF_ACTION')).toHaveCount(0)
     await expect(page.getByTestId('failsafe-row-FS_OPTIONS')).toHaveCount(0)
 
-    // Receiver Flight-Mode pills name the real Rover slot param (MODE1..6),
-    // not the Copter FLTMODE prefix. Mock seeds MODE1 = 0 -> "Manual".
-    await openView(page, 'receiver')
-    await page.getByTestId('receiver-tab-flight-modes').click()
-    await expect(page.getByText('FLTMODE1 =', { exact: false })).toHaveCount(0)
-    await expect(page.getByText('MODE1 = Manual', { exact: false })).toBeVisible()
+    // Flight-mode slots bind the real Rover slot param (MODE1..6), not the
+    // Copter FLTMODE prefix. Mock seeds MODE1 = 0 -> "Manual". They live under
+    // Config ▸ Flight Modes.
+    await openFlightModes(page)
+    const roverSlots = page.getByTestId('modes-slot-table')
+    await expect(roverSlots.getByTestId('param-info-FLTMODE1')).toHaveCount(0)
+    // Bound, not necessarily visible: this table keeps a slot's title (and
+    // its "i") out of view; the binding is what is under test.
+    await expect(roverSlots.getByTestId('param-info-MODE1')).toHaveCount(1)
+    await expect(roverSlots).toContainText('Manual')
   })
 
   test('Sub curated Tuning surface renders its groups, shows seeded values, and stages a draft', async ({ page }) => {
@@ -5518,22 +5654,25 @@ test.describe('ArduRover / ArduSub demo', () => {
 })
 
 test.describe('Receiver scoped apply', () => {
-  test('staging an RC_OPTIONS change surfaces the review dock and applying clears it', async ({ page }) => {
+  test('staging a receiver change surfaces the review dock and applying clears it', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
     await openView(page, 'receiver')
-    await page.getByTestId('receiver-task-nav').getByRole('button', { name: 'Flight Modes' }).click()
 
-    const field = page.getByTestId('scoped-bitmask-RC_OPTIONS')
-    await field.scrollIntoViewIfNeeded()
-    // Demo seeds RC_OPTIONS=0 (all options unset). Clicking the first option's
-    // chip toggles it (orange highlight) and stages a single receiver-scoped
-    // (workflow) draft.
-    await field.getByText('Ignore RC Receiver').click()
+    // Pitch is CH2 in the demo; its reverse box stages one receiver draft.
+    await page.getByTestId('receiver-reverse-2').locator('input').check()
 
     const dock = page.locator('.receiver-review-dock')
     await expect(dock).toBeVisible()
-    await expect(dock).toContainText(/workflow staged/i)
+    await expect(dock).toContainText(/1 staged/i)
+    // The per-draft list is on request, and the dock sits at the bottom of
+    // the tab, under the task body, not above it.
+    await expect(page.getByTestId('receiver-draft-list')).toHaveCount(0)
+    await page.getByTestId('receiver-draft-show').click()
+    await expect(page.getByTestId('receiver-draft-list')).toContainText('RC2_REVERSED')
+    const dockTop = (await dock.boundingBox())?.y ?? 0
+    const bodyTop = (await page.getByTestId('receiver-mapping-card').boundingBox())?.y ?? 0
+    expect(dockTop).toBeGreaterThan(bodyTop)
 
     const applyButton = page.getByTestId('receiver-apply-button')
     await expect(applyButton).toBeEnabled()
@@ -5542,6 +5681,204 @@ test.describe('Receiver scoped apply', () => {
     // The demo echoes the PARAM_SET write, so the draft verifies and clears,
     // which removes the pending-review dock.
     await expect(dock).toHaveCount(0, { timeout: COMMAND_ACK_TIMEOUT })
+  })
+})
+
+// The demo rehearses the sticks one axis at a time in RCMAP order (CH1, CH2,
+// CH3, CH4) with a rest between legs. The mapping capture locks onto whatever
+// channel moves alone AFTER it starts, so a capture begun mid-loop would call
+// the next moving channel "roll". Wait for the yaw leg to end and begin in the
+// rest that follows it, which is right before CH1 moves.
+async function waitForStickRestAfterYaw(page: Page): Promise<void> {
+  const yawValue = page.getByTestId('receiver-channel-bars-ch4').locator('.rc-bar-value')
+  await expect.poll(async () => (await yawValue.textContent())?.trim(), { timeout: 30_000 }).not.toBe('1500')
+  await expect.poll(async () => (await yawValue.textContent())?.trim(), { timeout: 30_000 }).toBe('1500')
+}
+
+test.describe('Receiver mapping', () => {
+  test('the guided capture stages the detected RCMAP map on the tab it ran on, never leaving Receiver', async ({ page }) => {
+    // Field report: the final capture of the mapping flow sent the operator
+    // to Guided Setup with nothing staged. The demo map is swapped here so
+    // the capture (roll on CH1, pitch on CH2) has something to stage.
+    test.setTimeout(120_000)
+    await page.goto('/?demoParamOverrides=RCMAP_ROLL:2,RCMAP_PITCH:1')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await openView(page, 'receiver')
+
+    // The axis picks are the channel rows' Function dropdowns.
+    const ch1Pick = page.getByTestId('receiver-function-1').locator('select')
+    const ch2Pick = page.getByTestId('receiver-function-2').locator('select')
+    await expect(ch1Pick).toHaveValue('axis:pitch')
+    await expect(ch2Pick).toHaveValue('axis:roll')
+
+    await waitForStickRestAfterYaw(page)
+    await page.getByTestId('receiver-mapping-start').click()
+    await expect(page.getByTestId('receiver-mapping-focus')).toContainText('Move Roll Only')
+
+    // The demo's rehearsal auto-captures each axis in turn; two loops at most.
+    // (The throttle target accepts any channel with a large swing, so the
+    // demo's toggling CH6 switch may win it — that is the detector's rule,
+    // not under test here. Roll and pitch are what the swapped map exercises.)
+    await expect(page.getByTestId('receiver-mapping-focus')).toContainText('identified', { timeout: 90_000 })
+    // Still on the Receiver tab, still on Mapping — the wizard was never opened.
+    await expect(page.getByTestId('receiver-mapping-card')).toBeVisible()
+    await expect(page.getByTestId('setup-wizard')).toHaveCount(0)
+    // The detected map is staged in the picks and named in the apply dock.
+    await expect(ch1Pick).toHaveValue('axis:roll')
+    await expect(ch2Pick).toHaveValue('axis:pitch')
+    await expect(page.getByTestId('receiver-function-1').locator('.scoped-editor-field')).toHaveClass(/scoped-editor-field--staged/)
+    const dock = page.getByTestId('receiver-review-dock')
+    await expect(dock).toContainText(/\d staged/)
+    await page.getByTestId('receiver-draft-show').click()
+    await expect(dock).toContainText('RCMAP_ROLL 2 → 1')
+    await expect(dock).toContainText('RCMAP_PITCH 1 → 2')
+    await expect(page.getByTestId('receiver-apply-button')).toHaveText(/Apply Receiver Changes \(\d\)/)
+    // Applying goes through the normal verified write; the demo echoes it.
+    await page.getByTestId('receiver-apply-button').click()
+    await expect(dock).toHaveCount(0, { timeout: COMMAND_ACK_TIMEOUT })
+    await expect(page.getByTestId('receiver-mapping-card')).toBeVisible()
+  })
+
+  test('each RCMAP channel is a pick, and each mapped channel has a reverse box, both staged as receiver drafts', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+
+    // Pitch is CH2 in the demo; its reverse box binds RC2_REVERSED.
+    const reverse = page.getByTestId('receiver-reverse-2').locator('input')
+    await expect(reverse).not.toBeChecked()
+    await reverse.check()
+    const dock = page.getByTestId('receiver-review-dock')
+    await page.getByTestId('receiver-draft-show').click()
+    await expect(dock).toContainText('RC2_REVERSED 0 → 1')
+    await expect(page.getByTestId('receiver-reverse-2')).toHaveClass(/scoped-editor-field--staged/)
+    // The Receiver dock lists the same drafts, so the global bar steps aside
+    // while the dock is on the page instead of covering it; no note appears
+    // above the workspace (the Basic-mode "drafts hidden" note is gone).
+    await expect(page.getByTestId('global-draft-bar')).toBeHidden()
+    await expect(page.getByText('Expert drafts hidden in Basic mode')).toHaveCount(0)
+
+    // Picking an axis on another row swaps the two channels (RCMAP_*),
+    // without the capture flow; both rows follow the staged pick.
+    const ch3Pick = page.getByTestId('receiver-function-3').locator('select')
+    const ch4Pick = page.getByTestId('receiver-function-4').locator('select')
+    await expect(ch4Pick).toHaveValue('axis:yaw')
+    await ch3Pick.selectOption('axis:yaw')
+    await expect(dock).toContainText('RCMAP_YAW 4 → 3')
+    await expect(dock).toContainText('RCMAP_THROTTLE 3 → 4')
+    await expect(ch3Pick).toHaveValue('axis:yaw')
+    await expect(ch4Pick).toHaveValue('axis:throttle')
+    await expect(dock).toContainText('3 staged')
+
+    // Discard from the dock returns all three to their live values.
+    await page.getByTestId('receiver-discard-button').click()
+    await expect(dock).toHaveCount(0)
+    await expect(ch4Pick).toHaveValue('axis:yaw')
+    await expect(reverse).not.toBeChecked()
+  })
+
+  test('every channel the controller reports gets reverse and low / trim / high; a missing parameter gets none', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    // Endpoints start folded below 1360px wide (the suite runs at 1280).
+    const endpointsToggle = page.getByTestId('receiver-endpoints-toggle')
+    if ((await endpointsToggle.getAttribute('aria-expanded')) !== 'true') await endpointsToggle.click()
+    // A real FC reports RCn_MIN/TRIM/MAX/REVERSED for all sixteen inputs, and
+    // so does the demo: an AUX channel is as editable as a stick.
+    await expect(page.getByTestId('receiver-function-5')).toBeVisible()
+    await expect(page.getByTestId('receiver-reverse-5')).toBeVisible()
+    const trim5 = page.getByTestId('receiver-endpoint-5-trim').locator('input')
+    await expect(trim5).toHaveValue('1500')
+    await trim5.fill('1520')
+    await expect(page.getByTestId('receiver-review-dock')).toContainText('1 staged')
+  })
+
+  test('a channel whose RCn_REVERSED is not reported gets no reverse box', async ({ page }) => {
+    await page.goto('/?demoParamOverrides=RC5_REVERSED:null')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await expect(page.getByTestId('receiver-function-5')).toBeVisible()
+    await expect(page.getByTestId('receiver-reverse-5')).toHaveCount(0)
+  })
+
+  test('low / trim / high fold behind one header toggle', async ({ page }) => {
+    // Open by default only where there is room: 1360px and wider.
+    await page.setViewportSize({ width: 1600, height: 1000 })
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    const toggle = page.getByTestId('receiver-endpoints-toggle')
+    const trim1 = page.getByTestId('receiver-endpoint-1-trim')
+    // Open by default at the suite's desktop width.
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(trim1).toBeVisible()
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(trim1).toBeHidden()
+    await toggle.click()
+    await expect(trim1).toBeVisible()
+  })
+
+  test('low / trim / high start folded on a narrower screen', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    await expect(page.getByTestId('receiver-endpoints-toggle')).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('receiver-endpoint-1-trim')).toBeHidden()
+  })
+})
+
+test.describe('Receiver endpoints on a CRSF link', () => {
+  test('offers the fixed CRSF limits instead of a measured capture, and flags a stick that falls short', async ({ page }) => {
+    // The demo allows CRSF only (RC_PROTOCOLS = 512), which is the CRSF signal.
+    test.setTimeout(120_000)
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await openView(page, 'receiver')
+
+    await expect(page.getByTestId('receiver-endpoints-crsf')).toContainText('987 to 2011')
+    await expect(page.getByTestId('receiver-endpoints-stage')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Start Capture' })).toHaveCount(0)
+
+    // One action stages the CRSF range for every channel with endpoints: the
+    // demo seeds all sixteen at 1000/2000/1500, so each MIN and MAX changes
+    // (32 drafts) and no TRIM does.
+    await page.getByTestId('receiver-set-crsf-limits').click()
+    const dock = page.getByTestId('receiver-review-dock')
+    await expect(dock).toContainText('32 staged')
+    await page.getByTestId('receiver-draft-show').click()
+    await expect(dock).toContainText('RC1_MIN 1000 → 987')
+    await expect(dock).toContainText('RC4_MAX 2000 → 2011')
+    await expect(dock).not.toContainText('RC1_TRIM')
+    await page.getByTestId('receiver-discard-button').click()
+    await expect(dock).toHaveCount(0)
+
+    // Checking the sticks still watches the transmitter: the demo sweeps roll
+    // 1200..1800, well short of the CRSF ends, so roll is called out — and the
+    // firmware values are not the fix.
+    await page.getByTestId('receiver-endpoints-capture').click()
+    const warning = page.getByTestId('receiver-endpoints-calibration-warning-roll')
+    await expect(warning).toContainText('CH1: 1200..1800, centre 1500', { timeout: 60_000 })
+    await expect(warning).toContainText('Calibrate the radio')
+    await expect(page.getByTestId('receiver-endpoints-stage')).toHaveCount(0)
+  })
+
+  test('a link that is not known to be CRSF keeps the measured capture', async ({ page }) => {
+    await page.goto('/?demoParamOverrides=RC_PROTOCOLS:1')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await openView(page, 'receiver')
+    await expect(page.getByTestId('receiver-endpoints-crsf')).toHaveCount(0)
+    await expect(page.getByTestId('receiver-set-crsf-limits')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Start Capture' })).toBeVisible()
+    // The roll row's endpoint pills carry the stored RC1_MIN/TRIM/MAX.
+    // Low / trim / high are inputs on the roll row now, bound to RC1_MIN/TRIM/MAX.
+    await expect(page.getByTestId('receiver-endpoint-1-low').locator('input')).toHaveValue('1000')
+    await expect(page.getByTestId('receiver-endpoint-1-high').locator('input')).toHaveValue('2000')
   })
 })
 
@@ -6892,7 +7229,7 @@ test.describe('Status & Info dashboard layout', () => {
   // that Reset and Tidy do what they say, and that a stale saved arrangement
   // can never render a broken page.
 
-  const STORAGE_KEY = 'arduconfig.status-dashboard.v2'
+  const STORAGE_KEY = 'arduconfig.status-dashboard.v3'
 
   async function connectDemo(page: Page): Promise<void> {
     await page.goto('/')
@@ -6909,16 +7246,16 @@ test.describe('Status & Info dashboard layout', () => {
   }
 
   test('ships the familiar arrangement, with no Reset offered until something moves', async ({ page }) => {
-    // "Familiar" is the whole acceptance test: with nothing dragged the page has
-    // to be the page that shipped — the sensor row under the craft model, the
-    // two status columns below it, System Info leading the sidebar.
+    // With nothing dragged the page is the default (v3): the two status
+    // columns lead, the sensor row under them, System Info then the vehicle
+    // actions in the sidebar (Guided setup is Expert-only).
     await connectDemo(page)
     // Poll: the two advanced sensor cards appear only once RNGFND1_TYPE /
     // FLOW_TYPE have arrived, which is later than the unconditional cards.
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
     expect(await columnIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
     expect(await columnIds(page, 'noticecol')).toEqual(['notices'])
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
     // Reset only appears once there is something to reset — an always-on
     // "Reset Layout" on a page nobody has customised is just noise.
     await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
@@ -6954,20 +7291,22 @@ test.describe('Status & Info dashboard layout', () => {
     // Drag-only reordering is inaccessible, so the handle is a real button:
     // left/right walk the card between columns, up/down reorder within one.
     await connectDemo(page)
-    await page.getByTestId('status-dash-handle-guided-setup').focus()
+    // Left from the sidebar is the sensor shelf, the last main column in
+    // visual order (v3: status columns first, the shelf under them).
+    await page.getByTestId('status-dash-handle-bench-actions').focus()
     await page.keyboard.press('ArrowLeft')
-    await expect.poll(() => columnIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
+    await expect.poll(() => columnIds(page, 'sensors')).toContain('bench-actions')
     expect(await columnIds(page, 'sidebar')).toEqual(['system-info'])
 
     // The move is saved, so it survives a reload.
     await page.reload()
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
-    await expect(page.getByTestId('status-dash-card-guided-setup')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
-    expect(await columnIds(page, 'noticecol')).toEqual(['notices', 'guided-setup'])
+    await expect(page.getByTestId('status-dash-card-bench-actions')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
+    expect(await columnIds(page, 'sensors')).toContain('bench-actions')
 
     await page.getByTestId('status-dash-reset-layout').click()
-    await expect.poll(() => columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    await expect.poll(() => columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
     await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
     // Reset CLEARS the saved arrangement rather than saving a copy of today's
     // default, so a later default change still reaches the operator.
@@ -6997,9 +7336,10 @@ test.describe('Status & Info dashboard layout', () => {
     // arrangement routinely names cards that are not there.
     await connectDemo(page)
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
+    // Right from the sensor shelf is the sidebar (v3 visual order).
     await page.getByTestId('status-dash-handle-rangefinder').focus()
     await page.keyboard.press('ArrowRight')
-    await expect.poll(() => columnIds(page, 'midcol')).toContain('rangefinder')
+    await expect.poll(() => columnIds(page, 'sidebar')).toContain('rangefinder')
 
     await page.goto('/?demoParamOverrides=RNGFND1_TYPE:0,FLOW_TYPE:0')
     await page.getByTestId('connect-button').click()
@@ -7009,7 +7349,7 @@ test.describe('Status & Info dashboard layout', () => {
     // The absent cards are simply not placed; every card that IS present is.
     expect(await columnIds(page, 'sensors')).toEqual(['gps'])
     expect(await columnIds(page, 'midcol')).toEqual(['prearm', 'statistics'])
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
   })
 
   test('a column can be widened, and the width is saved', async ({ page }) => {
@@ -7039,7 +7379,9 @@ test.describe('Status & Info dashboard layout', () => {
   test('a card dragged into a gutter opens a new column, and Tidy closes the mess up', async ({ page }) => {
     // The freedom the operator asked for: a card can go somewhere there was no
     // column at all. Tidy is the way back out without a full Reset.
-    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.setViewportSize({ width: 1440, height: 1600 })
+    // Tall enough that the status columns and the sensor row under them
+    // (v3 order) are both on screen for the drag.
     await connectDemo(page)
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
 
@@ -7090,7 +7432,9 @@ test.describe('Status & Info dashboard layout', () => {
     // a reflow the drag caused unwinds when the drag is cancelled, while the
     // feed's own growth stays put. Asserting the raw "nothing moved" is what
     // made this test fail on CI, where the feed is likelier to tick mid-drag.
-    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.setViewportSize({ width: 1440, height: 1600 })
+    // Tall enough that the status columns and the sensor row under them
+    // (v3 order) are both on screen for the drag.
     await connectDemo(page)
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
 
@@ -7163,7 +7507,7 @@ test.describe('Status & Info dashboard layout', () => {
     await page.getByTestId('connect-button').click()
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
   })
 
   test('a layout saved by the zone model is dropped, not half-read', async ({ page }) => {
@@ -7182,7 +7526,7 @@ test.describe('Status & Info dashboard layout', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect(page.getByTestId('status-dash-card-system-info')).toBeVisible({ timeout: VEHICLE_CONNECT_TIMEOUT })
     await expect.poll(() => columnIds(page, 'sensors')).toEqual(['gps', 'rangefinder', 'optical-flow'])
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
     await expect(page.getByTestId('status-dash-reset-layout')).toHaveCount(0)
   })
 
@@ -7212,7 +7556,7 @@ test.describe('Status & Info dashboard layout', () => {
     await expect(page.getByTestId('status-dash-toolbar')).toHaveCount(0)
     await expect(page.locator('.status-dash-card__handle')).toHaveCount(0)
     await expect(page.locator('.status-dash-col__width')).toHaveCount(0)
-    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'guided-setup'])
+    expect(await columnIds(page, 'sidebar')).toEqual(['system-info', 'bench-actions'])
     // Every column is full width, so nothing sits beside anything else.
     const lefts = await page.$$eval('[data-status-dash-col-region="main"]', (nodes) =>
       nodes.map((node) => Math.round(node.getBoundingClientRect().left))
@@ -7607,14 +7951,30 @@ test.describe('Flight modes moved from a tab into Config', () => {
     expect(overflow, 'the Flight Modes panel must not widen the page').toBeLessThanOrEqual(2)
   })
 
-  test('Receiver keeps its own Flight Modes sub-tab', async ({ page }) => {
-    // The move must not have taken the receiver workflow's copy with it.
+  test('the Receiver shows the flight modes beside the arm switch, the live slot lit', async ({ page }) => {
+    // Operator's call: switches are tested on the Receiver, so what each one
+    // does (arm, the six mode slots) is set and confirmed there too. Config ▸
+    // Flight Modes edits the same parameters.
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await expectParameterSyncComplete(page)
     await page.getByTestId('view-button-receiver').click()
-    await expect(page.locator('.tab-strip__tab', { hasText: 'Flight Modes' }).first()).toBeVisible()
+    const modes = page.getByTestId('receiver-flight-modes-card')
+    await expect(modes).toBeVisible()
+    await expect(page.getByTestId('receiver-arm-switch')).toBeVisible()
+    for (let slot = 1; slot <= 6; slot += 1) {
+      await expect(page.getByTestId(`receiver-mode-slot-${slot}`)).toBeVisible()
+    }
+    // The mode channel streams in the demo, so exactly one slot is lit, and
+    // the live strip under the slots lights the same position in yellow.
+    await expect(modes.locator('.receiver-modes__slot[data-active="true"]')).toHaveCount(1, { timeout: 15_000 })
+    const live = page.getByTestId('receiver-modes-live')
+    await expect(live).toBeVisible()
+    await expect(live.locator('[data-active="true"]')).toHaveCount(1)
+    const activeSlot = await modes.locator('.receiver-modes__slot[data-active="true"]').getAttribute('data-testid')
+    const activeBand = await live.locator('[data-active="true"]').getAttribute('data-testid')
+    expect(activeBand?.slice(-1)).toBe(activeSlot?.slice(-1))
   })
 })
 
@@ -7836,5 +8196,325 @@ test.describe('Tuning ▸ Filters', () => {
     await openFilters(page)
     const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow).toBeLessThanOrEqual(2)
+  })
+})
+
+test.describe('Files ▸ Format SD card', () => {
+  test('formats only after FORMAT is typed, and reports the result', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'files')
+
+    await page.getByTestId('files-format-open').click()
+    const confirm = page.getByTestId('files-format-confirm')
+    await expect(confirm).toContainText('Erase everything on the SD card?')
+    const run = page.getByTestId('files-format-run')
+    // A stray click cannot wipe a card: the button waits for the word.
+    await expect(run).toBeDisabled()
+    await page.getByTestId('files-format-word').fill('format')
+    await expect(run).toBeDisabled()
+    await page.getByTestId('files-format-word').fill('FORMAT')
+    await expect(run).toBeEnabled()
+    await run.click()
+
+    // The demo answers as ArduPilot does: IN_PROGRESS, then ACCEPTED.
+    await expect(page.getByTestId('files-error')).toHaveText('SD card formatted.', { timeout: COMMAND_ACK_TIMEOUT })
+    await expect(page.getByTestId('files-format-open')).toBeVisible()
+    // A formatted card has none of ArduPilot's folders until the next boot,
+    // so a reboot is advised; Later dismisses it.
+    const reboot = page.getByTestId('files-format-reboot')
+    await expect(reboot).toContainText('Reboot the autopilot.')
+    await expect(page.getByTestId('files-format-reboot-run')).toBeEnabled()
+    await reboot.getByRole('button', { name: 'Later' }).click()
+    await expect(reboot).toHaveCount(0)
+  })
+
+  test('cancel closes the confirmation without sending anything', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'files')
+    await page.getByTestId('files-format-open').click()
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(page.getByTestId('files-format-confirm')).toHaveCount(0)
+    await expect(page.getByTestId('files-error')).toHaveCount(0)
+  })
+})
+
+test.describe('Status & Info: Flash firmware', () => {
+  test('the Vehicle actions card opens the Flash tab on its firmware (.apj) section', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+    const button = page.getByTestId('status-bench-actions').getByTestId('status-flash-firmware-button')
+    await button.scrollIntoViewIfNeeded()
+    await button.click()
+    await expect(page.getByTestId('flash-tab-firmware')).toHaveAttribute('aria-selected', 'true')
+  })
+})
+
+test.describe('Calibration location map (OpenStreetMap tiles)', () => {
+  test('tiles come from tile.openstreetmap.org and carry a Referer, which OSM requires', async ({ page }) => {
+    // Without a Referer OSM serves an "Access blocked" 403 image for every tile
+    // (osm.wiki/Blocked). The site sends Referrer-Policy: no-referrer, so the
+    // tiles must ask for their own.
+    const referers: (string | undefined)[] = []
+    await page.route('https://tile.openstreetmap.org/**', (route) => {
+      referers.push(route.request().headers()['referer'])
+      return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64') })
+    })
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+    await page.getByTestId('view-button-calibration').click()
+    const open = page.getByTestId('cal-location-open').first()
+    await open.scrollIntoViewIfNeeded()
+    await open.click()
+    const tile = page.getByTestId('cal-location-map').locator('img.leaflet-tile').first()
+    await expect(tile).toHaveAttribute('referrerpolicy', 'strict-origin-when-cross-origin')
+    await expect(tile).toHaveAttribute('src', /^https:\/\/tile\.openstreetmap\.org\//)
+    await expect.poll(() => referers.length, { timeout: 10_000 }).toBeGreaterThan(0)
+    expect(referers.every((referer) => referer !== undefined && referer.length > 0)).toBe(true)
+  })
+})
+
+test.describe('Flash: find firmware (the private deploy\'s index + relay)', () => {
+  // The app's offline service worker fetches /fw/* on the page's behalf, out of
+  // reach of page.route; block it so the stubbed index and relay are served.
+  test.use({ serviceWorkers: 'block' })
+  // A minimal valid .apj for board 1013 (board_id + zlib-deflated image).
+  const rawImage = Buffer.from([0xa3, 0x95, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05])
+  const apj = (boardId: number) => JSON.stringify({ board_id: boardId, image_size: rawImage.length, image: deflateSync(rawImage).toString('base64') })
+  const columns = ['platform', 'boardId', 'vehicle', 'mavType', 'channel', 'version', 'brand', 'manufacturer', 'path']
+  const row = (platform: string, boardId: number, mavType = 'Copter') => [
+    platform, boardId, 'Copter', mavType, 'OFFICIAL', 'V4.7.1', '', platform.startsWith('Matek') ? 'Matek' : 'Other',
+    `Copter/stable/${platform}${mavType === 'HELICOPTER' ? '-heli' : ''}/arducopter.apj`
+  ]
+  const index = {
+    format: 1,
+    columns,
+    rows: [row('MatekH743', 1013), row('MatekH743-bdshot', 1013), row('MatekH743', 1013, 'HELICOPTER'), row('KakuteH7', 1048), row('DemoBoard59', 59)]
+  }
+
+  async function serveIndex(page: import('@playwright/test').Page): Promise<string[]> {
+    const downloads: string[] = []
+    await page.route('**/fw/index.json', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(index) }))
+    await page.route('**/fw/apj?*', (route) => {
+      const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+      downloads.push(path)
+      return route.fulfill({ status: 200, contentType: 'application/json', body: apj(path.includes('DemoBoard59') ? 59 : 1013) })
+    })
+    return downloads
+  }
+
+  test('with no board connected: search, pick from the dropdown, download and load', async ({ page }) => {
+    const downloads = await serveIndex(page)
+    await page.goto('/')
+    await page.getByTestId('landing-flash-firmware-button').click()
+    const finder = page.getByTestId('firmware-finder')
+    await expect(finder).toBeVisible()
+    // Every board is in the dropdown before anything is typed (plus the
+    // "Choose…" prompt); heli builds stay under Heli.
+    const select = finder.getByTestId('firmware-finder-board-select')
+    await expect(select.locator('option')).toHaveCount(5)
+    await finder.getByTestId('firmware-finder-search').fill('matek')
+    await expect(select.locator('option')).toHaveCount(3)
+    await select.selectOption('MatekH743-bdshot')
+    await expect(finder.getByTestId('firmware-finder-load')).toHaveText('Download MatekH743-bdshot V4.7.1')
+    await finder.getByTestId('firmware-finder-load').click()
+    await expect(page.getByTestId('firmware-loaded')).toContainText('board id 1013', { timeout: COMMAND_ACK_TIMEOUT })
+    // Done stays done, and step 2's confirm box asks to be ticked next.
+    await expect(finder.getByTestId('firmware-finder-load')).toHaveText('✓ Downloaded MatekH743-bdshot V4.7.1')
+    await expect(finder.getByTestId('firmware-finder-load')).toBeDisabled()
+    await expect(page.getByTestId('firmware-confirm')).toHaveClass(/is-nudged/)
+    await page.getByTestId('firmware-confirm').locator('input').check()
+    await expect(page.getByTestId('firmware-confirm')).not.toHaveClass(/is-nudged/)
+    expect(downloads).toEqual(['Copter/stable/MatekH743-bdshot/arducopter.apj'])
+    // The manual routes are still there, folded under the finder.
+    await expect(page.getByTestId('firmware-manual-download')).toBeVisible()
+    await expect(page.getByTestId('firmware-file-drop')).toBeVisible()
+    await expect(page.getByTestId('firmware-file')).toBeAttached()
+  })
+
+  test('on the desktop shell the finder runs on its native fetch, replacing the old fetch panel', async ({ page }) => {
+    const apjText = apj(1013)
+    await page.addInitScript(({ indexJson, apjBody }) => {
+      ;(window as unknown as { arduconfigDesktop: unknown }).arduconfigDesktop = {
+        platform: 'electron',
+        firmware: {
+          list: async () => ({ releaseTypes: [], entries: [] }),
+          index: async () => JSON.parse(indexJson),
+          download: async (url: string) => {
+            ;(window as unknown as { downloaded: string }).downloaded = url
+            return new TextEncoder().encode(apjBody)
+          }
+        }
+      }
+    }, { indexJson: JSON.stringify(index), apjBody: apjText })
+    await page.goto('/')
+    await page.getByTestId('landing-flash-firmware-button').click()
+    const finder = page.getByTestId('firmware-finder')
+    await expect(finder).toBeVisible()
+    await expect(page.getByTestId('firmware-browse')).toHaveCount(0)
+    await finder.getByTestId('firmware-finder-board-select').selectOption('MatekH743')
+    await finder.getByTestId('firmware-finder-load').click()
+    await expect(page.getByTestId('firmware-loaded')).toContainText('board id 1013', { timeout: COMMAND_ACK_TIMEOUT })
+    expect(await page.evaluate(() => (window as unknown as { downloaded: string }).downloaded)).toBe(
+      'https://firmware.ardupilot.org/Copter/stable/MatekH743/arducopter.apj'
+    )
+  })
+
+  test('connected: the board\'s build is listed first and pre-selected', async ({ page }) => {
+    await serveIndex(page)
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+    await page.getByTestId('view-button-flash').click()
+    const finder = page.getByTestId('firmware-finder')
+    await expect(finder.getByTestId('firmware-finder-board')).toContainText('board id 59')
+    await expect(finder.getByTestId('firmware-finder-board-select')).toHaveValue('DemoBoard59')
+    await expect(finder.getByTestId('firmware-finder-load')).toHaveText('Download DemoBoard59 V4.7.1')
+  })
+
+  test('a download whose build is not the listed one is refused, and says so', async ({ page }) => {
+    const shaIndex = { ...index, columns: [...columns, 'gitSha'], rows: [[...row('MatekH743', 1013), 'dbe792162d06cab66c3475fd5556bf7a120f119e']] }
+    const asked: string[] = []
+    await page.route('**/fw/index.json', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(shaIndex) }))
+    await page.route('**/fw/apj?*', (route) => {
+      asked.push(route.request().url())
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...JSON.parse(apj(1013)), git_identity: '0a1b2c3d' }) })
+    })
+    await page.goto('/')
+    await page.getByTestId('landing-flash-firmware-button').click()
+    const finder = page.getByTestId('firmware-finder')
+    await finder.getByTestId('firmware-finder-board-select').selectOption('MatekH743')
+    await finder.getByTestId('firmware-finder-load').click()
+    await expect(finder.getByTestId('firmware-finder-error')).toContainText('sent build 0a1b2c3d, not the listed dbe79216')
+    await expect(page.getByTestId('firmware-loaded')).toHaveCount(0)
+    // The request named the build, so no cache can answer it with an older one.
+    expect(asked[0]).toContain('sha=dbe792162d06cab66c3475fd5556bf7a120f119e')
+  })
+
+  test('a site without the index keeps the plain download link', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('landing-flash-firmware-button').click()
+    await expect(page.getByTestId('firmware-download-link')).toBeVisible()
+    await expect(page.getByTestId('firmware-finder')).toHaveCount(0)
+  })
+})
+
+test.describe('Flash: a connected board goes to its bootloader by itself', () => {
+  const rawImage = Buffer.from([0xa3, 0x95, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05])
+  const apj = JSON.stringify({ board_id: 59, image_size: rawImage.length, image: deflateSync(rawImage).toString('base64') })
+
+  test('Flash reboots it into the bootloader, lets go of the link, and waits -- no unplug, no picker', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'flash')
+    await page.getByTestId('firmware-file').setInputFiles({ name: 'arducopter.apj', mimeType: 'application/json', buffer: Buffer.from(apj) })
+    await expect(page.getByTestId('firmware-loaded')).toContainText('board id 59', { timeout: COMMAND_ACK_TIMEOUT })
+    await page.getByTestId('firmware-confirm').locator('input').check()
+    await page.getByTestId('firmware-flash').click()
+
+    const waiting = page.getByTestId('firmware-await-bootloader')
+    await expect(waiting).toContainText('Waiting for the bootloader…', { timeout: COMMAND_ACK_TIMEOUT })
+    await expect(page.getByTestId('firmware-prompt-unplug')).toHaveCount(0)
+    await expect(page.getByTestId('firmware-flash')).toHaveText('Waiting for the bootloader…')
+    // The app let go of the vehicle so the bootloader's port is free.
+    await expect(page.getByTestId('session-vehicle-name')).toHaveCount(0, { timeout: COMMAND_ACK_TIMEOUT })
+    await expect(waiting.getByTestId('firmware-await-pick')).toBeEnabled()
+    await waiting.getByTestId('firmware-prompt-cancel').click()
+    await expect(waiting).toHaveCount(0)
+    await expect(page.getByTestId('firmware-flash')).toHaveText('Flash firmware')
+  })
+})
+
+test.describe('CAN tab node firmware on the website', () => {
+  // The offline service worker fetches /fw/* out of reach of page.route.
+  test.use({ serviceWorkers: 'block' })
+
+  test('CAN tab on the website: node firmware from the deploy\'s AP_Periph index and relay', async ({ page }) => {
+    const rawImage = Buffer.from(Array.from({ length: 700 }, (_, i) => (i * 37 + 11) & 0xff))
+    const apj = JSON.stringify({ board_id: 513, git_identity: 'abc12345', image_size: rawImage.length, image: deflateSync(rawImage).toString('base64') })
+    const periphIndex = {
+      format: 1,
+      columns: ['platform', 'boardId', 'vehicle', 'mavType', 'channel', 'version', 'brand', 'manufacturer', 'path', 'gitSha'],
+      rows: [
+        ['TestPeriph', 513, 'AP_Periph', '', 'OFFICIAL', '1.7.0', '', '', 'AP_Periph/stable/TestPeriph/AP_Periph.apj', 'abc1234567890'],
+        ['OtherPeriph', 999, 'AP_Periph', '', 'OFFICIAL', '1.7.0', '', '', 'AP_Periph/stable/OtherPeriph/AP_Periph.apj', 'def']
+      ]
+    }
+    const asked: string[] = []
+    await page.route('**/fw/periph-index.json', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(periphIndex) }))
+    await page.route('**/fw/apj?*', (route) => {
+      asked.push(route.request().url())
+      return route.fulfill({ status: 200, contentType: 'application/json', body: apj })
+    })
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await enableExpertMode(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+    await expect(page.getByTestId('can-bus-node-toggle-50')).toBeVisible({ timeout: 12000 })
+    await page.getByTestId('can-bus-node-actions-50').click()
+    await expect(page.getByTestId('can-bus-node-50')).toContainText('HW 2.1', { timeout: COMMAND_ACK_TIMEOUT })
+    await expect(page.getByTestId('dronecan-fwupdate-online-unavailable-50')).toHaveCount(0)
+    await page.getByTestId('dronecan-fwupdate-online-find-50').click()
+    const list = page.getByTestId('dronecan-fwupdate-online-list-50')
+    await expect(list).toContainText('TestPeriph')
+    await expect(list).not.toContainText('OtherPeriph')
+    await page.getByTestId('dronecan-fwupdate-online-use-50').first().click()
+    await page.getByTestId('dronecan-fwupdate-ack-50').check()
+    await expect(page.getByTestId('dronecan-fwupdate-start-50')).toBeEnabled()
+    expect(asked[0]).toContain('path=AP_Periph%2Fstable%2FTestPeriph%2FAP_Periph.apj')
+    expect(asked[0]).toContain('sha=abc1234567890')
+  })
+})
+
+test.describe('Sidebar width', () => {
+  for (const width of [1280, 1900, 2400]) {
+    test(`every nav label fits the slimmer sidebar at ${width}px (Expert, all tabs)`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 1000 })
+      await page.addInitScript(() => window.sessionStorage.setItem('arduconfig:product-mode', 'expert'))
+      await page.goto('/')
+      await page.getByTestId('transport-mode-select').selectOption('demo')
+      await page.getByTestId('connect-button').click()
+      await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+      const clipped = await page.evaluate(() =>
+        [...document.querySelectorAll('.workspace-nav__item strong')]
+          .filter((label) => {
+            const item = label.closest('.workspace-nav__item') as HTMLElement
+            // Cut off, or wrapped onto a second line.
+            const lines = (label as HTMLElement).getClientRects().length
+            const range = document.createRange()
+            range.selectNodeContents(label)
+            // A row that also carries a badge (Guided Setup's "beta") may wrap
+            // rather than hide it.
+            const hasBadge = item.querySelector('.workspace-nav__badge') !== null
+            const wrapped = !hasBadge && range.getClientRects().length > 1 && lines >= 1
+            return label.scrollWidth > label.clientWidth + 1 || item.scrollWidth > item.clientWidth + 1 || wrapped
+          })
+          .map((label) => label.textContent)
+      )
+      expect(clipped).toEqual([])
+      const sidebar = await page.locator('.workspace-sidebar').boundingBox()
+      expect(sidebar!.width).toBeLessThan(250)
+    })
+  }
+})
+
+test.describe('Status & Info: Vehicle actions', () => {
+  test('Vehicle actions: three big buttons, Complete under Sync Parameters', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    const card = page.getByTestId('status-bench-actions')
+    await expect(card.getByTestId('status-bench-request-parameters')).toHaveText('Sync Parameters', { timeout: 20_000 })
+    await expect(card.getByTestId('status-bench-reboot-autopilot')).toHaveText('Reboot')
+    await expect(card.getByTestId('status-flash-firmware-button')).toHaveText('Flash Firmware')
+    await expect(card.getByTestId('status-bench-sync-status')).toHaveText(/^Complete · \d+\/\d+ parameters$/, { timeout: 20_000 })
   })
 })

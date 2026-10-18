@@ -1,7 +1,7 @@
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 import { describe, expect, it } from 'vitest'
 
-import { canApplyParameterChanges, parameterApplyBlockedReason } from './apply-gate'
+import { canApplyParameterChanges, flightCalibrationBlockedReason, parameterApplyBlockedReason } from './apply-gate'
 
 /**
  * Two functions check the same five conditions in DIFFERENT orders, and until
@@ -86,5 +86,15 @@ describe('lesson #363', () => {
     const afterAWrite = snapshot({ parameterFollowUp: { refreshRequired: true, requiresReboot: false, text: 'x' } })
     expect(canApplyParameterChanges(afterAWrite)).toBe(true)
     expect(parameterApplyBlockedReason(afterAWrite)).toBeUndefined()
+  })
+})
+
+describe('flightCalibrationBlockedReason', () => {
+  it('names the real cause, not always "finish parameter sync"', () => {
+    const armed = snapshot({
+      vehicle: { firmware: 'ArduPilot', vehicle: 'ArduCopter', systemId: 1, componentId: 1, armed: true, flightMode: 'LOITER' }
+    })
+    expect(flightCalibrationBlockedReason(armed, undefined)).toMatch(/disarm/i)
+    expect(flightCalibrationBlockedReason(snapshot(), 'receiver:apply')).toMatch(/another action is still running/i)
   })
 })

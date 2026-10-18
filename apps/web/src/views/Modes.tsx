@@ -1,5 +1,5 @@
 import type { ParameterState } from '@arduconfig/ardupilot-core'
-import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+import { StatusBadge } from '@arduconfig/ui-kit'
 
 import { InfoDot } from './InfoDot'
 import { ParamInfoBubble } from './ParamInfoBubble'
@@ -38,7 +38,6 @@ export interface ModesViewProps {
   currentSlotSubtext: string
   activeModeLabel: string
   slots: readonly ModesViewSlot[]
-  onOpenFlightModeTask: () => void
   /**
    * Edit-in-place plumbing. When provided alongside per-slot `parameter`s,
    * each slot's "Assigned mode" cell becomes an inline ScopedSelectField
@@ -68,7 +67,6 @@ export function ModesView(props: ModesViewProps) {
     currentSlotSubtext,
     activeModeLabel,
     slots,
-    onOpenFlightModeTask,
     fiberModeAvailable = false,
     editedValues,
     draftStatusById,
@@ -235,21 +233,6 @@ export function ModesView(props: ModesViewProps) {
             ))}
           </div>
 
-          <div className="modes-help">
-            <p>
-              {canEditInPlace
-                ? 'Edit a slot above, then apply from the staged-changes bar. The Receiver → Flight Mode task is an alternate edit surface with the same fields plus the live mode-switch exerciser.'
-                : 'Edit per-slot mode assignments from the Receiver view’s Flight Mode task.'}
-            </p>
-            <button
-              type="button"
-              style={buttonStyle()}
-              data-testid="modes-go-to-flight-mode-task"
-              onClick={onOpenFlightModeTask}
-            >
-              Open Receiver → Flight Mode
-            </button>
-          </div>
       </div>
     </div>
   )

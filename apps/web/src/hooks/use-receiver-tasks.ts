@@ -51,6 +51,10 @@ export interface UseReceiverTasksResult {
   activeReceiverTaskId: ReceiverTaskId
   receiverTaskCards: ReceiverTaskCard[]
   activeReceiverTask: ReceiverTaskCard
+  /** The explicit route (a jump link, the wizard's deep link, the mapping
+   *  completion), as distinct from the recommendation above. The one-page
+   *  Receiver scrolls to a section only on this, never on the recommendation. */
+  receiverTaskOverride: ReceiverTaskId | undefined
 }
 
 /**
@@ -102,8 +106,6 @@ export function useReceiverTasks(input: {
     modeSwitchExerciseSummary,
     rcMappingSummary,
     rcMappingCapturedCount,
-    receiverWorkflowDraftCount,
-    receiverWorkflowInvalidCount,
     receiverAdvancedDraftCount,
     receiverAdvancedInvalidCount,
     receiverLinkPorts,
@@ -187,9 +189,8 @@ export function useReceiverTasks(input: {
     }
   })()
   const recommendedReceiverTaskId = useMemo<ReceiverTaskId>(() => {
-    if (receiverWorkflowInvalidCount > 0) {
-      return 'review'
-    }
+    // An invalid workflow draft is named in the apply dock, which is on every
+    // task; only the Signal Setup extras live on one tab worth routing to.
     if (receiverAdvancedInvalidCount > 0) {
       return 'advanced'
     }
@@ -209,11 +210,10 @@ export function useReceiverTasks(input: {
     if (modeSwitchExercise.status === 'running' || modeSwitchExercise.status === 'failed' || modeSwitchExercise.status !== 'passed') {
       return 'flight-modes'
     }
-    // DELIBERATELY no "staged > 0 → review/advanced" auto-route here.
-    // Typing a small RC tweak used to yank the operator into Review or
-    // Signal Setup mid-edit; the persistent staged-changes chip already
-    // surfaces the pending count, so the operator can step over to those
-    // tasks on their own. Invalid drafts still route (above), since
+    // DELIBERATELY no "staged > 0 → advanced" auto-route here. Typing a
+    // small RC tweak used to yank the operator into Signal Setup mid-edit;
+    // the apply dock already surfaces the pending count, so the operator
+    // can step over on their own. Invalid extras still route (above), since
     // those are blocking write and worth pulling attention.
     return 'mapping'
   }, [
@@ -221,8 +221,7 @@ export function useReceiverTasks(input: {
     rcCalibrationSession.status,
     rcMappingSession.status,
     rcRangeExercise.status,
-    receiverAdvancedInvalidCount,
-    receiverWorkflowInvalidCount
+    receiverAdvancedInvalidCount
   ])
   const activeReceiverTaskId = receiverTaskOverride ?? recommendedReceiverTaskId
   const receiverTaskCards = useMemo<ReceiverTaskCard[]>(
@@ -296,28 +295,6 @@ export function useReceiverTasks(input: {
             : receiverAdvancedDraftCount > 0
               ? 'warning'
               : 'neutral'
-      },
-      {
-        id: 'review' as const,
-        label: 'Review',
-        value:
-          receiverWorkflowInvalidCount > 0
-            ? `${receiverWorkflowInvalidCount} invalid`
-            : receiverWorkflowDraftCount > 0
-              ? `${receiverWorkflowDraftCount} staged`
-              : 'In sync',
-        detail:
-          receiverWorkflowDraftCount > 0
-            ? 'Receiver mapping, calibration, or mode changes are staged and ready for final review.'
-            : receiverWorkflowInvalidCount > 0
-              ? 'Some receiver changes need attention before they can be applied safely.'
-              : 'Receiver workflow changes are currently in sync with the controller.',
-        tone:
-          receiverWorkflowInvalidCount > 0
-            ? 'danger'
-            : receiverWorkflowDraftCount > 0
-              ? 'warning'
-              : 'success'
       }
     ],
     [
@@ -335,8 +312,6 @@ export function useReceiverTasks(input: {
       rcFunctionAssignedCount,
       rcFunctionConflictCount,
       receiverLinkPorts,
-      receiverWorkflowDraftCount,
-      receiverWorkflowInvalidCount,
       snapshot.liveVerification.rcInput.verified
     ]
   )
@@ -348,6 +323,7 @@ export function useReceiverTasks(input: {
     recommendedReceiverTaskId,
     activeReceiverTaskId,
     receiverTaskCards,
-    activeReceiverTask
+    activeReceiverTask,
+    receiverTaskOverride
   }
 }

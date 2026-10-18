@@ -276,6 +276,12 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
 interface ScopedNumberFieldProps extends CommonScopedFieldProps {
   stepFallback?: number
   caption?: ReactNode
+  /** Render the title (and its "i") — off for a bare input inside a table row. */
+  showTitle?: boolean
+  /** Accessible name when the title is off (defaults to the field label). */
+  ariaLabel?: string
+  /** Stable hook for tests; lands on the wrapping label. */
+  testId?: string
 }
 
 /**
@@ -301,7 +307,7 @@ function inferStep(
 }
 
 export function ScopedNumberField(props: ScopedNumberFieldProps) {
-  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, stepFallback = 1, caption } = props
+  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, stepFallback = 1, caption, showTitle = true, ariaLabel, testId } = props
   const status = statusModifier(draftStatusById, parameter.id)
   // Use the noise-stripping formatter for the editor's initial value so
   // the operator doesn't see the float32 mantissa tail (1.5 not
@@ -314,20 +320,22 @@ export function ScopedNumberField(props: ScopedNumberFieldProps) {
     inferStep(parameter.definition?.minimum, parameter.definition?.maximum, stepFallback)
   const fieldLabel = parameter.definition?.label ?? parameter.id
   return (
-    <label className={fieldClassName(draftStatusById, parameter.id, compact)}>
-      <span>
-        {/* The title text in a span of its own, so the label an operator
-            reads (and a test matches exactly) is one element, with the dot's
-            tooltip text outside it. */}
-        <span className="scoped-editor-field__title">
-          {fieldLabel}
-          {unit ? <small className="scoped-editor-field__unit"> ({unit})</small> : null}
+    <label className={fieldClassName(draftStatusById, parameter.id, compact)} data-testid={testId}>
+      {showTitle ? (
+        <span>
+          {/* The title text in a span of its own, so the label an operator
+              reads (and a test matches exactly) is one element, with the dot's
+              tooltip text outside it. */}
+          <span className="scoped-editor-field__title">
+            {fieldLabel}
+            {unit ? <small className="scoped-editor-field__unit"> ({unit})</small> : null}
+          </span>
+          <ParamIdHint parameter={parameter} />
         </span>
-        <ParamIdHint parameter={parameter} />
-      </span>
+      ) : null}
       <input
         type="number"
-        aria-label={fieldLabel}
+        aria-label={ariaLabel ?? fieldLabel}
         min={parameter.definition?.minimum}
         max={parameter.definition?.maximum}
         step={step}
@@ -419,6 +427,53 @@ export function ScopedBitmaskField(props: CommonScopedFieldProps) {
       </label>
       <StagedWasLine status={status} liveValue={liveValue} />
     </div>
+  )
+}
+
+interface ScopedCheckboxFieldProps extends CommonScopedFieldProps {
+  /** Stable hook for tests; lands on the wrapping label. */
+  testId?: string
+  /** Text beside the box. Defaults to the option label for the current value. */
+  caption?: string
+  /** Render the title (and its "i" dot) — off for a bare box inside a table row. */
+  showTitle?: boolean
+}
+
+/**
+ * A 0/1 parameter as one checkbox, staged like every other Scoped* field: the
+ * box reads the edited value when one is staged, else the live value, and the
+ * wrapper carries the same draft-status modifier so a staged reverse is
+ * outlined like a staged select. Used for RCn_REVERSED on the Receiver tab.
+ */
+export function ScopedCheckboxField(props: ScopedCheckboxFieldProps) {
+  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, testId, caption, showTitle = true } = props
+  const status = statusModifier(draftStatusById, parameter.id)
+  const current = editedValues[parameter.id] ?? String(liveValue ?? 0)
+  const checked = Number(current) !== 0
+  const options = parameter.definition?.options
+  const fieldLabel = parameter.definition?.label ?? parameter.id
+  const text =
+    caption ?? options?.find((option) => option.value === (checked ? 1 : 0))?.label ?? (checked ? 'On' : 'Off')
+  return (
+    <label
+      className={`${fieldClassName(draftStatusById, parameter.id, compact)} scoped-editor-field--checkbox`}
+      data-testid={testId}
+    >
+      {showTitle ? (
+        <span><span className="scoped-editor-field__title">{fieldLabel}</span><ParamIdHint parameter={parameter} /></span>
+      ) : null}
+      <span className="scoped-checkbox">
+        <input
+          type="checkbox"
+          aria-label={fieldLabel}
+          checked={checked}
+          onChange={(event) => onChange(parameter.id, event.target.checked ? '1' : '0')}
+        />
+        <span>{text}</span>
+        {showTitle ? null : <ParamIdHint parameter={parameter} />}
+      </span>
+      <StagedWasLine status={status} liveValue={liveValue} options={options} />
+    </label>
   )
 }
 

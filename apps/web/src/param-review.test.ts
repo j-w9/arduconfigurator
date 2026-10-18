@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isOutputAssignmentParamId } from './param-review'
+import { isOutputAssignmentParamId, isReceiverReviewParamId } from './param-review'
 
 /**
  * param-review.ts decides which parameter ids belong to which tab's edit scope.
@@ -31,5 +31,16 @@ describe('isOutputAssignmentParamId', () => {
     // output-assignment batch.
     expect(isOutputAssignmentParamId('SERVO_BLH_MASK')).toBe(false)
     expect(isOutputAssignmentParamId('SERVO1_FUNCTIONX')).toBe(false)
+  })
+})
+
+describe('isReceiverReviewParamId', () => {
+  it('holds the flight-mode slots of every vehicle the Receiver edits them for', () => {
+    // The Receiver's flight-mode line stages FLTMODEn (Copter/Plane) or MODEn
+    // (Rover); a slot outside the scope would vanish from its Apply batch.
+    for (const paramId of ['FLTMODE1', 'FLTMODE6', 'FLTMODE_CH', 'MODE1', 'MODE6', 'MODE_CH']) {
+      expect(isReceiverReviewParamId(paramId)).toBe(true)
+    }
+    expect(isReceiverReviewParamId('MODE7')).toBe(false)
   })
 })

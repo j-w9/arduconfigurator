@@ -195,8 +195,11 @@ function LogTuningResults({
         {result.vibe ? (
           <article>
             <span>Vibration</span>
-            <strong>
+            {/* Judged in the air: takeoff and landing knocks are counted apart. */}
+            <strong data-testid="log-tuning-vibe">
               {result.vibe.verdict} · peak {Math.max(...result.vibe.max).toFixed(0)} m/s² · clip {Math.max(...result.vibe.clip)}
+              {result.vibe.window ? ' in the air' : ''}
+              {result.vibe.groundClip > 0 && result.vibe.window ? ` (+${result.vibe.groundClip} at takeoff/landing)` : ''}
             </strong>
           </article>
         ) : null}

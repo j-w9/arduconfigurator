@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
-import { MOT_THST_HOVER_DEFAULT, deriveHoverLearnState } from './hover-learn-stage'
+import {
+  ACC_ZBIAS_LEARN_SAVE,
+  ACC_ZBIAS_LEARN_USE,
+  MOT_THST_HOVER_DEFAULT,
+  deriveHoverLearnState,
+  zbiasLearnValue
+} from './hover-learn-stage'
 
 function snapshot(
   values: Record<string, number>,
@@ -109,5 +115,20 @@ describe('deriveHoverLearnState', () => {
   it('only claims VALT when the firmware reports a VALT parameter', () => {
     expect(deriveHoverLearnState(snapshot(FRESH)).valtSupported).toBe(false)
     expect(deriveHoverLearnState(snapshot({ ...FRESH, VALT_POS_EXPO: 0 })).valtSupported).toBe(true)
+  })
+})
+
+describe('zbiasLearnValue', () => {
+  const learnAndUse = ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE
+
+  it('sets the sequence bits on a vehicle with none of the others', () => {
+    expect(zbiasLearnValue(0, learnAndUse)).toBe('3')
+    expect(zbiasLearnValue(undefined, ACC_ZBIAS_LEARN_USE)).toBe('2')
+  })
+
+  it('keeps Disable Ground Learning (bit 2) through every step', () => {
+    expect(zbiasLearnValue(4, learnAndUse)).toBe('7')
+    expect(zbiasLearnValue(7, ACC_ZBIAS_LEARN_USE)).toBe('6')
+    expect(zbiasLearnValue(6, 0)).toBe('4')
   })
 })

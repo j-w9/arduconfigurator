@@ -461,7 +461,7 @@ export function MotorReorderDialog({
                     }
                     data-testid="motor-reorder-guided-start"
                   >
-                    Identify motors interactively
+                    Run motor wizard
                   </button>
                 </div>
               )}

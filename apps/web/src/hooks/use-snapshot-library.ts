@@ -170,7 +170,7 @@ export function useSnapshotLibrary({
     if (snapshot.parameters.length === 0) {
       setSnapshotNotice({
         tone: 'warning',
-        text: 'Pull parameters before capturing a snapshot.'
+        text: 'Sync parameters before capturing a snapshot.'
       })
       return
     }
@@ -210,7 +210,7 @@ export function useSnapshotLibrary({
     if (snapshot.parameters.length === 0) {
       setSnapshotNotice({
         tone: 'warning',
-        text: 'Pull parameters before overwriting a snapshot.'
+        text: 'Sync parameters before overwriting a snapshot.'
       })
       return
     }

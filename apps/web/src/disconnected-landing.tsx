@@ -1,6 +1,7 @@
 import { useState, type ChangeEvent } from 'react'
 
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
+import { relayFirmwareSource } from './firmware/firmware-index-source'
 
 export type LandingTransportMode =
   | 'demo'
@@ -240,7 +241,7 @@ export function DisconnectedLanding(props: DisconnectedLandingProps) {
 
       {firmwareOpen ? (
         <div className="landing__section">
-          <FirmwareFlasher onClose={() => setFirmwareOpen(false)} />
+          <FirmwareFlasher onClose={() => setFirmwareOpen(false)} firmwareIndex={relayFirmwareSource} />
         </div>
       ) : null}
 

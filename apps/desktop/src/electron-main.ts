@@ -8,7 +8,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import type { VehicleType } from '@arduconfig/firmware-flash'
 
 import { createDesktopWebPreferences } from './electron-window-options.js'
-import { listBoardFirmware, listDronecanNodeFirmware, downloadFirmwareApj } from './firmware-fetch.js'
+import { listBoardFirmware, listDronecanNodeFirmware, downloadFirmwareApj, firmwareIndex } from './firmware-fetch.js'
 import { NativeSocketManager, type SocketOpenOptions } from './native-socket-manager.js'
 import { desktopPlatformManifest } from './platform.js'
 import { confinedExistingPath } from './save-path.js'
@@ -214,6 +214,8 @@ function registerDesktopFirmwareHandlers(): void {
     listDronecanNodeFirmware(boardId)
   )
   ipcMain.handle('desktop:firmware:download', async (_event, url: string) => downloadFirmwareApj(url))
+  // The Flash tab finder's index: every current .apj build, compact rows.
+  ipcMain.handle('desktop:firmware:index', async () => firmwareIndex())
 }
 
 interface DesktopSaveFileRequest {

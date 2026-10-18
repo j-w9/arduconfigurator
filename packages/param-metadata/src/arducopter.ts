@@ -594,6 +594,31 @@ function buildRcOptionParameterDefinitions(
   return definitions
 }
 
+// RCn_REVERSED for every input channel. The Receiver tab exposes it as a
+// checkbox beside each channel: a reversed stick is the first thing that goes
+// wrong with an unusual transmitter. Values from RC_Channel.cpp
+// (@Values: 0:Normal,1:Reversed). The configurator does not reinterpret the
+// value — RC2_REVERSED=0 pitching nose-down IS "reversed" per norm_input, and
+// the Channel Direction verdict is where that is judged.
+function buildRcReversedParameterDefinitions(maxChannelNumber: number): FirmwareMetadataBundle['parameters'] {
+  const definitions: FirmwareMetadataBundle['parameters'] = {}
+
+  for (let channelNumber = 1; channelNumber <= maxChannelNumber; channelNumber += 1) {
+    definitions[`RC${channelNumber}_REVERSED`] = {
+      id: `RC${channelNumber}_REVERSED`,
+      label: `CH${channelNumber} Reversed`,
+      description: `Reverse RC channel ${channelNumber}. 0 = normal, 1 = the input reads backwards.`,
+      category: 'radio',
+      options: [
+        { value: 0, label: 'Normal' },
+        { value: 1, label: 'Reversed' }
+      ]
+    }
+  }
+
+  return definitions
+}
+
 function buildServoChannelParameterDefinitions(maxChannelNumber: number): FirmwareMetadataBundle['parameters'] {
   const definitions: FirmwareMetadataBundle['parameters'] = {}
 
@@ -1466,6 +1491,7 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       step: 1
     },
     ...buildRcOptionParameterDefinitions(5, 16),
+    ...buildRcReversedParameterDefinitions(16),
     ...buildSerialPortParameterDefinitions(8),
     // AP_SerialManager transparent USB↔UART passthru bridge (SERIAL_PASS1/PASS2/
     // PASSTIMO). Setting both PASS1 (source, default 0=USB console) and PASS2
@@ -2461,6 +2487,35 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       maximum: 16,
       notes: modeChannelNotes,
       options: enumOptions(ARDUCOPTER_FLTMODE_CHANNEL_LABELS)
+    },
+    // From ArduCopter/Parameters.cpp (MODE_ACRO_ENABLED builds only).
+    ACRO_TRAINER: {
+      id: 'ACRO_TRAINER',
+      label: 'Acro Trainer',
+      description:
+        'Training help in Acro. Leveling returns the craft to level when the sticks are centred; Limited also caps the lean angle at ANGLE_MAX.',
+      category: 'modes',
+      minimum: 0,
+      maximum: 2,
+      options: [
+        { value: 0, label: 'Disabled' },
+        { value: 1, label: 'Leveling' },
+        { value: 2, label: 'Leveling and Limited' }
+      ]
+    },
+    ACRO_OPTIONS: {
+      id: 'ACRO_OPTIONS',
+      label: 'Acro Options',
+      description:
+        'Air-mode keeps full attitude control at zero throttle in Acro (ATC_THR_MIX_MAN at all times; no effect on helicopters). Rate Loop Only flies on rate control alone, without angle stabilization.',
+      category: 'modes',
+      minimum: 0,
+      maximum: 3,
+      bitmask: true,
+      options: [
+        { value: 0, label: 'Air-mode' },
+        { value: 1, label: 'Rate Loop Only' }
+      ]
     },
     MODE_CH: {
       id: 'MODE_CH',

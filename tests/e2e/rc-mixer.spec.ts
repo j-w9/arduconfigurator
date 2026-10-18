@@ -14,16 +14,21 @@ async function connectCopterDemo(page: Page): Promise<void> {
   await page.getByTestId('product-mode-expert').check()
 }
 
+test('RC Mixer is hidden from the list, Expert included', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('landing-transport-select').selectOption('demo')
+  await page.getByTestId('landing-connect-button').click()
+  await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
+  await expect(page.getByTestId('view-button-rc-mixer')).toHaveCount(0)
+  await page.getByTestId('product-mode-expert').check()
+  await expect(page.getByTestId('view-button-parameters')).toBeVisible()
+  await expect(page.getByTestId('view-button-rc-mixer')).toHaveCount(0)
+})
+
 test.describe('RC Mixer (AP_RC_Logic)', () => {
-  test('is gated behind Expert mode, then appears in the nav', async ({ page }) => {
-    await page.goto('/')
-    await page.getByTestId('landing-transport-select').selectOption('demo')
-    await page.getByTestId('landing-connect-button').click()
-    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter')
-    await expect(page.getByTestId('view-button-rc-mixer')).toHaveCount(0)
-    await page.getByTestId('product-mode-expert').check()
-    await expect(page.getByTestId('view-button-rc-mixer')).toBeVisible()
-  })
+  // The tab is hidden (RC_MIXER_ENABLED in visible-app-views.ts); these come
+  // back with it.
+  test.skip(true, 'RC Mixer is hidden from the list')
 
   test('binds to RCL_* when supported: engine toggle + example terms, no preview callout', async ({ page }) => {
     await page.goto('/')

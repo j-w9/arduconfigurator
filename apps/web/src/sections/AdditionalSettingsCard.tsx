@@ -73,6 +73,9 @@ export function AdditionalSettingsCard({
         </details>
       ))}
 
+      {/* The bar appears once there is something to apply or discard; a
+          permanently disabled pair of buttons was only height. */}
+      {draftEntries.length > 0 ? (
       <div className="switch-exercise-controls">
         <button
           style={buttonStyle('primary')}
@@ -89,6 +92,7 @@ export function AdditionalSettingsCard({
           Discard Additional Changes
         </button>
       </div>
+      ) : null}
     </div>
   )
 }

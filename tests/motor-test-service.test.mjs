@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { MotorTestService } from '../packages/ardupilot-core/dist/runtime-motor-test-service.js'
+import { MotorTestService, MOTOR_TEST_SWEEP_GAP_MS } from '../packages/ardupilot-core/dist/runtime-motor-test-service.js'
 import { MAV_CMD, MOTOR_TEST_ORDER, MOTOR_TEST_THROTTLE_TYPE } from '../packages/protocol-mavlink/dist/index.js'
 
 function createIdleLiveVerification() {
@@ -167,7 +167,7 @@ test('single motor test on an unknown frame falls back to the raw motor number w
   }
 })
 
-test('MotorTestService runAllOutputs uses SEQUENCE order + count=N', async () => {
+test('MotorTestService runAllOutputs sweeps the motors itself, one at a time, M1 upward', async () => {
   // Eligibility needs >=4 mapped motor outputs; add four SERVOn_FUNCTION
   // parameters set to motor 1..4 codes (33-36).
   const harness = createHostHarness({
@@ -181,15 +181,24 @@ test('MotorTestService runAllOutputs uses SEQUENCE order + count=N', async () =>
   })
   const service = new MotorTestService(harness.host)
   try {
-    await service.run({ runAllOutputs: true, throttlePercent: 5, durationSeconds: 1 })
+    await service.run({ runAllOutputs: true, throttlePercent: 5, durationSeconds: 0.1 })
 
-    const command = harness.sentCommands.find((c) => c.command === MAV_CMD.DO_MOTOR_TEST)
-    assert.ok(command)
-    // All-outputs path: [1, throttleType=PERCENT, throttlePercent, durationSec, count=N, order=SEQUENCE, 0]
-    assert.equal(command.params[4], 4, 'count = 4 mapped motors')
-    assert.equal(command.params[5], MOTOR_TEST_ORDER.SEQUENCE, 'all-outputs uses SEQUENCE order')
-
+    // Not ArduPilot's SEQUENCE mode: that walks the frame's test-order table
+    // (quad X: front-right, rear-right, rear-left, front-left), which is not
+    // the M1..M4 order the tab shows. The first command is M1 alone...
+    const first = harness.sentCommands.find((c) => c.command === MAV_CMD.DO_MOTOR_TEST)
+    assert.ok(first)
+    assert.equal(first.params[4], 1, 'one motor per command')
+    assert.equal(first.params[5], MOTOR_TEST_ORDER.DEFAULT, 'no FC-side sweep')
     assert.equal(service.getState().allOutputsSelected, true)
+
+    // ...and the rest follow in motor order after each window plus the gap.
+    // No FRAME_CLASS in this harness, so sequence == motor number.
+    await new Promise((resolve) => setTimeout(resolve, 4 * (100 + MOTOR_TEST_SWEEP_GAP_MS)))
+    const sequences = harness.sentCommands
+      .filter((c) => c.command === MAV_CMD.DO_MOTOR_TEST && c.params[2] > 0)
+      .map((c) => c.params[0])
+    assert.deepEqual(sequences, [1, 2, 3, 4], 'M1, M2, M3, M4 -- the order the rows show')
   } finally {
     service.reset()
   }

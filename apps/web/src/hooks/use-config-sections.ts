@@ -280,34 +280,21 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
     },
     {
       id: 'receiver-signal',
-      title: 'Receiver & signal',
-      description: 'RC link and signal settings, mirrored from the Receiver tab so they can be reviewed alongside the rest of the config. Set the accepted RC protocols and RC options first — radio calibration cannot run until the link is actually decoding. Use the Receiver tab for the guided stage/review signal-setup flow; RSSI source and mode channel are here too.',
+      title: 'Receiver',
+      description: 'The receiver link: accepted protocols, RC options, input rate and RSSI. Mapping, endpoints, reverse and the arm switch are on the Receiver tab; the mode channel is under Flight Modes.',
       fields: [
-        // Protocol + options lead the card. Earlier ordering put RC_PROTOCOLS at
-        // the BOTTOM on the theory that it is set once at install — but the
-        // field report is that radio calibration is impossible until the
-        // protocol is right, so the operator who most needs this knob is
-        // exactly the one who cannot yet see any RC values on screen. Reading
-        // order now matches setup order: make the link decode, then shape it.
-        // (Display order only — writes are staged/applied from the draft pool,
-        // which is keyed by parameter id and unaffected by card layout.)
+        // Protocol first: radio calibration cannot run until the link decodes,
+        // so the operator who needs this knob most is the one seeing no RC
+        // values yet. (Display order only; drafts are keyed by parameter id.)
         { paramId: 'RC_PROTOCOLS', label: 'RC protocols (type)', digits: 0 },
-        // Mode channel param is vehicle-specific: Rover uses MODE_CH, Copter/
-        // Plane use FLTMODE_CH, and Sub has no RC mode channel (button modes).
-        //
-        // Second, not last. RC_OPTIONS is a tall bitmask, so in the card's
-        // column flow a trailing field wrapped to the bottom of the first
-        // column, under all of it — reported as "a little hidden". It is also
-        // the knob an operator reaches for right after the protocol.
-        ...(activeVehicle === 'ArduSub'
-          ? []
-          : [{ paramId: activeVehicle === 'ArduRover' ? 'MODE_CH' : 'FLTMODE_CH', label: 'Flight-mode channel', digits: 0 }]),
         { paramId: 'RC_OPTIONS', label: 'RC options', digits: 0 },
-        // One cell, stacked: the channel is only meaningful as a property of
-        // the source. Flowing separately put it under the protocol list, four
-        // columns from the setting it belongs to.
+        { paramId: 'RC_SPEED', label: 'RC input rate', unit: 'Hz', digits: 0 },
+        // The RSSI fields stack in one cell: the channel and the PWM range are
+        // properties of the source.
         { paramId: 'RSSI_TYPE', label: 'RSSI source', digits: 0, group: 'rssi' },
-        { paramId: 'RSSI_CHANNEL', label: 'RSSI channel', digits: 0, group: 'rssi' }
+        { paramId: 'RSSI_CHANNEL', label: 'RSSI channel', digits: 0, group: 'rssi' },
+        { paramId: 'RSSI_CHAN_LOW', label: 'RSSI low PWM', unit: 'µs', digits: 0, group: 'rssi' },
+        { paramId: 'RSSI_CHAN_HIGH', label: 'RSSI high PWM', unit: 'µs', digits: 0, group: 'rssi' }
       ]
     },
     {

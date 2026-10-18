@@ -2058,7 +2058,11 @@ test('motor test supports all mapped motors in sequence', async () => {
 
     const command = sentMessages.find((message) => message.type === 'COMMAND_LONG' && message.command === MAV_CMD.DO_MOTOR_TEST)
     assert.ok(command)
-    assert.deepEqual(command.params.slice(0, 6), [1, 0, 5, 1, 4, 1])
+    // The sweep is driven by the service, one single-motor command at a time
+    // in M1..Mn order; the first is M1 (quad X test-order sequence 1), count 1,
+    // order DEFAULT -- not count 4 / SEQUENCE, which walked ArduPilot's own
+    // test order and looked like 2-1-3-4 against the tab's list.
+    assert.deepEqual(command.params.slice(0, 6), [1, 0, 5, 1, 1, 0])
 
     const snapshot = runtime.getSnapshot()
     assert.equal(snapshot.motorTest.status, 'running')

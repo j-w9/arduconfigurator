@@ -7,10 +7,10 @@
 // that used to sit above it were removed: see the comment in the body.
 
 import type { AppViewId } from '@arduconfig/param-metadata'
+import { NavIcon } from './nav-icons'
 import { StatusBadge } from '@arduconfig/ui-kit'
 
 import type { AppViewDescriptor } from '../app-types'
-import { viewMonogram } from '../setup-format-helpers'
 
 export interface WorkspaceSidebarProps {
   visibleAppViews: readonly AppViewDescriptor[]
@@ -40,7 +40,8 @@ export function WorkspaceSidebar({ visibleAppViews, activeViewId, onSelectView }
               className={`workspace-nav__item workspace-nav__item--tab${view.id === activeViewId ? ' is-active' : ''}`}
               onClick={() => onSelectView(view.id)}
             >
-              <span className="workspace-nav__mark">{viewMonogram(view.id)}</span>
+              {/* A symbol, not a letter code ("CFG"): it reads at a glance. */}
+              <NavIcon viewId={view.id} />
               <span className="workspace-nav__item-copy">
                 <strong>{view.label}</strong>
               </span>

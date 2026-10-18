@@ -31,8 +31,22 @@ contextBridge.exposeInMainWorld('arduconfigDesktop', {
     list: (boardId: number, vehicletype?: string) =>
       ipcRenderer.invoke('desktop:firmware:list', boardId, vehicletype) as Promise<{
         releaseTypes: string[]
-        entries: { boardId: number; vehicletype: string; releaseType: string; version: string; url: string; latest: boolean }[]
+        // The firmware-flash FirmwareEntry shape: the version is versionStr and
+        // the target is platform (the renderer once read a non-existent
+        // `version`, so every build said "undefined" and variants looked alike).
+        entries: {
+          boardId: number
+          vehicletype: string
+          platform: string
+          releaseType: string
+          versionStr: string
+          url: string
+          latest: boolean
+          mavType?: string
+        }[]
       }>,
+    // The Flash tab finder's index: every current .apj build, compact rows.
+    index: () => ipcRenderer.invoke('desktop:firmware:index') as Promise<unknown>,
     // AP_Periph firmware for a DroneCAN node, matched by board id. Returns the
     // firmware-flash FirmwareEntry shape (versionStr/platform/format), not the
     // FC-flasher's renderer subset above.

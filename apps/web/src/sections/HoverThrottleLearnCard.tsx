@@ -11,6 +11,8 @@
 import type { ReactElement } from 'react'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { flightCalibrationBlockedReason } from '../apply-gate'
+
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 
 import {
@@ -18,7 +20,8 @@ import {
   ACC_ZBIAS_LEARN_USE,
   MOT_HOVER_LEARN_AND_SAVE,
   MOT_HOVER_LEARN_DISABLED,
-  deriveHoverLearnState
+  deriveHoverLearnState,
+  zbiasLearnValue
 } from '../view-models/hover-learn-stage'
 
 export interface HoverThrottleLearnCardProps {
@@ -26,6 +29,8 @@ export interface HoverThrottleLearnCardProps {
   canApplyDraftParameters: boolean
   busyAction: string | undefined
   setDraft: (paramId: string, value: string) => void
+  /** Staged drafts, so a click here shows as staged instead of doing nothing visible. */
+  editedValues: Record<string, string>
 }
 
 // The mode is not a detail. Copter::update_throttle_hover returns early in any
@@ -52,20 +57,37 @@ export function HoverThrottleLearnCard({
   snapshot,
   canApplyDraftParameters,
   busyAction,
-  setDraft
+  setDraft,
+  editedValues
 }: HoverThrottleLearnCardProps): ReactElement | null {
   const state = deriveHoverLearnState(snapshot)
   const canStage = canApplyDraftParameters && busyAction === undefined
+  const rearmStaged = editedValues.MOT_HOVER_LEARN === String(MOT_HOVER_LEARN_AND_SAVE)
   const { stage } = state
-  // Past the hover-throttle flight: it was accepted and frozen.
-  const accepted = stage === 'flight-2' || stage === 'flight-2-review' || stage === 'complete'
+  // Accepting flight 1 stages its drafts; the stage only moves once they are
+  // applied. Until then the button says so, instead of looking like a button
+  // that did nothing when clicked.
+  const acceptStaged =
+    editedValues.ACC_ZBIAS_LEARN !== undefined &&
+    (Number(editedValues.ACC_ZBIAS_LEARN) & ACC_ZBIAS_LEARN_SAVE) !== 0 &&
+    editedValues.MOT_HOVER_LEARN === String(MOT_HOVER_LEARN_DISABLED)
+  // Past the hover-throttle flight by the Z-bias stage. The stage is read from
+  // ACC_ZBIAS_LEARN, which can be set without anyone accepting a hover (by
+  // hand, or from a loaded parameter file) -- field report: "once I did my
+  // hover, there was no button to confirm hover learned". So "past flight 1"
+  // is not "accepted": only a frozen MOT_HOVER_LEARN is, and an unfrozen one
+  // keeps its accept button.
+  const pastFlight1 = stage === 'flight-2' || stage === 'flight-2-review' || stage === 'complete'
+  const accepted = pastFlight1 && !state.hoverLearnArmed
+  const unlocked = pastFlight1 && state.hoverLearnArmed && state.hoverThrottle !== undefined
+  const lockStaged = editedValues.MOT_HOVER_LEARN === String(MOT_HOVER_LEARN_DISABLED)
 
   return (
     <article className="calibration-card" data-testid="calibration-card-hover-throttle">
       <div className="calibration-card__header">
         <strong>Hover throttle learning</strong>
         <StatusBadge tone={accepted ? 'success' : stage === 'unknown' ? 'neutral' : 'warning'}>
-          {accepted ? 'accepted' : stage === 'unknown' ? 'not read' : 'flight 1'}
+          {accepted ? 'accepted' : stage === 'unknown' ? 'not read' : unlocked ? 'not accepted' : 'flight 1'}
         </StatusBadge>
       </div>
       <p>
@@ -99,21 +121,32 @@ export function HoverThrottleLearnCard({
           {/* A real step, not a formality. MOT_HOVER_LEARN defaults to 2, but a
               vehicle someone turned it off on looks exactly like a fresh one —
               nothing learned — so telling the operator to "just go fly" would
-              send them up for a flight that records nothing. */}
-          <button
-            type="button"
-            style={buttonStyle('primary')}
-            data-testid="hover-learn-start"
-            disabled={!canStage}
-            onClick={() => setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))}
-          >
-            {state.hoverLearnArmed ? 'Confirm hover learning is on' : 'Turn on hover learning'}
-          </button>
-          <small data-testid="hover-learn-start-hint">
-            {state.hoverLearnArmed
-              ? 'MOT_HOVER_LEARN is already Learn-and-Save, so this stages nothing — the vehicle will learn on the next hover.'
-              : 'Hover learning is OFF on this vehicle, so a flight now would record nothing. This stages MOT_HOVER_LEARN = 2.'}
-          </small>
+              send them up for a flight that records nothing. When it is
+              already on there is nothing to press: a "Confirm" button that
+              stages nothing read as the way to the next step, and did nothing
+              when clicked (field report). */}
+          {state.hoverLearnArmed ? (
+            <small data-testid="hover-learn-start-hint">
+              Hover learning is on (MOT_HOVER_LEARN = 2). Once you land and disarm, the learned
+              value shows here with a button to accept it.
+            </small>
+          ) : (
+            <>
+              <button
+                type="button"
+                style={buttonStyle('primary')}
+                data-testid="hover-learn-start"
+                disabled={!canStage}
+                onClick={() => setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))}
+              >
+                Turn on hover learning
+              </button>
+              <small data-testid="hover-learn-start-hint">
+                Hover learning is OFF on this vehicle, so a flight now would record nothing. This stages
+                MOT_HOVER_LEARN = 2.
+              </small>
+            </>
+          )}
         </>
       ) : null}
 
@@ -126,16 +159,16 @@ export function HoverThrottleLearnCard({
           <div className="button-row">
             <button
               type="button"
-              style={buttonStyle('primary')}
+              style={buttonStyle(acceptStaged ? undefined : 'primary')}
               data-testid="hover-learn-flight-1-yes"
-              disabled={!canStage}
+              disabled={!canStage || acceptStaged}
               onClick={() => {
                 // Hands off to the Z-bias card: 3 = learn AND apply. The
                 // correction is applied while it is being learned, which is
                 // what the firmware's bias maths expects
                 // (update_hover_bias_learning adds the already-applied frozen
                 // correction back before filtering).
-                setDraft('ACC_ZBIAS_LEARN', String(ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE))
+                setDraft('ACC_ZBIAS_LEARN', zbiasLearnValue(state.zbiasLearn, ACC_ZBIAS_LEARN_SAVE | ACC_ZBIAS_LEARN_USE))
                 // Start the bias flight from ZERO, not from whatever a previous
                 // calibration left behind. The learner filters TOWARDS what it
                 // measures (update_hover_bias_learning is a low-pass onto the
@@ -155,7 +188,11 @@ export function HoverThrottleLearnCard({
                 setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_DISABLED))
               }}
             >
-              {state.supported ? 'Yes — accept it, go to the Z-bias flight' : 'Yes — accept it'}
+              {acceptStaged
+                ? 'Accepted — apply to write it'
+                : state.supported
+                  ? 'Yes — accept it, go to the Z-bias flight'
+                  : 'Yes — accept it'}
             </button>
             <button
               type="button"
@@ -177,6 +214,30 @@ export function HoverThrottleLearnCard({
         </>
       ) : null}
 
+      {unlocked ? (
+        <>
+          {/* Say what MOT_HOVER_LEARN actually is: still learning, so every
+              altitude-holding flight -- the Z-bias flight included --
+              re-learns this value. Accepting freezes it, the same write the
+              flight-1 Yes makes, without touching the Z-bias flight already
+              under way. */}
+          <p data-testid="hover-learn-unlocked">
+            <strong>It learned {state.hoverThrottle?.toFixed(3)}.</strong> Hover learning is still on
+            (MOT_HOVER_LEARN = 2), so the next altitude-holding flight re-learns it, the Z-bias flight
+            included. Accept it to keep this value.
+          </p>
+          <button
+            type="button"
+            style={buttonStyle(lockStaged ? undefined : 'primary')}
+            data-testid="hover-learn-lock"
+            disabled={!canStage || lockStaged}
+            onClick={() => setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_DISABLED))}
+          >
+            {lockStaged ? 'Accepted — apply to write it' : `Accept ${state.hoverThrottle?.toFixed(3)}`}
+          </button>
+        </>
+      ) : null}
+
       {accepted ? (
         <>
           <p className="success-copy" data-testid="hover-learn-accepted">
@@ -184,22 +245,24 @@ export function HoverThrottleLearnCard({
           </p>
           {/* Without this the card is a dead end once frozen: re-learning would
               mean clearing the Z-bias calibration, which is a different job. */}
-          <button
-            type="button"
-            style={buttonStyle()}
-            data-testid="hover-learn-rearm"
-            disabled={!canStage || state.hoverLearnArmed}
-            onClick={() => setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))}
-          >
-            Re-learn on the next hover
-          </button>
+          {state.hoverLearnArmed ? null : (
+            <button
+              type="button"
+              style={buttonStyle(rearmStaged ? undefined : 'primary')}
+              data-testid="hover-learn-rearm"
+              disabled={!canStage || rearmStaged}
+              onClick={() => setDraft('MOT_HOVER_LEARN', String(MOT_HOVER_LEARN_AND_SAVE))}
+            >
+              {rearmStaged ? 'Re-learn staged — apply to write it' : 'Re-learn on the next hover'}
+            </button>
+          )}
         </>
       ) : null}
 
       <small>
         {canStage
           ? 'Staged like any other change — nothing is written until you apply it.'
-          : 'Connect and finish parameter sync first.'}
+          : flightCalibrationBlockedReason(snapshot, busyAction)}
       </small>
     </article>
   )

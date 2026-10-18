@@ -29,7 +29,21 @@
 // `Vector3f rotated_gravity(0, 0, -GRAVITY_MSS)` -- a correctly-oriented level
 // board reads negative Z.
 
-import { BOARD_ROTATIONS, type BoardRotation } from '@arduconfig/param-metadata'
+import { AHRS_ORIENTATION_OPTIONS, BOARD_ROTATIONS, type BoardRotation } from '@arduconfig/param-metadata'
+
+/**
+ * The rotations detection may PROPOSE: the fixed ones the orientation picker
+ * offers. BOARD_ROTATIONS also carries ROTATION_PITCH_7 (41), which the picker
+ * leaves out on purpose -- it is a board-specific value, not a mounting anyone
+ * chooses -- and which sits inside ORIENTATION_MATCH_LIMIT_DEG of None, so a
+ * hand-held pose can never tell the two apart. Field report: a correctly
+ * mounted board on a bench a few degrees off level "measured as PITCH_7", the
+ * card offered to stage 41, and the picker then refused a value it does not
+ * list. Scoring only what can be applied closes both halves of that.
+ */
+const CANDIDATE_ROTATIONS: readonly BoardRotation[] = BOARD_ROTATIONS.filter((rotation) =>
+  AHRS_ORIENTATION_OPTIONS.some((option) => option.value === rotation.value)
+)
 
 /** The poses ArduPilot prompts for (MAV_CMD_ACCELCAL_VEHICLE_POS 1..6). */
 export type AccelCalPose = 'level' | 'left' | 'right' | 'nose-down' | 'nose-up' | 'back'
@@ -355,7 +369,7 @@ export function detectBoardOrientation(
     }
   }
 
-  const scored: OrientationCandidate[] = BOARD_ROTATIONS.map((rotation) => {
+  const scored: OrientationCandidate[] = CANDIDATE_ROTATIONS.map((rotation) => {
     let worst = 0
     for (const [pose, measured] of usable) {
       const expected = POSE_EXPECTED_ACCEL[pose]
@@ -378,11 +392,19 @@ export function detectBoardOrientation(
     }
   }
 
+  // "Already set" means the poses AGREE with the current setting, not that the
+  // current setting happened to score best. Two candidates inside the match
+  // limit of each other are indistinguishable at hand-held accuracy, and the
+  // one the operator already chose is the one to keep -- a bench a few degrees
+  // off level must not read as a mounting change.
+  const currentScore = scored.find((candidate) => candidate.rotation.value === currentOrientation)
+  const currentFits = currentScore !== undefined && currentScore.residualDeg <= ORIENTATION_MATCH_LIMIT_DEG
+
   return {
     status: 'detected',
-    best,
-    runnerUp,
-    alreadySet: best.rotation.value === currentOrientation,
+    best: currentFits ? currentScore : best,
+    runnerUp: currentFits ? (best.rotation.value === currentOrientation ? runnerUp : best) : runnerUp,
+    alreadySet: currentFits,
     ignoredPoses: ignoredPoses.length > 0 ? ignoredPoses : undefined
   }
 }
