@@ -368,11 +368,21 @@ test('WebSocket bridge: server.close() during in-flight transport.connect() stil
   const connectGate = new Promise((resolve) => {
     releaseConnect = resolve
   })
+  // Resolved the moment the bridge is inside transport.connect(). The race
+  // this test exists for only happens once that is true, so it is waited on
+  // rather than assumed after a fixed sleep: 25 ms was usually enough and,
+  // with the machine busy, failed 18 runs in 24 -- close() ran before any
+  // connect was in flight, and the test was checking a different case.
+  let connectEntered
+  const connectInFlight = new Promise((resolve) => {
+    connectEntered = resolve
+  })
   let disconnectCalled = false
   const transport = {
     kind: 'mock',
     id: 'audit-36-deferred',
     async connect() {
+      connectEntered()
       await connectGate
     },
     async disconnect() {
@@ -413,10 +423,10 @@ test('WebSocket bridge: server.close() during in-flight transport.connect() stil
     origin: `http://127.0.0.1:${bridge.port}`
   })
 
-  // Give the upgrade handler a tick to reach the connect await. The
-  // server is now in the exact state pre-audit-36 would race against:
-  // an in-flight transport.connect with transportConnected === false.
-  await new Promise((resolve) => setTimeout(resolve, 25))
+  // Wait until the upgrade handler is inside transport.connect(). The server
+  // is then in the exact state pre-audit-36 raced against: an in-flight
+  // connect with transportConnected === false.
+  await connectInFlight
 
   // Start the close concurrently. With the fix, close() awaits the
   // in-flight connect before checking transportConnected — so once the

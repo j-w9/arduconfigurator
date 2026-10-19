@@ -418,18 +418,26 @@ test.describe('Parameters tab (expert-only)', () => {
     const rowTop = () => popover.evaluate((el) => el.closest('.parameter-row')!.getBoundingClientRect().top)
     const rowClass = () => popover.evaluate((el) => el.closest('.parameter-row')!.className)
     const before = await rowTop()
+    // How close counts as "held still". The bug this test exists for moved the
+    // row ~202px. A held row lands within a few pixels, and not always within
+    // 4: an occasional browser-native scroll during the click -- from no app
+    // code; with every scroll API instrumented, the compensation's own
+    // scrollBy is the only call -- leaves it 4.0-5.2px off, measured. 4px sat
+    // below that floor and failed about one full run in three; 8 sits above
+    // it and still fails at once if the compensation is removed.
+    const HELD_PX = 8
 
     const bits = popover.locator('.scoped-bitmask-popover__panel .scoped-bitmask-bit')
     // First toggle: stages a draft, which is what inserts the review block.
     await bits.first().click()
     await expect.poll(rowClass).toContain('parameter-row--staged')
-    expect(Math.abs((await rowTop()) - before)).toBeLessThanOrEqual(4)
+    expect(Math.abs((await rowTop()) - before)).toBeLessThanOrEqual(HELD_PX)
 
     // And back to the original value, which DROPS the draft and removes the
     // review block again — the shrink direction has to hold the row too.
     await bits.first().click()
     await expect.poll(rowClass).not.toContain('parameter-row--staged')
-    expect(Math.abs((await rowTop()) - before)).toBeLessThanOrEqual(4)
+    expect(Math.abs((await rowTop()) - before)).toBeLessThanOrEqual(HELD_PX)
   })
 
   test('a staged review row edited back to the original stays put (no vanish mid-edit)', async ({ page }) => {
