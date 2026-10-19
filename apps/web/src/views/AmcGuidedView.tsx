@@ -17,6 +17,8 @@ import {
   titleOf
 } from '../view-models/amc-guided'
 import {
+  deviceRows,
+  type DevIdTables,
   changesBootDelay,
   cellVoltagesFor,
   compareExternalParams,
@@ -55,6 +57,7 @@ import type {
   ValidationError
 } from '@arduconfig/amc-steps'
 import connectionPairingsJson from '@amc/data/component-pairings.json'
+import devIdTablesJson from '@amc/data/devid.json'
 import connectionTablesJson from '@amc/data/connection-tables.json'
 import migrationTablesJson from '@amc/data/migration.json'
 import templateOnlyJson from '@amc/data/template-only.json'
@@ -1415,6 +1418,11 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
     onStage,
     staged
   } = props
+
+  const sensors = useMemo(
+    () => (connected ? deviceRows(parameters ?? {}, devIdTablesJson as unknown as DevIdTables) : []),
+    [connected, parameters]
+  )
 
   const [kind, setKind] = useState<AmcVehicleKind>(suggestedKind ?? 'ArduCopter')
   const [values, setValues] = useState<Record<string, string>>({})
@@ -3091,6 +3099,44 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
               </tbody>
             </table>
           </details>
+        </Panel>
+      ) : null}
+
+      {/* AMC's device table. Every sensor's DEVID packs a bus, an address and
+          a driver into 24 bits; decoded, it says which compass is the one in
+          the GPS module -- the thing the component declaration otherwise asks
+          the operator to know. Only with a vehicle: the IDs are written by
+          the firmware about itself, not by anyone. */}
+      {sensors.length > 0 ? (
+        <Panel title="Sensors on this vehicle" subtitle="Decoded from each sensor's device ID.">
+          <table className="amc-step__table amc-guided__sensors" data-testid="amc-sensor-table">
+            <thead>
+              <tr>
+                <th>Sensor</th>
+                <th>Bus</th>
+                <th>Bus no.</th>
+                <th>Address</th>
+                <th>Driver</th>
+                <th title="COMPASS_PRIOn_ID: the order ArduPilot trusts compasses in, which is not their instance order">
+                  Priority
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sensors.map((row) => (
+                <tr key={row.source} title={row.source}>
+                  <td>
+                    <code>{row.name}</code>
+                  </td>
+                  <td>{row.busType}</td>
+                  <td>{row.bus}</td>
+                  <td>{`0x${row.address.toString(16).padStart(2, '0')}`}</td>
+                  <td>{row.devtype}</td>
+                  <td>{row.priority ?? ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </Panel>
       ) : null}
       </details>

@@ -1,0 +1,86 @@
+[
+ {
+  "transferred": 0,
+  "total": 1000,
+  "elapsed": 5,
+  "rate": null,
+  "remaining": null
+ },
+ {
+  "transferred": 500,
+  "total": 1000,
+  "elapsed": 0.5,
+  "rate": null,
+  "remaining": null
+ },
+ {
+  "transferred": 500,
+  "total": 1000,
+  "elapsed": 1.0,
+  "rate": 500.0,
+  "remaining": 1
+ },
+ {
+  "transferred": 500,
+  "total": 1000,
+  "elapsed": 2.0,
+  "rate": 250.0,
+  "remaining": 2
+ },
+ {
+  "transferred": 1,
+  "total": 10000000,
+  "elapsed": 1.0,
+  "rate": 1.0,
+  "remaining": 9999999
+ },
+ {
+  "transferred": 999,
+  "total": 1000,
+  "elapsed": 3.0,
+  "rate": 333.0,
+  "remaining": 1
+ },
+ {
+  "transferred": 1000,
+  "total": 1000,
+  "elapsed": 3.0,
+  "rate": 333.3333333333333,
+  "remaining": 0
+ },
+ {
+  "transferred": 1200,
+  "total": 1000,
+  "elapsed": 3.0,
+  "rate": 400.0,
+  "remaining": 0
+ },
+ {
+  "transferred": 300,
+  "total": null,
+  "elapsed": 2.0,
+  "rate": 150.0,
+  "remaining": null
+ },
+ {
+  "transferred": 5000000,
+  "total": 40000000,
+  "elapsed": 37.3,
+  "rate": 134048.25737265416,
+  "remaining": 262
+ },
+ {
+  "transferred": -5,
+  "total": 1000,
+  "elapsed": 4,
+  "rate": null,
+  "remaining": null
+ },
+ {
+  "transferred": 7,
+  "total": 9,
+  "elapsed": 1.0000001,
+  "rate": 6.99999930000007,
+  "remaining": 1
+ }
+]
