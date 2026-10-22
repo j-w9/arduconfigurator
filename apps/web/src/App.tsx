@@ -8578,11 +8578,6 @@ export function App() {
                           <div className="setup-bench__viewer-titlebar">
                             <strong>Craft View</strong>
                           </div>
-                          <div className="config-pills">
-                            <span>{snapshot.vehicle?.flightMode ?? 'No mode'}</span>
-                            <span>{airframe.frameClassLabel}</span>
-                            <span>{snapshot.vehicle?.armed ? 'Armed' : 'Disarmed'}</span>
-                          </div>
                         </div>
 
                         {/* No caption source line and no heading-reference
