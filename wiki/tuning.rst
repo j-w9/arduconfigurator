@@ -1,23 +1,27 @@
 Tuning
 ======
 
-The **Tuning** tab is a product-shaped front end for ArduCopter's attitude
-controllers. It groups the stick feel, rate gains, and filters that an operator
-actually adjusts into curated cards — backed by real ArduPilot parameters — so a
-tune can be roughed in without diving into the raw parameter tree. Every change
+The **Tuning** tab is a front end for ArduCopter's attitude controllers. It
+groups the stick feel, rate gains and filters you adjust into cards backed by
+real ArduPilot parameters, so a tune can be roughed in without the raw parameter
+tree. Every change
 is staged as a local draft and reviewed before it is written to the controller,
 and known-good tunes can be saved as reusable profiles.
 
-The tab shows **five tasks** by default — **Pilot**, **Filters**, **Autotune**,
-**Review** and **Initial Tune** — which together are a complete path: set stick
-feel, handle noise, let the vehicle find its gains, apply, and get a starting
-point for a new airframe.
+The tab shows **four tasks** by default — **Pilot**, **Filters**, **Autotune**
+and **Initial Tune** — which together are a complete path: set stick feel,
+handle noise, let the vehicle find its gains, and get a starting point for a new
+airframe.
 
 **Expert mode** adds four more: **PID Gains** (the attitude gains, axis by axis),
 **Notches** (the two harmonic notches and the ``FILTn`` bank), **Profiles** (a
 local library of saved tunes) and **Log Tuning** (post-flight log analysis).
 They are tools for someone who already has a tune rather than steps toward
 getting one.
+
+There is no separate review step: whatever a task stages lands in the **draft
+bar** at the foot of the page, and **Write all** there sends it (see
+:ref:`tuning-applying`).
 
 Every task is laid out the same way: **grids, with the settings down the side
 and the axes across** (Roll / pitch | Yaw, Notch 1 | Notch 2, Climb | Descent).
@@ -221,7 +225,7 @@ Filters
 -------
 
 The **Filters** task leads with the derived filter set, and in the default
-(non-Expert) mode that is the only filter surface: you give it one number and it
+(non-Expert) mode that is the only filter panel: you give it one number and it
 works out the rest.
 
 Set filters from the gyro cutoff
@@ -284,12 +288,12 @@ ArduPilot documents that as not recommended.
    Change roll D to **35** before staging and it is flagged: 35 is above
    0.75 × 40 = 30 Hz.
 
-Manual
-~~~~~~
+Manual (Expert)
+~~~~~~~~~~~~~~~
 
-Below the derived panel, **Manual** lists every smoothing parameter: the gyro
-and accel filters, then a Roll | Pitch | Yaw grid of target, error and D filters,
-all in Hz.
+Expert mode adds **Manual** below the derived panel: every smoothing parameter,
+the gyro and accel filters, then a Roll | Pitch | Yaw grid of target, error and D
+filters, all in Hz.
 
 Use it when you want a value the derived panel does not set, or one that
 deliberately departs from ArduPilot's ratios. A handful of parameters live only
@@ -335,7 +339,7 @@ Everything else is yours
 untouched field stages nothing. An earlier version computed the whole rate-loop
 set from the gyro filter, but those ratios come from Mission Planner's *Initial
 Parameters* screen rather than from ArduPilot's own documentation, and this
-surface writes to a flight controller. They are yours to set.
+page writes to a flight controller. They are yours to set.
 
 Each parameter gets its real editor, not a number box: ``INS_HNTCH_MODE`` is a
 named list, ``INS_HNTCH_OPTS`` and ``INS_HNTCH_HMNCS`` are per-bit toggles, and
@@ -416,8 +420,8 @@ derived. The usual routes:
 ``INS_HNTCH_OPTS`` is editable and decoded as you type, so a bitmask reads back
 as names — ``22`` is *Multi-Source, Update at loop rate, Triple notch*.
 
-Like every other tuning surface, it stages drafts; nothing is written until you
-apply them in **Review**.
+Like every other tuning task, it stages drafts; nothing is written until you
+**Write all** from the draft bar.
 
 Autotune
 --------
@@ -459,13 +463,17 @@ controller later and restaged through the same review flow, which makes it easy
 to keep a small library of known-good tunes for similar builds. Protect a
 profile to guard a baseline from accidental deletion.
 
-Review
-------
+.. _tuning-applying:
 
-Staged pilot settings, gains, and filters collect in the **Review** task as a
-grouped diff. Writing them runs the same verified write path as everywhere else
-in the app — each value is sent and confirmed against the controller's read-back
-— so nothing changes on the aircraft until you apply it.
+Applying
+--------
+
+Staged pilot settings, gains, filters and notches collect in the **draft bar**
+at the bottom of the page, which shows the staged count; **Show changes** lists
+each draft as *current → new*, **Write all** sends them, and **Discard** drops
+them. Writing runs the same verified write path as everywhere else in the app —
+each value is sent and confirmed against the controller's read-back — so nothing
+changes on the aircraft until you write it.
 
 .. warning::
 
@@ -493,8 +501,8 @@ deliberate corrections, both noted below.
 In the default mode it asks only those three questions and then stages the
 result; the parameter-by-parameter working is an **Expert** view, along with the
 two option checkboxes (**T-Motor ESCs**, **Failsafes & fence**). The count of
-what will be staged is on the button either way, and nothing is written until you
-apply it in Review.
+what will be staged is on the button either way (**Stage n changes**), and
+nothing is written until you **Write all** from the draft bar.
 
 What it sets, all of it driven by prop size or the pack:
 
@@ -552,8 +560,8 @@ vehicle has now next to what it would become, with the reasoning on hover. A
 parameter the connected vehicle does not report is left out entirely rather
 than offered — it could only stage as invalid, and one invalid row blocks the
 whole batch.
-Nothing is written — **Stage** puts the batch into the same review queue as
-every other tuning change, and you apply it there.
+Nothing is written — **Stage n changes** puts the batch into the same draft bar
+as every other tuning change, and you write it there.
 
 Log Tuning
 ----------
@@ -587,15 +595,17 @@ session (no real flight data) as unusable. For the best results:
 
 How to use it:
 
-#. **Tuning → Log Tuning**, then **Choose flight log (.bin)** and pick a log off
-   the SD card (or one you've already downloaded via the Files tab).
+#. **Tuning → Log Tuning**, then choose a ``.bin`` from disk or press **Pick
+   from vehicle** to read one straight off the connected aircraft. **Set up
+   logging for tuning** jumps to the Logs tab's card of the same name if the
+   log is missing the batch-sampler data (see :doc:`logs-inspectors`).
 #. Read the summary, the per-axis dominant frequencies, the vibration verdict,
    and any detected limit cycle.
 #. For each recommendation, click **Stage** (or **Stage all**). Each confidence
    is tagged (high / medium / low).
-#. The staged changes appear in the Tuning **Review** tab and the global draft
-   bar — **nothing is written to the aircraft** until you review and apply them
-   there through the normal verified-write path. Then re-fly and repeat.
+#. The staged changes appear in the draft bar — **nothing is written to the
+   aircraft** until you **Write all** there through the normal verified-write
+   path. Then re-fly and repeat.
 
 .. note::
 
