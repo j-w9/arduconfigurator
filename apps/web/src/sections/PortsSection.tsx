@@ -40,7 +40,6 @@ export interface PortsSectionProps {
   serialPortViewModels: readonly SerialPortViewModel[]
   visibleSerialPortViewModels: readonly SerialPortViewModel[]
   canNodePeripheralViewModels: readonly CanNodePeripheralViewModel[]
-  portVisibilitySummary: string
   // Drafts: this view's scope
   portsDraftEntries: readonly ParameterDraftEntry[]
   portsStagedDrafts: readonly ParameterDraftEntry[]
@@ -116,7 +115,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
     serialPortViewModels,
     visibleSerialPortViewModels,
     canNodePeripheralViewModels,
-    portVisibilitySummary,
     portsDraftEntries,
     portsStagedDrafts,
     portsInvalidDrafts,
@@ -213,10 +211,6 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 
                       {serialPortViewModels.length > 0 ? (
                         <>
-                          <div className="ports-surface__disclosure">
-                            <small>{portVisibilitySummary}</small>
-                          </div>
-
                           {/* Without @SYS/uarts.txt there are no activity dots
                               at all, which is indistinguishable from "every
                               port is idle". Bench report: a working drive
@@ -653,7 +647,7 @@ export function PortsSection(props: PortsSectionProps): ReactElement {
 
 	              {renderAdditionalSettingsCard(
 	                'Additional port settings',
-	                'These metadata-backed port and peripheral settings are kept local to the Ports view so common setup work does not spill into raw Parameters.',
+	                '',
                 portsAdditionalGroups,
                 portsAdditionalDraftEntries,
                 portsAdditionalStagedDrafts,

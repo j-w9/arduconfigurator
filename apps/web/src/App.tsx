@@ -2857,7 +2857,6 @@ export function App() {
   const {
     serialPortViewModels,
     visibleSerialPortViewModels,
-    hiddenSerialPortCount,
     receiverLinkPorts,
     vtxLinkPorts,
     osdLinkPorts
@@ -7702,13 +7701,6 @@ export function App() {
         : transportMode === 'web-usb-serial'
           ? 'USB (WebUSB) transport'
           : `WebSocket · ${websocketUrl}`
-  const portVisibilitySummary = showAllSerialPorts
-    ? `Showing all ${serialPortViewModels.length} detected serial ports.`
-    : `Showing ${visibleSerialPortViewModels.length} active or edited port${visibleSerialPortViewModels.length === 1 ? '' : 's'} first${
-        hiddenSerialPortCount > 0
-          ? `, with ${hiddenSerialPortCount} unused slot${hiddenSerialPortCount === 1 ? '' : 's'} hidden.`
-          : '.'
-      }`
   const headerBatteryPercent = snapshot.liveVerification.batteryTelemetry.verified
     ? Math.max(8, Math.min(100, snapshot.liveVerification.batteryTelemetry.remainingPercent ?? 62))
     : 6
@@ -9123,7 +9115,6 @@ export function App() {
           serialPortViewModels={serialPortViewModels}
           visibleSerialPortViewModels={visibleSerialPortViewModels}
           canNodePeripheralViewModels={canNodePeripheralViewModels}
-          portVisibilitySummary={portVisibilitySummary}
           portsDraftEntries={portsDraftEntries}
           portsStagedDrafts={portsStagedDrafts}
           portsInvalidDrafts={portsInvalidDrafts}
