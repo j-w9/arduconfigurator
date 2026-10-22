@@ -596,10 +596,7 @@ export function MotorReorderDialog({
               <strong>Spin individual motors</strong>
             </div>
             <div className="bf-gui-box__body">
-              <p className="bf-note">
-                Click a motor to spin it, 2.5 s at 6%. Arrows show the correct
-                direction seen from above; flip a Reverse toggle to fix one (DShot only).
-              </p>
+              <p className="bf-note">Click a motor to spin it.</p>
               {motorPreviewNodes.length > 0 ? (
                 <div className="motor-mixer-preview motor-mixer-preview--dialog">
                   <svg viewBox="0 0 260 260" role="img" aria-label="Clickable motor map — click a motor to spin it">
@@ -693,8 +690,8 @@ export function MotorReorderDialog({
                       <div>
                         <strong>Reverse motor direction</strong>
                         <p>
-                          If the right motor spins the wrong way, reverse it here over DShot (BLHeli/AM32) instead
-                          of swapping wires. {eligibility.canReverse ? 'Takes effect on the next reboot/redetect.' : eligibility.blockedReason}
+                          Flip a motor that spins the wrong way, over DShot.{' '}
+                          {eligibility.canReverse ? 'Takes effect on reboot.' : eligibility.blockedReason}
                         </p>
                       </div>
                     </div>

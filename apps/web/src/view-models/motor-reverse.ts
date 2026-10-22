@@ -38,7 +38,7 @@ export function resolveMotorReverseEligibility(inputs: {
       isDShotProtocol,
       escTypeConfigured,
       canReverse: false,
-      blockedReason: 'Requires a DShot ESC protocol — set MOT_PWM_TYPE to a DShot value (4-7) first.'
+      blockedReason: 'Needs DShot: set MOT_PWM_TYPE to DShot first.'
     }
   }
   if (!escTypeConfigured) {
