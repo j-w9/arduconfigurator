@@ -466,11 +466,6 @@ export function OsdView(props: OsdViewProps) {
     }
     return cell.liveValue === 1
   }
-  const totalMatrixEnabled = elementMatrix.reduce(
-    (sum, row) => sum + row.cells.filter((cell) => matrixCellChecked(cell)).length,
-    0
-  )
-
   return (
     <section className="grid one-up">
       <Panel title="OSD">
@@ -519,7 +514,6 @@ export function OsdView(props: OsdViewProps) {
               <article className="bf-gui-box osd-elements">
                 <div className="bf-gui-box__titlebar">
                   <strong>Elements</strong>
-                  <small>{totalMatrixEnabled} enabled across OSD1-4 · checkboxes pick which screen shows each</small>
                 </div>
                 <div className="bf-gui-box__body">
                   {elementMatrix.length === 0 ? (
@@ -937,14 +931,6 @@ export function OsdView(props: OsdViewProps) {
                       </select>
                     </label>
                   ) : null}
-                  <p className="osd-preview-footer__match-note">
-                    The goggles/VRX, camera, and FC OSD settings must all agree on the same video system — a
-                    mismatch here is a preview-only aid and won&apos;t fix a mismatch on the real hardware.
-                  </p>
-                  <p>
-                    Element positions read from the OSD{activeScreen}_*_X/Y catalog values. Live telemetry feeds the
-                    displayed numbers. Video layout is a preview aid (PAL/NTSC/HD canvas) and doesn’t change FC params.
-                  </p>
                 </div>
               </div>
             </article>
