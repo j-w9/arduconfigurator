@@ -9,9 +9,7 @@ import type { ReactElement, ReactNode } from 'react'
 import type { ParameterDraftEntry, ParameterState } from '@arduconfig/ardupilot-core'
 import {
   ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS,
-  ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS,
-  formatArducopterNotificationLedBrightness,
-  formatArducopterNotificationLedOverride
+  ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS
 } from '@arduconfig/param-metadata'
 import { buttonStyle } from '@arduconfig/ui-kit'
 
@@ -104,7 +102,6 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
     notificationBuzzVolume,
     editedNotificationLedTypes,
     editedNotificationBuzzTypes,
-    notificationLedOutputs,
     outputNotificationDraftEntries,
     outputNotificationStagedDrafts,
     outputNotificationInvalidDrafts,
@@ -128,18 +125,6 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
               <p>Notification LEDs and the buzzer, without dropping into raw parameters.</p>
             </div>
             <DraftReviewBadge staged={outputNotificationStagedDrafts.length} invalid={outputNotificationInvalidDrafts.length} />
-          </div>
-
-          <div className="config-pills">
-            {notificationLedTypesParameter ? <span>LED drivers: {describeBitmaskSelections(notificationLedTypes, ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS, 'Disabled')}</span> : null}
-            {notificationLedBrightnessParameter ? <span>Brightness: {formatArducopterNotificationLedBrightness(notificationLedBrightness)}</span> : null}
-            {notificationLedLengthParameter ? <span>LED length: {notificationLedLength ?? 'Unknown'}</span> : null}
-            {notificationLedOverrideParameter ? <span>LED source: {formatArducopterNotificationLedOverride(notificationLedOverride)}</span> : null}
-            {notificationBuzzTypesParameter ? <span>Buzzer drivers: {describeBitmaskSelections(notificationBuzzTypes, ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS, 'Disabled')}</span> : null}
-            {notificationBuzzVolumeParameter ? <span>Buzzer volume: {notificationBuzzVolume !== undefined ? `${notificationBuzzVolume}%` : 'Unknown'}</span> : null}
-            {notificationLedOutputs.length > 0
-              ? notificationLedOutputs.map((output) => <span key={`notification-output:${output.channelNumber}`}>OUT{output.channelNumber}: {output.functionLabel}</span>)
-              : <span>No NeoPixel output assignment detected yet</span>}
           </div>
 
           <div className="scoped-editor-grid">
