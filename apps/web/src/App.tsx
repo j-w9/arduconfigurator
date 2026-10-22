@@ -8592,9 +8592,6 @@ export function App() {
                             <span>{snapshot.vehicle?.armed ? 'Armed' : 'Disarmed'}</span>
                           </div>
                         </div>
-                        <p className="setup-bench__viewer-note">
-                          Level the aircraft on the desk, verify the model response, then continue into the deeper ArduPilot workflow.
-                        </p>
 
                         {/* No caption source line and no heading-reference
                          *  word here: the card is titled "Craft View" and the
