@@ -254,7 +254,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                                 <span className="info-dot-line">Keep changes small and save a known-good snapshot before pushing responsiveness higher.</span>
                               </InfoDot>
                             </span>
-                            <p>Curated FPV-style rate shaping backed by real ArduPilot acro-rate and angular-acceleration parameters.</p>
                           </div>
                           <StatusBadge tone="neutral">{acroTuningParameters.length + tuningAccelerationParameters.length} controls</StatusBadge>
                         </div>
@@ -281,7 +280,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                                 <span className="info-dot-line">Increase yaw values slowly and validate feel with a short hover or line-of-sight test before pushing further.</span>
                               </InfoDot>
                             </span>
-                            <p>Smoothing, lean angle, and yaw authority for self-leveling and general handling.</p>
                           </div>
                           <StatusBadge tone={toneForScopedDraftReview(tuningRateStagedDrafts.length, tuningRateInvalidDrafts.length)}>
                             {flightFeelParameters.length} controls
@@ -302,7 +300,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                         <div className="switch-exercise-card__header">
                           <div>
                             <strong>Vertical stick feel</strong>
-                            <p>Climb and descent speed, vertical acceleration, and throttle response in AltHold and other height-controlled modes — not the position PIDs.</p>
                           </div>
                           <StatusBadge tone="neutral">{altHoldPilotParameters.length} controls</StatusBadge>
                         </div>
@@ -324,7 +321,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                         <div className="switch-exercise-card__header">
                           <div>
                             <strong>Position-hold feel</strong>
-                            <p>Max speed, acceleration, lean angle, and how hard it brakes when you release the sticks in Loiter.</p>
                           </div>
                           <StatusBadge tone="neutral">{loiterPilotParameters.length} controls</StatusBadge>
                         </div>
@@ -590,7 +586,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                                 <span className="info-dot-line">Change filters carefully and listen for noise or oscillation before moving on to more aggressive gain changes.</span>
                               </InfoDot>
                             </span>
-                            <p>Gyro and accelerometer filters and the rate-loop target/error/D-term frequencies, as one grouped pass instead of a raw parameter list. The harmonic notches have their own task.</p>
                           </div>
                           <StatusBadge tone={toneForScopedDraftReview(tuningFilterStagedDrafts.length, tuningFilterInvalidDrafts.length)}>
                             {tuningFilterParameters.length} filters
