@@ -50,10 +50,7 @@ export function RelaysView(props: RelaysViewProps) {
   } = props
 
   return (
-    <Panel
-      title="Relays"
-      subtitle="Map flight-controller GPIO pins to relay functions — parachute, camera, ICE, or a plain operator-controlled relay — and set each relay's default state and signal polarity."
-    >
+    <Panel title="Relays">
       <div className="relays-tab" data-testid="relays-task-body">
         {groups.length === 0 ? (
           <p className="bf-note" data-testid="relays-empty">
