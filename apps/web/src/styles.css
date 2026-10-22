@@ -19797,11 +19797,11 @@ button.mavlink-inspector__sent-row {
 /* The frame diagram was sized for a dialog that had the screen to itself. */
 .outputs-tab-body--single-page .motor-mixer-preview,
 .outputs-tab-body--single-page .motor-mixer-preview--dialog {
-  min-height: 150px;
+  min-height: 180px;
 }
 .outputs-tab-body--single-page .motor-mixer-preview svg {
-  width: min(100%, 170px);
-  max-height: 170px;
+  width: min(100%, 210px);
+  max-height: 210px;
 }
 
 /* Supporting prose in the left column -- the assignment notes and the section
@@ -20021,10 +20021,10 @@ button.mavlink-inspector__sent-row {
   }
   .outputs-tab-body--single-page .motor-mixer-preview--dialog {
     height: 100%;
-    min-height: 150px;
+    min-height: 180px;
   }
   .outputs-tab-body--single-page .motor-mixer-preview--dialog svg {
-    width: min(100%, 240px);
+    width: min(100%, 290px);
     max-height: 100%;
   }
   .outputs-tab-body--single-page [data-testid='motor-reorder-spin-error'] {

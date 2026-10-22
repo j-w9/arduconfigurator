@@ -26,7 +26,6 @@ import type { MotorReorderRow } from '../hooks/use-motor-reorder'
 
 export interface MotorReorderDialogProps {
   snapshot: ConfiguratorSnapshot
-  airframe: { frameClassLabel: string; frameTypeLabel: string }
   busyAction: string | undefined
   editedValues: Record<string, string>
 
@@ -95,7 +94,6 @@ export interface MotorReorderDialogProps {
 
 export function MotorReorderDialog({
   snapshot,
-  airframe,
   busyAction,
   editedValues,
   motorDialogTab,
@@ -382,12 +380,6 @@ export function MotorReorderDialog({
                   <p>No mapped motor outputs are available to reorder yet.</p>
                 </div>
               )}
-
-              <div className="config-pills">
-                <span>{airframe.frameClassLabel}</span>
-                <span>{airframe.frameTypeLabel}</span>
-                <span>{motorReorderRows.length} mapped outputs</span>
-              </div>
             </div>
           </section>
 

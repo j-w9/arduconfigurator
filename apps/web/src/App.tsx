@@ -6718,7 +6718,6 @@ export function App() {
       <MotorReorderDialog
         inline
         snapshot={snapshot}
-        airframe={airframe}
         busyAction={busyAction}
         editedValues={editedValues}
         motorDialogTab={motorDialogTab}
