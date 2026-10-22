@@ -15,10 +15,9 @@ import type { UseTuningWorkbenchResult } from '../hooks/use-tuning-workbench'
 import { formatSnapshotTimestamp } from '../library-helpers'
 import { formatParameterDelta, formatParameterValue } from '../parameter-format'
 import type { SavedTuningProfile } from '../tuning-profile-library'
-import { toneForParameterDraftStatus, toneForScopedDraftReview } from '../tone-helpers'
+import { toneForScopedDraftReview } from '../tone-helpers'
 import { TUNING_ALL_PID_PARAM_IDS } from '../tuning-params'
 import { InfoDot } from '../views/InfoDot'
-import { DraftReviewBadge } from '../views/DraftReviewBadge'
 import { TuningView, type TuningTaskCard, type TuningTaskId } from '../views/Tuning'
 
 interface TuningAxisGroup {
@@ -61,9 +60,6 @@ export interface TuningCopterSectionDerived {
   tuningProfileNotice: ParameterNotice | undefined
   tuningProfileStorageNotice: LibraryStorageNotice
   // Per-subsection draft slices
-  tuningDraftEntries: readonly ParameterDraftEntry[]
-  tuningStagedDrafts: readonly ParameterDraftEntry[]
-  tuningInvalidDrafts: readonly ParameterDraftEntry[]
   tuningRateStagedDrafts: readonly ParameterDraftEntry[]
   tuningRateInvalidDrafts: readonly ParameterDraftEntry[]
   tuningPidStagedDrafts: readonly ParameterDraftEntry[]
@@ -73,12 +69,6 @@ export interface TuningCopterSectionDerived {
 }
 
 export interface TuningCopterSectionHandlers {
-  handleApplyScopedParameterDrafts: (
-    drafts: readonly ParameterDraftEntry[],
-    busyKey: string,
-    scopeLabel: string
-  ) => void | Promise<void>
-  handleDiscardScopedParameterDrafts: (paramIds: readonly string[], scopeLabel: string) => void
   handleStageTuningMasterAdjustments: () => void
   handleResetTuningMasterSliders: () => void
   handleStageSelectedTuningProfile: () => void
@@ -94,8 +84,6 @@ export interface TuningCopterSectionHandlers {
 
 export interface TuningCopterSectionProps {
   snapshot: ConfiguratorSnapshot
-  canApplyDraftParameters: boolean
-  busyAction: string | undefined
   parameterNotice: ParameterNotice | undefined
   editedValues: Record<string, string>
   parameterDraftById: ReadonlyMap<string, ParameterDraftEntry>
@@ -122,8 +110,6 @@ export interface TuningCopterSectionProps {
 
 export function TuningCopterSection(props: TuningCopterSectionProps): ReactElement {
   const {
-    canApplyDraftParameters,
-    busyAction,
     parameterNotice,
     autotuneSlot,
     logTuningSlot,
@@ -192,9 +178,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     selectedTuningProfileDiffGroups,
     selectedTuningProfileChangedEntries,
     selectedTuningProfileInvalidEntries,
-    tuningDraftEntries,
-    tuningStagedDrafts,
-    tuningInvalidDrafts,
     tuningRateStagedDrafts,
     tuningRateInvalidDrafts,
     tuningPidStagedDrafts,
@@ -206,8 +189,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
   } = derived
 
   const {
-    handleApplyScopedParameterDrafts,
-    handleDiscardScopedParameterDrafts,
     handleStageTuningMasterAdjustments,
     handleResetTuningMasterSliders,
     handleStageSelectedTuningProfile,
@@ -889,7 +870,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                                 <h3>{selectedTuningProfile.label}</h3>
                                 <p>
                                   {selectedTuningProfile.source === 'staged'
-                                    ? 'Built from a staged tune so it can be reapplied later through the normal tuning review flow.'
+                                    ? 'Built from a staged tune so it can be restaged later and written from the draft bar.'
                                     : 'Built directly from the synced live controller tune.'}
                                 </p>
                               </div>
@@ -995,67 +976,6 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                             <p>Create or choose a saved tuning profile to diff it against the current live controller tune.</p>
                           </div>
                         )}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                {activeTuningTaskId === 'review' ? (
-                  <div className="tuning-task-panel tuning-task-panel--stack">
-                    <div className="scoped-review-card">
-                      <div className="switch-exercise-card__header">
-                        <div>
-                          <strong>Tuning changes in review</strong>
-                          <p>All staged rates, gains, and filters stay grouped here before they are written to the controller.</p>
-                        </div>
-                        <DraftReviewBadge staged={tuningStagedDrafts.length} invalid={tuningInvalidDrafts.length} />
-                      </div>
-
-                      {tuningDraftEntries.length > 0 ? (
-                        <div className="scoped-draft-list">
-                          {tuningDraftEntries.map((draft) => (
-                            <article key={draft.id} className={`scoped-draft-item scoped-draft-item--${draft.status}`}>
-                              <div className="scoped-draft-item__header">
-                                <strong>{draft.label}</strong>
-                                <StatusBadge tone={toneForParameterDraftStatus(draft.status)}>{draft.status}</StatusBadge>
-                              </div>
-                              <p>{draft.id}</p>
-                              <small>
-                                {draft.status === 'staged'
-                                  ? `${formatParameterValue(draft.currentValue, draft.definition?.unit)} to ${formatParameterValue(
-                                      draft.nextValue,
-                                      draft.definition?.unit
-                                    )}`
-                                  : draft.reason ?? 'Draft matches the live controller value.'}
-                              </small>
-                            </article>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="success-copy">No tuning changes are staged right now.</p>
-                      )}
-
-                      <div className="switch-exercise-controls">
-                        <button
-                          data-testid="apply-tuning-changes-button"
-                          style={buttonStyle('primary')}
-                          onClick={() => void handleApplyScopedParameterDrafts(tuningDraftEntries, 'tuning:apply', 'Tuning')}
-                          disabled={
-                            busyAction !== undefined ||
-                            tuningStagedDrafts.length === 0 ||
-                            tuningInvalidDrafts.length > 0 ||
-                            !canApplyDraftParameters
-                          }
-                        >
-                          {busyAction === 'tuning:apply' ? 'Applying…' : `Apply Tuning Changes (${tuningStagedDrafts.length})`}
-                        </button>
-                        <button
-                          style={buttonStyle()}
-                          onClick={() => handleDiscardScopedParameterDrafts(tuningDraftEntries.map((entry) => entry.id), 'tuning')}
-                          disabled={busyAction !== undefined || tuningDraftEntries.length === 0}
-                        >
-                          Discard Tuning Changes
-                        </button>
                       </div>
                     </div>
                   </div>

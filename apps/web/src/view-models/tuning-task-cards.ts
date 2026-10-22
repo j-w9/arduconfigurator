@@ -28,8 +28,6 @@ export interface TuningTaskCardCounts {
   profileInvalidCount: number
   profileChangedCount: number
   savedProfileCount: number
-  reviewInvalidCount: number
-  reviewStagedCount: number
   initialTuneStagedCount: number
   /**
    * Expert mode shows every task. Basic mode shows the ones that make up a
@@ -81,8 +79,6 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
     profileInvalidCount,
     profileChangedCount,
     savedProfileCount,
-    reviewInvalidCount,
-    reviewStagedCount,
     initialTuneStagedCount,
     isExpertMode
   } = counts
@@ -180,23 +176,6 @@ export function buildTuningTaskCards(counts: TuningTaskCardCounts): TuningTaskCa
             : savedProfileCount > 0
               ? 'success'
               : 'neutral'
-    },
-    {
-      id: 'review',
-      label: 'Review',
-      value:
-        reviewInvalidCount > 0
-          ? `${reviewInvalidCount} invalid`
-          : reviewStagedCount > 0
-            ? `${reviewStagedCount} staged`
-            : 'In sync',
-      detail:
-        reviewStagedCount > 0
-          ? 'Tuning changes are staged locally. Review the grouped diff before writing them to the controller.'
-          : reviewInvalidCount > 0
-            ? 'Some tuning changes need attention before they can be applied safely.'
-            : 'Tuning values are currently in sync with the live controller snapshot.',
-      tone: reviewInvalidCount > 0 ? 'danger' : reviewStagedCount > 0 ? 'warning' : 'success'
     },
     {
       // First in intent, last in the list on purpose: it is where a NEW

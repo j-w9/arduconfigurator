@@ -25,8 +25,6 @@ function counts(overrides: Partial<TuningTaskCardCounts> = {}): TuningTaskCardCo
     // Existing cases assert card CONTENT, which is the same in both modes;
     // Expert keeps every card so those assertions stay about the text.
     isExpertMode: true,
-    reviewInvalidCount: 0,
-    reviewStagedCount: 0,
     ...overrides
   }
 }
@@ -40,7 +38,6 @@ describe('buildTuningTaskCards', () => {
       'notches',
       'autotune',
       'profiles',
-      'review',
             'initial-tune',
       'log-tuning'
     ])
@@ -57,12 +54,6 @@ describe('buildTuningTaskCards', () => {
     expect(invalid).toMatchObject({ value: '1 invalid', tone: 'danger' })
   })
 
-  it('review: in sync by default, warns on staged, danger on invalid', () => {
-    const review = (c: TuningTaskCardCounts) => buildTuningTaskCards(c).find((card) => card.label === 'Review')
-    expect(review(counts())).toMatchObject({ value: 'In sync', tone: 'success' })
-    expect(review(counts({ reviewStagedCount: 3 }))).toMatchObject({ value: '3 staged', tone: 'warning' })
-    expect(review(counts({ reviewInvalidCount: 1, reviewStagedCount: 3 }))).toMatchObject({ value: '1 invalid', tone: 'danger' })
-  })
 })
 
 describe('the Initial Tune card', () => {
@@ -72,8 +63,8 @@ describe('the Initial Tune card', () => {
     // pressing it on an aircraft that is already tuned.
     const ids = buildTuningTaskCards(counts()).map((card) => card.id)
     expect(ids).toContain('initial-tune')
-    // After Review, not before Rates: the ordering is the guard rail.
-    expect(ids.indexOf('initial-tune')).toBeGreaterThan(ids.indexOf('review'))
+    // After Profiles, not before Rates: the ordering is the guard rail.
+    expect(ids.indexOf('initial-tune')).toBeGreaterThan(ids.indexOf('profiles'))
   })
 
   it('reads as a starting point until something is staged', () => {
@@ -105,7 +96,6 @@ describe('the Expert gate on the Tuning task strip', () => {
       'notches',
       'autotune',
       'profiles',
-      'review',
       'initial-tune',
       'log-tuning'
     ])
@@ -123,7 +113,7 @@ describe('the Expert gate on the Tuning task strip', () => {
     // Stick feel, noise, gains (via Autotune), apply, and a starting point for
     // a new airframe. Hiding tabs must not remove the ability to finish a tune.
     // Notches is Expert-only for the same reason: its fields always were.
-    expect(ids(false)).toEqual(['rates', 'filters', 'autotune', 'review', 'initial-tune'])
+    expect(ids(false)).toEqual(['rates', 'filters', 'autotune', 'initial-tune'])
   })
 
   it('keeps Initial Tune last in both modes', () => {
@@ -132,7 +122,7 @@ describe('the Expert gate on the Tuning task strip', () => {
     // invites pressing it on an aircraft that is already tuned. The card's own
     // comment says so; this pins it against a well-meant reorder.
     expect(ids(false)[ids(false).length - 1]).toBe('initial-tune')
-    expect(ids(true).indexOf('initial-tune')).toBeGreaterThan(ids(true).indexOf('review'))
+    expect(ids(true).indexOf('initial-tune')).toBeGreaterThan(ids(true).indexOf('profiles'))
   })
 
   it('preserves the relative order of the tasks basic mode keeps', () => {

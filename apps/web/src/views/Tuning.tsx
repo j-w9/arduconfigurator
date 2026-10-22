@@ -13,7 +13,6 @@ export type TuningTaskId =
   | 'filters'
   | 'autotune'
   | 'profiles'
-  | 'review'
   | 'log-tuning'
   | 'initial-tune'
 

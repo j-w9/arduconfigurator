@@ -235,7 +235,7 @@ export function InitialTuneView(props: InitialTuneViewProps): ReactElement {
             data-testid="initial-tune-stage"
             onClick={() => onStage(changes.map(({ id, value }) => ({ id, value })))}
             disabled={disabled}
-            title="Adds these to the tuning review. Nothing is written until you apply it there."
+            title="Stages these as drafts. Nothing is written until you Write all from the draft bar."
           >
             Stage {changes.length} change{changes.length === 1 ? '' : 's'}
           </button>
