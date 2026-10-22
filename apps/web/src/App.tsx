@@ -161,6 +161,9 @@ import { detectMavlinkPort } from './serial-autodetect'
 import { canApplyParameterChanges, parameterApplyBlockedReason } from './apply-gate'
 import { ALL_MOTOR_TEST_OUTPUT, ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS, buildMotorTestRequest } from './motor-test-helpers'
 import { canUseGuidedSetupTestingShortcut, isExpertOnlyView, readGuidedSetupShortcutSectionId } from './guided-setup-shortcut'
+import { CompassOrderCard } from './sections/CompassOrderCard'
+import { buildCompassOrder, isCompassOrderParamId, removeCompassPriority, swapCompassPriorities } from './view-models/compass-order'
+import { selectViewDrafts } from './selectors/view-drafts'
 import { actionLabels, type GuidedActionId } from './guided-action-labels'
 import {
   canRunGuidedAction
@@ -6825,6 +6828,17 @@ export function App() {
       }),
     [allAppViews, configSections, peripheralSections, metadataCatalog]
   )
+  // Peripherals ▸ Compass order (view-models/compass-order.ts). Its PRIO
+  // drafts apply from the card, not from the tab's Apply: they are not
+  // section fields, and they end in a reboot follow-up of their own.
+  const compassOrder = useMemo(
+    () => buildCompassOrder({ parameters: snapshot.parameters, editedValues }),
+    [snapshot.parameters, editedValues]
+  )
+  const compassOrderDrafts = useMemo(
+    () => selectViewDrafts(parameterDraftEntries, isCompassOrderParamId),
+    [parameterDraftEntries]
+  )
   const openFeature = useCallback(
     (entry: FeatureSearchResult) => {
       if (entry.configCategory) {
@@ -10621,7 +10635,36 @@ export function App() {
             // with the GPS peripheral, next to the driver and rate settings
             // that determine whether there is a fix at all.
             ...peripheralSections.map((section) =>
-              section.id === 'gps'
+              section.id === 'compass'
+                ? {
+                    ...section,
+                    footer: (
+                      <CompassOrderCard
+                        model={compassOrder}
+                        draftEntries={compassOrderDrafts.entries}
+                        stagedDrafts={compassOrderDrafts.staged}
+                        invalidDrafts={compassOrderDrafts.invalid}
+                        busyAction={busyAction}
+                        canApply={canApplyDraftParameters}
+                        onSwap={(a, b) => {
+                          for (const draft of swapCompassPriorities(compassOrder, a, b)) setDraft(draft.paramId, draft.value)
+                        }}
+                        onRemove={(priority) => {
+                          for (const draft of removeCompassPriority(compassOrder, priority)) setDraft(draft.paramId, draft.value)
+                        }}
+                        onApply={() =>
+                          void handleApplyScopedParameterDrafts(compassOrderDrafts.entries, 'peripherals:compass-order', 'Compass order')
+                        }
+                        onDiscard={() =>
+                          handleDiscardScopedParameterDrafts(
+                            compassOrderDrafts.entries.map((entry) => entry.id),
+                            'compass order'
+                          )
+                        }
+                      />
+                    )
+                  }
+                : section.id === 'gps'
                 ? {
                     ...section,
                     footer: (

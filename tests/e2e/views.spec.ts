@@ -8001,6 +8001,57 @@ test.describe('Peripherals tab', () => {
     }
   })
 
+  test('Compass order: the device ids read as words, priorities swap and a ghost is removed as staged PRIO drafts', async ({ page }) => {
+    // A third priority naming an RM3100 on SPI that was not found this boot:
+    // the ghost that fails pre-arm after a module is unplugged.
+    await page.goto(`/?demoParamOverrides=${encodeURIComponent('COMPASS_PRIO3_ID:1114370')}`)
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('view-button-peripherals').click()
+    await page.getByTestId('config-category-compass').click()
+    const card = page.getByTestId('compass-order')
+    await expect(card).toBeVisible()
+    const row = (priority: number) => page.getByTestId(`compass-order-row-${priority}`)
+    await expect(row(1)).toContainText('AK09916')
+    await expect(row(1)).toContainText('I2C bus 1, address 0x0C')
+    await expect(row(1)).toContainText('External')
+    await expect(row(1)).toContainText('Calibrated')
+    await expect(row(2)).toContainText('IST8310')
+    await expect(row(2)).toContainText('Internal')
+    await expect(row(2)).toContainText('Not calibrated')
+    await expect(row(3)).toContainText('RM3100')
+    await expect(row(3)).toContainText('not found')
+    await expect(page.getByTestId('compass-order-ghost')).toContainText('Priority 3')
+
+    // Move the internal one first: two PRIO drafts, the rows follow them, and
+    // each device keeps its own slot settings until the reboot.
+    await page.getByTestId('compass-order-up-2').click()
+    await expect(page.locator('body')).toContainText('2 staged changes')
+    await expect(row(1)).toContainText('IST8310')
+    await expect(row(1)).toContainText('settings in slot 2 until reboot')
+    await expect(row(2)).toContainText('AK09916')
+
+    // Remove the ghost: its slot goes to 0 (one more draft, no gap to close).
+    await page.getByTestId('compass-order-remove-3').click()
+    await expect(page.locator('body')).toContainText('3 staged changes')
+    await expect(row(3)).toContainText('The next compass found takes this slot')
+    await expect(page.getByTestId('compass-order-ghost')).toHaveCount(0)
+
+    // Apply writes the three PRIO values and, as they are read at boot, ends
+    // in the reboot follow-up rather than an auto-refresh.
+    await expect(page.getByTestId('compass-order-apply')).toHaveText('Apply compass order (3)')
+    await page.getByTestId('compass-order-apply').click()
+    await expect(page.getByTestId('compass-order-apply')).not.toContainText('Applying', { timeout: 60_000 })
+    // The runtime's own verify lines are on the Status & Info feed; the
+    // "Verified N change(s)" notice renders on the Parameters tab only.
+    await page.getByTestId('view-button-setup').click()
+    await expect(page.locator('body')).toContainText('Verified parameter COMPASS_PRIO1_ID = 658945.')
+    await expect(page.locator('body')).toContainText('Verified parameter COMPASS_PRIO2_ID = 592905.')
+    await expect(page.locator('body')).toContainText('Verified parameter COMPASS_PRIO3_ID = 0.')
+    await expect(page.locator('body')).toContainText(/reboot-sensitive/i)
+  })
+
   test('GPS and Compass are gone from Config', async ({ page }) => {
     // The point of the move: one home per peripheral. Two places to set
     // GPS_TYPE gave an operator no sign which was authoritative.
