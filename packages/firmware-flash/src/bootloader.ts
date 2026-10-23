@@ -110,6 +110,10 @@ export type FlashPhase =
 export type FlashProgress = (phase: FlashPhase, ratio: number) => void
 
 const SYNC_TIMEOUT_MS = 3000
+// After a refused chunk: how long the line must be quiet before the
+// chunk is resent, and the most time spent waiting for that quiet.
+const CHUNK_RESYNC_SILENCE_MS = 200
+const CHUNK_RESYNC_MAX_MS = 3000
 // CHIP_ERASE timeout. Ports QGC's scaling (Bootloader.cc:166-171): 20s
 // baseline + 4s per MB of flash above 2 MB (uploader.py uses a flat 20s).
 // The fallback is a flat 40s when flashSize is unknown.
@@ -265,6 +269,66 @@ export class BootloaderClient {
     throw new Error('bootloader: timed out waiting for chip erase')
   }
 
+  /**
+   * Wait until the bootloader has been silent for `silenceMs`, dropping
+   * whatever arrived. Used after a rejected chunk: the bootloader parses
+   * the rest of a frame it gave up on as commands, so its replies to that
+   * tail must be gone before the chunk is sent again.
+   */
+  private async drainInput(silenceMs = CHUNK_RESYNC_SILENCE_MS, maxMs = CHUNK_RESYNC_MAX_MS): Promise<void> {
+    const deadline = Date.now() + maxMs
+    while (Date.now() < deadline) {
+      await this.io.flushInput?.()
+      try {
+        await this.io.read(1, silenceMs)
+      } catch {
+        return
+      }
+    }
+  }
+
+  /**
+   * Send one PROG_MULTI / EXTF_PROG_MULTI frame and wait for its ack. The
+   * command, length, payload and EOC go out in ONE write. The bootloader
+   * gives the host only 50 ms to follow the command byte with the length
+   * byte and 200 ms to follow the payload with EOC (bl_protocol.cpp
+   * PROTO_PROG_MULTI: cin(50), wait_for_eoc(200)); as four separate Web
+   * Serial writes each byte was its own trip through the browser and the
+   * OS driver, and a host that stalled between two of them got the chunk
+   * refused with INVALID after the chip was already erased. One write
+   * leaves the device nothing to time out on: a 131-byte frame sits well
+   * inside the bootloader's 256-byte serial RX buffer.
+   *
+   * The bootloader does not advance its write address on a refused
+   * chunk, so one refusal is retried at the same offset after the line is
+   * quiet and a GET_SYNC has been answered. A second refusal is the real
+   * error.
+   */
+  private async programChunk(command: number, chunk: Uint8Array): Promise<void> {
+    const frame = new Uint8Array(chunk.length + 3)
+    frame[0] = command
+    frame[1] = chunk.length
+    frame.set(chunk, 2)
+    frame[frame.length - 1] = EOC
+    // flushInput() before each chunk drops any stray byte so the ack can't
+    // be shifted by a late reply tail / boot banner.
+    await this.io.flushInput?.()
+    await this.io.write(frame)
+    try {
+      await this.getSync()
+    } catch (error) {
+      if (!(error instanceof Error) || !/INVALID OPERATION/.test(error.message)) throw error
+      await this.drainInput()
+      await this.sync()
+      await this.io.write(frame)
+      try {
+        await this.getSync()
+      } catch {
+        throw error
+      }
+    }
+  }
+
   /** Program the 4-byte-aligned image in PROG_MULTI_MAX chunks. */
   async program(alignedImage: Uint8Array, onProgress?: FlashProgress): Promise<void> {
     if (alignedImage.length % 4 !== 0) {
@@ -273,16 +337,7 @@ export class BootloaderClient {
     const total = alignedImage.length
     for (let offset = 0; offset < total; offset += PROG_MULTI_MAX) {
       const chunk = alignedImage.subarray(offset, Math.min(offset + PROG_MULTI_MAX, total))
-      // Send PROG_MULTI / len / payload / EOC as four separate writes so
-      // the host's USB CDC stack paces them and doesn't overflow the
-      // bootloader RX buffer (uploader.py does the same). flushInput()
-      // before each chunk drops any stray byte so a chunk can't be shifted.
-      await this.io.flushInput?.()
-      await this.io.write(new Uint8Array([PROG_MULTI]))
-      await this.io.write(new Uint8Array([chunk.length]))
-      await this.io.write(chunk)
-      await this.io.write(new Uint8Array([EOC]))
-      await this.getSync()
+      await this.programChunk(PROG_MULTI, chunk)
       onProgress?.('program', Math.min(1, (offset + chunk.length) / total))
     }
   }
@@ -381,12 +436,7 @@ export class BootloaderClient {
     const total = extfImage.length
     for (let offset = 0; offset < total; offset += PROG_MULTI_MAX) {
       const chunk = extfImage.subarray(offset, Math.min(offset + PROG_MULTI_MAX, total))
-      await this.io.flushInput?.()
-      await this.io.write(new Uint8Array([EXTF_PROG_MULTI]))
-      await this.io.write(new Uint8Array([chunk.length]))
-      await this.io.write(chunk)
-      await this.io.write(new Uint8Array([EOC]))
-      await this.getSync()
+      await this.programChunk(EXTF_PROG_MULTI, chunk)
       onProgress?.('extf-program', Math.min(1, (offset + chunk.length) / total))
     }
   }
