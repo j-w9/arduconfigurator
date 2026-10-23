@@ -11,6 +11,8 @@
 //      asynchronously; revoking the object URL synchronously on the next line
 //      can race the browser reading the blob and cancel the download — again,
 //      most visible in Brave/Firefox.
+const BLOB_URL_LIFETIME_MS = 2 * 60_000
+
 function triggerBlobDownload(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
@@ -21,11 +23,15 @@ function triggerBlobDownload(filename: string, blob: Blob): void {
   document.body.appendChild(anchor)
   anchor.click()
   // Defer cleanup so the browser has the blob URL + the anchor in the DOM for
-  // the duration of the download dispatch.
+  // the duration of the download dispatch. Two minutes, not a tick: a browser
+  // or desktop shell that asks where to save only reads the blob once the
+  // save dialog closes, and an operator who renames the file there takes
+  // longer than one that accepts the name. A URL revoked under an open dialog
+  // is a download that fails after the rename.
   setTimeout(() => {
     anchor.remove()
     URL.revokeObjectURL(url)
-  }, 0)
+  }, BLOB_URL_LIFETIME_MS)
 }
 
 export function downloadBinaryFile(
