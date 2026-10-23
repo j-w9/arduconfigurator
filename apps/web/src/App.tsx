@@ -9945,6 +9945,7 @@ export function App() {
             <LogTuningView
               onStageParam={handleStageLogTuningParam}
               stagedParams={new Set(parameterDraftById.keys())}
+              onboardLogs={onboardLogs}
             />
           }
           autotuneSlot={

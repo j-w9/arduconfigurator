@@ -24,6 +24,7 @@ import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import { readParameterValue } from '../selectors/parameter-read'
+import { OnboardLogPicker, type OnboardLogPickerLogs } from './OnboardLogPicker'
 
 export interface ValtCalibrationCardProps {
   snapshot: ConfiguratorSnapshot
@@ -34,13 +35,7 @@ export interface ValtCalibrationCardProps {
    * The vehicle's own logs, so a flight can be fitted without downloading it
    * first. Absent when nothing is connected.
    */
-  onboardLogs?: {
-    logs: readonly { id: number; sizeBytes: number }[]
-    status: string
-    list: () => void
-    fetchBytes: (id: number) => Promise<Uint8Array | undefined>
-    logNamesById?: ReadonlyMap<number, string>
-  }
+  onboardLogs?: OnboardLogPickerLogs
   /**
    * Where they are signed in, so the card says so rather than just being here.
    *
@@ -256,63 +251,15 @@ export function ValtCalibrationCard({
             }}
           />
         </label>
-        {/* The vehicle is already holding the log. Making the operator download
-            it and hand it back through a file picker is a round trip through
-            the filesystem for a file that is right there. */}
         {onboardLogs ? (
-          <div className="valt-onboard-logs" data-testid="valt-onboard-logs">
-            {onboardLogs.logs.length === 0 ? (
-              <button
-                type="button"
-                style={buttonStyle()}
-                data-testid="valt-list-onboard-logs"
-                disabled={busy || onboardLogs.status === 'listing'}
-                onClick={onboardLogs.list}
-              >
-                {onboardLogs.status === 'listing' ? 'Reading log list…' : 'Pick from vehicle'}
-              </button>
-            ) : (
-              <label className="scoped-editor-field scoped-editor-field--compact">
-                <span>From the vehicle</span>
-                <select
-                  data-testid="valt-onboard-log-select"
-                  disabled={busy}
-                  defaultValue=""
-                  onChange={(event) => {
-                    const id = Number(event.target.value)
-                    event.target.value = ''
-                    if (!Number.isFinite(id)) return
-                    void (async () => {
-                      setBusy(true)
-                      setError(undefined)
-                      try {
-                        const bytes = await onboardLogs.fetchBytes(id)
-                        if (!bytes) {
-                          setError('That log could not be read from the vehicle.')
-                          return
-                        }
-                        handleBytes(bytes, onboardLogs.logNamesById?.get(id) ?? `log ${id}.bin`)
-                      } catch (caught) {
-                        setError(
-                          caught instanceof Error ? caught.message : 'That log could not be read from the vehicle.'
-                        )
-                      } finally {
-                        setBusy(false)
-                      }
-                    })()
-                  }}
-                >
-                  <option value="">Choose a log…</option>
-                  {onboardLogs.logs.map((log) => (
-                    <option key={log.id} value={log.id}>
-                      {onboardLogs.logNamesById?.get(log.id) ?? `Log ${log.id}`} (
-                      {(log.sizeBytes / 1024 / 1024).toFixed(1)} MB)
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-          </div>
+          <OnboardLogPicker
+            onboardLogs={onboardLogs}
+            busy={busy}
+            testIdPrefix="valt"
+            onBusy={setBusy}
+            onBytes={handleBytes}
+            onError={setError}
+          />
         ) : null}
         {filename ? <small className="log-tuning__filename">{filename}</small> : null}
       </div>

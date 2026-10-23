@@ -1669,6 +1669,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   canApplyDraftParameters={canApplyDraftParameters}
                   busyAction={busyAction}
                   setDraft={setDraft}
+                  onboardLogs={onboardLogs}
                 />
               ) : null}
               {isExpertMode && calibrationTab === 'flight' ? (
