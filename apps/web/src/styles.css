@@ -20507,3 +20507,27 @@ button.mavlink-inspector__sent-row {
 .workspace-nav__item.is-active .workspace-nav__icon {
   color: var(--primary-400);
 }
+
+/* Config card title badges (ported from beta with the Power card). */
+.config-section__badge {
+  margin-left: auto;
+}
+
+.config-section__badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.power-panel {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  /* Back to a single column where 210px tracks would overflow. */
+  #setup-panel-power .scoped-editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

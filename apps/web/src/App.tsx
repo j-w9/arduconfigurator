@@ -6890,12 +6890,30 @@ export function App() {
     )
   }
 
+  function renderPowerSectionBadge(): ReactNode {
+    const healthTone = batteryHealthTone(snapshot)
+    const staged = powerStagedDrafts.length
+    const invalid = powerInvalidDrafts.length
+    if (healthTone === 'success' && staged === 0 && invalid === 0) {
+      return null
+    }
+    return (
+      <span className="config-section__badges" data-testid="power-section-badge">
+        {invalid > 0 || staged > 0 ? (
+          <StatusBadge tone={toneForScopedDraftReview(staged, invalid)}>
+            {invalid > 0 ? `${invalid} invalid` : `${staged} staged`}
+          </StatusBadge>
+        ) : null}
+        {healthTone === 'success' ? null : (
+          <StatusBadge tone={healthTone}>{batteryHealthLabel(snapshot)}</StatusBadge>
+        )}
+      </span>
+    )
+  }
+
   function renderPowerSectionFooter(): ReactNode {
     return (
         <PowerView
-          isBatteryVerified={snapshot.liveVerification.batteryTelemetry.verified}
-          batteryHealthLabel={batteryHealthLabel(snapshot)}
-          batteryHealthTone={batteryHealthTone(snapshot)}
           parameterNotice={parameterNotice ? { tone: parameterNotice.tone, toneLabel: statusToneLabel(parameterNotice.tone), text: parameterNotice.text } : null}
           liveMetrics={{
             voltageText: formatVoltage(snapshot.liveVerification.batteryTelemetry.voltageV),
@@ -6921,14 +6939,6 @@ export function App() {
             setDraft(paramId, value)
           }
           draftStatusById={parameterDraftById}
-          scopedReviewStatusLabel={
-            powerInvalidDrafts.length > 0
-              ? `${powerInvalidDrafts.length} invalid`
-              : powerStagedDrafts.length > 0
-                ? `${powerStagedDrafts.length} staged`
-                : 'in sync'
-          }
-          scopedReviewTone={toneForScopedDraftReview(powerStagedDrafts.length, powerInvalidDrafts.length)}
           draftItems={powerDraftEntries.map((draft): PowerDraftItem => ({
             id: draft.id,
             label: draft.label,
@@ -6948,7 +6958,9 @@ export function App() {
           onDiscard={() => handleDiscardScopedParameterDrafts(powerDraftEntries.map((entry) => entry.id), 'power')}
           additionalSettingsSlot={renderAdditionalSettingsCard(
             'Additional battery settings',
-            'Metadata-backed battery-monitor knobs that extend this view. Failsafe-shaped knobs live exclusively on the Failsafe tab.',
+            // Said once, in the Battery card's "i"; failsafe knobs are on the
+            // Failsafe tab.
+            '',
             powerAdditionalGroups,
             powerAdditionalDraftEntries,
             powerAdditionalStagedDrafts,
@@ -10352,13 +10364,20 @@ export function App() {
               footer: renderFlightModesFooter()
             },
             {
+              // One heading for the whole tab. It used to read "Battery &
+              // power", then "Battery", then "Battery monitor", then "Battery
+              // configuration" over the same four fields.
               id: 'power',
               title: 'Battery',
               description:
-                'Battery monitor, capacity, and the arming thresholds that depend on them, with live voltage and current from the vehicle.',
+                'Battery monitor, capacity and the arming thresholds that depend on them, with live voltage and current from the vehicle. After changing the monitor source or an arming threshold, check the live readout and pre-arm before flying. The setup checklist counts this done only when the settings and the live telemetry agree. Failsafe triggers and actions are on the Failsafe tab; pre-arm status is on Status & Info.',
               category: 'power' as const,
               wide: true,
               fields: [],
+              // A badge only when there is something to say: the battery needs
+              // attention (or telemetry has not arrived), or battery changes
+              // are staged. "Battery healthy" was a badge saying nothing.
+              badge: renderPowerSectionBadge(),
               footer: renderPowerSectionFooter()
             }
           ])}
