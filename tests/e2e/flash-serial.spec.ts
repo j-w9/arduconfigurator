@@ -121,6 +121,40 @@ test.describe('Flash firmware over Web Serial (fake bootloader)', () => {
     expect(await fakeSerialFlashHex(page, IMAGE_BYTES, IMAGE_BYTES + 16)).toBe('ff'.repeat(16))
   })
 
+  test('a frame the bootloader swallows without a reply is resent after the filler and resync', async ({ page }) => {
+    // Field report (MicoAir743v2): 66 s into Writing the client saw no
+    // INVALID, just "serial read timed out waiting for 1 bytes". A silent
+    // ack takes the same recovery as a refused one.
+    const image = pseudoRandomImage(IMAGE_BYTES, 0x7a3b1c9d)
+    await installFakeSerial(page, {
+      boardId: BOARD_ID,
+      granted: true,
+      plugged: false,
+      silentProgMultiOnce: true,
+      silentProgMultiAt: 5
+    })
+    await connectDemo(page)
+    await stageFirmware(page, buildApj(image))
+
+    await page.getByTestId('firmware-flash').click()
+    await expect(page.getByTestId('firmware-await-bootloader')).toBeVisible()
+    await plugFakeSerial(page)
+
+    await expect(page.getByTestId('firmware-done')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId('firmware-error')).toHaveCount(0)
+    await expect.poll(async () => (await fakeSerialStats(page)).rebooted).toBe(true)
+
+    const stats = await fakeSerialStats(page)
+    expect(stats.progMulti.injectedSilences).toBe(1)
+    const frames = stats.frames.filter((frame) => frame.command === PROG_MULTI && frame.status !== 'ignored')
+    const silentIndex = frames.findIndex((frame) => frame.status === 'silent')
+    expect(silentIndex).toBeGreaterThanOrEqual(0)
+    const resent = frames.slice(silentIndex + 1).find((frame) => frame.status === 'ok')
+    expect(resent).toMatchObject({ offset: frames[silentIndex].offset, writes: 1 })
+    expect(stats.programmedBytes).toBe(IMAGE_BYTES)
+    expect(await fakeSerialFlashHex(page, 0, IMAGE_BYTES)).toBe(hex(image))
+  })
+
   test('a refused frame whose tail opens a payload read on the bootloader is still resent', async ({ page }) => {
     // The hazard: after a refusal the bootloader parses the frame's tail as
     // commands. A 0x27 followed by a multiple-of-4 byte near the end of the

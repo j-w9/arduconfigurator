@@ -442,8 +442,11 @@ test('program(): 128-byte PROG_MULTI chunking, one write per frame', async () =>
 // other frame INSYNC/OK. read() with nothing queued is a timeout, which is
 // what the resync drain waits for.
 class AnsweringBootloader {
-  constructor({ refuse = [] } = {}) {
+  constructor({ refuse = [], silent = [] } = {}) {
     this.refuse = new Set(refuse)
+    // Frames (by send count) the bootloader swallows without any reply, as
+    // one stuck in a payload read does.
+    this.silent = new Set(silent)
     this.writes = []
     this.queue = []
     this.progSends = 0
@@ -453,6 +456,7 @@ class AnsweringBootloader {
     this.writes.push(frame)
     if (frame[0] === 0x27) {
       this.progSends += 1
+      if (this.silent.has(this.progSends)) return
       this.queue.push(INSYNC, this.refuse.has(this.progSends) ? INVALID : OK)
     } else if (frame[0] === 0x21) {
       this.queue.push(INSYNC, OK)
@@ -487,6 +491,21 @@ test('program(): a chunk the bootloader refuses is resent at the same offset aft
   assert.equal(io.writes[5][1], 44, 'the final 44-byte chunk follows')
   // Progress is reported once per chunk, never for the refused attempt.
   assert.deepEqual(ratios.map((r) => Math.round(r * 1000)), [427, 853, 1000])
+})
+
+test('program(): a chunk whose ack never comes is resent the same way (filler, resync, same offset)', async () => {
+  // Field report (MicoAir743v2, 66 s into Writing): no INVALID, just silence
+  // -- "serial read timed out waiting for 1 bytes". A bootloader stuck in a
+  // payload read says nothing; the filler ends that read.
+  const image = padTo4(new Uint8Array(300).map((_, i) => (i * 5) & 0xff))
+  const io = new AnsweringBootloader({ silent: [2] })
+  await new BootloaderClient(io).program(image)
+  // chunk1 / chunk2 (silent) / filler / GET_SYNC / chunk2 again / chunk3
+  assert.equal(io.writes.length, 6)
+  assert.equal(io.writes[2].length, 256)
+  assert.deepEqual(io.writes[3], [0x21, 0x20])
+  assert.deepEqual(io.writes[4], io.writes[1], 'the identical frame, same offset')
+  assert.equal(io.writes[5][1], 44)
 })
 
 test('program(): a chunk refused twice is the real error, reported as INVALID OPERATION', async () => {

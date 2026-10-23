@@ -1131,7 +1131,15 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       }
       setPhase('flashing')
       setError(null)
+      // Every tenth of each phase goes to the debug log, so a report says
+      // how far a write got before it stopped (the label alone did not).
+      const loggedDecile: Partial<Record<string, number>> = {}
       const onProgress: FlashProgress = (p, ratio) => {
+        const decile = Math.floor(ratio * 10)
+        if (loggedDecile[p] !== decile) {
+          loggedDecile[p] = decile
+          appendDebug(`progress: ${p} ${decile * 10}%`)
+        }
         const label =
           p === 'erase'
             ? 'Erasing'
