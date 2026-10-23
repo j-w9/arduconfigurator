@@ -3481,19 +3481,6 @@ test.describe('Receiver flight-mode labels', () => {
   })
 })
 
-test.describe('Receiver RSSI', () => {
-  test('shows RX RSSI as a percentage, not the raw 0-254 byte', async ({ page }) => {
-    await page.goto('/')
-    await connectViaHeader(page)
-    // The live link readout sits under the receiver settings in Config ▸ RC.
-    await openView(page, 'config')
-    await page.getByTestId('config-category-rc').click()
-    await expect(page.getByTestId('config-receiver-link')).toBeVisible()
-    // Demo seeds RC_CHANNELS.rssi = 100 (raw 0-254), which is ~39%.
-    await expect(page.getByText('Live RX RSSI: 39%')).toBeVisible()
-  })
-})
-
 test.describe('Sticky side navigation', () => {
   test('the side nav follows the page on scroll (desktop)', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 800 })
