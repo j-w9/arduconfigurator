@@ -107,6 +107,22 @@ After regeneration, inspect every produced `tests/e2e/__screenshots__/visual.spe
 
 CI uploads `test-results/`, `playwright-report/`, and `tests/e2e/__screenshots__/` as workflow artifacts on failure (retention 7 days), so diffs are downloadable for review.
 
+## Flash Emulation Across Chromium Browsers
+
+Playwright has no serial port, so the `.apj` flash path is driven end to end against a fake ArduPilot bootloader installed into the page: `tests/e2e/support/fake-serial.ts` stands in for `navigator.serial` with one port that speaks the bootloader protocol of `Tools/AP_Bootloader/bl_protocol.cpp` (GET_SYNC / GET_DEVICE / CHIP_ERASE / PROG_MULTI / GET_CRC / BOOT, the same CRC, the same frame windows, the same refusal and re-parse of a frame it gives up on). `tests/e2e/flash-serial.spec.ts` flashes a generated image through the real Flash tab, `WebSerialBootloaderSerial` and `BootloaderClient`, then checks the bytes that landed and that every PROG_MULTI frame arrived as one write. It runs in the default suite. The WebUSB side has the same shape in `tests/e2e/support/fake-dfu.ts`.
+
+Web Serial and WebUSB are Chromium's, not ours, and Chrome, Edge and Brave each ship their own build of it. To run the flash spec in those browsers as well:
+
+```bash
+npx playwright install chrome msedge           # the branded browsers, once
+ARDUCONFIG_E2E_CHANNELS=chrome,msedge npx playwright test --project chrome --project msedge
+ARDUCONFIG_E2E_BRAVE_PATH="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" npx playwright test --project brave
+```
+
+`ARDUCONFIG_E2E_CHANNELS` adds one project per Playwright channel; Brave has no channel, so `ARDUCONFIG_E2E_BRAVE_PATH` points at its executable instead. Each of those projects runs only the flash spec. With neither variable set the config has no projects at all, so CI and `npm run test:e2e` are unchanged.
+
+Be clear about what this proves: the app's protocol and UI logic under each browser's Web Serial implementation. The fake is in-page JavaScript, so it never exercises the OS serial driver or the USB CDC pacing that refused PROG_MULTI frames on real boards; a real board over a real cable remains the last rung of the validation ladder for that.
+
 ## Live Hardware Safety
 
 - Remove props before any motor/output test.

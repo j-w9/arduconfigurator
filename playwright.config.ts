@@ -48,6 +48,48 @@ const previewPort = Number(process.env.ARDUCONFIG_E2E_PORT ?? 4173)
 const bridgePort = Number(process.env.ARDUCONFIG_E2E_BRIDGE_PORT ?? 14550)
 const baseURL = `http://127.0.0.1:${previewPort}`
 
+/**
+ * Branded-browser projects, opt-in.
+ *
+ * The flash path talks Web Serial / WebUSB straight to the browser, and
+ * those APIs live in Chromium, not in our code: a Chromium release can
+ * change them under us, and Chrome, Edge and Brave each ship their own
+ * build. The specs listed here flash a fake board through the real app
+ * code (tests/e2e/support/fake-serial.ts), so they can run in each of them.
+ *
+ * ARDUCONFIG_E2E_CHANNELS="chrome,msedge" adds one project per Playwright
+ * channel (the browser must be installed: `npx playwright install chrome
+ * msedge`). Brave has no channel, so ARDUCONFIG_E2E_BRAVE_PATH points at its
+ * executable instead. Unset, nothing here exists and the config is the
+ * single implicit project it always was -- CI is untouched.
+ */
+const BROWSER_FAKE_SPECS = ['tests/e2e/flash-serial.spec.ts']
+const BRANDED_CHANNELS = ['chrome', 'msedge'] as const
+type BrandedChannel = (typeof BRANDED_CHANNELS)[number]
+const requestedChannels = (process.env.ARDUCONFIG_E2E_CHANNELS ?? '')
+  .split(',')
+  .map((name) => name.trim())
+  .filter((name): name is BrandedChannel => (BRANDED_CHANNELS as readonly string[]).includes(name))
+const bravePath = process.env.ARDUCONFIG_E2E_BRAVE_PATH
+const brandedProjects = [
+  ...requestedChannels.map((channel) => ({
+    name: channel,
+    testMatch: BROWSER_FAKE_SPECS,
+    // The project's `use` replaces the top-level launchOptions, so the
+    // auto-detected executablePath cannot shadow the channel.
+    use: { channel, launchOptions: {} }
+  })),
+  ...(bravePath
+    ? [
+        {
+          name: 'brave',
+          testMatch: BROWSER_FAKE_SPECS,
+          use: { launchOptions: { executablePath: bravePath } }
+        }
+      ]
+    : [])
+]
+
 export default defineConfig({
   testDir: './tests/e2e',
   // Parallel DISTRIBUTION, serial EXECUTION.
@@ -87,6 +129,9 @@ export default defineConfig({
         }
       : undefined
   },
+  // Only when a branded browser was asked for: the default project then
+  // gets a name so `--project chrome` can single one out.
+  ...(brandedProjects.length > 0 ? { projects: [{ name: 'chromium' }, ...brandedProjects] } : {}),
   webServer: [
     {
       command: `npm run preview --workspace @arduconfig/web -- --host 127.0.0.1 --port ${previewPort} --strictPort`,
