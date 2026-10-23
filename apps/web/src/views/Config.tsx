@@ -121,6 +121,11 @@ export interface ConfigSection {
    *  in place of the field grid. */
   planned?: boolean
   /**
+   * Optional node beside the card title, for a state that needs attention
+   * (a low battery, say). The title row carries nothing when all is well.
+   */
+  badge?: ReactNode
+  /**
    * Span the full width instead of sitting in one ~360px column.
    *
    * The grid is CSS multicolumn, which is right for cards that are a handful of
@@ -393,6 +398,8 @@ export function ConfigView(props: ConfigViewProps) {
                   <StatusBadge tone="warning">planned</StatusBadge>
                 ) : section.readOnly ? (
                   <StatusBadge tone="neutral">read-only</StatusBadge>
+                ) : section.badge ? (
+                  <span className="config-section__badge">{section.badge}</span>
                 ) : null}
               </header>
 

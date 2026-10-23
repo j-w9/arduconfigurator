@@ -8510,3 +8510,32 @@ test.describe('Status & Info: Vehicle actions', () => {
     await expect(card.getByTestId('status-bench-sync-status')).toHaveText(/^Complete · \d+\/\d+ parameters$/, { timeout: 20_000 })
   })
 })
+
+test.describe('Config ▸ Power', () => {
+  test('the Power tab has one heading, no healthy badge, and an apply bar only once something is staged', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await openView(page, 'config')
+    await page.getByTestId('config-category-power').click()
+
+    const section = page.getByTestId('config-section-power')
+    await expect(section.locator('.config-section__header strong')).toHaveText('Battery')
+    // No stacked headings, no "Battery healthy" badge, no prose, no idle bar.
+    await expect(section.getByText('Battery & power')).toHaveCount(0)
+    await expect(section.getByText('Battery configuration')).toHaveCount(0)
+    await expect(section.getByText('Battery healthy')).toHaveCount(0)
+    await expect(page.getByTestId('power-section-badge')).toHaveCount(0)
+    await expect(section.getByText(/changes are staged right now/)).toHaveCount(0)
+    await expect(page.getByTestId('power-apply')).toHaveCount(0)
+    // The monitor source is part of the live readout.
+    await expect(page.getByTestId('power-monitor-source')).toBeVisible()
+
+    // Stage a battery change: the bar and a staged badge appear.
+    await page.getByTestId('power-fields').getByLabel('Battery Capacity', { exact: true }).fill('1500')
+    await expect(page.getByTestId('power-apply')).toBeVisible()
+    await expect(page.getByTestId('power-section-badge')).toContainText('1 staged')
+    await page.getByTestId('power-discard').click()
+    await expect(page.getByTestId('power-apply')).toHaveCount(0)
+  })
+})

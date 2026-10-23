@@ -740,7 +740,7 @@ test.describe('browser configurator regression flows', () => {
     // behavior.
     await openView(page, 'config')
     await page.getByTestId('config-category-power').click()
-    await expect(page.getByText('Battery configuration')).toBeVisible()
+    await expect(page.getByTestId('power-fields')).toBeVisible()
 
     // Already Expert since the Guided Setup walk above; check() keeps it on.
     await page.getByTestId('product-mode-expert').check()
