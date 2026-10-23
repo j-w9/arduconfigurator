@@ -312,6 +312,11 @@ export class BootloaderClient {
    * closed whatever the bootloader was still reading from the frame's
    * tail, the line is quiet, and a GET_SYNC has been answered. A second
    * refusal is the real error.
+   *
+   * A chunk whose ack never comes (a read timeout) takes the same path: a
+   * bootloader left waiting for payload bytes says nothing at all, and the
+   * filler is what gets it talking again. If the port is really gone the
+   * GET_SYNC fails and that is the error reported.
    */
   private async programChunk(command: number, chunk: Uint8Array): Promise<void> {
     const frame = new Uint8Array(chunk.length + 3)
@@ -326,7 +331,7 @@ export class BootloaderClient {
     try {
       await this.getSync()
     } catch (error) {
-      if (!(error instanceof Error) || !/INVALID OPERATION/.test(error.message)) throw error
+      if (!(error instanceof Error) || !/INVALID OPERATION|timed out|timeout/i.test(error.message)) throw error
       await this.io.write(CHUNK_RESYNC_FILLER)
       await this.drainInput()
       await this.sync()

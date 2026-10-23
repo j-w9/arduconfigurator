@@ -72,6 +72,10 @@ export interface FakeSerialOptions {
   rejectProgMultiAt?: number
   /** Refuse a PROG_MULTI frame spread over more than one write() call. */
   requireOneWriteFrames?: boolean
+  /** Swallow the `silentProgMultiAt`-th PROG_MULTI frame once: read it in
+   *  full, write nothing, answer nothing (a bootloader stuck mid-read). */
+  silentProgMultiOnce?: boolean
+  silentProgMultiAt?: number
 }
 
 export type FakeSerialState = 'unplugged' | 'plugged' | 'open' | 'rebooted'
@@ -80,7 +84,7 @@ export interface FakeSerialFrame {
   /** Command byte. */
   command: number
   /** 'ignored' is a byte the bootloader does not know: skipped, no reply. */
-  status: 'ok' | 'invalid' | 'failed' | 'ignored'
+  status: 'ok' | 'invalid' | 'failed' | 'ignored' | 'silent'
   /** Distinct write() calls the frame's bytes came from. */
   writes: number
   /** PROG_MULTI only: the write address the frame was aimed at. */
@@ -109,6 +113,7 @@ export interface FakeSerialStats {
     accepted: number
     refused: number
     injectedRefusals: number
+    injectedSilences: number
     splitFrames: number
     windowMisses: number
   }
@@ -145,7 +150,9 @@ export function fakeSerialOptions(options: FakeSerialOptions = {}): Required<Fak
     eraseMs: options.eraseMs ?? 300,
     rejectProgMultiOnce: options.rejectProgMultiOnce ?? false,
     rejectProgMultiAt: options.rejectProgMultiAt ?? 3,
-    requireOneWriteFrames: options.requireOneWriteFrames ?? true
+    requireOneWriteFrames: options.requireOneWriteFrames ?? true,
+    silentProgMultiOnce: options.silentProgMultiOnce ?? false,
+    silentProgMultiAt: options.silentProgMultiAt ?? 3
   }
 }
 
@@ -214,7 +221,7 @@ export const fakeSerialInit = (options: Required<FakeSerialOptions>): void => {
     connectEvents: 0,
     disconnectEvents: 0,
     frames: [],
-    progMulti: { sent: 0, accepted: 0, refused: 0, injectedRefusals: 0, splitFrames: 0, windowMisses: 0 },
+    progMulti: { sent: 0, accepted: 0, refused: 0, injectedRefusals: 0, injectedSilences: 0, splitFrames: 0, windowMisses: 0 },
     erases: 0,
     crcQueries: 0,
     programmedBytes: 0,
@@ -249,6 +256,8 @@ export const fakeSerialInit = (options: Required<FakeSerialOptions>): void => {
   let address = 0
   let progMultiIndex = 0
   let injectedRefusal = false
+  let injectedSilence = false
+  let swallowFrame = false
 
   // The command parser. bl_protocol.cpp reads bytes one at a time with a
   // per-byte timeout; here the bytes arrive in write() chunks, so each byte
@@ -377,6 +386,10 @@ export const fakeSerialInit = (options: Required<FakeSerialOptions>): void => {
       cmdBad(`injected refusal of PROG_MULTI frame #${progMultiIndex}`)
       return
     }
+    if (options.silentProgMultiOnce && !injectedSilence && progMultiIndex === options.silentProgMultiAt) {
+      injectedSilence = true
+      swallowFrame = true
+    }
     if (byte === 0) {
       expecting = 'eoc'
       windowMs = 200
@@ -450,6 +463,16 @@ export const fakeSerialInit = (options: Required<FakeSerialOptions>): void => {
         }, options.eraseMs)
         return
       case PROG_MULTI:
+        if (swallowFrame) {
+          // Read in full, written nowhere, answered with nothing: the shape of
+          // a bootloader stuck mid-read that a field report showed as a plain
+          // read timeout on the client.
+          swallowFrame = false
+          stats.progMulti.injectedSilences += 1
+          record('silent')
+          resetParser()
+          return
+        }
         record('ok')
         flash.set(payload, address)
         address += payload.length
