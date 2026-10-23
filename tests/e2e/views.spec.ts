@@ -3537,6 +3537,10 @@ test.describe('Receiver flight-mode labels', () => {
     await expect(customInput).toBeVisible()
     await customInput.fill('29')
     await expect(page.getByTestId('global-draft-bar')).toBeVisible()
+    // Staged as a WRITABLE draft: the typed number carries "Override and
+    // write anyway", so Write all is enabled (it used to stage as invalid).
+    await expect(page.getByTestId('global-draft-count')).toContainText('1 staged change')
+    await expect(page.getByTestId('global-draft-write')).toBeEnabled()
 
     // Picking a named mode again returns to the plain dropdown.
     await select.selectOption('9') // Land

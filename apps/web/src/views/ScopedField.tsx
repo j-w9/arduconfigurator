@@ -187,12 +187,17 @@ interface ScopedSelectFieldProps extends CommonScopedFieldProps {
    *  inert "N (unlisted)" label with no way to change it to another number.
    *  Opt-in — every other ScopedSelectField usage is unaffected. */
   allowCustomValue?: boolean
+  /** With allowCustomValue: told whether the staged value is outside the
+   *  listed options, so the host can set "Override and write anyway" for
+   *  it (a typed number the metadata does not list is otherwise an invalid
+   *  draft that can never be written — the case Custom… exists for). */
+  onEnumOverride?: (paramId: string, overridden: boolean) => void
 }
 
 const CUSTOM_VALUE_SENTINEL = '__custom__'
 
 export function ScopedSelectField(props: ScopedSelectFieldProps) {
-  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, layout = 'select', allowCustomValue = false } = props
+  const { parameter, liveValue, editedValues, draftStatusById, onChange, compact = true, layout = 'select', allowCustomValue = false, onEnumOverride } = props
   const options = parameter.definition?.options ?? []
   if (layout === 'chips' && shouldRenderOptionChips(options.length)) {
     return <ScopedOptionChipsField {...props} />
@@ -227,6 +232,7 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
                 setCustomModeForced(true)
               } else {
                 setCustomModeForced(false)
+                onEnumOverride?.(parameter.id, false)
                 onChange(parameter.id, event.target.value)
               }
             }}
@@ -245,7 +251,11 @@ export function ScopedSelectField(props: ScopedSelectFieldProps) {
               className="scoped-select-with-custom__input"
               value={currentValue}
               aria-label={`Custom ${fieldLabel} value`}
-              onChange={(event) => onChange(parameter.id, event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value
+                onEnumOverride?.(parameter.id, next !== '' && !options.some((option) => String(option.value) === next))
+                onChange(parameter.id, next)
+              }}
             />
           ) : null}
         </span>

@@ -7056,6 +7056,7 @@ export function App() {
           editedValues={editedValues}
           draftStatusById={parameterDraftById}
           onChangeSlot={(paramId, value) => setDraft(paramId, value)}
+          onEnumOverride={handleSetParameterEnumOverride}
         />
     )
   }
