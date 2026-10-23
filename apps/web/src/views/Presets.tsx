@@ -229,10 +229,6 @@ export function PresetsView(props: PresetsViewProps) {
           <div className="telemetry-header">
             <div>
               <h3>Preset library</h3>
-              <p>
-                Presets stay intentionally narrow: they touch only the small, high-value tuning controls already exposed in this product. Every
-                apply requires diff review, and a pre-apply snapshot is captured automatically before any write is sent.
-              </p>
             </div>
             <StatusBadge tone={headerTone}>{headerBadgeLabel}</StatusBadge>
           </div>
