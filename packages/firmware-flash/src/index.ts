@@ -13,6 +13,10 @@ export { parseIntelHex, type IntelHexSegment, type ParsedIntelHex } from './inte
 export {
   DfuSeDevice,
   DfuProtectedSectorError,
+  DfuStateError,
+  findAppStart,
+  planDfuChunks,
+  type DfuChunk,
   describeProtectedSectors,
   findProtectedSectors,
   parseDfuSeMemoryLayout,
@@ -22,7 +26,8 @@ export {
   type DfuMemorySector,
   type DfuStatus,
   type DfuFlashPhase,
-  type DfuFlashProgress
+  type DfuFlashProgress,
+  type DfuSleep
 } from './dfu.js'
 export { BOARD_NAMES_BY_ID, formatBoardId } from './board-names.js'
 export {

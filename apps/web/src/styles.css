@@ -13729,6 +13729,55 @@ details.metadata-settings-section:not([open]) > summary::after {
   margin: 10px 0;
 }
 
+/* The Flash card's debug log: a quiet one-line toggle at the foot of the
+   card; open, a short scrollable monospace block plus Copy / Clear. Muted
+   like .firmware-wizard__hint so it reads as a footnote, not a step. */
+.firmware-debug-log {
+  margin-top: var(--space-3);
+  display: grid;
+  gap: 6px;
+}
+
+.firmware-debug-log__toggle,
+.firmware-debug-log__button {
+  justify-self: start;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted, #b3b3b3);
+  font: inherit;
+  font-size: var(--text-sm, 12px);
+  cursor: pointer;
+}
+
+.firmware-debug-log__toggle:hover,
+.firmware-debug-log__button:hover {
+  border-color: var(--btn-border, rgba(255, 255, 255, 0.08));
+  color: var(--text);
+}
+
+.firmware-debug-log__pre {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--btn-border, rgba(255, 255, 255, 0.08));
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-muted, #b3b3b3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.firmware-debug-log__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
 .firmware-progress {
   display: flex;
   flex-direction: column;
@@ -13739,6 +13788,20 @@ details.metadata-settings-section:not([open]) > summary::after {
 /* DFU (.hex) flash card — sits below the serial-bootloader .apj wizard. */
 .dfu-hex-flasher {
   margin-top: 18px;
+}
+/* The card body is a grid with its own gap; the children's own margins
+   doubled it. One rhythm, the grid's. */
+.dfu-hex-flasher .bf-gui-box__body {
+  gap: var(--space-2);
+}
+.dfu-hex-flasher .dfu-hex-flasher__intro,
+.dfu-hex-flasher .dfu-hex-flasher__activate,
+.dfu-hex-flasher .dfu-hex-flasher__help,
+.dfu-hex-flasher .firmware-finder,
+.dfu-hex-flasher .dfu-hex-flasher__summary,
+.dfu-hex-flasher .dfu-hex-flasher__full-erase,
+.dfu-hex-flasher .dfu-hex-flasher__steps {
+  margin: 0;
 }
 .dfu-hex-flasher__intro {
   margin: 0 0 12px;
@@ -13801,6 +13864,13 @@ details.metadata-settings-section:not([open]) > summary::after {
   grid-column: 1 / -1;
   width: 100%;
   height: 6px;
+}
+.dfu-hex-flasher__status {
+  margin: -4px 0 12px;
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 .dfu-hex-flasher__full-erase {
   display: flex;

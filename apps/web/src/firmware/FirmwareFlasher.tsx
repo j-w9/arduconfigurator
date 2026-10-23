@@ -14,10 +14,20 @@ import type { WebSerialPortLike } from '@arduconfig/transport'
 
 import { WebSerialBootloaderSerial, inflateZlib } from './web-serial-bootloader'
 import { DfuHexFlasher } from './DfuHexFlasher'
+import { useFlashDebugLog } from './use-flash-debug-log'
+import { APP_VERSION, GIT_HASH } from '../build-info'
 import { FirmwareFinder } from './FirmwareFinder'
 import { desktopFirmwareSource, type FirmwareIndexSource } from './firmware-index-source'
 import { apjBuildMismatch, firmwareBuildKey, type ConnectedBoard, type FirmwareIndexRow } from '../view-models/firmware-finder'
 import type { BootloaderHashPreview } from '../view-models/bootloader-hash-preview'
+import {
+  BOOTLOADER_PORT_MEMORY_KEY,
+  formatUsbIds,
+  knownBootloaderPort,
+  parseBootloaderPortMemory,
+  rememberBootloaderPort,
+  type UsbIds
+} from '../view-models/bootloader-port-memory'
 
 /** Where ArduPilot publishes firmware. The only source now — the custom
  *  build-server override was removed. */
@@ -147,6 +157,11 @@ export interface FirmwareFlasherProps {
   /** ArduPilot's published builds (the private deploy's index + relay). When
    *  it loads, step 1 leads with a search and in-app download. */
   firmwareIndex?: FirmwareIndexSource
+  /** The same for the DFU tab: ArduPilot's *_with_bl.hex builds. */
+  dfuFirmwareIndex?: FirmwareIndexSource
+  /** A connected Betaflight board's target name ("MATEKH743"): the DFU tab's
+   *  finder starts its search with it. */
+  betaflightTargetName?: string
   /** Called once a flash has written and rebooted the board into the new
    *  firmware, so the host can reconnect to it. */
   onFlashComplete?: () => void
@@ -242,6 +257,35 @@ function defaultRequestPort(): Promise<WebSerialPortLike> {
  * port." Returns plain strings so console.info renders inline rather
  * than collapsing the object.
  */
+/** A port's USB vendor / product id, when the browser says. */
+function portUsbIds(port: WebSerialPortLike): UsbIds | undefined {
+  try {
+    const info = (port as unknown as { getInfo?: () => { usbVendorId?: number; usbProductId?: number } }).getInfo?.()
+    return info?.usbVendorId !== undefined && info.usbProductId !== undefined ? { vendorId: info.usbVendorId, productId: info.usbProductId } : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function readBootloaderPortMemory() {
+  try {
+    return parseBootloaderPortMemory(window.localStorage.getItem(BOOTLOADER_PORT_MEMORY_KEY))
+  } catch {
+    return {}
+  }
+}
+
+/** Note where this board's bootloader was caught, so its next replug skips the picker. */
+function noteBootloaderPort(boardId: number, port: WebSerialPortLike): void {
+  try {
+    const before = readBootloaderPortMemory()
+    const after = rememberBootloaderPort(before, boardId, portUsbIds(port))
+    if (after !== before) window.localStorage.setItem(BOOTLOADER_PORT_MEMORY_KEY, JSON.stringify(after))
+  } catch {
+    // Storage blocked: the picker stays the way in.
+  }
+}
+
 function describePortForLog(port: WebSerialPortLike): { vid: string; pid: string } {
   try {
     const info = (port as unknown as { getInfo?: () => { usbVendorId?: number; usbProductId?: number } }).getInfo?.()
@@ -299,6 +343,9 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   )
 
   const [phase, setPhase] = useState<Phase>('idle')
+  // In-card copy of the `[flash]` console lines, for field reports.
+  const debugLog = useFlashDebugLog()
+  const appendDebug = debugLog.append
   // True while a flash runs on a board we rebooted into its bootloader (no replug).
   const [autoRebootFlow, setAutoRebootFlow] = useState(false)
   // A flash that wrote and verified (not one skipped as already on the board).
@@ -339,10 +386,66 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   // The finder build now loaded (firmwareBuildKey), and whether to steer the
   // operator on to step 2: scroll there and light up the confirm box.
   const [loadedBuild, setLoadedBuild] = useState<string | undefined>(undefined)
+  // The device this board's bootloader was caught on before (it skips the picker).
+  const [rememberedBootloader, setRememberedBootloader] = useState<UsbIds | undefined>(undefined)
+  const rememberedBootloaderRef = useRef<UsbIds | undefined>(undefined)
   const [nudgeConfirm, setNudgeConfirm] = useState(false)
   const flashStepRef = useRef<HTMLLIElement | null>(null)
   const [progress, setProgress] = useState<{ label: string; ratio: number } | null>(null)
   const [replugInfo, setReplugInfo] = useState<string | null>(null)
+  // The debug log mirrors the state machine: each phase change, each progress
+  // step (its label, not every ratio tick), the board caught and the firmware
+  // loaded. Enough to see where a failed flash stopped, without the console.
+  useEffect(() => {
+    appendDebug(`phase: ${phase}`)
+  }, [phase, appendDebug])
+  const progressLabel = progress?.label
+  useEffect(() => {
+    if (progressLabel) appendDebug(`progress: ${progressLabel}`)
+  }, [progressLabel, appendDebug])
+  useEffect(() => {
+    if (identity) {
+      appendDebug(`board: id=${identity.boardId} flash=${identity.flashSize} blRev=${identity.bootloaderRevision}`)
+    }
+  }, [identity, appendDebug])
+  useEffect(() => {
+    if (firmware) {
+      appendDebug(`firmware: ${firmware.name} ${firmware.imageSize} bytes boardId=${firmware.boardId}`)
+    }
+  }, [firmware, appendDebug])
+  const [debugOpen, setDebugOpen] = useState(false)
+  const [debugCopied, setDebugCopied] = useState(false)
+  const debugPreRef = useRef<HTMLPreElement | null>(null)
+  const copyDebugLog = useCallback(async () => {
+    // The header is what a maintainer needs first: which build, which
+    // browser (Web Serial vs WebUSB support hangs on it), and when.
+    const header = [
+      `ArduConfigurator ${APP_VERSION} (${GIT_HASH})`,
+      typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown user agent',
+      new Date().toISOString()
+    ].join('\n')
+    const text = `${header}\n\n${debugLog.text}\n`
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      // No clipboard permission (or no secure context): select the <pre> so a
+      // plain Ctrl/Cmd+C still copies it.
+      const pre = debugPreRef.current
+      const selection = typeof window !== 'undefined' ? window.getSelection() : null
+      if (pre && selection) {
+        const range = document.createRange()
+        range.selectNodeContents(pre)
+        selection.removeAllRanges()
+        selection.addRange(range)
+      }
+    }
+    setDebugCopied(true)
+  }, [debugLog.text])
+  useEffect(() => {
+    if (!debugCopied) return
+    const timer = window.setTimeout(() => setDebugCopied(false), 1500)
+    return () => window.clearTimeout(timer)
+  }, [debugCopied])
   const [vehicleDir, setVehicleDir] = useState<(typeof VEHICLE_DIRS)[number]>(
     () => vehicleDirForVehicle(props.connectedVehicle)
   )
@@ -527,10 +630,11 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   }, [])
 
   const fail = useCallback((message: string) => {
+    appendDebug(`ERROR: ${message}`)
     setReplugInfo(null)
     setError(message)
     setPhase('error')
-  }, [])
+  }, [appendDebug])
 
   // Shared .apj loader (used by the file drop and the desktop browse path).
   // Parses + decodes the image and stages it as the firmware to flash.
@@ -652,10 +756,13 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   // poll diff against the snapshot, and the manual picker (requestPort, the
   // only path that can authorize a new VID/PID — the ChibiOS bootloader
   // case, where the bootloader's USB device differs from the firmware's).
-  const catchBootloader = useCallback(async (options: { afterReboot?: { baseline: ReadonlySet<WebSerialPortLike> } } = {}): Promise<BoardIdentity | null> => {
+  const catchBootloader = useCallback(async (options: { afterReboot?: { baseline: ReadonlySet<WebSerialPortLike> }; expectedBoardId?: number } = {}): Promise<BoardIdentity | null> => {
     // Each step logs a `[flash]` line at info level (visible without verbose
     // mode) so the console pinpoints which phase failed.
-    const log = (msg: string, ...args: unknown[]): void => console.info('[flash]', msg, ...args)
+    const log = (msg: string, ...args: unknown[]): void => {
+      console.info('[flash]', msg, ...args)
+      appendDebug(msg, ...args)
+    }
 
     replugAbortRef.current = false
     candidatePortsRef.current = []
@@ -701,6 +808,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       const result = await tryIdentifyPortDiagnostic(port, { quickSync: true })
       if (result.ok) {
         log('PRE-SCAN IDENTIFY SUCCESS (board was already in bootloader mode)', result.identity, info)
+        noteBootloaderPort(result.identity.boardId, port)
         return result.identity
       }
       log('pre-scan: not a bootloader', { error: result.errorMessage, ...info })
@@ -716,6 +824,12 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
     // own dialog, so it would linger over a flash that caught the port by
     // itself). The picker is one button away for a port never granted.
     if (!options.afterReboot) {
+      // This board's bootloader was caught before: the browser still holds its
+      // grant, so the replug is caught without the picker (one click away).
+      const remembered = knownBootloaderPort(readBootloaderPortMemory(), options.expectedBoardId)
+      rememberedBootloaderRef.current = remembered
+      setRememberedBootloader(remembered)
+      if (remembered) log('this board’s bootloader was caught before on %s: no picker', formatUsbIds(remembered))
       setPhase('prompt-unplug')
       log('prompt-unplug: waiting for Continue (opens the picker)')
       await new Promise<void>((resolve) => {
@@ -784,6 +898,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           const result = await tryIdentifyPortDiagnostic(candidate)
           if (result.ok) {
             log('IDENTIFY SUCCESS', result.identity, info)
+            noteBootloaderPort(result.identity.boardId, candidate)
             return result.identity
           }
           log('identify failed', {
@@ -838,7 +953,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       )
     }
     return null
-  }, [listPorts, fail])
+  }, [listPorts, fail, appendDebug])
 
   // Identify one port — open() + BootloaderClient.identify(). Returns
   // {ok:true, identity} on success (and commits serialRef to the live
@@ -907,7 +1022,8 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   // "Unplug, then Continue" → open the picker under THIS click's user
   // gesture and let catchBootloader proceed into the listen loop.
   const handleUnplugContinue = useCallback(() => {
-    void handleManualPick()
+    // A bootloader caught before is caught again by itself; otherwise the picker.
+    if (!rememberedBootloaderRef.current) void handleManualPick()
     unplugContinueResolveRef.current?.()
   }, [handleManualPick])
 
@@ -1133,7 +1249,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
           board = await catchBootloader({ afterReboot: { baseline } })
         } else {
           setAutoRebootFlow(false)
-          board = await catchBootloader()
+          board = await catchBootloader({ expectedBoardId: firmware.boardId })
         }
         if (!board) {
           return
@@ -1760,18 +1876,28 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
         {phase === 'prompt-unplug' ? (
           <div className="firmware-replug-prompt" data-testid="firmware-prompt-unplug" role="alert">
             <strong>Unplug the flight controller.</strong>
-            <ol className="firmware-replug-prompt__steps">
-              <li>Click <strong>Continue</strong> — the browser&apos;s serial-port picker opens.</li>
-              <li>Plug the FC back in. It re-appears as a <strong>new bootloader port</strong> (often ending in
-                <code> _BL</code>, or a different name than your normal port).</li>
-              <li>Select that new port in the picker <strong>within about a second</strong> — the board only sits in the
-                bootloader briefly before it boots back to the normal port.</li>
-            </ol>
-            <p className="bf-note">
-              If it boots away before you pick it (the <code>_BL</code> port vanishes), just click Continue and re-plug —
-              you can retry as many times as needed. The browser can&apos;t grab the new port for you; picking it is the
-              one manual step Web Serial requires.
-            </p>
+            {rememberedBootloader ? (
+              // Caught before: the browser still holds this bootloader's grant.
+              <p className="bf-note" data-testid="firmware-prompt-unplug-remembered">
+                Click <strong>Continue</strong>, then plug it back in. This board&apos;s bootloader was found before, so it is
+                caught as soon as it appears; no port to pick.
+              </p>
+            ) : (
+              <>
+                <ol className="firmware-replug-prompt__steps">
+                  <li>Click <strong>Continue</strong> — the browser&apos;s serial-port picker opens.</li>
+                  <li>Plug the FC back in. It re-appears as a <strong>new bootloader port</strong> (often ending in
+                    <code> _BL</code>, or a different name than your normal port).</li>
+                  <li>Select that new port in the picker <strong>within about a second</strong> — the board only sits in the
+                    bootloader briefly before it boots back to the normal port.</li>
+                </ol>
+                <p className="bf-note">
+                  If it boots away before you pick it (the <code>_BL</code> port vanishes), just click Continue and re-plug —
+                  you can retry as many times as needed. The browser can&apos;t grab the new port for you; picking it is the
+                  one manual step Web Serial requires.
+                </p>
+              </>
+            )}
             <div className="firmware-replug-prompt__buttons">
               <button type="button" onClick={handleUnplugContinue} data-testid="firmware-prompt-unplug-continue">
                 Continue
@@ -1785,18 +1911,30 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
 
         {phase === 'prompt-replug' || (phase === 'detecting' && !autoRebootFlow) ? (
           <div className="firmware-replug-prompt" data-testid="firmware-prompt-replug" role="alert">
-            <strong>Plug it back in and select the new bootloader port.</strong>
-            <p className="bf-note">
-              Pick the port that appears when you re-plug (often ending in <code>_BL</code>). It only shows for about a
-              second — if you miss it, reopen the picker and re-plug.
-            </p>
+            {rememberedBootloader ? (
+              <>
+                <strong>Plug it back in.</strong>
+                <p className="bf-note">
+                  Its bootloader is caught as soon as it appears. If nothing happens, open the port picker and choose the port
+                  that appears when you plug in.
+                </p>
+              </>
+            ) : (
+              <>
+                <strong>Plug it back in and select the new bootloader port.</strong>
+                <p className="bf-note">
+                  Pick the port that appears when you re-plug (often ending in <code>_BL</code>). It only shows for about a
+                  second — if you miss it, reopen the picker and re-plug.
+                </p>
+              </>
+            )}
             <div className="firmware-replug-prompt__buttons">
               <button
                 type="button"
                 onClick={() => void handleManualPick()}
                 data-testid="firmware-prompt-manual-pick"
               >
-                Reopen port picker…
+                {rememberedBootloader ? 'Open port picker…' : 'Reopen port picker…'}
               </button>
               <button
                 type="button"
@@ -1852,8 +1990,55 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
         {/* DFU .hex flash over WebUSB — its own sub-tab. Reuses the same
             enter-DFU action so the operator can reboot-to-DFU right here. */}
         {flashTab === 'dfu-hex' ? (
-          <DfuHexFlasher onActivateDfu={onEnterDfu} activateDfuDisabledReason={enterDfuDisabledReason} />
+          <DfuHexFlasher
+            onActivateDfu={onEnterDfu}
+            activateDfuDisabledReason={enterDfuDisabledReason}
+            firmwareIndex={props.dfuFirmwareIndex}
+            board={props.connectedBoard}
+            connectedVehicle={props.connectedVehicle}
+            betaflightTargetName={props.betaflightTargetName}
+            onDebug={appendDebug}
+          />
         ) : null}
+
+        {/* What the flasher did, for a field report: one quiet button; open,
+            the lines and a Copy that prefixes build + browser. */}
+        <div className="firmware-debug-log">
+          <button
+            type="button"
+            className="firmware-debug-log__toggle"
+            aria-expanded={debugOpen}
+            onClick={() => setDebugOpen((open) => !open)}
+            data-testid="firmware-debug-toggle"
+          >
+            Debug log ({debugLog.lines.length})
+          </button>
+          {debugOpen ? (
+            <>
+              <pre ref={debugPreRef} className="firmware-debug-log__pre" data-testid="firmware-debug-log">
+                {debugLog.text}
+              </pre>
+              <div className="firmware-debug-log__actions">
+                <button
+                  type="button"
+                  className="firmware-debug-log__button"
+                  onClick={() => void copyDebugLog()}
+                  data-testid="firmware-debug-copy"
+                >
+                  {debugCopied ? 'Copied' : 'Copy'}
+                </button>
+                <button
+                  type="button"
+                  className="firmware-debug-log__button"
+                  onClick={debugLog.clear}
+                  data-testid="firmware-debug-clear"
+                >
+                  Clear
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
       </div>
     </section>
   )
