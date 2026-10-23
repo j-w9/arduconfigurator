@@ -6802,6 +6802,65 @@ test.describe('Snapshot restore', () => {
     await expect(page.getByTestId('snapshot-import-calibration')).toHaveCount(1)
   })
 
+  test('a restore blocked by an out-of-range value: Stage All sits above the rows and overrides it there', async ({ page }) => {
+    // Field report: restoring your own snapshot on a fresh build, a handful
+    // of rows exceed the app's documented range (common cross-board), and
+    // the old checkbox sent the operator to the Parameters tab to finish the
+    // override -- a tab a non-Expert cannot see. The override now happens
+    // with Stage All, and Stage All is above the rows, where the operator
+    // who knows the values are right goes first.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('view-button-snapshots').click()
+    await page.getByTestId('snapshot-label-input').fill('Cross-board')
+    await page.getByTestId('capture-live-snapshot-button').click()
+    await expect(page.getByText(/Saved snapshot "Cross-board"/)).toBeVisible()
+
+    // Rewrite the saved value past its documented maximum (FS_EKF_ACTION tops
+    // out at 3), as a snapshot from another board or firmware can carry.
+    await page.evaluate(() => {
+      const key = 'arduconfig:snapshot-library'
+      const library = JSON.parse(window.localStorage.getItem(key) ?? '{}') as {
+        snapshots?: { backup?: { parameters?: { id: string; value: number }[] } }[]
+      }
+      for (const snapshot of library.snapshots ?? []) {
+        for (const entry of snapshot.backup?.parameters ?? []) {
+          if (entry.id === 'FS_EKF_ACTION') entry.value = 4
+        }
+      }
+      window.localStorage.setItem(key, JSON.stringify(library))
+    })
+    await page.reload()
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('view-button-snapshots').click()
+    await page.locator('[data-testid^="snapshot-card-"]').first().click()
+
+    // The blocked row is listed, with its own Override; Stage All is above
+    // the rows, not below them.
+    await expect(page.getByTestId('snapshot-diff-override-all')).toBeVisible()
+    const stageAll = page.getByTestId('apply-snapshot-restore-button')
+    const stageBox = await stageAll.boundingBox()
+    const rowsBox = await page.locator('.parameter-diff-grid').first().boundingBox()
+    expect(stageBox && rowsBox && stageBox.y < rowsBox.y).toBe(true)
+
+    // Not in Expert: the checkbox does not send anyone to a hidden tab.
+    await expect(page.getByTestId('product-mode-expert')).not.toBeChecked()
+    const force = page.getByTestId('snapshot-force-invalid')
+    await expect(force).toBeVisible()
+    await expect(page.locator('label', { has: force })).not.toContainText('Parameters tab')
+    await force.check()
+    await page.getByTestId('snapshot-restore-ack').check()
+    await expect(stageAll).toHaveText('Stage All (1)')
+    await stageAll.click()
+
+    // Staged AND overridden: nothing invalid is left to block the write.
+    await expect(page.getByText(/overriding the documented range for 1/)).toBeVisible()
+    await expect(page.getByTestId('global-draft-count')).toHaveText('1 staged change')
+    await expect(page.getByTestId('global-draft-write')).toBeEnabled()
+  })
+
   test('captures a snapshot, shows a real diff after a live edit, drops/undoes a row, and overwrites in place', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)

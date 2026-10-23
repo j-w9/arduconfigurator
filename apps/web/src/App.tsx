@@ -266,7 +266,7 @@ import type {
 } from './app-types'
 import { AP_PERIPH_PARAM_METADATA } from './view-models/ap-periph-param-metadata'
 import { parseParamPck } from './view-models/param-pck'
-import { stageableDraftValues } from './view-models/parameter-diff-actions'
+import { overridableInvalidParamIds, stageableDraftValues } from './view-models/parameter-diff-actions'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
 import { deriveCanEnablement } from './view-models/can-enablement'
 import { deriveBoardOrientationVisual } from './view-models/board-orientation-visual'
@@ -642,6 +642,9 @@ export function App() {
   const betaflightMsp = useBetaflightMsp()
   const [gpsCoordFormat, setGpsCoordFormat] = useGpsCoordFormat()
   const [activeViewId, setActiveViewId] = useState<AppViewId>('setup')
+  // Expert-only tabs a basic-mode action opened this session ("Show changes"
+  // on the draft bar opens Parameters). Cleared when the mode changes.
+  const [revealedViewIds, setRevealedViewIds] = useState<AppViewId[]>([])
   // Expert-mode text filter for the Recent Notices panel.
   const [noticeFilter, setNoticeFilter] = useState('')
   // Expand-in-place for the INLINE Recent Notices list. Collapsed for a fresh
@@ -4227,9 +4230,11 @@ export function App() {
     }
 
     // Force-invalid path: also stage the blocked (out-of-doc-range / outside-enum)
-    // raw values as drafts. They land as INVALID drafts the operator completes
-    // from the Parameters tab ("Override and write anyway") — same escape hatch
-    // the raw editor uses — instead of a snapshot-local force-write.
+    // raw values as drafts, AND override the documented range/enum for every
+    // row an override can rescue — the same "Override and write anyway" the
+    // raw editor offers, applied here. This is the operator's own snapshot and
+    // the box says it overrides; sending them to the Parameters tab to finish
+    // it (a tab a non-Expert cannot even see) was the field report.
     const forcedInvalidDraftValues: Record<string, string> = snapshotForceInvalid
       ? Object.fromEntries(
           selectedSnapshotInvalidEntries
@@ -4251,11 +4256,24 @@ export function App() {
     }
 
     mergeDrafts(stagedValues)
+    const overriddenIds = snapshotForceInvalid
+      ? overridableInvalidParamIds(selectedSnapshotInvalidEntries, parameterEnumOverrides)
+      : []
+    if (overriddenIds.length > 0) {
+      setParameterEnumOverrides((current) => {
+        const next = new Set(current)
+        overriddenIds.forEach((paramId) => next.add(paramId))
+        return next
+      })
+    }
     setSnapshotRestoreAcknowledged(false)
     setSnapshotForceInvalid(false)
     setSnapshotNotice({
       tone: 'warning',
-      text: `Staged ${stagedCount} snapshot change(s) as drafts. Review and Write all from the draft bar to apply them.`
+      text:
+        overriddenIds.length > 0
+          ? `Staged ${stagedCount} snapshot change(s) as drafts, overriding the documented range for ${overriddenIds.length} of them. Review and Write all from the draft bar to apply them.`
+          : `Staged ${stagedCount} snapshot change(s) as drafts. Review and Write all from the draft bar to apply them.`
     })
     trackAppEvent('Snapshot Restore Staged', {
       changedCount: stagedCount,
@@ -6690,7 +6708,7 @@ export function App() {
     }),
     [snapshot.canBus.firmwareUpdate, runtime, dronecanFirmwareOnline]
   )
-  const visibleAppViews = useMemo(
+  const baseVisibleAppViews = useMemo(
     () =>
       buildVisibleAppViews({
         appViews,
@@ -6715,7 +6733,6 @@ export function App() {
       hasSerialPassthrough
     ]
   )
-  const activeViewDescriptor = visibleAppViews.find((view) => view.id === activeViewId) ?? visibleAppViews[0]
   // Find a setting (sections/FeatureSearch.tsx): every tab the app has,
   // whatever the mode, plus the Config / Peripherals cards and the parameter
   // catalog. The search itself applies the Expert gate.
@@ -6734,6 +6751,15 @@ export function App() {
       }),
     [appViews, snapshot.canBus.status, snapshot.canBus.bus, snapshot.connection.kind, hasNetworkingParams, hasRcLogicParams, hasScriptingParams, hasSerialPassthrough]
   )
+  // The rail: the mode's tabs, plus any Expert-only tab revealed this session,
+  // in the canonical order (allAppViews is already sorted).
+  const visibleAppViews = useMemo(() => {
+    if (revealedViewIds.length === 0) return baseVisibleAppViews
+    return allAppViews.filter(
+      (view) => baseVisibleAppViews.some((shown) => shown.id === view.id) || revealedViewIds.includes(view.id)
+    )
+  }, [baseVisibleAppViews, allAppViews, revealedViewIds])
+  const activeViewDescriptor = visibleAppViews.find((view) => view.id === activeViewId) ?? visibleAppViews[0]
   const featureSearchIndex = useMemo(
     () =>
       buildFeatureSearchIndex({
@@ -7635,13 +7661,21 @@ export function App() {
     setDroppedPresetParamIds([])
   }, [selectedPresetDiffSignature])
 
+  const previousExpertModeRef = useRef(isExpertMode)
   useEffect(() => {
+    const modeChanged = previousExpertModeRef.current !== isExpertMode
+    previousExpertModeRef.current = isExpertMode
+    if (modeChanged) {
+      setRevealedViewIds([])
+    }
     if (isExpertMode || !isExpertOnlyView(activeViewId)) {
       return
     }
-
+    if (!modeChanged && revealedViewIds.includes(activeViewId)) {
+      return
+    }
     setActiveViewId('setup')
-  }, [activeViewId, isExpertMode])
+  }, [activeViewId, isExpertMode, revealedViewIds])
 
   // "Show changes" (global draft bar) switches to Parameters AND bumps this so
   // ParametersSection scrolls to the diff grid — a plain boolean can't refire
@@ -8546,6 +8580,12 @@ export function App() {
           applyAllBusyLabel={applyAllBusyLabel}
           rebootPending={Boolean(parameterFollowUp?.requiresReboot)}
           onShowChanges={() => {
+            // Parameters is Expert-only; outside Expert the button would land
+            // nowhere (a bounce back to Status & Info looked like a dead
+            // button), so it reveals the tab for the session instead.
+            if (!isExpertMode) {
+              setRevealedViewIds((current) => (current.includes('parameters') ? current : [...current, 'parameters']))
+            }
             setActiveViewId('parameters')
             setShowChangesRequestId((n) => n + 1)
           }}
