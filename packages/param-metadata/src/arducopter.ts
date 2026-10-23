@@ -1371,6 +1371,33 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       maximum: 3,
       options: enumOptions(ARDUCOPTER_COMPASS_AUTO_ROT_LABELS)
     },
+    // The priority list (AP_Compass.cpp): device ids, 0 = fill in on boot.
+    // Read at boot only, so a change needs a reboot. The DEV_ID* parameters
+    // beside them are the firmware's own and are not curated here.
+    COMPASS_PRIO1_ID: {
+      id: 'COMPASS_PRIO1_ID',
+      label: 'Compass priority 1',
+      description: 'Device id of the compass used first. 0 fills it in automatically on boot. Reboot required after a change.',
+      category: 'sensors',
+      minimum: 0,
+      rebootRequired: true
+    },
+    COMPASS_PRIO2_ID: {
+      id: 'COMPASS_PRIO2_ID',
+      label: 'Compass priority 2',
+      description: 'Device id of the compass used second. 0 fills it in automatically on boot. Reboot required after a change.',
+      category: 'sensors',
+      minimum: 0,
+      rebootRequired: true
+    },
+    COMPASS_PRIO3_ID: {
+      id: 'COMPASS_PRIO3_ID',
+      label: 'Compass priority 3',
+      description: 'Device id of the compass used third. 0 fills it in automatically on boot. Reboot required after a change.',
+      category: 'sensors',
+      minimum: 0,
+      rebootRequired: true
+    },
     COMPASS_DISBLMSK: {
       id: 'COMPASS_DISBLMSK',
       label: 'Disabled compass drivers',
