@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { describeUserAgent, safeStringify } from './use-flash-debug-log'
+import { describeUserAgent, formatFlashDebugLine, safeStringify } from './use-flash-debug-log'
 
 describe('describeUserAgent', () => {
   it('names the engine and OS behind the Mozilla/5.0 prefix', () => {
@@ -21,5 +21,13 @@ describe('safeStringify', () => {
   it('keeps byte arrays and errors to one short token', () => {
     expect(safeStringify(new Uint8Array(1_000_000))).toBe('<1000000 bytes>')
     expect(safeStringify(new Error('boom'))).toBe('Error: boom')
+  })
+})
+
+describe('formatFlashDebugLine', () => {
+  it('prefixes a fixed-width timestamp the repeat-collapse can strip', () => {
+    const line = formatFlashDebugLine('phase: idle', [], new Date(2026, 9, 23, 14, 39, 32, 766))
+    expect(line).toBe('14:39:32.766 phase: idle')
+    expect(line.slice(13)).toBe('phase: idle')
   })
 })

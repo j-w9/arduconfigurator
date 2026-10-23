@@ -52,10 +52,12 @@ const INFO_BOARD_ID = 0x02
 const INFO_BOARD_REV = 0x03
 const INFO_FLASH_SIZE = 0x04
 
-// PROG_MULTI chunk size. uploader.py's ceiling is 252 (the bootloader's
-// PROG_MULTI buffer limit); 128 here raises the ACK rate over Web Serial
-// so corruption surfaces sooner, and stays well within the buffer.
-const PROG_MULTI_MAX = 128
+// PROG_MULTI chunk size: 252, as uploader.py and Mission Planner send (the
+// bootloader's buffer is 256; the length byte tops out at 255 and must be a
+// multiple of 4). We sent 128 for a while, twice the USB transactions for the
+// same image; a board that flashed fine from Mission Planner and dropped off
+// USB mid-write under us is the reason to match the tools that work.
+const PROG_MULTI_MAX = 252
 // READ_MULTI ceiling for the rev-2 byte-compare verify path; matches the
 // 128 chosen for PROG_MULTI (upstream uploader.py uses 252).
 const READ_MULTI_MAX = 128

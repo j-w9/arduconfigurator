@@ -26,9 +26,9 @@ import { fakeSerialFlashHex, fakeSerialStats, installFakeSerial, plugFakeSerial 
 // cable stays the last rung for that.
 
 const BOARD_ID = 140
-const IMAGE_BYTES = 4096
+const IMAGE_BYTES = 252 * 16
 const PROG_MULTI = 0x27
-const CHUNK = 128
+const CHUNK = 252
 const VEHICLE_CONNECT_TIMEOUT = 20_000
 
 /** Deterministic pseudo-random bytes (xorshift32), so a run is reproducible. */

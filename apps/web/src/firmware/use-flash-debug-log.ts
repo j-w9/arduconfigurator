@@ -10,7 +10,10 @@ import { useCallback, useMemo, useRef, useState } from 'react'
  * buffer through a ref) so it can be handed to closures and child components
  * without re-wiring them on every line.
  */
-export const MAX_FLASH_DEBUG_LINES = 500
+// Lines are short; a long listen phase (two lines per failed identify, on a
+// 100 ms poll) reached the old cap of 500 and rolled the start of the flash
+// off the top of a field report.
+export const MAX_FLASH_DEBUG_LINES = 5000
 
 export interface FlashDebugLog {
   lines: readonly string[]
@@ -18,11 +21,16 @@ export interface FlashDebugLog {
   clear: () => void
   /** All lines joined with newlines (no header; the view adds one on copy). */
   text: string
+  /** Lines dropped off the top once the buffer was full. */
+  dropped: number
 }
 
 function pad(n: number, width: number): string {
   return String(n).padStart(width, '0')
 }
+
+/** "HH:MM:SS.mmm " — what formatFlashDebugLine puts before the message. */
+const TIMESTAMP_LENGTH = 13
 
 function timestamp(now: Date): string {
   return `${pad(now.getHours(), 2)}:${pad(now.getMinutes(), 2)}:${pad(now.getSeconds(), 2)}.${pad(now.getMilliseconds(), 3)}`
@@ -67,23 +75,48 @@ export function useFlashDebugLog(): FlashDebugLog {
   const [lines, setLines] = useState<readonly string[]>([])
   const linesRef = useRef<readonly string[]>([])
 
+  const droppedRef = useRef(0)
+  const [dropped, setDropped] = useState(0)
+  // The previous line without its timestamp, and how many times in a row it
+  // has repeated: a poll that logs the same thing every tick becomes one line
+  // with a count, not a page of them.
+  const lastBodyRef = useRef<string | undefined>(undefined)
+  const repeatRef = useRef(1)
+
   const append = useCallback((msg: string, ...args: unknown[]) => {
     const line = formatFlashDebugLine(msg, args)
-    const next = linesRef.current.length >= MAX_FLASH_DEBUG_LINES
-      ? [...linesRef.current.slice(linesRef.current.length - MAX_FLASH_DEBUG_LINES + 1), line]
-      : [...linesRef.current, line]
+    const body = line.slice(TIMESTAMP_LENGTH)
+    let next: string[]
+    if (body === lastBodyRef.current && linesRef.current.length > 0) {
+      repeatRef.current += 1
+      next = [...linesRef.current.slice(0, -1), `${line} ×${repeatRef.current}`]
+    } else {
+      lastBodyRef.current = body
+      repeatRef.current = 1
+      if (linesRef.current.length >= MAX_FLASH_DEBUG_LINES) {
+        droppedRef.current += 1
+        setDropped(droppedRef.current)
+        next = [...linesRef.current.slice(1), line]
+      } else {
+        next = [...linesRef.current, line]
+      }
+    }
     linesRef.current = next
     setLines(next)
   }, [])
 
   const clear = useCallback(() => {
     linesRef.current = []
+    lastBodyRef.current = undefined
+    repeatRef.current = 1
+    droppedRef.current = 0
+    setDropped(0)
     setLines([])
   }, [])
 
   const text = useMemo(() => lines.join('\n'), [lines])
 
-  return { lines, append, clear, text }
+  return { lines, append, clear, text, dropped }
 }
 
 /**
