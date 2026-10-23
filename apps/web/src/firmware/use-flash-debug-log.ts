@@ -85,3 +85,39 @@ export function useFlashDebugLog(): FlashDebugLog {
 
   return { lines, append, clear, text }
 }
+
+/**
+ * The browser and OS in plain words, from the user-agent string: every
+ * browser's string starts with "Mozilla/5.0" for 1990s-compatibility
+ * reasons, and the real name sits near the end. Brave and others report
+ * themselves as Chrome, so this is the engine the page ran in, not the
+ * brand on the icon.
+ */
+export function describeUserAgent(userAgent: string): string {
+  const browser =
+    /\bEdg\/(\d+)/.exec(userAgent)?.[1] !== undefined
+      ? `Edge ${/\bEdg\/(\d+)/.exec(userAgent)![1]}`
+      : /\bOPR\/(\d+)/.exec(userAgent)?.[1] !== undefined
+        ? `Opera ${/\bOPR\/(\d+)/.exec(userAgent)![1]}`
+        : /\bChrome\/(\d+)/.exec(userAgent)?.[1] !== undefined
+          ? `Chrome ${/\bChrome\/(\d+)/.exec(userAgent)![1]}`
+          : /\bFirefox\/(\d+)/.exec(userAgent)?.[1] !== undefined
+            ? `Firefox ${/\bFirefox\/(\d+)/.exec(userAgent)![1]}`
+            : /\bVersion\/(\d+)[^)]*Safari/.exec(userAgent)?.[1] !== undefined
+              ? `Safari ${/\bVersion\/(\d+)/.exec(userAgent)![1]}`
+              : 'unknown browser'
+  const os = /Windows NT/.test(userAgent)
+    ? 'Windows'
+    : /Android/.test(userAgent)
+      ? 'Android'
+      : /iPhone|iPad/.test(userAgent)
+        ? 'iOS'
+        : /Mac OS X/.test(userAgent)
+          ? 'macOS'
+          : /CrOS/.test(userAgent)
+            ? 'ChromeOS'
+            : /Linux/.test(userAgent)
+              ? 'Linux'
+              : 'unknown OS'
+  return `${browser}, ${os}`
+}
