@@ -6861,6 +6861,37 @@ test.describe('Snapshot restore', () => {
     await expect(page.getByTestId('global-draft-write')).toBeEnabled()
   })
 
+  test('Stage & Write stages the restore and writes it in one click', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await page.getByTestId('view-button-snapshots').click()
+    await page.getByTestId('snapshot-label-input').fill('One click')
+    await page.getByTestId('capture-live-snapshot-button').click()
+    await expect(page.getByText(/Saved snapshot "One click"/)).toBeVisible()
+
+    // Change a live value so the snapshot has something to restore.
+    await enableExpertMode(page)
+    await page.getByTestId('view-button-parameters').click()
+    const search = page.getByTestId('parameter-search-input')
+    await search.fill('BATT_LOW_VOLT')
+    await page.locator('input[aria-label="BATT_LOW_VOLT value"]').fill('13.5')
+    await search.fill('')
+    await page.getByRole('button', { name: /^Apply All \(/ }).click()
+    await expect(page.getByRole('button', { name: /^Apply All \(0\)/ })).toBeVisible()
+
+    await page.getByTestId('view-button-snapshots').click()
+    const stageAndWrite = page.getByTestId('stage-and-write-snapshot-restore-button')
+    await expect(stageAndWrite).toHaveText('Stage & Write (1)')
+    await expect(stageAndWrite).toBeDisabled()
+    await page.getByTestId('snapshot-restore-ack').check()
+    await stageAndWrite.click()
+    // Written through the draft bar's path: the bar never needs a click and
+    // is gone once the write lands, and the restore has nothing left to do.
+    await expect(page.getByTestId('global-draft-bar')).toHaveCount(0)
+    await expect(page.getByTestId('apply-snapshot-restore-button')).toHaveText('Stage All (0)')
+  })
+
   test('captures a snapshot, shows a real diff after a live edit, drops/undoes a row, and overwrites in place', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
@@ -6893,8 +6924,14 @@ test.describe('Snapshot restore', () => {
     await expect(page.getByRole('button', { name: /^Apply All \(0\)/ })).toBeVisible()
 
     // Back in Snapshots, the captured baseline now diffs against the live
-    // (changed) value.
+    // (changed) value. Groups start folded: the heading carries the count,
+    // and opens on a click.
     await page.getByTestId('view-button-snapshots').click()
+    const failsafeToggle = page.getByTestId('snapshot-diff-group-toggle-failsafe')
+    await expect(failsafeToggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toHaveCount(0)
+    await failsafeToggle.click()
+    await expect(failsafeToggle).toHaveAttribute('aria-expanded', 'true')
     await expect(page.getByTestId('snapshot-diff-drop-BATT_LOW_VOLT')).toBeVisible()
 
     // Calibration is excluded by default (accel/gyro/compass/AHRS trim) —

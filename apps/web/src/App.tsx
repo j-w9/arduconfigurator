@@ -2840,6 +2840,37 @@ export function App() {
 
   const canApplyAllDraftParameters =
     canApplyDraftParameters && stagedParameterDrafts.length > 0 && invalidParameterDrafts.length === 0
+  // "Stage & Write" on a snapshot restore: the ids it staged, written once the
+  // draft set has caught up with them (mergeDrafts is a state update, so the
+  // write cannot follow it in the same call).
+  const [snapshotWriteAfterStage, setSnapshotWriteAfterStage] = useState<ReadonlySet<string> | null>(null)
+  useEffect(() => {
+    if (!snapshotWriteAfterStage) {
+      return
+    }
+    const pending = [...snapshotWriteAfterStage]
+    const settled = pending.every(
+      (id) => stagedParameterDrafts.some((draft) => draft.id === id) || invalidParameterDrafts.some((draft) => draft.id === id)
+    )
+    if (!settled) {
+      return
+    }
+    setSnapshotWriteAfterStage(null)
+    if (!canApplyAllDraftParameters) {
+      setSnapshotNotice({
+        tone: 'warning',
+        text:
+          invalidParameterDrafts.length > 0
+            ? `Staged ${pending.length} change(s), but ${invalidParameterDrafts.length} draft(s) are invalid and block the write. Fix or drop them, then Write all from the draft bar.`
+            : `Staged ${pending.length} change(s). Write all from the draft bar when the controller is ready.`
+      })
+      return
+    }
+    void handleApplyAllParameterDrafts()
+    // handleApplyAllParameterDrafts is a function declaration (stable); the
+    // effect keys on the draft set catching up with the staged ids.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshotWriteAfterStage, stagedParameterDrafts, invalidParameterDrafts, canApplyAllDraftParameters])
   const rcMappingDerivations = useRcMappingDerivations({
     snapshot,
     rcMappingSession,
@@ -4217,8 +4248,24 @@ export function App() {
   // The write happens from the global draft bar's "Write all", the one verified,
   // readback-checked, rollback-on-failure path the whole app shares.
   function handleApplySelectedSnapshotRestore(): void {
+    stageSelectedSnapshotRestore()
+  }
+
+  /** Stage All, then write the staged set the moment the drafts have
+   *  settled (the effect on snapshotWriteAfterStage): one click for the
+   *  operator restoring their own snapshot on a fresh build. */
+  function handleStageAndWriteSelectedSnapshotRestore(): void {
+    const staged = stageSelectedSnapshotRestore()
+    if (staged && staged.length > 0) {
+      setSnapshotWriteAfterStage(new Set(staged))
+    }
+  }
+
+  /** Stage the selected snapshot's restore diff as drafts. Returns the staged
+   *  param ids, or undefined when nothing was staged. */
+  function stageSelectedSnapshotRestore(): string[] | undefined {
     if (!selectedSnapshot) {
-      return
+      return undefined
     }
 
     if (!snapshotRestoreAcknowledged) {
@@ -4226,7 +4273,7 @@ export function App() {
         tone: 'warning',
         text: 'Acknowledge the overwrite warning before staging a snapshot restore.'
       })
-      return
+      return undefined
     }
 
     // Force-invalid path: also stage the blocked (out-of-doc-range / outside-enum)
@@ -4252,7 +4299,7 @@ export function App() {
         tone: 'neutral',
         text: `Snapshot "${selectedSnapshot.label}" already matches the live controller values.`
       })
-      return
+      return undefined
     }
 
     mergeDrafts(stagedValues)
@@ -4279,6 +4326,7 @@ export function App() {
       changedCount: stagedCount,
       forcedCount: Object.keys(forcedInvalidDraftValues).length
     })
+    return Object.keys(stagedValues)
   }
 
   function handleStageSelectedPresetDiff(): void {
@@ -9654,6 +9702,7 @@ export function App() {
           handlers={{
             handleApplySelectedProvisioningProfile,
             handleApplySelectedSnapshotRestore,
+            handleStageAndWriteSelectedSnapshotRestore,
             // Per-row Apply STAGES the single change as a draft (like the
             // Parameters tab) — the write happens from the global draft bar.
             handleApplySnapshotEntry: (entry) => {

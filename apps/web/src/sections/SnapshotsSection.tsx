@@ -117,6 +117,9 @@ export interface SnapshotsSectionRefs {
 export interface SnapshotsSectionHandlers {
   handleApplySelectedProvisioningProfile: () => void | Promise<void>
   handleApplySelectedSnapshotRestore: () => void | Promise<void>
+  /** Stage All, then write the staged set at once (field request: the
+   *  operator restoring their own snapshot knows the values are right). */
+  handleStageAndWriteSelectedSnapshotRestore: () => void | Promise<void>
   /** Apply ONE row of the snapshot restore diff (field request: apply
    *  individual parameters like the Parameters tab). Same overwrite ack
    *  gates it as the full restore. */
@@ -306,6 +309,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
   const {
     handleApplySelectedProvisioningProfile,
     handleApplySelectedSnapshotRestore,
+    handleStageAndWriteSelectedSnapshotRestore,
     handleApplySnapshotEntry,
     handleApplySnapshotGroup,
     handleDropSnapshotGroup,
@@ -359,6 +363,24 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
   const [editNote, setEditNote] = useState('')
 
   const selectedSnapshotId = selectedSnapshot?.id
+  // Restore groups start folded (field request): the operator restoring their
+  // own snapshot reads the headings and the counts and goes to Stage All; a
+  // group opens on its heading. Re-folded when another snapshot is selected.
+  const [expandedRestoreGroups, setExpandedRestoreGroups] = useState<ReadonlySet<string>>(() => new Set())
+  useEffect(() => {
+    setExpandedRestoreGroups(new Set())
+  }, [selectedSnapshotId])
+  const toggleRestoreGroup = (category: string): void => {
+    setExpandedRestoreGroups((current) => {
+      const next = new Set(current)
+      if (next.has(category)) {
+        next.delete(category)
+      } else {
+        next.add(category)
+      }
+      return next
+    })
+  }
   useEffect(() => {
     setEditingSnapshot(false)
     setEditLabel(selectedSnapshot?.label ?? '')
@@ -918,6 +940,24 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                   >
                     {`Stage All (${selectedSnapshotChangedEntries.length + (snapshotForceInvalid ? selectedSnapshotInvalidEntries.length : 0)})`}
                   </button>
+                  {/* One click from "I know these values are right" to written:
+                   *  stages the same set, then writes it through the draft
+                   *  bar's verified path as soon as the drafts have settled. */}
+                  <button
+                    data-testid="stage-and-write-snapshot-restore-button"
+                    className="snapshots-button snapshots-button--primary"
+                    onClick={() => void handleStageAndWriteSelectedSnapshotRestore()}
+                    disabled={
+                      busyAction !== undefined ||
+                      !canApplyDraftParameters ||
+                      (selectedSnapshotChangedEntries.length === 0 &&
+                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0)) ||
+                      !snapshotRestoreAcknowledged
+                    }
+                    title="Stage every row and write it to the flight controller now — the same verified, readback-checked write the draft bar does."
+                  >
+                    {`Stage & Write (${selectedSnapshotChangedEntries.length + (snapshotForceInvalid ? selectedSnapshotInvalidEntries.length : 0)})`}
+                  </button>
                   {/* Drop next to Stage (field request) — clears every row from
                    *  the restore diff and un-stages any drafts it already
                    *  staged, mirroring the Parameters tab's "Discard All". */}
@@ -1022,7 +1062,17 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     {selectedSnapshotDiffGroups.map((group) => (
                       <section key={group.category} className="parameter-diff-group">
                         <header>
-                          <strong>{formatCategoryLabel(group.category)}</strong>
+                          <button
+                            type="button"
+                            className="parameter-diff-group__toggle"
+                            data-testid={`snapshot-diff-group-toggle-${group.category}`}
+                            aria-expanded={expandedRestoreGroups.has(group.category)}
+                            onClick={() => toggleRestoreGroup(group.category)}
+                            title={expandedRestoreGroups.has(group.category) ? 'Fold this group' : 'Show the rows in this group'}
+                          >
+                            <span aria-hidden="true">{expandedRestoreGroups.has(group.category) ? '▾' : '▸'}</span>
+                            <strong>{formatCategoryLabel(group.category)}</strong>
+                          </button>
                           <span>{group.entries.length} changed</span>
                           {/* Group-level Stage/Drop. The preview is already
                            *  grouped by category, so a whole group is the
@@ -1055,7 +1105,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                           />
                         </header>
 
-                        {group.entries.map((draft) => (
+                        {expandedRestoreGroups.has(group.category) ? group.entries.map((draft) => (
                           <div key={draft.id} className="parameter-diff-item parameter-diff-item--selectable">
                             <input
                               type="checkbox"
@@ -1122,7 +1172,7 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                               </button>
                             </div>
                           </div>
-                        ))}
+                        )) : null}
                       </section>
                     ))}
                   </div>

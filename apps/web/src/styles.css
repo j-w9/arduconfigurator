@@ -20863,3 +20863,21 @@ button.mavlink-inspector__sent-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Snapshot restore groups fold on their heading (field request): the label is
+   the toggle, styled as the plain heading it replaces. */
+.parameter-diff-group__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.parameter-diff-group__toggle:hover strong {
+  text-decoration: underline;
+}
