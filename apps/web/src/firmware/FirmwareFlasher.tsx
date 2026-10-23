@@ -14,7 +14,7 @@ import type { WebSerialPortLike } from '@arduconfig/transport'
 
 import { WebSerialBootloaderSerial, inflateZlib } from './web-serial-bootloader'
 import { DfuHexFlasher } from './DfuHexFlasher'
-import { useFlashDebugLog } from './use-flash-debug-log'
+import { describeUserAgent, useFlashDebugLog } from './use-flash-debug-log'
 import { APP_VERSION, GIT_HASH } from '../build-info'
 import { FirmwareFinder } from './FirmwareFinder'
 import { desktopFirmwareSource, type FirmwareIndexSource } from './firmware-index-source'
@@ -419,9 +419,11 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
   const copyDebugLog = useCallback(async () => {
     // The header is what a maintainer needs first: which build, which
     // browser (Web Serial vs WebUSB support hangs on it), and when.
+    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown user agent'
     const header = [
       `ArduConfigurator ${APP_VERSION} (${GIT_HASH})`,
-      typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown user agent',
+      describeUserAgent(userAgent),
+      userAgent,
       new Date().toISOString()
     ].join('\n')
     const text = `${header}\n\n${debugLog.text}\n`
@@ -1103,6 +1105,20 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       } catch {
         // Ignore — proceed to the flash the operator asked for.
       }
+      // Nothing a timed-out command answered late may be read as the next
+      // reply: a stale INSYNC/OK before CHIP_ERASE made an erase "finish" in
+      // 14 ms and shifted every ack after it (field report, MicoAir743v2).
+      // Wait for the line to go quiet, then re-sync, before the CRC query and
+      // again before the flash.
+      const settleLink = async (): Promise<void> => {
+        try {
+          await new BootloaderClient(liveSerial).settle()
+          appendDebug('link settled before flash')
+        } catch (settleError) {
+          appendDebug('link settle failed', settleError)
+        }
+      }
+      await settleLink()
       try {
         const alreadyCurrent = await new BootloaderClient(liveSerial).currentMatches(
           loaded.image,
@@ -1154,6 +1170,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
                     : 'Verifying extflash'
         setProgress({ label, ratio })
       }
+      await settleLink()
       try {
         // Reuse the const captured above the GET_CRC await — after an
         // await, TypeScript can no longer narrow the mutable

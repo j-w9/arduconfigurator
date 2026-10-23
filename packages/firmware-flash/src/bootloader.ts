@@ -110,6 +110,8 @@ export type FlashPhase =
 export type FlashProgress = (phase: FlashPhase, ratio: number) => void
 
 const SYNC_TIMEOUT_MS = 3000
+// GET_VERSION answers at once, in either shape; no need for the full sync budget.
+const VERSION_TIMEOUT_MS = 1000
 // After a refused chunk: how long the line must be quiet before the
 // chunk is resent, and the most time spent waiting for that quiet.
 const CHUNK_RESYNC_SILENCE_MS = 200
@@ -219,22 +221,46 @@ export class BootloaderClient {
     try {
       await this.io.flushInput?.()
       await this.io.write(new Uint8Array([GET_VERSION, EOC]))
-      const lengthBytes = await this.io.read(4, SYNC_TIMEOUT_MS)
-      const length = (lengthBytes[0] | (lengthBytes[1] << 8) | (lengthBytes[2] << 16) | (lengthBytes[3] << 24)) >>> 0
-      if (length === 0 || length > MAX_VERSION_LENGTH) {
-        // Not a version reply — most likely INSYNC/INVALID misread as a
-        // length. Re-sync so the next command starts clean.
-        await this.sync().catch(() => {})
+      // The reply is either INSYNC/INVALID (no such command on this
+      // bootloader) or <length:4><string>INSYNC/OK. Reading a fixed four
+      // bytes first turned the two-byte refusal into a 3 s wait for bytes
+      // that never come, and a late reply then shifted every later ack by
+      // one (a field report: an erase that "finished" in 14 ms). Read one
+      // byte and branch.
+      const first = await this.io.read(1, VERSION_TIMEOUT_MS)
+      if (first[0] === INSYNC) {
+        // INSYNC/INVALID: no such command here. Consume the status byte and
+        // the link is clean; nothing to re-sync.
+        await this.io.read(1, VERSION_TIMEOUT_MS)
         return undefined
       }
-      const raw = await this.io.read(length, SYNC_TIMEOUT_MS)
+      const rest = await this.io.read(3, VERSION_TIMEOUT_MS)
+      const length = (first[0] | (rest[0] << 8) | (rest[1] << 16) | (rest[2] << 24)) >>> 0
+      if (length === 0 || length > MAX_VERSION_LENGTH) {
+        // Not a version reply. Re-sync so the next command starts clean.
+        await this.settle()
+        return undefined
+      }
+      const raw = await this.io.read(length, VERSION_TIMEOUT_MS)
       await this.getSync()
       const text = new TextDecoder().decode(raw).replace(/\0+$/, '').trim()
       return text.length > 0 ? text : undefined
     } catch {
-      await this.sync().catch(() => {})
+      await this.settle().catch(() => {})
       return undefined
     }
+  }
+
+  /**
+   * Make the next command's reply the next bytes read: wait until the line
+   * has been quiet for CHUNK_RESYNC_SILENCE_MS (dropping whatever a timed-out
+   * command answered late), then GET_SYNC. A late reply that survives into
+   * the stream shifts every later ack by one -- which is how an erase can
+   * "finish" in 14 ms and a write can end in a timeout at its last frame.
+   */
+  async settle(): Promise<void> {
+    await this.drainInput()
+    await this.sync()
   }
 
   private async trySync(): Promise<boolean> {
