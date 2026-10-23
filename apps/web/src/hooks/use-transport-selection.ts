@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import {
   DirectSocketsTcpTransport,
   DirectSocketsUdpTransport,
@@ -214,6 +214,30 @@ function persistSerialPortInfo(portInfo: WebSerialPortInfo | undefined): void {
   } catch {}
 }
 
+/**
+ * Which granted port to select: the port the operator picked this session,
+ * while the browser still lists it; else the first port matching the
+ * remembered USB ids; else the first port.
+ *
+ * Field report: with two flight controllers plugged in, picking one and
+ * hitting Connect reached the other. Every ArduPilot board enumerates with
+ * the same VID/PID, so a lookup by ids alone lands on the first board in
+ * the list, and that lookup re-ran the moment the pick stored its ids,
+ * overwriting the pick before Connect. The picked port object wins now;
+ * the id match is only the reload / re-enumeration fallback.
+ */
+export function selectGrantedSerialPort(
+  ports: readonly WebSerialPortLike[],
+  picked: WebSerialPortLike | undefined,
+  rememberedInfo: WebSerialPortInfo | undefined
+): { port: WebSerialPortLike | undefined; matched: boolean } {
+  if (picked && ports.includes(picked)) {
+    return { port: picked, matched: true }
+  }
+  const matchedPort = ports.find((port) => sameSerialPortInfo(getWebSerialPortInfo(port), rememberedInfo))
+  return { port: matchedPort ?? ports[0], matched: matchedPort !== undefined }
+}
+
 function sameSerialPortInfo(left: WebSerialPortInfo | undefined, right: WebSerialPortInfo | undefined): boolean {
   if (!left || !right) {
     return false
@@ -269,6 +293,10 @@ export function useTransportSelection(webSerialSupported: boolean): TransportSel
     readStoredSerialPortInfo
   )
   const [autoReconnectAvailable, setAutoReconnectAvailable] = useState(false)
+  // The port the operator picked (or the detect settled on) this session.
+  // In a ref: it must survive the id-match lookup re-running, which is what
+  // used to overwrite it.
+  const pickedSerialPortRef = useRef<WebSerialPortLike | undefined>(undefined)
 
   useEffect(() => {
     persistTransportMode(transportMode)
@@ -299,8 +327,7 @@ export function useTransportSelection(webSerialSupported: boolean): TransportSel
     }
     try {
       const ports = await getAvailableWebSerialPorts()
-      const matchedPort = ports.find((port) => sameSerialPortInfo(getWebSerialPortInfo(port), rememberedSerialPortInfo))
-      return { port: matchedPort ?? ports[0], matched: matchedPort !== undefined }
+      return selectGrantedSerialPort(ports, pickedSerialPortRef.current, rememberedSerialPortInfo)
     } catch {
       return { port: undefined, matched: false }
     }
@@ -335,6 +362,7 @@ export function useTransportSelection(webSerialSupported: boolean): TransportSel
   }, [probeSerialPort])
 
   const rememberSelectedSerialPort = useCallback((port: WebSerialPortLike) => {
+    pickedSerialPortRef.current = port
     setSelectedSerialPort(port)
     const portInfo = getWebSerialPortInfo(port)
     setRememberedSerialPortInfo(portInfo)
