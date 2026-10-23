@@ -177,6 +177,9 @@ export interface ConfigViewProps {
    * wanted is not in the DOM at all.
    */
   requestedCategory?: ConfigCategoryId
+  /** Bumped with each request, so asking for the category already requested
+   *  (after the operator moved off it) is honoured too. */
+  requestedCategoryNonce?: number
   parametersById: ReadonlyMap<string, ParameterState>
   // -------- editable-state plumbing (mirrors the OSD tab) ----------
   editedValues: Record<string, string>
@@ -219,6 +222,7 @@ export function ConfigView(props: ConfigViewProps) {
     subtitle,
     panelId = 'setup-panel-config',
     requestedCategory,
+    requestedCategoryNonce,
     parametersById,
     editedValues,
     onEditChange,
@@ -248,7 +252,7 @@ export function ConfigView(props: ConfigViewProps) {
     if (requestedCategory !== undefined) {
       setActiveCategory(requestedCategory)
     }
-  }, [requestedCategory])
+  }, [requestedCategory, requestedCategoryNonce])
   // Keep the active tab valid if the section set changes under us.
   const effectiveCategory = presentCategories.some((category) => category.id === activeCategory)
     ? activeCategory

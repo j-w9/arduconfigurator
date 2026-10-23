@@ -8618,3 +8618,45 @@ test.describe('Config ▸ Power', () => {
     await expect(page.getByTestId('power-apply')).toHaveCount(0)
   })
 })
+
+test.describe('Find a setting', () => {
+  test('finds a tab, a Config card or a parameter by name, and offers no Expert-only tab outside Expert', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    // The index follows the synced parameters: a card gated on a parameter
+    // (Frame on FRAME_CLASS) is not in it until that parameter has arrived.
+    await expectParameterSyncComplete(page)
+    const search = page.getByTestId('feature-search-input')
+
+    await search.fill('servos')
+    await page.getByTestId('feature-search-result-tab:servos').click()
+    await expect(page.getByTestId('view-button-servos')).toHaveClass(/is-active/)
+    await expect(search).toHaveValue('')
+
+    // A parameter id opens the Config card that renders it, on its category.
+    await search.fill('FRAME_CLASS')
+    await page.getByTestId('feature-search-result-param:FRAME_CLASS').click()
+    await expect(page.getByTestId('view-button-config')).toHaveClass(/is-active/)
+    await expect(page.getByTestId('config-category-airframe')).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByTestId('config-section-frame')).toBeVisible()
+
+    // Enter opens the first result.
+    await search.fill('failsafe')
+    await search.press('Enter')
+    await expect(page.getByTestId('view-button-failsafe')).toHaveClass(/is-active/)
+
+    // Expert-only tabs are not offered outside Expert: no secret menu. (Cards
+    // and parameters whose text says "parameters" still match, so the list is
+    // not empty; the tab is what must be missing.)
+    await search.fill('parameters')
+    await expect(page.getByTestId('feature-search-results')).toBeVisible()
+    await expect(page.getByTestId('feature-search-result-tab:parameters')).toHaveCount(0)
+    await search.fill('zzz-no-such-setting')
+    await expect(page.getByTestId('feature-search-empty')).toBeVisible()
+    await search.fill('')
+    await enableExpertMode(page)
+    await search.fill('parameters')
+    await page.getByTestId('feature-search-result-tab:parameters').click()
+    await expect(page.getByTestId('view-button-parameters')).toHaveClass(/is-active/)
+  })
+})

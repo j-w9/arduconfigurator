@@ -391,7 +391,9 @@ import { buildRelayGroups } from './view-models/relay-groups'
 import { buildSetupFlowSections } from './view-models/setup-flow-sections'
 import { buildGuidedSetupOverview } from './view-models/guided-setup-overview'
 import { buildVehicleOutputSummary } from './view-models/vehicle-output-summary'
-import { ConfigView, type ConfigCategoryId } from './views/Config'
+import { CONFIG_CATEGORIES, ConfigView, type ConfigCategoryId } from './views/Config'
+import { buildFeatureSearchIndex, type FeatureSearchResult, type FeatureSearchSection } from './view-models/feature-search'
+import { FeatureSearch } from './sections/FeatureSearch'
 import { paramDefaultsIdentity } from './view-models/param-defaults-identity'
 import { withFlightModeOptions } from './view-models/flight-mode-options'
 import { isFiberModeAvailable } from './view-models/fiber-mode-detection'
@@ -581,6 +583,18 @@ const GIMBAL_CATEGORY_IDS: ReadonlySet<string> = new Set(['gimbal'])
  * sub-tab rather than in a lump of its own.
  */
 const PERIPHERALS_CATEGORY_IDS: ReadonlySet<string> = new Set(['peripherals'])
+
+// The sections Config and Peripherals add inline below (footer-only cards over
+// a parameter group), for Find a setting. The curated ones come from
+// useConfigSections.
+const FEATURE_SEARCH_INLINE_SECTIONS: readonly FeatureSearchSection[] = [
+  { id: 'flight-modes', title: 'Flight modes', description: 'Which mode each switch position selects, the mode channel.', category: 'flight-modes', viewId: 'config' },
+  { id: 'power', title: 'Battery', description: 'Battery monitor, capacity, arming thresholds, live voltage and current.', category: 'power', viewId: 'config' },
+  { id: 'gimbal', title: 'Gimbal', description: 'Camera gimbal/mount driver, control mode, angle limits.', category: 'gimbal', viewId: 'peripherals' },
+  { id: 'alerts', title: 'LEDs & buzzer', description: 'Notification LED drivers, brightness, strip length, buzzer.', category: 'alerts', viewId: 'peripherals' },
+  { id: 'relays', title: 'Relays', description: 'Switched outputs.', category: 'relays', viewId: 'peripherals' },
+  { id: 'flow-lidar', title: 'Flow & Lidar', description: 'Optical flow and rangefinder / lidar.', category: 'flow-lidar', viewId: 'peripherals' }
+]
 /**
  * Flow & Lidar owns both, because they are a pair in practice: optical flow
  * needs a height reference and that is almost always the downward rangefinder.
@@ -1287,6 +1301,8 @@ export function App() {
   // inside a Config category; ConfigView opens it. Stays set afterwards, which
   // is harmless — it only re-applies when the value CHANGES.
   const [requestedConfigCategory, setRequestedConfigCategory] = useState<ConfigCategoryId | undefined>(undefined)
+  const [requestedPeripheralsCategory, setRequestedPeripheralsCategory] = useState<ConfigCategoryId | undefined>(undefined)
+  const [requestedCategoryNonce, setRequestedCategoryNonce] = useState(0)
   const {
     configParametersById,
     configSections,
@@ -6705,6 +6721,70 @@ export function App() {
     ]
   )
   const activeViewDescriptor = visibleAppViews.find((view) => view.id === activeViewId) ?? visibleAppViews[0]
+  // Find a setting (sections/FeatureSearch.tsx): every tab the app has,
+  // whatever the mode, plus the Config / Peripherals cards and the parameter
+  // catalog. The search itself applies the Expert gate.
+  const allAppViews = useMemo(
+    () =>
+      buildVisibleAppViews({
+        appViews,
+        isExpertMode: true,
+        canBusStatus: snapshot.canBus.status,
+        canBusBus: snapshot.canBus.bus,
+        connectionKind: snapshot.connection.kind,
+        hasNetworkingParams,
+        hasRcLogicParams,
+        hasScriptingParams,
+        hasSerialPassthrough
+      }),
+    [appViews, snapshot.canBus.status, snapshot.canBus.bus, snapshot.connection.kind, hasNetworkingParams, hasRcLogicParams, hasScriptingParams, hasSerialPassthrough]
+  )
+  const featureSearchIndex = useMemo(
+    () =>
+      buildFeatureSearchIndex({
+        views: allAppViews,
+        sections: [
+          ...configSections.map((section) => ({ ...section, viewId: 'config' as const })),
+          ...peripheralSections.map((section) => ({ ...section, viewId: 'peripherals' as const })),
+          ...FEATURE_SEARCH_INLINE_SECTIONS
+        ],
+        categoryLabels: Object.fromEntries(CONFIG_CATEGORIES.map((category) => [category.id, category.label])),
+        parameters: Object.values(metadataCatalog.parameters),
+        parameterCategoryViews: Object.fromEntries(
+          Object.entries(metadataCatalog.categoryById).map(([id, definition]) => [id, definition.viewId])
+        )
+      }),
+    [allAppViews, configSections, peripheralSections, metadataCatalog]
+  )
+  const openFeature = useCallback(
+    (entry: FeatureSearchResult) => {
+      if (entry.configCategory) {
+        if (entry.viewId === 'peripherals') {
+          setRequestedPeripheralsCategory(entry.configCategory)
+        } else {
+          setRequestedConfigCategory(entry.configCategory)
+        }
+        setRequestedCategoryNonce((nonce) => nonce + 1)
+      }
+      if (entry.viewId === 'parameters' && entry.paramId) {
+        setParameterSearch(entry.paramId)
+      }
+      setActiveViewId(entry.viewId)
+      if (entry.sectionId) {
+        const selector = `[data-testid="config-section-${entry.sectionId}"]`
+        const scroll = (attemptsLeft: number): void => {
+          const target = document.querySelector<HTMLElement>(selector)
+          if (!target) {
+            if (attemptsLeft > 0) requestAnimationFrame(() => scroll(attemptsLeft - 1))
+            return
+          }
+          target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+        }
+        requestAnimationFrame(() => scroll(12))
+      }
+    },
+    [setParameterSearch]
+  )
   function formatCategoryLabel(categoryId: string | undefined): string {
     if (!categoryId) {
       return 'Uncategorized'
@@ -8496,6 +8576,7 @@ export function App() {
           visibleAppViews={visibleAppViews}
           activeViewId={activeViewId}
           onSelectView={setActiveViewId}
+          searchSlot={<FeatureSearch index={featureSearchIndex} isExpertMode={isExpertMode} onOpen={openFeature} />}
         />
 
         <div className="workspace-main">
@@ -10398,6 +10479,7 @@ export function App() {
       {activeViewId === 'config' ? (
         <ConfigView
           requestedCategory={requestedConfigCategory}
+          requestedCategoryNonce={requestedCategoryNonce}
           sections={configSections.map((section) => {
             if (section.id === 'esc-dshot') {
               return { ...section, footer: renderEscDshotFooter(), fieldEditors: renderEscDshotFieldEditors() }
@@ -10456,6 +10538,8 @@ export function App() {
       {activeViewId === 'peripherals' ? (
         <ConfigView
           title="Peripherals"
+          requestedCategory={requestedPeripheralsCategory}
+          requestedCategoryNonce={requestedCategoryNonce}
           // No subtitle: the sub-tabs name what is here, and a paragraph
           // restating them is a line to read past on every visit.
           subtitle=""
