@@ -1,5 +1,7 @@
 import type { ReactElement, ReactNode } from 'react'
 
+import { InfoDot as KitInfoDot, type InfoDotLink } from '@arduconfig/ui-kit'
+
 import { WIKI_PARAMETER_FIRMWARE, parameterWikiUrl, wikiTopicUrl, type WikiTopic } from '../view-models/param-docs'
 
 export interface InfoDotProps {
@@ -27,66 +29,37 @@ export interface InfoDotProps {
 }
 
 /**
- * The small circled "i" affordance first used on the Tuning tab strip, lifted
- * into a shared component so card- and field-level guidance across the tuning
- * surfaces can hide long always-on help behind one hover/focus instead of
- * dumping a wall of text into the layout. Reuses the shared
- * `.receiver-info-dot` / `.receiver-info-tip` styles — theme-safe (token-based,
- * light + dark) and opens downward so it clears the workspace's overflow clip.
- * `tabIndex={0}` makes the tip keyboard-reachable via the CSS `:focus-visible`
- * rule.
+ * ArduConfigurator's info dot: ui-kit's `InfoDot`, with links restricted to this
+ * app's wiki. The dot itself — markup, classes, hover/focus behaviour — lives in
+ * `@arduconfig/ui-kit`; what stays here is the rule that a link can only be a
+ * wiki topic or a parameter id, never a free-form href.
  */
 export function InfoDot({ label, children, testId, wide = false, wikiTopic, paramId }: InfoDotProps): ReactElement {
+  const links: InfoDotLink[] = []
+  if (wikiTopic) {
+    links.push({
+      href: wikiTopicUrl(wikiTopic),
+      label: 'Read this in the wiki ↗',
+      testId: testId ? `${testId}-wiki` : undefined
+    })
+  }
+  if (paramId) {
+    // The dot usually sits inside the field's <label>. A click on this anchor
+    // still opens the reference in a new tab; the label's own activation only
+    // focuses the field's control, which is harmless. Named for the documented
+    // firmware: the reference is generated from the pinned Copter metadata, and
+    // a 4.6 board can differ.
+    links.push({
+      href: parameterWikiUrl(paramId),
+      // JSX, not a template string: three text nodes, as when this anchor was
+      // drawn here. One node kerns across the parentheses differently.
+      label: <>Parameter reference ({WIKI_PARAMETER_FIRMWARE}) ↗</>,
+      testId: `param-wiki-${paramId}`
+    })
+  }
   return (
-    <span
-      className="receiver-info-dot"
-      tabIndex={0}
-      role="note"
-      aria-label={label}
-      data-testid={testId}
-    >
-      i
-      {/* `--linked` re-enables pointer events on the tip and bridges the gap
-          under the dot. Applied ONLY when there is something to click: an
-          always-clickable tip would start intercepting clicks on whatever it
-          overlaps, and every text-only dot in the app must keep behaving
-          exactly as it does today. */}
-      <span
-        className={`receiver-info-tip${wide ? ' receiver-info-tip--wide' : ''}${wikiTopic || paramId ? ' receiver-info-tip--linked' : ''}`}
-        role="tooltip"
-      >
-        {children}
-        {wikiTopic ? (
-          // Plain external anchor, and it must stay one. Pulling wiki content
-          // into the SPA poisoned the app shell once (a P1 production bug) —
-          // that rule holds even though the wiki is on our own origin.
-          <a
-            className="receiver-info-wiki"
-            href={wikiTopicUrl(wikiTopic)}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid={testId ? `${testId}-wiki` : undefined}
-          >
-            Read this in the wiki ↗
-          </a>
-        ) : null}
-        {paramId ? (
-          // The dot usually sits inside the field's <label>. A click on this
-          // anchor still opens the reference in a new tab; the label's own
-          // activation only focuses the field's control, which is harmless.
-          // Named for the documented firmware: the reference is generated from
-          // the pinned Copter metadata, and a 4.6 board can differ.
-          <a
-            className="receiver-info-wiki"
-            href={parameterWikiUrl(paramId)}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-testid={`param-wiki-${paramId}`}
-          >
-            Parameter reference ({WIKI_PARAMETER_FIRMWARE}) ↗
-          </a>
-        ) : null}
-      </span>
-    </span>
+    <KitInfoDot label={label} testId={testId} wide={wide} links={links}>
+      {children}
+    </KitInfoDot>
   )
 }

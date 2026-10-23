@@ -66,3 +66,30 @@ export function firmwareCrc(alignedImage: Uint8Array, flashMaxSize: number): num
   }
   return state >>> 0
 }
+
+// CRC-16/XMODEM, for the BLHeli 4-way interface that Betaflight exposes over
+// MSP passthrough (Betaflight src/main/io/serial_4way.c `crc16Xmodem`, and
+// BLHeli's own Interface.asm). Polynomial 0x1021, state initialised to 0,
+// MSB-first, and **no** reflection or final inversion — the CCITT variants
+// that init to 0xFFFF or reflect the input produce a different value for the
+// same bytes, and a 4-way frame with the wrong CRC is answered with silence,
+// which reads on the wire like an absent ESC rather than a checksum fault.
+//
+// Note the byte order this goes out in: 4-way puts the CRC on the wire
+// BIG-endian (high byte first), unlike `firmwareCrc`, whose callers read
+// little-endian. Framing owns that; this function returns the number.
+
+/**
+ * Streaming CRC-16/XMODEM. `state` defaults to 0 and is returned, so a frame
+ * can be accumulated header-then-payload without concatenating buffers.
+ */
+export function crc16Xmodem(bytes: Uint8Array, state = 0): number {
+  let crc = state & 0xffff
+  for (let i = 0; i < bytes.length; i += 1) {
+    crc ^= bytes[i] << 8
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff
+    }
+  }
+  return crc & 0xffff
+}

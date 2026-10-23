@@ -7,10 +7,17 @@ import { MavlinkSession, MavlinkV2Codec, createArduCopterMockScenario } from '..
 import {
   MockTransport,
   ReplayTransport,
+  DeadlineError,
+  MAX_BUFFERED,
+  WebSerialByteSession,
   WebSerialTransport,
+  release,
+  withDeadline,
   WebSocketTransport,
   createRecordedSession,
   createRecordedSessionEvent,
+  getAvailableWebSerialPorts,
+  getWebSerialNavigator,
   parseRecordedSession,
   serializeRecordedSession
 } from '../packages/transport/dist/index.js'
@@ -196,6 +203,27 @@ test('WebSocketTransport: disconnect() during connect detaches connect-phase lis
   )
 
   await transport.disconnect()
+})
+
+test('getWebSerialNavigator answers "no Web Serial" where there is no navigator at all', async () => {
+  // `navigator` is a bare global reference, so on a runtime without one
+  // (node 20, and any node with the global removed) reading it THROWS rather
+  // than yielding undefined — taking isSupported() and
+  // getAvailableWebSerialPorts() down with a ReferenceError instead of the
+  // negative answer both are written to return. Node 21+ ships a navigator,
+  // so this is the only way to reproduce it here.
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  delete globalThis.navigator
+  assert.equal(typeof navigator, 'undefined', 'precondition: no navigator global')
+  try {
+    assert.equal(getWebSerialNavigator(), undefined)
+    assert.equal(WebSerialTransport.isSupported(), false)
+    assert.deepEqual(await getAvailableWebSerialPorts(), [])
+  } finally {
+    if (saved) {
+      Object.defineProperty(globalThis, 'navigator', saved)
+    }
+  }
 })
 
 test('WebSerialTransport reports an error when the selected port fails to open', async () => {
@@ -1406,3 +1434,159 @@ function wait(durationMs) {
     setTimeout(resolve, durationMs)
   })
 }
+
+// -- WebSerialByteSession -------------------------------------------------
+
+function fakeSerialPort() {
+  let controller
+  const writes = []
+  const state = { openedWith: null, closes: 0 }
+  const port = {
+    readable: new ReadableStream({
+      start(c) {
+        controller = c
+      }
+    }),
+    writable: new WritableStream({
+      write(chunk) {
+        writes.push(Uint8Array.from(chunk))
+      }
+    }),
+    async open(options) {
+      state.openedWith = options
+    },
+    async close() {
+      state.closes += 1
+    },
+    getInfo() {
+      return {}
+    }
+  }
+  return { port, writes, state, push: (bytes) => controller.enqueue(Uint8Array.from(bytes)) }
+}
+
+test('WebSerialByteSession.read returns exactly n bytes, and a COPY of them', async () => {
+  const { port, push } = fakeSerialPort()
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  push([1, 2, 3, 4, 5])
+
+  const first = await session.read(2, 500)
+  assert.deepEqual([...first], [1, 2])
+  // Mutating what was handed back must not disturb the bytes still queued —
+  // a caller that reads a CRC then reads more before using it would otherwise
+  // see its own protocol bytes change underneath it.
+  first[0] = 0xff
+  assert.deepEqual([...(await session.read(3, 500))], [3, 4, 5])
+  await session.close()
+})
+
+test('WebSerialByteSession.read times out rather than hanging on a missing reply', async () => {
+  const { port, push } = fakeSerialPort()
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  push([0xaa])
+  await assert.rejects(() => session.read(4, 60), /timed out waiting for 4 bytes/)
+  await session.close()
+})
+
+test('WebSerialByteSession.flushInput drops bytes already in flight', async () => {
+  const { port, push } = fakeSerialPort()
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  push([0xde, 0xad])
+  // Clearing a buffer alone would leave these to shift the next fixed-width
+  // read; flushInput gives the pump a turn first, so they are actually gone.
+  await session.flushInput()
+  push([0x01])
+  assert.deepEqual([...(await session.read(1, 500))], [0x01])
+  await session.close()
+})
+
+test('WebSerialByteSession: an attached session hands the port back still open', async () => {
+  const { port, state } = fakeSerialPort()
+  // Two protocols sharing one port in turn — MSP, then the ESC 4-way
+  // interface across enterPassthrough — must not have the first one's
+  // session close the port out from under the second.
+  const session = await WebSerialByteSession.open(port, { attach: true })
+  assert.equal(state.openedWith, null, 'attaching never opens')
+  await session.close()
+  assert.equal(state.closes, 0, 'attaching never closes')
+
+  const owned = await WebSerialByteSession.open(fakeSerialPort().port, { baudRate: 115200 })
+  await owned.close()
+})
+
+test('WebSerialByteSession.open refuses to guess a baud', async () => {
+  const { port } = fakeSerialPort()
+  await assert.rejects(() => WebSerialByteSession.open(port), /baudRate is required/)
+})
+
+test('WebSerialByteSession.write reaches the port and releases the writer lock', async () => {
+  const { port, writes } = fakeSerialPort()
+  const session = await WebSerialByteSession.open(port, { baudRate: 420000 })
+  await session.write(Uint8Array.from([0x2f, 0x30]))
+  // A released lock is what lets the next write happen at all.
+  await session.write(Uint8Array.from([0x31]))
+  assert.deepEqual(writes.map((w) => [...w]), [[0x2f, 0x30], [0x31]])
+  await session.close()
+})
+
+// -- deadlines and caps -----------------------------------------------------
+
+test('withDeadline turns a wait that never ends into an answer', async () => {
+  const never = new Promise(() => {})
+  await assert.rejects(() => withDeadline(never, 20, 'reading'), DeadlineError)
+  await assert.rejects(() => withDeadline(never, 20, 'reading'), /reading did not finish within 20 ms/)
+  assert.equal(await withDeadline(Promise.resolve(7), 50, 'x'), 7, 'fast work is untouched')
+})
+
+test('release gives up on a cleanup that hangs, rather than hanging with it', async () => {
+  // A stuck reader.cancel() must not hang the cleanup.
+  const before = Date.now()
+  await release(() => new Promise(() => {}), 30)
+  assert.ok(Date.now() - before < 500, 'it returned')
+  await release(() => Promise.reject(new Error('boom')), 30)
+})
+
+test('WebSerialByteSession caps its buffer, dropping the OLDEST bytes', async () => {
+  const { port, push } = fakeSerialPort()
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  for (let i = 0; i < 20; i += 1) push(new Uint8Array(8 * 1024).fill(i))
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  // 160 KB in; the last 64 KB (chunks 12-19) remain.
+  const front = await session.read(16, 500)
+  assert.deepEqual([...front], new Array(16).fill(12), 'chunks 0-11 were dropped')
+
+  const rest = await session.read(MAX_BUFFERED - 16, 500)
+  assert.equal(rest.length, MAX_BUFFERED - 16)
+  assert.equal(rest[rest.length - 1], 19, 'the newest bytes are still at the end')
+  await session.close()
+})
+
+test('a write to a port that never accepts bytes times out instead of waiting', async () => {
+  let stall
+  const port = {
+    readable: new ReadableStream({ start() {} }),
+    writable: new WritableStream({ write: () => new Promise((r) => { stall = r }) }),
+    async open() {},
+    async close() {},
+    getInfo: () => ({})
+  }
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  await assert.rejects(() => session.write(Uint8Array.from([1, 2, 3])), /writing to the port/)
+  stall?.()
+  await session.close()
+})
+
+test('close returns even when the port will not close', async () => {
+  const port = {
+    readable: new ReadableStream({ start() {} }),
+    writable: new WritableStream({ write() {} }),
+    async open() {},
+    close: () => new Promise(() => {}),
+    getInfo: () => ({})
+  }
+  const session = await WebSerialByteSession.open(port, { baudRate: 115200 })
+  const before = Date.now()
+  await session.close()
+  assert.ok(Date.now() - before < 2000, 'it gave up rather than hanging')
+})

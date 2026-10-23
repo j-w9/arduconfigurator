@@ -1,4 +1,4 @@
-export { arduPilotCrc32, firmwareCrc } from './crc.js'
+export { arduPilotCrc32, crc16Xmodem, firmwareCrc } from './crc.js'
 export {
   parseApj,
   decodeApjImage,

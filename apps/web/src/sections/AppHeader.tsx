@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
+import { ThemeToggle } from '@arduconfig/ui-kit'
 
 import { AppHeaderLogo } from '../app-header-logo'
 import { APP_VERSION, GIT_BRANCH, GIT_HASH } from '../build-info'
@@ -326,17 +327,7 @@ export function AppHeader({
         >
           Basic
         </button>
-        <button
-          type="button"
-          className="app-header__theme-toggle"
-          data-testid="theme-toggle"
-          onClick={onToggleTheme}
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          aria-pressed={theme === 'light'}
-        >
-          <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
-        </button>
+        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
       </div>
 
       <div className="app-header__actions">

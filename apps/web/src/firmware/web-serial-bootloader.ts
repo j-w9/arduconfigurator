@@ -3,8 +3,8 @@
 // raw bytes (NOT MAVLink), so this bypasses the normal Transport and
 // drives the port directly at the bootloader baud.
 
-import { MAX_FIRMWARE_IMAGE_BYTES, type BootloaderSerial } from '@arduconfig/firmware-flash'
-import type { WebSerialPortLike } from '@arduconfig/transport'
+import { MAX_FIRMWARE_IMAGE_BYTES } from '@arduconfig/firmware-flash'
+import { WebSerialByteSession, type WebSerialPortLike } from '@arduconfig/transport'
 
 const BOOTLOADER_BAUD = 115200
 
@@ -78,122 +78,18 @@ export async function bootloaderTouch1200(port: WebSerialPortLike): Promise<void
 }
 
 /**
- * BootloaderSerial over an open Web Serial port. `read(n, timeoutMs)`
- * accumulates inbound chunks until `n` bytes are available or the
- * timeout elapses (the bootloader is request/response, so a missing
- * reply must surface as a timeout rather than hang the flash).
+ * BootloaderSerial over an open Web Serial port, at the ArduPilot bootloader
+ * baud.
+ *
+ * The pump itself now lives in `@arduconfig/transport` as
+ * `WebSerialByteSession`, so other products can use it. This is the binding
+ * layer that holds this app's baud, the same way `theme.ts` holds this app's
+ * storage key — so no call site here had to change.
  */
-export class WebSerialBootloaderSerial implements BootloaderSerial {
-  private reader: ReadableStreamDefaultReader<Uint8Array> | null = null
-  private buffer: Uint8Array = new Uint8Array(0)
-  private closed = false
-  private pumpError: Error | null = null
-  private wakeups: Array<() => void> = []
+export type WebSerialBootloaderSerial = WebSerialByteSession
 
-  private constructor(private readonly port: WebSerialPortLike) {}
-
+export const WebSerialBootloaderSerial = {
   /** Open the port at the bootloader baud and start the read pump. */
-  static async open(port: WebSerialPortLike): Promise<WebSerialBootloaderSerial> {
-    await port.open({ baudRate: BOOTLOADER_BAUD })
-    const serial = new WebSerialBootloaderSerial(port)
-    serial.startPump()
-    return serial
-  }
-
-  private wake(): void {
-    const pending = this.wakeups
-    this.wakeups = []
-    for (const resolve of pending) resolve()
-  }
-
-  // A single background loop owns the reader and continuously drains the
-  // stream into `buffer`. This is what makes `flushInput()` correct (the
-  // in-flight bytes it must discard are already pulled into `buffer`, so
-  // clearing it actually drops them) and removes the old speculative
-  // `Promise.race([reader.read(), timeout])` pattern, which abandoned a
-  // pending read on timeout and could let it swallow a later reply.
-  private startPump(): void {
-    if (!this.port.readable) {
-      this.pumpError = new Error('serial port not readable')
-      this.closed = true
-      return
-    }
-    const reader = this.port.readable.getReader()
-    this.reader = reader
-    void (async () => {
-      try {
-        for (;;) {
-          const { value, done } = await reader.read()
-          if (done) break
-          if (value && value.length > 0) {
-            const merged = new Uint8Array(this.buffer.length + value.length)
-            merged.set(this.buffer)
-            merged.set(value, this.buffer.length)
-            this.buffer = merged
-            this.wake()
-          }
-        }
-      } catch (error) {
-        this.pumpError = error instanceof Error ? error : new Error('serial read pump failed')
-      } finally {
-        this.closed = true
-        this.wake()
-      }
-    })()
-  }
-
-  async write(data: Uint8Array): Promise<void> {
-    if (!this.port.writable) throw new Error('serial port not writable')
-    const writer = this.port.writable.getWriter()
-    try {
-      await writer.write(data)
-    } finally {
-      writer.releaseLock()
-    }
-  }
-
-  async read(n: number, timeoutMs: number): Promise<Uint8Array> {
-    const deadline = Date.now() + timeoutMs
-    while (this.buffer.length < n) {
-      if (this.pumpError) throw this.pumpError
-      if (this.closed) throw new Error('serial port closed mid-read')
-      const remaining = deadline - Date.now()
-      if (remaining <= 0) throw new Error(`serial read timed out waiting for ${n} bytes`)
-      let timer: ReturnType<typeof setTimeout> | undefined
-      await new Promise<void>((resolve) => {
-        this.wakeups.push(resolve)
-        timer = setTimeout(resolve, remaining)
-      })
-      if (timer) clearTimeout(timer)
-    }
-    // Return a COPY, not a subarray view: brick-class callers (verify()
-    // reads 4 CRC bytes, then getSync() reads more before using them)
-    // must not have already-read protocol bytes mutate underneath them.
-    const out = this.buffer.slice(0, n)
-    this.buffer = this.buffer.slice(n)
-    return out
-  }
-
-  async flushInput(): Promise<void> {
-    // Give the pump a turn to pull anything already sitting in the stream
-    // (an async ChibiOS boot banner / the tail of a prior reply) into
-    // `buffer`, then drop the lot. Clearing alone left those in-flight
-    // bytes to shift the next fixed-width board-id/CRC read.
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    this.buffer = new Uint8Array(0)
-  }
-
-  async close(): Promise<void> {
-    this.closed = true
-    try {
-      if (this.reader) {
-        await this.reader.cancel().catch(() => undefined)
-        this.reader.releaseLock()
-        this.reader = null
-      }
-    } finally {
-      this.wake()
-      await this.port.close().catch(() => undefined)
-    }
-  }
+  open: (port: WebSerialPortLike): Promise<WebSerialByteSession> =>
+    WebSerialByteSession.open(port, { baudRate: BOOTLOADER_BAUD })
 }

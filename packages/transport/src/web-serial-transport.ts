@@ -303,6 +303,15 @@ export class WebSerialTransport implements Transport {
 }
 
 export function getWebSerialNavigator(): WebSerialNavigatorLike | undefined {
+  // `navigator` is a bare global reference, so reading it where one does not
+  // exist THROWS rather than yielding undefined. Node 21 added a `navigator`;
+  // Node 20 has none, and there this read took `isSupported()` and
+  // `getAvailableWebSerialPorts()` down with a ReferenceError instead of the
+  // "no Web Serial here" answer both are written to return. A transport used
+  // from a CLI or a unit test has to be able to ask the question off-browser.
+  if (typeof navigator === 'undefined') {
+    return undefined
+  }
   const candidate = navigator as Navigator & { serial?: WebSerialNavigatorLike }
   return candidate.serial
 }

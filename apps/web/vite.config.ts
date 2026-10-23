@@ -65,6 +65,9 @@ export default defineConfig({
       '@arduconfig/ardupilot-core': fileURLToPath(new URL('packages/ardupilot-core/src/index.ts', root)),
       '@arduconfig/param-metadata': fileURLToPath(new URL('packages/param-metadata/src/index.ts', root)),
       '@arduconfig/log-analysis': fileURLToPath(new URL('packages/log-analysis/src/index.ts', root)),
+      // Before the bare name: an alias also matches its own subpaths, and the
+      // first match wins, so the stylesheet must not resolve under index.tsx.
+      '@arduconfig/ui-kit/styles.css': fileURLToPath(new URL('packages/ui-kit/src/styles.css', root)),
       '@arduconfig/ui-kit': fileURLToPath(new URL('packages/ui-kit/src/index.tsx', root))
     }
   },

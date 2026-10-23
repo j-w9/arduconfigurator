@@ -15,6 +15,8 @@ import {
 } from '@arduconfig/protocol-msp'
 import { WebSerialTransport } from '@arduconfig/transport'
 
+import { downloadTextFile } from '../download-file'
+
 /** Betaflight's default MSP baud. Not configurable: a board that has been
  *  changed off it cannot be found by guessing anyway. */
 const MSP_BAUD_RATE = 115200
@@ -147,15 +149,10 @@ export function useBetaflightMsp(): UseBetaflightMspResult {
       // Byte-for-byte what Betaflight Configurator saves: the CLI transcript
       // (prompt, echoed command, output, trailing prompt) in CRLF. Verified
       // against a real BTFL_cli_*.txt from the same board.
-      const blob = new Blob([formatCliCaptureFile(diff, 'diff')], { type: 'text/plain' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
       // Betaflight's own naming, so it sits alongside files saved by their
-      // Configurator rather than looking like something else.
-      link.download = `BTFL_cli_${stamp}_${board}.txt`
-      link.click()
-      URL.revokeObjectURL(url)
+      // Configurator rather than looking like something else. Through the
+      // shared helper: a detached anchor is ignored by Brave.
+      downloadTextFile(`BTFL_cli_${stamp}_${board}.txt`, formatCliCaptureFile(diff, 'diff'), 'text/plain')
     } catch (caught) {
       setError(
         caught instanceof Error
