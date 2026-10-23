@@ -156,7 +156,7 @@ import {
   isStaleSerialHandleError,
   describeRememberedSerialPort
 } from './connection-helpers'
-import { detectMavlinkPort } from './serial-autodetect'
+import { detectMavlinkPort, orderPortsForDetection } from './serial-autodetect'
 import { canApplyParameterChanges, parameterApplyBlockedReason } from './apply-gate'
 import { ALL_MOTOR_TEST_OUTPUT, ALL_MOTOR_TEST_OUTPUT_SIMULTANEOUS, buildMotorTestRequest } from './motor-test-helpers'
 import { canUseGuidedSetupTestingShortcut, isExpertOnlyView, readGuidedSetupShortcutSectionId } from './guided-setup-shortcut'
@@ -3292,10 +3292,20 @@ export function App() {
         try {
           const grantedPorts = await getAvailableWebSerialPorts()
           if (grantedPorts.length > 1) {
-            const { mavlinkPort } = await detectMavlinkPort(grantedPorts, 115200)
+            // The operator's pick is probed first and wins when it speaks
+            // MAVLink; with two boards plugged in, walking the browser's
+            // list from the top landed on the other board.
+            const chosen = selectedSerialPortRef.current
+            const { mavlinkPort } = await detectMavlinkPort(orderPortsForDetection(grantedPorts, chosen), 115200)
             if (mavlinkPort) {
               selectedSerialPortRef.current = mavlinkPort
               rememberSelectedSerialPort(mavlinkPort)
+              if (chosen && mavlinkPort !== chosen) {
+                setSessionNotice({
+                  tone: 'neutral',
+                  text: 'The port you picked is not streaming MAVLink; connecting on the port that is.'
+                })
+              }
             }
           }
         } catch {
