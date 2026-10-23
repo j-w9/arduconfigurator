@@ -114,6 +114,14 @@ const SYNC_TIMEOUT_MS = 3000
 // chunk is resent, and the most time spent waiting for that quiet.
 const CHUNK_RESYNC_SILENCE_MS = 200
 const CHUNK_RESYNC_MAX_MS = 3000
+// Sent first after a refusal. The bootloader gives up on a frame mid-way and
+// goes back to reading commands, so the frame's tail is parsed as commands;
+// if that tail holds 0x27 followed by a byte that is a multiple of 4, the
+// bootloader is now waiting for up to 255 bytes of "payload" and would eat
+// the resync. 256 zero bytes complete any such read (0x00 is no opcode: as
+// a command byte it is skipped, as the byte after a payload it is not EOC,
+// so the frame is refused and nothing is written). Longer than any payload.
+const CHUNK_RESYNC_FILLER = new Uint8Array(256)
 // CHIP_ERASE timeout. Ports QGC's scaling (Bootloader.cc:166-171): 20s
 // baseline + 4s per MB of flash above 2 MB (uploader.py uses a flat 20s).
 // The fallback is a flat 40s when flashSize is unknown.
@@ -300,9 +308,10 @@ export class BootloaderClient {
    * inside the bootloader's 256-byte serial RX buffer.
    *
    * The bootloader does not advance its write address on a refused
-   * chunk, so one refusal is retried at the same offset after the line is
-   * quiet and a GET_SYNC has been answered. A second refusal is the real
-   * error.
+   * chunk, so one refusal is retried at the same offset after a filler has
+   * closed whatever the bootloader was still reading from the frame's
+   * tail, the line is quiet, and a GET_SYNC has been answered. A second
+   * refusal is the real error.
    */
   private async programChunk(command: number, chunk: Uint8Array): Promise<void> {
     const frame = new Uint8Array(chunk.length + 3)
@@ -318,6 +327,7 @@ export class BootloaderClient {
       await this.getSync()
     } catch (error) {
       if (!(error instanceof Error) || !/INVALID OPERATION/.test(error.message)) throw error
+      await this.io.write(CHUNK_RESYNC_FILLER)
       await this.drainInput()
       await this.sync()
       await this.io.write(frame)

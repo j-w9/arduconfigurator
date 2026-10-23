@@ -121,6 +121,49 @@ test.describe('Flash firmware over Web Serial (fake bootloader)', () => {
     expect(await fakeSerialFlashHex(page, IMAGE_BYTES, IMAGE_BYTES + 16)).toBe('ff'.repeat(16))
   })
 
+  test('a refused frame whose tail opens a payload read on the bootloader is still resent', async ({ page }) => {
+    // The hazard: after a refusal the bootloader parses the frame's tail as
+    // commands. A 0x27 followed by a multiple-of-4 byte near the end of the
+    // tail starts a PROG_MULTI "payload" read that would swallow the
+    // client's resync GET_SYNC. The client now sends a zero filler first,
+    // which completes that read and makes the bootloader refuse the stray
+    // frame (0x00 is not EOC) without writing anything.
+    const image = pseudoRandomImage(IMAGE_BYTES, 0x1234abcd)
+    image[CHUNK - 2] = PROG_MULTI
+    image[CHUNK - 1] = 0xfc
+    await installFakeSerial(page, {
+      boardId: BOARD_ID,
+      granted: true,
+      plugged: false,
+      rejectProgMultiOnce: true,
+      rejectProgMultiAt: 1
+    })
+    await connectDemo(page)
+    await stageFirmware(page, buildApj(image))
+
+    await page.getByTestId('firmware-flash').click()
+    await expect(page.getByTestId('firmware-await-bootloader')).toBeVisible()
+    await plugFakeSerial(page)
+
+    await expect(page.getByTestId('firmware-done')).toBeVisible({ timeout: 40_000 })
+    await expect(page.getByTestId('firmware-error')).toHaveCount(0)
+    await expect.poll(async () => (await fakeSerialStats(page)).rebooted).toBe(true)
+
+    const stats = await fakeSerialStats(page)
+    expect(stats.progMulti.injectedRefusals).toBe(1)
+    const frames = stats.frames.filter((frame) => frame.command === PROG_MULTI && frame.status !== 'ignored')
+    const refusedIndex = frames.findIndex((frame) => frame.status === 'invalid' && /injected/.test(frame.reason ?? ''))
+    expect(refusedIndex).toBeGreaterThanOrEqual(0)
+    // The stray 0x27 in the tail became a frame of its own, refused on the
+    // filler, and wrote nothing: the resend still lands at offset 0.
+    const stray = frames.slice(refusedIndex + 1).find((frame) => frame.status === 'invalid' && frame.arg === 0xfc)
+    expect(stray).toBeDefined()
+    const resent = frames.slice(refusedIndex + 1).find((frame) => frame.status === 'ok' && frame.arg === CHUNK)
+    expect(resent).toMatchObject({ offset: 0, writes: 1 })
+    expect(stats.programmedBytes).toBe(IMAGE_BYTES)
+    expect(await fakeSerialFlashHex(page, 0, IMAGE_BYTES)).toBe(hex(image))
+  })
+
   test('a refused PROG_MULTI frame is resent at the same offset; the port comes through the picker', async ({ page }) => {
     const image = pseudoRandomImage(IMAGE_BYTES, 0x9e3779b9)
     // The refused frame's payload is read back as commands by the bootloader
