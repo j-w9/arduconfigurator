@@ -130,7 +130,6 @@ import {
   formatBatteryTelemetry
 } from './status-formatters'
 import {
-  formatParameterDraftValue,
   formatParameterDisplayValue,
   normalizeBitmaskValue
 } from './parameter-format'
@@ -172,7 +171,6 @@ import {
   toneForConnection,
   toneForSetup,
   toneForModeSwitchExercise,
-  toneForParameterDraftStatus,
   toneForScopedDraftReview
 } from './tone-helpers'
 import {
@@ -336,7 +334,7 @@ import { TuningPlaneSection } from './sections/TuningPlaneSection'
 import { TuningRoverSection } from './sections/TuningRoverSection'
 import { TuningSubSection } from './sections/TuningSubSection'
 import { VtxSection } from './sections/VtxSection'
-import { PowerView, type PowerDraftItem, type PowerFieldSpec } from './views/Power'
+import { PowerView, type PowerFieldSpec } from './views/Power'
 import { CanBusView } from './views/CanBus'
 import { CanEnablePrompt } from './views/CanEnablePrompt'
 import { NetworkingView, type NetworkingTab } from './views/NetworkingView'
@@ -1321,6 +1319,17 @@ export function App() {
   const isPeripheralOrConfigParamId = useCallback(
     (paramId: string): boolean => isPeripheralParamId(paramId) || isConfigParamId(paramId),
     [isConfigParamId, isPeripheralParamId]
+  )
+  // Everything the Peripherals tab's one Apply bar writes: the section fields,
+  // plus the two cards that are slots rather than sections (LEDs & buzzer,
+  // Compass order). They used to carry their own apply bars; one page, one
+  // bar.
+  const isPeripheralPageParamId = useCallback(
+    (paramId: string): boolean =>
+      isPeripheralParamId(paramId) ||
+      OUTPUT_NOTIFICATION_PARAM_IDS.includes(paramId as (typeof OUTPUT_NOTIFICATION_PARAM_IDS)[number]) ||
+      isCompassOrderParamId(paramId),
+    [isPeripheralParamId]
   )
   // Auto-enable bidirectional DShot when the operator picks a DShot MOT_PWM_TYPE.
   // Fires only on an actual change of the MOT_PWM_TYPE draft (ref-guarded so
@@ -2760,8 +2769,6 @@ export function App() {
     configStagedDrafts,
     configInvalidDrafts,
     peripheralDraftEntries,
-    peripheralStagedDrafts,
-    peripheralInvalidDrafts,
     osdStagedDrafts,
     osdInvalidDrafts,
     vtxStagedDrafts,
@@ -2810,7 +2817,27 @@ export function App() {
     relayDraftEntries,
     relayStagedDrafts,
     relayInvalidDrafts
-  } = useViewDraftSelectors({ parameterDraftEntries, isConfigParamId, isPeripheralParamId })
+  } = useViewDraftSelectors({ parameterDraftEntries, isConfigParamId, isPeripheralParamId: isPeripheralPageParamId })
+
+  // One Apply bar per page (operator call 2026-10-23). Config also writes the
+  // Power card and its additional settings; Peripherals also writes the GPS
+  // additional, Gimbal and Flow & Lidar cards. Each was a bar of its own.
+  const unionDrafts = (...lists: ParameterDraftEntry[][]) => {
+    const seen = new Set<string>()
+    const entries: ParameterDraftEntry[] = []
+    for (const list of lists) {
+      for (const entry of list) {
+        if (seen.has(entry.id)) continue
+        seen.add(entry.id)
+        entries.push(entry)
+      }
+    }
+    return {
+      entries,
+      staged: entries.filter((entry) => entry.status === 'staged'),
+      invalid: entries.filter((entry) => entry.status === 'invalid')
+    }
+  }
 
   // Drop drafts that match the live value once a FRESH parameter sync lands.
   //
@@ -7094,23 +7121,6 @@ export function App() {
             setDraft(paramId, value)
           }
           draftStatusById={parameterDraftById}
-          draftItems={powerDraftEntries.map((draft): PowerDraftItem => ({
-            id: draft.id,
-            label: draft.label,
-            status: draft.status,
-            badgeTone: toneForParameterDraftStatus(draft.status),
-            summary: draft.status === 'staged'
-              ? `Current ${formatParameterDraftValue(draft.definition, draft.currentValue)} → New ${formatParameterDraftValue(draft.definition, draft.nextValue)}`
-              : draft.reason ?? 'Draft matches the live controller value.'
-          }))}
-          stagedCount={powerStagedDrafts.length}
-          draftCount={powerDraftEntries.length}
-          invalidCount={powerInvalidDrafts.length}
-          canApply={canApplyDraftParameters}
-          isApplying={busyAction === 'power:apply'}
-          isBusy={busyAction !== undefined}
-          onApply={() => void handleApplyScopedParameterDrafts(powerDraftEntries, 'power:apply', 'Power & failsafe')}
-          onDiscard={() => handleDiscardScopedParameterDrafts(powerDraftEntries.map((entry) => entry.id), 'power')}
           additionalSettingsSlot={renderAdditionalSettingsCard(
             'Additional battery settings',
             // Said once, in the Battery card's "i"; failsafe knobs are on the
@@ -7122,7 +7132,9 @@ export function App() {
             powerAdditionalInvalidDrafts,
             'power:additional',
             'Apply Additional Battery Changes',
-            'additional battery settings'
+            'additional battery settings',
+            undefined,
+            { actions: false }
           )}
         />
     )
@@ -7465,10 +7477,12 @@ export function App() {
     applyActionId: string,
     applyLabel: string,
     discardScope: string,
-    renderField: (parameter: ParameterState) => ReactNode = renderMetadataParameterField
+    renderField: (parameter: ParameterState) => ReactNode = renderMetadataParameterField,
+    options: { actions?: boolean } = {}
   ): ReactNode {
     return (
       <AdditionalSettingsCard
+        showActions={options.actions ?? true}
         title={title}
         description={description}
         groups={groups}
@@ -8557,6 +8571,9 @@ export function App() {
       ))}
     </div>
   )
+
+  const configPageDrafts = unionDrafts(configDraftEntries, powerDraftEntries, powerAdditionalDraftEntries)
+  const peripheralPageDrafts = unionDrafts(peripheralDraftEntries, gpsAdditionalDraftEntries, gimbalDraftEntries, flowLidarDraftEntries)
 
   return (
     <>
@@ -10605,14 +10622,14 @@ export function App() {
           editedValues={editedValues}
           onEditChange={(paramId, value) => setDraft(paramId, value)}
           draftStatusById={parameterDraftById}
-          stagedCount={configStagedDrafts.length}
-          invalidCount={configInvalidDrafts.length}
-          draftCount={configDraftEntries.length}
+          stagedCount={configPageDrafts.staged.length}
+          invalidCount={configPageDrafts.invalid.length}
+          draftCount={configPageDrafts.entries.length}
           canApply={canApplyDraftParameters}
           isApplying={busyAction === 'config:apply'}
           isBusy={busyAction !== undefined}
-          onApply={() => void handleApplyScopedParameterDrafts(configDraftEntries, 'config:apply', 'Configuration')}
-          onRevert={() => handleDiscardScopedParameterDrafts(configDraftEntries.map((entry) => entry.id), 'configuration')}
+          onApply={() => void handleApplyScopedParameterDrafts(configPageDrafts.entries, 'config:apply', 'Configuration')}
+          onRevert={() => handleDiscardScopedParameterDrafts(configPageDrafts.entries.map((entry) => entry.id), 'configuration')}
         />
       ) : null}
 
@@ -10641,26 +10658,15 @@ export function App() {
                     footer: (
                       <CompassOrderCard
                         model={compassOrder}
-                        draftEntries={compassOrderDrafts.entries}
                         stagedDrafts={compassOrderDrafts.staged}
                         invalidDrafts={compassOrderDrafts.invalid}
                         busyAction={busyAction}
-                        canApply={canApplyDraftParameters}
                         onSwap={(a, b) => {
                           for (const draft of swapCompassPriorities(compassOrder, a, b)) setDraft(draft.paramId, draft.value)
                         }}
                         onRemove={(priority) => {
                           for (const draft of removeCompassPriority(compassOrder, priority)) setDraft(draft.paramId, draft.value)
                         }}
-                        onApply={() =>
-                          void handleApplyScopedParameterDrafts(compassOrderDrafts.entries, 'peripherals:compass-order', 'Compass order')
-                        }
-                        onDiscard={() =>
-                          handleDiscardScopedParameterDrafts(
-                            compassOrderDrafts.entries.map((entry) => entry.id),
-                            'compass order'
-                          )
-                        }
                       />
                     )
                   }
@@ -10690,7 +10696,9 @@ export function App() {
                               gpsAdditionalInvalidDrafts,
                               'peripherals:gps-additional',
                               'Apply GPS Changes',
-                              'GPS settings'
+                              'GPS settings',
+                              undefined,
+                              { actions: false }
                             )}
                       </>
                     )
@@ -10720,7 +10728,9 @@ export function App() {
                     gimbalInvalidDrafts,
                     'outputs:gimbal',
                     'Apply Gimbal Changes',
-                    'gimbal settings'
+                    'gimbal settings',
+                    undefined,
+                    { actions: false }
                   )
                 )
             },
@@ -10815,7 +10825,9 @@ export function App() {
                       flowLidarInvalidDrafts,
                       'outputs:flow-lidar',
                       'Apply Flow & Lidar Changes',
-                      'flow and lidar settings'
+                      'flow and lidar settings',
+                      undefined,
+                      { actions: false }
                     )
                   )}
                 </>
@@ -10826,14 +10838,14 @@ export function App() {
           editedValues={editedValues}
           onEditChange={(paramId, value) => setDraft(paramId, value)}
           draftStatusById={parameterDraftById}
-          stagedCount={peripheralStagedDrafts.length}
-          invalidCount={peripheralInvalidDrafts.length}
-          draftCount={peripheralDraftEntries.length}
+          stagedCount={peripheralPageDrafts.staged.length}
+          invalidCount={peripheralPageDrafts.invalid.length}
+          draftCount={peripheralPageDrafts.entries.length}
           canApply={canApplyDraftParameters}
           isApplying={busyAction === 'peripherals:apply'}
           isBusy={busyAction !== undefined}
-          onApply={() => void handleApplyScopedParameterDrafts(peripheralDraftEntries, 'peripherals:apply', 'Peripherals')}
-          onRevert={() => handleDiscardScopedParameterDrafts(peripheralDraftEntries.map((entry) => entry.id), 'peripherals')}
+          onApply={() => void handleApplyScopedParameterDrafts(peripheralPageDrafts.entries, 'peripherals:apply', 'Peripherals')}
+          onRevert={() => handleDiscardScopedParameterDrafts(peripheralPageDrafts.entries.map((entry) => entry.id), 'peripherals')}
         />
       ) : null}
 
