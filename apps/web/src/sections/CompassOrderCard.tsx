@@ -16,15 +16,11 @@ import type { CompassOrderModel, CompassOrderRow } from '../view-models/compass-
 
 export interface CompassOrderCardProps {
   model: CompassOrderModel
-  draftEntries: readonly ParameterDraftEntry[]
   stagedDrafts: readonly ParameterDraftEntry[]
   invalidDrafts: readonly ParameterDraftEntry[]
   busyAction: string | undefined
-  canApply: boolean
   onSwap: (a: 1 | 2 | 3, b: 1 | 2 | 3) => void
   onRemove: (priority: 1 | 2 | 3) => void
-  onApply: () => void
-  onDiscard: () => void
 }
 
 function stateBadge(row: CompassOrderRow): ReactElement {
@@ -40,15 +36,11 @@ function stateBadge(row: CompassOrderRow): ReactElement {
 
 export function CompassOrderCard({
   model,
-  draftEntries,
   stagedDrafts,
   invalidDrafts,
   busyAction,
-  canApply,
   onSwap,
-  onRemove,
-  onApply,
-  onDiscard
+  onRemove
 }: CompassOrderCardProps): ReactElement | null {
   if (!model.supported) {
     return null
@@ -154,27 +146,6 @@ export function CompassOrderCard({
         </p>
       ) : null}
 
-      <div className="button-row">
-        <button
-          type="button"
-          style={buttonStyle('primary')}
-          disabled={!canApply || busy || stagedDrafts.length === 0 || invalidDrafts.length > 0}
-          onClick={onApply}
-          data-testid="compass-order-apply"
-        >
-          {busyAction === 'peripherals:compass-order' ? 'Applying…' : `Apply compass order (${stagedDrafts.length})`}
-        </button>
-        <button
-          type="button"
-          style={buttonStyle()}
-          disabled={busy || draftEntries.length === 0}
-          onClick={onDiscard}
-          data-testid="compass-order-discard"
-        >
-          Discard
-        </button>
-        <small>Reboot after applying: the firmware reads the order at boot.</small>
-      </div>
     </div>
   )
 }

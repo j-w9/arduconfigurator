@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
+import { StatusBadge } from '@arduconfig/ui-kit'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import { ScopedField, ScopedSelectField, type ScopedFieldDraftMap } from './ScopedField'
@@ -30,14 +30,6 @@ export interface PowerFieldSpec {
   stepFallback?: number
 }
 
-export interface PowerDraftItem {
-  id: string
-  label: string
-  status: string
-  badgeTone: PowerStatusTone
-  summary: string
-}
-
 export interface PowerParameterNotice {
   tone: PowerStatusTone
   toneLabel: string
@@ -52,15 +44,6 @@ export interface PowerViewProps {
   editedValues: Record<string, string>
   onEditChange: (paramId: string, value: string) => void
   draftStatusById: ScopedFieldDraftMap
-  draftItems: readonly PowerDraftItem[]
-  stagedCount: number
-  draftCount: number
-  invalidCount: number
-  canApply: boolean
-  isApplying: boolean
-  isBusy: boolean
-  onApply: () => void
-  onDiscard: () => void
   additionalSettingsSlot: ReactNode
 }
 
@@ -82,15 +65,6 @@ export function PowerView(props: PowerViewProps) {
     editedValues,
     onEditChange,
     draftStatusById,
-    draftItems,
-    stagedCount,
-    draftCount,
-    invalidCount,
-    canApply,
-    isApplying,
-    isBusy,
-    onApply,
-    onDiscard,
     additionalSettingsSlot
   } = props
 
@@ -141,42 +115,6 @@ export function PowerView(props: PowerViewProps) {
         )}
       </div>
 
-      {/* Battery parameters apply on their own (they are not in Config's
-          scope), so this bar stays -- but only once something is staged. */}
-      {draftItems.length > 0 ? (
-        <div className="power-panel__review" data-testid="power-review">
-          <div className="scoped-draft-list">
-            {draftItems.map((draft) => (
-              <article key={draft.id} className={`scoped-draft-item scoped-draft-item--${draft.status}`}>
-                <div className="scoped-draft-item__header">
-                  <strong>{draft.label}</strong>
-                  <StatusBadge tone={draft.badgeTone}>{draft.status}</StatusBadge>
-                </div>
-                <p>{draft.id}</p>
-                <small>{draft.summary}</small>
-              </article>
-            ))}
-          </div>
-          <div className="switch-exercise-controls">
-            <button
-              style={buttonStyle('primary')}
-              onClick={onApply}
-              disabled={isBusy || stagedCount === 0 || invalidCount > 0 || !canApply}
-              data-testid="power-apply"
-            >
-              {isApplying ? 'Applying…' : `Apply Power Changes (${stagedCount})`}
-            </button>
-            <button
-              style={buttonStyle()}
-              onClick={onDiscard}
-              disabled={isBusy || draftCount === 0}
-              data-testid="power-discard"
-            >
-              Discard Power Changes
-            </button>
-          </div>
-        </div>
-      ) : null}
 
       {additionalSettingsSlot}
     </div>

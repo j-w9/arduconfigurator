@@ -7128,17 +7128,9 @@ body.is-status-dash-dragging {
 }
 
 .ports-toolbar {
-  position: sticky;
-  bottom: 16px;
-  z-index: 3;
-  padding: 14px;
-  margin-left: auto;
-  width: fit-content;
-  border-radius: 20px 0 0 20px;
-  border: 1px solid rgba(var(--edge-rgb), 0.05);
-  border-right: none;
-  background: linear-gradient(180deg, rgba(var(--fill-rgb), 0.98), rgba(var(--fill-rgb), 1));
-  box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.24);
+  /* In the flow at the end of the page, like every other tab's bar; the
+     sticky box it replaces floated over the port matrix. */
+  margin-top: var(--space-3);
 }
 
 .receiver-workspace {

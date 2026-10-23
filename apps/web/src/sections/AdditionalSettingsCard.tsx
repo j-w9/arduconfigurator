@@ -32,6 +32,8 @@ export interface AdditionalSettingsCardProps {
   onApply: () => void
   onDiscard: () => void
   renderField: (parameter: ParameterState) => ReactNode
+  /** False when the page's own bar applies these drafts (Ports). */
+  showActions?: boolean
 }
 
 export function AdditionalSettingsCard({
@@ -47,7 +49,8 @@ export function AdditionalSettingsCard({
   canApply,
   onApply,
   onDiscard,
-  renderField
+  renderField,
+  showActions = true
 }: AdditionalSettingsCardProps): ReactElement | null {
   if (groups.length === 0) {
     return null
@@ -75,7 +78,7 @@ export function AdditionalSettingsCard({
 
       {/* The bar appears once there is something to apply or discard; a
           permanently disabled pair of buttons was only height. */}
-      {draftEntries.length > 0 ? (
+      {showActions && draftEntries.length > 0 ? (
       <div className="switch-exercise-controls">
         <button
           style={buttonStyle('primary')}

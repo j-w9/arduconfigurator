@@ -11,7 +11,6 @@ import {
   ARDUCOPTER_NOTIFICATION_BUZZER_TYPE_BIT_LABELS,
   ARDUCOPTER_NOTIFICATION_LED_TYPE_BIT_LABELS
 } from '@arduconfig/param-metadata'
-import { buttonStyle } from '@arduconfig/ui-kit'
 
 import type { deriveOutputMappingSummary } from '@arduconfig/ardupilot-core'
 
@@ -102,17 +101,12 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
     notificationBuzzVolume,
     editedNotificationLedTypes,
     editedNotificationBuzzTypes,
-    outputNotificationDraftEntries,
     outputNotificationStagedDrafts,
     outputNotificationInvalidDrafts,
     parameterDraftById,
     editedValues,
-    busyAction,
-    canApplyDraftParameters,
     setDraft,
-    updateDrafts,
-    handleApplyScopedParameterDrafts,
-    handleDiscardScopedParameterDrafts
+    updateDrafts
   } = props
 
   return (
@@ -264,31 +258,6 @@ export function NotificationAlertsCard(props: NotificationAlertsCardProps): Reac
             <li>After notification-driver changes, bench-check the LEDs and buzzer with props off before flight.</li>
           </ul>
 
-          <div className="switch-exercise-controls">
-            <button
-              style={buttonStyle('primary')}
-              onClick={() =>
-                void handleApplyScopedParameterDrafts(outputNotificationDraftEntries, 'outputs:notifications', 'Notification outputs')
-              }
-              disabled={
-                busyAction !== undefined ||
-                outputNotificationStagedDrafts.length === 0 ||
-                outputNotificationInvalidDrafts.length > 0 ||
-                !canApplyDraftParameters
-              }
-            >
-              {busyAction === 'outputs:notifications' ? 'Applying…' : `Apply Notification Changes (${outputNotificationStagedDrafts.length})`}
-            </button>
-            <button
-              style={buttonStyle()}
-              onClick={() =>
-                handleDiscardScopedParameterDrafts(outputNotificationDraftEntries.map((entry) => entry.id), 'notification outputs')
-              }
-              disabled={busyAction !== undefined || outputNotificationDraftEntries.length === 0}
-            >
-              Discard Notification Changes
-            </button>
-          </div>
         </div>
       ) : null}
     </>

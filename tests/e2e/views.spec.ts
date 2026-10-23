@@ -5486,7 +5486,8 @@ test.describe('ArduPlane demo', () => {
     // button is the Flow & Lidar one now, not the generic additional-settings
     // button it used to share with everything else.
     await flowType.selectOption({ label: 'CXOF' })
-    await expect(page.getByRole('button', { name: /Apply Flow & Lidar Changes \(1\)/ })).toBeEnabled()
+    // One Apply bar per page: the Flow & Lidar draft counts on the tab's bar.
+    await expect(page.getByTestId('config-apply')).toHaveText('Apply Config (1)')
 
     await flowSection.locator('summary').click()
     await expect(flowSection.getByText('Yaw Alignment (cdeg)', { exact: true })).toBeHidden()
@@ -7770,11 +7771,13 @@ test.describe('Config ▸ Power layout', () => {
     // The monitor source is part of the live readout.
     await expect(page.getByTestId('power-monitor-source')).toBeVisible()
 
-    // Stage a battery change: the bar and a staged badge appear.
+    // Stage a battery change: the page's one Apply bar counts it, and the
+    // section badge says so. (The card used to carry a bar of its own.)
     await page.getByTestId('power-fields').getByLabel('Battery Capacity', { exact: true }).fill('1500')
-    await expect(page.getByTestId('power-apply')).toBeVisible()
+    await expect(page.getByTestId('config-apply')).toHaveText('Apply Config (1)')
     await expect(page.getByTestId('power-section-badge')).toContainText('1 staged')
-    await page.getByTestId('power-discard').click()
+    await page.getByTestId('config-revert').click()
+    await expect(page.getByTestId('config-apply')).toHaveText('Apply Config (0)')
     await expect(page.getByTestId('power-apply')).toHaveCount(0)
   })
 })
@@ -8040,9 +8043,9 @@ test.describe('Peripherals tab', () => {
 
     // Apply writes the three PRIO values and, as they are read at boot, ends
     // in the reboot follow-up rather than an auto-refresh.
-    await expect(page.getByTestId('compass-order-apply')).toHaveText('Apply compass order (3)')
-    await page.getByTestId('compass-order-apply').click()
-    await expect(page.getByTestId('compass-order-apply')).not.toContainText('Applying', { timeout: 60_000 })
+    await expect(page.getByTestId('config-apply')).toHaveText('Apply Config (3)')
+    await page.getByTestId('config-apply').click()
+    await expect(page.getByTestId('config-apply')).not.toContainText('Applying', { timeout: 60_000 })
     // The runtime's own verify lines are on the Status & Info feed; the
     // "Verified N change(s)" notice renders on the Parameters tab only.
     await page.getByTestId('view-button-setup').click()
@@ -8096,8 +8099,9 @@ test.describe('Peripherals tab', () => {
     await openPeripherals(page)
     await page.getByTestId('config-category-alerts').click()
     await expect(page.getByText('LED & buzzer notifications', { exact: true })).toBeVisible()
-    // Its own scoped apply, as it had on Servos.
-    await expect(page.getByRole('button', { name: /Apply Notification Changes/ })).toBeVisible()
+    // One Apply bar per page: the card's drafts go through the tab's bar.
+    await expect(page.getByRole('button', { name: /Apply Notification Changes/ })).toHaveCount(0)
+    await expect(page.getByTestId('config-apply')).toBeVisible()
   })
 
   test('a staged peripheral edit belongs to this tab, not to Config', async ({ page }) => {
@@ -8785,9 +8789,11 @@ test.describe('Config ▸ Power', () => {
 
     // Stage a battery change: the bar and a staged badge appear.
     await page.getByTestId('power-fields').getByLabel('Battery Capacity', { exact: true }).fill('1500')
-    await expect(page.getByTestId('power-apply')).toBeVisible()
+    // One Apply bar per page: the page's bar counts it, the section badge says so.
+    await expect(page.getByTestId('config-apply')).toHaveText('Apply Config (1)')
     await expect(page.getByTestId('power-section-badge')).toContainText('1 staged')
-    await page.getByTestId('power-discard').click()
+    await page.getByTestId('config-revert').click()
+    await expect(page.getByTestId('config-apply')).toHaveText('Apply Config (0)')
     await expect(page.getByTestId('power-apply')).toHaveCount(0)
   })
 })
