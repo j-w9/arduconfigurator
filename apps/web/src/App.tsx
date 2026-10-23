@@ -3769,6 +3769,22 @@ export function App() {
       return next
     })
   }
+  // Sets membership outright (idempotent): the Receiver tab's Custom… RC
+  // option turns the override on with the typed number and off with a listed pick.
+  function handleSetParameterEnumOverride(paramId: string, overridden: boolean): void {
+    setParameterEnumOverrides((current) => {
+      if (current.has(paramId) === overridden) {
+        return current
+      }
+      const next = new Set(current)
+      if (overridden) {
+        next.add(paramId)
+      } else {
+        next.delete(paramId)
+      }
+      return next
+    })
+  }
 
   // Fetch the FC's packed defaults (MAVFTP param.pck?withdefaults, 4.5+) and
   // derive the non-default set that drives "Show only changed" + the non-default
@@ -9521,6 +9537,7 @@ export function App() {
             renderAdditionalSettingsCard,
             setDraft,
             mergeDrafts,
+            setParameterEnumOverride: handleSetParameterEnumOverride,
             setReceiverTaskOverride,
             handleSetArmSwitchChannel
           }}

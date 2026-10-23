@@ -149,6 +149,11 @@ export interface ReceiverSectionHandlers {
   setDraft: (paramId: string, value: string) => void
   /** Stage several drafts at once (the CRSF endpoint set). Same pool as setDraft. */
   mergeDrafts: (drafts: Record<string, string>) => void
+  /** Mark (or unmark) a parameter's draft as "override and write anyway": a
+   *  Custom… RCn_OPTION number the metadata does not list would otherwise
+   *  stay an invalid draft nothing can write. App drops the override once the
+   *  draft is applied or discarded. */
+  setParameterEnumOverride: (paramId: string, overridden: boolean) => void
   setReceiverTaskOverride: (taskId: import('../views/Receiver').ReceiverTaskId) => void
   handleSetArmSwitchChannel: (channel: number, airmode: boolean) => void
 }
@@ -234,6 +239,43 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
   // invalid — an invalid draft blocks Apply and must not hide in a closed box.
   // Phone layout: a row's endpoint pills sit behind a per-row tap.
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<number>>(() => new Set())
+  // Channels whose Function select is in "Custom…" mode: a number input sits
+  // beside the select for an RCn_OPTION the metadata does not list (a firmware
+  // fork's new option). Latched, like ScopedSelectField's allowCustomValue:
+  // typing a number that happens to be listed must not collapse the input
+  // under the cursor. Seeded with the channels whose live value is already
+  // unlisted so the operator can see and edit that number straight away.
+  const [customFunctionChannels, setCustomFunctionChannels] = useState<ReadonlySet<number>>(() => {
+    const seeded = new Set<number>()
+    for (let channelNumber = 5; channelNumber <= 16; channelNumber += 1) {
+      const paramId = `RC${channelNumber}_OPTION`
+      const parameter = selectParameterById(snapshot, paramId)
+      if (!parameter) {
+        continue
+      }
+      const edited = editedValues[paramId]
+      const editedNumber = edited !== undefined && edited !== '' ? Number(edited) : NaN
+      const shown = Number.isFinite(editedNumber) ? editedNumber : parameter.value
+      const listed = (parameter.definition?.options ?? []).some((entry) => entry.value === shown)
+      if (!listed) {
+        seeded.add(channelNumber)
+      }
+    }
+    return seeded
+  })
+  const setCustomFunctionChannel = (channelNumber: number, custom: boolean): void =>
+    setCustomFunctionChannels((previous) => {
+      if (previous.has(channelNumber) === custom) {
+        return previous
+      }
+      const next = new Set(previous)
+      if (custom) {
+        next.add(channelNumber)
+      } else {
+        next.delete(channelNumber)
+      }
+      return next
+    })
   useEffect(() => {
     if (!bindFlash) {
       return
@@ -312,6 +354,7 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     handleDiscardScopedParameterDrafts,
     setDraft,
     mergeDrafts,
+    setParameterEnumOverride,
     setReceiverTaskOverride,
     handleSetArmSwitchChannel
   } = handlers
@@ -405,9 +448,14 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
             parameter={functionParameter}
             liveValue={functionParameter.value}
             editedValues={editedValues}
-            onChange={(paramId, value) => setDraft(paramId, value)}
+            onChange={(paramId, value) => {
+              setDraft(paramId, value)
+              const options = functionParameter.definition?.options ?? []
+              setParameterEnumOverride(paramId, value !== '' && !options.some((entry) => String(entry.value) === value))
+            }}
             draftStatusById={parameterDraftById}
             compact
+            allowCustomValue
           />
         </div>
       ) : (
@@ -421,8 +469,21 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     // The flight-mode switch is offered beside the functions: one job per channel.
     const offersModeSwitch = modeParamId !== undefined && functionParameter !== undefined && axisId === undefined
     const isModeRow = offersModeSwitch && shownModeChannel === channelNumber
+    const offersCustom = functionParameter !== undefined && axisId === undefined
+    const optionListed = functionOptions.some((entry) => entry.value === option)
+    // Custom mode: latched by a "Custom…" pick, or entered because the shown
+    // value is unlisted (mirrors ScopedSelectField's allowCustomValue).
+    const isCustomRow = offersCustom && !isModeRow && (customFunctionChannels.has(channelNumber) || !optionListed)
     const value =
-      axisId !== undefined ? `axis:${axisId}` : isModeRow ? 'mode:' : functionParameter ? `option:${option ?? 0}` : ''
+      axisId !== undefined
+        ? `axis:${axisId}`
+        : isModeRow
+          ? 'mode:'
+          : isCustomRow
+            ? 'custom:'
+            : functionParameter
+              ? `option:${option ?? 0}`
+              : ''
     // Outlined while a pick that touches this row is staged: an RCMAP draft
     // that moves an axis onto or off it, or its own RCn_OPTION.
     const statusFor = (paramId: string): string | undefined => parameterDraftById.get(paramId)?.status
@@ -441,49 +502,81 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
     return (
       <div className="receiver-channel-row__function" data-testid={`receiver-function-${channelNumber}`}>
         <label className={`scoped-editor-field scoped-editor-field--compact scoped-editor-field--${status}`}>
-          <select
-            data-testid={`receiver-channel-function-${channelNumber}`}
-            aria-label={`CH${channelNumber} function`}
-            title={axisId !== undefined ? 'Pick another axis to swap. Pick this axis on another channel to free this one.' : undefined}
-            value={value}
-            onChange={(event) => {
-              const [kind, picked] = event.target.value.split(':')
-              if (kind === 'axis') {
-                mergeDrafts(buildAxisAssignmentDrafts(shownAxisMap, picked as RcAxisId, channelNumber, shownOption))
-              } else if (kind === 'mode' && modeParamId) {
-                mergeDrafts(modeChannelPickDrafts(modeParamId, channelNumber, shownOption))
-              } else if (kind === 'option' && functionParameter) {
-                mergeDrafts(functionPickDrafts(modeParamId, shownModeChannel, channelNumber, Number(picked)))
-              }
-            }}
-          >
-            {value === '' ? <option value="">{plainRole}</option> : null}
-            <optgroup label="Stick">
-              {RC_CALIBRATION_AXIS_ORDER.map((axis) => (
-                <option key={axis} value={`axis:${axis}`}>
-                  {formatRcAxisLabel(axis)}
-                </option>
-              ))}
-            </optgroup>
-            {functionParameter && axisId === undefined ? (
-              <optgroup label="Function">
-                {functionOptions.some((entry) => entry.value === option) ? null : (
-                  <option value={`option:${option ?? 0}`}>{`${option ?? 0} (unlisted)`}</option>
-                )}
-                {functionOptions.map((entry) => [
-                  <option key={entry.value} value={`option:${entry.value}`}>
-                    {entry.label}
-                  </option>,
-                  // Right under "Do Nothing": the mode switch is the other plain job for a channel.
-                  entry.value === 0 && offersModeSwitch ? (
-                    <option key="mode" value="mode:">
-                      Flight modes
-                    </option>
-                  ) : null
-                ])}
+          <span className="scoped-select-with-custom">
+            <select
+              data-testid={`receiver-channel-function-${channelNumber}`}
+              aria-label={`CH${channelNumber} function`}
+              title={axisId !== undefined ? 'Pick another axis to swap. Pick this axis on another channel to free this one.' : undefined}
+              value={value}
+              onChange={(event) => {
+                const [kind, picked] = event.target.value.split(':')
+                if (kind === 'custom') {
+                  setCustomFunctionChannel(channelNumber, true)
+                  return
+                }
+                setCustomFunctionChannel(channelNumber, false)
+                if (functionParameter) {
+                  setParameterEnumOverride(functionParameter.id, false)
+                }
+                if (kind === 'axis') {
+                  mergeDrafts(buildAxisAssignmentDrafts(shownAxisMap, picked as RcAxisId, channelNumber, shownOption))
+                } else if (kind === 'mode' && modeParamId) {
+                  mergeDrafts(modeChannelPickDrafts(modeParamId, channelNumber, shownOption))
+                } else if (kind === 'option' && functionParameter) {
+                  mergeDrafts(functionPickDrafts(modeParamId, shownModeChannel, channelNumber, Number(picked)))
+                }
+              }}
+            >
+              {value === '' ? <option value="">{plainRole}</option> : null}
+              <optgroup label="Stick">
+                {RC_CALIBRATION_AXIS_ORDER.map((axis) => (
+                  <option key={axis} value={`axis:${axis}`}>
+                    {formatRcAxisLabel(axis)}
+                  </option>
+                ))}
               </optgroup>
+              {offersCustom ? (
+                <optgroup label="Function">
+                  {optionListed ? null : (
+                    <option value={`option:${option ?? 0}`}>{`${option ?? 0} (unlisted)`}</option>
+                  )}
+                  {functionOptions.map((entry) => [
+                    <option key={entry.value} value={`option:${entry.value}`}>
+                      {entry.label}
+                    </option>,
+                    // Right under "Do Nothing": the mode switch is the other plain job for a channel.
+                    entry.value === 0 && offersModeSwitch ? (
+                      <option key="mode" value="mode:">
+                        Flight modes
+                      </option>
+                    ) : null
+                  ])}
+                  <option value="custom:">Custom…</option>
+                </optgroup>
+              ) : null}
+            </select>
+            {isCustomRow ? (
+              <input
+                type="number"
+                min={0}
+                step={1}
+                className="scoped-select-with-custom__input"
+                data-testid={`receiver-channel-function-custom-${channelNumber}`}
+                aria-label={`CH${channelNumber} function number`}
+                value={shownOption(channelNumber) ?? 0}
+                onChange={(event) => {
+                  const picked = Number(event.target.value)
+                  if (event.target.value === '' || !Number.isFinite(picked)) {
+                    return
+                  }
+                  mergeDrafts(functionPickDrafts(modeParamId, shownModeChannel, channelNumber, picked))
+                  // The metadata enum is what lags here (a fork's new option):
+                  // the operator typed this number on purpose, so it writes.
+                  setParameterEnumOverride(`RC${channelNumber}_OPTION`, !functionOptions.some((entry) => entry.value === picked))
+                }}
+              />
             ) : null}
-          </select>
+          </span>
         </label>
       </div>
     )

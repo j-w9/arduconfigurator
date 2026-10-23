@@ -3418,6 +3418,32 @@ test.describe('Receiver: one job per channel', () => {
     await expect(page.getByTestId('receiver-channel-function-6')).toHaveValue('option:153')
   })
 
+  test('Custom… in a channel row opens a number input for an unlisted RC option', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    // Demo: FLTMODE_CH=7, every RCn_OPTION 0 -- CH8 is a free function row.
+    const select = page.getByTestId('receiver-channel-function-8')
+    const custom = page.getByTestId('receiver-channel-function-custom-8')
+    await expect(select).toHaveValue('option:0')
+    await expect(custom).toHaveCount(0)
+
+    await select.selectOption('custom:')
+    await expect(custom).toBeVisible()
+    await expect(select).toHaveValue('custom:')
+    // A number the metadata does not list (a firmware fork's option) stages
+    // the same RC8_OPTION draft a listed pick does.
+    await custom.fill('300')
+    await expect(custom).toHaveValue('300')
+    await expect(select).toHaveValue('custom:')
+    await expect(page.getByTestId('global-draft-count')).toContainText('1 staged change')
+
+    // A listed pick leaves custom mode and the input goes.
+    await select.selectOption('option:0')
+    await expect(select).toHaveValue('option:0')
+    await expect(custom).toHaveCount(0)
+  })
+
   test('Acro in a switch position shows its trainer and options', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
