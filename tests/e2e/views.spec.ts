@@ -4727,6 +4727,45 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('log-tuning-unusable')).toBeVisible()
   })
 
+  test('Pick from vehicle: every log chooser also lists the logs already on the vehicle', async ({ page }) => {
+    // The vehicle is holding the log. A "Choose … log (.bin)" button alone
+    // sends the operator through a download and a file picker for a file
+    // that is right there; each chooser offers the onboard list beside it.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+
+    // Calibration ▸ Flight ▸ Hover throttle from a log (Expert here).
+    await enableExpertMode(page)
+    await openView(page, 'calibration')
+    await openCalibrationSection(page, 'flight')
+    const hoverCard = page.getByTestId('calibration-card-hover-throttle-log')
+    await expect(hoverCard).toBeVisible()
+    await hoverCard.getByTestId('hover-throttle-log-list-onboard-logs').click()
+    const hoverSelect = hoverCard.getByTestId('hover-throttle-log-onboard-log-select')
+    await expect(hoverSelect).toBeVisible()
+    // The demo vehicle carries two logs; the placeholder makes three options.
+    await expect(hoverSelect.locator('option')).toHaveCount(3)
+    await hoverSelect.selectOption('1')
+    // The demo log is not a real dataflash file: the card must come back with
+    // a verdict or an error, not hang in "Reading…".
+    await expect(
+      hoverCard.getByTestId('hover-throttle-log-result').or(hoverCard.getByTestId('hover-throttle-log-error'))
+    ).toBeVisible()
+
+    // Tuning ▸ Log Tuning (Expert-only on the task strip).
+    await openView(page, 'tuning')
+    await page.getByTestId('tuning-tab-log-tuning').click()
+    const tuning = page.getByTestId('log-tuning')
+    await expect(tuning).toContainText('Choose flight log')
+    // The list was read once for the hover card; the same hook serves here.
+    const tuningSelect = tuning.getByTestId('log-tuning-onboard-log-select')
+    await expect(tuningSelect).toBeVisible()
+    await tuningSelect.selectOption('2')
+    await expect(page.getByTestId('log-tuning-results').or(tuning.getByTestId('log-tuning-error'))).toBeVisible()
+  })
+
   test('Calibration: the Thermal Calibration (TCAL) card is offered to everyone', async ({ page }) => {
     // NOT Expert-gated. It is stock ArduPilot, it is bench work with the props
     // off, and the card is safer than setting INS_TCALn_ENABLE by hand in raw

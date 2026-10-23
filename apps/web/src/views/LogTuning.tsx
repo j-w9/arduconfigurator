@@ -13,11 +13,15 @@ import { useCallback, useState, type ReactElement } from 'react'
 import { analyzeLogBuffer, type AxisSpectrum, type LogTuningResult, type TuningRecommendation } from '@arduconfig/log-analysis'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
+import { OnboardLogPicker, type OnboardLogPickerLogs } from '../sections/OnboardLogPicker'
+
 export interface LogTuningViewProps {
   /** Stage a recommended parameter change as a draft (parent owns the draft set). */
   onStageParam: (param: string, value: number) => void
   /** Params already staged from a recommendation, so the row can show "staged". */
   stagedParams?: ReadonlySet<string>
+  /** When given, the view also offers the logs already on the vehicle. */
+  onboardLogs?: OnboardLogPickerLogs
 }
 
 const CONFIDENCE_TONE: Record<TuningRecommendation['confidence'], 'success' | 'warning' | 'neutral'> = {
@@ -26,30 +30,34 @@ const CONFIDENCE_TONE: Record<TuningRecommendation['confidence'], 'success' | 'w
   low: 'neutral'
 }
 
-export function LogTuningView({ onStageParam, stagedParams }: LogTuningViewProps): ReactElement {
+export function LogTuningView({ onStageParam, stagedParams, onboardLogs }: LogTuningViewProps): ReactElement {
   const [result, setResult] = useState<LogTuningResult | null>(null)
   const [filename, setFilename] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
 
-  const handleFile = useCallback(async (file: File) => {
+  const handleBuffer = useCallback(async (buffer: ArrayBuffer, name: string) => {
     setBusy(true)
     setError(undefined)
     setResult(null)
     try {
-      const buffer = await file.arrayBuffer()
       // Analysis is synchronous but can be a moment on a large log — yield first
       // so the "Analyzing…" state paints.
       await new Promise((resolve) => setTimeout(resolve, 0))
       const analysis = analyzeLogBuffer(buffer)
       setResult(analysis)
-      setFilename(file.name)
+      setFilename(name)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not read or parse that log.')
     } finally {
       setBusy(false)
     }
   }, [])
+
+  const handleFile = useCallback(
+    async (file: File) => handleBuffer(await file.arrayBuffer(), file.name),
+    [handleBuffer]
+  )
 
   return (
     <section className="bf-gui-box log-tuning" data-testid="log-tuning">
@@ -82,6 +90,16 @@ export function LogTuningView({ onStageParam, stagedParams }: LogTuningViewProps
               }}
             />
           </label>
+          {onboardLogs ? (
+            <OnboardLogPicker
+              onboardLogs={onboardLogs}
+              busy={busy}
+              testIdPrefix="log-tuning"
+              onBusy={setBusy}
+              onBytes={(bytes, name) => handleBuffer(bytes.slice().buffer as ArrayBuffer, name)}
+              onError={setError}
+            />
+          ) : null}
           {filename ? <small className="log-tuning__filename">{filename}</small> : null}
         </div>
 
