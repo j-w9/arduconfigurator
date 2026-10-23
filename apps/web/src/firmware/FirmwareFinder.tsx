@@ -37,17 +37,24 @@ export interface FirmwareFinderProps {
   /** The build now loaded in the flasher from here (firmwareBuildKey), if any. */
   loadedBuild?: string
   disabled?: boolean
+  /** What the search starts with -- a Betaflight board's target name, say,
+   *  which names the same hardware ("MATEKH743" finds MatekH743 and its variants). */
+  initialQuery?: string
 }
 
-export function FirmwareFinder({ rows, board, connectedVehicle, onLoad, loadedBuild, disabled }: FirmwareFinderProps): ReactNode {
+export function FirmwareFinder({ rows, board, connectedVehicle, onLoad, loadedBuild, disabled, initialQuery }: FirmwareFinderProps): ReactNode {
   const [vehicle, setVehicle] = useState<FinderVehicle>(() => defaultFinderVehicle(connectedVehicle))
   const [channel, setChannel] = useState<FirmwareChannel>('OFFICIAL')
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery ?? '')
   const [selected, setSelected] = useState<string | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
 
   useEffect(() => setVehicle(defaultFinderVehicle(connectedVehicle)), [connectedVehicle])
+  // A board that turns up after the finder did (Betaflight connects on its own tab).
+  useEffect(() => {
+    if (initialQuery) setQuery(initialQuery)
+  }, [initialQuery])
 
   const targets = useMemo(() => findFirmwareTargets(rows, { vehicle, channel, query, board }), [rows, vehicle, channel, query, board])
   const target = targets.find((entry) => entry.platform === selected)

@@ -2289,6 +2289,31 @@ test.describe('Flash view', () => {
     await expect(page.getByTestId('firmware-enter-dfu')).toHaveCount(0)
   })
 
+  test('Flash tab: the debug log opens, shows the phase trail and clears', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'flash')
+    await expect(page.getByTestId('firmware-flasher')).toBeVisible()
+
+    // Closed by default: one quiet button carrying the line count.
+    const toggle = page.getByTestId('firmware-debug-toggle')
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.getByTestId('firmware-debug-log')).toHaveCount(0)
+
+    // Open: the idle phase line is written on mount, so the log is never empty.
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    const log = page.getByTestId('firmware-debug-log')
+    await expect(log).toBeVisible()
+    await expect(log).toContainText('phase: idle')
+    await expect(page.getByTestId('firmware-debug-copy')).toBeVisible()
+
+    // Clear empties it (and the count on the toggle).
+    await page.getByTestId('firmware-debug-clear').click()
+    await expect(log).not.toContainText('phase:')
+    await expect(toggle).toHaveText('Debug log (0)')
+  })
+
   test('Flash tab: the DFU .hex card parses a hex and flashes it over a mocked WebUSB device', async ({ page }) => {
     // Stub navigator.usb with a fake STM32 DFU device that records every
     // control-OUT and answers GETSTATUS as idle/OK, so the whole UI -> WebUSB
@@ -2300,6 +2325,8 @@ test.describe('Flash view', () => {
       const flash = new Map<number, number>()
       const xfer = 2048
       let addrPtr = 0
+      let busy = false
+      ;(window as unknown as { __dfuWaits: number }).__dfuWaits = 0
       const device = {
         productName: 'STM32 BOOTLOADER',
         configuration: {
@@ -2325,7 +2352,14 @@ test.describe('Flash view', () => {
         selectAlternateInterface: async () => {},
         controlTransferIn: async (setup: { requestType: string; request: number; value: number }, length: number) => {
           if (setup.requestType === 'class' && setup.request === 3) {
-            // GETSTATUS: status OK, poll 0, state dfuDNLOAD_IDLE (5).
+            // GETSTATUS: after a download the board is busy for one poll and
+            // asks for 20 ms (a real board does), so the flasher's wait runs;
+            // then status OK, state dfuDNLOAD_IDLE (5).
+            if (busy) {
+              busy = false
+              ;(window as unknown as { __dfuWaits: number }).__dfuWaits += 1
+              return { status: 'ok', data: new DataView(new Uint8Array([0, 20, 0, 0, 4, 0]).buffer) }
+            }
             return { status: 'ok', data: new DataView(new Uint8Array([0, 0, 0, 0, 5, 0]).buffer) }
           }
           if (setup.request === 2) {
@@ -2345,6 +2379,7 @@ test.describe('Flash view', () => {
         controlTransferOut: async (setup: { request: number; value: number }, data?: ArrayBuffer) => {
           const bytes = data ? new Uint8Array(data) : new Uint8Array(0)
           out.push({ request: setup.request, value: setup.value, len: bytes.length })
+          if (setup.request === 1) busy = true
           // Track the DfuSe address pointer + programmed bytes so UPLOAD verify works.
           if (setup.request === 1 && setup.value === 0 && bytes[0] === 0x21) {
             addrPtr = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0
@@ -2405,7 +2440,10 @@ test.describe('Flash view', () => {
     const ops = await page.evaluate(() => (window as unknown as { __dfuOut: Array<{ request: number; value: number; len: number }> }).__dfuOut)
     const dnloads = ops.filter((o) => o.request === 1)
     expect(dnloads.length).toBeGreaterThan(2)
-    expect(dnloads.some((o) => o.value >= 2 && o.len === 8)).toBe(true)
+    // The 8-byte image goes out padded to a whole 32-byte flash word.
+    expect(dnloads.some((o) => o.value >= 2 && o.len === 32)).toBe(true)
+    // Every busy poll was waited out (on the worker's clock) and the flash still finished.
+    expect(await page.evaluate(() => (window as unknown as { __dfuWaits: number }).__dfuWaits)).toBeGreaterThan(2)
   })
 })
 
@@ -8582,6 +8620,41 @@ test.describe('Flash: find firmware (the private deploy\'s index + relay)', () =
     return downloads
   }
 
+  test('DFU tab: the *_with_bl.hex finder downloads through the relay and loads the hex', async ({ page }) => {
+    // The hex index: the same targets, each row's path its *_with_bl.hex.
+    const hexIndex = {
+      format: 1,
+      columns,
+      rows: index.rows.map((entry) => [...entry.slice(0, -1), String(entry[entry.length - 1]).replace(/\.apj$/, '_with_bl.hex')])
+    }
+    // A minimal Intel HEX: base 0x0800_0000, 8 data bytes, EOF.
+    const hex = ':020000040800F2\n:080000000102030405060708D4\n:00000001FF\n'
+    const downloads: string[] = []
+    await page.route('**/fw/hex-index.json', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(hexIndex) }))
+    await page.route('**/fw/apj?*', (route) => {
+      downloads.push(new URL(route.request().url()).searchParams.get('path') ?? '')
+      return route.fulfill({ status: 200, contentType: 'text/plain', body: hex })
+    })
+    await page.goto('/')
+    await page.getByTestId('landing-flash-firmware-button').click()
+    await page.getByTestId('flash-tab-dfu-hex').click()
+    const card = page.getByTestId('dfu-hex-flasher')
+    const finder = card.getByTestId('firmware-finder')
+    await expect(finder).toBeVisible()
+    await finder.getByTestId('firmware-finder-search').fill('matek')
+    await finder.getByTestId('firmware-finder-board-select').selectOption('MatekH743')
+    await expect(finder.getByTestId('firmware-finder-load')).toHaveText('Download MatekH743 V4.7.1')
+    await finder.getByTestId('firmware-finder-load').click()
+    // Loaded like a dropped file: the summary names the build and its flash range.
+    await expect(card.getByTestId('dfu-hex-summary')).toContainText('MatekH743 V4.7.1')
+    await expect(card.getByTestId('dfu-hex-summary')).toContainText('0x08000000')
+    await expect(card.getByTestId('dfu-hex-flash')).toBeEnabled()
+    await expect(finder.getByTestId('firmware-finder-load')).toHaveText('✓ Downloaded MatekH743 V4.7.1')
+    expect(downloads).toEqual(['Copter/stable/MatekH743/arducopter_with_bl.hex'])
+    // The file input is still there, folded under the finder.
+    await expect(card.getByTestId('dfu-hex-file-drop')).toBeVisible()
+  })
+
   test('with no board connected: search, pick from the dropdown, download and load', async ({ page }) => {
     const downloads = await serveIndex(page)
     await page.goto('/')
@@ -8676,6 +8749,64 @@ test.describe('Flash: find firmware (the private deploy\'s index + relay)', () =
     await page.getByTestId('landing-flash-firmware-button').click()
     await expect(page.getByTestId('firmware-download-link')).toBeVisible()
     await expect(page.getByTestId('firmware-finder')).toHaveCount(0)
+  })
+})
+
+test.describe('Flash: a board whose bootloader was caught before skips the port picker', () => {
+  const rawImage = Buffer.from([0xa3, 0x95, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05])
+  const apj = JSON.stringify({ board_id: 59, image_size: rawImage.length, image: deflateSync(rawImage).toString('base64') })
+
+  // A Web Serial stand-in that counts how often the picker opens (and is dismissed).
+  async function stubSerial(page: Page, remembered: boolean): Promise<void> {
+    await page.addInitScript((rememberedBoard: boolean) => {
+      const win = window as unknown as { __picks: number }
+      win.__picks = 0
+      Object.defineProperty(navigator, 'serial', {
+        configurable: true,
+        value: {
+          getPorts: async () => [],
+          requestPort: async () => {
+            win.__picks += 1
+            throw new Error("Failed to execute 'requestPort' on 'Serial': No port selected by the user.")
+          },
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined
+        }
+      })
+      if (rememberedBoard) window.localStorage.setItem('arduconfig-bootloader-ports', JSON.stringify({ 59: { vendorId: 0x1209, productId: 0x5741 } }))
+    }, remembered)
+  }
+
+  async function reachUnplug(page: Page): Promise<void> {
+    await page.goto('/')
+    await openView(page, 'flash')
+    await page.getByTestId('firmware-file').setInputFiles({ name: 'arducopter.apj', mimeType: 'application/json', buffer: Buffer.from(apj) })
+    await expect(page.getByTestId('firmware-loaded')).toContainText('board id 59')
+    await page.getByTestId('firmware-confirm').locator('input').check()
+    await page.getByTestId('firmware-flash').click()
+    await expect(page.getByTestId('firmware-prompt-unplug')).toBeVisible()
+  }
+
+  test('a board not seen before: Continue opens the picker', async ({ page }) => {
+    await stubSerial(page, false)
+    await reachUnplug(page)
+    await expect(page.getByTestId('firmware-prompt-unplug-remembered')).toHaveCount(0)
+    await page.getByTestId('firmware-prompt-unplug-continue').click()
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __picks: number }).__picks)).toBe(1)
+    await page.getByTestId('firmware-prompt-cancel').click()
+  })
+
+  test('a board whose bootloader was caught before: Continue just listens, the picker one click away', async ({ page }) => {
+    await stubSerial(page, true)
+    await reachUnplug(page)
+    await expect(page.getByTestId('firmware-prompt-unplug-remembered')).toContainText('no port to pick')
+    await page.getByTestId('firmware-prompt-unplug-continue').click()
+    const replug = page.getByTestId('firmware-prompt-replug')
+    await expect(replug).toContainText('Plug it back in.')
+    expect(await page.evaluate(() => (window as unknown as { __picks: number }).__picks)).toBe(0)
+    await replug.getByTestId('firmware-prompt-manual-pick').click()
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __picks: number }).__picks)).toBe(1)
+    await page.getByTestId('firmware-prompt-cancel').click()
   })
 })
 

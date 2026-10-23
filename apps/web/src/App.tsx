@@ -282,7 +282,7 @@ import { planGuidedIdentifyAdvance } from './view-models/guided-identify-advance
 import { LiveGpsMapCard } from './live-gps-map'
 import { DisconnectedLanding } from './disconnected-landing'
 import { FirmwareFlasher } from './firmware/FirmwareFlasher'
-import { relayFirmwareSource } from './firmware/firmware-index-source'
+import { relayFirmwareSource, relayHexFirmwareSource } from './firmware/firmware-index-source'
 import { loadPeriphIndex, relayPeriphFirmwareSource } from './firmware/periph-firmware-source'
 import type { FirmwareIndexRow } from './view-models/firmware-finder'
 import { ElrsFlasher, type ElrsFlasherNotice } from './firmware/ElrsFlasher'
@@ -10408,7 +10408,9 @@ export function App() {
               : undefined
           }
           firmwareIndex={relayFirmwareSource}
+          dfuFirmwareIndex={relayHexFirmwareSource}
           connectedBoard={flashConnectedBoard}
+          betaflightTargetName={betaflightMsp.identity?.targetName}
         />
       ) : null}
 
