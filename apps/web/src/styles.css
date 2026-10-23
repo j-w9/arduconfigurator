@@ -18637,6 +18637,14 @@ button.mavlink-inspector__sent-row {
   flex: 1 1 auto;
   min-width: 0;
 }
+/* The Function select's Custom… wrapper (select + number input) is the
+   label's first span: keep it a stretching row, not the inline label slot. */
+.receiver-channel-row__function .scoped-editor-field > .scoped-select-with-custom {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  order: 0;
+}
 .receiver-map-row .scoped-editor-field--staged,
 .receiver-channel-row__function .scoped-editor-field--staged,
 .receiver-map-row .scoped-editor-field--invalid,
