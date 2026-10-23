@@ -3520,6 +3520,27 @@ test.describe('Receiver flight-mode labels', () => {
     await expect(table.locator('[data-testid^="modes-slot-"]')).toHaveCount(6)
   })
 
+  test('Receiver: a flight-mode slot takes an unlisted mode number via Custom… and stages it writable', async ({ page }) => {
+    // The Receiver page's own six slot dropdowns (not the Config ▸ Flight
+    // Modes panel) had no Custom… at all, so a fork's mode such as VALT
+    // could not be set from the page a pilot uses.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'receiver')
+    const slot5 = page.getByTestId('receiver-mode-slot-5')
+    const select = slot5.locator('select')
+    await expect(select).toBeVisible()
+    await select.selectOption('__custom__')
+    const customInput = slot5.locator('input[type="number"]')
+    await expect(customInput).toBeVisible()
+    await customInput.fill('29')
+    await expect(page.getByTestId('global-draft-count')).toContainText('1 staged change')
+    await expect(page.getByTestId('global-draft-write')).toBeEnabled()
+    // A listed mode again: the input goes and the override with it.
+    await select.selectOption('9')
+    await expect(slot5.locator('input[type="number"]')).toHaveCount(0)
+  })
+
   test('flight-mode slot supports typing an unlisted mode number via Custom…', async ({ page }) => {
     // Reported gap: an unlisted mode number (e.g. a scripting-defined 29) only
     // ever showed as an inert "29 (unlisted)" label with no way to type a

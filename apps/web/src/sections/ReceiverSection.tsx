@@ -1050,6 +1050,11 @@ export function ReceiverSection(props: ReceiverSectionProps): ReactElement {
                   editedValues={editedValues}
                   onChange={(paramId, value) => setDraft(paramId, value)}
                   draftStatusById={parameterDraftById}
+                  // A fork's mode the metadata does not list (VALT): Custom…
+                  // types the number and the override makes it writable, as on
+                  // Config ▸ Flight Modes.
+                  allowCustomValue
+                  onEnumOverride={setParameterEnumOverride}
                 />
               </div>
             )
