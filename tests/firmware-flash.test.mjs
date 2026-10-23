@@ -399,37 +399,32 @@ test('getSync error replies map to clear errors', async () => {
   )
 })
 
-test('program(): 128-byte PROG_MULTI chunking, one write per frame', async () => {
-  // 600-byte image @ 128/chunk -> five chunks: 128, 128, 128, 128, 88.
-  // Each chunk goes out as ONE write (cmd / len / payload / EOC). The
-  // bootloader allows only 50 ms between the command byte and the length
-  // byte and 200 ms between the payload and EOC; four separate Web Serial
-  // writes gave a stalling host a way to miss those windows and have the
-  // chunk refused after the chip was already erased. flushInput() before
-  // each chunk drops any stray byte so the ack can't be shifted.
+test('program(): 252-byte PROG_MULTI chunking (uploader.py / Mission Planner size), one write per frame', async () => {
+  // 600-byte image @ 252/chunk -> three chunks: 252, 252, 96. Each chunk goes
+  // out as ONE write (cmd / len / payload / EOC). The bootloader allows only
+  // 50 ms between the command byte and the length byte and 200 ms between
+  // the payload and EOC; separate writes gave a stalling host a way to miss
+  // those windows. flushInput() before each chunk drops any stray byte.
   const image = padTo4(new Uint8Array(600).map((_, i) => i & 0xff))
-  const io = new ScriptedSerial([INSYNC, OK, INSYNC, OK, INSYNC, OK, INSYNC, OK, INSYNC, OK])
+  const io = new ScriptedSerial([INSYNC, OK, INSYNC, OK, INSYNC, OK])
   let lastRatio = 0
   await new BootloaderClient(io).program(image, (phase, r) => {
     assert.equal(phase, 'program')
     lastRatio = r
   })
-  // 5 chunks, one write each.
-  assert.equal(io.writes.length, 5)
-  // First frame: PROG_MULTI, 128, the 128 payload bytes, EOC — 131 bytes.
-  assert.equal(io.writes[0].length, 131)
+  assert.equal(io.writes.length, 3)
+  // First frame: PROG_MULTI, 252, the 252 payload bytes, EOC — 255 bytes.
+  assert.equal(io.writes[0].length, 255)
   assert.equal(io.writes[0][0], 0x27)
-  assert.equal(io.writes[0][1], 128)
-  assert.deepEqual(io.writes[0].slice(2, 130), Array.from(image.subarray(0, 128)))
-  assert.equal(io.writes[0][130], 0x20)
-  // Final frame: same shape, payload length 88.
-  assert.equal(io.writes[4].length, 91)
-  assert.equal(io.writes[4][0], 0x27)
-  assert.equal(io.writes[4][1], 88)
-  assert.deepEqual(io.writes[4].slice(2, 90), Array.from(image.subarray(512, 600)))
-  assert.equal(io.writes[4][90], 0x20)
-  // flushInput() called once per chunk so a stray byte can't shift the next ack.
-  assert.equal(io.flushed, 5)
+  assert.equal(io.writes[0][1], 252)
+  assert.deepEqual(io.writes[0].slice(2, 254), Array.from(image.subarray(0, 252)))
+  assert.equal(io.writes[0][254], 0x20)
+  // Final frame: same shape, payload length 96.
+  assert.equal(io.writes[2].length, 99)
+  assert.equal(io.writes[2][1], 96)
+  assert.deepEqual(io.writes[2].slice(2, 98), Array.from(image.subarray(504, 600)))
+  assert.equal(io.writes[2][98], 0x20)
+  assert.equal(io.flushed, 3)
   assert.equal(lastRatio, 1)
   await assert.rejects(
     () => new BootloaderClient(new ScriptedSerial()).program(new Uint8Array([1, 2, 3])),
@@ -474,7 +469,7 @@ test('program(): a chunk the bootloader refuses is resent at the same offset aft
   // PROG_MULTI (bl_protocol.cpp goes to cmd_bad before `address +=`), so
   // the same chunk is sent again once the line is quiet and GET_SYNC is
   // answered. Here the second chunk is refused once.
-  const image = padTo4(new Uint8Array(300).map((_, i) => (i * 7) & 0xff))
+  const image = padTo4(new Uint8Array(600).map((_, i) => (i * 7) & 0xff))
   const io = new AnsweringBootloader({ refuse: [2] })
   const ratios = []
   await new BootloaderClient(io).program(image, (_phase, r) => ratios.push(r))
@@ -487,17 +482,17 @@ test('program(): a chunk the bootloader refuses is resent at the same offset aft
   assert.ok(io.writes[2].every((byte) => byte === 0), 'filler is all zero bytes')
   assert.deepEqual(io.writes[3], [0x21, 0x20], 'GET_SYNC before the resend')
   assert.deepEqual(io.writes[4], io.writes[1], 'the identical frame, same offset')
-  assert.deepEqual(io.writes[4].slice(2, 130), Array.from(image.subarray(128, 256)))
-  assert.equal(io.writes[5][1], 44, 'the final 44-byte chunk follows')
+  assert.deepEqual(io.writes[4].slice(2, 254), Array.from(image.subarray(252, 504)))
+  assert.equal(io.writes[5][1], 96, 'the final 96-byte chunk follows')
   // Progress is reported once per chunk, never for the refused attempt.
-  assert.deepEqual(ratios.map((r) => Math.round(r * 1000)), [427, 853, 1000])
+  assert.deepEqual(ratios.map((r) => Math.round(r * 1000)), [420, 840, 1000])
 })
 
 test('program(): a chunk whose ack never comes is resent the same way (filler, resync, same offset)', async () => {
   // Field report (MicoAir743v2, 66 s into Writing): no INVALID, just silence
   // -- "serial read timed out waiting for 1 bytes". A bootloader stuck in a
   // payload read says nothing; the filler ends that read.
-  const image = padTo4(new Uint8Array(300).map((_, i) => (i * 5) & 0xff))
+  const image = padTo4(new Uint8Array(600).map((_, i) => (i * 5) & 0xff))
   const io = new AnsweringBootloader({ silent: [2] })
   await new BootloaderClient(io).program(image)
   // chunk1 / chunk2 (silent) / filler / GET_SYNC / chunk2 again / chunk3
@@ -505,11 +500,11 @@ test('program(): a chunk whose ack never comes is resent the same way (filler, r
   assert.equal(io.writes[2].length, 256)
   assert.deepEqual(io.writes[3], [0x21, 0x20])
   assert.deepEqual(io.writes[4], io.writes[1], 'the identical frame, same offset')
-  assert.equal(io.writes[5][1], 44)
+  assert.equal(io.writes[5][1], 96)
 })
 
 test('program(): a chunk refused twice is the real error, reported as INVALID OPERATION', async () => {
-  const image = padTo4(new Uint8Array(300))
+  const image = padTo4(new Uint8Array(600))
   // Sends 2 and 3 are the same chunk (first try, retry).
   const io = new AnsweringBootloader({ refuse: [2, 3] })
   await assert.rejects(() => new BootloaderClient(io).program(image), /INVALID OPERATION/)
@@ -1191,20 +1186,20 @@ test('eraseExtflash(): refuses a non-positive or non-aligned size pre-write', as
 })
 
 test('programExtflash(): one write per EXTF_PROG_MULTI frame', async () => {
-  // 260-byte extf @ 128/chunk -> three chunks (128, 128, 4). Same framing
-  // + flushInput per chunk as internal program().
+  // 260-byte extf @ 252/chunk -> two chunks (252, 8). Same framing +
+  // flushInput per chunk as internal program().
   const extf = padTo4(new Uint8Array(260).map((_, i) => (i * 3) & 0xff))
-  const io = new ScriptedSerial([INSYNC, OK, INSYNC, OK, INSYNC, OK])
+  const io = new ScriptedSerial([INSYNC, OK, INSYNC, OK])
   await new BootloaderClient(io).programExtflash(extf)
-  assert.equal(io.writes.length, 3, '3 chunks, one write each')
-  assert.equal(io.writes[0].length, 131)
+  assert.equal(io.writes.length, 2, '2 chunks, one write each')
+  assert.equal(io.writes[0].length, 255)
   assert.equal(io.writes[0][0], 0x35) // EXTF_PROG_MULTI
-  assert.equal(io.writes[0][1], 128)
-  assert.deepEqual(io.writes[0].slice(2, 130), Array.from(extf.subarray(0, 128)))
-  assert.equal(io.writes[0][130], 0x20) // EOC
-  // Last chunk: cmd / 4 / 4-byte payload / EOC.
-  assert.deepEqual(io.writes[2], [0x35, 4, ...extf.subarray(256, 260), 0x20])
-  assert.equal(io.flushed, 3, 'flushInput once per chunk')
+  assert.equal(io.writes[0][1], 252)
+  assert.deepEqual(io.writes[0].slice(2, 254), Array.from(extf.subarray(0, 252)))
+  assert.equal(io.writes[0][254], 0x20) // EOC
+  // Last chunk: cmd / 8 / 8-byte payload / EOC.
+  assert.deepEqual(io.writes[1], [0x35, 8, ...extf.subarray(252, 260), 0x20])
+  assert.equal(io.flushed, 2, 'flushInput once per chunk')
 })
 
 test('verifyExtflash(): CRC computed over image bytes alone (NO flash-size padding)', async () => {
