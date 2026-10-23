@@ -65,8 +65,7 @@ import {
   mergeUpstreamParameters,
   AHRS_ORIENTATION_OPTIONS,
   type AppViewId,
-  type UpstreamParameterMap,
-  formatArducopterRssiType
+  type UpstreamParameterMap
 } from '@arduconfig/param-metadata'
 import { loadUpstreamParameters } from './generated/param-upstream'
 import {
@@ -128,8 +127,7 @@ import {
   formatParameterSync,
   formatRcLink,
   formatStatHours,
-  formatBatteryTelemetry,
-  formatRxRssi
+  formatBatteryTelemetry
 } from './status-formatters'
 import {
   formatParameterDraftValue,
@@ -6942,17 +6940,6 @@ export function App() {
       .filter((group) => group.parameters.length > 0)
     return (
       <>
-        <div className="config-pills" data-testid="config-receiver-link">
-          <span>RSSI source: {formatArducopterRssiType(readRoundedParameter(snapshot, 'RSSI_TYPE'))}</span>
-          <span>Live RX RSSI: {formatRxRssi(snapshot.liveVerification.rcInput.rssi)}</span>
-          {receiverLinkPorts.length > 0
-            ? receiverLinkPorts.map((port) => (
-                <span key={`receiver-link:${port.portNumber}`}>
-                  {port.label}: {port.protocolLabel}
-                </span>
-              ))
-            : <span>No receiver serial link in the current port roles</span>}
-        </div>
         {residueGroups.length === 0
           ? null
           : renderAdditionalSettingsCard(
