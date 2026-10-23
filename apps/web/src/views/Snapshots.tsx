@@ -40,7 +40,6 @@ export function SnapshotsView(props: SnapshotsViewProps) {
             <div className="snapshots-page__hero-copy">
               <span className="snapshots-page__eyebrow">Configuration Baselines</span>
               <h3>Local libraries for restore and batch provisioning</h3>
-              <p>Capture trusted baselines, build reusable provisioning profiles, and apply only the verified diff back to a live vehicle.</p>
             </div>
             <div className="snapshots-page__hero-metrics">
               <div className="snapshots-page__hero-metric">
