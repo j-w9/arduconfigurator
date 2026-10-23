@@ -870,6 +870,71 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                     {selectedSnapshotChangedEntries.length} writes
                   </span>
                 </div>
+                <div className="snapshots-detail-section-heading snapshots-detail-section-heading--compact">
+                  <div>
+                    <h4>Stage restore</h4>
+                  </div>
+                </div>
+
+                <div className="parameter-follow-up parameter-follow-up--warning">
+                  <StatusBadge tone="warning">overwrite</StatusBadge>
+                  <p>
+                    Stage All loads every row below into the draft set; nothing is written until you
+                    <strong> Write all</strong> from the draft bar. Writing overwrites the live values.
+                  </p>
+                </div>
+
+                <label className="snapshot-restore-ack">
+                  <input
+                    data-testid="snapshot-restore-ack"
+                    type="checkbox"
+                    checked={snapshotRestoreAcknowledged}
+                    onChange={(event) => setSnapshotRestoreAcknowledged(event.target.checked)}
+                    disabled={
+                      busyAction !== undefined ||
+                      (selectedSnapshotChangedEntries.length === 0 &&
+                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0))
+                    }
+                  />
+                  <span>I understand these staged changes will overwrite the current live values when I write them.</span>
+                </label>
+
+                {/* Stage / Drop sit ABOVE the rows (field request): the operator
+                 *  restoring their own snapshot knows the values are right and
+                 *  goes straight to Stage All; the rows are there to read, not
+                 *  to scroll past. */}
+                <div className="snapshots-action-row snapshots-action-row--detail" data-testid="snapshot-restore-actions">
+                  <button
+                    data-testid="apply-snapshot-restore-button"
+                    className="snapshots-button snapshots-button--primary"
+                    onClick={() => void handleApplySelectedSnapshotRestore()}
+                    disabled={
+                      busyAction !== undefined ||
+                      (selectedSnapshotChangedEntries.length === 0 &&
+                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0)) ||
+                      !snapshotRestoreAcknowledged
+                    }
+                    title="Stage every changed parameter as a draft, then Write all from the draft bar to apply."
+                  >
+                    {`Stage All (${selectedSnapshotChangedEntries.length + (snapshotForceInvalid ? selectedSnapshotInvalidEntries.length : 0)})`}
+                  </button>
+                  {/* Drop next to Stage (field request) — clears every row from
+                   *  the restore diff and un-stages any drafts it already
+                   *  staged, mirroring the Parameters tab's "Discard All". */}
+                  <button
+                    data-testid="drop-all-snapshot-restore-button"
+                    className="snapshots-button snapshots-button--secondary"
+                    onClick={handleDropAllSnapshotRestoreEntries}
+                    disabled={
+                      busyAction !== undefined ||
+                      (selectedSnapshotChangedEntries.length === 0 && selectedSnapshotInvalidEntries.length === 0)
+                    }
+                    title="Drop every row from this restore diff (and un-stage any staged drafts). Keeps the live FC values as-is."
+                  >
+                    Drop All
+                  </button>
+                </div>
+
 
                 {snapshotRestoreDroppedParamIds.size > 0 ? (
                   <div className="snapshot-restore-dropped-note" data-testid="snapshot-restore-dropped-note">
@@ -1162,74 +1227,15 @@ export function SnapshotsSection(props: SnapshotsSectionProps): ReactElement {
                       disabled={busyAction !== undefined}
                     />
                     <span>
-                      Also stage these {selectedSnapshotInvalidEntries.length} blocked value(s). They exceed this
-                      app&apos;s documented range/enum (common on a cross-board restore) — staging them as drafts lets you
-                      complete the override from the Parameters tab (&ldquo;Override and write anyway&rdquo;) before writing.
+                      Also stage these {selectedSnapshotInvalidEntries.length} blocked value(s), overriding the documented
+                      range/enum for them so they write with the rest. This is your own snapshot; the app&apos;s documented
+                      limits can lag the firmware, which is common on a cross-board restore.
                     </span>
                   </label>
                   </>
                 ) : null}
 
-                <div className="snapshots-detail-section-heading snapshots-detail-section-heading--compact">
-                  <div>
-                    <h4>Stage restore</h4>
-                  </div>
-                </div>
-
-                <div className="parameter-follow-up parameter-follow-up--warning">
-                  <StatusBadge tone="warning">overwrite</StatusBadge>
-                  <p>
-                    Staging loads the diff against the current live controller into the shared draft set — nothing is written yet. Review it, then
-                    <strong> Write all</strong> from the draft bar (the same verified, readback-checked, rollback-on-failure path the Parameters tab uses).
-                    Writing overwrites the current live values for every changed parameter listed above.
-                  </p>
-                </div>
-
-                <label className="snapshot-restore-ack">
-                  <input
-                    data-testid="snapshot-restore-ack"
-                    type="checkbox"
-                    checked={snapshotRestoreAcknowledged}
-                    onChange={(event) => setSnapshotRestoreAcknowledged(event.target.checked)}
-                    disabled={
-                      busyAction !== undefined ||
-                      (selectedSnapshotChangedEntries.length === 0 &&
-                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0))
-                    }
-                  />
-                  <span>I understand these staged changes will overwrite the current live values shown above when I write them.</span>
-                </label>
-
                 <div className="snapshots-action-row snapshots-action-row--detail">
-                  <button
-                    data-testid="apply-snapshot-restore-button"
-                    className="snapshots-button snapshots-button--primary"
-                    onClick={() => void handleApplySelectedSnapshotRestore()}
-                    disabled={
-                      busyAction !== undefined ||
-                      (selectedSnapshotChangedEntries.length === 0 &&
-                        !(snapshotForceInvalid && selectedSnapshotInvalidEntries.length > 0)) ||
-                      !snapshotRestoreAcknowledged
-                    }
-                    title="Stage every changed parameter as a draft, then Write all from the draft bar to apply."
-                  >
-                    {`Stage All (${selectedSnapshotChangedEntries.length + (snapshotForceInvalid ? selectedSnapshotInvalidEntries.length : 0)})`}
-                  </button>
-                  {/* Drop next to Stage (field request) — clears every row from
-                   *  the restore diff and un-stages any drafts it already
-                   *  staged, mirroring the Parameters tab's "Discard All". */}
-                  <button
-                    data-testid="drop-all-snapshot-restore-button"
-                    className="snapshots-button snapshots-button--secondary"
-                    onClick={handleDropAllSnapshotRestoreEntries}
-                    disabled={
-                      busyAction !== undefined ||
-                      (selectedSnapshotChangedEntries.length === 0 && selectedSnapshotInvalidEntries.length === 0)
-                    }
-                    title="Drop every row from this restore diff (and un-stage any staged drafts). Keeps the live FC values as-is."
-                  >
-                    Drop All
-                  </button>
                   {isExpertMode ? (
                     <button
                       className="snapshots-button snapshots-button--secondary"
