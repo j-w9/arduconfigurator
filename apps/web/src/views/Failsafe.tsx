@@ -284,31 +284,6 @@ export function FailsafeView(props: FailsafeViewProps) {
             </button>
           </div>
 
-          {effectiveCategory === 'advanced' ? (
-          <section
-            className="failsafe-placeholder failsafe-servo-position"
-            data-testid="failsafe-servo-position-placeholder"
-            aria-label="Servo failsafe positions"
-          >
-            <header className="failsafe-placeholder__header">
-              <div>
-                <strong>Servo failsafe positions</strong>
-                <p>
-                  Per-channel servo PWM target when an active failsafe triggers — a Mission Planner / BF style
-                  per-output failsafe-position editor (e.g. centre rudder + cut throttle on RC loss). Will edit
-                  SERVOn_FUNCTION sibling params for the failsafe pose; landing here under Failsafe instead of
-                  Servos so all loss-of-link behavior stays in one tab.
-                </p>
-              </div>
-              <StatusBadge tone="warning">planned</StatusBadge>
-            </header>
-            <p className="failsafe-placeholder__note">
-              Placeholder only. Until this ships, set per-servo failsafe positions via the autopilot&apos;s
-              Parameters tab.
-            </p>
-          </section>
-          ) : null}
-
         </div>
       </Panel>
     </div>

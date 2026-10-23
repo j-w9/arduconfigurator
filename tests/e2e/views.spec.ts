@@ -1857,11 +1857,11 @@ test.describe('Failsafe view', () => {
     // one: not here.
     await expect(page.getByTestId('failsafe-row-FS_OPTIONS')).toHaveCount(0)
 
-    // The planned servo-position card and the genuinely uncategorised knobs
-    // (FS_OPTIONS) belong to Advanced rather than repeating under every tab.
-    await expect(page.getByTestId('failsafe-servo-position-placeholder')).toHaveCount(0)
+    // The genuinely uncategorised knobs (FS_OPTIONS) belong to Advanced rather
+    // than repeating under every tab. (The planned servo-position placeholder
+    // that sat there is gone, operator call 2026-10-22.)
     await page.getByTestId('failsafe-category-advanced').click()
-    await expect(page.getByTestId('failsafe-servo-position-placeholder')).toBeVisible()
+    await expect(page.getByTestId('failsafe-servo-position-placeholder')).toHaveCount(0)
     await expect(page.getByTestId('failsafe-row-FS_OPTIONS')).toBeVisible()
     await expect(page.getByTestId('failsafe-row-BATT_LOW_TIMER')).toHaveCount(0)
 
