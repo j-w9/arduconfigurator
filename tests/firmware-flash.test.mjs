@@ -474,13 +474,17 @@ test('program(): a chunk the bootloader refuses is resent at the same offset aft
   const io = new AnsweringBootloader({ refuse: [2] })
   const ratios = []
   await new BootloaderClient(io).program(image, (_phase, r) => ratios.push(r))
-  // chunk1 / chunk2 (refused) / GET_SYNC / chunk2 again / chunk3
-  assert.equal(io.writes.length, 5)
+  // chunk1 / chunk2 (refused) / filler / GET_SYNC / chunk2 again / chunk3
+  assert.equal(io.writes.length, 6)
   assert.equal(io.writes[1][0], 0x27)
-  assert.deepEqual(io.writes[2], [0x21, 0x20], 'GET_SYNC before the resend')
-  assert.deepEqual(io.writes[3], io.writes[1], 'the identical frame, same offset')
-  assert.deepEqual(io.writes[3].slice(2, 130), Array.from(image.subarray(128, 256)))
-  assert.equal(io.writes[4][1], 44, 'the final 44-byte chunk follows')
+  // The filler closes any payload read the refused frame's tail left open:
+  // 256 zero bytes, which are no opcode and are not EOC.
+  assert.equal(io.writes[2].length, 256)
+  assert.ok(io.writes[2].every((byte) => byte === 0), 'filler is all zero bytes')
+  assert.deepEqual(io.writes[3], [0x21, 0x20], 'GET_SYNC before the resend')
+  assert.deepEqual(io.writes[4], io.writes[1], 'the identical frame, same offset')
+  assert.deepEqual(io.writes[4].slice(2, 130), Array.from(image.subarray(128, 256)))
+  assert.equal(io.writes[5][1], 44, 'the final 44-byte chunk follows')
   // Progress is reported once per chunk, never for the refused attempt.
   assert.deepEqual(ratios.map((r) => Math.round(r * 1000)), [427, 853, 1000])
 })
@@ -490,8 +494,8 @@ test('program(): a chunk refused twice is the real error, reported as INVALID OP
   // Sends 2 and 3 are the same chunk (first try, retry).
   const io = new AnsweringBootloader({ refuse: [2, 3] })
   await assert.rejects(() => new BootloaderClient(io).program(image), /INVALID OPERATION/)
-  // chunk1 / chunk2 / GET_SYNC / chunk2 again — and no third chunk.
-  assert.equal(io.writes.length, 4)
+  // chunk1 / chunk2 / filler / GET_SYNC / chunk2 again — and no third chunk.
+  assert.equal(io.writes.length, 5)
 })
 
 test('program(): a non-INVALID ack error is not retried', async () => {

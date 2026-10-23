@@ -48,6 +48,8 @@ export interface ModesViewProps {
   editedValues?: Record<string, string>
   draftStatusById?: ScopedFieldDraftMap
   onChangeSlot?: (paramId: string, value: string) => void
+  /** See ScopedSelectField.onEnumOverride: a typed unlisted mode number is written, not left invalid. */
+  onEnumOverride?: (paramId: string, overridden: boolean) => void
   /**
    * When set (ArduSub), the vehicle has no RC mode-switch channel — modes are
    * bound to joystick buttons. The mode-channel card, PWM slot table and the
@@ -71,7 +73,8 @@ export function ModesView(props: ModesViewProps) {
     editedValues,
     draftStatusById,
     onChangeSlot,
-    joystickModeNote
+    joystickModeNote,
+    onEnumOverride
   } = props
   // Edit-in-place is available iff the caller supplied the staged-draft
   // plumbing AND at least one slot has a bound parameter.
@@ -117,6 +120,7 @@ export function ModesView(props: ModesViewProps) {
                     onChange={onChangeSlot!}
                     draftStatusById={draftStatusById!}
                     allowCustomValue
+                    onEnumOverride={onEnumOverride}
                   />
                 </span>
               ) : (
@@ -200,6 +204,7 @@ export function ModesView(props: ModesViewProps) {
                       onChange={onChangeSlot!}
                       draftStatusById={draftStatusById!}
                       allowCustomValue
+                      onEnumOverride={onEnumOverride}
                     />
                   ) : (
                     <span className="modes-table__mode-readonly">
