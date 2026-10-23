@@ -100,11 +100,10 @@ async function applySingleTuningChange(page: Page, value: string): Promise<void>
   await page.locator('details.bf-gui-box > summary').filter({ hasText: 'Angle' }).click()
   await page.getByTestId('tuning-input-ATC_INPUT_TC').fill(value)
   await page.getByTestId('tuning-input-ATC_INPUT_TC').blur()
-  // Editing stages in place and no longer auto-redirects to Review, so the
-  // operator (and this helper) opens the Review task to reach Apply.
-  await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Review/i }).click()
-  await page.getByTestId('apply-tuning-changes-button').click()
-  await expect(page.getByText('Verified 1 tuning change(s) from this view.')).toBeVisible()
+  // Editing stages in place; the write is the draft bar's "Write all" (the
+  // Tuning Review task is gone, operator call 2026-10-22).
+  await page.getByTestId('global-draft-write').click()
+  await expect(page.getByText('Verified 1 staged parameter change(s).')).toBeVisible()
   // Deliberately NOT asserting the Pull Parameters button is visible here. The
   // app sets that follow-up state and then immediately auto-refreshes out of
   // it, so the button is a transient — the pullParameters() helper above was
@@ -556,15 +555,13 @@ test.describe('browser configurator regression flows', () => {
     await expect(page.getByTestId('create-tuning-profile-button')).toBeEnabled()
     await page.getByTestId('create-tuning-profile-button').click()
     await expect(page.getByRole('heading', { name: 'Bench Test Profile' })).toBeVisible()
-    await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Review/i }).click()
-    await expect(page.getByText('Tuning changes in review', { exact: true })).toBeVisible()
   })
 
-  test('staging a tuning change stays in place and does not auto-redirect to Review', async ({ page }) => {
-    // Regression: editing a tuning value used to flip the active task to 'review'
-    // mid-edit (the recommended-task memo returned 'review' as soon as anything
-    // was staged, and the task override was still unset). Tuning now matches every
-    // other parameter tab: edits stage in place; the operator opens Review.
+  test('staging a tuning change stays in place; the draft bar carries it', async ({ page }) => {
+    // Regression: editing a tuning value used to flip the active task to a
+    // review panel mid-edit. Tuning matches every other parameter tab: edits
+    // stage in place, and the global draft bar is where they are written from
+    // (the Tuning Review task is gone, operator call 2026-10-22).
     await connectToVehicle(page, 'demo')
     await openView(page, 'tuning')
 
@@ -574,15 +571,13 @@ test.describe('browser configurator regression flows', () => {
     const input = page.getByTestId('tuning-input-ATC_INPUT_TC')
     await expect(input).toBeVisible()
 
-    // Edit a rate -> stages a change. We must NOT be yanked to the Review panel.
+    // Edit a rate -> stages a change. The input stays under the operator and
+    // the draft bar reports the staged change.
     await input.fill('0.2')
     await input.blur()
     await expect(input).toBeVisible()
-    await expect(page.getByText('Tuning changes in review', { exact: true })).toHaveCount(0)
-
-    // The operator can still reach Review manually.
-    await page.getByTestId('tuning-task-nav').getByRole('button', { name: /Review/i }).click()
-    await expect(page.getByText('Tuning changes in review', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('tuning-task-nav').getByRole('button', { name: /Review/i })).toHaveCount(0)
+    await expect(page.locator('body')).toContainText('1 staged change')
   })
 
   test('manual motor test: Stop is disabled until a test is running', async ({ page }) => {
