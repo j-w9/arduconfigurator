@@ -8305,6 +8305,14 @@ body.is-status-dash-dragging {
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
+/* The battery panel inside Config's Power card: readout, fields, and the
+   review bar only when something is staged -- one gap between them. */
+.power-panel {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 @media (max-width: 720px) {
   /* Back to a single column where 210px tracks would overflow. */
   #setup-panel-power .scoped-editor-grid {
@@ -14015,55 +14023,31 @@ details.metadata-settings-section:not([open]) > summary::after {
   font-size: var(--text-md);
 }
 
-/* Modes view: read-only flight-mode slot table with live indicator. */
+/* Flight modes (Config ▸ Flight Modes): one status line -- mode channel,
+   current slot, active mode -- over a compact slot table, one line per slot. */
 .modes-stack {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 .modes-status {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 10px;
-  /* Each card is as tall as its own content. Without this the grid stretches
-     every card to match the tallest — the mode-channel one, which carries a
-     dropdown — so the two text cards beside it were mostly empty space. */
-  align-items: start;
-}
-
-.modes-status__card {
-  /* Label + value share a baseline row; the help text wraps to its own line
-     below. Condenses each card from a 3-line stack to 2 lines. */
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 20px;
+  min-width: 0;
+}
+
+.modes-status__item {
+  display: inline-flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  column-gap: var(--space-2);
-  row-gap: 1px;
-  padding: 7px 12px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--card-outline);
-  background: var(--bg-panel-raised);
+  gap: 4px 8px;
+  min-width: 0;
 }
 
-/* The mode-channel card hosts a real editor. Nested inside a card that already
-   has a border and a background, the field's own box drew a second frame with
-   its own padding — which is what pushed its info dot out past that frame's
-   right edge and made the card twice the height it needed. Flush inside the
-   card instead. */
-.modes-status__card .scoped-editor-field {
-  padding: 0;
-  border: 0;
-  background: none;
-  gap: 4px;
-}
-
-/* DIRECT children only. These rules describe the card's own label/value/hint
-   line, but as descendant selectors they also hit the internals of any editor
-   nested in a card — and `small { flex: 1 0 100% }` landing on the field's
-   parameter-id line is what pushed its info dot onto a line of its own,
-   outside the field it belongs to. */
-.modes-status__card > span {
-  flex: 0 0 auto;
+.modes-status__label {
   font-family: var(--font-data);
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-label);
@@ -14071,35 +14055,58 @@ details.metadata-settings-section:not([open]) > summary::after {
   color: var(--text-muted);
 }
 
-.modes-status__card > strong {
-  flex: 1 1 auto;
-  min-width: 0;
+.modes-status__item > strong {
   font-size: var(--text-lg);
   color: var(--text);
 }
 
-.modes-status__card > small {
-  flex: 1 0 100%;
+.modes-status__item > small {
   color: var(--text-muted);
   font-size: var(--text-sm);
-  line-height: 1.3;
+}
+
+/* The mode-channel editor sits in the line: label, its "i" and the dropdown
+   side by side, without the field's own card frame. */
+.modes-status__channel-field .scoped-editor-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.modes-status__channel-field .scoped-editor-field > small {
+  flex-basis: 100%;
+}
+
+.modes-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+  line-height: 1.45;
 }
 
 .modes-table {
   display: grid;
-  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 620px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--card-outline);
   background: var(--bg-panel-raised);
-  overflow: hidden;
+  /* No overflow clip: a slot's "i" opens downward and was cut off by it. The
+     head row rounds its own top corners instead. */
 }
 
 .modes-table__row {
   display: grid;
-  grid-template-columns: 64px minmax(120px, 1fr) minmax(160px, 1.4fr) 110px;
+  grid-template-columns: 3.2em 8.5em minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  padding: 7px 12px;
+  gap: 8px;
+  padding: 2px 10px;
   border-bottom: 1px solid var(--card-outline-soft);
+  border-left: 3px solid transparent;
 }
 
 .modes-table__row:last-child {
@@ -14176,82 +14183,85 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .modes-table__row--head {
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  padding-top: 4px;
+  padding-bottom: 4px;
   background: var(--bg-panel);
   font-family: var(--font-data);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
 }
 
-.modes-table__row span {
-  font-size: var(--text-lg);
+.modes-table__row--head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+}
+
+.modes-table__slot {
+  font-weight: 600;
   color: var(--text);
 }
 
-.modes-table__mode-readonly {
-  display: flex;
-  flex-direction: column;
+.modes-table__pwm {
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
-/* The slot table already numbers each row (SLOT column) and labels the column
-   (ASSIGNED MODE header), so the embedded mode selector's own "Flight Mode N"
-   label is redundant and just adds height. Flatten the field's card chrome and
-   drop that label so each slot row is a compact single control — the param-id
-   hint (FLTMODEn) + dropdown carry the identity. */
+.modes-table__mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.modes-table__mode-readonly {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The slot's dropdown is the whole cell: the SLOT column numbers the row and
+   the header names the column, so the field's "Flight Mode N" title is
+   dropped. Its "i" (FLTMODEn / MODEn, description, range) stays, after the
+   dropdown on the same line. */
 .modes-table .scoped-editor-field {
-  padding: 4px 0;
-  gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 6px;
+  padding: 2px 0;
   background: transparent;
   border-color: transparent;
 }
 
 .modes-table .scoped-editor-field > span:first-child {
+  order: 2;
+}
+
+.modes-table .scoped-editor-field__title {
   display: none;
 }
 
-.modes-table__row--head span {
-  color: var(--text-muted);
+.modes-table .scoped-editor-field > small {
+  order: 3;
+  grid-column: 1 / -1;
 }
 
 .modes-table__row.is-active {
   background: var(--primary-transparent-1);
-  border-left: 3px solid var(--primary-500);
-  padding-left: 13px;
+  border-left-color: var(--primary-500);
 }
 
-.modes-help {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--card-outline);
-  background: var(--bg-panel);
-}
-
-.modes-help p {
-  margin: 0;
-  font-size: var(--text-lg);
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-
-@media (max-width: 720px) {
-  .modes-table__row {
-    grid-template-columns: 60px 1fr;
-  }
-
-  .modes-table__row span:nth-child(3),
-  .modes-table__row span:nth-child(4) {
-    grid-column: 1 / -1;
-  }
-
-  .modes-help {
-    flex-direction: column;
-    align-items: stretch;
-  }
+.modes-table__row.is-active .modes-table__pwm {
+  color: var(--text);
 }
 
 /* Outputs view density tightening (mirrors the Receiver hero treatment) */
@@ -14550,23 +14560,24 @@ details.metadata-settings-section:not([open]) > summary::after {
      you just clicked is worse than a little dead space.
      A grid cell is fixed, so opening a disclosure grows that card in place and
      nothing else moves. `align-items: start` stops a short card stretching to
-     its row's height. Still capped so 2-3 cards read as a calm flow rather than
-     spreading thin across a wide screen. */
+     its row's height. No width cap any more: short cards sit side by side
+     across the whole width instead of stacking under each other with the
+     right third of the screen empty. */
   display: grid;
   /* `min(360px, 100%)` not a bare 360px: a bare minimum makes a track the
      container cannot shrink below, so on a 390px phone the grid laid out two
      360px tracks and ran 752px off-screen (caught by the 390px overflow gate).
      The min() lets the track collapse to the container on narrow screens. */
-  grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: var(--space-3);
   align-items: start;
   padding-right: 6px;
-  /* `min(…, 100%)` and `min-width: 0`, not a bare max-width: the grid sits in a
-     container that does not constrain it, so with a bare `max-width: 1180px` it
-     sized to its own max-content (three 360px tracks = 1152px) and ran ~790px
-     off a 390px phone. Capping against the parent keeps auto-fill honest. */
+  /* `min-width: 0` and a max-width against the parent: the grid sits in a
+     container that does not constrain it, so with a bare pixel max-width it
+     sized to its own max-content and ran ~790px off a 390px phone. Capping
+     against the parent keeps auto-fill honest. */
   min-width: 0;
-  max-width: min(1180px, 100%);
+  max-width: 100%;
 }
 
 /* A group holding ONE card takes the full width and flows its fields into as
@@ -14615,52 +14626,6 @@ details.metadata-settings-section:not([open]) > summary::after {
   vertical-align: middle;
 }
 
-/* Per-card Advanced disclosure — rarely-touched fields folded so each card
-   leads with the essentials. */
-.config-section__advanced {
-  margin-top: 4px;
-  border-top: 1px solid rgba(var(--edge-rgb), 0.08);
-  padding-top: 6px;
-}
-.config-section__advanced > summary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  list-style: none;
-  font-size: var(--text-sm);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--text-muted);
-  padding: 2px 0;
-}
-.config-section__advanced > summary::-webkit-details-marker {
-  display: none;
-}
-.config-section__advanced > summary::before {
-  content: '▸';
-  font-size: var(--text-2xs);
-  transition: transform 0.15s ease;
-}
-.config-section__advanced[open] > summary::before {
-  transform: rotate(90deg);
-}
-.config-section__advanced-count {
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: rgba(var(--edge-rgb), 0.12);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  line-height: 15px;
-  text-align: center;
-  letter-spacing: 0;
-}
-.config-section__editors--advanced {
-  margin-top: 6px;
-}
-
 .config-section {
   display: grid;
   gap: var(--space-2);
@@ -14688,17 +14653,27 @@ details.metadata-settings-section:not([open]) > summary::after {
    Removed rather than left as a latent trap. If the wider bitmask card is still
    wanted, it needs a deliberate design that survives a single-column layout. */
 
+/* One line: title, its "i", and a badge pushed to the right only when there is
+   something to flag. */
 .config-section__header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .config-section__header strong {
-  display: block;
   font-size: var(--text-lg);
-  margin-bottom: 4px;
+}
+
+.config-section__badge {
+  margin-left: auto;
+}
+
+.config-section__badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .config-section__header p {
@@ -14962,15 +14937,19 @@ details.bf-gui-box:not([open]) > summary::after {
 }
 
 /* Each editable field + its per-param "i" info affordance sit on one row. */
+/* Stretch, so every field box in a row of the card's grid is the same height
+   and the boxes line up. */
 .config-section__field-row {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 6px;
 }
 
 .config-section__field-row > .scoped-editor-field {
   flex: 1;
   min-width: 0;
+  /* Stretched to its row's height, the field keeps its content at the top. */
+  align-content: start;
 }
 
 .config-section__info-wrap {
@@ -15894,10 +15873,299 @@ details.bf-gui-box:not([open]) > summary::after {
   padding-top: 10px;
   border-top: 1px solid var(--border-soft);
 }
+/* Config ▸ Airframe & Powertrain reads top to bottom as a page: Frame beside
+   Board orientation (two cards of the same height), then ESC & DShot across
+   the full width with its fields in an even grid. */
+@media (min-width: 1100px) {
+  .config-grid--cat-airframe:not(.config-grid--wide) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ESC & DShot: row one is five one-line fields (protocol, DShot rate, ESC
+   type, BLHeli auto, poles), row two the two per-output masks as equal halves.
+   Every row-one field is one line of control, so the boxes are as tall as
+   their content and stretch only to match a neighbour whose label wraps. A ten-track grid gives both: a field takes two tracks, a mask
+   five. Narrower, the fields flow at 180px and each mask takes the full row. */
+.config-section--id-esc-dshot .config-section__editors {
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+}
+.config-section--id-esc-dshot .config-section__field-row:has(.output-mask-field) {
+  grid-column: 1 / -1;
+}
+@media (min-width: 1100px) {
+  .config-section--id-esc-dshot .config-section__editors {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+  .config-section--id-esc-dshot .config-section__field-row {
+    grid-column: span 2;
+  }
+  .config-section--id-esc-dshot .config-section__field-row:has(.output-mask-field) {
+    grid-column: span 5;
+  }
+}
+
+/* Config ▸ System reads as two even bands: how hard the board runs (rates,
+   and the fast-rate thread when the build has it, beside the IMUs in use), then
+   who it is and what it logs (identity beside logging). Each card lays its
+   fields out in one row, top-aligned, so a box is only as tall as its content
+   and the row is one band instead of four columns of stacked fields. Narrower
+   screens get two columns; a phone, one. */
+.config-grid--cat-system .config-section__editors,
+.config-grid--cat-system .config-section__field-row {
+  align-items: start;
+}
+.config-grid--cat-system .config-section__editors {
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  column-gap: var(--space-2);
+}
+.config-grid--cat-system .config-section--id-active-imu .config-section__editors {
+  grid-template-columns: repeat(auto-fit, minmax(min(88px, 100%), 1fr));
+}
+/* An IMU box is one line: the box, "IMU n" and its "i". */
+.config-section--id-active-imu .scoped-checkbox {
+  flex-wrap: nowrap;
+}
+/* A box this narrow would squeeze its tip to the box's width, so an IMU's "i"
+   opens across the card instead. */
+@media (min-width: 641px) {
+  .config-grid .config-section--id-active-imu {
+    position: relative;
+  }
+  .config-grid .config-section--id-active-imu .scoped-editor-field {
+    position: static;
+  }
+  .config-grid .config-section--id-active-imu .scoped-editor-field .receiver-info-tip {
+    top: auto;
+    margin-top: 22px;
+  }
+}
+@media (min-width: 900px) {
+  .config-grid--cat-system:not(.config-grid--wide) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* Two columns: the loop rate's chips get the card's width, gyro rate and fast
+   sampling share the line under it, and the IMU boxes stack beside them so
+   the two cards end level. */
+@media (min-width: 900px) and (max-width: 1499px) {
+  .config-grid--cat-system .config-section--id-system-rates .config-section__editors {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .config-grid--cat-system .config-section--id-system-rates .config-section__editors > :first-child {
+    grid-column: 1 / -1;
+  }
+  .config-grid--cat-system .config-section--id-active-imu .config-section__editors {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (min-width: 1500px) {
+  .config-grid--cat-system:not(.config-grid--wide) {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+  .config-grid--cat-system .config-section--id-system-rates {
+    grid-column: span 9;
+  }
+  .config-grid--cat-system .config-section--id-active-imu {
+    grid-column: span 3;
+  }
+  /* With the fast-rate thread the first band is three cards. */
+  .config-grid--cat-system:has(.config-section--id-fast-loop-rate) .config-section--id-system-rates {
+    grid-column: span 6;
+  }
+  .config-grid--cat-system .config-section--id-fast-loop-rate,
+  .config-grid--cat-system:has(.config-section--id-fast-loop-rate) .config-section--id-active-imu {
+    grid-column: span 3;
+  }
+  .config-grid--cat-system .config-section--id-identity {
+    grid-column: span 6;
+  }
+  .config-grid--cat-system .config-section--id-logging {
+    grid-column: span 6;
+  }
+  /* Content-sized tracks: each field gets its natural width (six loop-rate
+     chips on one line, a full title over a select) and the slack is shared,
+     so no title wraps while a neighbour has room to spare. */
+  .config-grid--cat-system .config-section--id-system-rates .config-section__editors,
+  .config-grid--cat-system .config-section--id-identity .config-section__editors {
+    grid-template-columns: repeat(3, auto);
+  }
+  .config-grid--cat-system .config-section--id-logging .config-section__editors {
+    grid-template-columns: repeat(4, auto);
+  }
+}
+
+/* Board orientation: the picture sits beside the dropdown, not under it, so the
+   card is as tall as Frame next to it. */
+.config-section--id-board-orientation {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+.config-section--id-board-orientation > .config-section__header {
+  grid-column: 1 / -1;
+}
+.config-section--id-board-orientation > .config-section__footer {
+  grid-column: 2;
+  grid-row: 2;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.config-section--id-board-orientation .board-orientation-diagram {
+  margin-top: 0;
+  gap: 2px;
+}
+.config-section--id-board-orientation .board-orientation-diagram__stage {
+  zoom: 0.75;
+}
+
+/* A per-output mask: one line of fixed 40px cells, the checkbox over the
+   output number, a motor output tagged "M1" under it. The field is a size
+   container, so where one line does not fit it wraps into two, then four, equal
+   rows (counts come from the component) instead of a ragged last row. */
+.output-mask-field {
+  container-type: inline-size;
+  min-width: 0;
+}
+.output-mask-field__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+.output-mask-field__action {
+  margin-left: auto;
+}
+.output-mask-field__boxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 38px);
+  gap: 3px;
+  justify-content: start;
+}
+/* Up to 16 outputs (the usual board): one line while 16 cells fit (16 x 38px
+   + 15 x 3px = 653px), else two equal rows, else four. More than 16 just
+   fills the line, so a cell never overflows. */
+.output-mask-field__boxes--even {
+  grid-template-columns: repeat(var(--mask-count, 16), 38px);
+}
+@container (max-width: 652px) {
+  .output-mask-field__boxes--even {
+    grid-template-columns: repeat(var(--mask-half, 8), 38px);
+  }
+}
+/* A phone: two rows of narrower cells (8 x 33px + 7 x 2px = 278px). */
+@container (max-width: 325px) {
+  .output-mask-field__boxes--even {
+    grid-template-columns: repeat(var(--mask-half, 8), 33px);
+    gap: 2px;
+  }
+  .output-mask-field__boxes--even .output-mask-field__box {
+    width: 33px;
+  }
+}
+@container (max-width: 277px) {
+  .output-mask-field__boxes--even {
+    grid-template-columns: repeat(var(--mask-quarter, 4), 33px);
+  }
+}
+.output-mask-field__box {
+  box-sizing: border-box;
+  width: 38px;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  padding: 3px 0 2px;
+  border: 1px solid var(--card-outline);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  line-height: 1.1;
+  text-transform: none;
+  letter-spacing: normal;
+  overflow: hidden;
+  cursor: pointer;
+}
+.output-mask-field__box.is-motor {
+  border-color: rgba(var(--edge-rgb), 0.28);
+}
+.output-mask-field__box.is-set {
+  border-color: var(--accent);
+  color: var(--accent-strong, var(--accent));
+}
+.output-mask-field__box input {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+}
+.output-mask-field__out {
+  color: var(--text);
+}
+.output-mask-field__motor {
+  min-height: 1.1em;
+  font-size: var(--text-2xs);
+  color: var(--accent-strong, var(--accent));
+}
+
+/* A small text button on a field's title line (the ESC card's "Enable on
+   outputs 1-4"), with its "i" beside it. */
+.esc-bdshot-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.text-action-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-strong, var(--accent));
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  text-transform: none;
+  letter-spacing: normal;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.text-action-button:disabled {
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: not-allowed;
+}
+
+/* A field's "i" opens under the FIELD, not centred on the dot. The grid now
+   runs to the right edge of the screen, and a tip centred on a dot near the end
+   of the last column hung past it. Anchored to the field, the tip is as wide as
+   the field and can never leave it. Desktop only: on a phone every tip is
+   already pinned to the viewport. */
+@media (min-width: 641px) {
+  .config-grid .scoped-editor-field {
+    position: relative;
+  }
+  .config-grid .scoped-editor-field .receiver-info-dot {
+    position: static;
+  }
+  .config-grid .scoped-editor-field .receiver-info-tip {
+    top: 30px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+}
+
+.config-section__footer--bare {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+/* The helper button, its "i", and the one blocking-state line on one row. */
 .esc-dshot-footer {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
 }
 
 .esc-dshot-footer__warning {

@@ -2463,9 +2463,9 @@ test.describe('Config view', () => {
 
     const compass = page.getByTestId('config-section-compass')
     await expect(compass).toBeVisible()
-    // The curated compass knobs render with their param-name hints. AUTO_ROT and
-    // DISBLMSK are in the card's Advanced fold — open it first.
-    await compass.getByTestId('config-advanced-compass').click()
+    // The curated compass knobs render with their param-name hints, all of them
+    // directly: Config cards no longer fold fields under Advanced.
+    await expect(compass.getByTestId('config-advanced-compass')).toHaveCount(0)
     for (const id of ['COMPASS_EXTERNAL', 'COMPASS_ORIENT', 'COMPASS_AUTO_ROT', 'COMPASS_DISBLMSK']) {
       await expect(compass.getByTestId(`param-info-${id}`).first()).toBeVisible()
     }
@@ -2551,12 +2551,14 @@ test.describe('Config view', () => {
     const enable = page.getByTestId('esc-enable-bdshot')
     await expect(enable).toBeEnabled()
     await enable.click()
-    // Staged BLH_BDMASK=15 → first 4 output chips become set (orange highlight).
-    const bdmask = page.getByTestId('scoped-bitmask-SERVO_BLH_BDMASK')
-    const bits = bdmask.locator('.scoped-bitmask-bit')
-    await expect(bits.nth(0)).toHaveClass(/is-set/)
-    await expect(bits.nth(3)).toHaveClass(/is-set/)
-    await expect(bits.nth(4)).not.toHaveClass(/is-set/)
+    // Staged BLH_BDMASK=15 → outputs 1-4 are checked, the rest are not. One box
+    // per output the board reports (SERVOn_FUNCTION), never the mask's full 32.
+    for (const output of [1, 2, 3, 4]) {
+      await expect(page.getByTestId(`esc-bdshot-out-${output}`)).toBeChecked()
+    }
+    await expect(page.getByTestId('esc-bdshot-out-5')).not.toBeChecked()
+    await expect(page.getByTestId('esc-bdshot-out-32')).toHaveCount(0)
+    await expect(page.getByTestId('output-mask-value-SERVO_BLH_BDMASK')).toHaveText('Value 15 (was 0)')
   })
 
   test('applying a reboot-required config change prompts the operator to reboot', async ({ page }) => {
@@ -2608,18 +2610,16 @@ test.describe('Config view', () => {
     await page.getByTestId('view-button-config').click()
     const esc = page.getByTestId('config-section-esc-dshot')
     await esc.scrollIntoViewIfNeeded()
-    // BLH_BDMASK is folded under Advanced; open it so the synced bits are in the
-    // DOM (their presence is how the app knows the firmware supports BDShot).
-    await esc.getByTestId('config-advanced-esc-dshot').click()
-    const bits = page.getByTestId('scoped-bitmask-SERVO_BLH_BDMASK').locator('.scoped-bitmask-bit')
-    await expect(bits.first()).toBeVisible()
+    // The motor-output boxes are shown directly (no Advanced fold); their
+    // presence is how the app knows the firmware supports BDShot.
+    await expect(page.getByTestId('esc-bdshot-out-1')).toBeVisible()
     // MOT_PWM_TYPE is the first field (a select); switch it to a different DShot
     // rate (demo starts at DShot300=5) to trigger the change.
     const motSelect = esc.locator('select').first()
     await motSelect.selectOption('6') // DShot600
     // BDShot auto-stages on outputs 1-4 (demo firmware has SERVO_BLH_BDMASK).
-    await expect(bits.nth(0)).toHaveClass(/is-set/)
-    await expect(bits.nth(3)).toHaveClass(/is-set/)
+    await expect(page.getByTestId('esc-bdshot-out-1')).toBeChecked()
+    await expect(page.getByTestId('esc-bdshot-out-4')).toBeChecked()
   })
 
   test('Motor Test shows live ESC RPM per motor', async ({ page }) => {
@@ -2899,7 +2899,7 @@ test.describe('Config view', () => {
     await expect(page.getByTestId('config-section-pilot-rates')).toHaveCount(0)
   })
 
-  test('ESC & DShot section exposes protocol + reverse/bdshot masks as chips', async ({ page }) => {
+  test('ESC & DShot section offers bidirectional DShot and reverse as one box per output', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -2908,14 +2908,30 @@ test.describe('Config view', () => {
     const esc = page.getByTestId('config-section-esc-dshot')
     await esc.scrollIntoViewIfNeeded()
     await expect(esc).toBeVisible()
-    // Reverse + bidirectional-DShot masks are set-once, folded under Advanced.
-    await esc.getByTestId('config-advanced-esc-dshot').click()
-    // …then render as per-output chip grids.
-    await expect(page.getByTestId('scoped-bitmask-SERVO_BLH_RVMASK')).toBeVisible()
-    await expect(page.getByTestId('scoped-bitmask-SERVO_BLH_BDMASK')).toBeVisible()
-    // Reverse is off by default (demo SERVO_BLH_RVMASK=0).
-    await expect(page.getByTestId('scoped-bitmask-SERVO_BLH_RVMASK').locator('.scoped-bitmask-bit').first()).not.toHaveClass(/is-set/)
-    await expect(esc.getByText('Output 1').first()).toBeVisible()
+    // No Advanced fold: every field is shown.
+    await expect(esc.getByTestId('config-advanced-esc-dshot')).toHaveCount(0)
+    // Bidirectional DShot and reverse are one small box per output the board
+    // has (motors tagged, "1 · M1"), not a 32-output chip grid with a raw value
+    // box; the value is in the "i".
+    for (const id of ['SERVO_BLH_BDMASK', 'SERVO_BLH_RVMASK']) {
+      await expect(page.getByTestId(`output-mask-${id}`)).toBeVisible()
+      await expect(page.getByTestId(`scoped-bitmask-${id}`)).toHaveCount(0)
+    }
+    // Output 1 is motor 1 in the demo quad: the cell carries the number and an "M1" tag.
+    const out1 = page.getByTestId('output-mask-SERVO_BLH_BDMASK').locator('.output-mask-field__box').first()
+    await expect(out1).toHaveAttribute('title', '1 · M1')
+    await expect(out1.locator('.output-mask-field__motor')).toHaveText('M1')
+    await expect(page.getByTestId('esc-bdshot-out-1')).not.toBeChecked()
+    await expect(page.getByTestId('esc-bdshot-out-32')).toHaveCount(0)
+    await expect(esc.getByText('Output 1')).toHaveCount(0)
+    // Reverse is off by default (demo SERVO_BLH_RVMASK=0); a box flips only its bit.
+    const reverse1 = page.getByTestId('esc-reverse-out-1')
+    await expect(reverse1).not.toBeChecked()
+    await reverse1.check()
+    await expect(page.getByTestId('output-mask-value-SERVO_BLH_RVMASK')).toHaveText('Value 1 (was 0)')
+    await reverse1.uncheck()
+    // ESC type has long option labels, so it is a dropdown, not chips.
+    await expect(esc.getByLabel('ESC type (DShot commands)', { exact: true })).toHaveValue(/\d+/)
   })
 
   test('Config editable fields expose a per-param info "i" tooltip', async ({ page }) => {
@@ -2999,10 +3015,10 @@ test.describe('Config view', () => {
     await expect(rates.getByText('Main loop rate')).toBeVisible()
 
     // GPS behavior — the multi-GPS knobs (Auto switch / Primary select) are
-    // set-once, folded under Advanced.
+    // shown directly; nothing is folded under Advanced.
     await openConfigSection(page, 'gps')
     const gps = page.getByTestId('config-section-gps')
-    await gps.getByTestId('config-advanced-gps').click()
+    await expect(gps.getByTestId('config-advanced-gps')).toHaveCount(0)
     await expect(gps.getByText('Auto switch')).toBeVisible()
     // GPS_TYPE renders as "Primary GPS Type" and GPS_PRIMARY as "Primary GPS
     // Select"; match the specific GPS_PRIMARY knob.
@@ -3012,29 +3028,60 @@ test.describe('Config view', () => {
   test('an editable field shows the raw ArduPilot parameter name under its label', async ({ page }) => {
     // Reported gap: friendly labels alone don't tell the operator what to
     // search the wiki/Parameters tab for. Centralized in ScopedField's shared
-    // components, so any editable field is representative — Fast sampling
-    // (INS_FAST_SAMPLE) in the system-rates section. NOTE: not Main loop rate
+    // components, so any editable field is representative — MAVLink system ID
+    // (SYSID_THISMAV) in the identity section. NOTE: not Main loop rate
     // (SCHED_LOOP_RATE) — that one has <= 8 enum options and Config.tsx
     // renders it via the chip-grid layout (ScopedOptionChipsField), which is
     // a role="radiogroup" of buttons with no single labelled control for
-    // getByLabel to match. INS_FAST_SAMPLE has no enum options, so it goes
-    // through ScopedNumberField's plain aria-label'd <input> instead.
+    // getByLabel to match. Nor Fast sampling (INS_FAST_SAMPLE) any more: it is
+    // one box per IMU now. SYSID_THISMAV has no enum options, so it goes
+    // through ScopedNumberField's plain aria-label'd <input>.
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
     await page.getByTestId('view-button-config').click()
-    // system-rates is under Sensors; Fast sampling is folded under Advanced.
-    await openConfigSection(page, 'system-rates')
-    const rates = page.getByTestId('config-section-system-rates')
-    await rates.getByTestId('config-advanced-system-rates').click()
-    const field = rates.locator('.scoped-editor-field', { hasText: 'Fast sampling' })
-    await expect(field.getByTestId('param-info-INS_FAST_SAMPLE')).toBeVisible()
+    await openConfigSection(page, 'identity')
+    const identity = page.getByTestId('config-section-identity')
+    const field = identity.locator('.scoped-editor-field', { hasText: 'MAVLink System ID' })
+    await expect(field.getByTestId('param-info-SYSID_THISMAV')).toBeVisible()
     await expect(field.locator('.scoped-editor-field__param-id')).toHaveCount(0)
 
     // Regression guard: the id hint must not pollute the control's accessible
     // name (a <label> concatenates ALL its text by default) — an exact
     // getByLabel query on the friendly label alone must still resolve.
-    await expect(field.getByLabel('Fast sampling (IMU mask)', { exact: true })).toBeVisible()
+    await expect(field.getByLabel('MAVLink System ID', { exact: true })).toBeVisible()
+  })
+
+  test('System shows each IMU as a box and every field titled', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await page.getByTestId('view-button-config').click()
+    await openConfigSection(page, 'system-rates')
+
+    // Fast sampling is one box per IMU (demo INS_FAST_SAMPLE = 1: IMU 1 only),
+    // the raw value in its "i"; a box flips that IMU's bit and nothing else.
+    const fast = page.getByTestId('imu-mask-INS_FAST_SAMPLE')
+    await expect(fast.getByTestId('imu-mask-INS_FAST_SAMPLE-1')).toBeChecked()
+    await expect(fast.getByTestId('imu-mask-INS_FAST_SAMPLE-2')).not.toBeChecked()
+    await expect(fast.getByTestId('imu-mask-INS_FAST_SAMPLE-3')).not.toBeChecked()
+    await expect(fast.getByTestId('imu-mask-value-INS_FAST_SAMPLE')).toHaveText(/Value 1/)
+    await fast.getByTestId('imu-mask-INS_FAST_SAMPLE-3').check()
+    await expect(fast.getByTestId('imu-mask-value-INS_FAST_SAMPLE')).toHaveText(/Value 5 \(was 1\)/)
+    await expect(fast).toHaveClass(/scoped-editor-field--staged/)
+
+    // Active IMU: one box each, captioned by IMU.
+    const imus = page.getByTestId('config-section-active-imu')
+    await expect(imus.getByTestId('config-checkbox-INS_USE')).toContainText('IMU 1')
+    await expect(imus.getByTestId('config-checkbox-INS_USE3')).toContainText('IMU 3')
+
+    // The log backend is a dropdown; the boot delay is titled, not its raw id.
+    await expect(page.getByTestId('config-section-logging').locator('select').first()).toBeVisible()
+    await expect(
+      page.getByTestId('config-section-identity').locator('.scoped-editor-field__title', { hasText: /^Boot delay/ })
+    ).toBeVisible()
+    await expect(page.getByTestId('param-info-BRD_BOOT_DELAY')).toHaveCount(1)
+    await page.getByTestId('config-revert').click()
   })
 })
 
@@ -7027,9 +7074,8 @@ test.describe('Scoped write-progress bar', () => {
     await page.getByTestId('view-button-config').click()
     await openConfigSection(page, 'system-rates')
     const rates = page.getByTestId('config-section-system-rates')
-    await rates.getByTestId('config-advanced-system-rates').click()
-    // Stage a config edit (INS_FAST_SAMPLE) so config:apply has something to write.
-    await rates.locator('.scoped-editor-field', { hasText: 'Fast sampling' }).locator('input[type=number]').fill('3')
+    // Stage a config edit (INS_FAST_SAMPLE, IMU 2's box) so config:apply has something to write.
+    await rates.getByTestId('imu-mask-INS_FAST_SAMPLE-2').check()
 
     await page.getByTestId('config-apply').click()
     const banner = page.getByTestId('write-progress-banner')
@@ -7582,6 +7628,33 @@ test.describe('Config ▸ Power layout', () => {
     // Spanning the multicolumn flow, not sitting in one ~360px track.
     expect(sectionBox!.width).toBeGreaterThan(gridBox!.width * 0.8)
   })
+
+  test('the Power tab has one heading, no healthy badge, and an apply bar only once something is staged', async ({ page }) => {
+    await page.goto('/')
+    await connectViaHeader(page)
+    await expectParameterSyncComplete(page)
+    await openView(page, 'config')
+    await page.getByTestId('config-category-power').click()
+
+    const section = page.getByTestId('config-section-power')
+    await expect(section.locator('.config-section__header strong')).toHaveText('Battery')
+    // No stacked headings, no "Battery healthy" badge, no prose, no idle bar.
+    await expect(section.getByText('Battery & power')).toHaveCount(0)
+    await expect(section.getByText('Battery configuration')).toHaveCount(0)
+    await expect(section.getByText('Battery healthy')).toHaveCount(0)
+    await expect(page.getByTestId('power-section-badge')).toHaveCount(0)
+    await expect(section.getByText(/changes are staged right now/)).toHaveCount(0)
+    await expect(page.getByTestId('power-apply')).toHaveCount(0)
+    // The monitor source is part of the live readout.
+    await expect(page.getByTestId('power-monitor-source')).toBeVisible()
+
+    // Stage a battery change: the bar and a staged badge appear.
+    await page.getByTestId('power-fields').getByLabel('Battery Capacity', { exact: true }).fill('1500')
+    await expect(page.getByTestId('power-apply')).toBeVisible()
+    await expect(page.getByTestId('power-section-badge')).toContainText('1 staged')
+    await page.getByTestId('power-discard').click()
+    await expect(page.getByTestId('power-apply')).toHaveCount(0)
+  })
 })
 
 test.describe('Tuning ▸ Initial Tune', () => {
@@ -7894,35 +7967,38 @@ test.describe('Flight modes moved from a tab into Config', () => {
     await expect(page.getByTestId('view-button-modes')).toHaveCount(0)
   })
 
-  test('the status cards are as tall as their own content, and the info dot stays inline', async ({ page }) => {
-    // Two things were wrong with the strip above the slot table. The grid
-    // stretched every card to the tallest — the mode-channel one, which holds
-    // a dropdown — so the two text cards beside it were mostly empty. And the
-    // card's `small { flex: 1 0 100% }` rule was a DESCENDANT selector, so it
-    // also hit the nested editor's parameter-id line and pushed its info dot
-    // onto a line of its own, outside the field it documents.
+  test('mode channel, current slot and active mode are one status line, and the info dot stays inline', async ({ page }) => {
+    // They were three boxes above the slot table. One line now: the
+    // mode-channel editor, the live slot and the active mode side by side.
     await page.goto('/')
     await connectViaHeader(page)
     await expectParameterSyncComplete(page)
     await openFlightModes(page)
 
-    const heights = await page
-      .locator('.modes-status__card')
-      .evaluateAll((cards) => cards.map((card) => Math.round(card.getBoundingClientRect().height)))
-    expect(heights.length).toBeGreaterThan(1)
-    // The text-only cards are shorter than the one carrying an editor.
-    expect(Math.min(...heights)).toBeLessThan(Math.max(...heights))
+    const status = page.getByTestId('modes-status')
+    await expect(status).toBeVisible()
+    await expect(page.locator('.modes-status__card')).toHaveCount(0)
+    const tops = await status
+      .locator(':scope > .modes-status__item')
+      .evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().top)))
+    expect(tops.length).toBe(3)
+    // Same line at desktop width (within a few px of each other).
+    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(12)
+    await expect(page.getByTestId('modes-current-slot')).toContainText('Slot 4')
 
-    // The dot sits inside the field it belongs to, on the title line. Zero is
-    // allowed: this card strips the field's padding, so a field that fits its
-    // content ends exactly where the title row (and its dot) ends.
+    // The dot sits inside the field it belongs to.
     const overflow = await page.evaluate(() => {
-      const dot = document.querySelector('.modes-status__card .receiver-info-dot')
-      const field = document.querySelector('.modes-status__card .scoped-editor-field')
+      const field = document.querySelector('[data-testid="modes-mode-channel-field"] .scoped-editor-field')
+      const dot = field?.querySelector('.receiver-info-dot')
       if (!dot || !field) return NaN
       return dot.getBoundingClientRect().right - field.getBoundingClientRect().right
     })
     expect(overflow).toBeLessThanOrEqual(0)
+
+    // One tight line per slot: no STATE column of "—" pills.
+    const slotHeight = await page.getByTestId('modes-slot-1').evaluate((row) => row.getBoundingClientRect().height)
+    expect(slotHeight).toBeLessThanOrEqual(44)
+    await expect(page.getByTestId('modes-slot-table').getByRole('columnheader')).toHaveCount(3)
   })
 
   test('Config has a Flight Modes tab showing the mode panel', async ({ page }) => {
@@ -7937,7 +8013,10 @@ test.describe('Flight modes moved from a tab into Config', () => {
     await tab.click()
     // The panel itself, not just a heading: the mode channel and the slot
     // assignments are what made the old tab worth keeping.
-    await expect(page.getByText(/Mode channel/i).first()).toBeVisible({ timeout: 15_000 })
+    // (Asserted on the field: "mode channel" also appears in the card's hidden
+    // "i" tip, so a first text match can be the tip.)
+    await expect(page.getByTestId('modes-mode-channel-field')).toContainText(/Mode channel/i, { timeout: 15_000 })
+    await expect(page.getByTestId('modes-slot-table')).toBeVisible()
 
     const overflow = (await worstViewportOverflow(page)).worst
     expect(overflow, 'the Flight Modes panel must not widen the page').toBeLessThanOrEqual(2)

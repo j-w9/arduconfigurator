@@ -302,7 +302,10 @@ import { dronecanNodeBoardId, parseApj, decodeApjImage } from '@arduconfig/firmw
 import { inflateZlib } from './firmware/web-serial-bootloader'
 import { ParamInfoBubble } from './views/ParamInfoBubble'
 import { ScopedField, ScopedSelectField } from './views/ScopedField'
+import { InfoDot } from './views/InfoDot'
 import { ModesView } from './views/Modes'
+import { OutputMaskField } from './views/OutputMaskField'
+import { outputsFromServoFunctions } from './view-models/output-mask'
 import { FailsafeSection } from './sections/FailsafeSection'
 import { LogsSection } from './sections/LogsSection'
 import { useLogUpload } from './hooks/use-log-upload'
@@ -6973,47 +6976,102 @@ export function App() {
     )
   }
 
-  function renderEscDshotFooter(): ReactNode {
+  // The ESC card's per-output masks (bidirectional DShot, reverse): one small
+  // box per output the board has -- one per reported SERVOn_FUNCTION, motors
+  // tagged -- instead of the generic 32-output chip grid. Falls back to the
+  // generic editor when the vehicle reports no outputs, so neither mask is
+  // ever unreachable.
+  function renderEscDshotFieldEditors(): Record<string, ReactNode> {
+    const outputs = escMaskOutputs()
+    if (outputs.length === 0) {
+      return {}
+    }
+    const editors: Record<string, ReactNode> = {}
+    for (const [paramId, testIdPrefix] of [
+      ['SERVO_BLH_BDMASK', 'esc-bdshot-out'],
+      ['SERVO_BLH_RVMASK', 'esc-reverse-out']
+    ] as const) {
+      const parameter = configParametersById.get(paramId)
+      if (!parameter) continue
+      editors[paramId] = (
+        <OutputMaskField
+          parameter={parameter}
+          outputs={outputs}
+          editedValues={editedValues}
+          draftStatusById={parameterDraftById}
+          onChange={(id, value) => setDraft(id, value)}
+          testIdPrefix={testIdPrefix}
+          headerAction={paramId === 'SERVO_BLH_BDMASK' ? renderBdshotAction() : undefined}
+        />
+      )
+    }
+    return editors
+  }
+
+  function isEscDshotProtocol(): boolean {
     const motPwmType = Math.round(
       Number(editedValues.MOT_PWM_TYPE ?? readRoundedParameter(snapshot, 'MOT_PWM_TYPE') ?? 0)
     )
-    const isDShot = motPwmType >= 4 && motPwmType <= 7 // DShot150/300/600/1200
+    return motPwmType >= 4 && motPwmType <= 7 // DShot150/300/600/1200
+  }
+
+  // The one-click "enable bidirectional DShot" helper: stages it on outputs 1-4
+  // AND turns on BLHeli auto, since ArduPilot needs both. A small text button
+  // on the Bidirectional DShot field's title line, its explanation in the "i".
+  function renderBdshotAction(): ReactNode {
+    const isDShot = isEscDshotProtocol()
+    return (
+      <span className="esc-bdshot-action" data-testid="esc-dshot-footer">
+        <button
+          type="button"
+          className="text-action-button"
+          data-testid="esc-enable-bdshot"
+          disabled={!isDShot}
+          title={isDShot ? undefined : 'Pick a DShot protocol first.'}
+          onClick={() => {
+            setDraft('SERVO_BLH_BDMASK', '15')
+            setDraft('SERVO_BLH_AUTO', '1')
+          }}
+        >
+          Enable on outputs 1-4
+        </button>
+        <InfoDot label="About bidirectional DShot" testId="esc-bdshot-info" wide>
+          Stages bidirectional DShot on outputs 1-4 and turns BLHeli auto on. Selecting a DShot protocol does the
+          same. Most boards support it on the first 4 outputs only — some do 8 or more; check your FC before enabling
+          more.{isDShot ? '' : ' Pick a DShot protocol first.'}
+        </InfoDot>
+      </span>
+    )
+  }
+
+  // The ESC card's footer is only for what has no field to sit on: the
+  // firmware cannot do bidirectional DShot at all, or the vehicle reported no
+  // outputs (the mask then uses the generic editor, and the helper sits here).
+  function renderEscDshotFooter(): ReactNode {
     // BDShot is a compile-time / board feature: SERVO_BLH_BDMASK only exists in
     // the synced parameter tree when the firmware was built with it. Absent =>
     // this firmware/board can't do bidirectional DShot.
     const bdshotSupported = configParametersById.has('SERVO_BLH_BDMASK')
-    return (
-      <div className="esc-dshot-footer" data-testid="esc-dshot-footer">
-        {!bdshotSupported ? (
+    if (!bdshotSupported) {
+      return (
+        <div className="esc-dshot-footer" data-testid="esc-dshot-footer">
           <small className="esc-dshot-footer__warning" data-testid="esc-bdshot-unsupported">
             Your firmware build doesn’t support bidirectional DShot (no SERVO_BLH_BDMASK parameter). Flash a board/firmware
             built with BDShot to get RPM telemetry over the DShot signal wire.
           </small>
-        ) : (
-          <>
-            <button
-              type="button"
-              style={buttonStyle()}
-              data-testid="esc-enable-bdshot"
-              disabled={!isDShot}
-              title={isDShot ? undefined : 'Select a DShot ESC protocol first — bidirectional DShot requires DShot.'}
-              onClick={() => {
-                setDraft('SERVO_BLH_BDMASK', '15')
-                setDraft('SERVO_BLH_AUTO', '1')
-              }}
-            >
-              Enable bidirectional DShot (first 4 outputs)
-            </button>
-            <small>
-              {isDShot
-                ? 'Selecting a DShot protocol auto-stages bdshot on outputs 1-4 (BLHeli auto on). Most boards support bdshot on the first 4 outputs only — a few do 8; check your FC before enabling more.'
-                : 'Pick a DShot protocol above to enable bidirectional DShot (RPM telemetry).'}
-            </small>
-          </>
-        )}
-      </div>
-    )
+        </div>
+      )
+    }
+    if (escMaskOutputs().length > 0) {
+      return null
+    }
+    return <div className="esc-dshot-footer">{renderBdshotAction()}</div>
   }
+
+  function escMaskOutputs() {
+    return outputsFromServoFunctions(configParametersById.keys(), outputMapping.motorOutputs)
+  }
+
 
   function renderMetadataParameterField(parameter: ParameterState) {
     // Shared metadata-driven editor used across Power additional
@@ -10339,11 +10397,10 @@ export function App() {
 
       {activeViewId === 'config' ? (
         <ConfigView
-          isExpertMode={isExpertMode}
           requestedCategory={requestedConfigCategory}
           sections={configSections.map((section) => {
             if (section.id === 'esc-dshot') {
-              return { ...section, footer: renderEscDshotFooter() }
+              return { ...section, footer: renderEscDshotFooter(), fieldEditors: renderEscDshotFieldEditors() }
             }
             if (section.id === 'board-orientation') {
               return { ...section, footer: renderBoardOrientationFooter() }
@@ -10403,7 +10460,6 @@ export function App() {
           // restating them is a line to read past on every visit.
           subtitle=""
           panelId="setup-panel-peripherals"
-          isExpertMode={isExpertMode}
           // The same ConfigView over the peripheral half of the section list.
           // Gimbal and Flow & Lidar have no fixed field list — they are whole
           // metadata-driven parameter groups — so they arrive as footer-only
