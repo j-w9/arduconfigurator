@@ -13644,7 +13644,9 @@ details.metadata-settings-section:not([open]) > summary::after {
 }
 
 .firmware-flasher {
-  max-width: 760px;
+  /* Fills the workspace like every other tab (field request): the 760px cap
+     left a third of the row empty on a laptop. */
+  width: 100%;
 }
 
 .firmware-flasher .scoped-editor-field {
