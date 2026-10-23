@@ -426,7 +426,8 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
       userAgent,
       new Date().toISOString()
     ].join('\n')
-    const text = `${header}\n\n${debugLog.text}\n`
+    const dropped = debugLog.dropped > 0 ? `(${debugLog.dropped} earlier lines dropped)\n` : ''
+    const text = `${header}\n\n${dropped}${debugLog.text}\n`
     try {
       await navigator.clipboard.writeText(text)
     } catch {
@@ -2036,7 +2037,7 @@ export function FirmwareFlasher(props: FirmwareFlasherProps) {
             onClick={() => setDebugOpen((open) => !open)}
             data-testid="firmware-debug-toggle"
           >
-            Debug log ({debugLog.lines.length})
+            Debug log ({debugLog.lines.length}{debugLog.dropped > 0 ? '+' : ''})
           </button>
           {debugOpen ? (
             <>
