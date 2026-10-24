@@ -50,7 +50,13 @@ export const LOGS_PARAM_IDS = [
   'LOG_FILE_DSRMROT',
   'LOG_FILE_MB_FREE',
   'LOG_REPLAY',
-  'LOG_DISARMED'
+  'LOG_DISARMED',
+  // The IMU batch sampler (raw gyro samples for the FFT behind notch tuning).
+  'INS_LOG_BAT_MASK',
+  'INS_LOG_BAT_OPT',
+  'INS_LOG_BAT_CNT',
+  'INS_LOG_BAT_LGIN',
+  'INS_LOG_BAT_LGCT'
 ] as const
 export const VTX_PARAM_IDS = [
   'VTX_ENABLE',

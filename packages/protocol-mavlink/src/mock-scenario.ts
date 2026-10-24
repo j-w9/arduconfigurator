@@ -708,6 +708,11 @@ const mockParameters: ParameterState = {
   LOG_FILE_MB_FREE: 500,
   LOG_REPLAY: 0,
   LOG_DISARMED: 0,
+  INS_LOG_BAT_CNT: 1024,
+  INS_LOG_BAT_MASK: 0,
+  INS_LOG_BAT_OPT: 0,
+  INS_LOG_BAT_LGIN: 20,
+  INS_LOG_BAT_LGCT: 32,
   // Per-screen "Screen Options" (mirrored to OSD2-4 below). Seed sensible
   // ArduPilot defaults so the demo's OSD Screen Options panel is populated.
   OSD1_ENABLE: 1,

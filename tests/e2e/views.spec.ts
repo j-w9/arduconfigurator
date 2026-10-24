@@ -2052,6 +2052,27 @@ test.describe('Logs view', () => {
     await expect(page.getByTestId('logs-apply')).toContainText('Save Logs (0)')
   })
 
+  test('Logging for tuning: one click stages the batch sampler and the Raw IMU bit, with a reboot to follow', async ({ page }) => {
+    // Log Tuning's FFT reads the IMU batch sampler's raw samples; Copter runs
+    // the sampler only with LOG_BITMASK's Raw IMU bit set. The demo board has
+    // neither, so the card says two things are to set and one click stages
+    // both as Logs drafts.
+    await page.goto('/')
+    await connectViaHeader(page)
+    await openView(page, 'logs')
+    const card = page.getByTestId('logs-tuning-setup')
+    await expect(card).toBeVisible()
+    await expect(card).toContainText('2 to set')
+    await expect(page.getByTestId('logs-tuning-setup-steps')).toContainText('reboot after saving')
+    await page.getByTestId('logs-tuning-setup-button').click()
+    await expect(page.getByTestId('logs-apply')).toContainText('Save Logs (2)')
+    await expect(card).toContainText('ready')
+    await expect(page.getByTestId('logs-bitmask-bit-19')).toHaveAttribute('aria-pressed', 'true')
+    await page.getByTestId('logs-revert').click()
+    await expect(page.getByTestId('logs-apply')).toContainText('Save Logs (0)')
+    await expect(card).toContainText('2 to set')
+  })
+
   test('onboard logs: the Logs view exposes the onboard-log controls when connected', async ({ page }) => {
     await page.goto('/')
     await connectViaHeader(page)
@@ -2448,7 +2469,7 @@ test.describe('Flash view', () => {
 })
 
 test.describe('Config view', () => {
-  test('renders the BF-style baseline section grid + camera/gps/logging', async ({ page }) => {
+  test('renders the BF-style baseline section grid + camera/gps', async ({ page }) => {
     await page.goto('/')
     await page.getByTestId('transport-mode-select').selectOption('demo')
     await page.getByTestId('connect-button').click()
@@ -2463,7 +2484,6 @@ test.describe('Config view', () => {
       ['receiver-signal', 'rc'],
       ['arming', 'arming'],
       ['identity', 'system'],
-      ['logging', 'system']
     ] as const) {
       await page.getByTestId(`config-category-${category}`).click()
       await expect(page.getByTestId(`config-section-${sectionId}`)).toBeVisible()
@@ -3113,8 +3133,9 @@ test.describe('Config view', () => {
     await expect(imus.getByTestId('config-checkbox-INS_USE')).toContainText('IMU 1')
     await expect(imus.getByTestId('config-checkbox-INS_USE3')).toContainText('IMU 3')
 
-    // The log backend is a dropdown; the boot delay is titled, not its raw id.
-    await expect(page.getByTestId('config-section-logging').locator('select').first()).toBeVisible()
+    // Logging has one home now, the Logs tab: no Logging card on System.
+    await expect(page.getByTestId('config-section-logging')).toHaveCount(0)
+    // The boot delay is titled, not its raw id.
     await expect(
       page.getByTestId('config-section-identity').locator('.scoped-editor-field__title', { hasText: /^Boot delay/ })
     ).toBeVisible()
@@ -4804,6 +4825,12 @@ test.describe('ArduPlane demo', () => {
     // The "you need a good flight log" gate is always shown up front.
     await expect(page.getByTestId('log-tuning-gate-note')).toBeVisible()
     await expect(page.getByTestId('log-tuning')).toContainText('Choose flight log')
+    // The gate points at the Logs tab's setup card rather than naming a parameter.
+    await page.getByTestId('log-tuning-open-log-setup').click()
+    await expect(page.getByTestId('view-button-logs')).toHaveClass(/is-active/)
+    await expect(page.getByTestId('logs-tuning-setup')).toBeVisible()
+    await openView(page, 'tuning')
+    await page.getByTestId('tuning-tab-log-tuning').click()
 
     // Upload a trivial (empty) buffer: it parses to no usable data, so the
     // analyzer must gate it as unusable rather than throw.

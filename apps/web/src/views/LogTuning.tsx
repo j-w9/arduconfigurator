@@ -22,6 +22,8 @@ export interface LogTuningViewProps {
   stagedParams?: ReadonlySet<string>
   /** When given, the view also offers the logs already on the vehicle. */
   onboardLogs?: OnboardLogPickerLogs
+  /** Opens the Logs tab's "Logging for tuning" card (the batch sampler setup). */
+  onOpenLogSetup?: () => void
 }
 
 const CONFIDENCE_TONE: Record<TuningRecommendation['confidence'], 'success' | 'warning' | 'neutral'> = {
@@ -30,7 +32,7 @@ const CONFIDENCE_TONE: Record<TuningRecommendation['confidence'], 'success' | 'w
   low: 'neutral'
 }
 
-export function LogTuningView({ onStageParam, stagedParams, onboardLogs }: LogTuningViewProps): ReactElement {
+export function LogTuningView({ onStageParam, stagedParams, onboardLogs, onOpenLogSetup }: LogTuningViewProps): ReactElement {
   const [result, setResult] = useState<LogTuningResult | null>(null)
   const [filename, setFilename] = useState<string | undefined>()
   const [error, setError] = useState<string | undefined>()
@@ -108,8 +110,13 @@ export function LogTuningView({ onStageParam, stagedParams, onboardLogs }: LogTu
           <p>
             This only works on a <strong>good flight log</strong>: a real hover/flight (not a bench run), ideally
             30–60 s of steady hovering. For the harmonic notch you also want ESC RPM telemetry, and for the best
-            spectrum enable the IMU batch sampler (<code>INS_LOG_BAT_MASK</code>). A poor log gives poor advice.
+            spectrum the IMU batch sampler on, which the Logs tab sets up in one click. A poor log gives poor advice.
           </p>
+          {onOpenLogSetup ? (
+            <button type="button" style={buttonStyle()} data-testid="log-tuning-open-log-setup" onClick={onOpenLogSetup}>
+              Set up logging for tuning
+            </button>
+          ) : null}
         </div>
 
         {error ? (

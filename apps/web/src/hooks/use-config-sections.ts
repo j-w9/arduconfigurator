@@ -289,18 +289,6 @@ export function useConfigSections(snapshot: ConfiguratorSnapshot) {
       ]
     },
     {
-      id: 'logging',
-      title: 'Logging',
-      description: 'Where (and what) the autopilot writes to the dataflash log. LOG_DISARMED = 1 keeps logging while disarmed for bench debugging.',
-      fields: [
-        // Five backends wrap to two chip lines in a quarter-width cell.
-        { paramId: 'LOG_BACKEND_TYPE', label: 'Backend', digits: 0, layout: 'select' },
-        { paramId: 'LOG_BITMASK', label: 'Bitmask', digits: 0 },
-        { paramId: 'LOG_DISARMED', label: 'Log while disarmed', digits: 0 },
-        { paramId: 'LOG_REPLAY', label: 'Replay log', digits: 0 }
-      ]
-    },
-    {
       id: 'camera-trigger',
       title: 'Camera trigger',
       description: 'Triggered camera shutter behavior — type/duration/auto. Pair with a SERVOn_FUNCTION = 10 (Camera Trigger) output.',
