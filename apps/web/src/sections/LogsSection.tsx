@@ -22,6 +22,7 @@ import { readRoundedParameter } from '../selectors/parameter-read'
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import { selectOnboardLogSource } from '../view-models/onboard-log-source'
 import { LogsView } from '../views/Logs'
+import { ImuMaskField } from '../views/ImuMaskField'
 import { ScopedBitmaskField, ScopedField } from '../views/ScopedField'
 import { buildTuningLogSetupPlan } from '../view-models/tuning-log-setup'
 
@@ -86,6 +87,7 @@ export function LogsSection(props: LogsSectionProps) {
   // Logging for tuning: the IMU batch sampler, and the one-click plan that
   // makes a log carry what Log Tuning's FFT reads.
   const batchMaskParameter = logsParameterById.get('INS_LOG_BAT_MASK')
+  const fastSampleParameter = logsParameterById.get('INS_FAST_SAMPLE')
   const batchOptParameter = logsParameterById.get('INS_LOG_BAT_OPT')
   const batchCountParameter = logsParameterById.get('INS_LOG_BAT_CNT')
   const batchIntervalParameter = logsParameterById.get('INS_LOG_BAT_LGIN')
@@ -169,6 +171,17 @@ export function LogsSection(props: LogsSectionProps) {
                     onChange={setDraft}
                     draftStatusById={parameterDraftById}
                   />
+                  {/* The fast-sampling mask beside the batch mask: both are
+                      per-IMU, and a tuning log wants the sampled IMU running
+                      at gyro rate. Also on Config > System; one draft, two homes. */}
+                  {fastSampleParameter ? (
+                    <ImuMaskField
+                      parameter={fastSampleParameter}
+                      editedValues={editedValues}
+                      onChange={setDraft}
+                      draftStatusById={parameterDraftById}
+                    />
+                  ) : null}
                   {batchOptParameter ? (
                     <ScopedBitmaskField
                       parameter={batchOptParameter}

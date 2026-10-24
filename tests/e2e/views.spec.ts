@@ -2063,6 +2063,11 @@ test.describe('Logs view', () => {
     const card = page.getByTestId('logs-tuning-setup')
     await expect(card).toBeVisible()
     await expect(card).toContainText('2 to set')
+    // The fast-sampling mask sits beside the batch mask (demo INS_FAST_SAMPLE
+    // = 1: IMU 1 only); it is the same parameter Config > System shows.
+    const fast = card.getByTestId('imu-mask-INS_FAST_SAMPLE')
+    await expect(fast.getByTestId('imu-mask-INS_FAST_SAMPLE-1')).toBeChecked()
+    await expect(fast.getByTestId('imu-mask-INS_FAST_SAMPLE-2')).not.toBeChecked()
     await expect(page.getByTestId('logs-tuning-setup-steps')).toContainText('reboot after saving')
     await page.getByTestId('logs-tuning-setup-button').click()
     await expect(page.getByTestId('logs-apply')).toContainText('Save Logs (2)')
