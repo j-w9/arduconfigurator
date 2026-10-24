@@ -50,7 +50,17 @@ export const LOGS_PARAM_IDS = [
   'LOG_FILE_DSRMROT',
   'LOG_FILE_MB_FREE',
   'LOG_REPLAY',
-  'LOG_DISARMED'
+  'LOG_DISARMED',
+  // The IMU batch sampler (raw gyro samples for the FFT behind notch tuning),
+  // and the fast-sampling mask it sits beside on the Logs tab's "Logging for
+  // tuning" card. INS_FAST_SAMPLE stays on Config > System too: a draft set on
+  // either page shows and saves from both (the ports/OSD pairing precedent).
+  'INS_FAST_SAMPLE',
+  'INS_LOG_BAT_MASK',
+  'INS_LOG_BAT_OPT',
+  'INS_LOG_BAT_CNT',
+  'INS_LOG_BAT_LGIN',
+  'INS_LOG_BAT_LGCT'
 ] as const
 export const VTX_PARAM_IDS = [
   'VTX_ENABLE',

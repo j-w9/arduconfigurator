@@ -10094,6 +10094,7 @@ export function App() {
               onStageParam={handleStageLogTuningParam}
               stagedParams={new Set(parameterDraftById.keys())}
               onboardLogs={onboardLogs}
+              onOpenLogSetup={() => setActiveViewId('logs')}
             />
           }
           autotuneSlot={

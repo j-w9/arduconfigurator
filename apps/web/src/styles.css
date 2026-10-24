@@ -21034,3 +21034,16 @@ button.mavlink-inspector__sent-row {
 .parameter-diff-group__toggle:hover strong {
   text-decoration: underline;
 }
+
+/* Logs ▸ Logging for tuning: the one-click setup and what it will change. */
+.logs-tuning-setup__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.logs-tuning-setup__row small {
+  color: var(--text-muted);
+}

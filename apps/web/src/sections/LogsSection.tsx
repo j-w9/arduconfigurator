@@ -5,6 +5,7 @@
 // onboard-logs state machine.
 
 import { ARDUCOPTER_LOG_BITMASK_LABELS } from '@arduconfig/param-metadata'
+import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 import type { ConfiguratorSnapshot, ParameterDraftEntry } from '@arduconfig/ardupilot-core'
 import { useMemo } from 'react'
 
@@ -21,6 +22,9 @@ import { readRoundedParameter } from '../selectors/parameter-read'
 import { describeBitmaskSelections, hasBitmaskFlag, toggleBitmaskFlag } from '../selectors/bitmask'
 import { selectOnboardLogSource } from '../view-models/onboard-log-source'
 import { LogsView } from '../views/Logs'
+import { ImuMaskField } from '../views/ImuMaskField'
+import { ScopedBitmaskField, ScopedField } from '../views/ScopedField'
+import { buildTuningLogSetupPlan } from '../view-models/tuning-log-setup'
 
 export interface LogsSectionProps {
   snapshot: ConfiguratorSnapshot
@@ -80,6 +84,22 @@ export function LogsSection(props: LogsSectionProps) {
   const logDisarmedEnabled = readRoundedParameter(snapshot, 'LOG_DISARMED')
   const editedLogBitmask = normalizeBitmaskValue(editedValues.LOG_BITMASK, logBitmask)
 
+  // Logging for tuning: the IMU batch sampler, and the one-click plan that
+  // makes a log carry what Log Tuning's FFT reads.
+  const batchMaskParameter = logsParameterById.get('INS_LOG_BAT_MASK')
+  const fastSampleParameter = logsParameterById.get('INS_FAST_SAMPLE')
+  const batchOptParameter = logsParameterById.get('INS_LOG_BAT_OPT')
+  const batchCountParameter = logsParameterById.get('INS_LOG_BAT_CNT')
+  const batchIntervalParameter = logsParameterById.get('INS_LOG_BAT_LGIN')
+  const batchPushParameter = logsParameterById.get('INS_LOG_BAT_LGCT')
+  const batchMask = readRoundedParameter(snapshot, 'INS_LOG_BAT_MASK')
+  const batchOptions = readRoundedParameter(snapshot, 'INS_LOG_BAT_OPT')
+  const tuningLogPlan = buildTuningLogSetupPlan({
+    batchMask: normalizeBitmaskValue(editedValues.INS_LOG_BAT_MASK, batchMask),
+    batchOptions: normalizeBitmaskValue(editedValues.INS_LOG_BAT_OPT, batchOptions),
+    logBitmask: editedLogBitmask
+  })
+
   const { entries: logsDraftEntries, staged: logsStagedDrafts, invalid: logsInvalidDrafts } = useMemo(
     () => selectViewDrafts(parameterDraftEntries, isLogsReviewParamId),
     [parameterDraftEntries]
@@ -114,6 +134,95 @@ export function LogsSection(props: LogsSectionProps) {
             })
           }
         } : undefined}
+        tuningLogSlot={
+          batchMaskParameter ? (
+            <article className="bf-gui-box" data-testid="logs-tuning-setup">
+              <div className="bf-gui-box__titlebar">
+                <strong>Logging for tuning</strong>
+                <StatusBadge tone={tuningLogPlan.steps.length === 0 ? 'success' : 'warning'}>
+                  {tuningLogPlan.steps.length === 0 ? 'ready' : `${tuningLogPlan.steps.length} to set`}
+                </StatusBadge>
+              </div>
+              <div className="bf-gui-box__body">
+                {/* One click stages the set a tuning flight needs: the batch
+                    sampler on the first IMU, pre-filter samples, and the Raw
+                    IMU log bit Copter gates the sampler on. */}
+                <div className="logs-tuning-setup__row">
+                  <button
+                    type="button"
+                    style={buttonStyle('primary')}
+                    data-testid="logs-tuning-setup-button"
+                    disabled={tuningLogPlan.steps.length === 0 || busyAction !== undefined}
+                    onClick={() => updateDrafts((existing) => ({ ...existing, ...tuningLogPlan.drafts }))}
+                  >
+                    Set up for a tuning flight
+                  </button>
+                  <small data-testid="logs-tuning-setup-steps">
+                    {tuningLogPlan.steps.length === 0
+                      ? 'The log carries raw IMU samples for the FFT.'
+                      : `${tuningLogPlan.steps.join(', ')}${tuningLogPlan.rebootNeeded ? '; reboot after saving' : ''}.`}
+                  </small>
+                </div>
+                <div className="bf-compact-field-grid">
+                  <ScopedBitmaskField
+                    parameter={batchMaskParameter}
+                    liveValue={batchMaskParameter.value}
+                    editedValues={editedValues}
+                    onChange={setDraft}
+                    draftStatusById={parameterDraftById}
+                  />
+                  {/* The fast-sampling mask beside the batch mask: both are
+                      per-IMU, and a tuning log wants the sampled IMU running
+                      at gyro rate. Also on Config > System; one draft, two homes. */}
+                  {fastSampleParameter ? (
+                    <ImuMaskField
+                      parameter={fastSampleParameter}
+                      editedValues={editedValues}
+                      onChange={setDraft}
+                      draftStatusById={parameterDraftById}
+                    />
+                  ) : null}
+                  {batchOptParameter ? (
+                    <ScopedBitmaskField
+                      parameter={batchOptParameter}
+                      liveValue={batchOptParameter.value}
+                      editedValues={editedValues}
+                      onChange={setDraft}
+                      draftStatusById={parameterDraftById}
+                    />
+                  ) : null}
+                  {batchCountParameter ? (
+                    <ScopedField
+                      parameter={batchCountParameter}
+                      liveValue={batchCountParameter.value}
+                      editedValues={editedValues}
+                      onChange={setDraft}
+                      draftStatusById={parameterDraftById}
+                    />
+                  ) : null}
+                  {batchIntervalParameter ? (
+                    <ScopedField
+                      parameter={batchIntervalParameter}
+                      liveValue={batchIntervalParameter.value}
+                      editedValues={editedValues}
+                      onChange={setDraft}
+                      draftStatusById={parameterDraftById}
+                    />
+                  ) : null}
+                  {batchPushParameter ? (
+                    <ScopedField
+                      parameter={batchPushParameter}
+                      liveValue={batchPushParameter.value}
+                      editedValues={editedValues}
+                      onChange={setDraft}
+                      draftStatusById={parameterDraftById}
+                    />
+                  ) : null}
+                </div>
+              </div>
+            </article>
+          ) : undefined
+        }
         editedValues={editedValues}
         onEditChange={(paramId, value) => setDraft(paramId, value)}
         draftStatusById={parameterDraftById}

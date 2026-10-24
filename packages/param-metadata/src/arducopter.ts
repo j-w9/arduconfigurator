@@ -63,6 +63,8 @@ import {
   ARDUCOPTER_COMPASS_EXTERNAL_LABELS,
   ARDUCOPTER_COMPASS_AUTO_ROT_LABELS,
   ARDUCOPTER_COMPASS_DISBLMSK_BIT_LABELS,
+  ARDUCOPTER_INS_LOG_BAT_MASK_BIT_LABELS,
+  ARDUCOPTER_INS_LOG_BAT_OPT_BIT_LABELS,
   ARDUCOPTER_FENCE_ACTION_LABELS,
   ARDUCOPTER_FENCE_AUTOENABLE_LABELS,
   ARDUCOPTER_FENCE_TYPE_BIT_LABELS,
@@ -4168,6 +4170,56 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       maximum: 1,
       notes: loggingBehaviorNotes,
       options: enabledDisabledOptions
+    },
+    // The IMU batch sampler: raw gyro / accel samples for the FFT behind
+    // notch tuning. Verbatim from libraries/AP_InertialSensor/BatchSampler.cpp.
+    // Copter gates the sampler on LOG_BITMASK's "Raw IMU" bit (MASK_LOG_IMU_RAW,
+    // bit 19: ArduCopter/system.cpp ins.set_log_raw_bit).
+    INS_LOG_BAT_MASK: {
+      id: 'INS_LOG_BAT_MASK',
+      label: 'Batch-log IMUs',
+      description: 'Bitmap of which IMUs to log batch data for. Takes effect on the next reboot.',
+      category: 'logging',
+      bitmask: true,
+      options: enumOptions(ARDUCOPTER_INS_LOG_BAT_MASK_BIT_LABELS),
+      rebootRequired: true
+    },
+    INS_LOG_BAT_OPT: {
+      id: 'INS_LOG_BAT_OPT',
+      label: 'Batch logging options',
+      description: 'Options for the batch sampler: sensor-rate logging, post-filter samples, or both pre- and post-filter. Leave all off for pre-filter samples at the loop rate, which is what notch placement wants.',
+      category: 'logging',
+      bitmask: true,
+      options: enumOptions(ARDUCOPTER_INS_LOG_BAT_OPT_BIT_LABELS)
+    },
+    INS_LOG_BAT_CNT: {
+      id: 'INS_LOG_BAT_CNT',
+      label: 'Samples per batch',
+      description: 'Number of samples to take when logging streams of IMU sensor readings. Rounded down to a multiple of 32. Takes effect on the next reboot.',
+      category: 'logging',
+      minimum: 32,
+      maximum: 8192,
+      step: 32,
+      rebootRequired: true
+    },
+    INS_LOG_BAT_LGIN: {
+      id: 'INS_LOG_BAT_LGIN',
+      label: 'Batch logging interval',
+      description: 'Interval between pushing samples to the log.',
+      category: 'logging',
+      unit: 'ms',
+      minimum: 1,
+      maximum: 1000,
+      step: 1
+    },
+    INS_LOG_BAT_LGCT: {
+      id: 'INS_LOG_BAT_LGCT',
+      label: 'Samples per push',
+      description: 'Number of samples to push to the log every INS_LOG_BAT_LGIN.',
+      category: 'logging',
+      minimum: 1,
+      maximum: 256,
+      step: 1
     },
     LOG_DISARMED: {
       id: 'LOG_DISARMED',

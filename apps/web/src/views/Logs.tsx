@@ -83,6 +83,8 @@ export interface LogsViewProps {
   /** Sign-in panel for the operator's own log server, plus the upload dialog
    *  when one is open. Slots rather than props so this view stays
    *  presentational and knows nothing about sessions or fetch. */
+  /** The "Logging for tuning" card (the IMU batch sampler + its one-click setup). */
+  tuningLogSlot?: ReactNode
   logServerSlot?: ReactNode
   logUploadDialogSlot?: ReactNode
   /** Result of the last upload attempt, success or failure. */
@@ -113,6 +115,7 @@ export function LogsView(props: LogsViewProps) {
     onApply,
     onRevert,
     onboardLogs,
+    tuningLogSlot,
     logServerSlot,
     logUploadDialogSlot,
     logUploadMessage
@@ -214,6 +217,8 @@ export function LogsView(props: LogsViewProps) {
               ) : null}
             </div>
           </article>
+
+          {tuningLogSlot}
 
           {/* Parameter breakout table removed — the same LOG_* params are
            *  edited inline above and the read-only mirror was duplicate
