@@ -347,6 +347,19 @@ card needs the fork's ``ACC_ZBIAS_LEARN``; the hover throttle is stock
 ArduCopter and is offered on any copter.
 
 Two flights, in order — the second is meaningless until the first is right.
+Where **tuning** fits between them depends on the build:
+
+- **A copy-and-paste build** — parameters carried over from a frame that already
+  flies well — has its tune. Fly hover throttle, then Z-bias, back to back.
+- **A new build** flies the hover throttle first, then **tunes** (filters, then
+  the :ref:`autotune flight <autotune-flight>`), and learns the Z-bias **last**.
+  The bias is the vibration the airframe puts into AccZ at the hover you will
+  actually fly. An untuned copter hovers with oscillation and vibration the tune
+  will remove, so a bias learned before the tune describes a hover you will
+  never fly again.
+
+Re-learn the Z-bias after anything that changes vibration: props, motors,
+mounts, a frame change, or a new tune.
 
 Flight 1 — hover throttle
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -406,8 +419,9 @@ than a sequence: **3** is the learning flight (learn *and* apply) and **2** is
 finished (apply, learning off). Accepting the flight stages 2, which freezes the
 accepted bias for the same reason flight 1 freezes the hover throttle.
 
-Fly the same hover again. Answering **no** clears the learned bias first, so the
-retry starts from zero instead of refining a bad measurement.
+Fly the same hover again — on a new build, only once the copter is tuned (see
+above). Answering **no** clears the learned bias first, so the retry starts from
+zero instead of refining a bad measurement.
 
 Progress is read from the **values the flights left behind**, not from the enable
 parameters, so it survives the unplug and is honest about a vehicle that arrives
@@ -419,6 +433,8 @@ enable cleared, and hover learning re-armed. It deliberately **leaves
 at 0.118 would tell the controller to expect roughly three times the thrust it
 needs, and the next AltHold takeoff would leap. Replace a measured hover
 throttle deliberately, from a log or another flight.
+
+.. _autotune-flight:
 
 Autotune flight
 ---------------
