@@ -54,6 +54,7 @@ import {
   VTX_POWER_SLOT_UNUSED,
   VTX_POWER_TABLE_ENABLE_PARAM,
   VTX_POWER_TABLE_SLOT_PARAMS,
+  GCS_DRONECAN_NODE_ID,
 } from '@arduconfig/ardupilot-core'
 import {
   arducopterMetadata,
@@ -265,7 +266,10 @@ import type {
   SetupFlowSectionDescriptor,
   SetupFlowFollowUpDescriptor
 } from './app-types'
-import { AP_PERIPH_PARAM_METADATA } from './view-models/ap-periph-param-metadata'
+import { AP_PERIPH_CURATED_METADATA, loadApPeriphParamMetadata } from './view-models/ap-periph-param-metadata'
+import { loadPx4CannodeParamMetadata, type Px4CannodeParamMetadata } from './view-models/px4-cannode-param-metadata'
+import { dronecanNodeStack } from './view-models/dronecan-node-stack'
+import type { DronecanParamCatalogDef, DronecanParamCatalogLookup } from './view-models/dronecan-param-display'
 import { parseParamPck } from './view-models/param-pck'
 import { overridableInvalidParamIds, stageableDraftValues } from './view-models/parameter-diff-actions'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
@@ -289,10 +293,29 @@ import { ElrsFlasher, type ElrsFlasherNotice } from './firmware/ElrsFlasher'
 import { flashElrsReceiver, type ElrsFlashProgress } from './firmware/web-serial-esptool'
 import { patchElrsFirmwareOptions } from './view-models/elrs-firmware-options'
 import { MavlinkInspectorView } from './views/MavlinkInspector'
+import { MavlinkPlotWorkspace } from './views/MavlinkPlotWorkspace'
+import { LIVE_GRAPH_WINDOW_S, MAX_LIVE_GRAPHS, useMavlinkPlotWorkspace } from './hooks/use-mavlink-plot-workspace'
 import { intervalUsForRate } from './view-models/mavlink-inspector'
 import { MAX_MAVLINK_PLOTS, useMavlinkInspector } from './hooks/use-mavlink-inspector'
 import { CanDeviceInspectorView, type DronecanFirmwareOnlineSource } from './views/CanDeviceInspector'
 import { useDronecanBusStats } from './hooks/use-dronecan-bus-stats'
+import { useCanBusMonitor } from './hooks/use-can-bus-monitor'
+import { CanBusMonitorView } from './views/CanBusMonitor'
+import { CanMessagesPage, canFieldSeriesLabel } from './views/CanMessagesPage'
+import { CanPlotView } from './views/CanPlot'
+import { CanSendView } from './views/CanSend'
+import { useCanSender } from './hooks/use-can-sender'
+import { useCanAdapter } from './hooks/use-can-adapter'
+import { useCanAllocationTable } from './hooks/use-can-allocation-table'
+import type { CanTopicEntry } from './view-models/can-topics'
+import { canPlotSeriesKey } from './view-models/can-plot'
+import type { DronecanFieldNode } from './view-models/dronecan-field-tree'
+import { CanAllocatorView } from './views/CanAllocator'
+import { CanNodeMessagesView } from './views/CanNodeMessages'
+import { bootloaderFlashOutcome, buildCanNodeMessages, canLogEntriesFromStatusTexts, mergeCanNodeLogs } from './view-models/can-node-messages'
+import { SLCAN_BITRATES } from '@arduconfig/can-core'
+import { dronecanCatalogue } from '@arduconfig/dronecan-dsdl'
+import type { CanSubTab } from './views/CanBus'
 import { useCanDevicePopouts } from './hooks/use-can-device-popouts'
 import { usePopoutWindows } from './hooks/use-popout-windows'
 import { RecentNoticesFeed, recentNoticesBadge } from './views/RecentNoticesFeed'
@@ -2645,17 +2668,234 @@ export function App() {
     downloadRecording: downloadMavlinkInspectorRecording,
     exportPlotCsv: exportMavlinkInspectorPlotCsv
   } = useMavlinkInspector(runtime, activeViewId === 'mavlink-inspector')
+  // The Inspector's plots: MAVExplorer graphs over the live link, and how its charts group.
+  const mavlinkPlotWorkspace = useMavlinkPlotWorkspace(runtime, activeViewId === 'mavlink-inspector')
+  // The CAN tab's bus: a USB-CAN adapter (SLCAN) while one is open, else the
+  // autopilot's forwarding. Both drive the same CAN surface under the same
+  // method names; DroneNet (Networking) stays on the autopilot.
+  const canAdapter = useCanAdapter()
+  const canOnAdapter = canAdapter.state !== undefined
+  const canBus = canAdapter.state ?? snapshot.canBus
+  const canBackend = canOnAdapter ? canAdapter.bus : runtime
   // Live frames/sec for the DroneCAN inspector, sampled off the cumulative counter.
   const dronecanFramesPerSec = useDronecanBusStats(
-    snapshot.canBus.framesReceived,
-    snapshot.canBus.status === 'active'
+    canBus.framesReceived,
+    canBus.status === 'active'
   )
+  // The CAN tab's bus monitor: every raw frame on the forwarded bus (and the
+  // ones we send), captured outside the snapshot. Bitrate (CAN_Pn_BITRATE,
+  // bit/s) feeds the load estimate; ArduPilot's default is 1 Mbit/s.
+  // The CAN tab's sub-tab: Devices, Messages, Frames, Plot.
+  const [canSubTab, setCanSubTab] = useState<CanSubTab>('devices')
+  const canBusMonitor = useCanBusMonitor({
+    source: canBackend,
+    enabled: canBus.status === 'active',
+    bitrate: canOnAdapter
+      ? canAdapter.bitrate
+      : canBus.bus !== undefined
+        ? readRoundedParameter(snapshot, `CAN_P${canBus.bus}_BITRATE`) ?? 1_000_000
+        : undefined
+  })
+  // Send (Expert-only: it acts on the bus). Repeats stop themselves on arming,
+  // on the bus going quiet, on leaving the page, or on the safety box unticked.
+  const canSendVisible = activeViewId === 'can' && canSubTab === 'send' && productMode === 'expert'
+  const canSender = useCanSender({
+    sink: canBackend,
+    active: canBus.status === 'active',
+    armed: snapshot.vehicle?.armed ?? false,
+    visible: canSendVisible,
+    motionAcknowledged: propsRemovedAcknowledged && testAreaAcknowledged
+  })
+  const canNodeLabel = (nodeId: number): string | undefined =>
+    canBus.nodes.find((node) => node.nodeId === nodeId)?.name ??
+    // This app's own node: responses come back addressed to it.
+    (nodeId === GCS_DRONECAN_NODE_ID ? 'this app' : undefined)
+  // Nodes seen only in RECEIVED traffic: this app's own requests (TX) come
+  // from its GCS node id, which is not a node on the bus.
+  const canExtraNodeIds = [
+    ...new Set(
+      canBusMonitor
+        .topics()
+        .filter((topic) => topic.last.direction === 'rx' && topic.sourceNodeId !== 0)
+        .map((topic) => topic.sourceNodeId)
+    )
+  ]
+  // Node ID allocation: the table this browser remembers, and whether a node
+  // without an ID has been asking (its anonymous Allocation requests).
+  const canAllocationTable = useCanAllocationTable({ backend: canBackend, allocator: canBus.allocator })
+  const canNodeAsking = canBusMonitor
+    .topics()
+    .some((topic) => topic.kind === 'anonymous' && topic.last.type?.shortName === 'Allocation' && Date.now() - topic.last.timestampMs < 3000)
+  // Node messages (DroneCAN LogMessage) -- the CAN tab's Recent Notices.
+  const [canLogFilter, setCanLogFilter] = useState('')
+  // Debug shown by default: AP_Periph's can_printf -- most of what a node says,
+  // the bootloader-flash result included -- logs at DEBUG.
+  const [canLogDebug, setCanLogDebug] = useState(true)
+  // Plus the lines the autopilot relays as "CAN[n] ..." status texts (CAN_LOGLEVEL on):
+  // a second route when the bus frames are lost in forwarding.
+  const [canLogsClearedAtMs, setCanLogsClearedAtMs] = useState(0)
+  const canNodeLogs = mergeCanNodeLogs(
+    canBusMonitor.nodeLogs(),
+    canOnAdapter ? [] : canLogEntriesFromStatusTexts(snapshot.statusTexts),
+    canLogsClearedAtMs
+  )
+  // Flash a node's bootloader: AP_Periph acts on FLASH_BOOTLOADER = 1 at once
+  // (no restart), copies its embedded bootloader, and logs the outcome.
+  const [bootloaderFlash, setBootloaderFlash] = useState<
+    {
+      nodeId: number
+      startedAtMs: number
+      status: 'flashing' | 'ok' | 'failed' | 'timeout'
+      message: string
+      /** A re-fetch of the node's params has been asked for (to see FLASH_BOOTLOADER go back to 0). */
+      refetched?: boolean
+      /** The node ran it: FLASH_BOOTLOADER read back as 0 (it resets it only when it acts). */
+      acted?: boolean
+      /** The node's own result line has arrived (it overrides a timeout or a write error). */
+      answered?: boolean
+    }
+    | undefined
+  >(undefined)
+  useEffect(() => {
+    // Still listening after a timeout or a write error: the node's line, when
+    // it does come, is the real answer.
+    if (!bootloaderFlash || bootloaderFlash.answered) return
+    for (let index = canNodeLogs.length - 1; index >= 0; index -= 1) {
+      const entry = canNodeLogs[index]
+      if (entry.atMs < bootloaderFlash.startedAtMs) break
+      if (entry.nodeId !== bootloaderFlash.nodeId) continue
+      const outcome = bootloaderFlashOutcome(entry.text)
+      if (outcome) {
+        setBootloaderFlash({ ...bootloaderFlash, status: outcome.ok ? 'ok' : 'failed', message: outcome.message, answered: true })
+        // Re-pull the node's params: FLASH_BOOTLOADER is back to 0.
+        canBackend?.fetchAllCanBusParameters(bootloaderFlash.nodeId)
+        return
+      }
+    }
+  }, [canNodeLogs.length, canNodeLogs, bootloaderFlash])
+  // After a node firmware update the node reboots into the new firmware, whose
+  // parameter set can be a different one entirely (a rangefinder build's 14 vs
+  // a full AP_Periph's ~500). Once it is back -- seen again with an uptime that
+  // started after the update finished -- pull its parameters again.
+  const refetchAfterUpdateRef = useRef<{ nodeId: number; completedAtMs: number } | undefined>(undefined)
+  useEffect(() => {
+    const update = canBus.firmwareUpdate
+    if (update?.status === 'completed' && refetchAfterUpdateRef.current?.nodeId !== update.nodeId) {
+      refetchAfterUpdateRef.current = { nodeId: update.nodeId, completedAtMs: Date.now() }
+    }
+  }, [canBus.firmwareUpdate])
+  useEffect(() => {
+    const pending = refetchAfterUpdateRef.current
+    if (!pending) return
+    const node = canBus.nodes.find((entry) => entry.nodeId === pending.nodeId)
+    if (!node || node.uptimeSec === undefined) return
+    const sinceUpdateSec = (Date.now() - pending.completedAtMs) / 1000
+    // Rebooted: its uptime is younger than the time since the update finished.
+    if (node.lastSeenAtMs > pending.completedAtMs && node.uptimeSec <= sinceUpdateSec + 2) {
+      refetchAfterUpdateRef.current = undefined
+      canBackend?.fetchAllCanBusParameters(pending.nodeId)
+    } else if (sinceUpdateSec > 120) {
+      refetchAfterUpdateRef.current = undefined
+    }
+  }, [canBus.nodes, canBackend])
+  // The node's own result message can be lost on the way (a busy forwarded
+  // link drops frames), so also read FLASH_BOOTLOADER back: AP_Periph puts it
+  // to 0 only when it runs the update.
+  useEffect(() => {
+    if (bootloaderFlash?.status !== 'flashing' || bootloaderFlash.refetched) return
+    const timer = window.setTimeout(() => {
+      canBackend?.fetchAllCanBusParameters(bootloaderFlash.nodeId)
+      setBootloaderFlash((current) => (current?.status === 'flashing' ? { ...current, refetched: true } : current))
+    }, 6_000)
+    return () => window.clearTimeout(timer)
+    // canBackend is stable for the flash's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootloaderFlash?.status, bootloaderFlash?.refetched, bootloaderFlash?.nodeId])
+  const bootloaderTrigger = bootloaderFlash
+    ? canBus.nodes.find((node) => node.nodeId === bootloaderFlash.nodeId)?.parameters.find((entry) => entry.name === 'FLASH_BOOTLOADER')?.value
+    : undefined
+  useEffect(() => {
+    if (bootloaderFlash?.status !== 'flashing' || !bootloaderFlash.refetched || bootloaderFlash.acted) return
+    if (bootloaderTrigger?.tag === 'int64' && bootloaderTrigger.int64 === '0') {
+      setBootloaderFlash({ ...bootloaderFlash, acted: true, message: 'The node ran the update (FLASH_BOOTLOADER is back to 0); waiting for its result… keep it powered.' })
+    }
+  }, [bootloaderFlash, bootloaderTrigger])
+  useEffect(() => {
+    if (bootloaderFlash?.status !== 'flashing') return
+    const timer = window.setTimeout(
+      () =>
+        setBootloaderFlash((current) =>
+          current?.status === 'flashing'
+            ? {
+                ...current,
+                status: 'timeout',
+                message: current.acted
+                  ? 'The node ran the bootloader update, but its result never arrived (lost on the way). Run it again: an up-to-date bootloader answers "Bootloader unchanged".'
+                  : 'The node did not act on it (FLASH_BOOTLOADER still reads 1, or its params did not come back). Check the link, then try again.'
+              }
+            : current
+        ),
+      30_000
+    )
+    return () => window.clearTimeout(timer)
+  }, [bootloaderFlash?.status, bootloaderFlash?.startedAtMs])
+  const flashCanBootloader = (nodeId: number) => {
+    // No slack before the click: lines are stamped on arrival, and a slack
+    // let a previous run's answer pass for this one's.
+    setBootloaderFlash({ nodeId, startedAtMs: Date.now(), status: 'flashing', message: 'Flashing the bootloader… do not power the node off.' })
+    void canBackend
+      ?.writeCanBusParameter(nodeId, 'FLASH_BOOTLOADER', { tag: 'int64', int64: '1' })
+      .catch((error: unknown) =>
+        setBootloaderFlash((current) =>
+          current?.nodeId === nodeId && !current.answered
+            ? { ...current, status: 'failed', message: error instanceof Error ? error.message : String(error) }
+            : current
+        )
+      )
+  }
+  // Plot a decoded field (a number, a vector, or one element of one), from
+  // Messages or from Plot's own picker.
+  const plotCanField = (topic: CanTopicEntry, field: DronecanFieldNode) => {
+    canBusMonitor.addPlotSeries(canFieldSeriesLabel(topic, field), { kind: 'field', topicKey: topic.key, path: field.path })
+  }
+  const unplotCanField = (topic: CanTopicEntry, field: DronecanFieldNode) => {
+    canBusMonitor.removePlotSeries(canPlotSeriesKey({ kind: 'field', topicKey: topic.key, path: field.path }))
+  }
+  const isCanFieldPlotted = (topic: CanTopicEntry, field: DronecanFieldNode) =>
+    canBusMonitor.plotSeries.some(
+      (entry) =>
+        entry.source.kind === 'field' && entry.source.topicKey === topic.key && entry.source.path.join('.') === field.path.join('.')
+    )
+  const canMessageNodes = [...new Set([...canBus.nodes.map((node) => node.nodeId), ...canExtraNodeIds])]
+    .sort((left, right) => left - right)
+    .map((nodeId) => ({ nodeId, label: canNodeLabel(nodeId) ?? '' }))
   // Online firmware lookup for DroneCAN nodes (desktop-only). The browser can't
   // reach firmware.ardupilot.org (no CORS), so this is wired ONLY when the
   // Electron firmware bridge is present — same precedent as the FC flasher. In
   // the web build it degrades to `available: false` (local .bin still works).
   // The node's bootloader flashes RAW bytes, so we decode the server's .apj
   // (zlib image) down to the raw image before handing it to the Phase-2 update.
+  // A DroneCAN node's parameter metadata: AP_Periph's (generated from
+  // ArduPilot, loaded the first time a CAN surface opens), the curated entries
+  // until then, and ArduCopter's for anything AP_Periph does not document.
+  const [apPeriphMetadata, setApPeriphMetadata] = useState<Record<string, DronecanParamCatalogDef> | undefined>(undefined)
+  useEffect(() => {
+    if (apPeriphMetadata || (activeViewId !== 'can' && activeViewId !== 'networking')) return
+    void loadApPeriphParamMetadata().then(setApPeriphMetadata).catch(() => {})
+  }, [activeViewId, apPeriphMetadata])
+  // PX4 "cannode" peripherals (ARK, CUAV, Freefly, Holybro CAN boards) expose
+  // PX4 params; their metadata is its own chunk, loaded with the AP_Periph one.
+  const [px4CannodeMetadata, setPx4CannodeMetadata] = useState<Px4CannodeParamMetadata | undefined>(undefined)
+  useEffect(() => {
+    if (px4CannodeMetadata || (activeViewId !== 'can' && activeViewId !== 'networking')) return
+    void loadPx4CannodeParamMetadata().then(setPx4CannodeMetadata).catch(() => {})
+  }, [activeViewId, px4CannodeMetadata])
+  const dronecanParamMetadata: DronecanParamCatalogLookup = (name, node) => {
+    if (node && dronecanNodeStack(node, px4CannodeMetadata?.nodeNames) === 'px4') {
+      return px4CannodeMetadata?.params[name]
+    }
+    return apPeriphMetadata?.[name] ?? AP_PERIPH_CURATED_METADATA[name] ?? metadataCatalog.parameters[name]
+  }
   // The website's AP_Periph index (the deploy's /fw/periph-index.json), loaded
   // when the CAN tab first opens; a site without it keeps "desktop only".
   const [periphIndexRows, setPeriphIndexRows] = useState<FirmwareIndexRow[] | undefined>(undefined)
@@ -6802,23 +7042,29 @@ export function App() {
   // from the expert-only DroneCAN Inspector tab.
   const canDeviceExpertActions = useMemo(
     () => ({
-      firmwareUpdate: snapshot.canBus.firmwareUpdate,
-      onRestartNode: (nodeId: number) => { void runtime?.restartCanBusNode(nodeId) },
+      firmwareUpdate: canBus.firmwareUpdate,
+      onRestartNode: (nodeId: number) => { void canBackend?.restartCanBusNode(nodeId) },
       onStartFirmwareUpdate: (nodeId: number, fileName: string, image: Uint8Array) => {
-        void runtime?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image)
+        void canBackend?.startCanBusNodeFirmwareUpdate(nodeId, fileName, image)
       },
-      onCancelFirmwareUpdate: () => { runtime?.cancelCanBusNodeFirmwareUpdate() },
-      firmwareOnline: dronecanFirmwareOnline
+      onCancelFirmwareUpdate: () => { canBackend?.cancelCanBusNodeFirmwareUpdate() },
+      firmwareOnline: dronecanFirmwareOnline,
+      onChangeNodeId: (nodeId: number, newNodeId: number) => { void canBackend?.changeCanBusNodeId(nodeId, newNodeId) },
+      takenNodeIds: canBus.nodes.map((node) => node.nodeId),
+      onFlashBootloader: flashCanBootloader,
+      bootloaderFlash
     }),
-    [snapshot.canBus.firmwareUpdate, runtime, dronecanFirmwareOnline]
+    // flashCanBootloader closes over canBackend only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canBus.firmwareUpdate, canBus.nodes, canBackend, dronecanFirmwareOnline, bootloaderFlash]
   )
   const baseVisibleAppViews = useMemo(
     () =>
       buildVisibleAppViews({
         appViews,
         isExpertMode,
-        canBusStatus: snapshot.canBus.status,
-        canBusBus: snapshot.canBus.bus,
+        canBusStatus: canBus.status,
+        canBusBus: canBus.bus,
         connectionKind: snapshot.connection.kind,
         hasNetworkingParams,
         hasRcLogicParams,
@@ -6828,8 +7074,8 @@ export function App() {
     [
       appViews,
       isExpertMode,
-      snapshot.canBus.status,
-      snapshot.canBus.bus,
+      canBus.status,
+      canBus.bus,
       snapshot.connection.kind,
       hasNetworkingParams,
       hasRcLogicParams,
@@ -10219,7 +10465,7 @@ export function App() {
             onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
             onFetchAllParameters={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
             onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
-            paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
+            paramMetadata={dronecanParamMetadata}
             title="DroneNet peripherals"
           />
         }
@@ -10283,21 +10529,175 @@ export function App() {
 
       {activeViewId === 'can' ? (
       <CanBusView
-        state={snapshot.canBus}
+        state={canBus}
         vehicleConnected={snapshot.connection.kind === 'connected'}
         selfNodeIds={canSelfNodeIds}
         onStartForward={(bus) => { void runtime?.startCanBusForward(bus) }}
-        onStopForward={() => { void runtime?.stopCanBusForward() }}
-        onRefreshNode={(nodeId) => { runtime?.refreshCanBusNode(nodeId) }}
-        onFetchAllParameters={(nodeId) => { runtime?.fetchAllCanBusParameters(nodeId) }}
-        onApplyAndSave={(nodeId, writes) => { void runtime?.applyAndSaveCanBusParameters(nodeId, writes) }}
-        paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
+        onStopForward={() => { void (canOnAdapter ? canAdapter.disconnect() : runtime?.stopCanBusForward()) }}
+        onRefreshNode={(nodeId) => { canBackend?.refreshCanBusNode(nodeId) }}
+        onFetchAllParameters={(nodeId) => { canBackend?.fetchAllCanBusParameters(nodeId) }}
+        onRebootNode={(nodeId) => { void canBackend?.restartCanBusNode(nodeId) }}
+        onApplyAndSave={(nodeId, writes) => { void canBackend?.applyAndSaveCanBusParameters(nodeId, writes) }}
+        paramMetadata={dronecanParamMetadata}
         enablement={canEnablement.needsEnable ? { triggerLabels: canEnablement.triggerLabels } : undefined}
         onEnableCanBus={runtime ? () => { void handleEnableCanBus() } : undefined}
         enableBusy={busyAction === 'can:enable'}
         // --- folded-in DroneCAN inspector (was a separate expert-only tab) ---
         framesPerSec={dronecanFramesPerSec}
-        escTelemetry={snapshot.canBus.escTelemetry}
+        escTelemetry={canBus.escTelemetry}
+        // A USB-CAN adapter as the bus: offered while nothing else is (an
+        // adapter and the autopilot's forwarding never run at once).
+        adapter={
+          canAdapter.supported && (canOnAdapter || snapshot.canBus.status === 'idle')
+            ? {
+                active: canOnAdapter,
+                opening: canAdapter.opening,
+                error: canAdapter.error,
+                bitrate: canAdapter.bitrate,
+                bitrates: SLCAN_BITRATES.map((entry) => entry.bitrate),
+                onBitrate: canAdapter.setBitrate,
+                onConnect: () => { void canAdapter.connect() }
+              }
+            : undefined
+        }
+        workspace={{
+          extraNodeIds: canExtraNodeIds,
+          // Node messages for the rail's scope (the bus, or the selected node).
+          nodeMessages: (scope) => (
+            <CanNodeMessagesView
+              model={buildCanNodeMessages(canNodeLogs, { nodeId: scope === 'bus' ? undefined : scope, filter: canLogFilter, showDebug: canLogDebug })}
+              scopeLabel={scope === 'bus' ? 'Every node on the bus' : `Node ${scope} only (choose All devices for the bus)`}
+              nodeLabel={canNodeLabel}
+              filter={canLogFilter}
+              onFilter={setCanLogFilter}
+              showDebug={canLogDebug}
+              onShowDebug={setCanLogDebug}
+              onClear={() => {
+                canBusMonitor.clearNodeLogs()
+                setCanLogsClearedAtMs(Date.now())
+              }}
+              hasEntries={canNodeLogs.length > 0}
+            />
+          ),
+          // Node ID allocation (Expert: it acts on the bus). The autopilot runs
+          // its own allocator on its buses, so this is offered on an adapter.
+          allocator:
+            isExpertMode && canBus.status === 'active' ? (
+              <CanAllocatorView
+                state={canBus.allocator}
+                unavailableReason={
+                  canOnAdapter
+                    ? undefined
+                    : 'The autopilot hands out node IDs on its own buses. This is for a bench bus on a USB-CAN adapter.'
+                }
+                nodeAsking={canNodeAsking}
+                onToggle={canAllocationTable.toggle}
+                onForget={canAllocationTable.forget}
+                nodeLabel={canNodeLabel}
+              />
+            ) : undefined,
+          // An opened log feeds Messages, Frames and Plot alike; say so above
+          // every sub-tab, with the way back.
+          notice:
+            canBusMonitor.openedLog ? (
+              <div className="can-log-notice" data-testid="can-log-notice">
+                <span>
+                  Showing the log <strong>{canBusMonitor.openedLog.name}</strong> in Messages, Frames and Plot.
+                </span>
+                <button type="button" style={buttonStyle()} onClick={canBusMonitor.closeLog}>
+                  Back to live
+                </button>
+              </div>
+            ) : undefined,
+          // Sub-tabs for everyone (operator call: the layout is clear enough
+          // not to hide them). Restart / firmware stay Expert-only below.
+          pages: {
+                // Send hides when Expert mode is left; its page falls back to Devices.
+                page: canSubTab === 'send' && !isExpertMode ? 'devices' : canSubTab,
+                onPage: setCanSubTab,
+                messages: (
+                  <CanMessagesPage
+                    topics={canBusMonitor.topics()}
+                    nodes={canMessageNodes}
+                    nodeLabel={canNodeLabel}
+                    live={canBus.status === 'active' || canBusMonitor.openedLog !== undefined}
+                    onShowFrames={(topic) => {
+                      canBusMonitor.showTopicFrames(topic)
+                      setCanSubTab('frames')
+                    }}
+                    onPlotField={plotCanField}
+                    isPlotted={isCanFieldPlotted}
+                    onUnplotField={unplotCanField}
+                  />
+                ),
+                frames: (
+                  <CanBusMonitorView
+                    monitor={canBusMonitor}
+                    live={canBus.status === 'active'}
+                    layout="page"
+                  />
+                ),
+                plot: (
+                  <CanPlotView
+                    series={canBusMonitor.plotSeries}
+                    samplesFor={canBusMonitor.plotSamplesFor}
+                    nowMs={canBusMonitor.plotNowMs}
+                    onRemove={canBusMonitor.removePlotSeries}
+                    onClear={canBusMonitor.clearPlotSeries}
+                    onAddBytes={(label, source) => canBusMonitor.addPlotSeries(label, source)}
+                    onPickFields={() => setCanSubTab('messages')}
+                    topics={canBusMonitor.topics()}
+                    nodeLabel={canNodeLabel}
+                    onPlotField={plotCanField}
+                    isPlotted={isCanFieldPlotted}
+                    onUnplotField={unplotCanField}
+                    onAddSeries={canBusMonitor.addPlotSeries}
+                    paneOf={canBusMonitor.plotPaneOf}
+                    paneHeights={canBusMonitor.plotPaneHeights}
+                    onMoveSeries={canBusMonitor.movePlotSeries}
+                    onPaneHeight={canBusMonitor.setPlotPaneHeight}
+                    nodeLogs={canNodeLogs}
+                  />
+                ),
+                send: isExpertMode ? (
+                  <CanSendView
+                    catalogue={dronecanCatalogue()}
+                    sourceNodeId={GCS_DRONECAN_NODE_ID}
+                    busLabel={
+                      canBus.status !== 'active'
+                        ? undefined
+                        : canOnAdapter
+                          ? 'the USB-CAN adapter'
+                          : canBus.bus !== undefined
+                            ? `CAN${canBus.bus}`
+                            : undefined
+                    }
+                    blockedReason={
+                      snapshot.vehicle?.armed && snapshot.connection.kind === 'connected'
+                        ? 'Disarm the vehicle to send.'
+                        : canBus.status === 'active'
+                          ? undefined
+                          : canAdapter.supported
+                            ? 'Connect to the bus, or a USB-CAN adapter, on Devices to send.'
+                            : 'Connect to the bus on Devices to send.'
+                    }
+                    nodes={canMessageNodes}
+                    nodeLabel={canNodeLabel}
+                    history={canSender.history}
+                    repeatingId={canSender.repeatingId}
+                    onSend={(job) => { void canSender.send(job) }}
+                    onStartRepeat={canSender.startRepeat}
+                    onStopRepeat={() => canSender.stopRepeat('Stopped.')}
+                    onClearHistory={canSender.clearHistory}
+                    motionAcknowledged={propsRemovedAcknowledged && testAreaAcknowledged}
+                    onMotionAcknowledged={(value) => {
+                      setPropsRemovedAcknowledged(value)
+                      setTestAreaAcknowledged(value)
+                    }}
+                  />
+                ) : undefined
+              }
+        }}
         busy={busyAction !== undefined}
         // Restart + firmware update were expert-gated by living in the expert-only
         // inspector tab; the CAN tab is always visible, so the gate moves here
@@ -10500,6 +10900,42 @@ export function App() {
           onRemovePlot={removeMavlinkInspectorPlot}
           onExportPlotCsv={exportMavlinkInspectorPlotCsv}
           maxPlots={MAX_MAVLINK_PLOTS}
+          plotCount={mavlinkInspectorPlots.length + mavlinkPlotWorkspace.open.reduce((total, graph) => total + graph.series.length, 0)}
+          plotWorkspace={
+            <MavlinkPlotWorkspace
+              stats={mavlinkInspectorStats}
+              plots={mavlinkInspectorPlots}
+              maxPlots={MAX_MAVLINK_PLOTS}
+              onAddPlot={addMavlinkInspectorPlot}
+              onRemovePlot={removeMavlinkInspectorPlot}
+              onExportPlotCsv={exportMavlinkInspectorPlotCsv}
+              graphs={mavlinkPlotWorkspace.graphs}
+              openGraphs={mavlinkPlotWorkspace.open}
+              maxGraphs={MAX_LIVE_GRAPHS}
+              onOpenGraph={mavlinkPlotWorkspace.openGraph}
+              onOpenExpression={mavlinkPlotWorkspace.openExpression}
+              canRequest={
+                runtime && snapshot.connection.kind === 'connected'
+                  ? (name) => mavlinkPlotWorkspace.messageIdOf(name) !== undefined
+                  : undefined
+              }
+              onRequestMessages={(names) => {
+                for (const name of names) {
+                  const id = mavlinkPlotWorkspace.messageIdOf(name)
+                  if (id !== undefined) void runtime?.requestMessageInterval(id, intervalUsForRate(4))
+                }
+              }}
+              onCloseGraph={mavlinkPlotWorkspace.closeGraph}
+              paneOf={mavlinkPlotWorkspace.paneOf}
+              paneHeights={mavlinkPlotWorkspace.paneHeights}
+              onMoveSeries={mavlinkPlotWorkspace.moveSeries}
+              onPaneHeight={mavlinkPlotWorkspace.setPaneHeight}
+              bufferSeconds={LIVE_GRAPH_WINDOW_S}
+              modeSpans={mavlinkPlotWorkspace.modeSpans}
+              paramChanges={mavlinkPlotWorkspace.paramChanges}
+              statusTexts={snapshot.statusTexts}
+            />
+          }
         />
       ) : null}
 
@@ -10511,28 +10947,29 @@ export function App() {
           service owns the MAV_CMD_CAN_FORWARD keep-alive for as long as the bus
           is connected. */}
       {canDevicePopouts.windows.map(({ nodeId, handle }) => {
-        const node = snapshot.canBus.nodes.find((entry) => entry.nodeId === nodeId)
+        const node = canBus.nodes.find((entry) => entry.nodeId === nodeId)
         return createPortal(
           node ? (
             <CanDeviceInspectorView
               node={node}
               isSelf={canSelfNodeIds.includes(nodeId)}
-              paramMetadata={(name) => metadataCatalog.parameters[name] ?? AP_PERIPH_PARAM_METADATA[name]}
+              paramMetadata={dronecanParamMetadata}
               draftValues={canDevicePopouts.draftValues}
               onDraftChange={canDevicePopouts.setDraft}
               onDropDraft={canDevicePopouts.dropDraft}
               onDropAllDrafts={canDevicePopouts.dropAllDrafts}
               onApplyAndSave={(id, writes) => {
-                void runtime?.applyAndSaveCanBusParameters(id, writes)
+                void canBackend?.applyAndSaveCanBusParameters(id, writes)
                 canDevicePopouts.dropDrafts(id, writes.map((write) => write.name))
               }}
-              onRefreshNode={(id) => { runtime?.refreshCanBusNode(id) }}
-              onFetchAllParameters={(id) => { runtime?.fetchAllCanBusParameters(id) }}
+              onRefreshNode={(id) => { canBackend?.refreshCanBusNode(id) }}
+              onFetchAllParameters={(id) => { canBackend?.fetchAllCanBusParameters(id) }}
+              onRebootNode={(id) => { void canBackend?.restartCanBusNode(id) }}
               busy={busyAction !== undefined}
               expertActions={isExpertMode ? canDeviceExpertActions : undefined}
               // Real filtering, not a label: this window only ever shows this
               // node's ESC telemetry out of the bus-wide stream.
-              escTelemetry={filterEscTelemetryForNode(snapshot.canBus.escTelemetry, nodeId)}
+              escTelemetry={filterEscTelemetryForNode(canBus.escTelemetry, nodeId)}
               heading={node.name && node.name.length > 0 ? node.name : `Node ${nodeId}`}
             />
           ) : (

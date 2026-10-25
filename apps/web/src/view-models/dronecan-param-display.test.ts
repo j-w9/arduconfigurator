@@ -1,7 +1,9 @@
 import type { DronecanParamEntry } from '@arduconfig/ardupilot-core'
 import { describe, expect, it } from 'vitest'
 
-import { AP_PERIPH_PARAM_METADATA } from './ap-periph-param-metadata'
+import { loadApPeriphParamMetadata } from './ap-periph-param-metadata'
+
+const AP_PERIPH_PARAM_METADATA = await loadApPeriphParamMetadata()
 import { describeDronecanParam, type DronecanParamCatalogDef } from './dronecan-param-display'
 
 const int = (n: number): DronecanParamEntry['value'] => ({ tag: 'int64', int64: String(n) })
@@ -67,5 +69,30 @@ describe('AP_PERIPH_PARAM_METADATA fallback', () => {
     const fd = describeDronecanParam(entry({ name: 'CAN_FDMODE', value: int(1) }), AP_PERIPH_PARAM_METADATA.CAN_FDMODE)
     expect(fd.valueLabel).toBe('Enabled')
     expect(fd.valueIsEnum).toBe(true)
+  })
+})
+
+describe('bitmask, step, reboot and read-only', () => {
+  it('names the set bits of a bitmask and never reads it as an enum', () => {
+    const bits = [
+      { bit: 0, label: 'Show free stack space' },
+      { bit: 1, label: 'Auto reboot' },
+      { bit: 2, label: 'Enable sending stats' }
+    ]
+    const display = describeDronecanParam(entry({ name: 'DEBUG', value: int(5) }), { bits, rebootRequired: true, step: 1 })
+    expect(display.bitsLabel).toBe('Show free stack space, Enable sending stats')
+    expect(display.valueIsEnum).toBe(false)
+    expect(display.rebootRequired).toBe(true)
+    expect(display.step).toBe(1)
+    expect(describeDronecanParam(entry({ name: 'DEBUG', value: int(0) }), { bits }).bitsLabel).toBe('none')
+  })
+
+  it("treats the FC catalog's bitmask options as bits, not values", () => {
+    // FC ParameterDefinition: bitmask: true, options = bit indexes.
+    const fc = { bitmask: true, options: [{ value: 0, label: 'Bit zero' }, { value: 3, label: 'Bit three' }] }
+    const display = describeDronecanParam(entry({ name: 'X', value: int(3) }), fc)
+    // 3 = bits 0 and 1; "Bit three" (option value 3) must not be claimed.
+    expect(display.valueIsEnum).toBe(false)
+    expect(display.bitsLabel).toBe('Bit zero')
   })
 })

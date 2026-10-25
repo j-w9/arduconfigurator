@@ -64,7 +64,10 @@ test('NodeStatus single-frame transfer decodes uptime + health + mode + vendor c
   const payload = new Uint8Array(7)
   const view = new DataView(payload.buffer)
   view.setUint32(0, 42, true)
-  payload[4] = 0x01 // health=1, mode=0, sub_mode=0
+  // DroneCAN packs from the most significant bit: health is the TOP two bits.
+  // This fixture used to write 0x01 -- the bottom-up order the decoder had,
+  // so the test pinned the bug. pydronecan writes health=1 as 0x40.
+  payload[4] = 0x40 // health=1, mode=0, sub_mode=0
   view.setUint16(5, 0x1234, true)
   const status = decodeDronecanNodeStatus(payload)
   assert.ok(status)

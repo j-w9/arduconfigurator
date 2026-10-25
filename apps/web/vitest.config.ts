@@ -21,6 +21,7 @@ export default defineConfig({
       pkg('@arduconfig/ardupilot-core', 'ardupilot-core/src/index.ts'),
       pkg('@arduconfig/param-metadata', 'param-metadata/src/index.ts'),
       pkg('@arduconfig/ai-assistant', 'ai-assistant/src/index.ts'),
+      pkg('@arduconfig/plot-core', 'plot-core/src/index.ts'),
       pkg('@arduconfig/ui-kit', 'ui-kit/src/index.tsx')
     ])
   },

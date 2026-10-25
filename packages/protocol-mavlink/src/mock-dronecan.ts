@@ -7,7 +7,7 @@
 // (tests/dronecan-decoders.test.mjs), so a simulated node populates the
 // inspector identically to a real one.
 
-import type { CanFrameMessage, MavlinkMessage } from './messages.js'
+import type { CanFdFrameMessage, CanFrameMessage, MavlinkMessage } from './messages.js'
 import {
   DRONECAN_ESC_STATUS_DT_ID,
   DRONECAN_ESC_STATUS_SIGNATURE,
@@ -27,16 +27,25 @@ import {
   DRONECAN_PARAM_GETSET_SIGNATURE,
   DRONECAN_RESTART_NODE_SERVICE_ID,
   DRONECAN_RESTART_NODE_SIGNATURE,
+  DRONECAN_ALLOCATION_DT_ID,
+  DRONECAN_ALLOCATION_SIGNATURE,
   DronecanReassembler,
+  decodeDronecanAllocation,
   decodeDronecanBeginFirmwareUpdateRequest,
   decodeDronecanFileReadResponse,
   dronecanBuildBroadcastFrames,
   dronecanBuildServiceFrames,
+  dronecanComposeTailByte,
+  dronecanEncodeFloat16,
+  dronecanEncodeAnonymousCanId,
   dronecanIsServiceFrame,
+  dronecanMessageTypeId,
+  dronecanSourceNodeId,
   dronecanIsServiceRequest,
   dronecanParseTailByte,
   dronecanServiceDestinationNodeId,
   dronecanServiceTypeId,
+  encodeDronecanAllocation,
   encodeDronecanBeginFirmwareUpdateResponse,
   encodeDronecanEscStatus,
   encodeDronecanExecuteOpcodeResponse,
@@ -50,6 +59,12 @@ import {
 } from './dronecan.js'
 
 const MAV_CMD_CAN_FORWARD = 32000
+/** uavcan.protocol.debug.LogMessage (DSDL 16383). */
+const LOG_MESSAGE_DT_ID = 16383
+const LOG_MESSAGE_SIGNATURE = 0xd654a48e0c049d75n
+/** uavcan.equipment.ahrs.MagneticFieldStrength2 (DSDL 1002). */
+const MAGNETIC_FIELD_STRENGTH2_DT_ID = 1002
+const MAGNETIC_FIELD_STRENGTH2_SIGNATURE = 0xb6ac0c442430297en
 const GCS_DRONECAN_NODE_ID = 127
 const CAN_FRAME_FLAG_EFF = 0x80000000
 
@@ -100,10 +115,32 @@ const NODES: MockDronecanNode[] = [
     health: 0,
     mode: 0,
     params: [
-      { name: 'NODEID', value: int(124), default: int(0), min: int(0), max: int(127) },
+      { name: 'CAN_NODE', value: int(124), default: int(0), min: int(0), max: int(127) },
       { name: 'GPS_TYPE', value: int(1), default: int(0), min: int(0), max: int(26) },
       { name: 'MAG_ENABLE', value: int(1), default: int(1), min: int(0), max: int(1) },
       { name: 'NTF_LED_OVERRIDE', value: int(0), default: int(0), min: int(0), max: int(1) }
+    ]
+  },
+  // A PX4 "cannode" peripheral (ARK CAN RTK GPS): PX4 params, not AP_Periph
+  // ones — the CAN tab must read them from the PX4 catalog.
+  {
+    nodeId: 88,
+    name: 'org.ark.can-rtk-gps',
+    swMajor: 1,
+    swMinor: 16,
+    vcsCommit: 0x2f9e11c4,
+    hwMajor: 1,
+    hwMinor: 1,
+    uniqueId: uid(88),
+    health: 0,
+    mode: 0,
+    params: [
+      { name: 'CANNODE_NODE_ID', value: int(88), default: int(0), min: int(0), max: int(125) },
+      { name: 'CANNODE_BITRATE', value: int(1000000), default: int(1000000), min: int(20000), max: int(1000000) },
+      { name: 'CANNODE_TERM', value: int(0), default: int(0), min: int(0), max: int(1) },
+      { name: 'GPS_1_PROTOCOL', value: int(1), default: int(1), min: int(0), max: int(7) },
+      { name: 'GPS_UBX_DYNMODEL', value: int(7), default: int(7), min: int(0), max: int(9) },
+      { name: 'GPS_UBX_MODE', value: int(0), default: int(0), min: int(0), max: int(5) }
     ]
   },
   {
@@ -118,9 +155,10 @@ const NODES: MockDronecanNode[] = [
     health: 0,
     mode: 0,
     params: [
-      { name: 'NODEID', value: int(50), default: int(0), min: int(0), max: int(127) },
+      { name: 'CAN_NODE', value: int(50), default: int(0), min: int(0), max: int(127) },
       { name: 'BATT_MONITOR', value: int(4), default: int(0), min: int(0), max: int(20) },
-      { name: 'BATT_CAPACITY', value: real(5200), default: real(0), min: real(0), max: real(64000) }
+      { name: 'BATT_CAPACITY', value: real(5200), default: real(0), min: real(0), max: real(64000) },
+      { name: 'FLASH_BOOTLOADER', value: int(0), default: int(0), min: int(0), max: int(1) }
     ]
   },
   {
@@ -138,7 +176,7 @@ const NODES: MockDronecanNode[] = [
     health: 0,
     mode: 0,
     params: [
-      { name: 'NODEID', value: int(71), default: int(0), min: int(0), max: int(127) },
+      { name: 'CAN_NODE', value: int(71), default: int(0), min: int(0), max: int(127) },
       { name: 'NET_ENABLE', value: int(1), default: int(0), min: int(0), max: int(1) },
       { name: 'NET_DHCP', value: int(1), default: int(1), min: int(0), max: int(1) },
       { name: 'NET_IPADDR0', value: int(192), default: int(192), min: int(0), max: int(255) },
@@ -171,11 +209,119 @@ export interface DronecanBusSimulator {
   /** Periodic NodeStatus broadcasts for every simulated node (empty until
    *  forwarding is active). */
   broadcasts: () => CanFrameMessage[]
+  /**
+   * Plain (non-DroneCAN) traffic sharing the bus, due at `nowMs`: standard-id
+   * classic frames at their own rates and a CAN FD frame, so the bus monitor,
+   * filters and recorder have a mixed bus to show. Empty until forwarding is
+   * active. Call it often; each stream keeps its own period.
+   */
+  plainTraffic: (nowMs: number) => (CanFrameMessage | CanFdFrameMessage)[]
 }
+
+/** The demo's plain-CAN streams: id, period, and a payload generator. */
+interface PlainCanStream {
+  id: number
+  periodMs: number
+  fd?: boolean
+  payload: (count: number, nowMs: number) => Uint8Array
+}
+
+const PLAIN_CAN_STREAMS: readonly PlainCanStream[] = [
+  // A counter and a slow sine: the classic "which byte moves" frame.
+  {
+    id: 0x123,
+    periodMs: 100,
+    payload: (count, nowMs) => {
+      const sine = Math.round(127 + 120 * Math.sin(nowMs / 1000))
+      return Uint8Array.from([count & 0xff, (count >> 8) & 0xff, sine, 0x00, 0xaa, 0x55, 0x00, 0x01])
+    }
+  },
+  // Four little-endian uint16 "wheel speeds", gently varying.
+  {
+    id: 0x2a0,
+    periodMs: 50,
+    payload: (_count, nowMs) => {
+      const out = new Uint8Array(8)
+      const view = new DataView(out.buffer)
+      for (let wheel = 0; wheel < 4; wheel += 1) {
+        view.setUint16(wheel * 2, 1000 + wheel * 25 + Math.round(40 * Math.sin(nowMs / 700 + wheel)), true)
+      }
+      return out
+    }
+  },
+  // An occasional diagnostic-style request, three bytes.
+  { id: 0x7df, periodMs: 2000, payload: () => Uint8Array.from([0x02, 0x01, 0x0c]) },
+  // A CAN FD frame with a 16-byte payload.
+  {
+    id: 0x321,
+    periodMs: 500,
+    fd: true,
+    payload: (count) => Uint8Array.from({ length: 16 }, (_unused, index) => (count + index) & 0xff)
+  }
+]
 
 /** Build a fresh simulator. State (active flag, transfer ids, param edits) is
  *  per-instance so each demo connection starts clean. */
-export function createDronecanBusSimulator(): DronecanBusSimulator {
+export interface DronecanBusSimulatorOptions {
+  /**
+   * Add a node with no ID (CAN_NODE = 0) that asks for one by dynamic node ID
+   * allocation, the way AP_Periph does, until an allocator answers.
+   */
+  unallocatedNode?: boolean
+}
+
+export function createDronecanBusSimulator(options: DronecanBusSimulatorOptions = {}): DronecanBusSimulator {
+  // Each simulator owns its nodes: a node ID change or a parameter write in one
+  // session must not leak into the next (the demo bridge serves many).
+  const nodes: MockDronecanNode[] = NODES.map((node) => ({ ...node, params: node.params.map((param) => ({ ...param })) }))
+  if (options.unallocatedNode) {
+    nodes.push({
+      nodeId: 0,
+      name: 'org.ardupilot.ap_periph',
+      swMajor: 1,
+      swMinor: 7,
+      vcsCommit: 0x51d0a7e2,
+      hwMajor: 1,
+      hwMinor: 0,
+      uniqueId: uid(77),
+      health: 0,
+      mode: 0,
+      params: [
+        { name: 'CAN_NODE', value: int(0), default: int(0), min: int(0), max: int(127) },
+        { name: 'RNGFND1_TYPE', value: int(0), default: int(0), min: int(0), max: int(40) }
+      ]
+    })
+  }
+  let magLastMs: number | undefined
+  let magTransferId = 0
+  // Node log messages (uavcan.protocol.debug.LogMessage), as AP_Periph's
+  // can_printf sends them: level (DEBUG 0 .. ERROR 3), source, text.
+  let logTransferId = 0
+  let broadcastTick = 0
+  const logMessageFrames = (node: MockDronecanNode, level: number, text: string): CanFrameMessage[] => {
+    const bytes = new TextEncoder().encode(text).subarray(0, 90)
+    const payload = new Uint8Array(1 + bytes.length)
+    payload[0] = (level & 0x7) << 5 // no source: its length (low 5 bits) is 0
+    payload.set(bytes, 1)
+    return dronecanBuildBroadcastFrames(
+      { messageTypeId: LOG_MESSAGE_DT_ID, signature: LOG_MESSAGE_SIGNATURE, sourceNodeId: node.nodeId, transferId: (logTransferId = (logTransferId + 1) & 0x1f) },
+      payload
+    ).map((frame) => toCanFrame(frame.canId, frame.data))
+  }
+  /** Nodes whose bootloader the mock has "flashed": the next run is unchanged. */
+  const bootloaderFlashed = new Set<number>()
+  /** How much of its unique id the unallocated node has had echoed back. */
+  let dnaOffset = 0
+  let dnaTransferId = 0
+  const allocationRequest = (node: MockDronecanNode): CanFrameMessage => {
+    const part = node.uniqueId.subarray(dnaOffset, Math.min(16, dnaOffset + 6))
+    const payload = encodeDronecanAllocation({ nodeId: 0, firstPartOfUniqueId: dnaOffset === 0, uniqueId: part })
+    const data = new Uint8Array(payload.length + 1)
+    data.set(payload)
+    data[payload.length] = dronecanComposeTailByte({ sot: true, eot: true, toggle: false, transferId: (dnaTransferId = (dnaTransferId + 1) & 0x1f) })
+    // CANARD_TRANSFER_PRIORITY_LOW, a random discriminator.
+    return toCanFrame(dronecanEncodeAnonymousCanId(24, DRONECAN_ALLOCATION_DT_ID, Math.floor(Math.random() * 0x3fff)), data)
+  }
   let active = false
   let wireBus = 0
   let bootMs = Date.now()
@@ -197,7 +343,7 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
   // reassemble GCS→node service transfers before acting on them.
   const reassembler = new DronecanReassembler({
     getDataTypeSignature: (ctx) => {
-      if (!ctx.isService) return undefined
+      if (!ctx.isService) return ctx.typeId === DRONECAN_ALLOCATION_DT_ID ? DRONECAN_ALLOCATION_SIGNATURE : undefined
       switch (ctx.typeId) {
         case DRONECAN_GET_NODE_INFO_SERVICE_ID:
           return DRONECAN_GET_NODE_INFO_SIGNATURE
@@ -218,6 +364,8 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
   })
 
   const uptimeSec = (): number => Math.max(1, Math.floor((Date.now() - bootMs) / 1000))
+  const plainLastMs: (number | undefined)[] = []
+  const plainCounts: number[] = []
 
   const nextStatusTransferId = (nodeId: number): number => {
     const next = (statusTransferId.get(nodeId) ?? 0) & 0x1f
@@ -358,7 +506,7 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
     if (!active) {
       return []
     }
-    return NODES.map((node) => {
+    return nodes.filter((node) => node.nodeId !== 0).map((node) => {
       const frames = dronecanBuildBroadcastFrames(
         { messageTypeId: DRONECAN_NODE_STATUS_DT_ID, signature: DRONECAN_NODE_STATUS_SIGNATURE, sourceNodeId: node.nodeId, transferId: nextStatusTransferId(node.nodeId) },
         encodeDronecanNodeStatus({ uptimeSec: uptimeSec(), health: node.health, mode: node.mode, subMode: 0, vendorSpecificStatusCode: 0 })
@@ -443,7 +591,32 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
       }
       const canId = message.id >>> 0
       if (!dronecanIsServiceFrame(canId)) {
-        return []
+        // An allocator's answer to the unallocated node.
+        const waiting = nodes.find((node) => node.nodeId === 0)
+        if (!waiting || dronecanMessageTypeId(canId) !== DRONECAN_ALLOCATION_DT_ID) {
+          return []
+        }
+        const frame = message.data.subarray(0, message.len)
+        const finished = reassembler.push(
+          { sourceNodeId: dronecanSourceNodeId(canId), isService: false, typeId: DRONECAN_ALLOCATION_DT_ID, transferId: dronecanParseTailByte(frame[frame.length - 1]).transferId },
+          frame
+        )
+        const allocation = finished ? decodeDronecanAllocation(finished.payload) : undefined
+        if (!allocation) {
+          return []
+        }
+        const ours = allocation.uniqueId.every((byte, index) => waiting.uniqueId[index] === byte)
+        if (!ours) {
+          return []
+        }
+        if (allocation.nodeId !== 0) {
+          waiting.nodeId = allocation.nodeId
+          dnaOffset = 0
+          return emitNodeStatus()
+        }
+        // Echo of what it has so far: send the next part straight away.
+        dnaOffset = allocation.uniqueId.length
+        return dnaOffset < 16 ? [allocationRequest(waiting)] : []
       }
       const destinationNodeId = dronecanServiceDestinationNodeId(canId)
       const serviceTypeId = dronecanServiceTypeId(canId)
@@ -488,7 +661,7 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
       if (!dronecanIsServiceRequest(canId)) {
         return []
       }
-      const node = NODES.find((n) => n.nodeId === destinationNodeId)
+      const node = nodes.find((n) => n.nodeId !== 0 && n.nodeId === destinationNodeId)
       if (!node) {
         return []
       }
@@ -504,20 +677,42 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
       switch (serviceTypeId) {
         case DRONECAN_GET_NODE_INFO_SERVICE_ID:
           return serviceResponseFrames(node, DRONECAN_GET_NODE_INFO_SERVICE_ID, DRONECAN_GET_NODE_INFO_SIGNATURE, nodeInfoResponse(node), tail.transferId)
-        case DRONECAN_PARAM_GETSET_SERVICE_ID:
-          return serviceResponseFrames(
+        case DRONECAN_PARAM_GETSET_SERVICE_ID: {
+          const response = serviceResponseFrames(
             node,
             DRONECAN_PARAM_GETSET_SERVICE_ID,
             DRONECAN_PARAM_GETSET_SIGNATURE,
             encodeDronecanGetSetResponse(handleGetSet(node, finished.payload)),
             tail.transferId
           )
+          // AP_Periph acts on FLASH_BOOTLOADER = 1 at once: it puts it back to 0,
+          // copies its embedded bootloader, and logs the outcome.
+          const trigger = node.params.find((param) => param.name === 'FLASH_BOOTLOADER')
+          // can_printf logs at DEBUG; a second run finds the bootloader current.
+          if (trigger?.value.tag === 'int64' && trigger.value.int64 === 1n) {
+            trigger.value = int(0)
+            const text = bootloaderFlashed.has(node.nodeId) ? 'Bootloader unchanged' : 'Flash bootloader OK'
+            bootloaderFlashed.add(node.nodeId)
+            return [...response, ...logMessageFrames(node, 0, text)]
+          }
+          return response
+        }
         case DRONECAN_PARAM_EXECUTE_OPCODE_SERVICE_ID:
           return serviceResponseFrames(node, DRONECAN_PARAM_EXECUTE_OPCODE_SERVICE_ID, DRONECAN_PARAM_EXECUTE_OPCODE_SIGNATURE, encodeDronecanExecuteOpcodeResponse(0n, true), tail.transferId)
         case DRONECAN_RESTART_NODE_SERVICE_ID:
           // Acknowledge the restart (bool ok = true). A real node would reboot
           // and re-announce; the mock just keeps broadcasting NodeStatus.
-          return serviceResponseFrames(node, DRONECAN_RESTART_NODE_SERVICE_ID, DRONECAN_RESTART_NODE_SIGNATURE, encodeDronecanRestartNodeResponse(true), tail.transferId)
+        {
+          const ack = serviceResponseFrames(node, DRONECAN_RESTART_NODE_SERVICE_ID, DRONECAN_RESTART_NODE_SIGNATURE, encodeDronecanRestartNodeResponse(true), tail.transferId)
+          // A saved CAN_NODE takes effect on reboot: a fixed ID, or 0 to ask an allocator.
+          const configured = node.params.find((param) => param.name === 'CAN_NODE')?.value
+          const nextId = configured?.tag === 'int64' ? Number(configured.int64) : undefined
+          if (nextId !== undefined && nextId !== node.nodeId && !nodes.some((other) => other !== node && other.nodeId === nextId && nextId !== 0)) {
+            node.nodeId = nextId
+            dnaOffset = 0
+          }
+          return ack
+        }
         case DRONECAN_FILE_BEGIN_FIRMWARE_UPDATE_SERVICE_ID: {
           // Accept the update (ERROR_OK) and immediately begin pulling the image
           // from the GCS: respond, then emit the first file.Read request. The
@@ -538,6 +733,78 @@ export function createDronecanBusSimulator(): DronecanBusSimulator {
           return []
       }
     },
-    broadcasts: (): CanFrameMessage[] => [...emitNodeStatus(), ...emitEscStatus()]
+    broadcasts: (): CanFrameMessage[] => {
+      const waiting = active ? nodes.find((node) => node.nodeId === 0) : undefined
+      // No answer since the last request: start over, as AP_Periph does.
+      if (waiting) dnaOffset = 0
+      // Now and then the ESC node has something to say.
+      broadcastTick += 1
+      const periph = active && broadcastTick % 5 === 1 ? nodes.find((node) => node.nodeId === 50) : undefined
+      const logs = periph ? logMessageFrames(periph, 2, 'ESC 2 temperature high') : []
+      return [...emitNodeStatus(), ...emitEscStatus(), ...(waiting ? [allocationRequest(waiting)] : []), ...logs]
+    },
+    plainTraffic: (nowMs: number): (CanFrameMessage | CanFdFrameMessage)[] => {
+      if (!active) {
+        return []
+      }
+      const out: (CanFrameMessage | CanFdFrameMessage)[] = []
+      // A fast DroneCAN sensor stream rides the same timer: the GPS/compass
+      // node's magnetometer (ahrs.MagneticFieldStrength2) at 10 Hz, a vector
+      // that turns slowly, so Plot has x / y / z to draw.
+      const compass = nodes.find((node) => node.name === 'com.hex.here3' && node.nodeId !== 0)
+      if (compass && (magLastMs === undefined || nowMs - magLastMs >= 100)) {
+        magLastMs = nowMs
+        const heading = nowMs / 4000
+        const field = [0.22 * Math.cos(heading), 0.22 * Math.sin(heading), 0.43 + 0.01 * Math.sin(nowMs / 700)]
+        const payload = new Uint8Array(7)
+        payload[0] = 0 // sensor_id
+        field.forEach((value, index) => {
+          const half = dronecanEncodeFloat16(value)
+          payload[1 + index * 2] = half & 0xff
+          payload[2 + index * 2] = (half >> 8) & 0xff
+        })
+        const [frame] = dronecanBuildBroadcastFrames(
+          { messageTypeId: MAGNETIC_FIELD_STRENGTH2_DT_ID, signature: MAGNETIC_FIELD_STRENGTH2_SIGNATURE, sourceNodeId: compass.nodeId, transferId: (magTransferId = (magTransferId + 1) & 0x1f) },
+          payload
+        )
+        out.push(toCanFrame(frame.canId, frame.data))
+      }
+      PLAIN_CAN_STREAMS.forEach((stream, index) => {
+        const last = plainLastMs[index]
+        if (last !== undefined && nowMs - last < stream.periodMs) {
+          return
+        }
+        plainLastMs[index] = nowMs
+        plainCounts[index] = (plainCounts[index] ?? 0) + 1
+        const data = stream.payload(plainCounts[index], nowMs)
+        if (stream.fd) {
+          const padded = new Uint8Array(64)
+          padded.set(data)
+          out.push({
+            type: 'CANFD_FRAME',
+            targetSystem: 0,
+            targetComponent: 0,
+            bus: wireBus,
+            len: data.length,
+            id: stream.id,
+            data: padded
+          })
+        } else {
+          const padded = new Uint8Array(8)
+          padded.set(data.subarray(0, 8))
+          out.push({
+            type: 'CAN_FRAME',
+            targetSystem: 0,
+            targetComponent: 0,
+            bus: wireBus,
+            len: Math.min(8, data.length),
+            // Standard 11-bit id: no EFF flag.
+            id: stream.id,
+            data: padded
+          })
+        }
+      })
+      return out
+    }
   }
 }

@@ -29,6 +29,7 @@ import type {
   UavcanNodeStatusMessage,
 } from '@arduconfig/protocol-mavlink'
 import type { MavlinkSignatureRejection } from '@arduconfig/protocol-mavlink'
+import type { CanFrame } from '@arduconfig/can-core'
 import {
   MAV_PROTOCOL_CAPABILITY,
   MAV_AUTOPILOT,
@@ -825,8 +826,11 @@ export class ArduPilotConfiguratorRuntime {
         // throughput to ~130x slower than a headless client. Skip the per-packet
         // emit for those two high-rate types; any status/state change they make
         // flushes on the next telemetry message, and completion emits explicitly.
+        // GENERIC (a message decoded only for the inspector) touches no
+        // snapshot state either, so it never emits — before the generic path
+        // those frames were dropped by the codec and emitted nothing.
         const messageType = envelope.message.type
-        if (messageType !== 'FILE_TRANSFER_PROTOCOL' && messageType !== 'LOG_DATA') {
+        if (messageType !== 'FILE_TRANSFER_PROTOCOL' && messageType !== 'LOG_DATA' && messageType !== 'GENERIC') {
           this.emit()
         }
       })
@@ -1857,6 +1861,28 @@ export class ArduPilotConfiguratorRuntime {
    *  CAN tab uses this to drive its discovery + parameter UI. MAVLink
    *  stays alive on the same channel — this is the same mechanism
    *  Mission Planner uses for its DroneCAN inspector. */
+  /**
+   * Every raw CAN frame on the forwarded bus, and every frame this runtime
+   * sends to it, as they happen -- for the bus monitor and recorder. Outside
+   * the snapshot on purpose: a busy bus is thousands of frames a second.
+   * Returns the unsubscribe.
+   */
+  onCanFrame(listener: (frame: CanFrame) => void): () => void {
+    return this.canBusService.onFrame(listener)
+  }
+
+  /**
+   * Put raw frames on the forwarded CAN bus (the CAN tab's Send). Refused
+   * while armed: a frame on the bus can command ESCs and servos, and an
+   * operator composing frames by hand must never be doing it in flight.
+   */
+  async sendCanFrames(
+    frames: readonly { id: number; extended: boolean; data: Uint8Array; fd?: boolean; rtr?: boolean }[]
+  ): Promise<void> {
+    this.assertNotArmed('Disarm the vehicle before sending CAN frames.')
+    await this.canBusService.sendFrames(frames)
+  }
+
   async startCanBusForward(bus: number): Promise<void> {
     return this.canBusService.start(bus)
   }
@@ -2230,6 +2256,23 @@ export class ArduPilotConfiguratorRuntime {
   /** Cancel an in-flight node firmware update, or dismiss a finished one. */
   cancelCanBusNodeFirmwareUpdate(): void {
     this.canBusService.cancelFirmwareUpdate()
+  }
+
+  /** Give a DroneCAN node a new ID (CAN_NODE, save, restart). Refused while
+   *  armed: the node reboots, and a GPS or ESC rebooting in flight is a crash. */
+  async changeCanBusNodeId(nodeId: number, newNodeId: number): Promise<void> {
+    this.assertNotArmed('Disarm the vehicle before changing a node ID.')
+    return this.canBusService.changeNodeId(nodeId, newNodeId)
+  }
+
+  /** Switch this app's dynamic node ID allocator on or off for the forwarded bus. */
+  setCanNodeAllocator(enabled: boolean, seed?: readonly { nodeId: number; uniqueId: string }[]): void {
+    this.canBusService.setAllocatorEnabled(enabled, seed)
+  }
+
+  /** Forget the node IDs the allocator handed out or was seeded with. */
+  forgetCanNodeAllocations(): void {
+    this.canBusService.forgetAllocations()
   }
 
   /**
@@ -2656,6 +2699,9 @@ export class ArduPilotConfiguratorRuntime {
         break
       case 'CAN_FRAME':
         this.canBusService.processCanFrame(envelope.message)
+        break
+      case 'CANFD_FRAME':
+        this.canBusService.processCanFdFrame(envelope.message)
         break
       case 'OPTICAL_FLOW':
         this.processOpticalFlow(envelope.message)

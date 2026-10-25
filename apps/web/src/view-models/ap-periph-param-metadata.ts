@@ -1,16 +1,25 @@
 import type { DronecanParamCatalogDef } from './dronecan-param-display'
 
-// Curated metadata for AP_Periph-specific params (CAN_*, FLASH_BOOTLOADER, etc.)
-// that the flight-controller catalog doesn't know — so the CAN/DroneCAN param
-// grids enrich them (label / range / enum) too. Verified against
-// Tools/AP_Periph/Parameters.cpp. The shared param families a periph reuses
-// (GPS_*, COMPASS_*, BARO_*, NTF_*, …) are already covered by the FC catalog;
-// this only fills the periph-only gaps. Used as a fallback after the FC catalog.
+// AP_Periph (DroneCAN peripheral) parameter metadata for the CAN/DroneCAN param
+// grids, used as a fallback after the FC catalog.
 //
-// Bitmask params (DEBUG, BATT_HIDE_MASK) intentionally carry no `options` —
-// the display helper treats `options` as a single-select enum, which would
-// mislabel a bitmask value; a label + description is the useful part.
-export const AP_PERIPH_PARAM_METADATA: Record<string, DronecanParamCatalogDef> = {
+// The bulk is GENERATED from ArduPilot source (generated/ap-periph-params.ts,
+// via scripts/generate-ap-periph-params.py = ArduPilot's own
+// `param_parse.py --vehicle AP_Periph`): every documented AP_Periph param —
+// Tools/AP_Periph/Parameters.cpp plus the library groups it registers (GPS,
+// COMPASS_, BARO, RNGFND, BATT, OUT, NTF_, SERIAL, STAT_, …).
+//
+// The curated overlay below wins FIELD BY FIELD over the generated def: it keeps
+// shorter grid labels, "DroneCAN" (not the legacy "UAVCAN") in CAN_PROTOCOL,
+// friendlier enum wording, and DEBUG's bits spelled out in its description (the
+// grid shows a description, not the bitmask). Fields the overlay leaves out
+// (units, step, reboot-required, bitmask bits, the FLASH_BOOTLOADER "DANGER"
+// text) come from the generated def.
+//
+// Bitmask params (DEBUG, BATT_HIDE_MASK) carry `bits`, never `options` — the
+// display helper treats `options` as a single-select enum, which would
+// mislabel a bitmask value.
+const CURATED_OVERLAY: Record<string, DronecanParamCatalogDef> = {
   FORMAT_VERSION: { label: 'EEPROM format version', description: 'Storage format version number for this node.' },
   CAN_NODE: {
     label: 'DroneCAN node ID',
@@ -70,7 +79,6 @@ export const AP_PERIPH_PARAM_METADATA: Record<string, DronecanParamCatalogDef> =
   },
   FLASH_BOOTLOADER: {
     label: 'Trigger bootloader update',
-    description: 'Set to 1 to flash the bootloader from this firmware (advanced).',
     minimum: 0,
     maximum: 1
   },
@@ -97,4 +105,31 @@ export const AP_PERIPH_PARAM_METADATA: Record<string, DronecanParamCatalogDef> =
       { value: 1, label: 'Enabled' }
     ]
   }
+}
+
+/** The hand-curated entries alone: in the main bundle, so a node's grid has
+ *  its best-known labels at once while the generated table loads. */
+export const AP_PERIPH_CURATED_METADATA: Readonly<Record<string, DronecanParamCatalogDef>> = CURATED_OVERLAY
+
+/** The generated table with the curated overlay on top, field by field. */
+export function mergeApPeriphMetadata(
+  generated: Readonly<Record<string, DronecanParamCatalogDef>>
+): Record<string, DronecanParamCatalogDef> {
+  const merged: Record<string, DronecanParamCatalogDef> = { ...generated }
+  for (const [name, curated] of Object.entries(CURATED_OVERLAY)) {
+    merged[name] = { ...generated[name], ...curated }
+  }
+  return merged
+}
+
+let loading: Promise<Record<string, DronecanParamCatalogDef>> | undefined
+
+/**
+ * Every AP_Periph param (generated + curated), loaded on first use: the
+ * generated table is ~46 KB gzipped and only the CAN surfaces need it, so it
+ * is its own chunk rather than part of the app's first load.
+ */
+export function loadApPeriphParamMetadata(): Promise<Record<string, DronecanParamCatalogDef>> {
+  loading ??= import('./generated/ap-periph-params').then((module) => mergeApPeriphMetadata(module.AP_PERIPH_GENERATED_PARAMS))
+  return loading
 }

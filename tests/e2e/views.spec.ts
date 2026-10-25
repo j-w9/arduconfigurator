@@ -6595,7 +6595,10 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(streamingRow).toBeVisible({ timeout: 8000 })
     await streamingRow.getByRole('button').first().click()
     await streamingRow.locator('[data-testid^="mavlink-field-graph-"]').first().click()
-    await expect(page.getByTestId('mavlink-plots')).toBeVisible()
+    // The plot is on the Plot sub-tab, which counts it.
+    await expect(page.getByTestId('mavlink-subtab-plot')).toHaveText('Plot (1)')
+    await page.getByTestId('mavlink-subtab-plot').click()
+    await expect(page.getByTestId('mavlink-chart-pane')).toHaveCount(1)
     // The plot buffer fills as SYS_STATUS arrives; the demo emitter ticks at
     // ~7s, so allow more than one cadence for the first sample.
     const csvButton = page.locator('[data-testid^="mavlink-plot-csv-"]').first()
@@ -6671,15 +6674,104 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(graph).toBeVisible()
     await graph.click()
 
-    // A live plot renders with its read-outs.
-    await expect(page.getByTestId('mavlink-plots')).toBeVisible()
+    // A live plot renders on the Plot sub-tab with its value.
+    await page.getByTestId('mavlink-subtab-plot').click()
+    await expect(page.getByTestId('mavlink-chart-pane')).toHaveCount(1)
     const plot = page.locator('[data-testid^="mavlink-plot-"]').first()
     await expect(plot).toBeVisible()
-    await expect(plot).toContainText('now')
+    await expect(page.locator('[data-testid^="mavlink-plot-current-"]').first()).toHaveText(/\d/)
 
     // Removing the plot tears it down.
-    page.locator('[data-testid^="mavlink-plot-remove-"]').first().click()
-    await expect(page.getByTestId('mavlink-plots')).toHaveCount(0)
+    await page.locator('[data-testid^="mavlink-plot-remove-"]').first().click()
+    await expect(page.getByTestId('mavlink-chart-pane')).toHaveCount(0)
+    await expect(page.getByTestId('mavlink-chart-empty')).toBeVisible()
+  })
+
+  test('MAVLink Inspector Plot: a predefined graph live, a field from the side panel, overlay and split', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await enableExpertMode(page)
+    await page.getByTestId('view-button-mavlink-inspector').click()
+    await expect(page.getByTestId('mavlink-inspector-table')).toBeVisible({ timeout: 8000 })
+    await page.getByTestId('mavlink-subtab-plot').click()
+    await expect(page.getByTestId('mavlink-chart-empty')).toBeVisible()
+
+    // MAVExplorer's library: the demo carries ATTITUDE, so Roll and Pitch can draw.
+    await page.getByTestId('mavlink-chart-side-graphs').click()
+    await page.getByTestId('mavlink-graphs-search').fill('roll pitch')
+    const open = page.getByTestId('mavlink-graph-open-Attitude/Roll and Pitch')
+    await expect(open).toBeEnabled({ timeout: 10_000 })
+    await open.click()
+    await expect(page.getByTestId('mavlink-graph-close-Attitude/Roll and Pitch')).toHaveText('Plotted')
+
+    // Messages decoded from ArduPilot's dialect draw too: vibration from VIBRATION.
+    await page.getByTestId('mavlink-graphs-search').fill('vibration')
+    const vibration = page.getByTestId('mavlink-graph-open-Sensors/Accelerometer/Vibration')
+    await expect(vibration).toBeEnabled({ timeout: 10_000 })
+    await vibration.click()
+    // Its three axes, one line each.
+    const vibrationLines = page.getByTestId('mavlink-graph-line').locator('.plot-series__name', { hasText: /^VIBRATION\./ })
+    await expect(vibrationLines).toHaveCount(3)
+    await expect(vibrationLines.first()).toHaveText('VIBRATION.vibration_x')
+    await page.getByTestId('mavlink-graph-close-Sensors/Accelerometer/Vibration').click()
+
+    // One chart, two lines (roll and pitch in degrees), values arriving.
+    const lines = page.getByTestId('mavlink-graph-line')
+    const panes = page.getByTestId('mavlink-chart-pane')
+    await expect(lines).toHaveCount(2)
+    await expect(panes).toHaveCount(1)
+    await expect.poll(async () => (await lines.first().textContent()) ?? '', { timeout: 10_000 }).toMatch(/degrees\(ATTITUDE\.roll\)\s*-?\d/)
+    await expect(panes.first().locator('canvas').first()).toBeVisible()
+
+    // A field from the side panel starts on its own chart.
+    await page.getByTestId('mavlink-chart-side-fields').click()
+    await page.getByTestId('mavlink-fields-search').fill('SYS_STATUS')
+    await page.locator('[data-testid^="mavlink-field-add-1:1:SYS_STATUS:"]').first().click()
+    await expect(panes).toHaveCount(2)
+    // Its chart menu puts it with the graph; Split all and Overlay all regroup everything.
+    const fieldRow = page.locator('[data-testid^="mavlink-plot-1:1:SYS_STATUS"]').first()
+    await fieldRow.getByTestId('mavlink-chart-chart-menu').selectOption({ label: 'With degrees(ATTITUDE.roll) +1' })
+    await expect(panes).toHaveCount(1)
+    await page.getByTestId('mavlink-chart-split-all').click()
+    await expect(panes).toHaveCount(3)
+    await page.getByTestId('mavlink-chart-overlay-all').click()
+    await expect(panes).toHaveCount(1)
+    // And the grip drags a series back out onto a chart of its own.
+    await fieldRow.getByTestId('mavlink-chart-grip').dragTo(page.getByTestId('mavlink-chart-new-pane'))
+    await expect(panes).toHaveCount(2)
+    await expect(page.getByTestId('mavlink-subtab-plot')).toHaveText('Plot (3)')
+
+    // Flight modes shade the charts and autopilot messages are marked, both on by default.
+    await expect(page.getByTestId('mavlink-plot-modes')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('mavlink-plot-messages')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('mavlink-plot-params')).toHaveAttribute('aria-pressed', 'true')
+    // A line hides from its chart by its swatch and comes back the same way.
+    const swatch = panes.first().getByTestId('mavlink-chart-visibility').first()
+    await swatch.click()
+    await expect(swatch).toHaveAttribute('aria-pressed', 'false')
+    await swatch.click()
+    await expect(swatch).toHaveAttribute('aria-pressed', 'true')
+    // FFT: the chart as a frequency spectrum, its peak named.
+    await panes.first().getByTestId('mavlink-chart-fft').click()
+    await expect(panes.first().getByTestId('mavlink-chart-fft-chart')).toBeVisible()
+
+    // Closing the graph takes its lines away.
+    await page.getByTestId('mavlink-chart-side-graphs').click()
+    await page.getByTestId('mavlink-graph-close-Attitude/Roll and Pitch').click()
+    await expect(lines).toHaveCount(0)
+
+    // A typed expression: a bad one says why; a good one draws.
+    await page.getByTestId('mavlink-chart-side-expression').click()
+    await page.getByTestId('mavlink-expression-input').fill('degrees(ATTITUDE.pitch')
+    await page.getByTestId('mavlink-expression-add').click()
+    await expect(page.getByTestId('mavlink-expression-error')).toBeVisible()
+    await page.getByTestId('mavlink-expression-input').fill('degrees(ATTITUDE.pitch)')
+    await page.getByTestId('mavlink-expression-condition').fill('VFR_HUD.groundspeed >= 0')
+    await page.getByTestId('mavlink-expression-add').click()
+    await expect(lines).toHaveCount(1)
+    await expect(lines.first()).toContainText('{VFR_HUD.groundspeed>=0}')
+    await expect(lines.first()).toContainText('expression')
   })
 
   test('CAN tab manages a device: param grid, restart, ESC telemetry', async ({ page }) => {
@@ -6696,14 +6788,16 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(toggle).toContainText(/Params \([1-9]/, { timeout: 12000 })
     await toggle.click()
     await expect(page.getByTestId('can-device-inspector-50')).toBeVisible()
-    const battInput = page.getByTestId('can-bus-param-input-50-BATT_MONITOR')
+    const battInput = page.getByTestId('can-bus-param-select-50-BATT_MONITOR')
     await expect(battInput).toBeVisible({ timeout: 12000 })
     // The node reports no labels/enums, so the grid enriches from the curated
-    // FC catalog by name: BATT_MONITOR=4 shows its enum label.
-    await expect(page.getByTestId('can-bus-param-50-BATT_MONITOR')).toContainText('Analog Voltage and Current')
+    // FC catalog by name: BATT_MONITOR is a dropdown of its named values, on 4.
+    await expect(battInput).toHaveAttribute('data-value', '4')
+    await expect(battInput).toContainText('Analog Voltage and Current')
 
     // Editing a parameter stages a change and reveals Apply & Save.
-    await battInput.fill('3')
+    await battInput.click()
+    await page.getByTestId('can-bus-param-select-50-BATT_MONITOR-option-3').click()
     const apply = page.getByTestId('can-bus-apply-all-50')
     await expect(apply).toBeVisible()
     await apply.click()
@@ -8924,11 +9018,18 @@ test.describe('CAN tab node firmware on the website', () => {
     await page.getByTestId('can-bus-node-actions-50').click()
     await expect(page.getByTestId('can-bus-node-50')).toContainText('HW 2.1', { timeout: COMMAND_ACK_TIMEOUT })
     await expect(page.getByTestId('dronecan-fwupdate-online-unavailable-50')).toHaveCount(0)
-    await page.getByTestId('dronecan-fwupdate-online-find-50').click()
-    const list = page.getByTestId('dronecan-fwupdate-online-list-50')
-    await expect(list).toContainText('TestPeriph')
-    await expect(list).not.toContainText('OtherPeriph')
-    await page.getByTestId('dronecan-fwupdate-online-use-50').first().click()
+    // Every AP_Periph build is in the dropdown; the node's own (board id 513)
+    // is listed first and pre-selected.
+    const picker = page.getByTestId('dronecan-fwupdate-picker-50')
+    const select = picker.getByTestId('dronecan-fwupdate-picker-select-50')
+    await expect(select.locator('option')).toHaveCount(3)
+    await expect(select).toHaveValue('https://firmware.ardupilot.org/AP_Periph/stable/TestPeriph/AP_Periph.apj')
+    await expect(select.locator('option').nth(1)).toContainText('TestPeriph · 1.7.0 · this board id')
+    await picker.getByTestId('dronecan-fwupdate-picker-search-50').fill('other')
+    await expect(select.locator('option', { hasText: 'OtherPeriph' })).toHaveCount(1)
+    await picker.getByTestId('dronecan-fwupdate-picker-search-50').fill('')
+    await picker.getByTestId('dronecan-fwupdate-picker-download-50').click()
+    await expect(picker.getByTestId('dronecan-fwupdate-picker-download-50')).toHaveText('✓ Downloaded TestPeriph 1.7.0')
     await page.getByTestId('dronecan-fwupdate-ack-50').check()
     await expect(page.getByTestId('dronecan-fwupdate-start-50')).toBeEnabled()
     expect(asked[0]).toContain('path=AP_Periph%2Fstable%2FTestPeriph%2FAP_Periph.apj')

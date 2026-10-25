@@ -12,6 +12,7 @@ import type {
 } from '@arduconfig/ardupilot-core'
 
 import { compareParamEntries, formatParamValue, healthLabel, modeLabel } from './can-bus'
+import { dronecanNodeStack, dronecanNodeStackLabel } from './dronecan-node-stack'
 import { describeDronecanParam, type DronecanParamCatalogLookup } from './dronecan-param-display'
 
 export interface DronecanDetailRow {
@@ -54,6 +55,7 @@ export function buildDronecanNodeDetailRows(
   const rows: DronecanDetailRow[] = [
     { label: 'Node ID', value: `#${node.nodeId}` },
     { label: 'Name', value: node.name && node.name.length > 0 ? node.name : '—' },
+    { label: 'Firmware', value: dronecanNodeStackLabel(dronecanNodeStack(node)) },
     { label: 'Health', value: healthLabel(node.health) },
     { label: 'Mode', value: modeLabel(node.mode) },
     { label: 'Uptime', value: uptimeLabel(node.uptimeSec) }
@@ -131,6 +133,16 @@ export interface DronecanParamRow {
   defaultLabel?: string
   /** Catalog description, for a tooltip. */
   description?: string
+  /** A bitmask's set bits by name. */
+  bitsLabel?: string
+  /** Suggested step for the value. */
+  step?: number
+  /** Takes effect only after the node reboots. */
+  rebootRequired?: boolean
+  /** Documented read-only. */
+  readOnly?: boolean
+  /** Named values of a single-choice param: the editor is a dropdown. */
+  options?: ReadonlyArray<{ value: number; label: string }>
 }
 
 /** Build the editable parameter grid rows for one node, sorted by index
@@ -144,7 +156,7 @@ export function buildDronecanParamRows(
 ): DronecanParamRow[] {
   return [...node.parameters].sort(compareParamEntries).map((entry: DronecanParamEntry): DronecanParamRow => {
     const type = entry.value.tag
-    const meta = describeDronecanParam(entry, lookup?.(entry.name))
+    const meta = describeDronecanParam(entry, lookup?.(entry.name, node))
     return {
       index: entry.index,
       name: entry.name,
@@ -157,7 +169,12 @@ export function buildDronecanParamRows(
       editable: type !== 'empty',
       rangeLabel: meta.rangeLabel,
       defaultLabel: meta.defaultLabel,
-      description: meta.description
+      description: meta.description,
+      bitsLabel: meta.bitsLabel,
+      step: meta.step,
+      rebootRequired: meta.rebootRequired,
+      readOnly: meta.readOnly,
+      options: type === 'int64' ? meta.options : undefined
     }
   })
 }

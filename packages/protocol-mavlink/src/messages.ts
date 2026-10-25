@@ -1,3 +1,5 @@
+import type { GenericMavlinkMessage } from './mavlink-generic.js'
+
 export interface HeartbeatMessage {
   type: 'HEARTBEAT'
   autopilot: number
@@ -594,6 +596,24 @@ export interface UavcanNodeInfoMessage {
 // raw 29-bit extended CAN ID; downstream DroneCAN code in this repo
 // peels the source node, message/service type, and tail byte out of
 // the payload bytes.
+/**
+ * CANFD_FRAME (387): a CAN FD frame forwarded by MAV_CMD_CAN_FORWARD, or sent
+ * to the bus. Same layout as CAN_FRAME with a 64-byte payload; `len` is the
+ * data length in bytes (ArduPilot's AP_MAVLinkCAN converts DLC<->length).
+ */
+export interface CanFdFrameMessage {
+  type: 'CANFD_FRAME'
+  targetSystem: number
+  targetComponent: number
+  /** 0-based HAL bus index on the wire (CAN1 = 0), as for CAN_FRAME. */
+  bus: number
+  len: number
+  /** 32-bit id with the flag bits (bit 31 = extended). */
+  id: number
+  /** Up to 64 bytes of payload. */
+  data: Uint8Array
+}
+
 export interface CanFrameMessage {
   type: 'CAN_FRAME'
   /** GCS target system, preserved from the MAVLink envelope. */
@@ -644,6 +664,7 @@ export type MavlinkMessage =
   | AvailableModesMonitorMessage
   | EscTelemetryMessage
   | CanFrameMessage
+  | CanFdFrameMessage
   | GpsRawIntMessage
   | GlobalPositionIntMessage
   | AttitudeMessage
@@ -670,6 +691,9 @@ export type MavlinkMessage =
   | UavcanNodeStatusMessage
   | UavcanNodeInfoMessage
   | SetupSigningMessage
+  // Any other message in ArduPilot's dialect, decoded off the generated table
+  // (mavlink-generic.ts). Typed handlers never see it; it is for the inspector.
+  | GenericMavlinkMessage
 
 export interface MavlinkEnvelope {
   header: {

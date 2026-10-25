@@ -8,14 +8,13 @@
 // moment. Presentational — stats come from useMavlinkInspector via App; all
 // shaping lives in the mavlink-inspector view-model.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { Panel, StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import type { MavlinkMessageStat, MavlinkPlot, MavlinkPlotSpec } from '../hooks/use-mavlink-inspector'
 import {
   buildMavlinkFieldRows,
-  buildPlotGeometry,
   buildSparklinePoints,
   classifyRowHealth,
   describeMessageRequestOutcome,
@@ -24,7 +23,6 @@ import {
   filterMavlinkStats,
   filterMavlinkStatsBySource,
   formatBytesPerSec,
-  formatPlotValue,
   groupMavlinkStatsBySource,
   isRowStale,
   listMavlinkSources,
@@ -79,6 +77,10 @@ export interface MavlinkInspectorViewProps {
   onExportPlotCsv?: (key: string) => void
   /** Cap on simultaneous plots, surfaced when the limit is reached. */
   maxPlots?: number
+  /** The Plot sub-tab -- field plots and predefined graphs on shared charts: a slot. */
+  plotWorkspace?: ReactNode
+  /** Series on the Plot sub-tab, for its label. */
+  plotCount?: number
 }
 
 function ageLabel(lastSeenMs: number): string {
@@ -384,75 +386,6 @@ function MavlinkRequestControl({
   )
 }
 
-const PLOT_WIDTH = 240
-const PLOT_HEIGHT = 60
-
-/** One live field plot: an autoscaling inline-SVG line chart + read-outs. */
-function MavlinkPlotChart({
-  plot,
-  onRemove,
-  onExportCsv
-}: {
-  plot: MavlinkPlot
-  onRemove?: (key: string) => void
-  onExportCsv?: (key: string) => void
-}) {
-  const geometry = buildPlotGeometry(plot.samples, PLOT_WIDTH, PLOT_HEIGHT)
-  return (
-    <div className="mavlink-inspector__plot" data-testid={`mavlink-plot-${plot.key}`}>
-      <div className="mavlink-inspector__plot-head">
-        <span className="mavlink-inspector__plot-title">
-          {plot.systemId}:{plot.componentId} · {plot.type}.{plot.field}
-        </span>
-        <span className="mavlink-inspector__plot-actions">
-          {onExportCsv ? (
-            <button
-              type="button"
-              className="mavlink-inspector__field-copy"
-              onClick={() => onExportCsv(plot.key)}
-              disabled={plot.samples.length === 0}
-              data-testid={`mavlink-plot-csv-${plot.key}`}
-            >
-              CSV
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="mavlink-inspector__field-copy"
-            onClick={() => onRemove?.(plot.key)}
-            data-testid={`mavlink-plot-remove-${plot.key}`}
-          >
-            remove
-          </button>
-        </span>
-      </div>
-      <svg
-        className="mavlink-inspector__plot-svg"
-        viewBox={`0 0 ${PLOT_WIDTH} ${PLOT_HEIGHT}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={`${plot.type}.${plot.field} over time`}
-      >
-        {geometry.points ? (
-          <polyline
-            points={geometry.points}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            vectorEffect="non-scaling-stroke"
-          />
-        ) : null}
-      </svg>
-      <div className="mavlink-inspector__plot-meta">
-        <span data-testid={`mavlink-plot-current-${plot.key}`}>now {formatPlotValue(geometry.current)}</span>
-        <span>min {formatPlotValue(geometry.min)}</span>
-        <span>max {formatPlotValue(geometry.max)}</span>
-        <span>{geometry.sampleCount} pts</span>
-      </div>
-    </div>
-  )
-}
-
 export function MavlinkInspectorView({
   stats,
   sentStats = [],
@@ -473,7 +406,8 @@ export function MavlinkInspectorView({
   plots = [],
   onAddPlot,
   onRemovePlot,
-  onExportPlotCsv,
+  plotWorkspace,
+  plotCount = 0,
   maxPlots
 }: MavlinkInspectorViewProps) {
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -522,271 +456,297 @@ export function MavlinkInspectorView({
       }
     : undefined
 
+  const [page, setPage] = useState<'messages' | 'plot'>('messages')
+
   return (
-    <section className="grid one-up" id="setup-panel-mavlink-inspector">
+    <section className="grid one-up mavlink-inspector-tab" id="setup-panel-mavlink-inspector">
       <Panel
         title="MAVLink Inspector"
       >
         <div className="telemetry-stack" data-testid="mavlink-inspector">
-          <div className="telemetry-header">
-            <div>
-              <h3>Live messages</h3>
-              <p data-testid="mavlink-inspector-summary">
-                {summary.sourceCount} source{summary.sourceCount === 1 ? '' : 's'} ·{' '}
-                {summary.typeCount} row{summary.typeCount === 1 ? '' : 's'} ·{' '}
-                {summary.totalRateHz.toFixed(0)} msg/s · {formatBytesPerSec(summary.totalBytesPerSec)} ·{' '}
-                {summary.totalCount} total
-              </p>
-            </div>
-            <StatusBadge tone={paused ? 'warning' : connected ? 'success' : 'neutral'}>
-              {paused ? 'paused' : connected ? 'live' : 'no link'}
-            </StatusBadge>
-          </div>
-
-          <div className="mavlink-inspector__controls">
-            <input
-              type="search"
-              className="mavlink-inspector__filter"
-              placeholder="Filter message types…"
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-              data-testid="mavlink-inspector-filter"
-            />
-            <label className="dronecan-inspector__bus-select">
-              <span>Source</span>
-              <select
-                value={activeSource}
-                onChange={(event) => setSource(event.target.value)}
-                data-testid="mavlink-inspector-source"
-              >
-                <option value="">All sources</option>
-                {sources.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="dronecan-inspector__bus-select">
-              <span>Sort</span>
-              <select
-                value={sortKey}
-                onChange={(event) => setSortKey(event.target.value as MavlinkSortKey)}
-                data-testid="mavlink-inspector-sort"
-              >
-                <option value="name">Name</option>
-                <option value="rate">Rate</option>
-                <option value="bandwidth">Bandwidth</option>
-                <option value="recent">Last seen</option>
-              </select>
-            </label>
-            <button
-              type="button"
-              style={buttonStyle(paused ? 'primary' : 'secondary')}
-              onClick={onTogglePause}
-              aria-pressed={paused}
-              data-testid="mavlink-inspector-pause"
-            >
-              {paused ? 'Resume' : 'Pause'}
-            </button>
-            <button type="button" style={buttonStyle()} onClick={onClear} data-testid="mavlink-inspector-clear">
-              Clear
-            </button>
-          </div>
-
-          {onExportSnapshot || onStartRecording ? (
-            <div className="mavlink-inspector__export" data-testid="mavlink-inspector-export">
-              <span className="mavlink-inspector__export-title">Record &amp; export</span>
-              {onExportSnapshot ? (
+          {plotWorkspace ? (
+            // Messages (the live table) and Plot (charts of fields and predefined graphs), as on the CAN tab.
+            <div className="tab-strip can-subtabs" role="tablist" aria-label="Inspector views" data-testid="mavlink-subtabs">
+              {(['messages', 'plot'] as const).map((id) => (
                 <button
+                  key={id}
                   type="button"
-                  style={buttonStyle()}
-                  onClick={onExportSnapshot}
-                  disabled={stats.length === 0}
-                  data-testid="mavlink-export-snapshot"
+                  role="tab"
+                  aria-selected={page === id}
+                  className={`tab-strip__tab${page === id ? ' is-active' : ''}`}
+                  onClick={() => setPage(id)}
+                  data-testid={`mavlink-subtab-${id}`}
                 >
-                  Export JSON
+                  <span className="tab-strip__tab-title">
+                    {id === 'messages' ? 'Messages' : plotCount > 0 ? `Plot (${plotCount})` : 'Plot'}
+                  </span>
                 </button>
-              ) : null}
-              {onStartRecording && onStopRecording ? (
-                <button
-                  type="button"
-                  style={buttonStyle(recording ? 'primary' : 'secondary')}
-                  onClick={recording ? onStopRecording : onStartRecording}
-                  aria-pressed={recording}
-                  data-testid="mavlink-record-toggle"
-                >
-                  {recording ? 'Stop recording' : 'Record stream'}
-                </button>
-              ) : null}
-              {onDownloadRecording ? (
-                <button
-                  type="button"
-                  style={buttonStyle()}
-                  onClick={onDownloadRecording}
-                  disabled={recording || recordedCount === 0}
-                  data-testid="mavlink-record-download"
-                >
-                  Download capture
-                </button>
-              ) : null}
-              <span className="mavlink-inspector__record-meta" data-testid="mavlink-record-status" role="status">
-                {recording ? '● recording · ' : ''}
-                {recordedCount} msg
-                {typeof recordingMax === 'number' ? ` (cap ${recordingMax})` : ''}
-                {recordingCapped ? ' · capped' : ''}
-              </span>
-            </div>
-          ) : null}
-
-          {onRequestMessage ? (
-            <MavlinkRequestControl connected={connected} onRequestMessage={onRequestMessage} />
-          ) : null}
-
-          {plots.length > 0 ? (
-            <div className="mavlink-inspector__plots" data-testid="mavlink-plots">
-              {plots.map((plot) => (
-                <MavlinkPlotChart
-                  key={plot.key}
-                  plot={plot}
-                  onRemove={onRemovePlot}
-                  onExportCsv={onExportPlotCsv}
-                />
               ))}
             </div>
           ) : null}
 
-          {!connected && stats.length === 0 ? (
-            <p className="telemetry-note">Connect to a vehicle to see the live MAVLink message stream.</p>
-          ) : groups.length === 0 ? (
-            <p className="telemetry-note">No messages {matched ? 'match the filter' : 'received yet'}.</p>
+          {/* The live summary belongs to Messages; Plot has its own toolbar. */}
+          {!plotWorkspace || page === 'messages' ? (
+            <>
+              <div className="telemetry-header">
+                <div>
+                  <h3>Live messages</h3>
+                  <p data-testid="mavlink-inspector-summary">
+                    {summary.sourceCount} source{summary.sourceCount === 1 ? '' : 's'} ·{' '}
+                    {summary.typeCount} row{summary.typeCount === 1 ? '' : 's'} ·{' '}
+                    {summary.totalRateHz.toFixed(0)} msg/s · {formatBytesPerSec(summary.totalBytesPerSec)} ·{' '}
+                    {summary.totalCount} total
+                  </p>
+                </div>
+                <StatusBadge tone={paused ? 'warning' : connected ? 'success' : 'neutral'}>
+                  {paused ? 'paused' : connected ? 'live' : 'no link'}
+                </StatusBadge>
+              </div>
+            </>
+          ) : null}
+
+
+          {plotWorkspace && page === 'plot' ? (
+            plotWorkspace
           ) : (
-            <div className="mavlink-inspector__table" data-testid="mavlink-inspector-table">
-              {groups.map((group) => {
-                const health = healthById.get(group.id)
-                const staleCount = group.stats.reduce(
-                  (count, stat) => count + (isRowStale(stat.lastSeenMs, now) ? 1 : 0),
-                  0
-                )
-                const lossPct = health?.lossPct ?? 0
-                const healthTone = lossPct >= 5 || staleCount > 0 ? 'warn' : 'ok'
-                return (
-                <div
-                  key={group.id}
-                  className="mavlink-inspector__group"
-                  data-testid={`mavlink-source-${group.id}`}
+            <>
+            <div className="mavlink-inspector__controls">
+              <input
+                type="search"
+                className="mavlink-inspector__filter"
+                placeholder="Filter message types…"
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                data-testid="mavlink-inspector-filter"
+              />
+              <label className="dronecan-inspector__bus-select">
+                <span>Source</span>
+                <select
+                  value={activeSource}
+                  onChange={(event) => setSource(event.target.value)}
+                  data-testid="mavlink-inspector-source"
                 >
-                  <div className="mavlink-inspector__source-head">
-                    <span className="mavlink-inspector__source-label">{group.label}</span>
-                    <span className="mavlink-inspector__source-meta">
-                      {group.rateHz.toFixed(0)} msg/s · {formatBytesPerSec(group.bytesPerSec)}
-                    </span>
-                    <span
-                      className={`mavlink-inspector__source-health mavlink-inspector__source-health--${healthTone}`}
-                      data-testid={`mavlink-source-health-${group.id}`}
-                      title={
-                        health
-                          ? `${health.dropped} dropped of ${health.received + health.dropped} frames`
-                          : 'No sequence data yet'
-                      }
+                  <option value="">All sources</option>
+                  {sources.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="dronecan-inspector__bus-select">
+                <span>Sort</span>
+                <select
+                  value={sortKey}
+                  onChange={(event) => setSortKey(event.target.value as MavlinkSortKey)}
+                  data-testid="mavlink-inspector-sort"
+                >
+                  <option value="name">Name</option>
+                  <option value="rate">Rate</option>
+                  <option value="bandwidth">Bandwidth</option>
+                  <option value="recent">Last seen</option>
+                </select>
+              </label>
+              {/* The same toolbar grammar as CAN ▸ Frames: red Pause, green Resume,
+                  a red-dot Record. Recording and export sit on this row too, so
+                  the table is not pushed down by a strip of three buttons. */}
+              <button
+                type="button"
+                className={`can-monitor__tool ${paused ? 'can-monitor__tool--resume' : 'can-monitor__tool--pause'}`}
+                onClick={onTogglePause}
+                aria-pressed={paused}
+                data-testid="mavlink-inspector-pause"
+              >
+                {paused ? 'Resume' : 'Pause'}
+              </button>
+              <button type="button" className="can-monitor__tool" onClick={onClear} data-testid="mavlink-inspector-clear">
+                Clear
+              </button>
+              {onExportSnapshot || onStartRecording ? (
+                <span className="mavlink-inspector__export" data-testid="mavlink-inspector-export">
+                  <span className="plot-workspace__divider" aria-hidden="true" />
+                  {onStartRecording && onStopRecording ? (
+                    <button
+                      type="button"
+                      className={`can-monitor__tool can-monitor__tool--record${recording ? ' is-recording' : ''}`}
+                      onClick={recording ? onStopRecording : onStartRecording}
+                      aria-pressed={recording}
+                      data-testid="mavlink-record-toggle"
                     >
-                      {describeSourceHealth(lossPct, staleCount)}
-                    </span>
+                      <span className="can-monitor__rec-dot" aria-hidden="true" />
+                      {recording ? 'Stop recording' : 'Record stream'}
+                    </button>
+                  ) : null}
+                  {onDownloadRecording ? (
+                    <button
+                      type="button"
+                      className="can-monitor__tool"
+                      onClick={onDownloadRecording}
+                      disabled={recording || recordedCount === 0}
+                      data-testid="mavlink-record-download"
+                    >
+                      Download capture
+                    </button>
+                  ) : null}
+                  {onExportSnapshot ? (
+                    <button
+                      type="button"
+                      className="can-monitor__tool"
+                      onClick={onExportSnapshot}
+                      disabled={stats.length === 0}
+                      title="The sources, message types, rates and loss as they stand, as JSON"
+                      data-testid="mavlink-export-snapshot"
+                    >
+                      Export JSON
+                    </button>
+                  ) : null}
+                  <span className="mavlink-inspector__record-meta" data-testid="mavlink-record-status" role="status">
+                    {recording ? 'recording · ' : ''}
+                    {recording || recordedCount > 0 ? `${recordedCount} msg` : ''}
+                    {recording && typeof recordingMax === 'number' ? ` of ${recordingMax}` : ''}
+                    {recordingCapped ? ' · capped' : ''}
+                  </span>
+                </span>
+              ) : null}
+            </div>
+
+            {onRequestMessage ? (
+              <MavlinkRequestControl connected={connected} onRequestMessage={onRequestMessage} />
+            ) : null}
+
+            {!connected && stats.length === 0 ? (
+              <p className="telemetry-note">Connect to a vehicle to see the live MAVLink message stream.</p>
+            ) : groups.length === 0 ? (
+              <p className="telemetry-note">No messages {matched ? 'match the filter' : 'received yet'}.</p>
+            ) : (
+              <div className="mavlink-inspector__table" data-testid="mavlink-inspector-table">
+                {groups.map((group) => {
+                  const health = healthById.get(group.id)
+                  const staleCount = group.stats.reduce(
+                    (count, stat) => count + (isRowStale(stat.lastSeenMs, now) ? 1 : 0),
+                    0
+                  )
+                  const lossPct = health?.lossPct ?? 0
+                  const healthTone = lossPct >= 5 || staleCount > 0 ? 'warn' : 'ok'
+                  return (
+                  <div
+                    key={group.id}
+                    className="mavlink-inspector__group"
+                    data-testid={`mavlink-source-${group.id}`}
+                  >
+                    <div className="mavlink-inspector__source-head">
+                      <span className="mavlink-inspector__source-label">{group.label}</span>
+                      <span className="mavlink-inspector__source-meta">
+                        {group.rateHz.toFixed(0)} msg/s · {formatBytesPerSec(group.bytesPerSec)}
+                      </span>
+                      <span
+                        className={`mavlink-inspector__source-health mavlink-inspector__source-health--${healthTone}`}
+                        data-testid={`mavlink-source-health-${group.id}`}
+                        title={
+                          health
+                            ? `${health.dropped} dropped of ${health.received + health.dropped} frames`
+                            : 'No sequence data yet'
+                        }
+                      >
+                        {describeSourceHealth(lossPct, staleCount)}
+                      </span>
+                    </div>
+                    <div className="mavlink-inspector__row mavlink-inspector__row--head">
+                      <span>Message</span>
+                      <span>Rate</span>
+                      <span>Trend</span>
+                      <span>Bandwidth</span>
+                      <span>Count</span>
+                      <span>Last</span>
+                    </div>
+                    {group.stats.map((stat) => {
+                      const isOpen = expanded === stat.key
+                      const rowHealth = classifyRowHealth(stat.lastSeenMs, now, stat.rateHistory, stat.rateHz)
+                      return (
+                        <div
+                          key={stat.key}
+                          className={`mavlink-inspector__entry mavlink-inspector__entry--${rowHealth}`}
+                          data-testid={`mavlink-row-${stat.key}`}
+                          data-health={rowHealth}
+                        >
+                          <button
+                            type="button"
+                            className="mavlink-inspector__row"
+                            onClick={() => setExpanded(isOpen ? null : stat.key)}
+                            aria-expanded={isOpen}
+                          >
+                            <span className="mavlink-inspector__type">{stat.type}</span>
+                            <span>{stat.rateHz.toFixed(1)} Hz</span>
+                            <RateSparkline history={stat.rateHistory} />
+                            <span>{formatBytesPerSec(stat.bytesPerSec)}</span>
+                            <span>{stat.count}</span>
+                            <span className="mavlink-inspector__last">
+                              {ageLabel(stat.lastSeenMs)}
+                              {rowHealth !== 'ok' ? (
+                                <span
+                                  className={`mavlink-inspector__tone mavlink-inspector__tone--${rowHealth}`}
+                                  data-testid={`mavlink-row-tone-${stat.key}`}
+                                >
+                                  {rowHealth}
+                                </span>
+                              ) : null}
+                            </span>
+                          </button>
+                          {isOpen ? (
+                            <MavlinkFieldTable stat={stat} plottedKeys={plottedKeys} onTogglePlot={togglePlot} />
+                          ) : null}
+                        </div>
+                      )
+                    })}
                   </div>
-                  <div className="mavlink-inspector__row mavlink-inspector__row--head">
-                    <span>Message</span>
-                    <span>Rate</span>
-                    <span>Trend</span>
-                    <span>Bandwidth</span>
-                    <span>Count</span>
-                    <span>Last</span>
-                  </div>
-                  {group.stats.map((stat) => {
-                    const isOpen = expanded === stat.key
-                    const rowHealth = classifyRowHealth(stat.lastSeenMs, now, stat.rateHistory, stat.rateHz)
+                  )
+                })}
+              </div>
+            )}
+
+            {sentStats.length > 0 ? (
+              <div className="mavlink-inspector__sent" data-testid="mavlink-inspector-sent">
+                <div className="mavlink-inspector__sent-head">
+                  <span className="mavlink-inspector__sent-title">Sent (outbound)</span>
+                  <span className="mavlink-inspector__sent-meta">
+                    {sentStats.length} type{sentStats.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <div className="mavlink-inspector__sent-row mavlink-inspector__sent-row--head">
+                  <span>Message</span>
+                  <span>Rate</span>
+                  <span>Count</span>
+                  <span>Last sent</span>
+                </div>
+                {[...sentStats]
+                  .sort((left, right) => right.count - left.count)
+                  .map((stat) => {
+                    const isOpen = expandedSent === stat.key
                     return (
                       <div
                         key={stat.key}
-                        className={`mavlink-inspector__entry mavlink-inspector__entry--${rowHealth}`}
-                        data-testid={`mavlink-row-${stat.key}`}
-                        data-health={rowHealth}
+                        className="mavlink-inspector__entry"
+                        data-testid={`mavlink-sent-row-${stat.type}`}
                       >
                         <button
                           type="button"
-                          className="mavlink-inspector__row"
-                          onClick={() => setExpanded(isOpen ? null : stat.key)}
+                          className="mavlink-inspector__sent-row"
+                          onClick={() => setExpandedSent(isOpen ? null : stat.key)}
                           aria-expanded={isOpen}
                         >
                           <span className="mavlink-inspector__type">{stat.type}</span>
-                          <span>{stat.rateHz.toFixed(1)} Hz</span>
-                          <RateSparkline history={stat.rateHistory} />
-                          <span>{formatBytesPerSec(stat.bytesPerSec)}</span>
+                          <span>{stat.rateHz >= 0.05 ? `${stat.rateHz.toFixed(1)} Hz` : '—'}</span>
                           <span>{stat.count}</span>
-                          <span className="mavlink-inspector__last">
-                            {ageLabel(stat.lastSeenMs)}
-                            {rowHealth !== 'ok' ? (
-                              <span
-                                className={`mavlink-inspector__tone mavlink-inspector__tone--${rowHealth}`}
-                                data-testid={`mavlink-row-tone-${stat.key}`}
-                              >
-                                {rowHealth}
-                              </span>
-                            ) : null}
-                          </span>
+                          <span className="mavlink-inspector__last">{ageLabel(stat.lastSeenMs)}</span>
                         </button>
-                        {isOpen ? (
-                          <MavlinkFieldTable stat={stat} plottedKeys={plottedKeys} onTogglePlot={togglePlot} />
-                        ) : null}
+                        {isOpen ? <MavlinkFieldTable stat={stat} plottedKeys={NO_PLOTTED_KEYS} /> : null}
                       </div>
                     )
                   })}
-                </div>
-                )
-              })}
-            </div>
+              </div>
+            ) : null}
+            </>
           )}
-
-          {sentStats.length > 0 ? (
-            <div className="mavlink-inspector__sent" data-testid="mavlink-inspector-sent">
-              <div className="mavlink-inspector__sent-head">
-                <span className="mavlink-inspector__sent-title">Sent (outbound)</span>
-                <span className="mavlink-inspector__sent-meta">
-                  {sentStats.length} message type(s) this app has sent
-                </span>
-              </div>
-              <div className="mavlink-inspector__sent-row mavlink-inspector__sent-row--head">
-                <span>Message</span>
-                <span>Rate</span>
-                <span>Count</span>
-                <span>Last sent</span>
-              </div>
-              {[...sentStats]
-                .sort((left, right) => right.count - left.count)
-                .map((stat) => {
-                  const isOpen = expandedSent === stat.key
-                  return (
-                    <div
-                      key={stat.key}
-                      className="mavlink-inspector__entry"
-                      data-testid={`mavlink-sent-row-${stat.type}`}
-                    >
-                      <button
-                        type="button"
-                        className="mavlink-inspector__sent-row"
-                        onClick={() => setExpandedSent(isOpen ? null : stat.key)}
-                        aria-expanded={isOpen}
-                      >
-                        <span className="mavlink-inspector__type">{stat.type}</span>
-                        <span>{stat.rateHz >= 0.05 ? `${stat.rateHz.toFixed(1)} Hz` : '—'}</span>
-                        <span>{stat.count}</span>
-                        <span className="mavlink-inspector__last">{ageLabel(stat.lastSeenMs)}</span>
-                      </button>
-                      {isOpen ? <MavlinkFieldTable stat={stat} plottedKeys={NO_PLOTTED_KEYS} /> : null}
-                    </div>
-                  )
-                })}
-            </div>
-          ) : null}
         </div>
       </Panel>
     </section>

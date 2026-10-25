@@ -19,9 +19,27 @@ export interface DronecanParamCatalogDef {
   maximum?: number
   unit?: string
   options?: ReadonlyArray<{ value: number; label: string }>
+  /** Bitmask bit labels (bit index -> meaning). Kept apart from `options`,
+   *  which is a single-select enum and would mislabel a bitmask value. (Not
+   *  named `bitmask`: the FC catalog's ParameterDefinition, which is passed
+   *  through this type too, uses `bitmask: boolean`.) */
+  bits?: ReadonlyArray<{ bit: number; label: string }>
+  /** Suggested edit step (ArduPilot @Increment; same name as the FC catalog). */
+  step?: number
+  /** A change only takes effect after the node reboots. */
+  rebootRequired?: boolean
+  /** Documented read-only (statistics etc.). */
+  readOnly?: boolean
+  /** The FC catalog's flag that `options` holds BIT indexes, not values. */
+  bitmask?: boolean
 }
 
-export type DronecanParamCatalogLookup = (name: string) => DronecanParamCatalogDef | undefined
+/** Metadata for a node's param by name. The node is passed too: which catalog
+ *  answers (AP_Periph or PX4 cannode) depends on what the node runs. */
+export type DronecanParamCatalogLookup = (
+  name: string,
+  node?: { name?: string; parameters: ReadonlyArray<{ name: string }> }
+) => DronecanParamCatalogDef | undefined
 
 export interface DronecanParamDisplay {
   /** Friendly label (catalog) or the raw param name. */
@@ -41,6 +59,21 @@ export interface DronecanParamDisplay {
   description?: string
   /** True when the catalog supplied any enrichment. */
   fromCatalog: boolean
+  /** A bitmask's set bits by name ("Show free stack space, Enable sending stats"), or "none". */
+  bitsLabel?: string
+  step?: number
+  rebootRequired?: boolean
+  readOnly?: boolean
+  /** A single-choice param's named values (never a bitmask's), for a dropdown editor. */
+  options?: ReadonlyArray<{ value: number; label: string }>
+}
+
+/** A def's bit labels: its own, or the FC catalog's bitmask `options` (bit indexes). */
+export function dronecanParamBits(def: DronecanParamCatalogDef | undefined): ReadonlyArray<{ bit: number; label: string }> | undefined {
+  if (!def) return undefined
+  if (def.bits && def.bits.length > 0) return def.bits
+  if (def.bitmask === true && def.options) return def.options.map((option) => ({ bit: option.value, label: option.label }))
+  return undefined
 }
 
 function numericValue(state: DronecanParamValueState | undefined): number | undefined {
@@ -75,8 +108,18 @@ export function describeDronecanParam(
       : undefined
 
   const numeric = numericValue(entry.value)
+  // A bitmask's value is a sum of bits, never one of its labels: reading it as
+  // an enum named the wrong thing (value 3 = bits 0 and 1, not "option 3").
+  const bits = dronecanParamBits(def)
   const option =
-    def?.options && numeric !== undefined ? def.options.find((candidate) => candidate.value === numeric) : undefined
+    !bits && def?.options && numeric !== undefined ? def.options.find((candidate) => candidate.value === numeric) : undefined
+  const bitsLabel =
+    bits && numeric !== undefined && Number.isInteger(numeric)
+      ? bits
+          .filter((entry) => entry.bit >= 0 && entry.bit < 53 && Math.floor(numeric / 2 ** entry.bit) % 2 === 1)
+          .map((entry) => entry.label)
+          .join(', ') || 'none'
+      : undefined
 
   return {
     label: def?.label ?? entry.name,
@@ -86,6 +129,11 @@ export function describeDronecanParam(
     rangeLabel: nodeRange ?? catalogRange,
     defaultLabel: isPresent(entry.defaultValue) ? formatParamValue(entry.defaultValue) : undefined,
     description: def?.description,
-    fromCatalog: def !== undefined
+    fromCatalog: def !== undefined,
+    bitsLabel,
+    step: def?.step,
+    rebootRequired: def?.rebootRequired,
+    readOnly: def?.readOnly,
+    options: !bits && def?.options && def.options.length > 0 ? def.options : undefined
   }
 }
