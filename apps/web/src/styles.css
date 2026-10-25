@@ -16202,6 +16202,16 @@ details.bf-gui-box:not([open]) > summary::after {
   .config-grid--cat-system .config-section--id-logging .config-section__editors {
     grid-template-columns: repeat(4, auto);
   }
+  /* Beside the fast-rate card the System rates card is half the row: three
+     content-sized tracks leave the IMU mask a sliver (its title wrapping a
+     letter per line). Lay it out like the medium band instead: loop rate on
+     its own line, gyro rate and fast sampling sharing the line under it. */
+  .config-grid--cat-system:has(.config-section--id-fast-loop-rate) .config-section--id-system-rates .config-section__editors {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .config-grid--cat-system:has(.config-section--id-fast-loop-rate) .config-section--id-system-rates .config-section__editors > :first-child {
+    grid-column: 1 / -1;
+  }
 }
 
 /* Board orientation: the picture sits beside the dropdown, not under it, so the
