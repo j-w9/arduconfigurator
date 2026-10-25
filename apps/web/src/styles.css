@@ -23191,10 +23191,6 @@ button.mavlink-inspector__sent-row {
   letter-spacing: var(--tracking-label);
 }
 
-/* Sidebar: the labels sit a little in from the edge (same sidebar width). */
-.workspace-nav--flat .workspace-nav__item {
-  padding-left: 18px;
-}
 
 /* CAN ▸ a node card's header: the name block takes what is left and wraps its
    own text; the badge + buttons keep their place. The ticking "seen …" age
