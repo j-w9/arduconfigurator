@@ -5271,16 +5271,9 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
 
     await openView(page, 'calibration')
-    // Still Expert-only.
-    await expect(page.getByTestId('calibration-card-valt')).toHaveCount(0)
-
-    await enableExpertMode(page)
-    // VALT is fitted from a flight log, so it lives on the Flight tab.
+    // VALT is fitted from a flight log, so it lives on the Flight tab — and,
+    // like every flight card, it is not Expert-gated.
     await openCalibrationSection(page, 'flight')
-    // Guard the guard: Expert really did take effect, so this cannot pass for
-    // the wrong reason. Uses an Expert-only card on the SAME tab — TCAL is
-    // Expert-only too but lives under Sensors, so it would be absent here for
-    // the wrong reason, and autotune is no longer Expert-gated at all.
     await expect(page.getByTestId('calibration-card-hover-throttle')).toBeVisible()
     // Present with NO log-server session — the firmware supports it.
     await expect(page.getByTestId('calibration-card-valt')).toBeVisible()

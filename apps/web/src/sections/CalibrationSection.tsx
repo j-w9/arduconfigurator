@@ -56,7 +56,7 @@ type CalibrationSectionId = 'sensors' | 'power' | 'flight'
 const CALIBRATION_SECTIONS: ReadonlyArray<{ id: CalibrationSectionId; label: string; summary: string }> = [
   { id: 'sensors', label: 'Sensors', summary: 'Accelerometer, level, compass, thermal' },
   { id: 'power', label: 'Power', summary: 'Battery voltage; current and ESCs in Expert' },
-  { id: 'flight', label: 'Flight', summary: 'Autotune; hover and Z-bias in Expert' }
+  { id: 'flight', label: 'Flight', summary: 'Autotune, hover, Z-bias' }
 ]
 
 export interface CalibrationSectionProps {
@@ -1652,7 +1652,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   both. They stay SEPARATE cards because they are separate
                   flights with separate outcomes; one card only ever showed
                   whichever half the vehicle happened to be on. */}
-              {isExpertMode && calibrationTab === 'flight' ? (
+              {calibrationTab === 'flight' ? (
                 <HoverThrottleLearnCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
@@ -1663,7 +1663,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
               ) : null}
               {/* Measured once, when a new frame and powertrain first fly --
                   or whenever the firmware's learner came back with nothing. */}
-              {isExpertMode && calibrationTab === 'flight' ? (
+              {calibrationTab === 'flight' ? (
                 <HoverThrottleFromLogCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
@@ -1672,7 +1672,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   onboardLogs={onboardLogs}
                 />
               ) : null}
-              {isExpertMode && calibrationTab === 'flight' ? (
+              {calibrationTab === 'flight' ? (
                 <AccelZBiasCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
@@ -1681,7 +1681,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   editedValues={editedValues}
                 />
               ) : null}
-              {isExpertMode && baroThrustSupported && calibrationTab === 'flight' ? (
+              {baroThrustSupported && calibrationTab === 'flight' ? (
                 <ValtCalibrationCard
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
