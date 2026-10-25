@@ -6939,7 +6939,7 @@ test.describe('Inspectors (expert-only)', () => {
     const toggle = page.getByTestId('can-bus-node-toggle-50')
     await expect(toggle).toBeVisible({ timeout: 12000 })
     await page.getByTestId('can-bus-node-actions-50').click()
-    await expect(page.getByTestId('dronecan-fwupdate-online-unavailable-50')).toContainText('not available here')
+    await expect(page.getByTestId('dronecan-fwupdate-online-unavailable-50')).toContainText('desktop app')
     await expect(page.getByTestId('dronecan-fwupdate-online-find-50')).toHaveCount(0)
     // Browser degrade still offers a link to the firmware server so the operator
     // can grab the .bin manually and load it with the local picker.
