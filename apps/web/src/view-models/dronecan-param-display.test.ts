@@ -95,4 +95,25 @@ describe('bitmask, step, reboot and read-only', () => {
     expect(display.valueIsEnum).toBe(false)
     expect(display.bitsLabel).toBe('Bit zero')
   })
+
+  it('hides a node range that is only the int32 / float32 type limits', () => {
+    const intEntry = {
+      name: 'CAL_ACC0_ID',
+      value: { tag: 'int64', int64: '0' },
+      defaultValue: { tag: 'int64', int64: '0' },
+      minValue: { tag: 'int64', int64: '-2147483648' },
+      maxValue: { tag: 'int64', int64: '2147483647' }
+    } as unknown as DronecanParamEntry
+    expect(describeDronecanParam(intEntry, undefined).rangeLabel).toBeUndefined()
+    expect(describeDronecanParam(intEntry, { label: 'x', minimum: 0, maximum: 10 }).rangeLabel).toBe('0–10')
+    const floatEntry = {
+      name: 'CAL_ACC0_XOFF',
+      value: { tag: 'real32', real32: 0 },
+      minValue: { tag: 'real32', real32: -3.4028234663852886e38 },
+      maxValue: { tag: 'real32', real32: 3.4028234663852886e38 }
+    } as unknown as DronecanParamEntry
+    expect(describeDronecanParam(floatEntry, undefined).rangeLabel).toBeUndefined()
+    const oneSided = { ...intEntry, minValue: { tag: 'int64', int64: '0' } } as unknown as DronecanParamEntry
+    expect(describeDronecanParam(oneSided, undefined).rangeLabel).toBe('≥ 0')
+  })
 })

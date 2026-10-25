@@ -92,16 +92,40 @@ function isPresent(state: DronecanParamValueState | undefined): boolean {
   return state !== undefined && state.tag !== 'empty'
 }
 
+// The storage type's own limits. PX4 cannode reports int32 and float32 limits
+// as a param's min/max when it has no real range, which reads as a range
+// ("-2147483648–2147483647") when it only says "any value of this type".
+const TYPE_LIMIT_MAGNITUDES = [
+  // int32, int64, float32, float64. Not int8/int16: 0–127 is a node ID's real range.
+  2 ** 31 - 1, 2 ** 31, 2 ** 63 - 1, 2 ** 63, 3.4028234663852886e38, Number.MAX_VALUE
+]
+
+/** A node-reported bound that is only its type's limit (or absent) bounds nothing. */
+export function isDronecanTypeLimit(state: DronecanParamValueState | undefined): boolean {
+  if (!isPresent(state)) return true
+  const n = numericValue(state)
+  if (n === undefined) return true
+  const magnitude = Math.abs(n)
+  if (!Number.isFinite(magnitude)) return true
+  return TYPE_LIMIT_MAGNITUDES.some((limit) => Math.abs(magnitude - limit) <= limit * 1e-9)
+}
+
 export function describeDronecanParam(
   entry: DronecanParamEntry,
   def: DronecanParamCatalogDef | undefined
 ): DronecanParamDisplay {
   // Range reads as "min–max unit" (en-dash, e.g. "50–200 ms", "-5–5 m").
-  const nodeRange =
-    isPresent(entry.minValue) || isPresent(entry.maxValue)
-      ? `${formatParamValue(entry.minValue)}–${formatParamValue(entry.maxValue)}`
-      : undefined
   const unit = def?.unit ? ` ${def.unit}` : ''
+  const nodeMinBounds = !isDronecanTypeLimit(entry.minValue)
+  const nodeMaxBounds = !isDronecanTypeLimit(entry.maxValue)
+  const nodeRange =
+    nodeMinBounds && nodeMaxBounds
+      ? `${formatParamValue(entry.minValue)}–${formatParamValue(entry.maxValue)}${unit}`
+      : nodeMinBounds
+        ? `≥ ${formatParamValue(entry.minValue)}${unit}`
+        : nodeMaxBounds
+          ? `≤ ${formatParamValue(entry.maxValue)}${unit}`
+          : undefined
   const catalogRange =
     def && (def.minimum !== undefined || def.maximum !== undefined)
       ? `${def.minimum ?? '−∞'}–${def.maximum ?? '∞'}${unit}`
