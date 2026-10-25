@@ -478,9 +478,11 @@ describe('phases', () => {
 
 describe('what the sequence says about a step', () => {
   const summary = runSequence({ sequence: copter, file, fields, values: {}, parameters: {} })
-  const step = (prefix: string) => {
-    const row = summary.rows.find((r) => r.filename.startsWith(prefix))
-    if (!row) throw new Error(`no step ${prefix}`)
+  // By name, not number: AMC renumbers the sequence (5.0.0 moved every step),
+  // and a number that now points at another step makes a test pass vacuously.
+  const step = (name: string) => {
+    const row = summary.rows.find((r) => r.filename.replace(/^\d+_/, '') === `${name}.param`)
+    if (!row) throw new Error(`no ${name} step`)
     return row
   }
 
@@ -495,7 +497,7 @@ describe('what the sequence says about a step', () => {
   })
 
   it('reads an instruction meant to be seen before starting', () => {
-    const atc = step('13_')
+    const atc = step('initial_atc')
     expect(atc.popup?.type).toBe('warning')
     expect(atc.popup?.msg).toMatch(/Only do this step once/)
   })
@@ -504,11 +506,13 @@ describe('what the sequence says about a step', () => {
     // "Close this application and go fly" is not a footnote.
     const withPrecondition = summary.rows.filter((r) => r.autoChangedBy)
     expect(withPrecondition.length).toBeGreaterThan(0)
-    expect(step('14_').autoChangedBy).toMatch(/Mission Planner/)
+    // AMC 5.0.0 brought the Mission Planner calibrations into steps of its
+    // own; what is still done elsewhere is flying, and the tools that run there.
+    expect(step('autotune_roll_results').autoChangedBy).toMatch(/ArduPilot autotune/)
   })
 
   it('gathers the further reading the sequence points at', () => {
-    const links = step('02_').links
+    const links = step('imu_temperature_calibration_setup').links
     expect(links.some((l) => l.kind === 'wiki')).toBe(true)
     expect(links.some((l) => l.kind === 'blog')).toBe(true)
     // Every link is labelled with the sequence's own words where it has them.
@@ -532,7 +536,7 @@ describe('what the sequence says about a step', () => {
   })
 
   it('lists the log messages a step should produce', () => {
-    const esc = step('09_')
+    const esc = step('esc_telemetry')
     expect(esc.logMessages.length).toBeGreaterThan(0)
     const required = esc.logMessages.find((m) => m.required)
     expect(required?.id).toBe('ESC')
@@ -574,14 +578,14 @@ describe('what the sequence says about a step', () => {
     // AMC v4.5.x moved these to lists, and in-flight magfit needs two
     // scripts. Read as a single object, the list came back as `undefined`
     // and neither was offered.
-    const magfit = summary.rows.find((r) => r.filename === '31_inflight_magnetometer_fit_setup.param')
+    const magfit = step('inflight_magnetometer_fit_setup')
     expect(magfit?.files?.map((f) => f.name)).toEqual(['copter-magfit-helper.lua', 'advance-wp.lua'])
   })
 
   it('points a step at the tool this app already has for it', () => {
     // AMC embeds these; here they exist as their own surfaces, so the step
     // names the destination rather than carrying a second copy.
-    const orientation = step('05_')
+    const orientation = step('board_orientation')
     expect(orientation.tool?.name).toBe('ahrs_orientation')
     expect(orientation.tool?.label).toBe('Board orientation')
     // Board orientation is a Config category here, not its own tab.
@@ -590,7 +594,7 @@ describe('what the sequence says about a step', () => {
     const tools = summary.rows.filter((r) => r.tool)
     expect(tools.length).toBeGreaterThan(0)
     for (const row of tools) {
-      expect(['config', 'motors', 'calibration', 'receiver', 'tuning', 'mavlink-inspector']).toContain(row.tool?.view)
+      expect(['config', 'motors', 'servos', 'calibration', 'receiver', 'tuning', 'mavlink-inspector']).toContain(row.tool?.view)
     }
   })
 
@@ -720,12 +724,12 @@ describe('a flight log', () => {
       ])
     })
 
-    const escStep = withLog.rows.find((row) => row.filename === '09_esc_telemetry.param')
+    const escStep = withLog.rows.find((row) => row.filename === '08_esc_telemetry.param')
     expect(escStep?.logSatisfied).toBe(true)
     expect(escStep?.logMessages.find((m) => m.id === 'ESC')?.count).toBe(1200)
 
     // A step whose required message is absent says so.
-    const gnss = withLog.rows.find((row) => row.filename === '12_gnss.param')
+    const gnss = withLog.rows.find((row) => row.filename === '18_gnss.param')
     expect(gnss?.logSatisfied).toBe(false)
     expect(gnss?.logMessages.find((m) => m.id === 'GPS')?.count).toBe(0)
   })
@@ -739,7 +743,7 @@ describe('a flight log', () => {
       for (const message of row.logMessages) expect(message.count).toBeUndefined()
     }
     // The list itself is still there — it is what the sequence says.
-    const escStep = withoutLog.rows.find((row) => row.filename === '09_esc_telemetry.param')
+    const escStep = withoutLog.rows.find((row) => row.filename === '08_esc_telemetry.param')
     expect(escStep?.logMessages.length).toBeGreaterThan(0)
   })
 })

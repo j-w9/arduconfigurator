@@ -18,13 +18,15 @@ import {
   type ConnectionTables,
   type FirmwareKind,
   type Migration,
+  type MigrationContext,
   type MigrationTables,
   type ProjectFile,
   type VehicleProject,
   annotateParamFile,
   backupFiles,
   buildZip,
-  migrateProject,
+  openProjectLikeAmc,
+  vehicleTypeOf,
   completeFile,
   defaultsFile,
   lastWrittenFile,
@@ -387,8 +389,12 @@ export function buildProject(inputs: ProjectExportInputs): ProjectExport {
   // How the tuning moved across the session. Only when there is a history to
   // report: a grid of 26 blank rows says nothing, and a file that says
   // nothing is worse than one that is absent.
-  if (hasTuningHistory(steps, defaults)) {
-    const report = tuningReport(steps, defaults)
+  // The columns depend on the vehicle: AMC 5.0.0 renumbered the sequence and
+  // gave Heli tuning steps of its own. AMC falls back to Copter when the
+  // declaration names no firmware, and so does this.
+  const reportVehicle = vehicleTypeOf(componentsJson) || 'ArduCopter'
+  if (hasTuningHistory(steps, defaults, reportVehicle)) {
+    const report = tuningReport(steps, defaults, reportVehicle)
     files.push({ filename: report.filename, text: report.text })
   }
 
@@ -502,7 +508,13 @@ export function readProject(
   fields: readonly ComponentField[],
   options: {
     readonly vehicleFirmwareVersion?: string
-    readonly migrations?: MigrationTables
+    /**
+     * What opening a directory written by an older AMC needs. With the step
+     * lists and the empty templates as well as the tables, the directory is
+     * opened exactly as AMC 5.0.0 opens it: migrated, missing steps restored
+     * from the template, then the `old_filenames` renames applied.
+     */
+    readonly migrations?: MigrationTables | MigrationContext
     /**
      * Whether the connected firmware has the IMU temperature calibration.
      *
@@ -517,12 +529,19 @@ export function readProject(
   // parameter still sitting in its v0 file would be attributed to whichever
   // step owns that name now, and a file the sequence has retired would be
   // reported to the operator as work left unread.
-  const migration = options.migrations ? migrateProject(files, options.migrations) : undefined
-  const project = readVehicleProject(sequence, migration ? migration.files : files, {
+  const opened = options.migrations
+    ? openProjectLikeAmc(files, 'tables' in options.migrations ? options.migrations : { tables: options.migrations })
+    : undefined
+  const migration = opened?.migration
+  const read = readVehicleProject(sequence, opened ? opened.files : files, {
     ...(options.supportsTemperatureCalibration === undefined
       ? {}
       : { supportsTemperatureCalibration: options.supportsTemperatureCalibration })
   })
+  // The renames already applied while opening are still the operator's
+  // account of what changed name, so they are reported with any the reader
+  // resolved itself.
+  const project = opened && opened.renamed.length > 0 ? { ...read, renamed: [...opened.renamed, ...read.renamed] } : read
   const withMigration = <T extends VehicleProject>(result: T): T =>
     migration ? { ...result, migration } : result
   if (project.components === undefined) return withMigration(project)

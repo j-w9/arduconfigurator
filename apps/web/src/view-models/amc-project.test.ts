@@ -1,3 +1,4 @@
+import migrationTablesJson from '@amc/data/migration.json'
 import { describe, expect, it } from 'vitest'
 
 import schemaJson from '@amc/data/vehicle_components_schema.json'
@@ -383,7 +384,8 @@ describe('the directory AMC would have to open', () => {
     properties?: { Components?: { required?: string[] } }
   }
 
-  const componentsOf = (project: { files: readonly { filename: string; text: string }[] }) =>
+  const migrationTablesForTest = migrationTablesJson as unknown as { VEHICLE_COMPONENTS_FORMAT_VERSION: number }
+const componentsOf = (project: { files: readonly { filename: string; text: string }[] }) =>
     JSON.parse(project.files.find((f) => f.filename === 'vehicle_components.json')!.text)
 
   it('carries the Format version the schema requires', () => {
@@ -393,7 +395,15 @@ describe('the directory AMC would have to open', () => {
     for (const key of schema.required ?? []) {
       expect(Object.keys(doc)).toContain(key)
     }
-    expect(doc['Format version']).toBe(1)
+    expect(doc['Format version']).toBe(migrationTablesForTest.VEHICLE_COMPONENTS_FORMAT_VERSION)
+  })
+
+  it('writes a directory AMC opens as current, not as one to migrate', async () => {
+    // A directory in the current layout declaring an older format would be
+    // migrated on top of itself when AMC opens it.
+    const project = buildProject({ sequence: copter, fields, values: declare(), parameters: {} })
+    const { migrateProject } = await import('@arduconfig/amc-steps')
+    expect(migrateProject(project.files, migrationTablesForTest as never)).toBeUndefined()
   })
 
   it('keeps every component when started from one of AMC\'s vehicles', () => {
@@ -613,7 +623,7 @@ describe('a parameter the operator added to a step', () => {
   // next rewrite.
 
   const additions = new Map([
-    ['08_telemetry.param', new Map([['SERIAL1_BAUD', { value: 115, reason: 'my ESP32 link' }]])]
+    ['07_telemetry.param', new Map([['SERIAL1_BAUD', { value: 115, reason: 'my ESP32 link' }]])]
   ])
 
   it('is written into the step it belongs to, and nowhere else', () => {
@@ -624,7 +634,7 @@ describe('a parameter the operator added to a step', () => {
       parameters: {},
       additions
     })
-    const telemetry = project.files.find((file) => file.filename === '08_telemetry.param')
+    const telemetry = project.files.find((file) => file.filename === '07_telemetry.param')
     expect(telemetry?.text).toMatch(/SERIAL1_BAUD,115/)
     expect(telemetry?.text).toMatch(/my ESP32 link/)
 
@@ -633,7 +643,7 @@ describe('a parameter the operator added to a step', () => {
     const otherSteps = project.files.filter(
       (file) =>
         /^\d+_/.test(file.filename) &&
-        file.filename !== '08_telemetry.param' &&
+        file.filename !== '07_telemetry.param' &&
         /SERIAL1_BAUD/.test(file.text)
     )
     expect(otherSteps.map((file) => file.filename)).toEqual([])
@@ -652,7 +662,7 @@ describe('a parameter the operator added to a step', () => {
     })
     const read = readProject(copter, project.files, fields)
 
-    const telemetry = read.steps.find((step) => step.filename === '08_telemetry.param')
+    const telemetry = read.steps.find((step) => step.filename === '07_telemetry.param')
     const entry = telemetry?.entries.get('SERIAL1_BAUD')
     expect(entry?.value).toBe(115)
     expect(entry?.comment).toBe('my ESP32 link')

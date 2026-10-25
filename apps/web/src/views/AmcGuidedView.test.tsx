@@ -1147,7 +1147,7 @@ describe('opening a directory an older AMC wrote', () => {
     })
 
     await waitFor(() =>
-      expect(screen.getByText(/written for an older layout \(version 0\), brought up to 1/)).toBeTruthy()
+      expect(screen.getByText(/written for an older layout \(version 0\), brought up to 2/)).toBeTruthy()
     )
     // The part that matters to the operator: their values were not dropped.
     expect(screen.getByText(/parameters? moved to the step that owns/)).toBeTruthy()
@@ -1157,7 +1157,7 @@ describe('opening a directory an older AMC wrote', () => {
     const current = {
       ...v0,
       'vehicle_components.json': JSON.stringify({
-        'Format version': 1,
+        'Format version': 2,
         Components: { 'Flight Controller': { Firmware: { Type: 'ArduCopter' } } }
       })
     }
@@ -1170,6 +1170,36 @@ describe('opening a directory an older AMC wrote', () => {
     })
     await waitFor(() => expect(screen.getByText(/Read \d+ step files/)).toBeTruthy())
     expect(screen.queryByText(/older layout/)).toBeNull()
+  })
+
+  it('opens a 4.5.x directory the way AMC 5.0.0 does', async () => {
+    // Format version 1 is what every AMC before 5.0.0 wrote. Its combined
+    // hardware step is split, and the steps it lacked are restored from the
+    // empty template for its firmware -- which only happens if the step list
+    // and templates actually reach the migration from this view.
+    const v1 = {
+      'vehicle_components.json': JSON.stringify({
+        'Format version': 1,
+        Components: { 'Flight Controller': { Firmware: { Type: 'ArduCopter', Version: '4.6.3' } } }
+      }),
+      '14_mp_setup_mandatory_hardware.param': 'INS_ACCSCAL_X,1.01\nCOMPASS_USE,1\nFLTMODE1,5\nZZ_UNCLAIMED,3\n',
+      '05_board_orientation.param': 'AHRS_ORIENTATION,0\n'
+    }
+    render(<AmcGuidedView {...base} />)
+    await whenLoaded()
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('amc-open-project'), {
+        target: { files: Object.entries(v1).map(([name, text]) => paramFile(name, text)) }
+      })
+    })
+    const notice = await waitFor(() => screen.getByText(/written for an older layout \(version 1\), brought up to 2/))
+    expect(notice.textContent).toMatch(/parameters? moved to the step that owns/)
+    // Restored from empty_4.6.x: only possible with the templates loaded.
+    expect(notice.textContent).toMatch(/\d{2,} new step files/)
+    expect(notice.textContent).toMatch(/1 parameter no step claims, put in 23_general_configuration\.param/)
+    // The old board-orientation file took its new step's name rather than
+    // being left behind as a file nobody reads.
+    expect(notice.textContent).not.toMatch(/05_board_orientation\.param/)
   })
 })
 
@@ -1511,7 +1541,8 @@ describe('starting from ArduPilot\'s own defaults', () => {
   it('says so plainly when AMC ships no empty template for this firmware', async () => {
     // Not a failure — it is what this tab did until now. The directory still
     // holds everything the sequence decides.
-    render(<AmcGuidedView {...base} connected docs={docs} vehicleFirmwareVersion="4.4.0" />)
+    // 4.3: the release below the oldest empty template AMC 5.0.0 ships.
+    render(<AmcGuidedView {...base} connected docs={docs} vehicleFirmwareVersion="4.3.8" />)
     await whenLoaded()
     await waitFor(() =>
       expect((screen.getByTestId('amc-baseline-toggle') as HTMLInputElement).disabled).toBe(true)

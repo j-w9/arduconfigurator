@@ -41,7 +41,8 @@ import {
   rebootWaitSeconds,
   startingValue,
   templateOnlyParameters,
-  validateDeclaration
+  validateDeclaration,
+  vehicleTypeOf
 } from '@arduconfig/amc-steps'
 import type {
   ConnectionPairings,
@@ -52,6 +53,8 @@ import type {
   Baseline,
   BaselineTable,
   MigrationTables,
+  MigrationContext,
+  MigrationStep,
   ParameterDocs,
   TemplateOnlyTable,
   ValidationError
@@ -69,6 +72,51 @@ const connectionPairings = connectionPairingsJson as ConnectionPairings
 const connectionTables = connectionTablesJson as unknown as ConnectionTables
 // What moved where between the directory formats, likewise extracted.
 const migrationTables = migrationTablesJson as unknown as MigrationTables
+/**
+ * What opening an older directory needs, fetched when one is opened.
+ *
+ * AMC renames and restores against the steps of the vehicle the DIRECTORY
+ * declares, not the sequence on screen, and seeds missing steps from the
+ * empty template for its firmware. Both are large, so they load only when a
+ * directory is actually picked. A failed fetch still migrates with the tables
+ * alone -- the parameter moves -- rather than refusing to open anything.
+ */
+async function migrationContextFor(files: readonly { filename: string; text: string }[]): Promise<MigrationContext> {
+  const components = files.find((file) => /(^|[\\/])vehicle_components\.json$/.test(file.filename))?.text
+  const declared = vehicleTypeOf(components) || 'ArduCopter'
+  const stepFiles: Record<string, () => Promise<{ default?: unknown }>> = {
+    ArduCopter: () => import('@amc/data/configuration_steps_ArduCopter.json'),
+    ArduPlane: () => import('@amc/data/configuration_steps_ArduPlane.json'),
+    Rover: () => import('@amc/data/configuration_steps_Rover.json'),
+    Heli: () => import('@amc/data/configuration_steps_Heli.json')
+  }
+  try {
+    const [stepModule, baselineModule, sidecarModule] = await Promise.all([
+      stepFiles[declared]?.() ?? Promise.resolve(undefined),
+      import('@amc/data/baselines.json'),
+      import('@amc/data/template-sidecars.json')
+    ])
+    const unwrap = (module: { default?: unknown } | undefined) => (module ? (module.default ?? module) : undefined)
+    const stepJson = unwrap(stepModule) as { steps?: Record<string, MigrationStep> } | undefined
+    const baselines = unwrap(baselineModule) as Record<string, Record<string, Record<string, string>>>
+    const sidecars = unwrap(sidecarModule) as Record<string, Record<string, Record<string, string>>>
+    const templates: Record<string, Record<string, Record<string, string>>> = {}
+    for (const [vehicle, versions] of Object.entries(baselines)) {
+      templates[vehicle] = {}
+      for (const [version, templateFiles] of Object.entries(versions)) {
+        templates[vehicle][version] = { ...templateFiles, ...(sidecars[vehicle]?.[version] ?? {}) }
+      }
+    }
+    return {
+      tables: migrationTables,
+      ...(stepJson?.steps ? { steps: { [declared]: stepJson.steps } } : {}),
+      templates
+    }
+  } catch {
+    return { tables: migrationTables }
+  }
+}
+
 // What AMC's own directories hold for each step that the sequence never
 // decides, observed across its templates by scripts/sync-from-vendor.mjs.
 const templateOnly = templateOnlyJson as unknown as TemplateOnlyTable
@@ -2022,7 +2070,7 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
 
       const project = readProject(steps, files, fields, {
         ...(vehicleFirmwareVersion ? { vehicleFirmwareVersion } : {}),
-        migrations: migrationTables,
+        migrations: await migrationContextFor(files),
         supportsTemperatureCalibration
       })
       if (project.steps.length === 0 && project.componentValues === undefined) {
@@ -2109,6 +2157,21 @@ export function AmcGuidedView(props: AmcGuidedViewProps) {
         }
         if (migration.created.length > 0) {
           details.push(`${migration.created.length} new step files`)
+        }
+        // AMC 5.0.0 puts anything no rule claims where it will be seen rather
+        // than deleting it with the old file, and says so; so does this.
+        const surfaced = migration.surfaced ?? []
+        if (surfaced.length > 0) {
+          const where = [...new Set(surfaced.map((entry) => entry.to))].join(', ')
+          details.push(
+            `${surfaced.length} parameter${surfaced.length === 1 ? '' : 's'} no step claims, put in ${where} for you to review`
+          )
+        }
+        const dropped = [...new Set((migration.dropped ?? []).map((entry) => entry.parameter))]
+        if (dropped.length > 0) {
+          details.push(
+            `${dropped.length > 5 ? `${dropped.length} parameters` : dropped.join(', ')} no longer kept by the new layout`
+          )
         }
         // A retired file that still held values is the one case worth naming
         // outright: it is the operator's work going away.

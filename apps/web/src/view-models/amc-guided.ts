@@ -12,6 +12,7 @@ import { deriveParameterDraftEntries } from '@arduconfig/ardupilot-core'
 import type { ParameterState } from '@arduconfig/ardupilot-core'
 
 import observedComponentValues from '@amc/data/component-values.json'
+import migrationTables from '@amc/data/migration.json'
 
 import type { ConfigurationStepFile, ConfigurationSummary } from '@arduconfig/amc-steps'
 import {
@@ -45,7 +46,15 @@ import {
  * `ahrs_orientation` are Config categories here, while the motor tools have
  * their own tab, and Power stopped being a tab of its own some time ago.
  */
-export type AppToolView = 'config' | 'motors' | 'calibration' | 'flash' | 'receiver' | 'tuning' | 'mavlink-inspector'
+export type AppToolView =
+  | 'config'
+  | 'motors'
+  | 'servos'
+  | 'calibration'
+  | 'flash'
+  | 'receiver'
+  | 'tuning'
+  | 'mavlink-inspector'
 
 export const STEP_TOOLS: Readonly<Record<string, { label: string; view: AppToolView }>> = {
   ahrs_orientation: { label: 'Board orientation', view: 'config' },
@@ -59,7 +68,13 @@ export const STEP_TOOLS: Readonly<Record<string, { label: string; view: AppToolV
   rc_receiver: { label: 'Receiver', view: 'receiver' },
   rc_calibration: { label: 'RC calibration', view: 'receiver' },
   autotune_gain_backoff: { label: 'Tuning', view: 'tuning' },
-  data_telemetry: { label: 'Link telemetry', view: 'mavlink-inspector' }
+  data_telemetry: { label: 'Link telemetry', view: 'mavlink-inspector' },
+  // AMC 5.0.0 split the old combined hardware step into steps of their own,
+  // each with the tool that does it.
+  accelerometer_calibration: { label: 'Accelerometer calibration', view: 'calibration' },
+  level_calibration: { label: 'Level calibration', view: 'calibration' },
+  compass_calibration: { label: 'Compass calibration', view: 'calibration' },
+  servo_out: { label: 'Servo outputs', view: 'servos' }
 }
 
 /** The four sequences AMC ships. Sub is not among them. */
@@ -331,8 +346,17 @@ export function buildComponentsJson(
   }
 }
 
-/** The schema version AMC's templates carry, and validate against. */
-const COMPONENTS_FORMAT_VERSION = 1
+/**
+ * The project format this sequence's layout is.
+ *
+ * Read from AMC's migration tables rather than written here: AMC migrates
+ * any directory declaring an older version when it opens it, so a directory
+ * in the current layout that declared the previous one would be "migrated"
+ * on top of itself -- and since 5.0.0 that seeds every step it lacks from the
+ * empty template. This was a literal 1 until 5.0.0 moved the format to 2.
+ */
+const COMPONENTS_FORMAT_VERSION = (migrationTables as { VEHICLE_COMPONENTS_FORMAT_VERSION: number })
+  .VEHICLE_COMPONENTS_FORMAT_VERSION
 
 /** A JSON number literal, which is what keeps `4.0` distinct from `4`. */
 const NUMERIC = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/
