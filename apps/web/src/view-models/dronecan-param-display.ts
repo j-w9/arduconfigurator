@@ -34,7 +34,12 @@ export interface DronecanParamCatalogDef {
   bitmask?: boolean
 }
 
-export type DronecanParamCatalogLookup = (name: string) => DronecanParamCatalogDef | undefined
+/** Metadata for a node's param by name. The node is passed too: which catalog
+ *  answers (AP_Periph or PX4 cannode) depends on what the node runs. */
+export type DronecanParamCatalogLookup = (
+  name: string,
+  node?: { name?: string; parameters: ReadonlyArray<{ name: string }> }
+) => DronecanParamCatalogDef | undefined
 
 export interface DronecanParamDisplay {
   /** Friendly label (catalog) or the raw param name. */

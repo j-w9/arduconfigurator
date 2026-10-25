@@ -6792,11 +6792,12 @@ test.describe('Inspectors (expert-only)', () => {
     await expect(battInput).toBeVisible({ timeout: 12000 })
     // The node reports no labels/enums, so the grid enriches from the curated
     // FC catalog by name: BATT_MONITOR is a dropdown of its named values, on 4.
-    await expect(battInput).toHaveValue('4')
-    await expect(battInput.locator('option:checked')).toContainText('Analog Voltage and Current')
+    await expect(battInput).toHaveAttribute('data-value', '4')
+    await expect(battInput).toContainText('Analog Voltage and Current')
 
     // Editing a parameter stages a change and reveals Apply & Save.
-    await battInput.selectOption('3')
+    await battInput.click()
+    await page.getByTestId('can-bus-param-select-50-BATT_MONITOR-option-3').click()
     const apply = page.getByTestId('can-bus-apply-all-50')
     await expect(apply).toBeVisible()
     await apply.click()
@@ -6938,7 +6939,7 @@ test.describe('Inspectors (expert-only)', () => {
     const toggle = page.getByTestId('can-bus-node-toggle-50')
     await expect(toggle).toBeVisible({ timeout: 12000 })
     await page.getByTestId('can-bus-node-actions-50').click()
-    await expect(page.getByTestId('dronecan-fwupdate-online-unavailable-50')).toContainText('desktop app')
+    await expect(page.getByTestId('dronecan-fwupdate-online-unavailable-50')).toContainText('not available here')
     await expect(page.getByTestId('dronecan-fwupdate-online-find-50')).toHaveCount(0)
     // Browser degrade still offers a link to the firmware server so the operator
     // can grab the .bin manually and load it with the local picker.

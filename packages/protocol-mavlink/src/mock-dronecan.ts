@@ -121,6 +121,28 @@ const NODES: MockDronecanNode[] = [
       { name: 'NTF_LED_OVERRIDE', value: int(0), default: int(0), min: int(0), max: int(1) }
     ]
   },
+  // A PX4 "cannode" peripheral (ARK CAN RTK GPS): PX4 params, not AP_Periph
+  // ones — the CAN tab must read them from the PX4 catalog.
+  {
+    nodeId: 88,
+    name: 'org.ark.can-rtk-gps',
+    swMajor: 1,
+    swMinor: 16,
+    vcsCommit: 0x2f9e11c4,
+    hwMajor: 1,
+    hwMinor: 1,
+    uniqueId: uid(88),
+    health: 0,
+    mode: 0,
+    params: [
+      { name: 'CANNODE_NODE_ID', value: int(88), default: int(0), min: int(0), max: int(125) },
+      { name: 'CANNODE_BITRATE', value: int(1000000), default: int(1000000), min: int(20000), max: int(1000000) },
+      { name: 'CANNODE_TERM', value: int(0), default: int(0), min: int(0), max: int(1) },
+      { name: 'GPS_1_PROTOCOL', value: int(1), default: int(1), min: int(0), max: int(7) },
+      { name: 'GPS_UBX_DYNMODEL', value: int(7), default: int(7), min: int(0), max: int(9) },
+      { name: 'GPS_UBX_MODE', value: int(0), default: int(0), min: int(0), max: int(5) }
+    ]
+  },
   {
     nodeId: 50,
     name: 'org.ardupilot.ap_periph',

@@ -69,9 +69,13 @@ test.describe('DroneCAN inspector', () => {
     // Editing a value stages it — nothing is written yet; the staged
     // panel shows the current → new comparison.
     // GPS_TYPE has named values (AP_Periph metadata): a dropdown, as on the Parameters page.
+    // The dropdown is the app's own picker (it stays inside the window, with a
+    // search box), not a native select.
     const input = page.getByTestId('can-bus-param-select-124-GPS_TYPE')
-    const before = await input.inputValue()
-    await input.selectOption('9')
+    const before = await input.getAttribute('data-value')
+    await input.click()
+    await page.getByTestId('can-bus-param-select-124-GPS_TYPE-search').fill('dronecan')
+    await page.getByTestId('can-bus-param-select-124-GPS_TYPE-option-9').click()
     const staged = page.getByTestId('can-bus-staged-124')
     await expect(staged).toBeVisible()
     await expect(page.getByTestId('can-bus-staged-row-124-GPS_TYPE')).toContainText(`${before} → 9`)
@@ -80,14 +84,52 @@ test.describe('DroneCAN inspector', () => {
     // and the staged panel clears.
     await page.getByTestId('can-bus-apply-all-124').click()
     await expect(staged).toHaveCount(0)
-    await expect(input).toHaveValue('9')
+    await expect(input).toHaveAttribute('data-value', '9')
 
     // Dropping a staged edit un-stages without writing.
-    await input.selectOption('1')
+    await input.click()
+    await page.getByTestId('can-bus-param-select-124-GPS_TYPE-option-1').click()
     await expect(page.getByTestId('can-bus-staged-124')).toBeVisible()
     await page.getByTestId('can-bus-staged-drop-124-GPS_TYPE').click()
     await expect(page.getByTestId('can-bus-staged-124')).toHaveCount(0)
-    await expect(input).toHaveValue('9')
+    await expect(input).toHaveAttribute('data-value', '9')
+  })
+
+  test('a PX4 cannode reads its params from the PX4 catalog; the param table searches', async ({ page }) => {
+    await page.goto('/')
+    await connectDemo(page)
+    await page.getByTestId('view-button-can').click()
+    await page.getByTestId('can-bus-start').click()
+
+    // The ARK CAN RTK GPS runs PX4, not AP_Periph: its CANNODE_*/GPS_UBX_*
+    // params get PX4's labels and named values.
+    const toggle = page.getByTestId('can-bus-node-toggle-88')
+    await expect(toggle).toContainText(/Params \([1-9]/, { timeout: 15_000 })
+    await toggle.click()
+    const dynModel = page.getByTestId('can-bus-param-select-88-GPS_UBX_DYNMODEL')
+    await expect(dynModel).toContainText('airborne with <2g acceleration', { timeout: 15_000 })
+    await expect(page.getByTestId('can-bus-param-88-CANNODE_TERM')).toContainText(/termination/i)
+
+    // Search narrows the table by name, label or description.
+    await page.getByTestId('can-bus-param-search-88').fill('ubx')
+    await expect(page.getByTestId('can-bus-param-search-count-88')).toHaveText('2 of 6')
+    await expect(page.getByTestId('can-bus-param-88-CANNODE_TERM')).toHaveCount(0)
+    await page.getByTestId('can-bus-param-search-88').fill('')
+    await expect(page.getByTestId('can-bus-param-88-CANNODE_TERM')).toBeVisible()
+
+    // The picker opens inside the window and searches its values.
+    await dynModel.click()
+    const panel = page.getByTestId('can-bus-param-select-88-GPS_UBX_DYNMODEL-panel')
+    await expect(panel).toBeVisible()
+    const box = await panel.boundingBox()
+    const viewport = page.viewportSize()
+    expect(box && viewport && box.y >= 0 && box.y + box.height <= viewport.height).toBeTruthy()
+    // Live panels elsewhere on the tab scroll themselves; the picker stays open.
+    await page.waitForTimeout(1500)
+    await expect(panel).toBeVisible()
+    await page.getByTestId('can-bus-param-select-88-GPS_UBX_DYNMODEL-search').fill('stationary')
+    await page.getByTestId('can-bus-param-select-88-GPS_UBX_DYNMODEL-option-2').click()
+    await expect(page.getByTestId('can-bus-staged-row-88-GPS_UBX_DYNMODEL')).toContainText('7 → 2')
   })
 
   test('a custom node name persists across reload (keyed by hardware UID)', async ({ page }) => {

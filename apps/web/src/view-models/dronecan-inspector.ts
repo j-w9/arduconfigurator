@@ -12,6 +12,7 @@ import type {
 } from '@arduconfig/ardupilot-core'
 
 import { compareParamEntries, formatParamValue, healthLabel, modeLabel } from './can-bus'
+import { dronecanNodeStack, dronecanNodeStackLabel } from './dronecan-node-stack'
 import { describeDronecanParam, type DronecanParamCatalogLookup } from './dronecan-param-display'
 
 export interface DronecanDetailRow {
@@ -54,6 +55,7 @@ export function buildDronecanNodeDetailRows(
   const rows: DronecanDetailRow[] = [
     { label: 'Node ID', value: `#${node.nodeId}` },
     { label: 'Name', value: node.name && node.name.length > 0 ? node.name : '—' },
+    { label: 'Firmware', value: dronecanNodeStackLabel(dronecanNodeStack(node)) },
     { label: 'Health', value: healthLabel(node.health) },
     { label: 'Mode', value: modeLabel(node.mode) },
     { label: 'Uptime', value: uptimeLabel(node.uptimeSec) }
@@ -154,7 +156,7 @@ export function buildDronecanParamRows(
 ): DronecanParamRow[] {
   return [...node.parameters].sort(compareParamEntries).map((entry: DronecanParamEntry): DronecanParamRow => {
     const type = entry.value.tag
-    const meta = describeDronecanParam(entry, lookup?.(entry.name))
+    const meta = describeDronecanParam(entry, lookup?.(entry.name, node))
     return {
       index: entry.index,
       name: entry.name,

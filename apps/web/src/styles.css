@@ -24133,3 +24133,438 @@ button.plot-side-list__name {
   padding: 1px 4px;
   font-size: var(--text-xs);
 }
+
+/* Motors ▸ Frame: "Want props out?" under a quad X. */
+.frame-props-out {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+.frame-props-out input {
+  margin-top: 3px;
+}
+.frame-props-out small {
+  display: block;
+  color: var(--text-muted, #9aa3b2);
+}
+
+/* Snapshot restore groups fold on their heading (field request): the label is
+   the toggle, styled as the plain heading it replaces. */
+.parameter-diff-group__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.parameter-diff-group__toggle:hover strong {
+  text-decoration: underline;
+}
+
+/* One capture row (field request): label, Capture, and a Details toggle that
+   opens tags / note / protect underneath. */
+.snapshot-capture-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.snapshot-capture-bar__label {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.snapshot-capture-details {
+  margin-top: var(--space-3);
+}
+
+.snapshot-library-actions {
+  margin-top: var(--space-3);
+}
+
+/* Recent Notices, inline: the INFO group folded to one row until asked for. */
+.setup-gui-box__status-fold {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px dashed var(--surface-400);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.setup-gui-box__status-fold:hover {
+  color: var(--text);
+}
+
+/* The raw "Value" entry under a bitmask chip group is for pasting a number
+   out of a param file; outside Expert the chips are the editor. */
+:root:not([data-product-mode="expert"]) .scoped-bitmask-raw {
+  display: none;
+}
+
+/* Servos: the FUNCTION column header names the field, so the per-row
+   "Output n Function" label is for screen readers only. */
+.servo-mapping__function .scoped-editor-field > span:first-of-type {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Logs ▸ Logging for tuning: the one-click setup and what it will change. */
+.logs-tuning-setup__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.logs-tuning-setup__row small {
+  color: var(--text-muted);
+}
+
+/* Guided Setup, slimmed: the step header is one line with its summary under
+   it, and the action card is sized to its buttons rather than the other way
+   round. Later rules beat the earlier wizard rules on specificity by order. */
+.setup-wizard__header {
+  padding: 8px 14px;
+  align-items: center;
+}
+
+.setup-wizard__header-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.setup-wizard__header-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.setup-wizard__header h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.setup-wizard__header p {
+  font-size: var(--text-sm);
+}
+
+.setup-wizard__action-card {
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.setup-wizard__action-card .setup-wizard__primary-button {
+  min-height: 38px;
+  padding: 8px 14px !important;
+  font-size: var(--text-md) !important;
+}
+
+.setup-wizard__action-card .setup-wizard__support-actions button,
+.setup-wizard__action-card > button:not(.setup-wizard__primary-button),
+.setup-wizard__action-card .setup-wizard__nav button {
+  min-height: 32px;
+  padding: 6px 10px !important;
+  font-size: var(--text-sm) !important;
+}
+
+.setup-wizard__continue-button {
+  min-height: 34px;
+  padding: 6px 12px !important;
+  font-size: var(--text-md) !important;
+}
+
+.setup-wizard__next {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* Guided Setup, front and centre.
+   The work (task cards, log readers, the hover cards) is the main pane. The
+   rail beside it holds the brief (what to do, what is still needed), the
+   action card and the checks, stacked, so the next button is always at the
+   top right. A step with no work on this page is one centered column with
+   the action and the checks side by side. Under 1200 px everything stacks:
+   brief, action, checks, then the work. */
+.setup-wizard {
+  width: 100%;
+}
+
+.setup-wizard__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.setup-wizard__main {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.setup-wizard__main:empty {
+  display: none;
+}
+
+.setup-wizard__detail {
+  display: contents;
+}
+
+.setup-wizard__work {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.setup-wizard__brief {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.setup-wizard__instruction {
+  margin: 0;
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* Stacked: the rail first, then the work. */
+.setup-wizard__aside {
+  order: 0;
+}
+
+.setup-wizard__main {
+  order: 1;
+}
+
+@media (min-width: 900px) {
+  /* No work on the page: the action and the checks share the row. */
+  .setup-wizard:not(:has(.setup-wizard__work, .setup-wizard__task-card)) .setup-wizard__aside {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    align-items: start;
+  }
+
+  .setup-wizard:not(:has(.setup-wizard__work, .setup-wizard__task-card)) .setup-wizard__brief {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1200px) {
+  .setup-wizard:has(.setup-wizard__work, .setup-wizard__task-card) .setup-wizard__body {
+    grid-template-columns: minmax(0, 1.7fr) minmax(380px, 1fr);
+  }
+
+  .setup-wizard:has(.setup-wizard__work, .setup-wizard__task-card) .setup-wizard__main {
+    order: 0;
+    grid-column: 1;
+  }
+
+  .setup-wizard:has(.setup-wizard__work, .setup-wizard__task-card) .setup-wizard__aside {
+    order: 1;
+    grid-column: 2;
+    grid-template-columns: minmax(0, 1fr);
+    position: sticky;
+    top: calc(var(--header-height, 72px) + 12px);
+  }
+}
+
+/* Status, quietly: a complete step is a small chip in the header; what is
+   still needed is one amber line, not a box. */
+.setup-wizard__complete-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--good, #3fbf6a);
+  color: var(--good, #3fbf6a);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.setup-wizard__next-criterion {
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--warning);
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--text-sm);
+}
+
+/* A step opened ahead of its turn. */
+.setup-wizard__preview-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px dashed var(--border-strong, var(--border));
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* Outputs step: the ESC protocol panel first, Motor Setup after it. The
+   Motors tab renders them the other way round in the DOM. */
+.setup-wizard__outputs .outputs-tab-body {
+  display: grid;
+  gap: 12px;
+}
+
+.setup-wizard__outputs [data-outputs-task='esc-protocol'] {
+  order: -1;
+}
+
+/* EnumPicker: a named-value dropdown that stays inside the window. The trigger
+   sits in the same editor column as a text input; the panel is position:fixed
+   (set inline from the trigger's rect) so it never runs past the viewport. */
+.enum-picker {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  max-width: 18rem;
+}
+.enum-picker__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  font: inherit;
+  font-size: var(--text-md);
+  text-align: left;
+  background: var(--surface-300);
+  color: var(--text);
+  border: 1px solid var(--surface-400);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+  cursor: pointer;
+}
+.enum-picker__trigger:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.enum-picker__trigger--invalid {
+  border-color: var(--danger);
+  background: rgba(var(--danger-rgb), 0.1);
+}
+.enum-picker__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.enum-picker__chevron {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+.enum-picker__panel {
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface, #141c28);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.enum-picker__search {
+  flex: 0 0 auto;
+  width: 100%;
+  margin-bottom: 4px;
+  font: inherit;
+  font-size: var(--text-md);
+  background: var(--surface-300);
+  color: var(--text);
+  border: 1px solid var(--surface-400);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+}
+.enum-picker__list {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.enum-picker__option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-md);
+}
+.enum-picker__option.is-active {
+  background: rgba(var(--fill-rgb, 20, 28, 40), 0.9);
+}
+.enum-picker__option.is-selected .enum-picker__option-label {
+  color: var(--accent, #dab254);
+}
+.enum-picker__option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.enum-picker__option-value {
+  flex: 0 0 auto;
+  font-family: var(--font-data);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.enum-picker__empty {
+  padding: 5px 8px;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* The DroneCAN param table's search: one line above the table. */
+.can-bus-params__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.can-bus-params__search input {
+  font: inherit;
+  font-size: var(--text-md);
+  background: var(--surface-300);
+  color: var(--text);
+  border: 1px solid var(--surface-400);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  width: 100%;
+  max-width: 24rem;
+}
+.can-bus-params__search small {
+  color: var(--text-muted);
+  white-space: nowrap;
+}

@@ -267,7 +267,9 @@ import type {
   SetupFlowFollowUpDescriptor
 } from './app-types'
 import { AP_PERIPH_CURATED_METADATA, loadApPeriphParamMetadata } from './view-models/ap-periph-param-metadata'
-import type { DronecanParamCatalogDef } from './view-models/dronecan-param-display'
+import { loadPx4CannodeParamMetadata, type Px4CannodeParamMetadata } from './view-models/px4-cannode-param-metadata'
+import { dronecanNodeStack } from './view-models/dronecan-node-stack'
+import type { DronecanParamCatalogDef, DronecanParamCatalogLookup } from './view-models/dronecan-param-display'
 import { parseParamPck } from './view-models/param-pck'
 import { overridableInvalidParamIds, stageableDraftValues } from './view-models/parameter-diff-actions'
 import { createMotorPreviewNodes } from './view-models/motor-preview'
@@ -2881,8 +2883,19 @@ export function App() {
     if (apPeriphMetadata || (activeViewId !== 'can' && activeViewId !== 'networking')) return
     void loadApPeriphParamMetadata().then(setApPeriphMetadata).catch(() => {})
   }, [activeViewId, apPeriphMetadata])
-  const dronecanParamMetadata = (name: string) =>
-    apPeriphMetadata?.[name] ?? AP_PERIPH_CURATED_METADATA[name] ?? metadataCatalog.parameters[name]
+  // PX4 "cannode" peripherals (ARK, CUAV, Freefly, Holybro CAN boards) expose
+  // PX4 params; their metadata is its own chunk, loaded with the AP_Periph one.
+  const [px4CannodeMetadata, setPx4CannodeMetadata] = useState<Px4CannodeParamMetadata | undefined>(undefined)
+  useEffect(() => {
+    if (px4CannodeMetadata || (activeViewId !== 'can' && activeViewId !== 'networking')) return
+    void loadPx4CannodeParamMetadata().then(setPx4CannodeMetadata).catch(() => {})
+  }, [activeViewId, px4CannodeMetadata])
+  const dronecanParamMetadata: DronecanParamCatalogLookup = (name, node) => {
+    if (node && dronecanNodeStack(node, px4CannodeMetadata?.nodeNames) === 'px4') {
+      return px4CannodeMetadata?.params[name]
+    }
+    return apPeriphMetadata?.[name] ?? AP_PERIPH_CURATED_METADATA[name] ?? metadataCatalog.parameters[name]
+  }
   // The website's AP_Periph index (the deploy's /fw/periph-index.json), loaded
   // when the CAN tab first opens; a site without it keeps "desktop only".
   const [periphIndexRows, setPeriphIndexRows] = useState<FirmwareIndexRow[] | undefined>(undefined)

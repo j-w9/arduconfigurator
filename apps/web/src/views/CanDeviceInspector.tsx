@@ -34,6 +34,7 @@ import { buildCanBusStagedChanges, healthLabel, modeLabel } from '../view-models
 import { periphPickerOptions, periphPreselect } from '../view-models/dronecan-firmware-picker'
 import { dronecanNodeBoardId } from '@arduconfig/firmware-flash'
 import type { DronecanParamCatalogLookup } from '../view-models/dronecan-param-display'
+import { EnumPicker } from './EnumPicker'
 import { InfoDot } from './InfoDot'
 
 /**
@@ -140,7 +141,7 @@ function useStickyParamNames(nodeId: number, parameters: readonly { name: string
 
 /** The node's params whose change needs a reboot. */
 function paramRowsForReboot(node: DronecanInspectedNode, lookup: DronecanParamCatalogLookup | undefined): string[] {
-  return node.parameters.filter((entry) => lookup?.(entry.name)?.rebootRequired).map((entry) => entry.name)
+  return node.parameters.filter((entry) => lookup?.(entry.name, node)?.rebootRequired).map((entry) => entry.name)
 }
 
 /** "CAN bitrate" for CAN_BAUDRATE, "Debug" for DEBUG: a display name that only
@@ -789,12 +790,20 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
   const nodeId = node.nodeId
   // Node id awaiting a restart confirmation (two-step button).
   const [confirmRestart, setConfirmRestart] = useState(false)
+  // Param search: name, label, description or the current enum label.
+  const [paramQuery, setParamQuery] = useState('')
   const fwView = buildDronecanFirmwareUpdateView(expertActions?.firmwareUpdate)
   const shows = (section: CanDeviceSection): boolean => sections.includes(section)
   // While an update is transferring, lock every node's other actions (one update
   // at a time, and a write/restart mid-flash could corrupt the node).
   const updateInProgress = !!(fwView && fwView.inProgress)
   const paramRows = buildDronecanParamRows(node, paramMetadata)
+  const paramNeedle = paramQuery.trim().toLowerCase()
+  const visibleParamRows = paramNeedle
+    ? paramRows.filter((row) =>
+        [row.name, row.label, row.description ?? '', row.enumLabel ?? ''].some((text) => text.toLowerCase().includes(paramNeedle))
+      )
+    : paramRows
   const stagedChanges = buildCanBusStagedChanges(node, draftValues)
   const validChanges = stagedChanges.filter((change) => change.parsed !== undefined)
   const escRows = escTelemetry ? buildDronecanEscRows(escTelemetry) : []
@@ -980,6 +989,22 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
         // A DroneCAN param table is five columns wide; in a narrow popout window
         // (or on a phone) it scrolls inside its own box rather than pushing the
         // document into a horizontal scroll.
+        <>
+        <div className="can-bus-params__search">
+          <input
+            type="search"
+            placeholder="Search parameters"
+            aria-label="Search parameters"
+            value={paramQuery}
+            onChange={(event) => setParamQuery(event.target.value)}
+            data-testid={`can-bus-param-search-${nodeId}`}
+          />
+          {paramNeedle ? (
+            <small data-testid={`can-bus-param-search-count-${nodeId}`}>
+              {visibleParamRows.length} of {paramRows.length}
+            </small>
+          ) : null}
+        </div>
         <div className="can-bus-params-scroll">
         <table className="can-bus-params">
           <thead>
@@ -992,7 +1017,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
             </tr>
           </thead>
           <tbody>
-            {paramRows.map((row) => {
+            {visibleParamRows.map((row) => {
               const draft = draftValues[`${nodeId}:${row.name}`]
               const displayed = draft ?? row.valueLabel
               // A draft that doesn't parse for this param's type is flagged in
@@ -1021,22 +1046,15 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
                   <td className="can-bus-params__value">
                     {row.editable && row.options ? (
                       // Named values, as on the Parameters page: pick one.
-                      <select
+                      <EnumPicker
                         value={displayed}
+                        options={row.options}
                         disabled={updateInProgress}
-                        onChange={(event) => onDraftChange(nodeId, row.name, event.target.value)}
-                        className={draftInvalid ? 'can-bus-params__input--invalid' : undefined}
-                        data-testid={`can-bus-param-select-${nodeId}-${row.name}`}
-                      >
-                        {row.options.some((option) => String(option.value) === displayed) ? null : (
-                          <option value={displayed}>Other: {displayed}</option>
-                        )}
-                        {row.options.map((option) => (
-                          <option key={option.value} value={String(option.value)}>
-                            {option.label} ({option.value})
-                          </option>
-                        ))}
-                      </select>
+                        invalid={draftInvalid}
+                        onChange={(next) => onDraftChange(nodeId, row.name, next)}
+                        ariaLabel={row.name}
+                        testId={`can-bus-param-select-${nodeId}-${row.name}`}
+                      />
                     ) : row.editable ? (
                       <input
                         type="text"
@@ -1069,6 +1087,7 @@ export function CanDeviceInspectorView(props: CanDeviceInspectorViewProps) {
           </tbody>
         </table>
         </div>
+        </>
       )
       ) : null}
 
