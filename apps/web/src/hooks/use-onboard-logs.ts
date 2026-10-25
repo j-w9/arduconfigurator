@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   ConfiguratorSnapshot,
   LogDownloadProgress,
@@ -103,7 +103,17 @@ const MAVFTP_LIST_DEADLINE_MS = 6_000
 /** A sentinel distinct from `undefined` (MAVFTP failed) and a real listing. */
 const MAVFTP_TIMED_OUT = Symbol('mavftp-timed-out')
 
-export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): OnboardLogs {
+export interface OnboardLogsLink {
+  /** The link is up. */
+  connected: boolean
+  /** Connected and the param sync has finished — the link is quiet enough to list. */
+  synced: boolean
+}
+
+export function useOnboardLogs(
+  runtime: OnboardLogCapableRuntime | undefined,
+  link?: OnboardLogsLink
+): OnboardLogs {
   const [state, setState] = useState<OnboardLogsState>({
     status: 'idle',
     source: 'mavlink',
@@ -305,6 +315,39 @@ export function useOnboardLogs(runtime: OnboardLogCapableRuntime | undefined): O
   const list = useCallback(() => {
     void listInternal()
   }, [listInternal])
+
+  // A reconnect is often a new flight: the list held from before it is
+  // missing the newest log, and every "pick from vehicle" dropdown showed it
+  // until someone pressed Refresh on the Logs tab. So a dropped link clears the
+  // list, and the next connection re-reads it once params have synced — but
+  // only if a list had been read before, so a first connect costs nothing.
+  const hadListRef = useRef(false)
+  const wasConnectedRef = useRef(false)
+  const relistPendingRef = useRef(false)
+  const connected = link?.connected ?? false
+  const synced = link?.synced ?? false
+  useEffect(() => {
+    if (state.status === 'ready' || state.logs.length > 0) hadListRef.current = true
+  }, [state.status, state.logs.length])
+  useEffect(() => {
+    if (!link) return
+    if (wasConnectedRef.current && !connected) {
+      listRunRef.current += 1
+      logsRef.current = []
+      mavftpItemsRef.current = new Map()
+      mavftpPendingRef.current = undefined
+      // A different board may be next; let it prove MAVFTP again.
+      mavftpDeadRef.current = false
+      relistPendingRef.current = hadListRef.current
+      setState({ status: 'idle', source: 'mavlink', logs: [], logNamesById: new Map(), mavftpPathsById: new Map() })
+    }
+    wasConnectedRef.current = connected
+  }, [link, connected])
+  useEffect(() => {
+    if (!link || !connected || !synced || !relistPendingRef.current) return
+    relistPendingRef.current = false
+    void listInternal()
+  }, [link, connected, synced, listInternal])
 
   /**
    * Erase every log on the card.

@@ -24568,3 +24568,188 @@ button.plot-side-list__name {
   color: var(--text-muted);
   white-space: nowrap;
 }
+
+/* CAN ▸ ESC / Servo bench tools. */
+.can-actuators {
+  display: grid;
+  gap: 12px;
+}
+.can-actuators__lede,
+.can-actuators__note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-md);
+}
+.can-actuators__run,
+.can-actuators__settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.can-actuators__ack,
+.can-actuators__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.can-actuators__ack {
+  font-weight: 600;
+}
+.can-actuators__stop {
+  font: inherit;
+  font-weight: 700;
+  padding: 6px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--danger);
+  background: var(--danger);
+  color: #fff;
+  cursor: pointer;
+}
+.can-actuators__state {
+  color: var(--text-muted);
+}
+.can-actuators__state--blocked {
+  color: var(--warning, #e0a63a);
+}
+.can-actuators__settings label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.can-actuators__settings input[type='number'] {
+  width: 5.5rem;
+}
+.can-actuators__master {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 4.5rem;
+  align-items: center;
+  gap: 10px;
+  max-width: 40rem;
+}
+.can-actuators__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-md);
+}
+.can-actuators__table th,
+.can-actuators__table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-soft, var(--border));
+  text-align: left;
+  white-space: nowrap;
+}
+.can-actuators__table th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.can-actuators__slider {
+  width: 45%;
+  min-width: 12rem;
+}
+.can-actuators__slider input[type='range'] {
+  width: calc(100% - 5.5rem);
+  vertical-align: middle;
+}
+.can-actuators__slider output {
+  display: inline-block;
+  width: 5rem;
+  margin-left: 8px;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+.can-actuators__id {
+  width: 4.5rem;
+}
+@media (max-width: 700px) {
+  .can-actuators__table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+/* CAN ▸ All devices ▸ Fleet. */
+.can-fleet {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft, var(--border));
+}
+.can-fleet h3,
+.can-fleet h4 {
+  margin: 0;
+}
+.can-fleet__section {
+  display: grid;
+  gap: 10px;
+}
+.can-fleet__row,
+.can-fleet__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 16px;
+}
+.can-fleet__field {
+  display: grid;
+  gap: 4px;
+  min-width: 14rem;
+}
+.can-fleet__field > span {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.can-fleet__field input[type='text'] {
+  font: inherit;
+  background: var(--surface-300);
+  color: var(--text);
+  border: 1px solid var(--surface-400);
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
+}
+.can-fleet__hint,
+.can-fleet__empty,
+.can-fleet__actions small {
+  margin: 0;
+  color: var(--text-muted);
+}
+.can-fleet__error {
+  margin: 0;
+  color: var(--danger);
+}
+.can-fleet__ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-weight: 600;
+}
+.can-fleet__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-md);
+}
+.can-fleet__table th,
+.can-fleet__table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-soft, var(--border));
+  text-align: left;
+}
+.can-fleet__table th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+@media (max-width: 700px) {
+  .can-fleet__table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+/* "Pick from vehicle": the log dropdown with its Refresh button beside it. */
+.onboard-log-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
