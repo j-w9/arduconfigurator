@@ -906,7 +906,13 @@ export function App() {
     replaceDrafts,
     updateDrafts
   } = useParameterDrafts()
-  const onboardLogs = useOnboardLogs(runtime)
+  const onboardLogsLinkConnected = snapshot.connection.kind === 'connected'
+  const onboardLogsLinkSynced = onboardLogsLinkConnected && snapshot.parameterStats.status === 'complete'
+  const onboardLogsLink = useMemo(
+    () => ({ connected: onboardLogsLinkConnected, synced: onboardLogsLinkSynced }),
+    [onboardLogsLinkConnected, onboardLogsLinkSynced]
+  )
+  const onboardLogs = useOnboardLogs(runtime, onboardLogsLink)
   // Upload-to-your-own-server for onboard logs. Entirely self-contained: its
   // own client, its own stored session, and no relationship to any other
   // network surface in this app.

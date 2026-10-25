@@ -4887,6 +4887,33 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('log-tuning-results').or(tuning.getByTestId('log-tuning-error'))).toBeVisible()
   })
 
+  test('Pick from vehicle: a reconnect re-reads the log list, so a new flight\'s log is offered without a refresh', async ({ page }) => {
+    // Fly, land, plug back in, pick the log: the list held from before the
+    // reconnect is missing the newest log. A dropped link clears it, and the
+    // next connection re-reads it once params have synced.
+    await page.goto('/')
+    await page.getByTestId('transport-mode-select').selectOption('demo')
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    await enableExpertMode(page)
+    await openView(page, 'calibration')
+    await openCalibrationSection(page, 'flight')
+    const hoverCard = page.getByTestId('calibration-card-hover-throttle-log')
+    await hoverCard.getByTestId('hover-throttle-log-list-onboard-logs').click()
+    await expect(hoverCard.getByTestId('hover-throttle-log-onboard-log-select').locator('option')).toHaveCount(3)
+    await expect(hoverCard.getByTestId('hover-throttle-log-refresh-onboard-logs')).toBeEnabled()
+
+    await page.getByTestId('disconnect-button').click()
+    await expect(hoverCard.getByTestId('hover-throttle-log-onboard-log-select')).toHaveCount(0)
+
+    await page.getByTestId('connect-button').click()
+    await expect(page.getByTestId('session-vehicle-name')).toHaveText('ArduCopter', { timeout: VEHICLE_CONNECT_TIMEOUT })
+    // No click: the list comes back on its own.
+    await expect(hoverCard.getByTestId('hover-throttle-log-onboard-log-select').locator('option')).toHaveCount(3, {
+      timeout: VEHICLE_CONNECT_TIMEOUT
+    })
+  })
+
   test('Calibration: the Thermal Calibration (TCAL) card is offered to everyone', async ({ page }) => {
     // NOT Expert-gated. It is stock ArduPilot, it is bench work with the props
     // off, and the card is safer than setting INS_TCALn_ENABLE by hand in raw

@@ -88,6 +88,17 @@ export function OnboardLogPicker({
           </select>
         </label>
       )}
+      {onboardLogs.logs.length === 0 ? null : (
+        <button
+          type="button"
+          style={buttonStyle()}
+          data-testid={`${testIdPrefix}-refresh-onboard-logs`}
+          disabled={busy || onboardLogs.status === 'listing'}
+          onClick={onboardLogs.list}
+        >
+          {onboardLogs.status === 'listing' ? 'Reading…' : 'Refresh'}
+        </button>
+      )}
     </div>
   )
 }
