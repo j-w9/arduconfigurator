@@ -3051,7 +3051,6 @@ export function App() {
     planeSoaringAdsbDraftEntries,
     planeSoaringAdsbStagedDrafts,
     planeSoaringAdsbInvalidDrafts,
-    copterAutotuneDraftEntries,
     copterAutotuneStagedDrafts,
     copterAutotuneInvalidDrafts,
     planeAutotuneDraftEntries,
@@ -10777,16 +10776,9 @@ export function App() {
                AUTOTUNE_ params. */
             <AutotuneCopterSection
               snapshot={snapshot}
-              canApplyDraftParameters={canApplyDraftParameters}
-              busyAction={busyAction}
               editedValues={editedValues}
               parameterDraftById={parameterDraftById}
-              copterAutotuneDraftEntries={copterAutotuneDraftEntries}
-              copterAutotuneStagedDrafts={copterAutotuneStagedDrafts}
-              copterAutotuneInvalidDrafts={copterAutotuneInvalidDrafts}
               setDraft={setDraft}
-              handleApplyScopedParameterDrafts={handleApplyScopedParameterDrafts}
-              handleDiscardScopedParameterDrafts={handleDiscardScopedParameterDrafts}
             />
           }
         />

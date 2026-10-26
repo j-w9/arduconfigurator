@@ -4762,25 +4762,17 @@ test.describe('ArduPlane demo', () => {
     await expect(page.getByTestId('autotune-copter-procedure')).toBeVisible()
     await expect(page.getByTestId('autotune-copter-safety')).toBeVisible()
 
-    const apply = page.getByTestId('apply-copter-autotune-changes-button')
-    await expect(apply).toBeVisible()
-    await expect(apply).toBeDisabled() // nothing staged yet
-    await expect(apply).toContainText('Apply AutoTune Changes (0)')
-
-    // MOCK==REAL: the demo Copter seeds AUTOTUNE_AGGR=0.075, so the first numeric
-    // field shows the seeded live value (not an empty box). Editing it stages a
-    // draft through the shared setDraft -> scoped-apply machinery. Exclude the
-    // bitmask raw-value inputs (e.g. AUTOTUNE_AXES) which are also type=number.
-    const aggr = configGroup.locator('input[type="number"]:not([aria-label*="raw bitmask"])').first()
+    // MOCK==REAL: the demo Copter seeds AUTOTUNE_AGGR=0.075. Editing it stages
+    // a draft the global draft bar writes, like every other tab — AutoTune has
+    // no review panel of its own any more.
+    const aggr = page.getByTestId('tuning-input-AUTOTUNE_AGGR')
     await aggr.scrollIntoViewIfNeeded()
-    await expect(aggr).not.toHaveValue('')
     await expect(aggr).toHaveValue(/^0?\.0?7/)
+    await expect(page.getByTestId('apply-copter-autotune-changes-button')).toHaveCount(0)
     await aggr.fill('0.09')
-    await aggr.blur()
-
-    await expect(apply).toContainText('Apply AutoTune Changes (1)')
-    await expect(apply).toBeEnabled()
-    await expect(page.getByTestId('autotune-copter-review')).toContainText('AUTOTUNE_AGGR')
+    await expect(page.locator('body')).toContainText('1 staged change')
+    // The axes bitmask is one toggle per axis.
+    await expect(page.locator('[data-testid^="pilot-feel-AUTOTUNE_AXES-bit-"]').first()).toBeVisible()
   })
 
   test('Tuning: the Log Tuning sub-tab uploads a log and shows the quality gate', async ({ page }) => {
