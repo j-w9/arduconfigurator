@@ -145,16 +145,13 @@ const mockParameters: ParameterState = {
   INS_TCAL1_ENABLE: 0,
   INS_TCAL2_ENABLE: 0,
   INS_TCAL3_ENABLE: 0,
-  // ...and the range it learns over, at the firmware's own AP_GROUPINFO
-  // defaults (AP_InertialSensor_tempcal.cpp: TMIN 0, TMAX 70). A real vehicle
-  // reports these whether or not TCAL is enabled, and the card's target field
-  // reads them — without them it has nothing to seed from.
-  INS_TCAL1_TMIN: 0,
-  INS_TCAL1_TMAX: 70,
-  INS_TCAL2_TMIN: 0,
-  INS_TCAL2_TMAX: 70,
-  INS_TCAL3_TMIN: 0,
-  INS_TCAL3_TMAX: 70,
+  // No INS_TCALn_TMIN / TMAX here, on purpose. ENABLE carries
+  // AP_PARAM_FLAG_ENABLE and AP_Param hides the rest of a disabled group
+  // (_hide_disabled_groups defaults true), so a real board with thermal cal
+  // off does not report them. The demo used to, which is how the card's
+  // "stage the target as a draft" path looked fine here and dropped the target
+  // on a real vehicle. A PARAM_SET by name still lands (AP_Param::find ignores
+  // the hiding), as it does below.
   // Baro temperature calibration (AP_TempCalibration, a Copter g2 subgroup) —
   // a DIFFERENT family from the per-IMU INS_TCALn_* above. At the firmware's
   // own defaults for a board that has never learned: off, no range, no

@@ -4938,39 +4938,48 @@ test.describe('ArduPlane demo', () => {
     // out of view; the state pills stay visible, the setup is one click away.
     await expect(page.getByTestId('tcal-start')).toHaveCount(0)
     await page.getByTestId('tcal-expand').click()
-    // The step-by-step is collapsed into a How-it-works disclosure (compact card).
-    // .first(): the card now carries a second how-to for the baro procedure.
-    await expect(tcal.locator('.calibration-card__howto summary').first()).toHaveText(
-      /How thermal calibration works/i
-    )
-    await expect(page.getByTestId('tcal-start')).toBeVisible()
+    // What the operator does, in order: start cold, pick a target, start.
+    await expect(page.getByTestId('tcal-steps')).toContainText('Start cold')
+    await expect(page.getByTestId('tcal-steps')).toContainText('Pick a target')
 
-    // The temperature range the learn runs over, seeded from the vehicle.
-    // TMAX is what ENDS the learn (AP_InertialSensor_tempcal.cpp finishes when
-    // the IMU reaches it) and its firmware default is 70 degC, which most
-    // airframes never reach — so a board left on the default learns forever and
-    // saves nothing. Without these fields there was no way to change that.
-    await expect(page.getByTestId('tcal-tmin')).toHaveValue('0')
-    await expect(page.getByTestId('tcal-tmax')).toHaveValue('70')
-    await expect(page.getByTestId('tcal-temp-unreachable')).toBeVisible()
-
-    // A reachable target clears the warning.
-    await page.getByTestId('tcal-tmax').fill('45')
-    await expect(page.getByTestId('tcal-temp-unreachable')).toHaveCount(0)
-    await expect(page.getByTestId('tcal-start')).toBeEnabled()
-
-    // The firmware needs at least 10 degC of range (TEMP_RANGE_MIN) or it never
-    // completes the fit, so a narrower one cannot be staged at all.
-    await page.getByTestId('tcal-tmax').fill('5')
-    await expect(page.getByTestId('tcal-temp-problem')).toBeVisible()
+    // Thermal cal off hides TMAX on a real board (and now in the demo), so the
+    // target is a suggestion, not the 70 °C firmware default.
+    await expect(page.getByTestId('tcal-tmax')).toHaveValue('45')
+    // The demo board sits at ~35.6 °C: 45 is under 10 °C of rise, which the
+    // learn needs before it can finish — so Start says why it cannot go.
+    await expect(page.getByTestId('tcal-temp-problem')).toContainText('at least 10 °C of rise')
     await expect(page.getByTestId('tcal-start')).toBeDisabled()
 
-    // Staging carries the temperatures, not just the enable: TMAX 70 -> 45 and
-    // ENABLE 0 -> 2 on three IMUs. TMIN is unchanged at 0, so it is correctly
-    // not a draft.
-    await page.getByTestId('tcal-tmax').fill('45')
+    // A target out of reach is a note, not a block: it ends when warming stalls.
+    await page.getByTestId('tcal-tmax').fill('70')
+    await expect(page.getByTestId('tcal-temp-note')).toContainText('stops rising')
+    await expect(page.getByTestId('tcal-start')).toBeEnabled()
+
+    // Start writes straight through — target first, then the enable — with no
+    // draft bar in between. The board then reports learning and the target.
+    await page.getByTestId('tcal-tmax').fill('60')
     await page.getByTestId('tcal-start').click()
-    await expect(page.locator('body')).toContainText('6 staged changes')
+    await expect(tcal).toContainText('IMU1 TCAL: learning')
+    await expect(page.getByTestId('tcal-learning')).toContainText('target 60 °C')
+    await expect(page.locator('body')).not.toContainText('staged change')
+    // The baro learn went with it (the box is on by default).
+    await expect(page.getByTestId('tcal-baro')).toContainText('Baro TCAL: learning')
+
+    // Stop, keeping what it saved: the IMUs go to "use" (on).
+    await page.getByTestId('tcal-stop-keep').click()
+    await expect(tcal).toContainText('IMU1 TCAL: on')
+    await expect(page.getByTestId('tcal-steps')).toBeVisible()
+    // And thermal cal can be turned off altogether.
+    await page.getByTestId('tcal-turn-off').click()
+    await expect(tcal).toContainText('IMU1 TCAL: off')
+    await expect(page.getByTestId('tcal-turn-off')).toHaveCount(0)
+
+    // A learn can also be stopped straight to off.
+    await page.getByTestId('tcal-tmax').fill('60')
+    await page.getByTestId('tcal-start').click()
+    await expect(tcal).toContainText('IMU1 TCAL: learning')
+    await page.getByTestId('tcal-stop-off').click()
+    await expect(tcal).toContainText('IMU1 TCAL: off')
   })
 
   test('Calibration: the TCAL card also runs the BARO temperature calibration', async ({ page }) => {
@@ -4994,10 +5003,18 @@ test.describe('ArduPlane demo', () => {
     // Nothing to keep until it is learning.
     await expect(page.getByTestId('tcal-baro-keep')).toBeDisabled()
 
-    // Preparing it stages TCAL_ENABLED = 2 (learn AND use) — one parameter, and
-    // NOT the per-IMU family.
+    // Its own Start writes TCAL_ENABLED = 2 (learn AND use) directly — one
+    // parameter, and NOT the per-IMU family.
     await page.getByTestId('tcal-baro-start').click()
-    await expect(page.locator('body')).toContainText('1 staged change')
+    await expect(baro).toContainText('Baro TCAL: learning')
+    await expect(page.getByTestId('calibration-card-tcal')).toContainText('IMU1 TCAL: off')
+    // Then pin what it learned.
+    await page.getByTestId('tcal-baro-keep').click()
+    await expect(baro).toContainText('Baro TCAL: on')
+    // ...or turn it off.
+    await page.getByTestId('tcal-baro-off').click()
+    await expect(baro).toContainText('Baro TCAL: off')
+    await expect(page.getByTestId('tcal-baro-off')).toBeDisabled()
   })
 
   test('Calibration: autotune is a flight you come back from', async ({ page }) => {

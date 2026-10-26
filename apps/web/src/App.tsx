@@ -268,6 +268,7 @@ import type {
 } from './app-types'
 import { AP_PERIPH_CURATED_METADATA, loadApPeriphParamMetadata } from './view-models/ap-periph-param-metadata'
 import { loadPx4CannodeParamMetadata, type Px4CannodeParamMetadata } from './view-models/px4-cannode-param-metadata'
+import type { TcalWrite } from './view-models/tcal-plan'
 import { dronecanNodeStack } from './view-models/dronecan-node-stack'
 import type { DronecanParamCatalogDef, DronecanParamCatalogLookup } from './view-models/dronecan-param-display'
 import { parseParamPck } from './view-models/param-pck'
@@ -3651,6 +3652,28 @@ export function App() {
       })
     } finally {
       setBusyAction((current) => (current === 'can:enable' ? undefined : current))
+    }
+  }
+
+  // Thermal calibration: ordered, verified writes straight from the card —
+  // the target before the enable (see view-models/tcal-plan.ts). A draft could
+  // not do it: the target is hidden until the enable is on, and the learn
+  // captures it the moment the enable goes to 2.
+  async function handleTcalWrite(writes: TcalWrite[], description: string): Promise<void> {
+    if (!runtime || writes.length === 0) {
+      return
+    }
+    setBusyAction('tcal:write')
+    try {
+      const result = await runtime.setParameters(writes, UI_PARAMETER_WRITE_OPTIONS)
+      setSessionNotice({ tone: result.unconfirmed.length > 0 ? 'warning' : 'success', text: `${description}.` })
+    } catch (error) {
+      setSessionNotice({
+        tone: 'danger',
+        text: `Thermal calibration write failed: ${error instanceof Error ? error.message : 'unknown error'}`
+      })
+    } finally {
+      setBusyAction((current) => (current === 'tcal:write' ? undefined : current))
     }
   }
 
@@ -11018,6 +11041,7 @@ export function App() {
 
       {activeViewId === 'calibration' ? (
         <CalibrationSection
+          onTcalWrite={(writes, description) => void handleTcalWrite(writes, description)}
           snapshot={snapshot}
           runtime={runtime}
           busyAction={busyAction}
