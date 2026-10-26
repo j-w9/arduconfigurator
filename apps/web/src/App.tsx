@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import {
@@ -113,6 +113,7 @@ import { trackAppEvent, trackViewPageview } from './analytics'
 import { GIT_HASH, GIT_BRANCH } from './build-info'
 import {
   TUNING_ALL_PID_PARAM_IDS,
+  TUNING_ALTHOLD_CONTROLLER_PARAM_IDS,
   TUNING_FILTER_PARAM_IDS,
   TUNING_NOTCH_PARAM_IDS,
   TUNING_PLANE_PARAM_IDS,
@@ -269,6 +270,8 @@ import type {
 import { AP_PERIPH_CURATED_METADATA, loadApPeriphParamMetadata } from './view-models/ap-periph-param-metadata'
 import { loadPx4CannodeParamMetadata, type Px4CannodeParamMetadata } from './view-models/px4-cannode-param-metadata'
 import type { TcalWrite } from './view-models/tcal-plan'
+import { altHoldGainCheck } from './view-models/althold-gain-check'
+import { AltHoldGainCheckView } from './views/AltHoldGainCheck'
 import { dronecanNodeStack } from './view-models/dronecan-node-stack'
 import type { DronecanParamCatalogDef, DronecanParamCatalogLookup } from './view-models/dronecan-param-display'
 import { parseParamPck } from './view-models/param-pck'
@@ -5988,6 +5991,80 @@ export function App() {
   }
 
   const { motorVerificationSummary } = useMotorVerificationDerivations({ motorVerification })
+  // Tuning ▸ Pilot ▸ Alt Hold: the altitude controller AltHold flies with, and
+  // its accel gains checked against ArduPilot's hover-throttle rule. Values are
+  // draft-aware so staging a new hover throttle re-checks the gains at once.
+  const altHoldControllerParameters = TUNING_ALTHOLD_CONTROLLER_PARAM_IDS.map((paramId) =>
+    snapshot.parameters.find((parameter) => parameter.id === paramId)
+  ).filter((parameter): parameter is ParameterState => parameter !== undefined)
+  const altHoldValue = (paramId: string): number | undefined => {
+    const drafted = editedValues[paramId]
+    if (drafted !== undefined && drafted.trim() !== '' && Number.isFinite(Number(drafted))) return Number(drafted)
+    return snapshot.parameters.find((parameter) => parameter.id === paramId)?.value
+  }
+  const altHoldScheme: '4.7' | '4.6' = altHoldControllerParameters.some((parameter) => parameter.id === 'PSC_D_ACC_P') ? '4.7' : '4.6'
+  const altHoldPId = altHoldScheme === '4.7' ? 'PSC_D_ACC_P' : 'PSC_ACCZ_P'
+  const altHoldIId = altHoldScheme === '4.7' ? 'PSC_D_ACC_I' : 'PSC_ACCZ_I'
+  const altHoldHover = altHoldValue('MOT_THST_HOVER')
+  const altHoldCheck = altHoldGainCheck({
+    hover: altHoldHover,
+    hoverLearn: altHoldValue('MOT_HOVER_LEARN'),
+    accP: altHoldValue(altHoldPId),
+    accI: altHoldValue(altHoldIId),
+    scheme: altHoldScheme
+  })
+  const altHoldControllerSlot =
+    altHoldControllerParameters.length > 0 ? (
+      <div className="althold-controller" data-testid="althold-controller">
+        <div className="switch-exercise-card__header althold-controller__title">
+          <div>
+            <strong>Altitude controller</strong>
+          </div>
+        </div>
+        <p className="althold-gain-check__text">
+          What holds the height you asked for: position → climb rate → vertical acceleration, with the hover throttle as
+          its starting point.
+        </p>
+        <div className="tuning-control-grid">
+          {altHoldControllerParameters.map((parameter) => (
+            <Fragment key={parameter.id}>{renderMetadataParameterField(parameter)}</Fragment>
+          ))}
+        </div>
+        {/* The AltHold test flight (ArduPilot's initial tuning guide, and the
+            usual community procedure): learn the hover, then set the accel
+            gains from it; an up-down oscillation after that is the outer
+            loops. */}
+        <details className="calibration-card__howto" data-testid="althold-test-flight">
+          <summary>AltHold test flight</summary>
+          <ol>
+            <li>Set <code>MOT_HOVER_LEARN</code> to 2 (learn and save).</li>
+            <li>Take off in Stabilize to about 5 m, switch to AltHold, and hover for 30 s with the throttle stick centred.</li>
+            <li>Land and disarm. <code>MOT_THST_HOVER</code> now holds the learned hover.</li>
+            <li>Stage the accel gains from it with the button below.</li>
+            <li>
+              If AltHold still oscillates up and down, halve <code>{altHoldScheme === '4.7' ? 'PSC_D_POS_P' : 'PSC_POSZ_P'}</code> and{' '}
+              <code>{altHoldScheme === '4.7' ? 'PSC_D_VEL_P' : 'PSC_VELZ_P'}</code>.
+            </li>
+          </ol>
+          <p className="althold-gain-check__text">
+            Hover learning only runs while the climb rate asked for is exactly zero: stick centred, no bouncing.
+          </p>
+        </details>
+        {altHoldCheck && altHoldHover !== undefined ? (
+          <AltHoldGainCheckView
+            check={altHoldCheck}
+            pParamId={altHoldPId}
+            iParamId={altHoldIId}
+            hover={altHoldHover}
+            canStage={snapshot.connection.kind === 'connected'}
+            onStage={() => {
+              setDraft(altHoldPId, String(altHoldCheck.recommendedP))
+              setDraft(altHoldIId, String(altHoldCheck.recommendedI))
+            }}
+          />
+        ) : null}
+      </div>
+    ) : null
 
   const currentMotorVerificationOutput =
     motorVerification.currentOutputChannel !== undefined
@@ -10303,6 +10380,7 @@ export function App() {
               />
             ) : undefined
           }
+          altHoldControllerSlot={altHoldControllerSlot}
           filterNotchSlot={
             <>
               {/* Enter a gyro cutoff, get ArduPilot's derived filter set as

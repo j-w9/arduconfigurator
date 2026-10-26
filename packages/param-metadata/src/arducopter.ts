@@ -2702,6 +2702,77 @@ export const arducopterMetadata: FirmwareMetadataBundle = {
       maximum: 7,
       step: 1
     },
+    // libraries/AP_Motors/AP_MotorsMulticopter.cpp @Param THST_HOVER / HOVER_LEARN.
+    MOT_THST_HOVER: {
+      id: 'MOT_THST_HOVER',
+      label: 'Hover throttle',
+      description:
+        'Throttle needed to hover, 0 to 1. The altitude controller starts from it, and its accel gains should follow it (4.7: PSC_D_ACC_P = 0.1 x this, I = 0.2 x). It cannot go below 0.125: a quad that hovers lower is overpowered for the controller.',
+      category: 'tuning',
+      minimum: 0.125,
+      maximum: 0.6875,
+      step: 0.001
+    },
+    MOT_HOVER_LEARN: {
+      id: 'MOT_HOVER_LEARN',
+      label: 'Hover throttle learning',
+      description:
+        'Learns MOT_THST_HOVER in AltHold and similar modes. It only learns while the climb rate asked for is exactly zero, the quad is level and not climbing or sinking fast.',
+      category: 'tuning',
+      options: [
+        { value: 0, label: 'Disabled' },
+        { value: 1, label: 'Learn' },
+        { value: 2, label: 'Learn and save' }
+      ]
+    },
+    // The vertical acceleration controller, 4.7 names and the 4.6 names it
+    // replaced (ten times the scale). The hover-throttle step sets both from
+    // MOT_THST_HOVER (initial-tuning-flight.rst, "Test AltHold").
+    PSC_D_ACC_P: {
+      id: 'PSC_D_ACC_P',
+      label: 'Vertical accel P',
+      description: 'Acceleration (vertical) controller P gain: desired minus actual vertical acceleration into motor output. Set to 0.1 x MOT_THST_HOVER once the hover throttle is learned. Before 4.7 this was PSC_ACCZ_P at ten times the scale.',
+      category: 'tuning',
+      minimum: 0.01,
+      maximum: 0.25,
+      step: 0.001
+    },
+    PSC_D_ACC_I: {
+      id: 'PSC_D_ACC_I',
+      label: 'Vertical accel I',
+      description: 'Acceleration (vertical) controller I gain: corrects a long-term difference between desired and actual vertical acceleration. Set to 0.2 x MOT_THST_HOVER once the hover throttle is learned. Before 4.7 this was PSC_ACCZ_I at ten times the scale.',
+      category: 'tuning',
+      minimum: 0,
+      maximum: 0.5,
+      step: 0.001
+    },
+    PSC_ACCZ_P: {
+      id: 'PSC_ACCZ_P',
+      label: 'Vertical accel P (4.6)',
+      description: 'Acceleration (vertical) controller P gain on Copter 4.6 and earlier. Set to MOT_THST_HOVER once the hover throttle is learned. 4.7 renamed it PSC_D_ACC_P at a tenth of the scale.',
+      category: 'tuning',
+      minimum: 0.2,
+      maximum: 1.5,
+      step: 0.05
+    },
+    PSC_ACCZ_I: {
+      id: 'PSC_ACCZ_I',
+      label: 'Vertical accel I (4.6)',
+      description: 'Acceleration (vertical) controller I gain on Copter 4.6 and earlier. Set to 2 x MOT_THST_HOVER once the hover throttle is learned. 4.7 renamed it PSC_D_ACC_I at a tenth of the scale.',
+      category: 'tuning',
+      minimum: 0,
+      maximum: 3,
+      step: 0.05
+    },
+    ATC_THR_MIX_MAX: {
+      id: 'ATC_THR_MIX_MAX',
+      label: 'Throttle vs attitude priority (flight)',
+      description: 'How far attitude control may override throttle in active flight. Higher favours attitude. The autotune page suggests 0.9 after a good tune (default 0.5); too high with gains that oscillate can make descending hard.',
+      category: 'tuning',
+      minimum: 0.5,
+      maximum: 0.9,
+      step: 0.1
+    },
     AUTOTUNE_AXES: {
       id: 'AUTOTUNE_AXES',
       label: 'AutoTune Axes',
