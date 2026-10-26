@@ -109,6 +109,8 @@ export interface TuningCopterSectionProps {
   pilotFeelSlot?: ReactNode
   /** PID Gains: the Roll | Pitch | Yaw grid, in place of the slider cards. */
   pidGainsSlot?: ReactNode
+  /** Notches: Notch 1 | Notch 2 grid and the filter bank, in place of the cards. */
+  notchesSlot?: ReactNode
   /** Expert mode breaks out the raw per-parameter filter grid. See the Filters
    *  task body for why it is not the default surface. */
   isExpertMode: boolean
@@ -127,6 +129,7 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
     altHoldControllerSlot,
     pilotFeelSlot,
     pidGainsSlot,
+    notchesSlot,
     tuningWorkbench,
     forms,
     derived,
@@ -664,7 +667,12 @@ export function TuningCopterSection(props: TuningCopterSectionProps): ReactEleme
                   </div>
                 ) : null}
 
-                {activeTuningTaskId === 'notches' ? (
+                {activeTuningTaskId === 'notches' && notchesSlot ? (
+                  <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-notches-panel">
+                    {notchesSlot}
+                  </div>
+                ) : null}
+                {activeTuningTaskId === 'notches' && !notchesSlot ? (
                   <div className="tuning-task-panel tuning-task-panel--stack" data-testid="tuning-notches-panel">
                     <section className="bf-gui-box">
                       <div className="bf-gui-box__titlebar">

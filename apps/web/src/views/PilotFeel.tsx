@@ -40,6 +40,12 @@ export interface PilotFeelValue {
   onChange: (text: string) => void
   /** Small prefix when two values share a cell (Roll / Pitch). */
   tag?: string
+  /** An enum with no meaningful number to type: the named list only. */
+  selectOnly?: boolean
+  /** A bitmask: one toggle per named bit instead of a number. */
+  bits?: ReadonlyArray<{ bit: number; label: string }>
+  /** A documented value worth one click (notch bandwidth = half the frequency). */
+  suggestion?: { label: string; text: string }
 }
 
 function numberOf(value: PilotFeelValue | undefined): number | undefined {
@@ -56,6 +62,62 @@ function FeelInput({ value }: { value: PilotFeelValue }): ReactElement {
   const current = numberOf(value)
   const chosen = value.choices ? matchingChoice(value.choices, current) : undefined
   const changed = isChangedFromDefault(current, value.defaultValue)
+  if (value.bits) {
+    const mask = current !== undefined && Number.isInteger(current) ? current : 0
+    return (
+      <div className={`feel-input feel-input--bits feel-input--${value.draftStatus ?? 'unchanged'}`} data-testid={`pilot-feel-${value.paramId}`}>
+        <div className="scoped-option-chips">
+          {value.bits.map(({ bit, label }) => {
+            const on = Math.floor(mask / 2 ** bit) % 2 === 1
+            return (
+              <button
+                key={bit}
+                type="button"
+                className={`scoped-option-chip${on ? ' is-set' : ''}`}
+                aria-pressed={on}
+                data-testid={`pilot-feel-${value.paramId}-bit-${bit}`}
+                onClick={() => value.onChange(String(on ? mask - 2 ** bit : mask + 2 ** bit))}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+        <ParamInfoBubble paramId={value.paramId} label={value.label} description={value.description} testId={`tuning-info-${value.paramId}`} />
+      </div>
+    )
+  }
+  if (value.selectOnly && value.choices) {
+    return (
+      <div className={`feel-input feel-input--${value.draftStatus ?? 'unchanged'}`} data-testid={`pilot-feel-${value.paramId}`}>
+        <select
+          className="feel-input__choice feel-input__choice--only"
+          aria-label={value.label}
+          data-testid={`tuning-input-${value.paramId}`}
+          value={chosen ? String(chosen.value) : value.text}
+          onChange={(event) => value.onChange(event.target.value)}
+        >
+          {chosen ? null : <option value={value.text}>{value.text === '' ? '—' : `Value ${value.text}`}</option>}
+          {value.choices.map((choice) => (
+            <option key={choice.value} value={String(choice.value)}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
+        {changed ? (
+          <button
+            type="button"
+            className="feel-input__changed"
+            data-testid={`pilot-feel-${value.paramId}-reset`}
+            title={`Changed from the default (${formatDefault(value.defaultValue!)}). Click to reset.`}
+            aria-label={`Reset ${value.label} to its default, ${formatDefault(value.defaultValue!)}`}
+            onClick={() => value.onChange(formatDefault(value.defaultValue!))}
+          />
+        ) : null}
+        <ParamInfoBubble paramId={value.paramId} label={value.label} description={value.description} testId={`tuning-info-${value.paramId}`} />
+      </div>
+    )
+  }
   return (
     <div className={`feel-input feel-input--${value.draftStatus ?? 'unchanged'}`} data-testid={`pilot-feel-${value.paramId}`}>
       {value.tag ? <span className="feel-input__tag">{value.tag}</span> : null}
@@ -97,6 +159,16 @@ function FeelInput({ value }: { value: PilotFeelValue }): ReactElement {
           aria-label={`Reset ${value.label} to its default, ${formatDefault(value.defaultValue!)}`}
           onClick={() => value.onChange(formatDefault(value.defaultValue!))}
         />
+      ) : null}
+      {value.suggestion && value.suggestion.text !== value.text ? (
+        <button
+          type="button"
+          className="feel-input__suggest"
+          data-testid={`pilot-feel-${value.paramId}-suggest`}
+          onClick={() => value.onChange(value.suggestion!.text)}
+        >
+          {value.suggestion.label}
+        </button>
       ) : null}
       <ParamInfoBubble paramId={value.paramId} label={value.label} description={value.description} testId={`tuning-info-${value.paramId}`} />
     </div>

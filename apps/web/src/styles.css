@@ -25055,3 +25055,24 @@ button.plot-side-list__name {
 .pid-scale__item input {
   width: 72px;
 }
+.feel-input--bits {
+  align-items: flex-start;
+  flex-wrap: nowrap;
+}
+.feel-input--bits .scoped-option-chips {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.feel-input__choice--only {
+  max-width: 16rem;
+}
+.feel-input__suggest {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

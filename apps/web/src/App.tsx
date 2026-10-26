@@ -275,6 +275,8 @@ import { altHoldGainCheck } from './view-models/althold-gain-check'
 import { AltHoldGainCheckView } from './views/AltHoldGainCheck'
 import { FeelGrid, PilotFeelView, type PilotFeelValue } from './views/PilotFeel'
 import { PidGainsView } from './views/PidGains'
+import { NotchesView } from './views/NotchesPanel'
+import { documentedNotchBandwidth, documentedNotchRef } from './view-models/filter-planner'
 import {
   EXPO_CHOICES,
   PILOT_FEEL_DISPLAY,
@@ -6206,6 +6208,108 @@ export function App() {
       }}
     />
   )
+  // A value whose metadata names its values: an enum becomes the named list
+  // only, a bitmask one toggle per bit.
+  const metaFeelValue = (
+    parameter: ParameterState | undefined,
+    label: string,
+    options: { unit?: string; suggestion?: { label: string; text: string } } = {}
+  ): PilotFeelValue | undefined => {
+    const value = pilotFeelFor(parameter, label, { unit: options.unit })
+    if (!value || !parameter) return value
+    const definition = parameter.definition ?? metadataCatalog.parameters[parameter.id]
+    const named = definition?.options ?? []
+    if (definition?.bitmask && named.length > 0) {
+      return { ...value, bits: named.map((option) => ({ bit: option.value, label: option.label })) }
+    }
+    if (named.length > 0) {
+      return { ...value, selectOnly: true, choices: named.map((option) => ({ value: option.value, label: option.label })) }
+    }
+    return { ...value, suggestion: options.suggestion }
+  }
+  const byParamId = (paramId: string): ParameterState | undefined => snapshot.parameters.find((parameter) => parameter.id === paramId)
+  const notchEffective = (paramId: string): number | undefined => {
+    const drafted = editedValues[paramId]
+    if (drafted !== undefined && drafted.trim() !== '' && Number.isFinite(Number(drafted))) return Number(drafted)
+    return byParamId(paramId)?.value
+  }
+  const notchColumn = (prefix: 'INS_HNTCH' | 'INS_HNTC2') => {
+    const freq = notchEffective(`${prefix}_FREQ`)
+    const mode = notchEffective(`${prefix}_MODE`)
+    // ArduPilot's documented hints (view-models/filter-planner): bandwidth is
+    // half the frequency for throttle-mode tracking; the reference is 1 for
+    // RPM / ESC telemetry and the hover thrust for throttle mode.
+    const measured = mode !== undefined && [2, 3, 4, 5].includes(Math.round(mode))
+    const bw = freq !== undefined && !measured ? documentedNotchBandwidth(freq) : undefined
+    const ref = mode !== undefined ? documentedNotchRef(Math.round(mode), byParamId('MOT_THST_HOVER')?.value) : undefined
+    return {
+      enable: metaFeelValue(byParamId(`${prefix}_ENABLE`), 'Notch enabled'),
+      mode: metaFeelValue(byParamId(`${prefix}_MODE`), 'Notch tracking'),
+      ref: metaFeelValue(byParamId(`${prefix}_REF`), 'Notch reference', {
+        suggestion: ref !== undefined ? { label: `Use ${ref}`, text: String(ref) } : undefined
+      }),
+      freq: metaFeelValue(byParamId(`${prefix}_FREQ`), 'Notch frequency', { unit: 'Hz' }),
+      bw: metaFeelValue(byParamId(`${prefix}_BW`), 'Notch bandwidth', {
+        unit: 'Hz',
+        suggestion: bw !== undefined ? { label: `Use ${bw} (half the frequency)`, text: String(bw) } : undefined
+      }),
+      att: metaFeelValue(byParamId(`${prefix}_ATT`), 'Notch attenuation', { unit: 'dB' }),
+      fmRat: metaFeelValue(byParamId(`${prefix}_FM_RAT`), 'Notch min frequency ratio'),
+      harmonics: metaFeelValue(byParamId(`${prefix}_HMNCS`), 'Notch harmonics'),
+      options: metaFeelValue(byParamId(`${prefix}_OPTS`), 'Notch options'),
+      warning:
+        notchEffective(`${prefix}_ENABLE`) === 1 && notchEffective(`${prefix}_REF`) === 0 ? (
+          <span className="feel-readout feel-readout--warning" data-testid={`notch-ref-zero-${prefix}`}>
+            Reference 0 turns tracking off.
+          </span>
+        ) : null
+    }
+  }
+  const notch1 = notchColumn('INS_HNTCH')
+  const notch2 = notchColumn('INS_HNTC2')
+  const pair = <K extends keyof typeof notch1>(key: K) => [notch1[key], notch2[key]] as [PilotFeelValue | undefined, PilotFeelValue | undefined]
+  const routingFor = (kind: 'NTF' | 'NEF') =>
+    (['RLL', 'PIT', 'YAW'] as const).map((axis) =>
+      metaFeelValue(
+        filterIndexParameters?.find((parameter) => parameter.id === `ATC_RAT_${axis}_${kind}`),
+        `${axis === 'RLL' ? 'Roll' : axis === 'PIT' ? 'Pitch' : 'Yaw'} ${kind === 'NTF' ? 'target' : 'error'} filter`
+      )
+    )
+  const bankSlot = (index: number, suffix: string): ParameterState | undefined => byParamId(`FILT${index}_${suffix}`)
+  const notchesSlot = (
+    <NotchesView
+      notch={{
+        enable: pair('enable'),
+        mode: pair('mode'),
+        ref: pair('ref'),
+        freq: pair('freq'),
+        bw: pair('bw'),
+        att: pair('att'),
+        fmRat: pair('fmRat'),
+        harmonics: pair('harmonics'),
+        options: pair('options')
+      }}
+      notchFooter={[notch1.warning, notch2.warning]}
+      bank={
+        filterBank.supported
+          ? {
+              slots: filterBank.slots.map((slot) => ({ index: slot.index, summary: slot.summary })),
+              inUse: filterBank.configured.length,
+              type: filterBank.slots.map((slot) => {
+                const parameter = bankSlot(slot.index, 'TYPE')
+                const value = pilotFeelFor(parameter, `FILT${slot.index} type`)
+                // AP_Filter_params.cpp @Values: 0 Disable, 1 Notch Filter.
+                return value ? { ...value, selectOnly: true, choices: [{ value: 0, label: 'Off' }, { value: 1, label: 'Notch' }] } : undefined
+              }),
+              freq: filterBank.slots.map((slot) => pilotFeelFor(bankSlot(slot.index, 'NOTCH_FREQ'), `FILT${slot.index} frequency`, { unit: 'Hz' })),
+              q: filterBank.slots.map((slot) => pilotFeelFor(bankSlot(slot.index, 'NOTCH_Q'), `FILT${slot.index} Q`)),
+              att: filterBank.slots.map((slot) => pilotFeelFor(bankSlot(slot.index, 'NOTCH_ATT'), `FILT${slot.index} attenuation`, { unit: 'dB' })),
+              routing: { target: routingFor('NTF'), error: routingFor('NEF') }
+            }
+          : undefined
+      }
+    />
+  )
   const responseChoices = RESPONSE_TC_CHOICES
   const rateResponseChoices: readonly NamedValue[] = [{ value: 0, label: 'Off' }, ...RESPONSE_TC_CHOICES]
   const pilotFeelSlot = (
@@ -10564,6 +10668,7 @@ export function App() {
           altHoldControllerSlot={altHoldControllerSlot}
           pilotFeelSlot={pilotFeelSlot}
           pidGainsSlot={pidGainsSlot}
+          notchesSlot={notchesSlot}
           filterNotchSlot={
             <>
               {/* Enter a gyro cutoff, get ArduPilot's derived filter set as
