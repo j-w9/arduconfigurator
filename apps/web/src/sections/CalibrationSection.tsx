@@ -28,6 +28,7 @@ const BASELINE_IMU_INTERVAL_US = 1_000_000
 import { CalibrationLocationButton } from './CalibrationLocationCard'
 import { BoardOrientationResult } from '../views/BoardOrientationResult'
 import { TcalCalibrationCard } from './TcalCalibrationCard'
+import type { TcalWrite } from '../view-models/tcal-plan'
 import { ValtCalibrationCard, type ValtCalibrationCardProps } from './ValtCalibrationCard'
 import { HoverThrottleLearnCard } from './HoverThrottleLearnCard'
 import { accelerometerCalibrationVerdict } from '../view-models/accel-calibration-state'
@@ -73,6 +74,8 @@ export interface CalibrationSectionProps {
   calibrationNotices: UseCalibrationNoticesResult
   safetyAcks: UseSafetyAcksResult
   setDraft: (paramId: string, value: string) => void
+  /** Thermal calibration's ordered, verified writes (target before enable). */
+  onTcalWrite: (writes: TcalWrite[], description: string) => void
   /** Signed in to a log server: the baro thrust (VALT) calibration is gated on it. */
   logServerSignedIn: boolean
   /** The vehicle's own logs, so a calibration can fit a flight without a download. */
@@ -320,6 +323,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
     calibrationNotices,
     safetyAcks,
     setDraft,
+    onTcalWrite,
     logServerSignedIn,
     onboardLogs,
 
@@ -1611,7 +1615,7 @@ export function CalibrationSection(props: CalibrationSectionProps): ReactElement
                   snapshot={snapshot}
                   canApplyDraftParameters={canApplyDraftParameters}
                   busyAction={busyAction}
-                  setDraft={setDraft}
+                  onWrite={onTcalWrite}
                 />
               ) : null}
 

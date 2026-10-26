@@ -1,28 +1,28 @@
-// Thermal calibration (TCAL) card for the Calibration tab — Expert-gated.
+// Thermal calibration (TCAL) card for the Calibration tab.
 //
 // ArduPilot per-IMU thermal calibration (INS_TCALn_*) learns gyro/accel offsets
 // across temperature so the estimator stays stable from a cold boot to warm.
-// It learns ONLINE: set each IMU to "learn", reboot cold, and let the board heat
-// through its range — the firmware computes and saves the fit at the top
-// temperature on its own. This card reads the current TCAL state from the synced
-// parameters and stages the "learn" enable (INS_TCALn_ENABLE=2) as a draft; the
-// operator applies it through the normal verified-write path, then reboots cold.
-//
-// Live IMU temperature (from SCALED_IMU, streamed at 1 Hz) is shown for warm-up
-// progress; the firmware itself computes and saves the fit at the top temperature.
+// What the operator does, from AP_InertialSensor_tempcal.cpp:
+//   - the learn starts the moment INS_TCALn_ENABLE becomes 2, from whatever
+//     temperature the board is at — so start COLD;
+//   - it ends at TMAX once the board has risen at least 10 °C, or 10 minutes
+//     after the temperature stops rising (also only after a 10 °C rise);
+//   - it saves itself (ENABLE flips to 1, TMIN/TMAX become the real range), or
+//     on a failed fit turns itself off.
+// So the card is three steps — cool it, pick a target, press Start — and then
+// a wait with nothing to press. The writes go straight through the verified
+// write path in order (target, then enable: see view-models/tcal-plan.ts for
+// why a draft could not do it).
 //
 // The BAROMETER has a separate temperature calibration with its own parameter
-// family and its own procedure — AP_TempCalibration (TCAL_*, a Copter g2
-// subgroup), not the per-IMU INS_TCALn_*. Same card because it is the same job
-// to an operator ("calibrate this board over temperature") and the same bench
-// session: power it cold, leave it still, let it warm. Everything below about
-// it is from AP_TempCalibration.cpp, not from the name looking similar:
+// family — AP_TempCalibration (TCAL_*, a Copter g2 subgroup). Same card
+// because it is the same bench session: power it cold, leave it still, let it
+// warm. From AP_TempCalibration.cpp:
 //   TCAL_ENABLED  0 = off, 1 = use learned values, 2 = learn AND use
 //   TCAL_TEMP_MIN / TEMP_MAX / BARO_EXP are @ReadOnly — the learn writes them
-//   learning runs only while DISARMED, while the IMU reads still (any movement
-//     resets it), and only above 25 degC (Tzero); it needs a rise of at least
-//     7 degC (min_learn_temp_range) before it fits and saves
-//   the correction is applied to the FIRST baro only ("just for first baro now")
+//   learning runs only while DISARMED and still, above 25 °C, and needs a
+//     rise of at least 7 °C before it fits and saves
+//   the correction is applied to the FIRST baro only
 
 import { useEffect, useState, type ReactElement } from 'react'
 
@@ -30,30 +30,31 @@ import type { ConfiguratorSnapshot } from '@arduconfig/ardupilot-core'
 import { StatusBadge, buttonStyle } from '@arduconfig/ui-kit'
 
 import { readParameterValue } from '../selectors/parameter-read'
+import {
+  BARO_TCAL_MIN_TEMP_C,
+  TCAL_MIN_RISE_C,
+  TCAL_STALL_MINUTES,
+  TCAL_SUGGESTED_TARGET_C,
+  TCAL_TEMP_LIMIT_HIGH_C,
+  TCAL_TEMP_LIMIT_LOW_C,
+  latestTcalMessage,
+  tcalStopWrites,
+  tcalStartWrites,
+  tcalTargetCheck,
+  type TcalWrite
+} from '../view-models/tcal-plan'
 
 export interface TcalCalibrationCardProps {
   snapshot: ConfiguratorSnapshot
+  /** Synced and disarmed: writes may go. */
   canApplyDraftParameters: boolean
   busyAction: string | undefined
-  setDraft: (paramId: string, value: string) => void
+  /** Verified writes, in this order. */
+  onWrite: (writes: TcalWrite[], description: string) => void
 }
 
 const IMU_INSTANCES = [1, 2, 3]
-
-// AP_TempCalibration.h: Tzero, the temperature below which the baro learn
-// collects nothing, and the minimum rise it needs before it fits and saves.
-const BARO_TCAL_MIN_TEMP_C = 25
 const BARO_TCAL_MIN_RANGE_C = 7
-
-// AP_InertialSensor_tempcal.cpp: learning finishes only when the IMU has both
-// risen TEMP_RANGE_MIN (10 degC) above where it started AND reached TMAX.
-const TCAL_MIN_RANGE_C = 10
-// @Range on TMIN/TMAX.
-const TCAL_TEMP_LIMIT_LOW_C = -70
-const TCAL_TEMP_LIMIT_HIGH_C = 80
-// AP_GROUPINFO default for TMAX. Most airframes never reach it, which is why
-// leaving it alone is the same as never finishing.
-const TCAL_TMAX_FIRMWARE_DEFAULT_C = 70
 
 // Per-IMU THERMAL-CAL state — labelled to make clear it's the calibration that's
 // off, not the IMU itself ("disabled" read as "IMU disabled"). enable: 0 = no
@@ -69,11 +70,12 @@ export function TcalCalibrationCard({
   snapshot,
   canApplyDraftParameters,
   busyAction,
-  setDraft
+  onWrite
 }: TcalCalibrationCardProps): ReactElement {
   const imus = IMU_INSTANCES.map((i) => ({
     i,
     enable: readParameterValue(snapshot, `INS_TCAL${i}_ENABLE`),
+    // Absent while thermal cal is off: ENABLE hides the rest of its group.
     tmin: readParameterValue(snapshot, `INS_TCAL${i}_TMIN`),
     tmax: readParameterValue(snapshot, `INS_TCAL${i}_TMAX`)
   })).filter((imu) => imu.enable !== undefined)
@@ -85,11 +87,42 @@ export function TcalCalibrationCard({
   const baroExponent = readParameterValue(snapshot, 'TCAL_BARO_EXP')
   const baroTempMin = readParameterValue(snapshot, 'TCAL_TEMP_MIN')
   const baroTempMax = readParameterValue(snapshot, 'TCAL_TEMP_MAX')
-  // Folded by default (operator request): the full card -- range inputs,
-  // warnings, how-to, the baro section -- is the tallest on the page, and on
-  // a wide screen its height pushed the rest of the Sensors row out of view.
-  // Called before any early return so the hook order never changes.
+  const hasBaroTcal = baroEnabled !== undefined
+  const baroLearning = (baroEnabled ?? 0) >= 2
+  const baroState = enableState(baroEnabled)
+
+  const connected = snapshot.connection.kind === 'connected'
+  const canWrite = connected && canApplyDraftParameters && busyAction === undefined
+  const writeBlockedReason = !connected
+    ? 'Connect to a vehicle first.'
+    : !canApplyDraftParameters
+      ? 'Finish parameter sync and disarm first.'
+      : busyAction !== undefined
+        ? 'Waiting for the current action to finish.'
+        : undefined
+
+  const imuTempC = snapshot.liveVerification.imuTemperatureC
+  const anyLearning = imus.some((imu) => (imu.enable ?? 0) >= 2)
+  const learningImuIds = imus.filter((imu) => (imu.enable ?? 0) >= 2).map((imu) => imu.i)
+  const reportedTargets = imus.map((imu) => imu.tmax).filter((t): t is number => typeof t === 'number')
+  const learningTarget = reportedTargets.length > 0 ? Math.max(...reportedTargets) : undefined
+  const tcalMessage = latestTcalMessage(snapshot.statusTexts)
+
+  // Folded by default (operator request): the full card is the tallest on the
+  // page, and on a wide screen its height pushed the rest of the Sensors row
+  // out of view. EVERY hook sits above the early return below — a board whose
+  // INS_TCALn_* arrived mid-session once crashed the page (React #310).
   const [expanded, setExpanded] = useState(false)
+  // The target, seeded from what the vehicle reports (only while thermal cal
+  // is on — it is hidden otherwise), else a temperature most boards reach.
+  const [targetText, setTargetText] = useState('')
+  const [touched, setTouched] = useState(false)
+  const [includeBaro, setIncludeBaro] = useState(true)
+  useEffect(() => {
+    if (touched) return
+    setTargetText(String(Math.round(learningTarget ?? TCAL_SUGGESTED_TARGET_C)))
+  }, [learningTarget, touched])
+
   const expandToggle = (
     <button
       type="button"
@@ -101,28 +134,21 @@ export function TcalCalibrationCard({
       {expanded ? 'Hide thermal calibration ▾' : 'Set up thermal calibration ▸'}
     </button>
   )
-  const hasBaroTcal = baroEnabled !== undefined
-  const baroLearning = (baroEnabled ?? 0) >= 2
-  const baroState = enableState(baroEnabled)
-  const baroConnected = snapshot.connection.kind === 'connected'
-  const canStartBaro =
-    baroConnected && canApplyDraftParameters && busyAction === undefined && hasBaroTcal && !baroLearning
 
   const baroSection = hasBaroTcal ? (
     <section className="calibration-card__subsection" data-testid="tcal-baro">
       <div className="calibration-card__header">
-        <strong>Barometer (TCAL)</strong>
-        <StatusBadge tone={baroLearning ? 'warning' : baroState.tone}>{baroState.label}</StatusBadge>
+        <strong>Barometer</strong>
+        <StatusBadge tone={baroState.tone}>{baroState.label}</StatusBadge>
       </div>
       <p>
-        Learns how the barometer&apos;s pressure reading drifts as the board heats, and corrects it — the
-        altitude equivalent of the IMU calibration above. Separate parameters (<code>TCAL_*</code>) and a
-        separate procedure.
+        Learns how the barometer&apos;s altitude drifts as the board heats, and corrects it. Same bench session as
+        the IMUs: it only collects above {BARO_TCAL_MIN_TEMP_C}&thinsp;°C, needs {BARO_TCAL_MIN_RANGE_C}&thinsp;°C
+        of rise, and restarts if the board moves. Corrects the first barometer only.
       </p>
-
       <div className="config-pills">
         <span data-tone={baroState.tone}>Baro TCAL: {baroState.label}</span>
-        {baroExponent !== undefined ? <span>Learned exponent: {baroExponent.toFixed(3)}</span> : null}
+        {baroExponent !== undefined && baroExponent !== 0 ? <span>Learned exponent: {baroExponent.toFixed(3)}</span> : null}
         {baroTempMin !== undefined && baroTempMax !== undefined && baroTempMax > baroTempMin ? (
           <span data-testid="tcal-baro-range">
             Learned over {baroTempMin.toFixed(0)}→{baroTempMax.toFixed(0)}&thinsp;°C
@@ -131,90 +157,39 @@ export function TcalCalibrationCard({
           <span data-testid="tcal-baro-range">No range learned yet</span>
         )}
       </div>
-
       <div className="button-row">
         <button
           type="button"
-          style={buttonStyle('primary')}
-          disabled={!canStartBaro}
+          style={buttonStyle(imus.length === 0 ? 'primary' : undefined)}
+          disabled={!canWrite || baroLearning}
           data-testid="tcal-baro-start"
-          onClick={() => setDraft('TCAL_ENABLED', '2')}
+          onClick={() => onWrite([{ paramId: 'TCAL_ENABLED', paramValue: 2 }], 'Baro temperature learning started')}
         >
-          {baroLearning ? 'Learning already enabled' : 'Prepare baro calibration'}
+          {baroLearning ? 'Baro is learning' : 'Start baro learning'}
         </button>
-        {/* Learning keeps refining for as long as it is on. Once the range is
-            learned, pinning it to "use" stops it re-fitting on every bench
-            session — and it is the only way back short of the raw parameter. */}
+        {/* Learning keeps refining for as long as it is on. Pinning it to
+            "use" stops it re-fitting on every bench session. */}
         <button
           type="button"
           style={buttonStyle()}
-          disabled={
-            !baroConnected || !canApplyDraftParameters || busyAction !== undefined || !baroLearning
-          }
+          disabled={!canWrite || !baroLearning}
           data-testid="tcal-baro-keep"
-          onClick={() => setDraft('TCAL_ENABLED', '1')}
+          onClick={() => onWrite([{ paramId: 'TCAL_ENABLED', paramValue: 1 }], 'Baro learning stopped; learned values kept')}
         >
           Stop learning, keep values
         </button>
+        <button
+          type="button"
+          style={buttonStyle()}
+          disabled={!canWrite || (baroEnabled ?? 0) === 0}
+          data-testid="tcal-baro-off"
+          onClick={() => onWrite([{ paramId: 'TCAL_ENABLED', paramValue: 0 }], 'Baro temperature calibration turned off')}
+        >
+          Turn off
+        </button>
       </div>
-      <small>
-        {!baroConnected
-          ? 'Connect to a vehicle first.'
-          : !canApplyDraftParameters
-            ? 'Finish parameter sync and disarm first.'
-            : `Bench only, disarmed and completely still — any movement restarts the learn, and it only collects above ${BARO_TCAL_MIN_TEMP_C} °C.`}
-      </small>
-
-      <details className="calibration-card__howto">
-        <summary>How baro temperature calibration works</summary>
-        <ol>
-          <li><strong>Start cold</strong>, props off, on the bench. The vehicle must stay <strong>disarmed and still</strong> — the firmware restarts the learn the moment the IMUs report movement.</li>
-          <li>Click <strong>Prepare baro calibration</strong>, then <strong>Apply</strong> in the draft bar (stages <code>TCAL_ENABLED = 2</code>, learn and use).</li>
-          <li>Leave it powered and untouched while it self-heats. Nothing is collected below {BARO_TCAL_MIN_TEMP_C}&thinsp;°C, and it needs at least {BARO_TCAL_MIN_RANGE_C}&thinsp;°C of rise before it fits.</li>
-          <li>The fit saves itself into <code>TCAL_BARO_EXP</code> with the range in <code>TCAL_TEMP_MIN</code>/<code>TEMP_MAX</code> — all three are read-only, written by the learn.</li>
-          <li>Leave it learning to keep refining, or press <strong>Stop learning, keep values</strong> to pin what it has (<code>TCAL_ENABLED = 1</code>).</li>
-        </ol>
-        <p>Corrects the first barometer only.</p>
-      </details>
     </section>
   ) : null
-
-  // EVERY hook sits above the early return below. The temperature state and
-  // its seeding effect used to come after it; harmless only while the card
-  // called no hook before that return -- the fold state made it one, and a
-  // board whose INS_TCALn_* parameters arrived mid-session then crashed the
-  // page (React #310, more hooks than the previous render). The values the
-  // effect reads are safe to compute with no IMUs (they come out undefined).
-  // Live IMU temperature (from SCALED_IMU) + warm-up progress toward the target.
-  const imuTempC = snapshot.liveVerification.imuTemperatureC
-  const tmaxValues = imus.map((imu) => imu.tmax ?? 0).filter((t) => t > 0)
-  const tminValues = imus.map((imu) => imu.tmin).filter((t): t is number => typeof t === 'number')
-  const targetTmax = tmaxValues.length > 0 ? Math.max(...tmaxValues) : undefined
-  const baseTmin = tminValues.length > 0 ? Math.min(...tminValues) : undefined
-  const warmPct =
-    imuTempC !== undefined && targetTmax !== undefined && baseTmin !== undefined && targetTmax > baseTmin
-      ? Math.min(100, Math.max(0, ((imuTempC - baseTmin) / (targetTmax - baseTmin)) * 100))
-      : undefined
-
-  // Target temperature.
-  //
-  // This is the whole reason the card needed inputs: TMAX is what ENDS the
-  // learn (AP_InertialSensor_tempcal.cpp finishes when the IMU reaches it), and
-  // its firmware default is 70 degC. Most airframes never get near that, so a
-  // board left on the default learns forever and saves nothing — "it won't do
-  // anything by default" is literally true.
-  //
-  // Seeded from the vehicle, and re-seeded when a sync brings real values in,
-  // but not while the operator is typing into it.
-  const [tmaxText, setTmaxText] = useState('')
-  const [tminText, setTminText] = useState('')
-  const [touched, setTouched] = useState(false)
-
-  useEffect(() => {
-    if (touched) return
-    if (targetTmax !== undefined) setTmaxText(String(Math.round(targetTmax)))
-    if (baseTmin !== undefined) setTminText(String(Math.round(baseTmin)))
-  }, [targetTmax, baseTmin, touched])
 
   if (imus.length === 0) {
     return (
@@ -224,7 +199,7 @@ export function TcalCalibrationCard({
           <StatusBadge tone="neutral">n/a</StatusBadge>
         </div>
         <p>
-          This firmware doesn't expose per-IMU thermal-calibration parameters (<code>INS_TCALn_*</code>). Thermal
+          This firmware doesn&apos;t expose per-IMU thermal-calibration parameters (<code>INS_TCALn_*</code>). Thermal
           cal is available on builds with per-IMU temperature compensation compiled in.
         </p>
         {baroSection ? expandToggle : null}
@@ -233,50 +208,33 @@ export function TcalCalibrationCard({
     )
   }
 
-  const anyLearning = imus.some((imu) => (imu.enable ?? 0) >= 2)
-  const connected = snapshot.connection.kind === 'connected'
-  const canStartBase = connected && canApplyDraftParameters && busyAction === undefined && !anyLearning
+  const targetC = Number.parseFloat(targetText)
+  const check = tcalTargetCheck(targetC, imuTempC)
+  const canStart = canWrite && !anyLearning && check.problem === undefined
+  const allCalibrated = imus.every((imu) => (imu.enable ?? 0) === 1)
+  const onImuIds = imus.filter((imu) => (imu.enable ?? 0) === 1).map((imu) => imu.i)
 
-  const tmaxValue = Number.parseFloat(tmaxText)
-  const tminValue = Number.parseFloat(tminText)
-  const tmaxValid = Number.isFinite(tmaxValue) && tmaxValue >= TCAL_TEMP_LIMIT_LOW_C && tmaxValue <= TCAL_TEMP_LIMIT_HIGH_C
-  const tminValid = Number.isFinite(tminValue) && tminValue >= TCAL_TEMP_LIMIT_LOW_C && tminValue <= TCAL_TEMP_LIMIT_HIGH_C
-  const rangeValid = tmaxValid && tminValid && tmaxValue - tminValue >= TCAL_MIN_RANGE_C
-  const temperaturesReady = tmaxValid && tminValid && rangeValid
-
-  const temperatureProblem = !tmaxValid
-    ? `Target temperature must be between ${TCAL_TEMP_LIMIT_LOW_C} and ${TCAL_TEMP_LIMIT_HIGH_C} °C.`
-    : !tminValid
-      ? `Start temperature must be between ${TCAL_TEMP_LIMIT_LOW_C} and ${TCAL_TEMP_LIMIT_HIGH_C} °C.`
-      : !rangeValid
-        ? `The firmware needs at least ${TCAL_MIN_RANGE_C} °C between them, or it never completes the fit.`
-        : undefined
-
-  // A target the board will not reach is the failure this card exists to
-  // prevent, so say so rather than staging it silently. Not an error: a heated
-  // or enclosed build genuinely can get there.
-  const targetLooksUnreachable = tmaxValid && tmaxValue >= TCAL_TMAX_FIRMWARE_DEFAULT_C
-
-  const canStart = canStartBase && temperaturesReady
-
-  const startLearning = (): void => {
-    for (const imu of imus) {
-      // Temperatures first, then the enable. ENABLE carries
-      // AP_PARAM_FLAG_ENABLE, and the range has to be in place before the
-      // learn it starts can use it.
-      setDraft(`INS_TCAL${imu.i}_TMIN`, String(tminValue))
-      setDraft(`INS_TCAL${imu.i}_TMAX`, String(tmaxValue))
-      setDraft(`INS_TCAL${imu.i}_ENABLE`, '2')
-    }
+  const start = (): void => {
+    const withBaro = hasBaroTcal && includeBaro && !baroLearning
+    onWrite(
+      tcalStartWrites(
+        imus.map((imu) => imu.i),
+        targetC,
+        withBaro
+      ),
+      `Thermal calibration started: target ${targetC.toFixed(0)} °C${withBaro ? ', barometer too' : ''}`
+    )
   }
 
   return (
     <article className="calibration-card" data-testid="calibration-card-tcal">
       <div className="calibration-card__header">
         <strong>Thermal calibration (TCAL)</strong>
-        <StatusBadge tone={anyLearning ? 'warning' : 'neutral'}>{anyLearning ? 'learning' : 'idle'}</StatusBadge>
+        <StatusBadge tone={anyLearning ? 'warning' : allCalibrated ? 'success' : 'neutral'}>
+          {anyLearning ? 'learning' : allCalibrated ? 'calibrated' : 'idle'}
+        </StatusBadge>
       </div>
-      <p>Learns per-IMU gyro/accel offsets across temperature — online, as the board warms from a cold boot.</p>
+      <p>Learns how each IMU drifts as the board warms up, and corrects it — one bench session from cold to warm.</p>
 
       <div className="config-pills">
         {imus.map((imu) => {
@@ -284,16 +242,15 @@ export function TcalCalibrationCard({
           return (
             <span key={imu.i} data-tone={state.tone}>
               IMU{imu.i} TCAL: {state.label}
-              {imu.tmin !== undefined && imu.tmax !== undefined ? ` (${imu.tmin.toFixed(0)}→${imu.tmax.toFixed(0)}°C)` : ''}
+              {state.label === 'on' && imu.tmin !== undefined && imu.tmax !== undefined
+                ? ` (${imu.tmin.toFixed(0)}→${imu.tmax.toFixed(0)}°C)`
+                : ''}
             </span>
           )
         })}
         {imuTempC !== undefined ? (
           <span data-testid="tcal-imu-temp" data-tone={anyLearning ? 'warning' : 'neutral'}>
             IMU temp: {imuTempC.toFixed(1)}&thinsp;°C
-            {anyLearning && warmPct !== undefined && targetTmax !== undefined
-              ? ` · warming ${warmPct.toFixed(0)}% → ${targetTmax.toFixed(0)}°C`
-              : ''}
           </span>
         ) : null}
       </div>
@@ -301,93 +258,132 @@ export function TcalCalibrationCard({
       {expandToggle}
 
       {expanded ? (
-      <>
-      {/* The temperature range the learn will run over.
-        *
-        * TMAX is the input that matters: it is what ends the learn. TMIN is
-        * offered because the range has to be at least 10 degC for the fit to be
-        * accepted, but the firmware OVERWRITES it with wherever the board
-        * actually started when it saves — so it is a floor for validity, not a
-        * promise about the run. */}
-      <div className="tcal-temp-range" data-testid="tcal-temp-range">
-        <label>
-          <span>Start (°C)</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min={TCAL_TEMP_LIMIT_LOW_C}
-            max={TCAL_TEMP_LIMIT_HIGH_C}
-            value={tminText}
-            data-testid="tcal-tmin"
-            disabled={!canStartBase}
-            onChange={(event) => {
-              setTouched(true)
-              setTminText(event.target.value)
-            }}
-          />
-        </label>
-        <label>
-          <span>Target (°C)</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min={TCAL_TEMP_LIMIT_LOW_C}
-            max={TCAL_TEMP_LIMIT_HIGH_C}
-            value={tmaxText}
-            data-testid="tcal-tmax"
-            disabled={!canStartBase}
-            onChange={(event) => {
-              setTouched(true)
-              setTmaxText(event.target.value)
-            }}
-          />
-        </label>
-      </div>
+        <>
+          {anyLearning ? (
+            <section className="tcal-learning" data-testid="tcal-learning">
+              <p>
+                <strong>Learning now.</strong>{' '}
+                {imuTempC !== undefined ? `Board ${imuTempC.toFixed(1)} °C` : 'Board temperature unknown'}
+                {learningTarget !== undefined ? ` → target ${learningTarget.toFixed(0)} °C.` : '.'}
+              </p>
+              <p>
+                Leave it powered, on the bench and still — nothing to press. It saves itself at the target, or{' '}
+                {TCAL_STALL_MINUTES} minutes after it stops warming (once it has risen {TCAL_MIN_RISE_C}&thinsp;°C). The
+                state then reads <em>on</em>.
+              </p>
+              <div className="button-row">
+                <button
+                  type="button"
+                  style={buttonStyle()}
+                  disabled={!canWrite}
+                  data-testid="tcal-stop-keep"
+                  onClick={() =>
+                    onWrite(tcalStopWrites(learningImuIds, 'keep'), 'Thermal learning stopped; what it saved is in use')
+                  }
+                >
+                  Stop learning, keep values
+                </button>
+                <button
+                  type="button"
+                  style={buttonStyle()}
+                  disabled={!canWrite}
+                  data-testid="tcal-stop-off"
+                  onClick={() => onWrite(tcalStopWrites(learningImuIds, 'off'), 'Thermal learning stopped; thermal cal off')}
+                >
+                  Stop and turn off
+                </button>
+              </div>
+              <small>
+                Keep uses what it has saved: a partial fit is saved every 15 s once the board has risen{' '}
+                {TCAL_MIN_RISE_C}&thinsp;°C. Before that there is nothing new to keep.
+              </small>
+            </section>
+          ) : (
+            <ol className="tcal-steps" data-testid="tcal-steps">
+              <li>
+                <strong>Start cold.</strong> Let the board cool to room temperature, then power it up, props off, and
+                start straight away — it learns from wherever it is when you press Start
+                {imuTempC !== undefined ? <> (now <strong>{imuTempC.toFixed(1)}&thinsp;°C</strong>)</> : null}.
+              </li>
+              <li>
+                <strong>Pick a target</strong> this board reaches on the bench, at least {TCAL_MIN_RISE_C}&thinsp;°C
+                above where it starts.
+                <div className="tcal-temp-range" data-testid="tcal-temp-range">
+                  <label>
+                    <span>Target (°C)</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={TCAL_TEMP_LIMIT_LOW_C}
+                      max={TCAL_TEMP_LIMIT_HIGH_C}
+                      value={targetText}
+                      data-testid="tcal-tmax"
+                      disabled={!canWrite}
+                      onChange={(event) => {
+                        setTouched(true)
+                        setTargetText(event.target.value)
+                      }}
+                    />
+                  </label>
+                </div>
+                {check.problem ? (
+                  <p className="switch-exercise-warning" data-testid="tcal-temp-problem">
+                    {check.problem}
+                  </p>
+                ) : check.note ? (
+                  <p className="calibration-card__note" data-testid="tcal-temp-note">
+                    {check.note}
+                  </p>
+                ) : null}
+              </li>
+              <li>
+                <strong>Start</strong>, then leave it powered and still while it warms.
+                {hasBaroTcal && !baroLearning ? (
+                  <label className="tcal-include-baro">
+                    <input
+                      type="checkbox"
+                      checked={includeBaro}
+                      data-testid="tcal-include-baro"
+                      onChange={(event) => setIncludeBaro(event.target.checked)}
+                    />{' '}
+                    Learn the barometer in the same session
+                  </label>
+                ) : null}
+                <div className="button-row">
+                  <button
+                    type="button"
+                    style={buttonStyle('primary')}
+                    disabled={!canStart}
+                    data-testid="tcal-start"
+                    onClick={start}
+                  >
+                    {allCalibrated ? 'Learn again' : 'Start learning'}
+                  </button>
+                  {onImuIds.length > 0 ? (
+                    <button
+                      type="button"
+                      style={buttonStyle()}
+                      disabled={!canWrite}
+                      data-testid="tcal-turn-off"
+                      onClick={() => onWrite(tcalStopWrites(onImuIds, 'off'), 'Thermal cal turned off')}
+                    >
+                      Turn thermal cal off
+                    </button>
+                  ) : null}
+                </div>
+                <small>{writeBlockedReason ?? check.problem ?? 'Bench only, props off, disarmed.'}</small>
+              </li>
+            </ol>
+          )}
 
-      {temperatureProblem ? (
-        <p className="switch-exercise-warning" data-testid="tcal-temp-problem">
-          {temperatureProblem}
-        </p>
-      ) : targetLooksUnreachable ? (
-        <p className="switch-exercise-warning" data-testid="tcal-temp-unreachable">
-          {tmaxValue.toFixed(0)} °C is the firmware default, and most airframes never get there — the
-          learn would run forever and save nothing. Set the target to a temperature this board actually
-          reaches on the bench (watch the live IMU temperature above).
-        </p>
-      ) : null}
+          {tcalMessage ? (
+            <p className="calibration-card__note" data-testid="tcal-message">
+              Vehicle: {tcalMessage.text}
+            </p>
+          ) : null}
 
-      <button
-        type="button"
-        style={buttonStyle('primary')}
-        disabled={!canStart}
-        data-testid="tcal-start"
-        onClick={startLearning}
-      >
-        {anyLearning ? 'Learning already enabled' : 'Prepare thermal calibration'}
-      </button>
-      <small>
-        {!connected
-          ? 'Connect to a vehicle first.'
-          : !canApplyDraftParameters
-            ? 'Finish parameter sync and disarm first.'
-            : temperatureProblem !== undefined
-              ? temperatureProblem
-              : 'Bench only, props off — the board just sits still and warms up.'}
-      </small>
-
-      <details className="calibration-card__howto">
-        <summary>How thermal calibration works (cold boot → warm)</summary>
-        <ol>
-          <li><strong>Start cold.</strong> Power off and let the board cool to ambient — the wider the cold-to-warm swing, the better the fit.</li>
-          <li>Set <strong>Target</strong> to a temperature this board actually reaches — the learn ends there, and the firmware default of 70&thinsp;°C is out of reach for most airframes.</li>
-          <li>Click <strong>Prepare thermal calibration</strong>, then <strong>Apply</strong> in the draft bar (stages <code>INS_TCALn_TMIN</code>/<code>TMAX</code> and <code>INS_TCALn_ENABLE = 2</code>, learn).</li>
-          <li>Reboot <strong>cold</strong>, props off, and leave it powered and still — it self-heats through the range.</li>
-          <li>At the top temperature the fit saves automatically (state flips back to <em>on</em>). Reboot once more to use it.</li>
-        </ol>
-      </details>
-
-      {baroSection}
-      </>
+          {baroSection}
+        </>
       ) : null}
     </article>
   )
